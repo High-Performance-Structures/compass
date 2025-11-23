@@ -1,0 +1,30 @@
+<?xml version="1.0"?>
+<info xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	  xsi:noNamespaceSchemaLocation="https://apps.nextcloud.com/schema/apps/info.xsd">
+	<id>compass</id>
+	<name>Compass</name>
+	<summary>Compass, a builder-first dashboard application built on Nextcloud.</summary>
+	<description>A Nextcloud-based construction project management application designed to replace BuilderTrend. COMPASS automates project setup, manages construction lifecycles from client inquiry through completion, and provides separate interfaces for internal teams and clients.</description>
+	<version>1.0.0</version>
+	<licence>agpl</licence>
+	<author mail="info@highperformancestructures.com" homepage="https://highperformancestructures.com">High Performance Structures</author>
+	<namespace>Compass</namespace>
+	<category>dashboard</category>
+	<category>files</category>
+	<category>office</category>
+	<category>organization</category>
+	<category>tools</category>
+	<bugs>https://github.com/High-Performance-Structures/compass/issues</bugs>
+	<dependencies>
+		<nextcloud min-version="30" max-version="32"/>
+	</dependencies>
+	<navigations>
+		<navigation>
+			<id>compass</id>
+			<name>Compass</name>
+			<route>compass.page.index</route>
+			<icon>app.svg</icon>
+			<type>link</type>
+		</navigation>
+	</navigations>
+</info>
