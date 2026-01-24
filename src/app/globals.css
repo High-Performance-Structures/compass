@@ -196,3 +196,10 @@
     @apply bg-background text-foreground;
 	}
 }
+
+[data-mobile="true"] [data-sidebar="content"] {
+  scrollbar-width: none;
+}
+[data-mobile="true"] [data-sidebar="content"]::-webkit-scrollbar {
+  display: none;
+}
