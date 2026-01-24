@@ -93,7 +93,7 @@ export function FileToolbar({
 
       <div
         className={`relative transition-all duration-200 ${
-          searchFocused ? "w-64" : "w-44"
+          searchFocused ? "w-48 sm:w-64" : "w-32 sm:w-44"
         }`}
       >
         <IconSearch

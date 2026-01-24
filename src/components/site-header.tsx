@@ -33,11 +33,11 @@ export function SiteHeader() {
   const [accountOpen, setAccountOpen] = React.useState(false)
 
   return (
-    <header className="flex h-14 shrink-0 items-center gap-2 border-b px-4">
+    <header className="flex h-14 shrink-0 items-center gap-2 border-b px-2 md:px-4">
       <SidebarTrigger className="-ml-1" />
 
       <div
-        className="relative mx-auto w-full max-w-md cursor-pointer"
+        className="relative mx-auto hidden min-[480px]:block w-full max-w-md cursor-pointer"
         onClick={openCommand}
         role="button"
         tabIndex={0}
@@ -50,17 +50,27 @@ export function SiteHeader() {
           <span className="text-muted-foreground flex-1">
             Search...
           </span>
-          <kbd className="bg-muted text-muted-foreground pointer-events-none ml-2 inline-flex h-5 items-center gap-0.5 rounded border px-1.5 font-mono text-xs">
+          <kbd className="bg-muted text-muted-foreground pointer-events-none ml-2 hidden sm:inline-flex h-5 items-center gap-0.5 rounded border px-1.5 font-mono text-xs">
             <span className="text-xs">&#x2318;</span>K
           </kbd>
         </div>
       </div>
 
+      {/* Mobile search button */}
+      <Button
+        variant="ghost"
+        size="icon"
+        className="size-8 min-[480px]:hidden ml-auto"
+        onClick={openCommand}
+      >
+        <IconSearch className="size-4" />
+      </Button>
+
       <div className="flex items-center gap-1">
         <Button
           variant="ghost"
           size="sm"
-          className="text-muted-foreground text-xs"
+          className="text-muted-foreground text-xs hidden sm:inline-flex"
           onClick={openFeedback}
         >
           Feedback

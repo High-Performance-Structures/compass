@@ -84,8 +84,8 @@ export default async function Page() {
   const data = await getRepoData()
 
   return (
-    <div className="flex flex-1 items-start justify-center p-6 md:p-12">
-      <div className="w-full max-w-6xl py-8">
+    <div className="flex flex-1 items-start justify-center p-4 sm:p-6 md:p-12">
+      <div className="w-full max-w-6xl py-4 sm:py-8">
         <div className="mb-10 text-center">
           <span
             className="mx-auto mb-3 block size-12 bg-foreground"

@@ -132,8 +132,8 @@ export default async function ProjectSummaryPage({
   })
 
   return (
-    <div className="flex flex-1 min-h-0 overflow-hidden">
-      <div className="flex-1 overflow-y-auto p-6">
+    <div className="flex flex-col lg:flex-row flex-1 min-h-0 overflow-hidden">
+      <div className="flex-1 overflow-y-auto p-4 md:p-6">
         {/* header */}
         <div className="flex items-start justify-between mb-4">
           <div>
@@ -158,7 +158,7 @@ export default async function ProjectSummaryPage({
         </div>
 
         {/* client / pm row */}
-        <div className="flex gap-8 mb-6">
+        <div className="flex flex-wrap gap-4 sm:gap-8 mb-6">
           <div>
             <p className="text-xs font-medium uppercase text-muted-foreground mb-2">
               Client
@@ -197,7 +197,7 @@ export default async function ProjectSummaryPage({
               )}
             </div>
           </div>
-          <div className="ml-auto self-end">
+          <div className="sm:ml-auto self-end w-full sm:w-auto">
             <Link
               href={`/dashboard/projects/${id}/schedule`}
               className="text-sm text-primary hover:underline flex items-center gap-1.5"
@@ -230,7 +230,7 @@ export default async function ProjectSummaryPage({
         </div>
 
         {/* urgency columns */}
-        <div className="grid grid-cols-3 gap-px rounded-lg border overflow-hidden mb-6">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-px rounded-lg border overflow-hidden mb-6">
           <div className="p-4 bg-background">
             <p className="text-xs font-medium uppercase text-muted-foreground mb-3">
               Past Due
@@ -261,7 +261,7 @@ export default async function ProjectSummaryPage({
             )}
           </div>
 
-          <div className="p-4 bg-background border-x">
+          <div className="p-4 bg-background border-t sm:border-t-0 sm:border-x">
             <p className="text-xs font-medium uppercase text-muted-foreground mb-3">
               Due Today
             </p>
@@ -279,7 +279,7 @@ export default async function ProjectSummaryPage({
             )}
           </div>
 
-          <div className="p-4 bg-background">
+          <div className="p-4 bg-background border-t sm:border-t-0">
             <p className="text-xs font-medium uppercase text-muted-foreground mb-3">
               Upcoming Milestones
             </p>
@@ -306,7 +306,7 @@ export default async function ProjectSummaryPage({
         </div>
 
         {/* two-column: phases + active tasks */}
-        <div className="grid grid-cols-2 gap-6 mb-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 mb-6">
           {/* phase breakdown */}
           <div>
             <h2 className="text-xs font-medium uppercase text-muted-foreground mb-3">
@@ -421,7 +421,7 @@ export default async function ProjectSummaryPage({
       </div>
 
       {/* right sidebar: week agenda */}
-      <div className="w-72 border-l overflow-y-auto p-4 shrink-0 hidden lg:block">
+      <div className="w-full lg:w-72 border-t lg:border-t-0 lg:border-l overflow-y-auto p-4 shrink-0">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-xs font-medium uppercase text-muted-foreground">
             This Week

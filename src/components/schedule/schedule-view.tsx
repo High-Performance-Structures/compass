@@ -36,8 +36,8 @@ export function ScheduleView({
 
   return (
     <div className="flex flex-col flex-1 min-h-0">
-      <div className="flex items-center justify-between mb-2">
-        <h1 className="text-lg font-semibold">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-2">
+        <h1 className="text-lg font-semibold truncate">
           {projectName} - Schedule
         </h1>
         <Tabs
@@ -48,7 +48,7 @@ export function ScheduleView({
             <TabsTrigger value="schedule">Schedule</TabsTrigger>
             <TabsTrigger value="baseline">Baseline</TabsTrigger>
             <TabsTrigger value="exceptions">
-              Workday Exceptions
+              <span className="hidden sm:inline">Workday </span>Exceptions
             </TabsTrigger>
           </TabsList>
         </Tabs>
