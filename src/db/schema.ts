@@ -4,6 +4,87 @@ import {
   integer,
 } from "drizzle-orm/sqlite-core"
 
+// Auth and user management tables
+export const users = sqliteTable("users", {
+  id: text("id").primaryKey(), // workos user id
+  email: text("email").notNull().unique(),
+  firstName: text("first_name"),
+  lastName: text("last_name"),
+  displayName: text("display_name"),
+  avatarUrl: text("avatar_url"),
+  role: text("role").notNull().default("office"), // admin, office, field, client
+  isActive: integer("is_active", { mode: "boolean" }).notNull().default(true),
+  lastLoginAt: text("last_login_at"),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+})
+
+export const organizations = sqliteTable("organizations", {
+  id: text("id").primaryKey(), // workos org id
+  name: text("name").notNull(),
+  slug: text("slug").notNull().unique(),
+  type: text("type").notNull(), // "internal" or "client"
+  logoUrl: text("logo_url"),
+  isActive: integer("is_active", { mode: "boolean" }).notNull().default(true),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+})
+
+export const organizationMembers = sqliteTable("organization_members", {
+  id: text("id").primaryKey(),
+  organizationId: text("organization_id")
+    .notNull()
+    .references(() => organizations.id, { onDelete: "cascade" }),
+  userId: text("user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  role: text("role").notNull(),
+  joinedAt: text("joined_at").notNull(),
+})
+
+export const teams = sqliteTable("teams", {
+  id: text("id").primaryKey(),
+  organizationId: text("organization_id")
+    .notNull()
+    .references(() => organizations.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  description: text("description"),
+  createdAt: text("created_at").notNull(),
+})
+
+export const teamMembers = sqliteTable("team_members", {
+  id: text("id").primaryKey(),
+  teamId: text("team_id")
+    .notNull()
+    .references(() => teams.id, { onDelete: "cascade" }),
+  userId: text("user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  joinedAt: text("joined_at").notNull(),
+})
+
+export const groups = sqliteTable("groups", {
+  id: text("id").primaryKey(),
+  organizationId: text("organization_id")
+    .notNull()
+    .references(() => organizations.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  description: text("description"),
+  color: text("color"), // hex color for badges
+  createdAt: text("created_at").notNull(),
+})
+
+export const groupMembers = sqliteTable("group_members", {
+  id: text("id").primaryKey(),
+  groupId: text("group_id")
+    .notNull()
+    .references(() => groups.id, { onDelete: "cascade" }),
+  userId: text("user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  joinedAt: text("joined_at").notNull(),
+})
+
 export const projects = sqliteTable("projects", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),
@@ -11,7 +92,21 @@ export const projects = sqliteTable("projects", {
   address: text("address"),
   clientName: text("client_name"),
   projectManager: text("project_manager"),
+  organizationId: text("organization_id").references(() => organizations.id),
+  netsuiteJobId: text("netsuite_job_id"),
   createdAt: text("created_at").notNull(),
+})
+
+export const projectMembers = sqliteTable("project_members", {
+  id: text("id").primaryKey(),
+  projectId: text("project_id")
+    .notNull()
+    .references(() => projects.id, { onDelete: "cascade" }),
+  userId: text("user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  role: text("role").notNull(),
+  assignedAt: text("assigned_at").notNull(),
 })
 
 export const scheduleTasks = sqliteTable("schedule_tasks", {
@@ -79,9 +174,14 @@ export const scheduleBaselines = sqliteTable("schedule_baselines", {
 export const customers = sqliteTable("customers", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),
+  company: text("company"),
   email: text("email"),
   phone: text("phone"),
+  address: text("address"),
+  notes: text("notes"),
+  netsuiteId: text("netsuite_id"),
   createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at"),
 })
 
 export const vendors = sqliteTable("vendors", {
@@ -91,7 +191,9 @@ export const vendors = sqliteTable("vendors", {
   email: text("email"),
   phone: text("phone"),
   address: text("address"),
+  netsuiteId: text("netsuite_id"),
   createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at"),
 })
 
 export type Project = typeof projects.$inferSelect
@@ -124,3 +226,21 @@ export type Vendor = typeof vendors.$inferSelect
 export type NewVendor = typeof vendors.$inferInsert
 export type Feedback = typeof feedback.$inferSelect
 export type NewFeedback = typeof feedback.$inferInsert
+
+// Auth and user management types
+export type User = typeof users.$inferSelect
+export type NewUser = typeof users.$inferInsert
+export type Organization = typeof organizations.$inferSelect
+export type NewOrganization = typeof organizations.$inferInsert
+export type OrganizationMember = typeof organizationMembers.$inferSelect
+export type NewOrganizationMember = typeof organizationMembers.$inferInsert
+export type Team = typeof teams.$inferSelect
+export type NewTeam = typeof teams.$inferInsert
+export type TeamMember = typeof teamMembers.$inferSelect
+export type NewTeamMember = typeof teamMembers.$inferInsert
+export type Group = typeof groups.$inferSelect
+export type NewGroup = typeof groups.$inferInsert
+export type GroupMember = typeof groupMembers.$inferSelect
+export type NewGroupMember = typeof groupMembers.$inferInsert
+export type ProjectMember = typeof projectMembers.$inferSelect
+export type NewProjectMember = typeof projectMembers.$inferInsert

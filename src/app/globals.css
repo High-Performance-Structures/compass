@@ -196,3 +196,20 @@
     @apply bg-background text-foreground;
 	}
 }
+
+[data-mobile="true"] [data-sidebar="content"] {
+  scrollbar-width: none;
+}
+[data-mobile="true"] [data-sidebar="content"]::-webkit-scrollbar {
+  display: none;
+}
+
+/* hide scrollbars globally while maintaining scroll functionality */
+* {
+  scrollbar-width: none; /* firefox */
+  -ms-overflow-style: none; /* IE and edge */
+}
+
+*::-webkit-scrollbar {
+  display: none; /* chrome, safari, opera */
+}

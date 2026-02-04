@@ -51,6 +51,8 @@
 		"@radix-ui/react-tooltip": "^1.2.8",
 		"@tabler/icons-react": "^3.36.1",
 		"@tanstack/react-table": "^8.21.3",
+		"@workos-inc/authkit-nextjs": "^2.13.0",
+		"@workos-inc/node": "^8.1.0",
 		"class-variance-authority": "^0.7.1",
 		"clsx": "^2.1.1",
 		"cmdk": "^1.1.1",

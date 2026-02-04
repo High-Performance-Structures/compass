@@ -4,6 +4,7 @@ node_modules/
 # next.js
 .next/
 out/
+.open-next/
 
 # cloudflare
 .wrangler/
@@ -20,3 +21,8 @@ dist/
 # misc
 .DS_Store
 *.tsbuildinfo
+
+# dev tools
+.playwright-mcp
+mobile-ui-references/
+.fuse_*

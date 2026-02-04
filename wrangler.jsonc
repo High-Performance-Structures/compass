@@ -41,5 +41,8 @@
 			"database_id": "cd6983ff-d286-4042-a823-6b2433c9fba7",
 			"migrations_dir": "drizzle"
 		}
-	]
+	],
+	"vars": {
+		"WORKOS_REDIRECT_URI": "https://compass.openrangeconstruction.ltd/api/auth/callback"
+	}
 }
