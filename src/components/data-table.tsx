@@ -141,6 +141,7 @@ const columns: ColumnDef<z.infer<typeof schema>>[] = [
     id: "drag",
     header: () => null,
     cell: ({ row }) => <DragHandle id={row.original.id} />,
+    meta: { className: "hidden md:table-cell" },
   },
   {
     id: "select",
@@ -180,12 +181,13 @@ const columns: ColumnDef<z.infer<typeof schema>>[] = [
     accessorKey: "type",
     header: "Section Type",
     cell: ({ row }) => (
-      <div className="w-32">
+      <div className="min-w-32">
         <Badge variant="outline" className="text-muted-foreground px-1.5">
           {row.original.type}
         </Badge>
       </div>
     ),
+    meta: { className: "hidden lg:table-cell" },
   },
   {
     accessorKey: "status",
@@ -250,6 +252,7 @@ const columns: ColumnDef<z.infer<typeof schema>>[] = [
         />
       </form>
     ),
+    meta: { className: "hidden lg:table-cell" },
   },
   {
     accessorKey: "reviewer",
@@ -327,11 +330,14 @@ function DraggableRow({ row }: { row: Row<z.infer<typeof schema>> }) {
         transition: transition,
       }}
     >
-      {row.getVisibleCells().map((cell) => (
-        <TableCell key={cell.id}>
-          {flexRender(cell.column.columnDef.cell, cell.getContext())}
-        </TableCell>
-      ))}
+      {row.getVisibleCells().map((cell) => {
+        const meta = cell.column.columnDef.meta as { className?: string } | undefined
+        return (
+          <TableCell key={cell.id} className={meta?.className}>
+            {flexRender(cell.column.columnDef.cell, cell.getContext())}
+          </TableCell>
+        )
+      })}
     </TableRow>
   )
 }
@@ -479,56 +485,63 @@ export function DataTable({
         value="outline"
         className="relative flex flex-col gap-4 overflow-auto px-4 lg:px-6"
       >
-        <div className="overflow-hidden rounded-lg border">
-          <DndContext
-            collisionDetection={closestCenter}
-            modifiers={[restrictToVerticalAxis]}
-            onDragEnd={handleDragEnd}
-            sensors={sensors}
-            id={sortableId}
-          >
-            <Table>
-              <TableHeader className="bg-muted sticky top-0 z-10">
-                {table.getHeaderGroups().map((headerGroup) => (
-                  <TableRow key={headerGroup.id}>
-                    {headerGroup.headers.map((header) => {
-                      return (
-                        <TableHead key={header.id} colSpan={header.colSpan}>
-                          {header.isPlaceholder
-                            ? null
-                            : flexRender(
-                                header.column.columnDef.header,
-                                header.getContext()
-                              )}
-                        </TableHead>
-                      )
-                    })}
-                  </TableRow>
-                ))}
-              </TableHeader>
-              <TableBody className="**:data-[slot=table-cell]:first:w-8">
-                {table.getRowModel().rows?.length ? (
-                  <SortableContext
-                    items={dataIds}
-                    strategy={verticalListSortingStrategy}
-                  >
-                    {table.getRowModel().rows.map((row) => (
-                      <DraggableRow key={row.id} row={row} />
-                    ))}
-                  </SortableContext>
-                ) : (
-                  <TableRow>
-                    <TableCell
-                      colSpan={columns.length}
-                      className="h-24 text-center"
+        <div className="overflow-x-auto -mx-4 md:mx-0 rounded-lg border">
+          <div className="inline-block min-w-full align-middle">
+            <DndContext
+              collisionDetection={closestCenter}
+              modifiers={[restrictToVerticalAxis]}
+              onDragEnd={handleDragEnd}
+              sensors={sensors}
+              id={sortableId}
+            >
+              <Table>
+                <TableHeader className="bg-muted sticky top-0 z-10">
+                  {table.getHeaderGroups().map((headerGroup) => (
+                    <TableRow key={headerGroup.id}>
+                      {headerGroup.headers.map((header) => {
+                        const meta = header.column.columnDef.meta as { className?: string } | undefined
+                        return (
+                          <TableHead
+                            key={header.id}
+                            colSpan={header.colSpan}
+                            className={meta?.className}
+                          >
+                            {header.isPlaceholder
+                              ? null
+                              : flexRender(
+                                  header.column.columnDef.header,
+                                  header.getContext()
+                                )}
+                          </TableHead>
+                        )
+                      })}
+                    </TableRow>
+                  ))}
+                </TableHeader>
+                <TableBody className="**:data-[slot=table-cell]:first:w-8">
+                  {table.getRowModel().rows?.length ? (
+                    <SortableContext
+                      items={dataIds}
+                      strategy={verticalListSortingStrategy}
                     >
-                      No results.
-                    </TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-            </Table>
-          </DndContext>
+                      {table.getRowModel().rows.map((row) => (
+                        <DraggableRow key={row.id} row={row} />
+                      ))}
+                    </SortableContext>
+                  ) : (
+                    <TableRow>
+                      <TableCell
+                        colSpan={columns.length}
+                        className="h-24 text-center"
+                      >
+                        No results.
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </DndContext>
+          </div>
         </div>
         <div className="flex items-center justify-between px-4">
           <div className="text-muted-foreground hidden flex-1 text-sm lg:flex">

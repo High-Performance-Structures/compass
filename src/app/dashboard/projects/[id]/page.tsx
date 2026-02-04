@@ -4,6 +4,7 @@ import { projects, scheduleTasks } from "@/db/schema"
 import { eq } from "drizzle-orm"
 import { notFound } from "next/navigation"
 import Link from "next/link"
+import { MobileProjectSwitcher } from "@/components/mobile-project-switcher"
 import {
   IconAlertTriangle,
   IconCalendarStats,
@@ -11,9 +12,7 @@ import {
   IconClock,
   IconDots,
   IconFlag,
-  IconPlus,
   IconThumbUp,
-  IconUser,
 } from "@tabler/icons-react"
 import type { ScheduleTask } from "@/db/schema"
 
@@ -135,81 +134,44 @@ export default async function ProjectSummaryPage({
     <div className="flex flex-col lg:flex-row flex-1 min-h-0 overflow-hidden">
       <div className="flex-1 overflow-y-auto p-4 md:p-6">
         {/* header */}
-        <div className="flex items-start justify-between mb-4">
-          <div>
-            <div className="flex items-center gap-3 mb-1">
-              <h1 className="text-2xl font-semibold">{projectName}</h1>
-              <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-primary/10 text-primary">
-                {projectStatus}
-              </span>
-            </div>
-            {project?.address && (
-              <p className="text-sm text-muted-foreground">
-                {project.address}
-              </p>
-            )}
-            <p className="text-sm text-muted-foreground mt-0.5">
-              {totalCount} tasks &middot; {completedPercent}% complete
-            </p>
-          </div>
-          <button className="p-1 rounded hover:bg-accent transition-colors text-muted-foreground">
+        <div className="flex items-start justify-between mb-1">
+          <MobileProjectSwitcher
+            projectName={projectName}
+            projectId={id}
+            status={projectStatus}
+          />
+          <button className="p-1.5 rounded-lg hover:bg-accent transition-colors text-muted-foreground shrink-0 mt-0.5">
             <IconDots className="size-5" />
           </button>
         </div>
 
-        {/* client / pm row */}
-        <div className="flex flex-wrap gap-4 sm:gap-8 mb-6">
-          <div>
-            <p className="text-xs font-medium uppercase text-muted-foreground mb-2">
-              Client
-            </p>
-            <div className="flex items-center gap-2">
-              {project?.clientName ? (
-                <>
-                  <div className="size-8 rounded-full bg-primary/10 flex items-center justify-center text-xs font-medium text-primary">
-                    {project.clientName.split(" ").map(w => w[0]).join("").slice(0, 2)}
-                  </div>
-                  <span className="text-sm">{project.clientName}</span>
-                </>
-              ) : (
-                <button className="size-8 rounded-full border border-dashed flex items-center justify-center text-muted-foreground hover:border-foreground hover:text-foreground transition-colors">
-                  <IconPlus className="size-4" />
-                </button>
-              )}
-            </div>
-          </div>
-          <div>
-            <p className="text-xs font-medium uppercase text-muted-foreground mb-2">
-              Project Manager
-            </p>
-            <div className="flex items-center gap-2">
-              {project?.projectManager ? (
-                <>
-                  <div className="size-8 rounded-full bg-accent flex items-center justify-center">
-                    <IconUser className="size-4 text-muted-foreground" />
-                  </div>
-                  <span className="text-sm">{project.projectManager}</span>
-                </>
-              ) : (
-                <button className="size-8 rounded-full border border-dashed flex items-center justify-center text-muted-foreground hover:border-foreground hover:text-foreground transition-colors">
-                  <IconPlus className="size-4" />
-                </button>
-              )}
-            </div>
-          </div>
-          <div className="sm:ml-auto self-end w-full sm:w-auto">
-            <Link
-              href={`/dashboard/projects/${id}/schedule`}
-              className="text-sm text-primary hover:underline flex items-center gap-1.5"
-            >
-              <IconCalendarStats className="size-4" />
-              View schedule
-            </Link>
-          </div>
+        {/* meta line: address + tasks */}
+        <div className="text-sm text-muted-foreground space-y-0.5 mb-3">
+          {project?.address && <p>{project.address}</p>}
+          <p>
+            {totalCount} tasks &middot; {completedPercent}% complete
+            {project?.clientName && (
+              <> &middot; {project.clientName}</>
+            )}
+            {project?.projectManager && (
+              <> &middot; {project.projectManager}</>
+            )}
+          </p>
+        </div>
+
+        {/* schedule link */}
+        <div className="mb-5 sm:mb-6">
+          <Link
+            href={`/dashboard/projects/${id}/schedule`}
+            className="text-sm text-primary hover:underline inline-flex items-center gap-1.5"
+          >
+            <IconCalendarStats className="size-4" />
+            View schedule
+          </Link>
         </div>
 
         {/* progress bar */}
-        <div className="rounded-lg border p-4 mb-6">
+        <div className="rounded-lg border p-3 sm:p-4 mb-4 sm:mb-6">
           <div className="flex items-center justify-between mb-2">
             <p className="text-sm font-medium">Overall Progress</p>
             <p className="text-sm font-semibold">{completedPercent}%</p>
@@ -230,8 +192,8 @@ export default async function ProjectSummaryPage({
         </div>
 
         {/* urgency columns */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-px rounded-lg border overflow-hidden mb-6">
-          <div className="p-4 bg-background">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-px rounded-lg border overflow-hidden mb-4 sm:mb-6">
+          <div className="p-3 sm:p-4 bg-background">
             <p className="text-xs font-medium uppercase text-muted-foreground mb-3">
               Past Due
             </p>
@@ -261,7 +223,7 @@ export default async function ProjectSummaryPage({
             )}
           </div>
 
-          <div className="p-4 bg-background border-t sm:border-t-0 sm:border-x">
+          <div className="p-3 sm:p-4 bg-background border-t sm:border-t-0 sm:border-x">
             <p className="text-xs font-medium uppercase text-muted-foreground mb-3">
               Due Today
             </p>
@@ -279,7 +241,7 @@ export default async function ProjectSummaryPage({
             )}
           </div>
 
-          <div className="p-4 bg-background border-t sm:border-t-0">
+          <div className="p-3 sm:p-4 bg-background border-t sm:border-t-0">
             <p className="text-xs font-medium uppercase text-muted-foreground mb-3">
               Upcoming Milestones
             </p>
@@ -306,7 +268,7 @@ export default async function ProjectSummaryPage({
         </div>
 
         {/* two-column: phases + active tasks */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 mb-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6 mb-4 sm:mb-6">
           {/* phase breakdown */}
           <div>
             <h2 className="text-xs font-medium uppercase text-muted-foreground mb-3">
@@ -421,7 +383,7 @@ export default async function ProjectSummaryPage({
       </div>
 
       {/* right sidebar: week agenda */}
-      <div className="w-full lg:w-72 border-t lg:border-t-0 lg:border-l overflow-y-auto p-4 shrink-0">
+      <div className="w-full lg:w-72 border-t lg:border-t-0 lg:border-l overflow-y-auto p-3 sm:p-4 shrink-0">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-xs font-medium uppercase text-muted-foreground">
             This Week

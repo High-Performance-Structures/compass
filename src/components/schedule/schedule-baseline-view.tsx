@@ -134,17 +134,18 @@ export function ScheduleBaselineView({
 
   return (
     <div>
-      <div className="flex items-center gap-3 mb-6">
+      <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 mb-6">
         <Input
           placeholder="Baseline name..."
           value={baselineName}
           onChange={(e) => setBaselineName(e.target.value)}
-          className="max-w-[250px]"
+          className="flex-1 sm:max-w-[250px]"
         />
         <Button
           size="sm"
           onClick={handleSave}
           disabled={saving || !baselineName.trim()}
+          className="whitespace-nowrap"
         >
           Save Baseline
         </Button>

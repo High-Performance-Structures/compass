@@ -2,13 +2,17 @@
 
 import * as React from "react"
 import {
+  IconAddressBook,
   IconCalendarStats,
   IconDashboard,
   IconFiles,
   IconFolder,
   IconHelp,
+  IconReceipt,
   IconSearch,
   IconSettings,
+  IconTruck,
+  IconUsers,
 } from "@tabler/icons-react"
 import { usePathname } from "next/navigation"
 
@@ -48,6 +52,11 @@ const data = {
       icon: IconFolder,
     },
     {
+      title: "People",
+      url: "/dashboard/people",
+      icon: IconUsers,
+    },
+    {
       title: "Schedule",
       url: "/dashboard/projects/demo-project-1/schedule",
       icon: IconCalendarStats,
@@ -56,6 +65,21 @@ const data = {
       title: "Files",
       url: "/dashboard/files",
       icon: IconFiles,
+    },
+    {
+      title: "Customers",
+      url: "/dashboard/customers",
+      icon: IconAddressBook,
+    },
+    {
+      title: "Vendors",
+      url: "/dashboard/vendors",
+      icon: IconTruck,
+    },
+    {
+      title: "Financials",
+      url: "/dashboard/financials",
+      icon: IconReceipt,
     },
   ],
   navSecondary: [
@@ -87,11 +111,12 @@ function SidebarNav({
     pathname ?? ""
   )
 
-  React.useEffect(() => {
-    if ((isFilesMode || isProjectMode) && !isExpanded) {
-      setOpen(true)
-    }
-  }, [isFilesMode, isProjectMode, isExpanded, setOpen])
+  // Allow manual collapse/expand in all modes
+  // React.useEffect(() => {
+  //   if ((isFilesMode || isProjectMode) && !isExpanded) {
+  //     setOpen(true)
+  //   }
+  // }, [isFilesMode, isProjectMode, isExpanded, setOpen])
 
   const showContext = isExpanded && (isFilesMode || isProjectMode)
 

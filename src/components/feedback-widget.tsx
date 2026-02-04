@@ -101,7 +101,7 @@ export function FeedbackWidget({ children }: { children?: React.ReactNode }) {
       <Button
         onClick={() => setDialogOpen(true)}
         size="icon-lg"
-        className="group fixed bottom-12 right-6 z-40 gap-0 rounded-full shadow-lg transition-all duration-200 hover:w-auto hover:gap-2 hover:px-4 overflow-hidden"
+        className="group fixed bottom-12 right-6 z-40 gap-0 rounded-full shadow-lg transition-all duration-200 hover:w-auto hover:gap-2 hover:px-4 overflow-hidden hidden md:flex"
       >
         <MessageCircle className="size-5 shrink-0" />
         <span className="max-w-0 overflow-hidden whitespace-nowrap opacity-0 transition-all duration-200 group-hover:max-w-40 group-hover:opacity-100">
@@ -110,18 +110,18 @@ export function FeedbackWidget({ children }: { children?: React.ReactNode }) {
       </Button>
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Send Feedback</DialogTitle>
-            <DialogDescription>
+        <DialogContent className="max-w-[calc(100%-2rem)] sm:max-w-md p-4 sm:p-6">
+          <DialogHeader className="space-y-1.5">
+            <DialogTitle className="text-base sm:text-lg">Send Feedback</DialogTitle>
+            <DialogDescription className="text-xs sm:text-sm">
               Report a bug, request a feature, or ask a question.
             </DialogDescription>
           </DialogHeader>
-          <form onSubmit={handleSubmit} className="grid gap-4">
-            <div className="grid gap-2">
-              <Label htmlFor="feedback-type">Type</Label>
+          <form onSubmit={handleSubmit} className="grid gap-3 sm:gap-4">
+            <div className="grid gap-1.5">
+              <Label htmlFor="feedback-type" className="text-xs sm:text-sm">Type</Label>
               <Select value={type} onValueChange={setType}>
-                <SelectTrigger id="feedback-type">
+                <SelectTrigger id="feedback-type" className="h-9">
                   <SelectValue placeholder="Select type..." />
                 </SelectTrigger>
                 <SelectContent>
@@ -133,45 +133,48 @@ export function FeedbackWidget({ children }: { children?: React.ReactNode }) {
               </Select>
             </div>
 
-            <div className="grid gap-2">
-              <Label htmlFor="feedback-message">Message</Label>
+            <div className="grid gap-1.5">
+              <Label htmlFor="feedback-message" className="text-xs sm:text-sm">Message</Label>
               <Textarea
                 id="feedback-message"
                 value={message}
                 onChange={(e) => setMessage(e.target.value)}
                 placeholder="Describe your feedback..."
                 maxLength={2000}
-                rows={4}
+                rows={3}
                 required
+                className="text-sm resize-none"
               />
               <p className="text-xs text-muted-foreground text-right">
                 {message.length}/2000
               </p>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
-              <div className="grid gap-2">
-                <Label htmlFor="feedback-name">Name (optional)</Label>
+            <div className="grid sm:grid-cols-2 gap-3 sm:gap-4">
+              <div className="grid gap-1.5">
+                <Label htmlFor="feedback-name" className="text-xs sm:text-sm">Name (optional)</Label>
                 <Input
                   id="feedback-name"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   placeholder="Your name"
+                  className="h-9 text-sm"
                 />
               </div>
-              <div className="grid gap-2">
-                <Label htmlFor="feedback-email">Email (optional)</Label>
+              <div className="grid gap-1.5">
+                <Label htmlFor="feedback-email" className="text-xs sm:text-sm">Email (optional)</Label>
                 <Input
                   id="feedback-email"
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="you@example.com"
+                  className="h-9 text-sm"
                 />
               </div>
             </div>
 
-            <Button type="submit" disabled={submitting || !type || !message.trim()}>
+            <Button type="submit" disabled={submitting || !type || !message.trim()} className="h-9 text-sm">
               {submitting ? "Submitting..." : "Submit Feedback"}
             </Button>
           </form>

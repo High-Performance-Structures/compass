@@ -71,66 +71,69 @@ export function WorkdayExceptionsView({
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-4">
-        <h2 className="text-lg font-medium">Workday Exceptions</h2>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-4">
+        <h2 className="text-lg font-medium min-w-0 break-words">Workday Exceptions</h2>
         <Button
           size="sm"
           onClick={() => {
             setEditingException(null)
             setFormOpen(true)
           }}
+          className="whitespace-nowrap"
         >
           <IconPlus className="size-4 mr-1" />
-          Workday Exception
+          <span className="hidden sm:inline">Workday Exception</span>
+          <span className="sm:hidden">New Exception</span>
         </Button>
       </div>
 
-      <div className="rounded-md border">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Title</TableHead>
-              <TableHead>Start</TableHead>
-              <TableHead>End</TableHead>
-              <TableHead>Duration</TableHead>
-              <TableHead>Category</TableHead>
-              <TableHead>Recurrence</TableHead>
-              <TableHead>Notes</TableHead>
-              <TableHead className="w-[80px]" />
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {exceptions.length === 0 ? (
+      <div className="rounded-md border overflow-x-auto -mx-2 sm:mx-0">
+        <div className="inline-block min-w-full align-middle">
+          <Table>
+            <TableHeader>
               <TableRow>
-                <TableCell
-                  colSpan={8}
-                  className="text-center py-8 text-muted-foreground"
-                >
-                  No workday exceptions defined.
-                </TableCell>
+                <TableHead className="min-w-[120px]">Title</TableHead>
+                <TableHead className="hidden sm:table-cell">Start</TableHead>
+                <TableHead className="hidden sm:table-cell">End</TableHead>
+                <TableHead className="hidden md:table-cell">Duration</TableHead>
+                <TableHead className="hidden lg:table-cell">Category</TableHead>
+                <TableHead className="hidden lg:table-cell">Recurrence</TableHead>
+                <TableHead className="hidden lg:table-cell">Notes</TableHead>
+                <TableHead className="w-[80px]" />
               </TableRow>
+            </TableHeader>
+            <TableBody>
+              {exceptions.length === 0 ? (
+                <TableRow>
+                  <TableCell
+                    colSpan={8}
+                    className="text-center py-8 text-muted-foreground min-w-0"
+                  >
+                    <span className="block">No workday exceptions</span>
+                  </TableCell>
+                </TableRow>
             ) : (
               exceptions.map((ex) => (
                 <TableRow key={ex.id}>
                   <TableCell className="font-medium text-sm">
                     {ex.title}
                   </TableCell>
-                  <TableCell className="text-xs text-muted-foreground">
+                  <TableCell className="hidden sm:table-cell text-xs text-muted-foreground">
                     {formatDate(ex.startDate)}
                   </TableCell>
-                  <TableCell className="text-xs text-muted-foreground">
+                  <TableCell className="hidden sm:table-cell text-xs text-muted-foreground">
                     {formatDate(ex.endDate)}
                   </TableCell>
-                  <TableCell className="text-xs">
+                  <TableCell className="hidden md:table-cell text-xs">
                     {calcDuration(ex.startDate, ex.endDate)} days
                   </TableCell>
-                  <TableCell className="text-xs">
+                  <TableCell className="hidden lg:table-cell text-xs">
                     {categoryLabels[ex.category] ?? ex.category}
                   </TableCell>
-                  <TableCell className="text-xs capitalize">
+                  <TableCell className="hidden lg:table-cell text-xs capitalize">
                     {ex.recurrence.replace("_", " ")}
                   </TableCell>
-                  <TableCell className="text-xs text-muted-foreground truncate max-w-[120px]">
+                  <TableCell className="hidden lg:table-cell text-xs text-muted-foreground truncate max-w-[120px]">
                     {ex.notes || "-"}
                   </TableCell>
                   <TableCell>
@@ -161,6 +164,7 @@ export function WorkdayExceptionsView({
             )}
           </TableBody>
         </Table>
+        </div>
       </div>
 
       <WorkdayExceptionFormDialog

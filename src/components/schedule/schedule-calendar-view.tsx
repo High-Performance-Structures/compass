@@ -104,19 +104,20 @@ export function ScheduleCalendarView({
 
   return (
     <div className="flex flex-col flex-1 min-h-0">
-      <div className="flex items-center justify-between mb-2">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-2">
         <div className="flex items-center gap-2">
           <Button
             variant="outline"
             size="sm"
             onClick={() => setCurrentDate(new Date())}
+            className="h-9"
           >
             Today
           </Button>
           <Button
             variant="ghost"
             size="icon"
-            className="size-7"
+            className="size-9"
             onClick={() => setCurrentDate(subMonths(currentDate, 1))}
           >
             <IconChevronLeft className="size-4" />
@@ -124,17 +125,17 @@ export function ScheduleCalendarView({
           <Button
             variant="ghost"
             size="icon"
-            className="size-7"
+            className="size-9"
             onClick={() => setCurrentDate(addMonths(currentDate, 1))}
           >
             <IconChevronRight className="size-4" />
           </Button>
-          <h2 className="text-lg font-medium">
-            {format(currentDate, "MMMM, yyyy")}
+          <h2 className="text-base sm:text-lg font-medium whitespace-nowrap">
+            {format(currentDate, "MMMM yyyy")}
           </h2>
         </div>
         <Select defaultValue="month">
-          <SelectTrigger className="h-7 w-[100px] text-xs">
+          <SelectTrigger className="h-9 w-28 text-sm">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -174,15 +175,15 @@ export function ScheduleCalendarView({
             return (
               <div
                 key={dateKey}
-                className={`min-h-0 border-r border-b last:border-r-0 p-1 ${
+                className={`min-h-[60px] sm:min-h-[80px] border-r border-b last:border-r-0 p-1 sm:p-1.5 ${
                   !inMonth ? "bg-muted/30" : ""
                 } ${isNonWork ? "bg-muted/50" : ""}`}
               >
-                <div className="flex items-center justify-between mb-0.5">
+                <div className="flex items-start justify-between mb-0.5 min-w-0">
                   <span
-                    className={`text-xs ${
+                    className={`text-xs shrink-0 ${
                       isToday(day)
-                        ? "bg-primary text-primary-foreground rounded-full size-5 flex items-center justify-center font-bold"
+                        ? "bg-primary text-primary-foreground rounded-full size-5 sm:size-6 flex items-center justify-center font-bold"
                         : inMonth
                           ? "text-foreground"
                           : "text-muted-foreground"
@@ -191,8 +192,9 @@ export function ScheduleCalendarView({
                     {format(day, "d")}
                   </span>
                   {isNonWork && (
-                    <span className="text-[9px] text-muted-foreground">
-                      Non-workday
+                    <span className="text-[8px] sm:text-[9px] text-muted-foreground truncate ml-1">
+                      <span className="hidden sm:inline">Non-workday</span>
+                      <span className="sm:hidden">Off</span>
                     </span>
                   )}
                 </div>
@@ -200,26 +202,26 @@ export function ScheduleCalendarView({
                   {visibleTasks.map((task) => (
                     <div
                       key={task.id}
-                      className={`${getTaskColor(task)} text-white text-[9px] px-1 py-0.5 rounded truncate`}
+                      className={`${getTaskColor(task)} text-white text-[9px] sm:text-[10px] px-1 py-0.5 rounded truncate`}
                       title={task.title}
                     >
-                      {task.title}
+                      {task.title.length > 15 ? `${task.title.slice(0, 12)}...` : task.title}
                     </div>
                   ))}
                   {!expanded && overflow > 0 && (
                     <button
-                      className="text-[9px] text-primary hover:underline"
+                      className="text-[9px] sm:text-[10px] text-primary hover:underline"
                       onClick={() => toggleExpand(dateKey)}
                     >
-                      +{overflow} more
+                      +{overflow}
                     </button>
                   )}
                   {expanded && dayTasks.length > MAX_VISIBLE_TASKS && (
                     <button
-                      className="text-[9px] text-primary hover:underline"
+                      className="text-[9px] sm:text-[10px] text-primary hover:underline"
                       onClick={() => toggleExpand(dateKey)}
                     >
-                      Show less
+                      Less
                     </button>
                   )}
                 </div>

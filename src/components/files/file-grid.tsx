@@ -32,10 +32,10 @@ export function FileGrid({
   const regularFiles = files.filter((f) => f.type !== "folder")
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6">
       {folders.length > 0 && (
         <section>
-          <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">
+          <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2 sm:mb-3">
             Folders
           </h3>
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-2">
@@ -53,10 +53,10 @@ export function FileGrid({
       )}
       {regularFiles.length > 0 && (
         <section>
-          <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-3">
+          <h3 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2 sm:mb-3">
             Files
           </h3>
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
+          <div className="grid grid-cols-2 min-[500px]:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2 sm:gap-3">
             {regularFiles.map((file) => (
               <FileContextMenu key={file.id} file={file} onRename={onRename} onMove={onMove}>
                 <FileCard

@@ -53,13 +53,12 @@ export function FileToolbar({
   }
 
   return (
-    <div className="flex items-center gap-2 flex-wrap">
-      <div className="flex items-center gap-1.5">
+    <div className="flex flex-col sm:flex-row gap-2">
+      <div className="flex items-center gap-2 flex-1">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button size="sm" variant="outline">
-              <IconPlus size={16} />
-              <span className="hidden sm:inline">New</span>
+            <Button size="sm" variant="outline" className="h-10 sm:h-9">
+              <IconPlus size={18} className="sm:size-4" />
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start">
@@ -87,71 +86,68 @@ export function FileToolbar({
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
+
+        <div className="relative flex-1">
+          <IconSearch
+            size={16}
+            className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
+          />
+          <Input
+            placeholder="Search files..."
+            value={state.searchQuery}
+            onChange={(e) =>
+              dispatch({ type: "SET_SEARCH", payload: e.target.value })
+            }
+            onFocus={() => setSearchFocused(true)}
+            onBlur={() => setSearchFocused(false)}
+            className="h-10 sm:h-9 pl-9 text-sm"
+          />
+        </div>
       </div>
 
-      <div className="flex-1" />
-
-      <div
-        className={`relative transition-all duration-200 ${
-          searchFocused ? "w-48 sm:w-64" : "w-32 sm:w-44"
-        }`}
-      >
-        <IconSearch
-          size={14}
-          className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground"
-        />
-        <Input
-          placeholder="Search files..."
-          value={state.searchQuery}
-          onChange={(e) =>
-            dispatch({ type: "SET_SEARCH", payload: e.target.value })
-          }
-          onFocus={() => setSearchFocused(true)}
-          onBlur={() => setSearchFocused(false)}
-          className="h-8 pl-8 text-sm"
-        />
-      </div>
-
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button size="sm" variant="ghost">
-            {state.sortDirection === "asc" ? (
-              <IconSortAscending size={16} />
-            ) : (
-              <IconSortDescending size={16} />
-            )}
-            <span className="hidden sm:inline">{sortLabels[state.sortBy]}</span>
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end">
-          {(Object.keys(sortLabels) as SortField[]).map((field) => (
-            <DropdownMenuItem key={field} onClick={() => handleSort(field)}>
-              {sortLabels[field]}
-              {state.sortBy === field && (
-                <span className="ml-auto text-xs text-muted-foreground">
-                  {state.sortDirection === "asc" ? "↑" : "↓"}
-                </span>
+      <div className="flex items-center gap-2">
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button size="sm" variant="ghost" className="h-10 sm:h-9">
+              {state.sortDirection === "asc" ? (
+                <IconSortAscending size={18} className="sm:size-4" />
+              ) : (
+                <IconSortDescending size={18} className="sm:size-4" />
               )}
-            </DropdownMenuItem>
-          ))}
-        </DropdownMenuContent>
-      </DropdownMenu>
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            {(Object.keys(sortLabels) as SortField[]).map((field) => (
+              <DropdownMenuItem key={field} onClick={() => handleSort(field)}>
+                {sortLabels[field]}
+                {state.sortBy === field && (
+                  <span className="ml-auto text-xs text-muted-foreground">
+                    {state.sortDirection === "asc" ? "↑" : "↓"}
+                  </span>
+                )}
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
 
-      <ToggleGroup
-        type="single"
-        value={state.viewMode}
-        onValueChange={(v) => {
-          if (v) dispatch({ type: "SET_VIEW_MODE", payload: v as ViewMode })
-        }}
-        size="sm"
-      >
-        <ToggleGroupItem value="grid" aria-label="Grid view">
-          <IconLayoutGrid size={16} />
-        </ToggleGroupItem>
-        <ToggleGroupItem value="list" aria-label="List view">
-          <IconList size={16} />
-        </ToggleGroupItem>
-      </ToggleGroup>
+        <ToggleGroup
+          type="single"
+          value={state.viewMode}
+          onValueChange={(v) => {
+            if (v) dispatch({ type: "SET_VIEW_MODE", payload: v as ViewMode })
+          }}
+          variant="outline"
+          size="sm"
+          className="h-10 sm:h-9"
+        >
+          <ToggleGroupItem value="grid" aria-label="Grid view" className="h-10 w-10 sm:h-9 sm:w-9">
+            <IconLayoutGrid size={18} className="sm:size-4" />
+          </ToggleGroupItem>
+          <ToggleGroupItem value="list" aria-label="List view" className="h-10 w-10 sm:h-9 sm:w-9">
+            <IconList size={18} className="sm:size-4" />
+          </ToggleGroupItem>
+        </ToggleGroup>
+      </div>
     </div>
   )
 }

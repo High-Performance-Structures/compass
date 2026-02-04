@@ -2,10 +2,12 @@
 
 import { useState } from "react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { useIsMobile } from "@/hooks/use-mobile"
 import { ScheduleToolbar } from "./schedule-toolbar"
 import { ScheduleListView } from "./schedule-list-view"
 import { ScheduleGanttView } from "./schedule-gantt-view"
 import { ScheduleCalendarView } from "./schedule-calendar-view"
+import { ScheduleMobileView } from "./schedule-mobile-view"
 import { WorkdayExceptionsView } from "./workday-exceptions-view"
 import { ScheduleBaselineView } from "./schedule-baseline-view"
 import { TaskFormDialog } from "./task-form-dialog"
@@ -30,8 +32,9 @@ export function ScheduleView({
   initialData,
   baselines,
 }: ScheduleViewProps) {
+  const isMobile = useIsMobile()
   const [topTab, setTopTab] = useState<TopTab>("schedule")
-  const [subTab, setSubTab] = useState<ScheduleSubTab>("list")
+  const [subTab, setSubTab] = useState<ScheduleSubTab>("calendar")
   const [taskFormOpen, setTaskFormOpen] = useState(false)
 
   return (
@@ -89,11 +92,18 @@ export function ScheduleView({
             </TabsList>
 
             <TabsContent value="calendar" className="mt-2 flex flex-col flex-1 min-h-0">
-              <ScheduleCalendarView
-                projectId={projectId}
-                tasks={initialData.tasks}
-                exceptions={initialData.exceptions}
-              />
+              {isMobile ? (
+                <ScheduleMobileView
+                  tasks={initialData.tasks}
+                  exceptions={initialData.exceptions}
+                />
+              ) : (
+                <ScheduleCalendarView
+                  projectId={projectId}
+                  tasks={initialData.tasks}
+                  exceptions={initialData.exceptions}
+                />
+              )}
             </TabsContent>
 
             <TabsContent value="list" className="mt-2 flex flex-col flex-1 min-h-0">

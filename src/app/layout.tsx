@@ -27,6 +27,12 @@ export const metadata: Metadata = {
 		icon: "/favicon.png",
 		apple: "/apple-touch-icon.png",
 	},
+	manifest: "/manifest.json",
+	viewport: {
+		width: "device-width",
+		initialScale: 1,
+		maximumScale: 5,
+	},
 };
 
 export default function RootLayout({

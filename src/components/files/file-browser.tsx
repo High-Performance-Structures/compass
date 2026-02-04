@@ -140,6 +140,7 @@ export function FileBrowser({ path }: { path: string[] }) {
         onOpenChange={(open) => !open && setMoveFile(null)}
         file={moveFile}
       />
+
     </div>
   )
 }

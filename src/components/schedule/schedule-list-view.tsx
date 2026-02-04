@@ -192,7 +192,7 @@ export function ScheduleListView({
         cell: ({ row }) => (
           <div className="flex items-center gap-2">
             <StatusDot task={row.original} />
-            <span className="font-medium text-sm truncate max-w-[200px]">
+            <span className="font-medium text-sm truncate max-w-[150px] sm:max-w-[200px]">
               {row.original.title}
             </span>
           </div>
@@ -205,6 +205,7 @@ export function ScheduleListView({
           <ProgressRing percent={row.original.percentComplete} />
         ),
         size: 70,
+        meta: { className: "hidden sm:table-cell" },
       },
       {
         accessorKey: "phase",
@@ -214,6 +215,7 @@ export function ScheduleListView({
             {row.original.phase}
           </span>
         ),
+        meta: { className: "hidden lg:table-cell" },
       },
       {
         id: "duration",
@@ -224,6 +226,7 @@ export function ScheduleListView({
           </span>
         ),
         size: 80,
+        meta: { className: "hidden md:table-cell" },
       },
       {
         accessorKey: "startDate",
@@ -309,50 +312,58 @@ export function ScheduleListView({
         </Button>
       </div>
 
-      <div className="rounded-md border flex-1 overflow-auto">
-        <Table>
-          <TableHeader>
-            {table.getHeaderGroups().map((headerGroup) => (
-              <TableRow key={headerGroup.id}>
-                {headerGroup.headers.map((header) => (
-                  <TableHead key={header.id}>
-                    {header.isPlaceholder
-                      ? null
-                      : flexRender(
-                          header.column.columnDef.header,
-                          header.getContext()
-                        )}
-                  </TableHead>
-                ))}
-              </TableRow>
-            ))}
-          </TableHeader>
-          <TableBody>
-            {table.getRowModel().rows.length === 0 ? (
-              <TableRow>
-                <TableCell
-                  colSpan={columns.length}
-                  className="text-center py-8 text-muted-foreground"
-                >
-                  No tasks yet. Click &quot;New Schedule Item&quot; to get started.
-                </TableCell>
-              </TableRow>
-            ) : (
-              table.getRowModel().rows.map((row) => (
-                <TableRow key={row.id}>
-                  {row.getVisibleCells().map((cell) => (
-                    <TableCell key={cell.id}>
-                      {flexRender(
-                        cell.column.columnDef.cell,
-                        cell.getContext()
-                      )}
-                    </TableCell>
-                  ))}
+      <div className="rounded-md border flex-1 overflow-x-auto -mx-2 sm:mx-0">
+        <div className="inline-block min-w-full align-middle">
+          <Table>
+            <TableHeader>
+              {table.getHeaderGroups().map((headerGroup) => (
+                <TableRow key={headerGroup.id}>
+                  {headerGroup.headers.map((header) => {
+                    const meta = header.column.columnDef.meta as { className?: string } | undefined
+                    return (
+                      <TableHead key={header.id} className={meta?.className}>
+                        {header.isPlaceholder
+                          ? null
+                          : flexRender(
+                              header.column.columnDef.header,
+                              header.getContext()
+                            )}
+                      </TableHead>
+                    )
+                  })}
                 </TableRow>
-              ))
-            )}
-          </TableBody>
-        </Table>
+              ))}
+            </TableHeader>
+            <TableBody>
+              {table.getRowModel().rows.length === 0 ? (
+                <TableRow>
+                  <TableCell
+                    colSpan={columns.length}
+                    className="text-center py-8 text-muted-foreground"
+                  >
+                    No tasks yet. Click &quot;New Schedule Item&quot; to get started.
+                  </TableCell>
+                </TableRow>
+              ) : (
+                table.getRowModel().rows.map((row) => (
+                  <TableRow key={row.id}>
+                    {row.getVisibleCells().map((cell) => {
+                      const meta = cell.column.columnDef.meta as { className?: string } | undefined
+                      return (
+                        <TableCell key={cell.id} className={meta?.className}>
+                          {flexRender(
+                            cell.column.columnDef.cell,
+                            cell.getContext()
+                          )}
+                        </TableCell>
+                      )
+                    })}
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </div>
       </div>
 
       <div className="flex items-center justify-between mt-3 px-1">

@@ -42,7 +42,7 @@ export const FolderCard = forwardRef<
     <div
       ref={ref}
       className={cn(
-        "group flex items-center gap-3 rounded-xl border bg-card px-4 py-3 cursor-pointer",
+        "group flex items-center gap-3 rounded-xl border bg-card px-3 py-3 cursor-pointer min-h-[60px]",
         "hover:shadow-sm hover:border-border/80 transition-all",
         selected && "border-primary ring-2 ring-primary/20"
       )}
@@ -50,8 +50,8 @@ export const FolderCard = forwardRef<
       onDoubleClick={handleDoubleClick}
       {...props}
     >
-      <FileIcon type="folder" size={22} />
-      <span className="text-sm font-medium truncate flex-1">{file.name}</span>
+      <FileIcon type="folder" size={22} className="shrink-0" />
+      <span className="text-sm font-medium line-clamp-2 flex-1 break-words">{file.name}</span>
       {file.shared && (
         <IconUsers size={14} className="text-muted-foreground shrink-0" />
       )}
@@ -98,25 +98,22 @@ export const FileCard = forwardRef<
     >
       <div
         className={cn(
-          "flex items-center justify-center h-32",
+          "flex items-center justify-center h-20 sm:h-24",
           fileTypeColors[file.type] ?? fileTypeColors.unknown
         )}
       >
-        <FileIcon type={file.type} size={48} className="opacity-70" />
+        <FileIcon type={file.type} size={32} className="opacity-70 sm:size-10" />
       </div>
-      <div className="flex items-center gap-2.5 px-3 py-2.5 border-t">
-        <FileIcon type={file.type} size={16} />
-        <div className="flex-1 min-w-0">
-          <p className="text-sm font-medium truncate">{file.name}</p>
-          <p className="text-xs text-muted-foreground">
+      <div className="flex flex-col gap-1 px-2.5 py-2.5 border-t">
+        <p className="text-sm font-medium line-clamp-2 break-words leading-snug">{file.name}</p>
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-xs text-muted-foreground truncate">
             {formatRelativeDate(file.modifiedAt)}
             {file.shared && " · Shared"}
           </p>
-        </div>
-        <div className="flex items-center gap-1 shrink-0">
           <button
             className={cn(
-              "opacity-0 group-hover:opacity-100 transition-opacity",
+              "opacity-0 sm:group-hover:opacity-100 transition-opacity shrink-0",
               file.starred && "opacity-100"
             )}
             onClick={(e) => {
@@ -129,12 +126,6 @@ export const FileCard = forwardRef<
             ) : (
               <IconStar size={14} className="text-muted-foreground hover:text-amber-400" />
             )}
-          </button>
-          <button
-            className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-foreground"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <IconDots size={16} />
           </button>
         </div>
       </div>

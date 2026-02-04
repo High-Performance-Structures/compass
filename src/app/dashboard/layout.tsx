@@ -1,5 +1,6 @@
 import { AppSidebar } from "@/components/app-sidebar"
 import { SiteHeader } from "@/components/site-header"
+import { MobileBottomNav } from "@/components/mobile-bottom-nav"
 import { CommandMenuProvider } from "@/components/command-menu-provider"
 import { SettingsProvider } from "@/components/settings-provider"
 import { FeedbackWidget } from "@/components/feedback-widget"
@@ -9,6 +10,7 @@ import {
   SidebarProvider,
 } from "@/components/ui/sidebar"
 import { getProjects } from "@/app/actions/projects"
+import { ProjectListProvider } from "@/components/project-list-provider"
 
 export default async function DashboardLayout({
   children,
@@ -19,6 +21,7 @@ export default async function DashboardLayout({
 
   return (
     <SettingsProvider>
+    <ProjectListProvider projects={projectList}>
     <CommandMenuProvider>
       <SidebarProvider
         defaultOpen={false}
@@ -33,19 +36,21 @@ export default async function DashboardLayout({
         <FeedbackWidget>
           <SidebarInset className="overflow-hidden">
             <SiteHeader />
-            <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
-              <div className="@container/main flex flex-1 flex-col">
+            <div className="flex min-h-0 flex-1 flex-col overflow-y-auto overflow-x-hidden pb-14 md:pb-0">
+              <div className="@container/main flex flex-1 flex-col min-w-0">
                 {children}
               </div>
             </div>
           </SidebarInset>
         </FeedbackWidget>
-        <p className="pointer-events-none fixed bottom-3 left-0 right-0 text-center text-xs text-muted-foreground/60">
+        <MobileBottomNav />
+        <p className="pointer-events-none fixed bottom-3 left-0 right-0 hidden text-center text-xs text-muted-foreground/60 md:block">
           Pre-alpha build
         </p>
         <Toaster position="bottom-right" />
       </SidebarProvider>
     </CommandMenuProvider>
+    </ProjectListProvider>
     </SettingsProvider>
   )
 }

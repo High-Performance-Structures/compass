@@ -5,11 +5,10 @@ import { useForm } from "react-hook-form"
 import { z } from "zod"
 import { zodResolver } from "@hookform/resolvers/zod"
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog"
+  ResponsiveDialog,
+  ResponsiveDialogBody,
+  ResponsiveDialogFooter,
+} from "@/components/ui/responsive-dialog"
 import {
   Form,
   FormControl,
@@ -145,39 +144,37 @@ export function WorkdayExceptionFormDialog({
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>
-            {isEditing ? "Edit Exception" : "New Workday Exception"}
-          </DialogTitle>
-        </DialogHeader>
-
-        <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+    <ResponsiveDialog
+      open={open}
+      onOpenChange={onOpenChange}
+      title={isEditing ? "Edit Exception" : "New Workday Exception"}
+    >
+      <Form {...form}>
+        <form onSubmit={form.handleSubmit(onSubmit)} className="flex flex-col flex-1 min-h-0">
+          <ResponsiveDialogBody>
             <FormField
               control={form.control}
               name="title"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Title</FormLabel>
+                  <FormLabel className="text-xs">Title</FormLabel>
                   <FormControl>
-                    <Input placeholder="e.g. Christmas Day" {...field} />
+                    <Input placeholder="e.g. Christmas Day" className="h-9" {...field} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
               )}
             />
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
               <FormField
                 control={form.control}
                 name="startDate"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Start Date</FormLabel>
+                    <FormLabel className="text-xs">Start Date</FormLabel>
                     <FormControl>
-                      <Input type="date" {...field} />
+                      <Input type="date" className="h-9" {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -188,9 +185,9 @@ export function WorkdayExceptionFormDialog({
                 name="endDate"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>End Date</FormLabel>
+                    <FormLabel className="text-xs">End Date</FormLabel>
                     <FormControl>
-                      <Input type="date" {...field} />
+                      <Input type="date" className="h-9" {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -198,19 +195,19 @@ export function WorkdayExceptionFormDialog({
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
               <FormField
                 control={form.control}
                 name="category"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Category</FormLabel>
+                    <FormLabel className="text-xs">Category</FormLabel>
                     <Select
                       onValueChange={field.onChange}
                       value={field.value}
                     >
                       <FormControl>
-                        <SelectTrigger>
+                        <SelectTrigger className="h-9">
                           <SelectValue />
                         </SelectTrigger>
                       </FormControl>
@@ -231,13 +228,13 @@ export function WorkdayExceptionFormDialog({
                 name="recurrence"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Recurrence</FormLabel>
+                    <FormLabel className="text-xs">Recurrence</FormLabel>
                     <Select
                       onValueChange={field.onChange}
                       value={field.value}
                     >
                       <FormControl>
-                        <SelectTrigger>
+                        <SelectTrigger className="h-9">
                           <SelectValue />
                         </SelectTrigger>
                       </FormControl>
@@ -260,12 +257,12 @@ export function WorkdayExceptionFormDialog({
               name="notes"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Notes</FormLabel>
+                  <FormLabel className="text-xs">Notes <span className="text-muted-foreground">(optional)</span></FormLabel>
                   <FormControl>
                     <Textarea
                       placeholder="Optional notes..."
-                      className="resize-none"
-                      rows={3}
+                      className="resize-none text-sm"
+                      rows={1}
                       {...field}
                     />
                   </FormControl>
@@ -274,21 +271,23 @@ export function WorkdayExceptionFormDialog({
               )}
             />
 
-            <div className="flex justify-end gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => onOpenChange(false)}
-              >
-                Cancel
-              </Button>
-              <Button type="submit">
-                {isEditing ? "Save" : "Create"}
-              </Button>
-            </div>
-          </form>
-        </Form>
-      </DialogContent>
-    </Dialog>
+          </ResponsiveDialogBody>
+
+          <ResponsiveDialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => onOpenChange(false)}
+              className="h-9"
+            >
+              Cancel
+            </Button>
+            <Button type="submit" className="h-9">
+              {isEditing ? "Save" : "Create"}
+            </Button>
+          </ResponsiveDialogFooter>
+        </form>
+      </Form>
+    </ResponsiveDialog>
   )
 }

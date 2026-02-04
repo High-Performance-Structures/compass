@@ -1,15 +1,15 @@
 "use client"
 
+import * as React from "react"
 import { useEffect, useMemo } from "react"
 import { useForm } from "react-hook-form"
 import { z } from "zod"
 import { zodResolver } from "@hookform/resolvers/zod"
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog"
+  ResponsiveDialog,
+  ResponsiveDialogBody,
+  ResponsiveDialogFooter,
+} from "@/components/ui/responsive-dialog"
 import {
   Form,
   FormControl,
@@ -144,196 +144,206 @@ export function TaskFormDialog({
     }
   }
 
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>
-            {isEditing ? "Edit Task" : "New Task"}
-          </DialogTitle>
-        </DialogHeader>
+  const page1 = (
+    <>
+      <FormField
+        control={form.control}
+        name="title"
+        render={({ field }) => (
+          <FormItem>
+            <FormLabel className="text-xs">Title</FormLabel>
+            <FormControl>
+              <Input placeholder="Task title" className="h-9" {...field} />
+            </FormControl>
+            <FormMessage />
+          </FormItem>
+        )}
+      />
 
-        <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-            <FormField
-              control={form.control}
-              name="title"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Title</FormLabel>
-                  <FormControl>
-                    <Input placeholder="Task title" {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <div className="grid grid-cols-2 gap-4">
-              <FormField
-                control={form.control}
-                name="startDate"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Start Date</FormLabel>
-                    <Popover>
-                      <PopoverTrigger asChild>
-                        <FormControl>
-                          <Button
-                            variant="outline"
-                            className="w-full justify-start text-left font-normal"
-                          >
-                            <IconCalendar className="size-4 mr-2 text-muted-foreground" />
-                            {field.value
-                              ? format(parseISO(field.value), "MMM d, yyyy")
-                              : "Pick a date"}
-                          </Button>
-                        </FormControl>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-auto p-0" align="start">
-                        <Calendar
-                          mode="single"
-                          selected={field.value ? parseISO(field.value) : undefined}
-                          onSelect={(date) => {
-                            if (date) {
-                              field.onChange(format(date, "yyyy-MM-dd"))
-                            }
-                          }}
-                          initialFocus
-                        />
-                      </PopoverContent>
-                    </Popover>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
-                name="workdays"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Workdays</FormLabel>
-                    <FormControl>
-                      <Input
-                        type="number"
-                        min={1}
-                        value={field.value}
-                        onChange={(e) =>
-                          field.onChange(Number(e.target.value) || 0)
-                        }
-                        onBlur={field.onBlur}
-                        ref={field.ref}
-                        name={field.name}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            </div>
-
-            {calculatedEnd && (
-              <p className="text-sm text-muted-foreground">
-                Calculated end date: <strong>{calculatedEnd}</strong>
-              </p>
-            )}
-
-            <FormField
-              control={form.control}
-              name="phase"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Phase</FormLabel>
-                  <Select
-                    onValueChange={field.onChange}
-                    value={field.value}
+      <FormField
+        control={form.control}
+        name="startDate"
+        render={({ field }) => (
+          <FormItem>
+            <FormLabel className="text-xs">Start Date</FormLabel>
+            <Popover>
+              <PopoverTrigger asChild>
+                <FormControl>
+                  <Button
+                    variant="outline"
+                    className="w-full h-9 justify-start text-left font-normal text-sm"
                   >
-                    <FormControl>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select phase" />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      {phases.map((p) => (
-                        <SelectItem key={p.value} value={p.value}>
-                          {p.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+                    <IconCalendar className="size-3.5 mr-2 text-muted-foreground" />
+                    {field.value
+                      ? format(parseISO(field.value), "MMM d, yyyy")
+                      : "Pick date"}
+                  </Button>
+                </FormControl>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-0" align="start">
+                <Calendar
+                  mode="single"
+                  selected={field.value ? parseISO(field.value) : undefined}
+                  onSelect={(date) => {
+                    if (date) {
+                      field.onChange(format(date, "yyyy-MM-dd"))
+                    }
+                  }}
+                  initialFocus
+                />
+              </PopoverContent>
+            </Popover>
+            <FormMessage />
+          </FormItem>
+        )}
+      />
 
-            <FormField
-              control={form.control}
-              name="percentComplete"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>
-                    Complete: {field.value}%
-                  </FormLabel>
-                  <FormControl>
-                    <Slider
-                      min={0}
-                      max={100}
-                      step={5}
-                      value={[field.value]}
-                      onValueChange={([val]) => field.onChange(val)}
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+      <FormField
+        control={form.control}
+        name="workdays"
+        render={({ field }) => (
+          <FormItem>
+            <FormLabel className="text-xs">Workdays</FormLabel>
+            <FormControl>
+              <Input
+                type="number"
+                min={1}
+                className="h-9"
+                value={field.value}
+                onChange={(e) =>
+                  field.onChange(Number(e.target.value) || 0)
+                }
+                onBlur={field.onBlur}
+                ref={field.ref}
+                name={field.name}
+              />
+            </FormControl>
+            <FormMessage />
+          </FormItem>
+        )}
+      />
+    </>
+  )
 
-            <FormField
-              control={form.control}
-              name="assignedTo"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Assigned To</FormLabel>
-                  <FormControl>
-                    <Input placeholder="Person name" {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+  const page2 = (
+    <>
+      <FormField
+        control={form.control}
+        name="phase"
+        render={({ field }) => (
+          <FormItem>
+            <FormLabel className="text-xs">Phase</FormLabel>
+            <Select
+              onValueChange={field.onChange}
+              value={field.value}
+            >
+              <FormControl>
+                <SelectTrigger className="h-9">
+                  <SelectValue placeholder="Select phase" />
+                </SelectTrigger>
+              </FormControl>
+              <SelectContent>
+                {phases.map((p) => (
+                  <SelectItem key={p.value} value={p.value}>
+                    {p.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <FormMessage />
+          </FormItem>
+        )}
+      />
 
-            <FormField
-              control={form.control}
-              name="isMilestone"
-              render={({ field }) => (
-                <FormItem className="flex items-center gap-2">
-                  <FormControl>
-                    <Switch
-                      checked={field.value}
-                      onCheckedChange={field.onChange}
-                    />
-                  </FormControl>
-                  <FormLabel className="!mt-0">Milestone</FormLabel>
-                </FormItem>
-              )}
-            />
+      <FormField
+        control={form.control}
+        name="assignedTo"
+        render={({ field }) => (
+          <FormItem>
+            <FormLabel className="text-xs">Assigned To</FormLabel>
+            <FormControl>
+              <Input placeholder="Person name" className="h-9" {...field} />
+            </FormControl>
+            <FormMessage />
+          </FormItem>
+        )}
+      />
+    </>
+  )
 
-            <div className="flex justify-end gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => onOpenChange(false)}
-              >
-                Cancel
-              </Button>
-              <Button type="submit">
-                {isEditing ? "Save" : "Create"}
-              </Button>
-            </div>
-          </form>
-        </Form>
-      </DialogContent>
-    </Dialog>
+  const page3 = (
+    <>
+      {calculatedEnd && (
+        <p className="text-xs text-muted-foreground">
+          End date: <strong>{calculatedEnd}</strong>
+        </p>
+      )}
+
+      <FormField
+        control={form.control}
+        name="percentComplete"
+        render={({ field }) => (
+          <FormItem>
+            <FormLabel className="text-xs">
+              Complete: {field.value}%
+            </FormLabel>
+            <FormControl>
+              <Slider
+                min={0}
+                max={100}
+                step={5}
+                value={[field.value]}
+                onValueChange={([val]) => field.onChange(val)}
+              />
+            </FormControl>
+            <FormMessage />
+          </FormItem>
+        )}
+      />
+
+      <FormField
+        control={form.control}
+        name="isMilestone"
+        render={({ field }) => (
+          <FormItem className="flex items-center gap-2">
+            <FormControl>
+              <Switch
+                checked={field.value}
+                onCheckedChange={field.onChange}
+              />
+            </FormControl>
+            <FormLabel className="!mt-0 text-xs">Milestone</FormLabel>
+          </FormItem>
+        )}
+      />
+    </>
+  )
+
+  return (
+    <ResponsiveDialog
+      open={open}
+      onOpenChange={onOpenChange}
+      title={isEditing ? "Edit Task" : "New Task"}
+    >
+      <Form {...form}>
+        <form onSubmit={form.handleSubmit(onSubmit)} className="flex flex-col flex-1 min-h-0">
+          <ResponsiveDialogBody pages={[page1, page2, page3]} />
+
+          <ResponsiveDialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => onOpenChange(false)}
+              className="h-9"
+            >
+              Cancel
+            </Button>
+            <Button type="submit" className="h-9">
+              {isEditing ? "Save" : "Create"}
+            </Button>
+          </ResponsiveDialogFooter>
+        </form>
+      </Form>
+    </ResponsiveDialog>
   )
 }
