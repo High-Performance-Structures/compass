@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic"
+
 import { getCloudflareContext } from "@opennextjs/cloudflare"
 import { getDb } from "@/db"
 import { projects, scheduleTasks } from "@/db/schema"
