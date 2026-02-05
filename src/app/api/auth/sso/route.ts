@@ -32,8 +32,10 @@ export async function GET(request: NextRequest) {
 
   const workos = getWorkOS()
 
-  // compute redirect URI from request origin (avoids NEXT_PUBLIC_ build-time embedding)
-  const origin = request.nextUrl.origin
+  // derive origin from Host header (nextUrl.origin is wrong on CF Workers)
+  const host = request.headers.get("host")
+  const proto = request.headers.get("x-forwarded-proto") || "https"
+  const origin = host ? `${proto}://${host}` : request.nextUrl.origin
   const redirectUri = `${origin}/api/auth/callback`
 
   const authorizationUrl = workos.userManagement.getAuthorizationUrl({
