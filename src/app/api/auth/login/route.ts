@@ -151,9 +151,12 @@ export async function POST(request: NextRequest) {
     )
   } catch (error) {
     console.error("Login error:", error)
+    const err = error as { code?: string }
+    const isAuthError = ["invalid_credentials", "user_not_found",
+      "expired_code", "invalid_code"].includes(err.code || "")
     return NextResponse.json(
       { success: false, error: mapWorkOSError(error) },
-      { status: 500 }
+      { status: isAuthError ? 401 : 500 }
     )
   }
 }
