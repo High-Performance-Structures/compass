@@ -1,9 +1,11 @@
-import { withAuth, signOut } from "@workos-inc/authkit-nextjs"
+import { cookies } from "next/headers"
+import { redirect } from "next/navigation"
 import { getCloudflareContext } from "@opennextjs/cloudflare"
 import { getDb } from "@/db"
 import { users } from "@/db/schema"
 import type { User } from "@/db/schema"
 import { eq } from "drizzle-orm"
+import { SESSION_COOKIE, decodeJwtPayload } from "@/lib/session"
 
 export type AuthUser = {
   id: string
@@ -21,14 +23,12 @@ export type AuthUser = {
 
 export async function getCurrentUser(): Promise<AuthUser | null> {
   try {
-    // check if workos is configured
     const isWorkOSConfigured =
       process.env.WORKOS_API_KEY &&
       process.env.WORKOS_CLIENT_ID &&
       !process.env.WORKOS_API_KEY.includes("placeholder")
 
     if (!isWorkOSConfigured) {
-      // return mock user for development
       return {
         id: "dev-user-1",
         email: "dev@compass.io",
@@ -44,34 +44,31 @@ export async function getCurrentUser(): Promise<AuthUser | null> {
       }
     }
 
-    const session = await withAuth()
-    if (!session || !session.user) return null
+    const cookieStore = await cookies()
+    const token = cookieStore.get(SESSION_COOKIE)?.value
+    if (!token) return null
 
-    const workosUser = session.user
+    const payload = decodeJwtPayload(token)
+    if (!payload?.sub) return null
 
+    const userId = payload.sub as string
     const { env } = await getCloudflareContext()
     if (!env?.DB) return null
 
     const db = getDb(env.DB)
-
-    // check if user exists in our database
-    let dbUser = await db
+    const dbUser = await db
       .select()
       .from(users)
-      .where(eq(users.id, workosUser.id))
+      .where(eq(users.id, userId))
       .get()
 
-    // if user doesn't exist, create them with default role
-    if (!dbUser) {
-      dbUser = await ensureUserExists(workosUser)
-    }
+    if (!dbUser) return null
 
-    // update last login timestamp
     const now = new Date().toISOString()
     await db
       .update(users)
       .set({ lastLoginAt: now })
-      .where(eq(users.id, workosUser.id))
+      .where(eq(users.id, userId))
       .run()
 
     return {
@@ -93,7 +90,7 @@ export async function getCurrentUser(): Promise<AuthUser | null> {
   }
 }
 
-async function ensureUserExists(workosUser: {
+export async function ensureUserExists(workosUser: {
   id: string
   email: string
   firstName?: string | null
@@ -101,13 +98,19 @@ async function ensureUserExists(workosUser: {
   profilePictureUrl?: string | null
 }): Promise<User> {
   const { env } = await getCloudflareContext()
-  if (!env?.DB) {
-    throw new Error("Database not available")
-  }
+  if (!env?.DB) throw new Error("Database not available")
 
   const db = getDb(env.DB)
-  const now = new Date().toISOString()
 
+  const existing = await db
+    .select()
+    .from(users)
+    .where(eq(users.id, workosUser.id))
+    .get()
+
+  if (existing) return existing
+
+  const now = new Date().toISOString()
   const newUser = {
     id: workosUser.id,
     email: workosUser.email,
@@ -118,7 +121,7 @@ async function ensureUserExists(workosUser: {
         ? `${workosUser.firstName} ${workosUser.lastName}`
         : workosUser.email.split("@")[0],
     avatarUrl: workosUser.profilePictureUrl ?? null,
-    role: "office", // default role
+    role: "office",
     isActive: true,
     lastLoginAt: now,
     createdAt: now,
@@ -126,37 +129,21 @@ async function ensureUserExists(workosUser: {
   }
 
   await db.insert(users).values(newUser).run()
-
   return newUser as User
 }
 
 export async function handleSignOut() {
-  await signOut()
+  const cookieStore = await cookies()
+  cookieStore.delete(SESSION_COOKIE)
+  redirect("/login")
 }
 
 export async function requireAuth(): Promise<AuthUser> {
   const user = await getCurrentUser()
-  if (!user) {
-    throw new Error("Unauthorized")
-  }
+  if (!user) throw new Error("Unauthorized")
   return user
 }
 
 export async function requireEmailVerified(): Promise<AuthUser> {
-  const user = await requireAuth()
-
-  // check verification status
-  const isWorkOSConfigured =
-    process.env.WORKOS_API_KEY &&
-    process.env.WORKOS_CLIENT_ID &&
-    !process.env.WORKOS_API_KEY.includes("placeholder")
-
-  if (isWorkOSConfigured) {
-    const session = await withAuth()
-    if (session?.user && !session.user.emailVerified) {
-      throw new Error("Email not verified")
-    }
-  }
-
-  return user
+  return requireAuth()
 }

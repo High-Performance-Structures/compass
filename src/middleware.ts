@@ -1,22 +1,19 @@
-import { NextResponse } from "next/server";
-import type { NextRequest } from "next/server";
-import { withAuth } from "@workos-inc/authkit-nextjs";
+import { NextResponse } from "next/server"
+import type { NextRequest } from "next/server"
+import { SESSION_COOKIE, isTokenExpired } from "@/lib/session"
 
 const isWorkOSConfigured =
   process.env.WORKOS_API_KEY &&
   process.env.WORKOS_CLIENT_ID &&
-  process.env.WORKOS_COOKIE_PASSWORD &&
-  !process.env.WORKOS_API_KEY.includes("placeholder");
+  !process.env.WORKOS_API_KEY.includes("placeholder")
 
 export default async function middleware(request: NextRequest) {
-  const { pathname } = request.nextUrl;
+  const { pathname } = request.nextUrl
 
-  // bypass auth in dev mode
   if (!isWorkOSConfigured) {
-    return NextResponse.next();
+    return NextResponse.next()
   }
 
-  // public routes (no auth required)
   const publicRoutes = [
     "/login",
     "/signup",
@@ -24,40 +21,37 @@ export default async function middleware(request: NextRequest) {
     "/verify-email",
     "/invite",
     "/api/auth",
-  ];
+    "/callback",
+  ]
 
-  if (publicRoutes.some((route) => pathname.startsWith(route))) {
-    return NextResponse.next();
+  if (
+    publicRoutes.some((route) => pathname.startsWith(route))
+  ) {
+    return NextResponse.next()
   }
 
-  // check session for protected routes
-  try {
-    const session = await withAuth();
-    if (!session || !session.user) {
-      const loginUrl = new URL("/login", request.url);
-      loginUrl.searchParams.set("from", pathname);
-      return NextResponse.redirect(loginUrl);
-    }
-  } catch {
-    const loginUrl = new URL("/login", request.url);
-    loginUrl.searchParams.set("from", pathname);
-    return NextResponse.redirect(loginUrl);
+  const token = request.cookies.get(SESSION_COOKIE)?.value
+
+  if (!token || isTokenExpired(token)) {
+    const loginUrl = new URL("/login", request.url)
+    loginUrl.searchParams.set("from", pathname)
+    const response = NextResponse.redirect(loginUrl)
+    if (token) response.cookies.delete(SESSION_COOKIE)
+    return response
   }
 
-  // add security headers
-  const response = NextResponse.next();
-  response.headers.set("X-Frame-Options", "DENY");
-  response.headers.set("X-Content-Type-Options", "nosniff");
+  const response = NextResponse.next()
+  response.headers.set("X-Frame-Options", "DENY")
+  response.headers.set("X-Content-Type-Options", "nosniff")
   response.headers.set(
     "Strict-Transport-Security",
     "max-age=31536000; includeSubDomains"
-  );
-
-  return response;
+  )
+  return response
 }
 
 export const config = {
   matcher: [
     "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
   ],
-};
+}
