@@ -1,40 +1,37 @@
-"use client";
+"use client"
 
-import * as React from "react";
-import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { useForm } from "react-hook-form";
-import * as z from "zod";
-import { IconLoader } from "@tabler/icons-react";
-import { toast } from "sonner";
+import * as React from "react"
+import Link from "next/link"
+import { useRouter, useSearchParams } from "next/navigation"
+import { zodResolver } from "@hookform/resolvers/zod"
+import { useForm } from "react-hook-form"
+import { IconLoader } from "@tabler/icons-react"
+import { toast } from "sonner"
 
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { PasswordInput } from "@/components/auth/password-input";
-
-const loginSchema = z.object({
-    email: z.string().email("Enter a valid email address"),
-    password: z.string().min(1, "Password is required"),
-});
-
-type LoginFormData = z.infer<typeof loginSchema>;
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { PasswordInput } from "@/components/auth/password-input"
+import { loginSchema, type LoginInput } from "@/lib/validations/auth"
 
 export function LoginForm() {
-    const router = useRouter();
-    const [isLoading, setIsLoading] = React.useState(false);
+    const router = useRouter()
+    const searchParams = useSearchParams()
+    const [isLoading, setIsLoading] = React.useState(false)
+    
+    // get the return URL from query params (set by middleware)
+    const returnTo = searchParams.get("from") || "/dashboard"
 
     const {
         register,
         handleSubmit,
         formState: { errors },
-    } = useForm<LoginFormData>({
+    } = useForm<LoginInput>({
         resolver: zodResolver(loginSchema),
-    });
+    })
 
-    const onSubmit = async (data: LoginFormData) => {
-        setIsLoading(true);
+    const onSubmit = async (data: LoginInput) => {
+        setIsLoading(true)
 
         try {
             const response = await fetch("/api/auth/login", {
@@ -45,28 +42,27 @@ export function LoginForm() {
                     email: data.email,
                     password: data.password,
                 }),
-            });
+            })
 
             const result = (await response.json()) as {
-                success: boolean;
-                message?: string;
-                error?: string;
-                redirectUrl?: string;
-                [key: string]: unknown;
-            };
+                success: boolean
+                message?: string
+                error?: string
+                redirectUrl?: string
+            }
 
             if (result.success) {
-                toast.success("Welcome back!");
-                router.push(result.redirectUrl as string);
+                toast.success("Welcome back!")
+                router.push(returnTo)
             } else {
-                toast.error(result.error || "Login failed");
+                toast.error(result.error || "Login failed")
             }
         } catch {
-            toast.error("An error occurred. Please try again.");
+            toast.error("An error occurred. Please try again.")
         } finally {
-            setIsLoading(false);
+            setIsLoading(false)
         }
-    };
+    }
 
     return (
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">

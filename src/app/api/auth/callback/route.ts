@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
-import { getWorkOSClient } from "@/lib/workos-client"
+import { getWorkOS, saveSession } from "@workos-inc/authkit-nextjs"
 import { ensureUserExists } from "@/lib/auth"
-import { SESSION_COOKIE } from "@/lib/session"
 
 export async function GET(request: NextRequest) {
   const code = request.nextUrl.searchParams.get("code")
@@ -14,19 +13,24 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const workos = getWorkOSClient()
-    if (!workos) {
-      return NextResponse.redirect(
-        new URL("/dashboard", request.url)
-      )
+    const workos = getWorkOS()
+
+    // check if workos is configured (dev mode fallback)
+    const isConfigured =
+      process.env.WORKOS_API_KEY &&
+      process.env.WORKOS_CLIENT_ID &&
+      !process.env.WORKOS_API_KEY.includes("placeholder")
+
+    if (!isConfigured) {
+      return NextResponse.redirect(new URL("/dashboard", request.url))
     }
 
-    const result =
-      await workos.userManagement.authenticateWithCode({
-        code,
-        clientId: process.env.WORKOS_CLIENT_ID!,
-      })
+    const result = await workos.userManagement.authenticateWithCode({
+      code,
+      clientId: process.env.WORKOS_CLIENT_ID!,
+    })
 
+    // sync user to our database
     await ensureUserExists({
       id: result.user.id,
       email: result.user.email,
@@ -35,20 +39,19 @@ export async function GET(request: NextRequest) {
       profilePictureUrl: result.user.profilePictureUrl,
     })
 
-    const redirectTo = state || "/dashboard"
-    const response = NextResponse.redirect(
-      new URL(redirectTo, request.url)
+    // save session with BOTH access and refresh tokens
+    await saveSession(
+      {
+        accessToken: result.accessToken,
+        refreshToken: result.refreshToken,
+        user: result.user,
+        impersonator: result.impersonator,
+      },
+      request
     )
 
-    response.cookies.set(SESSION_COOKIE, result.accessToken, {
-      httpOnly: true,
-      secure: true,
-      sameSite: "lax",
-      path: "/",
-      maxAge: 60 * 60 * 24 * 7,
-    })
-
-    return response
+    const redirectTo = state || "/dashboard"
+    return NextResponse.redirect(new URL(redirectTo, request.url))
   } catch (error) {
     console.error("OAuth callback error:", error)
     return NextResponse.redirect(

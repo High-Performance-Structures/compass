@@ -1,53 +1,33 @@
-"use client";
+"use client"
 
-import * as React from "react";
-import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { useForm } from "react-hook-form";
-import * as z from "zod";
-import { IconLoader } from "@tabler/icons-react";
-import { toast } from "sonner";
+import * as React from "react"
+import Link from "next/link"
+import { useRouter } from "next/navigation"
+import { zodResolver } from "@hookform/resolvers/zod"
+import { useForm } from "react-hook-form"
+import { IconLoader } from "@tabler/icons-react"
+import { toast } from "sonner"
 
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { PasswordInput } from "@/components/auth/password-input";
-
-const signupSchema = z
-  .object({
-    email: z.string().email("Enter a valid email address"),
-    firstName: z.string().min(1, "First name is required"),
-    lastName: z.string().min(1, "Last name is required"),
-    password: z
-      .string()
-      .min(8, "Password must be at least 8 characters")
-      .regex(/[A-Z]/, "Must contain an uppercase letter")
-      .regex(/[a-z]/, "Must contain a lowercase letter")
-      .regex(/[0-9]/, "Must contain a number"),
-    confirmPassword: z.string(),
-  })
-  .refine((data) => data.password === data.confirmPassword, {
-    message: "Passwords don't match",
-    path: ["confirmPassword"],
-  });
-
-type SignupFormData = z.infer<typeof signupSchema>;
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { PasswordInput } from "@/components/auth/password-input"
+import { signupSchema, type SignupInput } from "@/lib/validations/auth"
 
 export function SignupForm() {
-  const router = useRouter();
-  const [isLoading, setIsLoading] = React.useState(false);
+  const router = useRouter()
+  const [isLoading, setIsLoading] = React.useState(false)
 
   const {
     register,
     handleSubmit,
     formState: { errors },
-  } = useForm<SignupFormData>({
+  } = useForm<SignupInput>({
     resolver: zodResolver(signupSchema),
-  });
+  })
 
-  const onSubmit = async (data: SignupFormData) => {
-    setIsLoading(true);
+  const onSubmit = async (data: SignupInput) => {
+    setIsLoading(true)
 
     try {
       const response = await fetch("/api/auth/signup", {
@@ -59,27 +39,26 @@ export function SignupForm() {
           firstName: data.firstName,
           lastName: data.lastName,
         }),
-      });
+      })
 
       const result = (await response.json()) as {
-        success: boolean;
-        message?: string;
-        error?: string;
-        [key: string]: unknown;
-      };
+        success: boolean
+        message?: string
+        error?: string
+      }
 
       if (result.success) {
-        toast.success(result.message);
-        router.push("/verify-email?email=" + encodeURIComponent(data.email));
+        toast.success(result.message || "Account created!")
+        router.push("/verify-email?email=" + encodeURIComponent(data.email))
       } else {
-        toast.error(result.error || "Signup failed");
+        toast.error(result.error || "Signup failed")
       }
     } catch {
-      toast.error("An error occurred. Please try again.");
+      toast.error("An error occurred. Please try again.")
     } finally {
-      setIsLoading(false);
+      setIsLoading(false)
     }
-  };
+  }
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">

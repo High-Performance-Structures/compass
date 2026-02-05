@@ -23,6 +23,7 @@ import { NavProjects } from "@/components/nav-projects"
 import { NavUser } from "@/components/nav-user"
 import { useCommandMenu } from "@/components/command-menu-provider"
 import { useSettings } from "@/components/settings-provider"
+import type { SidebarUser } from "@/lib/auth"
 import {
   Sidebar,
   SidebarContent,
@@ -35,11 +36,6 @@ import {
 } from "@/components/ui/sidebar"
 
 const data = {
-  user: {
-    name: "Martine Vogel",
-    email: "martine@compass.io",
-    avatar: "/avatars/martine.jpg",
-  },
   navMain: [
     {
       title: "Compass",
@@ -155,9 +151,11 @@ function SidebarNav({
 
 export function AppSidebar({
   projects = [],
+  user,
   ...props
 }: React.ComponentProps<typeof Sidebar> & {
-  projects?: { id: string; name: string }[]
+  readonly projects?: ReadonlyArray<{ readonly id: string; readonly name: string }>
+  readonly user: SidebarUser | null
 }) {
   return (
     <Sidebar collapsible="icon" {...props}>
@@ -190,10 +188,10 @@ export function AppSidebar({
         </SidebarMenu>
       </SidebarHeader>
       <SidebarContent>
-        <SidebarNav projects={projects} />
+        <SidebarNav projects={projects as { id: string; name: string }[]} />
       </SidebarContent>
       <SidebarFooter>
-        <NavUser user={data.user} />
+        <NavUser user={user} />
       </SidebarFooter>
     </Sidebar>
   )

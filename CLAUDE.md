@@ -76,3 +76,31 @@ known issues (WIP)
   container. horizontal panning works. needs a different approach for
   vertical navigation (possibly a custom viewport with transform-based
   rendering for the body while keeping the header fixed separately).
+
+coding style
+---
+
+strict typescript discipline:
+
+- `readonly` everywhere mutation isn't intended. `ReadonlyArray<T>`, 
+  `Readonly<Record<K, V>>`, deep readonly wrappers. write `DeepReadonly<T>` 
+  utilities when needed
+- discriminated unions over optional properties. `{ status: 'ok'; data: T } | 
+  { status: 'error'; error: Error }` instead of `{ status: string; error?: 
+  Error; data?: T }`. makes impossible states unrepresentable
+- no `enum`. use `as const` objects or union types instead. enums have quirks, 
+  especially numeric ones with reverse mappings
+- branded/opaque types for primitive identifiers. `type UserId = string & 
+  { readonly __brand: unique symbol }` prevents mixing up `PostId` and `UserId`
+- no `any`, no `as`, no `!` - genuinely zero. use `unknown` with proper 
+  narrowing. write type guards instead of assertions
+- explicit return types on all exported functions. don't rely on inference for 
+  public APIs. catches accidental changes, improves compile speed
+- effect-free module scope. no side effects at top level (no `console.log`, 
+  `fetch`, mutations during import). everything meaningful happens in 
+  explicitly called functions
+- result types over thrown exceptions. return `Result<T, E>` or `Either` 
+  instead of throwing. makes error handling visible in type signatures
+
+these trade short-term convenience for long-term correctness. the strict 
+version is always better even when the permissive version works right now.

@@ -1,34 +1,60 @@
-import { cookies } from "next/headers"
-import { redirect } from "next/navigation"
+import { withAuth, signOut } from "@workos-inc/authkit-nextjs"
 import { getCloudflareContext } from "@opennextjs/cloudflare"
 import { getDb } from "@/db"
 import { users } from "@/db/schema"
 import type { User } from "@/db/schema"
 import { eq } from "drizzle-orm"
-import { SESSION_COOKIE, decodeJwtPayload } from "@/lib/session"
 
 export type AuthUser = {
+  readonly id: string
+  readonly email: string
+  readonly firstName: string | null
+  readonly lastName: string | null
+  readonly displayName: string | null
+  readonly avatarUrl: string | null
+  readonly role: string
+  readonly isActive: boolean
+  readonly lastLoginAt: string | null
+  readonly createdAt: string
+  readonly updatedAt: string
+}
+
+/**
+ * User data for sidebar/header display components
+ */
+export type SidebarUser = Readonly<{
   id: string
+  name: string
   email: string
+  avatar: string | null
   firstName: string | null
   lastName: string | null
-  displayName: string | null
-  avatarUrl: string | null
-  role: string
-  isActive: boolean
-  lastLoginAt: string | null
-  createdAt: string
-  updatedAt: string
+}>
+
+/**
+ * Convert AuthUser to SidebarUser for UI components
+ */
+export function toSidebarUser(user: AuthUser): SidebarUser {
+  return {
+    id: user.id,
+    name: user.displayName ?? user.email.split("@")[0] ?? "User",
+    email: user.email,
+    avatar: user.avatarUrl,
+    firstName: user.firstName,
+    lastName: user.lastName,
+  }
 }
 
 export async function getCurrentUser(): Promise<AuthUser | null> {
   try {
+    // check if workos is configured
     const isWorkOSConfigured =
       process.env.WORKOS_API_KEY &&
       process.env.WORKOS_CLIENT_ID &&
       !process.env.WORKOS_API_KEY.includes("placeholder")
 
     if (!isWorkOSConfigured) {
+      // return mock user for development
       return {
         id: "dev-user-1",
         email: "dev@compass.io",
@@ -44,31 +70,34 @@ export async function getCurrentUser(): Promise<AuthUser | null> {
       }
     }
 
-    const cookieStore = await cookies()
-    const token = cookieStore.get(SESSION_COOKIE)?.value
-    if (!token) return null
+    const session = await withAuth()
+    if (!session || !session.user) return null
 
-    const payload = decodeJwtPayload(token)
-    if (!payload?.sub) return null
+    const workosUser = session.user
 
-    const userId = payload.sub as string
     const { env } = await getCloudflareContext()
     if (!env?.DB) return null
 
     const db = getDb(env.DB)
-    const dbUser = await db
+
+    // check if user exists in our database
+    let dbUser = await db
       .select()
       .from(users)
-      .where(eq(users.id, userId))
+      .where(eq(users.id, workosUser.id))
       .get()
 
-    if (!dbUser) return null
+    // if user doesn't exist, create them with default role
+    if (!dbUser) {
+      dbUser = await ensureUserExists(workosUser)
+    }
 
+    // update last login timestamp
     const now = new Date().toISOString()
     await db
       .update(users)
       .set({ lastLoginAt: now })
-      .where(eq(users.id, userId))
+      .where(eq(users.id, workosUser.id))
       .run()
 
     return {
@@ -98,10 +127,13 @@ export async function ensureUserExists(workosUser: {
   profilePictureUrl?: string | null
 }): Promise<User> {
   const { env } = await getCloudflareContext()
-  if (!env?.DB) throw new Error("Database not available")
+  if (!env?.DB) {
+    throw new Error("Database not available")
+  }
 
   const db = getDb(env.DB)
 
+  // Check if user already exists
   const existing = await db
     .select()
     .from(users)
@@ -111,6 +143,7 @@ export async function ensureUserExists(workosUser: {
   if (existing) return existing
 
   const now = new Date().toISOString()
+
   const newUser = {
     id: workosUser.id,
     email: workosUser.email,
@@ -121,7 +154,7 @@ export async function ensureUserExists(workosUser: {
         ? `${workosUser.firstName} ${workosUser.lastName}`
         : workosUser.email.split("@")[0],
     avatarUrl: workosUser.profilePictureUrl ?? null,
-    role: "office",
+    role: "office", // default role
     isActive: true,
     lastLoginAt: now,
     createdAt: now,
@@ -129,21 +162,37 @@ export async function ensureUserExists(workosUser: {
   }
 
   await db.insert(users).values(newUser).run()
+
   return newUser as User
 }
 
 export async function handleSignOut() {
-  const cookieStore = await cookies()
-  cookieStore.delete(SESSION_COOKIE)
-  redirect("/login")
+  await signOut()
 }
 
 export async function requireAuth(): Promise<AuthUser> {
   const user = await getCurrentUser()
-  if (!user) throw new Error("Unauthorized")
+  if (!user) {
+    throw new Error("Unauthorized")
+  }
   return user
 }
 
 export async function requireEmailVerified(): Promise<AuthUser> {
-  return requireAuth()
+  const user = await requireAuth()
+
+  // check verification status
+  const isWorkOSConfigured =
+    process.env.WORKOS_API_KEY &&
+    process.env.WORKOS_CLIENT_ID &&
+    !process.env.WORKOS_API_KEY.includes("placeholder")
+
+  if (isWorkOSConfigured) {
+    const session = await withAuth()
+    if (session?.user && !session.user.emailVerified) {
+      throw new Error("Email not verified")
+    }
+  }
+
+  return user
 }

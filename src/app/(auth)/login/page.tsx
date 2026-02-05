@@ -7,7 +7,7 @@ import { PasswordlessForm } from "@/components/auth/passwordless-form"
 import { SocialLoginButtons } from "@/components/auth/social-login-buttons"
 import { Separator } from "@/components/ui/separator"
 
-export default function LoginPage() {
+function LoginContent() {
   return (
     <div className="space-y-4">
       <div className="space-y-1">
@@ -51,5 +51,13 @@ export default function LoginPage() {
         </TabsContent>
       </Tabs>
     </div>
+  )
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={<div className="space-y-2 animate-pulse">Loading...</div>}>
+      <LoginContent />
+    </Suspense>
   )
 }

@@ -11,13 +11,18 @@ import {
 } from "@/components/ui/sidebar"
 import { getProjects } from "@/app/actions/projects"
 import { ProjectListProvider } from "@/components/project-list-provider"
+import { getCurrentUser, toSidebarUser } from "@/lib/auth"
 
 export default async function DashboardLayout({
   children,
 }: {
-  children: React.ReactNode
+  readonly children: React.ReactNode
 }) {
-  const projectList = await getProjects()
+  const [projectList, authUser] = await Promise.all([
+    getProjects(),
+    getCurrentUser(),
+  ])
+  const user = authUser ? toSidebarUser(authUser) : null
 
   return (
     <SettingsProvider>
@@ -32,10 +37,10 @@ export default async function DashboardLayout({
           } as React.CSSProperties
         }
       >
-        <AppSidebar variant="inset" projects={projectList} />
+        <AppSidebar variant="inset" projects={projectList} user={user} />
         <FeedbackWidget>
           <SidebarInset className="overflow-hidden">
-            <SiteHeader />
+            <SiteHeader user={user} />
             <div className="flex min-h-0 flex-1 flex-col overflow-y-auto overflow-x-hidden pb-14 md:pb-0">
               <div className="@container/main flex flex-1 flex-col min-w-0">
                 {children}

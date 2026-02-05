@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Sora, IBM_Plex_Mono, Playfair_Display } from "next/font/google";
+import { AuthKitProvider } from "@workos-inc/authkit-nextjs/components";
 import { ThemeProvider } from "@/components/theme-provider";
 import "./globals.css";
 
@@ -42,11 +43,13 @@ export default function RootLayout({
 }>) {
 	return (
 		<html lang="en" suppressHydrationWarning>
-			<body className={`${sora.variable} ${ibmPlexMono.variable} ${playfair.variable} font-sans antialiased`}>
+		<body className={`${sora.variable} ${ibmPlexMono.variable} ${playfair.variable} font-sans antialiased`}>
+			<AuthKitProvider>
 				<ThemeProvider>
 					{children}
 				</ThemeProvider>
-			</body>
+			</AuthKitProvider>
+		</body>
 		</html>
 	);
 }

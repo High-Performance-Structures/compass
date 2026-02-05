@@ -1,20 +1,66 @@
 import { NextRequest, NextResponse } from "next/server"
-import { getWorkOSClient, mapWorkOSError } from "@/lib/workos-client"
+import { getWorkOS, saveSession } from "@workos-inc/authkit-nextjs"
+import { z } from "zod"
 import { ensureUserExists } from "@/lib/auth"
-import { SESSION_COOKIE } from "@/lib/session"
+
+// input validation schema
+const loginRequestSchema = z.discriminatedUnion("type", [
+  z.object({
+    type: z.literal("password"),
+    email: z.string().email("Please enter a valid email address"),
+    password: z.string().min(1, "Password is required"),
+  }),
+  z.object({
+    type: z.literal("passwordless_send"),
+    email: z.string().email("Please enter a valid email address"),
+  }),
+  z.object({
+    type: z.literal("passwordless_verify"),
+    email: z.string().email("Please enter a valid email address"),
+    code: z.string().min(1, "Verification code is required"),
+  }),
+])
+
+function mapWorkOSError(error: unknown): string {
+  const err = error as { code?: string; message?: string }
+  switch (err.code) {
+    case "invalid_credentials":
+      return "Invalid email or password"
+    case "user_not_found":
+      return "No account found with this email"
+    case "expired_code":
+      return "Code expired. Please request a new one."
+    case "invalid_code":
+      return "Invalid code. Please try again."
+    default:
+      return err.message || "An error occurred. Please try again."
+  }
+}
 
 export async function POST(request: NextRequest) {
   try {
-    const workos = getWorkOSClient()
-    const body = (await request.json()) as {
-      type: string
-      email: string
-      password?: string
-      code?: string
-    }
-    const { type, email, password, code } = body
+    // validate input
+    const body = await request.json()
+    const parseResult = loginRequestSchema.safeParse(body)
 
-    if (!workos) {
+    if (!parseResult.success) {
+      const firstIssue = parseResult.error.issues[0]
+      return NextResponse.json(
+        { success: false, error: firstIssue?.message || "Invalid input" },
+        { status: 400 }
+      )
+    }
+
+    const data = parseResult.data
+    const workos = getWorkOS()
+
+    // check if workos is configured (dev mode fallback)
+    const isConfigured =
+      process.env.WORKOS_API_KEY &&
+      process.env.WORKOS_CLIENT_ID &&
+      !process.env.WORKOS_API_KEY.includes("placeholder")
+
+    if (!isConfigured) {
       return NextResponse.json({
         success: true,
         redirectUrl: "/dashboard",
@@ -22,14 +68,14 @@ export async function POST(request: NextRequest) {
       })
     }
 
-    if (type === "password") {
-      const result =
-        await workos.userManagement.authenticateWithPassword({
-          email,
-          password: password!,
-          clientId: process.env.WORKOS_CLIENT_ID!,
-        })
+    if (data.type === "password") {
+      const result = await workos.userManagement.authenticateWithPassword({
+        email: data.email,
+        password: data.password,
+        clientId: process.env.WORKOS_CLIENT_ID!,
+      })
 
+      // sync user to our database
       await ensureUserExists({
         id: result.user.id,
         email: result.user.email,
@@ -38,25 +84,27 @@ export async function POST(request: NextRequest) {
         profilePictureUrl: result.user.profilePictureUrl,
       })
 
-      const response = NextResponse.json({
+      // save session with BOTH access and refresh tokens (fixes 30-second logout)
+      await saveSession(
+        {
+          accessToken: result.accessToken,
+          refreshToken: result.refreshToken,
+          user: result.user,
+          impersonator: result.impersonator,
+        },
+        request
+      )
+
+      return NextResponse.json({
         success: true,
         redirectUrl: "/dashboard",
       })
-
-      response.cookies.set(SESSION_COOKIE, result.accessToken, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
-        sameSite: "lax",
-        path: "/",
-        maxAge: 60 * 60 * 24 * 7,
-      })
-
-      return response
     }
 
-    if (type === "passwordless_send") {
-      const magicAuth =
-        await workos.userManagement.createMagicAuth({ email })
+    if (data.type === "passwordless_send") {
+      const magicAuth = await workos.userManagement.createMagicAuth({
+        email: data.email,
+      })
 
       return NextResponse.json({
         success: true,
@@ -64,14 +112,14 @@ export async function POST(request: NextRequest) {
       })
     }
 
-    if (type === "passwordless_verify") {
-      const result =
-        await workos.userManagement.authenticateWithMagicAuth({
-          code: code!,
-          email,
-          clientId: process.env.WORKOS_CLIENT_ID!,
-        })
+    if (data.type === "passwordless_verify") {
+      const result = await workos.userManagement.authenticateWithMagicAuth({
+        code: data.code,
+        email: data.email,
+        clientId: process.env.WORKOS_CLIENT_ID!,
+      })
 
+      // sync user to our database
       await ensureUserExists({
         id: result.user.id,
         email: result.user.email,
@@ -80,20 +128,21 @@ export async function POST(request: NextRequest) {
         profilePictureUrl: result.user.profilePictureUrl,
       })
 
-      const response = NextResponse.json({
+      // save session with BOTH access and refresh tokens
+      await saveSession(
+        {
+          accessToken: result.accessToken,
+          refreshToken: result.refreshToken,
+          user: result.user,
+          impersonator: result.impersonator,
+        },
+        request
+      )
+
+      return NextResponse.json({
         success: true,
         redirectUrl: "/dashboard",
       })
-
-      response.cookies.set(SESSION_COOKIE, result.accessToken, {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
-        sameSite: "lax",
-        path: "/",
-        maxAge: 60 * 60 * 24 * 7,
-      })
-
-      return response
     }
 
     return NextResponse.json(

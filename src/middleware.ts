@@ -1,53 +1,46 @@
-import { NextResponse } from "next/server"
-import type { NextRequest } from "next/server"
-import { SESSION_COOKIE, isTokenExpired } from "@/lib/session"
+import { NextRequest } from "next/server"
+import { authkit, handleAuthkitHeaders } from "@workos-inc/authkit-nextjs"
 
-const isWorkOSConfigured =
-  process.env.WORKOS_API_KEY &&
-  process.env.WORKOS_CLIENT_ID &&
-  !process.env.WORKOS_API_KEY.includes("placeholder")
+// public routes that don't require authentication
+const publicPaths = [
+  "/",
+  "/login",
+  "/signup",
+  "/reset-password",
+  "/verify-email",
+  "/invite",
+  "/callback",
+]
+
+function isPublicPath(pathname: string): boolean {
+  // exact matches or starts with /api/auth/
+  return (
+    publicPaths.includes(pathname) ||
+    pathname.startsWith("/api/auth/") ||
+    pathname.startsWith("/api/netsuite/")
+  )
+}
 
 export default async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
 
-  if (!isWorkOSConfigured) {
-    return NextResponse.next()
+  // get session and headers from authkit (handles token refresh automatically)
+  const { session, headers } = await authkit(request)
+
+  // allow public paths
+  if (isPublicPath(pathname)) {
+    return handleAuthkitHeaders(request, headers)
   }
 
-  const publicRoutes = [
-    "/login",
-    "/signup",
-    "/reset-password",
-    "/verify-email",
-    "/invite",
-    "/api/auth",
-    "/callback",
-  ]
-
-  if (
-    publicRoutes.some((route) => pathname.startsWith(route))
-  ) {
-    return NextResponse.next()
-  }
-
-  const token = request.cookies.get(SESSION_COOKIE)?.value
-
-  if (!token || isTokenExpired(token)) {
+  // redirect unauthenticated users to our custom login page
+  if (!session.user) {
     const loginUrl = new URL("/login", request.url)
     loginUrl.searchParams.set("from", pathname)
-    const response = NextResponse.redirect(loginUrl)
-    if (token) response.cookies.delete(SESSION_COOKIE)
-    return response
+    return handleAuthkitHeaders(request, headers, { redirect: loginUrl.toString() })
   }
 
-  const response = NextResponse.next()
-  response.headers.set("X-Frame-Options", "DENY")
-  response.headers.set("X-Content-Type-Options", "nosniff")
-  response.headers.set(
-    "Strict-Transport-Security",
-    "max-age=31536000; includeSubDomains"
-  )
-  return response
+  // authenticated - continue with authkit headers
+  return handleAuthkitHeaders(request, headers)
 }
 
 export const config = {

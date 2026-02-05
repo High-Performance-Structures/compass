@@ -17,6 +17,14 @@ import { getCurrentUser } from "@/lib/auth"
 import { requirePermission } from "@/lib/permissions"
 import { eq, and } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
+import {
+  updateUserRoleSchema,
+  deactivateUserSchema,
+  inviteUserSchema,
+  assignUserToProjectSchema,
+  assignUserToTeamSchema,
+  assignUserToGroupSchema,
+} from "@/lib/validations/users"
 
 export type UserWithRelations = User & {
   teams: { id: string; name: string }[]
@@ -90,6 +98,13 @@ export async function updateUserRole(
   userId: string,
   role: string
 ): Promise<{ success: boolean; error?: string }> {
+  // validate input
+  const parseResult = updateUserRoleSchema.safeParse({ userId, role })
+  if (!parseResult.success) {
+    const firstIssue = parseResult.error.issues[0]
+    return { success: false, error: firstIssue?.message || "Invalid input" }
+  }
+
   try {
     const currentUser = await getCurrentUser()
     requirePermission(currentUser, "user", "update")
@@ -104,8 +119,8 @@ export async function updateUserRole(
 
     await db
       .update(users)
-      .set({ role, updatedAt: now })
-      .where(eq(users.id, userId))
+      .set({ role: parseResult.data.role, updatedAt: now })
+      .where(eq(users.id, parseResult.data.userId))
       .run()
 
     revalidatePath("/dashboard/people")
@@ -122,6 +137,13 @@ export async function updateUserRole(
 export async function deactivateUser(
   userId: string
 ): Promise<{ success: boolean; error?: string }> {
+  // validate input
+  const parseResult = deactivateUserSchema.safeParse({ userId })
+  if (!parseResult.success) {
+    const firstIssue = parseResult.error.issues[0]
+    return { success: false, error: firstIssue?.message || "Invalid input" }
+  }
+
   try {
     const currentUser = await getCurrentUser()
     requirePermission(currentUser, "user", "delete")
@@ -137,7 +159,7 @@ export async function deactivateUser(
     await db
       .update(users)
       .set({ isActive: false, updatedAt: now })
-      .where(eq(users.id, userId))
+      .where(eq(users.id, parseResult.data.userId))
       .run()
 
     revalidatePath("/dashboard/people")
@@ -156,6 +178,15 @@ export async function assignUserToProject(
   projectId: string,
   role: string
 ): Promise<{ success: boolean; error?: string }> {
+  // validate input
+  const parseResult = assignUserToProjectSchema.safeParse({ userId, projectId, role })
+  if (!parseResult.success) {
+    const firstIssue = parseResult.error.issues[0]
+    return { success: false, error: firstIssue?.message || "Invalid input" }
+  }
+
+  const validated = parseResult.data
+
   try {
     const currentUser = await getCurrentUser()
     requirePermission(currentUser, "project", "update")
@@ -174,8 +205,8 @@ export async function assignUserToProject(
       .from(projectMembers)
       .where(
         and(
-          eq(projectMembers.userId, userId),
-          eq(projectMembers.projectId, projectId)
+          eq(projectMembers.userId, validated.userId),
+          eq(projectMembers.projectId, validated.projectId)
         )
       )
       .get()
@@ -184,11 +215,11 @@ export async function assignUserToProject(
       // update role
       await db
         .update(projectMembers)
-        .set({ role })
+        .set({ role: validated.role })
         .where(
           and(
-            eq(projectMembers.userId, userId),
-            eq(projectMembers.projectId, projectId)
+            eq(projectMembers.userId, validated.userId),
+            eq(projectMembers.projectId, validated.projectId)
           )
         )
         .run()
@@ -198,9 +229,9 @@ export async function assignUserToProject(
         .insert(projectMembers)
         .values({
           id: crypto.randomUUID(),
-          userId,
-          projectId,
-          role,
+          userId: validated.userId,
+          projectId: validated.projectId,
+          role: validated.role,
           assignedAt: now,
         })
         .run()
@@ -222,6 +253,15 @@ export async function assignUserToTeam(
   userId: string,
   teamId: string
 ): Promise<{ success: boolean; error?: string }> {
+  // validate input
+  const parseResult = assignUserToTeamSchema.safeParse({ userId, teamId })
+  if (!parseResult.success) {
+    const firstIssue = parseResult.error.issues[0]
+    return { success: false, error: firstIssue?.message || "Invalid input" }
+  }
+
+  const validated = parseResult.data
+
   try {
     const currentUser = await getCurrentUser()
     requirePermission(currentUser, "team", "update")
@@ -239,7 +279,7 @@ export async function assignUserToTeam(
       .select()
       .from(teamMembers)
       .where(
-        and(eq(teamMembers.userId, userId), eq(teamMembers.teamId, teamId))
+        and(eq(teamMembers.userId, validated.userId), eq(teamMembers.teamId, validated.teamId))
       )
       .get()
 
@@ -252,8 +292,8 @@ export async function assignUserToTeam(
       .insert(teamMembers)
       .values({
         id: crypto.randomUUID(),
-        userId,
-        teamId,
+        userId: validated.userId,
+        teamId: validated.teamId,
         joinedAt: now,
       })
       .run()
@@ -273,6 +313,15 @@ export async function assignUserToGroup(
   userId: string,
   groupId: string
 ): Promise<{ success: boolean; error?: string }> {
+  // validate input
+  const parseResult = assignUserToGroupSchema.safeParse({ userId, groupId })
+  if (!parseResult.success) {
+    const firstIssue = parseResult.error.issues[0]
+    return { success: false, error: firstIssue?.message || "Invalid input" }
+  }
+
+  const validated = parseResult.data
+
   try {
     const currentUser = await getCurrentUser()
     requirePermission(currentUser, "group", "update")
@@ -290,7 +339,7 @@ export async function assignUserToGroup(
       .select()
       .from(groupMembers)
       .where(
-        and(eq(groupMembers.userId, userId), eq(groupMembers.groupId, groupId))
+        and(eq(groupMembers.userId, validated.userId), eq(groupMembers.groupId, validated.groupId))
       )
       .get()
 
@@ -303,8 +352,8 @@ export async function assignUserToGroup(
       .insert(groupMembers)
       .values({
         id: crypto.randomUUID(),
-        userId,
-        groupId,
+        userId: validated.userId,
+        groupId: validated.groupId,
         joinedAt: now,
       })
       .run()
@@ -325,6 +374,15 @@ export async function inviteUser(
   role: string,
   organizationId?: string
 ): Promise<{ success: boolean; error?: string }> {
+  // validate input
+  const parseResult = inviteUserSchema.safeParse({ email, role, organizationId })
+  if (!parseResult.success) {
+    const firstIssue = parseResult.error.issues[0]
+    return { success: false, error: firstIssue?.message || "Invalid input" }
+  }
+
+  const validated = parseResult.data
+
   try {
     const currentUser = await getCurrentUser()
     requirePermission(currentUser, "user", "create")
@@ -338,7 +396,7 @@ export async function inviteUser(
     const now = new Date().toISOString()
 
     // check if user already exists
-    const existing = await db.select().from(users).where(eq(users.email, email)).get()
+    const existing = await db.select().from(users).where(eq(users.email, validated.email)).get()
 
     if (existing) {
       return { success: false, error: "User already exists" }
@@ -360,21 +418,21 @@ export async function inviteUser(
         // send invitation via workos
         // note: when user accepts, they'll be created in workos
         // and on first login, ensureUserExists() will sync them to our db
-        const invitation = await workos.userManagement.sendInvitation({
-          email,
+        await workos.userManagement.sendInvitation({
+          email: validated.email,
         })
 
         // create pending user record in our db
         const newUser: NewUser = {
           id: crypto.randomUUID(), // temporary until workos creates real user
-          email,
-          role,
+          email: validated.email,
+          role: validated.role,
           isActive: false, // inactive until they accept invite
           createdAt: now,
           updatedAt: now,
           firstName: null,
           lastName: null,
-          displayName: email.split("@")[0],
+          displayName: validated.email.split("@")[0],
           avatarUrl: null,
           lastLoginAt: null,
         }
@@ -382,14 +440,14 @@ export async function inviteUser(
         await db.insert(users).values(newUser).run()
 
         // if organization specified, add to organization
-        if (organizationId) {
+        if (validated.organizationId) {
           await db
             .insert(organizationMembers)
             .values({
               id: crypto.randomUUID(),
-              organizationId,
+              organizationId: validated.organizationId,
               userId: newUser.id,
-              role,
+              role: validated.role,
               joinedAt: now,
             })
             .run()
@@ -408,28 +466,28 @@ export async function inviteUser(
       // development mode: just create user in db without sending email
       const newUser: NewUser = {
         id: crypto.randomUUID(),
-        email,
-        role,
+        email: validated.email,
+        role: validated.role,
         isActive: true, // active immediately in dev mode
         createdAt: now,
         updatedAt: now,
         firstName: null,
         lastName: null,
-        displayName: email.split("@")[0],
+        displayName: validated.email.split("@")[0],
         avatarUrl: null,
         lastLoginAt: null,
       }
 
       await db.insert(users).values(newUser).run()
 
-      if (organizationId) {
+      if (validated.organizationId) {
         await db
           .insert(organizationMembers)
           .values({
             id: crypto.randomUUID(),
-            organizationId,
+            organizationId: validated.organizationId,
             userId: newUser.id,
-            role,
+            role: validated.role,
             joinedAt: now,
           })
           .run()

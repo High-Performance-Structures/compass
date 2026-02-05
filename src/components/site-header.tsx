@@ -11,6 +11,8 @@ import {
   IconUserCircle,
 } from "@tabler/icons-react"
 
+import { logout } from "@/app/actions/profile"
+
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import {
@@ -26,13 +28,25 @@ import { NotificationsPopover } from "@/components/notifications-popover"
 import { useCommandMenu } from "@/components/command-menu-provider"
 import { useFeedback } from "@/components/feedback-widget"
 import { AccountModal } from "@/components/account-modal"
+import { getInitials } from "@/lib/utils"
+import type { SidebarUser } from "@/lib/auth"
 
-export function SiteHeader() {
+export function SiteHeader({
+  user,
+}: {
+  readonly user: SidebarUser | null
+}) {
   const { theme, setTheme } = useTheme()
   const { open: openCommand } = useCommandMenu()
   const { open: openFeedback } = useFeedback()
   const [accountOpen, setAccountOpen] = React.useState(false)
   const { toggleSidebar } = useSidebar()
+
+  const initials = user ? getInitials(user.name) : "?"
+
+  async function handleLogout() {
+    await logout()
+  }
 
   return (
     <header className="sticky top-0 z-40 flex shrink-0 items-center bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
@@ -68,15 +82,15 @@ export function SiteHeader() {
                 onClick={(e) => e.stopPropagation()}
               >
                 <Avatar className="size-8 grayscale">
-                  <AvatarImage src="/avatars/martine.jpg" alt="Martine Vogel" />
-                  <AvatarFallback className="text-xs">MV</AvatarFallback>
+                  {user?.avatar && <AvatarImage src={user.avatar} alt={user.name} />}
+                  <AvatarFallback className="text-xs">{initials}</AvatarFallback>
                 </Avatar>
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-48">
               <DropdownMenuLabel className="font-normal">
-                <p className="text-sm font-medium">Martine Vogel</p>
-                <p className="text-muted-foreground text-xs">martine@compass.io</p>
+                <p className="text-sm font-medium">{user?.name ?? "User"}</p>
+                <p className="text-muted-foreground text-xs">{user?.email ?? ""}</p>
               </DropdownMenuLabel>
               <DropdownMenuSeparator />
               <DropdownMenuItem onSelect={() => setAccountOpen(true)}>
@@ -89,7 +103,7 @@ export function SiteHeader() {
                 Toggle theme
               </DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuItem>
+              <DropdownMenuItem onSelect={handleLogout}>
                 <IconLogout />
                 Log out
               </DropdownMenuItem>
@@ -145,15 +159,15 @@ export function SiteHeader() {
             <DropdownMenuTrigger asChild>
               <button className="ml-1 rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring">
                 <Avatar className="size-7 grayscale">
-                  <AvatarImage src="/avatars/martine.jpg" alt="Martine Vogel" />
-                  <AvatarFallback className="text-xs">MV</AvatarFallback>
+                  {user?.avatar && <AvatarImage src={user.avatar} alt={user.name} />}
+                  <AvatarFallback className="text-xs">{initials}</AvatarFallback>
                 </Avatar>
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-48">
               <DropdownMenuLabel className="font-normal">
-                <p className="text-sm font-medium">Martine Vogel</p>
-                <p className="text-muted-foreground text-xs">martine@compass.io</p>
+                <p className="text-sm font-medium">{user?.name ?? "User"}</p>
+                <p className="text-muted-foreground text-xs">{user?.email ?? ""}</p>
               </DropdownMenuLabel>
               <DropdownMenuSeparator />
               <DropdownMenuItem onSelect={() => setAccountOpen(true)}>
@@ -161,7 +175,7 @@ export function SiteHeader() {
                 Account
               </DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuItem>
+              <DropdownMenuItem onSelect={handleLogout}>
                 <IconLogout />
                 Log out
               </DropdownMenuItem>
@@ -170,7 +184,7 @@ export function SiteHeader() {
         </div>
       </div>
 
-      <AccountModal open={accountOpen} onOpenChange={setAccountOpen} />
+      <AccountModal open={accountOpen} onOpenChange={setAccountOpen} user={user} />
     </header>
   )
 }
