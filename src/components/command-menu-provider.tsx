@@ -5,9 +5,15 @@ import { CommandMenu } from "@/components/command-menu"
 import { MobileSearch } from "@/components/mobile-search"
 import { useIsMobile } from "@/hooks/use-mobile"
 
-const CommandMenuContext = React.createContext<{
-  open: () => void
-}>({ open: () => {} })
+interface CommandMenuContextValue {
+  readonly open: () => void
+  readonly openWithQuery: (query: string) => void
+}
+
+const CommandMenuContext = React.createContext<CommandMenuContextValue>({
+  open: () => {},
+  openWithQuery: () => {},
+})
 
 export function useCommandMenu() {
   return React.useContext(CommandMenuContext)
@@ -22,6 +28,12 @@ export function CommandMenuProvider({
   const [isOpen, setIsOpen] = React.useState(false)
   const [mobileSearchOpen, setMobileSearchOpen] =
     React.useState(false)
+  const [initialQuery, setInitialQuery] = React.useState("")
+
+  const handleSetOpen = React.useCallback((next: boolean) => {
+    setIsOpen(next)
+    if (!next) setInitialQuery("")
+  }, [])
 
   const value = React.useMemo(
     () => ({
@@ -29,6 +41,15 @@ export function CommandMenuProvider({
         if (isMobile) {
           setMobileSearchOpen(true)
         } else {
+          setInitialQuery("")
+          setIsOpen(true)
+        }
+      },
+      openWithQuery: (query: string) => {
+        if (isMobile) {
+          setMobileSearchOpen(true)
+        } else {
+          setInitialQuery(query)
           setIsOpen(true)
         }
       },
@@ -39,7 +60,11 @@ export function CommandMenuProvider({
   return (
     <CommandMenuContext.Provider value={value}>
       {children}
-      <CommandMenu open={isOpen} setOpen={setIsOpen} />
+      <CommandMenu
+        open={isOpen}
+        setOpen={handleSetOpen}
+        initialQuery={initialQuery}
+      />
       <MobileSearch
         open={mobileSearchOpen}
         setOpen={setMobileSearchOpen}

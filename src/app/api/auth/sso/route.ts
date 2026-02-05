@@ -32,10 +32,14 @@ export async function GET(request: NextRequest) {
 
   const workos = getWorkOS()
 
+  // compute redirect URI from request origin (avoids NEXT_PUBLIC_ build-time embedding)
+  const origin = request.nextUrl.origin
+  const redirectUri = `${origin}/api/auth/callback`
+
   const authorizationUrl = workos.userManagement.getAuthorizationUrl({
     provider: provider as Provider,
     clientId: process.env.WORKOS_CLIENT_ID!,
-    redirectUri: process.env.NEXT_PUBLIC_WORKOS_REDIRECT_URI!,
+    redirectUri,
     state: from || "/dashboard",
   })
 

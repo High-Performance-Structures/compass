@@ -2,6 +2,7 @@
 
 import * as React from "react"
 import { IconPlus } from "@tabler/icons-react"
+import { Plus } from "lucide-react"
 import { toast } from "sonner"
 
 import {
@@ -14,12 +15,31 @@ import type { Vendor } from "@/db/schema"
 import { Button } from "@/components/ui/button"
 import { VendorsTable } from "@/components/financials/vendors-table"
 import { VendorDialog } from "@/components/financials/vendor-dialog"
+import { useRegisterPageActions } from "@/hooks/use-register-page-actions"
 
 export default function VendorsPage() {
   const [vendors, setVendors] = React.useState<Vendor[]>([])
   const [loading, setLoading] = React.useState(true)
   const [dialogOpen, setDialogOpen] = React.useState(false)
   const [editing, setEditing] = React.useState<Vendor | null>(null)
+
+  const openCreate = React.useCallback(() => {
+    setEditing(null)
+    setDialogOpen(true)
+  }, [])
+
+  const pageActions = React.useMemo(
+    () => [
+      {
+        id: "add-vendor",
+        label: "Add Vendor",
+        icon: Plus,
+        onSelect: openCreate,
+      },
+    ],
+    [openCreate]
+  )
+  useRegisterPageActions(pageActions)
 
   const load = async () => {
     try {
@@ -33,11 +53,6 @@ export default function VendorsPage() {
   }
 
   React.useEffect(() => { load() }, [])
-
-  const handleCreate = () => {
-    setEditing(null)
-    setDialogOpen(true)
-  }
 
   const handleEdit = (vendor: Vendor) => {
     setEditing(vendor)
@@ -114,7 +129,7 @@ export default function VendorsPage() {
               Manage vendor relationships
             </p>
           </div>
-          <Button onClick={handleCreate} className="w-full sm:w-auto">
+          <Button onClick={openCreate} className="w-full sm:w-auto">
             <IconPlus className="mr-2 size-4" />
             Add Vendor
           </Button>

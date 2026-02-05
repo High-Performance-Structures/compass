@@ -2,9 +2,11 @@
 
 import { createContext, useContext, useState } from "react"
 import { usePathname } from "next/navigation"
+import { useAgentOptional } from "@/components/agent/agent-provider"
 import { MessageCircle } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
+import { cn } from "@/lib/utils"
 import {
   Dialog,
   DialogContent,
@@ -50,6 +52,8 @@ export function FeedbackWidget({ children }: { children?: React.ReactNode }) {
   const [name, setName] = useState("")
   const [email, setEmail] = useState("")
   const pathname = usePathname()
+  const agentContext = useAgentOptional()
+  const chatOpen = agentContext?.isOpen ?? false
 
   function resetForm() {
     setType("")
@@ -101,7 +105,10 @@ export function FeedbackWidget({ children }: { children?: React.ReactNode }) {
       <Button
         onClick={() => setDialogOpen(true)}
         size="icon-lg"
-        className="group fixed bottom-12 right-6 z-40 gap-0 rounded-full shadow-lg transition-all duration-200 hover:w-auto hover:gap-2 hover:px-4 overflow-hidden hidden md:flex"
+        className={cn(
+          "group fixed bottom-12 right-6 z-40 gap-0 rounded-full shadow-lg transition-all duration-200 hover:w-auto hover:gap-2 hover:px-4 overflow-hidden hidden md:flex",
+          chatOpen && "md:translate-x-20 md:opacity-0 md:pointer-events-none"
+        )}
       >
         <MessageCircle className="size-5 shrink-0" />
         <span className="max-w-0 overflow-hidden whitespace-nowrap opacity-0 transition-all duration-200 group-hover:max-w-40 group-hover:opacity-100">

@@ -47,11 +47,4 @@ VALUES
   ('gm-1', 'group-1', 'user-2', '2026-01-15T00:00:00Z'),
   ('gm-2', 'group-2', 'user-4', '2026-01-25T00:00:00Z');
 
--- seed project members (using existing project)
-INSERT INTO project_members (id, project_id, user_id, role, assigned_at)
-VALUES
-  ('pm-1', 'proj-o-001', 'user-1', 'admin', '2026-01-01T00:00:00Z'),
-  ('pm-2', 'proj-o-001', 'user-2', 'manager', '2026-01-15T00:00:00Z'),
-  ('pm-3', 'proj-o-001', 'user-4', 'crew', '2026-01-25T00:00:00Z'),
-  ('pm-4', 'proj-o-002', 'user-2', 'manager', '2026-01-16T00:00:00Z'),
-  ('pm-5', 'proj-o-003', 'user-3', 'manager', '2026-01-21T00:00:00Z');
+-- project_members are seeded in seed.sql (after projects exist)

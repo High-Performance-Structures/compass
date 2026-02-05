@@ -244,3 +244,34 @@ export type GroupMember = typeof groupMembers.$inferSelect
 export type NewGroupMember = typeof groupMembers.$inferInsert
 export type ProjectMember = typeof projectMembers.$inferSelect
 export type NewProjectMember = typeof projectMembers.$inferInsert
+
+// Agent memory tables for ElizaOS
+export const agentConversations = sqliteTable("agent_conversations", {
+  id: text("id").primaryKey(),
+  userId: text("user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  title: text("title"),
+  lastMessageAt: text("last_message_at").notNull(),
+  createdAt: text("created_at").notNull(),
+})
+
+export const agentMemories = sqliteTable("agent_memories", {
+  id: text("id").primaryKey(),
+  conversationId: text("conversation_id")
+    .notNull()
+    .references(() => agentConversations.id, { onDelete: "cascade" }),
+  userId: text("user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  role: text("role").notNull(), // "user" | "assistant"
+  content: text("content").notNull(),
+  embedding: text("embedding"), // JSON array of floats for vector search
+  metadata: text("metadata"), // JSON object for action results, ui specs, etc.
+  createdAt: text("created_at").notNull(),
+})
+
+export type AgentConversation = typeof agentConversations.$inferSelect
+export type NewAgentConversation = typeof agentConversations.$inferInsert
+export type AgentMemory = typeof agentMemories.$inferSelect
+export type NewAgentMemory = typeof agentMemories.$inferInsert

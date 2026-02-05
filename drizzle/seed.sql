@@ -152,6 +152,16 @@ INSERT OR IGNORE INTO schedule_tasks (id, project_id, title, start_date, workday
 ('task-n001-040', 'proj-n-001', 'Punch List', '2026-03-19', 5, '2026-03-25', 'closeout', 'PENDING', 0, 0, 0, NULL, 40, '2025-08-15T09:00:00Z', '2025-08-15T09:00:00Z'),
 ('task-n001-041', 'proj-n-001', 'Certificate of Occupancy', '2026-03-26', 2, '2026-03-27', 'closeout', 'PENDING', 1, 1, 0, 'Daniel M Vogel', 41, '2025-08-15T09:00:00Z', '2025-08-15T09:00:00Z');
 
+-- ─── Project Members (must come after projects) ───
+
+INSERT OR IGNORE INTO project_members (id, project_id, user_id, role, assigned_at)
+VALUES
+  ('pm-1', 'proj-o-001', 'user-1', 'admin', '2026-01-01T00:00:00Z'),
+  ('pm-2', 'proj-o-001', 'user-2', 'manager', '2026-01-15T00:00:00Z'),
+  ('pm-3', 'proj-o-001', 'user-4', 'crew', '2026-01-25T00:00:00Z'),
+  ('pm-4', 'proj-o-002', 'user-2', 'manager', '2026-01-16T00:00:00Z'),
+  ('pm-5', 'proj-o-003', 'user-3', 'manager', '2026-01-21T00:00:00Z');
+
 -- ─── Dependencies for N-001 (finish-to-start) ───
 
 INSERT OR IGNORE INTO task_dependencies (id, predecessor_id, successor_id, type, lag_days) VALUES

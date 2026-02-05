@@ -8,9 +8,11 @@ import {
   IconFolder,
   IconFiles,
   IconCalendarStats,
+  IconMessageCircle,
   IconSun,
   IconSearch,
 } from "@tabler/icons-react"
+import { useAgentOptional } from "@/components/agent/agent-provider"
 
 import {
   CommandDialog,
@@ -24,12 +26,22 @@ import {
 export function CommandMenu({
   open,
   setOpen,
+  initialQuery = "",
 }: {
-  open: boolean
-  setOpen: (open: boolean) => void
+  readonly open: boolean
+  readonly setOpen: (open: boolean) => void
+  readonly initialQuery?: string
 }) {
   const router = useRouter()
   const { theme, setTheme } = useTheme()
+  const agent = useAgentOptional()
+  const [query, setQuery] = React.useState("")
+
+  React.useEffect(() => {
+    if (open) {
+      setQuery(initialQuery)
+    }
+  }, [open, initialQuery])
 
   React.useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
@@ -49,7 +61,11 @@ export function CommandMenu({
 
   return (
     <CommandDialog open={open} onOpenChange={setOpen}>
-      <CommandInput placeholder="Type a command or search..." />
+      <CommandInput
+        placeholder="Type a command or search..."
+        value={query}
+        onValueChange={setQuery}
+      />
       <CommandList>
         <CommandEmpty>No results found.</CommandEmpty>
         <CommandGroup heading="Navigation">
@@ -71,6 +87,12 @@ export function CommandMenu({
           </CommandItem>
         </CommandGroup>
         <CommandGroup heading="Actions">
+          {agent && (
+            <CommandItem onSelect={() => runCommand(() => agent.open())}>
+              <IconMessageCircle />
+              Ask Assistant
+            </CommandItem>
+          )}
           <CommandItem onSelect={() => runCommand(() => setTheme(theme === "dark" ? "light" : "dark"))}>
             <IconSun />
             Toggle theme

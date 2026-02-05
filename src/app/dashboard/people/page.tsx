@@ -2,6 +2,7 @@
 
 import * as React from "react"
 import { IconUserPlus } from "@tabler/icons-react"
+import { UserPlus } from "lucide-react"
 import { toast } from "sonner"
 
 import { getUsers, deactivateUser, type UserWithRelations } from "@/app/actions/users"
@@ -9,6 +10,7 @@ import { Button } from "@/components/ui/button"
 import { PeopleTable } from "@/components/people-table"
 import { UserDrawer } from "@/components/people/user-drawer"
 import { InviteDialog } from "@/components/people/invite-dialog"
+import { useRegisterPageActions } from "@/hooks/use-register-page-actions"
 
 
 export default function PeoplePage() {
@@ -17,6 +19,19 @@ export default function PeoplePage() {
   const [selectedUser, setSelectedUser] = React.useState<UserWithRelations | null>(null)
   const [drawerOpen, setDrawerOpen] = React.useState(false)
   const [inviteDialogOpen, setInviteDialogOpen] = React.useState(false)
+
+  const pageActions = React.useMemo(
+    () => [
+      {
+        id: "invite-user",
+        label: "Invite User",
+        icon: UserPlus,
+        onSelect: () => setInviteDialogOpen(true),
+      },
+    ],
+    []
+  )
+  useRegisterPageActions(pageActions)
 
   React.useEffect(() => {
     loadUsers()

@@ -26,4 +26,7 @@ dist/
 .playwright-mcp
 mobile-ui-references/
 .fuse_*
+
+# directories 
 tmp/
+references/

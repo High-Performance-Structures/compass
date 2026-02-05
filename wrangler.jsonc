@@ -43,6 +43,6 @@
 		}
 	],
 	"vars": {
-		"WORKOS_REDIRECT_URI": "https://compass.openrangeconstruction.ltd/api/auth/callback"
+		"WORKOS_REDIRECT_URI": "https://compass.openrangeconstruction.ltd/callback"
 	}
 }

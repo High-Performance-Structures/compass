@@ -2,6 +2,7 @@
 
 import * as React from "react"
 import { IconPlus } from "@tabler/icons-react"
+import { Plus } from "lucide-react"
 import { toast } from "sonner"
 
 import {
@@ -14,12 +15,31 @@ import type { Customer } from "@/db/schema"
 import { Button } from "@/components/ui/button"
 import { CustomersTable } from "@/components/financials/customers-table"
 import { CustomerDialog } from "@/components/financials/customer-dialog"
+import { useRegisterPageActions } from "@/hooks/use-register-page-actions"
 
 export default function CustomersPage() {
   const [customers, setCustomers] = React.useState<Customer[]>([])
   const [loading, setLoading] = React.useState(true)
   const [dialogOpen, setDialogOpen] = React.useState(false)
   const [editing, setEditing] = React.useState<Customer | null>(null)
+
+  const openCreate = React.useCallback(() => {
+    setEditing(null)
+    setDialogOpen(true)
+  }, [])
+
+  const pageActions = React.useMemo(
+    () => [
+      {
+        id: "add-customer",
+        label: "Add Customer",
+        icon: Plus,
+        onSelect: openCreate,
+      },
+    ],
+    [openCreate]
+  )
+  useRegisterPageActions(pageActions)
 
   const load = async () => {
     try {
@@ -33,11 +53,6 @@ export default function CustomersPage() {
   }
 
   React.useEffect(() => { load() }, [])
-
-  const handleCreate = () => {
-    setEditing(null)
-    setDialogOpen(true)
-  }
 
   const handleEdit = (customer: Customer) => {
     setEditing(customer)
@@ -115,7 +130,7 @@ export default function CustomersPage() {
               Manage customer accounts
             </p>
           </div>
-          <Button onClick={handleCreate} className="w-full sm:w-auto">
+          <Button onClick={openCreate} className="w-full sm:w-auto">
             <IconPlus className="mr-2 size-4" />
             Add Customer
           </Button>

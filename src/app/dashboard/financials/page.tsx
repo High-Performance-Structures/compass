@@ -2,8 +2,10 @@
 
 import * as React from "react"
 import { IconPlus } from "@tabler/icons-react"
+import { Plus } from "lucide-react"
 import { useSearchParams, useRouter } from "next/navigation"
 import { toast } from "sonner"
+import { useRegisterPageActions } from "@/hooks/use-register-page-actions"
 
 import { getCustomers } from "@/app/actions/customers"
 import { getVendors } from "@/app/actions/vendors"
@@ -136,6 +138,62 @@ function FinancialsContent() {
   }
 
   React.useEffect(() => { loadAll() }, [])
+
+  const openInvoice = React.useCallback(() => {
+    setEditingInvoice(null)
+    setInvoiceDialogOpen(true)
+  }, [])
+
+  const openBill = React.useCallback(() => {
+    setEditingBill(null)
+    setBillDialogOpen(true)
+  }, [])
+
+  const openPayment = React.useCallback(() => {
+    setEditingPayment(null)
+    setPaymentDialogOpen(true)
+  }, [])
+
+  const openMemo = React.useCallback(() => {
+    setEditingMemo(null)
+    setMemoDialogOpen(true)
+  }, [])
+
+  const TAB_ACTIONS: Record<
+    Tab,
+    { id: string; label: string; onSelect: () => void }
+  > = React.useMemo(
+    () => ({
+      invoices: {
+        id: "new-invoice",
+        label: "New Invoice",
+        onSelect: openInvoice,
+      },
+      bills: {
+        id: "new-bill",
+        label: "New Bill",
+        onSelect: openBill,
+      },
+      payments: {
+        id: "new-payment",
+        label: "New Payment",
+        onSelect: openPayment,
+      },
+      "credit-memos": {
+        id: "new-credit-memo",
+        label: "New Credit Memo",
+        onSelect: openMemo,
+      },
+    }),
+    [openInvoice, openBill, openPayment, openMemo]
+  )
+
+  const pageActions = React.useMemo(() => {
+    const action = TAB_ACTIONS[tab]
+    return [{ ...action, icon: Plus }]
+  }, [tab, TAB_ACTIONS])
+
+  useRegisterPageActions(pageActions)
 
   const handleTabChange = (value: string) => {
     setTab(value as Tab)
@@ -293,53 +351,25 @@ function FinancialsContent() {
             </div>
 
             {tab === "invoices" && (
-              <Button
-                onClick={() => {
-                  setEditingInvoice(null)
-                  setInvoiceDialogOpen(true)
-                }}
-                size="sm"
-                className="w-full sm:w-auto h-9"
-              >
+              <Button onClick={openInvoice} size="sm" className="w-full sm:w-auto h-9">
                 <IconPlus className="mr-2 size-4" />
                 New Invoice
               </Button>
             )}
             {tab === "bills" && (
-              <Button
-                onClick={() => {
-                  setEditingBill(null)
-                  setBillDialogOpen(true)
-                }}
-                size="sm"
-                className="w-full sm:w-auto h-9"
-              >
+              <Button onClick={openBill} size="sm" className="w-full sm:w-auto h-9">
                 <IconPlus className="mr-2 size-4" />
                 New Bill
               </Button>
             )}
             {tab === "payments" && (
-              <Button
-                onClick={() => {
-                  setEditingPayment(null)
-                  setPaymentDialogOpen(true)
-                }}
-                size="sm"
-                className="w-full sm:w-auto h-9"
-              >
+              <Button onClick={openPayment} size="sm" className="w-full sm:w-auto h-9">
                 <IconPlus className="mr-2 size-4" />
                 New Payment
               </Button>
             )}
             {tab === "credit-memos" && (
-              <Button
-                onClick={() => {
-                  setEditingMemo(null)
-                  setMemoDialogOpen(true)
-                }}
-                size="sm"
-                className="w-full sm:w-auto h-9"
-              >
+              <Button onClick={openMemo} size="sm" className="w-full sm:w-auto h-9">
                 <IconPlus className="mr-2 size-4" />
                 New Credit Memo
               </Button>

@@ -8,6 +8,7 @@ import {
   IconFiles,
   IconFolder,
   IconHelp,
+  IconMessageCircle,
   IconReceipt,
   IconSearch,
   IconSettings,
@@ -23,6 +24,7 @@ import { NavProjects } from "@/components/nav-projects"
 import { NavUser } from "@/components/nav-user"
 import { useCommandMenu } from "@/components/command-menu-provider"
 import { useSettings } from "@/components/settings-provider"
+import { useAgentOptional } from "@/components/agent/agent-provider"
 import type { SidebarUser } from "@/lib/auth"
 import {
   Sidebar,
@@ -101,6 +103,7 @@ function SidebarNav({
   const { state, setOpen } = useSidebar()
   const { open: openSearch } = useCommandMenu()
   const { open: openSettings } = useSettings()
+  const agent = useAgentOptional()
   const isExpanded = state === "expanded"
   const isFilesMode = pathname?.startsWith("/dashboard/files")
   const isProjectMode = /^\/dashboard\/projects\/[^/]+/.test(
@@ -128,6 +131,7 @@ function SidebarNav({
         ? { ...item, onClick: openSettings }
         : item
     ),
+    ...(agent ? [{ title: "Assistant", icon: IconMessageCircle, onClick: agent.open }] : []),
     { title: "Search", icon: IconSearch, onClick: openSearch },
   ]
 

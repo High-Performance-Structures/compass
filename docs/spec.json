@@ -1,0 +1,2725 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "meta": {
+    "title": "COMPASS Phase One Implementation Specification",
+    "version": "1.0.0",
+    "created": "2026-02-05",
+    "lastUpdated": "2026-02-05",
+    "status": "approved",
+    "client": "High-Performance Structures (HPS)",
+    "projectGoal": "Replace Buildertrend with COMPASS - Phase One delivers critical features to enable migration",
+    "totalEstimatedWeeks": 10,
+    "techStack": {
+      "framework": "Next.js 15.5 with App Router",
+      "runtime": "Cloudflare Workers via @opennextjs/cloudflare",
+      "database": "Cloudflare D1 (SQLite) with Drizzle ORM",
+      "auth": "WorkOS AuthKit",
+      "email": "Resend",
+      "storage": "Google Drive API v3 (service account)",
+      "offline": "Workbox + Dexie.js (IndexedDB)",
+      "ui": "shadcn/ui + Tailwind CSS v4 + React 19",
+      "validation": "Zod 4.x",
+      "forms": "React Hook Form 7.x"
+    }
+  },
+  "features": [
+    {
+      "id": "F001",
+      "name": "Three-Tier User System",
+      "priority": "P0",
+      "status": "planned",
+      "estimatedDays": 8,
+      "sprint": 1,
+      "dependencies": [],
+      "blocksFeatures": ["F004", "F005", "F006"],
+      "description": "Extend the user management system to support three distinct user tiers: Internal Users, Subcontractors/Suppliers, and Clients. Each tier has different access levels, capabilities, and organizational structures.",
+      "businessValue": "Enables proper access control and role-based routing for notifications, bid packages, and schedule items. Critical for multi-stakeholder project management.",
+      "userStories": [
+        {
+          "id": "US001-1",
+          "role": "Admin",
+          "action": "create and manage internal users with specific roles",
+          "benefit": "I can assign appropriate permissions to office staff, field workers, and other internal team members",
+          "acceptanceCriteria": [
+            "Admin can create new internal users with roles: super_admin, office_admin, field_admin, field",
+            "Admin can edit user roles and deactivate users",
+            "Role changes take effect immediately",
+            "Audit log captures all user management actions"
+          ]
+        },
+        {
+          "id": "US001-2",
+          "role": "Admin",
+          "action": "manage subcontractor companies with multiple contacts",
+          "benefit": "I can organize vendor contacts by their function and route communications appropriately",
+          "acceptanceCriteria": [
+            "Admin can add multiple contacts per vendor company",
+            "Each contact has a functional role: estimator, scheduler, billing, or sales",
+            "Contacts can optionally be given login accounts",
+            "Contact list is searchable and filterable by role"
+          ]
+        },
+        {
+          "id": "US001-3",
+          "role": "Admin",
+          "action": "add multiple client accounts to a single project",
+          "benefit": "all stakeholders on the client side can access project information with appropriate permissions",
+          "acceptanceCriteria": [
+            "Multiple client users can be assigned to one project",
+            "Each client user has their own login credentials",
+            "Client users only see projects they are assigned to",
+            "Client permissions are read-only by default"
+          ]
+        },
+        {
+          "id": "US001-4",
+          "role": "Subcontractor",
+          "action": "log in and view my assigned tasks and bid packages",
+          "benefit": "I can stay informed about upcoming work and respond to bid requests",
+          "acceptanceCriteria": [
+            "Subcontractor users see only projects they are assigned to",
+            "Estimators see bid packages, schedulers see schedule items",
+            "Subcontractors can update task status for their assigned work",
+            "Subcontractors can submit daily logs"
+          ]
+        }
+      ],
+      "technicalApproach": {
+        "overview": "Extend existing users table with userType discriminator. Create new vendor_contacts table for multi-contact vendor management. Leverage existing projectMembers table for client-project assignments.",
+        "schemaChanges": [
+          {
+            "table": "users",
+            "operation": "ALTER",
+            "changes": [
+              {
+                "column": "user_type",
+                "type": "TEXT",
+                "default": "internal",
+                "values": ["internal", "subcontractor", "client"],
+                "description": "Discriminator for three-tier user system"
+              }
+            ]
+          },
+          {
+            "table": "vendor_contacts",
+            "operation": "CREATE",
+            "columns": [
+              { "name": "id", "type": "TEXT", "primaryKey": true },
+              { "name": "vendor_id", "type": "TEXT", "references": "vendors.id", "onDelete": "CASCADE" },
+              { "name": "name", "type": "TEXT", "notNull": true },
+              { "name": "email", "type": "TEXT" },
+              { "name": "phone", "type": "TEXT" },
+              { "name": "functional_role", "type": "TEXT", "notNull": true, "values": ["estimator", "scheduler", "billing", "sales"] },
+              { "name": "is_primary", "type": "BOOLEAN", "default": false },
+              { "name": "has_login_account", "type": "BOOLEAN", "default": false },
+              { "name": "user_id", "type": "TEXT", "references": "users.id", "nullable": true },
+              { "name": "notes", "type": "TEXT" },
+              { "name": "created_at", "type": "TEXT", "notNull": true },
+              { "name": "updated_at", "type": "TEXT", "notNull": true }
+            ],
+            "indexes": [
+              { "name": "idx_vendor_contacts_vendor", "columns": ["vendor_id"] },
+              { "name": "idx_vendor_contacts_role", "columns": ["functional_role"] },
+              { "name": "idx_vendor_contacts_user", "columns": ["user_id"] }
+            ]
+          },
+          {
+            "table": "user_invitations",
+            "operation": "ALTER",
+            "changes": [
+              {
+                "column": "user_type",
+                "type": "TEXT",
+                "default": "internal",
+                "description": "Specifies what type of user is being invited"
+              },
+              {
+                "column": "vendor_contact_id",
+                "type": "TEXT",
+                "references": "vendor_contacts.id",
+                "nullable": true,
+                "description": "Links invitation to vendor contact if inviting a subcontractor"
+              }
+            ]
+          }
+        ],
+        "permissionsChanges": {
+          "file": "src/lib/permissions.ts",
+          "changes": [
+            "Add userType-aware permission checks",
+            "Subcontractor role with limited project access",
+            "Client role inherits from existing client permissions",
+            "Role-based resource filtering (estimators see bid packages, schedulers see schedule)"
+          ]
+        },
+        "apiEndpoints": [
+          {
+            "method": "GET",
+            "path": "/api/vendors/[id]/contacts",
+            "description": "List all contacts for a vendor",
+            "auth": "office, admin"
+          },
+          {
+            "method": "POST",
+            "path": "/api/vendors/[id]/contacts",
+            "description": "Create a new vendor contact",
+            "auth": "office, admin"
+          },
+          {
+            "method": "PUT",
+            "path": "/api/vendor-contacts/[id]",
+            "description": "Update a vendor contact",
+            "auth": "office, admin"
+          },
+          {
+            "method": "DELETE",
+            "path": "/api/vendor-contacts/[id]",
+            "description": "Delete a vendor contact",
+            "auth": "admin"
+          },
+          {
+            "method": "POST",
+            "path": "/api/vendor-contacts/[id]/invite",
+            "description": "Send login invitation to vendor contact",
+            "auth": "admin"
+          }
+        ],
+        "components": [
+          {
+            "name": "VendorContactsTable",
+            "path": "src/components/vendors/vendor-contacts-table.tsx",
+            "description": "Data table showing all contacts for a vendor with role badges"
+          },
+          {
+            "name": "VendorContactDialog",
+            "path": "src/components/vendors/vendor-contact-dialog.tsx",
+            "description": "Modal for creating/editing vendor contacts"
+          },
+          {
+            "name": "InviteSubcontractorDialog",
+            "path": "src/components/vendors/invite-subcontractor-dialog.tsx",
+            "description": "Modal for inviting vendor contact as a user"
+          },
+          {
+            "name": "UserTypeFilter",
+            "path": "src/components/people/user-type-filter.tsx",
+            "description": "Filter component for people list by user type"
+          }
+        ]
+      },
+      "testCases": [
+        {
+          "id": "TC001-1",
+          "type": "unit",
+          "description": "Permission check correctly identifies user type",
+          "steps": ["Create users of each type", "Verify permission checks return correct values"]
+        },
+        {
+          "id": "TC001-2",
+          "type": "integration",
+          "description": "Vendor contact CRUD operations work correctly",
+          "steps": ["Create vendor contact", "Update contact role", "Delete contact", "Verify cascade behavior"]
+        },
+        {
+          "id": "TC001-3",
+          "type": "e2e",
+          "description": "Subcontractor invitation flow",
+          "steps": ["Admin creates vendor contact", "Admin sends invitation", "Contact receives email", "Contact creates account", "Contact logs in and sees limited view"]
+        }
+      ]
+    },
+    {
+      "id": "F002",
+      "name": "PWA Infrastructure and Offline Foundation",
+      "priority": "P0",
+      "status": "planned",
+      "estimatedDays": 10,
+      "sprint": 1,
+      "dependencies": [],
+      "blocksFeatures": ["F003"],
+      "description": "Establish Progressive Web App infrastructure including service worker, IndexedDB schema, and offline detection. This foundation enables full offline CRUD capabilities for the application.",
+      "businessValue": "Field workers need to access and update project information from job sites with poor or no connectivity. Offline support is critical for daily operations and was cited as a major Buildertrend limitation.",
+      "userStories": [
+        {
+          "id": "US002-1",
+          "role": "Field Worker",
+          "action": "install COMPASS as an app on my phone",
+          "benefit": "I can access it quickly without opening a browser",
+          "acceptanceCriteria": [
+            "Web app manifest enables 'Add to Home Screen' prompt",
+            "App icon and splash screen display correctly",
+            "App launches in standalone mode without browser chrome",
+            "App works on iOS Safari and Android Chrome"
+          ]
+        },
+        {
+          "id": "US002-2",
+          "role": "Field Worker",
+          "action": "see a clear indicator when I'm offline",
+          "benefit": "I know whether my changes are being saved locally or synced to the server",
+          "acceptanceCriteria": [
+            "Offline indicator appears in header when connection lost",
+            "Indicator shows number of pending changes",
+            "Toast notification when connection restored",
+            "Sync progress indicator during background sync"
+          ]
+        },
+        {
+          "id": "US002-3",
+          "role": "Field Worker",
+          "action": "continue working when I lose internet connection",
+          "benefit": "my work isn't interrupted by poor cell coverage on job sites",
+          "acceptanceCriteria": [
+            "All previously loaded data available offline",
+            "Can create new daily logs offline",
+            "Can update task status offline",
+            "Changes sync automatically when online"
+          ]
+        },
+        {
+          "id": "US002-4",
+          "role": "System",
+          "action": "resolve conflicts when the same record is edited online and offline",
+          "benefit": "data integrity is maintained without user intervention",
+          "acceptanceCriteria": [
+            "Last-write-wins strategy for simple conflicts",
+            "User prompted for manual resolution on complex conflicts",
+            "Conflict history logged for audit",
+            "No data loss during conflict resolution"
+          ]
+        }
+      ],
+      "technicalApproach": {
+        "overview": "Implement PWA using Workbox for service worker management and Dexie.js for IndexedDB abstraction. Create a sync queue system that tracks pending changes and reconciles with server on reconnection.",
+        "serviceWorker": {
+          "tool": "Workbox 7.x via next-pwa or manual configuration",
+          "strategies": [
+            {
+              "route": "/api/*",
+              "strategy": "NetworkFirst",
+              "fallback": "cached response or offline indicator"
+            },
+            {
+              "route": "/_next/static/*",
+              "strategy": "CacheFirst",
+              "expiration": "30 days"
+            },
+            {
+              "route": "/dashboard/*",
+              "strategy": "StaleWhileRevalidate",
+              "description": "Serve cached page immediately, update in background"
+            }
+          ],
+          "backgroundSync": {
+            "queueName": "compass-sync-queue",
+            "maxRetries": 3,
+            "retryDelay": "exponential backoff starting at 5 minutes"
+          }
+        },
+        "indexedDBSchema": {
+          "library": "Dexie.js 4.x",
+          "databaseName": "compass-offline",
+          "version": 1,
+          "stores": [
+            {
+              "name": "projects",
+              "keyPath": "id",
+              "indexes": ["status", "updatedAt", "syncStatus"],
+              "description": "Cached project records"
+            },
+            {
+              "name": "scheduleTasks",
+              "keyPath": "id",
+              "indexes": ["projectId", "status", "syncStatus"],
+              "description": "Cached schedule tasks"
+            },
+            {
+              "name": "dailyLogs",
+              "keyPath": "id",
+              "indexes": ["projectId", "date", "syncStatus"],
+              "description": "Daily logs including offline-created ones"
+            },
+            {
+              "name": "syncQueue",
+              "keyPath": "id",
+              "indexes": ["entityType", "entityId", "createdAt", "status"],
+              "description": "Queue of pending sync operations"
+            },
+            {
+              "name": "syncConflicts",
+              "keyPath": "id",
+              "indexes": ["entityType", "entityId", "resolvedAt"],
+              "description": "Conflicts requiring manual resolution"
+            },
+            {
+              "name": "offlinePhotos",
+              "keyPath": "id",
+              "indexes": ["dailyLogId", "uploadStatus"],
+              "description": "Photos captured offline pending upload"
+            }
+          ]
+        },
+        "syncQueue": {
+          "operations": ["CREATE", "UPDATE", "DELETE"],
+          "queueItem": {
+            "id": "uuid",
+            "entityType": "dailyLog | scheduleTask | ...",
+            "entityId": "string",
+            "operation": "CREATE | UPDATE | DELETE",
+            "payload": "JSON serialized entity",
+            "createdAt": "ISO timestamp",
+            "attemptCount": "number",
+            "lastAttemptAt": "ISO timestamp | null",
+            "status": "pending | syncing | synced | failed | conflict",
+            "errorMessage": "string | null"
+          },
+          "syncProcess": [
+            "1. Detect online status change",
+            "2. Fetch pending queue items ordered by createdAt",
+            "3. For each item, attempt server sync",
+            "4. On success: mark synced, update local record with server response",
+            "5. On 409 Conflict: move to conflicts table for resolution",
+            "6. On network error: increment attemptCount, retry with backoff",
+            "7. Emit sync completion event for UI update"
+          ]
+        },
+        "conflictResolution": {
+          "strategy": "last-write-wins with manual override option",
+          "autoResolve": [
+            "Server version newer and local version unchanged since fetch",
+            "Local version is CREATE and server has no record"
+          ],
+          "manualResolve": [
+            "Both local and server modified since last sync",
+            "DELETE conflicts (local deleted, server modified)"
+          ],
+          "conflictUI": {
+            "component": "SyncConflictDialog",
+            "showDiff": true,
+            "options": ["Keep mine", "Keep server", "Merge (manual edit)"]
+          }
+        },
+        "files": [
+          {
+            "path": "src/lib/offline/db.ts",
+            "description": "Dexie database instance and schema definition"
+          },
+          {
+            "path": "src/lib/offline/sync-queue.ts",
+            "description": "Sync queue management functions"
+          },
+          {
+            "path": "src/lib/offline/sync-service.ts",
+            "description": "Background sync orchestration"
+          },
+          {
+            "path": "src/lib/offline/conflict-resolver.ts",
+            "description": "Conflict detection and resolution logic"
+          },
+          {
+            "path": "src/hooks/use-online-status.ts",
+            "description": "React hook for online/offline detection"
+          },
+          {
+            "path": "src/hooks/use-sync-status.ts",
+            "description": "React hook for sync queue status"
+          },
+          {
+            "path": "src/components/offline/offline-indicator.tsx",
+            "description": "Header component showing offline status"
+          },
+          {
+            "path": "src/components/offline/sync-status-badge.tsx",
+            "description": "Badge showing sync status for individual records"
+          },
+          {
+            "path": "src/components/offline/sync-conflict-dialog.tsx",
+            "description": "Modal for manual conflict resolution"
+          },
+          {
+            "path": "public/manifest.json",
+            "description": "PWA manifest file"
+          },
+          {
+            "path": "src/app/sw.ts",
+            "description": "Service worker entry point"
+          }
+        ],
+        "manifest": {
+          "name": "COMPASS",
+          "short_name": "COMPASS",
+          "description": "Construction Project Management System",
+          "start_url": "/dashboard",
+          "display": "standalone",
+          "background_color": "#0a0a0a",
+          "theme_color": "#0a0a0a",
+          "icons": [
+            { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+            { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
+            { "src": "/icons/icon-maskable.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+          ]
+        }
+      },
+      "testCases": [
+        {
+          "id": "TC002-1",
+          "type": "unit",
+          "description": "Sync queue correctly orders operations",
+          "steps": ["Add multiple operations", "Verify FIFO ordering", "Verify operation deduplication"]
+        },
+        {
+          "id": "TC002-2",
+          "type": "unit",
+          "description": "Conflict detection identifies all conflict types",
+          "steps": ["Create conflicting local/server states", "Verify conflict detection", "Verify conflict categorization"]
+        },
+        {
+          "id": "TC002-3",
+          "type": "integration",
+          "description": "Background sync processes queue on reconnection",
+          "steps": ["Queue operations while offline", "Simulate reconnection", "Verify all operations synced"]
+        },
+        {
+          "id": "TC002-4",
+          "type": "e2e",
+          "description": "Full offline workflow",
+          "steps": ["Load app online", "Go offline", "Create/edit records", "Go online", "Verify sync completes"]
+        }
+      ]
+    },
+    {
+      "id": "F003",
+      "name": "Daily Logging System",
+      "priority": "P0",
+      "status": "planned",
+      "estimatedDays": 8,
+      "sprint": 2,
+      "dependencies": ["F002"],
+      "blocksFeatures": [],
+      "description": "Complete daily logging system allowing field workers, office staff, and subcontractors to create detailed daily logs from any device. Supports offline creation with photo attachments and automatic weather data.",
+      "businessValue": "Daily logs are essential for project documentation, liability protection, and client communication. Field workers need to log from job sites with unreliable connectivity. This directly replaces Buildertrend's daily log feature.",
+      "userStories": [
+        {
+          "id": "US003-1",
+          "role": "Field Worker",
+          "action": "create a daily log from my phone while on site",
+          "benefit": "I can document work completed, issues, and conditions while the details are fresh",
+          "acceptanceCriteria": [
+            "Mobile-optimized form with large touch targets",
+            "Can create log while offline",
+            "Log saved locally and synced when online",
+            "Confirmation shown when log saved"
+          ]
+        },
+        {
+          "id": "US003-2",
+          "role": "Field Worker",
+          "action": "attach photos to my daily log",
+          "benefit": "I can provide visual documentation of work progress and issues",
+          "acceptanceCriteria": [
+            "Can capture photos directly from camera",
+            "Can select existing photos from gallery",
+            "Multiple photos per log supported",
+            "Photos compressed for upload",
+            "Photos queue for upload when offline"
+          ]
+        },
+        {
+          "id": "US003-3",
+          "role": "Field Worker",
+          "action": "have weather automatically filled in",
+          "benefit": "I save time and ensure accurate weather documentation",
+          "acceptanceCriteria": [
+            "Weather fetched based on project location when online",
+            "Temperature, conditions, and precipitation displayed",
+            "Weather can be manually overridden",
+            "Weather data cached for offline use"
+          ]
+        },
+        {
+          "id": "US003-4",
+          "role": "PM",
+          "action": "view all daily logs for a project in chronological order",
+          "benefit": "I can review project progress and identify issues",
+          "acceptanceCriteria": [
+            "Timeline view showing all logs",
+            "Filter by date range, author, or tags",
+            "Photos displayed inline",
+            "Export to PDF option"
+          ]
+        },
+        {
+          "id": "US003-5",
+          "role": "Subcontractor",
+          "action": "submit a daily log for work my crew performed",
+          "benefit": "I can document our work and hours for billing and coordination",
+          "acceptanceCriteria": [
+            "Subcontractor logs tagged with company name",
+            "Can log crew members present and hours",
+            "Logs visible to office staff and admins",
+            "Option to share specific logs with client"
+          ]
+        }
+      ],
+      "technicalApproach": {
+        "overview": "Build on PWA infrastructure to provide full offline daily log creation. Use IndexedDB for local storage, queue photos for background upload, and fetch weather from OpenWeather API.",
+        "schemaChanges": [
+          {
+            "table": "daily_logs",
+            "operation": "CREATE",
+            "columns": [
+              { "name": "id", "type": "TEXT", "primaryKey": true },
+              { "name": "project_id", "type": "TEXT", "references": "projects.id", "onDelete": "CASCADE", "notNull": true },
+              { "name": "author_id", "type": "TEXT", "references": "users.id", "notNull": true },
+              { "name": "log_date", "type": "TEXT", "notNull": true, "description": "Date of the log (YYYY-MM-DD)" },
+              { "name": "weather_temp_f", "type": "INTEGER", "description": "Temperature in Fahrenheit" },
+              { "name": "weather_conditions", "type": "TEXT", "description": "e.g., Sunny, Cloudy, Rain" },
+              { "name": "weather_precipitation", "type": "TEXT", "description": "e.g., None, Light Rain, Heavy Rain" },
+              { "name": "weather_source", "type": "TEXT", "default": "auto", "values": ["auto", "manual"] },
+              { "name": "work_completed", "type": "TEXT", "notNull": true, "description": "Description of work done" },
+              { "name": "issues", "type": "TEXT", "description": "Any issues or problems encountered" },
+              { "name": "materials_used", "type": "TEXT", "description": "JSON array of materials" },
+              { "name": "crew_present", "type": "TEXT", "description": "JSON array of crew member names/counts" },
+              { "name": "hours_worked", "type": "REAL", "description": "Total crew hours" },
+              { "name": "safety_incidents", "type": "TEXT", "description": "Any safety incidents to report" },
+              { "name": "visitor_log", "type": "TEXT", "description": "Visitors to job site" },
+              { "name": "notes", "type": "TEXT", "description": "Additional notes" },
+              { "name": "is_client_visible", "type": "BOOLEAN", "default": false },
+              { "name": "tags", "type": "TEXT", "description": "JSON array of tags" },
+              { "name": "sync_status", "type": "TEXT", "default": "synced", "values": ["synced", "pending", "conflict"] },
+              { "name": "created_at", "type": "TEXT", "notNull": true },
+              { "name": "updated_at", "type": "TEXT", "notNull": true }
+            ],
+            "indexes": [
+              { "name": "idx_daily_logs_project_date", "columns": ["project_id", "log_date"] },
+              { "name": "idx_daily_logs_author", "columns": ["author_id"] },
+              { "name": "idx_daily_logs_sync", "columns": ["sync_status"] }
+            ]
+          },
+          {
+            "table": "daily_log_photos",
+            "operation": "CREATE",
+            "columns": [
+              { "name": "id", "type": "TEXT", "primaryKey": true },
+              { "name": "daily_log_id", "type": "TEXT", "references": "daily_logs.id", "onDelete": "CASCADE", "notNull": true },
+              { "name": "file_name", "type": "TEXT", "notNull": true },
+              { "name": "file_size", "type": "INTEGER" },
+              { "name": "mime_type", "type": "TEXT" },
+              { "name": "drive_file_id", "type": "TEXT", "description": "Google Drive file ID once uploaded" },
+              { "name": "drive_url", "type": "TEXT", "description": "Google Drive view URL" },
+              { "name": "thumbnail_url", "type": "TEXT" },
+              { "name": "caption", "type": "TEXT" },
+              { "name": "upload_status", "type": "TEXT", "default": "pending", "values": ["pending", "uploading", "uploaded", "failed"] },
+              { "name": "sort_order", "type": "INTEGER", "default": 0 },
+              { "name": "created_at", "type": "TEXT", "notNull": true }
+            ],
+            "indexes": [
+              { "name": "idx_daily_log_photos_log", "columns": ["daily_log_id"] },
+              { "name": "idx_daily_log_photos_upload", "columns": ["upload_status"] }
+            ]
+          },
+          {
+            "table": "daily_log_task_links",
+            "operation": "CREATE",
+            "columns": [
+              { "name": "id", "type": "TEXT", "primaryKey": true },
+              { "name": "daily_log_id", "type": "TEXT", "references": "daily_logs.id", "onDelete": "CASCADE" },
+              { "name": "schedule_task_id", "type": "TEXT", "references": "schedule_tasks.id", "onDelete": "CASCADE" },
+              { "name": "notes", "type": "TEXT" }
+            ],
+            "description": "Links daily logs to specific schedule tasks worked on"
+          }
+        ],
+        "weatherIntegration": {
+          "provider": "OpenWeather API",
+          "endpoint": "https://api.openweathermap.org/data/2.5/weather",
+          "parameters": ["lat", "lon", "units=imperial", "appid"],
+          "caching": "Cache weather by project location for 1 hour",
+          "fallback": "Manual entry when offline or API unavailable"
+        },
+        "photoHandling": {
+          "capture": "Use native file input with capture=camera on mobile",
+          "compression": "Compress to max 1920px width, 80% JPEG quality",
+          "localStorage": "Store blob in IndexedDB while offline",
+          "upload": "Background upload to Google Drive Daily Logs folder",
+          "thumbnail": "Generate 200px thumbnail for list views"
+        },
+        "apiEndpoints": [
+          {
+            "method": "GET",
+            "path": "/api/projects/[id]/daily-logs",
+            "description": "List daily logs for a project",
+            "params": ["startDate", "endDate", "authorId"],
+            "auth": "field, office, admin, client (if visible)"
+          },
+          {
+            "method": "GET",
+            "path": "/api/daily-logs/[id]",
+            "description": "Get single daily log with photos",
+            "auth": "field, office, admin, client (if visible)"
+          },
+          {
+            "method": "POST",
+            "path": "/api/projects/[id]/daily-logs",
+            "description": "Create a new daily log",
+            "auth": "field, office, admin, subcontractor"
+          },
+          {
+            "method": "PUT",
+            "path": "/api/daily-logs/[id]",
+            "description": "Update a daily log",
+            "auth": "author, office, admin"
+          },
+          {
+            "method": "DELETE",
+            "path": "/api/daily-logs/[id]",
+            "description": "Delete a daily log",
+            "auth": "admin"
+          },
+          {
+            "method": "POST",
+            "path": "/api/daily-logs/[id]/photos",
+            "description": "Upload photo to daily log",
+            "auth": "field, office, admin, subcontractor"
+          },
+          {
+            "method": "GET",
+            "path": "/api/weather",
+            "description": "Get current weather for location",
+            "params": ["lat", "lon"],
+            "auth": "any authenticated"
+          }
+        ],
+        "components": [
+          {
+            "name": "DailyLogForm",
+            "path": "src/components/daily-logs/daily-log-form.tsx",
+            "description": "Mobile-optimized form for creating/editing daily logs"
+          },
+          {
+            "name": "DailyLogTimeline",
+            "path": "src/components/daily-logs/daily-log-timeline.tsx",
+            "description": "Chronological list of daily logs for a project"
+          },
+          {
+            "name": "DailyLogCard",
+            "path": "src/components/daily-logs/daily-log-card.tsx",
+            "description": "Card component displaying log summary"
+          },
+          {
+            "name": "DailyLogDetail",
+            "path": "src/components/daily-logs/daily-log-detail.tsx",
+            "description": "Full detail view of a daily log"
+          },
+          {
+            "name": "PhotoCapture",
+            "path": "src/components/daily-logs/photo-capture.tsx",
+            "description": "Camera/gallery photo input with preview"
+          },
+          {
+            "name": "PhotoGallery",
+            "path": "src/components/daily-logs/photo-gallery.tsx",
+            "description": "Grid of photos with lightbox viewer"
+          },
+          {
+            "name": "WeatherWidget",
+            "path": "src/components/daily-logs/weather-widget.tsx",
+            "description": "Displays current weather with auto-refresh"
+          },
+          {
+            "name": "TaskLinker",
+            "path": "src/components/daily-logs/task-linker.tsx",
+            "description": "Select schedule tasks worked on"
+          }
+        ],
+        "routes": [
+          {
+            "path": "/dashboard/projects/[id]/daily-logs",
+            "description": "Daily log timeline for a project"
+          },
+          {
+            "path": "/dashboard/projects/[id]/daily-logs/new",
+            "description": "Create new daily log"
+          },
+          {
+            "path": "/dashboard/projects/[id]/daily-logs/[logId]",
+            "description": "View/edit single daily log"
+          }
+        ]
+      },
+      "testCases": [
+        {
+          "id": "TC003-1",
+          "type": "unit",
+          "description": "Daily log validation accepts valid data",
+          "steps": ["Submit valid log data", "Verify validation passes", "Verify log created"]
+        },
+        {
+          "id": "TC003-2",
+          "type": "integration",
+          "description": "Photo upload to Google Drive works",
+          "steps": ["Create log with photo", "Verify photo uploaded to Drive", "Verify URL stored in database"]
+        },
+        {
+          "id": "TC003-3",
+          "type": "integration",
+          "description": "Weather auto-fill from location",
+          "steps": ["Create log with project location", "Verify weather fetched", "Verify weather saved to log"]
+        },
+        {
+          "id": "TC003-4",
+          "type": "e2e",
+          "description": "Offline daily log creation and sync",
+          "steps": ["Go offline", "Create daily log with photos", "Go online", "Verify log synced", "Verify photos uploaded"]
+        },
+        {
+          "id": "TC003-5",
+          "type": "e2e",
+          "description": "Subcontractor can create daily log",
+          "steps": ["Login as subcontractor", "Navigate to assigned project", "Create daily log", "Verify log visible to PM"]
+        }
+      ]
+    },
+    {
+      "id": "F004",
+      "name": "Google Drive Integration",
+      "priority": "P0",
+      "status": "planned",
+      "estimatedDays": 10,
+      "sprint": 1,
+      "dependencies": [],
+      "blocksFeatures": ["F003", "F005"],
+      "description": "Replace planned S3 storage with Google Drive integration using a service account. All project files stored in company Google Drive with automatic CSI folder structure creation.",
+      "businessValue": "HPS uses Google Workspace for all office apps. Integrating with their existing Google Drive eliminates the need for separate file storage and keeps all documents in familiar tools.",
+      "userStories": [
+        {
+          "id": "US004-1",
+          "role": "PM",
+          "action": "browse project files within COMPASS",
+          "benefit": "I don't have to switch to Google Drive to find project documents",
+          "acceptanceCriteria": [
+            "File browser shows real Drive contents",
+            "Can navigate folder hierarchy",
+            "File previews available for common types",
+            "Click file to open in Drive"
+          ]
+        },
+        {
+          "id": "US004-2",
+          "role": "PM",
+          "action": "upload documents to the correct project folder",
+          "benefit": "files are automatically organized in the right location",
+          "acceptanceCriteria": [
+            "Drag-and-drop upload supported",
+            "Can select destination folder",
+            "Upload progress shown",
+            "File appears in browser after upload"
+          ]
+        },
+        {
+          "id": "US004-3",
+          "role": "System",
+          "action": "create CSI folder structure when a project is created",
+          "benefit": "all projects have consistent folder organization",
+          "acceptanceCriteria": [
+            "50+ CSI folders created automatically",
+            "Folder structure matches HPS standard",
+            "Project folder named with project code",
+            "Provisioning status tracked"
+          ]
+        },
+        {
+          "id": "US004-4",
+          "role": "Admin",
+          "action": "configure the root folder for COMPASS projects",
+          "benefit": "I can control where project folders are created",
+          "acceptanceCriteria": [
+            "Settings page for Drive configuration",
+            "Can select root folder from Drive",
+            "Validation that service account has access",
+            "Folder ID stored in system settings"
+          ]
+        }
+      ],
+      "technicalApproach": {
+        "overview": "Use Google Drive API v3 with service account authentication. Service account credentials stored securely in environment variables. Existing file browser UI connected to Drive backend.",
+        "authentication": {
+          "type": "Service Account",
+          "setup": [
+            "1. Create Google Cloud project",
+            "2. Enable Google Drive API",
+            "3. Create service account",
+            "4. Download JSON credentials",
+            "5. Share root folder with service account email",
+            "6. Store credentials in GOOGLE_SERVICE_ACCOUNT_KEY env var"
+          ],
+          "library": "googleapis npm package",
+          "scopes": ["https://www.googleapis.com/auth/drive"]
+        },
+        "schemaChanges": [
+          {
+            "table": "projects",
+            "operation": "ALTER",
+            "changes": [
+              {
+                "column": "drive_folder_id",
+                "type": "TEXT",
+                "nullable": true,
+                "description": "Google Drive folder ID for this project"
+              },
+              {
+                "column": "drive_folder_url",
+                "type": "TEXT",
+                "nullable": true,
+                "description": "Direct URL to project folder in Drive"
+              }
+            ]
+          },
+          {
+            "table": "system_settings",
+            "operation": "CREATE",
+            "columns": [
+              { "name": "key", "type": "TEXT", "primaryKey": true },
+              { "name": "value", "type": "TEXT", "notNull": true },
+              { "name": "updated_at", "type": "TEXT", "notNull": true }
+            ],
+            "initialData": [
+              { "key": "drive_root_folder_id", "value": "" },
+              { "key": "drive_configured", "value": "false" }
+            ]
+          },
+          {
+            "table": "documents",
+            "operation": "ALTER",
+            "changes": [
+              {
+                "column": "drive_file_id",
+                "type": "TEXT",
+                "nullable": true,
+                "description": "Google Drive file ID"
+              },
+              {
+                "column": "drive_url",
+                "type": "TEXT",
+                "nullable": true,
+                "description": "Direct link to file in Drive"
+              },
+              {
+                "column": "drive_thumbnail_url",
+                "type": "TEXT",
+                "nullable": true,
+                "description": "Thumbnail URL for preview"
+              }
+            ]
+          }
+        ],
+        "driveService": {
+          "file": "src/lib/drive/drive-service.ts",
+          "methods": [
+            {
+              "name": "listFiles",
+              "params": ["folderId: string", "pageToken?: string"],
+              "returns": "{ files: DriveFile[], nextPageToken?: string }",
+              "description": "List files and folders in a Drive folder"
+            },
+            {
+              "name": "getFile",
+              "params": ["fileId: string"],
+              "returns": "DriveFile",
+              "description": "Get file metadata"
+            },
+            {
+              "name": "createFolder",
+              "params": ["name: string", "parentId: string"],
+              "returns": "DriveFile",
+              "description": "Create a new folder"
+            },
+            {
+              "name": "uploadFile",
+              "params": ["file: Buffer", "name: string", "mimeType: string", "parentId: string"],
+              "returns": "DriveFile",
+              "description": "Upload a file to Drive"
+            },
+            {
+              "name": "deleteFile",
+              "params": ["fileId: string"],
+              "returns": "void",
+              "description": "Move file to trash"
+            },
+            {
+              "name": "moveFile",
+              "params": ["fileId: string", "newParentId: string"],
+              "returns": "DriveFile",
+              "description": "Move file to different folder"
+            },
+            {
+              "name": "renameFile",
+              "params": ["fileId: string", "newName: string"],
+              "returns": "DriveFile",
+              "description": "Rename a file"
+            },
+            {
+              "name": "getDownloadUrl",
+              "params": ["fileId: string"],
+              "returns": "string",
+              "description": "Get direct download URL"
+            },
+            {
+              "name": "createCSIFolderStructure",
+              "params": ["projectFolderId: string"],
+              "returns": "void",
+              "description": "Create 50+ CSI division folders"
+            }
+          ]
+        },
+        "folderStructure": {
+          "source": "hps-structures/directories sample project",
+          "template": [
+            "Architectural",
+            "Architectural/3D Views",
+            "Architectural/Archive",
+            "Communications",
+            "Contracts",
+            "Estimates",
+            "Estimates/Preconstruction Estimates",
+            "Meeting Notes",
+            "Property Information",
+            "Spec and Finishes",
+            "Spec and Finishes/Cabinetry",
+            "Spec and Finishes/Electrical Needs",
+            "Spec and Finishes/Plumbing Fixtures",
+            "Testing",
+            "Utilities",
+            "___BID SET",
+            "___BID SET/BidPackages"
+          ],
+          "note": "Full CSI structure to be defined from HPS requirements"
+        },
+        "apiEndpoints": [
+          {
+            "method": "GET",
+            "path": "/api/drive/folders/[folderId]",
+            "description": "List contents of a folder",
+            "params": ["pageToken"],
+            "auth": "field, office, admin"
+          },
+          {
+            "method": "POST",
+            "path": "/api/drive/folders",
+            "description": "Create a new folder",
+            "body": ["name", "parentId"],
+            "auth": "office, admin"
+          },
+          {
+            "method": "POST",
+            "path": "/api/drive/upload",
+            "description": "Upload a file",
+            "body": ["file (multipart)", "folderId"],
+            "auth": "field, office, admin"
+          },
+          {
+            "method": "DELETE",
+            "path": "/api/drive/files/[fileId]",
+            "description": "Delete a file",
+            "auth": "office, admin"
+          },
+          {
+            "method": "PUT",
+            "path": "/api/drive/files/[fileId]/move",
+            "description": "Move a file",
+            "body": ["newParentId"],
+            "auth": "office, admin"
+          },
+          {
+            "method": "PUT",
+            "path": "/api/drive/files/[fileId]/rename",
+            "description": "Rename a file",
+            "body": ["newName"],
+            "auth": "office, admin"
+          },
+          {
+            "method": "GET",
+            "path": "/api/settings/drive",
+            "description": "Get Drive configuration",
+            "auth": "admin"
+          },
+          {
+            "method": "PUT",
+            "path": "/api/settings/drive",
+            "description": "Update Drive configuration",
+            "body": ["rootFolderId"],
+            "auth": "admin"
+          }
+        ],
+        "componentChanges": [
+          {
+            "component": "FileBrowser",
+            "path": "src/components/files/file-browser.tsx",
+            "changes": [
+              "Replace mock data with Drive API calls",
+              "Add loading states",
+              "Handle pagination with pageToken"
+            ]
+          },
+          {
+            "component": "FileDropZone",
+            "path": "src/components/files/file-drop-zone.tsx",
+            "changes": [
+              "Connect to Drive upload endpoint",
+              "Show upload progress",
+              "Handle upload errors"
+            ]
+          },
+          {
+            "component": "DriveSettingsForm",
+            "path": "src/components/settings/drive-settings-form.tsx",
+            "description": "New component for configuring Drive root folder"
+          }
+        ],
+        "provisioningJob": {
+          "trigger": "Project creation",
+          "queue": "Cloudflare Queues",
+          "steps": [
+            "1. Create project folder in root: {PROJECT_CODE} - {PROJECT_NAME}",
+            "2. Create CSI folder structure from template",
+            "3. Update project record with drive_folder_id",
+            "4. Update provisioning status to complete",
+            "5. Send notification email"
+          ],
+          "errorHandling": "Retry up to 3 times, then mark as failed and notify admin"
+        }
+      },
+      "testCases": [
+        {
+          "id": "TC004-1",
+          "type": "unit",
+          "description": "Drive service authenticates with service account",
+          "steps": ["Initialize drive service", "Verify authentication succeeds", "Verify can list root folder"]
+        },
+        {
+          "id": "TC004-2",
+          "type": "integration",
+          "description": "File upload creates file in Drive",
+          "steps": ["Upload test file", "Verify file exists in Drive", "Verify metadata correct"]
+        },
+        {
+          "id": "TC004-3",
+          "type": "integration",
+          "description": "CSI folder creation completes",
+          "steps": ["Create project", "Trigger provisioning", "Verify all folders created", "Verify project updated"]
+        },
+        {
+          "id": "TC004-4",
+          "type": "e2e",
+          "description": "File browser shows Drive contents",
+          "steps": ["Navigate to project files", "Verify folders displayed", "Upload new file", "Verify file appears"]
+        }
+      ]
+    },
+    {
+      "id": "F005",
+      "name": "Bid Package System",
+      "priority": "P0",
+      "status": "planned",
+      "estimatedDays": 13,
+      "sprint": 3,
+      "dependencies": ["F001", "F004"],
+      "blocksFeatures": [],
+      "description": "Complete bid package system for creating and sending requests for bid to subcontractors. Includes customizable templates, auto-fill from project data, and role-based delivery ensuring estimators receive bid packages while schedulers receive only schedule items.",
+      "businessValue": "Streamlines the bidding process which is currently manual and time-consuming. Role-based routing ensures the right people get the right information, reducing confusion and improving response rates.",
+      "userStories": [
+        {
+          "id": "US005-1",
+          "role": "PM",
+          "action": "create a bid package for a project",
+          "benefit": "I can solicit bids from subcontractors in a standardized format",
+          "acceptanceCriteria": [
+            "Can select from bid package templates",
+            "Project data auto-fills (name, address, dates)",
+            "Can add scope items from schedule or manual entry",
+            "Can attach drawings from Google Drive",
+            "Can set bid due date"
+          ]
+        },
+        {
+          "id": "US005-2",
+          "role": "PM",
+          "action": "send a bid package to selected vendors",
+          "benefit": "I can reach multiple potential subcontractors with one action",
+          "acceptanceCriteria": [
+            "Can select vendors by trade/category",
+            "Only estimator contacts shown for selection",
+            "Email sent to all selected contacts",
+            "Delivery tracked per recipient"
+          ]
+        },
+        {
+          "id": "US005-3",
+          "role": "PM",
+          "action": "track bid package responses",
+          "benefit": "I know which subs have responded and can follow up with non-responders",
+          "acceptanceCriteria": [
+            "Response status per vendor: sent, viewed, responded, declined",
+            "Can record bid amounts received",
+            "Can add notes per vendor",
+            "Dashboard shows pending bids"
+          ]
+        },
+        {
+          "id": "US005-4",
+          "role": "Admin",
+          "action": "create and manage bid package templates",
+          "benefit": "I can standardize our bid request format across projects",
+          "acceptanceCriteria": [
+            "WYSIWYG template editor",
+            "Variable placeholders: {{project.name}}, {{project.address}}, etc.",
+            "Can create trade-specific templates (electrical, plumbing, etc.)",
+            "Templates versioned"
+          ]
+        },
+        {
+          "id": "US005-5",
+          "role": "Subcontractor (Estimator)",
+          "action": "view bid packages sent to me",
+          "benefit": "I can review the scope and prepare my bid",
+          "acceptanceCriteria": [
+            "See only bid packages sent to me",
+            "Can download attached drawings",
+            "Can mark as 'viewed'",
+            "Can submit bid response through portal"
+          ]
+        }
+      ],
+      "technicalApproach": {
+        "overview": "Build complete bid package management including templates, auto-fill, email delivery, and response tracking. Integration with vendor contacts for role-based routing. Store bid package documents in Google Drive.",
+        "schemaChanges": [
+          {
+            "table": "bid_package_templates",
+            "operation": "CREATE",
+            "columns": [
+              { "name": "id", "type": "TEXT", "primaryKey": true },
+              { "name": "name", "type": "TEXT", "notNull": true },
+              { "name": "description", "type": "TEXT" },
+              { "name": "trade_category", "type": "TEXT", "description": "e.g., Electrical, Plumbing, Roofing" },
+              { "name": "content", "type": "TEXT", "notNull": true, "description": "HTML template with variable placeholders" },
+              { "name": "default_scope_items", "type": "TEXT", "description": "JSON array of default scope items" },
+              { "name": "is_active", "type": "BOOLEAN", "default": true },
+              { "name": "version", "type": "INTEGER", "default": 1 },
+              { "name": "created_by", "type": "TEXT", "references": "users.id" },
+              { "name": "created_at", "type": "TEXT", "notNull": true },
+              { "name": "updated_at", "type": "TEXT", "notNull": true }
+            ],
+            "indexes": [
+              { "name": "idx_bid_templates_trade", "columns": ["trade_category"] }
+            ]
+          },
+          {
+            "table": "bid_packages",
+            "operation": "CREATE",
+            "columns": [
+              { "name": "id", "type": "TEXT", "primaryKey": true },
+              { "name": "project_id", "type": "TEXT", "references": "projects.id", "onDelete": "CASCADE", "notNull": true },
+              { "name": "template_id", "type": "TEXT", "references": "bid_package_templates.id" },
+              { "name": "title", "type": "TEXT", "notNull": true },
+              { "name": "description", "type": "TEXT" },
+              { "name": "trade_category", "type": "TEXT" },
+              { "name": "bid_due_date", "type": "TEXT", "notNull": true },
+              { "name": "status", "type": "TEXT", "default": "draft", "values": ["draft", "sent", "closed", "awarded"] },
+              { "name": "rendered_content", "type": "TEXT", "description": "HTML with variables replaced" },
+              { "name": "drive_folder_id", "type": "TEXT", "description": "Folder for bid package attachments" },
+              { "name": "notes", "type": "TEXT" },
+              { "name": "created_by", "type": "TEXT", "references": "users.id" },
+              { "name": "sent_at", "type": "TEXT" },
+              { "name": "closed_at", "type": "TEXT" },
+              { "name": "created_at", "type": "TEXT", "notNull": true },
+              { "name": "updated_at", "type": "TEXT", "notNull": true }
+            ],
+            "indexes": [
+              { "name": "idx_bid_packages_project", "columns": ["project_id"] },
+              { "name": "idx_bid_packages_status", "columns": ["status"] },
+              { "name": "idx_bid_packages_due", "columns": ["bid_due_date"] }
+            ]
+          },
+          {
+            "table": "bid_package_scope_items",
+            "operation": "CREATE",
+            "columns": [
+              { "name": "id", "type": "TEXT", "primaryKey": true },
+              { "name": "bid_package_id", "type": "TEXT", "references": "bid_packages.id", "onDelete": "CASCADE", "notNull": true },
+              { "name": "description", "type": "TEXT", "notNull": true },
+              { "name": "quantity", "type": "TEXT" },
+              { "name": "unit", "type": "TEXT" },
+              { "name": "csi_code", "type": "TEXT" },
+              { "name": "notes", "type": "TEXT" },
+              { "name": "sort_order", "type": "INTEGER", "default": 0 }
+            ],
+            "indexes": [
+              { "name": "idx_bid_scope_items_package", "columns": ["bid_package_id"] }
+            ]
+          },
+          {
+            "table": "bid_package_attachments",
+            "operation": "CREATE",
+            "columns": [
+              { "name": "id", "type": "TEXT", "primaryKey": true },
+              { "name": "bid_package_id", "type": "TEXT", "references": "bid_packages.id", "onDelete": "CASCADE", "notNull": true },
+              { "name": "file_name", "type": "TEXT", "notNull": true },
+              { "name": "drive_file_id", "type": "TEXT", "notNull": true },
+              { "name": "drive_url", "type": "TEXT" },
+              { "name": "file_size", "type": "INTEGER" },
+              { "name": "mime_type", "type": "TEXT" },
+              { "name": "sort_order", "type": "INTEGER", "default": 0 },
+              { "name": "created_at", "type": "TEXT", "notNull": true }
+            ],
+            "indexes": [
+              { "name": "idx_bid_attachments_package", "columns": ["bid_package_id"] }
+            ]
+          },
+          {
+            "table": "bid_package_recipients",
+            "operation": "CREATE",
+            "columns": [
+              { "name": "id", "type": "TEXT", "primaryKey": true },
+              { "name": "bid_package_id", "type": "TEXT", "references": "bid_packages.id", "onDelete": "CASCADE", "notNull": true },
+              { "name": "vendor_id", "type": "TEXT", "references": "vendors.id", "notNull": true },
+              { "name": "vendor_contact_id", "type": "TEXT", "references": "vendor_contacts.id", "notNull": true },
+              { "name": "email", "type": "TEXT", "notNull": true },
+              { "name": "sent_at", "type": "TEXT" },
+              { "name": "viewed_at", "type": "TEXT" },
+              { "name": "response_status", "type": "TEXT", "default": "pending", "values": ["pending", "sent", "viewed", "responded", "declined", "no_response"] },
+              { "name": "bid_amount", "type": "REAL" },
+              { "name": "response_notes", "type": "TEXT" },
+              { "name": "response_date", "type": "TEXT" },
+              { "name": "is_awarded", "type": "BOOLEAN", "default": false },
+              { "name": "created_at", "type": "TEXT", "notNull": true },
+              { "name": "updated_at", "type": "TEXT", "notNull": true }
+            ],
+            "indexes": [
+              { "name": "idx_bid_recipients_package", "columns": ["bid_package_id"] },
+              { "name": "idx_bid_recipients_vendor", "columns": ["vendor_id"] },
+              { "name": "idx_bid_recipients_status", "columns": ["response_status"] }
+            ]
+          }
+        ],
+        "templateVariables": {
+          "description": "Variables that can be used in bid package templates, replaced at render time",
+          "variables": [
+            { "key": "{{project.name}}", "source": "projects.name" },
+            { "key": "{{project.code}}", "source": "projects.id or generated code" },
+            { "key": "{{project.address}}", "source": "projects.address" },
+            { "key": "{{project.clientName}}", "source": "projects.clientName" },
+            { "key": "{{project.manager}}", "source": "projects.projectManager" },
+            { "key": "{{bidPackage.title}}", "source": "bid_packages.title" },
+            { "key": "{{bidPackage.dueDate}}", "source": "bid_packages.bid_due_date, formatted" },
+            { "key": "{{bidPackage.scopeItems}}", "source": "Rendered list of scope items" },
+            { "key": "{{company.name}}", "source": "System setting" },
+            { "key": "{{company.address}}", "source": "System setting" },
+            { "key": "{{company.phone}}", "source": "System setting" },
+            { "key": "{{company.email}}", "source": "System setting" },
+            { "key": "{{today}}", "source": "Current date, formatted" }
+          ]
+        },
+        "autoFillSources": {
+          "description": "Data sources for auto-populating bid packages",
+          "sources": [
+            {
+              "source": "Project record",
+              "fields": ["name", "address", "clientName", "projectManager"]
+            },
+            {
+              "source": "Schedule tasks",
+              "fields": ["Tasks can be selected and converted to scope items"]
+            },
+            {
+              "source": "Budget line items",
+              "fields": ["CSI items can be selected as scope"]
+            },
+            {
+              "source": "Google Drive",
+              "fields": ["Drawings and specs from ___BID SET folder"]
+            }
+          ]
+        },
+        "roleBasedRouting": {
+          "description": "Logic for ensuring correct contacts receive appropriate communications",
+          "rules": [
+            {
+              "content": "Bid Package",
+              "targetRole": "estimator",
+              "logic": "Only vendor_contacts with functional_role='estimator' shown in recipient selection"
+            },
+            {
+              "content": "Schedule Items",
+              "targetRole": "scheduler",
+              "logic": "Only vendor_contacts with functional_role='scheduler' receive schedule notifications"
+            },
+            {
+              "content": "Invoices/Bills",
+              "targetRole": "billing",
+              "logic": "Only vendor_contacts with functional_role='billing' receive payment communications"
+            }
+          ]
+        },
+        "emailDelivery": {
+          "provider": "Resend",
+          "template": "bid-package-invitation",
+          "content": {
+            "subject": "Request for Bid: {{project.name}} - {{bidPackage.title}}",
+            "body": [
+              "Greeting with vendor name",
+              "Project overview",
+              "Scope summary",
+              "Due date",
+              "Link to view full bid package",
+              "List of attachments",
+              "Contact information"
+            ]
+          },
+          "tracking": {
+            "sentAt": "Recorded when email sent",
+            "viewedAt": "Tracked via unique link click",
+            "viewLink": "/bid-packages/[id]/view?token=[unique_token]"
+          }
+        },
+        "apiEndpoints": [
+          {
+            "method": "GET",
+            "path": "/api/projects/[id]/bid-packages",
+            "description": "List bid packages for a project",
+            "auth": "office, admin"
+          },
+          {
+            "method": "GET",
+            "path": "/api/bid-packages/[id]",
+            "description": "Get bid package details",
+            "auth": "office, admin, subcontractor (if recipient)"
+          },
+          {
+            "method": "POST",
+            "path": "/api/projects/[id]/bid-packages",
+            "description": "Create new bid package",
+            "auth": "office, admin"
+          },
+          {
+            "method": "PUT",
+            "path": "/api/bid-packages/[id]",
+            "description": "Update bid package",
+            "auth": "office, admin"
+          },
+          {
+            "method": "DELETE",
+            "path": "/api/bid-packages/[id]",
+            "description": "Delete bid package (draft only)",
+            "auth": "admin"
+          },
+          {
+            "method": "POST",
+            "path": "/api/bid-packages/[id]/send",
+            "description": "Send bid package to recipients",
+            "auth": "office, admin"
+          },
+          {
+            "method": "POST",
+            "path": "/api/bid-packages/[id]/recipients",
+            "description": "Add recipients to bid package",
+            "body": ["vendorContactIds"],
+            "auth": "office, admin"
+          },
+          {
+            "method": "PUT",
+            "path": "/api/bid-package-recipients/[id]",
+            "description": "Update recipient response",
+            "body": ["bidAmount", "responseNotes", "responseStatus"],
+            "auth": "office, admin"
+          },
+          {
+            "method": "GET",
+            "path": "/api/bid-package-templates",
+            "description": "List bid package templates",
+            "auth": "office, admin"
+          },
+          {
+            "method": "POST",
+            "path": "/api/bid-package-templates",
+            "description": "Create bid package template",
+            "auth": "admin"
+          },
+          {
+            "method": "PUT",
+            "path": "/api/bid-package-templates/[id]",
+            "description": "Update bid package template",
+            "auth": "admin"
+          },
+          {
+            "method": "GET",
+            "path": "/api/vendors/by-trade/[trade]",
+            "description": "Get vendors by trade with estimator contacts",
+            "auth": "office, admin"
+          },
+          {
+            "method": "GET",
+            "path": "/bid-packages/[id]/view",
+            "description": "Public view page for recipients (with token)",
+            "auth": "token-based"
+          }
+        ],
+        "components": [
+          {
+            "name": "BidPackageList",
+            "path": "src/components/bid-packages/bid-package-list.tsx",
+            "description": "Table of bid packages for a project"
+          },
+          {
+            "name": "BidPackageForm",
+            "path": "src/components/bid-packages/bid-package-form.tsx",
+            "description": "Form for creating/editing bid packages"
+          },
+          {
+            "name": "BidPackageDetail",
+            "path": "src/components/bid-packages/bid-package-detail.tsx",
+            "description": "Full bid package view with recipients"
+          },
+          {
+            "name": "ScopeItemsEditor",
+            "path": "src/components/bid-packages/scope-items-editor.tsx",
+            "description": "Editable list of scope items"
+          },
+          {
+            "name": "RecipientSelector",
+            "path": "src/components/bid-packages/recipient-selector.tsx",
+            "description": "Multi-select for vendors/contacts filtered by estimator role"
+          },
+          {
+            "name": "RecipientStatusTable",
+            "path": "src/components/bid-packages/recipient-status-table.tsx",
+            "description": "Table showing delivery and response status"
+          },
+          {
+            "name": "BidResponseForm",
+            "path": "src/components/bid-packages/bid-response-form.tsx",
+            "description": "Form for recording bid responses"
+          },
+          {
+            "name": "TemplateEditor",
+            "path": "src/components/bid-packages/template-editor.tsx",
+            "description": "WYSIWYG editor for bid package templates"
+          },
+          {
+            "name": "AttachmentPicker",
+            "path": "src/components/bid-packages/attachment-picker.tsx",
+            "description": "File picker for Drive attachments"
+          },
+          {
+            "name": "BidPackagePublicView",
+            "path": "src/components/bid-packages/bid-package-public-view.tsx",
+            "description": "Public-facing view for subcontractors"
+          }
+        ],
+        "routes": [
+          {
+            "path": "/dashboard/projects/[id]/bid-packages",
+            "description": "Bid packages list for a project"
+          },
+          {
+            "path": "/dashboard/projects/[id]/bid-packages/new",
+            "description": "Create new bid package"
+          },
+          {
+            "path": "/dashboard/projects/[id]/bid-packages/[bidId]",
+            "description": "View/edit bid package"
+          },
+          {
+            "path": "/dashboard/settings/bid-templates",
+            "description": "Manage bid package templates"
+          },
+          {
+            "path": "/bid-packages/[id]/view",
+            "description": "Public view for recipients (token auth)"
+          }
+        ]
+      },
+      "testCases": [
+        {
+          "id": "TC005-1",
+          "type": "unit",
+          "description": "Template variable replacement works correctly",
+          "steps": ["Create template with variables", "Render with project data", "Verify all variables replaced"]
+        },
+        {
+          "id": "TC005-2",
+          "type": "integration",
+          "description": "Bid package email delivery",
+          "steps": ["Create bid package", "Add recipients", "Send package", "Verify emails sent via Resend"]
+        },
+        {
+          "id": "TC005-3",
+          "type": "integration",
+          "description": "Role-based filtering shows only estimators",
+          "steps": ["Create vendor with multiple contacts", "Open recipient selector", "Verify only estimators shown"]
+        },
+        {
+          "id": "TC005-4",
+          "type": "e2e",
+          "description": "Full bid package workflow",
+          "steps": ["Create package from template", "Add scope items", "Attach drawings", "Select recipients", "Send", "Record responses"]
+        },
+        {
+          "id": "TC005-5",
+          "type": "e2e",
+          "description": "Subcontractor views bid package",
+          "steps": ["Send bid package to sub", "Sub clicks email link", "Verify view tracked", "Sub downloads attachments"]
+        }
+      ]
+    },
+    {
+      "id": "F006",
+      "name": "Notifications System",
+      "priority": "P0",
+      "status": "planned",
+      "estimatedDays": 10,
+      "sprint": 3,
+      "dependencies": ["F001"],
+      "blocksFeatures": [],
+      "description": "Complete notification system with in-app notifications, email delivery, and time-driven scheduled notifications. Supports schedule assignment notifications, payment events, and bid package reminders.",
+      "businessValue": "Proactive notifications keep team members informed without requiring them to constantly check the app. Time-driven notifications for upcoming tasks and overdue items prevent things from falling through the cracks.",
+      "userStories": [
+        {
+          "id": "US006-1",
+          "role": "User",
+          "action": "see my notifications in the app",
+          "benefit": "I stay informed about important events without checking email",
+          "acceptanceCriteria": [
+            "Notification bell icon in header shows unread count",
+            "Dropdown shows recent notifications",
+            "Click notification to navigate to related item",
+            "Can mark as read or mark all as read"
+          ]
+        },
+        {
+          "id": "US006-2",
+          "role": "User",
+          "action": "receive email notifications for important events",
+          "benefit": "I'm alerted even when not in the app",
+          "acceptanceCriteria": [
+            "Email sent for configured event types",
+            "Email includes direct link to item",
+            "Can configure which events trigger email",
+            "Unsubscribe link in email"
+          ]
+        },
+        {
+          "id": "US006-3",
+          "role": "Field Worker",
+          "action": "get notified when I'm assigned to a schedule item",
+          "benefit": "I know immediately when I have new work assigned",
+          "acceptanceCriteria": [
+            "Notification created when task assignedTo changes to me",
+            "Email sent if preference enabled",
+            "Notification includes task details and dates"
+          ]
+        },
+        {
+          "id": "US006-4",
+          "role": "PM",
+          "action": "receive automatic reminders for tasks due tomorrow",
+          "benefit": "I can proactively address upcoming deadlines",
+          "acceptanceCriteria": [
+            "Daily job runs at configured time (e.g., 7am)",
+            "Finds all tasks due tomorrow",
+            "Sends notification to assignees and PM",
+            "Summary email with all upcoming tasks"
+          ]
+        },
+        {
+          "id": "US006-5",
+          "role": "Subcontractor (Scheduler)",
+          "action": "get notified when schedule items are assigned to my company",
+          "benefit": "I can plan crew availability for upcoming work",
+          "acceptanceCriteria": [
+            "Only scheduler contacts receive schedule notifications",
+            "Notification includes start date, duration, scope",
+            "Email with link to schedule view"
+          ]
+        },
+        {
+          "id": "US006-6",
+          "role": "Admin",
+          "action": "get notified when payment events occur",
+          "benefit": "I can track financial activity without constant checking",
+          "acceptanceCriteria": [
+            "Notification for: invoice paid, payment received, bill due",
+            "Includes amount and related entities",
+            "Links to financial detail view"
+          ]
+        }
+      ],
+      "technicalApproach": {
+        "overview": "Build notification service that creates notifications, delivers via email (Resend), and provides in-app notification center. Scheduled jobs via Cloudflare Queues for time-based notifications.",
+        "schemaChanges": [
+          {
+            "table": "notifications",
+            "operation": "CREATE",
+            "columns": [
+              { "name": "id", "type": "TEXT", "primaryKey": true },
+              { "name": "user_id", "type": "TEXT", "references": "users.id", "onDelete": "CASCADE", "notNull": true },
+              { "name": "type", "type": "TEXT", "notNull": true, "values": ["task_assigned", "task_due", "task_overdue", "bid_package_sent", "bid_response_received", "payment_received", "invoice_due", "daily_log_submitted", "project_status_changed", "mention", "system"] },
+              { "name": "title", "type": "TEXT", "notNull": true },
+              { "name": "message", "type": "TEXT", "notNull": true },
+              { "name": "link", "type": "TEXT", "description": "URL to navigate to on click" },
+              { "name": "entity_type", "type": "TEXT", "description": "Type of related entity" },
+              { "name": "entity_id", "type": "TEXT", "description": "ID of related entity" },
+              { "name": "is_read", "type": "BOOLEAN", "default": false },
+              { "name": "read_at", "type": "TEXT" },
+              { "name": "email_sent", "type": "BOOLEAN", "default": false },
+              { "name": "email_sent_at", "type": "TEXT" },
+              { "name": "created_at", "type": "TEXT", "notNull": true }
+            ],
+            "indexes": [
+              { "name": "idx_notifications_user", "columns": ["user_id"] },
+              { "name": "idx_notifications_unread", "columns": ["user_id", "is_read"] },
+              { "name": "idx_notifications_type", "columns": ["type"] },
+              { "name": "idx_notifications_entity", "columns": ["entity_type", "entity_id"] }
+            ]
+          },
+          {
+            "table": "notification_preferences",
+            "operation": "CREATE",
+            "columns": [
+              { "name": "id", "type": "TEXT", "primaryKey": true },
+              { "name": "user_id", "type": "TEXT", "references": "users.id", "onDelete": "CASCADE", "notNull": true, "unique": true },
+              { "name": "email_enabled", "type": "BOOLEAN", "default": true },
+              { "name": "email_task_assigned", "type": "BOOLEAN", "default": true },
+              { "name": "email_task_due", "type": "BOOLEAN", "default": true },
+              { "name": "email_task_overdue", "type": "BOOLEAN", "default": true },
+              { "name": "email_bid_package", "type": "BOOLEAN", "default": true },
+              { "name": "email_payment", "type": "BOOLEAN", "default": true },
+              { "name": "email_daily_digest", "type": "BOOLEAN", "default": false },
+              { "name": "digest_time", "type": "TEXT", "default": "07:00" },
+              { "name": "quiet_hours_start", "type": "TEXT" },
+              { "name": "quiet_hours_end", "type": "TEXT" },
+              { "name": "updated_at", "type": "TEXT", "notNull": true }
+            ],
+            "indexes": [
+              { "name": "idx_notification_prefs_user", "columns": ["user_id"] }
+            ]
+          },
+          {
+            "table": "scheduled_notifications",
+            "operation": "CREATE",
+            "columns": [
+              { "name": "id", "type": "TEXT", "primaryKey": true },
+              { "name": "type", "type": "TEXT", "notNull": true, "values": ["task_reminder", "bid_due_reminder", "invoice_due_reminder", "daily_digest"] },
+              { "name": "scheduled_for", "type": "TEXT", "notNull": true },
+              { "name": "entity_type", "type": "TEXT" },
+              { "name": "entity_id", "type": "TEXT" },
+              { "name": "target_user_id", "type": "TEXT", "references": "users.id" },
+              { "name": "status", "type": "TEXT", "default": "pending", "values": ["pending", "processing", "sent", "failed", "cancelled"] },
+              { "name": "processed_at", "type": "TEXT" },
+              { "name": "error_message", "type": "TEXT" },
+              { "name": "created_at", "type": "TEXT", "notNull": true }
+            ],
+            "indexes": [
+              { "name": "idx_scheduled_notifications_time", "columns": ["scheduled_for", "status"] },
+              { "name": "idx_scheduled_notifications_entity", "columns": ["entity_type", "entity_id"] }
+            ]
+          }
+        ],
+        "notificationService": {
+          "file": "src/lib/notifications/notification-service.ts",
+          "methods": [
+            {
+              "name": "createNotification",
+              "params": ["userId", "type", "title", "message", "options?"],
+              "description": "Create notification and optionally send email based on preferences"
+            },
+            {
+              "name": "createBulkNotifications",
+              "params": ["userIds[]", "type", "title", "message", "options?"],
+              "description": "Create notifications for multiple users"
+            },
+            {
+              "name": "markAsRead",
+              "params": ["notificationId"],
+              "description": "Mark single notification as read"
+            },
+            {
+              "name": "markAllAsRead",
+              "params": ["userId"],
+              "description": "Mark all notifications as read for user"
+            },
+            {
+              "name": "getUnreadCount",
+              "params": ["userId"],
+              "returns": "number",
+              "description": "Get count of unread notifications"
+            },
+            {
+              "name": "getUserNotifications",
+              "params": ["userId", "options?"],
+              "returns": "Notification[]",
+              "description": "Get paginated notifications for user"
+            },
+            {
+              "name": "scheduleNotification",
+              "params": ["type", "scheduledFor", "entityType?", "entityId?", "targetUserId?"],
+              "description": "Schedule a future notification"
+            },
+            {
+              "name": "cancelScheduledNotification",
+              "params": ["entityType", "entityId"],
+              "description": "Cancel scheduled notifications for an entity"
+            }
+          ]
+        },
+        "emailTemplates": {
+          "provider": "Resend",
+          "templates": [
+            {
+              "name": "task-assigned",
+              "subject": "You've been assigned to: {{taskTitle}}",
+              "variables": ["taskTitle", "projectName", "startDate", "link"]
+            },
+            {
+              "name": "task-due-reminder",
+              "subject": "Reminder: {{taskTitle}} is due tomorrow",
+              "variables": ["taskTitle", "projectName", "dueDate", "link"]
+            },
+            {
+              "name": "task-overdue",
+              "subject": "Overdue: {{taskTitle}} was due {{daysOverdue}} days ago",
+              "variables": ["taskTitle", "projectName", "dueDate", "daysOverdue", "link"]
+            },
+            {
+              "name": "bid-package-invitation",
+              "subject": "Request for Bid: {{projectName}} - {{bidPackageTitle}}",
+              "variables": ["vendorName", "projectName", "bidPackageTitle", "dueDate", "link"]
+            },
+            {
+              "name": "bid-response-received",
+              "subject": "Bid received from {{vendorName}} for {{projectName}}",
+              "variables": ["vendorName", "projectName", "bidAmount", "link"]
+            },
+            {
+              "name": "payment-received",
+              "subject": "Payment received: ${{amount}} for {{projectName}}",
+              "variables": ["amount", "projectName", "payerName", "link"]
+            },
+            {
+              "name": "daily-digest",
+              "subject": "COMPASS Daily Summary - {{date}}",
+              "variables": ["date", "tasksDueToday", "tasksOverdue", "pendingBids", "recentActivity"]
+            }
+          ]
+        },
+        "scheduledJobs": {
+          "infrastructure": "Cloudflare Queues with cron triggers",
+          "jobs": [
+            {
+              "name": "task-due-reminders",
+              "schedule": "0 7 * * *",
+              "description": "Daily at 7am: Find tasks due tomorrow, create notifications"
+            },
+            {
+              "name": "task-overdue-alerts",
+              "schedule": "0 8 * * *",
+              "description": "Daily at 8am: Find overdue tasks, alert PMs"
+            },
+            {
+              "name": "bid-due-reminders",
+              "schedule": "0 9 * * *",
+              "description": "Daily at 9am: Remind about bids due in 2 days"
+            },
+            {
+              "name": "daily-digest",
+              "schedule": "0 6 * * *",
+              "description": "Daily at 6am: Send digest emails to opted-in users"
+            },
+            {
+              "name": "process-scheduled-notifications",
+              "schedule": "*/15 * * * *",
+              "description": "Every 15 mins: Process scheduled_notifications table"
+            }
+          ]
+        },
+        "eventTriggers": {
+          "description": "Application events that trigger notifications",
+          "triggers": [
+            {
+              "event": "Task assigned",
+              "action": "scheduleTask UPDATE with new assignedTo",
+              "notification": "task_assigned to new assignee"
+            },
+            {
+              "event": "Task status changed",
+              "action": "scheduleTask UPDATE status",
+              "notification": "task_status_changed to PM and assignee"
+            },
+            {
+              "event": "Bid package sent",
+              "action": "bidPackage status → sent",
+              "notification": "bid_package_sent to creator"
+            },
+            {
+              "event": "Bid response recorded",
+              "action": "bidPackageRecipient responseStatus updated",
+              "notification": "bid_response_received to PM"
+            },
+            {
+              "event": "Daily log submitted",
+              "action": "dailyLog CREATE",
+              "notification": "daily_log_submitted to PM"
+            },
+            {
+              "event": "Payment received",
+              "action": "payment CREATE",
+              "notification": "payment_received to admin"
+            }
+          ]
+        },
+        "apiEndpoints": [
+          {
+            "method": "GET",
+            "path": "/api/notifications",
+            "description": "Get current user's notifications",
+            "params": ["limit", "offset", "unreadOnly"],
+            "auth": "any authenticated"
+          },
+          {
+            "method": "GET",
+            "path": "/api/notifications/unread-count",
+            "description": "Get unread notification count",
+            "auth": "any authenticated"
+          },
+          {
+            "method": "PUT",
+            "path": "/api/notifications/[id]/read",
+            "description": "Mark notification as read",
+            "auth": "owner"
+          },
+          {
+            "method": "PUT",
+            "path": "/api/notifications/mark-all-read",
+            "description": "Mark all notifications as read",
+            "auth": "any authenticated"
+          },
+          {
+            "method": "GET",
+            "path": "/api/notification-preferences",
+            "description": "Get current user's notification preferences",
+            "auth": "any authenticated"
+          },
+          {
+            "method": "PUT",
+            "path": "/api/notification-preferences",
+            "description": "Update notification preferences",
+            "auth": "any authenticated"
+          }
+        ],
+        "components": [
+          {
+            "name": "NotificationBell",
+            "path": "src/components/notifications/notification-bell.tsx",
+            "description": "Header icon with unread count badge"
+          },
+          {
+            "name": "NotificationDropdown",
+            "path": "src/components/notifications/notification-dropdown.tsx",
+            "description": "Dropdown list of recent notifications"
+          },
+          {
+            "name": "NotificationItem",
+            "path": "src/components/notifications/notification-item.tsx",
+            "description": "Single notification display with icon and actions"
+          },
+          {
+            "name": "NotificationCenter",
+            "path": "src/components/notifications/notification-center.tsx",
+            "description": "Full page view of all notifications"
+          },
+          {
+            "name": "NotificationPreferencesForm",
+            "path": "src/components/notifications/notification-preferences-form.tsx",
+            "description": "Settings form for notification preferences"
+          }
+        ],
+        "routes": [
+          {
+            "path": "/dashboard/notifications",
+            "description": "Full notification center"
+          },
+          {
+            "path": "/dashboard/settings/notifications",
+            "description": "Notification preferences"
+          }
+        ]
+      },
+      "testCases": [
+        {
+          "id": "TC006-1",
+          "type": "unit",
+          "description": "Notification service creates notification correctly",
+          "steps": ["Call createNotification", "Verify notification in database", "Verify email sent if preference enabled"]
+        },
+        {
+          "id": "TC006-2",
+          "type": "integration",
+          "description": "Task assignment triggers notification",
+          "steps": ["Assign task to user", "Verify notification created", "Verify email sent"]
+        },
+        {
+          "id": "TC006-3",
+          "type": "integration",
+          "description": "Scheduled job processes due reminders",
+          "steps": ["Create task due tomorrow", "Run scheduled job", "Verify notification created"]
+        },
+        {
+          "id": "TC006-4",
+          "type": "e2e",
+          "description": "User receives and interacts with notifications",
+          "steps": ["Trigger notification event", "See unread count update", "Open dropdown", "Click notification", "Verify navigation and marked read"]
+        },
+        {
+          "id": "TC006-5",
+          "type": "e2e",
+          "description": "Preference changes affect email delivery",
+          "steps": ["Disable email for task_assigned", "Assign task", "Verify notification created", "Verify no email sent"]
+        }
+      ]
+    },
+    {
+      "id": "F007",
+      "name": "Client Communications Suite",
+      "priority": "P1",
+      "status": "planned",
+      "estimatedDays": 13,
+      "sprint": 4,
+      "dependencies": ["F001", "F006"],
+      "blocksFeatures": [],
+      "description": "Complete client communication tools including in-app messaging, email logging, and client portal updates. Provides a single source of truth for all client interactions.",
+      "businessValue": "Centralizes all client communication history. Prevents the 'you never told me that' scenario by maintaining complete records. Improves client experience with proactive updates.",
+      "userStories": [
+        {
+          "id": "US007-1",
+          "role": "PM",
+          "action": "send a message to a client through COMPASS",
+          "benefit": "all communication is logged and visible to the team",
+          "acceptanceCriteria": [
+            "Can compose message to client users",
+            "Message stored in COMPASS",
+            "Email notification sent to client",
+            "Reply captured and logged"
+          ]
+        },
+        {
+          "id": "US007-2",
+          "role": "Client",
+          "action": "view and respond to messages from the builder",
+          "benefit": "I can communicate without hunting through email",
+          "acceptanceCriteria": [
+            "Client sees messages in their portal",
+            "Can reply to messages",
+            "Reply notifications sent to PM",
+            "Message history preserved"
+          ]
+        },
+        {
+          "id": "US007-3",
+          "role": "PM",
+          "action": "log an email conversation with a client",
+          "benefit": "I can keep records of external email threads",
+          "acceptanceCriteria": [
+            "Can manually create email log entry",
+            "Fields: date, subject, participants, summary",
+            "Can attach email as file",
+            "Appears in communication timeline"
+          ]
+        },
+        {
+          "id": "US007-4",
+          "role": "PM",
+          "action": "post an update to the client portal",
+          "benefit": "clients are proactively informed of progress",
+          "acceptanceCriteria": [
+            "Can create project update/announcement",
+            "Update visible to all project clients",
+            "Can include photos",
+            "Notification sent to clients"
+          ]
+        },
+        {
+          "id": "US007-5",
+          "role": "Client",
+          "action": "see recent updates and activity on my project",
+          "benefit": "I stay informed without bothering the builder",
+          "acceptanceCriteria": [
+            "Client portal shows recent updates",
+            "Can see schedule milestones",
+            "Can see client-visible daily logs",
+            "Activity feed of relevant events"
+          ]
+        }
+      ],
+      "technicalApproach": {
+        "overview": "Build messaging system with threads, email logging capability, and client-facing update posts. Integrate with notification system for delivery. Client portal surfaces relevant project information.",
+        "schemaChanges": [
+          {
+            "table": "message_threads",
+            "operation": "CREATE",
+            "columns": [
+              { "name": "id", "type": "TEXT", "primaryKey": true },
+              { "name": "project_id", "type": "TEXT", "references": "projects.id", "onDelete": "CASCADE", "notNull": true },
+              { "name": "subject", "type": "TEXT", "notNull": true },
+              { "name": "started_by", "type": "TEXT", "references": "users.id", "notNull": true },
+              { "name": "last_message_at", "type": "TEXT" },
+              { "name": "is_archived", "type": "BOOLEAN", "default": false },
+              { "name": "created_at", "type": "TEXT", "notNull": true }
+            ],
+            "indexes": [
+              { "name": "idx_message_threads_project", "columns": ["project_id"] },
+              { "name": "idx_message_threads_last", "columns": ["last_message_at"] }
+            ]
+          },
+          {
+            "table": "message_thread_participants",
+            "operation": "CREATE",
+            "columns": [
+              { "name": "id", "type": "TEXT", "primaryKey": true },
+              { "name": "thread_id", "type": "TEXT", "references": "message_threads.id", "onDelete": "CASCADE", "notNull": true },
+              { "name": "user_id", "type": "TEXT", "references": "users.id", "onDelete": "CASCADE", "notNull": true },
+              { "name": "last_read_at", "type": "TEXT" },
+              { "name": "is_muted", "type": "BOOLEAN", "default": false }
+            ],
+            "indexes": [
+              { "name": "idx_thread_participants_thread", "columns": ["thread_id"] },
+              { "name": "idx_thread_participants_user", "columns": ["user_id"] }
+            ],
+            "constraints": [
+              { "type": "unique", "columns": ["thread_id", "user_id"] }
+            ]
+          },
+          {
+            "table": "messages",
+            "operation": "CREATE",
+            "columns": [
+              { "name": "id", "type": "TEXT", "primaryKey": true },
+              { "name": "thread_id", "type": "TEXT", "references": "message_threads.id", "onDelete": "CASCADE", "notNull": true },
+              { "name": "sender_id", "type": "TEXT", "references": "users.id", "notNull": true },
+              { "name": "content", "type": "TEXT", "notNull": true },
+              { "name": "is_system_message", "type": "BOOLEAN", "default": false },
+              { "name": "created_at", "type": "TEXT", "notNull": true }
+            ],
+            "indexes": [
+              { "name": "idx_messages_thread", "columns": ["thread_id"] },
+              { "name": "idx_messages_created", "columns": ["created_at"] }
+            ]
+          },
+          {
+            "table": "message_attachments",
+            "operation": "CREATE",
+            "columns": [
+              { "name": "id", "type": "TEXT", "primaryKey": true },
+              { "name": "message_id", "type": "TEXT", "references": "messages.id", "onDelete": "CASCADE", "notNull": true },
+              { "name": "file_name", "type": "TEXT", "notNull": true },
+              { "name": "drive_file_id", "type": "TEXT" },
+              { "name": "drive_url", "type": "TEXT" },
+              { "name": "file_size", "type": "INTEGER" },
+              { "name": "mime_type", "type": "TEXT" }
+            ]
+          },
+          {
+            "table": "email_logs",
+            "operation": "CREATE",
+            "columns": [
+              { "name": "id", "type": "TEXT", "primaryKey": true },
+              { "name": "project_id", "type": "TEXT", "references": "projects.id", "onDelete": "CASCADE", "notNull": true },
+              { "name": "logged_by", "type": "TEXT", "references": "users.id", "notNull": true },
+              { "name": "email_date", "type": "TEXT", "notNull": true },
+              { "name": "subject", "type": "TEXT", "notNull": true },
+              { "name": "from_address", "type": "TEXT" },
+              { "name": "to_addresses", "type": "TEXT", "description": "JSON array" },
+              { "name": "summary", "type": "TEXT" },
+              { "name": "full_content", "type": "TEXT" },
+              { "name": "attachment_drive_ids", "type": "TEXT", "description": "JSON array of Drive file IDs" },
+              { "name": "is_client_visible", "type": "BOOLEAN", "default": true },
+              { "name": "created_at", "type": "TEXT", "notNull": true }
+            ],
+            "indexes": [
+              { "name": "idx_email_logs_project", "columns": ["project_id"] },
+              { "name": "idx_email_logs_date", "columns": ["email_date"] }
+            ]
+          },
+          {
+            "table": "project_updates",
+            "operation": "CREATE",
+            "columns": [
+              { "name": "id", "type": "TEXT", "primaryKey": true },
+              { "name": "project_id", "type": "TEXT", "references": "projects.id", "onDelete": "CASCADE", "notNull": true },
+              { "name": "author_id", "type": "TEXT", "references": "users.id", "notNull": true },
+              { "name": "title", "type": "TEXT", "notNull": true },
+              { "name": "content", "type": "TEXT", "notNull": true },
+              { "name": "is_pinned", "type": "BOOLEAN", "default": false },
+              { "name": "photo_drive_ids", "type": "TEXT", "description": "JSON array of Drive file IDs" },
+              { "name": "notify_clients", "type": "BOOLEAN", "default": true },
+              { "name": "published_at", "type": "TEXT" },
+              { "name": "created_at", "type": "TEXT", "notNull": true },
+              { "name": "updated_at", "type": "TEXT", "notNull": true }
+            ],
+            "indexes": [
+              { "name": "idx_project_updates_project", "columns": ["project_id"] },
+              { "name": "idx_project_updates_published", "columns": ["published_at"] }
+            ]
+          }
+        ],
+        "messagingFlow": {
+          "createThread": [
+            "1. PM creates new thread with subject and initial message",
+            "2. Selects client participants",
+            "3. System creates thread, participants, first message",
+            "4. Email notification sent to client participants",
+            "5. Thread appears in both PM's and client's message list"
+          ],
+          "replyToThread": [
+            "1. User (PM or client) opens thread",
+            "2. Types reply message",
+            "3. System creates message record",
+            "4. Updates thread.last_message_at",
+            "5. Email notification to other participants",
+            "6. In-app notification to other participants"
+          ]
+        },
+        "clientPortal": {
+          "description": "Client-facing views showing relevant project information",
+          "views": [
+            {
+              "name": "Dashboard",
+              "content": ["Recent updates", "Upcoming milestones", "Unread messages count"]
+            },
+            {
+              "name": "Updates",
+              "content": ["Project updates/announcements", "Pinned updates at top"]
+            },
+            {
+              "name": "Messages",
+              "content": ["Message threads client is participant in"]
+            },
+            {
+              "name": "Schedule",
+              "content": ["Milestones only (not full Gantt)", "Client-visible tasks"]
+            },
+            {
+              "name": "Documents",
+              "content": ["Documents marked client-visible"]
+            },
+            {
+              "name": "Daily Logs",
+              "content": ["Logs marked is_client_visible"]
+            }
+          ]
+        },
+        "apiEndpoints": [
+          {
+            "method": "GET",
+            "path": "/api/projects/[id]/messages",
+            "description": "List message threads for project",
+            "auth": "office, admin, client (own threads)"
+          },
+          {
+            "method": "POST",
+            "path": "/api/projects/[id]/messages",
+            "description": "Create new message thread",
+            "body": ["subject", "content", "participantIds"],
+            "auth": "office, admin"
+          },
+          {
+            "method": "GET",
+            "path": "/api/message-threads/[id]",
+            "description": "Get thread with messages",
+            "auth": "participant"
+          },
+          {
+            "method": "POST",
+            "path": "/api/message-threads/[id]/messages",
+            "description": "Reply to thread",
+            "body": ["content", "attachments?"],
+            "auth": "participant"
+          },
+          {
+            "method": "PUT",
+            "path": "/api/message-threads/[id]/read",
+            "description": "Mark thread as read",
+            "auth": "participant"
+          },
+          {
+            "method": "GET",
+            "path": "/api/projects/[id]/email-logs",
+            "description": "List email logs for project",
+            "auth": "office, admin"
+          },
+          {
+            "method": "POST",
+            "path": "/api/projects/[id]/email-logs",
+            "description": "Create email log entry",
+            "auth": "office, admin"
+          },
+          {
+            "method": "GET",
+            "path": "/api/projects/[id]/updates",
+            "description": "List project updates",
+            "auth": "office, admin, client"
+          },
+          {
+            "method": "POST",
+            "path": "/api/projects/[id]/updates",
+            "description": "Create project update",
+            "auth": "office, admin"
+          },
+          {
+            "method": "PUT",
+            "path": "/api/project-updates/[id]",
+            "description": "Edit project update",
+            "auth": "author, admin"
+          },
+          {
+            "method": "GET",
+            "path": "/api/client/dashboard",
+            "description": "Client portal dashboard data",
+            "auth": "client"
+          }
+        ],
+        "components": [
+          {
+            "name": "MessageThreadList",
+            "path": "src/components/messages/message-thread-list.tsx",
+            "description": "List of message threads"
+          },
+          {
+            "name": "MessageThread",
+            "path": "src/components/messages/message-thread.tsx",
+            "description": "Full thread view with all messages"
+          },
+          {
+            "name": "MessageComposer",
+            "path": "src/components/messages/message-composer.tsx",
+            "description": "New message/reply input"
+          },
+          {
+            "name": "NewThreadDialog",
+            "path": "src/components/messages/new-thread-dialog.tsx",
+            "description": "Modal for starting new thread"
+          },
+          {
+            "name": "EmailLogForm",
+            "path": "src/components/communications/email-log-form.tsx",
+            "description": "Form for logging email conversations"
+          },
+          {
+            "name": "EmailLogTimeline",
+            "path": "src/components/communications/email-log-timeline.tsx",
+            "description": "Timeline of logged emails"
+          },
+          {
+            "name": "ProjectUpdateForm",
+            "path": "src/components/communications/project-update-form.tsx",
+            "description": "Form for creating project updates"
+          },
+          {
+            "name": "ProjectUpdateCard",
+            "path": "src/components/communications/project-update-card.tsx",
+            "description": "Display card for project update"
+          },
+          {
+            "name": "ProjectUpdateFeed",
+            "path": "src/components/communications/project-update-feed.tsx",
+            "description": "Feed of project updates"
+          },
+          {
+            "name": "ClientPortalDashboard",
+            "path": "src/components/client-portal/client-portal-dashboard.tsx",
+            "description": "Client-facing dashboard"
+          },
+          {
+            "name": "ClientPortalSidebar",
+            "path": "src/components/client-portal/client-portal-sidebar.tsx",
+            "description": "Navigation for client portal"
+          }
+        ],
+        "routes": [
+          {
+            "path": "/dashboard/projects/[id]/messages",
+            "description": "Project message threads"
+          },
+          {
+            "path": "/dashboard/projects/[id]/messages/[threadId]",
+            "description": "Single message thread"
+          },
+          {
+            "path": "/dashboard/projects/[id]/communications",
+            "description": "Email logs and communication timeline"
+          },
+          {
+            "path": "/dashboard/projects/[id]/updates",
+            "description": "Project updates/announcements"
+          },
+          {
+            "path": "/portal",
+            "description": "Client portal root (redirects to first project)"
+          },
+          {
+            "path": "/portal/projects/[id]",
+            "description": "Client portal project dashboard"
+          },
+          {
+            "path": "/portal/projects/[id]/messages",
+            "description": "Client portal messages"
+          },
+          {
+            "path": "/portal/projects/[id]/updates",
+            "description": "Client portal updates"
+          },
+          {
+            "path": "/portal/projects/[id]/schedule",
+            "description": "Client portal schedule (milestones)"
+          },
+          {
+            "path": "/portal/projects/[id]/documents",
+            "description": "Client portal documents"
+          }
+        ]
+      },
+      "testCases": [
+        {
+          "id": "TC007-1",
+          "type": "integration",
+          "description": "Message thread creation and notification",
+          "steps": ["Create thread with client", "Verify email sent", "Verify client sees thread"]
+        },
+        {
+          "id": "TC007-2",
+          "type": "integration",
+          "description": "Client reply notification",
+          "steps": ["Client replies to thread", "Verify PM notified", "Verify message appears"]
+        },
+        {
+          "id": "TC007-3",
+          "type": "e2e",
+          "description": "Email log workflow",
+          "steps": ["Create email log", "Attach file", "Verify appears in timeline"]
+        },
+        {
+          "id": "TC007-4",
+          "type": "e2e",
+          "description": "Project update notification",
+          "steps": ["Create update with notify_clients", "Verify clients notified", "Verify update visible in portal"]
+        },
+        {
+          "id": "TC007-5",
+          "type": "e2e",
+          "description": "Client portal access",
+          "steps": ["Login as client", "Navigate portal", "Verify only appropriate data visible"]
+        }
+      ]
+    },
+    {
+      "id": "F008",
+      "name": "Schedule Enhancements for Notifications",
+      "priority": "P1",
+      "status": "planned",
+      "estimatedDays": 3,
+      "sprint": 3,
+      "dependencies": ["F001", "F006"],
+      "blocksFeatures": [],
+      "description": "Enhance existing schedule system to support notifications for subcontractors and integrate with the three-tier user system. Enables assignment of vendors to schedule items and role-based notification routing.",
+      "businessValue": "Ensures subcontractors are automatically notified when work is scheduled for them. Reduces manual coordination overhead and prevents missed handoffs.",
+      "userStories": [
+        {
+          "id": "US008-1",
+          "role": "PM",
+          "action": "assign a vendor to a schedule task",
+          "benefit": "the subcontractor is automatically notified of upcoming work",
+          "acceptanceCriteria": [
+            "Can select vendor from dropdown on task",
+            "Scheduler contact at vendor receives notification",
+            "Task shows vendor assignment",
+            "Vendor can view assigned tasks when logged in"
+          ]
+        },
+        {
+          "id": "US008-2",
+          "role": "Subcontractor (Scheduler)",
+          "action": "see all tasks my company is assigned to",
+          "benefit": "I can plan crew schedules and resource allocation",
+          "acceptanceCriteria": [
+            "Filtered view shows only vendor's tasks",
+            "Shows across all projects",
+            "Includes dates, status, project info",
+            "Can export to CSV"
+          ]
+        },
+        {
+          "id": "US008-3",
+          "role": "PM",
+          "action": "have notifications automatically sent when schedule changes affect a vendor",
+          "benefit": "subcontractors stay informed without manual communication",
+          "acceptanceCriteria": [
+            "Notification on task date change",
+            "Notification on task status change",
+            "Notification on task deletion",
+            "Email includes changed details"
+          ]
+        }
+      ],
+      "technicalApproach": {
+        "overview": "Add vendor assignment to schedule tasks. Integrate with notification system for automatic alerts. Create subcontractor-specific schedule views.",
+        "schemaChanges": [
+          {
+            "table": "schedule_tasks",
+            "operation": "ALTER",
+            "changes": [
+              {
+                "column": "assigned_vendor_id",
+                "type": "TEXT",
+                "references": "vendors.id",
+                "nullable": true,
+                "description": "Vendor company assigned to this task"
+              }
+            ]
+          },
+          {
+            "table": "schedule_task_notifications",
+            "operation": "CREATE",
+            "columns": [
+              { "name": "id", "type": "TEXT", "primaryKey": true },
+              { "name": "task_id", "type": "TEXT", "references": "schedule_tasks.id", "onDelete": "CASCADE" },
+              { "name": "vendor_contact_id", "type": "TEXT", "references": "vendor_contacts.id" },
+              { "name": "notification_type", "type": "TEXT", "values": ["assigned", "date_changed", "status_changed", "deleted"] },
+              { "name": "sent_at", "type": "TEXT" },
+              { "name": "email_sent", "type": "BOOLEAN", "default": false }
+            ],
+            "description": "Tracks notifications sent to vendors about schedule changes"
+          }
+        ],
+        "notificationTriggers": [
+          {
+            "trigger": "Task vendor assigned",
+            "recipients": "Scheduler contacts at vendor",
+            "content": "You have been scheduled for {{taskTitle}} starting {{startDate}}"
+          },
+          {
+            "trigger": "Task dates changed",
+            "recipients": "Scheduler contacts at assigned vendor",
+            "content": "Schedule change: {{taskTitle}} now {{startDate}} - {{endDate}}"
+          },
+          {
+            "trigger": "Task status changed",
+            "recipients": "Scheduler contacts at assigned vendor",
+            "content": "Status update: {{taskTitle}} is now {{status}}"
+          }
+        ],
+        "apiEndpoints": [
+          {
+            "method": "GET",
+            "path": "/api/vendors/[id]/schedule",
+            "description": "Get all tasks assigned to a vendor",
+            "auth": "office, admin, subcontractor (own vendor)"
+          },
+          {
+            "method": "GET",
+            "path": "/api/my-schedule",
+            "description": "Get tasks for current user's vendor",
+            "auth": "subcontractor"
+          }
+        ],
+        "componentChanges": [
+          {
+            "component": "TaskFormDialog",
+            "path": "src/components/schedule/task-form-dialog.tsx",
+            "changes": ["Add vendor selector dropdown", "Show scheduler contacts for selected vendor"]
+          },
+          {
+            "component": "SubcontractorScheduleView",
+            "path": "src/components/schedule/subcontractor-schedule-view.tsx",
+            "description": "New component for vendor's assigned tasks across projects"
+          }
+        ],
+        "routes": [
+          {
+            "path": "/dashboard/my-schedule",
+            "description": "Subcontractor's view of their assigned tasks"
+          }
+        ]
+      },
+      "testCases": [
+        {
+          "id": "TC008-1",
+          "type": "integration",
+          "description": "Vendor assignment triggers notification",
+          "steps": ["Assign vendor to task", "Verify notification created", "Verify email to scheduler contact"]
+        },
+        {
+          "id": "TC008-2",
+          "type": "integration",
+          "description": "Date change notification to vendor",
+          "steps": ["Change task dates", "Verify notification to vendor", "Verify includes old and new dates"]
+        },
+        {
+          "id": "TC008-3",
+          "type": "e2e",
+          "description": "Subcontractor views assigned schedule",
+          "steps": ["Login as subcontractor", "View my-schedule", "Verify only own vendor's tasks shown"]
+        }
+      ]
+    }
+  ],
+  "phaseTwo": {
+    "description": "Features deferred to Phase Two based on client feedback",
+    "features": [
+      {
+        "name": "Payment Processing",
+        "reason": "Client prefers to use NetSuite for payment workflows",
+        "originalEstimate": "2 weeks",
+        "dependsOn": "NetSuite Integration"
+      },
+      {
+        "name": "Purchase Orders",
+        "reason": "Nice-to-have per client feedback",
+        "scope": "PO system coordinated with subs, tied to schedule"
+      },
+      {
+        "name": "Project Reporting",
+        "reason": "Can use NetSuite for these reports initially",
+        "scope": "Sub usage reports, financial reports"
+      },
+      {
+        "name": "Subcontractor Insurance Tracking",
+        "reason": "Part of enhanced subcontractor management",
+        "scope": "Single source of truth for insurance documentation"
+      },
+      {
+        "name": "NetSuite Integration",
+        "reason": "Complex integration requiring Phase One stability first",
+        "scope": "Bidirectional sync, notifications/flags from NetSuite"
+      },
+      {
+        "name": "Lead/Opportunity Management",
+        "reason": "Nice-to-have per client feedback",
+        "scope": "Lead tracking similar to Buildertrend, PlanSwift integration"
+      }
+    ]
+  },
+  "milestones": [
+    {
+      "name": "Sprint 1 Complete",
+      "targetDate": "Week 2",
+      "deliverables": [
+        "Three-tier user schema deployed",
+        "PWA infrastructure functional",
+        "Google Drive service account connected",
+        "Basic file browser showing Drive contents"
+      ]
+    },
+    {
+      "name": "Sprint 2 Complete",
+      "targetDate": "Week 4",
+      "deliverables": [
+        "Vendor contact management UI complete",
+        "Offline sync layer functional",
+        "Daily log creation working (online)",
+        "Full Drive integration with CSI folders"
+      ]
+    },
+    {
+      "name": "Sprint 3 Complete",
+      "targetDate": "Week 6",
+      "deliverables": [
+        "Daily logs with offline support complete",
+        "Notification system operational",
+        "Bid package creation and sending functional",
+        "Schedule notifications to vendors working"
+      ]
+    },
+    {
+      "name": "Sprint 4 Complete",
+      "targetDate": "Week 8",
+      "deliverables": [
+        "Client messaging complete",
+        "Email logging functional",
+        "Project updates/portal working",
+        "Full offline CRUD operational"
+      ]
+    },
+    {
+      "name": "Phase One Complete",
+      "targetDate": "Week 10",
+      "deliverables": [
+        "All Phase One features integrated",
+        "End-to-end testing complete",
+        "Performance validated",
+        "Ready for production deployment"
+      ]
+    }
+  ],
+  "risks": [
+    {
+      "risk": "Google Drive API rate limits",
+      "probability": "Medium",
+      "impact": "Medium",
+      "mitigation": "Implement request queuing and caching, batch operations where possible"
+    },
+    {
+      "risk": "Offline sync conflicts more complex than expected",
+      "probability": "Medium",
+      "impact": "High",
+      "mitigation": "Start with simpler last-write-wins, add manual resolution UI early"
+    },
+    {
+      "risk": "Service worker caching issues on Cloudflare Workers",
+      "probability": "Low",
+      "impact": "Medium",
+      "mitigation": "Test early on production environment, have fallback to online-only"
+    },
+    {
+      "risk": "WorkOS service account auth complexity",
+      "probability": "Low",
+      "impact": "Medium",
+      "mitigation": "Verify auth flow works for subcontractor invitations in Sprint 1"
+    },
+    {
+      "risk": "Scope creep from client communications feature",
+      "probability": "Medium",
+      "impact": "Medium",
+      "mitigation": "Define clear boundaries, defer email auto-capture to Phase Two"
+    }
+  ],
+  "openQuestions": [
+    {
+      "question": "Exact CSI folder structure to use?",
+      "owner": "Client",
+      "status": "pending",
+      "notes": "Sample structure visible in hps-structures/directories, need confirmation"
+    },
+    {
+      "question": "OpenWeather API key or alternative weather provider?",
+      "owner": "Dev Team",
+      "status": "pending",
+      "notes": "Need API key for weather auto-fill in daily logs"
+    },
+    {
+      "question": "Email domain for Resend (transactional emails)?",
+      "owner": "Client",
+      "status": "pending",
+      "notes": "Need verified domain for bid packages, notifications"
+    },
+    {
+      "question": "Conflict resolution preference - auto vs manual?",
+      "owner": "Client",
+      "status": "decided",
+      "decision": "Last-write-wins with manual override option"
+    },
+    {
+      "question": "Client portal branding requirements?",
+      "owner": "Client",
+      "status": "pending",
+      "notes": "Need logo, colors, any custom branding for client-facing views"
+    }
+  ]
+}
