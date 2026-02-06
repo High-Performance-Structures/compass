@@ -6,7 +6,7 @@ import {
   useRef,
   useEffect,
 } from "react"
-import { usePathname } from "next/navigation"
+import { usePathname, useRouter } from "next/navigation"
 import {
   ArrowUp,
   Plus,
@@ -26,11 +26,14 @@ import { PromptSuggestions } from "@/components/ui/prompt-suggestions"
 import {
   useAutosizeTextArea,
 } from "@/hooks/use-autosize-textarea"
+import { useChat } from "@ai-sdk/react"
+import { DefaultChatTransport } from "ai"
 import {
-  useElizaChat,
-  executeAction,
-  type AgentAction,
-} from "@/lib/eliza/chat-adapter"
+  dispatchToolActions,
+  initializeActionHandlers,
+  unregisterActionHandler,
+  ALL_HANDLER_TYPES,
+} from "@/lib/agent/chat-adapter"
 import {
   IconBrandGithub,
   IconExternalLink,
@@ -78,10 +81,25 @@ const LOGO_MASK = {
   WebkitMaskRepeat: "no-repeat",
 } as React.CSSProperties
 
+function getTextFromParts(
+  parts: ReadonlyArray<{ type: string; text?: string }>
+): string {
+  return parts
+    .filter(
+      (p): p is { type: "text"; text: string } =>
+        p.type === "text"
+    )
+    .map((p) => p.text)
+    .join("")
+}
+
 export function DashboardChat({ stats }: DashboardChatProps) {
   const [isActive, setIsActive] = useState(false)
   const [idleInput, setIdleInput] = useState("")
   const scrollRef = useRef<HTMLDivElement>(null)
+  const router = useRouter()
+  const routerRef = useRef(router)
+  routerRef.current = router
   const pathname = usePathname()
   const [chatInput, setChatInput] = useState("")
   const chatTextareaRef = useRef<HTMLTextAreaElement>(null)
@@ -93,24 +111,71 @@ export function DashboardChat({ stats }: DashboardChatProps) {
     dependencies: [chatInput],
   })
 
-  const onAction = useCallback((action: AgentAction) => {
-    executeAction(action)
-  }, [])
-
-  const onError = useCallback((error: Error) => {
-    toast.error(error.message)
-  }, [])
-
   const {
     messages,
-    isGenerating,
+    sendMessage,
+    regenerate,
     stop,
-    append,
-  } = useElizaChat({
-    context: { view: pathname },
-    onAction,
-    onError,
+    status,
+  } = useChat({
+    transport: new DefaultChatTransport({
+      api: "/api/agent",
+      headers: { "x-current-page": pathname },
+    }),
+    onError: (err) => {
+      toast.error(err.message)
+    },
   })
+
+  const isGenerating =
+    status === "streaming" || status === "submitted"
+
+  // initialize action handlers for navigation, toasts, etc
+  useEffect(() => {
+    initializeActionHandlers(() => routerRef.current)
+
+    const handleToast = (event: CustomEvent) => {
+      const { message, type = "default" } =
+        event.detail ?? {}
+      if (message) {
+        if (type === "success") toast.success(message)
+        else if (type === "error") toast.error(message)
+        else toast(message)
+      }
+    }
+
+    window.addEventListener(
+      "agent-toast",
+      handleToast as EventListener
+    )
+
+    return () => {
+      window.removeEventListener(
+        "agent-toast",
+        handleToast as EventListener
+      )
+      for (const type of ALL_HANDLER_TYPES) {
+        unregisterActionHandler(type)
+      }
+    }
+  }, [])
+
+  // dispatch tool actions when messages update
+  useEffect(() => {
+    const last = messages.at(-1)
+    if (last?.role !== "assistant") return
+
+    const parts = last.parts as ReadonlyArray<{
+      type: string
+      toolInvocation?: {
+        toolName: string
+        state: string
+        result?: unknown
+      }
+    }>
+
+    dispatchToolActions(parts)
+  }, [messages])
 
   const [copiedId, setCopiedId] = useState<string | null>(
     null
@@ -154,7 +219,6 @@ export function DashboardChat({ stats }: DashboardChatProps) {
         setAnimFading(true)
         animTimerRef.current = setTimeout(tick, 400)
       } else {
-        // faded out — swap to next message while invisible
         msgIdx =
           (msgIdx + 1) % ANIMATED_PLACEHOLDERS.length
         charIdx = 1
@@ -212,11 +276,11 @@ export function DashboardChat({ stats }: DashboardChatProps) {
       const value = idleInput.trim()
       setIsActive(true)
       if (value) {
-        append({ role: "user", content: value })
+        sendMessage({ text: value })
         setIdleInput("")
       }
     },
-    [idleInput, append]
+    [idleInput, sendMessage]
   )
 
   const handleCopy = useCallback(
@@ -231,9 +295,9 @@ export function DashboardChat({ stats }: DashboardChatProps) {
   const handleSuggestion = useCallback(
     (message: { role: "user"; content: string }) => {
       setIsActive(true)
-      append(message)
+      sendMessage({ text: message.content })
     },
-    [append]
+    [sendMessage]
   )
 
   return (
@@ -371,6 +435,13 @@ export function DashboardChat({ stats }: DashboardChatProps) {
             >
               <div className="mx-auto w-full max-w-3xl px-4 py-4 space-y-6">
                 {messages.map((msg) => {
+                  const textContent = getTextFromParts(
+                    msg.parts as ReadonlyArray<{
+                      type: string
+                      text?: string
+                    }>
+                  )
+
                   if (msg.role === "user") {
                     return (
                       <div
@@ -378,7 +449,7 @@ export function DashboardChat({ stats }: DashboardChatProps) {
                         className="flex justify-end"
                       >
                         <div className="rounded-2xl border bg-background px-4 py-2.5 text-sm max-w-[80%] shadow-sm">
-                          {msg.content}
+                          {textContent}
                         </div>
                       </div>
                     )
@@ -388,11 +459,11 @@ export function DashboardChat({ stats }: DashboardChatProps) {
                       key={msg.id}
                       className="flex flex-col items-start"
                     >
-                      {msg.content ? (
+                      {textContent ? (
                         <>
                           <div className="w-full text-sm leading-relaxed prose prose-sm prose-neutral dark:prose-invert max-w-none">
                             <MarkdownRenderer>
-                              {msg.content}
+                              {textContent}
                             </MarkdownRenderer>
                           </div>
                           <div className="mt-2 flex items-center gap-1">
@@ -401,7 +472,7 @@ export function DashboardChat({ stats }: DashboardChatProps) {
                               onClick={() =>
                                 handleCopy(
                                   msg.id,
-                                  msg.content
+                                  textContent
                                 )
                               }
                               className="rounded-md p-1.5 text-muted-foreground/60 transition-colors hover:bg-muted hover:text-foreground"
@@ -429,16 +500,7 @@ export function DashboardChat({ stats }: DashboardChatProps) {
                             </button>
                             <button
                               type="button"
-                              onClick={() =>
-                                append({
-                                  role: "user",
-                                  content:
-                                    messages.findLast(
-                                      (m) =>
-                                        m.role === "user"
-                                    )?.content ?? "",
-                                })
-                              }
+                              onClick={() => regenerate()}
                               className="rounded-md p-1.5 text-muted-foreground/60 transition-colors hover:bg-muted hover:text-foreground"
                               aria-label="Regenerate"
                             >
@@ -483,7 +545,7 @@ export function DashboardChat({ stats }: DashboardChatProps) {
             e.preventDefault()
             const trimmed = chatInput.trim()
             if (!trimmed || isGenerating) return
-            append({ role: "user", content: trimmed })
+            sendMessage({ text: trimmed })
             setChatInput("")
           }}
         >
@@ -503,9 +565,8 @@ export function DashboardChat({ stats }: DashboardChatProps) {
                   e.preventDefault()
                   const trimmed = chatInput.trim()
                   if (!trimmed || isGenerating) return
-                  append({
-                    role: "user",
-                    content: trimmed,
+                  sendMessage({
+                    text: trimmed,
                   })
                   setChatInput("")
                 }

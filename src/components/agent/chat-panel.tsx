@@ -6,20 +6,38 @@ import { MessageSquare } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Chat } from "@/components/ui/chat"
 import { cn } from "@/lib/utils"
+import { useChat } from "@ai-sdk/react"
+import { DefaultChatTransport, type UIMessage } from "ai"
 import {
-  useElizaChat,
   initializeActionHandlers,
-  executeAction,
   unregisterActionHandler,
+  dispatchToolActions,
   ALL_HANDLER_TYPES,
-  type AgentAction,
-} from "@/lib/eliza/chat-adapter"
+} from "@/lib/agent/chat-adapter"
+import {
+  saveConversation,
+  loadConversation,
+  loadConversations,
+} from "@/app/actions/agent"
 import { DynamicUI } from "./dynamic-ui"
 import { useAgentOptional } from "./agent-provider"
 import { toast } from "sonner"
+import type { ComponentSpec } from "@/lib/agent/catalog"
 
 interface ChatPanelProps {
   className?: string
+}
+
+function getTextFromParts(
+  parts: ReadonlyArray<{ type: string; text?: string }>
+): string {
+  return parts
+    .filter(
+      (p): p is { type: "text"; text: string } =>
+        p.type === "text"
+    )
+    .map((p) => p.text)
+    .join("")
 }
 
 export function ChatPanel({ className }: ChatPanelProps) {
@@ -36,19 +54,74 @@ export function ChatPanel({ className }: ChatPanelProps) {
   const routerRef = useRef(router)
   routerRef.current = router
 
-  const onAction = useCallback((action: AgentAction) => {
-    executeAction(action)
-  }, [])
+  const [conversationId, setConversationId] = useState<
+    string | null
+  >(null)
+  const [resumeLoaded, setResumeLoaded] = useState(false)
 
-  const onError = useCallback((error: Error) => {
-    toast.error(error.message)
-  }, [])
+  const {
+    messages,
+    setMessages,
+    sendMessage,
+    stop,
+    status,
+    error,
+  } = useChat({
+    transport: new DefaultChatTransport({
+      api: "/api/agent",
+      headers: { "x-current-page": pathname },
+    }),
+    onFinish: async ({ messages: finalMessages }) => {
+      if (finalMessages.length === 0) return
 
+      const id =
+        conversationId ?? crypto.randomUUID()
+      if (!conversationId) setConversationId(id)
+
+      const serialized = finalMessages.map((m) => ({
+        id: m.id,
+        role: m.role,
+        content: getTextFromParts(
+          m.parts as ReadonlyArray<{
+            type: string
+            text?: string
+          }>
+        ),
+        parts: m.parts,
+        createdAt: new Date().toISOString(),
+      }))
+
+      await saveConversation(id, serialized)
+    },
+    onError: (err) => {
+      toast.error(err.message)
+    },
+  })
+
+  // dispatch tool-based client actions when messages update
+  useEffect(() => {
+    const last = messages.at(-1)
+    if (last?.role !== "assistant") return
+
+    const parts = last.parts as ReadonlyArray<{
+      type: string
+      toolInvocation?: {
+        toolName: string
+        state: string
+        result?: unknown
+      }
+    }>
+
+    dispatchToolActions(parts)
+  }, [messages])
+
+  // initialize action handlers
   useEffect(() => {
     initializeActionHandlers(() => routerRef.current)
 
     const handleToast = (event: CustomEvent) => {
-      const { message, type = "default" } = event.detail ?? {}
+      const { message, type = "default" } =
+        event.detail ?? {}
       if (message) {
         if (type === "success") toast.success(message)
         else if (type === "error") toast.error(message)
@@ -72,18 +145,52 @@ export function ChatPanel({ className }: ChatPanelProps) {
     }
   }, [])
 
-  const {
-    messages,
-    isGenerating,
-    stop,
-    append,
-    setMessages,
-  } = useElizaChat({
-    context: { view: pathname },
-    onAction,
-    onError,
-  })
+  // resume last conversation when panel opens
+  useEffect(() => {
+    if (!isOpen || resumeLoaded) return
 
+    const resume = async () => {
+      const result = await loadConversations()
+      if (
+        !result.success ||
+        !result.data ||
+        result.data.length === 0
+      ) {
+        setResumeLoaded(true)
+        return
+      }
+
+      const lastConv = result.data[0]
+      const msgResult = await loadConversation(lastConv.id)
+      if (
+        !msgResult.success ||
+        !msgResult.data ||
+        msgResult.data.length === 0
+      ) {
+        setResumeLoaded(true)
+        return
+      }
+
+      setConversationId(lastConv.id)
+
+      const restored: UIMessage[] = msgResult.data.map(
+        (m) => ({
+          id: m.id,
+          role: m.role as "user" | "assistant",
+          parts:
+            (m.parts as UIMessage["parts"]) ?? [
+              { type: "text" as const, text: m.content },
+            ],
+        })
+      )
+      setMessages(restored)
+      setResumeLoaded(true)
+    }
+
+    resume()
+  }, [isOpen, resumeLoaded, setMessages])
+
+  // keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === ".") {
@@ -96,17 +203,44 @@ export function ChatPanel({ className }: ChatPanelProps) {
     }
 
     window.addEventListener("keydown", handleKeyDown)
-    return () => window.removeEventListener("keydown", handleKeyDown)
+    return () =>
+      window.removeEventListener("keydown", handleKeyDown)
   }, [isOpen, setIsOpen, agentContext])
 
   const suggestions = getSuggestionsForPath(pathname)
 
-  const chatMessages = messages.map((msg) => ({
-    id: msg.id,
-    role: msg.role,
-    content: msg.content,
-    createdAt: msg.createdAt,
-  }))
+  const isGenerating =
+    status === "streaming" || status === "submitted"
+
+  // map UIMessage to the legacy Message format for Chat
+  const chatMessages = messages.map((msg) => {
+    const parts = msg.parts as ReadonlyArray<{
+      type: string
+      text?: string
+    }>
+    return {
+      id: msg.id,
+      role: msg.role as "user" | "assistant",
+      content: getTextFromParts(parts),
+      parts: msg.parts as Array<{
+        type: "text"
+        text: string
+      }>,
+    }
+  })
+
+  const handleAppend = useCallback(
+    (message: { role: "user"; content: string }) => {
+      sendMessage({ text: message.content })
+    },
+    [sendMessage]
+  )
+
+  const handleNewChat = useCallback(() => {
+    setMessages([])
+    setConversationId(null)
+    setResumeLoaded(true)
+  }, [setMessages])
 
   const handleRateResponse = useCallback(
     (
@@ -118,6 +252,7 @@ export function ChatPanel({ className }: ChatPanelProps) {
     []
   )
 
+  // resize state
   const [panelWidth, setPanelWidth] = useState(420)
   const [isResizing, setIsResizing] = useState(false)
   const dragStartX = useRef(0)
@@ -127,7 +262,10 @@ export function ChatPanel({ className }: ChatPanelProps) {
     const onMouseMove = (e: MouseEvent) => {
       if (!dragStartWidth.current) return
       const delta = dragStartX.current - e.clientX
-      const next = Math.min(720, Math.max(320, dragStartWidth.current + delta))
+      const next = Math.min(
+        720,
+        Math.max(320, dragStartWidth.current + delta)
+      )
       setPanelWidth(next)
     }
     const onMouseUp = () => {
@@ -157,12 +295,42 @@ export function ChatPanel({ className }: ChatPanelProps) {
     [panelWidth]
   )
 
-  // Dashboard has its own inline chat — skip the side panel
+  // extract last render component spec from tool results
+  const lastRenderSpec = (() => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const msg = messages[i]
+      if (msg.role !== "assistant") continue
+      for (const part of msg.parts) {
+        const p = part as {
+          type: string
+          toolInvocation?: {
+            toolName: string
+            state: string
+            result?: {
+              action?: string
+              spec?: unknown
+            }
+          }
+        }
+        if (
+          p.type?.startsWith("tool-") &&
+          p.toolInvocation?.state === "result" &&
+          p.toolInvocation?.result?.action === "render"
+        ) {
+          return p.toolInvocation.result.spec as
+            | ComponentSpec
+            | undefined
+        }
+      }
+    }
+    return undefined
+  })()
+
+  // Dashboard has its own inline chat
   if (pathname === "/dashboard") return null
 
   return (
     <>
-      {/* Panel — mobile: full-screen overlay, desktop: integrated flex child */}
       <div
         className={cn(
           "flex flex-col bg-background",
@@ -186,40 +354,47 @@ export function ChatPanel({ className }: ChatPanelProps) {
         />
 
         <div className="flex h-full w-full flex-col">
+          {/* Header with new chat button */}
+          {messages.length > 0 && (
+            <div className="flex items-center justify-end border-b px-3 py-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleNewChat}
+              >
+                New chat
+              </Button>
+            </div>
+          )}
+
           {/* Chat */}
           <div className="flex-1 overflow-hidden">
             <Chat
               messages={chatMessages}
               isGenerating={isGenerating}
               stop={stop}
-              append={append}
+              append={handleAppend}
               suggestions={
                 messages.length === 0 ? suggestions : []
               }
               onRateResponse={handleRateResponse}
-              setMessages={setMessages as never}
+              setMessages={
+                setMessages as unknown as (
+                  messages: Array<{
+                    id: string
+                    role: string
+                    content: string
+                  }>
+                ) => void
+              }
               className="h-full"
             />
           </div>
 
-          {/* Dynamic UI for agent-generated components */}
-          {messages.some((m) => m.actions) && (
+          {/* Dynamic UI for agent-rendered components */}
+          {lastRenderSpec && (
             <div className="max-h-64 overflow-auto border-t p-4">
-              {messages
-                .filter((m) => m.actions)
-                .slice(-1)
-                .map((m) => {
-                  const uiAction = m.actions?.find(
-                    (a) => a.type === "RENDER_UI"
-                  )
-                  if (!uiAction?.payload?.spec) return null
-                  return (
-                    <DynamicUI
-                      key={m.id}
-                      spec={uiAction.payload.spec as never}
-                    />
-                  )
-                })}
+              <DynamicUI spec={lastRenderSpec} />
             </div>
           )}
         </div>
@@ -234,7 +409,7 @@ export function ChatPanel({ className }: ChatPanelProps) {
         />
       )}
 
-      {/* Mobile FAB trigger (desktop uses header button) */}
+      {/* Mobile FAB trigger */}
       {!isOpen && (
         <Button
           size="icon"

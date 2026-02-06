@@ -8,8 +8,8 @@
 "use client"
 
 import { useCallback } from "react"
-import { executeAction } from "@/lib/eliza/chat-adapter"
-import type { ComponentSpec } from "@/lib/eliza/json-render/catalog"
+import { executeAction } from "@/lib/agent/chat-adapter"
+import type { ComponentSpec } from "@/lib/agent/catalog"
 
 // Import shadcn components
 import { Button } from "@/components/ui/button"
