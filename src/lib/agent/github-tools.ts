@@ -8,6 +8,7 @@ import { feedbackInterviews } from "@/db/schema"
 import {
   getGitHubConfig,
   fetchCommits,
+  fetchCommitDiff,
   fetchPullRequests,
   fetchIssues,
   fetchContributors,
@@ -21,12 +22,17 @@ import {
 const queryGitHubSchema = z.object({
   queryType: z.enum([
     "commits",
+    "commit_diff",
     "pull_requests",
     "issues",
     "contributors",
     "milestones",
     "repo_stats",
   ]).describe("Type of GitHub data to query"),
+  sha: z
+    .string()
+    .optional()
+    .describe("Commit SHA for commit_diff queries"),
   state: z
     .enum(["open", "closed", "all"])
     .optional()
@@ -53,6 +59,12 @@ async function executeQueryGitHub(input: QueryGitHubInput) {
       const res = await fetchCommits(cfg, input.limit ?? 10)
       if (!res.success) return { error: res.error }
       return { data: res.data, count: res.data.length }
+    }
+    case "commit_diff": {
+      if (!input.sha) return { error: "sha is required for commit_diff" }
+      const res = await fetchCommitDiff(cfg, input.sha)
+      if (!res.success) return { error: res.error }
+      return { data: res.data }
     }
     case "pull_requests": {
       const res = await fetchPullRequests(

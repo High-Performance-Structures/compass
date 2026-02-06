@@ -100,6 +100,23 @@ export type CreatedIssue = Readonly<{
   url: string
 }>
 
+export type GitHubFileDiff = Readonly<{
+  filename: string
+  status: string
+  additions: number
+  deletions: number
+  patch: string | null
+}>
+
+export type GitHubCommitDiff = Readonly<{
+  sha: string
+  message: string
+  author: string
+  date: string
+  stats: { additions: number; deletions: number; total: number }
+  files: ReadonlyArray<GitHubFileDiff>
+}>
+
 // -- Result type --
 
 type Ok<T> = { readonly success: true; readonly data: T }
@@ -208,6 +225,27 @@ type RawRepo = {
   default_branch: string
   language: string | null
   updated_at: string
+}
+
+type RawCommitDetail = {
+  sha: string
+  html_url: string
+  commit: {
+    message: string
+    author: { name: string; date: string }
+  }
+  stats: {
+    additions: number
+    deletions: number
+    total: number
+  }
+  files: Array<{
+    filename: string
+    status: string
+    additions: number
+    deletions: number
+    patch?: string
+  }>
 }
 
 type RawCreatedIssue = {
@@ -394,6 +432,109 @@ export async function createIssue(
       number: res.data.number,
       title: res.data.title,
       url: res.data.html_url,
+    },
+  }
+}
+
+async function fetchRawDiff(
+  token: string,
+  repo: string,
+  sha: string,
+): Promise<Result<string>> {
+  try {
+    const res = await fetch(`${API_BASE}/repos/${repo}/commits/${sha}`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: "application/vnd.github.diff",
+        "User-Agent": USER_AGENT,
+      },
+    })
+    if (!res.ok) {
+      const body = await res.text().catch(() => "")
+      return {
+        success: false,
+        error: `GitHub API ${res.status}: ${body.slice(0, 200)}`,
+      }
+    }
+    return { success: true, data: await res.text() }
+  } catch (err) {
+    return {
+      success: false,
+      error: `GitHub API error: ${err instanceof Error ? err.message : String(err)}`,
+    }
+  }
+}
+
+function parseRawDiff(raw: string): Map<string, string> {
+  const patches = new Map<string, string>()
+  const parts = raw.split(/^diff --git /m)
+  for (const part of parts) {
+    if (!part.trim()) continue
+    const headerMatch = part.match(/^a\/.+? b\/(.+?)[\r\n]/)
+    if (!headerMatch) continue
+    const filename = headerMatch[1]
+    const lines = part.split("\n")
+    let patchStart = -1
+    for (let i = 0; i < lines.length; i++) {
+      if (lines[i].startsWith("@@")) {
+        patchStart = i
+        break
+      }
+    }
+    if (patchStart >= 0) {
+      patches.set(filename, lines.slice(patchStart).join("\n"))
+    }
+  }
+  return patches
+}
+
+export async function fetchCommitDiff(
+  config: GitHubConfig,
+  sha: string,
+): Promise<Result<GitHubCommitDiff>> {
+  const res = await ghFetch<RawCommitDetail>(
+    config.token,
+    `/repos/${config.repo}/commits/${sha}`,
+  )
+  if (!res.success) return res
+
+  let files = res.data.files.slice(0, 20).map((f) => ({
+    filename: f.filename,
+    status: f.status,
+    additions: f.additions,
+    deletions: f.deletions,
+    patch: f.patch?.slice(0, 5000) ?? null,
+  }))
+
+  const hasMissingPatches = files.some(
+    (f) => f.patch === null && (f.additions > 0 || f.deletions > 0),
+  )
+  if (hasMissingPatches) {
+    const rawRes = await fetchRawDiff(
+      config.token,
+      config.repo,
+      sha,
+    )
+    if (rawRes.success) {
+      const parsed = parseRawDiff(rawRes.data)
+      files = files.map((f) => ({
+        ...f,
+        patch:
+          f.patch ??
+          (parsed.get(f.filename)?.slice(0, 5000) ?? null),
+      }))
+    }
+  }
+
+  return {
+    success: true,
+    data: {
+      sha: res.data.sha.slice(0, 7),
+      message: res.data.commit.message.split("\n")[0],
+      author: res.data.commit.author.name,
+      date: res.data.commit.author.date,
+      stats: res.data.stats,
+      files,
     },
   }
 }
