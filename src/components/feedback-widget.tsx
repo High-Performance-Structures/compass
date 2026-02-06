@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useState } from "react"
 import { usePathname } from "next/navigation"
-import { useAgentOptional } from "@/components/agent/agent-provider"
+import { useAgentOptional } from "@/components/agent/chat-provider"
 import { MessageCircle } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"

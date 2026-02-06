@@ -24,7 +24,7 @@ import { NavProjects } from "@/components/nav-projects"
 import { NavUser } from "@/components/nav-user"
 import { useCommandMenu } from "@/components/command-menu-provider"
 import { useSettings } from "@/components/settings-provider"
-import { useAgentOptional } from "@/components/agent/agent-provider"
+import { useAgentOptional } from "@/components/agent/chat-provider"
 import type { SidebarUser } from "@/lib/auth"
 import {
   Sidebar,

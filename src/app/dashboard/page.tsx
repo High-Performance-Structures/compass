@@ -1,6 +1,6 @@
 export const dynamic = "force-dynamic"
 
-import { DashboardChat } from "@/components/dashboard-chat"
+import { ChatView } from "@/components/agent/chat-view"
 
 type RepoStats = {
   stargazers_count: number
@@ -40,5 +40,5 @@ async function getRepoStats(): Promise<RepoStats | null> {
 export default async function Page() {
   const stats = await getRepoStats()
 
-  return <DashboardChat stats={stats} />
+  return <ChatView variant="page" stats={stats} />
 }

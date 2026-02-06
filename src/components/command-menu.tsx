@@ -12,7 +12,7 @@ import {
   IconSun,
   IconSearch,
 } from "@tabler/icons-react"
-import { useAgentOptional } from "@/components/agent/agent-provider"
+import { useAgentOptional } from "@/components/agent/chat-provider"
 
 import {
   CommandDialog,

@@ -1,6 +1,18 @@
 "use client"
 
-export { useChat } from "@ai-sdk/react"
+// --- Shared utilities ---
+
+export function getTextFromParts(
+  parts: ReadonlyArray<{ type: string; text?: string }>
+): string {
+  return parts
+    .filter(
+      (p): p is { type: "text"; text: string } =>
+        p.type === "text"
+    )
+    .map((p) => p.text)
+    .join("")
+}
 
 // --- Action handler registry ---
 
