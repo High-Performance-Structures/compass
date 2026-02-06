@@ -2,25 +2,25 @@ import { compassCatalog } from "@/lib/agent/render/catalog"
 import type { PromptSection } from "@/lib/agent/plugins/types"
 
 interface PromptContext {
-  readonly userName: string
-  readonly userRole: string
-  readonly currentPage?: string
-  readonly projectId?: string
-  readonly memories?: string
-  readonly pluginSections?: ReadonlyArray<PromptSection>
+    readonly userName: string
+    readonly userRole: string
+    readonly currentPage?: string
+    readonly projectId?: string
+    readonly memories?: string
+    readonly pluginSections?: ReadonlyArray<PromptSection>
 }
 
 export function buildSystemPrompt(ctx: PromptContext): string {
-  const catalogComponents = Object.entries(
-    compassCatalog.data.components
-  )
-    .map(
-      ([name, def]) =>
-        `- ${name}: ${(def as { description?: string }).description ?? ""}`
+    const catalogComponents = Object.entries(
+        compassCatalog.data.components
     )
-    .join("\n")
+        .map(
+            ([name, def]) =>
+                `- ${name}: ${(def as { description?: string }).description ?? ""}`
+        )
+        .join("\n")
 
-  return `You are Slab, the AI assistant built into Compass — a \
+    return `You are Dr. Slab Diggems, the AI assistant built into Compass — a \
 construction project management platform. You are reliable, \
 direct, and always ready to help.
 
@@ -200,6 +200,62 @@ queries in a single conversation. Cache results mentally within \
 the conversation — if you already fetched repo stats, don't \
 fetch them again unless the user asks for a refresh.
 
+## Interactive UI Patterns
+
+When the user wants to CREATE, EDIT, or DELETE data through the UI, \
+use these interactive patterns instead of read-only displays.
+
+### Creating records with Form
+Wrap inputs in a Form component. The Form collects all child input \
+values and submits them via the action bridge.
+
+Example — create a customer:
+\`\`\`
+Form(formId="new-customer", action="customer.create", submitLabel="Add Customer")
+  Input(label="Name", name="name")
+  Input(label="Email", name="email", type="email")
+  Input(label="Phone", name="phone")
+  Textarea(label="Notes", name="notes")
+\`\`\`
+
+### Editing records with pre-populated Form
+For edits, set the \`value\` prop on inputs and pass the record ID \
+via actionParams:
+\`\`\`
+Form(formId="edit-customer", action="customer.update", actionParams={id: "abc123"})
+  Input(label="Name", name="name", value="Existing Name")
+  Input(label="Email", name="email", type="email", value="old@email.com")
+\`\`\`
+
+### Inline toggles with Checkbox
+For to-do lists and checklists, use Checkbox with onChangeAction:
+\`\`\`
+Checkbox(label="Buy lumber", name="item-1", checked=false, \
+onChangeAction="agentItem.toggle", onChangeParams={id: "item-1-id"})
+\`\`\`
+
+### Tables with row actions
+Use DataTable's rowActions and rowIdKey for per-row buttons:
+\`\`\`
+DataTable(columns=[...], data=[...], rowIdKey="id", \
+rowActions=[{label: "Delete", action: "customer.delete", variant: "danger"}])
+\`\`\`
+
+### Available mutation actions
+- customer.create, customer.update, customer.delete
+- vendor.create, vendor.update, vendor.delete
+- invoice.create, invoice.update, invoice.delete
+- vendorBill.create, vendorBill.update, vendorBill.delete
+- schedule.create, schedule.update, schedule.delete
+- agentItem.create, agentItem.update, agentItem.delete, agentItem.toggle
+
+### When to use interactive vs read-only
+- User says "show me" / "list" / "what are" -> read-only DataTable, charts
+- User says "add" / "create" / "new" -> Form with appropriate action
+- User says "edit" / "update" / "change" -> pre-populated Form
+- User says "delete" / "remove" -> DataTable with delete rowAction
+- User says "to-do" / "checklist" / "task list" -> Checkbox with onChangeAction
+
 ## Guidelines
 - Be concise and helpful. Construction managers are busy.
 - ACT FIRST, don't ask. When the user asks about data, projects, \
@@ -227,13 +283,13 @@ professionals, not developers.${buildSkillSections(ctx.pluginSections)}`
 }
 
 function buildSkillSections(
-  sections?: ReadonlyArray<PromptSection>,
+    sections?: ReadonlyArray<PromptSection>,
 ): string {
-  if (!sections?.length) return ""
-  return (
-    "\n\n## Installed Skills\n\n" +
-    sections
-      .map((s) => `### ${s.heading}\n${s.content}`)
-      .join("\n\n")
-  )
+    if (!sections?.length) return ""
+    return (
+        "\n\n## Installed Skills\n\n" +
+        sections
+            .map((s) => `### ${s.heading}\n${s.content}`)
+            .join("\n\n")
+    )
 }

@@ -12,11 +12,42 @@ const SYSTEM_PROMPT = compassCatalog.prompt({
     "NEVER use page background colors " +
       "(bg-gray-50) - container has its own background",
     "Use real data from the AVAILABLE DATA section",
-    "Prefer DataTable for tabular data, " +
-      "StatCard for single metrics",
-    "InvoiceTable for invoice-specific data",
-    "SchedulePreview for project schedule tasks",
+    "ALWAYS use SchedulePreview for ANY schedule " +
+      "or timeline display. Set groupByPhase=true. " +
+      "NEVER compose schedules from primitives.",
+    "ALWAYS use StatCard for single metrics",
+    "ALWAYS use DataTable for tabular data - " +
+      "use format='badge' for status columns",
+    "ALWAYS use InvoiceTable for invoice-specific data",
     "ProjectSummary for project overviews",
+    "Badge variant should match semantic meaning: " +
+      "success for complete/paid, warning for pending, " +
+      "danger for overdue/delayed",
+    "Use CodeBlock for code snippets with appropriate " +
+      "language identifier",
+    "ALWAYS use DiffView for git diffs and code " +
+      "changes - pass files array from commit_diff data",
+    "Use Form component to wrap inputs when creating " +
+      "or editing records. Set action to dotted name " +
+      "(e.g. 'customer.create') and formId to a unique " +
+      "string. For edits, set value prop on inputs and " +
+      "pass record id via actionParams.",
+    "For to-do lists / checklists, use Checkbox with " +
+      "onChangeAction='agentItem.toggle' and " +
+      "onChangeParams={id: '<item-id>'}.",
+    "For tables with delete buttons, use DataTable " +
+      "with rowIdKey='id' and rowActions=[{label: " +
+      "'Delete', action: 'customer.delete', " +
+      "variant: 'danger'}].",
+    "Available mutation actions: customer.create, " +
+      "customer.update, customer.delete, " +
+      "vendor.create, vendor.update, vendor.delete, " +
+      "invoice.create, invoice.update, invoice.delete, " +
+      "vendorBill.create, vendorBill.update, " +
+      "vendorBill.delete, schedule.create, " +
+      "schedule.update, schedule.delete, " +
+      "agentItem.create, agentItem.update, " +
+      "agentItem.delete, agentItem.toggle",
   ],
 })
 

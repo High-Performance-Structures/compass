@@ -11,7 +11,7 @@ import {
 } from "@json-render/react"
 
 import { components, Fallback } from "./registry"
-import { executeAction } from "./actions"
+import { executeAction, actionHandlers } from "./actions"
 
 interface CompassRendererProps {
   readonly spec: Spec | null
@@ -69,7 +69,7 @@ export function CompassRenderer({
   return (
     <DataProvider initialData={data}>
       <VisibilityProvider>
-        <ActionProvider>
+        <ActionProvider handlers={actionHandlers}>
           <Renderer
             spec={spec}
             registry={registry}

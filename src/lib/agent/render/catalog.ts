@@ -85,6 +85,25 @@ export const compassCatalog = defineCatalog(schema, {
       description: "Paragraph text",
     },
 
+    // Form Container
+    Form: {
+      props: z.object({
+        formId: z.string(),
+        action: z.string(),
+        actionParams: z
+          .record(z.string(), z.unknown())
+          .nullable(),
+        submitLabel: z.string().nullable(),
+      }),
+      slots: ["default"],
+      description:
+        "Form container that collects child input " +
+        "values and submits via mutate action. " +
+        "action is the dotted action name " +
+        "(e.g. 'customer.create'). actionParams " +
+        "are extra params merged with form values.",
+    },
+
     // Form Inputs
     Input: {
       props: z.object({
@@ -94,6 +113,7 @@ export const compassCatalog = defineCatalog(schema, {
           .enum(["text", "email", "password", "number"])
           .nullable(),
         placeholder: z.string().nullable(),
+        value: z.string().nullable(),
       }),
       description: "Text input field",
     },
@@ -104,6 +124,7 @@ export const compassCatalog = defineCatalog(schema, {
         name: z.string(),
         placeholder: z.string().nullable(),
         rows: z.number().nullable(),
+        value: z.string().nullable(),
       }),
       description: "Multi-line text input",
     },
@@ -114,6 +135,7 @@ export const compassCatalog = defineCatalog(schema, {
         name: z.string(),
         options: z.array(z.string()),
         placeholder: z.string().nullable(),
+        value: z.string().nullable(),
       }),
       description: "Dropdown select input",
     },
@@ -123,8 +145,14 @@ export const compassCatalog = defineCatalog(schema, {
         label: z.string(),
         name: z.string(),
         checked: z.boolean().nullable(),
+        onChangeAction: z.string().nullable(),
+        onChangeParams: z
+          .record(z.string(), z.unknown())
+          .nullable(),
       }),
-      description: "Checkbox input",
+      description:
+        "Checkbox input. Use onChangeAction for " +
+        "inline mutations (e.g. 'agentItem.toggle').",
     },
 
     Radio: {
@@ -132,6 +160,7 @@ export const compassCatalog = defineCatalog(schema, {
         label: z.string(),
         name: z.string(),
         options: z.array(z.string()),
+        value: z.string().nullable(),
       }),
       description: "Radio button group",
     },
@@ -141,8 +170,14 @@ export const compassCatalog = defineCatalog(schema, {
         label: z.string(),
         name: z.string(),
         checked: z.boolean().nullable(),
+        onChangeAction: z.string().nullable(),
+        onChangeParams: z
+          .record(z.string(), z.unknown())
+          .nullable(),
       }),
-      description: "Toggle switch input",
+      description:
+        "Toggle switch input. Use onChangeAction " +
+        "for inline mutations.",
     },
 
     // Actions
@@ -255,6 +290,48 @@ export const compassCatalog = defineCatalog(schema, {
       description: "Line chart with points",
     },
 
+    // Code
+    CodeBlock: {
+      props: z.object({
+        code: z.string(),
+        language: z.string(),
+        title: z.string().nullable(),
+        showLineNumbers: z.boolean().nullable(),
+      }),
+      description:
+        "Syntax-highlighted code block with copy button. " +
+        "Use for code snippets, config files, scripts. " +
+        "Language: ts, tsx, js, jsx, py, go, rust, sql, " +
+        "bash, json, etc.",
+    },
+
+    DiffView: {
+      props: z.object({
+        title: z.string().nullable(),
+        commitSha: z.string().nullable(),
+        commitMessage: z.string().nullable(),
+        stats: z
+          .object({
+            additions: z.number(),
+            deletions: z.number(),
+          })
+          .nullable(),
+        files: z.array(
+          z.object({
+            filename: z.string(),
+            status: z.string(),
+            additions: z.number(),
+            deletions: z.number(),
+            patch: z.string().nullable(),
+          })
+        ),
+      }),
+      description:
+        "Git diff viewer with per-file patches, line " +
+        "coloring, and file stats. ALWAYS use this for " +
+        "commit diffs, PR diffs, or code changes.",
+    },
+
     // Compass-specific
     StatCard: {
       props: z.object({
@@ -281,10 +358,24 @@ export const compassCatalog = defineCatalog(schema, {
         data: z.array(
           z.record(z.string(), z.unknown())
         ),
+        rowIdKey: z.string().nullable(),
+        rowActions: z
+          .array(
+            z.object({
+              label: z.string(),
+              action: z.string(),
+              variant: z
+                .enum(["default", "danger"])
+                .nullable(),
+            })
+          )
+          .nullable(),
       }),
       description:
         "Tabular data display with columns. " +
-        "Best for lists of records.",
+        "Best for lists of records. Use rowActions " +
+        "with rowIdKey for per-row action buttons " +
+        "(e.g. edit, delete).",
     },
 
     InvoiceTable: {
@@ -335,8 +426,13 @@ export const compassCatalog = defineCatalog(schema, {
             percentComplete: z.number(),
           })
         ),
+        maxTasks: z.number().nullable(),
+        groupByPhase: z.boolean().nullable(),
       }),
-      description: "Preview of project schedule tasks",
+      description:
+        "Schedule/timeline display with phase grouping. " +
+        "ALWAYS prefer this over composing schedule " +
+        "displays from Heading+Text+Progress+Badge primitives.",
     },
   },
 
@@ -375,6 +471,30 @@ export const compassCatalog = defineCatalog(schema, {
         format: z.string().nullable(),
       }),
       description: "Trigger data export",
+    },
+
+    mutate: {
+      params: z.object({
+        action: z.string(),
+        params: z
+          .record(z.string(), z.unknown())
+          .nullable(),
+      }),
+      description:
+        "Execute a server mutation (create, update, " +
+        "delete) via the action bridge. action is " +
+        "the dotted name (e.g. 'customer.create').",
+    },
+
+    confirmDelete: {
+      params: z.object({
+        action: z.string(),
+        id: z.string(),
+        label: z.string().nullable(),
+      }),
+      description:
+        "Show confirm dialog then delete. action " +
+        "is the dotted delete action name.",
     },
   },
 })
