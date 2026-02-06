@@ -3,19 +3,20 @@
 import { useEffect, useRef } from "react"
 import { cn } from "@/lib/utils"
 
-const BAR_WIDTH = 2
-const MAX_HEIGHT = 24
-const MIN_HEIGHT = 2
+const BAR_W = 2
+const GAP = 1
+const SLOT = BAR_W + GAP
+const MAX_H = 32
+const MIN_H = 2
+const SAMPLE_MS = 40
 
 interface AudioWaveformProps {
   readonly stream: MediaStream
-  readonly barCount?: number
   readonly className?: string
 }
 
 export function AudioWaveform({
   stream,
-  barCount = 50,
   className,
 }: AudioWaveformProps) {
   const containerRef = useRef<HTMLDivElement>(null)
@@ -25,73 +26,95 @@ export function AudioWaveform({
     if (!container) return
 
     const audioCtx = new AudioContext()
-    const source = audioCtx.createMediaStreamSource(stream)
+    const source =
+      audioCtx.createMediaStreamSource(stream)
     const analyser = audioCtx.createAnalyser()
-    analyser.fftSize = 256
-    analyser.smoothingTimeConstant = 0.75
+    analyser.fftSize = 512
     source.connect(analyser)
 
-    const bufferLength = analyser.frequencyBinCount
-    const dataArray = new Uint8Array(bufferLength)
+    const timeDomain = new Uint8Array(analyser.fftSize)
 
-    const bars: HTMLDivElement[] = []
+    // calculate how many bars fit in the container
+    const barCount = Math.floor(
+      container.clientWidth / SLOT
+    )
+    if (barCount <= 0) return
+
+    // amplitude history
+    const amplitudes = new Float32Array(barCount)
+
+    // pre-create all bars as subtle dots
+    const barEls: HTMLDivElement[] = []
     const frag = document.createDocumentFragment()
     for (let i = 0; i < barCount; i++) {
       const bar = document.createElement("div")
       bar.style.cssText =
-        `width:${BAR_WIDTH}px;` +
-        `height:${MIN_HEIGHT}px;` +
-        `min-height:${MIN_HEIGHT}px;` +
+        `width:${BAR_W}px;` +
+        `height:${MIN_H}px;` +
         "border-radius:9999px;" +
         "background:currentColor;" +
-        "transition:height 60ms ease-out;"
+        "flex-shrink:0;" +
+        "opacity:0.15;"
       frag.appendChild(bar)
-      bars.push(bar)
+      barEls.push(bar)
     }
     container.appendChild(frag)
 
-    let animId: number
+    let cursor = 0
 
-    const draw = () => {
-      analyser.getByteFrequencyData(dataArray)
+    const interval = setInterval(() => {
+      analyser.getByteTimeDomainData(timeDomain)
 
-      for (let i = 0; i < barCount; i++) {
-        // sample from lower 50% of bins (speech frequencies)
-        const idx = Math.floor(
-          (i / barCount) * bufferLength * 0.5
-        )
-        const value = dataArray[idx] / 255
-
-        // hann window taper so edges fade to dots
-        const t = i / (barCount - 1)
-        const taper = 0.5 * (1 - Math.cos(2 * Math.PI * t))
-
-        const height = Math.max(
-          MIN_HEIGHT,
-          value * taper * MAX_HEIGHT
-        )
-        bars[i].style.height = `${height}px`
+      // RMS amplitude
+      let sum = 0
+      for (let i = 0; i < timeDomain.length; i++) {
+        const v = (timeDomain[i] - 128) / 128
+        sum += v * v
       }
+      const rms = Math.sqrt(sum / timeDomain.length)
 
-      animId = requestAnimationFrame(draw)
-    }
+      // non-linear boost so speech is clearly visible
+      const shaped = Math.pow(Math.min(1, rms * 5), 0.6)
 
-    draw()
+      if (cursor < barCount) {
+        // filling phase: write one bar at a time
+        amplitudes[cursor] = shaped
+        const h = Math.max(MIN_H, shaped * MAX_H)
+        barEls[cursor].style.height = `${h}px`
+        barEls[cursor].style.opacity = "1"
+        cursor++
+      } else {
+        // scrolling phase: shift left, append new
+        for (let i = 0; i < barCount - 1; i++) {
+          amplitudes[i] = amplitudes[i + 1]
+        }
+        amplitudes[barCount - 1] = shaped
+
+        for (let i = 0; i < barCount; i++) {
+          const h = Math.max(
+            MIN_H,
+            amplitudes[i] * MAX_H
+          )
+          barEls[i].style.height = `${h}px`
+        }
+      }
+    }, SAMPLE_MS)
 
     return () => {
-      cancelAnimationFrame(animId)
+      clearInterval(interval)
       audioCtx.close()
       container.textContent = ""
     }
-  }, [stream, barCount])
+  }, [stream])
 
   return (
     <div
       ref={containerRef}
       className={cn(
-        "flex items-center justify-center gap-px",
+        "flex items-center overflow-hidden",
         className
       )}
+      style={{ gap: `${GAP}px` }}
     />
   )
 }
