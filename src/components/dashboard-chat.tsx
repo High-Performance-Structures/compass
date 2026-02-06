@@ -1,22 +1,22 @@
 "use client"
 
 import {
-  useState,
-  useCallback,
-  useRef,
-  useEffect,
+    useState,
+    useCallback,
+    useRef,
+    useEffect,
 } from "react"
 import { usePathname, useRouter } from "next/navigation"
 import {
-  ArrowUp,
-  Plus,
-  SendHorizonal,
-  Square,
-  Copy,
-  ThumbsUp,
-  ThumbsDown,
-  RefreshCw,
-  Check,
+    ArrowUp,
+    Plus,
+    SendHorizonal,
+    Square,
+    Copy,
+    ThumbsUp,
+    ThumbsDown,
+    RefreshCw,
+    Check,
 } from "lucide-react"
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
@@ -24,52 +24,52 @@ import { MarkdownRenderer } from "@/components/ui/markdown-renderer"
 import { TypingIndicator } from "@/components/ui/typing-indicator"
 import { PromptSuggestions } from "@/components/ui/prompt-suggestions"
 import {
-  useAutosizeTextArea,
+    useAutosizeTextArea,
 } from "@/hooks/use-autosize-textarea"
 import { useChat } from "@ai-sdk/react"
 import { DefaultChatTransport } from "ai"
 import {
-  dispatchToolActions,
-  initializeActionHandlers,
-  unregisterActionHandler,
-  ALL_HANDLER_TYPES,
+    dispatchToolActions,
+    initializeActionHandlers,
+    unregisterActionHandler,
+    ALL_HANDLER_TYPES,
 } from "@/lib/agent/chat-adapter"
 import {
-  IconBrandGithub,
-  IconExternalLink,
-  IconGitFork,
-  IconStar,
-  IconAlertCircle,
-  IconEye,
+    IconBrandGithub,
+    IconExternalLink,
+    IconGitFork,
+    IconStar,
+    IconAlertCircle,
+    IconEye,
 } from "@tabler/icons-react"
 
 type RepoStats = {
-  readonly stargazers_count: number
-  readonly forks_count: number
-  readonly open_issues_count: number
-  readonly subscribers_count: number
+    readonly stargazers_count: number
+    readonly forks_count: number
+    readonly open_issues_count: number
+    readonly subscribers_count: number
 }
 
 const REPO = "High-Performance-Structures/compass"
 const GITHUB_URL = `https://github.com/${REPO}`
 
 interface DashboardChatProps {
-  readonly stats: RepoStats | null
+    readonly stats: RepoStats | null
 }
 
 const SUGGESTIONS = [
-  "What can you help me with?",
-  "Show me today's tasks",
-  "Navigate to customers",
+    "What can you help me with?",
+    "Show me today's tasks",
+    "Navigate to customers",
 ]
 
 const ANIMATED_PLACEHOLDERS = [
-  "Show me invoices from the Johnson project",
-  "What tasks are due this week?",
-  "Which vendors need payment?",
-  "Navigate to the schedule view",
-  "Find overdue invoices for Highland",
-  "Who is assigned to concrete pour?",
+    "Show me open invoices",
+    "What's on the schedule for next week?",
+    "Which subcontractors are waiting on payment?",
+    "Pull up the current project timeline",
+    "Find outstanding invoices over 30 days",
+    "Who's assigned to the foundation work?",
 ]
 
 const LOGO_MASK = {
@@ -239,14 +239,92 @@ export function DashboardChat({ stats }: DashboardChatProps) {
     }
   }, [isIdleFocused, idleInput, isActive])
 
-  // auto-scroll on new messages
+  // auto-scroll state
+  const autoScrollRef = useRef(true)
+  const justSentRef = useRef(false)
+  const pinCooldownRef = useRef(false)
+  const prevLenRef = useRef(0)
+
+  // called imperatively from send handlers to flag
+  // that the next render should do the pin-scroll
+  const markSent = useCallback(() => {
+    justSentRef.current = true
+    autoScrollRef.current = true
+  }, [])
+
+  // runs after every render caused by message changes.
+  // the DOM is guaranteed to be up-to-date here.
   useEffect(() => {
     if (!isActive) return
     const el = scrollRef.current
     if (!el) return
-    el.scrollTo({ top: el.scrollHeight, behavior: "smooth" })
-  }, [messages.length, isActive])
 
+    // pin-scroll: fires once right after user sends
+    if (justSentRef.current) {
+      justSentRef.current = false
+
+      const bubbles = el.querySelectorAll(
+        "[data-role='user']"
+      )
+      const last = bubbles[
+        bubbles.length - 1
+      ] as HTMLElement | undefined
+
+      if (last) {
+        const cRect = el.getBoundingClientRect()
+        const bRect = last.getBoundingClientRect()
+        const topInContainer = bRect.top - cRect.top
+
+        if (topInContainer > cRect.height / 2) {
+          const absTop =
+            bRect.top - cRect.top + el.scrollTop
+          const target = absTop - bRect.height * 0.25
+
+          el.scrollTo({
+            top: Math.max(0, target),
+            behavior: "smooth",
+          })
+
+          // don't let follow-bottom fight the smooth
+          // scroll for the next 600ms
+          pinCooldownRef.current = true
+          setTimeout(() => {
+            pinCooldownRef.current = false
+          }, 600)
+          return
+        }
+      }
+    }
+
+    // follow-bottom: keep the latest content visible
+    if (!autoScrollRef.current || pinCooldownRef.current)
+      return
+
+    const gap =
+      el.scrollHeight - el.scrollTop - el.clientHeight
+    if (gap > 0) {
+      el.scrollTop = el.scrollHeight - el.clientHeight
+    }
+  }, [messages, isActive])
+
+  // user scroll detection
+  useEffect(() => {
+    const el = scrollRef.current
+    if (!el) return
+
+    const onScroll = () => {
+      const gap =
+        el.scrollHeight - el.scrollTop - el.clientHeight
+      if (gap > 100) autoScrollRef.current = false
+      if (gap < 20) autoScrollRef.current = true
+    }
+
+    el.addEventListener("scroll", onScroll, {
+      passive: true,
+    })
+    return () =>
+      el.removeEventListener("scroll", onScroll)
+  }, [isActive, messages.length])
   // Escape to return to idle when no messages
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -446,6 +524,7 @@ export function DashboardChat({ stats }: DashboardChatProps) {
                     return (
                       <div
                         key={msg.id}
+                        data-role="user"
                         className="flex justify-end"
                       >
                         <div className="rounded-2xl border bg-background px-4 py-2.5 text-sm max-w-[80%] shadow-sm">
@@ -461,7 +540,7 @@ export function DashboardChat({ stats }: DashboardChatProps) {
                     >
                       {textContent ? (
                         <>
-                          <div className="w-full text-sm leading-relaxed prose prose-sm prose-neutral dark:prose-invert max-w-none">
+                          <div className="w-full text-sm leading-[1.6] prose prose-sm prose-neutral dark:prose-invert max-w-none [&_h1]:text-lg [&_h2]:text-base [&_h3]:text-[15px] [&_p]:my-2.5 [&_ul]:my-2.5 [&_ol]:my-2.5 [&_li]:my-1">
                             <MarkdownRenderer>
                               {textContent}
                             </MarkdownRenderer>
@@ -547,6 +626,7 @@ export function DashboardChat({ stats }: DashboardChatProps) {
             if (!trimmed || isGenerating) return
             sendMessage({ text: trimmed })
             setChatInput("")
+            markSent()
           }}
         >
           <div
@@ -569,6 +649,7 @@ export function DashboardChat({ stats }: DashboardChatProps) {
                     text: trimmed,
                   })
                   setChatInput("")
+                  markSent()
                 }
               }}
               placeholder="Ask follow-up..."
