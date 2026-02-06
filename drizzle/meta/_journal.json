@@ -78,6 +78,13 @@
       "when": 1770345545163,
       "tag": "0010_busy_shockwave",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "6",
+      "when": 1770353981978,
+      "tag": "0011_damp_shiver_man",
+      "breakpoints": true
     }
   ]
 }
