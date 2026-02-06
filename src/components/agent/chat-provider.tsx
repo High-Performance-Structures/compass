@@ -2,6 +2,8 @@
 
 import * as React from "react"
 import { type UIMessage } from "ai"
+import { useUIStream, type Spec } from "@json-render/react"
+import { usePathname, useRouter } from "next/navigation"
 import {
   saveConversation,
   loadConversation,
@@ -64,6 +66,33 @@ export function useChatState(): ChatStateValue {
   return ctx
 }
 
+// --- Render state context ---
+
+interface RenderContextValue {
+  readonly spec: Spec | null
+  readonly isRendering: boolean
+  readonly error: Error | null
+  readonly dataContext: Record<string, unknown>
+  triggerRender: (
+    prompt: string,
+    data: Record<string, unknown>
+  ) => void
+  clearRender: () => void
+}
+
+const RenderContext =
+  React.createContext<RenderContextValue | null>(null)
+
+export function useRenderState(): RenderContextValue {
+  const ctx = React.useContext(RenderContext)
+  if (!ctx) {
+    throw new Error(
+      "useRenderState must be used within a ChatProvider"
+    )
+  }
+  return ctx
+}
+
 // --- Backward compat aliases ---
 
 export function useAgent(): PanelContextValue {
@@ -72,6 +101,52 @@ export function useAgent(): PanelContextValue {
 
 export function useAgentOptional(): PanelContextValue | null {
   return React.useContext(PanelContext)
+}
+
+// --- Helper: extract generateUI output from parts ---
+
+function findGenerateUIOutput(
+  parts: ReadonlyArray<unknown>,
+  dispatched: Set<string>
+): {
+  renderPrompt: string
+  dataContext: Record<string, unknown>
+  callId: string
+} | null {
+  for (const part of parts) {
+    const p = part as Record<string, unknown>
+    const pType = p.type as string | undefined
+
+    // handle both static tool parts (tool-<name>)
+    // and dynamic tool parts (dynamic-tool)
+    const isToolPart =
+      typeof pType === "string" &&
+      (pType.startsWith("tool-") ||
+        pType === "dynamic-tool")
+    if (!isToolPart) continue
+
+    const state = p.state as string | undefined
+    if (state !== "output-available") continue
+
+    const callId = p.toolCallId as string | undefined
+    if (!callId || dispatched.has(callId)) continue
+
+    const output = p.output as
+      | Record<string, unknown>
+      | undefined
+    if (output?.action !== "generateUI") continue
+
+    return {
+      renderPrompt: output.renderPrompt as string,
+      dataContext:
+        (output.dataContext as Record<
+          string,
+          unknown
+        >) ?? {},
+      callId,
+    }
+  }
+  return null
 }
 
 // --- Provider component ---
@@ -86,6 +161,12 @@ export function ChatProvider({
     React.useState<string | null>(null)
   const [resumeLoaded, setResumeLoaded] =
     React.useState(false)
+  const [dataContext, setDataContext] = React.useState<
+    Record<string, unknown>
+  >({})
+
+  const router = useRouter()
+  const pathname = usePathname()
 
   const chat = useCompassChat({
     openPanel: () => setIsOpen(true),
@@ -111,6 +192,105 @@ export function ChatProvider({
       await saveConversation(id, serialized)
     },
   })
+
+  // UI stream for json-render — stabilize callbacks
+  const onRenderError = React.useCallback(
+    (err: Error) => {
+      console.error("Render stream error:", err)
+    },
+    []
+  )
+
+  const renderStream = useUIStream({
+    api: "/api/agent/render",
+    onError: onRenderError,
+  })
+
+  // use refs to avoid stale closures and
+  // unstable effect deps
+  const renderSendRef = React.useRef(renderStream.send)
+  renderSendRef.current = renderStream.send
+
+  const renderSpecRef = React.useRef(renderStream.spec)
+  renderSpecRef.current = renderStream.spec
+
+  const renderClearRef = React.useRef(renderStream.clear)
+  renderClearRef.current = renderStream.clear
+
+  const pathnameRef = React.useRef(pathname)
+  pathnameRef.current = pathname
+
+  const routerRef = React.useRef(router)
+  routerRef.current = router
+
+  const triggerRender = React.useCallback(
+    (prompt: string, data: Record<string, unknown>) => {
+      setDataContext(data)
+      renderSendRef.current(prompt, {
+        dataContext: data,
+        previousSpec:
+          renderSpecRef.current ?? undefined,
+      })
+    },
+    []
+  )
+
+  const clearRender = React.useCallback(() => {
+    renderClearRef.current()
+    setDataContext({})
+  }, [])
+
+  // watch chat messages for generateUI tool results
+  // and trigger render stream directly (no event chain)
+  const renderDispatchedRef = React.useRef(
+    new Set<string>()
+  )
+
+  React.useEffect(() => {
+    const lastMsg = chat.messages.at(-1)
+    if (!lastMsg || lastMsg.role !== "assistant") return
+
+    const result = findGenerateUIOutput(
+      lastMsg.parts as ReadonlyArray<unknown>,
+      renderDispatchedRef.current
+    )
+    if (!result) return
+
+    renderDispatchedRef.current.add(result.callId)
+
+    // navigate to /dashboard if not there
+    if (pathnameRef.current !== "/dashboard") {
+      routerRef.current.push("/dashboard")
+    }
+
+    // open chat panel for sidebar mode
+    setIsOpen(true)
+
+    // trigger the render stream
+    triggerRender(result.renderPrompt, result.dataContext)
+  }, [chat.messages, triggerRender])
+
+  // listen for navigation events from rendered UI
+  React.useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail as {
+        path?: string
+      }
+      if (detail?.path) {
+        routerRef.current.push(detail.path)
+      }
+    }
+
+    window.addEventListener(
+      "agent-render-navigate",
+      handler
+    )
+    return () =>
+      window.removeEventListener(
+        "agent-render-navigate",
+        handler
+      )
+  }, [])
 
   // resume last conversation on first open
   React.useEffect(() => {
@@ -161,7 +341,9 @@ export function ChatProvider({
     chat.setMessages([])
     setConversationId(null)
     setResumeLoaded(true)
-  }, [chat.setMessages])
+    clearRender()
+    renderDispatchedRef.current.clear()
+  }, [chat.setMessages, clearRender])
 
   const panelValue = React.useMemo(
     () => ({
@@ -200,10 +382,31 @@ export function ChatProvider({
     ]
   )
 
+  const renderValue = React.useMemo(
+    () => ({
+      spec: renderStream.spec,
+      isRendering: renderStream.isStreaming,
+      error: renderStream.error,
+      dataContext,
+      triggerRender,
+      clearRender,
+    }),
+    [
+      renderStream.spec,
+      renderStream.isStreaming,
+      renderStream.error,
+      dataContext,
+      triggerRender,
+      clearRender,
+    ]
+  )
+
   return (
     <PanelContext.Provider value={panelValue}>
       <ChatStateContext.Provider value={chatValue}>
-        {children}
+        <RenderContext.Provider value={renderValue}>
+          {children}
+        </RenderContext.Provider>
       </ChatStateContext.Provider>
     </PanelContext.Provider>
   )

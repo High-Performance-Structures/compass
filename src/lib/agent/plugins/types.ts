@@ -24,6 +24,7 @@ export const PLUGIN_SOURCE_TYPES = [
   "builtin",
   "local",
   "npm",
+  "skills",
 ] as const
 
 export type PluginSourceType =
@@ -112,4 +113,19 @@ export interface PluginModule {
 // type guard for semver strings
 export function isSemVer(value: string): value is SemVer {
   return /^\d+\.\d+\.\d+$/.test(value)
+}
+
+// skills.sh SKILL.md frontmatter
+export interface SkillFrontmatter {
+  readonly name: string
+  readonly description: string
+  readonly allowedTools?: string
+  readonly userInvocable?: boolean
+  readonly metadata?: Readonly<Record<string, unknown>>
+}
+
+// parsed SKILL.md file
+export interface ParsedSkill {
+  readonly frontmatter: SkillFrontmatter
+  readonly body: string
 }

@@ -151,6 +151,12 @@ export async function loadPluginModule(
         success: false,
         error: `${sourceType} plugins not yet supported`,
       }
+
+    case "skills":
+      return {
+        success: false,
+        error: "skills are loaded via registry, not loader",
+      }
   }
 }
 

@@ -4,6 +4,12 @@ import { getCloudflareContext } from "@opennextjs/cloudflare"
 import { getDb } from "@/db"
 import { getCurrentUser } from "@/lib/auth"
 import { saveMemory, searchMemories } from "@/lib/agent/memory"
+import {
+  installSkill as installSkillAction,
+  uninstallSkill as uninstallSkillAction,
+  toggleSkill as toggleSkillAction,
+  getInstalledSkills as getInstalledSkillsAction,
+} from "@/app/actions/plugins"
 
 const queryDataInputSchema = z.object({
   queryType: z.enum([
@@ -74,17 +80,24 @@ type NotificationInput = z.infer<
   typeof notificationInputSchema
 >
 
-const renderInputSchema = z.object({
-  componentType: z.string().describe(
-    "Component type from the catalog " +
-      "(DataTable, Card, StatCard, InvoiceTable, etc)"
+const generateUIInputSchema = z.object({
+  description: z.string().describe(
+    "Layout and content description for the " +
+      "dashboard to generate. Be specific about " +
+      "what components and data to display."
   ),
-  props: z
+  dataContext: z
     .record(z.string(), z.unknown())
-    .describe("Component props matching the catalog schema"),
+    .optional()
+    .describe(
+      "Data to include in the rendered UI. " +
+        "Pass query results here."
+    ),
 })
 
-type RenderInput = z.infer<typeof renderInputSchema>
+type GenerateUIInput = z.infer<
+  typeof generateUIInputSchema
+>
 
 const rememberInputSchema = z.object({
   content: z.string().describe(
@@ -277,17 +290,18 @@ export const agentTools = {
     }),
   }),
 
-  renderComponent: tool({
+  generateUI: tool({
     description:
-      "Render a UI component from the catalog. Use to " +
-      "display structured data like tables, cards, or charts.",
-    inputSchema: renderInputSchema,
-    execute: async (input: RenderInput) => ({
-      action: "render" as const,
-      spec: {
-        type: input.componentType,
-        props: input.props,
-      },
+      "Generate a rich interactive UI dashboard. " +
+      "Use when the user wants to see structured " +
+      "data (tables, charts, stats, forms). Always " +
+      "fetch data with queryData first, then pass " +
+      "it here as dataContext.",
+    inputSchema: generateUIInputSchema,
+    execute: async (input: GenerateUIInput) => ({
+      action: "generateUI" as const,
+      renderPrompt: input.description,
+      dataContext: input.dataContext ?? {},
     }),
   }),
 
@@ -343,6 +357,69 @@ export const agentTools = {
         results,
         count: results.length,
       }
+    },
+  }),
+
+  installSkill: tool({
+    description:
+      "Install a skill from GitHub (skills.sh format). " +
+      "Source format: owner/repo or owner/repo/skill-name. " +
+      "Requires admin role. Always confirm with the user " +
+      "what skill they want before installing.",
+    inputSchema: z.object({
+      source: z.string().describe(
+        "GitHub source path, e.g. " +
+        "'cloudflare/skills/wrangler'",
+      ),
+    }),
+    execute: async (input: { source: string }) => {
+      const user = await getCurrentUser()
+      if (!user || user.role !== "admin") {
+        return { error: "admin role required to install skills" }
+      }
+      return installSkillAction(input.source)
+    },
+  }),
+
+  listInstalledSkills: tool({
+    description:
+      "List all installed agent skills with their status.",
+    inputSchema: z.object({}),
+    execute: async () => getInstalledSkillsAction(),
+  }),
+
+  toggleInstalledSkill: tool({
+    description:
+      "Enable or disable an installed skill.",
+    inputSchema: z.object({
+      pluginId: z.string().describe("The plugin ID of the skill"),
+      enabled: z.boolean().describe("true to enable, false to disable"),
+    }),
+    execute: async (input: {
+      pluginId: string
+      enabled: boolean
+    }) => {
+      const user = await getCurrentUser()
+      if (!user || user.role !== "admin") {
+        return { error: "admin role required" }
+      }
+      return toggleSkillAction(input.pluginId, input.enabled)
+    },
+  }),
+
+  uninstallSkill: tool({
+    description:
+      "Remove an installed skill permanently. " +
+      "Requires admin role. Always confirm before uninstalling.",
+    inputSchema: z.object({
+      pluginId: z.string().describe("The plugin ID of the skill"),
+    }),
+    execute: async (input: { pluginId: string }) => {
+      const user = await getCurrentUser()
+      if (!user || user.role !== "admin") {
+        return { error: "admin role required" }
+      }
+      return uninstallSkillAction(input.pluginId)
     },
   }),
 }

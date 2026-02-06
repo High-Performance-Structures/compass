@@ -59,8 +59,6 @@ import { useAudioRecorder } from "@/hooks/use-audio-recorder"
 import type { AudioRecorder } from "@/hooks/use-audio-recorder"
 import { AudioWaveform } from "@/components/ai/audio-waveform"
 import { useChatState } from "./chat-provider"
-import { DynamicUI } from "./dynamic-ui"
-import type { ComponentSpec } from "@/lib/agent/catalog"
 import { getRepoStats } from "@/app/actions/github"
 
 type RepoStats = {
@@ -155,7 +153,7 @@ const TOOL_DISPLAY_NAMES: Record<string, string> = {
   saveInterviewFeedback: "Saving your feedback",
   navigateTo: "Navigating",
   showNotification: "Sending notification",
-  renderComponent: "Preparing display",
+  generateUI: "Building interface",
 }
 
 function friendlyToolName(raw: string): string {
@@ -202,27 +200,26 @@ function ChatMessage({
     if (p.type === "text" && typeof p.text === "string") {
       textParts.push(p.text)
     }
+    const pType = p.type as string | undefined
+    // handle static (tool-<name>) and dynamic
+    // (dynamic-tool) tool parts
     if (
-      typeof p.type === "string" &&
-      (p.type as string).startsWith("tool-")
+      typeof pType === "string" &&
+      (pType.startsWith("tool-") ||
+        pType === "dynamic-tool")
     ) {
-      // AI SDK v6: tool properties are flat on the part
-      // or nested under toolInvocation depending on version
-      const inv = p.toolInvocation as
-        | Record<string, unknown>
-        | undefined
-      const rawName = (
-        inv?.toolName ?? p.toolName ?? ""
-      ) as string
+      // extract tool name from type field or toolName
+      const rawName = pType.startsWith("tool-")
+        ? pType.slice(5)
+        : ((p.toolName ?? "") as string)
       toolParts.push({
-        type: p.type as string,
-        state: (inv?.state ?? p.state) as ToolUIPart["state"],
-        toolName: friendlyToolName(rawName) || "Working",
-        input: inv?.input ?? p.input,
-        output: inv?.output ?? p.output,
-        errorText: (inv?.errorText ?? p.errorText) as
-          | string
-          | undefined,
+        type: pType,
+        state: p.state as ToolUIPart["state"],
+        toolName:
+          friendlyToolName(rawName) || "Working",
+        input: p.input,
+        output: p.output,
+        errorText: p.errorText as string | undefined,
       })
     }
   }
@@ -563,38 +560,6 @@ export function ChatView({ variant }: ChatViewProps) {
     ? DASHBOARD_SUGGESTIONS
     : getSuggestionsForPath(chat.pathname)
 
-  // extract last render component spec from tool results
-  const lastRenderSpec = (() => {
-    if (isPage) return undefined
-    for (let i = chat.messages.length - 1; i >= 0; i--) {
-      const msg = chat.messages[i]
-      if (msg.role !== "assistant") continue
-      for (const part of msg.parts) {
-        const p = part as {
-          type: string
-          toolInvocation?: {
-            toolName: string
-            state: string
-            result?: {
-              action?: string
-              spec?: unknown
-            }
-          }
-        }
-        if (
-          p.type?.startsWith("tool-") &&
-          p.toolInvocation?.state === "result" &&
-          p.toolInvocation?.result?.action === "render"
-        ) {
-          return p.toolInvocation.result.spec as
-            | ComponentSpec
-            | undefined
-        }
-      }
-    }
-    return undefined
-  })()
-
   // --- PAGE variant ---
   if (isPage) {
     return (
@@ -816,13 +781,6 @@ export function ChatView({ variant }: ChatViewProps) {
         </ConversationContent>
         <ConversationScrollButton />
       </Conversation>
-
-      {/* Dynamic UI for agent-rendered components */}
-      {lastRenderSpec && (
-        <div className="max-h-64 overflow-auto border-t p-4">
-          <DynamicUI spec={lastRenderSpec} />
-        </div>
-      )}
 
       {/* Input */}
       <div className="p-3">

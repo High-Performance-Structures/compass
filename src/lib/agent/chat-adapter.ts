@@ -123,6 +123,16 @@ export function initializeActionHandlers(
       el?.focus()
     }
   })
+
+  registerActionHandler("GENERATE_UI", (payload) => {
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(
+        new CustomEvent("agent-generate-ui", {
+          detail: payload,
+        })
+      )
+    }
+  })
 }
 
 export const ALL_HANDLER_TYPES = [
@@ -132,6 +142,7 @@ export const ALL_HANDLER_TYPES = [
   "CLOSE_MODAL",
   "SCROLL_TO",
   "FOCUS_ELEMENT",
+  "GENERATE_UI",
 ] as const
 
 /**
@@ -139,19 +150,21 @@ export const ALL_HANDLER_TYPES = [
  * as client-side actions and dispatch them.
  * Pass a `dispatched` set to avoid re-firing on re-renders.
  *
- * AI SDK v6 part structure:
- *   type: "tool-<name>" (e.g. "tool-navigateTo")
- *   state: "output-available" when complete
- *   output: the tool's return value (flat on the part)
- *   toolCallId: unique id for dedup
+ * AI SDK v6 part formats:
+ *   Static:  type "tool-<name>", state/output flat
+ *   Dynamic: type "dynamic-tool", toolName field, same
  */
 export function dispatchToolActions(
   parts: ReadonlyArray<Record<string, unknown>>,
   dispatched?: Set<string>
 ): void {
   for (const part of parts) {
-    const type = part.type as string | undefined
-    if (!type?.startsWith("tool-")) continue
+    const pType = part.type as string | undefined
+    const isToolPart =
+      typeof pType === "string" &&
+      (pType.startsWith("tool-") ||
+        pType === "dynamic-tool")
+    if (!isToolPart) continue
 
     const state = part.state as string | undefined
     if (state !== "output-available") continue
@@ -180,6 +193,15 @@ export function dispatchToolActions(
           payload: {
             message: output.message,
             type: output.type,
+          },
+        })
+        break
+      case "generateUI":
+        executeAction({
+          type: "GENERATE_UI",
+          payload: {
+            renderPrompt: output.renderPrompt,
+            dataContext: output.dataContext,
           },
         })
         break

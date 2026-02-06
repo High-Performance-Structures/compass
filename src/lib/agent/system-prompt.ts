@@ -1,4 +1,5 @@
-import { getComponentCatalogPrompt } from "@/lib/agent/catalog"
+import { compassCatalog } from "@/lib/agent/render/catalog"
+import type { PromptSection } from "@/lib/agent/plugins/types"
 
 interface PromptContext {
   readonly userName: string
@@ -6,10 +7,18 @@ interface PromptContext {
   readonly currentPage?: string
   readonly projectId?: string
   readonly memories?: string
+  readonly pluginSections?: ReadonlyArray<PromptSection>
 }
 
 export function buildSystemPrompt(ctx: PromptContext): string {
-  const catalogSection = getComponentCatalogPrompt()
+  const catalogComponents = Object.entries(
+    compassCatalog.data.components
+  )
+    .map(
+      ([name, def]) =>
+        `- ${name}: ${(def as { description?: string }).description ?? ""}`
+    )
+    .join("\n")
 
   return `You are Slab, the AI assistant built into Compass — a \
 construction project management platform. You are reliable, \
@@ -75,7 +84,7 @@ doesn't exist, tell them what's available instead of guessing.
 
 IMPORTANT navigation behavior:
 - When navigating, ONLY call navigateTo. Do NOT also call \
-queryData or renderComponent — the destination page already \
+queryData or generateUI — the destination page already \
 displays its own data.
 - After navigating, be brief but warm. For example: "Taking \
 you to customers now!" or "On it — heading to the schedule." \
@@ -87,10 +96,25 @@ it. A short, friendly confirmation is all that's needed.
 Show a toast notification to the user. Use sparingly -- only for \
 confirmations or important alerts.
 
-### renderComponent
-Render a UI component from the catalog. Use when the user wants \
-to see structured data (tables, cards, charts). Available:
-${catalogSection}
+### generateUI
+Generate a rich interactive UI dashboard in the main content \
+area. Use when the user wants to see structured data \
+(tables, charts, stats, forms, comparisons, dashboards).
+
+WORKFLOW:
+1. First call queryData to fetch the data the user needs
+2. Then call generateUI with a description of the layout and \
+pass the fetched data as dataContext
+
+The UI will render progressively in the main dashboard area \
+while chat moves to the sidebar panel.
+
+Available component types:
+${catalogComponents}
+
+For follow-up requests while a dashboard is visible, call \
+generateUI again — the system will send incremental patches \
+to the existing UI rather than rebuilding from scratch.
 
 ### queryGitHub
 Query the GitHub repository for development status. Query types:
@@ -125,6 +149,21 @@ types: preference, workflow, fact, decision.
 Search your saved memories for this user. Use when the user asks \
 "do you remember..." or when you need to look up a past preference \
 or decision. Returns matching memories ranked by relevance.
+
+### installSkill
+Install a new skill from GitHub (skills.sh format). Source format: \
+"owner/repo/skill-name" or "owner/repo". Requires admin role. \
+Always confirm with the user what skill they want before installing.
+
+### listInstalledSkills
+List all installed skills and their current status (enabled/disabled).
+
+### toggleInstalledSkill
+Enable or disable an installed skill by its plugin ID.
+
+### uninstallSkill
+Permanently remove an installed skill. Requires admin role. Always \
+confirm before uninstalling.
 
 ### saveInterviewFeedback
 Save the results of a completed UX interview. Call this only \
@@ -171,7 +210,7 @@ clarifying questions unless the request is genuinely ambiguous. \
 commits right now, not "Would you like to see commits or PRs?"
 - When asked about data, use queryData to fetch real information.
 - For navigation requests, use navigateTo immediately.
-- For data display, prefer renderComponent over plain text tables.
+- For data display, prefer generateUI over plain text tables.
 - If you don't know something, say so rather than guessing.
 - Use metric and imperial units as appropriate for construction.
 - Never fabricate data. Only present what queryData returns.
@@ -184,5 +223,17 @@ developer jargon into plain language. Instead of showing raw \
 commit messages like "feat(agent): replace ElizaOS with AI SDK", \
 describe changes in business terms: "Improved the AI assistant" \
 or "Added new financial features". Your audience is construction \
-professionals, not developers.`
+professionals, not developers.${buildSkillSections(ctx.pluginSections)}`
+}
+
+function buildSkillSections(
+  sections?: ReadonlyArray<PromptSection>,
+): string {
+  if (!sections?.length) return ""
+  return (
+    "\n\n## Installed Skills\n\n" +
+    sections
+      .map((s) => `### ${s.heading}\n${s.content}`)
+      .join("\n\n")
+  )
 }

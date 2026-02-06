@@ -5,14 +5,23 @@ import { usePathname } from "next/navigation"
 import { MessageSquare } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
-import { useChatPanel, useChatState } from "./chat-provider"
+import {
+  useChatPanel,
+  useChatState,
+  useRenderState,
+} from "./chat-provider"
 import { ChatView } from "./chat-view"
 
 export function ChatPanelShell() {
   const { isOpen, open, close, toggle } = useChatPanel()
   const chat = useChatState()
+  const { spec: renderSpec, isRendering } =
+    useRenderState()
   const pathname = usePathname()
-  const isDashboard = pathname === "/dashboard"
+  const hasRenderedUI = !!renderSpec?.root || isRendering
+  // dashboard acts as "page" variant only when NOT rendering
+  const isDashboard =
+    pathname === "/dashboard" && !hasRenderedUI
 
   // auto-open panel when leaving dashboard with messages
   const prevIsDashboard = useRef(isDashboard)

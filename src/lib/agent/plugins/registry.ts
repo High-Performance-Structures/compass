@@ -6,6 +6,7 @@ import type {
   PluginActionHandler,
   PluginSourceType,
 } from "./types"
+import { isSemVer } from "./types"
 import { loadPluginModule, validateEnvVars } from "./loader"
 import { plugins } from "@/db/schema-plugins"
 
@@ -81,17 +82,27 @@ function createRegistry(
 // row shape from the plugins table
 interface PluginRow {
   readonly id: string
+  readonly name: string
+  readonly description: string | null
   readonly source: string
   readonly sourceType: string
   readonly status: string
 }
 
 // drizzle db type - kept generic to avoid circular imports
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type AnyQueryMethod = (...args: ReadonlyArray<any>) => any
+
 interface DbClient {
   select(): {
     from(
       table: typeof plugins,
     ): Promise<ReadonlyArray<PluginRow>>
+  }
+  query: {
+    pluginConfig: {
+      findFirst: AnyQueryMethod
+    }
   }
 }
 
@@ -120,6 +131,38 @@ export async function buildRegistry(
   const loaded = new Map<string, PluginModule>()
 
   for (const row of enabledRows) {
+    if (row.sourceType === "skills") {
+      const configRow = await db.query.pluginConfig.findFirst({
+        where: (
+          c: Record<string, unknown>,
+          ops: Record<string, (...args: ReadonlyArray<unknown>) => unknown>,
+        ) => ops.and(
+          ops.eq(c.pluginId, row.id),
+          ops.eq(c.key, "content"),
+        ),
+      })
+      if (!configRow) continue
+
+      const version = "1.0.0"
+      const mod: PluginModule = {
+        manifest: {
+          id: row.id,
+          name: row.name,
+          description: row.description ?? "",
+          version: (isSemVer(version) ? version : "1.0.0") as
+            string & { readonly __brand: "SemVer" },
+          capabilities: ["prompt"],
+        },
+        promptSections: [{
+          heading: row.name,
+          content: configRow.value,
+          priority: 80,
+        }],
+      }
+      loaded.set(row.id, mod)
+      continue
+    }
+
     if (!isPluginSourceType(row.sourceType)) continue
 
     const result = await loadPluginModule(
