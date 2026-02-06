@@ -88,6 +88,7 @@ export function ChatProvider({
     React.useState(false)
 
   const chat = useCompassChat({
+    openPanel: () => setIsOpen(true),
     onFinish: async ({ messages: finalMessages }) => {
       if (finalMessages.length === 0) return
 

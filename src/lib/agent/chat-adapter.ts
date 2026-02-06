@@ -54,11 +54,25 @@ export async function executeAction(
 }
 
 export function initializeActionHandlers(
-  getRouter: () => { push: (path: string) => void }
+  getRouter: () => { push: (path: string) => void },
+  openPanel?: () => void
 ): void {
   registerActionHandler("NAVIGATE_TO", (payload) => {
     if (payload?.path && typeof payload.path === "string") {
-      getRouter().push(payload.path)
+      const navigate = () => {
+        getRouter().push(payload.path as string)
+        openPanel?.()
+      }
+
+      const doc = document as Document & {
+        startViewTransition?: (cb: () => void) => void
+      }
+
+      if (doc.startViewTransition) {
+        doc.startViewTransition(navigate)
+      } else {
+        navigate()
+      }
     }
   })
 
@@ -123,44 +137,49 @@ export const ALL_HANDLER_TYPES = [
 /**
  * Interpret tool result parts from AI SDK messages
  * as client-side actions and dispatch them.
+ * Pass a `dispatched` set to avoid re-firing on re-renders.
+ *
+ * AI SDK v6 part structure:
+ *   type: "tool-<name>" (e.g. "tool-navigateTo")
+ *   state: "output-available" when complete
+ *   output: the tool's return value (flat on the part)
+ *   toolCallId: unique id for dedup
  */
 export function dispatchToolActions(
-  parts: ReadonlyArray<{
-    type: string
-    toolInvocation?: {
-      toolName: string
-      state: string
-      result?: unknown
-    }
-  }>
+  parts: ReadonlyArray<Record<string, unknown>>,
+  dispatched?: Set<string>
 ): void {
   for (const part of parts) {
-    if (
-      part.type !== "tool-invocation" ||
-      part.toolInvocation?.state !== "result"
-    ) {
-      continue
-    }
+    const type = part.type as string | undefined
+    if (!type?.startsWith("tool-")) continue
 
-    const result = part.toolInvocation.result as
+    const state = part.state as string | undefined
+    if (state !== "output-available") continue
+
+    const callId = part.toolCallId as string | undefined
+    if (callId && dispatched?.has(callId)) continue
+
+    const output = part.output as
       | Record<string, unknown>
       | undefined
 
-    if (!result?.action) continue
+    if (!output?.action) continue
 
-    switch (result.action) {
+    if (callId) dispatched?.add(callId)
+
+    switch (output.action) {
       case "navigate":
         executeAction({
           type: "NAVIGATE_TO",
-          payload: { path: result.path },
+          payload: { path: output.path },
         })
         break
       case "toast":
         executeAction({
           type: "SHOW_TOAST",
           payload: {
-            message: result.message,
-            type: result.type,
+            message: output.message,
+            type: output.type,
           },
         })
         break

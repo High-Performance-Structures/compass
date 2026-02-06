@@ -16,6 +16,7 @@ interface UseCompassChatOptions {
   readonly onFinish?: (params: {
     messages: ReadonlyArray<UIMessage>
   }) => void | Promise<void>
+  readonly openPanel?: () => void
 }
 
 export function useCompassChat(options?: UseCompassChatOptions) {
@@ -23,6 +24,11 @@ export function useCompassChat(options?: UseCompassChatOptions) {
   const router = useRouter()
   const routerRef = useRef(router)
   routerRef.current = router
+
+  const openPanelRef = useRef(options?.openPanel)
+  openPanelRef.current = options?.openPanel
+
+  const dispatchedRef = useRef(new Set<string>())
 
   const chatState = useChat({
     transport: new DefaultChatTransport({
@@ -44,21 +50,18 @@ export function useCompassChat(options?: UseCompassChatOptions) {
     const last = chatState.messages.at(-1)
     if (last?.role !== "assistant") return
 
-    const parts = last.parts as ReadonlyArray<{
-      type: string
-      toolInvocation?: {
-        toolName: string
-        state: string
-        result?: unknown
-      }
-    }>
-
-    dispatchToolActions(parts)
+    dispatchToolActions(
+      last.parts as ReadonlyArray<Record<string, unknown>>,
+      dispatchedRef.current
+    )
   }, [chatState.messages])
 
   // initialize action handlers
   useEffect(() => {
-    initializeActionHandlers(() => routerRef.current)
+    initializeActionHandlers(
+      () => routerRef.current,
+      () => openPanelRef.current?.()
+    )
 
     const handleToast = (event: CustomEvent) => {
       const { message, type = "default" } =

@@ -33,6 +33,23 @@ const queryDataInputSchema = z.object({
 
 type QueryDataInput = z.infer<typeof queryDataInputSchema>
 
+const VALID_ROUTES: ReadonlyArray<RegExp> = [
+  /^\/dashboard$/,
+  /^\/dashboard\/customers$/,
+  /^\/dashboard\/vendors$/,
+  /^\/dashboard\/projects$/,
+  /^\/dashboard\/projects\/[^/]+$/,
+  /^\/dashboard\/projects\/[^/]+\/schedule$/,
+  /^\/dashboard\/financials$/,
+  /^\/dashboard\/people$/,
+  /^\/dashboard\/files$/,
+  /^\/dashboard\/files\/.+$/,
+]
+
+function isValidRoute(path: string): boolean {
+  return VALID_ROUTES.some((r) => r.test(path))
+}
+
 const navigateInputSchema = z.object({
   path: z
     .string()
@@ -227,11 +244,25 @@ export const agentTools = {
       "Navigate the user to a page in the application. " +
       "Returns navigation data for the client to execute.",
     inputSchema: navigateInputSchema,
-    execute: async (input: NavigateInput) => ({
-      action: "navigate" as const,
-      path: input.path,
-      reason: input.reason ?? null,
-    }),
+    execute: async (input: NavigateInput) => {
+      if (!isValidRoute(input.path)) {
+        return {
+          error:
+            `"${input.path}" is not a valid page. ` +
+            "Valid: /dashboard, /dashboard/projects, " +
+            "/dashboard/projects/{id}, " +
+            "/dashboard/projects/{id}/schedule, " +
+            "/dashboard/customers, /dashboard/vendors, " +
+            "/dashboard/financials, /dashboard/people, " +
+            "/dashboard/files",
+        }
+      }
+      return {
+        action: "navigate" as const,
+        path: input.path,
+        reason: input.reason ?? null,
+      }
+    },
   }),
 
   showNotification: tool({

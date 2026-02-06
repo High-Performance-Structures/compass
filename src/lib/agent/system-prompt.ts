@@ -62,11 +62,26 @@ the user asks to "go to", "show me", "open", or "navigate to" \
 something. Available paths:
 - /dashboard - main dashboard
 - /dashboard/projects - all projects
-- /dashboard/projects/[id] - specific project
-- /dashboard/customers - customers
-- /dashboard/vendors - vendors
-- /dashboard/schedule - project schedule
-- /dashboard/finances - invoices and bills
+- /dashboard/projects/{id} - specific project detail
+- /dashboard/projects/{id}/schedule - project schedule
+- /dashboard/customers - customer management
+- /dashboard/vendors - vendor management
+- /dashboard/financials - invoices and bills
+- /dashboard/people - team members
+- /dashboard/files - project files
+
+ONLY use paths from this list. If the user asks for a page that \
+doesn't exist, tell them what's available instead of guessing.
+
+IMPORTANT navigation behavior:
+- When navigating, ONLY call navigateTo. Do NOT also call \
+queryData or renderComponent — the destination page already \
+displays its own data.
+- After navigating, be brief but warm. For example: "Taking \
+you to customers now!" or "On it — heading to the schedule." \
+Don't describe the page layout or columns — the user can see \
+it. A short, friendly confirmation is all that's needed.
+- navigateTo is a side-effect tool. One call is enough.
 
 ### showNotification
 Show a toast notification to the user. Use sparingly -- only for \

@@ -5,22 +5,30 @@ import { usePathname } from "next/navigation"
 import { MessageSquare } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
-import { useChatPanel } from "./chat-provider"
+import { useChatPanel, useChatState } from "./chat-provider"
+import { ChatView } from "./chat-view"
 
-interface ChatPanelShellProps {
-  readonly children: React.ReactNode
-}
-
-export function ChatPanelShell({
-  children,
-}: ChatPanelShellProps) {
-  const { isOpen, close, toggle } = useChatPanel()
-  const setIsOpen = (open: boolean) =>
-    open ? undefined : close()
+export function ChatPanelShell() {
+  const { isOpen, open, close, toggle } = useChatPanel()
+  const chat = useChatState()
   const pathname = usePathname()
+  const isDashboard = pathname === "/dashboard"
 
-  // resize state
-  const [panelWidth, setPanelWidth] = useState(420)
+  // auto-open panel when leaving dashboard with messages
+  const prevIsDashboard = useRef(isDashboard)
+  useEffect(() => {
+    if (
+      prevIsDashboard.current &&
+      !isDashboard &&
+      chat.messages.length > 0
+    ) {
+      open()
+    }
+    prevIsDashboard.current = isDashboard
+  }, [isDashboard, chat.messages.length, open])
+
+  // resize state (panel mode only)
+  const [panelWidth, setPanelWidth] = useState(480)
   const [isResizing, setIsResizing] = useState(false)
   const dragStartX = useRef(0)
   const dragStartWidth = useRef(0)
@@ -62,8 +70,10 @@ export function ChatPanelShell({
     [panelWidth]
   )
 
-  // keyboard shortcuts
+  // keyboard shortcuts (panel mode only)
   useEffect(() => {
+    if (isDashboard) return
+
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === ".") {
         e.preventDefault()
@@ -77,48 +87,60 @@ export function ChatPanelShell({
     window.addEventListener("keydown", handleKeyDown)
     return () =>
       window.removeEventListener("keydown", handleKeyDown)
-  }, [isOpen, close, toggle])
+  }, [isDashboard, isOpen, close, toggle])
 
-  // dashboard has inline chat, hide shell
-  if (pathname === "/dashboard") return null
+  // container width/style for panel mode
+  const panelStyle =
+    !isDashboard && isOpen
+      ? { width: panelWidth }
+      : undefined
 
   return (
     <>
       <div
         className={cn(
-          "flex flex-col bg-background",
-          "fixed inset-0 z-50",
-          "md:relative md:inset-auto md:z-auto",
-          "md:shrink-0 md:overflow-hidden md:border-l md:border-border",
-          isResizing
-            ? "transition-none"
-            : "transition-[transform,width,border-color] duration-300 ease-in-out",
-          isOpen
-            ? "translate-x-0"
-            : "translate-x-full md:translate-x-0 md:w-0 md:border-l-0"
+          "flex flex-col",
+          "transition-[flex,width,border-color,box-shadow,opacity,transform] duration-300 ease-in-out",
+          isDashboard
+            ? "flex-1 bg-background"
+            : [
+                "bg-background dark:bg-[oklch(0.255_0_0)]",
+                "fixed inset-0 z-50",
+                "md:relative md:inset-auto md:z-auto",
+                "md:shrink-0 md:overflow-hidden",
+                "md:rounded-xl md:border md:border-border md:shadow-lg md:my-2 md:mr-2",
+                isResizing && "transition-none",
+                isOpen
+                  ? "translate-x-0 md:opacity-100"
+                  : "translate-x-full md:translate-x-0 md:w-0 md:border-transparent md:shadow-none md:opacity-0",
+              ]
         )}
-        style={isOpen ? { width: panelWidth } : undefined}
+        style={panelStyle}
       >
-        {/* Desktop resize handle */}
-        <div
-          className="absolute left-0 top-0 z-10 hidden h-full w-1 cursor-col-resize md:block hover:bg-border/60 active:bg-border"
-          onMouseDown={handleResizeStart}
-        />
+        {/* Desktop resize handle (panel mode only) */}
+        {!isDashboard && (
+          <div
+            className="absolute -left-1 top-0 z-10 hidden h-full w-2 cursor-col-resize md:block hover:bg-border/60 active:bg-border"
+            onMouseDown={handleResizeStart}
+          />
+        )}
 
-        {children}
+        <ChatView
+          variant={isDashboard ? "page" : "panel"}
+        />
       </div>
 
-      {/* Mobile backdrop */}
-      {isOpen && (
+      {/* Mobile backdrop (panel mode only) */}
+      {!isDashboard && isOpen && (
         <div
           className="fixed inset-0 z-40 bg-black/20 md:hidden"
-          onClick={() => setIsOpen(false)}
+          onClick={close}
           aria-hidden="true"
         />
       )}
 
-      {/* Mobile FAB trigger */}
-      {!isOpen && (
+      {/* Mobile FAB (panel mode only) */}
+      {!isDashboard && !isOpen && (
         <Button
           size="icon"
           className="fixed bottom-4 right-4 z-50 h-12 w-12 rounded-full shadow-lg md:hidden"

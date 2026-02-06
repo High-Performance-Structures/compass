@@ -10,7 +10,7 @@ import { PageActionsProvider } from "@/components/page-actions-provider"
 import { DashboardContextMenu } from "@/components/dashboard-context-menu"
 import { Toaster } from "@/components/ui/sonner"
 import { ChatPanelShell } from "@/components/agent/chat-panel-shell"
-import { ChatView } from "@/components/agent/chat-view"
+import { MainContent } from "@/components/agent/main-content"
 import { ChatProvider } from "@/components/agent/chat-provider"
 import {
   SidebarInset,
@@ -52,15 +52,11 @@ export default async function DashboardLayout({
             <SiteHeader user={user} />
             <div className="flex min-h-0 flex-1 overflow-hidden">
               <DashboardContextMenu>
-              <div className="flex flex-1 flex-col overflow-y-auto overflow-x-hidden pb-14 md:pb-0 min-w-0">
-                <div className="@container/main flex flex-1 flex-col min-w-0">
+                <MainContent>
                   {children}
-                </div>
-              </div>
+                </MainContent>
               </DashboardContextMenu>
-              <ChatPanelShell>
-                <ChatView variant="panel" />
-              </ChatPanelShell>
+              <ChatPanelShell />
             </div>
           </SidebarInset>
         </FeedbackWidget>

@@ -11,6 +11,7 @@ import {
   MicIcon,
   XIcon,
   Loader2Icon,
+  SquarePenIcon,
 } from "lucide-react"
 import {
   IconBrandGithub,
@@ -60,6 +61,7 @@ import { AudioWaveform } from "@/components/ai/audio-waveform"
 import { useChatState } from "./chat-provider"
 import { DynamicUI } from "./dynamic-ui"
 import type { ComponentSpec } from "@/lib/agent/catalog"
+import { getRepoStats } from "@/app/actions/github"
 
 type RepoStats = {
   readonly stargazers_count: number
@@ -70,7 +72,6 @@ type RepoStats = {
 
 interface ChatViewProps {
   readonly variant: "page" | "panel"
-  readonly stats?: RepoStats | null
 }
 
 const REPO = "High-Performance-Structures/compass"
@@ -305,6 +306,7 @@ function ChatInput({
   status,
   isGenerating,
   onSend,
+  onNewChat,
   className,
 }: {
   readonly textareaRef: React.RefObject<
@@ -315,6 +317,7 @@ function ChatInput({
   readonly status: string
   readonly isGenerating: boolean
   readonly onSend: (text: string) => void
+  readonly onNewChat?: () => void
   readonly className?: string
 }) {
   const isRecording = recorder.state === "recording"
@@ -335,51 +338,56 @@ function ChatInput({
         placeholder={placeholder}
         className={isIdle ? undefined : "hidden"}
       />
+
+      {/* recording: waveform + cancel/confirm on one row */}
       {isRecording && recorder.stream && (
-        <div className="flex items-center px-3 py-3 min-h-10">
+        <div className="flex items-center gap-2 px-2 py-3">
           <AudioWaveform
             stream={recorder.stream}
-            className="flex-1"
+            className="flex-1 h-8"
           />
+          <PromptInputButton
+            onClick={recorder.cancel}
+          >
+            <XIcon className="size-4" />
+          </PromptInputButton>
+          <PromptInputButton
+            onClick={recorder.stop}
+          >
+            <Check className="size-4" />
+          </PromptInputButton>
         </div>
       )}
+
+      {/* transcribing */}
       {isTranscribing && (
         <div className="flex items-center justify-center gap-2 px-3 py-3 min-h-10 text-muted-foreground text-sm">
           <Loader2Icon className="size-4 animate-spin" />
           <span>Transcribing...</span>
         </div>
       )}
-      <PromptInputFooter>
-        {isRecording ? (
-          <>
-            <PromptInputTools>
-              <PromptInputButton
-                onClick={recorder.cancel}
-              >
-                <XIcon className="size-4" />
+
+      {/* footer: mic + submit (hidden during recording/transcribing) */}
+      {!isRecording && !isTranscribing && (
+        <PromptInputFooter>
+          <PromptInputTools>
+            {onNewChat && (
+              <PromptInputButton onClick={onNewChat} aria-label="New chat">
+                <SquarePenIcon className="size-4" />
               </PromptInputButton>
-            </PromptInputTools>
+            )}
+          </PromptInputTools>
+          <div className="flex items-center gap-1">
             <PromptInputButton
-              variant="default"
-              onClick={recorder.stop}
+              disabled={
+                !recorder.supported || !isIdle
+              }
+              onClick={() => {
+                recorder.start()
+              }}
             >
-              <Check className="size-4" />
+              <MicIcon className="size-4" />
             </PromptInputButton>
-          </>
-        ) : (
-          <>
-            <PromptInputTools>
-              <PromptInputButton
-                disabled={
-                  !recorder.supported || !isIdle
-                }
-                onClick={() => {
-                  recorder.start()
-                }}
-              >
-                <MicIcon className="size-4" />
-              </PromptInputButton>
-            </PromptInputTools>
             <PromptInputSubmit
               status={
                 status as
@@ -389,17 +397,26 @@ function ChatInput({
                   | "error"
               }
             />
-          </>
-        )}
-      </PromptInputFooter>
+          </div>
+        </PromptInputFooter>
+      )}
     </PromptInput>
   )
 }
 
-export function ChatView({ variant, stats }: ChatViewProps) {
+export function ChatView({ variant }: ChatViewProps) {
   const chat = useChatState()
   const isPage = variant === "page"
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+
+  // fetch repo stats client-side (page variant only)
+  const [stats, setStats] = useState<RepoStats | null>(null)
+  const statsFetched = useRef(false)
+  useEffect(() => {
+    if (!isPage || statsFetched.current) return
+    statsFetched.current = true
+    getRepoStats().then(setStats)
+  }, [isPage])
 
   const handleTranscription = useCallback(
     (text: string) => {
@@ -758,6 +775,7 @@ export function ChatView({ variant, stats }: ChatViewProps) {
               onSend={(text) =>
                 chat.sendMessage({ text })
               }
+              onNewChat={chat.messages.length > 0 ? chat.newChat : undefined}
               className="rounded-2xl"
             />
           </div>
@@ -769,19 +787,6 @@ export function ChatView({ variant, stats }: ChatViewProps) {
   // --- PANEL variant ---
   return (
     <div className="flex h-full w-full flex-col">
-      {/* Header with new chat button */}
-      {chat.messages.length > 0 && (
-        <div className="flex items-center justify-end border-b px-3 py-2">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={chat.newChat}
-          >
-            New chat
-          </Button>
-        </div>
-      )}
-
       {/* Conversation */}
       <Conversation className="flex-1">
         <ConversationContent>
@@ -820,17 +825,18 @@ export function ChatView({ variant, stats }: ChatViewProps) {
       )}
 
       {/* Input */}
-      <div className="border-t p-3">
-        <ChatInput
-          textareaRef={textareaRef}
-          placeholder="Ask anything..."
-          recorder={recorder}
-          status={chat.status}
-          isGenerating={chat.isGenerating}
-          onSend={(text) =>
-            chat.sendMessage({ text })
-          }
-        />
+      <div className="p-3">
+            <ChatInput
+              textareaRef={textareaRef}
+              placeholder="Ask anything..."
+              recorder={recorder}
+              status={chat.status}
+              isGenerating={chat.isGenerating}
+              onSend={(text) =>
+                chat.sendMessage({ text })
+              }
+              onNewChat={chat.messages.length > 0 ? chat.newChat : undefined}
+            />
       </div>
     </div>
   )
