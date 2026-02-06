@@ -178,7 +178,7 @@ export default function ReasoningDemo() {
       <Reasoning defaultOpen={true} duration={12}>
         <ReasoningTrigger />
         <ReasoningContent>
-          Let me think through this step by step... First, I need to consider the user's
+          Let me think through this step by step... First, I need to consider the user{"'"}s
           requirements. They want a solution that is both efficient and maintainable. Looking at the
           codebase, I can see several potential approaches: 1. **Refactor the existing module** -
           This would minimize disruption 2. **Create a new abstraction layer** - More work but

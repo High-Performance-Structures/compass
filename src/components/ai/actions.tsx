@@ -64,7 +64,7 @@ export default function ActionsDemo() {
     <div className="flex w-full flex-col gap-4 p-6">
       <Message from="assistant">
         <MessageContent>
-          Here's a quick example of how to use React hooks. The useState hook lets you add state to
+          Here{"'"}s a quick example of how to use React hooks. The useState hook lets you add state to
           functional components, while useEffect handles side effects like data fetching or
           subscriptions.
         </MessageContent>

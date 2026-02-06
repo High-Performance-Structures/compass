@@ -70,7 +70,7 @@ export default function TaskDemo() {
       <Task className="w-full">
         <TaskTrigger title="Found project files" />
         <TaskContent>
-          <TaskItem>Searching "app/page.tsx, components structure"</TaskItem>
+          <TaskItem>Searching {'"'}app/page.tsx, components structure{'"'}</TaskItem>
           <TaskItem>
             <span className="inline-flex items-center gap-1">
               Read{" "}

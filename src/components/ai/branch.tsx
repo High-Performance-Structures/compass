@@ -192,7 +192,7 @@ export default function BranchDemo() {
   return (
     <div className="flex w-full flex-col gap-4">
       <Message from="user">
-        <MessageContent>What's the best way to learn React?</MessageContent>
+        <MessageContent>What{"'"}s the best way to learn React?</MessageContent>
       </Message>
 
       <Branch onBranchChange={index => console.log("Branch changed to:", index)}>

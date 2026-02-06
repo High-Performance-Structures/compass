@@ -2,9 +2,7 @@
 
 import { useState, useCallback, useRef, useEffect } from "react"
 import {
-  ArrowUp,
   SendHorizonal,
-  Square,
   CopyIcon,
   ThumbsUpIcon,
   ThumbsDownIcon,
@@ -51,7 +49,7 @@ import {
   PromptInputFooter,
   PromptInputSubmit,
 } from "@/components/ai/prompt-input"
-import { useChatState, useChatPanel } from "./chat-provider"
+import { useChatState } from "./chat-provider"
 import { DynamicUI } from "./dynamic-ui"
 import type { ComponentSpec } from "@/lib/agent/catalog"
 
@@ -277,7 +275,6 @@ function getTextContent(
 
 export function ChatView({ variant, stats }: ChatViewProps) {
   const chat = useChatState()
-  const panel = useChatPanel()
   const isPage = variant === "page"
 
   const [isActive, setIsActive] = useState(false)

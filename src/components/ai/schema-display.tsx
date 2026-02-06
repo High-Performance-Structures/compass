@@ -440,7 +440,7 @@ export function SchemaDisplayDemo() {
                     required
                   </Badge>
                 </div>
-                <p className="mt-1 text-muted-foreground text-sm">The user's unique ID</p>
+                <p className="mt-1 text-muted-foreground text-sm">The user{"'"}s unique ID</p>
               </div>
               <div className="px-4 py-3 pl-10">
                 <div className="flex items-center gap-2">

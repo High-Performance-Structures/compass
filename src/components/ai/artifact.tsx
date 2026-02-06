@@ -156,7 +156,7 @@ def dijkstra(graph, start):
     <Artifact>
       <ArtifactHeader>
         <div>
-          <ArtifactTitle>Dijkstra's Algorithm</ArtifactTitle>
+          <ArtifactTitle>Dijkstra{"'"}s Algorithm</ArtifactTitle>
           <ArtifactDescription>Updated 1 minute ago</ArtifactDescription>
         </div>
         <ArtifactActions>
