@@ -976,57 +976,11 @@ export const PromptInputSubmit = ({
   )
 }
 
-interface SpeechRecognition extends EventTarget {
-  continuous: boolean
-  interimResults: boolean
-  lang: string
-  start(): void
-  stop(): void
-  onstart: ((this: SpeechRecognition, ev: Event) => void) | null
-  onend: ((this: SpeechRecognition, ev: Event) => void) | null
-  onresult: ((this: SpeechRecognition, ev: SpeechRecognitionEvent) => void) | null
-  onerror: ((this: SpeechRecognition, ev: SpeechRecognitionErrorEvent) => void) | null
-}
+type SpeechState = "idle" | "recording" | "transcribing"
 
-interface SpeechRecognitionEvent extends Event {
-  results: SpeechRecognitionResultList
-  resultIndex: number
-}
-
-interface SpeechRecognitionResultList {
-  readonly length: number
-  item(index: number): SpeechRecognitionResult
-  [index: number]: SpeechRecognitionResult
-}
-
-interface SpeechRecognitionResult {
-  readonly length: number
-  item(index: number): SpeechRecognitionAlternative
-  [index: number]: SpeechRecognitionAlternative
-  isFinal: boolean
-}
-
-interface SpeechRecognitionAlternative {
-  transcript: string
-  confidence: number
-}
-
-interface SpeechRecognitionErrorEvent extends Event {
-  error: string
-}
-
-declare global {
-  interface Window {
-    SpeechRecognition: {
-      new (): SpeechRecognition
-    }
-    webkitSpeechRecognition: {
-      new (): SpeechRecognition
-    }
-  }
-}
-
-export type PromptInputSpeechButtonProps = ComponentProps<typeof PromptInputButton> & {
+export type PromptInputSpeechButtonProps = ComponentProps<
+  typeof PromptInputButton
+> & {
   textareaRef?: RefObject<HTMLTextAreaElement | null>
   onTranscriptionChange?: (text: string) => void
 }
@@ -1037,91 +991,126 @@ export const PromptInputSpeechButton = ({
   onTranscriptionChange,
   ...props
 }: PromptInputSpeechButtonProps) => {
-  const [isListening, setIsListening] = useState(false)
-  const [recognition, setRecognition] = useState<SpeechRecognition | null>(null)
-  const recognitionRef = useRef<SpeechRecognition | null>(null)
+  const [state, setState] = useState<SpeechState>("idle")
+  const [supported, setSupported] = useState(true)
+  const recorderRef = useRef<MediaRecorder | null>(null)
+  const streamRef = useRef<MediaStream | null>(null)
+  const chunksRef = useRef<Blob[]>([])
 
   useEffect(() => {
-    if (
-      typeof window !== "undefined" &&
-      ("SpeechRecognition" in window || "webkitSpeechRecognition" in window)
-    ) {
-      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
-      const speechRecognition = new SpeechRecognition()
-
-      speechRecognition.continuous = true
-      speechRecognition.interimResults = true
-      speechRecognition.lang = "en-US"
-
-      speechRecognition.onstart = () => {
-        setIsListening(true)
-      }
-
-      speechRecognition.onend = () => {
-        setIsListening(false)
-      }
-
-      speechRecognition.onresult = event => {
-        let finalTranscript = ""
-
-        for (let i = event.resultIndex; i < event.results.length; i++) {
-          const result = event.results[i]
-          if (result.isFinal) {
-            finalTranscript += result[0]?.transcript ?? ""
-          }
-        }
-
-        if (finalTranscript && textareaRef?.current) {
-          const textarea = textareaRef.current
-          const currentValue = textarea.value
-          const newValue = currentValue + (currentValue ? " " : "") + finalTranscript
-
-          textarea.value = newValue
-          textarea.dispatchEvent(new Event("input", { bubbles: true }))
-          onTranscriptionChange?.(newValue)
-        }
-      }
-
-      speechRecognition.onerror = event => {
-        console.error("Speech recognition error:", event.error)
-        setIsListening(false)
-      }
-
-      recognitionRef.current = speechRecognition
-      setRecognition(speechRecognition)
+    if (typeof navigator === "undefined" || !navigator.mediaDevices) {
+      setSupported(false)
     }
-
     return () => {
-      if (recognitionRef.current) {
-        recognitionRef.current.stop()
+      streamRef.current?.getTracks().forEach((t) => t.stop())
+    }
+  }, [])
+
+  const stopRecording = useCallback(() => {
+    recorderRef.current?.stop()
+  }, [])
+
+  const startRecording = useCallback(async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: true,
+      })
+      streamRef.current = stream
+      chunksRef.current = []
+
+      const mimeType = MediaRecorder.isTypeSupported(
+        "audio/webm;codecs=opus"
+      )
+        ? "audio/webm;codecs=opus"
+        : "audio/webm"
+
+      const recorder = new MediaRecorder(stream, { mimeType })
+      recorderRef.current = recorder
+
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0) chunksRef.current.push(e.data)
       }
+
+      recorder.onstop = async () => {
+        stream.getTracks().forEach((t) => t.stop())
+        streamRef.current = null
+
+        const blob = new Blob(chunksRef.current, {
+          type: mimeType,
+        })
+        chunksRef.current = []
+
+        if (blob.size === 0) {
+          setState("idle")
+          return
+        }
+
+        setState("transcribing")
+        try {
+          const form = new FormData()
+          form.append("audio", blob, "recording.webm")
+          const res = await fetch("/api/transcribe", {
+            method: "POST",
+            body: form,
+          })
+          if (!res.ok) {
+            setState("idle")
+            return
+          }
+          const data = (await res.json()) as {
+            text: string
+            duration: number
+          }
+          const text = data.text.trim()
+
+          if (text && textareaRef?.current) {
+            const textarea = textareaRef.current
+            const cur = textarea.value
+            const next =
+              cur + (cur ? " " : "") + text
+            textarea.value = next
+            textarea.dispatchEvent(
+              new Event("input", { bubbles: true })
+            )
+            onTranscriptionChange?.(next)
+          }
+        } finally {
+          setState("idle")
+        }
+      }
+
+      recorder.start()
+      setState("recording")
+    } catch {
+      setState("idle")
     }
   }, [textareaRef, onTranscriptionChange])
 
-  const toggleListening = useCallback(() => {
-    if (!recognition) {
-      return
+  const handleClick = useCallback(() => {
+    if (state === "recording") {
+      stopRecording()
+    } else if (state === "idle") {
+      startRecording()
     }
-
-    if (isListening) {
-      recognition.stop()
-    } else {
-      recognition.start()
-    }
-  }, [recognition, isListening])
+  }, [state, startRecording, stopRecording])
 
   return (
     <PromptInputButton
       className={cn(
         "relative transition-all duration-200",
-        isListening && "animate-pulse bg-accent text-accent-foreground",
+        state === "recording" &&
+          "animate-pulse bg-accent text-accent-foreground",
         className,
       )}
-      disabled={!recognition}
-      onClick={toggleListening}
+      disabled={!supported || state === "transcribing"}
+      onClick={handleClick}
       {...props}
     >
-      <MicIcon className="size-4" />
+      {state === "transcribing" ? (
+        <Loader2Icon className="size-4 animate-spin" />
+      ) : (
+        <MicIcon className="size-4" />
+      )}
     </PromptInputButton>
   )
 }

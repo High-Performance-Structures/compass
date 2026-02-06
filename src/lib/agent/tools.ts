@@ -2,6 +2,8 @@ import { tool } from "ai"
 import { z } from "zod/v4"
 import { getCloudflareContext } from "@opennextjs/cloudflare"
 import { getDb } from "@/db"
+import { getCurrentUser } from "@/lib/auth"
+import { saveMemory, searchMemories } from "@/lib/agent/memory"
 
 const queryDataInputSchema = z.object({
   queryType: z.enum([
@@ -66,6 +68,42 @@ const renderInputSchema = z.object({
 })
 
 type RenderInput = z.infer<typeof renderInputSchema>
+
+const rememberInputSchema = z.object({
+  content: z.string().describe(
+    "What to remember (a preference, decision, fact, or workflow)"
+  ),
+  memoryType: z.enum([
+    "preference",
+    "workflow",
+    "fact",
+    "decision",
+  ]).describe("Category of memory"),
+  tags: z
+    .string()
+    .optional()
+    .describe("Comma-separated tags for categorization"),
+  importance: z
+    .number()
+    .min(0.3)
+    .max(1.0)
+    .optional()
+    .describe("Importance weight 0.3-1.0 (default 0.7)"),
+})
+
+type RememberInput = z.infer<typeof rememberInputSchema>
+
+const recallInputSchema = z.object({
+  query: z
+    .string()
+    .describe("What to search for in memories"),
+  limit: z
+    .number()
+    .optional()
+    .describe("Max results (default 5)"),
+})
+
+type RecallInput = z.infer<typeof recallInputSchema>
 
 async function executeQueryData(input: QueryDataInput) {
   const { env } = await getCloudflareContext()
@@ -220,5 +258,60 @@ export const agentTools = {
         props: input.props,
       },
     }),
+  }),
+
+  rememberContext: tool({
+    description:
+      "Save something to persistent memory. Use when the " +
+      "user shares a preference, makes a decision, or " +
+      "mentions a fact worth remembering across sessions.",
+    inputSchema: rememberInputSchema,
+    execute: async (input: RememberInput) => {
+      const { env } = await getCloudflareContext()
+      const db = getDb(env.DB)
+      const user = await getCurrentUser()
+      if (!user) return { error: "not authenticated" }
+
+      const id = await saveMemory(
+        db,
+        user.id,
+        input.content,
+        input.memoryType,
+        input.tags,
+        input.importance,
+      )
+      return {
+        action: "memory_saved" as const,
+        id,
+        content: input.content,
+        memoryType: input.memoryType,
+      }
+    },
+  }),
+
+  recallMemory: tool({
+    description:
+      "Search persistent memories for this user. Use when " +
+      "the user asks if you remember something or when you " +
+      "need to look up a past preference or decision.",
+    inputSchema: recallInputSchema,
+    execute: async (input: RecallInput) => {
+      const { env } = await getCloudflareContext()
+      const db = getDb(env.DB)
+      const user = await getCurrentUser()
+      if (!user) return { error: "not authenticated" }
+
+      const results = await searchMemories(
+        db,
+        user.id,
+        input.query,
+        input.limit,
+      )
+      return {
+        action: "memory_recall" as const,
+        results,
+        count: results.length,
+      }
+    },
   }),
 }

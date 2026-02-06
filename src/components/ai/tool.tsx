@@ -4,14 +4,11 @@ import type { ToolUIPart } from "ai"
 import {
   CheckCircleIcon,
   ChevronDownIcon,
-  CircleIcon,
-  ClockIcon,
-  WrenchIcon,
+  LoaderIcon,
   XCircleIcon,
 } from "lucide-react"
 import type { ComponentProps, ReactNode } from "react"
 import { isValidElement } from "react"
-import { Badge } from "@/components/ui/badge"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { cn } from "@/lib/utils"
 import { CodeBlock } from "@/components/ai/code-block"
@@ -19,7 +16,7 @@ import { CodeBlock } from "@/components/ai/code-block"
 export type ToolProps = ComponentProps<typeof Collapsible>
 
 export const Tool = ({ className, ...props }: ToolProps) => (
-  <Collapsible className={cn("not-prose mb-4 w-full rounded-md border", className)} {...props} />
+  <Collapsible className={cn("not-prose mb-2", className)} {...props} />
 )
 
 export interface ToolHeaderProps {
@@ -29,46 +26,38 @@ export interface ToolHeaderProps {
   className?: string
 }
 
-const getStatusBadge = (status: ToolUIPart["state"]) => {
-  const labels: Record<ToolUIPart["state"], string> = {
-    "input-streaming": "Pending",
-    "input-available": "Running",
-    "approval-requested": "Awaiting Approval",
-    "approval-responded": "Responded",
-    "output-available": "Completed",
-    "output-error": "Error",
-    "output-denied": "Denied",
+const getStatusIcon = (status: ToolUIPart["state"]): ReactNode => {
+  switch (status) {
+    case "input-streaming":
+    case "input-available":
+      return <LoaderIcon className="size-3.5 animate-spin text-muted-foreground" />
+    case "output-available":
+      return <CheckCircleIcon className="size-3.5 text-primary" />
+    case "output-error":
+    case "output-denied":
+      return <XCircleIcon className="size-3.5 text-destructive" />
+    default:
+      return <LoaderIcon className="size-3.5 text-muted-foreground" />
   }
-
-  const icons: Record<ToolUIPart["state"], ReactNode> = {
-    "input-streaming": <CircleIcon className="size-4" />,
-    "input-available": <ClockIcon className="size-4 animate-pulse" />,
-    "approval-requested": <ClockIcon className="size-4 text-yellow-600" />,
-    "approval-responded": <CheckCircleIcon className="size-4 text-blue-600" />,
-    "output-available": <CheckCircleIcon className="size-4 text-green-600" />,
-    "output-error": <XCircleIcon className="size-4 text-red-600" />,
-    "output-denied": <XCircleIcon className="size-4 text-orange-600" />,
-  }
-
-  return (
-    <Badge className="gap-1.5 rounded-full text-xs" variant="secondary">
-      {icons[status]}
-      {labels[status]}
-    </Badge>
-  )
 }
+
+const isInProgress = (status: ToolUIPart["state"]): boolean =>
+  status === "input-streaming" || status === "input-available"
 
 export const ToolHeader = ({ className, title, type, state, ...props }: ToolHeaderProps) => (
   <CollapsibleTrigger
-    className={cn("flex w-full items-center justify-between gap-4 p-3", className)}
+    className={cn(
+      "inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs text-muted-foreground transition-colors hover:bg-muted/80",
+      className,
+    )}
     {...props}
   >
-    <div className="flex items-center gap-2">
-      <WrenchIcon className="size-4 text-muted-foreground" />
-      <span className="font-medium text-sm">{title ?? type.split("-").slice(1).join("-")}</span>
-      {getStatusBadge(state)}
-    </div>
-    <ChevronDownIcon className="size-4 text-muted-foreground transition-transform group-data-[state=open]:rotate-180" />
+    {getStatusIcon(state)}
+    <span>
+      {title ?? type.split("-").slice(1).join("-")}
+      {isInProgress(state) && "..."}
+    </span>
+    <ChevronDownIcon className="size-3 opacity-50 transition-transform group-data-[state=open]:rotate-180" />
   </CollapsibleTrigger>
 )
 
@@ -77,7 +66,7 @@ export type ToolContentProps = ComponentProps<typeof CollapsibleContent>
 export const ToolContent = ({ className, ...props }: ToolContentProps) => (
   <CollapsibleContent
     className={cn(
-      "data-[state=closed]:fade-out-0 data-[state=closed]:slide-out-to-top-2 data-[state=open]:slide-in-from-top-2 text-popover-foreground outline-none data-[state=closed]:animate-out data-[state=open]:animate-in",
+      "mt-1 rounded-lg border bg-muted/30 data-[state=closed]:fade-out-0 data-[state=closed]:slide-out-to-top-2 data-[state=open]:slide-in-from-top-2 text-popover-foreground outline-none data-[state=closed]:animate-out data-[state=open]:animate-in",
       className,
     )}
     {...props}
@@ -89,7 +78,7 @@ export type ToolInputProps = ComponentProps<"div"> & {
 }
 
 export const ToolInput = ({ className, input, ...props }: ToolInputProps) => (
-  <div className={cn("space-y-2 overflow-hidden p-4", className)} {...props}>
+  <div className={cn("space-y-2 overflow-hidden p-3", className)} {...props}>
     <h4 className="font-medium text-muted-foreground text-xs uppercase tracking-wide">
       Parameters
     </h4>
@@ -118,7 +107,7 @@ export const ToolOutput = ({ className, output, errorText, ...props }: ToolOutpu
   }
 
   return (
-    <div className={cn("space-y-2 p-4", className)} {...props}>
+    <div className={cn("space-y-2 p-3", className)} {...props}>
       <h4 className="font-medium text-muted-foreground text-xs uppercase tracking-wide">
         {errorText ? "Error" : "Result"}
       </h4>

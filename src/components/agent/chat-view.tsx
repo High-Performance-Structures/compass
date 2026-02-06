@@ -8,6 +8,9 @@ import {
   ThumbsDownIcon,
   RefreshCcwIcon,
   Check,
+  MicIcon,
+  XIcon,
+  Loader2Icon,
 } from "lucide-react"
 import {
   IconBrandGithub,
@@ -48,7 +51,12 @@ import {
   PromptInputTextarea,
   PromptInputFooter,
   PromptInputSubmit,
+  PromptInputTools,
+  PromptInputButton,
 } from "@/components/ai/prompt-input"
+import { useAudioRecorder } from "@/hooks/use-audio-recorder"
+import type { AudioRecorder } from "@/hooks/use-audio-recorder"
+import { AudioWaveform } from "@/components/ai/audio-waveform"
 import { useChatState } from "./chat-provider"
 import { DynamicUI } from "./dynamic-ui"
 import type { ComponentSpec } from "@/lib/agent/catalog"
@@ -139,6 +147,20 @@ function getSuggestionsForPath(pathname: string): string[] {
   return DASHBOARD_SUGGESTIONS
 }
 
+const TOOL_DISPLAY_NAMES: Record<string, string> = {
+  queryData: "Looking up records",
+  queryGitHub: "Checking development status",
+  createGitHubIssue: "Creating GitHub issue",
+  saveInterviewFeedback: "Saving your feedback",
+  navigateTo: "Navigating",
+  showNotification: "Sending notification",
+  renderComponent: "Preparing display",
+}
+
+function friendlyToolName(raw: string): string {
+  return TOOL_DISPLAY_NAMES[raw] ?? raw
+}
+
 // shared message + tool rendering for both variants
 function ChatMessage({
   msg,
@@ -188,10 +210,13 @@ function ChatMessage({
       const inv = p.toolInvocation as
         | Record<string, unknown>
         | undefined
+      const rawName = (
+        inv?.toolName ?? p.toolName ?? ""
+      ) as string
       toolParts.push({
         type: p.type as string,
         state: (inv?.state ?? p.state) as ToolUIPart["state"],
-        toolName: (inv?.toolName ?? p.toolName ?? "tool") as string,
+        toolName: friendlyToolName(rawName) || "Working",
         input: inv?.input ?? p.input,
         output: inv?.output ?? p.output,
         errorText: (inv?.errorText ?? p.errorText) as
@@ -273,9 +298,123 @@ function getTextContent(
     .join("")
 }
 
+function ChatInput({
+  textareaRef,
+  placeholder,
+  recorder,
+  status,
+  isGenerating,
+  onSend,
+  className,
+}: {
+  readonly textareaRef: React.RefObject<
+    HTMLTextAreaElement | null
+  >
+  readonly placeholder: string
+  readonly recorder: AudioRecorder
+  readonly status: string
+  readonly isGenerating: boolean
+  readonly onSend: (text: string) => void
+  readonly className?: string
+}) {
+  const isRecording = recorder.state === "recording"
+  const isTranscribing = recorder.state === "transcribing"
+  const isIdle = recorder.state === "idle"
+
+  return (
+    <PromptInput
+      className={className}
+      onSubmit={({ text }) => {
+        if (!text.trim() || isGenerating) return
+        onSend(text.trim())
+      }}
+    >
+      {/* textarea stays mounted (hidden) to preserve value */}
+      <PromptInputTextarea
+        ref={textareaRef}
+        placeholder={placeholder}
+        className={isIdle ? undefined : "hidden"}
+      />
+      {isRecording && recorder.stream && (
+        <div className="flex items-center px-3 py-3 min-h-10">
+          <AudioWaveform
+            stream={recorder.stream}
+            className="flex-1"
+          />
+        </div>
+      )}
+      {isTranscribing && (
+        <div className="flex items-center justify-center gap-2 px-3 py-3 min-h-10 text-muted-foreground text-sm">
+          <Loader2Icon className="size-4 animate-spin" />
+          <span>Transcribing...</span>
+        </div>
+      )}
+      <PromptInputFooter>
+        {isRecording ? (
+          <>
+            <PromptInputTools>
+              <PromptInputButton
+                onClick={recorder.cancel}
+              >
+                <XIcon className="size-4" />
+              </PromptInputButton>
+            </PromptInputTools>
+            <PromptInputButton
+              variant="default"
+              onClick={recorder.stop}
+            >
+              <Check className="size-4" />
+            </PromptInputButton>
+          </>
+        ) : (
+          <>
+            <PromptInputTools>
+              <PromptInputButton
+                disabled={
+                  !recorder.supported || !isIdle
+                }
+                onClick={() => {
+                  recorder.start()
+                }}
+              >
+                <MicIcon className="size-4" />
+              </PromptInputButton>
+            </PromptInputTools>
+            <PromptInputSubmit
+              status={
+                status as
+                  | "streaming"
+                  | "submitted"
+                  | "ready"
+                  | "error"
+              }
+            />
+          </>
+        )}
+      </PromptInputFooter>
+    </PromptInput>
+  )
+}
+
 export function ChatView({ variant, stats }: ChatViewProps) {
   const chat = useChatState()
   const isPage = variant === "page"
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
+
+  const handleTranscription = useCallback(
+    (text: string) => {
+      const ta = textareaRef.current
+      if (!ta) return
+      const cur = ta.value
+      ta.value = cur + (cur ? " " : "") + text
+      ta.dispatchEvent(
+        new Event("input", { bubbles: true })
+      )
+    },
+    []
+  )
+
+  const recorder = useAudioRecorder(handleTranscription)
 
   const [isActive, setIsActive] = useState(false)
   const [idleInput, setIdleInput] = useState("")
@@ -610,19 +749,17 @@ export function ChatView({ variant, stats }: ChatViewProps) {
           )}
         >
           <div className="mx-auto max-w-3xl">
-            <PromptInput
+            <ChatInput
+              textareaRef={textareaRef}
+              placeholder="Ask follow-up..."
+              recorder={recorder}
+              status={chat.status}
+              isGenerating={chat.isGenerating}
+              onSend={(text) =>
+                chat.sendMessage({ text })
+              }
               className="rounded-2xl"
-              onSubmit={({ text }) => {
-                if (!text.trim() || chat.isGenerating) return
-                chat.sendMessage({ text: text.trim() })
-              }}
-            >
-              <PromptInputTextarea placeholder="Ask follow-up..." />
-              <PromptInputFooter>
-                <div />
-                <PromptInputSubmit status={chat.status as "streaming" | "submitted" | "ready" | "error"} />
-              </PromptInputFooter>
-            </PromptInput>
+            />
           </div>
         </div>
       </div>
@@ -684,18 +821,16 @@ export function ChatView({ variant, stats }: ChatViewProps) {
 
       {/* Input */}
       <div className="border-t p-3">
-        <PromptInput
-          onSubmit={({ text }) => {
-            if (!text.trim() || chat.isGenerating) return
-            chat.sendMessage({ text: text.trim() })
-          }}
-        >
-          <PromptInputTextarea placeholder="Ask anything..." />
-          <PromptInputFooter>
-            <div />
-            <PromptInputSubmit status={chat.status as "streaming" | "submitted" | "ready" | "error"} />
-          </PromptInputFooter>
-        </PromptInput>
+        <ChatInput
+          textareaRef={textareaRef}
+          placeholder="Ask anything..."
+          recorder={recorder}
+          status={chat.status}
+          isGenerating={chat.isGenerating}
+          onSend={(text) =>
+            chat.sendMessage({ text })
+          }
+        />
       </div>
     </div>
   )

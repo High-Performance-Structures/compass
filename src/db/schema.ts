@@ -2,6 +2,7 @@ import {
   sqliteTable,
   text,
   integer,
+  real,
 } from "drizzle-orm/sqlite-core"
 
 // Auth and user management tables
@@ -275,3 +276,43 @@ export type AgentConversation = typeof agentConversations.$inferSelect
 export type NewAgentConversation = typeof agentConversations.$inferInsert
 export type AgentMemory = typeof agentMemories.$inferSelect
 export type NewAgentMemory = typeof agentMemories.$inferInsert
+
+// Feedback interview table for UX research
+export const feedbackInterviews = sqliteTable("feedback_interviews", {
+  id: text("id").primaryKey(),
+  userId: text("user_id")
+    .notNull()
+    .references(() => users.id),
+  userName: text("user_name").notNull(),
+  userRole: text("user_role").notNull(),
+  responses: text("responses").notNull(),
+  summary: text("summary").notNull(),
+  painPoints: text("pain_points"),
+  featureRequests: text("feature_requests"),
+  overallSentiment: text("overall_sentiment").notNull(),
+  githubIssueUrl: text("github_issue_url"),
+  conversationId: text("conversation_id"),
+  createdAt: text("created_at").notNull(),
+})
+
+export type FeedbackInterview = typeof feedbackInterviews.$inferSelect
+export type NewFeedbackInterview = typeof feedbackInterviews.$inferInsert
+
+// Slab persistent memory
+export const slabMemories = sqliteTable("slab_memories", {
+  id: text("id").primaryKey(),
+  userId: text("user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  content: text("content").notNull(),
+  memoryType: text("memory_type").notNull(), // preference | workflow | fact | decision
+  tags: text("tags"), // comma-separated, lowercase
+  importance: real("importance").notNull().default(0.7),
+  pinned: integer("pinned", { mode: "boolean" }).notNull().default(false),
+  accessCount: integer("access_count").notNull().default(0),
+  lastAccessedAt: text("last_accessed_at"),
+  createdAt: text("created_at").notNull(),
+})
+
+export type SlabMemory = typeof slabMemories.$inferSelect
+export type NewSlabMemory = typeof slabMemories.$inferInsert

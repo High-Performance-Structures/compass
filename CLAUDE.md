@@ -12,7 +12,7 @@ quick start
 
 ```bash
 bun dev          # turbopack dev server on :3000
-bun build        # production build
+bun run build        # production build
 bun preview      # test build on cloudflare runtime
 bun deploy       # build and deploy to cloudflare workers
 bun lint         # run eslint

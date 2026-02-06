@@ -31,6 +31,9 @@
 			"service": "compass"
 		}
 	],
+	"ai": {
+		"binding": "AI"
+	},
 	"observability": {
 		"enabled": true
 	},
