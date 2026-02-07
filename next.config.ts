@@ -22,5 +22,9 @@ export default nextConfig;
 
 // Enable calling `getCloudflareContext()` in `next dev`.
 // See https://opennext.js.org/cloudflare/bindings#local-access-to-bindings.
-import { initOpenNextCloudflareForDev } from "@opennextjs/cloudflare";
-initOpenNextCloudflareForDev();
+// Only init in dev -- build and lint don't need the wrangler proxy.
+if (process.env.NODE_ENV === "development") {
+    import("@opennextjs/cloudflare").then((mod) =>
+        mod.initOpenNextCloudflareForDev()
+    );
+}
