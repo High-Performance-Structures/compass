@@ -48,6 +48,7 @@ export async function POST(req: Request): Promise<Response> {
       currentPage,
       memories,
       pluginSections,
+      mode: "full",
     }),
     messages: await convertToModelMessages(body.messages),
     tools: { ...agentTools, ...githubTools },
