@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { IconEdit } from "@tabler/icons-react"
+import { IconEdit, IconLoader2 } from "@tabler/icons-react"
 
 import type { FileItem } from "@/lib/files-data"
 import { useFiles } from "@/hooks/use-files"
@@ -26,20 +26,42 @@ export function FileRenameDialog({
   file: FileItem | null
 }) {
   const [name, setName] = useState("")
-  const { dispatch } = useFiles()
+  const [loading, setLoading] = useState(false)
+  const {
+    renameFile: renameFileFn,
+    state,
+    dispatch,
+  } = useFiles()
 
   useEffect(() => {
     if (file) setName(file.name)
   }, [file])
 
-  const handleRename = () => {
+  const handleRename = async () => {
     if (!file) return
     const trimmed = name.trim()
     if (!trimmed || trimmed === file.name) return
 
-    dispatch({ type: "RENAME_FILE", payload: { id: file.id, name: trimmed } })
-    toast.success(`Renamed to "${trimmed}"`)
-    onOpenChange(false)
+    setLoading(true)
+    try {
+      if (state.isConnected === true) {
+        const ok = await renameFileFn(file.id, trimmed)
+        if (ok) {
+          toast.success(`Renamed to "${trimmed}"`)
+        } else {
+          toast.error("Failed to rename")
+        }
+      } else {
+        dispatch({
+          type: "OPTIMISTIC_RENAME",
+          payload: { id: file.id, name: trimmed },
+        })
+        toast.success(`Renamed to "${trimmed}"`)
+      }
+      onOpenChange(false)
+    } finally {
+      setLoading(false)
+    }
   }
 
   return (
@@ -54,19 +76,36 @@ export function FileRenameDialog({
         <div className="py-2">
           <Input
             value={name}
-            onChange={(e) => setName(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && handleRename()}
+            onChange={e => setName(e.target.value)}
+            onKeyDown={e =>
+              e.key === "Enter" && handleRename()
+            }
             autoFocus
+            disabled={loading}
           />
         </div>
         <DialogFooter>
-          <Button variant="ghost" onClick={() => onOpenChange(false)}>
+          <Button
+            variant="ghost"
+            onClick={() => onOpenChange(false)}
+            disabled={loading}
+          >
             Cancel
           </Button>
           <Button
             onClick={handleRename}
-            disabled={!name.trim() || name.trim() === file?.name}
+            disabled={
+              !name.trim() ||
+              name.trim() === file?.name ||
+              loading
+            }
           >
+            {loading && (
+              <IconLoader2
+                size={16}
+                className="mr-2 animate-spin"
+              />
+            )}
             Rename
           </Button>
         </DialogFooter>

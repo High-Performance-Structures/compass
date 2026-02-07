@@ -9,7 +9,7 @@ export function FileDropZone({
   onDrop,
 }: {
   children: React.ReactNode
-  onDrop: () => void
+  onDrop: (files: File[]) => void
 }) {
   const [dragging, setDragging] = useState(false)
   const [dragCounter, setDragCounter] = useState(0)
@@ -17,7 +17,7 @@ export function FileDropZone({
   const handleDragEnter = useCallback(
     (e: React.DragEvent) => {
       e.preventDefault()
-      setDragCounter((c) => c + 1)
+      setDragCounter(c => c + 1)
       if (e.dataTransfer.types.includes("Files")) {
         setDragging(true)
       }
@@ -28,7 +28,7 @@ export function FileDropZone({
   const handleDragLeave = useCallback(
     (e: React.DragEvent) => {
       e.preventDefault()
-      setDragCounter((c) => {
+      setDragCounter(c => {
         const next = c - 1
         if (next <= 0) setDragging(false)
         return Math.max(0, next)
@@ -37,9 +37,12 @@ export function FileDropZone({
     []
   )
 
-  const handleDragOver = useCallback((e: React.DragEvent) => {
-    e.preventDefault()
-  }, [])
+  const handleDragOver = useCallback(
+    (e: React.DragEvent) => {
+      e.preventDefault()
+    },
+    []
+  )
 
   const handleDrop = useCallback(
     (e: React.DragEvent) => {
@@ -47,7 +50,7 @@ export function FileDropZone({
       setDragging(false)
       setDragCounter(0)
       if (e.dataTransfer.files.length > 0) {
-        onDrop()
+        onDrop(Array.from(e.dataTransfer.files))
       }
     },
     [onDrop]
@@ -73,7 +76,9 @@ export function FileDropZone({
       >
         <div className="flex flex-col items-center gap-2 text-primary">
           <IconCloudUpload size={48} strokeWidth={1.5} />
-          <p className="text-sm font-medium">Drop files to upload</p>
+          <p className="text-sm font-medium">
+            Drop files to upload
+          </p>
         </div>
       </div>
     </div>

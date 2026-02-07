@@ -17,7 +17,8 @@ function isPublicPath(pathname: string): boolean {
   return (
     publicPaths.includes(pathname) ||
     pathname.startsWith("/api/auth/") ||
-    pathname.startsWith("/api/netsuite/")
+    pathname.startsWith("/api/netsuite/") ||
+    pathname.startsWith("/api/google/")
   )
 }
 

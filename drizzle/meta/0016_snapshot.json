@@ -1,7 +1,11 @@
 {
   "version": "6",
   "dialect": "sqlite",
+<<<<<<< HEAD
+  "id": "24da6db4-2ea9-47dd-807b-224e89738ab0",
+=======
   "id": "f4c54926-b492-453b-bc4a-88eb2a6d63ee",
+>>>>>>> origin/main
   "prevId": "08b14bdc-7015-48bd-9ec9-10a0b977c08f",
   "tables": {
     "agent_conversations": {
@@ -1417,6 +1421,8 @@
           "autoincrement": false,
           "default": "'office'"
         },
+<<<<<<< HEAD
+=======
         "google_email": {
           "name": "google_email",
           "type": "text",
@@ -1424,6 +1430,7 @@
           "notNull": false,
           "autoincrement": false
         },
+>>>>>>> origin/main
         "is_active": {
           "name": "is_active",
           "type": "integer",
@@ -3165,8 +3172,13 @@
       "uniqueConstraints": {},
       "checkConstraints": {}
     },
+<<<<<<< HEAD
+    "custom_themes": {
+      "name": "custom_themes",
+=======
     "google_auth": {
       "name": "google_auth",
+>>>>>>> origin/main
       "columns": {
         "id": {
           "name": "id",
@@ -3175,20 +3187,42 @@
           "notNull": true,
           "autoincrement": false
         },
+<<<<<<< HEAD
+        "user_id": {
+          "name": "user_id",
+=======
         "organization_id": {
           "name": "organization_id",
+>>>>>>> origin/main
           "type": "text",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
+<<<<<<< HEAD
+        "name": {
+          "name": "name",
+=======
         "service_account_key_encrypted": {
           "name": "service_account_key_encrypted",
+>>>>>>> origin/main
           "type": "text",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
+<<<<<<< HEAD
+        "description": {
+          "name": "description",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "''"
+        },
+        "theme_data": {
+          "name": "theme_data",
+=======
         "workspace_domain": {
           "name": "workspace_domain",
           "type": "text",
@@ -3212,6 +3246,7 @@
         },
         "connected_by": {
           "name": "connected_by",
+>>>>>>> origin/main
           "type": "text",
           "primaryKey": false,
           "notNull": true,
@@ -3234,18 +3269,29 @@
       },
       "indexes": {},
       "foreignKeys": {
+<<<<<<< HEAD
+        "custom_themes_user_id_users_id_fk": {
+          "name": "custom_themes_user_id_users_id_fk",
+          "tableFrom": "custom_themes",
+          "tableTo": "users",
+          "columnsFrom": [
+            "user_id"
+=======
         "google_auth_organization_id_organizations_id_fk": {
           "name": "google_auth_organization_id_organizations_id_fk",
           "tableFrom": "google_auth",
           "tableTo": "organizations",
           "columnsFrom": [
             "organization_id"
+>>>>>>> origin/main
           ],
           "columnsTo": [
             "id"
           ],
           "onDelete": "cascade",
           "onUpdate": "no action"
+<<<<<<< HEAD
+=======
         },
         "google_auth_connected_by_users_id_fk": {
           "name": "google_auth_connected_by_users_id_fk",
@@ -3259,29 +3305,47 @@
           ],
           "onDelete": "no action",
           "onUpdate": "no action"
+>>>>>>> origin/main
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "checkConstraints": {}
     },
+<<<<<<< HEAD
+    "user_theme_preference": {
+      "name": "user_theme_preference",
+      "columns": {
+        "user_id": {
+          "name": "user_id",
+=======
     "google_starred_files": {
       "name": "google_starred_files",
       "columns": {
         "id": {
           "name": "id",
+>>>>>>> origin/main
           "type": "text",
           "primaryKey": true,
           "notNull": true,
           "autoincrement": false
         },
+<<<<<<< HEAD
+        "active_theme_id": {
+          "name": "active_theme_id",
+=======
         "user_id": {
           "name": "user_id",
+>>>>>>> origin/main
           "type": "text",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
+<<<<<<< HEAD
+        "updated_at": {
+          "name": "updated_at",
+=======
         "google_file_id": {
           "name": "google_file_id",
           "type": "text",
@@ -3291,6 +3355,7 @@
         },
         "created_at": {
           "name": "created_at",
+>>>>>>> origin/main
           "type": "text",
           "primaryKey": false,
           "notNull": true,
@@ -3299,9 +3364,15 @@
       },
       "indexes": {},
       "foreignKeys": {
+<<<<<<< HEAD
+        "user_theme_preference_user_id_users_id_fk": {
+          "name": "user_theme_preference_user_id_users_id_fk",
+          "tableFrom": "user_theme_preference",
+=======
         "google_starred_files_user_id_users_id_fk": {
           "name": "google_starred_files_user_id_users_id_fk",
           "tableFrom": "google_starred_files",
+>>>>>>> origin/main
           "tableTo": "users",
           "columnsFrom": [
             "user_id"
