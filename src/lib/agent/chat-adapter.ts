@@ -134,6 +134,26 @@ export function initializeActionHandlers(
     }
   })
 
+  registerActionHandler("SAVE_DASHBOARD", (payload) => {
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(
+        new CustomEvent("agent-save-dashboard", {
+          detail: payload,
+        })
+      )
+    }
+  })
+
+  registerActionHandler("LOAD_DASHBOARD", (payload) => {
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(
+        new CustomEvent("agent-load-dashboard", {
+          detail: payload,
+        })
+      )
+    }
+  })
+
   registerActionHandler("APPLY_THEME", (payload) => {
     if (typeof window !== "undefined") {
       window.dispatchEvent(
@@ -163,6 +183,8 @@ export const ALL_HANDLER_TYPES = [
   "SCROLL_TO",
   "FOCUS_ELEMENT",
   "GENERATE_UI",
+  "SAVE_DASHBOARD",
+  "LOAD_DASHBOARD",
   "APPLY_THEME",
   "PREVIEW_THEME",
 ] as const
@@ -224,6 +246,28 @@ export function dispatchToolActions(
           payload: {
             renderPrompt: output.renderPrompt,
             dataContext: output.dataContext,
+          },
+        })
+        break
+      case "save_dashboard":
+        executeAction({
+          type: "SAVE_DASHBOARD",
+          payload: {
+            name: output.name,
+            description: output.description,
+            dashboardId: output.dashboardId,
+          },
+        })
+        break
+      case "load_dashboard":
+        executeAction({
+          type: "LOAD_DASHBOARD",
+          payload: {
+            dashboardId: output.dashboardId,
+            spec: output.spec,
+            queries: output.queries,
+            renderPrompt: output.renderPrompt,
+            editPrompt: output.editPrompt,
           },
         })
         break

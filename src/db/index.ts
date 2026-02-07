@@ -6,6 +6,7 @@ import * as agentSchema from "./schema-agent"
 import * as aiConfigSchema from "./schema-ai-config"
 import * as themeSchema from "./schema-theme"
 import * as googleSchema from "./schema-google"
+import * as dashboardSchema from "./schema-dashboards"
 
 const allSchemas = {
   ...schema,
@@ -15,6 +16,7 @@ const allSchemas = {
   ...aiConfigSchema,
   ...themeSchema,
   ...googleSchema,
+  ...dashboardSchema,
 }
 
 export function getDb(d1: D1Database) {

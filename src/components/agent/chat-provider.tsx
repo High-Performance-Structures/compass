@@ -78,6 +78,10 @@ interface RenderContextValue {
     data: Record<string, unknown>
   ) => void
   clearRender: () => void
+  loadSpec: (
+    spec: Spec,
+    data: Record<string, unknown>
+  ) => void
 }
 
 const RenderContext =
@@ -171,6 +175,8 @@ export function ChatProvider({
   const [dataContext, setDataContext] = React.useState<
     Record<string, unknown>
   >({})
+  const [loadedSpec, setLoadedSpec] =
+    React.useState<Spec | null>(null)
 
   const router = useRouter()
   const pathname = usePathname()
@@ -228,13 +234,19 @@ export function ChatProvider({
   const routerRef = React.useRef(router)
   routerRef.current = router
 
+  const loadedSpecRef = React.useRef(loadedSpec)
+  loadedSpecRef.current = loadedSpec
+
   const triggerRender = React.useCallback(
     (prompt: string, data: Record<string, unknown>) => {
       setDataContext(data)
+      setLoadedSpec(null)
       renderSendRef.current(prompt, {
         dataContext: data,
         previousSpec:
-          renderSpecRef.current ?? undefined,
+          renderSpecRef.current ??
+          loadedSpecRef.current ??
+          undefined,
       })
     },
     []
@@ -243,7 +255,17 @@ export function ChatProvider({
   const clearRender = React.useCallback(() => {
     renderClearRef.current()
     setDataContext({})
+    setLoadedSpec(null)
   }, [])
+
+  const loadSpec = React.useCallback(
+    (spec: Spec, data: Record<string, unknown>) => {
+      renderClearRef.current()
+      setLoadedSpec(spec)
+      setDataContext(data)
+    },
+    [],
+  )
 
   // watch chat messages for generateUI tool results
   // and trigger render stream directly (no event chain)
@@ -274,6 +296,118 @@ export function ChatProvider({
     // trigger the render stream
     triggerRender(result.renderPrompt, result.dataContext)
   }, [chat.messages, triggerRender])
+
+  // listen for save-dashboard events from tool dispatch
+  React.useEffect(() => {
+    const handler = async (e: Event) => {
+      const detail = (e as CustomEvent).detail as {
+        name?: string
+        description?: string
+        dashboardId?: string
+      }
+      if (!detail?.name) return
+
+      const currentSpec =
+        renderSpecRef.current ?? loadedSpecRef.current
+      if (!currentSpec) return
+
+      const { saveCustomDashboard } = await import(
+        "@/app/actions/dashboards"
+      )
+
+      const result = await saveCustomDashboard(
+        detail.name,
+        detail.description ?? "",
+        JSON.stringify(currentSpec),
+        JSON.stringify([]),
+        detail.name,
+        detail.dashboardId,
+      )
+
+      if (result.success) {
+        window.dispatchEvent(
+          new CustomEvent("agent-toast", {
+            detail: {
+              message: `Dashboard "${detail.name}" saved`,
+              type: "success",
+            },
+          })
+        )
+      } else {
+        window.dispatchEvent(
+          new CustomEvent("agent-toast", {
+            detail: {
+              message: result.error,
+              type: "error",
+            },
+          })
+        )
+      }
+    }
+
+    window.addEventListener(
+      "agent-save-dashboard",
+      handler
+    )
+    return () =>
+      window.removeEventListener(
+        "agent-save-dashboard",
+        handler
+      )
+  }, [])
+
+  // listen for load-dashboard events from tool dispatch
+  React.useEffect(() => {
+    const handler = async (e: Event) => {
+      const detail = (e as CustomEvent).detail as {
+        dashboardId?: string
+        spec?: Spec
+        queries?: string
+        renderPrompt?: string
+        editPrompt?: string
+      }
+      if (!detail?.spec) return
+
+      // run saved queries for fresh data
+      let freshData: Record<string, unknown> = {}
+      if (detail.queries) {
+        const { executeDashboardQueries } = await import(
+          "@/app/actions/dashboards"
+        )
+        const result = await executeDashboardQueries(
+          detail.queries,
+        )
+        if (result.success) {
+          freshData = result.data
+        }
+      }
+
+      loadSpec(detail.spec, freshData)
+
+      // navigate to /dashboard
+      if (pathnameRef.current !== "/dashboard") {
+        routerRef.current.push("/dashboard")
+      }
+      setIsOpen(true)
+
+      // if editPrompt provided, trigger re-render
+      if (detail.editPrompt) {
+        setTimeout(() => {
+          triggerRender(detail.editPrompt!, freshData)
+        }, 100)
+      }
+    }
+
+    window.addEventListener(
+      "agent-load-dashboard",
+      handler
+    )
+    return () =>
+      window.removeEventListener(
+        "agent-load-dashboard",
+        handler
+      )
+  }, [loadSpec, triggerRender])
 
   // listen for navigation events from rendered UI
   React.useEffect(() => {
@@ -347,6 +481,7 @@ export function ChatProvider({
     setConversationId(crypto.randomUUID())
     setResumeLoaded(true)
     clearRender()
+    setLoadedSpec(null)
     renderDispatchedRef.current.clear()
   }, [chat.setMessages, clearRender])
 
@@ -389,20 +524,23 @@ export function ChatProvider({
 
   const renderValue = React.useMemo(
     () => ({
-      spec: renderStream.spec,
+      spec: renderStream.spec ?? loadedSpec,
       isRendering: renderStream.isStreaming,
       error: renderStream.error,
       dataContext,
       triggerRender,
       clearRender,
+      loadSpec,
     }),
     [
       renderStream.spec,
+      loadedSpec,
       renderStream.isStreaming,
       renderStream.error,
       dataContext,
       triggerRender,
       clearRender,
+      loadSpec,
     ]
   )
 

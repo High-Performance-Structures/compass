@@ -44,10 +44,16 @@ export async function POST(req: Request): Promise<Response> {
     )
   }
 
-  const [memories, registry] = await Promise.all([
-    loadMemoriesForPrompt(db, user.id),
-    getRegistry(db, envRecord),
-  ])
+  const { getCustomDashboards } = await import(
+    "@/app/actions/dashboards"
+  )
+
+  const [memories, registry, dashboardResult] =
+    await Promise.all([
+      loadMemoriesForPrompt(db, user.id),
+      getRegistry(db, envRecord),
+      getCustomDashboards(),
+    ])
 
   const pluginSections = registry.getPromptSections()
   const pluginTools = registry.getTools()
@@ -84,6 +90,9 @@ export async function POST(req: Request): Promise<Response> {
       timezone,
       memories,
       pluginSections,
+      dashboards: dashboardResult.success
+        ? dashboardResult.data
+        : [],
       mode: "full",
     }),
     messages: await convertToModelMessages(

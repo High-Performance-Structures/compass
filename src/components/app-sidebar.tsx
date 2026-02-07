@@ -18,6 +18,7 @@ import {
 import { usePathname } from "next/navigation"
 
 import { NavMain } from "@/components/nav-main"
+import { NavDashboards } from "@/components/nav-dashboards"
 import { NavSecondary } from "@/components/nav-secondary"
 import { NavFiles } from "@/components/nav-files"
 import { NavProjects } from "@/components/nav-projects"
@@ -96,8 +97,13 @@ const data = {
 
 function SidebarNav({
   projects,
+  dashboards = [],
 }: {
   projects: { id: string; name: string }[]
+  dashboards?: ReadonlyArray<{
+    readonly id: string
+    readonly name: string
+  }>
 }) {
   const pathname = usePathname()
   const { state, setOpen } = useSidebar()
@@ -146,6 +152,7 @@ function SidebarNav({
       {mode === "main" && (
         <>
           <NavMain items={data.navMain} />
+          <NavDashboards dashboards={dashboards} />
           <NavSecondary items={secondaryItems} className="mt-auto" />
         </>
       )}
@@ -155,10 +162,12 @@ function SidebarNav({
 
 export function AppSidebar({
   projects = [],
+  dashboards = [],
   user,
   ...props
 }: React.ComponentProps<typeof Sidebar> & {
   readonly projects?: ReadonlyArray<{ readonly id: string; readonly name: string }>
+  readonly dashboards?: ReadonlyArray<{ readonly id: string; readonly name: string }>
   readonly user: SidebarUser | null
 }) {
   return (
@@ -192,7 +201,10 @@ export function AppSidebar({
         </SidebarMenu>
       </SidebarHeader>
       <SidebarContent>
-        <SidebarNav projects={projects as { id: string; name: string }[]} />
+        <SidebarNav
+          projects={projects as { id: string; name: string }[]}
+          dashboards={dashboards}
+        />
       </SidebarContent>
       <SidebarFooter>
         <NavUser user={user} />

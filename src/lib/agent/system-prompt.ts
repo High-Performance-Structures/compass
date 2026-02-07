@@ -21,6 +21,12 @@ interface ToolMeta {
   readonly adminOnly?: true
 }
 
+interface DashboardSummary {
+  readonly id: string
+  readonly name: string
+  readonly description: string
+}
+
 interface PromptContext {
   readonly userName: string
   readonly userRole: string
@@ -28,6 +34,7 @@ interface PromptContext {
   readonly memories?: string
   readonly timezone?: string
   readonly pluginSections?: ReadonlyArray<PromptSection>
+  readonly dashboards?: ReadonlyArray<DashboardSummary>
   readonly mode?: PromptMode
 }
 
@@ -60,7 +67,8 @@ const TOOL_REGISTRY: ReadonlyArray<ToolMeta> = [
       "/dashboard/projects/{id}/schedule, " +
       "/dashboard/customers, /dashboard/vendors, " +
       "/dashboard/financials, /dashboard/people, " +
-      "/dashboard/files. If the page doesn't exist, " +
+      "/dashboard/files, /dashboard/boards/{id}. " +
+      "If the page doesn't exist, " +
       "tell the user what's available.",
     category: "navigation",
   },
@@ -182,6 +190,36 @@ const TOOL_REGISTRY: ReadonlyArray<ToolMeta> = [
       "Provide only the properties to change — everything " +
       "else is preserved. Only works on custom themes " +
       "(not presets).",
+    category: "ui",
+  },
+  {
+    name: "saveDashboard",
+    summary:
+      "Save the current rendered UI as a named dashboard. " +
+      "The client captures the spec and data automatically. " +
+      "Pass dashboardId to update an existing dashboard.",
+    category: "ui",
+  },
+  {
+    name: "listDashboards",
+    summary:
+      "List the user's saved custom dashboards with " +
+      "their IDs, names, and descriptions.",
+    category: "ui",
+  },
+  {
+    name: "editDashboard",
+    summary:
+      "Load a saved dashboard for editing. Loads the spec " +
+      "into the render context on /dashboard. Optionally " +
+      "pass editPrompt to trigger immediate re-generation.",
+    category: "ui",
+  },
+  {
+    name: "deleteDashboard",
+    summary:
+      "Delete a saved dashboard. Always confirm with " +
+      "the user before deleting.",
     category: "ui",
   },
 ]
@@ -306,6 +344,8 @@ function buildFirstInteraction(
       'show you recent commits, PRs, issues, and contributor activity."',
     '"I can also conduct a quick UX interview if you\'d like ' +
       'to share feedback about Compass."',
+    '"I can build you a custom dashboard with charts and ' +
+      'stats — and save it so you can access it anytime."',
   ]
 
   return [
@@ -554,6 +594,56 @@ function buildThemingRules(
   ]
 }
 
+function buildDashboardRules(
+  ctx: PromptContext,
+  mode: PromptMode,
+): ReadonlyArray<string> {
+  if (mode !== "full") return []
+
+  const lines = [
+    "## Custom Dashboards",
+    "Users can save generated UIs as persistent dashboards " +
+      "that appear in the sidebar and can be revisited anytime.",
+    "",
+    "**Workflow:**",
+    "1. User asks for a dashboard (e.g. \"build me a " +
+      "project overview\")",
+    "2. Use queryData to fetch data, then generateUI to " +
+      "build the UI",
+    "3. Once the user is happy, use saveDashboard to persist it",
+    "4. The dashboard appears in the sidebar at " +
+      "/dashboard/boards/{id}",
+    "",
+    "**Editing:**",
+    "- Use editDashboard to load a saved dashboard for editing",
+    "- After loading, use generateUI to make changes " +
+      "(the system sends patches against the previous spec)",
+    "- Use saveDashboard with the dashboardId to save updates",
+    "",
+    "**Limits:**",
+    "- Maximum 5 dashboards per user",
+    "- If the user hits the limit, suggest deleting one first",
+    "",
+    "**When to offer dashboard saving:**",
+    "- After generating a useful UI the user seems happy with",
+    '- When the user says "save this" or "keep this"',
+    "- Don't push it — offer once after a good generation",
+  ]
+
+  if (ctx.dashboards?.length) {
+    lines.push(
+      "",
+      "**User's saved dashboards:**",
+      ...ctx.dashboards.map(
+        (d) => `- ${d.name} (id: ${d.id})` +
+          (d.description ? `: ${d.description}` : ""),
+      ),
+    )
+  }
+
+  return lines
+}
+
 function buildGuidelines(
   mode: PromptMode,
 ): ReadonlyArray<string> {
@@ -622,6 +712,7 @@ export function buildSystemPrompt(ctx: PromptContext): string {
     buildInterviewProtocol(state.mode),
     buildGitHubGuidance(state.mode),
     buildThemingRules(state.mode),
+    buildDashboardRules(ctx, state.mode),
     buildGuidelines(state.mode),
     buildPluginSections(ctx.pluginSections, state.mode),
   ]

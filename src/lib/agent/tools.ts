@@ -16,6 +16,11 @@ import {
   saveCustomTheme,
   setUserThemePreference,
 } from "@/app/actions/themes"
+import {
+  getCustomDashboards,
+  getCustomDashboardById,
+  deleteCustomDashboard,
+} from "@/app/actions/dashboards"
 import { THEME_PRESETS, findPreset } from "@/lib/theme/presets"
 import type { ThemeDefinition, ColorMap, ThemeFonts, ThemeTokens, ThemeShadows } from "@/lib/theme/types"
 
@@ -58,6 +63,7 @@ const VALID_ROUTES: ReadonlyArray<RegExp> = [
   /^\/dashboard\/people$/,
   /^\/dashboard\/files$/,
   /^\/dashboard\/files\/.+$/,
+  /^\/dashboard\/boards\/[^/]+$/,
 ]
 
 function isValidRoute(path: string): boolean {
@@ -275,7 +281,7 @@ export const agentTools = {
             "/dashboard/projects/{id}/schedule, " +
             "/dashboard/customers, /dashboard/vendors, " +
             "/dashboard/financials, /dashboard/people, " +
-            "/dashboard/files",
+            "/dashboard/files, /dashboard/boards/{id}",
         }
       }
       return {
@@ -584,6 +590,103 @@ export const agentTools = {
         action: "preview_theme" as const,
         themeId: saveResult.id,
         themeData: savedTheme,
+      }
+    },
+  }),
+
+  saveDashboard: tool({
+    description:
+      "Save the currently rendered UI as a named dashboard. " +
+      "The client captures the current spec and data context " +
+      "automatically. Returns an action for the client to " +
+      "handle the save.",
+    inputSchema: z.object({
+      name: z.string().describe("Dashboard display name"),
+      description: z.string().optional().describe(
+        "Brief description of the dashboard",
+      ),
+      dashboardId: z.string().optional().describe(
+        "Existing dashboard ID to update (for edits)",
+      ),
+    }),
+    execute: async (input: {
+      name: string
+      description?: string
+      dashboardId?: string
+    }) => ({
+      action: "save_dashboard" as const,
+      name: input.name,
+      description: input.description ?? "",
+      dashboardId: input.dashboardId,
+    }),
+  }),
+
+  listDashboards: tool({
+    description:
+      "List the user's saved custom dashboards.",
+    inputSchema: z.object({}),
+    execute: async () => {
+      const result = await getCustomDashboards()
+      if (!result.success) return { error: result.error }
+      return {
+        dashboards: result.data,
+        count: result.data.length,
+      }
+    },
+  }),
+
+  editDashboard: tool({
+    description:
+      "Load a saved dashboard for editing. The client " +
+      "injects the spec into the render context and " +
+      "navigates to /dashboard. Optionally pass an " +
+      "editPrompt to trigger immediate re-generation.",
+    inputSchema: z.object({
+      dashboardId: z.string().describe(
+        "ID of the dashboard to edit",
+      ),
+      editPrompt: z.string().optional().describe(
+        "Description of changes to make",
+      ),
+    }),
+    execute: async (input: {
+      dashboardId: string
+      editPrompt?: string
+    }) => {
+      const result = await getCustomDashboardById(
+        input.dashboardId,
+      )
+      if (!result.success) return { error: result.error }
+
+      return {
+        action: "load_dashboard" as const,
+        dashboardId: input.dashboardId,
+        spec: JSON.parse(result.data.specData),
+        queries: result.data.queries,
+        renderPrompt: result.data.renderPrompt,
+        editPrompt: input.editPrompt,
+      }
+    },
+  }),
+
+  deleteDashboard: tool({
+    description:
+      "Delete a saved dashboard. Always confirm with " +
+      "the user before deleting.",
+    inputSchema: z.object({
+      dashboardId: z.string().describe(
+        "ID of the dashboard to delete",
+      ),
+    }),
+    execute: async (input: { dashboardId: string }) => {
+      const result = await deleteCustomDashboard(
+        input.dashboardId,
+      )
+      if (!result.success) return { error: result.error }
+      return {
+        action: "toast" as const,
+        message: "Dashboard deleted",
+        type: "success",
       }
     },
   }),

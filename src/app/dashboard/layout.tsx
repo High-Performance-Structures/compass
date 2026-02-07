@@ -17,6 +17,7 @@ import {
   SidebarProvider,
 } from "@/components/ui/sidebar"
 import { getProjects } from "@/app/actions/projects"
+import { getCustomDashboards } from "@/app/actions/dashboards"
 import { ProjectListProvider } from "@/components/project-list-provider"
 import { getCurrentUser, toSidebarUser } from "@/lib/auth"
 import { BiometricGuard } from "@/components/native/biometric-guard"
@@ -29,11 +30,16 @@ export default async function DashboardLayout({
 }: {
   readonly children: React.ReactNode
 }) {
-  const [projectList, authUser] = await Promise.all([
-    getProjects(),
-    getCurrentUser(),
-  ])
+  const [projectList, authUser, dashboardResult] =
+    await Promise.all([
+      getProjects(),
+      getCurrentUser(),
+      getCustomDashboards(),
+    ])
   const user = authUser ? toSidebarUser(authUser) : null
+  const dashboardList = dashboardResult.success
+    ? dashboardResult.data
+    : []
 
   return (
     <SettingsProvider>
@@ -51,7 +57,7 @@ export default async function DashboardLayout({
           } as React.CSSProperties
         }
       >
-        <AppSidebar variant="inset" projects={projectList} user={user} />
+        <AppSidebar variant="inset" projects={projectList} dashboards={dashboardList} user={user} />
         <FeedbackWidget>
           <SidebarInset className="overflow-hidden">
             <OfflineBanner />
