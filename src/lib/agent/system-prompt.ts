@@ -216,11 +216,26 @@ function buildUserContext(
   state: DerivedState,
 ): ReadonlyArray<string> {
   if (state.mode === "none") return []
+  const now = new Date()
+  const date = now.toLocaleDateString("en-US", {
+    weekday: "long",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+    timeZone: "UTC",
+  })
+  const time = now.toLocaleTimeString("en-US", {
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZone: "UTC",
+  })
   return [
     "## User Context",
     `- Name: ${ctx.userName}`,
     `- Role: ${ctx.userRole}`,
     `- Current page: ${state.page}`,
+    `- Current date: ${date}`,
+    `- Current time: ${time} UTC`,
   ]
 }
 
