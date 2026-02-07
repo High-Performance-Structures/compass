@@ -25,6 +25,7 @@ import {
 import { Separator } from "@/components/ui/separator"
 import { NetSuiteConnectionStatus } from "@/components/netsuite/connection-status"
 import { SyncControls } from "@/components/netsuite/sync-controls"
+import { GoogleDriveConnectionStatus } from "@/components/google/connection-status"
 import { MemoriesTable } from "@/components/agent/memories-table"
 import { SkillsTab } from "@/components/settings/skills-tab"
 import { AIModelTab } from "@/components/settings/ai-model-tab"
@@ -150,6 +151,8 @@ export function SettingsModal({
 
   const integrationsPage = (
     <>
+      <GoogleDriveConnectionStatus />
+      <Separator />
       <NetSuiteConnectionStatus />
       <SyncControls />
     </>
@@ -309,6 +312,8 @@ export function SettingsModal({
             value="integrations"
             className="space-y-3 pt-3"
           >
+            <GoogleDriveConnectionStatus />
+            <Separator />
             <NetSuiteConnectionStatus />
             <SyncControls />
           </TabsContent>

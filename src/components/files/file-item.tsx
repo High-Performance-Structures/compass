@@ -1,7 +1,11 @@
 "use client"
 
 import { forwardRef } from "react"
-import { IconStar, IconStarFilled, IconUsers, IconDots } from "@tabler/icons-react"
+import {
+  IconStar,
+  IconStarFilled,
+  IconUsers,
+} from "@tabler/icons-react"
 import { useRouter } from "next/navigation"
 
 import type { FileItem as FileItemType } from "@/lib/files-data"
@@ -29,13 +33,32 @@ export const FolderCard = forwardRef<
     selected: boolean
     onClick: (e: React.MouseEvent) => void
   }
->(function FolderCard({ file, selected, onClick, ...props }, ref) {
+>(function FolderCard(
+  { file, selected, onClick, ...props },
+  ref
+) {
   const router = useRouter()
-  const { dispatch } = useFiles()
+  const { starFile, state, dispatch } = useFiles()
 
   const handleDoubleClick = () => {
-    const folderPath = [...file.path, file.name].join("/")
-    router.push(`/dashboard/files/${folderPath}`)
+    if (state.isConnected === true) {
+      router.push(`/dashboard/files/folder/${file.id}`)
+    } else {
+      const folderPath = [...file.path, file.name].join("/")
+      router.push(`/dashboard/files/${folderPath}`)
+    }
+  }
+
+  const handleStar = async (e: React.MouseEvent) => {
+    e.stopPropagation()
+    if (state.isConnected === true) {
+      await starFile(file.id)
+    } else {
+      dispatch({
+        type: "OPTIMISTIC_STAR",
+        payload: file.id,
+      })
+    }
   }
 
   return (
@@ -50,25 +73,37 @@ export const FolderCard = forwardRef<
       onDoubleClick={handleDoubleClick}
       {...props}
     >
-      <FileIcon type="folder" size={22} className="shrink-0" />
-      <span className="text-sm font-medium line-clamp-2 flex-1 break-words">{file.name}</span>
+      <FileIcon
+        type="folder"
+        size={22}
+        className="shrink-0"
+      />
+      <span className="text-sm font-medium line-clamp-2 flex-1 break-words">
+        {file.name}
+      </span>
       {file.shared && (
-        <IconUsers size={14} className="text-muted-foreground shrink-0" />
+        <IconUsers
+          size={14}
+          className="text-muted-foreground shrink-0"
+        />
       )}
       <button
         className={cn(
           "shrink-0 opacity-0 group-hover:opacity-100 transition-opacity",
           file.starred && "opacity-100"
         )}
-        onClick={(e) => {
-          e.stopPropagation()
-          dispatch({ type: "STAR_FILE", payload: file.id })
-        }}
+        onClick={handleStar}
       >
         {file.starred ? (
-          <IconStarFilled size={14} className="text-amber-400" />
+          <IconStarFilled
+            size={14}
+            className="text-amber-400"
+          />
         ) : (
-          <IconStar size={14} className="text-muted-foreground hover:text-amber-400" />
+          <IconStar
+            size={14}
+            className="text-muted-foreground hover:text-amber-400"
+          />
         )}
       </button>
     </div>
@@ -82,8 +117,23 @@ export const FileCard = forwardRef<
     selected: boolean
     onClick: (e: React.MouseEvent) => void
   }
->(function FileCard({ file, selected, onClick, ...props }, ref) {
-  const { dispatch } = useFiles()
+>(function FileCard(
+  { file, selected, onClick, ...props },
+  ref
+) {
+  const { starFile, state, dispatch } = useFiles()
+
+  const handleStar = async (e: React.MouseEvent) => {
+    e.stopPropagation()
+    if (state.isConnected === true) {
+      await starFile(file.id)
+    } else {
+      dispatch({
+        type: "OPTIMISTIC_STAR",
+        payload: file.id,
+      })
+    }
+  }
 
   return (
     <div
@@ -99,13 +149,20 @@ export const FileCard = forwardRef<
       <div
         className={cn(
           "flex items-center justify-center h-20 sm:h-24",
-          fileTypeColors[file.type] ?? fileTypeColors.unknown
+          fileTypeColors[file.type] ??
+            fileTypeColors.unknown
         )}
       >
-        <FileIcon type={file.type} size={32} className="opacity-70 sm:size-10" />
+        <FileIcon
+          type={file.type}
+          size={32}
+          className="opacity-70 sm:size-10"
+        />
       </div>
       <div className="flex flex-col gap-1 px-2.5 py-2.5 border-t">
-        <p className="text-sm font-medium line-clamp-2 break-words leading-snug">{file.name}</p>
+        <p className="text-sm font-medium line-clamp-2 break-words leading-snug">
+          {file.name}
+        </p>
         <div className="flex items-center justify-between gap-2">
           <p className="text-xs text-muted-foreground truncate">
             {formatRelativeDate(file.modifiedAt)}
@@ -116,15 +173,18 @@ export const FileCard = forwardRef<
               "opacity-0 sm:group-hover:opacity-100 transition-opacity shrink-0",
               file.starred && "opacity-100"
             )}
-            onClick={(e) => {
-              e.stopPropagation()
-              dispatch({ type: "STAR_FILE", payload: file.id })
-            }}
+            onClick={handleStar}
           >
             {file.starred ? (
-              <IconStarFilled size={14} className="text-amber-400" />
+              <IconStarFilled
+                size={14}
+                className="text-amber-400"
+              />
             ) : (
-              <IconStar size={14} className="text-muted-foreground hover:text-amber-400" />
+              <IconStar
+                size={14}
+                className="text-muted-foreground hover:text-amber-400"
+              />
             )}
           </button>
         </div>
