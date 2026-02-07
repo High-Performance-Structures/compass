@@ -2,12 +2,15 @@ import {
   streamText,
   stepCountIs,
   convertToModelMessages,
+  RetryError,
   type UIMessage,
 } from "ai"
+import { APICallError } from "@ai-sdk/provider"
 import { getCloudflareContext } from "@opennextjs/cloudflare"
 import {
   resolveModelForUser,
   createModelFromId,
+  DEFAULT_MODEL_ID,
 } from "@/lib/agent/provider"
 import { agentTools } from "@/lib/agent/tools"
 import { githubTools } from "@/lib/agent/github-tools"
@@ -28,14 +31,28 @@ export async function POST(req: Request): Promise<Response> {
   const db = getDb(env.DB)
   const envRecord = env as unknown as Record<string, string>
 
+  const apiKey = envRecord.OPENROUTER_API_KEY
+  if (!apiKey) {
+    return new Response(
+      JSON.stringify({
+        error: "OPENROUTER_API_KEY not configured",
+      }),
+      {
+        status: 500,
+        headers: { "Content-Type": "application/json" },
+      }
+    )
+  }
+
   const [memories, registry] = await Promise.all([
     loadMemoriesForPrompt(db, user.id),
     getRegistry(db, envRecord),
   ])
 
   const pluginSections = registry.getPromptSections()
+  const pluginTools = registry.getTools()
 
-  const body = await req.json() as {
+  const body = (await req.json()) as {
     messages: UIMessage[]
   }
 
@@ -47,14 +64,16 @@ export async function POST(req: Request): Promise<Response> {
     req.headers.get("x-conversation-id") ||
     crypto.randomUUID()
 
-  const modelId = await resolveModelForUser(
-    db,
-    user.id
-  )
-  const model = createModelFromId(
-    envRecord.OPENROUTER_API_KEY,
-    modelId
-  )
+  let modelId = await resolveModelForUser(db, user.id)
+  if (!modelId || !modelId.includes("/")) {
+    console.error(
+      `Invalid model ID resolved: "${modelId}",` +
+        ` falling back to default`
+    )
+    modelId = DEFAULT_MODEL_ID
+  }
+
+  const model = createModelFromId(apiKey, modelId)
 
   const result = streamText({
     model,
@@ -67,9 +86,34 @@ export async function POST(req: Request): Promise<Response> {
       pluginSections,
       mode: "full",
     }),
-    messages: await convertToModelMessages(body.messages),
-    tools: { ...agentTools, ...githubTools },
+    messages: await convertToModelMessages(
+      body.messages
+    ),
+    tools: {
+      ...agentTools,
+      ...githubTools,
+      ...pluginTools,
+    },
     stopWhen: stepCountIs(10),
+    onError({ error }) {
+      const apiErr = unwrapAPICallError(error)
+      if (apiErr) {
+        console.error(
+          `Agent API error [model=${modelId}]`,
+          `status=${apiErr.statusCode}`,
+          `body=${apiErr.responseBody}`
+        )
+      } else {
+        const msg =
+          error instanceof Error
+            ? error.message
+            : String(error)
+        console.error(
+          `Agent error [model=${modelId}]:`,
+          msg
+        )
+      }
+    },
   })
 
   ctx.waitUntil(
@@ -82,5 +126,29 @@ export async function POST(req: Request): Promise<Response> {
     )
   )
 
-  return result.toUIMessageStreamResponse()
+  return result.toUIMessageStreamResponse({
+    onError(error) {
+      const apiErr = unwrapAPICallError(error)
+      if (apiErr) {
+        return (
+          apiErr.responseBody ??
+          `Provider error (${apiErr.statusCode})`
+        )
+      }
+      return error instanceof Error
+        ? error.message
+        : "Unknown error"
+    },
+  })
+}
+
+function unwrapAPICallError(
+  error: unknown
+): APICallError | undefined {
+  if (APICallError.isInstance(error)) return error
+  if (RetryError.isInstance(error)) {
+    const last: unknown = error.lastError
+    if (APICallError.isInstance(last)) return last
+  }
+  return undefined
 }
