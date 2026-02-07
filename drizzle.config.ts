@@ -7,6 +7,8 @@ export default defineConfig({
     "./src/db/schema-plugins.ts",
     "./src/db/schema-agent.ts",
     "./src/db/schema-ai-config.ts",
+    "./src/db/schema-theme.ts",
+    "./src/db/schema-google.ts",
   ],
   out: "./drizzle",
   dialect: "sqlite",

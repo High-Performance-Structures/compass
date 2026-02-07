@@ -38,6 +38,7 @@ export type FileItem = {
   sharedWith?: SharedUser[]
   trashed: boolean
   parentId: string | null
+  webViewLink?: string
 }
 
 export type StorageUsage = {

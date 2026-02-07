@@ -1,7 +1,6 @@
 "use client"
 
 import * as React from "react"
-import { useTheme } from "next-themes"
 
 import {
   ResponsiveDialog,
@@ -25,9 +24,11 @@ import {
 import { Separator } from "@/components/ui/separator"
 import { NetSuiteConnectionStatus } from "@/components/netsuite/connection-status"
 import { SyncControls } from "@/components/netsuite/sync-controls"
+import { GoogleDriveConnectionStatus } from "@/components/google/connection-status"
 import { MemoriesTable } from "@/components/agent/memories-table"
 import { SkillsTab } from "@/components/settings/skills-tab"
 import { AIModelTab } from "@/components/settings/ai-model-tab"
+import { AppearanceTab } from "@/components/settings/appearance-tab"
 import { useNative } from "@/hooks/use-native"
 import { useBiometricAuth } from "@/hooks/use-biometric-auth"
 
@@ -38,7 +39,6 @@ export function SettingsModal({
   open: boolean
   onOpenChange: (open: boolean) => void
 }) {
-  const { theme, setTheme } = useTheme()
   const [emailNotifs, setEmailNotifs] = React.useState(true)
   const [pushNotifs, setPushNotifs] = React.useState(true)
   const [weeklyDigest, setWeeklyDigest] = React.useState(false)
@@ -131,29 +131,12 @@ export function SettingsModal({
     </>
   )
 
-  const appearancePage = (
-    <div className="space-y-1.5">
-      <Label htmlFor="theme" className="text-xs">
-        Theme
-      </Label>
-      <Select
-        value={theme ?? "light"}
-        onValueChange={setTheme}
-      >
-        <SelectTrigger id="theme" className="w-full h-9">
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="light">Light</SelectItem>
-          <SelectItem value="dark">Dark</SelectItem>
-          <SelectItem value="system">System</SelectItem>
-        </SelectContent>
-      </Select>
-    </div>
-  )
+  const appearancePage = <AppearanceTab />
 
   const integrationsPage = (
     <>
+      <GoogleDriveConnectionStatus />
+      <Separator />
       <NetSuiteConnectionStatus />
       <SyncControls />
     </>
@@ -311,30 +294,15 @@ export function SettingsModal({
             value="appearance"
             className="space-y-3 pt-3"
           >
-            <div className="space-y-1.5">
-              <Label htmlFor="theme" className="text-xs">
-                Theme
-              </Label>
-              <Select
-                value={theme ?? "light"}
-                onValueChange={setTheme}
-              >
-                <SelectTrigger id="theme" className="w-full h-9">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="light">Light</SelectItem>
-                  <SelectItem value="dark">Dark</SelectItem>
-                  <SelectItem value="system">System</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+            <AppearanceTab />
           </TabsContent>
 
           <TabsContent
             value="integrations"
             className="space-y-3 pt-3"
           >
+            <GoogleDriveConnectionStatus />
+            <Separator />
             <NetSuiteConnectionStatus />
             <SyncControls />
           </TabsContent>

@@ -133,6 +133,26 @@ export function initializeActionHandlers(
       )
     }
   })
+
+  registerActionHandler("APPLY_THEME", (payload) => {
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(
+        new CustomEvent("agent-apply-theme", {
+          detail: payload,
+        })
+      )
+    }
+  })
+
+  registerActionHandler("PREVIEW_THEME", (payload) => {
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(
+        new CustomEvent("agent-preview-theme", {
+          detail: payload,
+        })
+      )
+    }
+  })
 }
 
 export const ALL_HANDLER_TYPES = [
@@ -143,6 +163,8 @@ export const ALL_HANDLER_TYPES = [
   "SCROLL_TO",
   "FOCUS_ELEMENT",
   "GENERATE_UI",
+  "APPLY_THEME",
+  "PREVIEW_THEME",
 ] as const
 
 /**
@@ -202,6 +224,21 @@ export function dispatchToolActions(
           payload: {
             renderPrompt: output.renderPrompt,
             dataContext: output.dataContext,
+          },
+        })
+        break
+      case "apply_theme":
+        executeAction({
+          type: "APPLY_THEME",
+          payload: { themeId: output.themeId },
+        })
+        break
+      case "preview_theme":
+        executeAction({
+          type: "PREVIEW_THEME",
+          payload: {
+            themeId: output.themeId,
+            themeData: output.themeData,
           },
         })
         break

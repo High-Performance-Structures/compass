@@ -13,6 +13,7 @@ export type AuthUser = {
   readonly displayName: string | null
   readonly avatarUrl: string | null
   readonly role: string
+  readonly googleEmail: string | null
   readonly isActive: boolean
   readonly lastLoginAt: string | null
   readonly createdAt: string
@@ -63,6 +64,7 @@ export async function getCurrentUser(): Promise<AuthUser | null> {
         displayName: "Dev User",
         avatarUrl: null,
         role: "admin",
+        googleEmail: null,
         isActive: true,
         lastLoginAt: new Date().toISOString(),
         createdAt: new Date().toISOString(),
@@ -108,6 +110,7 @@ export async function getCurrentUser(): Promise<AuthUser | null> {
       displayName: dbUser.displayName,
       avatarUrl: dbUser.avatarUrl,
       role: dbUser.role,
+      googleEmail: dbUser.googleEmail ?? null,
       isActive: dbUser.isActive,
       lastLoginAt: now,
       createdAt: dbUser.createdAt,

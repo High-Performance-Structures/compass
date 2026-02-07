@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { IconFolderPlus } from "@tabler/icons-react"
+import { IconFolderPlus, IconLoader2 } from "@tabler/icons-react"
 
 import { useFiles } from "@/hooks/use-files"
 import { Button } from "@/components/ui/button"
@@ -27,19 +27,52 @@ export function FileNewFolderDialog({
   parentId: string | null
 }) {
   const [name, setName] = useState("")
-  const { dispatch } = useFiles()
+  const [loading, setLoading] = useState(false)
+  const { createFolder, state, dispatch } = useFiles()
 
-  const handleCreate = () => {
+  const handleCreate = async () => {
     const trimmed = name.trim()
     if (!trimmed) return
 
-    dispatch({
-      type: "CREATE_FOLDER",
-      payload: { name: trimmed, parentId, path: currentPath },
-    })
-    toast.success(`Folder "${trimmed}" created`)
-    setName("")
-    onOpenChange(false)
+    setLoading(true)
+    try {
+      if (state.isConnected === true) {
+        const ok = await createFolder(
+          trimmed,
+          parentId ?? undefined
+        )
+        if (ok) {
+          toast.success(`Folder "${trimmed}" created`)
+        } else {
+          toast.error("Failed to create folder")
+        }
+      } else {
+        // mock mode: local dispatch
+        dispatch({
+          type: "OPTIMISTIC_ADD_FOLDER",
+          payload: {
+            id: `folder-${Date.now()}`,
+            name: trimmed,
+            type: "folder",
+            size: 0,
+            path: currentPath,
+            createdAt: new Date().toISOString(),
+            modifiedAt: new Date().toISOString(),
+            owner: { name: "You" },
+            starred: false,
+            shared: false,
+            trashed: false,
+            parentId,
+          },
+        })
+        toast.success(`Folder "${trimmed}" created`)
+      }
+
+      setName("")
+      onOpenChange(false)
+    } finally {
+      setLoading(false)
+    }
   }
 
   return (
@@ -55,16 +88,32 @@ export function FileNewFolderDialog({
           <Input
             placeholder="Folder name"
             value={name}
-            onChange={(e) => setName(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && handleCreate()}
+            onChange={e => setName(e.target.value)}
+            onKeyDown={e =>
+              e.key === "Enter" && handleCreate()
+            }
             autoFocus
+            disabled={loading}
           />
         </div>
         <DialogFooter>
-          <Button variant="ghost" onClick={() => onOpenChange(false)}>
+          <Button
+            variant="ghost"
+            onClick={() => onOpenChange(false)}
+            disabled={loading}
+          >
             Cancel
           </Button>
-          <Button onClick={handleCreate} disabled={!name.trim()}>
+          <Button
+            onClick={handleCreate}
+            disabled={!name.trim() || loading}
+          >
+            {loading && (
+              <IconLoader2
+                size={16}
+                className="mr-2 animate-spin"
+              />
+            )}
             Create
           </Button>
         </DialogFooter>

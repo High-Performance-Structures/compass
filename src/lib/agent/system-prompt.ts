@@ -150,6 +150,40 @@ const TOOL_REGISTRY: ReadonlyArray<ToolMeta> = [
       'and creates a GitHub issue tagged "user-feedback".',
     category: "feedback",
   },
+  {
+    name: "listThemes",
+    summary:
+      "List all available visual themes (presets and user " +
+      "custom themes) with their IDs and descriptions.",
+    category: "ui",
+  },
+  {
+    name: "setTheme",
+    summary:
+      "Switch the active visual theme by ID. Preset IDs: " +
+      "native-compass, corpo, notebook, doom-64, bubblegum, " +
+      "developers-choice, anslopics-clood, violet-bloom, soy, " +
+      "mocha. Also accepts custom theme UUIDs.",
+    category: "ui",
+  },
+  {
+    name: "generateTheme",
+    summary:
+      "Create a custom visual theme from scratch. Provide " +
+      "name, description, light/dark color maps (32 oklch " +
+      "entries each), fonts, optional Google Font names, " +
+      "and radius/spacing tokens.",
+    category: "ui",
+  },
+  {
+    name: "editTheme",
+    summary:
+      "Edit an existing custom theme incrementally. " +
+      "Provide only the properties to change — everything " +
+      "else is preserved. Only works on custom themes " +
+      "(not presets).",
+    category: "ui",
+  },
 ]
 
 // categories included in minimal mode
@@ -454,6 +488,72 @@ function buildGitHubGuidance(
   ]
 }
 
+function buildThemingRules(
+  mode: PromptMode,
+): ReadonlyArray<string> {
+  if (mode !== "full") return []
+  return [
+    "## Visual Theming",
+    "Users can customize the app's visual theme. You have three " +
+      "theming tools:",
+    "",
+    "**Preset themes** (use setTheme with these IDs):",
+    "- native-compass: Default teal construction palette",
+    "- corpo: Clean blue corporate look",
+    "- notebook: Warm handwritten aesthetic",
+    "- doom-64: Gritty industrial with sharp edges",
+    "- bubblegum: Playful pink and pastels",
+    "- developers-choice: Retro pixel-font terminal",
+    "- anslopics-clood: Warm amber-orange with clean lines",
+    "- violet-bloom: Deep violet with elegant rounded corners",
+    "- soy: Rosy pink and magenta romantic tones",
+    "- mocha: Coffee-brown earthy palette with offset shadows",
+    "",
+    "**When to use which tool:**",
+    '- "change to corpo" / "switch theme to X" -> setTheme',
+    '- "what themes are available?" -> listThemes',
+    '- "make me a sunset theme" / "create a dark red theme" -> ' +
+      "generateTheme",
+    '- "make the primary darker" / "change the font to Inter" ' +
+      '/ "tweak the accent color" -> editTheme ' +
+      "(when a custom theme is active)",
+    "",
+    "**generateTheme rules:**",
+    "- All 32 color keys required for both light AND dark maps: " +
+      "background, foreground, card, card-foreground, popover, " +
+      "popover-foreground, primary, primary-foreground, secondary, " +
+      "secondary-foreground, muted, muted-foreground, accent, " +
+      "accent-foreground, destructive, destructive-foreground, " +
+      "border, input, ring, chart-1 through chart-5, sidebar, " +
+      "sidebar-foreground, sidebar-primary, " +
+      "sidebar-primary-foreground, sidebar-accent, " +
+      "sidebar-accent-foreground, sidebar-border, sidebar-ring",
+    "- All colors in oklch() format: oklch(L C H) where " +
+      "L=0-1, C=0-0.4, H=0-360",
+    "- Light backgrounds: L >= 0.90; Dark backgrounds: L <= 0.25",
+    "- Ensure ~0.5+ lightness difference between bg and fg " +
+      "(WCAG AA approximation)",
+    "- destructive hue in red range (H: 20-50)",
+    "- 5 chart colors must be visually distinct",
+    "- Google Font names are case-sensitive",
+    "- radius: 0-2rem, spacing: 0.2-0.4rem",
+    "",
+    "**editTheme rules:**",
+    "- Only works on custom themes (not presets)",
+    "- Only provide the fields being changed",
+    "- For color maps, only include the specific keys being modified",
+    "- All color values must still be oklch() format",
+    "- Fonts: only include the font keys being changed " +
+      "(sans, serif, or mono)",
+    "- The theme is deep-merged: existing values are preserved " +
+      "unless explicitly overridden",
+    "",
+    "**Color mode vs theme:** Toggling light/dark changes which " +
+      "palette variant is displayed. Changing theme changes the " +
+      "entire palette. These are independent.",
+  ]
+}
+
 function buildGuidelines(
   mode: PromptMode,
 ): ReadonlyArray<string> {
@@ -521,6 +621,7 @@ export function buildSystemPrompt(ctx: PromptContext): string {
     buildCatalogSection(state.mode, state.catalogComponents),
     buildInterviewProtocol(state.mode),
     buildGitHubGuidance(state.mode),
+    buildThemingRules(state.mode),
     buildGuidelines(state.mode),
     buildPluginSections(ctx.pluginSections, state.mode),
   ]

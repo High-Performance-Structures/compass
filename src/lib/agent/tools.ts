@@ -10,6 +10,14 @@ import {
   toggleSkill as toggleSkillAction,
   getInstalledSkills as getInstalledSkillsAction,
 } from "@/app/actions/plugins"
+import {
+  getCustomThemes,
+  getCustomThemeById,
+  saveCustomTheme,
+  setUserThemePreference,
+} from "@/app/actions/themes"
+import { THEME_PRESETS, findPreset } from "@/lib/theme/presets"
+import type { ThemeDefinition, ColorMap, ThemeFonts, ThemeTokens, ThemeShadows } from "@/lib/theme/types"
 
 const queryDataInputSchema = z.object({
   queryType: z.enum([
@@ -420,6 +428,294 @@ export const agentTools = {
         return { error: "admin role required" }
       }
       return uninstallSkillAction(input.pluginId)
+    },
+  }),
+
+  listThemes: tool({
+    description:
+      "List available visual themes (presets + user custom themes).",
+    inputSchema: z.object({}),
+    execute: async () => {
+      const user = await getCurrentUser()
+      if (!user) return { error: "not authenticated" }
+
+      const presets = THEME_PRESETS.map((p) => ({
+        id: p.id,
+        name: p.name,
+        description: p.description,
+        isPreset: true,
+      }))
+
+      const customResult = await getCustomThemes()
+      const customs = customResult.success
+        ? customResult.data.map((c) => ({
+            id: c.id,
+            name: c.name,
+            description: c.description,
+            isPreset: false,
+          }))
+        : []
+
+      return { themes: [...presets, ...customs] }
+    },
+  }),
+
+  setTheme: tool({
+    description:
+      "Switch the user's visual theme. Use a preset ID " +
+      "(native-compass, corpo, notebook, doom-64, bubblegum, " +
+      "developers-choice, anslopics-clood, violet-bloom, soy, " +
+      "mocha) or a custom theme UUID.",
+    inputSchema: z.object({
+      themeId: z.string().describe(
+        "The theme ID to activate",
+      ),
+    }),
+    execute: async (input: { themeId: string }) => {
+      const result = await setUserThemePreference(input.themeId)
+      if (!result.success) return { error: result.error }
+      return {
+        action: "apply_theme" as const,
+        themeId: input.themeId,
+      }
+    },
+  }),
+
+  generateTheme: tool({
+    description:
+      "Generate and save a custom visual theme. Provide " +
+      "complete light and dark color maps (all 32 keys), " +
+      "fonts, optional Google Font names, and design tokens. " +
+      "All colors must be in oklch() format.",
+    inputSchema: z.object({
+      name: z.string().describe("Theme display name"),
+      description: z.string().describe("Brief theme description"),
+      light: z.record(z.string(), z.string()).describe(
+        "Light mode color map with all 32 ThemeColorKey entries",
+      ),
+      dark: z.record(z.string(), z.string()).describe(
+        "Dark mode color map with all 32 ThemeColorKey entries",
+      ),
+      fonts: z.object({
+        sans: z.string(),
+        serif: z.string(),
+        mono: z.string(),
+      }).describe("CSS font-family strings"),
+      googleFonts: z.array(z.string()).optional().describe(
+        "Google Font names to load (case-sensitive)",
+      ),
+      radius: z.string().optional().describe(
+        "Border radius (e.g. '0.5rem')",
+      ),
+      spacing: z.string().optional().describe(
+        "Base spacing (e.g. '0.25rem')",
+      ),
+    }),
+    execute: async (input: {
+      name: string
+      description: string
+      light: Record<string, string>
+      dark: Record<string, string>
+      fonts: { sans: string; serif: string; mono: string }
+      googleFonts?: ReadonlyArray<string>
+      radius?: string
+      spacing?: string
+    }) => {
+      const user = await getCurrentUser()
+      if (!user) return { error: "not authenticated" }
+
+      // build a full ThemeDefinition for storage
+      const nativePreset = findPreset("native-compass")
+      if (!nativePreset) return { error: "internal error" }
+
+      const tokens: ThemeTokens = {
+        radius: input.radius ?? "0.5rem",
+        spacing: input.spacing ?? "0.25rem",
+        trackingNormal: "0em",
+        shadowColor: "#000000",
+        shadowOpacity: "0.1",
+        shadowBlur: "3px",
+        shadowSpread: "0px",
+        shadowOffsetX: "0",
+        shadowOffsetY: "1px",
+      }
+
+      const defaultShadows: ThemeShadows = {
+        "2xs": "0 1px 3px 0px hsl(0 0% 0% / 0.05)",
+        xs: "0 1px 3px 0px hsl(0 0% 0% / 0.05)",
+        sm: "0 1px 3px 0px hsl(0 0% 0% / 0.10), 0 1px 2px -1px hsl(0 0% 0% / 0.10)",
+        default: "0 1px 3px 0px hsl(0 0% 0% / 0.10), 0 1px 2px -1px hsl(0 0% 0% / 0.10)",
+        md: "0 1px 3px 0px hsl(0 0% 0% / 0.10), 0 2px 4px -1px hsl(0 0% 0% / 0.10)",
+        lg: "0 1px 3px 0px hsl(0 0% 0% / 0.10), 0 4px 6px -1px hsl(0 0% 0% / 0.10)",
+        xl: "0 1px 3px 0px hsl(0 0% 0% / 0.10), 0 8px 10px -1px hsl(0 0% 0% / 0.10)",
+        "2xl": "0 1px 3px 0px hsl(0 0% 0% / 0.25)",
+      }
+
+      const theme: ThemeDefinition = {
+        id: "", // will be set by saveCustomTheme
+        name: input.name,
+        description: input.description,
+        light: input.light as unknown as ColorMap,
+        dark: input.dark as unknown as ColorMap,
+        fonts: input.fonts as ThemeFonts,
+        fontSources: {
+          googleFonts: input.googleFonts ?? [],
+        },
+        tokens,
+        shadows: { light: defaultShadows, dark: defaultShadows },
+        isPreset: false,
+        previewColors: {
+          primary: input.light["primary"] ?? "oklch(0.5 0.1 200)",
+          background: input.light["background"] ?? "oklch(0.97 0 0)",
+          foreground: input.light["foreground"] ?? "oklch(0.2 0 0)",
+        },
+      }
+
+      const saveResult = await saveCustomTheme(
+        input.name,
+        input.description,
+        JSON.stringify(theme),
+      )
+      if (!saveResult.success) return { error: saveResult.error }
+
+      const savedTheme = { ...theme, id: saveResult.id }
+
+      return {
+        action: "preview_theme" as const,
+        themeId: saveResult.id,
+        themeData: savedTheme,
+      }
+    },
+  }),
+
+  editTheme: tool({
+    description:
+      "Edit an existing custom theme. Provide the theme ID " +
+      "and only the properties you want to change. " +
+      "Unspecified properties are preserved from the " +
+      "existing theme. Only works on custom themes " +
+      "(not presets).",
+    inputSchema: z.object({
+      themeId: z.string().describe(
+        "ID of existing custom theme to edit",
+      ),
+      name: z.string().optional().describe(
+        "New display name",
+      ),
+      description: z.string().optional().describe(
+        "New description",
+      ),
+      light: z.record(z.string(), z.string()).optional()
+        .describe(
+          "Partial light color overrides " +
+          "(only changed keys)",
+        ),
+      dark: z.record(z.string(), z.string()).optional()
+        .describe(
+          "Partial dark color overrides " +
+          "(only changed keys)",
+        ),
+      fonts: z.object({
+        sans: z.string().optional(),
+        serif: z.string().optional(),
+        mono: z.string().optional(),
+      }).optional().describe(
+        "Partial font overrides",
+      ),
+      googleFonts: z.array(z.string()).optional()
+        .describe("Replace Google Font list"),
+      radius: z.string().optional().describe(
+        "New border radius",
+      ),
+      spacing: z.string().optional().describe(
+        "New base spacing",
+      ),
+    }),
+    execute: async (input: {
+      themeId: string
+      name?: string
+      description?: string
+      light?: Record<string, string>
+      dark?: Record<string, string>
+      fonts?: {
+        sans?: string
+        serif?: string
+        mono?: string
+      }
+      googleFonts?: ReadonlyArray<string>
+      radius?: string
+      spacing?: string
+    }) => {
+      const user = await getCurrentUser()
+      if (!user) return { error: "not authenticated" }
+
+      const existing = await getCustomThemeById(input.themeId)
+      if (!existing.success) {
+        return { error: existing.error }
+      }
+
+      const prev = JSON.parse(
+        existing.data.themeData,
+      ) as ThemeDefinition
+
+      const mergedLight = input.light
+        ? ({ ...prev.light, ...input.light } as unknown as ColorMap)
+        : prev.light
+      const mergedDark = input.dark
+        ? ({ ...prev.dark, ...input.dark } as unknown as ColorMap)
+        : prev.dark
+      const mergedFonts: ThemeFonts = input.fonts
+        ? {
+            sans: input.fonts.sans ?? prev.fonts.sans,
+            serif: input.fonts.serif ?? prev.fonts.serif,
+            mono: input.fonts.mono ?? prev.fonts.mono,
+          }
+        : prev.fonts
+      const mergedTokens: ThemeTokens = {
+        ...prev.tokens,
+        ...(input.radius ? { radius: input.radius } : {}),
+        ...(input.spacing ? { spacing: input.spacing } : {}),
+      }
+      const mergedFontSources = input.googleFonts
+        ? { googleFonts: input.googleFonts }
+        : prev.fontSources
+
+      const name = input.name ?? existing.data.name
+      const description =
+        input.description ?? existing.data.description
+
+      const merged: ThemeDefinition = {
+        ...prev,
+        id: input.themeId,
+        name,
+        description,
+        light: mergedLight,
+        dark: mergedDark,
+        fonts: mergedFonts,
+        fontSources: mergedFontSources,
+        tokens: mergedTokens,
+        previewColors: {
+          primary: mergedLight.primary,
+          background: mergedLight.background,
+          foreground: mergedLight.foreground,
+        },
+      }
+
+      const saveResult = await saveCustomTheme(
+        name,
+        description,
+        JSON.stringify(merged),
+        input.themeId,
+      )
+      if (!saveResult.success) {
+        return { error: saveResult.error }
+      }
+
+      return {
+        action: "preview_theme" as const,
+        themeId: input.themeId,
+        themeData: merged,
+      }
     },
   }),
 }

@@ -11,7 +11,7 @@ import {
 import Link from "next/link"
 import { usePathname, useSearchParams } from "next/navigation"
 
-import { mockStorageUsage } from "@/lib/files-data"
+import { useFiles } from "@/hooks/use-files"
 import { StorageIndicator } from "@/components/files/storage-indicator"
 import {
   SidebarGroup,
@@ -22,11 +22,24 @@ import {
 } from "@/components/ui/sidebar"
 import { cn } from "@/lib/utils"
 
-type FileView = "my-files" | "shared" | "recent" | "starred" | "trash"
+type FileView =
+  | "my-files"
+  | "shared"
+  | "recent"
+  | "starred"
+  | "trash"
 
-const fileNavItems: { title: string; view: FileView; icon: typeof IconFiles }[] = [
+const fileNavItems: {
+  title: string
+  view: FileView
+  icon: typeof IconFiles
+}[] = [
   { title: "My Files", view: "my-files", icon: IconFiles },
-  { title: "Shared with me", view: "shared", icon: IconUsers },
+  {
+    title: "Shared with me",
+    view: "shared",
+    icon: IconUsers,
+  },
   { title: "Recent", view: "recent", icon: IconClock },
   { title: "Starred", view: "starred", icon: IconStar },
   { title: "Trash", view: "trash", icon: IconTrash },
@@ -36,6 +49,7 @@ export function NavFiles() {
   const pathname = usePathname()
   const searchParams = useSearchParams()
   const activeView = searchParams.get("view") ?? "my-files"
+  const { storageUsage } = useFiles()
 
   return (
     <>
@@ -43,7 +57,10 @@ export function NavFiles() {
         <SidebarGroupContent>
           <SidebarMenu>
             <SidebarMenuItem>
-              <SidebarMenuButton asChild tooltip="Back to Dashboard">
+              <SidebarMenuButton
+                asChild
+                tooltip="Back to Dashboard"
+              >
                 <Link href="/dashboard">
                   <IconArrowLeft />
                   <span>Back</span>
@@ -56,14 +73,16 @@ export function NavFiles() {
       <SidebarGroup>
         <SidebarGroupContent>
           <SidebarMenu>
-            {fileNavItems.map((item) => (
+            {fileNavItems.map(item => (
               <SidebarMenuItem key={item.view}>
                 <SidebarMenuButton
                   asChild
                   tooltip={item.title}
                   className={cn(
                     activeView === item.view &&
-                      pathname?.startsWith("/dashboard/files") &&
+                      pathname?.startsWith(
+                        "/dashboard/files"
+                      ) &&
                       "bg-sidebar-foreground/10 font-medium"
                   )}
                 >
@@ -84,7 +103,7 @@ export function NavFiles() {
         </SidebarGroupContent>
       </SidebarGroup>
       <div className="mt-auto px-3 pb-3">
-        <StorageIndicator usage={mockStorageUsage} />
+        <StorageIndicator usage={storageUsage} />
       </div>
     </>
   )
