@@ -26,6 +26,7 @@ interface PromptContext {
   readonly userRole: string
   readonly currentPage?: string
   readonly memories?: string
+  readonly timezone?: string
   readonly pluginSections?: ReadonlyArray<PromptSection>
   readonly mode?: PromptMode
 }
@@ -216,18 +217,19 @@ function buildUserContext(
   state: DerivedState,
 ): ReadonlyArray<string> {
   if (state.mode === "none") return []
+  const tz = ctx.timezone ?? "UTC"
   const now = new Date()
   const date = now.toLocaleDateString("en-US", {
     weekday: "long",
     year: "numeric",
     month: "long",
     day: "numeric",
-    timeZone: "UTC",
+    timeZone: tz,
   })
   const time = now.toLocaleTimeString("en-US", {
     hour: "2-digit",
     minute: "2-digit",
-    timeZone: "UTC",
+    timeZone: tz,
   })
   return [
     "## User Context",
@@ -235,7 +237,7 @@ function buildUserContext(
     `- Role: ${ctx.userRole}`,
     `- Current page: ${state.page}`,
     `- Current date: ${date}`,
-    `- Current time: ${time} UTC`,
+    `- Current time: ${time} (${tz})`,
   ]
 }
 
