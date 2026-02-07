@@ -5,22 +5,6 @@ import type { PromptSection } from "@/lib/agent/plugins/types"
 
 type PromptMode = "full" | "minimal" | "none"
 
-type ToolCategory =
-  | "data"
-  | "navigation"
-  | "ui"
-  | "memory"
-  | "github"
-  | "skills"
-  | "feedback"
-
-interface ToolMeta {
-  readonly name: string
-  readonly summary: string
-  readonly category: ToolCategory
-  readonly adminOnly?: true
-}
-
 interface DashboardSummary {
   readonly id: string
   readonly name: string
@@ -36,6 +20,22 @@ interface PromptContext {
   readonly pluginSections?: ReadonlyArray<PromptSection>
   readonly dashboards?: ReadonlyArray<DashboardSummary>
   readonly mode?: PromptMode
+}
+
+type ToolCategory =
+  | "data"
+  | "navigation"
+  | "ui"
+  | "memory"
+  | "github"
+  | "skills"
+  | "feedback"
+
+interface ToolMeta {
+  readonly name: string
+  readonly summary: string
+  readonly category: ToolCategory
+  readonly adminOnly?: true
 }
 
 interface DerivedState {
@@ -665,6 +665,10 @@ function buildGuidelines(
 
   return [
     ...core,
+    "- Tool workflow: data requests -> queryData immediately. " +
+      "Navigation -> navigateTo, brief confirmation. " +
+      "Dashboards -> queryData first, then generateUI. " +
+      "Memories -> save proactively with rememberContext.",
     '- "How\'s development going?" means fetch repo_stats and ' +
       'recent commits right now, not "Would you like to see ' +
       'commits or PRs?"',

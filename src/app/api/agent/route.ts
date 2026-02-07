@@ -103,6 +103,7 @@ export async function POST(req: Request): Promise<Response> {
       ...githubTools,
       ...pluginTools,
     },
+    toolChoice: "auto",
     stopWhen: stepCountIs(10),
     onError({ error }) {
       const apiErr = unwrapAPICallError(error)

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useCallback, useRef, useEffect } from "react"
+import { useState, useCallback, useRef, useEffect, memo } from "react"
 import {
   CopyIcon,
   ThumbsUpIcon,
@@ -20,9 +20,20 @@ import {
   IconAlertCircle,
   IconEye,
 } from "@tabler/icons-react"
-import type { ToolUIPart } from "ai"
+import {
+  isTextUIPart,
+  isToolUIPart,
+  isReasoningUIPart,
+  type UIMessage,
+  type ToolUIPart,
+  type DynamicToolUIPart,
+} from "ai"
 import { cn } from "@/lib/utils"
-import { Button } from "@/components/ui/button"
+import {
+  Reasoning,
+  ReasoningTrigger,
+  ReasoningContent,
+} from "@/components/ai/reasoning"
 import {
   Conversation,
   ConversationContent,
@@ -160,102 +171,175 @@ function friendlyToolName(raw: string): string {
   return TOOL_DISPLAY_NAMES[raw] ?? raw
 }
 
-// shared message + tool rendering for both variants
-function ChatMessage({
-  msg,
-  copiedId,
-  onCopy,
-  onRegenerate,
-}: {
-  readonly msg: {
-    readonly id: string
-    readonly role: string
-    readonly parts: ReadonlyArray<unknown>
-  }
+interface ChatMessageProps {
+  readonly msg: UIMessage
   readonly copiedId: string | null
-  onCopy: (id: string, text: string) => void
-  onRegenerate: () => void
-}) {
-  if (msg.role === "user") {
-    const text = getTextContent(msg.parts)
-    return (
-      <Message from="user">
-        <MessageContent>{text}</MessageContent>
-      </Message>
-    )
+  readonly onCopy: (id: string, text: string) => void
+  readonly onRegenerate: () => void
+  readonly isStreaming?: boolean
+}
+
+type AnyToolPart = ToolUIPart | DynamicToolUIPart
+
+function extractToolName(part: AnyToolPart): string {
+  if (part.type === "dynamic-tool") {
+    return part.toolName ?? ""
   }
+  return part.type.slice(5)
+}
 
-  const textParts: string[] = []
-  const toolParts: Array<{
-    type: string
-    state: ToolUIPart["state"]
-    toolName: string
-    input: unknown
-    output: unknown
-    errorText?: string
-  }> = []
-
-  for (const part of msg.parts) {
-    const p = part as Record<string, unknown>
-    if (p.type === "text" && typeof p.text === "string") {
-      textParts.push(p.text)
+// renders parts in their natural order from the AI SDK
+const ChatMessage = memo(
+  function ChatMessage({
+    msg,
+    copiedId,
+    onCopy,
+    onRegenerate,
+    isStreaming: msgStreaming = false,
+  }: ChatMessageProps) {
+    if (msg.role === "user") {
+      const text = msg.parts
+        .filter(isTextUIPart)
+        .map((p) => p.text)
+        .join("")
+      return (
+        <Message from="user">
+          <MessageContent>{text}</MessageContent>
+        </Message>
+      )
     }
-    const pType = p.type as string | undefined
-    // handle static (tool-<name>) and dynamic
-    // (dynamic-tool) tool parts
-    if (
-      typeof pType === "string" &&
-      (pType.startsWith("tool-") ||
-        pType === "dynamic-tool")
-    ) {
-      // extract tool name from type field or toolName
-      const rawName = pType.startsWith("tool-")
-        ? pType.slice(5)
-        : ((p.toolName ?? "") as string)
-      toolParts.push({
-        type: pType,
-        state: p.state as ToolUIPart["state"],
-        toolName:
-          friendlyToolName(rawName) || "Working",
-        input: p.input,
-        output: p.output,
-        errorText: p.errorText as string | undefined,
-      })
+
+    // walk parts sequentially, flushing text when
+    // hitting a tool or reasoning part to preserve
+    // interleaving. text flushed before the final
+    // segment is "thinking" (intermediate chain-of-
+    // thought) and rendered muted + collapsible.
+    const elements: React.ReactNode[] = []
+    let pendingText = ""
+    let allText = ""
+    let pendingReasoning = ""
+    let reasoningStreaming = false
+
+    let sawToolPart = false
+
+    const flushThinking = (
+      text: string,
+      idx: number,
+      streaming = false
+    ) => {
+      if (!text) return
+      elements.push(
+        <Reasoning
+          key={`think-${idx}`}
+          isStreaming={streaming}
+          defaultOpen={false}
+        >
+          <ReasoningTrigger />
+          <ReasoningContent>{text}</ReasoningContent>
+        </Reasoning>
+      )
     }
-  }
 
-  const text = textParts.join("")
-
-  return (
-    <Message from="assistant">
-      {toolParts.map((tp, i) => (
-        <Tool key={i}>
-          <ToolHeader
-            title={tp.toolName}
-            type={tp.type as ToolUIPart["type"]}
-            state={tp.state}
-          />
-          <ToolContent>
-            <ToolInput input={tp.input} />
-            {(tp.state === "output-available" ||
-              tp.state === "output-error") && (
-              <ToolOutput
-                output={tp.output}
-                errorText={tp.errorText}
-              />
-            )}
-          </ToolContent>
-        </Tool>
-      ))}
-      {text ? (
-        <>
-          <MessageContent>
-            <MessageResponse>{text}</MessageResponse>
+    const flushText = (idx: number, isFinal: boolean) => {
+      if (!pendingText) return
+      if (!isFinal) {
+        // intermediate text before more tools = thinking
+        flushThinking(pendingText, idx)
+      } else {
+        elements.push(
+          <MessageContent key={`text-${idx}`}>
+            <MessageResponse>
+              {pendingText}
+            </MessageResponse>
           </MessageContent>
+        )
+      }
+      pendingText = ""
+    }
+
+    for (let i = 0; i < msg.parts.length; i++) {
+      const part = msg.parts[i]
+
+      if (isReasoningUIPart(part)) {
+        pendingReasoning += part.text
+        reasoningStreaming = part.state === "streaming"
+        continue
+      }
+
+      if (isTextUIPart(part)) {
+        pendingText += part.text
+        allText += part.text
+        continue
+      }
+
+      if (isToolUIPart(part)) {
+        sawToolPart = true
+        // flush reasoning accumulated before this tool
+        flushThinking(pendingReasoning, i, reasoningStreaming)
+        pendingReasoning = ""
+        reasoningStreaming = false
+        // flush text as thinking (not final)
+        flushText(i, false)
+        const tp = part as AnyToolPart
+        const rawName = extractToolName(tp)
+        elements.push(
+          <Tool key={tp.toolCallId}>
+            <ToolHeader
+              title={
+                friendlyToolName(rawName) || "Working"
+              }
+              type={tp.type as ToolUIPart["type"]}
+              state={tp.state}
+            />
+            <ToolContent>
+              <ToolInput input={tp.input} />
+              {(tp.state === "output-available" ||
+                tp.state === "output-error") && (
+                <ToolOutput
+                  output={tp.output}
+                  errorText={tp.errorText}
+                />
+              )}
+            </ToolContent>
+          </Tool>
+        )
+      }
+    }
+
+    // flush remaining reasoning
+    flushThinking(
+      pendingReasoning,
+      msg.parts.length,
+      reasoningStreaming
+    )
+
+    // while streaming, if no tool calls have arrived yet
+    // and text is substantial, it's likely chain-of-thought
+    // that'll be reclassified as thinking once tools come in.
+    // render it collapsed so it doesn't flood the screen.
+    const COT_THRESHOLD = 500
+    if (
+      msgStreaming &&
+      !sawToolPart &&
+      pendingText.length > COT_THRESHOLD
+    ) {
+      flushThinking(pendingText, msg.parts.length, true)
+      pendingText = ""
+    }
+
+    // flush remaining text as the final response
+    flushText(msg.parts.length, true)
+
+    const hasContent = elements.length > 0
+
+    return (
+      <Message from="assistant">
+        {hasContent ? elements : <Loader />}
+        {allText && (
           <Actions>
             <Action
               tooltip="Copy"
-              onClick={() => onCopy(msg.id, text)}
+              onClick={() => onCopy(msg.id, allText)}
             >
               {copiedId === msg.id ? (
                 <Check className="size-4" />
@@ -276,25 +360,23 @@ function ChatMessage({
               <RefreshCcwIcon className="size-4" />
             </Action>
           </Actions>
-        </>
-      ) : (
-        <Loader />
-      )}
-    </Message>
-  )
-}
-
-function getTextContent(
-  parts: ReadonlyArray<unknown>
-): string {
-  return (parts as ReadonlyArray<{ type: string; text?: string }>)
-    .filter(
-      (p): p is { type: "text"; text: string } =>
-        p.type === "text"
+        )}
+      </Message>
     )
-    .map((p) => p.text)
-    .join("")
-}
+  },
+  (prev, next) => {
+    if (prev.msg !== next.msg) return false
+    if (prev.onCopy !== next.onCopy) return false
+    if (prev.onRegenerate !== next.onRegenerate)
+      return false
+    if (prev.isStreaming !== next.isStreaming)
+      return false
+    const prevCopied = prev.copiedId === prev.msg.id
+    const nextCopied = next.copiedId === next.msg.id
+    if (prevCopied !== nextCopied) return false
+    return true
+  }
+)
 
 function ChatInput({
   textareaRef,
@@ -533,6 +615,21 @@ export function ChatView({ variant }: ChatViewProps) {
     [isPage, chat.sendMessage]
   )
 
+  const handleIdleSend = useCallback(
+    (text: string) => {
+      setIsActive(true)
+      chat.sendMessage({ text })
+    },
+    [chat.sendMessage]
+  )
+
+  const handleActiveSend = useCallback(
+    (text: string) => {
+      chat.sendMessage({ text })
+    },
+    [chat.sendMessage]
+  )
+
   const suggestions = isPage
     ? DASHBOARD_SUGGESTIONS
     : getSuggestionsForPath(chat.pathname)
@@ -593,10 +690,7 @@ export function ChatView({ variant }: ChatViewProps) {
                 recorder={recorder}
                 status={chat.status}
                 isGenerating={chat.isGenerating}
-                onSend={(text) => {
-                  setIsActive(true)
-                  chat.sendMessage({ text })
-                }}
+                onSend={handleIdleSend}
                 className="rounded-2xl"
               />
 
@@ -652,13 +746,19 @@ export function ChatView({ variant }: ChatViewProps) {
             {chat.messages.length > 0 ? (
               <Conversation className="flex-1">
                 <ConversationContent className="mx-auto w-full max-w-3xl">
-                  {chat.messages.map((msg) => (
+                  {chat.messages.map((msg, idx) => (
                     <ChatMessage
                       key={msg.id}
                       msg={msg}
                       copiedId={copiedId}
                       onCopy={handleCopy}
                       onRegenerate={chat.regenerate}
+                      isStreaming={
+                        (chat.status === "streaming" ||
+                          chat.status === "submitted") &&
+                        idx === chat.messages.length - 1 &&
+                        msg.role === "assistant"
+                      }
                     />
                   ))}
                 </ConversationContent>
@@ -698,9 +798,7 @@ export function ChatView({ variant }: ChatViewProps) {
               recorder={recorder}
               status={chat.status}
               isGenerating={chat.isGenerating}
-              onSend={(text) =>
-                chat.sendMessage({ text })
-              }
+              onSend={handleActiveSend}
               onNewChat={chat.messages.length > 0 ? chat.newChat : undefined}
               className="rounded-2xl"
             />
@@ -729,13 +827,19 @@ export function ChatView({ variant }: ChatViewProps) {
               </Suggestions>
             </div>
           ) : (
-            chat.messages.map((msg) => (
+            chat.messages.map((msg, idx) => (
               <ChatMessage
                 key={msg.id}
                 msg={msg}
                 copiedId={copiedId}
                 onCopy={handleCopy}
                 onRegenerate={chat.regenerate}
+                isStreaming={
+                  (chat.status === "streaming" ||
+                    chat.status === "submitted") &&
+                  idx === chat.messages.length - 1 &&
+                  msg.role === "assistant"
+                }
               />
             ))
           )}
@@ -751,9 +855,7 @@ export function ChatView({ variant }: ChatViewProps) {
               recorder={recorder}
               status={chat.status}
               isGenerating={chat.isGenerating}
-              onSend={(text) =>
-                chat.sendMessage({ text })
-              }
+              onSend={handleActiveSend}
               onNewChat={chat.messages.length > 0 ? chat.newChat : undefined}
             />
       </div>

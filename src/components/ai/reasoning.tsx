@@ -3,7 +3,7 @@
 import { useControllableState } from "@radix-ui/react-use-controllable-state"
 import { BrainIcon, ChevronDownIcon } from "lucide-react"
 import type { ComponentProps, ReactNode } from "react"
-import { createContext, memo, useContext, useEffect, useState } from "react"
+import { createContext, memo, useContext, useEffect, useRef, useState } from "react"
 import { Streamdown } from "streamdown"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { cn } from "@/lib/utils"
@@ -34,7 +34,7 @@ export type ReasoningProps = ComponentProps<typeof Collapsible> & {
   duration?: number
 }
 
-const AUTO_CLOSE_DELAY = 1000
+const CLOSE_GRACE_MS = 300
 const MS_IN_S = 1000
 
 export const Reasoning = memo(
@@ -73,14 +73,13 @@ export const Reasoning = memo(
       }
     }, [isStreaming, startTime, setDuration])
 
-    // Auto-open when streaming starts, auto-close when streaming ends (once only)
+    // close gracefully once streaming finishes
     useEffect(() => {
       if (defaultOpen && !isStreaming && isOpen && !hasAutoClosed) {
-        // Add a small delay before closing to allow user to see the content
         const timer = setTimeout(() => {
           setIsOpen(false)
           setHasAutoClosed(true)
-        }, AUTO_CLOSE_DELAY)
+        }, CLOSE_GRACE_MS)
 
         return () => clearTimeout(timer)
       }
@@ -154,18 +153,35 @@ export type ReasoningContentProps = ComponentProps<typeof CollapsibleContent> & 
   children: string
 }
 
-export const ReasoningContent = memo(({ className, children, ...props }: ReasoningContentProps) => (
-  <CollapsibleContent
-    className={cn(
-      "mt-4 text-sm",
-      "data-[state=closed]:fade-out-0 data-[state=closed]:slide-out-to-top-2 data-[state=open]:slide-in-from-top-2 text-muted-foreground outline-none data-[state=closed]:animate-out data-[state=open]:animate-in",
-      className,
-    )}
-    {...props}
-  >
-    <Streamdown {...props}>{children}</Streamdown>
-  </CollapsibleContent>
-))
+export const ReasoningContent = memo(({ className, children, ...props }: ReasoningContentProps) => {
+  const { isStreaming } = useReasoning()
+  const scrollRef = useRef<HTMLDivElement>(null)
+
+  // auto-scroll to show latest tokens during streaming
+  useEffect(() => {
+    if (isStreaming && scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight
+    }
+  }, [children, isStreaming])
+
+  return (
+    <CollapsibleContent
+      className={cn(
+        "mt-4 text-sm",
+        "data-[state=closed]:fade-out-0 data-[state=closed]:slide-out-to-top-2 data-[state=open]:slide-in-from-top-2 text-muted-foreground outline-none data-[state=closed]:animate-out data-[state=open]:animate-in",
+        className,
+      )}
+      {...props}
+    >
+      <div
+        ref={scrollRef}
+        className={cn(isStreaming && "max-h-[3.75rem] overflow-hidden")}
+      >
+        <Streamdown {...props}>{children}</Streamdown>
+      </div>
+    </CollapsibleContent>
+  )
+})
 
 Reasoning.displayName = "Reasoning"
 ReasoningTrigger.displayName = "ReasoningTrigger"
