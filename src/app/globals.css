@@ -3,27 +3,21 @@
 
 @custom-variant dark (&:is(.dark *));
 
-/* agent navigation crossfade */
-::view-transition-old(root) {
-	animation: 150ms ease-out both fade-out;
-}
+/* disable default view-transition crossfade so custom
+   clip-path circle-reveal animation can take over */
+::view-transition-old(root),
 ::view-transition-new(root) {
-	animation: 200ms ease-in 80ms both fade-in;
-}
-@keyframes fade-out {
-	to { opacity: 0; }
-}
-@keyframes fade-in {
-	from { opacity: 0; }
+	animation: none;
+	mix-blend-mode: normal;
 }
 
 @theme inline {
 	--color-background: var(--background);
 	--color-foreground: var(--foreground);
-	--font-sans: Sora, ui-sans-serif, sans-serif, system-ui;
-	--font-mono: Space Grotesk, ui-sans-serif, sans-serif, system-ui;
-	--font-serif: Playfair Display, ui-serif, serif;
-	--radius: 1.575rem;
+	--font-sans: var(--font-sans);
+	--font-mono: var(--font-mono);
+	--font-serif: var(--font-serif);
+	--radius: var(--radius);
 	--tracking-tighter: calc(var(--tracking-normal) - 0.05em);
 	--tracking-tight: calc(var(--tracking-normal) - 0.025em);
 	--tracking-wide: calc(var(--tracking-normal) + 0.025em);

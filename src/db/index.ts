@@ -4,6 +4,7 @@ import * as netsuiteSchema from "./schema-netsuite"
 import * as pluginSchema from "./schema-plugins"
 import * as agentSchema from "./schema-agent"
 import * as aiConfigSchema from "./schema-ai-config"
+import * as themeSchema from "./schema-theme"
 
 const allSchemas = {
   ...schema,
@@ -11,6 +12,7 @@ const allSchemas = {
   ...pluginSchema,
   ...agentSchema,
   ...aiConfigSchema,
+  ...themeSchema,
 }
 
 export function getDb(d1: D1Database) {
