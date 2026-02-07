@@ -48,7 +48,7 @@ interface ChatStateValue {
   stop: () => void
   readonly status: string
   readonly isGenerating: boolean
-  readonly conversationId: string | null
+  readonly conversationId: string
   newChat: () => void
   readonly pathname: string
 }
@@ -158,7 +158,14 @@ export function ChatProvider({
 }) {
   const [isOpen, setIsOpen] = React.useState(false)
   const [conversationId, setConversationId] =
-    React.useState<string | null>(null)
+    React.useState("")
+
+  // generate initial ID client-side only to avoid hydration mismatch
+  React.useEffect(() => {
+    setConversationId((prev) =>
+      prev === "" ? crypto.randomUUID() : prev
+    )
+  }, [])
   const [resumeLoaded, setResumeLoaded] =
     React.useState(false)
   const [dataContext, setDataContext] = React.useState<
@@ -169,12 +176,10 @@ export function ChatProvider({
   const pathname = usePathname()
 
   const chat = useCompassChat({
+    conversationId,
     openPanel: () => setIsOpen(true),
     onFinish: async ({ messages: finalMessages }) => {
       if (finalMessages.length === 0) return
-
-      const id = conversationId ?? crypto.randomUUID()
-      if (!conversationId) setConversationId(id)
 
       const serialized = finalMessages.map((m) => ({
         id: m.id,
@@ -189,7 +194,7 @@ export function ChatProvider({
         createdAt: new Date().toISOString(),
       }))
 
-      await saveConversation(id, serialized)
+      await saveConversation(conversationId, serialized)
     },
   })
 
@@ -339,7 +344,7 @@ export function ChatProvider({
 
   const newChat = React.useCallback(() => {
     chat.setMessages([])
-    setConversationId(null)
+    setConversationId(crypto.randomUUID())
     setResumeLoaded(true)
     clearRender()
     renderDispatchedRef.current.clear()

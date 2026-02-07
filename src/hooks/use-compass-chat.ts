@@ -13,6 +13,7 @@ import {
 } from "@/lib/agent/chat-adapter"
 
 interface UseCompassChatOptions {
+  readonly conversationId?: string | null
   readonly onFinish?: (params: {
     messages: ReadonlyArray<UIMessage>
   }) => void | Promise<void>
@@ -37,6 +38,8 @@ export function useCompassChat(options?: UseCompassChatOptions) {
         "x-current-page": pathname,
         "x-timezone":
           Intl.DateTimeFormat().resolvedOptions().timeZone,
+        "x-conversation-id":
+          options?.conversationId ?? "",
       },
     }),
     onFinish: options?.onFinish,

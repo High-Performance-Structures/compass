@@ -5,12 +5,16 @@ import {
   type UIMessage,
 } from "ai"
 import { getCloudflareContext } from "@opennextjs/cloudflare"
-import { getAgentModel } from "@/lib/agent/provider"
+import {
+  resolveModelForUser,
+  createModelFromId,
+} from "@/lib/agent/provider"
 import { agentTools } from "@/lib/agent/tools"
 import { githubTools } from "@/lib/agent/github-tools"
 import { buildSystemPrompt } from "@/lib/agent/system-prompt"
 import { loadMemoriesForPrompt } from "@/lib/agent/memory"
 import { getRegistry } from "@/lib/agent/plugins/registry"
+import { saveStreamUsage } from "@/lib/agent/usage"
 import { getCurrentUser } from "@/lib/auth"
 import { getDb } from "@/db"
 
@@ -20,7 +24,7 @@ export async function POST(req: Request): Promise<Response> {
     return new Response("Unauthorized", { status: 401 })
   }
 
-  const { env } = await getCloudflareContext()
+  const { env, ctx } = await getCloudflareContext()
   const db = getDb(env.DB)
   const envRecord = env as unknown as Record<string, string>
 
@@ -39,8 +43,18 @@ export async function POST(req: Request): Promise<Response> {
     req.headers.get("x-current-page") ?? undefined
   const timezone =
     req.headers.get("x-timezone") ?? undefined
+  const conversationId =
+    req.headers.get("x-conversation-id") ||
+    crypto.randomUUID()
 
-  const model = await getAgentModel()
+  const modelId = await resolveModelForUser(
+    db,
+    user.id
+  )
+  const model = createModelFromId(
+    envRecord.OPENROUTER_API_KEY,
+    modelId
+  )
 
   const result = streamText({
     model,
@@ -57,6 +71,16 @@ export async function POST(req: Request): Promise<Response> {
     tools: { ...agentTools, ...githubTools },
     stopWhen: stepCountIs(10),
   })
+
+  ctx.waitUntil(
+    saveStreamUsage(
+      db,
+      conversationId,
+      user.id,
+      modelId,
+      result
+    )
+  )
 
   return result.toUIMessageStreamResponse()
 }

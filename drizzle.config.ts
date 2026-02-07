@@ -6,6 +6,7 @@ export default defineConfig({
     "./src/db/schema-netsuite.ts",
     "./src/db/schema-plugins.ts",
     "./src/db/schema-agent.ts",
+    "./src/db/schema-ai-config.ts",
   ],
   out: "./drizzle",
   dialect: "sqlite",

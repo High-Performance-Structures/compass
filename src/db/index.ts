@@ -3,12 +3,14 @@ import * as schema from "./schema"
 import * as netsuiteSchema from "./schema-netsuite"
 import * as pluginSchema from "./schema-plugins"
 import * as agentSchema from "./schema-agent"
+import * as aiConfigSchema from "./schema-ai-config"
 
 const allSchemas = {
   ...schema,
   ...netsuiteSchema,
   ...pluginSchema,
   ...agentSchema,
+  ...aiConfigSchema,
 }
 
 export function getDb(d1: D1Database) {

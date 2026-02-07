@@ -2,7 +2,6 @@
 
 import { useState, useCallback, useRef, useEffect } from "react"
 import {
-  SendHorizonal,
   CopyIcon,
   ThumbsUpIcon,
   ThumbsDownIcon,
@@ -59,6 +58,7 @@ import { useAudioRecorder } from "@/hooks/use-audio-recorder"
 import type { AudioRecorder } from "@/hooks/use-audio-recorder"
 import { AudioWaveform } from "@/components/ai/audio-waveform"
 import { useChatState } from "./chat-provider"
+import { ModelDropdown } from "./model-dropdown"
 import { getRepoStats } from "@/app/actions/github"
 
 type RepoStats = {
@@ -373,6 +373,7 @@ function ChatInput({
                 <SquarePenIcon className="size-4" />
               </PromptInputButton>
             )}
+            <ModelDropdown />
           </PromptInputTools>
           <div className="flex items-center gap-1">
             <PromptInputButton
@@ -431,7 +432,6 @@ export function ChatView({ variant }: ChatViewProps) {
   const recorder = useAudioRecorder(handleTranscription)
 
   const [isActive, setIsActive] = useState(false)
-  const [idleInput, setIdleInput] = useState("")
   const [copiedId, setCopiedId] = useState<string | null>(
     null
   )
@@ -439,8 +439,6 @@ export function ChatView({ variant }: ChatViewProps) {
   // typewriter animation state (page variant only)
   const [animatedPlaceholder, setAnimatedPlaceholder] =
     useState("")
-  const [animFading, setAnimFading] = useState(false)
-  const [isIdleFocused, setIsIdleFocused] = useState(false)
   const animTimerRef =
     useRef<ReturnType<typeof setTimeout>>(undefined)
 
@@ -454,14 +452,8 @@ export function ChatView({ variant }: ChatViewProps) {
 
   // typewriter animation for idle input (page variant)
   useEffect(() => {
-    if (
-      !isPage ||
-      isIdleFocused ||
-      idleInput ||
-      isActive
-    ) {
+    if (!isPage || isActive) {
       setAnimatedPlaceholder("")
-      setAnimFading(false)
       return
     }
 
@@ -486,7 +478,6 @@ export function ChatView({ variant }: ChatViewProps) {
         }
       } else if (phase === "pause") {
         phase = "fading"
-        setAnimFading(true)
         animTimerRef.current = setTimeout(tick, 400)
       } else {
         msgIdx =
@@ -495,7 +486,6 @@ export function ChatView({ variant }: ChatViewProps) {
         setAnimatedPlaceholder(
           ANIMATED_PLACEHOLDERS[msgIdx].slice(0, 1)
         )
-        setAnimFading(false)
         phase = "typing"
         animTimerRef.current = setTimeout(tick, 50)
       }
@@ -507,7 +497,7 @@ export function ChatView({ variant }: ChatViewProps) {
       if (animTimerRef.current)
         clearTimeout(animTimerRef.current)
     }
-  }, [isPage, isIdleFocused, idleInput, isActive])
+  }, [isPage, isActive])
 
   // escape to return to idle when no messages (page)
   useEffect(() => {
@@ -533,19 +523,6 @@ export function ChatView({ variant }: ChatViewProps) {
       setTimeout(() => setCopiedId(null), 2000)
     },
     []
-  )
-
-  const handleIdleSubmit = useCallback(
-    (e: React.FormEvent) => {
-      e.preventDefault()
-      const value = idleInput.trim()
-      setIsActive(true)
-      if (value) {
-        chat.sendMessage({ text: value })
-        setIdleInput("")
-      }
-    },
-    [idleInput, chat.sendMessage]
   )
 
   const handleSuggestion = useCallback(
@@ -608,36 +585,20 @@ export function ChatView({ variant }: ChatViewProps) {
                   incomplete or change without notice.
                 </p>
               </div>
-              <form onSubmit={handleIdleSubmit}>
-                <label className="group flex w-full items-center gap-2 rounded-full border bg-background px-5 py-3 text-sm shadow-sm transition-colors hover:border-primary/30 hover:bg-muted/30 cursor-text">
-                  <input
-                    value={idleInput}
-                    onChange={(e) =>
-                      setIdleInput(e.target.value)
-                    }
-                    onFocus={() => setIsIdleFocused(true)}
-                    onBlur={() => setIsIdleFocused(false)}
-                    placeholder={
-                      animatedPlaceholder ||
-                      "Ask anything..."
-                    }
-                    className={cn(
-                      "flex-1 bg-transparent text-foreground outline-none",
-                      "placeholder:text-muted-foreground placeholder:transition-opacity placeholder:duration-300",
-                      animFading
-                        ? "placeholder:opacity-0"
-                        : "placeholder:opacity-100"
-                    )}
-                  />
-                  <button
-                    type="submit"
-                    className="shrink-0"
-                    aria-label="Send"
-                  >
-                    <SendHorizonal className="size-4 text-muted-foreground/60 transition-colors group-hover:text-primary" />
-                  </button>
-                </label>
-              </form>
+              <ChatInput
+                textareaRef={textareaRef}
+                placeholder={
+                  animatedPlaceholder || "Ask anything..."
+                }
+                recorder={recorder}
+                status={chat.status}
+                isGenerating={chat.isGenerating}
+                onSend={(text) => {
+                  setIsActive(true)
+                  chat.sendMessage({ text })
+                }}
+                className="rounded-2xl"
+              />
 
               {stats && (
                 <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2 text-xs text-muted-foreground/70">
