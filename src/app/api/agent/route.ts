@@ -37,6 +37,8 @@ export async function POST(req: Request): Promise<Response> {
 
   const currentPage =
     req.headers.get("x-current-page") ?? undefined
+  const timezone =
+    req.headers.get("x-timezone") ?? undefined
 
   const model = await getAgentModel()
 
@@ -46,6 +48,7 @@ export async function POST(req: Request): Promise<Response> {
       userName: user.displayName ?? user.email,
       userRole: user.role,
       currentPage,
+      timezone,
       memories,
       pluginSections,
       mode: "full",

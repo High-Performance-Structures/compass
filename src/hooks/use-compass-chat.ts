@@ -33,7 +33,11 @@ export function useCompassChat(options?: UseCompassChatOptions) {
   const chatState = useChat({
     transport: new DefaultChatTransport({
       api: "/api/agent",
-      headers: { "x-current-page": pathname },
+      headers: {
+        "x-current-page": pathname,
+        "x-timezone":
+          Intl.DateTimeFormat().resolvedOptions().timeZone,
+      },
     }),
     onFinish: options?.onFinish,
     onError: (err) => {
