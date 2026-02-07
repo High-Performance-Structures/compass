@@ -1,4 +1,4 @@
-CREATE TABLE `custom_themes` (
+CREATE TABLE IF NOT EXISTS `custom_themes` (
 	`id` text PRIMARY KEY NOT NULL,
 	`user_id` text NOT NULL,
 	`name` text NOT NULL,
@@ -9,7 +9,7 @@ CREATE TABLE `custom_themes` (
 	FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON UPDATE no action ON DELETE cascade
 );
 --> statement-breakpoint
-CREATE TABLE `user_theme_preference` (
+CREATE TABLE IF NOT EXISTS `user_theme_preference` (
 	`user_id` text PRIMARY KEY NOT NULL,
 	`active_theme_id` text NOT NULL,
 	`updated_at` text NOT NULL,
