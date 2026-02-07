@@ -28,6 +28,8 @@ import { SyncControls } from "@/components/netsuite/sync-controls"
 import { MemoriesTable } from "@/components/agent/memories-table"
 import { SkillsTab } from "@/components/settings/skills-tab"
 import { AIModelTab } from "@/components/settings/ai-model-tab"
+import { useNative } from "@/hooks/use-native"
+import { useBiometricAuth } from "@/hooks/use-biometric-auth"
 
 export function SettingsModal({
   open,
@@ -41,6 +43,8 @@ export function SettingsModal({
   const [pushNotifs, setPushNotifs] = React.useState(true)
   const [weeklyDigest, setWeeklyDigest] = React.useState(false)
   const [timezone, setTimezone] = React.useState("America/New_York")
+  const native = useNative()
+  const biometric = useBiometricAuth()
 
   const generalPage = (
     <>
@@ -270,7 +274,9 @@ export function SettingsModal({
               <div className="min-w-0 flex-1">
                 <Label className="text-xs">Push notifications</Label>
                 <p className="text-muted-foreground text-xs">
-                  Receive push notifications in your browser.
+                  {native
+                    ? "Receive push notifications on your device."
+                    : "Receive push notifications in your browser."}
                 </p>
               </div>
               <Switch
@@ -279,6 +285,26 @@ export function SettingsModal({
                 className="shrink-0"
               />
             </div>
+
+            {native && biometric.isAvailable && (
+              <>
+                <Separator />
+
+                <div className="flex items-center justify-between gap-4">
+                  <div className="min-w-0 flex-1">
+                    <Label className="text-xs">Biometric lock</Label>
+                    <p className="text-muted-foreground text-xs">
+                      Require Face ID or fingerprint when returning to the app.
+                    </p>
+                  </div>
+                  <Switch
+                    checked={biometric.isEnabled}
+                    onCheckedChange={biometric.setEnabled}
+                    className="shrink-0"
+                  />
+                </div>
+              </>
+            )}
           </TabsContent>
 
           <TabsContent

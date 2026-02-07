@@ -11,6 +11,7 @@ import {
   useRenderState,
 } from "./chat-provider"
 import { ChatView } from "./chat-view"
+import { isNative } from "@/lib/native/platform"
 
 export function ChatPanelShell() {
   const { isOpen, open, close, toggle } = useChatPanel()
@@ -98,10 +99,44 @@ export function ChatPanelShell() {
       window.removeEventListener("keydown", handleKeyDown)
   }, [isDashboard, isOpen, close, toggle])
 
+  // native keyboard offset for chat input
+  const [keyboardHeight, setKeyboardHeight] = useState(0)
+  useEffect(() => {
+    if (!isNative()) return
+
+    let cleanup: (() => void) | undefined
+
+    async function setupKeyboard() {
+      const { Keyboard } = await import(
+        "@capacitor/keyboard"
+      )
+      const showListener = await Keyboard.addListener(
+        "keyboardWillShow",
+        (info) => setKeyboardHeight(info.keyboardHeight),
+      )
+      const hideListener = await Keyboard.addListener(
+        "keyboardWillHide",
+        () => setKeyboardHeight(0),
+      )
+      cleanup = () => {
+        showListener.remove()
+        hideListener.remove()
+      }
+    }
+
+    setupKeyboard()
+    return () => cleanup?.()
+  }, [])
+
   // container width/style for panel mode
   const panelStyle =
     !isDashboard && isOpen
       ? { width: panelWidth }
+      : undefined
+
+  const keyboardStyle =
+    keyboardHeight > 0
+      ? { paddingBottom: keyboardHeight }
       : undefined
 
   return (
@@ -124,7 +159,7 @@ export function ChatPanelShell() {
                   : "translate-x-full md:translate-x-0 md:w-0 md:border-transparent md:shadow-none md:opacity-0",
               ]
         )}
-        style={panelStyle}
+        style={{ ...panelStyle, ...keyboardStyle }}
       >
         {/* Desktop resize handle (panel mode only) */}
         {!isDashboard && (

@@ -316,3 +316,18 @@ export const slabMemories = sqliteTable("slab_memories", {
 
 export type SlabMemory = typeof slabMemories.$inferSelect
 export type NewSlabMemory = typeof slabMemories.$inferInsert
+
+// Push notification tokens for native app
+export const pushTokens = sqliteTable("push_tokens", {
+  id: text("id").primaryKey(),
+  userId: text("user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  token: text("token").notNull(),
+  platform: text("platform").notNull(), // "ios" | "android"
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+})
+
+export type PushToken = typeof pushTokens.$inferSelect
+export type NewPushToken = typeof pushTokens.$inferInsert

@@ -27,6 +27,13 @@ dist/
 mobile-ui-references/
 .fuse_*
 
-# directories 
+# directories
 tmp/
 references/
+
+# capacitor native builds
+ios/App/Pods/
+ios/App/build/
+android/.gradle/
+android/build/
+android/app/build/
