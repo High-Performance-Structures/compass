@@ -1,8 +1,7 @@
 "use server"
 
-import { getCloudflareContext } from "@opennextjs/cloudflare"
 import { eq } from "drizzle-orm"
-import { getDb } from "@/db"
+import { getDb } from "@/lib/db-universal"
 import { customers, type NewCustomer } from "@/db/schema"
 import { getCurrentUser } from "@/lib/auth"
 import { requirePermission } from "@/lib/permissions"
@@ -12,8 +11,7 @@ export async function getCustomers() {
   const user = await getCurrentUser()
   requirePermission(user, "customer", "read")
 
-  const { env } = await getCloudflareContext()
-  const db = getDb(env.DB)
+  const db = await getDb()
 
   return db.select().from(customers)
 }
@@ -22,8 +20,7 @@ export async function getCustomer(id: string) {
   const user = await getCurrentUser()
   requirePermission(user, "customer", "read")
 
-  const { env } = await getCloudflareContext()
-  const db = getDb(env.DB)
+  const db = await getDb()
 
   const rows = await db
     .select()
@@ -41,8 +38,7 @@ export async function createCustomer(
     const user = await getCurrentUser()
     requirePermission(user, "customer", "create")
 
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
+    const db = await getDb()
 
     const now = new Date().toISOString()
     const id = crypto.randomUUID()
@@ -73,8 +69,7 @@ export async function updateCustomer(
     const user = await getCurrentUser()
     requirePermission(user, "customer", "update")
 
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
+    const db = await getDb()
 
     await db
       .update(customers)
@@ -97,8 +92,7 @@ export async function deleteCustomer(id: string) {
     const user = await getCurrentUser()
     requirePermission(user, "customer", "delete")
 
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
+    const db = await getDb()
 
     await db.delete(customers).where(eq(customers.id, id))
 

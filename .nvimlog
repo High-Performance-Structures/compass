@@ -1,0 +1,3 @@
+ERR 2026-02-08T03:26:02.654 ?.40974    vim_mktempdir:3307: tempdir root not owned by current user (averyfelts): /var/folders/2d/8jkng0_d3lzckgj3fdtw98pr0000gn/T/nvim.averyfelts
+ERR 2026-02-08T03:26:02.654 ?.40974    vim_mktempdir:3313: tempdir root has invalid permissions (37777777776): /var/folders/2d/8jkng0_d3lzckgj3fdtw98pr0000gn/T/nvim.averyfelts
+WRN 2026-02-08T03:26:02.654 ?.40974    vim_mktempdir:3325: tempdir create failed: operation not permitted: /var/folders/2d/8jkng0_d3lzckgj3fdtw98pr0000gn/T/nvim.XXXXXX

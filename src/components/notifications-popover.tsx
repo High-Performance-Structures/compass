@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import {
   IconBell,
   IconMessageCircle,
@@ -25,7 +25,7 @@ import {
 } from "@/components/ui/sheet"
 import { useIsMobile } from "@/hooks/use-mobile"
 
-const notifications = [
+const defaultNotifications = [
   {
     icon: IconClipboardCheck,
     title: "Task assigned",
@@ -52,11 +52,29 @@ const notifications = [
   },
 ]
 
-function NotificationsList() {
+function NotificationsList({
+  items,
+  onClear,
+}: {
+  items: typeof defaultNotifications
+  onClear: () => void
+}) {
+  if (items.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center py-8 text-center">
+        <IconBell className="text-muted-foreground/30 mb-2 size-8" />
+        <p className="text-sm font-medium">No notifications</p>
+        <p className="text-muted-foreground text-xs">
+          You&apos;re all caught up!
+        </p>
+      </div>
+    )
+  }
+
   return (
     <>
       <div className="max-h-[60vh] overflow-y-auto">
-        {notifications.map((item, index) => (
+        {items.map((item, index) => (
           <div
             key={`${item.title}-${index}`}
             className="hover:bg-muted/50 flex gap-3 border-b px-4 py-3 last:border-0"
@@ -75,8 +93,13 @@ function NotificationsList() {
         ))}
       </div>
       <div className="border-t px-4 py-2">
-        <Button variant="ghost" size="sm" className="h-9 w-full text-xs">
-          Mark all as read
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-9 w-full text-xs"
+          onClick={onClear}
+        >
+          Clear notifications
         </Button>
       </div>
     </>
@@ -86,10 +109,33 @@ function NotificationsList() {
 export function NotificationsPopover() {
   const isMobile = useIsMobile()
   const [open, setOpen] = useState(false)
+  const [items, setItems] = useState(defaultNotifications)
+
+  // Load from local storage on mount
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("compass-notifications")
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved)
+          if (Array.isArray(parsed) && parsed.length === 0) {
+            setItems([])
+          }
+        } catch (e) {
+          console.error("Failed to parse notifications", e)
+        }
+      }
+    }
+  }, [])
+
+  const handleClear = () => {
+    setItems([])
+    localStorage.setItem("compass-notifications", "[]")
+  }
 
   const trigger = (
     <Button variant="ghost" size="icon" className="relative size-8">
-      <BadgeIndicator dot>
+      <BadgeIndicator dot={items.length > 0}>
         <IconBell className="size-4" />
       </BadgeIndicator>
     </Button>
@@ -103,7 +149,7 @@ export function NotificationsPopover() {
           <SheetHeader className="border-b px-4 py-3 text-left">
             <SheetTitle className="text-base font-medium">Notifications</SheetTitle>
           </SheetHeader>
-          <NotificationsList />
+          <NotificationsList items={items} onClear={handleClear} />
         </SheetContent>
       </Sheet>
     )
@@ -116,7 +162,7 @@ export function NotificationsPopover() {
         <div className="border-b px-4 py-3">
           <p className="text-sm font-medium">Notifications</p>
         </div>
-        <NotificationsList />
+        <NotificationsList items={items} onClear={handleClear} />
       </PopoverContent>
     </Popover>
   )

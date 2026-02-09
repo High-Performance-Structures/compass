@@ -1,8 +1,7 @@
 "use server"
 
-import { getCloudflareContext } from "@opennextjs/cloudflare"
 import { eq, and, desc } from "drizzle-orm"
-import { getDb } from "@/db"
+import { getDb } from "@/lib/db-universal"
 import { slabMemories } from "@/db/schema"
 import type { SlabMemory } from "@/db/schema"
 import { getCurrentUser } from "@/lib/auth"
@@ -15,8 +14,7 @@ export async function getSlabMemories(): Promise<
     const user = await getCurrentUser()
     if (!user) return { success: false, error: "Not authenticated" }
 
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
+    const db = await getDb()
 
     const rows = await db
       .select()
@@ -40,8 +38,7 @@ export async function deleteSlabMemory(
     const user = await getCurrentUser()
     if (!user) return { success: false, error: "Not authenticated" }
 
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
+    const db = await getDb()
 
     const deleted = await db
       .delete(slabMemories)
@@ -74,8 +71,7 @@ export async function toggleSlabMemoryPin(
     const user = await getCurrentUser()
     if (!user) return { success: false, error: "Not authenticated" }
 
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
+    const db = await getDb()
 
     const updated = await db
       .update(slabMemories)

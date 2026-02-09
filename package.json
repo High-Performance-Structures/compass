@@ -17,7 +17,9 @@
 		"prepare": "husky",
 		"cap:sync": "cap sync",
 		"cap:ios": "cap open ios",
-		"cap:android": "cap open android"
+		"cap:android": "cap open android",
+		"setup:local-db": "bun run scripts/setup-local-db.ts",
+		"dev:local": "BYPASS_AUTH=true NODE_OPTIONS='--require ./scripts/preload-dev.js' next dev --turbopack"
 	},
 	"dependencies": {
 		"@ai-sdk/react": "^3.0.74",
@@ -115,9 +117,11 @@
 	"devDependencies": {
 		"@eslint/eslintrc": "^3",
 		"@tailwindcss/postcss": "^4",
+		"@types/better-sqlite3": "^7.6.13",
 		"@types/node": "^25.0.10",
 		"@types/react": "^19",
 		"@types/react-dom": "^19",
+		"better-sqlite3": "^12.6.2",
 		"drizzle-kit": "^0.31.8",
 		"eslint": "^9",
 		"eslint-config-next": "15.4.6",

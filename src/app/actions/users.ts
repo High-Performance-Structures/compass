@@ -1,7 +1,6 @@
 "use server"
 
-import { getCloudflareContext } from "@opennextjs/cloudflare"
-import { getDb } from "@/db"
+import { getDb } from "@/lib/db-universal"
 import {
   users,
   organizationMembers,
@@ -38,10 +37,9 @@ export async function getUsers(): Promise<UserWithRelations[]> {
     const currentUser = await getCurrentUser()
     requirePermission(currentUser, "user", "read")
 
-    const { env } = await getCloudflareContext()
-    if (!env?.DB) return []
+    
 
-    const db = getDb(env.DB)
+    const db = getDb(db)
 
     // get all active users
     const allUsers = await db.select().from(users).where(eq(users.isActive, true))
@@ -109,12 +107,11 @@ export async function updateUserRole(
     const currentUser = await getCurrentUser()
     requirePermission(currentUser, "user", "update")
 
-    const { env } = await getCloudflareContext()
-    if (!env?.DB) {
+        if (!db) {
       return { success: false, error: "Database not available" }
     }
 
-    const db = getDb(env.DB)
+    const db = getDb(db)
     const now = new Date().toISOString()
 
     await db
@@ -148,12 +145,11 @@ export async function deactivateUser(
     const currentUser = await getCurrentUser()
     requirePermission(currentUser, "user", "delete")
 
-    const { env } = await getCloudflareContext()
-    if (!env?.DB) {
+        if (!db) {
       return { success: false, error: "Database not available" }
     }
 
-    const db = getDb(env.DB)
+    const db = getDb(db)
     const now = new Date().toISOString()
 
     await db
@@ -191,12 +187,11 @@ export async function assignUserToProject(
     const currentUser = await getCurrentUser()
     requirePermission(currentUser, "project", "update")
 
-    const { env } = await getCloudflareContext()
-    if (!env?.DB) {
+        if (!db) {
       return { success: false, error: "Database not available" }
     }
 
-    const db = getDb(env.DB)
+    const db = getDb(db)
     const now = new Date().toISOString()
 
     // check if already assigned
@@ -266,12 +261,11 @@ export async function assignUserToTeam(
     const currentUser = await getCurrentUser()
     requirePermission(currentUser, "team", "update")
 
-    const { env } = await getCloudflareContext()
-    if (!env?.DB) {
+        if (!db) {
       return { success: false, error: "Database not available" }
     }
 
-    const db = getDb(env.DB)
+    const db = getDb(db)
     const now = new Date().toISOString()
 
     // check if already assigned
@@ -326,12 +320,11 @@ export async function assignUserToGroup(
     const currentUser = await getCurrentUser()
     requirePermission(currentUser, "group", "update")
 
-    const { env } = await getCloudflareContext()
-    if (!env?.DB) {
+        if (!db) {
       return { success: false, error: "Database not available" }
     }
 
-    const db = getDb(env.DB)
+    const db = getDb(db)
     const now = new Date().toISOString()
 
     // check if already assigned
@@ -387,12 +380,11 @@ export async function inviteUser(
     const currentUser = await getCurrentUser()
     requirePermission(currentUser, "user", "create")
 
-    const { env } = await getCloudflareContext()
-    if (!env?.DB) {
+        if (!db) {
       return { success: false, error: "Database not available" }
     }
 
-    const db = getDb(env.DB)
+    const db = getDb(db)
     const now = new Date().toISOString()
 
     // check if user already exists

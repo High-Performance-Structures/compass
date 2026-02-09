@@ -1,8 +1,7 @@
 "use server"
 
-import { getCloudflareContext } from "@opennextjs/cloudflare"
 import { eq } from "drizzle-orm"
-import { getDb } from "@/db"
+import { getDb } from "@/lib/db-universal"
 import { payments, type NewPayment } from "@/db/schema-netsuite"
 import { getCurrentUser } from "@/lib/auth"
 import { requirePermission } from "@/lib/permissions"
@@ -12,8 +11,7 @@ export async function getPayments() {
   const user = await getCurrentUser()
   requirePermission(user, "finance", "read")
 
-  const { env } = await getCloudflareContext()
-  const db = getDb(env.DB)
+  const db = await getDb()
 
   return db.select().from(payments)
 }
@@ -22,8 +20,7 @@ export async function getPayment(id: string) {
   const user = await getCurrentUser()
   requirePermission(user, "finance", "read")
 
-  const { env } = await getCloudflareContext()
-  const db = getDb(env.DB)
+  const db = await getDb()
 
   const rows = await db
     .select()
@@ -41,8 +38,7 @@ export async function createPayment(
     const user = await getCurrentUser()
     requirePermission(user, "finance", "create")
 
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
+    const db = await getDb()
 
     const now = new Date().toISOString()
     const id = crypto.randomUUID()
@@ -73,8 +69,7 @@ export async function updatePayment(
     const user = await getCurrentUser()
     requirePermission(user, "finance", "update")
 
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
+    const db = await getDb()
 
     await db
       .update(payments)
@@ -97,8 +92,7 @@ export async function deletePayment(id: string) {
     const user = await getCurrentUser()
     requirePermission(user, "finance", "delete")
 
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
+    const db = await getDb()
 
     await db.delete(payments).where(eq(payments.id, id))
 

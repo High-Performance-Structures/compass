@@ -1,6 +1,5 @@
 import { withAuth, signOut } from "@workos-inc/authkit-nextjs"
-import { getCloudflareContext } from "@opennextjs/cloudflare"
-import { getDb } from "@/db"
+import { getDb } from "@/lib/db-universal"
 import { users } from "@/db/schema"
 import type { User } from "@/db/schema"
 import { eq } from "drizzle-orm"
@@ -56,7 +55,7 @@ export async function getCurrentUser(): Promise<AuthUser | null> {
 
     if (!isWorkOSConfigured) {
       // return mock user for development
-      return {
+      const mockUser = {
         id: "dev-user-1",
         email: "dev@compass.io",
         firstName: "Dev",
@@ -70,6 +69,24 @@ export async function getCurrentUser(): Promise<AuthUser | null> {
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       }
+
+      // Ensure mock user exists in DB to prevent FK errors
+      try {
+        const db = (await getDb()) as any // eslint-disable-line @typescript-eslint/no-explicit-any
+        const existing = await db
+          .select()
+          .from(users)
+          .where(eq(users.id, mockUser.id))
+          .get()
+
+        if (!existing) {
+          await db.insert(users).values(mockUser).run()
+        }
+      } catch (e) {
+        console.error("Failed to ensure mock user exists:", e)
+      }
+
+      return mockUser
     }
 
     const session = await withAuth()
@@ -77,10 +94,7 @@ export async function getCurrentUser(): Promise<AuthUser | null> {
 
     const workosUser = session.user
 
-    const { env } = await getCloudflareContext()
-    if (!env?.DB) return null
-
-    const db = getDb(env.DB)
+    const db = (await getDb()) as any // eslint-disable-line @typescript-eslint/no-explicit-any
 
     // check if user exists in our database
     let dbUser = await db
@@ -129,12 +143,7 @@ export async function ensureUserExists(workosUser: {
   lastName?: string | null
   profilePictureUrl?: string | null
 }): Promise<User> {
-  const { env } = await getCloudflareContext()
-  if (!env?.DB) {
-    throw new Error("Database not available")
-  }
-
-  const db = getDb(env.DB)
+  const db = (await getDb()) as any // eslint-disable-line @typescript-eslint/no-explicit-any
 
   // Check if user already exists
   const existing = await db

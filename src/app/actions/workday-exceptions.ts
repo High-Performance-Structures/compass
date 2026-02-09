@@ -1,7 +1,6 @@
 "use server"
 
-import { getCloudflareContext } from "@opennextjs/cloudflare"
-import { getDb } from "@/db"
+import { getDb } from "@/lib/db-universal"
 import { workdayExceptions } from "@/db/schema"
 import { eq } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
@@ -14,8 +13,7 @@ import type {
 export async function getWorkdayExceptions(
   projectId: string
 ): Promise<WorkdayExceptionData[]> {
-  const { env } = await getCloudflareContext()
-  const db = getDb(env.DB)
+  const db = await getDb()
 
   const rows = await db
     .select()
@@ -42,8 +40,7 @@ export async function createWorkdayException(
   }
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
+    const db = await getDb()
     const now = new Date().toISOString()
 
     await db.insert(workdayExceptions).values({
@@ -81,8 +78,7 @@ export async function updateWorkdayException(
   }
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
+    const db = await getDb()
 
     const [existing] = await db
       .select()
@@ -120,8 +116,7 @@ export async function deleteWorkdayException(
   exceptionId: string
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
+    const db = await getDb()
 
     const [existing] = await db
       .select()

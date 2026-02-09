@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server"
-import { getCloudflareContext } from "@opennextjs/cloudflare"
-import { getDb } from "@/db"
+import { getDb } from "@/lib/db-universal"
 import { pushTokens } from "@/db/schema"
 import { getCurrentUser } from "@/lib/auth"
 import { nanoid } from "nanoid"
@@ -39,8 +38,7 @@ export async function POST(request: Request) {
     )
   }
 
-  const { env } = await getCloudflareContext()
-  const db = getDb(env.DB)
+  const db = await getDb()
   const now = new Date().toISOString()
 
   // upsert: delete existing token for this user+platform, then insert
@@ -83,8 +81,7 @@ export async function DELETE(request: Request) {
       ? (body as Record<string, string>).token
       : undefined
 
-  const { env } = await getCloudflareContext()
-  const db = getDb(env.DB)
+  const db = await getDb()
 
   if (token) {
     await db

@@ -1,9 +1,8 @@
 "use server"
 
-import { getCloudflareContext } from "@opennextjs/cloudflare"
 import { eq, and } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
-import { getDb } from "@/db"
+import { getDb } from "@/lib/db-universal"
 import { users } from "@/db/schema"
 import { googleAuth, googleStarredFiles } from "@/db/schema-google"
 import { getCurrentUser, requireAuth } from "@/lib/auth"
@@ -75,8 +74,7 @@ export async function getGoogleDriveConnectionStatus(): Promise<{
   try {
     const user = await getCurrentUser() // keep nullable - graceful fallback
     requirePermission(user, "document", "read")
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
+    const db = await getDb()
     const auth = await getOrgGoogleAuth(db)
 
     if (!auth) {
@@ -111,10 +109,9 @@ export async function connectGoogleDrive(
 
     const parsed = parseServiceAccountKey(serviceAccountKeyJson)
 
-    const { env } = await getCloudflareContext()
-    const envRecord = env as unknown as Record<string, string>
+        const envRecord = env as unknown as Record<string, string>
     const config = getGoogleConfig(envRecord)
-    const db = getDb(env.DB)
+    const db = getDb(db)
 
     // validate by making a test call
     const client = new DriveClient({ serviceAccountKey: parsed })
@@ -167,8 +164,7 @@ export async function disconnectGoogleDrive(): Promise<
   try {
     const user = await requireAuth()
     requirePermission(user, "organization", "delete")
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
+    const db = await getDb()
     await db.delete(googleAuth).run()
     revalidatePath("/dashboard/files")
     return { success: true }
@@ -193,10 +189,9 @@ export async function listAvailableSharedDrives(): Promise<
     const user = await requireAuth()
     requirePermission(user, "organization", "update")
 
-    const { env } = await getCloudflareContext()
-    const envRecord = env as unknown as Record<string, string>
+        const envRecord = env as unknown as Record<string, string>
     const config = getGoogleConfig(envRecord)
-    const db = getDb(env.DB)
+    const db = getDb(db)
     const auth = await getOrgGoogleAuth(db)
     if (!auth) {
       return { success: false, error: "Google Drive not connected" }
@@ -236,8 +231,7 @@ export async function selectSharedDrive(
     const user = await requireAuth()
     requirePermission(user, "organization", "update")
 
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
+    const db = await getDb()
     const auth = await getOrgGoogleAuth(db)
     if (!auth) {
       return { success: false, error: "Google Drive not connected" }
@@ -285,10 +279,9 @@ export async function listDriveFiles(
       return { success: false, error: "No Google account linked" }
     }
 
-    const { env } = await getCloudflareContext()
-    const envRecord = env as unknown as Record<string, string>
+        const envRecord = env as unknown as Record<string, string>
     const config = getGoogleConfig(envRecord)
-    const db = getDb(env.DB)
+    const db = getDb(db)
     const auth = await getOrgGoogleAuth(db)
     if (!auth) {
       return { success: false, error: "Google Drive not connected" }
@@ -346,10 +339,9 @@ export async function listDriveFilesForView(
       return { success: false, error: "No Google account linked" }
     }
 
-    const { env } = await getCloudflareContext()
-    const envRecord = env as unknown as Record<string, string>
+        const envRecord = env as unknown as Record<string, string>
     const config = getGoogleConfig(envRecord)
-    const db = getDb(env.DB)
+    const db = getDb(db)
     const auth = await getOrgGoogleAuth(db)
     if (!auth) {
       return { success: false, error: "Google Drive not connected" }
@@ -454,10 +446,9 @@ export async function searchDriveFiles(
       return { success: false, error: "No Google account linked" }
     }
 
-    const { env } = await getCloudflareContext()
-    const envRecord = env as unknown as Record<string, string>
+        const envRecord = env as unknown as Record<string, string>
     const config = getGoogleConfig(envRecord)
-    const db = getDb(env.DB)
+    const db = getDb(db)
     const auth = await getOrgGoogleAuth(db)
     if (!auth) {
       return { success: false, error: "Google Drive not connected" }
@@ -507,10 +498,9 @@ export async function createDriveFolder(
       return { success: false, error: "No Google account linked" }
     }
 
-    const { env } = await getCloudflareContext()
-    const envRecord = env as unknown as Record<string, string>
+        const envRecord = env as unknown as Record<string, string>
     const config = getGoogleConfig(envRecord)
-    const db = getDb(env.DB)
+    const db = getDb(db)
     const auth = await getOrgGoogleAuth(db)
     if (!auth) {
       return { success: false, error: "Google Drive not connected" }
@@ -559,10 +549,9 @@ export async function renameDriveFile(
       return { success: false, error: "No Google account linked" }
     }
 
-    const { env } = await getCloudflareContext()
-    const envRecord = env as unknown as Record<string, string>
+        const envRecord = env as unknown as Record<string, string>
     const config = getGoogleConfig(envRecord)
-    const db = getDb(env.DB)
+    const db = getDb(db)
     const auth = await getOrgGoogleAuth(db)
     if (!auth) {
       return { success: false, error: "Google Drive not connected" }
@@ -600,10 +589,9 @@ export async function moveDriveFile(
       return { success: false, error: "No Google account linked" }
     }
 
-    const { env } = await getCloudflareContext()
-    const envRecord = env as unknown as Record<string, string>
+        const envRecord = env as unknown as Record<string, string>
     const config = getGoogleConfig(envRecord)
-    const db = getDb(env.DB)
+    const db = getDb(db)
     const auth = await getOrgGoogleAuth(db)
     if (!auth) {
       return { success: false, error: "Google Drive not connected" }
@@ -644,10 +632,9 @@ export async function trashDriveFile(
       return { success: false, error: "No Google account linked" }
     }
 
-    const { env } = await getCloudflareContext()
-    const envRecord = env as unknown as Record<string, string>
+        const envRecord = env as unknown as Record<string, string>
     const config = getGoogleConfig(envRecord)
-    const db = getDb(env.DB)
+    const db = getDb(db)
     const auth = await getOrgGoogleAuth(db)
     if (!auth) {
       return { success: false, error: "Google Drive not connected" }
@@ -683,10 +670,9 @@ export async function restoreDriveFile(
       return { success: false, error: "No Google account linked" }
     }
 
-    const { env } = await getCloudflareContext()
-    const envRecord = env as unknown as Record<string, string>
+        const envRecord = env as unknown as Record<string, string>
     const config = getGoogleConfig(envRecord)
-    const db = getDb(env.DB)
+    const db = getDb(db)
     const auth = await getOrgGoogleAuth(db)
     if (!auth) {
       return { success: false, error: "Google Drive not connected" }
@@ -723,10 +709,9 @@ export async function getDriveStorageQuota(): Promise<
       return { success: false, error: "No Google account linked" }
     }
 
-    const { env } = await getCloudflareContext()
-    const envRecord = env as unknown as Record<string, string>
+        const envRecord = env as unknown as Record<string, string>
     const config = getGoogleConfig(envRecord)
-    const db = getDb(env.DB)
+    const db = getDb(db)
     const auth = await getOrgGoogleAuth(db)
     if (!auth) {
       return { success: false, error: "Google Drive not connected" }
@@ -772,10 +757,9 @@ export async function getUploadSessionUrl(
       return { success: false, error: "No Google account linked" }
     }
 
-    const { env } = await getCloudflareContext()
-    const envRecord = env as unknown as Record<string, string>
+        const envRecord = env as unknown as Record<string, string>
     const config = getGoogleConfig(envRecord)
-    const db = getDb(env.DB)
+    const db = getDb(db)
     const auth = await getOrgGoogleAuth(db)
     if (!auth) {
       return { success: false, error: "Google Drive not connected" }
@@ -817,8 +801,7 @@ export async function toggleStarFile(
     const user = await requireAuth()
     requirePermission(user, "document", "read")
 
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
+    const db = await getDb()
 
     const existing = await db
       .select()
@@ -867,8 +850,7 @@ export async function getStarredFileIds(): Promise<
     const user = await requireAuth()
     requirePermission(user, "document", "read")
 
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
+    const db = await getDb()
 
     const rows = await db
       .select({ googleFileId: googleStarredFiles.googleFileId })
@@ -897,8 +879,7 @@ export async function updateUserGoogleEmail(
     const user = await requireAuth()
     requirePermission(user, "user", "update")
 
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
+    const db = await getDb()
 
     await db
       .update(users)
@@ -935,10 +916,9 @@ export async function getDriveFileInfo(
       return { success: false, error: "No Google account linked" }
     }
 
-    const { env } = await getCloudflareContext()
-    const envRecord = env as unknown as Record<string, string>
+        const envRecord = env as unknown as Record<string, string>
     const config = getGoogleConfig(envRecord)
-    const db = getDb(env.DB)
+    const db = getDb(db)
     const auth = await getOrgGoogleAuth(db)
     if (!auth) {
       return { success: false, error: "Google Drive not connected" }
@@ -986,10 +966,9 @@ export async function listDriveFolders(
       return { success: false, error: "No Google account linked" }
     }
 
-    const { env } = await getCloudflareContext()
-    const envRecord = env as unknown as Record<string, string>
+        const envRecord = env as unknown as Record<string, string>
     const config = getGoogleConfig(envRecord)
-    const db = getDb(env.DB)
+    const db = getDb(db)
     const auth = await getOrgGoogleAuth(db)
     if (!auth) {
       return { success: false, error: "Google Drive not connected" }

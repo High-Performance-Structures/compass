@@ -19,6 +19,7 @@ interface PromptContext {
   readonly timezone?: string
   readonly pluginSections?: ReadonlyArray<PromptSection>
   readonly dashboards?: ReadonlyArray<DashboardSummary>
+  readonly activeProjects?: ReadonlyArray<{ id: string; name: string; status: string }>
   readonly mode?: PromptMode
 }
 
@@ -225,7 +226,7 @@ const TOOL_REGISTRY: ReadonlyArray<ToolMeta> = [
 ]
 
 // categories included in minimal mode
-const MINIMAL_CATEGORIES: ReadonlySet<ToolCategory> = new Set([
+const MINIMAL_CATEGORIES: ReadonlySet<ToolCategory> = new Set<ToolCategory>([
   "data",
   "navigation",
   "ui",
@@ -241,7 +242,7 @@ function extractDescription(
     entry !== null &&
     "description" in entry &&
     typeof (entry as Record<string, unknown>).description ===
-      "string"
+    "string"
   ) {
     return (entry as Record<string, unknown>)
       .description as string
@@ -264,12 +265,12 @@ function computeDerivedState(ctx: PromptContext): DerivedState {
     mode === "none"
       ? []
       : TOOL_REGISTRY.filter((t) => {
-          if (t.adminOnly && !isAdmin) return false
-          if (mode === "minimal") {
-            return MINIMAL_CATEGORIES.has(t.category)
-          }
-          return true
-        })
+        if (t.adminOnly && !isAdmin) return false
+        if (mode === "minimal") {
+          return MINIMAL_CATEGORIES.has(t.category)
+        }
+        return true
+      })
 
   return { mode, page, isAdmin, catalogComponents, tools }
 }
@@ -321,9 +322,9 @@ function buildMemoryContext(
   return [
     "## What You Remember About This User",
     ctx.memories ||
-      "No memories yet. When the user shares preferences, " +
-        "decisions, or important facts, use rememberContext " +
-        "to save them.",
+    "No memories yet. When the user shares preferences, " +
+    "decisions, or important facts, use rememberContext " +
+    "to save them.",
   ]
 }
 
@@ -335,35 +336,35 @@ function buildFirstInteraction(
 
   const suggestions = [
     '"I can pull up your active projects, recent invoices, ' +
-      'or outstanding vendor bills."',
+    'or outstanding vendor bills."',
     '"Need to check on a schedule, find a customer, or ' +
-      'navigate somewhere? Just ask."',
+    'navigate somewhere? Just ask."',
     '"I can show you charts, tables, and project summaries ' +
-      '— or just answer a quick question."',
+    '— or just answer a quick question."',
     '"Want to check the project\'s development status? I can ' +
-      'show you recent commits, PRs, issues, and contributor activity."',
+    'show you recent commits, PRs, issues, and contributor activity."',
     '"I can also conduct a quick UX interview if you\'d like ' +
-      'to share feedback about Compass."',
+    'to share feedback about Compass."',
     '"I can build you a custom dashboard with charts and ' +
-      'stats — and save it so you can access it anytime."',
+    'stats — and save it so you can access it anytime."',
   ]
 
   return [
     "## First Interaction",
     "When a user first messages you or seems unsure what " +
-      "to ask, proactively offer what you can do. For example:",
+    "to ask, proactively offer what you can do. For example:",
     ...suggestions.map((s) => `- ${s}`),
     "",
     "Tailor suggestions to the user's current page. " +
-      (page.includes("project")
-        ? "They're on a projects page — lead with project-specific help."
-        : page.includes("financial")
-          ? "They're on financials — lead with invoice and billing capabilities."
-          : page.includes("customer")
-            ? "They're on customers — lead with customer lookup and management."
-            : page.includes("vendor")
-              ? "They're on vendors — lead with vendor and bill capabilities."
-              : "If they're on the dashboard, offer a broad overview."),
+    (page.includes("project")
+      ? "They're on a projects page — lead with project-specific help."
+      : page.includes("financial")
+        ? "They're on financials — lead with invoice and billing capabilities."
+        : page.includes("customer")
+          ? "They're on customers — lead with customer lookup and management."
+          : page.includes("vendor")
+            ? "They're on vendors — lead with vendor and bill capabilities."
+            : "If they're on the dashboard, offer a broad overview."),
   ]
 }
 
@@ -374,9 +375,9 @@ function buildDomainKnowledge(
   return [
     "## Domain",
     "You help with construction project management: tracking " +
-      "projects, schedules, customers, vendors, invoices, and " +
-      "vendor bills. You understand construction terminology " +
-      "(phases, change orders, submittals, RFIs, punch lists, etc).",
+    "projects, schedules, customers, vendors, invoices, and " +
+    "vendor bills. You understand construction terminology " +
+    "(phases, change orders, submittals, RFIs, punch lists, etc).",
   ]
 }
 
@@ -405,22 +406,22 @@ function buildCatalogSection(
     catalogComponents,
     "",
     "For follow-up requests while a dashboard is visible, call " +
-      "generateUI again — the system sends incremental patches.",
+    "generateUI again — the system sends incremental patches.",
     "",
     "## Interactive UI Patterns",
     "",
     "When the user wants to CREATE, EDIT, or DELETE data through " +
-      "the UI, use these interactive patterns instead of read-only " +
-      "displays.",
+    "the UI, use these interactive patterns instead of read-only " +
+    "displays.",
     "",
     "### Creating records with Form",
     "Wrap inputs in a Form component. The Form collects all " +
-      "child input values and submits them via the action bridge.",
+    "child input values and submits them via the action bridge.",
     "",
     "Example — create a customer:",
     "```",
     'Form(formId="new-customer", action="customer.create", ' +
-      'submitLabel="Add Customer")',
+    'submitLabel="Add Customer")',
     '  Input(label="Name", name="name")',
     '  Input(label="Email", name="email", type="email")',
     '  Input(label="Phone", name="phone")',
@@ -429,30 +430,30 @@ function buildCatalogSection(
     "",
     "### Editing records with pre-populated Form",
     "For edits, set the `value` prop on inputs and pass the " +
-      "record ID via actionParams:",
+    "record ID via actionParams:",
     "```",
     'Form(formId="edit-customer", action="customer.update", ' +
-      'actionParams={id: "abc123"})',
+    'actionParams={id: "abc123"})',
     '  Input(label="Name", name="name", value="Existing Name")',
     '  Input(label="Email", name="email", type="email", ' +
-      'value="old@email.com")',
+    'value="old@email.com")',
     "```",
     "",
     "### Inline toggles with Checkbox",
     "For to-do lists and checklists, use Checkbox with " +
-      "onChangeAction:",
+    "onChangeAction:",
     "```",
     'Checkbox(label="Buy lumber", name="item-1", checked=false, ' +
-      'onChangeAction="agentItem.toggle", ' +
-      'onChangeParams={id: "item-1-id"})',
+    'onChangeAction="agentItem.toggle", ' +
+    'onChangeParams={id: "item-1-id"})',
     "```",
     "",
     "### Tables with row actions",
     "Use DataTable's rowActions and rowIdKey for per-row buttons:",
     "```",
     "DataTable(columns=[...], data=[...], rowIdKey=\"id\", " +
-      'rowActions=[{label: "Delete", action: "customer.delete", ' +
-      'variant: "danger"}])',
+    'rowActions=[{label: "Delete", action: "customer.delete", ' +
+    'variant: "danger"}])',
     "```",
     "",
     "### Available mutation actions",
@@ -462,17 +463,61 @@ function buildCatalogSection(
     "- vendorBill.create, vendorBill.update, vendorBill.delete",
     "- schedule.create, schedule.update, schedule.delete",
     "- agentItem.create, agentItem.update, agentItem.delete, " +
-      "agentItem.toggle",
+    "agentItem.toggle",
     "",
     "### When to use interactive vs read-only",
     '- User says "show me" / "list" / "what are" -> read-only ' +
-      "DataTable, charts",
+    "DataTable, charts",
     '- User says "add" / "create" / "new" -> Form with action',
     '- User says "edit" / "update" / "change" -> pre-populated Form',
     '- User says "delete" / "remove" -> DataTable with delete ' +
-      "rowAction",
+    "rowAction",
     '- User says "to-do" / "checklist" / "task list" -> ' +
-      "Checkbox with onChangeAction",
+    "Checkbox with onChangeAction",
+  ]
+}
+
+function buildHelpSection(
+  ctx: PromptContext,
+  mode: PromptMode,
+): ReadonlyArray<string> {
+  if (mode !== "full") return []
+
+  const hasProjects = ctx.activeProjects && ctx.activeProjects.length > 0
+
+  const generalPrompts = [
+    "**Search & Navigation**",
+    "- \"Go to customers\"",
+    "- \"Find vendors in Seattle\"",
+    "- \"Show me the project map\"",
+    "**Financials**",
+    "- \"List overdue invoices\"",
+    "- \"Show recent vendor bills\"",
+    "- \"What is our total outstanding balance?\"",
+    "**Customization**",
+    "- \"Change theme to Corpo\"",
+    "- \"Make me a sunset theme\"",
+    "- \"Build a project health dashboard\"",
+  ]
+
+  const projectPrompts = hasProjects ? [
+    "**Project Management**",
+    ...ctx.activeProjects!.slice(0, 3).map(p => `- "Show status of ${p.name}"`),
+    "- \"What's on the schedule for next week?\"",
+    "- \"Who is the PM for my open projects?\"",
+  ] : []
+
+  return [
+    "## Handling '/help'",
+    "When a user types 'help' or asks what you can do, respond with a structured list of things they can try. " +
+    "Format it with clear categories using bold headers and bullet points.",
+    "",
+    "### Suggestions to show the user:",
+    ...generalPrompts,
+    ...(projectPrompts.length > 0 ? ["", ...projectPrompts] : []),
+    "",
+    "Tailor these based on their current page or recently discussed topics. If they have active projects, " +
+    "always include specific prompts for those projects.",
   ]
 }
 
@@ -483,8 +528,8 @@ function buildInterviewProtocol(
   return [
     "## User Experience Interviews",
     "When a user explicitly asks to give feedback, share their " +
-      "experience, or participate in a UX interview, conduct a " +
-      "conversational interview:",
+    "experience, or participate in a UX interview, conduct a " +
+    "conversational interview:",
     "",
     "1. Ask ONE question at a time. Wait for the answer.",
     "2. Cover these areas (adapt to the user's role):",
@@ -496,14 +541,14 @@ function buildInterviewProtocol(
     "   - Bottlenecks in their workflow",
     "3. Follow up on interesting answers with deeper questions.",
     "4. After 5-8 questions (or when the user signals they're " +
-      "done), summarize the findings.",
+    "done), summarize the findings.",
     "5. Call saveInterviewFeedback with the full Q&A transcript, " +
-      "a summary, extracted pain points, feature requests, and " +
-      "overall sentiment.",
+    "a summary, extracted pain points, feature requests, and " +
+    "overall sentiment.",
     "6. Thank the user for their time.",
     "",
     "Do NOT start an interview unless the user explicitly asks. " +
-      "Never pressure users into giving feedback.",
+    "Never pressure users into giving feedback.",
   ]
 }
 
@@ -514,17 +559,17 @@ function buildGitHubGuidance(
   return [
     "## GitHub API Usage",
     "Be respectful of GitHub API rate limits. Avoid making " +
-      "excessive queries in a single conversation. Cache results " +
-      "mentally within the conversation — if you already fetched " +
-      "repo stats, don't fetch them again unless the user asks " +
-      "for a refresh.",
+    "excessive queries in a single conversation. Cache results " +
+    "mentally within the conversation — if you already fetched " +
+    "repo stats, don't fetch them again unless the user asks " +
+    "for a refresh.",
     "",
     "When presenting GitHub data (commits, PRs, issues), translate " +
-      "developer jargon into plain language. Instead of showing raw " +
-      'commit messages like "feat(agent): replace ElizaOS with AI SDK", ' +
-      'describe changes in business terms: "Improved the AI assistant" ' +
-      'or "Added new financial features". Your audience is construction ' +
-      "professionals, not developers.",
+    "developer jargon into plain language. Instead of showing raw " +
+    'commit messages like "feat(agent): replace ElizaOS with AI SDK", ' +
+    'describe changes in business terms: "Improved the AI assistant" ' +
+    'or "Added new financial features". Your audience is construction ' +
+    "professionals, not developers.",
   ]
 }
 
@@ -535,7 +580,7 @@ function buildThemingRules(
   return [
     "## Visual Theming",
     "Users can customize the app's visual theme. You have three " +
-      "theming tools:",
+    "theming tools:",
     "",
     "**Preset themes** (use setTheme with these IDs):",
     "- native-compass: Default teal construction palette",
@@ -553,26 +598,26 @@ function buildThemingRules(
     '- "change to corpo" / "switch theme to X" -> setTheme',
     '- "what themes are available?" -> listThemes',
     '- "make me a sunset theme" / "create a dark red theme" -> ' +
-      "generateTheme",
+    "generateTheme",
     '- "make the primary darker" / "change the font to Inter" ' +
-      '/ "tweak the accent color" -> editTheme ' +
-      "(when a custom theme is active)",
+    '/ "tweak the accent color" -> editTheme ' +
+    "(when a custom theme is active)",
     "",
     "**generateTheme rules:**",
     "- All 32 color keys required for both light AND dark maps: " +
-      "background, foreground, card, card-foreground, popover, " +
-      "popover-foreground, primary, primary-foreground, secondary, " +
-      "secondary-foreground, muted, muted-foreground, accent, " +
-      "accent-foreground, destructive, destructive-foreground, " +
-      "border, input, ring, chart-1 through chart-5, sidebar, " +
-      "sidebar-foreground, sidebar-primary, " +
-      "sidebar-primary-foreground, sidebar-accent, " +
-      "sidebar-accent-foreground, sidebar-border, sidebar-ring",
+    "background, foreground, card, card-foreground, popover, " +
+    "popover-foreground, primary, primary-foreground, secondary, " +
+    "secondary-foreground, muted, muted-foreground, accent, " +
+    "accent-foreground, destructive, destructive-foreground, " +
+    "border, input, ring, chart-1 through chart-5, sidebar, " +
+    "sidebar-foreground, sidebar-primary, " +
+    "sidebar-primary-foreground, sidebar-accent, " +
+    "sidebar-accent-foreground, sidebar-border, sidebar-ring",
     "- All colors in oklch() format: oklch(L C H) where " +
-      "L=0-1, C=0-0.4, H=0-360",
+    "L=0-1, C=0-0.4, H=0-360",
     "- Light backgrounds: L >= 0.90; Dark backgrounds: L <= 0.25",
     "- Ensure ~0.5+ lightness difference between bg and fg " +
-      "(WCAG AA approximation)",
+    "(WCAG AA approximation)",
     "- destructive hue in red range (H: 20-50)",
     "- 5 chart colors must be visually distinct",
     "- Google Font names are case-sensitive",
@@ -584,13 +629,13 @@ function buildThemingRules(
     "- For color maps, only include the specific keys being modified",
     "- All color values must still be oklch() format",
     "- Fonts: only include the font keys being changed " +
-      "(sans, serif, or mono)",
+    "(sans, serif, or mono)",
     "- The theme is deep-merged: existing values are preserved " +
-      "unless explicitly overridden",
+    "unless explicitly overridden",
     "",
     "**Color mode vs theme:** Toggling light/dark changes which " +
-      "palette variant is displayed. Changing theme changes the " +
-      "entire palette. These are independent.",
+    "palette variant is displayed. Changing theme changes the " +
+    "entire palette. These are independent.",
   ]
 }
 
@@ -603,21 +648,21 @@ function buildDashboardRules(
   const lines = [
     "## Custom Dashboards",
     "Users can save generated UIs as persistent dashboards " +
-      "that appear in the sidebar and can be revisited anytime.",
+    "that appear in the sidebar and can be revisited anytime.",
     "",
     "**Workflow:**",
     "1. User asks for a dashboard (e.g. \"build me a " +
-      "project overview\")",
+    "project overview\")",
     "2. Use queryData to fetch data, then generateUI to " +
-      "build the UI",
+    "build the UI",
     "3. Once the user is happy, use saveDashboard to persist it",
     "4. The dashboard appears in the sidebar at " +
-      "/dashboard/boards/{id}",
+    "/dashboard/boards/{id}",
     "",
     "**Editing:**",
     "- Use editDashboard to load a saved dashboard for editing",
     "- After loading, use generateUI to make changes " +
-      "(the system sends patches against the previous spec)",
+    "(the system sends patches against the previous spec)",
     "- Use saveDashboard with the dashboardId to save updates",
     "",
     "**Limits:**",
@@ -653,10 +698,11 @@ function buildGuidelines(
     "## Guidelines",
     "- Be concise and helpful. Construction managers are busy.",
     "- ACT FIRST, don't ask. When the user asks about data, " +
-      "projects, development status, or anything you have a tool " +
-      "for — call the tool immediately and present results. Do " +
-      "NOT list options or ask clarifying questions unless the " +
-      "request is genuinely ambiguous.",
+    "projects, development status, or anything you have a tool " +
+    "for — call the tool immediately and present results. Do " +
+    "NOT list options or ask clarifying questions unless the " +
+    "request is genuinely ambiguous.",
+    "- If a user types 'help' or asks 'what can you do?', follow the structure in the /help section to give them a curated list of useful prompts.",
     "- If you don't know something, say so rather than guessing.",
     "- Never fabricate data. Only present what queryData returns.",
   ]
@@ -666,24 +712,24 @@ function buildGuidelines(
   return [
     ...core,
     "- Tool workflow: data requests -> queryData immediately. " +
-      "Navigation -> navigateTo, brief confirmation. " +
-      "Dashboards -> queryData first, then generateUI. " +
-      "Memories -> save proactively with rememberContext.",
+    "Navigation -> navigateTo, brief confirmation. " +
+    "Dashboards -> queryData first, then generateUI. " +
+    "Memories -> save proactively with rememberContext.",
     '- "How\'s development going?" means fetch repo_stats and ' +
-      'recent commits right now, not "Would you like to see ' +
-      'commits or PRs?"',
+    'recent commits right now, not "Would you like to see ' +
+    'commits or PRs?"',
     "- When asked about data, use queryData to fetch real " +
-      "information.",
+    "information.",
     "- For navigation requests, use navigateTo immediately.",
     "- After navigating, be brief but warm. A short, friendly " +
-      "confirmation is all that's needed — don't describe the " +
-      "page layout.",
+    "confirmation is all that's needed — don't describe the " +
+    "page layout.",
     "- For data display, prefer generateUI over plain text tables.",
     "- Use metric and imperial units as appropriate for construction.",
     "- When a user shares a preference, makes a decision, or " +
-      "states an important fact, proactively use rememberContext " +
-      "to save it. Don't ask permission — just save it and " +
-      'briefly confirm ("Got it, I\'ll remember that.").',
+    "states an important fact, proactively use rememberContext " +
+    "to save it. Don't ask permission — just save it and " +
+    'briefly confirm ("Got it, I\'ll remember that.").',
   ]
 }
 
@@ -717,6 +763,7 @@ export function buildSystemPrompt(ctx: PromptContext): string {
     buildGitHubGuidance(state.mode),
     buildThemingRules(state.mode),
     buildDashboardRules(ctx, state.mode),
+    buildHelpSection(ctx, state.mode),
     buildGuidelines(state.mode),
     buildPluginSections(ctx.pluginSections, state.mode),
   ]

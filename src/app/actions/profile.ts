@@ -1,8 +1,7 @@
 "use server"
 
 import { getWorkOS, signOut } from "@workos-inc/authkit-nextjs"
-import { getCloudflareContext } from "@opennextjs/cloudflare"
-import { getDb } from "@/db"
+import { getDb } from "@/lib/db-universal"
 import { users } from "@/db/schema"
 import { eq } from "drizzle-orm"
 import { requireAuth } from "@/lib/auth"
@@ -47,9 +46,8 @@ export async function updateProfile(
     })
 
     // Update in local database
-    const { env } = await getCloudflareContext()
-    if (env?.DB) {
-      const db = getDb(env.DB)
+        if (db) {
+      const db = getDb(db)
       const now = new Date().toISOString()
       const displayName = `${firstName} ${lastName}`.trim()
 

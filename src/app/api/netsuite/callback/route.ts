@@ -1,5 +1,4 @@
-import { getCloudflareContext } from "@opennextjs/cloudflare"
-import { getDb } from "@/db"
+import { getDb } from "@/lib/db-universal"
 import { getNetSuiteConfig } from "@/lib/netsuite/config"
 import { exchangeCodeForTokens } from "@/lib/netsuite/auth/oauth-client"
 import { TokenManager } from "@/lib/netsuite/auth/token-manager"
@@ -36,10 +35,10 @@ export async function GET(request: Request) {
   }
 
   try {
-    const { env } = await getCloudflareContext()
+    const { env } = { env: { DB: null } }
     const envRecord = env as unknown as Record<string, string>
     const config = getNetSuiteConfig(envRecord)
-    const db = getDb(env.DB)
+    const db = getDb(db)
 
     const tokens = await exchangeCodeForTokens(config, code)
     const tokenManager = new TokenManager(config, db as never)

@@ -1,7 +1,6 @@
 "use server"
 
-import { getCloudflareContext } from "@opennextjs/cloudflare"
-import { getDb } from "@/db"
+import { getDb } from "@/lib/db-universal"
 import { groups, type Group, type NewGroup } from "@/db/schema"
 import { getCurrentUser } from "@/lib/auth"
 import { requirePermission } from "@/lib/permissions"
@@ -13,10 +12,9 @@ export async function getGroups(): Promise<Group[]> {
     const currentUser = await getCurrentUser()
     requirePermission(currentUser, "group", "read")
 
-    const { env } = await getCloudflareContext()
-    if (!env?.DB) return []
+    
 
-    const db = getDb(env.DB)
+    const db = getDb(db)
     const allGroups = await db.select().from(groups)
 
     return allGroups
@@ -36,12 +34,11 @@ export async function createGroup(
     const currentUser = await getCurrentUser()
     requirePermission(currentUser, "group", "create")
 
-    const { env } = await getCloudflareContext()
-    if (!env?.DB) {
+        if (!db) {
       return { success: false, error: "Database not available" }
     }
 
-    const db = getDb(env.DB)
+    const db = getDb(db)
     const now = new Date().toISOString()
 
     const newGroup: NewGroup = {
@@ -73,12 +70,11 @@ export async function deleteGroup(
     const currentUser = await getCurrentUser()
     requirePermission(currentUser, "group", "delete")
 
-    const { env } = await getCloudflareContext()
-    if (!env?.DB) {
+        if (!db) {
       return { success: false, error: "Database not available" }
     }
 
-    const db = getDb(env.DB)
+    const db = getDb(db)
 
     await db.delete(groups).where(eq(groups.id, groupId)).run()
 

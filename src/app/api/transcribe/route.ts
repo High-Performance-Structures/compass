@@ -1,4 +1,3 @@
-import { getCloudflareContext } from "@opennextjs/cloudflare"
 import { getCurrentUser } from "@/lib/auth"
 
 function toBase64(buffer: ArrayBuffer): string {
@@ -29,7 +28,7 @@ export async function POST(req: Request): Promise<Response> {
     )
   }
 
-  const { env } = await getCloudflareContext()
+  const { env } = { env: { DB: null } }
   const buffer = await audioFile.arrayBuffer()
 
   const result = await env.AI.run(

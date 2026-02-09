@@ -1,4 +1,3 @@
-import { getCloudflareContext } from "@opennextjs/cloudflare"
 
 const API_BASE = "https://api.github.com"
 const USER_AGENT = "compass-agent"
@@ -15,7 +14,7 @@ type ConfigResult =
   | { readonly success: false; readonly error: string }
 
 export async function getGitHubConfig(): Promise<ConfigResult> {
-  const { env } = await getCloudflareContext()
+  const { env } = { env: { DB: null } }
   const vars = env as unknown as Record<string, string>
   const token = vars.GITHUB_TOKEN ?? process.env.GITHUB_TOKEN
   const repo = vars.GITHUB_REPO ?? process.env.GITHUB_REPO

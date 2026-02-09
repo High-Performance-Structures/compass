@@ -1,4 +1,4 @@
-import { NextRequest } from "next/server"
+import { NextRequest, NextResponse } from "next/server"
 import { authkit, handleAuthkitHeaders } from "@workos-inc/authkit-nextjs"
 
 // public routes that don't require authentication
@@ -31,6 +31,12 @@ function isPublicPath(pathname: string): boolean {
 
 export default async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
+
+  // DEVELOPMENT BYPASS: Skip all authentication in development mode
+  if (process.env.BYPASS_AUTH === "true") {
+    // Allow all paths through without authentication
+    return NextResponse.next()
+  }
 
   // get session and headers from authkit (handles token refresh automatically)
   const { session, headers } = await authkit(request)

@@ -13,6 +13,7 @@ export function CarouselPages({ children, className }: CarouselPagesProps) {
   const [emblaRef, emblaApi] = useEmblaCarousel({
     loop: false,
     skipSnaps: false,
+    dragFree: false,
     watchDrag: (emblaApi, evt) => {
       // Don't capture drag events on interactive elements
       const target = evt.target as HTMLElement
@@ -45,8 +46,8 @@ export function CarouselPages({ children, className }: CarouselPagesProps) {
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="overflow-hidden" ref={emblaRef}>
-        <div className="flex touch-pan-y">
+      <div className="overflow-hidden touch-pan-x" ref={emblaRef}>
+        <div className="flex">
           {children.map((child, index) => (
             <div
               key={index}

@@ -1,8 +1,7 @@
 "use server"
 
-import { getCloudflareContext } from "@opennextjs/cloudflare"
 import { eq, and } from "drizzle-orm"
-import { getDb } from "@/db"
+import { getDb } from "@/lib/db-universal"
 import {
   customThemes,
   userThemePreference,
@@ -18,8 +17,7 @@ export async function getUserThemePreference(): Promise<
   const user = await getCurrentUser()
   if (!user) return { success: false, error: "not authenticated" }
 
-  const { env } = await getCloudflareContext()
-  const db = getDb(env.DB)
+  const db = await getDb()
 
   const pref = await db.query.userThemePreference.findFirst({
     where: (p, { eq: e }) => e(p.userId, user.id),
@@ -40,8 +38,7 @@ export async function setUserThemePreference(
   const user = await getCurrentUser()
   if (!user) return { success: false, error: "not authenticated" }
 
-  const { env } = await getCloudflareContext()
-  const db = getDb(env.DB)
+  const db = await getDb()
 
   const isPreset = findPreset(themeId) !== undefined
   if (!isPreset) {
@@ -85,8 +82,7 @@ export async function getCustomThemes(): Promise<
   const user = await getCurrentUser()
   if (!user) return { success: false, error: "not authenticated" }
 
-  const { env } = await getCloudflareContext()
-  const db = getDb(env.DB)
+  const db = await getDb()
 
   const themes = await db.query.customThemes.findMany({
     where: (t, { eq: e }) => e(t.userId, user.id),
@@ -113,8 +109,7 @@ export async function getCustomThemeById(
   const user = await getCurrentUser()
   if (!user) return { success: false, error: "not authenticated" }
 
-  const { env } = await getCloudflareContext()
-  const db = getDb(env.DB)
+  const db = await getDb()
 
   const theme = await db.query.customThemes.findFirst({
     where: (t, { eq: e, and: a }) =>
@@ -148,8 +143,7 @@ export async function saveCustomTheme(
   const user = await getCurrentUser()
   if (!user) return { success: false, error: "not authenticated" }
 
-  const { env } = await getCloudflareContext()
-  const db = getDb(env.DB)
+  const db = await getDb()
 
   const now = new Date().toISOString()
   const id = existingId ?? crypto.randomUUID()
@@ -191,8 +185,7 @@ export async function deleteCustomTheme(
   const user = await getCurrentUser()
   if (!user) return { success: false, error: "not authenticated" }
 
-  const { env } = await getCloudflareContext()
-  const db = getDb(env.DB)
+  const db = await getDb()
 
   const existing = await db.query.customThemes.findFirst({
     where: (t, { eq: e, and: a }) =>

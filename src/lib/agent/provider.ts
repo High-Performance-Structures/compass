@@ -1,7 +1,6 @@
 import { createOpenRouter } from "@openrouter/ai-sdk-provider"
-import { getCloudflareContext } from "@opennextjs/cloudflare"
 import { eq } from "drizzle-orm"
-import { getDb } from "@/db"
+import { getDb } from "@/lib/db-universal"
 import {
   agentConfig,
   userModelPreference,
@@ -66,7 +65,7 @@ export async function resolveModelForUser(
 }
 
 export async function getAgentModel() {
-  const { env } = await getCloudflareContext()
+  const { env } = { env: { DB: null } }
   const apiKey = (env as unknown as Record<string, string>)
     .OPENROUTER_API_KEY
 
@@ -76,7 +75,7 @@ export async function getAgentModel() {
     )
   }
 
-  const db = getDb(env.DB)
+  const db = getDb(db)
   const modelId = await getActiveModelId(db)
 
   return createModelFromId(apiKey, modelId)

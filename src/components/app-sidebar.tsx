@@ -7,7 +7,6 @@ import {
   IconDashboard,
   IconFiles,
   IconFolder,
-  IconHelp,
   IconMessageCircle,
   IconReceipt,
   IconSearch,
@@ -22,26 +21,20 @@ import { NavDashboards } from "@/components/nav-dashboards"
 import { NavSecondary } from "@/components/nav-secondary"
 import { NavFiles } from "@/components/nav-files"
 import { NavProjects } from "@/components/nav-projects"
-import { NavUser } from "@/components/nav-user"
 import { useCommandMenu } from "@/components/command-menu-provider"
 import { useSettings } from "@/components/settings-provider"
-import { useAgentOptional } from "@/components/agent/chat-provider"
+import { useFeedback } from "@/components/feedback-widget"
 import type { SidebarUser } from "@/lib/auth"
 import {
   Sidebar,
   SidebarContent,
-  SidebarFooter,
-  SidebarHeader,
-  SidebarMenu,
-  SidebarMenuButton,
-  SidebarMenuItem,
   useSidebar,
 } from "@/components/ui/sidebar"
 
 const data = {
   navMain: [
     {
-      title: "Compass",
+      title: "Compass Dashboard",
       url: "/dashboard",
       icon: IconDashboard,
     },
@@ -87,11 +80,6 @@ const data = {
       url: "#",
       icon: IconSettings,
     },
-    {
-      title: "Get Help",
-      url: "#",
-      icon: IconHelp,
-    },
   ],
 }
 
@@ -106,10 +94,10 @@ function SidebarNav({
   }>
 }) {
   const pathname = usePathname()
-  const { state, setOpen } = useSidebar()
+  const { state } = useSidebar()
   const { open: openSearch } = useCommandMenu()
   const { open: openSettings } = useSettings()
-  const agent = useAgentOptional()
+  const { open: openFeedback } = useFeedback()
   const isExpanded = state === "expanded"
   const isFilesMode = pathname?.startsWith("/dashboard/files")
   const isProjectMode = /^\/dashboard\/projects\/[^/]+/.test(
@@ -137,7 +125,7 @@ function SidebarNav({
         ? { ...item, onClick: openSettings }
         : item
     ),
-    ...(agent ? [{ title: "Assistant", icon: IconMessageCircle, onClick: agent.open }] : []),
+    { title: "Feedback", icon: IconMessageCircle, onClick: openFeedback },
     { title: "Search", icon: IconSearch, onClick: openSearch },
   ]
 
@@ -163,7 +151,6 @@ function SidebarNav({
 export function AppSidebar({
   projects = [],
   dashboards = [],
-  user,
   ...props
 }: React.ComponentProps<typeof Sidebar> & {
   readonly projects?: ReadonlyArray<{ readonly id: string; readonly name: string }>
@@ -172,43 +159,13 @@ export function AppSidebar({
 }) {
   return (
     <Sidebar collapsible="icon" {...props}>
-      <SidebarHeader>
-        <SidebarMenu>
-          <SidebarMenuItem>
-            <SidebarMenuButton
-              asChild
-              className="data-[slot=sidebar-menu-button]:!p-1.5"
-            >
-              <a href="/dashboard">
-                <span
-                  aria-label="Compass"
-                  className="!size-5 shrink-0 block bg-current"
-                  style={{
-                    maskImage: "url(/logo-black.png)",
-                    maskSize: "contain",
-                    maskRepeat: "no-repeat",
-                    WebkitMaskImage: "url(/logo-black.png)",
-                    WebkitMaskSize: "contain",
-                    WebkitMaskRepeat: "no-repeat",
-                  }}
-                />
-                <span className="text-base font-semibold">
-                  COMPASS
-                </span>
-              </a>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-        </SidebarMenu>
-      </SidebarHeader>
-      <SidebarContent>
+
+      <SidebarContent className="py-6">
         <SidebarNav
           projects={projects as { id: string; name: string }[]}
           dashboards={dashboards}
         />
       </SidebarContent>
-      <SidebarFooter>
-        <NavUser user={user} />
-      </SidebarFooter>
     </Sidebar>
   )
 }

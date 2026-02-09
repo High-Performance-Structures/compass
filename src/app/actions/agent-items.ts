@@ -1,7 +1,6 @@
 "use server"
 
-import { getCloudflareContext } from "@opennextjs/cloudflare"
-import { getDb } from "@/db"
+import { getDb } from "@/lib/db-universal"
 import { agentItems } from "@/db/schema-agent"
 import { eq, and } from "drizzle-orm"
 
@@ -25,8 +24,7 @@ export async function createAgentItem(data: {
   | { success: true; id: string }
   | { success: false; error: string }
 > {
-  const { env } = await getCloudflareContext()
-  const db = getDb(env.DB)
+  const db = await getDb()
   const id = uuid()
   const ts = now()
 
@@ -55,8 +53,7 @@ export async function updateAgentItem(
   data: Record<string, unknown>,
   userId: string,
 ): Promise<{ success: boolean; error?: string }> {
-  const { env } = await getCloudflareContext()
-  const db = getDb(env.DB)
+  const db = await getDb()
 
   const existing = await db
     .select()
@@ -94,8 +91,7 @@ export async function deleteAgentItem(
   id: string,
   userId: string,
 ): Promise<{ success: boolean; error?: string }> {
-  const { env } = await getCloudflareContext()
-  const db = getDb(env.DB)
+  const db = await getDb()
 
   const existing = await db
     .select()
@@ -120,8 +116,7 @@ export async function toggleAgentItem(
   id: string,
   userId: string,
 ): Promise<{ success: boolean; error?: string }> {
-  const { env } = await getCloudflareContext()
-  const db = getDb(env.DB)
+  const db = await getDb()
 
   const existing = await db
     .select()
@@ -150,8 +145,7 @@ export async function getAgentItems(
   userId: string,
   conversationId?: string,
 ): Promise<ReadonlyArray<typeof agentItems.$inferSelect>> {
-  const { env } = await getCloudflareContext()
-  const db = getDb(env.DB)
+  const db = await getDb()
 
   if (conversationId) {
     return db

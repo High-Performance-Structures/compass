@@ -63,13 +63,13 @@ export function ProviderIcon({
   return (
     <span
       className={cn(
-        "flex items-center justify-center rounded-full bg-muted/80 text-muted-foreground font-medium tracking-tight",
+        "flex items-center justify-center rounded-md bg-gradient-to-br from-primary to-accent text-primary-foreground font-bold tracking-tight shadow-sm",
         className
       )}
       style={{
         width: size,
         height: size,
-        fontSize: Math.max(9, size * 0.35),
+        fontSize: Math.max(8, size * 0.45),
       }}
     >
       {getProviderAbbr(provider)}

@@ -1,4 +1,3 @@
-import { getCloudflareContext } from "@opennextjs/cloudflare"
 import { drizzle } from "drizzle-orm/d1"
 import { feedback } from "@/db/schema"
 import { sql } from "drizzle-orm"
@@ -38,8 +37,8 @@ export async function POST(request: Request) {
     )
   }
 
-  const { env, cf } = await getCloudflareContext()
-  const db = drizzle(env.DB)
+  const { env, cf } = { env: { DB: null }, cf: {} }
+  const db = drizzle(db)
 
   const ip = (cf as { request?: Request })?.request?.headers?.get("cf-connecting-ip")
     ?? request.headers.get("cf-connecting-ip")

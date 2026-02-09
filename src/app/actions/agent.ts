@@ -1,7 +1,6 @@
 "use server"
 
-import { getCloudflareContext } from "@opennextjs/cloudflare"
-import { getDb } from "@/db"
+import { getDb } from "@/lib/db-universal"
 import { agentConversations, agentMemories } from "@/db/schema"
 import { eq, desc } from "drizzle-orm"
 import { getCurrentUser } from "@/lib/auth"
@@ -23,8 +22,7 @@ export async function saveConversation(
     const user = await getCurrentUser()
     if (!user) return { success: false, error: "Unauthorized" }
 
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
+    const db = await getDb()
     const now = new Date().toISOString()
 
     const existing = await db.query.agentConversations.findFirst({
@@ -103,8 +101,7 @@ export async function loadConversations(): Promise<{
     const user = await getCurrentUser()
     if (!user) return { success: false, error: "Unauthorized" }
 
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
+    const db = await getDb()
 
     const rows = await db
       .select({
@@ -143,8 +140,7 @@ export async function loadConversation(
     const user = await getCurrentUser()
     if (!user) return { success: false, error: "Unauthorized" }
 
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
+    const db = await getDb()
 
     const rows = await db
       .select()
@@ -181,8 +177,7 @@ export async function deleteConversation(
     const user = await getCurrentUser()
     if (!user) return { success: false, error: "Unauthorized" }
 
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
+    const db = await getDb()
 
     // cascade delete handles memories
     await db

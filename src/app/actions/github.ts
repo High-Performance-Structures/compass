@@ -11,13 +11,18 @@ interface RepoStats {
 
 export async function getRepoStats(): Promise<RepoStats | null> {
   try {
-    const { getCloudflareContext } = await import(
-      "@opennextjs/cloudflare"
-    )
-    const { env } = await getCloudflareContext()
-    const token = (
-      env as unknown as Record<string, unknown>
-    ).GITHUB_TOKEN as string | undefined
+    // Try to get token from Cloudflare context or fall back to process.env for local dev
+    let token: string | undefined
+    try {
+      const { getCloudflareContext } = await import(
+        "@opennextjs/cloudflare"
+      )
+      const { env } = await getCloudflareContext()
+      token = (env as unknown as Record<string, unknown>).GITHUB_TOKEN as string | undefined
+    } catch {
+      // Fallback to process.env for local development
+      token = process.env.GITHUB_TOKEN
+    }
 
     const headers: Record<string, string> = {
       Accept: "application/vnd.github+json",

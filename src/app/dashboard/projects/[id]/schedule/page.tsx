@@ -1,7 +1,6 @@
 export const dynamic = "force-dynamic"
 
-import { getCloudflareContext } from "@opennextjs/cloudflare"
-import { getDb } from "@/db"
+import { getDb } from "@/lib/db-universal"
 import { projects } from "@/db/schema"
 import { eq } from "drizzle-orm"
 import { notFound } from "next/navigation"
@@ -28,10 +27,10 @@ export default async function SchedulePage({
   let baselines: ScheduleBaselineData[] = []
 
   try {
-    const { env } = await getCloudflareContext()
-    if (!env?.DB) throw new Error("D1 not available")
+    const { env } = { env: { DB: null } }
+    if (!db) throw new Error("D1 not available")
 
-    const db = getDb(env.DB)
+    const db = getDb(db)
     const [project] = await db
       .select()
       .from(projects)
@@ -51,7 +50,10 @@ export default async function SchedulePage({
   }
 
   return (
-    <div className="px-4 py-2 flex flex-col flex-1 min-h-0">
+    <div 
+      className="px-4 py-2 flex flex-col flex-1 min-h-0"
+      data-schedule-theme=""
+    >
       <ScheduleView
         projectId={id}
         projectName={projectName}

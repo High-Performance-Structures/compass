@@ -1,8 +1,7 @@
 "use server"
 
-import { getCloudflareContext } from "@opennextjs/cloudflare"
 import { eq } from "drizzle-orm"
-import { getDb } from "@/db"
+import { getDb } from "@/lib/db-universal"
 import {
   plugins,
   pluginConfig,
@@ -23,8 +22,7 @@ export async function installSkill(source: string): Promise<
   const user = await getCurrentUser()
   if (!user) return { success: false, error: "not authenticated" }
 
-  const { env } = await getCloudflareContext()
-  const db = getDb(env.DB)
+  const db = await getDb()
 
   const id = skillId(source)
   const now = new Date().toISOString()
@@ -103,8 +101,7 @@ export async function uninstallSkill(pluginId: string): Promise<
   const user = await getCurrentUser()
   if (!user) return { success: false, error: "not authenticated" }
 
-  const { env } = await getCloudflareContext()
-  const db = getDb(env.DB)
+  const db = await getDb()
 
   const existing = await db.query.plugins.findFirst({
     where: (p, { eq: e }) => e(p.id, pluginId),
@@ -137,8 +134,7 @@ export async function toggleSkill(
   const user = await getCurrentUser()
   if (!user) return { success: false, error: "not authenticated" }
 
-  const { env } = await getCloudflareContext()
-  const db = getDb(env.DB)
+  const db = await getDb()
   const now = new Date().toISOString()
 
   const existing = await db.query.plugins.findFirst({
@@ -193,8 +189,7 @@ export async function getInstalledSkills(): Promise<
   const user = await getCurrentUser()
   if (!user) return { success: false, error: "not authenticated" }
 
-  const { env } = await getCloudflareContext()
-  const db = getDb(env.DB)
+  const db = await getDb()
 
   const rows = await db
     .select()

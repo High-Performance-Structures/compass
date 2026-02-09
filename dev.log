@@ -1,0 +1,77 @@
+$ next dev --turbopack
+   ▲ Next.js 15.5.9 (Turbopack)
+   - Local:        http://localhost:3000
+   - Network:      http://172.20.10.2:3000
+   - Environments: .env.local
+   - Experiments (use with caution):
+     · optimizePackageImports
+
+ ✓ Starting...
+ ✓ Compiled middleware in 226ms
+ ✓ Ready in 797ms
+ ○ Compiling /dashboard ...
+ ✓ Compiled /dashboard in 4.5s
+ ⨯ Error: 
+
+ERROR: `getCloudflareContext` has been called without having called `initOpenNextCloudflareForDev` from the Next.js config file.
+You should update your Next.js config file as shown below:
+
+   ```
+   // next.config.mjs
+
+   import { initOpenNextCloudflareForDev } from "@opennextjs/cloudflare";
+
+   initOpenNextCloudflareForDev();
+
+   const nextConfig = { ... };
+   export default nextConfig;
+   ```
+
+
+    at getCustomDashboards (src/app/actions/dashboards.ts:35:45)
+    at async DashboardLayout (src/app/dashboard/layout.tsx:34:5)
+  33 |   if (!user) return { success: false, error: "not authenticated" }
+  34 |
+> 35 |   const { env } = await getCloudflareContext()
+     |                                             ^
+  36 |   const db = getDb(env.DB)
+  37 |
+  38 |   const dashboards = await db.query.customDashboards.findMany({ {
+  digest: '4179410295'
+}
+ ⚠ Unsupported metadata viewport is configured in metadata export in /dashboard. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ ⚠ Unsupported metadata viewport is configured in metadata export in /dashboard. Please move it to viewport export instead.
+Read more: https://nextjs.org/docs/app/api-reference/functions/generate-viewport
+ GET /dashboard 500 in 5076ms
+ ⚠ Found a change in next.config.ts. Restarting the server to apply the changes...
+   ▲ Next.js 15.5.9 (Turbopack)
+   - Local:        http://localhost:3000
+   - Network:      http://172.20.10.2:3000
+   - Environments: .env.local
+   - Experiments (use with caution):
+     · optimizePackageImports
+
+ ✓ Starting...
+ ✓ Compiled middleware in 284ms
+[31m✘ [41;31m[[41;97mERROR[41;31m][0m [1mFailed to fetch auth token: 400 Bad Request[0m
+
+
+🪵  Logs were written to "/Users/averyfelts/.config/.wrangler/logs/wrangler-2026-02-08_02-01-06_676.log"
+/Users/averyfelts/Documents/dev/DevCompass_AF_2026/compass/node_modules/wrangler/wrangler-dist/cli.js:290440
+    throw new Error(
+          ^
+
+Error: Failed to start the remote proxy session, see the error details below:
+
+You must be logged in to use wrangler dev in remote mode. Try logging in, or run wrangler dev --local.
+    at /Users/averyfelts/Documents/dev/DevCompass_AF_2026/compass/node_modules/wrangler/wrangler-dist/cli.js:290440:11
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async startRemoteProxySession (/Users/averyfelts/Documents/dev/DevCompass_AF_2026/compass/node_modules/wrangler/wrangler-dist/cli.js:290411:18)
+    at async maybeStartOrUpdateRemoteProxySession (/Users/averyfelts/Documents/dev/DevCompass_AF_2026/compass/node_modules/wrangler/wrangler-dist/cli.js:290555:32)
+    at async getPlatformProxy (/Users/averyfelts/Documents/dev/DevCompass_AF_2026/compass/node_modules/wrangler/wrangler-dist/cli.js:294337:27)
+    at async getCloudflareContextFromWrangler (file:///Users/averyfelts/Documents/dev/DevCompass_AF_2026/compass/node_modules/@opennextjs/cloudflare/dist/api/cloudflare-context.js:144:30)
+    at async Object.initOpenNextCloudflareForDev (file:///Users/averyfelts/Documents/dev/DevCompass_AF_2026/compass/node_modules/@opennextjs/cloudflare/dist/api/cloudflare-context.js:84:21)
+
+Node.js v25.4.0
+[?25h

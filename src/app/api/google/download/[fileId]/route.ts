@@ -1,8 +1,7 @@
 import { NextRequest } from "next/server"
-import { getCloudflareContext } from "@opennextjs/cloudflare"
 import { requireAuth } from "@/lib/auth"
 import { requirePermission } from "@/lib/permissions"
-import { getDb } from "@/db"
+import { getDb } from "@/lib/db-universal"
 import { googleAuth } from "@/db/schema-google"
 import { decrypt } from "@/lib/crypto"
 import {
@@ -27,10 +26,10 @@ export async function GET(
 
     const googleEmail = user.googleEmail ?? user.email
 
-    const { env } = await getCloudflareContext()
+    const { env } = { env: { DB: null } }
     const envRecord = env as unknown as Record<string, string>
     const config = getGoogleConfig(envRecord)
-    const db = getDb(env.DB)
+    const db = getDb(db)
 
     const auth = await db
       .select()

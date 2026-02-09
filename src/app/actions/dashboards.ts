@@ -1,8 +1,7 @@
 "use server"
 
 import { eq, and, desc } from "drizzle-orm"
-import { getCloudflareContext } from "@opennextjs/cloudflare"
-import { getDb } from "@/db"
+import { getDb } from "@/lib/db-universal"
 import { customDashboards } from "@/db/schema-dashboards"
 import { getCurrentUser } from "@/lib/auth"
 import { revalidatePath } from "next/cache"
@@ -32,8 +31,7 @@ export async function getCustomDashboards(): Promise<
   const user = await getCurrentUser()
   if (!user) return { success: false, error: "not authenticated" }
 
-  const { env } = await getCloudflareContext()
-  const db = getDb(env.DB)
+  const db = await getDb()
 
   const dashboards = await db.query.customDashboards.findMany({
     where: (d, { eq: e }) => e(d.userId, user.id),
@@ -69,8 +67,8 @@ export async function getCustomDashboardById(
   const user = await getCurrentUser()
   if (!user) return { success: false, error: "not authenticated" }
 
-  const { env } = await getCloudflareContext()
-  const db = getDb(env.DB)
+  
+  const db = await getDb()
 
   const dashboard = await db.query.customDashboards.findFirst({
     where: (d, { eq: e, and: a }) =>
@@ -109,8 +107,8 @@ export async function saveCustomDashboard(
   const user = await getCurrentUser()
   if (!user) return { success: false, error: "not authenticated" }
 
-  const { env } = await getCloudflareContext()
-  const db = getDb(env.DB)
+  
+  const db = await getDb()
 
   const now = new Date().toISOString()
   const id = existingId ?? crypto.randomUUID()
@@ -171,8 +169,8 @@ export async function deleteCustomDashboard(
   const user = await getCurrentUser()
   if (!user) return { success: false, error: "not authenticated" }
 
-  const { env } = await getCloudflareContext()
-  const db = getDb(env.DB)
+  
+  const db = await getDb()
 
   const existing = await db.query.customDashboards.findFirst({
     where: (d, { eq: e, and: a }) =>
@@ -207,8 +205,8 @@ export async function executeDashboardQueries(
   const user = await getCurrentUser()
   if (!user) return { success: false, error: "not authenticated" }
 
-  const { env } = await getCloudflareContext()
-  const db = getDb(env.DB)
+  
+  const db = await getDb()
 
   let queries: ReadonlyArray<SavedQuery>
   try {

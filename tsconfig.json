@@ -1,7 +1,11 @@
 {
 	"compilerOptions": {
 		"target": "es2024",
-		"lib": ["dom", "dom.iterable", "esnext"],
+		"lib": [
+			"dom",
+			"dom.iterable",
+			"esnext"
+		],
 		"allowJs": true,
 		"skipLibCheck": true,
 		"strict": true,
@@ -19,13 +23,27 @@
 			}
 		],
 		"paths": {
-			"@/*": ["./src/*"]
+			"@/*": [
+				"./src/*"
+			]
 		},
 		"types": [
 			"./cloudflare-env.d.ts",
 			"node"
 		]
 	},
-	"include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
-	"exclude": ["node_modules", "references", "packages"]
+	"include": [
+		"next-env.d.ts",
+		"**/*.ts",
+		"**/*.tsx",
+		".next/types/**/*.ts"
+	],
+	"exclude": [
+		"node_modules",
+		"references",
+		"scripts",
+		"packages",
+		"ios",
+		"android"
+	]
 }

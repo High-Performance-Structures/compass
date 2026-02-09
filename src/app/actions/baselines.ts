@@ -1,7 +1,6 @@
 "use server"
 
-import { getCloudflareContext } from "@opennextjs/cloudflare"
-import { getDb } from "@/db"
+import { getDb } from "@/lib/db-universal"
 import {
   scheduleBaselines,
   scheduleTasks,
@@ -14,8 +13,7 @@ import type { ScheduleBaselineData } from "@/lib/schedule/types"
 export async function getBaselines(
   projectId: string
 ): Promise<ScheduleBaselineData[]> {
-  const { env } = await getCloudflareContext()
-  const db = getDb(env.DB)
+  const db = await getDb()
 
   return await db
     .select()
@@ -28,8 +26,7 @@ export async function createBaseline(
   name: string
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
+    const db = await getDb()
 
     const tasks = await db
       .select()
@@ -65,8 +62,7 @@ export async function deleteBaseline(
   baselineId: string
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
+    const db = await getDb()
 
     const [existing] = await db
       .select()

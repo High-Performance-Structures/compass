@@ -1,7 +1,6 @@
 "use server"
 
-import { getCloudflareContext } from "@opennextjs/cloudflare"
-import { getDb } from "@/db"
+import { getDb } from "@/lib/db-universal"
 import { teams, type Team, type NewTeam } from "@/db/schema"
 import { getCurrentUser } from "@/lib/auth"
 import { requirePermission } from "@/lib/permissions"
@@ -13,10 +12,9 @@ export async function getTeams(): Promise<Team[]> {
     const currentUser = await getCurrentUser()
     requirePermission(currentUser, "team", "read")
 
-    const { env } = await getCloudflareContext()
-    if (!env?.DB) return []
+    
 
-    const db = getDb(env.DB)
+    const db = getDb(db)
     const allTeams = await db.select().from(teams)
 
     return allTeams
@@ -35,12 +33,11 @@ export async function createTeam(
     const currentUser = await getCurrentUser()
     requirePermission(currentUser, "team", "create")
 
-    const { env } = await getCloudflareContext()
-    if (!env?.DB) {
+        if (!db) {
       return { success: false, error: "Database not available" }
     }
 
-    const db = getDb(env.DB)
+    const db = getDb(db)
     const now = new Date().toISOString()
 
     const newTeam: NewTeam = {
@@ -71,12 +68,11 @@ export async function deleteTeam(
     const currentUser = await getCurrentUser()
     requirePermission(currentUser, "team", "delete")
 
-    const { env } = await getCloudflareContext()
-    if (!env?.DB) {
+        if (!db) {
       return { success: false, error: "Database not available" }
     }
 
-    const db = getDb(env.DB)
+    const db = getDb(db)
 
     await db.delete(teams).where(eq(teams.id, teamId)).run()
 

@@ -1,7 +1,6 @@
 "use server"
 
-import { getCloudflareContext } from "@opennextjs/cloudflare"
-import { getDb } from "@/db"
+import { getDb } from "@/lib/db-universal"
 import { organizations, type Organization, type NewOrganization } from "@/db/schema"
 import { getCurrentUser } from "@/lib/auth"
 import { requirePermission } from "@/lib/permissions"
@@ -13,10 +12,9 @@ export async function getOrganizations(): Promise<Organization[]> {
     const currentUser = await getCurrentUser()
     requirePermission(currentUser, "organization", "read")
 
-    const { env } = await getCloudflareContext()
-    if (!env?.DB) return []
+    
 
-    const db = getDb(env.DB)
+    const db = getDb(db)
     const allOrganizations = await db
       .select()
       .from(organizations)
@@ -38,12 +36,11 @@ export async function createOrganization(
     const currentUser = await getCurrentUser()
     requirePermission(currentUser, "organization", "create")
 
-    const { env } = await getCloudflareContext()
-    if (!env?.DB) {
+        if (!db) {
       return { success: false, error: "Database not available" }
     }
 
-    const db = getDb(env.DB)
+    const db = getDb(db)
     const now = new Date().toISOString()
 
     // check if slug already exists

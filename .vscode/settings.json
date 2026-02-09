@@ -1,0 +1,8 @@
+{
+    "files.exclude": {
+        "android/": true,
+        "ios/": true
+    },
+    "java.import.gradle.enabled": false,
+    "java.autostart": false
+}

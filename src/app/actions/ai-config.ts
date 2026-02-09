@@ -1,9 +1,8 @@
 "use server"
 
-import { getCloudflareContext } from "@opennextjs/cloudflare"
 import { eq, desc, and, gte } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
-import { getDb } from "@/db"
+import { getDb } from "@/lib/db-universal"
 import {
   agentConfig,
   agentUsage,
@@ -79,8 +78,7 @@ export async function getActiveModel(): Promise<{
     }
 
     const isAdmin = can(user, "agent", "update")
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
+    const db = await getDb()
 
     const config = await db
       .select()
@@ -137,8 +135,7 @@ export async function setActiveModel(
       }
     }
 
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
+    const db = await getDb()
     const now = new Date().toISOString()
 
     const existing = await db
@@ -212,10 +209,18 @@ export async function getModelList(): Promise<{
       return { success: true, data: cachedModels }
     }
 
-    const { env } = await getCloudflareContext()
-    const apiKey = (
-      env as unknown as Record<string, string>
-    ).OPENROUTER_API_KEY
+    // Try to get API key from Cloudflare context or fall back to process.env for local dev
+    let apiKey: string | undefined
+    try {
+      const { getCloudflareContext } = await import(
+        "@opennextjs/cloudflare"
+      )
+      const { env } = await getCloudflareContext()
+      apiKey = (env as unknown as Record<string, string>).OPENROUTER_API_KEY
+    } catch {
+      // Fallback to process.env for local development
+      apiKey = process.env.OPENROUTER_API_KEY
+    }
 
     if (!apiKey) {
       return {
@@ -224,33 +229,42 @@ export async function getModelList(): Promise<{
       }
     }
 
+    console.log("[AI Config] Fetching models from OpenRouter...")
+    
     const res = await fetch(
       "https://openrouter.ai/api/v1/models",
       {
-        headers: { Authorization: `Bearer ${apiKey}` },
+        headers: { 
+          Authorization: `Bearer ${apiKey}`,
+          "HTTP-Referer": "https://compass.dev",
+          "X-Title": "Compass"
+        },
       }
     )
 
+    console.log("[AI Config] OpenRouter response status:", res.status)
+
     if (!res.ok) {
+      const errorText = await res.text()
+      console.error("[AI Config] OpenRouter API error:", res.status, errorText)
       if (cachedModels) {
         return { success: true, data: cachedModels }
       }
       return {
         success: false,
-        error: `OpenRouter API error: ${res.status}`,
+        error: `OpenRouter API error: ${res.status} - ${errorText}`,
       }
     }
 
-    const json = (await res.json()) as {
-      data: ReadonlyArray<{
-        id: string
-        name: string
-        context_length: number
-        pricing: {
-          prompt: string
-          completion: string
-        }
-      }>
+    const json = await res.json()
+    console.log("[AI Config] OpenRouter response:", JSON.stringify(json).slice(0, 200))
+    
+    if (!json.data || !Array.isArray(json.data)) {
+      console.error("[AI Config] Invalid response format:", json)
+      return {
+        success: false,
+        error: "Invalid response from OpenRouter API",
+      }
     }
 
     const groupMap = new Map<string, ModelInfo[]>()
@@ -294,6 +308,7 @@ export async function getModelList(): Promise<{
 
     return { success: true, data: groups }
   } catch (err) {
+    console.error("[AI Config] Error fetching models:", err)
     if (cachedModels) {
       return { success: true, data: cachedModels }
     }
@@ -328,8 +343,7 @@ export async function getUsageMetrics(
       }
     }
 
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
+    const db = await getDb()
 
     const cutoff = new Date()
     cutoff.setDate(cutoff.getDate() - days)
@@ -439,8 +453,7 @@ export async function getConversationUsage(
       return { success: false, error: "Unauthorized" }
     }
 
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
+    const db = await getDb()
 
     const isAdmin = can(user, "agent", "update")
 
@@ -501,8 +514,7 @@ export async function updateModelPolicy(
       }
     }
 
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
+    const db = await getDb()
     const now = new Date().toISOString()
 
     const existing = await db
@@ -580,8 +592,7 @@ export async function getUserModelPreference(): Promise<{
       return { success: false, error: "Unauthorized" }
     }
 
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
+    const db = await getDb()
 
     const pref = await db
       .select()
@@ -621,8 +632,7 @@ export async function setUserModelPreference(
       return { success: false, error: "Unauthorized" }
     }
 
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
+    const db = await getDb()
 
     const config = await db
       .select()
@@ -701,8 +711,7 @@ export async function clearUserModelPreference(): Promise<{
       return { success: false, error: "Unauthorized" }
     }
 
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
+    const db = await getDb()
 
     await db
       .delete(userModelPreference)

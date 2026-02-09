@@ -1,7 +1,6 @@
 export const dynamic = "force-dynamic"
 
-import { getCloudflareContext } from "@opennextjs/cloudflare"
-import { getDb } from "@/db"
+import { getDb } from "@/lib/db-universal"
 import { projects, scheduleTasks } from "@/db/schema"
 import { eq } from "drizzle-orm"
 import { notFound } from "next/navigation"
@@ -15,8 +14,10 @@ import {
   IconDots,
   IconFlag,
   IconThumbUp,
+  IconPhoto,
 } from "@tabler/icons-react"
 import type { ScheduleTask } from "@/db/schema"
+import { ProjectAgendaSidebar } from "@/components/projects/project-agenda-sidebar"
 
 function getWeekDays(): { date: Date; dayName: string }[] {
   const today = new Date()
@@ -63,10 +64,7 @@ export default async function ProjectSummaryPage({
   let tasks: ScheduleTask[] = []
 
   try {
-    const { env } = await getCloudflareContext()
-    if (!env?.DB) throw new Error("D1 not available")
-
-    const db = getDb(env.DB)
+    const db = await getDb()
 
     const [found] = await db
       .select()
@@ -81,9 +79,8 @@ export default async function ProjectSummaryPage({
       .select()
       .from(scheduleTasks)
       .where(eq(scheduleTasks.projectId, id))
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  } catch (e: any) {
-    if (e?.digest === "NEXT_NOT_FOUND") throw e
+  } catch (e: unknown) {
+    if (e && typeof e === 'object' && 'digest' in e && e.digest === "NEXT_NOT_FOUND") throw e
     console.warn("D1 unavailable in dev mode, using empty data")
   }
 
@@ -129,12 +126,13 @@ export default async function ProjectSummaryPage({
     const dayTasks = tasks.filter((t) => isTaskOnDate(t, dateStr))
     const isToday = dateStr === todayStr
     const isWeekend = day.date.getDay() === 0 || day.date.getDay() === 6
-    return { ...day, dateStr, dayTasks, isToday, isWeekend }
+    const { date, ...dayProps } = day
+    return { ...dayProps, dateVal: date.getDate(), dateStr, dayTasks, isToday, isWeekend }
   })
 
   return (
     <div className="flex flex-col lg:flex-row flex-1 min-h-0 overflow-hidden">
-      <div className="flex-1 overflow-y-auto p-4 md:p-6">
+      <div className="flex-1 overflow-y-auto p-4 md:p-6 pb-20 lg:pb-6">
         {/* header */}
         <div className="flex items-start justify-between mb-1">
           <MobileProjectSwitcher
@@ -162,13 +160,20 @@ export default async function ProjectSummaryPage({
         </div>
 
         {/* schedule link */}
-        <div className="mb-5 sm:mb-6">
+        <div className="mb-5 sm:mb-6 flex gap-6">
           <Link
             href={`/dashboard/projects/${id}/schedule`}
             className="text-sm text-primary hover:underline inline-flex items-center gap-1.5"
           >
             <IconCalendarStats className="size-4" />
             View schedule
+          </Link>
+          <Link
+            href={`/dashboard/projects/${id}/photos`}
+            className="text-sm text-primary hover:underline inline-flex items-center gap-1.5"
+          >
+            <IconPhoto className="size-4" />
+            View photos
           </Link>
         </div>
 
@@ -384,59 +389,7 @@ export default async function ProjectSummaryPage({
         </div>
       </div>
 
-      {/* right sidebar: week agenda */}
-      <div className="w-full lg:w-72 border-t lg:border-t-0 lg:border-l overflow-y-auto p-3 sm:p-4 shrink-0">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-xs font-medium uppercase text-muted-foreground">
-            This Week
-          </h2>
-          <Link
-            href={`/dashboard/projects/${id}/schedule`}
-            className="text-xs text-primary hover:underline"
-          >
-            View schedule
-          </Link>
-        </div>
-        <div className="space-y-1">
-          {weekAgenda.map((day) => (
-            <div
-              key={day.dateStr}
-              className={`flex gap-3 rounded-md p-2 ${
-                day.isToday ? "bg-accent" : ""
-              }`}
-            >
-              <div className="text-center shrink-0 w-10">
-                <p className={`text-lg font-semibold leading-none ${
-                  day.isToday ? "text-primary" : ""
-                }`}>
-                  {day.date.getDate()}
-                </p>
-              </div>
-              <div className="min-w-0 flex-1">
-                <p className="text-sm font-medium">{day.dayName}</p>
-                {day.isWeekend ? (
-                  <p className="text-xs text-muted-foreground">Non-workday</p>
-                ) : day.dayTasks.length > 0 ? (
-                  <div className="space-y-0.5">
-                    {day.dayTasks.slice(0, 3).map((t) => (
-                      <p key={t.id} className="text-xs text-muted-foreground truncate">
-                        {t.title}
-                      </p>
-                    ))}
-                    {day.dayTasks.length > 3 && (
-                      <p className="text-xs text-muted-foreground">
-                        +{day.dayTasks.length - 3} more
-                      </p>
-                    )}
-                  </div>
-                ) : (
-                  <p className="text-xs text-muted-foreground">No tasks</p>
-                )}
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
+      <ProjectAgendaSidebar weekAgenda={weekAgenda} projectId={id} />
     </div>
   )
 }

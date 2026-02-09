@@ -1,8 +1,7 @@
 "use server"
 
-import { getCloudflareContext } from "@opennextjs/cloudflare"
 import { eq } from "drizzle-orm"
-import { getDb } from "@/db"
+import { getDb } from "@/lib/db-universal"
 import { vendors, type NewVendor } from "@/db/schema"
 import { getCurrentUser } from "@/lib/auth"
 import { requirePermission } from "@/lib/permissions"
@@ -12,8 +11,7 @@ export async function getVendors() {
   const user = await getCurrentUser()
   requirePermission(user, "vendor", "read")
 
-  const { env } = await getCloudflareContext()
-  const db = getDb(env.DB)
+  const db = await getDb()
 
   return db.select().from(vendors)
 }
@@ -22,8 +20,7 @@ export async function getVendor(id: string) {
   const user = await getCurrentUser()
   requirePermission(user, "vendor", "read")
 
-  const { env } = await getCloudflareContext()
-  const db = getDb(env.DB)
+  const db = await getDb()
 
   const rows = await db
     .select()
@@ -41,8 +38,7 @@ export async function createVendor(
     const user = await getCurrentUser()
     requirePermission(user, "vendor", "create")
 
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
+    const db = await getDb()
 
     const now = new Date().toISOString()
     const id = crypto.randomUUID()
@@ -73,8 +69,7 @@ export async function updateVendor(
     const user = await getCurrentUser()
     requirePermission(user, "vendor", "update")
 
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
+    const db = await getDb()
 
     await db
       .update(vendors)
@@ -97,8 +92,7 @@ export async function deleteVendor(id: string) {
     const user = await getCurrentUser()
     requirePermission(user, "vendor", "delete")
 
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
+    const db = await getDb()
 
     await db.delete(vendors).where(eq(vendors.id, id))
 

@@ -1,8 +1,7 @@
 "use server"
 
-import { getCloudflareContext } from "@opennextjs/cloudflare"
 import { eq } from "drizzle-orm"
-import { getDb } from "@/db"
+import { getDb } from "@/lib/db-universal"
 import { vendorBills, type NewVendorBill } from "@/db/schema-netsuite"
 import { getCurrentUser } from "@/lib/auth"
 import { requirePermission } from "@/lib/permissions"
@@ -12,8 +11,7 @@ export async function getVendorBills(projectId?: string) {
   const user = await getCurrentUser()
   requirePermission(user, "finance", "read")
 
-  const { env } = await getCloudflareContext()
-  const db = getDb(env.DB)
+  const db = await getDb()
 
   if (projectId) {
     return db
@@ -28,8 +26,7 @@ export async function getVendorBill(id: string) {
   const user = await getCurrentUser()
   requirePermission(user, "finance", "read")
 
-  const { env } = await getCloudflareContext()
-  const db = getDb(env.DB)
+  const db = await getDb()
 
   const rows = await db
     .select()
@@ -47,8 +44,7 @@ export async function createVendorBill(
     const user = await getCurrentUser()
     requirePermission(user, "finance", "create")
 
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
+    const db = await getDb()
 
     const now = new Date().toISOString()
     const id = crypto.randomUUID()
@@ -78,8 +74,7 @@ export async function updateVendorBill(
     const user = await getCurrentUser()
     requirePermission(user, "finance", "update")
 
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
+    const db = await getDb()
 
     await db
       .update(vendorBills)
@@ -101,8 +96,7 @@ export async function deleteVendorBill(id: string) {
     const user = await getCurrentUser()
     requirePermission(user, "finance", "delete")
 
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
+    const db = await getDb()
 
     await db.delete(vendorBills).where(eq(vendorBills.id, id))
 

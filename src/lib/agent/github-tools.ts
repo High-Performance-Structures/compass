@@ -1,6 +1,5 @@
 import { tool } from "ai"
 import { z } from "zod/v4"
-import { getCloudflareContext } from "@opennextjs/cloudflare"
 import { drizzle } from "drizzle-orm/d1"
 import { eq } from "drizzle-orm"
 import { getCurrentUser } from "@/lib/auth"
@@ -183,8 +182,8 @@ async function executeSaveInterview(input: SaveInterviewInput) {
   const user = await getCurrentUser()
   if (!user) return { error: "Not authenticated" }
 
-  const { env } = await getCloudflareContext()
-  const db = drizzle(env.DB)
+  const { env } = { env: { DB: null } }
+  const db = drizzle(db)
 
   const id = crypto.randomUUID()
   const createdAt = new Date().toISOString()
