@@ -6,6 +6,7 @@ import {
   Check,
   Search,
   Loader2,
+  Zap,
 } from "lucide-react"
 import { toast } from "sonner"
 import { Badge } from "@/components/ui/badge"
@@ -23,6 +24,7 @@ import {
 } from "@/components/ui/tooltip"
 import { cn } from "@/lib/utils"
 import { ProviderIcon, hasLogo } from "./provider-icon"
+import { useBridgeState } from "./chat-provider"
 import {
   getActiveModel,
   getModelList,
@@ -34,6 +36,27 @@ const DEFAULT_MODEL_ID = "qwen/qwen3-coder-next"
 const DEFAULT_MODEL_NAME = "Qwen3 Coder"
 const DEFAULT_PROVIDER = "Alibaba (Qwen)"
 
+// anthropic models available through the bridge
+const BRIDGE_MODELS = [
+  {
+    id: "claude-sonnet-4-5-20250929",
+    name: "Claude Sonnet 4.5",
+    provider: "Anthropic",
+  },
+  {
+    id: "claude-opus-4-6",
+    name: "Claude Opus 4.6",
+    provider: "Anthropic",
+  },
+  {
+    id: "claude-haiku-4-5-20251001",
+    name: "Claude Haiku 4.5",
+    provider: "Anthropic",
+  },
+] as const
+
+const DEFAULT_BRIDGE_MODEL = BRIDGE_MODELS[0]
+
 // --- shared state so all instances stay in sync ---
 
 interface SharedState {
@@ -43,6 +66,11 @@ interface SharedState {
     readonly provider: string
   }
   readonly global: {
+    readonly id: string
+    readonly name: string
+    readonly provider: string
+  }
+  readonly bridgeModel: {
     readonly id: string
     readonly name: string
     readonly provider: string
@@ -63,6 +91,11 @@ let shared: SharedState = {
     id: DEFAULT_MODEL_ID,
     name: DEFAULT_MODEL_NAME,
     provider: DEFAULT_PROVIDER,
+  },
+  bridgeModel: {
+    id: DEFAULT_BRIDGE_MODEL.id,
+    name: DEFAULT_BRIDGE_MODEL.name,
+    provider: DEFAULT_BRIDGE_MODEL.provider,
   },
   allowUserSelection: true,
   isAdmin: false,
@@ -141,9 +174,32 @@ export function ModelDropdown(): React.JSX.Element {
   const [activeProvider, setActiveProvider] =
     React.useState<string | null>(null)
 
+  const bridge = useBridgeState()
+  const bridgeActive =
+    bridge.bridgeConnected && bridge.bridgeEnabled
+
   React.useEffect(() => {
     if (state.configLoaded) return
     setShared({ configLoaded: true })
+
+    // restore bridge model preference from localStorage
+    const storedBridge = localStorage.getItem(
+      "compass-bridge-model"
+    )
+    if (storedBridge) {
+      const found = BRIDGE_MODELS.find(
+        (m) => m.id === storedBridge
+      )
+      if (found) {
+        setShared({
+          bridgeModel: {
+            id: found.id,
+            name: found.name,
+            provider: found.provider,
+          },
+        })
+      }
+    }
 
     Promise.all([
       getActiveModel(),
@@ -222,7 +278,7 @@ export function ModelDropdown(): React.JSX.Element {
   }, [state.configLoaded])
 
   React.useEffect(() => {
-    if (!open || listLoaded) return
+    if (!open || listLoaded || bridgeActive) return
     setLoading(true)
     getModelList().then((result) => {
       if (result.success) {
@@ -252,7 +308,7 @@ export function ModelDropdown(): React.JSX.Element {
       setListLoaded(true)
       setLoading(false)
     })
-  }, [open, listLoaded])
+  }, [open, listLoaded, bridgeActive])
 
   // reset provider filter when popover closes
   React.useEffect(() => {
@@ -356,6 +412,91 @@ export function ModelDropdown(): React.JSX.Element {
     } else {
       toast.error(result.error ?? "Failed to switch")
     }
+  }
+
+  const handleBridgeModelSelect = (
+    model: typeof BRIDGE_MODELS[number]
+  ): void => {
+    setShared({
+      bridgeModel: {
+        id: model.id,
+        name: model.name,
+        provider: model.provider,
+      },
+    })
+    localStorage.setItem(
+      "compass-bridge-model",
+      model.id
+    )
+    toast.success(`Bridge model: ${model.name}`)
+    setOpen(false)
+  }
+
+  // bridge active: show bridge model selector
+  if (bridgeActive) {
+    return (
+      <Popover open={open} onOpenChange={setOpen}>
+        <PopoverTrigger asChild>
+          <button
+            type="button"
+            className={cn(
+              "flex items-center gap-1.5 rounded-md px-2 py-1 text-xs",
+              "hover:bg-muted hover:text-foreground transition-colors",
+              "text-emerald-600 dark:text-emerald-400",
+              open && "bg-muted text-foreground"
+            )}
+          >
+            <Zap className="h-3 w-3" />
+            <span className="max-w-32 truncate">
+              {state.bridgeModel.name}
+            </span>
+            <ChevronDown className="h-3 w-3 opacity-50" />
+          </button>
+        </PopoverTrigger>
+        <PopoverContent
+          align="start"
+          side="top"
+          className="w-64 p-1"
+        >
+          <div className="px-2 py-1.5 mb-1">
+            <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
+              Claude Code Bridge
+            </p>
+          </div>
+          {BRIDGE_MODELS.map((model) => {
+            const isActive =
+              model.id === state.bridgeModel.id
+            return (
+              <button
+                key={model.id}
+                type="button"
+                onClick={() =>
+                  handleBridgeModelSelect(model)
+                }
+                className={cn(
+                  "w-full text-left rounded-lg px-2.5 py-2 flex items-center gap-2.5 transition-all",
+                  isActive
+                    ? "bg-primary/10 ring-1 ring-primary/30"
+                    : "hover:bg-muted/70"
+                )}
+              >
+                <ProviderIcon
+                  provider="Anthropic"
+                  size={20}
+                  className="shrink-0"
+                />
+                <span className="text-xs font-medium flex-1">
+                  {model.name}
+                </span>
+                {isActive && (
+                  <Check className="h-3 w-3 text-primary shrink-0" />
+                )}
+              </button>
+            )
+          })}
+        </PopoverContent>
+      </Popover>
+    )
   }
 
   if (!state.allowUserSelection && !state.isAdmin) {

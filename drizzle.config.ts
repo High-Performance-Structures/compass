@@ -10,6 +10,7 @@ export default defineConfig({
     "./src/db/schema-theme.ts",
     "./src/db/schema-google.ts",
     "./src/db/schema-dashboards.ts",
+    "./src/db/schema-mcp.ts",
   ],
   out: "./drizzle",
   dialect: "sqlite",

@@ -45,6 +45,7 @@ Modules are the parts specific to HPS's construction business:
 | Scheduling | Gantt charts, CPM, baseline tracking | `lib/schedule/`, `actions/schedule.ts`, `components/schedule/` |
 | Financials | invoices, bills, payments, credit memos | `actions/invoices.ts`, `actions/vendor-bills.ts`, `components/financials/` |
 | Mobile | Capacitor native wrapper, offline photos, push | `lib/native/`, `lib/push/`, `hooks/use-native*.ts`, `components/native/` |
+| Claude Code | local bridge daemon, own API key, filesystem + terminal access | `lib/mcp/`, `lib/agent/ws-transport.ts`, `packages/compass-bridge/` |
 
 Some tables blur the line. The `customers` and `vendors` tables in `schema.ts` are core entities used by multiple modules, but they have `netsuiteId` columns that only matter when the NetSuite module is active. The `projects` table has a `netsuiteJobId` column for the same reason. The `pushTokens` table lives in the core schema but is only meaningful to the mobile module. These are pragmatic compromises: splitting them into separate schemas would add complexity without real benefit at the current scale.
 

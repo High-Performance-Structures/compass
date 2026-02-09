@@ -1,9 +1,13 @@
 "use client"
 
-import { useEffect, useRef } from "react"
+import { useEffect, useMemo, useRef } from "react"
 import { usePathname, useRouter } from "next/navigation"
 import { useChat } from "@ai-sdk/react"
-import { DefaultChatTransport, type UIMessage } from "ai"
+import {
+  DefaultChatTransport,
+  type ChatTransport,
+  type UIMessage,
+} from "ai"
 import { toast } from "sonner"
 import {
   initializeActionHandlers,
@@ -18,6 +22,33 @@ interface UseCompassChatOptions {
     messages: ReadonlyArray<UIMessage>
   }) => void | Promise<void>
   readonly openPanel?: () => void
+  readonly bridgeTransport?:
+    | ChatTransport<UIMessage>
+    | null
+}
+
+// useChat captures transport at init -- this wrapper
+// delegates at send-time so bridge/default swaps work
+class DynamicTransport
+  implements ChatTransport<UIMessage>
+{
+  private resolve: () => ChatTransport<UIMessage>
+
+  constructor(
+    resolve: () => ChatTransport<UIMessage>
+  ) {
+    this.resolve = resolve
+  }
+
+  sendMessages: ChatTransport<UIMessage>["sendMessages"] =
+    (options) => {
+      return this.resolve().sendMessages(options)
+    }
+
+  reconnectToStream: ChatTransport<UIMessage>["reconnectToStream"] =
+    async (options) => {
+      return this.resolve().reconnectToStream(options)
+    }
 }
 
 export function useCompassChat(options?: UseCompassChatOptions) {
@@ -31,17 +62,48 @@ export function useCompassChat(options?: UseCompassChatOptions) {
 
   const dispatchedRef = useRef(new Set<string>())
 
+  const bridgeRef = useRef(options?.bridgeTransport)
+  bridgeRef.current = options?.bridgeTransport
+
+  const defaultTransport = useMemo(
+    () =>
+      new DefaultChatTransport({
+        api: "/api/agent",
+        headers: {
+          "x-current-page": pathname,
+          "x-timezone":
+            Intl.DateTimeFormat().resolvedOptions()
+              .timeZone,
+          "x-conversation-id":
+            options?.conversationId ?? "",
+        },
+      }),
+    [pathname, options?.conversationId]
+  )
+
+  const defaultRef = useRef(defaultTransport)
+  defaultRef.current = defaultTransport
+
+  // stable transport -- delegates at send-time
+  const transport = useMemo(
+    () =>
+      new DynamicTransport(() => {
+        if (bridgeRef.current) {
+          console.log(
+            "[chat] routing → bridge transport"
+          )
+          return bridgeRef.current
+        }
+        console.log(
+          "[chat] routing → default transport"
+        )
+        return defaultRef.current
+      }),
+    []
+  )
+
   const chatState = useChat({
-    transport: new DefaultChatTransport({
-      api: "/api/agent",
-      headers: {
-        "x-current-page": pathname,
-        "x-timezone":
-          Intl.DateTimeFormat().resolvedOptions().timeZone,
-        "x-conversation-id":
-          options?.conversationId ?? "",
-      },
-    }),
+    transport,
     onFinish: options?.onFinish,
     onError: (err) => {
       toast.error(err.message)

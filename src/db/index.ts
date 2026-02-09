@@ -7,6 +7,7 @@ import * as aiConfigSchema from "./schema-ai-config"
 import * as themeSchema from "./schema-theme"
 import * as googleSchema from "./schema-google"
 import * as dashboardSchema from "./schema-dashboards"
+import * as mcpSchema from "./schema-mcp"
 
 const allSchemas = {
   ...schema,
@@ -17,6 +18,7 @@ const allSchemas = {
   ...themeSchema,
   ...googleSchema,
   ...dashboardSchema,
+  ...mcpSchema,
 }
 
 export function getDb(d1: D1Database) {

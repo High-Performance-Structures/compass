@@ -149,6 +149,7 @@ each module contributes schema tables, server actions, components, and optionall
 - **mobile**: capacitor webview wrapper. the web app must never break because of native code -- all capacitor imports are dynamic, gated behind `isNative()`. see [docs/modules/mobile.md](docs/modules/mobile.md) and [docs/architecture/native-mobile.md](docs/architecture/native-mobile.md).
 - **themes**: per-user oklch color system, 10 presets, AI-generated custom themes. see [docs/development/theming.md](docs/development/theming.md).
 - **plugins/skills**: github-hosted SKILL.md files inject into agent system prompt. full plugins provide tools, components, actions. see [docs/development/plugins.md](docs/development/plugins.md).
+- **claude code bridge**: local daemon that routes inference through your own Anthropic API key. WebSocket connection gives the agent filesystem + terminal access alongside Compass tools. API key auth with scoped permissions. see [docs/modules/claude-code.md](docs/modules/claude-code.md).
 
 
 project structure

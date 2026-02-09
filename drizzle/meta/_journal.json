@@ -134,6 +134,13 @@
       "when": 1770471997491,
       "tag": "0018_left_veda",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "6",
+      "when": 1770522037142,
+      "tag": "0019_parched_thunderbird",
+      "breakpoints": true
     }
   ]
 }

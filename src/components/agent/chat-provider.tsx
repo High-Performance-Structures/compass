@@ -11,6 +11,16 @@ import {
 } from "@/app/actions/agent"
 import { getTextFromParts } from "@/lib/agent/chat-adapter"
 import { useCompassChat } from "@/hooks/use-compass-chat"
+import {
+  WebSocketChatTransport,
+  detectBridge,
+} from "@/lib/agent/ws-transport"
+import {
+  getBridgeSnapshot,
+  subscribeBridge,
+  setBridgeConnected as storeBridgeConnected,
+  setBridgeEnabled as storeBridgeEnabled,
+} from "@/lib/agent/bridge-store"
 
 // --- Panel context (open/close sidebar) ---
 
@@ -97,6 +107,30 @@ export function useRenderState(): RenderContextValue {
   return ctx
 }
 
+// --- Bridge state (module-level store, works anywhere) ---
+
+export interface BridgeContextValue {
+  readonly bridgeConnected: boolean
+  readonly bridgeEnabled: boolean
+  setBridgeEnabled: (enabled: boolean) => void
+}
+
+export function useBridgeState(): BridgeContextValue {
+  const snapshot = React.useSyncExternalStore(
+    subscribeBridge,
+    getBridgeSnapshot,
+    getBridgeSnapshot
+  )
+  return React.useMemo(
+    () => ({
+      bridgeConnected: snapshot.connected,
+      bridgeEnabled: snapshot.enabled,
+      setBridgeEnabled: storeBridgeEnabled,
+    }),
+    [snapshot]
+  )
+}
+
 // --- Backward compat aliases ---
 
 export function useAgent(): PanelContextValue {
@@ -181,9 +215,35 @@ export function ChatProvider({
   const router = useRouter()
   const pathname = usePathname()
 
+  // --- Bridge daemon state (reads from module store) ---
+  const bridge = useBridgeState()
+
+  // detect bridge on interval, write to store
+  React.useEffect(() => {
+    let cancelled = false
+    const check = async () => {
+      const connected = await detectBridge()
+      if (!cancelled) storeBridgeConnected(connected)
+    }
+    check()
+    const interval = setInterval(check, 15000)
+    return () => {
+      cancelled = true
+      clearInterval(interval)
+    }
+  }, [])
+
+  const bridgeTransport = React.useMemo(() => {
+    if (bridge.bridgeConnected && bridge.bridgeEnabled) {
+      return new WebSocketChatTransport()
+    }
+    return null
+  }, [bridge.bridgeConnected, bridge.bridgeEnabled])
+
   const chat = useCompassChat({
     conversationId,
     openPanel: () => setIsOpen(true),
+    bridgeTransport,
     onFinish: async ({ messages: finalMessages }) => {
       if (finalMessages.length === 0) return
 

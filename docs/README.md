@@ -31,6 +31,7 @@ The construction-specific modules that make up HPS Compass.
 - [scheduling](modules/scheduling.md) -- Gantt charts, critical path analysis, dependency management, baselines, workday exceptions
 - [financials](modules/financials.md) -- invoices, vendor bills, payments, credit memos, NetSuite sync tie-in
 - [mobile](modules/mobile.md) -- Capacitor native app, offline photo queue, push notifications, biometric auth
+- [claude code](modules/claude-code.md) -- local bridge daemon, own Anthropic API key, filesystem + terminal tools, WebSocket protocol
 
 
 development

@@ -125,6 +125,7 @@
 		"media-chrome": "^4.17.2",
 		"tailwindcss": "^4",
 		"typescript": "^5",
+		"vitest": "^4.0.18",
 		"wrangler": "^4.59.3"
 	}
 }

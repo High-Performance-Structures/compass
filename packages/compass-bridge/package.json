@@ -1,0 +1,20 @@
+{
+  "name": "compass-bridge",
+  "version": "0.1.0",
+  "description": "Local bridge daemon connecting Claude Code to Compass",
+  "type": "module",
+  "bin": {
+    "compass-bridge": "./src/index.ts"
+  },
+  "scripts": {
+    "start": "bun run src/index.ts start",
+    "build": "bun build src/index.ts --target=bun --outdir=dist --minify"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.39.0",
+    "@mariozechner/pi-ai": "^0.52.8"
+  },
+  "devDependencies": {
+    "@types/bun": "latest"
+  }
+}

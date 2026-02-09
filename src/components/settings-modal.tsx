@@ -29,6 +29,7 @@ import { MemoriesTable } from "@/components/agent/memories-table"
 import { SkillsTab } from "@/components/settings/skills-tab"
 import { AIModelTab } from "@/components/settings/ai-model-tab"
 import { AppearanceTab } from "@/components/settings/appearance-tab"
+import { ClaudeCodeTab } from "@/components/settings/claude-code-tab"
 import { useNative } from "@/hooks/use-native"
 import { useBiometricAuth } from "@/hooks/use-biometric-auth"
 
@@ -139,6 +140,8 @@ export function SettingsModal({
       <Separator />
       <NetSuiteConnectionStatus />
       <SyncControls />
+      <Separator />
+      <ClaudeCodeTab />
     </>
   )
 
@@ -305,6 +308,8 @@ export function SettingsModal({
             <Separator />
             <NetSuiteConnectionStatus />
             <SyncControls />
+            <Separator />
+            <ClaudeCodeTab />
           </TabsContent>
 
           <TabsContent

@@ -12,10 +12,17 @@ const publicPaths = [
   "/callback",
 ]
 
+// bridge routes use their own API key auth
+const bridgePaths = [
+  "/api/bridge/register",
+  "/api/bridge/tools",
+  "/api/bridge/context",
+]
+
 function isPublicPath(pathname: string): boolean {
-  // exact matches or starts with /api/auth/
   return (
     publicPaths.includes(pathname) ||
+    bridgePaths.includes(pathname) ||
     pathname.startsWith("/api/auth/") ||
     pathname.startsWith("/api/netsuite/") ||
     pathname.startsWith("/api/google/")
