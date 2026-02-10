@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useIsMobile } from "@/hooks/use-mobile"
 import { ScheduleToolbar } from "./schedule-toolbar"
@@ -11,6 +11,7 @@ import { ScheduleMobileView } from "./schedule-mobile-view"
 import { WorkdayExceptionsView } from "./workday-exceptions-view"
 import { ScheduleBaselineView } from "./schedule-baseline-view"
 import { TaskFormDialog } from "./task-form-dialog"
+import { getSchedule } from "@/app/actions/schedule"
 import type {
   ScheduleData,
   ScheduleBaselineData,
@@ -36,6 +37,20 @@ export function ScheduleView({
   const [topTab, setTopTab] = useState<TopTab>("schedule")
   const [subTab, setSubTab] = useState<ScheduleSubTab>("calendar")
   const [taskFormOpen, setTaskFormOpen] = useState(false)
+  const [tasks, setTasks] = useState(initialData.tasks)
+  const [dependencies, setDependencies] = useState(initialData.dependencies)
+  const [exceptions, setExceptions] = useState(initialData.exceptions)
+
+  // Refresh data when dialog closes
+  useEffect(() => {
+    if (!taskFormOpen) {
+      getSchedule(projectId).then((data) => {
+        setTasks(data.tasks)
+        setDependencies(data.dependencies)
+        setExceptions(data.exceptions)
+      })
+    }
+  }, [taskFormOpen, projectId])
 
   return (
     <div className="flex flex-col flex-1 min-h-0">
@@ -94,14 +109,14 @@ export function ScheduleView({
             <TabsContent value="calendar" className="mt-2 flex flex-col flex-1 min-h-0">
               {isMobile ? (
                 <ScheduleMobileView
-                  tasks={initialData.tasks}
-                  exceptions={initialData.exceptions}
+                  tasks={tasks}
+                  exceptions={exceptions}
                 />
               ) : (
                 <ScheduleCalendarView
                   projectId={projectId}
-                  tasks={initialData.tasks}
-                  exceptions={initialData.exceptions}
+                  tasks={tasks}
+                  exceptions={exceptions}
                 />
               )}
             </TabsContent>
@@ -109,16 +124,16 @@ export function ScheduleView({
             <TabsContent value="list" className="mt-2 flex flex-col flex-1 min-h-0">
               <ScheduleListView
                 projectId={projectId}
-                tasks={initialData.tasks}
-                dependencies={initialData.dependencies}
+                tasks={tasks}
+                dependencies={dependencies}
               />
             </TabsContent>
 
             <TabsContent value="gantt" className="mt-2 flex flex-col flex-1 min-h-0">
               <ScheduleGanttView
                 projectId={projectId}
-                tasks={initialData.tasks}
-                dependencies={initialData.dependencies}
+                tasks={tasks}
+                dependencies={dependencies}
               />
             </TabsContent>
           </Tabs>
@@ -128,14 +143,14 @@ export function ScheduleView({
           <ScheduleBaselineView
             projectId={projectId}
             baselines={baselines}
-            currentTasks={initialData.tasks}
+            currentTasks={tasks}
           />
         </TabsContent>
 
         <TabsContent value="exceptions" className="mt-2">
           <WorkdayExceptionsView
             projectId={projectId}
-            exceptions={initialData.exceptions}
+            exceptions={exceptions}
           />
         </TabsContent>
       </Tabs>

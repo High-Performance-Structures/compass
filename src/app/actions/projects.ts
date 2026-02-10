@@ -9,7 +9,6 @@ export async function getProjects(): Promise<{ id: string; name: string }[]> {
   try {
     const { env } = await getCloudflareContext()
     if (!env?.DB) return []
-
     const db = getDb(env.DB)
     const allProjects = await db
       .select({ id: projects.id, name: projects.name })
@@ -19,5 +18,35 @@ export async function getProjects(): Promise<{ id: string; name: string }[]> {
     return allProjects
   } catch {
     return []
+  }
+}
+
+export async function createProject(data: {
+  name: string
+  client: string
+  status: string
+  description?: string
+}): Promise<{ success: true; id: string } | { success: false; error: string }> {
+  try {
+    const { env } = await getCloudflareContext()
+    const db = getDb(env.DB)
+    const id = crypto.randomUUID()
+
+    await db.insert(projects).values({
+      id,
+      name: data.name,
+      clientName: data.client, // mapped
+      status: data.status.toUpperCase(), // OPEN, PENDING, ARCHIVED
+      // description: data.description, // Removed as not in schema
+      createdAt: new Date().toISOString(),
+      // updatedAt: new Date().toISOString(), // Removed as not in schema
+    })
+
+    return { success: true, id }
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Failed to create project",
+    }
   }
 }

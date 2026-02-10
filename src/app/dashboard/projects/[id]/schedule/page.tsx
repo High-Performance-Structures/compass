@@ -41,17 +41,20 @@ export default async function SchedulePage({
     if (!project) notFound()
 
     projectName = project.name
-    ;[schedule, baselines] = await Promise.all([
-      getSchedule(id),
-      getBaselines(id),
-    ])
+      ;[schedule, baselines] = await Promise.all([
+        getSchedule(id),
+        getBaselines(id),
+      ])
   } catch (e: unknown) {
     if (e && typeof e === "object" && "digest" in e && e.digest === "NEXT_NOT_FOUND") throw e
     console.warn("D1 unavailable in dev mode, using empty data")
   }
 
   return (
-    <div className="px-4 py-2 flex flex-col flex-1 min-h-0">
+    <div
+      className="px-4 py-2 flex flex-col flex-1 min-h-0"
+      data-schedule-theme=""
+    >
       <ScheduleView
         projectId={id}
         projectName={projectName}

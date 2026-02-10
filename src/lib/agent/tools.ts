@@ -21,6 +21,7 @@ import {
   getCustomDashboardById,
   deleteCustomDashboard,
 } from "@/app/actions/dashboards"
+import { deleteAsset, updateAssetName } from "@/app/actions/media"
 import { THEME_PRESETS, findPreset } from "@/lib/theme/presets"
 import type { ThemeDefinition, ColorMap, ThemeFonts, ThemeTokens, ThemeShadows } from "@/lib/theme/types"
 
@@ -35,6 +36,8 @@ const queryDataInputSchema = z.object({
     "project_detail",
     "customer_detail",
     "vendor_detail",
+    "project_assets",
+    "daily_logs",
   ]),
   id: z
     .string()
@@ -64,6 +67,7 @@ const VALID_ROUTES: ReadonlyArray<RegExp> = [
   /^\/dashboard\/files$/,
   /^\/dashboard\/files\/.+$/,
   /^\/dashboard\/boards\/[^/]+$/,
+  /^\/dashboard\/projects\/[^/]+\/photos$/,
 ]
 
 function isValidRoute(path: string): boolean {
@@ -97,15 +101,15 @@ type NotificationInput = z.infer<
 const generateUIInputSchema = z.object({
   description: z.string().describe(
     "Layout and content description for the " +
-      "dashboard to generate. Be specific about " +
-      "what components and data to display."
+    "dashboard to generate. Be specific about " +
+    "what components and data to display."
   ),
   dataContext: z
     .record(z.string(), z.unknown())
     .optional()
     .describe(
       "Data to include in the rendered UI. " +
-        "Pass query results here."
+      "Pass query results here."
     ),
 })
 
@@ -160,9 +164,10 @@ async function executeQueryData(input: QueryDataInput) {
         limit: cap,
         ...(input.search
           ? {
-              where: (c, { like }) =>
-                like(c.name, `%${input.search}%`),
-            }
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            where: (c: any, { like }: any) =>
+              like(c.name, `%${input.search}%`),
+          }
           : {}),
       })
       return { data: rows, count: rows.length }
@@ -173,9 +178,10 @@ async function executeQueryData(input: QueryDataInput) {
         limit: cap,
         ...(input.search
           ? {
-              where: (v, { like }) =>
-                like(v.name, `%${input.search}%`),
-            }
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            where: (v: any, { like }: any) =>
+              like(v.name, `%${input.search}%`),
+          }
           : {}),
       })
       return { data: rows, count: rows.length }
@@ -186,9 +192,10 @@ async function executeQueryData(input: QueryDataInput) {
         limit: cap,
         ...(input.search
           ? {
-              where: (p, { like }) =>
-                like(p.name, `%${input.search}%`),
-            }
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            where: (p: any, { like }: any) =>
+              like(p.name, `%${input.search}%`),
+          }
           : {}),
       })
       return { data: rows, count: rows.length }
@@ -213,9 +220,10 @@ async function executeQueryData(input: QueryDataInput) {
         limit: cap,
         ...(input.search
           ? {
-              where: (t, { like }) =>
-                like(t.title, `%${input.search}%`),
-            }
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            where: (t: any, { like }: any) =>
+              like(t.title, `%${input.search}%`),
+          }
           : {}),
       })
       return { data: rows, count: rows.length }
@@ -226,7 +234,8 @@ async function executeQueryData(input: QueryDataInput) {
         return { error: "id required for detail query" }
       }
       const row = await db.query.projects.findFirst({
-        where: (p, { eq }) => eq(p.id, input.id!),
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        where: (p: any, { eq }: any) => eq(p.id, input.id!),
       })
       return row ? { data: row } : { error: "not found" }
     }
@@ -236,7 +245,8 @@ async function executeQueryData(input: QueryDataInput) {
         return { error: "id required for detail query" }
       }
       const row = await db.query.customers.findFirst({
-        where: (c, { eq }) => eq(c.id, input.id!),
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        where: (c: any, { eq }: any) => eq(c.id, input.id!),
       })
       return row ? { data: row } : { error: "not found" }
     }
@@ -246,9 +256,39 @@ async function executeQueryData(input: QueryDataInput) {
         return { error: "id required for detail query" }
       }
       const row = await db.query.vendors.findFirst({
-        where: (v, { eq }) => eq(v.id, input.id!),
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        where: (v: any, { eq }: any) => eq(v.id, input.id!),
       })
       return row ? { data: row } : { error: "not found" }
+    }
+    case "project_assets": {
+      const rows = await db.query.projectAssets.findMany({
+        limit: cap,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        where: (a: any, { eq, and, like }: any) => {
+          const filters = []
+          if (input.id) filters.push(eq(a.projectId, input.id))
+          if (input.search) filters.push(like(a.name, `%${input.search}%`))
+          return filters.length > 0 ? and(...filters) : undefined
+        },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        orderBy: (a: any, { desc }: any) => [desc(a.createdAt)],
+      })
+      return { data: rows, count: rows.length }
+    }
+    case "daily_logs": {
+      const rows = await db.query.dailyLogs.findMany({
+        limit: cap,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        where: (l: any, { eq, and }: any) => {
+          const filters = []
+          if (input.id) filters.push(eq(l.projectId, input.id))
+          return filters.length > 0 ? and(...filters) : undefined
+        },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        orderBy: (l: any, { desc }: any) => [desc(l.date)],
+      })
+      return { data: rows, count: rows.length }
     }
 
     default:
@@ -281,7 +321,8 @@ export const agentTools = {
             "/dashboard/projects/{id}/schedule, " +
             "/dashboard/customers, /dashboard/vendors, " +
             "/dashboard/financials, /dashboard/people, " +
-            "/dashboard/files, /dashboard/boards/{id}",
+            "/dashboard/files, /dashboard/boards/{id}, " +
+            "/dashboard/projects/{id}/photos",
         }
       }
       return {
@@ -302,6 +343,44 @@ export const agentTools = {
       message: input.message,
       type: input.type ?? "default",
     }),
+  }),
+
+  requestPhoto: tool({
+    description:
+      "Request the user to take a photo. Opens the " +
+      "camera/upload modal on the client. " +
+      "Use when the user wants to add a photo to a daily log " +
+      "or project gallery.",
+    inputSchema: z.object({
+      projectId: z.string().optional().describe("Project ID if known context"),
+      context: z.enum(["daily_log", "gallery"]).optional()
+        .describe("Where the photo is being added"),
+    }),
+    execute: async (input: { projectId?: string; context?: "daily_log" | "gallery" }) => ({
+      action: "request_photo" as const,
+      projectId: input.projectId,
+      context: input.context ?? "gallery",
+    }),
+  }),
+
+  viewProjectPhotos: tool({
+    description:
+      "Navigate to the project photos gallery / daily log view.",
+    inputSchema: z.object({
+      projectId: z.string().describe("Project ID"),
+      date: z.string().optional().describe("Jump to specific date YYYY-MM-DD"),
+    }),
+    execute: async (input: { projectId: string; date?: string }) => {
+      let path = `/dashboard/projects/${input.projectId}/photos`
+      if (input.date) {
+        path += `?date=${input.date}`
+      }
+      return {
+        action: "navigate" as const,
+        path,
+        reason: "Viewing project photos",
+      }
+    },
   }),
 
   generateUI: tool({
@@ -455,11 +534,11 @@ export const agentTools = {
       const customResult = await getCustomThemes()
       const customs = customResult.success
         ? customResult.data.map((c) => ({
-            id: c.id,
-            name: c.name,
-            description: c.description,
-            isPreset: false,
-          }))
+          id: c.id,
+          name: c.name,
+          description: c.description,
+          isPreset: false,
+        }))
         : []
 
       return { themes: [...presets, ...customs] }
@@ -769,10 +848,10 @@ export const agentTools = {
         : prev.dark
       const mergedFonts: ThemeFonts = input.fonts
         ? {
-            sans: input.fonts.sans ?? prev.fonts.sans,
-            serif: input.fonts.serif ?? prev.fonts.serif,
-            mono: input.fonts.mono ?? prev.fonts.mono,
-          }
+          sans: input.fonts.sans ?? prev.fonts.sans,
+          serif: input.fonts.serif ?? prev.fonts.serif,
+          mono: input.fonts.mono ?? prev.fonts.mono,
+        }
         : prev.fonts
       const mergedTokens: ThemeTokens = {
         ...prev.tokens,
@@ -818,6 +897,37 @@ export const agentTools = {
         action: "preview_theme" as const,
         themeId: input.themeId,
         themeData: merged,
+      }
+    },
+  }),
+  deletePhoto: tool({
+    description: "Delete a project photo/asset by its ID.",
+    inputSchema: z.object({
+      assetId: z.string().describe("The UUID of the photo to delete"),
+    }),
+    execute: async ({ assetId }) => {
+      const result = await deleteAsset(assetId)
+      if (!result.success) return { error: result.error }
+      return {
+        action: "toast" as const,
+        message: "Photo deleted successfully",
+        type: "success",
+      }
+    },
+  }),
+  renamePhoto: tool({
+    description: "Rename a project photo/asset.",
+    inputSchema: z.object({
+      assetId: z.string().describe("The UUID of the photo to rename"),
+      newName: z.string().describe("The new display name for the photo"),
+    }),
+    execute: async ({ assetId, newName }) => {
+      const result = await updateAssetName(assetId, newName)
+      if (!result.success) return { error: result.error }
+      return {
+        action: "toast" as const,
+        message: "Photo renamed successfully",
+        type: "success",
       }
     },
   }),

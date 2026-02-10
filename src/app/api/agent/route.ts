@@ -31,7 +31,8 @@ export async function POST(req: Request): Promise<Response> {
   const db = getDb(env.DB)
   const envRecord = env as unknown as Record<string, string>
 
-  const apiKey = envRecord.OPENROUTER_API_KEY
+  const apiKey =
+    envRecord.OPENROUTER_API_KEY || process.env.OPENROUTER_API_KEY
   if (!apiKey) {
     return new Response(
       JSON.stringify({
@@ -48,11 +49,15 @@ export async function POST(req: Request): Promise<Response> {
     "@/app/actions/dashboards"
   )
 
-  const [memories, registry, dashboardResult] =
+  const [memories, registry, dashboardResult, projectsResult] =
     await Promise.all([
       loadMemoriesForPrompt(db, user.id),
       getRegistry(db, envRecord),
       getCustomDashboards(),
+      db.query.projects.findMany({
+        where: (p: any, { eq }: any) => eq(p.status, "OPEN"), // eslint-disable-line @typescript-eslint/no-explicit-any
+        limit: 10,
+      }),
     ])
 
   const pluginSections = registry.getPromptSections()
@@ -74,7 +79,7 @@ export async function POST(req: Request): Promise<Response> {
   if (!modelId || !modelId.includes("/")) {
     console.error(
       `Invalid model ID resolved: "${modelId}",` +
-        ` falling back to default`
+      ` falling back to default`
     )
     modelId = DEFAULT_MODEL_ID
   }
@@ -93,6 +98,7 @@ export async function POST(req: Request): Promise<Response> {
       dashboards: dashboardResult.success
         ? dashboardResult.data
         : [],
+      activeProjects: projectsResult,
       mode: "full",
     }),
     messages: await convertToModelMessages(

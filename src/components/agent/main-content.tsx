@@ -12,20 +12,14 @@ export function MainContent({
   const pathname = usePathname()
   const { spec, isRendering } = useRenderState()
   const hasRenderedUI = !!spec?.root || isRendering
-  const isCollapsed =
-    pathname === "/dashboard" && !hasRenderedUI
-
   return (
     <div
       className={cn(
-        "flex flex-col overflow-x-hidden min-w-0",
-        "transition-[flex,opacity] duration-300 ease-in-out",
-        isCollapsed
-          ? "flex-[0_0_0%] opacity-0 overflow-hidden pointer-events-none"
-          : "flex-1 overflow-y-auto pb-14 md:pb-0"
+        "flex flex-col overflow-hidden min-w-0 transition-[flex,opacity] duration-300 ease-in-out",
+        "flex-1 pb-4 md:pb-0" // Updated to standard safe area padding
       )}
     >
-      <div className="@container/main flex flex-1 flex-col min-w-0">
+      <div className="@container/main flex flex-1 flex-col min-w-0 overflow-hidden">
         {children}
       </div>
     </div>

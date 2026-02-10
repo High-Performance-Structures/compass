@@ -91,7 +91,19 @@ export function TaskFormDialog({
   })
 
   useEffect(() => {
+    if (!open) {
+      // Reset state when dialog closes
+      setIsOtherPhase(false)
+      setCustomPhase("")
+      return
+    }
+    
     if (editingTask) {
+      const isCustomPhase = !phases.some(p => p.value === editingTask.phase)
+      setIsOtherPhase(isCustomPhase)
+      if (isCustomPhase) {
+        setCustomPhase(editingTask.phase)
+      }
       form.reset({
         title: editingTask.title,
         startDate: editingTask.startDate,
@@ -102,6 +114,8 @@ export function TaskFormDialog({
         assignedTo: editingTask.assignedTo ?? "",
       })
     } else {
+      setIsOtherPhase(false)
+      setCustomPhase("")
       form.reset({
         title: "",
         startDate: new Date().toISOString().split("T")[0],
@@ -112,7 +126,7 @@ export function TaskFormDialog({
         assignedTo: "",
       })
     }
-  }, [editingTask, form])
+  }, [editingTask, form, open])
 
   const watchedStart = form.watch("startDate")
   const watchedWorkdays = form.watch("workdays")
@@ -123,16 +137,28 @@ export function TaskFormDialog({
   }, [watchedStart, watchedWorkdays])
 
   async function onSubmit(values: TaskFormValues) {
+    // Validate custom phase if "Other" is selected
+    if (isOtherPhase && (!customPhase || customPhase.trim() === "")) {
+      toast.error("Please enter a custom phase name")
+      return
+    }
+    
+    // Ensure we're not submitting "other" as the phase value
+    const finalValues = {
+      ...values,
+      phase: isOtherPhase && customPhase ? customPhase : values.phase,
+    }
+    
     let result
     if (isEditing) {
       result = await updateTask(editingTask.id, {
-        ...values,
-        assignedTo: values.assignedTo || null,
+        ...finalValues,
+        assignedTo: finalValues.assignedTo || null,
       })
     } else {
       result = await createTask(projectId, {
-        ...values,
-        assignedTo: values.assignedTo || undefined,
+        ...finalValues,
+        assignedTo: finalValues.assignedTo || undefined,
       })
     }
 
@@ -143,6 +169,9 @@ export function TaskFormDialog({
       toast.error(result.error)
     }
   }
+
+  const [customPhase, setCustomPhase] = React.useState("")
+  const [isOtherPhase, setIsOtherPhase] = React.useState(false)
 
   const page1 = (
     <>
@@ -234,8 +263,16 @@ export function TaskFormDialog({
           <FormItem>
             <FormLabel className="text-xs">Phase</FormLabel>
             <Select
-              onValueChange={field.onChange}
-              value={field.value}
+              onValueChange={(value) => {
+                if (value === "other") {
+                  setIsOtherPhase(true)
+                  field.onChange(customPhase || "other")
+                } else {
+                  setIsOtherPhase(false)
+                  field.onChange(value)
+                }
+              }}
+              value={isOtherPhase ? "other" : field.value}
             >
               <FormControl>
                 <SelectTrigger className="h-9">
@@ -248,12 +285,30 @@ export function TaskFormDialog({
                     {p.label}
                   </SelectItem>
                 ))}
+                <SelectItem value="other">Other</SelectItem>
               </SelectContent>
             </Select>
             <FormMessage />
           </FormItem>
         )}
       />
+
+      {isOtherPhase && (
+        <FormItem>
+          <FormLabel className="text-xs">Custom Phase</FormLabel>
+          <FormControl>
+            <Input
+              placeholder="Enter custom phase"
+              className="h-9"
+              value={customPhase}
+              onChange={(e) => {
+                setCustomPhase(e.target.value)
+                form.setValue("phase", e.target.value)
+              }}
+            />
+          </FormControl>
+        </FormItem>
+      )}
 
       <FormField
         control={form.control}
@@ -327,7 +382,13 @@ export function TaskFormDialog({
     >
       <Form {...form}>
         <form onSubmit={form.handleSubmit(onSubmit)} className="flex flex-col flex-1 min-h-0">
-          <ResponsiveDialogBody pages={[page1, page2, page3]} />
+          <ResponsiveDialogBody>
+            <div className="space-y-4">
+              {page1}
+              {page2}
+              {page3}
+            </div>
+          </ResponsiveDialogBody>
 
           <ResponsiveDialogFooter>
             <Button
