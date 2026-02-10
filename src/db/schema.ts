@@ -111,6 +111,36 @@ export const projectMembers = sqliteTable("project_members", {
   assignedAt: text("assigned_at").notNull(),
 })
 
+export const dailyLogs = sqliteTable("daily_logs", {
+  id: text("id").primaryKey(),
+  projectId: text("project_id")
+    .notNull()
+    .references(() => projects.id, { onDelete: "cascade" }),
+  date: text("date").notNull(),
+  notes: text("notes"),
+  weather: text("weather"),
+  createdBy: text("created_by"),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at"),
+})
+
+export const projectAssets = sqliteTable("project_assets", {
+  id: text("id").primaryKey(),
+  projectId: text("project_id")
+    .notNull()
+    .references(() => projects.id, { onDelete: "cascade" }),
+  dailyLogId: text("daily_log_id").references(() => dailyLogs.id, {
+    onDelete: "set null",
+  }),
+  type: text("type").notNull(), // IMAGE, VIDEO, DOCUMENT
+  url: text("url").notNull(),
+  thumbnailUrl: text("thumbnail_url"),
+  driveFileId: text("drive_file_id"),
+  name: text("name"),
+  uploadedBy: text("uploaded_by").references(() => users.id),
+  createdAt: text("created_at").notNull(),
+})
+
 export const scheduleTasks = sqliteTable("schedule_tasks", {
   id: text("id").primaryKey(),
   projectId: text("project_id")

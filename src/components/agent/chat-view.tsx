@@ -19,6 +19,7 @@ import {
   IconStar,
   IconAlertCircle,
   IconEye,
+  IconArrowLeft,
 } from "@tabler/icons-react"
 import {
   isTextUIPart,
@@ -68,7 +69,7 @@ import {
 import { useAudioRecorder } from "@/hooks/use-audio-recorder"
 import type { AudioRecorder } from "@/hooks/use-audio-recorder"
 import { AudioWaveform } from "@/components/ai/audio-waveform"
-import { useChatState } from "./chat-provider"
+import { useChatState, useChatPanel } from "./chat-provider"
 import { ModelDropdown } from "./model-dropdown"
 import { getRepoStats } from "@/app/actions/github"
 
@@ -295,11 +296,11 @@ const ChatMessage = memo(
               <ToolInput input={tp.input} />
               {(tp.state === "output-available" ||
                 tp.state === "output-error") && (
-                <ToolOutput
-                  output={tp.output}
-                  errorText={tp.errorText}
-                />
-              )}
+                  <ToolOutput
+                    output={tp.output}
+                    errorText={tp.errorText}
+                  />
+                )}
             </ToolContent>
           </Tool>
         )
@@ -386,6 +387,7 @@ function ChatInput({
   isGenerating,
   onSend,
   onNewChat,
+  onToggle,
   className,
 }: {
   readonly textareaRef: React.RefObject<
@@ -397,11 +399,34 @@ function ChatInput({
   readonly isGenerating: boolean
   readonly onSend: (text: string) => void
   readonly onNewChat?: () => void
+  readonly onToggle?: () => void
   readonly className?: string
 }) {
   const isRecording = recorder.state === "recording"
   const isTranscribing = recorder.state === "transcribing"
   const isIdle = recorder.state === "idle"
+
+  const [compassRotation, setCompassRotation] = useState(0)
+
+  useEffect(() => {
+    const updateRotation = () => {
+      const newRotation = Math.floor(Math.random() * 360)
+      setCompassRotation(newRotation)
+    }
+
+    // Initial delay
+    const initialTimer = setTimeout(updateRotation, 1000)
+
+    // Periodic updates
+    const interval = setInterval(() => {
+      updateRotation()
+    }, 3000 + Math.random() * 2000)
+
+    return () => {
+      clearTimeout(initialTimer)
+      clearInterval(interval)
+    }
+  }, [])
 
   return (
     <PromptInput
@@ -450,12 +475,41 @@ function ChatInput({
       {!isRecording && !isTranscribing && (
         <PromptInputFooter>
           <PromptInputTools>
+            {onToggle && (
+              <PromptInputButton
+                onClick={onToggle}
+                aria-label="Toggle chat"
+                className="h-10 w-10 rounded-full bg-primary hover:bg-primary/90 text-primary-foreground border-0 shadow-md group relative"
+              >
+                {/* Compass Logo */}
+                <span
+                  className="absolute inset-0 m-auto size-5 bg-primary-foreground transition-all duration-[700ms] ease-in-out group-hover:rotate-180 group-hover:opacity-0"
+                  style={{
+                    maskImage: "url(/logo-black.png)",
+                    maskSize: "contain",
+                    maskRepeat: "no-repeat",
+                    maskPosition: "center",
+                    WebkitMaskImage: "url(/logo-black.png)",
+                    WebkitMaskSize: "contain",
+                    WebkitMaskRepeat: "no-repeat",
+                    WebkitMaskPosition: "center",
+                    transform: `rotate(${compassRotation}deg)`,
+                    transition: "transform 2s ease-in-out",
+                  }}
+                />
+                {/* Back Arrow - appears on hover, rotates in */}
+                <IconArrowLeft className="text-primary-foreground absolute inset-0 m-auto size-5 transition-all duration-[700ms] ease-in-out -rotate-180 opacity-0 group-hover:rotate-0 group-hover:opacity-100" />
+              </PromptInputButton>
+            )}
             {onNewChat && (
               <PromptInputButton onClick={onNewChat} aria-label="New chat">
                 <SquarePenIcon className="size-4" />
               </PromptInputButton>
             )}
             <ModelDropdown />
+            <span className="text-[10px] text-muted-foreground/50 inline-block ml-1 select-none pointer-events-none truncate">
+              Type <span className="font-mono bg-muted/50 px-1 rounded text-[9px]">/help</span> for <span className="hidden sm:inline">useful </span>prompts
+            </span>
           </PromptInputTools>
           <div className="flex items-center gap-1">
             <PromptInputButton
@@ -471,10 +525,10 @@ function ChatInput({
             <PromptInputSubmit
               status={
                 status as
-                  | "streaming"
-                  | "submitted"
-                  | "ready"
-                  | "error"
+                | "streaming"
+                | "submitted"
+                | "ready"
+                | "error"
               }
             />
           </div>
@@ -486,6 +540,7 @@ function ChatInput({
 
 export function ChatView({ variant }: ChatViewProps) {
   const chat = useChatState()
+  const { toggle } = useChatPanel()
   const isPage = variant === "page"
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
@@ -612,7 +667,7 @@ export function ChatView({ variant }: ChatViewProps) {
       if (isPage) setIsActive(true)
       chat.sendMessage({ text })
     },
-    [isPage, chat.sendMessage]
+    [isPage, chat]
   )
 
   const handleIdleSend = useCallback(
@@ -620,14 +675,14 @@ export function ChatView({ variant }: ChatViewProps) {
       setIsActive(true)
       chat.sendMessage({ text })
     },
-    [chat.sendMessage]
+    [chat]
   )
 
   const handleActiveSend = useCallback(
     (text: string) => {
       chat.sendMessage({ text })
     },
-    [chat.sendMessage]
+    [chat]
   )
 
   const suggestions = isPage
@@ -661,23 +716,23 @@ export function ChatView({ variant }: ChatViewProps) {
           {/* Idle hero */}
           <div
             className={cn(
-              "absolute inset-0 flex flex-col items-center justify-center",
+              "absolute inset-0 flex flex-col items-center justify-center -translate-y-[8vh] sm:translate-y-0",
               "transition-all duration-500 ease-in-out",
               isActive
                 ? "opacity-0 translate-y-4 pointer-events-none"
                 : "opacity-100 translate-y-0"
             )}
           >
-            <div className="w-full max-w-2xl px-5 space-y-5 text-center">
+            <div className="w-full max-w-2xl px-5 space-y-10 sm:space-y-20 text-center">
               <div>
                 <span
-                  className="mx-auto mb-2 block bg-foreground size-10"
+                  className="mx-auto mb-4 block bg-foreground size-16 sm:size-24"
                   style={LOGO_MASK}
                 />
-                <h1 className="text-xl sm:text-2xl font-bold tracking-tight">
+                <h1 className="text-2xl sm:text-4xl font-bold tracking-tighter">
                   Compass
                 </h1>
-                <p className="text-muted-foreground/60 mt-1.5 text-xs px-2">
+                <p className="text-muted-foreground/60 mt-3 text-sm sm:text-base px-5 max-w-lg mx-auto leading-relaxed">
                   Development preview — features may be
                   incomplete or change without notice.
                 </p>
@@ -785,13 +840,13 @@ export function ChatView({ variant }: ChatViewProps) {
         {/* Bottom input - active only */}
         <div
           className={cn(
-            "shrink-0 px-4 transition-all duration-500 ease-in-out",
+            "shrink-0 w-full transition-all duration-500 ease-in-out",
             isActive
-              ? "opacity-100 translate-y-0 pt-2 pb-6"
+              ? "opacity-100 translate-y-0 px-4 pb-4 md:p-4 md:pb-6"
               : "opacity-0 translate-y-4 max-h-0 overflow-hidden pointer-events-none py-0"
           )}
         >
-          <div className="mx-auto max-w-3xl">
+          <div className="mx-auto w-full max-w-3xl">
             <ChatInput
               textareaRef={textareaRef}
               placeholder="Ask follow-up..."
@@ -800,7 +855,7 @@ export function ChatView({ variant }: ChatViewProps) {
               isGenerating={chat.isGenerating}
               onSend={handleActiveSend}
               onNewChat={chat.messages.length > 0 ? chat.newChat : undefined}
-              className="rounded-2xl"
+              className="rounded-2xl w-full"
             />
           </div>
         </div>
@@ -810,12 +865,21 @@ export function ChatView({ variant }: ChatViewProps) {
 
   // --- PANEL variant ---
   return (
-    <div className="flex h-full w-full flex-col">
+    <div className="flex h-full w-full flex-col relative">
+      {/* Exit button - top left */}
+      <button
+        onClick={toggle}
+        className="absolute top-3 left-3 z-10 h-9 w-9 flex items-center justify-center rounded-full bg-muted/80 hover:bg-muted text-foreground transition-all duration-200 hover:scale-105 active:scale-95"
+        aria-label="Close chat"
+      >
+        <IconArrowLeft className="size-5" />
+      </button>
+
       {/* Conversation */}
       <Conversation className="flex-1">
         <ConversationContent>
           {chat.messages.length === 0 ? (
-            <div className="flex flex-col items-center gap-4 pt-8">
+            <div className="flex flex-col items-center gap-4 pt-8 w-full">
               <Suggestions>
                 {suggestions.map((s) => (
                   <Suggestion
@@ -848,16 +912,17 @@ export function ChatView({ variant }: ChatViewProps) {
       </Conversation>
 
       {/* Input */}
-      <div className="p-3">
-            <ChatInput
-              textareaRef={textareaRef}
-              placeholder="Ask anything..."
-              recorder={recorder}
-              status={chat.status}
-              isGenerating={chat.isGenerating}
-              onSend={handleActiveSend}
-              onNewChat={chat.messages.length > 0 ? chat.newChat : undefined}
-            />
+      <div className="w-full px-4 pb-4 md:p-3 md:pb-3">
+        <ChatInput
+          textareaRef={textareaRef}
+          placeholder="Ask anything..."
+          recorder={recorder}
+          status={chat.status}
+          isGenerating={chat.isGenerating}
+          onSend={handleActiveSend}
+          onNewChat={chat.messages.length > 0 ? chat.newChat : undefined}
+          className="w-full"
+        />
       </div>
     </div>
   )

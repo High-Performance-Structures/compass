@@ -7,9 +7,10 @@ import {
   IconMenu2,
   IconMoon,
   IconSearch,
-  IconSparkles,
+  IconMessageCircle,
   IconSun,
   IconUserCircle,
+  IconSettings,
 } from "@tabler/icons-react"
 
 import { logout } from "@/app/actions/profile"
@@ -28,22 +29,100 @@ import { SidebarTrigger, useSidebar } from "@/components/ui/sidebar"
 import { NotificationsPopover } from "@/components/notifications-popover"
 import { useCommandMenu } from "@/components/command-menu-provider"
 import { useFeedback } from "@/components/feedback-widget"
-import { useAgentOptional } from "@/components/agent/chat-provider"
+import { useSettings } from "@/components/settings-provider"
 import { AccountModal } from "@/components/account-modal"
 import { getInitials } from "@/lib/utils"
 import type { SidebarUser } from "@/lib/auth"
+
+function ThemeToggle() {
+  const { theme, setTheme } = useTheme()
+  const [mounted, setMounted] = React.useState(false)
+
+  React.useEffect(() => {
+    setMounted(true)
+  }, [])
+
+  if (!mounted) {
+    return <div className="size-9" /> // placeholder
+  }
+
+  const isDark = theme === "dark"
+
+  return (
+    <Button
+      variant="ghost"
+      size="icon"
+      className="size-9 rounded-full"
+      onClick={() => setTheme(isDark ? "light" : "dark")}
+      title={`Switch to ${isDark ? "light" : "dark"} mode`}
+    >
+      {isDark ? (
+        <IconMoon className="size-4" />
+      ) : (
+        <IconSun className="size-4" />
+      )}
+      <span className="sr-only">Toggle theme</span>
+    </Button>
+  )
+}
+
+function UserDropdown({
+  user,
+  initials,
+  onAccountOpen,
+  onSettingsOpen,
+  onLogout,
+}: {
+  user: SidebarUser | null
+  initials: string
+  onAccountOpen: () => void
+  onSettingsOpen: () => void
+  onLogout: () => void
+}) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button className="ml-0.5 rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring">
+          <Avatar className="size-6">
+            {user?.avatar && <AvatarImage src={user.avatar} alt={user.name} />}
+            <AvatarFallback className="text-[10px] bg-gradient-to-br from-primary to-accent text-primary-foreground font-bold tracking-tight shadow-sm">{initials}</AvatarFallback>
+          </Avatar>
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-48">
+        <DropdownMenuLabel className="font-normal">
+          <p className="text-sm font-medium">{user?.name ?? "User"}</p>
+          <p className="text-muted-foreground text-xs">{user?.email ?? ""}</p>
+        </DropdownMenuLabel>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem onSelect={onAccountOpen}>
+          <IconUserCircle className="size-4 mr-2" />
+          Account
+        </DropdownMenuItem>
+        <DropdownMenuItem onSelect={onSettingsOpen}>
+          <IconSettings className="size-4 mr-2" />
+          Settings
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem onSelect={onLogout}>
+          <IconLogout className="size-4 mr-2" />
+          Log out
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
+}
 
 export function SiteHeader({
   user,
 }: {
   readonly user: SidebarUser | null
 }) {
-  const { theme, setTheme } = useTheme()
   const { open: openCommand, openWithQuery } = useCommandMenu()
   const [headerQuery, setHeaderQuery] = React.useState("")
   const searchInputRef = React.useRef<HTMLInputElement>(null)
   const { open: openFeedback } = useFeedback()
-  const agentContext = useAgentOptional()
+  const { open: openSettings } = useSettings()
   const [accountOpen, setAccountOpen] = React.useState(false)
   const { toggleSidebar } = useSidebar()
 
@@ -55,10 +134,18 @@ export function SiteHeader({
 
   return (
     <header className="sticky top-0 z-40 flex shrink-0 items-center border-b border-border/40 bg-background/80 backdrop-blur-sm">
-      {/* mobile header: single unified pill */}
-      <div className="flex h-14 w-full items-center px-3 md:hidden">
+      {/* mobile header */}
+      <div className="flex h-14 w-full items-center justify-between px-3 md:hidden">
+        <button
+          className="flex size-9 items-center justify-center rounded-full hover:bg-muted/50"
+          onClick={toggleSidebar}
+          aria-label="Open menu"
+        >
+          <IconMenu2 className="size-5 text-muted-foreground" />
+        </button>
+
         <div
-          className="flex h-11 w-full items-center gap-2 rounded-full bg-muted/50 px-2.5 cursor-pointer"
+          className="flex h-10 flex-1 max-w-xs mx-2 items-center gap-2 rounded-full bg-muted/50 px-3 cursor-pointer"
           onClick={openCommand}
           role="button"
           tabIndex={0}
@@ -66,61 +153,37 @@ export function SiteHeader({
             if (e.key === "Enter" || e.key === " ") openCommand()
           }}
         >
-          <button
-            className="flex size-8 shrink-0 items-center justify-center rounded-full -ml-0.5 hover:bg-background/60"
-            onClick={(e) => {
-              e.stopPropagation()
-              toggleSidebar()
-            }}
-            aria-label="Open menu"
-          >
-            <IconMenu2 className="size-5 text-muted-foreground" />
-          </button>
           <IconSearch className="size-4 text-muted-foreground shrink-0" />
           <span className="text-muted-foreground text-sm flex-1">
             Search...
           </span>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <button
-                className="shrink-0 rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                onClick={(e) => e.stopPropagation()}
-              >
-                <Avatar className="size-8 grayscale">
-                  {user?.avatar && <AvatarImage src={user.avatar} alt={user.name} />}
-                  <AvatarFallback className="text-xs">{initials}</AvatarFallback>
-                </Avatar>
-              </button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-48">
-              <DropdownMenuLabel className="font-normal">
-                <p className="text-sm font-medium">{user?.name ?? "User"}</p>
-                <p className="text-muted-foreground text-xs">{user?.email ?? ""}</p>
-              </DropdownMenuLabel>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onSelect={() => setAccountOpen(true)}>
-                <IconUserCircle />
-                Account
-              </DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => setTheme(theme === "dark" ? "light" : "dark")}>
-                <IconSun className="hidden dark:block" />
-                <IconMoon className="block dark:hidden" />
-                Toggle theme
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onSelect={handleLogout}>
-                <IconLogout />
-                Log out
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+        </div>
+
+        <div className="flex items-center gap-1">
+          <ThemeToggle />
+          <NotificationsPopover />
+          <UserDropdown
+            user={user}
+            initials={initials}
+            onAccountOpen={() => setAccountOpen(true)}
+            onSettingsOpen={openSettings}
+            onLogout={handleLogout}
+          />
         </div>
       </div>
 
       {/* desktop header: three-column grid for true center search */}
       <div className="hidden h-12 w-full grid-cols-[1fr_minmax(0,28rem)_1fr] items-center px-4 md:grid">
-        <div className="flex items-center">
+        <div className="flex items-center gap-1">
           <SidebarTrigger className="-ml-1" />
+          <button
+            onClick={openFeedback}
+            className="flex h-8 items-center gap-1.5 rounded-full bg-primary px-3 text-primary-foreground text-xs font-medium shadow-sm hover:bg-primary/90 active:scale-95 transition-all"
+            aria-label="Send feedback"
+          >
+            <IconMessageCircle className="size-3.5" />
+            Feedback
+          </button>
         </div>
 
         <div className="relative justify-self-center w-full">
@@ -154,59 +217,15 @@ export function SiteHeader({
         </div>
 
         <div className="flex shrink-0 items-center justify-end gap-0.5">
-          <Button
-            variant="ghost"
-            size="sm"
-            className="text-muted-foreground/70 hover:text-foreground text-xs h-7 px-2"
-            onClick={openFeedback}
-          >
-            Feedback
-          </Button>
           <NotificationsPopover />
-          <Button
-            variant="ghost"
-            size="icon"
-            className="size-7 text-muted-foreground/70 hover:text-foreground"
-            onClick={() => agentContext?.toggle()}
-            aria-label="Toggle assistant"
-          >
-            <IconSparkles className="size-3.5" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="size-7 text-muted-foreground/70 hover:text-foreground"
-            onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-          >
-            <IconSun className="size-3.5 hidden dark:block" />
-            <IconMoon className="size-3.5 block dark:hidden" />
-          </Button>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <button className="ml-0.5 rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring">
-                <Avatar className="size-6 grayscale">
-                  {user?.avatar && <AvatarImage src={user.avatar} alt={user.name} />}
-                  <AvatarFallback className="text-[10px]">{initials}</AvatarFallback>
-                </Avatar>
-              </button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-48">
-              <DropdownMenuLabel className="font-normal">
-                <p className="text-sm font-medium">{user?.name ?? "User"}</p>
-                <p className="text-muted-foreground text-xs">{user?.email ?? ""}</p>
-              </DropdownMenuLabel>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onSelect={() => setAccountOpen(true)}>
-                <IconUserCircle />
-                Account
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onSelect={handleLogout}>
-                <IconLogout />
-                Log out
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          <ThemeToggle />
+          <UserDropdown
+            user={user}
+            initials={initials}
+            onAccountOpen={() => setAccountOpen(true)}
+            onSettingsOpen={openSettings}
+            onLogout={handleLogout}
+          />
         </div>
       </div>
 

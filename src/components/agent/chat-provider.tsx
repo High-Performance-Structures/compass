@@ -6,8 +6,6 @@ import { useUIStream, type Spec } from "@json-render/react"
 import { usePathname, useRouter } from "next/navigation"
 import {
   saveConversation,
-  loadConversation,
-  loadConversations,
 } from "@/app/actions/agent"
 import { getTextFromParts } from "@/lib/agent/chat-adapter"
 import { useCompassChat } from "@/hooks/use-compass-chat"
@@ -357,6 +355,55 @@ export function ChatProvider({
     triggerRender(result.renderPrompt, result.dataContext)
   }, [chat.messages, triggerRender])
 
+  // watch for request_photo tool results
+  const requestPhotoDispatchedRef = React.useRef(new Set<string>())
+
+  React.useEffect(() => {
+    const lastMsg = chat.messages.at(-1)
+    if (!lastMsg || lastMsg.role !== "assistant") return
+
+    for (const part of lastMsg.parts) {
+      if (
+        typeof part !== "object" ||
+        part === null ||
+        !("type" in part) ||
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (part as any).type !== "tool-invocation" ||
+        !("toolInvocation" in part)
+      ) {
+        // Check for UIMessage part format which works differently in some AI SDK versions
+        // But our findGenerateUIOutput check handled generic objects.
+        // Let's rely on the structure we know. 
+        // findGenerateUIOutput used: type starts with "tool-" and state="output-available"
+        // Let's match that.
+        const p = part as Record<string, unknown>
+        const pType = p.type as string | undefined
+        const isToolPart =
+          typeof pType === "string" &&
+          (pType.startsWith("tool-") || pType === "dynamic-tool")
+
+        if (!isToolPart) continue
+
+        const state = p.state as string | undefined
+        if (state !== "output-available") continue
+
+        const callId = p.toolCallId as string | undefined
+        if (!callId || requestPhotoDispatchedRef.current.has(callId)) continue
+
+        const output = p.output as Record<string, unknown> | undefined
+        if (output?.action === "request_photo") {
+          requestPhotoDispatchedRef.current.add(callId)
+          window.dispatchEvent(new CustomEvent("agent-request-photo", {
+            detail: {
+              projectId: output.projectId,
+              context: output.context
+            }
+          }))
+        }
+      }
+    }
+  }, [chat.messages])
+
   // listen for save-dashboard events from tool dispatch
   React.useEffect(() => {
     const handler = async (e: Event) => {
@@ -492,49 +539,50 @@ export function ChatProvider({
   }, [])
 
   // resume last conversation on first open
-  React.useEffect(() => {
-    if (!isOpen || resumeLoaded) return
-
-    const resume = async () => {
-      const result = await loadConversations()
-      if (
-        !result.success ||
-        !result.data ||
-        result.data.length === 0
-      ) {
-        setResumeLoaded(true)
-        return
-      }
-
-      const lastConv = result.data[0]
-      const msgResult = await loadConversation(lastConv.id)
-      if (
-        !msgResult.success ||
-        !msgResult.data ||
-        msgResult.data.length === 0
-      ) {
-        setResumeLoaded(true)
-        return
-      }
-
-      setConversationId(lastConv.id)
-
-      const restored: UIMessage[] = msgResult.data.map(
-        (m) => ({
-          id: m.id,
-          role: m.role as "user" | "assistant",
-          parts:
-            (m.parts as UIMessage["parts"]) ?? [
-              { type: "text" as const, text: m.content },
-            ],
-        })
-      )
-      chat.setMessages(restored)
-      setResumeLoaded(true)
-    }
-
-    resume()
-  }, [isOpen, resumeLoaded, chat.setMessages])
+  // resume last conversation on first open
+  // React.useEffect(() => {
+  //   if (!isOpen || resumeLoaded) return
+  //
+  //   const resume = async () => {
+  //     const result = await loadConversations()
+  //     if (
+  //       !result.success ||
+  //       !result.data ||
+  //       result.data.length === 0
+  //     ) {
+  //       setResumeLoaded(true)
+  //       return
+  //     }
+  //
+  //     const lastConv = result.data[0]
+  //     const msgResult = await loadConversation(lastConv.id)
+  //     if (
+  //       !msgResult.success ||
+  //       !msgResult.data ||
+  //       msgResult.data.length === 0
+  //     ) {
+  //       setResumeLoaded(true)
+  //       return
+  //     }
+  //
+  //     setConversationId(lastConv.id)
+  //
+  //     const restored: UIMessage[] = msgResult.data.map(
+  //       (m) => ({
+  //         id: m.id,
+  //         role: m.role as "user" | "assistant",
+  //         parts:
+  //           (m.parts as UIMessage["parts"]) ?? [
+  //             { type: "text" as const, text: m.content },
+  //           ],
+  //       })
+  //     )
+  //     chat.setMessages(restored)
+  //     setResumeLoaded(true)
+  //   }
+  //
+  //   resume()
+  // }, [isOpen, resumeLoaded, chat.setMessages])
 
   const newChat = React.useCallback(() => {
     chat.setMessages([])
