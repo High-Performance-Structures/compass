@@ -38,3 +38,5 @@ ios/App/build/
 android/.gradle/
 android/build/
 android/app/build/
+# Local auth bypass (dev only)
+src/lib/auth-bypass.ts
