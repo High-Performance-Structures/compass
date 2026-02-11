@@ -5,6 +5,7 @@ import { useTheme } from "next-themes"
 import {
   IconLogout,
   IconMenu2,
+  IconMessageCircle,
   IconMoon,
   IconSearch,
   IconSparkles,
@@ -67,6 +68,7 @@ export function SiteHeader({
           }}
         >
           <button
+            type="button"
             className="flex size-8 shrink-0 items-center justify-center rounded-full -ml-0.5 hover:bg-background/60"
             onClick={(e) => {
               e.stopPropagation()
@@ -76,6 +78,19 @@ export function SiteHeader({
           >
             <IconMenu2 className="size-5 text-muted-foreground" />
           </button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="h-8 gap-1 rounded-full border border-white/80 px-2 text-xs text-muted-foreground hover:bg-background/60 hover:text-foreground"
+            onClick={(e) => {
+              e.stopPropagation()
+              openFeedback()
+            }}
+          >
+            <IconMessageCircle className="size-3.5" />
+            Feedback
+          </Button>
           <IconSearch className="size-4 text-muted-foreground shrink-0" />
           <span className="text-muted-foreground text-sm flex-1">
             Search...
@@ -119,8 +134,17 @@ export function SiteHeader({
 
       {/* desktop header: three-column grid for true center search */}
       <div className="hidden h-12 w-full grid-cols-[1fr_minmax(0,28rem)_1fr] items-center px-4 md:grid">
-        <div className="flex items-center">
+        <div className="flex items-center gap-1">
           <SidebarTrigger className="-ml-1" />
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 gap-1.5 rounded-full border border-white/80 px-2 text-xs text-muted-foreground/70 hover:text-foreground"
+            onClick={openFeedback}
+          >
+            <IconMessageCircle className="size-3.5" />
+            Feedback
+          </Button>
         </div>
 
         <div className="relative justify-self-center w-full">
@@ -154,14 +178,6 @@ export function SiteHeader({
         </div>
 
         <div className="flex shrink-0 items-center justify-end gap-0.5">
-          <Button
-            variant="ghost"
-            size="sm"
-            className="text-muted-foreground/70 hover:text-foreground text-xs h-7 px-2"
-            onClick={openFeedback}
-          >
-            Feedback
-          </Button>
           <NotificationsPopover />
           <Button
             variant="ghost"

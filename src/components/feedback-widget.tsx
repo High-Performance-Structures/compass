@@ -121,7 +121,7 @@ export function FeedbackWidget({ children }: { children?: React.ReactNode }) {
           <DialogHeader className="space-y-1.5">
             <DialogTitle className="text-base sm:text-lg">Send Feedback</DialogTitle>
             <DialogDescription className="text-xs sm:text-sm">
-              Report a bug, request a feature, or ask a question.
+              Report a bug, request a feature, or ask a question. Feedback is sent directly to developers for review.
             </DialogDescription>
           </DialogHeader>
           <form onSubmit={handleSubmit} className="grid gap-3 sm:gap-4">
