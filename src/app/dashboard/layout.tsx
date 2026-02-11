@@ -42,8 +42,8 @@ export default async function DashboardLayout({
     : []
 
   return (
-    <SettingsProvider>
     <ChatProvider>
+    <SettingsProvider>
     <ProjectListProvider projects={projectList}>
     <PageActionsProvider>
     <CommandMenuProvider>
@@ -84,7 +84,7 @@ export default async function DashboardLayout({
     </CommandMenuProvider>
     </PageActionsProvider>
     </ProjectListProvider>
-    </ChatProvider>
     </SettingsProvider>
+    </ChatProvider>
   )
 }

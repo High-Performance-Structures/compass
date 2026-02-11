@@ -76,6 +76,10 @@ export function useChatState(): ChatStateValue {
   return ctx
 }
 
+export function useChatStateOptional(): ChatStateValue | null {
+  return React.useContext(ChatStateContext)
+}
+
 // --- Render state context ---
 
 interface RenderContextValue {

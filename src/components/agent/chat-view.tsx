@@ -81,6 +81,10 @@ type RepoStats = {
 
 interface ChatViewProps {
   readonly variant: "page" | "panel"
+  readonly minimal?: boolean
+  readonly hideSuggestions?: boolean
+  onActivate?: () => void
+  readonly inputPlaceholder?: string
 }
 
 const REPO = "High-Performance-Structures/compass"
@@ -387,6 +391,7 @@ function ChatInput({
   onSend,
   onNewChat,
   className,
+  onActivate,
 }: {
   readonly textareaRef: React.RefObject<
     HTMLTextAreaElement | null
@@ -398,6 +403,7 @@ function ChatInput({
   readonly onSend: (text: string) => void
   readonly onNewChat?: () => void
   readonly className?: string
+  readonly onActivate?: () => void
 }) {
   const isRecording = recorder.state === "recording"
   const isTranscribing = recorder.state === "transcribing"
@@ -406,6 +412,8 @@ function ChatInput({
   return (
     <PromptInput
       className={className}
+      onClickCapture={onActivate}
+      onFocusCapture={onActivate}
       onSubmit={({ text }) => {
         if (!text.trim() || isGenerating) return
         onSend(text.trim())
@@ -484,7 +492,13 @@ function ChatInput({
   )
 }
 
-export function ChatView({ variant }: ChatViewProps) {
+export function ChatView({
+  variant,
+  minimal = false,
+  hideSuggestions = false,
+  onActivate,
+  inputPlaceholder,
+}: ChatViewProps) {
   const chat = useChatState()
   const isPage = variant === "page"
   const textareaRef = useRef<HTMLTextAreaElement>(null)
@@ -809,22 +823,45 @@ export function ChatView({ variant }: ChatViewProps) {
   }
 
   // --- PANEL variant ---
+  if (minimal) {
+    return (
+      <div className="w-full p-2">
+        <ChatInput
+          textareaRef={textareaRef}
+          placeholder={inputPlaceholder ?? "Create a new setting"}
+          recorder={recorder}
+          status={chat.status}
+          isGenerating={chat.isGenerating}
+          onSend={handleActiveSend}
+          onActivate={onActivate}
+        />
+      </div>
+    )
+  }
+
   return (
     <div className="flex h-full w-full flex-col">
       {/* Conversation */}
       <Conversation className="flex-1">
         <ConversationContent>
           {chat.messages.length === 0 ? (
-            <div className="flex flex-col items-center gap-4 pt-8">
-              <Suggestions>
-                {suggestions.map((s) => (
-                  <Suggestion
-                    key={s}
-                    suggestion={s}
-                    onClick={handleSuggestion}
-                  />
-                ))}
-              </Suggestions>
+            <div
+              className={cn(
+                "flex flex-col items-center gap-4",
+                hideSuggestions ? "h-full" : "pt-8"
+              )}
+            >
+              {!hideSuggestions && (
+                <Suggestions>
+                  {suggestions.map((s) => (
+                    <Suggestion
+                      key={s}
+                      suggestion={s}
+                      onClick={handleSuggestion}
+                    />
+                  ))}
+                </Suggestions>
+              )}
             </div>
           ) : (
             chat.messages.map((msg, idx) => (
@@ -851,7 +888,7 @@ export function ChatView({ variant }: ChatViewProps) {
       <div className="p-3">
             <ChatInput
               textareaRef={textareaRef}
-              placeholder="Ask anything..."
+              placeholder={inputPlaceholder ?? "Ask anything..."}
               recorder={recorder}
               status={chat.status}
               isGenerating={chat.isGenerating}

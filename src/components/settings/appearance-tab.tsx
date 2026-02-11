@@ -158,7 +158,6 @@ export function AppearanceTab() {
           <SelectContent>
             <SelectItem value="light">Light</SelectItem>
             <SelectItem value="dark">Dark</SelectItem>
-            <SelectItem value="system">System</SelectItem>
           </SelectContent>
         </Select>
       </div>
