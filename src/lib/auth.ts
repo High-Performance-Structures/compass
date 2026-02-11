@@ -3,6 +3,7 @@ import { getCloudflareContext } from "@opennextjs/cloudflare"
 import { getDb } from "@/db"
 import { users } from "@/db/schema"
 import type { User } from "@/db/schema"
+import { isLocalAuthBypassEnabled } from "@/lib/auth-bypass"
 import { eq } from "drizzle-orm"
 
 export type AuthUser = {
@@ -48,6 +49,25 @@ export function toSidebarUser(user: AuthUser): SidebarUser {
 
 export async function getCurrentUser(): Promise<AuthUser | null> {
   try {
+    if (isLocalAuthBypassEnabled()) {
+      const now = new Date().toISOString()
+
+      return {
+        id: "user-1",
+        email: "admin@compass.io",
+        firstName: "Admin",
+        lastName: "User",
+        displayName: "Admin User",
+        avatarUrl: null,
+        role: "admin",
+        googleEmail: null,
+        isActive: true,
+        lastLoginAt: now,
+        createdAt: now,
+        updatedAt: now,
+      }
+    }
+
     // check if workos is configured
     const isWorkOSConfigured =
       process.env.WORKOS_API_KEY &&
@@ -183,6 +203,10 @@ export async function requireAuth(): Promise<AuthUser> {
 
 export async function requireEmailVerified(): Promise<AuthUser> {
   const user = await requireAuth()
+
+  if (isLocalAuthBypassEnabled()) {
+    return user
+  }
 
   // check verification status
   const isWorkOSConfigured =
