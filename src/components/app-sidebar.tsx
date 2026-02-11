@@ -4,13 +4,10 @@ import * as React from "react"
 import {
   IconAddressBook,
   IconCalendarStats,
-  IconDashboard,
   IconFiles,
   IconFolder,
-  IconHelp,
   IconMessageCircle,
   IconReceipt,
-  IconSearch,
   IconSettings,
   IconTruck,
   IconUsers,
@@ -23,9 +20,8 @@ import { NavSecondary } from "@/components/nav-secondary"
 import { NavFiles } from "@/components/nav-files"
 import { NavProjects } from "@/components/nav-projects"
 import { NavUser } from "@/components/nav-user"
-import { useCommandMenu } from "@/components/command-menu-provider"
 import { useSettings } from "@/components/settings-provider"
-import { useAgentOptional } from "@/components/agent/chat-provider"
+import { openFeedbackDialog } from "@/components/feedback-widget"
 import type { SidebarUser } from "@/lib/auth"
 import {
   Sidebar,
@@ -41,17 +37,12 @@ import {
 const data = {
   navMain: [
     {
-      title: "Compass",
-      url: "/dashboard",
-      icon: IconDashboard,
-    },
-    {
       title: "Projects",
       url: "/dashboard/projects",
       icon: IconFolder,
     },
     {
-      title: "People",
+      title: "Team",
       url: "/dashboard/people",
       icon: IconUsers,
     },
@@ -87,11 +78,6 @@ const data = {
       url: "#",
       icon: IconSettings,
     },
-    {
-      title: "Get Help",
-      url: "#",
-      icon: IconHelp,
-    },
   ],
 }
 
@@ -107,9 +93,7 @@ function SidebarNav({
 }) {
   const pathname = usePathname()
   const { state, setOpen } = useSidebar()
-  const { open: openSearch } = useCommandMenu()
   const { open: openSettings } = useSettings()
-  const agent = useAgentOptional()
   const isExpanded = state === "expanded"
   const isFilesMode = pathname?.startsWith("/dashboard/files")
   const isProjectMode = /^\/dashboard\/projects\/[^/]+/.test(
@@ -137,8 +121,6 @@ function SidebarNav({
         ? { ...item, onClick: openSettings }
         : item
     ),
-    ...(agent ? [{ title: "Assistant", icon: IconMessageCircle, onClick: agent.open }] : []),
-    { title: "Search", icon: IconSearch, onClick: openSearch },
   ]
 
   return (
@@ -170,6 +152,8 @@ export function AppSidebar({
   readonly dashboards?: ReadonlyArray<{ readonly id: string; readonly name: string }>
   readonly user: SidebarUser | null
 }) {
+  const { isMobile } = useSidebar()
+
   return (
     <Sidebar collapsible="icon" {...props}>
       <SidebarHeader>
@@ -207,6 +191,18 @@ export function AppSidebar({
         />
       </SidebarContent>
       <SidebarFooter>
+        {isMobile && (
+          <SidebarMenu>
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                onClick={openFeedbackDialog}
+              >
+                <IconMessageCircle />
+                <span>Feedback</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          </SidebarMenu>
+        )}
         <NavUser user={user} />
       </SidebarFooter>
     </Sidebar>
