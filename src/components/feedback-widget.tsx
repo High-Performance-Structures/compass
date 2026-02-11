@@ -1,6 +1,6 @@
 "use client"
 
-import { createContext, useContext, useState } from "react"
+import { createContext, useContext, useState, useEffect } from "react"
 import { usePathname } from "next/navigation"
 import { useAgentOptional } from "@/components/agent/chat-provider"
 import { MessageCircle } from "lucide-react"
@@ -29,6 +29,10 @@ const FeedbackContext = createContext<{ open: () => void }>({ open: () => {} })
 
 export function useFeedback() {
   return useContext(FeedbackContext)
+}
+
+export function openFeedbackDialog() {
+  window.dispatchEvent(new CustomEvent("open-feedback-dialog"))
 }
 
 export function FeedbackCallout() {
@@ -98,24 +102,15 @@ export function FeedbackWidget({ children }: { children?: React.ReactNode }) {
     }
   }
 
+  useEffect(() => {
+    const handleOpenFeedback = () => setDialogOpen(true)
+    window.addEventListener("open-feedback-dialog", handleOpenFeedback)
+    return () => window.removeEventListener("open-feedback-dialog", handleOpenFeedback)
+  }, [])
+
   return (
     <FeedbackContext.Provider value={{ open: () => setDialogOpen(true) }}>
       {children}
-
-      <Button
-        onClick={() => setDialogOpen(true)}
-        size="icon-lg"
-        className={cn(
-          "group fixed bottom-12 right-6 z-40 gap-0 rounded-full shadow-lg transition-all duration-200 hover:w-auto hover:gap-2 hover:px-4 overflow-hidden hidden md:flex",
-          chatOpen && "md:translate-x-20 md:opacity-0 md:pointer-events-none"
-        )}
-      >
-        <MessageCircle className="size-5 shrink-0" />
-        <span className="max-w-0 overflow-hidden whitespace-nowrap opacity-0 transition-all duration-200 group-hover:max-w-40 group-hover:opacity-100">
-          Feedback
-        </span>
-      </Button>
-
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="max-w-[calc(100%-2rem)] sm:max-w-md p-4 sm:p-6">
           <DialogHeader className="space-y-1.5">

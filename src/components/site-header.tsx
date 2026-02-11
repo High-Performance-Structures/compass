@@ -28,7 +28,6 @@ import {
 import { SidebarTrigger, useSidebar } from "@/components/ui/sidebar"
 import { NotificationsPopover } from "@/components/notifications-popover"
 import { useCommandMenu } from "@/components/command-menu-provider"
-import { useFeedback } from "@/components/feedback-widget"
 import { useAgentOptional } from "@/components/agent/chat-provider"
 import { AccountModal } from "@/components/account-modal"
 import { getInitials } from "@/lib/utils"
@@ -43,7 +42,6 @@ export function SiteHeader({
   const { open: openCommand, openWithQuery } = useCommandMenu()
   const [headerQuery, setHeaderQuery] = React.useState("")
   const searchInputRef = React.useRef<HTMLInputElement>(null)
-  const { open: openFeedback } = useFeedback()
   const agentContext = useAgentOptional()
   const [accountOpen, setAccountOpen] = React.useState(false)
   const { toggleSidebar } = useSidebar()
@@ -58,43 +56,39 @@ export function SiteHeader({
     <header className="sticky top-0 z-40 flex shrink-0 items-center border-b border-border/40 bg-background/80 backdrop-blur-sm">
       {/* mobile header: single unified pill */}
       <div className="flex h-14 w-full items-center px-3 md:hidden">
-        <div
-          className="flex h-11 w-full items-center gap-2 rounded-full bg-muted/50 px-2.5 cursor-pointer"
-          onClick={openCommand}
-          role="button"
-          tabIndex={0}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" || e.key === " ") openCommand()
-          }}
-        >
+        <div className="flex h-11 w-full items-center gap-2 rounded-full bg-muted/50 px-2.5">
           <button
             type="button"
-            className="flex size-8 shrink-0 items-center justify-center rounded-full -ml-0.5 hover:bg-background/60"
-            onClick={(e) => {
-              e.stopPropagation()
+            className="flex size-10 shrink-0 items-center justify-center rounded-full -ml-0.5 hover:bg-background/60"
+            onClick={() => {
               toggleSidebar()
             }}
             aria-label="Open menu"
           >
             <IconMenu2 className="size-5 text-muted-foreground" />
           </button>
-          <Button
+          <button
             type="button"
-            variant="ghost"
-            size="sm"
-            className="h-8 gap-1 rounded-full border border-white/80 px-2 text-xs text-muted-foreground hover:bg-background/60 hover:text-foreground"
-            onClick={(e) => {
-              e.stopPropagation()
-              openFeedback()
-            }}
+            className="flex h-9 flex-1 items-center gap-2 rounded-full px-2 hover:bg-background/60"
+            onClick={openCommand}
+            aria-label="Search"
           >
-            <IconMessageCircle className="size-3.5" />
-            Feedback
-          </Button>
-          <IconSearch className="size-4 text-muted-foreground shrink-0" />
-          <span className="text-muted-foreground text-sm flex-1">
-            Search...
-          </span>
+            <IconSearch className="size-4 text-muted-foreground shrink-0" />
+            <span className="text-muted-foreground text-sm">
+              Search...
+            </span>
+          </button>
+          <button
+            type="button"
+            className="flex size-9 shrink-0 items-center justify-center rounded-full hover:bg-accent hover:text-accent-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring text-muted-foreground"
+            onClick={() => {
+              setTheme(theme === "dark" ? "light" : "dark")
+            }}
+            aria-label="Toggle theme"
+          >
+            <IconSun className="size-4 hidden dark:block" />
+            <IconMoon className="size-4 block dark:hidden" />
+          </button>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button
@@ -118,9 +112,9 @@ export function SiteHeader({
                 Account
               </DropdownMenuItem>
               <DropdownMenuItem onSelect={() => setTheme(theme === "dark" ? "light" : "dark")}>
-                <IconSun className="hidden dark:block" />
-                <IconMoon className="block dark:hidden" />
-                Toggle theme
+                <IconSun className="size-4 hidden dark:block" />
+                <IconMoon className="size-4 block dark:hidden" />
+                <span>Toggle theme</span>
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem onSelect={handleLogout}>
@@ -136,15 +130,6 @@ export function SiteHeader({
       <div className="hidden h-12 w-full grid-cols-[1fr_minmax(0,28rem)_1fr] items-center px-4 md:grid">
         <div className="flex items-center gap-1">
           <SidebarTrigger className="-ml-1" />
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-7 gap-1.5 rounded-full border border-white/80 px-2 text-xs text-muted-foreground/70 hover:text-foreground"
-            onClick={openFeedback}
-          >
-            <IconMessageCircle className="size-3.5" />
-            Feedback
-          </Button>
         </div>
 
         <div className="relative justify-self-center w-full">
@@ -182,20 +167,21 @@ export function SiteHeader({
           <Button
             variant="ghost"
             size="icon"
-            className="size-7 text-muted-foreground/70 hover:text-foreground"
+            className="size-7 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
             onClick={() => agentContext?.toggle()}
             aria-label="Toggle assistant"
           >
-            <IconSparkles className="size-3.5" />
+            <IconSparkles className="size-4" />
           </Button>
           <Button
             variant="ghost"
             size="icon"
-            className="size-7 text-muted-foreground/70 hover:text-foreground"
+            className="size-7 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
             onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+            aria-label="Toggle theme"
           >
-            <IconSun className="size-3.5 hidden dark:block" />
-            <IconMoon className="size-3.5 block dark:hidden" />
+            <IconSun className="size-4 hidden dark:block" />
+            <IconMoon className="size-4 block dark:hidden" />
           </Button>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>

@@ -662,7 +662,7 @@ export function ChatView({
           )}
         >
           <span
-            className="mx-auto mb-2 block bg-foreground size-7"
+            className="mx-auto mb-2 block bg-foreground size-10"
             style={LOGO_MASK}
           />
           <h1 className="text-base sm:text-lg font-bold tracking-tight">
@@ -682,13 +682,13 @@ export function ChatView({
                 : "opacity-100 translate-y-0"
             )}
           >
-            <div className="w-full max-w-2xl px-5 space-y-5 text-center">
-              <div>
+            <div className="w-full max-w-2xl px-5 space-y-4 text-center">
+              <div className="-mt-16">
                 <span
-                  className="mx-auto mb-2 block bg-foreground size-10"
+                  className="mx-auto mb-4 block bg-foreground size-20"
                   style={LOGO_MASK}
                 />
-                <h1 className="text-xl sm:text-2xl font-bold tracking-tight">
+                <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">
                   Compass
                 </h1>
                 <p className="text-muted-foreground/60 mt-1.5 text-xs px-2">
@@ -705,7 +705,7 @@ export function ChatView({
                 status={chat.status}
                 isGenerating={chat.isGenerating}
                 onSend={handleIdleSend}
-                className="rounded-2xl"
+                className="rounded-2xl mt-[6rem]"
               />
 
               {stats && (
