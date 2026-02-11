@@ -40,3 +40,4 @@ android/build/
 android/app/build/
 # Local auth bypass (dev only)
 src/lib/auth-bypass.ts
+src/lib/cloudflare-context.ts
