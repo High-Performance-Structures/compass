@@ -61,10 +61,20 @@ export async function POST(
     return new Response("Unauthorized", { status: 401 })
   }
 
-  const { prompt, context } = (await req.json()) as {
-    prompt: string
-    context?: Record<string, unknown>
+  let body: { prompt?: string; context?: Record<string, unknown> }
+  try {
+    body = (await req.json()) as {
+      prompt?: string
+      context?: Record<string, unknown>
+    }
+  } catch {
+    return new Response(
+      JSON.stringify({ error: "Invalid JSON body" }),
+      { status: 400, headers: { "Content-Type": "application/json" } }
+    )
   }
+
+  const { prompt, context } = body
 
   const previousSpec = context?.previousSpec as
     | { root?: string; elements?: Record<string, unknown> }

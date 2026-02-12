@@ -15,9 +15,17 @@ export async function POST(
     )
   }
 
-  const body = await req.json() as {
-    action?: string
-    params?: Record<string, unknown>
+  let body: { action?: string; params?: Record<string, unknown> }
+  try {
+    body = (await req.json()) as {
+      action?: string
+      params?: Record<string, unknown>
+    }
+  } catch {
+    return Response.json(
+      { success: false, error: "Invalid JSON body" },
+      { status: 400 },
+    )
   }
 
   const { action, params } = body
