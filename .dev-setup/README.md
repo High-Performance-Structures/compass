@@ -1,104 +1,112 @@
 # Local Development Setup
 
-This directory contains patches and scripts to enable local development without WorkOS authentication.
+This directory contains files for running Compass locally without Cloudflare or WorkOS credentials.
 
 ## What This Does
 
-These patches modify Compass to run in development mode without requiring WorkOS SSO authentication:
+1. **Bypasses WorkOS auth** - Middleware skips auth when API keys aren't configured
+2. **Local SQLite database** - Uses sql.js (pure JS SQLite) instead of Cloudflare D1
+3. **Dev user** - `dev@compass.io` with admin role
+4. **Full database support** - Real queries work, not just mocks
 
-1. **Bypasses WorkOS auth checks** - Middleware redirects `/` to `/dashboard` when WorkOS isn't configured
-2. **Mock D1 database** - Returns empty arrays for queries instead of throwing errors
-3. **Wraps Cloudflare context** - Returns mock `{ env: { DB: null }, ctx: {} }` when WorkOS isn't configured
-4. **Skips OpenNext initialization** - Only runs when WorkOS API keys are properly set
-
-## How to Use
-
-### Quick Start
+## Quick Start
 
 From the compass directory:
 
 ```bash
 .dev-setup/apply-dev.sh
+bun dev
 ```
 
-This will apply all necessary patches to enable local development.
+## Manual Setup
 
-### Manual Application
-
-If the automated script fails, you can apply patches manually:
-
-1. **middleware.ts** - Redirects root to dashboard, allows all requests without auth
-2. **lib/auth.ts** - Checks for "your_" and "placeholder" in WorkOS keys
-3. **lib/cloudflare-context.ts** - New file that wraps `getCloudflareContext()`
-4. **db/index.ts** - Returns mock DB when `d1` parameter is `null`
-5. **next.config.ts** - Only initializes OpenNext Cloudflare when WorkOS is configured
-6. **.gitignore** - Ignores `src/lib/cloudflare-context.ts` so it's not committed
-
-### Undoing Changes
-
-To remove dev setup and restore original behavior:
+If the script fails, apply manually:
 
 ```bash
-git restore src/middleware.ts
-git restore src/lib/auth.ts
-git restore src/db/index.ts
-git restore next.config.ts
-git restore .gitignore
-rm src/lib/cloudflare-context.ts
+# 1. Install sql.js
+bun add sql.js
+
+# 2. Copy dev files
+cp .dev-setup/files/middleware.ts src/middleware.ts
+cp .dev-setup/files/next.config.ts next.config.ts
+cp .dev-setup/files/cloudflare-context.ts src/lib/cloudflare-context.ts
+cp .dev-setup/files/db.ts src/lib/db.ts
+mkdir -p scripts
+cp .dev-setup/files/init-local-db.ts scripts/init-local-db.ts
+
+# 3. Replace imports
+find src -name "*.ts" -o -name "*.tsx" | xargs sed -i '' 's|from "@opennextjs/cloudflare"|from "@/lib/db"|g'
+
+# 4. Add script to package.json
+node -e 'const fs=require("fs");const p=JSON.parse(fs.readFileSync("package.json"));p.scripts["db:init-local"]="bun scripts/init-local-db.ts";fs.writeFileSync("package.json",JSON.stringify(p,null,2)+"\n")'
+
+# 5. Initialize database
+bun run db:init-local
+
+# 6. Start dev server
+bun dev
 ```
+
+## Reverting
+
+```bash
+.dev-setup/restore-dev.sh
+```
+
+Or manually:
+
+```bash
+git checkout HEAD -- src/middleware.ts next.config.ts package.json bun.lock
+rm -f src/lib/cloudflare-context.ts src/lib/db.ts scripts/init-local-db.ts
+find src -name "*.ts" -o -name "*.tsx" | xargs sed -i '' 's|from "@/lib/db"|from "@opennextjs/cloudflare"|g'
+bun remove sql.js
+rm -f local.db local.db-wal local.db-shm
+```
+
+## Files
+
+| File | Purpose |
+|------|---------|
+| `files/middleware.ts` | Bypasses WorkOS when not configured |
+| `files/next.config.ts` | Removes Cloudflare dev proxy |
+| `files/cloudflare-context.ts` | sql.js wrapper mimicking D1 |
+| `files/db.ts` | Conditional import wrapper |
+| `files/init-local-db.ts` | Migration runner for local DB |
 
 ## Environment Variables
 
-To configure WorkOS auth properly (to disable dev mode):
+To use real WorkOS auth (disables dev mode):
 
 ```env
 WORKOS_API_KEY=sk_dev_xxxxx
 WORKOS_CLIENT_ID=client_xxxxx
-WORKOS_REDIRECT_URI=http://localhost:3000
 ```
 
-With these set, the dev patches will automatically skip and use real WorkOS authentication.
+Values containing "placeholder" trigger dev mode.
 
-## Dev Mode Indicators
+## Database
 
-When in dev mode (WorkOS not configured):
-- Dashboard loads directly without login redirect
-- Database queries return empty arrays instead of errors
-- Cloudflare context returns null DB instead of throwing
+- Stored in `local.db` at repo root
+- Migrations applied from `drizzle/` directory
+- Persisted between sessions
 
-## Files Created/Modified
+## Limitations
 
-### New Files (dev only)
-- `src/lib/cloudflare-context.ts` - Wraps `getCloudflareContext()` with dev bypass
-
-### Modified Files
-- `src/middleware.ts` - Added WorkOS detection and dev bypass
-- `src/lib/auth.ts` - Enhanced WorkOS configuration detection
-- `src/db/index.ts` - Added mock DB support for null D1 parameter
-- `next.config.ts` - Conditional OpenNext initialization
-- `.gitignore` - Added `cloudflare-context.ts` to prevent commits
-
-## Future Development
-
-Place any new dev-only components or patches in this directory following the same pattern:
-
-1. **Patch files** - Store in `patches/` with `.patch` extension
-2. **New files** - Store in `files/` directory
-3. **Update apply-dev.sh** - Add your patches to the apply script
-4. **Document here** - Update this README with changes
+Features requiring external APIs won't work offline:
+- NetSuite sync
+- Google Drive integration
+- AI agent (needs OPENROUTER_API_KEY)
+- Push notifications
 
 ## Troubleshooting
 
-**Build errors after applying patches:**
-- Check that `src/lib/cloudflare-context.ts` exists
-- Verify all patches applied cleanly
-- Try manual patch application if automated script fails
+**"Cannot find module 'sql.js'"**
+- Run `bun add sql.js`
 
-**Auth still required:**
-- Verify `.env.local` or `.dev.vars` doesn't have placeholder values
-- Check that WorkOS environment variables aren't set (if you want dev mode)
-- Restart dev server after applying patches
+**Database errors**
+- Re-run `bun run db:init-local`
+- Check `local.db` exists
 
-**Database errors:**
-- Ensure `src/db/index.ts` patch was applied
-- Check that mock DB is being returned when `d1` is null
+**Auth still required**
+- Verify no WORKOS_API_KEY set
+- Check middleware.ts was copied
