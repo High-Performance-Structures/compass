@@ -31,6 +31,7 @@ export function NavSecondary({
               <SidebarMenuButton
                 asChild={!item.onClick}
                 onClick={item.onClick}
+                tooltip={item.title}
               >
                 {item.onClick ? (
                   <>

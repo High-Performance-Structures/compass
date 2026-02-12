@@ -1,36 +1,39 @@
 #!/bin/bash
 set -e
 
-echo "🔄 Removing local development setup patches..."
+echo "🔄 Removing local development setup..."
 
-# Check if we're in the compass directory
 if [ ! -f "package.json" ] || [ ! -d "src" ]; then
   echo "❌ Error: Please run this script from the compass directory"
   exit 1
 fi
 
-# Restore modified files
+# Revert tracked files
 echo "📦 Restoring modified files..."
-git restore src/middleware.ts
-git restore src/lib/auth.ts
-git restore src/db/index.ts
-git restore next.config.ts
-git restore .gitignore
+git checkout HEAD -- src/middleware.ts next.config.ts package.json bun.lock
 
-# Remove dev-only new file
+# Remove dev-only files
 echo "📦 Removing dev-only files..."
-if [ -f "src/lib/cloudflare-context.ts" ]; then
-  rm src/lib/cloudflare-context.ts
-  echo "✓ Removed src/lib/cloudflare-context.ts"
-else
-  echo "⚠️  src/lib/cloudflare-context.ts not found, skipping"
-fi
+rm -f src/lib/cloudflare-context.ts
+rm -f src/lib/db.ts
+rm -f scripts/init-local-db.ts
+echo "✓ Removed dev files"
+
+# Restore original imports
+echo "📦 Restoring original imports..."
+find src -name "*.ts" -o -name "*.tsx" | xargs sed -i '' 's|from "@/lib/db"|from "@opennextjs/cloudflare"|g'
+
+# Remove sql.js
+echo "📦 Removing sql.js..."
+bun remove sql.js
+
+# Remove local database
+rm -f local.db local.db-wal local.db-shm
 
 echo ""
 echo "✅ Development setup removed!"
 echo ""
 echo "📝 Notes:"
-echo "  - Original code has been restored from git"
-echo "  - Dev mode is now disabled"
-echo "  - WorkOS authentication will be required (if configured)"
-echo "  - To re-apply dev setup, run: .dev-setup/apply-dev.sh"
+echo "  - Original code restored from git"
+echo "  - WorkOS/Cloudflare auth will be required"
+echo "  - To re-apply: .dev-setup/apply-dev.sh"
