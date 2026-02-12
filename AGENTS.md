@@ -5,7 +5,7 @@ Branching: `<username>/<feature>` off main
 Conventional commits: `type(scope): subject`
 PRs: squash-merged to main
 Deployment: manual `bun deploy` or automatic through cloudflare/github integration
-Last Updated: 2026/02/07
+Last Updated: 2026/02/12
 This file: AGENTS.md -> Symlinked to CLAUDE.md and GEMINI.md
 ---
 
@@ -100,7 +100,7 @@ Style & Conventions
 - Aim to keep files under ~700 LOC; guideline only (not a hard guardrail).
 Split/refactor when it improves clarity or testability.
 - **server actions** for all data mutations (`src/app/actions/`). return `{ success: true }` or `{ success: false; error: string }`. revalidate paths after writes. access D1 via `getCloudflareContext()`. see [docs/architecture/server-actions.md](docs/architecture/server-actions.md).
-- **database**: drizzle ORM with D1 (SQLite). text IDs (UUIDs), text dates (ISO 8601). schema split across 8 files in `src/db/`. add new migrations, never modify old ones. see [docs/architecture/data-layer.md](docs/architecture/data-layer.md).
+- **database**: drizzle ORM with D1 (SQLite). text IDs (UUIDs), text dates (ISO 8601). schema split across 10 files in `src/db/`. add new migrations, never modify old ones. see [docs/architecture/data-layer.md](docs/architecture/data-layer.md).
 - **auth**: WorkOS for SSO/email/password. middleware in `src/middleware.ts` redirects unauthenticated users. `getCurrentUser()` from `lib/auth.ts` for user info. RBAC via `lib/permissions.ts`. see [docs/architecture/auth-system.md](docs/architecture/auth-system.md).
 - **ai agent**: OpenRouter provider, tool-first design (queryData, navigateTo, renderComponent, theme tools, plugin tools). unified chat architecture -- one `ChatView` component with `variant="page"` or `variant="panel"`. `ChatProvider` at layout level owns state. see [docs/architecture/ai-agent.md](docs/architecture/ai-agent.md).
 
@@ -146,6 +146,7 @@ each module contributes schema tables, server actions, components, and optionall
 - **google drive**: domain-wide delegation via service account in `src/lib/google/`. two-layer permissions (compass RBAC + workspace). see [docs/modules/google-drive.md](docs/modules/google-drive.md).
 - **scheduling**: gantt charts, critical path, baselines in `src/lib/schedule/`. see [docs/modules/scheduling.md](docs/modules/scheduling.md).
 - **financials**: invoices, vendor bills, payments, credit memos. tied to netsuite sync. see [docs/modules/financials.md](docs/modules/financials.md).
+- **conversations** (WIP): slack-like channels and messaging. text/voice/announcement channels, threading, reactions, attachments. schema in `src/db/schema-conversations.ts`.
 - **mobile**: capacitor webview wrapper. the web app must never break because of native code -- all capacitor imports are dynamic, gated behind `isNative()`. see [docs/modules/mobile.md](docs/modules/mobile.md) and [docs/architecture/native-mobile.md](docs/architecture/native-mobile.md).
 - **themes**: per-user oklch color system, 10 presets, AI-generated custom themes. see [docs/development/theming.md](docs/development/theming.md).
 - **plugins/skills**: github-hosted SKILL.md files inject into agent system prompt. full plugins provide tools, components, actions. see [docs/development/plugins.md](docs/development/plugins.md).
@@ -161,7 +162,7 @@ src/
 │   ├── (auth)/            # auth pages (login, signup, etc)
 │   ├── api/               # api routes (agent, push, netsuite, auth)
 │   ├── dashboard/         # protected dashboard routes
-│   ├── actions/           # server actions (25 files, all mutations)
+│   ├── actions/           # server actions (27 files, all mutations)
 │   ├── globals.css        # tailwind + theme variables
 │   └── layout.tsx         # root layout (ChatProvider lives here)
 ├── components/
@@ -172,6 +173,7 @@ src/
 │   ├── files/            # google drive file browser
 │   ├── financials/       # invoice/bill components
 │   ├── schedule/         # gantt and scheduling
+│   ├── conversations/    # channels and messaging (WIP)
 │   └── people/           # user management
 ├── db/
 │   ├── schema.ts         # core tables
@@ -181,6 +183,8 @@ src/
 │   ├── schema-dashboards.ts
 │   ├── schema-agent.ts
 │   ├── schema-ai-config.ts
+│   ├── schema-mcp.ts
+│   ├── schema-conversations.ts
 │   └── schema-google.ts
 ├── hooks/                 # react hooks (chat, native, audio)
 ├── lib/
