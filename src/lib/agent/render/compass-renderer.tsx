@@ -10,41 +10,87 @@ import {
   ActionProvider,
 } from "@json-render/react"
 
-import { components, Fallback } from "./registry"
+import {
+  components,
+  Fallback,
+  type StreamingState,
+} from "./registry"
 import { executeAction, actionHandlers } from "./actions"
+import {
+  ComponentLoadingWrapper,
+  type PropConfig,
+} from "@/components/agent/component-loading-wrapper"
 
 interface CompassRendererProps {
   readonly spec: Spec | null
   readonly data?: Record<string, unknown>
   readonly loading?: boolean
+  readonly streamingState?: StreamingState
+  readonly propConfigs?: Record<string, PropConfig[]>
+  readonly enablePropSkeletons?: boolean
 }
 
 function buildRegistry(
-  loading?: boolean
+  loading?: boolean,
+  streamingState?: StreamingState,
+  propConfigs?: Record<string, PropConfig[]>,
+  enablePropSkeletons?: boolean
 ): ComponentRegistry {
   const registry: ComponentRegistry = {}
 
-  for (const [name, Component] of Object.entries(
-    components
-  )) {
+  for (const [name, Component] of Object.entries(components)) {
     registry[name] = (renderProps: {
       element: {
         props: Record<string, unknown>
         type: string
       }
       children?: ReactNode
-    }) => (
-      <Component
-        props={renderProps.element.props as never}
-        onAction={(a: {
-          name: string
-          params?: Record<string, unknown>
-        }) => executeAction(a.name, a.params)}
-        loading={loading}
-      >
-        {renderProps.children}
-      </Component>
-    )
+    }) => {
+      const componentProps = renderProps.element.props
+      const componentPropConfigs = propConfigs?.[name]
+
+      // If prop-level skeletons are enabled and configs exist, wrap component
+      if (
+        enablePropSkeletons &&
+        componentPropConfigs &&
+        componentPropConfigs.length > 0
+      ) {
+        return (
+          <ComponentLoadingWrapper
+            props={componentProps}
+            propConfigs={componentPropConfigs}
+            loading={loading}
+          >
+            <Component
+              props={componentProps as never}
+              onAction={(a: {
+                name: string
+                params?: Record<string, unknown>
+              }) => executeAction(a.name, a.params)}
+              loading={loading}
+              streamingState={streamingState}
+            >
+              {renderProps.children}
+            </Component>
+          </ComponentLoadingWrapper>
+        )
+      }
+
+      // Standard rendering without prop-level skeletons
+      return (
+        <Component
+          props={componentProps as never}
+          onAction={(a: {
+            name: string
+            params?: Record<string, unknown>
+          }) => executeAction(a.name, a.params)}
+          loading={loading}
+          streamingState={streamingState}
+        >
+          {renderProps.children}
+        </Component>
+      )
+    }
   }
 
   return registry
@@ -58,10 +104,19 @@ export function CompassRenderer({
   spec,
   data,
   loading,
+  streamingState,
+  propConfigs,
+  enablePropSkeletons = false,
 }: CompassRendererProps): ReactNode {
   const registry = useMemo(
-    () => buildRegistry(loading),
-    [loading]
+    () =>
+      buildRegistry(
+        loading,
+        streamingState,
+        propConfigs,
+        enablePropSkeletons
+      ),
+    [loading, streamingState, propConfigs, enablePropSkeletons]
   )
 
   if (!spec) return null

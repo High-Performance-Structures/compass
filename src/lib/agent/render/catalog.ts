@@ -15,6 +15,7 @@ export const compassCatalog = defineCatalog(schema, {
         centered: z.boolean().nullable(),
       }),
       slots: ["default"],
+      loadingComponent: "CardSkeleton",
       description:
         "Container card for content sections. " +
         "Use as root for dashboards.",
@@ -340,6 +341,7 @@ export const compassCatalog = defineCatalog(schema, {
         change: z.number().nullable(),
         changeLabel: z.string().nullable(),
       }),
+      loadingComponent: "StatCardSkeleton",
       description:
         "Single metric with optional trend indicator",
     },
@@ -371,6 +373,7 @@ export const compassCatalog = defineCatalog(schema, {
           )
           .nullable(),
       }),
+      loadingComponent: "DataTableSkeleton",
       description:
         "Tabular data display with columns. " +
         "Best for lists of records. Use rowActions " +
@@ -429,10 +432,43 @@ export const compassCatalog = defineCatalog(schema, {
         maxTasks: z.number().nullable(),
         groupByPhase: z.boolean().nullable(),
       }),
+      loadingComponent: "SchedulePreviewSkeleton",
       description:
         "Schedule/timeline display with phase grouping. " +
         "ALWAYS prefer this over composing schedule " +
         "displays from Heading+Text+Progress+Badge primitives.",
+    },
+
+    // Loading Skeletons
+    CardSkeleton: {
+      props: z.object({
+        hasTitle: z.boolean().nullable(),
+        hasDescription: z.boolean().nullable(),
+        lines: z.number().nullable(),
+      }),
+      description: "Loading skeleton for Card component",
+    },
+
+    StatCardSkeleton: {
+      props: z.object({
+        hasChange: z.boolean().nullable(),
+      }),
+      description: "Loading skeleton for StatCard component",
+    },
+
+    DataTableSkeleton: {
+      props: z.object({
+        rows: z.number().nullable(),
+        columns: z.number().nullable(),
+      }),
+      description: "Loading skeleton for DataTable component",
+    },
+
+    SchedulePreviewSkeleton: {
+      props: z.object({
+        tasks: z.number().nullable(),
+      }),
+      description: "Loading skeleton for SchedulePreview component",
     },
   },
 

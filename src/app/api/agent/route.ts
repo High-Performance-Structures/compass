@@ -58,8 +58,14 @@ export async function POST(req: Request): Promise<Response> {
   const pluginSections = registry.getPromptSections()
   const pluginTools = registry.getTools()
 
-  const body = (await req.json()) as {
-    messages: UIMessage[]
+  let body: { messages: UIMessage[] }
+  try {
+    body = (await req.json()) as { messages: UIMessage[] }
+  } catch {
+    return new Response(
+      JSON.stringify({ error: "Invalid JSON body" }),
+      { status: 400, headers: { "Content-Type": "application/json" } }
+    )
   }
 
   const currentPage =
