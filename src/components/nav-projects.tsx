@@ -22,6 +22,12 @@ export function NavProjects({
   const activeId = pathname?.match(
     /^\/dashboard\/projects\/([^/]+)/
   )?.[1]
+  const inScheduleContext = pathname?.includes("/schedule")
+
+  const getProjectHref = (projectId: string) =>
+    inScheduleContext
+      ? `/dashboard/projects/${projectId}/schedule`
+      : `/dashboard/projects/${projectId}`
 
   return (
     <>
@@ -62,7 +68,7 @@ export function NavProjects({
                         "bg-sidebar-foreground/10 font-medium"
                     )}
                   >
-                    <Link href={`/dashboard/projects/${project.id}`}>
+                    <Link href={getProjectHref(project.id)}>
                       <IconFolder />
                       <span className="truncate">
                         {project.name}

@@ -427,6 +427,7 @@ export const compassCatalog = defineCatalog(schema, {
             phase: z.string(),
             status: z.string(),
             percentComplete: z.number(),
+            projectName: z.string().nullable(),
           })
         ),
         maxTasks: z.number().nullable(),

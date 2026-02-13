@@ -6,6 +6,7 @@ import {
   ChevronDownIcon,
   DotIcon,
   ImageIcon,
+  LoaderIcon,
   type LucideIcon,
   SearchIcon,
 } from "lucide-react"
@@ -55,36 +56,48 @@ export const ChainOfThought = memo(
 
     return (
       <ChainOfThoughtContext.Provider value={chainOfThoughtContext}>
-        <div className={cn("not-prose max-w-prose space-y-4", className)} {...props}>
+        <Collapsible
+          className={cn("not-prose mb-2", className)}
+          onOpenChange={setIsOpen}
+          open={isOpen}
+          {...props}
+        >
           {children}
-        </div>
+        </Collapsible>
       </ChainOfThoughtContext.Provider>
     )
   },
 )
 
-export type ChainOfThoughtHeaderProps = ComponentProps<typeof CollapsibleTrigger>
+export type ChainOfThoughtHeaderProps = ComponentProps<typeof CollapsibleTrigger> & {
+  isStreaming?: boolean
+}
 
 export const ChainOfThoughtHeader = memo(
-  ({ className, children, ...props }: ChainOfThoughtHeaderProps) => {
-    const { isOpen, setIsOpen } = useChainOfThought()
+  ({ className, children, isStreaming = false, ...props }: ChainOfThoughtHeaderProps) => {
+    const { isOpen } = useChainOfThought()
 
     return (
-      <Collapsible onOpenChange={setIsOpen} open={isOpen}>
-        <CollapsibleTrigger
+      <CollapsibleTrigger
+        className={cn(
+          "inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs text-muted-foreground transition-colors hover:bg-muted/80",
+          className,
+        )}
+        {...props}
+      >
+        {isStreaming ? (
+          <LoaderIcon className="size-3.5 animate-spin" />
+        ) : (
+          <BrainIcon className="size-3.5" />
+        )}
+        <span>{children ?? "Chain of Thought"}</span>
+        <ChevronDownIcon
           className={cn(
-            "flex w-full items-center gap-2 text-muted-foreground text-sm transition-colors hover:text-foreground",
-            className,
+            "size-3 opacity-50 transition-transform group-data-[state=open]:rotate-180",
+            isOpen ? "rotate-180" : "rotate-0",
           )}
-          {...props}
-        >
-          <BrainIcon className="size-4" />
-          <span className="flex-1 text-left">{children ?? "Chain of Thought"}</span>
-          <ChevronDownIcon
-            className={cn("size-4 transition-transform", isOpen ? "rotate-180" : "rotate-0")}
-          />
-        </CollapsibleTrigger>
-      </Collapsible>
+        />
+      </CollapsibleTrigger>
     )
   },
 )
@@ -112,6 +125,8 @@ export const ChainOfThoughtStep = memo(
       pending: "text-muted-foreground/50",
     }
 
+    const iconClassName = status === "active" ? "animate-pulse" : ""
+
     return (
       <div
         className={cn(
@@ -123,8 +138,12 @@ export const ChainOfThoughtStep = memo(
         {...props}
       >
         <div className="relative mt-0.5">
-          <Icon className="size-4" />
-          <div className="-mx-px absolute top-7 bottom-0 left-1/2 w-px bg-border" />
+          {status === "active" ? (
+            <LoaderIcon className={cn("size-3.5 animate-spin", iconClassName)} />
+          ) : (
+            <Icon className={cn("size-3.5", iconClassName)} />
+          )}
+          <div className="-mx-px absolute top-5 bottom-0 left-1/2 w-px bg-border" />
         </div>
         <div className="flex-1 space-y-2 overflow-hidden">
           <div>{label}</div>
@@ -162,21 +181,19 @@ export type ChainOfThoughtContentProps = ComponentProps<typeof CollapsibleConten
 
 export const ChainOfThoughtContent = memo(
   ({ className, children, ...props }: ChainOfThoughtContentProps) => {
-    const { isOpen } = useChainOfThought()
-
     return (
-      <Collapsible open={isOpen}>
-        <CollapsibleContent
-          className={cn(
-            "mt-2 space-y-3",
-            "data-[state=closed]:fade-out-0 data-[state=closed]:slide-out-to-top-2 data-[state=open]:slide-in-from-top-2 text-popover-foreground outline-none data-[state=closed]:animate-out data-[state=open]:animate-in",
-            className,
-          )}
-          {...props}
-        >
-          {children}
-        </CollapsibleContent>
-      </Collapsible>
+      <CollapsibleContent
+        className={cn(
+          "mt-1 rounded-lg border bg-muted/30 p-3 text-sm",
+          "data-[state=closed]:fade-out-0 data-[state=closed]:slide-out-to-top-2",
+          "data-[state=open]:slide-in-from-top-2 text-popover-foreground outline-none",
+          "data-[state=closed]:animate-out data-[state=open]:animate-in",
+          className,
+        )}
+        {...props}
+      >
+        <div className="space-y-3">{children}</div>
+      </CollapsibleContent>
     )
   },
 )

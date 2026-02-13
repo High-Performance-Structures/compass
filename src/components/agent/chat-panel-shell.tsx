@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react"
 import { usePathname } from "next/navigation"
-import { MessageSquare } from "lucide-react"
+import { MessageSquare, XIcon, MessageCircle } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import {
@@ -11,7 +11,8 @@ import {
   useRenderState,
 } from "./chat-provider"
 import { ChatView } from "./chat-view"
-import { isNative } from "@/lib/native/platform"
+import { isNative, isIOS } from "@/lib/native/platform"
+import { useNative } from "@/hooks/use-native"
 
 export function ChatPanelShell() {
   const { isOpen, open, close, toggle } = useChatPanel()
@@ -20,6 +21,9 @@ export function ChatPanelShell() {
     useRenderState()
   const pathname = usePathname()
   const hasRenderedUI = !!renderSpec?.root || isRendering
+  const isNativeApp = useNative()
+  // hide entirely on conversations pages (they have their own messaging)
+  const isConversations = pathname?.startsWith("/dashboard/conversations")
   // dashboard acts as "page" variant only when NOT rendering
   const isDashboard =
     pathname === "/dashboard" && !hasRenderedUI
@@ -101,6 +105,15 @@ export function ChatPanelShell() {
 
   // native keyboard offset for chat input
   const [keyboardHeight, setKeyboardHeight] = useState(0)
+  // iOS safe area insets for notch/home indicator
+  const [safeAreaTop, setSafeAreaTop] = useState(0)
+  const [safeAreaBottom, setSafeAreaBottom] = useState(0)
+  // visual viewport height for keyboard detection (browser fallback)
+  const [viewportOffset, setViewportOffset] = useState(0)
+
+  // bottom nav height constant (h-14 = 56px)
+  const BOTTOM_NAV_HEIGHT = 56
+
   useEffect(() => {
     if (!isNative()) return
 
@@ -128,16 +141,67 @@ export function ChatPanelShell() {
     return () => cleanup?.()
   }, [])
 
+  // Visual Viewport API for keyboard detection in mobile browsers
+  // this handles keyboard appearing in both native and regular mobile browsers
+  useEffect(() => {
+    if (isDashboard || !isOpen) return
+
+    const vv = window.visualViewport
+    if (!vv) return
+
+    const handleResize = () => {
+      // when keyboard opens, visual viewport shrinks
+      // the offset from layout viewport tells us keyboard height
+      const offset = window.innerHeight - vv.height - vv.offsetTop
+      setViewportOffset(Math.max(0, offset))
+    }
+
+    vv.addEventListener("resize", handleResize)
+    vv.addEventListener("scroll", handleResize)
+    handleResize()
+
+    return () => {
+      vv.removeEventListener("resize", handleResize)
+      vv.removeEventListener("scroll", handleResize)
+    }
+  }, [isDashboard, isOpen])
+
+  // iOS safe area insets
+  useEffect(() => {
+    if (!isIOS()) return
+
+    const root = document.documentElement
+    const computeInsets = () => {
+      const top = parseInt(getComputedStyle(root).getPropertyValue("--sa-top") || "0", 10)
+      const bottom = parseInt(getComputedStyle(root).getPropertyValue("--sa-bottom") || "0", 10)
+      setSafeAreaTop(top)
+      setSafeAreaBottom(bottom)
+    }
+
+    computeInsets()
+    window.addEventListener("resize", computeInsets)
+    return () => window.removeEventListener("resize", computeInsets)
+  }, [])
+
   // container width/style for panel mode
   const panelStyle =
     !isDashboard && isOpen
       ? { width: panelWidth }
       : undefined
 
-  const keyboardStyle =
-    keyboardHeight > 0
-      ? { paddingBottom: keyboardHeight }
-      : undefined
+  // total keyboard height from all sources
+  const totalKeyboardHeight = keyboardHeight || viewportOffset
+
+  // mobile panel uses padding to offset from bottom nav + keyboard
+  // we apply this as paddingBottom to the container, not inset, so
+  // the input area stays properly positioned
+  const mobileBottomPadding = !isDashboard && isOpen
+    ? totalKeyboardHeight > 0
+      ? totalKeyboardHeight
+      : BOTTOM_NAV_HEIGHT + (isNativeApp ? safeAreaBottom : 0)
+    : 0
+
+  if (isConversations) return null
 
   return (
     <>
@@ -146,11 +210,11 @@ export function ChatPanelShell() {
           "flex flex-col",
           "transition-[flex,width,border-color,box-shadow,opacity,transform] duration-300 ease-in-out",
           isDashboard
-            ? "flex-1 bg-background"
+            ? "flex-1 h-full bg-background"
             : [
                 "bg-background dark:bg-[oklch(0.255_0_0)]",
-                "fixed inset-0 z-50",
-                "md:relative md:inset-auto md:z-auto",
+                "fixed inset-0 z-50 w-screen h-screen",
+                "md:relative md:inset-auto md:z-auto md:h-auto md:w-auto",
                 "md:shrink-0 md:overflow-hidden",
                 "md:rounded-xl md:border md:border-border md:shadow-lg md:my-2 md:mr-2",
                 isResizing && "transition-none",
@@ -159,7 +223,10 @@ export function ChatPanelShell() {
                   : "translate-x-full md:translate-x-0 md:w-0 md:border-transparent md:shadow-none md:opacity-0",
               ]
         )}
-        style={{ ...panelStyle, ...keyboardStyle }}
+        style={{
+          ...panelStyle,
+          paddingBottom: mobileBottomPadding,
+        }}
       >
         {/* Desktop resize handle (panel mode only) */}
         {!isDashboard && (
@@ -167,6 +234,25 @@ export function ChatPanelShell() {
             className="absolute -left-1 top-0 z-10 hidden h-full w-2 cursor-col-resize md:block hover:bg-border/60 active:bg-border"
             onMouseDown={handleResizeStart}
           />
+        )}
+
+        {/* Mobile panel header with close button */}
+        {!isDashboard && (
+          <div className="flex items-center justify-between border-b border-border bg-background px-4 py-3 md:pt-3 md:hidden shrink-0">
+            <div className="flex items-center gap-2.5 font-semibold">
+              <MessageCircle className="size-5 text-primary" />
+              <span>Chat</span>
+            </div>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="size-9"
+              onClick={close}
+              aria-label="Close chat"
+            >
+              <XIcon className="size-5" />
+            </Button>
+          </div>
         )}
 
         <ChatView
@@ -183,15 +269,29 @@ export function ChatPanelShell() {
         />
       )}
 
-      {/* Mobile FAB (panel mode only) */}
+      {/* Mobile FAB (panel mode only) - positioned above bottom nav */}
       {!isDashboard && !isOpen && (
         <Button
           size="icon"
-          className="fixed bottom-4 right-4 z-50 h-12 w-12 rounded-full shadow-lg md:hidden"
+          className="fixed bottom-[4.75rem] right-4 z-50 h-12 w-12 rounded-full shadow-lg md:bottom-4 md:hidden"
           onClick={toggle}
           aria-label="Open chat"
         >
           <MessageSquare className="h-5 w-5" />
+        </Button>
+      )}
+
+      {/* Desktop chat button in sidebar area (panel mode only) */}
+      {!isDashboard && !isOpen && (
+        <Button
+          variant="outline"
+          size="sm"
+          className="fixed bottom-4 right-4 z-40 hidden md:flex items-center gap-2 shadow-sm"
+          onClick={toggle}
+          aria-label="Open chat panel"
+        >
+          <MessageSquare className="size-4" />
+          Chat
         </Button>
       )}
     </>

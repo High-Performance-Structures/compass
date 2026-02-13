@@ -1,6 +1,6 @@
 "use client"
 
-import type { HTMLAttributes } from "react"
+import type { HTMLAttributes, ReactNode } from "react"
 import { cn } from "@/lib/utils"
 
 interface LoaderIconProps {
@@ -86,6 +86,24 @@ export const Loader = ({ className, size = 16, ...props }: LoaderProps) => (
   </div>
 )
 
+export type LoaderIndicatorProps = HTMLAttributes<HTMLSpanElement> & {
+  label?: ReactNode
+}
+
+export const LoaderIndicator = ({ className, label, ...props }: LoaderIndicatorProps) => (
+  <span
+    className={cn(
+      "inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs text-muted-foreground transition-colors",
+      "hover:bg-muted/80",
+      className,
+    )}
+    {...props}
+  >
+    <Loader size={14} />
+    {label && <span>{label}</span>}
+  </span>
+)
+
 /** Demo component for preview */
 export default function LoaderDemo() {
   return (
@@ -101,6 +119,10 @@ export default function LoaderDemo() {
       <div className="flex items-center gap-4">
         <Loader size={32} />
         <span className="text-sm text-muted-foreground">Large (32px)</span>
+      </div>
+      <div className="flex items-center gap-4">
+        <LoaderIndicator label="Loading..." />
+        <span className="text-sm text-muted-foreground">Indicator</span>
       </div>
     </div>
   )

@@ -1598,6 +1598,11 @@ export const components: {
           <div className="flex-1 min-w-0">
             <div className="font-medium truncate">
               {t.title}
+              {t.projectName && (
+                <span className="text-muted-foreground font-normal ml-1">
+                  ({t.projectName})
+                </span>
+              )}
             </div>
             <div className="text-muted-foreground">
               {formatDate(t.startDate)} –{" "}

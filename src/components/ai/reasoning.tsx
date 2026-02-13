@@ -1,13 +1,12 @@
 "use client"
 
 import { useControllableState } from "@radix-ui/react-use-controllable-state"
-import { BrainIcon, ChevronDownIcon } from "lucide-react"
+import { BrainIcon, ChevronDownIcon, LoaderIcon } from "lucide-react"
 import type { ComponentProps, ReactNode } from "react"
 import { createContext, memo, useContext, useEffect, useRef, useState } from "react"
 import { Streamdown } from "streamdown"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { cn } from "@/lib/utils"
-import { Shimmer } from "@/components/ai/shimmer"
 
 interface ReasoningContextValue {
   isStreaming: boolean
@@ -92,7 +91,7 @@ export const Reasoning = memo(
     return (
       <ReasoningContext.Provider value={{ isStreaming, isOpen, setIsOpen, duration }}>
         <Collapsible
-          className={cn("not-prose mb-4", className)}
+          className={cn("not-prose mb-2", className)}
           onOpenChange={handleOpenChange}
           open={isOpen}
           {...props}
@@ -110,12 +109,12 @@ export type ReasoningTriggerProps = ComponentProps<typeof CollapsibleTrigger> & 
 
 const defaultGetThinkingMessage = (isStreaming: boolean, duration?: number) => {
   if (isStreaming || duration === 0) {
-    return <Shimmer duration={1}>Thinking...</Shimmer>
+    return <span>Thinking...</span>
   }
   if (duration === undefined) {
-    return <p>Thought for a few seconds</p>
+    return <span>Thought for a few seconds</span>
   }
-  return <p>Thought for {duration} seconds</p>
+  return <span>Thought for {duration} seconds</span>
 }
 
 export const ReasoningTrigger = memo(
@@ -130,17 +129,24 @@ export const ReasoningTrigger = memo(
     return (
       <CollapsibleTrigger
         className={cn(
-          "flex w-full items-center gap-2 text-muted-foreground text-sm transition-colors hover:text-foreground",
+          "inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs text-muted-foreground transition-colors hover:bg-muted/80",
           className,
         )}
         {...props}
       >
         {children ?? (
           <>
-            <BrainIcon className="size-4" />
+            {isStreaming ? (
+              <LoaderIcon className="size-3.5 animate-spin" />
+            ) : (
+              <BrainIcon className="size-3.5" />
+            )}
             {getThinkingMessage(isStreaming, duration)}
             <ChevronDownIcon
-              className={cn("size-4 transition-transform", isOpen ? "rotate-180" : "rotate-0")}
+              className={cn(
+                "size-3 opacity-50 transition-transform group-data-[state=open]:rotate-180",
+                isOpen ? "rotate-180" : "rotate-0",
+              )}
             />
           </>
         )}
@@ -167,15 +173,20 @@ export const ReasoningContent = memo(({ className, children, ...props }: Reasoni
   return (
     <CollapsibleContent
       className={cn(
-        "mt-4 text-sm",
-        "data-[state=closed]:fade-out-0 data-[state=closed]:slide-out-to-top-2 data-[state=open]:slide-in-from-top-2 text-muted-foreground outline-none data-[state=closed]:animate-out data-[state=open]:animate-in",
+        "mt-1 rounded-lg border bg-muted/30 text-popover-foreground outline-none",
+        "data-[state=closed]:fade-out-0 data-[state=closed]:slide-out-to-top-2",
+        "data-[state=open]:slide-in-from-top-2",
+        "data-[state=closed]:animate-out data-[state=open]:animate-in",
         className,
       )}
       {...props}
     >
       <div
         ref={scrollRef}
-        className={cn(isStreaming && "max-h-[3.75rem] overflow-hidden")}
+        className={cn(
+          "p-3 text-sm text-muted-foreground",
+          isStreaming && "max-h-[3.75rem] overflow-hidden",
+        )}
       >
         <Streamdown {...props}>{children}</Streamdown>
       </div>

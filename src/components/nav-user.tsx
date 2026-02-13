@@ -67,13 +67,13 @@ export function NavUser({
                 {user.avatar && <AvatarImage src={user.avatar} alt={user.name} />}
                 <AvatarFallback className="rounded-lg">{initials}</AvatarFallback>
               </Avatar>
-              <div className="grid flex-1 text-left text-sm leading-tight">
+              <div className="grid flex-1 text-left text-sm leading-tight min-w-0">
                 <span className="text-sidebar-foreground truncate font-medium">{user.name}</span>
                 <span className="text-sidebar-foreground/70 truncate text-xs">
                   {user.email}
                 </span>
               </div>
-              <IconDotsVertical className="text-sidebar-foreground/70 ml-auto size-4" />
+              <IconDotsVertical className="text-sidebar-foreground/70 ml-auto size-4 shrink-0" />
             </SidebarMenuButton>
           </DropdownMenuTrigger>
           <DropdownMenuContent
