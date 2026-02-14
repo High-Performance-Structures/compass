@@ -5,7 +5,7 @@ import { useTheme } from "next-themes"
 import {
   IconLogout,
   IconMenu2,
-  IconMessageCircle,
+  IconBell,
   IconMoon,
   IconSearch,
   IconSparkles,
@@ -26,7 +26,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { SidebarTrigger, useSidebar } from "@/components/ui/sidebar"
-import { NotificationsPopover } from "@/components/notifications-popover"
+import { NotificationsPopover, useNotificationsSheet } from "@/components/notifications-popover"
 import { useCommandMenu } from "@/components/command-menu-provider"
 import { useAgentOptional } from "@/components/agent/chat-provider"
 import { AccountModal } from "@/components/account-modal"
@@ -45,6 +45,7 @@ export function SiteHeader({
   const agentContext = useAgentOptional()
   const [accountOpen, setAccountOpen] = React.useState(false)
   const { toggleSidebar } = useSidebar()
+  const { openNotifications, unreadCount, sheet: notificationsSheet } = useNotificationsSheet()
 
   const initials = user ? getInitials(user.name) : "?"
 
@@ -78,17 +79,6 @@ export function SiteHeader({
               Search...
             </span>
           </button>
-          <button
-            type="button"
-            className="flex size-9 shrink-0 items-center justify-center rounded-full hover:bg-accent hover:text-accent-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring text-muted-foreground"
-            onClick={() => {
-              setTheme(theme === "dark" ? "light" : "dark")
-            }}
-            aria-label="Toggle theme"
-          >
-            <IconSun className="size-4 hidden dark:block" />
-            <IconMoon className="size-4 block dark:hidden" />
-          </button>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button
@@ -111,6 +101,15 @@ export function SiteHeader({
                 <IconUserCircle />
                 Account
               </DropdownMenuItem>
+              <DropdownMenuItem onSelect={openNotifications}>
+                <IconBell className="relative" />
+                <span>Notifications</span>
+                {unreadCount > 0 && (
+                  <span className="ml-auto text-xs text-muted-foreground">
+                    {unreadCount}
+                  </span>
+                )}
+              </DropdownMenuItem>
               <DropdownMenuItem onSelect={() => setTheme(theme === "dark" ? "light" : "dark")}>
                 <IconSun className="size-4 hidden dark:block" />
                 <IconMoon className="size-4 block dark:hidden" />
@@ -125,6 +124,7 @@ export function SiteHeader({
           </DropdownMenu>
         </div>
       </div>
+      <div className="md:hidden">{notificationsSheet}</div>
 
       {/* desktop header: three-column grid for true center search */}
       <div className="hidden h-12 w-full grid-cols-[1fr_minmax(0,28rem)_1fr] items-center px-4 md:grid">
