@@ -31,6 +31,7 @@ The construction-specific modules that make up HPS Compass.
 - [scheduling](modules/scheduling.md) -- Gantt charts, critical path analysis, dependency management, baselines, workday exceptions
 - [financials](modules/financials.md) -- invoices, vendor bills, payments, credit memos, NetSuite sync tie-in
 - [mobile](modules/mobile.md) -- Capacitor native app, offline photo queue, push notifications, biometric auth
+- [desktop](modules/desktop.md) -- Tauri desktop app, SQLite sync, Wayland/NVIDIA compatibility, offline-first
 - [claude code](modules/claude-code.md) -- local bridge daemon, own Anthropic API key, filesystem + terminal tools, WebSocket protocol
 
 
@@ -56,6 +57,8 @@ bun deploy           # build + deploy to cloudflare workers
 bun run db:generate  # generate migrations from schema
 bun run db:migrate:local  # apply migrations locally
 bun run db:migrate:prod   # apply migrations to production
+bun tauri:dev        # desktop dev (auto-configures Wayland/NVIDIA)
+bun tauri:build      # desktop production build
 bun lint             # eslint
 ```
 

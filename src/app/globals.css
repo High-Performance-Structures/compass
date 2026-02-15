@@ -221,3 +221,12 @@
 *::-webkit-scrollbar {
   display: none; /* chrome, safari, opera */
 }
+
+/* tiptap editor placeholder */
+.tiptap p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  color: color-mix(in oklch, currentColor 40%, transparent);
+  pointer-events: none;
+  float: left;
+  height: 0;
+}

@@ -16,6 +16,8 @@ const nextConfig: NextConfig = {
             "framer-motion",
         ],
     },
+    // Node.js native modules that should not be bundled for edge/browser
+    serverExternalPackages: ["better-sqlite3"],
 };
 
 export default nextConfig;

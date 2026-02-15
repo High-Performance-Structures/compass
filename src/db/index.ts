@@ -8,6 +8,7 @@ import * as themeSchema from "./schema-theme"
 import * as googleSchema from "./schema-google"
 import * as dashboardSchema from "./schema-dashboards"
 import * as mcpSchema from "./schema-mcp"
+import * as conversationsSchema from "./schema-conversations"
 
 const allSchemas = {
   ...schema,
@@ -19,8 +20,33 @@ const allSchemas = {
   ...googleSchema,
   ...dashboardSchema,
   ...mcpSchema,
+  ...conversationsSchema,
 }
 
+// Legacy function - kept for backwards compatibility
+// Prefer using the provider interface from ./provider for new code
 export function getDb(d1: D1Database) {
   return drizzle(d1, { schema: allSchemas })
 }
+
+// Re-export provider interface for platform-agnostic database access
+export type {
+  DatabaseProviderInterface,
+  DrizzleDB,
+  ProviderType,
+  DatabaseProviderProps,
+} from "./provider"
+
+export {
+  isTauri,
+  isCloudflareWorker,
+  detectPlatform,
+  createD1Provider,
+  getD1FromContext,
+  createTauriProvider,
+  DatabaseProvider,
+  useDatabase,
+  useDb,
+  getServerDb,
+} from "./provider"
+export type { MemoryProviderConfig } from "./provider"

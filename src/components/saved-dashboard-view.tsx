@@ -108,9 +108,7 @@ export function SavedDashboardView({
       </div>
 
       <div className="flex-1 overflow-auto">
-        <div className="mx-auto max-w-6xl">
-          <CompassRenderer spec={spec} data={data} />
-        </div>
+        <CompassRenderer spec={spec} data={data} />
       </div>
     </div>
   )

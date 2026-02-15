@@ -31,6 +31,7 @@ mobile-ui-references/
 # directories
 tmp/
 references/
+conversations-interface-references/
 
 # capacitor native builds
 ios/App/Pods/
@@ -38,6 +39,7 @@ ios/App/build/
 android/.gradle/
 android/build/
 android/app/build/
+
 # Local auth bypass (dev only)
 src/lib/auth-bypass.ts
 src/lib/cloudflare-context.ts

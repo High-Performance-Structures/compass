@@ -141,6 +141,41 @@
       "when": 1770522037142,
       "tag": "0019_parched_thunderbird",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "6",
+      "when": 1770751435638,
+      "tag": "0020_military_sebastian_shaw",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "6",
+      "when": 1770936294175,
+      "tag": "0021_early_cerise",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "6",
+      "when": 1770936295000,
+      "tag": "0022_add_conversations_indexes",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "6",
+      "when": 1771105697034,
+      "tag": "0023_known_moon_knight",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "6",
+      "when": 1771105729640,
+      "tag": "0024_thankful_slayback",
+      "breakpoints": true
     }
   ]
 }

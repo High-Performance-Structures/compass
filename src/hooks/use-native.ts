@@ -1,7 +1,7 @@
 "use client"
 
 import { useSyncExternalStore } from "react"
-import { isNative, isIOS, isAndroid, getPlatform } from "@/lib/native/platform"
+import { isNative, isIOS, isAndroid, getMobilePlatform } from "@/lib/native/platform"
 
 // Snapshot never changes after initial load (Capacitor injects before hydration)
 function subscribe(_onStoreChange: () => void): () => void {
@@ -20,10 +20,11 @@ export function useNative(): boolean {
   return useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot)
 }
 
+// Returns mobile platform only (ios, android, web) - for desktop use useDesktopPlatform
 export function useNativePlatform(): "ios" | "android" | "web" {
   return useSyncExternalStore(
     subscribe,
-    () => getPlatform(),
+    () => getMobilePlatform(),
     () => "web" as const,
   )
 }

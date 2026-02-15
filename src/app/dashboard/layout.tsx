@@ -24,6 +24,8 @@ import { BiometricGuard } from "@/components/native/biometric-guard"
 import { OfflineBanner } from "@/components/native/offline-banner"
 import { NativeShell } from "@/components/native/native-shell"
 import { PushNotificationRegistrar } from "@/hooks/use-native-push"
+import { DesktopShell } from "@/components/desktop/desktop-shell"
+import { DesktopOfflineBanner } from "@/components/desktop/offline-banner"
 
 export default async function DashboardLayout({
   children,
@@ -48,6 +50,7 @@ export default async function DashboardLayout({
     <PageActionsProvider>
     <CommandMenuProvider>
       <BiometricGuard>
+      <DesktopShell>
       <SidebarProvider
         defaultOpen={false}
         className="h-screen overflow-hidden"
@@ -60,6 +63,7 @@ export default async function DashboardLayout({
         <AppSidebar variant="inset" projects={projectList} dashboards={dashboardList} user={user} />
         <FeedbackWidget>
           <SidebarInset className="overflow-hidden">
+            <DesktopOfflineBanner />
             <OfflineBanner />
             <SiteHeader user={user} />
             <div className="flex min-h-0 flex-1 overflow-hidden">
@@ -80,6 +84,7 @@ export default async function DashboardLayout({
         </p>
         <Toaster position="bottom-right" />
       </SidebarProvider>
+      </DesktopShell>
       </BiometricGuard>
     </CommandMenuProvider>
     </PageActionsProvider>
