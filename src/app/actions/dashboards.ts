@@ -29,24 +29,29 @@ export async function getCustomDashboards(): Promise<
     }
   | { readonly success: false; readonly error: string }
 > {
-  const user = await getCurrentUser()
-  if (!user) return { success: false, error: "not authenticated" }
+  try {
+    const user = await getCurrentUser()
+    if (!user) return { success: false, error: "not authenticated" }
 
-  const { env } = await getCloudflareContext()
-  const db = getDb(env.DB)
+    const { env } = await getCloudflareContext()
+    const db = getDb(env.DB)
 
-  const dashboards = await db.query.customDashboards.findMany({
-    where: (d, { eq: e }) => e(d.userId, user.id),
-    orderBy: (d) => desc(d.updatedAt),
-    columns: {
-      id: true,
-      name: true,
-      description: true,
-      updatedAt: true,
-    },
-  })
+    const dashboards = await db.query.customDashboards.findMany({
+      where: (d, { eq: e }) => e(d.userId, user.id),
+      orderBy: (d) => desc(d.updatedAt),
+      columns: {
+        id: true,
+        name: true,
+        description: true,
+        updatedAt: true,
+      },
+    })
 
-  return { success: true, data: dashboards }
+    return { success: true, data: dashboards }
+  } catch (error) {
+    console.error("Error loading dashboards:", error)
+    return { success: false, error: "failed to load dashboards" }
+  }
 }
 
 export async function getCustomDashboardById(

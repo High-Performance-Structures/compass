@@ -28,6 +28,8 @@ export default nextConfig;
 // Only init in dev -- build and lint don't need the wrangler proxy.
 if (process.env.NODE_ENV === "development") {
     import("@opennextjs/cloudflare").then((mod) =>
-        mod.initOpenNextCloudflareForDev()
+        mod.initOpenNextCloudflareForDev({
+            remoteBindings: false,
+        })
     );
 }

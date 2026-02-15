@@ -1,5 +1,7 @@
 import { NextRequest } from "next/server"
+import { NextResponse } from "next/server"
 import { authkit, handleAuthkitHeaders } from "@workos-inc/authkit-nextjs"
+import { isLocalAuthBypassEnabled } from "@/lib/auth-bypass"
 
 // public routes that don't require authentication
 const publicPaths = [
@@ -31,6 +33,10 @@ function isPublicPath(pathname: string): boolean {
 
 export default async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
+
+  if (isLocalAuthBypassEnabled()) {
+    return NextResponse.next()
+  }
 
   // get session and headers from authkit (handles token refresh automatically)
   const { session, headers } = await authkit(request)
