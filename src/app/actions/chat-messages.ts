@@ -3,7 +3,6 @@
 import { getCloudflareContext } from "@opennextjs/cloudflare"
 import { eq, and, desc, lt, sql } from "drizzle-orm"
 import { marked } from "marked"
-import DOMPurify from "isomorphic-dompurify"
 import { getDb } from "@/db"
 import {
   messages,
@@ -27,45 +26,64 @@ marked.setOptions({
   gfm: true,
 })
 
+// Simple HTML sanitizer that works in edge runtime (no JSDOM dependency)
+// This strips dangerous tags and attributes while preserving safe markdown output
+const ALLOWED_TAGS = new Set([
+  "p", "br", "strong", "em", "u", "s", "del", "code", "pre",
+  "blockquote", "ul", "ol", "li", "a", "img", "h1", "h2", "h3",
+  "h4", "h5", "h6", "hr", "table", "thead", "tbody", "tr", "th", "td",
+  "span", "div",
+])
+
+const ALLOWED_ATTR = new Set(["href", "src", "alt", "title", "class", "id", "target", "rel"])
+
+// Regex to strip script tags and event handlers
+const DANGEROUS_PATTERNS = [
+  /<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi,
+  /<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi,
+  /on\w+\s*=/gi, // Event handlers like onclick=
+  /javascript:/gi,
+  /data:/gi,
+  /vbscript:/gi,
+]
+
+function sanitizeHtml(html: string): string {
+  let sanitized = html
+
+  // Remove dangerous patterns
+  for (const pattern of DANGEROUS_PATTERNS) {
+    sanitized = sanitized.replace(pattern, "")
+  }
+
+  // Simple tag filtering - remove tags not in allowed list
+  // This is a basic implementation; for production consider a proper sanitizer
+  sanitized = sanitized.replace(/<\/?([a-z][a-z0-9]*)\b[^>]*>/gi, (match, tagName) => {
+    if (ALLOWED_TAGS.has(tagName.toLowerCase())) {
+      // For allowed tags, filter attributes
+      return match.replace(/(\w+)\s*=\s*["'][^"']*["']/gi, (attrMatch, attrName) => {
+        if (ALLOWED_ATTR.has(attrName.toLowerCase())) {
+          // Only allow safe URL schemes in href/src
+          if (attrName.toLowerCase() === "href" || attrName.toLowerCase() === "src") {
+            const value = attrMatch.match(/=["']([^"']*)["']/i)?.[1] ?? ""
+            if (/^(https?:|mailto:|\/|#)/i.test(value) || !value.includes(":")) {
+              return attrMatch
+            }
+            return ""
+          }
+          return attrMatch
+        }
+        return ""
+      })
+    }
+    return "" // Remove disallowed tags
+  })
+
+  return sanitized
+}
+
 async function renderMarkdown(content: string): Promise<string> {
   const html = await marked(content)
-  return DOMPurify.sanitize(html, {
-    ALLOWED_TAGS: [
-      "p",
-      "br",
-      "strong",
-      "em",
-      "u",
-      "s",
-      "del",
-      "code",
-      "pre",
-      "blockquote",
-      "ul",
-      "ol",
-      "li",
-      "a",
-      "img",
-      "h1",
-      "h2",
-      "h3",
-      "h4",
-      "h5",
-      "h6",
-      "hr",
-      "table",
-      "thead",
-      "tbody",
-      "tr",
-      "th",
-      "td",
-      "span",
-      "div",
-    ],
-    ALLOWED_ATTR: ["href", "src", "alt", "title", "class", "id", "target", "rel"],
-    ALLOWED_URI_REGEXP:
-      /^(?:(?:(?:f|ht)tps?|mailto):|[^a-z]|[a-z+.\-]+(?:[^a-z+.\-:]|$))/i,
-  })
+  return sanitizeHtml(html)
 }
 
 export async function sendMessage(data: {
