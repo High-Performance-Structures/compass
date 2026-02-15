@@ -1,0 +1,65 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "core:app:default",
+    "core:window:default",
+    "core:webview:default",
+    "shell:allow-open",
+    "sql:default",
+    "sql:allow-load",
+    "sql:allow-execute",
+    "sql:allow-select",
+    "sql:allow-close",
+    {
+      "identifier": "http:default",
+      "allow": [
+        { "url": "http://localhost:*" },
+        { "url": "http://127.0.0.1:*" },
+        { "url": "https://compass.work/**" },
+        { "url": "https://*.cloudflare.com/**" },
+        { "url": "https://api.openrouter.ai/**" },
+        { "url": "https://api.workos.com/**" }
+      ]
+    },
+    "http:allow-fetch",
+    "http:allow-fetch-cancel",
+    "http:allow-fetch-read-body",
+    "http:allow-fetch-send",
+    "window-state:default",
+    "window-state:allow-restore-state",
+    "window-state:allow-save-window-state",
+    "updater:default",
+    "updater:allow-check",
+    "updater:allow-download",
+    "updater:allow-install",
+    {
+      "identifier": "fs:default",
+      "allow": [
+        {
+          "path": "$APPDATA/**"
+        },
+        {
+          "path": "$APPCONFIG/**"
+        },
+        {
+          "path": "$LOCALDATA/**"
+        }
+      ]
+    },
+    "fs:allow-read-text-file",
+    "fs:allow-write-text-file",
+    "fs:allow-exists",
+    "fs:allow-mkdir",
+    "fs:allow-remove",
+    "fs:allow-read-dir",
+    "dialog:default",
+    "dialog:allow-open",
+    "dialog:allow-save",
+    "dialog:allow-message",
+    "dialog:allow-ask",
+    "dialog:allow-confirm"
+  ]
+}

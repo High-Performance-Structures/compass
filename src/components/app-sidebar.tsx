@@ -19,6 +19,7 @@ import { NavDashboards } from "@/components/nav-dashboards"
 import { NavSecondary } from "@/components/nav-secondary"
 import { NavFiles } from "@/components/nav-files"
 import { NavProjects } from "@/components/nav-projects"
+import { NavConversations } from "@/components/nav-conversations"
 import { NavUser } from "@/components/nav-user"
 import { useSettings } from "@/components/settings-provider"
 import { openFeedbackDialog } from "@/components/feedback-widget"
@@ -50,6 +51,11 @@ const data = {
       title: "Schedule",
       url: "/dashboard/projects/demo-project-1/schedule",
       icon: IconCalendarStats,
+    },
+    {
+      title: "Conversations",
+      url: "/dashboard/conversations",
+      icon: IconMessageCircle,
     },
     {
       title: "Files",
@@ -96,6 +102,7 @@ function SidebarNav({
   const { open: openSettings } = useSettings()
   const isExpanded = state === "expanded"
   const isFilesMode = pathname?.startsWith("/dashboard/files")
+  const isConversationsMode = pathname?.startsWith("/dashboard/conversations")
   const isProjectMode = /^\/dashboard\/projects\/[^/]+/.test(
     pathname ?? ""
   )
@@ -107,13 +114,15 @@ function SidebarNav({
   //   }
   // }, [isFilesMode, isProjectMode, isExpanded, setOpen])
 
-  const showContext = isExpanded && (isFilesMode || isProjectMode)
+  const showContext = isExpanded && (isFilesMode || isProjectMode || isConversationsMode)
 
   const mode = showContext && isFilesMode
     ? "files"
-    : showContext && isProjectMode
-      ? "projects"
-      : "main"
+    : showContext && isConversationsMode
+      ? "conversations"
+      : showContext && isProjectMode
+        ? "projects"
+        : "main"
 
   const secondaryItems = [
     ...data.navSecondary.map((item) =>
@@ -128,6 +137,11 @@ function SidebarNav({
       {mode === "files" && (
         <React.Suspense>
           <NavFiles />
+        </React.Suspense>
+      )}
+      {mode === "conversations" && (
+        <React.Suspense>
+          <NavConversations />
         </React.Suspense>
       )}
       {mode === "projects" && <NavProjects projects={projects} />}

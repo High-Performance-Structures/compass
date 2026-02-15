@@ -1,0 +1,80 @@
+{
+  "$schema": "./gen/schemas/desktop-schema.json",
+  "productName": "Compass",
+  "version": "0.1.0",
+  "identifier": "work.nicholai.compass",
+  "build": {
+    "devUrl": "http://localhost:3000",
+    "frontendDist": "../out",
+    "beforeDevCommand": "bun dev",
+    "beforeBuildCommand": "bun run build"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "Compass",
+        "width": 1280,
+        "height": 800,
+        "minWidth": 800,
+        "minHeight": 600,
+        "center": true,
+        "resizable": true,
+        "fullscreen": false,
+        "decorations": true,
+        "transparent": false
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; img-src 'self' data: https: blob:; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; connect-src 'self' http://localhost:* http://127.0.0.1:* https: wss:; font-src 'self' data:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'",
+      "capabilities": ["default"]
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "publisher": "HPS Compass",
+    "category": "Business",
+    "shortDescription": "Construction Project Management",
+    "longDescription": "Compass - A comprehensive construction project management application with AI-powered assistance",
+    "windows": {
+      "certificateThumbprint": null,
+      "digestAlgorithm": "sha256",
+      "timestampUrl": ""
+    },
+    "macOS": {
+      "minimumSystemVersion": "10.13",
+      "entitlements": null,
+      "exceptionDomain": "",
+      "frameworks": [],
+      "providerShortName": null,
+      "signingIdentity": null
+    },
+    "linux": {
+      "deb": {
+        "depends": []
+      },
+      "appimage": {
+        "bundleMediaFramework": false
+      }
+    },
+    "externalBin": [],
+    "copyright": "",
+    "license": "MIT",
+    "category": "Business"
+  },
+  "plugins": {
+    "updater": {
+      "active": true,
+      "endpoints": [],
+      "pubkey": ""
+    }
+  }
+}

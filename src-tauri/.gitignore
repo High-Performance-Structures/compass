@@ -1,0 +1,19 @@
+# Build artifacts
+/target/
+/Cargo.lock
+
+# Generated schemas
+/gen/
+
+# IDE
+/.idea/
+/.vscode/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Debug
+*.log

@@ -14,6 +14,7 @@ export function MainContent({
   const hasRenderedUI = !!spec?.root || isRendering
   const isCollapsed =
     pathname === "/dashboard" && !hasRenderedUI
+  const isConversations = pathname?.startsWith("/dashboard/conversations")
 
   return (
     <div
@@ -22,10 +23,15 @@ export function MainContent({
         "transition-[flex,opacity] duration-300 ease-in-out",
         isCollapsed
           ? "flex-[0_0_0%] opacity-0 overflow-hidden pointer-events-none"
-          : "flex-1 overflow-y-auto pb-14 md:pb-0"
+          : isConversations
+            ? "flex-1 overflow-hidden"
+            : "flex-1 overflow-y-auto pb-14 md:pb-0"
       )}
     >
-      <div className="@container/main flex flex-1 flex-col min-w-0">
+      <div className={cn(
+        "@container/main flex flex-1 flex-col min-w-0",
+        isConversations && "overflow-hidden"
+      )}>
         {children}
       </div>
     </div>

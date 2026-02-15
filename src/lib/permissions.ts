@@ -14,8 +14,9 @@ export type Resource =
   | "vendor"
   | "finance"
   | "agent"
+  | "channels"
 
-export type Action = "create" | "read" | "update" | "delete" | "approve"
+export type Action = "create" | "read" | "update" | "delete" | "approve" | "moderate"
 
 type RolePermissions = {
   [key: string]: {
@@ -38,6 +39,7 @@ const PERMISSIONS: RolePermissions = {
     vendor: ["create", "read", "update", "delete"],
     finance: ["create", "read", "update", "delete", "approve"],
     agent: ["create", "read", "update", "delete"],
+    channels: ["create", "read", "update", "delete", "moderate"],
   },
   office: {
     project: ["create", "read", "update"],
@@ -53,6 +55,7 @@ const PERMISSIONS: RolePermissions = {
     vendor: ["create", "read", "update"],
     finance: ["create", "read", "update"],
     agent: ["read"],
+    channels: ["create", "read", "update"],
   },
   field: {
     project: ["read"],
@@ -68,6 +71,7 @@ const PERMISSIONS: RolePermissions = {
     vendor: ["read"],
     finance: ["read"],
     agent: ["read"],
+    channels: ["read"],
   },
   client: {
     project: ["read"],
@@ -83,6 +87,7 @@ const PERMISSIONS: RolePermissions = {
     vendor: ["read"],
     finance: ["read"],
     agent: [],
+    channels: ["read"],
   },
 }
 
