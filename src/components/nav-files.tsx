@@ -11,7 +11,7 @@ import {
 import Link from "next/link"
 import { usePathname, useSearchParams } from "next/navigation"
 
-import { useFiles } from "@/hooks/use-files"
+import { useFilesOptional } from "@/hooks/use-files"
 import { StorageIndicator } from "@/components/files/storage-indicator"
 import {
   SidebarGroup,
@@ -49,7 +49,8 @@ export function NavFiles() {
   const pathname = usePathname()
   const searchParams = useSearchParams()
   const activeView = searchParams.get("view") ?? "my-files"
-  const { storageUsage } = useFiles()
+  const files = useFilesOptional()
+  const storageUsage = files?.storageUsage
 
   return (
     <>
@@ -102,9 +103,11 @@ export function NavFiles() {
           </SidebarMenu>
         </SidebarGroupContent>
       </SidebarGroup>
-      <div className="mt-auto px-3 pb-3">
-        <StorageIndicator usage={storageUsage} />
-      </div>
+      {storageUsage && (
+        <div className="mt-auto px-3 pb-3">
+          <StorageIndicator usage={storageUsage} />
+        </div>
+      )}
     </>
   )
 }

@@ -51,6 +51,8 @@ export default async function DashboardLayout({
     <CommandMenuProvider>
       <BiometricGuard>
       <DesktopShell>
+      <FeedbackWidget>
+      <DashboardContextMenu>
       <SidebarProvider
         defaultOpen={false}
         className="h-screen overflow-hidden"
@@ -61,21 +63,17 @@ export default async function DashboardLayout({
         }
       >
         <AppSidebar variant="inset" projects={projectList} dashboards={dashboardList} user={user} />
-        <FeedbackWidget>
-          <SidebarInset className="overflow-hidden">
-            <DesktopOfflineBanner />
-            <OfflineBanner />
-            <SiteHeader user={user} />
-            <div className="flex min-h-0 flex-1 overflow-hidden">
-              <DashboardContextMenu>
-                <MainContent>
-                  {children}
-                </MainContent>
-              </DashboardContextMenu>
-              <ChatPanelShell />
-            </div>
-          </SidebarInset>
-        </FeedbackWidget>
+        <SidebarInset className="overflow-hidden">
+          <DesktopOfflineBanner />
+          <OfflineBanner />
+          <SiteHeader user={user} />
+          <div className="flex min-h-0 flex-1 overflow-hidden">
+            <MainContent>
+              {children}
+            </MainContent>
+            <ChatPanelShell />
+          </div>
+        </SidebarInset>
         <MobileBottomNav />
         <NativeShell />
         <PushNotificationRegistrar />
@@ -84,6 +82,8 @@ export default async function DashboardLayout({
         </p>
         <Toaster position="bottom-right" />
       </SidebarProvider>
+      </DashboardContextMenu>
+      </FeedbackWidget>
       </DesktopShell>
       </BiometricGuard>
     </CommandMenuProvider>
