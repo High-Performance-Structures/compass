@@ -176,6 +176,12 @@ export class SyncEngine {
     // Fetch remote changes
     const { records, nextCursor } = await fetchRemote(tableName, sinceCursor)
 
+    // Update checkpoint even if no records (cursor still advances)
+    if (nextCursor) {
+      const db = await this.getDb()
+      await this.updateCheckpoint(db, tableName, nextCursor)
+    }
+
     if (records.length === 0) {
       return result
     }
@@ -344,11 +350,6 @@ export class SyncEngine {
 
         result.updated++
       }
-    }
-
-    // Update checkpoint
-    if (nextCursor) {
-      await this.updateCheckpoint(db, tableName, nextCursor)
     }
 
     return result

@@ -28,7 +28,8 @@ const SYNC_SCHEMA = `
     status TEXT NOT NULL DEFAULT 'pending',
     retry_count INTEGER NOT NULL DEFAULT 0,
     error_message TEXT,
-    created_at TEXT NOT NULL
+    created_at TEXT NOT NULL,
+    process_after TEXT
   );
 
   CREATE TABLE IF NOT EXISTS sync_checkpoint (
@@ -37,6 +38,15 @@ const SYNC_SCHEMA = `
     last_sync_cursor TEXT,
     local_vector_clock TEXT,
     synced_at TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS sync_tombstone (
+    id TEXT PRIMARY KEY,
+    table_name TEXT NOT NULL,
+    record_id TEXT NOT NULL,
+    vector_clock TEXT NOT NULL,
+    deleted_at TEXT NOT NULL,
+    synced INTEGER NOT NULL DEFAULT 0
   );
 `
 
