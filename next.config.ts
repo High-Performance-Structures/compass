@@ -17,7 +17,8 @@ const nextConfig: NextConfig = {
         ],
     },
     // Node.js native modules that should not be bundled for edge/browser
-    serverExternalPackages: ["better-sqlite3"],
+    // memory-provider imports better-sqlite3 which cannot run in Cloudflare Workers
+    serverExternalPackages: ["better-sqlite3", "./src/db/provider/memory-provider"],
 };
 
 export default nextConfig;
