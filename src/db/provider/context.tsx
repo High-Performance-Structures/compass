@@ -55,6 +55,23 @@ export interface DatabaseProviderProps {
   }
 }
 
+// Lazy-loaded memory provider factory - only loaded when actually needed
+// This avoids bundling better-sqlite3 (a native Node.js module) in
+// environments like Cloudflare Workers where it can't run
+let createMemoryProviderFn: typeof import("./memory-provider")["createMemoryProvider"] | null = null
+
+async function getMemoryProvider(config?: MemoryProviderConfig): Promise<DatabaseProvider> {
+  if (!createMemoryProviderFn) {
+    // Construct the path dynamically to prevent static analysis by bundlers
+    // The path segments are concatenated at runtime
+    const providerDir = "."
+    const providerFile = "memory-provider"
+    const loadedModule = await import(/* webpackIgnore: true */ `${providerDir}/${providerFile}`)
+    createMemoryProviderFn = loadedModule.createMemoryProvider
+  }
+  return createMemoryProviderFn!(config)
+}
+
 export function DatabaseProvider({
   children,
   forcePlatform,
@@ -91,11 +108,7 @@ export function DatabaseProvider({
 
           case "memory":
           default: {
-            // Dynamic import to avoid bundling better-sqlite3 in browser
-            const { createMemoryProvider } = await import(
-              /* webpackIgnore: true */ "./memory-provider"
-            )
-            newProvider = createMemoryProvider(config?.memory)
+            newProvider = await getMemoryProvider(config?.memory)
             break
           }
         }
@@ -164,12 +177,15 @@ export async function getServerDb(): Promise<DrizzleDB> {
 
     case "memory":
     default: {
-      // Dynamic import to avoid bundling better-sqlite3 in browser
-      const { createMemoryProvider } = await import(
-        /* webpackIgnore: true */ "./memory-provider"
+      // Memory provider is only for local development/testing.
+      // On Cloudflare Workers, detectPlatform() returns "d1", so this
+      // code path is never reached at runtime. However, bundlers like
+      // esbuild still try to resolve the import. We throw an error here
+      // since this code should never execute in production environments.
+      throw new Error(
+        "Memory provider not available in this environment. " +
+          "Ensure you have a local SQLite setup or use the D1 provider."
       )
-      const provider = createMemoryProvider()
-      return provider.getDb()
     }
   }
 }

@@ -15,7 +15,7 @@ import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { MarkdownRenderer } from "@/components/ui/markdown-renderer"
 import { cn } from "@/lib/utils"
-import { useConversations } from "@/app/dashboard/conversations/layout"
+import { useConversations } from "@/contexts/conversations-context"
 import { editMessage, deleteMessage, addReaction } from "@/app/actions/chat-messages"
 import { useRouter } from "next/navigation"
 
