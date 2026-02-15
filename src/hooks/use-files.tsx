@@ -733,6 +733,10 @@ export function useFiles() {
   return ctx
 }
 
+export function useFilesOptional() {
+  return useContext(FilesContext)
+}
+
 function sortFiles(
   files: FileItem[],
   sortBy: SortField,
