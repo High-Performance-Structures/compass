@@ -11,7 +11,7 @@ import {
   type NewChannelMember,
   type NewChannelReadState,
 } from "@/db/schema-conversations"
-import { users } from "@/db/schema"
+import { users, organizationMembers } from "@/db/schema"
 import { getCurrentUser } from "@/lib/auth"
 import { requirePermission } from "@/lib/permissions"
 import { revalidatePath } from "next/cache"
@@ -170,9 +170,9 @@ export async function createChannel(data: {
 
     // get user's organization
     const orgMember = await db
-      .select({ organizationId: sql<string>`organization_id` })
-      .from(sql`organization_members`)
-      .where(sql`user_id = ${user.id}`)
+      .select({ organizationId: organizationMembers.organizationId })
+      .from(organizationMembers)
+      .where(eq(organizationMembers.userId, user.id))
       .limit(1)
       .then((rows) => rows[0] ?? null)
 
