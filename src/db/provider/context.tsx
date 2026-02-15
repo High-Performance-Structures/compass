@@ -66,11 +66,9 @@ async function getMemoryProvider(config?: MemoryProviderConfig): Promise<Databas
     // The path segments are concatenated at runtime
     const providerDir = "."
     const providerFile = "memory-provider"
-    // eslint-disable-next-line @typescript-eslint/no-implied-eval
-    const module = await import(/* webpackIgnore: true */ `${providerDir}/${providerFile}`)
-    createMemoryProviderFn = module.createMemoryProvider
+    const loadedModule = await import(/* webpackIgnore: true */ `${providerDir}/${providerFile}`)
+    createMemoryProviderFn = loadedModule.createMemoryProvider
   }
-  // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
   return createMemoryProviderFn!(config)
 }
 
