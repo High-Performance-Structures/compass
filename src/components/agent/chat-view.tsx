@@ -796,12 +796,12 @@ export function ChatView({
           </div>
         </div>
 
-        {/* Bottom input - active only */}
+        {/* Bottom input - active only, positioned above bottom nav on mobile */}
         <div
           className={cn(
             "shrink-0 px-4 transition-all duration-500 ease-in-out",
             isActive
-              ? "opacity-100 translate-y-0 pt-2 pb-6"
+              ? "opacity-100 translate-y-0 pt-2 pb-16 md:pb-6"
               : "opacity-0 translate-y-4 max-h-0 overflow-hidden pointer-events-none py-0"
           )}
         >
@@ -840,15 +840,15 @@ export function ChatView({
   }
 
   return (
-    <div className="flex h-full w-full flex-col">
+    <div className="flex h-full w-full flex-col min-h-0 overflow-hidden">
       {/* Conversation */}
-      <Conversation className="flex-1">
+      <Conversation className="flex-1 min-h-0 overflow-y-auto">
         <ConversationContent>
           {chat.messages.length === 0 ? (
             <div
               className={cn(
-                "flex flex-col items-center gap-4",
-                hideSuggestions ? "h-full" : "pt-8"
+                "flex flex-col items-center justify-center gap-4 h-full",
+                !hideSuggestions && "py-8"
               )}
             >
               {!hideSuggestions && (
@@ -884,17 +884,17 @@ export function ChatView({
         <ConversationScrollButton />
       </Conversation>
 
-      {/* Input */}
-      <div className="p-3">
-            <ChatInput
-              textareaRef={textareaRef}
-              placeholder={inputPlaceholder ?? "Ask anything..."}
-              recorder={recorder}
-              status={chat.status}
-              isGenerating={chat.isGenerating}
-              onSend={handleActiveSend}
-              onNewChat={chat.messages.length > 0 ? chat.newChat : undefined}
-            />
+      {/* Input - handles keyboard via visual viewport */}
+      <div className="shrink-0 bg-background p-3">
+        <ChatInput
+          textareaRef={textareaRef}
+          placeholder={inputPlaceholder ?? "Ask anything..."}
+          recorder={recorder}
+          status={chat.status}
+          isGenerating={chat.isGenerating}
+          onSend={handleActiveSend}
+          onNewChat={chat.messages.length > 0 ? chat.newChat : undefined}
+        />
       </div>
     </div>
   )

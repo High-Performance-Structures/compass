@@ -1,7 +1,9 @@
 import { tool } from "ai"
 import { z } from "zod/v4"
+import { eq, like } from "drizzle-orm"
 import { getCloudflareContext } from "@opennextjs/cloudflare"
 import { getDb } from "@/db"
+import { scheduleTasks, projects } from "@/db/schema"
 import { getCurrentUser } from "@/lib/auth"
 import { saveMemory, searchMemories } from "@/lib/agent/memory"
 import {
@@ -209,15 +211,36 @@ async function executeQueryData(input: QueryDataInput) {
     }
 
     case "schedule_tasks": {
-      const rows = await db.query.scheduleTasks.findMany({
-        limit: cap,
-        ...(input.search
-          ? {
-              where: (t, { like }) =>
-                like(t.title, `%${input.search}%`),
-            }
-          : {}),
-      })
+      const baseQuery = db
+        .select({
+          id: scheduleTasks.id,
+          projectId: scheduleTasks.projectId,
+          title: scheduleTasks.title,
+          startDate: scheduleTasks.startDate,
+          workdays: scheduleTasks.workdays,
+          endDateCalculated: scheduleTasks.endDateCalculated,
+          phase: scheduleTasks.phase,
+          status: scheduleTasks.status,
+          isCriticalPath: scheduleTasks.isCriticalPath,
+          isMilestone: scheduleTasks.isMilestone,
+          percentComplete: scheduleTasks.percentComplete,
+          assignedTo: scheduleTasks.assignedTo,
+          sortOrder: scheduleTasks.sortOrder,
+          createdAt: scheduleTasks.createdAt,
+          updatedAt: scheduleTasks.updatedAt,
+          projectName: projects.name,
+        })
+        .from(scheduleTasks)
+        .innerJoin(projects, eq(scheduleTasks.projectId, projects.id))
+
+      if (input.search) {
+        const rows = await baseQuery.where(
+          like(scheduleTasks.title, `%${input.search}%`)
+        )
+        return { data: rows, count: rows.length }
+      }
+
+      const rows = await baseQuery.limit(cap)
       return { data: rows, count: rows.length }
     }
 

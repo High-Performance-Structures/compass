@@ -25,26 +25,30 @@ import {
 } from "@/components/ui/sheet"
 import { useIsMobile } from "@/hooks/use-mobile"
 
-const notifications = [
+const initialNotifications = [
   {
+    id: "1",
     icon: IconClipboardCheck,
     title: "Task assigned",
     description: "You've been assigned to \"Update homepage layout\"",
     time: "2m ago",
   },
   {
+    id: "2",
     icon: IconMessageCircle,
     title: "New comment",
     description: "Sarah left a comment on the brand assets file",
     time: "15m ago",
   },
   {
+    id: "3",
     icon: IconAlertCircle,
     title: "Deadline approaching",
     description: "\"Q1 Report\" is due tomorrow",
     time: "1h ago",
   },
   {
+    id: "4",
     icon: IconClock,
     title: "Status changed",
     description: "\"API Integration\" moved to In Review",
@@ -52,13 +56,27 @@ const notifications = [
   },
 ]
 
-function NotificationsList() {
+interface NotificationsListProps {
+  readonly notifications: typeof initialNotifications
+  readonly onMarkAllRead: () => void
+}
+
+function NotificationsList({ notifications, onMarkAllRead }: NotificationsListProps) {
+  if (notifications.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center py-8 text-muted-foreground">
+        <IconBell className="size-8 mb-2 opacity-50" />
+        <p className="text-sm">No new notifications</p>
+      </div>
+    )
+  }
+
   return (
     <>
       <div className="max-h-[60vh] overflow-y-auto">
-        {notifications.map((item, index) => (
+        {notifications.map((item) => (
           <div
-            key={`${item.title}-${index}`}
+            key={item.id}
             className="hover:bg-muted/50 flex gap-3 border-b px-4 py-3 last:border-0"
           >
             <item.icon className="text-muted-foreground mt-0.5 size-4 shrink-0" />
@@ -75,7 +93,12 @@ function NotificationsList() {
         ))}
       </div>
       <div className="border-t px-4 py-2">
-        <Button variant="ghost" size="sm" className="h-9 w-full text-xs">
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-9 w-full text-xs"
+          onClick={onMarkAllRead}
+        >
           Mark all as read
         </Button>
       </div>
@@ -86,12 +109,22 @@ function NotificationsList() {
 export function NotificationsPopover() {
   const isMobile = useIsMobile()
   const [open, setOpen] = useState(false)
+  const [notifications, setNotifications] = useState(initialNotifications)
+  const hasUnread = notifications.length > 0
+
+  const handleMarkAllRead = () => {
+    setNotifications([])
+    setOpen(false)
+  }
 
   const trigger = (
     <Button variant="ghost" size="icon" className="relative size-8">
-      <BadgeIndicator dot>
-        <IconBell className="size-4" />
-      </BadgeIndicator>
+      {hasUnread && (
+        <BadgeIndicator dot>
+          <IconBell className="size-4" />
+        </BadgeIndicator>
+      )}
+      {!hasUnread && <IconBell className="size-4" />}
     </Button>
   )
 
@@ -103,7 +136,10 @@ export function NotificationsPopover() {
           <SheetHeader className="border-b px-4 py-3 text-left">
             <SheetTitle className="text-base font-medium">Notifications</SheetTitle>
           </SheetHeader>
-          <NotificationsList />
+          <NotificationsList
+            notifications={notifications}
+            onMarkAllRead={handleMarkAllRead}
+          />
         </SheetContent>
       </Sheet>
     )
@@ -116,7 +152,10 @@ export function NotificationsPopover() {
         <div className="border-b px-4 py-3">
           <p className="text-sm font-medium">Notifications</p>
         </div>
-        <NotificationsList />
+        <NotificationsList
+          notifications={notifications}
+          onMarkAllRead={handleMarkAllRead}
+        />
       </PopoverContent>
     </Popover>
   )
