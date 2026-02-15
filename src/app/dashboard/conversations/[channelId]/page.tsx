@@ -12,10 +12,17 @@ export default async function ChannelPage({
   readonly params: Promise<{ readonly channelId: string }>
 }) {
   const { channelId } = await params
-  const [channelResult, messagesResult] = await Promise.all([
-    getChannel(channelId),
-    getMessages(channelId),
-  ])
+
+  let channelResult, messagesResult
+  try {
+    [channelResult, messagesResult] = await Promise.all([
+      getChannel(channelId),
+      getMessages(channelId),
+    ])
+  } catch (error) {
+    console.error("Error loading channel page:", error)
+    throw error
+  }
 
   if (!channelResult.success || !channelResult.data) {
     notFound()
