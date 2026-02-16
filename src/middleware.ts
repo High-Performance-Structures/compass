@@ -41,9 +41,18 @@ export default async function middleware(request: NextRequest) {
     return handleAuthkitHeaders(request, headers)
   }
 
-  // demo sessions bypass auth
-  const isDemoSession = request.cookies.get("compass-demo")?.value === "true"
-  if (isDemoSession) {
+  const hasDemoCookie =
+    request.cookies.get("compass-demo")?.value === "true"
+
+  // real session trumps demo cookie -- clear the stale cookie
+  if (session.user && hasDemoCookie) {
+    const response = handleAuthkitHeaders(request, headers)
+    response.cookies.delete("compass-demo")
+    return response
+  }
+
+  // demo sessions bypass auth (no real session present)
+  if (hasDemoCookie) {
     return handleAuthkitHeaders(request, headers)
   }
 
@@ -51,7 +60,9 @@ export default async function middleware(request: NextRequest) {
   if (!session.user) {
     const loginUrl = new URL("/login", request.url)
     loginUrl.searchParams.set("from", pathname)
-    return handleAuthkitHeaders(request, headers, { redirect: loginUrl.toString() })
+    return handleAuthkitHeaders(request, headers, {
+      redirect: loginUrl.toString(),
+    })
   }
 
   // authenticated - continue with authkit headers

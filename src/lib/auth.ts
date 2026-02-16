@@ -106,15 +106,8 @@ export async function getCurrentUser(): Promise<AuthUser | null> {
       return null
     }
 
-    // real session exists -- clear stale demo cookie if present
-    try {
-      const cookieStore = await cookies()
-      if (cookieStore.get("compass-demo")) {
-        cookieStore.delete("compass-demo")
-      }
-    } catch {
-      // cookies() may throw in non-request contexts
-    }
+    // demo cookie cleanup handled by middleware (can't delete
+    // cookies from Server Components -- only actions/routes)
 
     const workosUser = session.user
 
