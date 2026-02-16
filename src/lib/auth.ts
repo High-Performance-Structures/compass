@@ -69,6 +69,16 @@ export async function getCurrentUser(): Promise<AuthUser | null> {
       !process.env.WORKOS_API_KEY.includes("placeholder")
 
     if (!isWorkOSConfigured) {
+      // check demo cookie when WorkOS isn't available
+      try {
+        const cookieStore = await cookies()
+        const isDemoSession =
+          cookieStore.get("compass-demo")?.value === "true"
+        if (isDemoSession) return DEMO_USER
+      } catch {
+        // cookies() may throw in non-request contexts
+      }
+
       // return mock user for development
       return {
         id: "dev-user-1",
@@ -89,8 +99,31 @@ export async function getCurrentUser(): Promise<AuthUser | null> {
       }
     }
 
+    // WorkOS is configured -- try real auth first
     const session = await withAuth()
-    if (!session || !session.user) return null
+
+    if (!session || !session.user) {
+      // no real session; fall back to demo cookie
+      try {
+        const cookieStore = await cookies()
+        const isDemoSession =
+          cookieStore.get("compass-demo")?.value === "true"
+        if (isDemoSession) return DEMO_USER
+      } catch {
+        // cookies() may throw in non-request contexts
+      }
+      return null
+    }
+
+    // real session exists -- clear stale demo cookie if present
+    try {
+      const cookieStore = await cookies()
+      if (cookieStore.get("compass-demo")) {
+        cookieStore.delete("compass-demo")
+      }
+    } catch {
+      // cookies() may throw in non-request contexts
+    }
 
     const workosUser = session.user
 
