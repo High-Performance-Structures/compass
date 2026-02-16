@@ -535,6 +535,26 @@ export function ChatProvider({
             ],
         })
       )
+
+      // mark all generateUI tool calls from restored messages
+      // as already-dispatched so the watcher doesn't re-trigger
+      // renders or navigate to /dashboard on resume
+      for (const m of restored) {
+        if (m.role !== "assistant") continue
+        const parts = m.parts as ReadonlyArray<unknown>
+        let result = findGenerateUIOutput(
+          parts,
+          renderDispatchedRef.current
+        )
+        while (result) {
+          renderDispatchedRef.current.add(result.callId)
+          result = findGenerateUIOutput(
+            parts,
+            renderDispatchedRef.current
+          )
+        }
+      }
+
       chat.setMessages(restored)
       setResumeLoaded(true)
     }

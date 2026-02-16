@@ -248,6 +248,73 @@ em-emoji-picker {
   max-height: 350px;
 }
 
+/* discord-like compact markdown in chat messages */
+.chat-markdown > div {
+  display: contents;
+}
+.chat-markdown p {
+  margin: 0;
+  line-height: 1.375;
+}
+.chat-markdown p + p {
+  margin-top: 0.25em;
+}
+.chat-markdown strong {
+  font-weight: 700;
+}
+.chat-markdown em {
+  font-style: italic;
+}
+.chat-markdown del, .chat-markdown s {
+  text-decoration: line-through;
+}
+.chat-markdown code:not(pre code) {
+  font-family: var(--font-mono);
+  font-size: 0.85em;
+  background: color-mix(in oklch, var(--muted) 80%, transparent);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 0.1em 0.3em;
+}
+.chat-markdown pre {
+  margin: 0.375em 0;
+  border: 1px solid var(--border);
+  border-radius: calc(var(--radius) - 4px);
+  background: color-mix(in oklch, var(--muted) 60%, transparent);
+  overflow-x: auto;
+}
+.chat-markdown pre code {
+  font-family: var(--font-mono);
+  font-size: 0.85em;
+  display: block;
+  padding: 0.5em 0.75em;
+  background: none;
+  border: none;
+}
+.chat-markdown blockquote {
+  margin: 0.25em 0;
+  padding-left: 0.75em;
+  border-left: 3px solid var(--muted-foreground);
+}
+.chat-markdown ul, .chat-markdown ol {
+  margin: 0.25em 0;
+  padding-left: 1.5em;
+}
+.chat-markdown li {
+  margin: 0;
+}
+.chat-markdown a {
+  color: var(--primary);
+  text-decoration: none;
+}
+.chat-markdown a:hover {
+  text-decoration: underline;
+}
+.chat-markdown hr {
+  margin: 0.5em 0;
+  border-color: var(--border);
+}
+
 /* mention pill styling in messages and editor */
 .mention {
   border-radius: calc(var(--radius) - 4px);

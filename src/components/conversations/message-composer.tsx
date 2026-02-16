@@ -6,6 +6,7 @@ import StarterKit from "@tiptap/starter-kit"
 import Placeholder from "@tiptap/extension-placeholder"
 import Link from "@tiptap/extension-link"
 import Mention from "@tiptap/extension-mention"
+import { Markdown } from "tiptap-markdown"
 import {
   Bold,
   Italic,
@@ -166,7 +167,10 @@ export function MessageComposer({
       StarterKit.configure({
         heading: false,
         horizontalRule: false,
-        blockquote: false,
+      }),
+      Markdown.configure({
+        transformPastedText: true,
+        transformCopiedText: true,
       }),
       Placeholder.configure({
         placeholder: placeholder ?? `Message #${channelName}`,
@@ -212,8 +216,8 @@ export function MessageComposer({
   const handleSend = React.useCallback(async () => {
     if (!editor || isSending) return
 
-    const content = editor.getText().trim()
-    if (!content) return
+    const plainText = editor.getText().trim()
+    if (!plainText) return
 
     setIsSending(true)
     setError(null)
@@ -222,12 +226,16 @@ export function MessageComposer({
       const mentions = extractMentions(
         editor.getJSON() as Record<string, unknown>,
       )
-      const contentHtml = editor.getHTML()
+      // send markdown so the server renders it via `marked`
+      const storage = editor.storage as unknown as Record<
+        string,
+        { getMarkdown?: () => string } | undefined
+      >
+      const markdown = storage.markdown?.getMarkdown?.() ?? plainText
 
       const result = await sendMessage({
         channelId,
-        content,
-        contentHtml,
+        content: markdown,
         threadId,
         mentions: mentions.length > 0 ? mentions : undefined,
       })

@@ -177,19 +177,8 @@ export const MessageItem = React.memo(function MessageItem({ message }: MessageI
               </Button>
             </div>
           </div>
-        ) : message.contentHtml ? (
-          <div
-            className="mt-1 text-sm prose prose-sm dark:prose-invert max-w-none
-              prose-p:my-1 prose-p:leading-relaxed
-              prose-code:rounded prose-code:bg-muted prose-code:px-1 prose-code:py-0.5 prose-code:font-mono prose-code:text-sm
-              prose-pre:bg-muted prose-pre:p-3 prose-pre:rounded-md prose-pre:overflow-x-auto
-              prose-a:text-primary prose-a:no-underline hover:prose-a:underline
-              prose-ul:my-1 prose-ol:my-1 prose-li:my-0.5
-              prose-blockquote:border-l-primary prose-blockquote:text-muted-foreground"
-            dangerouslySetInnerHTML={{ __html: message.contentHtml }}
-          />
         ) : (
-          <div className="mt-1 text-sm">
+          <div className="chat-markdown mt-1 text-sm">
             <MarkdownRenderer>{message.content}</MarkdownRenderer>
           </div>
         )}

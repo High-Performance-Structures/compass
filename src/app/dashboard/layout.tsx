@@ -20,6 +20,7 @@ import { getProjects } from "@/app/actions/projects"
 import { getCustomDashboards } from "@/app/actions/dashboards"
 import { ProjectListProvider } from "@/components/project-list-provider"
 import { getCurrentUser, toSidebarUser } from "@/lib/auth"
+import { cookies } from "next/headers"
 import { BiometricGuard } from "@/components/native/biometric-guard"
 import { OfflineBanner } from "@/components/native/offline-banner"
 import { NativeShell } from "@/components/native/native-shell"
@@ -35,12 +36,14 @@ export default async function DashboardLayout({
 }: {
   readonly children: React.ReactNode
 }) {
-  const [projectList, authUser, dashboardResult] =
+  const [projectList, authUser, dashboardResult, cookieStore] =
     await Promise.all([
       getProjects(),
       getCurrentUser(),
       getCustomDashboards(),
+      cookies(),
     ])
+  const sidebarOpen = cookieStore.get("sidebar_state")?.value !== "false"
   const user = authUser ? toSidebarUser(authUser) : null
   const activeOrgId = authUser?.organizationId ?? null
   const activeOrgName = authUser?.organizationName ?? null
@@ -61,7 +64,7 @@ export default async function DashboardLayout({
       <FeedbackWidget>
       <DashboardContextMenu>
       <SidebarProvider
-        defaultOpen={false}
+        defaultOpen={sidebarOpen}
         className="h-screen overflow-hidden"
         style={
           {

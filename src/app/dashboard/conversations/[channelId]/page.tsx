@@ -25,9 +25,9 @@ export default async function ChannelPage({
   const messages = messagesResult.success && messagesResult.data ? messagesResult.data : []
 
   return (
-    <>
+    <div className="flex h-full w-full min-w-0 overflow-hidden">
       <div
-        className="grid h-full overflow-hidden"
+        className="grid min-w-0 flex-1 overflow-hidden"
         style={{ gridTemplateRows: "auto 1fr auto" }}
       >
         <ChannelHeader
@@ -46,6 +46,6 @@ export default async function ChannelPage({
         />
       </div>
       <ThreadPanel />
-    </>
+    </div>
   )
 }
