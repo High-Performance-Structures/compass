@@ -5,7 +5,7 @@ Branching: `<username>/<feature>` off main
 Conventional commits: `type(scope): subject`
 PRs: squash-merged to main
 Deployment: manual `bun deploy` or automatic through cloudflare/github integration
-Last Updated: 2026/02/12
+Last Updated: 2026/02/15
 This file: AGENTS.md -> Symlinked to CLAUDE.md and GEMINI.md
 ---
 
@@ -86,11 +86,29 @@ bun run db:migrate:local # apply migrations locally
 bun run db:migrate:prod  # apply migrations to production D1
 ```
 
+testing:
+```bash
+bun test                 # vitest run (unit + integration)
+bun test:watch           # vitest in watch mode
+bun test:coverage        # vitest with coverage
+bun test:integration     # integration tests only (__tests__/integration/)
+bun test:e2e             # playwright e2e (web)
+bun test:e2e:ui          # playwright with UI inspector
+bun test:e2e:desktop     # playwright e2e for Tauri desktop
+```
+
 mobile (capacitor):
 ```bash
 bun cap:sync             # sync web assets + plugins to native projects
 bun cap:ios              # open xcode project
 bun cap:android          # open android studio project
+```
+
+desktop (tauri):
+```bash
+bun tauri:dev            # tauri dev server
+bun tauri:build          # production tauri build
+bun tauri:preview        # tauri dev without file watching
 ```
 
 Style & Conventions
@@ -108,7 +126,6 @@ typescript discipline
 ---
 
 these rules are enforced by convention, not tooling. see [docs/development/conventions.md](docs/development/conventions.md) for the reasoning behind each one.
-> TODO: Add testing suite
 
 - no `any` -- use `unknown` with narrowing
 - no `as` -- fix the types instead of asserting
@@ -133,7 +150,10 @@ tech stack
 | ai agent | AI SDK v6 + OpenRouter |
 | integrations | NetSuite REST API, Google Drive API |
 | mobile | Capacitor (iOS + Android webview) |
+| desktop | Tauri 2.0 (Rust backend, webview frontend) |
+| rich text | TipTap (mentions, links, placeholder) |
 | themes | 10 presets + AI-generated custom themes (oklch) |
+| testing | Vitest (unit/integration), Playwright (e2e, web + Tauri) |
 | deployment | Cloudflare Workers via OpenNext |
 
 
@@ -146,8 +166,12 @@ each module contributes schema tables, server actions, components, and optionall
 - **google drive**: domain-wide delegation via service account in `src/lib/google/`. two-layer permissions (compass RBAC + workspace). see [docs/modules/google-drive.md](docs/modules/google-drive.md).
 - **scheduling**: gantt charts, critical path, baselines in `src/lib/schedule/`. see [docs/modules/scheduling.md](docs/modules/scheduling.md).
 - **financials**: invoices, vendor bills, payments, credit memos. tied to netsuite sync. see [docs/modules/financials.md](docs/modules/financials.md).
-- **conversations** (WIP): slack-like channels and messaging. text/voice/announcement channels, threading, reactions, attachments. schema in `src/db/schema-conversations.ts`.
+- **conversations**: slack-like channels and messaging. text/voice/announcement channels, threading, reactions, attachments, @mentions. schema in `src/db/schema-conversations.ts`. components in `src/components/conversations/`.
+- **voice**: discord-style voice controls with user bar, transcription via `/api/transcribe/`. components in `src/components/voice/`, state in `use-voice-state.ts`.
+- **offline sync**: queue-based sync engine in `src/lib/sync/` with conflict resolution. API routes at `/api/sync/` (checkpoint, delta, mutate).
+- **desktop**: Tauri 2.0 wrapper in `src-tauri/`. keyboard shortcuts in `src/lib/desktop/shortcuts.ts`, window management in `src/lib/desktop/window-manager.ts`. components in `src/components/desktop/`.
 - **mobile**: capacitor webview wrapper. the web app must never break because of native code -- all capacitor imports are dynamic, gated behind `isNative()`. see [docs/modules/mobile.md](docs/modules/mobile.md) and [docs/architecture/native-mobile.md](docs/architecture/native-mobile.md).
+- **mcp**: model context protocol integration. schema in `src/db/schema-mcp.ts`, key management via `src/app/actions/mcp-keys.ts`.
 - **themes**: per-user oklch color system, 10 presets, AI-generated custom themes. see [docs/development/theming.md](docs/development/theming.md).
 - **plugins/skills**: github-hosted SKILL.md files inject into agent system prompt. full plugins provide tools, components, actions. see [docs/development/plugins.md](docs/development/plugins.md).
 - **claude code bridge**: local daemon that routes inference through your own Anthropic API key. WebSocket connection gives the agent filesystem + terminal access alongside Compass tools. API key auth with scoped permissions. see [docs/modules/claude-code.md](docs/modules/claude-code.md).
@@ -160,21 +184,27 @@ project structure
 src/
 ├── app/
 │   ├── (auth)/            # auth pages (login, signup, etc)
-│   ├── api/               # api routes (agent, push, netsuite, auth)
+│   ├── api/               # api routes (agent, bridge, google, netsuite, push, sync, transcribe)
 │   ├── dashboard/         # protected dashboard routes
-│   ├── actions/           # server actions (27 files, all mutations)
+│   ├── actions/           # server actions (32 files, all mutations)
 │   ├── globals.css        # tailwind + theme variables
 │   └── layout.tsx         # root layout (ChatProvider lives here)
 ├── components/
 │   ├── ui/               # shadcn/ui primitives
+│   ├── ai/               # shadcn AI components (Conversation, Message, Tool)
 │   ├── agent/            # ai chat (ChatView, ChatProvider, ChatPanelShell)
-│   ├── native/           # capacitor mobile components
-│   ├── netsuite/         # netsuite connection ui
+│   ├── auth/             # authentication components
+│   ├── conversations/    # channels, messaging, threads, mentions
+│   ├── desktop/          # tauri desktop components
 │   ├── files/            # google drive file browser
 │   ├── financials/       # invoice/bill components
+│   ├── google/           # google integration ui
+│   ├── native/           # capacitor mobile components
+│   ├── netsuite/         # netsuite connection ui
+│   ├── people/           # user management
 │   ├── schedule/         # gantt and scheduling
-│   ├── conversations/    # channels and messaging (WIP)
-│   └── people/           # user management
+│   ├── settings/         # settings dialogs
+│   └── voice/            # voice controls and user bar
 ├── db/
 │   ├── schema.ts         # core tables
 │   ├── schema-netsuite.ts
@@ -186,22 +216,29 @@ src/
 │   ├── schema-mcp.ts
 │   ├── schema-conversations.ts
 │   └── schema-google.ts
-├── hooks/                 # react hooks (chat, native, audio)
+├── hooks/                 # ~19 hooks (chat, native, audio, voice, desktop, files, realtime, etc.)
 ├── lib/
 │   ├── agent/            # ai agent harness + plugins/
+│   ├── conversations/    # conversation utilities
+│   ├── desktop/          # tauri shortcuts + window manager
+│   ├── github/           # github integration
 │   ├── google/           # google drive integration
+│   ├── mcp/              # model context protocol
 │   ├── native/           # capacitor platform detection + photo queue
 │   ├── netsuite/         # netsuite integration
 │   ├── push/             # push notification sender
 │   ├── schedule/         # scheduling computation
+│   ├── sync/             # offline sync engine (queue, conflict resolution)
 │   ├── theme/            # theme presets, apply, fonts
 │   ├── auth.ts           # workos integration
 │   ├── permissions.ts    # rbac checks
 │   └── validations/      # zod schemas
 └── types/                # global typescript types
 
+src-tauri/                 # tauri 2.0 rust project (desktop app)
 docs/                      # full documentation (start with docs/README.md)
 drizzle/                   # database migrations (auto-generated)
+__tests__/                 # vitest integration tests
 ios/                       # xcode project (capacitor)
 android/                   # android studio project (capacitor)
 ```
@@ -264,5 +301,17 @@ sharp edges that will cost you debugging time if you don't know about them upfro
 - omitting the `line` param on line items adds a new line instead of updating
 
 see [docs/modules/netsuite.md](docs/modules/netsuite.md) for full context.
+
+### tauri / desktop
+
+- all tauri imports must be dynamic and gated behind platform checks (same pattern as capacitor)
+- `src-tauri/` contains the Rust backend with Cargo.toml and tauri config
+- playwright e2e for desktop uses `TAURI=true` env flag
+- keyboard shortcuts registered in `src/lib/desktop/shortcuts.ts`
+
+### conversations / tiptap
+
+- @mentions use TipTap mention extension -- mention data stored as JSON in message content
+- DOMPurify import: use `dompurify` (not `isomorphic-dompurify`) for edge compatibility
 
 
