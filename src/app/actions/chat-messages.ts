@@ -17,6 +17,8 @@ import {
 import { users, organizationMembers } from "@/db/schema"
 import { getCurrentUser } from "@/lib/auth"
 import { requirePermission } from "@/lib/permissions"
+import { isDemoUser } from "@/lib/demo"
+import { requireOrg } from "@/lib/org-scope"
 import { revalidatePath } from "next/cache"
 
 const MAX_MESSAGE_LENGTH = 4000
@@ -89,14 +91,15 @@ async function renderMarkdown(content: string): Promise<string> {
 }
 
 export async function searchMentionableUsers(
-  query: string,
-  organizationId: string
+  query: string
 ) {
   try {
     const user = await getCurrentUser()
     if (!user) {
       return { success: false, error: "Unauthorized" }
     }
+
+    const organizationId = requireOrg(user)
 
     const { env } = await getCloudflareContext()
     const db = getDb(env.DB)
@@ -157,6 +160,9 @@ export async function sendMessage(data: {
     const user = await getCurrentUser()
     if (!user) {
       return { success: false, error: "Unauthorized" }
+    }
+    if (isDemoUser(user.id)) {
+      return { success: false, error: "DEMO_READ_ONLY" }
     }
 
     if (data.content.length > MAX_MESSAGE_LENGTH) {
@@ -315,6 +321,9 @@ export async function editMessage(
     if (!user) {
       return { success: false, error: "Unauthorized" }
     }
+    if (isDemoUser(user.id)) {
+      return { success: false, error: "DEMO_READ_ONLY" }
+    }
 
     const { env } = await getCloudflareContext()
     const db = getDb(env.DB)
@@ -392,6 +401,9 @@ export async function deleteMessage(messageId: string) {
     const user = await getCurrentUser()
     if (!user) {
       return { success: false, error: "Unauthorized" }
+    }
+    if (isDemoUser(user.id)) {
+      return { success: false, error: "DEMO_READ_ONLY" }
     }
 
     const { env } = await getCloudflareContext()
@@ -621,6 +633,9 @@ export async function addReaction(messageId: string, emoji: string) {
     if (!user) {
       return { success: false, error: "Unauthorized" }
     }
+    if (isDemoUser(user.id)) {
+      return { success: false, error: "DEMO_READ_ONLY" }
+    }
 
     if (emoji.length > 10 || !EMOJI_REGEX.test(emoji)) {
       return { success: false, error: "Invalid emoji" }
@@ -704,6 +719,9 @@ export async function removeReaction(messageId: string, emoji: string) {
     const user = await getCurrentUser()
     if (!user) {
       return { success: false, error: "Unauthorized" }
+    }
+    if (isDemoUser(user.id)) {
+      return { success: false, error: "DEMO_READ_ONLY" }
     }
 
     if (emoji.length > 10 || !EMOJI_REGEX.test(emoji)) {

@@ -3,6 +3,7 @@ import { z } from "zod/v4"
 import { getCloudflareContext } from "@opennextjs/cloudflare"
 import { getDb } from "@/db"
 import { getCurrentUser } from "@/lib/auth"
+import { requireOrg } from "@/lib/org-scope"
 import { saveMemory, searchMemories } from "@/lib/agent/memory"
 import {
   installSkill as installSkillAction,
@@ -23,6 +24,9 @@ import {
 } from "@/app/actions/dashboards"
 import { THEME_PRESETS, findPreset } from "@/lib/theme/presets"
 import type { ThemeDefinition, ColorMap, ThemeFonts, ThemeTokens, ThemeShadows } from "@/lib/theme/types"
+import { projects, scheduleTasks } from "@/db/schema"
+import { invoices, vendorBills } from "@/db/schema-netsuite"
+import { eq, and, like } from "drizzle-orm"
 
 const queryDataInputSchema = z.object({
   queryType: z.enum([
@@ -151,6 +155,12 @@ const recallInputSchema = z.object({
 type RecallInput = z.infer<typeof recallInputSchema>
 
 async function executeQueryData(input: QueryDataInput) {
+  const user = await getCurrentUser()
+  if (!user?.organizationId) {
+    return { error: "no organization context" }
+  }
+  const orgId = requireOrg(user)
+
   const { env } = await getCloudflareContext()
   const db = getDb(env.DB)
   const cap = input.limit ?? 20
@@ -159,12 +169,13 @@ async function executeQueryData(input: QueryDataInput) {
     case "customers": {
       const rows = await db.query.customers.findMany({
         limit: cap,
-        ...(input.search
-          ? {
-              where: (c, { like }) =>
-                like(c.name, `%${input.search}%`),
-            }
-          : {}),
+        where: (c, { eq: eqFunc, like: likeFunc, and: andFunc }) => {
+          const conditions = [eqFunc(c.organizationId, orgId)]
+          if (input.search) {
+            conditions.push(likeFunc(c.name, `%${input.search}%`))
+          }
+          return conditions.length > 1 ? andFunc(...conditions) : conditions[0]
+        },
       })
       return { data: rows, count: rows.length }
     }
@@ -172,12 +183,13 @@ async function executeQueryData(input: QueryDataInput) {
     case "vendors": {
       const rows = await db.query.vendors.findMany({
         limit: cap,
-        ...(input.search
-          ? {
-              where: (v, { like }) =>
-                like(v.name, `%${input.search}%`),
-            }
-          : {}),
+        where: (v, { eq: eqFunc, like: likeFunc, and: andFunc }) => {
+          const conditions = [eqFunc(v.organizationId, orgId)]
+          if (input.search) {
+            conditions.push(likeFunc(v.name, `%${input.search}%`))
+          }
+          return conditions.length > 1 ? andFunc(...conditions) : conditions[0]
+        },
       })
       return { data: rows, count: rows.length }
     }
@@ -185,40 +197,103 @@ async function executeQueryData(input: QueryDataInput) {
     case "projects": {
       const rows = await db.query.projects.findMany({
         limit: cap,
-        ...(input.search
-          ? {
-              where: (p, { like }) =>
-                like(p.name, `%${input.search}%`),
-            }
-          : {}),
+        where: (p, { eq: eqFunc, like: likeFunc, and: andFunc }) => {
+          const conditions = [eqFunc(p.organizationId, orgId)]
+          if (input.search) {
+            conditions.push(likeFunc(p.name, `%${input.search}%`))
+          }
+          return conditions.length > 1 ? andFunc(...conditions) : conditions[0]
+        },
       })
       return { data: rows, count: rows.length }
     }
 
     case "invoices": {
-      const rows = await db.query.invoices.findMany({
-        limit: cap,
-      })
+      // join through projects to filter by org
+      const rows = await db
+        .select({
+          id: invoices.id,
+          netsuiteId: invoices.netsuiteId,
+          customerId: invoices.customerId,
+          projectId: invoices.projectId,
+          invoiceNumber: invoices.invoiceNumber,
+          status: invoices.status,
+          issueDate: invoices.issueDate,
+          dueDate: invoices.dueDate,
+          subtotal: invoices.subtotal,
+          tax: invoices.tax,
+          total: invoices.total,
+          amountPaid: invoices.amountPaid,
+          amountDue: invoices.amountDue,
+          memo: invoices.memo,
+          lineItems: invoices.lineItems,
+          createdAt: invoices.createdAt,
+          updatedAt: invoices.updatedAt,
+        })
+        .from(invoices)
+        .innerJoin(projects, eq(invoices.projectId, projects.id))
+        .where(eq(projects.organizationId, orgId))
+        .limit(cap)
       return { data: rows, count: rows.length }
     }
 
     case "vendor_bills": {
-      const rows = await db.query.vendorBills.findMany({
-        limit: cap,
-      })
+      // join through projects to filter by org
+      const rows = await db
+        .select({
+          id: vendorBills.id,
+          netsuiteId: vendorBills.netsuiteId,
+          vendorId: vendorBills.vendorId,
+          projectId: vendorBills.projectId,
+          billNumber: vendorBills.billNumber,
+          status: vendorBills.status,
+          billDate: vendorBills.billDate,
+          dueDate: vendorBills.dueDate,
+          subtotal: vendorBills.subtotal,
+          tax: vendorBills.tax,
+          total: vendorBills.total,
+          amountPaid: vendorBills.amountPaid,
+          amountDue: vendorBills.amountDue,
+          memo: vendorBills.memo,
+          lineItems: vendorBills.lineItems,
+          createdAt: vendorBills.createdAt,
+          updatedAt: vendorBills.updatedAt,
+        })
+        .from(vendorBills)
+        .innerJoin(projects, eq(vendorBills.projectId, projects.id))
+        .where(eq(projects.organizationId, orgId))
+        .limit(cap)
       return { data: rows, count: rows.length }
     }
 
     case "schedule_tasks": {
-      const rows = await db.query.scheduleTasks.findMany({
-        limit: cap,
-        ...(input.search
-          ? {
-              where: (t, { like }) =>
-                like(t.title, `%${input.search}%`),
-            }
-          : {}),
-      })
+      // join through projects to filter by org
+      const whereConditions = [eq(projects.organizationId, orgId)]
+      if (input.search) {
+        whereConditions.push(like(scheduleTasks.title, `%${input.search}%`))
+      }
+      const rows = await db
+        .select({
+          id: scheduleTasks.id,
+          projectId: scheduleTasks.projectId,
+          title: scheduleTasks.title,
+          startDate: scheduleTasks.startDate,
+          workdays: scheduleTasks.workdays,
+          endDateCalculated: scheduleTasks.endDateCalculated,
+          phase: scheduleTasks.phase,
+          status: scheduleTasks.status,
+          isCriticalPath: scheduleTasks.isCriticalPath,
+          isMilestone: scheduleTasks.isMilestone,
+          percentComplete: scheduleTasks.percentComplete,
+          assignedTo: scheduleTasks.assignedTo,
+          sortOrder: scheduleTasks.sortOrder,
+          createdAt: scheduleTasks.createdAt,
+          updatedAt: scheduleTasks.updatedAt,
+        })
+        .from(scheduleTasks)
+        .innerJoin(projects, eq(scheduleTasks.projectId, projects.id))
+        .where(whereConditions.length > 1 ? and(...whereConditions) : whereConditions[0])
+        .limit(cap)
       return { data: rows, count: rows.length }
     }
 
@@ -227,7 +302,8 @@ async function executeQueryData(input: QueryDataInput) {
         return { error: "id required for detail query" }
       }
       const row = await db.query.projects.findFirst({
-        where: (p, { eq }) => eq(p.id, input.id!),
+        where: (p, { eq: eqFunc, and: andFunc }) =>
+          andFunc(eqFunc(p.id, input.id!), eqFunc(p.organizationId, orgId)),
       })
       return row ? { data: row } : { error: "not found" }
     }
@@ -237,7 +313,8 @@ async function executeQueryData(input: QueryDataInput) {
         return { error: "id required for detail query" }
       }
       const row = await db.query.customers.findFirst({
-        where: (c, { eq }) => eq(c.id, input.id!),
+        where: (c, { eq: eqFunc, and: andFunc }) =>
+          andFunc(eqFunc(c.id, input.id!), eqFunc(c.organizationId, orgId)),
       })
       return row ? { data: row } : { error: "not found" }
     }
@@ -247,7 +324,8 @@ async function executeQueryData(input: QueryDataInput) {
         return { error: "id required for detail query" }
       }
       const row = await db.query.vendors.findFirst({
-        where: (v, { eq }) => eq(v.id, input.id!),
+        where: (v, { eq: eqFunc, and: andFunc }) =>
+          andFunc(eqFunc(v.id, input.id!), eqFunc(v.organizationId, orgId)),
       })
       return row ? { data: row } : { error: "not found" }
     }

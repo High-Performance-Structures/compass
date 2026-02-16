@@ -3,7 +3,7 @@ import type { PromptSection } from "@/lib/agent/plugins/types"
 
 // --- types ---
 
-type PromptMode = "full" | "minimal" | "none"
+type PromptMode = "full" | "minimal" | "none" | "demo"
 
 interface DashboardSummary {
   readonly id: string
@@ -231,6 +231,13 @@ const MINIMAL_CATEGORIES: ReadonlySet<ToolCategory> = new Set([
   "ui",
 ])
 
+// categories included in demo mode (read-only subset)
+const DEMO_CATEGORIES: ReadonlySet<ToolCategory> = new Set([
+  "data",
+  "navigation",
+  "ui",
+])
+
 // --- derived state ---
 
 function extractDescription(
@@ -268,6 +275,9 @@ function computeDerivedState(ctx: PromptContext): DerivedState {
           if (mode === "minimal") {
             return MINIMAL_CATEGORIES.has(t.category)
           }
+          if (mode === "demo") {
+            return DEMO_CATEGORIES.has(t.category)
+          }
           return true
         })
 
@@ -281,6 +291,15 @@ function buildIdentity(mode: PromptMode): ReadonlyArray<string> {
     "You are Dr. Slab Diggems, the AI assistant built " +
     "into Compass — a construction project management platform."
   if (mode === "none") return [line]
+  if (mode === "demo") {
+    return [
+      line +
+        " You are reliable, direct, and always ready to help. " +
+        "You're currently showing a demo workspace to a prospective user — " +
+        "be enthusiastic about Compass features and suggest they sign up " +
+        "when they try to perform mutations.",
+    ]
+  }
   return [line + " You are reliable, direct, and always ready to help."]
 }
 
@@ -660,6 +679,21 @@ function buildGuidelines(
   ]
 
   if (mode === "minimal") return core
+
+  if (mode === "demo") {
+    return [
+      ...core,
+      "- Demo mode: you can show data and navigate, but when the " +
+        "user tries to create, edit, or delete records, gently " +
+        'suggest they sign up. For example: "To create your own ' +
+        'projects and data, sign up for a free account!"',
+      "- Be enthusiastic about Compass features. Show off what the " +
+        "platform can do.",
+      "- The demo data includes 3 sample projects, customers, " +
+        "vendors, invoices, and team channels. Use these to " +
+        "demonstrate capabilities.",
+    ]
+  }
 
   return [
     ...core,

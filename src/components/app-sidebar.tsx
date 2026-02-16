@@ -19,6 +19,7 @@ import { NavFiles } from "@/components/nav-files"
 import { NavProjects } from "@/components/nav-projects"
 import { NavConversations } from "@/components/nav-conversations"
 import { NavUser } from "@/components/nav-user"
+import { OrgSwitcher } from "@/components/org-switcher"
 import { VoicePanel } from "@/components/voice/voice-panel"
 // settings is now a page at /dashboard/settings
 import { openFeedbackDialog } from "@/components/feedback-widget"
@@ -143,11 +144,15 @@ export function AppSidebar({
   projects = [],
   dashboards = [],
   user,
+  activeOrgId = null,
+  activeOrgName = null,
   ...props
 }: React.ComponentProps<typeof Sidebar> & {
   readonly projects?: ReadonlyArray<{ readonly id: string; readonly name: string }>
   readonly dashboards?: ReadonlyArray<{ readonly id: string; readonly name: string }>
   readonly user: SidebarUser | null
+  readonly activeOrgId?: string | null
+  readonly activeOrgName?: string | null
 }) {
   const { isMobile } = useSidebar()
   const { channelId } = useVoiceState()
@@ -181,6 +186,7 @@ export function AppSidebar({
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
+        <OrgSwitcher activeOrgId={activeOrgId} activeOrgName={activeOrgName} />
       </SidebarHeader>
       <SidebarContent>
         <SidebarNav

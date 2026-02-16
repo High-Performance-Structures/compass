@@ -6,16 +6,34 @@ import {
   scheduleBaselines,
   scheduleTasks,
   taskDependencies,
+  projects,
 } from "@/db/schema"
-import { eq, asc } from "drizzle-orm"
+import { eq, asc, and } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
+import { requireAuth } from "@/lib/auth"
+import { requireOrg } from "@/lib/org-scope"
+import { isDemoUser } from "@/lib/demo"
 import type { ScheduleBaselineData } from "@/lib/schedule/types"
 
 export async function getBaselines(
   projectId: string
 ): Promise<ScheduleBaselineData[]> {
+  const user = await requireAuth()
+  const orgId = requireOrg(user)
+
   const { env } = await getCloudflareContext()
   const db = getDb(env.DB)
+
+  // verify project belongs to user's org
+  const [project] = await db
+    .select()
+    .from(projects)
+    .where(and(eq(projects.id, projectId), eq(projects.organizationId, orgId)))
+    .limit(1)
+
+  if (!project) {
+    throw new Error("Project not found or access denied")
+  }
 
   return await db
     .select()
@@ -28,8 +46,25 @@ export async function createBaseline(
   name: string
 ): Promise<{ success: boolean; error?: string }> {
   try {
+    const user = await requireAuth()
+    if (isDemoUser(user.id)) {
+      return { success: false, error: "DEMO_READ_ONLY" }
+    }
+    const orgId = requireOrg(user)
+
     const { env } = await getCloudflareContext()
     const db = getDb(env.DB)
+
+    // verify project belongs to user's org
+    const [project] = await db
+      .select()
+      .from(projects)
+      .where(and(eq(projects.id, projectId), eq(projects.organizationId, orgId)))
+      .limit(1)
+
+    if (!project) {
+      return { success: false, error: "Project not found or access denied" }
+    }
 
     const tasks = await db
       .select()
@@ -65,6 +100,12 @@ export async function deleteBaseline(
   baselineId: string
 ): Promise<{ success: boolean; error?: string }> {
   try {
+    const user = await requireAuth()
+    if (isDemoUser(user.id)) {
+      return { success: false, error: "DEMO_READ_ONLY" }
+    }
+    const orgId = requireOrg(user)
+
     const { env } = await getCloudflareContext()
     const db = getDb(env.DB)
 
@@ -75,6 +116,17 @@ export async function deleteBaseline(
       .limit(1)
 
     if (!existing) return { success: false, error: "Baseline not found" }
+
+    // verify project belongs to user's org
+    const [project] = await db
+      .select()
+      .from(projects)
+      .where(and(eq(projects.id, existing.projectId), eq(projects.organizationId, orgId)))
+      .limit(1)
+
+    if (!project) {
+      return { success: false, error: "Access denied" }
+    }
 
     await db
       .delete(scheduleBaselines)

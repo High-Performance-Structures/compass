@@ -15,6 +15,8 @@ import { users, organizationMembers } from "@/db/schema"
 import { getCurrentUser } from "@/lib/auth"
 import { requirePermission } from "@/lib/permissions"
 import { revalidatePath } from "next/cache"
+import { requireOrg } from "@/lib/org-scope"
+import { isDemoUser } from "@/lib/demo"
 
 export async function listChannels() {
   try {
@@ -22,6 +24,7 @@ export async function listChannels() {
     if (!user) {
       return { success: false, error: "Unauthorized" }
     }
+    const orgId = requireOrg(user)
 
     const { env } = await getCloudflareContext()
     const db = getDb(env.DB)
@@ -64,10 +67,7 @@ export async function listChannels() {
       .where(
         and(
           // must be in user's org
-          sql`${channels.organizationId} = (
-            SELECT organization_id FROM organization_members
-            WHERE user_id = ${user.id} LIMIT 1
-          )`,
+          eq(channels.organizationId, orgId),
           // if private, must be a member
           sql`(${channels.isPrivate} = 0 OR ${channelMembers.userId} IS NOT NULL)`,
           // not archived
@@ -104,6 +104,11 @@ export async function getChannel(channelId: string) {
       .then((rows) => rows[0] ?? null)
 
     if (!channel) {
+      return { success: false, error: "Channel not found" }
+    }
+
+    const orgId = requireOrg(user)
+    if (channel.organizationId !== orgId) {
       return { success: false, error: "Channel not found" }
     }
 
@@ -162,23 +167,16 @@ export async function createChannel(data: {
       return { success: false, error: "Unauthorized" }
     }
 
+    if (isDemoUser(user.id)) {
+      return { success: false, error: "DEMO_READ_ONLY" }
+    }
+
     // only office+ can create channels
     requirePermission(user, "channels", "create")
+    const orgId = requireOrg(user)
 
     const { env } = await getCloudflareContext()
     const db = getDb(env.DB)
-
-    // get user's organization
-    const orgMember = await db
-      .select({ organizationId: organizationMembers.organizationId })
-      .from(organizationMembers)
-      .where(eq(organizationMembers.userId, user.id))
-      .limit(1)
-      .then((rows) => rows[0] ?? null)
-
-    if (!orgMember) {
-      return { success: false, error: "No organization found" }
-    }
 
     const now = new Date().toISOString()
     const channelId = crypto.randomUUID()
@@ -188,7 +186,7 @@ export async function createChannel(data: {
       name: data.name,
       type: data.type,
       description: data.description ?? null,
-      organizationId: orgMember.organizationId,
+      organizationId: orgId,
       projectId: data.projectId ?? null,
       categoryId: data.categoryId ?? null,
       isPrivate: data.isPrivate ?? false,
@@ -242,6 +240,10 @@ export async function joinChannel(channelId: string) {
       return { success: false, error: "Unauthorized" }
     }
 
+    if (isDemoUser(user.id)) {
+      return { success: false, error: "DEMO_READ_ONLY" }
+    }
+
     const { env } = await getCloudflareContext()
     const db = getDb(env.DB)
 
@@ -254,6 +256,11 @@ export async function joinChannel(channelId: string) {
       .then((rows) => rows[0] ?? null)
 
     if (!channel) {
+      return { success: false, error: "Channel not found" }
+    }
+
+    const orgId = requireOrg(user)
+    if (channel.organizationId !== orgId) {
       return { success: false, error: "Channel not found" }
     }
 

@@ -3,21 +3,27 @@
 import { getCloudflareContext } from "@opennextjs/cloudflare"
 import { getDb } from "@/db"
 import { teams, type Team, type NewTeam } from "@/db/schema"
-import { getCurrentUser } from "@/lib/auth"
+import { requireAuth } from "@/lib/auth"
 import { requirePermission } from "@/lib/permissions"
-import { eq } from "drizzle-orm"
+import { eq, and } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
+import { requireOrg } from "@/lib/org-scope"
+import { isDemoUser } from "@/lib/demo"
 
 export async function getTeams(): Promise<Team[]> {
   try {
-    const currentUser = await getCurrentUser()
+    const currentUser = await requireAuth()
     requirePermission(currentUser, "team", "read")
+    const orgId = requireOrg(currentUser)
 
     const { env } = await getCloudflareContext()
     if (!env?.DB) return []
 
     const db = getDb(env.DB)
-    const allTeams = await db.select().from(teams)
+    const allTeams = await db
+      .select()
+      .from(teams)
+      .where(eq(teams.organizationId, orgId))
 
     return allTeams
   } catch (error) {
@@ -27,13 +33,16 @@ export async function getTeams(): Promise<Team[]> {
 }
 
 export async function createTeam(
-  organizationId: string,
   name: string,
   description?: string
 ): Promise<{ success: boolean; error?: string; data?: Team }> {
   try {
-    const currentUser = await getCurrentUser()
+    const currentUser = await requireAuth()
+    if (isDemoUser(currentUser.id)) {
+      return { success: false, error: "DEMO_READ_ONLY" }
+    }
     requirePermission(currentUser, "team", "create")
+    const orgId = requireOrg(currentUser)
 
     const { env } = await getCloudflareContext()
     if (!env?.DB) {
@@ -45,7 +54,7 @@ export async function createTeam(
 
     const newTeam: NewTeam = {
       id: crypto.randomUUID(),
-      organizationId,
+      organizationId: orgId,
       name,
       description: description ?? null,
       createdAt: now,
@@ -68,8 +77,12 @@ export async function deleteTeam(
   teamId: string
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    const currentUser = await getCurrentUser()
+    const currentUser = await requireAuth()
+    if (isDemoUser(currentUser.id)) {
+      return { success: false, error: "DEMO_READ_ONLY" }
+    }
     requirePermission(currentUser, "team", "delete")
+    const orgId = requireOrg(currentUser)
 
     const { env } = await getCloudflareContext()
     if (!env?.DB) {
@@ -78,7 +91,10 @@ export async function deleteTeam(
 
     const db = getDb(env.DB)
 
-    await db.delete(teams).where(eq(teams.id, teamId)).run()
+    await db
+      .delete(teams)
+      .where(and(eq(teams.id, teamId), eq(teams.organizationId, orgId)))
+      .run()
 
     revalidatePath("/dashboard/people")
     return { success: true }

@@ -442,21 +442,14 @@ export async function getConversationUsage(
     const { env } = await getCloudflareContext()
     const db = getDb(env.DB)
 
-    const isAdmin = can(user, "agent", "update")
-
     const rows = await db
       .select()
       .from(agentUsage)
       .where(
-        isAdmin
-          ? eq(agentUsage.conversationId, conversationId)
-          : and(
-              eq(
-                agentUsage.conversationId,
-                conversationId
-              ),
-              eq(agentUsage.userId, user.id)
-            )
+        and(
+          eq(agentUsage.conversationId, conversationId),
+          eq(agentUsage.userId, user.id)
+        )
       )
       .orderBy(desc(agentUsage.createdAt))
       .all()

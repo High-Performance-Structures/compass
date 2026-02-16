@@ -1,10 +1,14 @@
 "use server"
 
-import { eq, and, desc } from "drizzle-orm"
+import { eq, and, desc, inArray } from "drizzle-orm"
 import { getCloudflareContext } from "@opennextjs/cloudflare"
 import { getDb } from "@/db"
 import { customDashboards } from "@/db/schema-dashboards"
+import { customers, vendors, projects, scheduleTasks } from "@/db/schema"
+import { invoices, vendorBills } from "@/db/schema-netsuite"
 import { getCurrentUser } from "@/lib/auth"
+import { requireOrg } from "@/lib/org-scope"
+import { isDemoUser } from "@/lib/demo"
 import { revalidatePath } from "next/cache"
 
 const MAX_DASHBOARDS = 5
@@ -109,6 +113,10 @@ export async function saveCustomDashboard(
   const user = await getCurrentUser()
   if (!user) return { success: false, error: "not authenticated" }
 
+  if (isDemoUser(user.id)) {
+    return { success: false, error: "DEMO_READ_ONLY" }
+  }
+
   const { env } = await getCloudflareContext()
   const db = getDb(env.DB)
 
@@ -171,6 +179,10 @@ export async function deleteCustomDashboard(
   const user = await getCurrentUser()
   if (!user) return { success: false, error: "not authenticated" }
 
+  if (isDemoUser(user.id)) {
+    return { success: false, error: "DEMO_READ_ONLY" }
+  }
+
   const { env } = await getCloudflareContext()
   const db = getDb(env.DB)
 
@@ -207,6 +219,8 @@ export async function executeDashboardQueries(
   const user = await getCurrentUser()
   if (!user) return { success: false, error: "not authenticated" }
 
+  const orgId = requireOrg(user)
+
   const { env } = await getCloudflareContext()
   const db = getDb(env.DB)
 
@@ -228,10 +242,15 @@ export async function executeDashboardQueries(
             limit: cap,
             ...(q.search
               ? {
-                  where: (c, { like }) =>
-                    like(c.name, `%${q.search}%`),
+                  where: (c, { like, eq, and }) =>
+                    and(
+                      eq(c.organizationId, orgId),
+                      like(c.name, `%${q.search}%`),
+                    ),
                 }
-              : {}),
+              : {
+                  where: (c, { eq }) => eq(c.organizationId, orgId),
+                }),
           })
           dataContext[q.key] = { data: rows, count: rows.length }
           break
@@ -241,10 +260,15 @@ export async function executeDashboardQueries(
             limit: cap,
             ...(q.search
               ? {
-                  where: (v, { like }) =>
-                    like(v.name, `%${q.search}%`),
+                  where: (v, { like, eq, and }) =>
+                    and(
+                      eq(v.organizationId, orgId),
+                      like(v.name, `%${q.search}%`),
+                    ),
                 }
-              : {}),
+              : {
+                  where: (v, { eq }) => eq(v.organizationId, orgId),
+                }),
           })
           dataContext[q.key] = { data: rows, count: rows.length }
           break
@@ -254,38 +278,76 @@ export async function executeDashboardQueries(
             limit: cap,
             ...(q.search
               ? {
-                  where: (p, { like }) =>
-                    like(p.name, `%${q.search}%`),
+                  where: (p, { like, eq, and }) =>
+                    and(
+                      eq(p.organizationId, orgId),
+                      like(p.name, `%${q.search}%`),
+                    ),
                 }
-              : {}),
+              : {
+                  where: (p, { eq }) => eq(p.organizationId, orgId),
+                }),
           })
           dataContext[q.key] = { data: rows, count: rows.length }
           break
         }
         case "invoices": {
-          const rows = await db.query.invoices.findMany({
-            limit: cap,
-          })
+          const orgProjects = await db
+            .select({ id: projects.id })
+            .from(projects)
+            .where(eq(projects.organizationId, orgId))
+          const projectIds = orgProjects.map((p) => p.id)
+          const rows =
+            projectIds.length > 0
+              ? await db.query.invoices.findMany({
+                  limit: cap,
+                  where: (inv, { inArray }) => inArray(inv.projectId, projectIds),
+                })
+              : []
           dataContext[q.key] = { data: rows, count: rows.length }
           break
         }
         case "vendor_bills": {
-          const rows = await db.query.vendorBills.findMany({
-            limit: cap,
-          })
+          const orgProjects = await db
+            .select({ id: projects.id })
+            .from(projects)
+            .where(eq(projects.organizationId, orgId))
+          const projectIds = orgProjects.map((p) => p.id)
+          const rows =
+            projectIds.length > 0
+              ? await db.query.vendorBills.findMany({
+                  limit: cap,
+                  where: (bill, { inArray }) =>
+                    inArray(bill.projectId, projectIds),
+                })
+              : []
           dataContext[q.key] = { data: rows, count: rows.length }
           break
         }
         case "schedule_tasks": {
-          const rows = await db.query.scheduleTasks.findMany({
-            limit: cap,
-            ...(q.search
-              ? {
-                  where: (t, { like }) =>
-                    like(t.title, `%${q.search}%`),
-                }
-              : {}),
-          })
+          const orgProjects = await db
+            .select({ id: projects.id })
+            .from(projects)
+            .where(eq(projects.organizationId, orgId))
+          const projectIds = orgProjects.map((p) => p.id)
+          const rows =
+            projectIds.length > 0
+              ? await db.query.scheduleTasks.findMany({
+                  limit: cap,
+                  ...(q.search
+                    ? {
+                        where: (t, { like, inArray, and }) =>
+                          and(
+                            inArray(t.projectId, projectIds),
+                            like(t.title, `%${q.search}%`),
+                          ),
+                      }
+                    : {
+                        where: (t, { inArray }) =>
+                          inArray(t.projectId, projectIds),
+                      }),
+                })
+              : []
           dataContext[q.key] = { data: rows, count: rows.length }
           break
         }
@@ -294,9 +356,13 @@ export async function executeDashboardQueries(
             const row = await db.query.projects.findFirst({
               where: (p, { eq: e }) => e(p.id, q.id!),
             })
-            dataContext[q.key] = row
-              ? { data: row }
-              : { error: "not found" }
+            if (row && row.organizationId !== orgId) {
+              dataContext[q.key] = { error: "not found" }
+            } else {
+              dataContext[q.key] = row
+                ? { data: row }
+                : { error: "not found" }
+            }
           }
           break
         }
@@ -305,9 +371,13 @@ export async function executeDashboardQueries(
             const row = await db.query.customers.findFirst({
               where: (c, { eq: e }) => e(c.id, q.id!),
             })
-            dataContext[q.key] = row
-              ? { data: row }
-              : { error: "not found" }
+            if (row && row.organizationId !== orgId) {
+              dataContext[q.key] = { error: "not found" }
+            } else {
+              dataContext[q.key] = row
+                ? { data: row }
+                : { error: "not found" }
+            }
           }
           break
         }
@@ -316,9 +386,13 @@ export async function executeDashboardQueries(
             const row = await db.query.vendors.findFirst({
               where: (v, { eq: e }) => e(v.id, q.id!),
             })
-            dataContext[q.key] = row
-              ? { data: row }
-              : { error: "not found" }
+            if (row && row.organizationId !== orgId) {
+              dataContext[q.key] = { error: "not found" }
+            } else {
+              dataContext[q.key] = row
+                ? { data: row }
+                : { error: "not found" }
+            }
           }
           break
         }

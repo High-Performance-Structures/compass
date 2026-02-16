@@ -14,6 +14,8 @@
 		"db:generate": "drizzle-kit generate",
 		"db:migrate:local": "wrangler d1 migrations apply compass-db --local",
 		"db:migrate:prod": "wrangler d1 migrations apply compass-db --remote",
+		"db:migrate-orgs": "bun run scripts/migrate-to-orgs.ts",
+		"db:seed-demo": "bun run scripts/seed-demo.ts",
 		"prepare": "husky",
 		"cap:sync": "cap sync",
 		"cap:ios": "cap open ios",

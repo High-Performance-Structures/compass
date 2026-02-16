@@ -182,6 +182,7 @@ export const customers = sqliteTable("customers", {
   address: text("address"),
   notes: text("notes"),
   netsuiteId: text("netsuite_id"),
+  organizationId: text("organization_id").references(() => organizations.id),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at"),
 })
@@ -194,6 +195,7 @@ export const vendors = sqliteTable("vendors", {
   phone: text("phone"),
   address: text("address"),
   netsuiteId: text("netsuite_id"),
+  organizationId: text("organization_id").references(() => organizations.id),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at"),
 })

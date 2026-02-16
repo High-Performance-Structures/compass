@@ -10,6 +10,7 @@ const publicPaths = [
   "/verify-email",
   "/invite",
   "/callback",
+  "/demo",
 ]
 
 // bridge routes use their own API key auth
@@ -37,6 +38,12 @@ export default async function middleware(request: NextRequest) {
 
   // allow public paths
   if (isPublicPath(pathname)) {
+    return handleAuthkitHeaders(request, headers)
+  }
+
+  // demo sessions bypass auth
+  const isDemoSession = request.cookies.get("compass-demo")?.value === "true"
+  if (isDemoSession) {
     return handleAuthkitHeaders(request, headers)
   }
 

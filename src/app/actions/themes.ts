@@ -10,6 +10,7 @@ import {
 import { getCurrentUser } from "@/lib/auth"
 import { findPreset } from "@/lib/theme/presets"
 import { revalidatePath } from "next/cache"
+import { isDemoUser } from "@/lib/demo"
 
 export async function getUserThemePreference(): Promise<
   | { readonly success: true; readonly data: { readonly activeThemeId: string } }
@@ -148,6 +149,10 @@ export async function saveCustomTheme(
   const user = await getCurrentUser()
   if (!user) return { success: false, error: "not authenticated" }
 
+  if (isDemoUser(user.id)) {
+    return { success: false, error: "DEMO_READ_ONLY" }
+  }
+
   const { env } = await getCloudflareContext()
   const db = getDb(env.DB)
 
@@ -190,6 +195,10 @@ export async function deleteCustomTheme(
 > {
   const user = await getCurrentUser()
   if (!user) return { success: false, error: "not authenticated" }
+
+  if (isDemoUser(user.id)) {
+    return { success: false, error: "DEMO_READ_ONLY" }
+  }
 
   const { env } = await getCloudflareContext()
   const db = getDb(env.DB)

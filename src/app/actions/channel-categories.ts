@@ -7,6 +7,8 @@ import { channelCategories, channels, type NewChannelCategory } from "@/db/schem
 import { getCurrentUser } from "@/lib/auth"
 import { requirePermission } from "@/lib/permissions"
 import { revalidatePath } from "next/cache"
+import { requireOrg } from "@/lib/org-scope"
+import { isDemoUser } from "@/lib/demo"
 
 export async function listCategories() {
   try {
@@ -14,21 +16,10 @@ export async function listCategories() {
     if (!user) {
       return { success: false, error: "Unauthorized" }
     }
+    const orgId = requireOrg(user)
 
     const { env } = await getCloudflareContext()
     const db = getDb(env.DB)
-
-    // get user's organization
-    const orgMember = await db
-      .select({ organizationId: sql<string>`organization_id` })
-      .from(sql`organization_members`)
-      .where(sql`user_id = ${user.id}`)
-      .limit(1)
-      .then((rows) => rows[0] ?? null)
-
-    if (!orgMember) {
-      return { success: false, error: "No organization found" }
-    }
 
     // fetch categories with channel counts
     const categories = await db
@@ -43,7 +34,7 @@ export async function listCategories() {
         )`,
       })
       .from(channelCategories)
-      .where(eq(channelCategories.organizationId, orgMember.organizationId))
+      .where(eq(channelCategories.organizationId, orgId))
       .orderBy(channelCategories.position)
 
     return { success: true, data: categories }
@@ -62,23 +53,16 @@ export async function createCategory(name: string, position?: number) {
       return { success: false, error: "Unauthorized" }
     }
 
+    if (isDemoUser(user.id)) {
+      return { success: false, error: "DEMO_READ_ONLY" }
+    }
+
     // admin only
     requirePermission(user, "channels", "create")
+    const orgId = requireOrg(user)
 
     const { env } = await getCloudflareContext()
     const db = getDb(env.DB)
-
-    // get user's organization
-    const orgMember = await db
-      .select({ organizationId: sql<string>`organization_id` })
-      .from(sql`organization_members`)
-      .where(sql`user_id = ${user.id}`)
-      .limit(1)
-      .then((rows) => rows[0] ?? null)
-
-    if (!orgMember) {
-      return { success: false, error: "No organization found" }
-    }
 
     const categoryId = crypto.randomUUID()
     const now = new Date().toISOString()
@@ -86,7 +70,7 @@ export async function createCategory(name: string, position?: number) {
     const newCategory: NewChannelCategory = {
       id: categoryId,
       name,
-      organizationId: orgMember.organizationId,
+      organizationId: orgId,
       position: position ?? 0,
       collapsedByDefault: false,
       createdAt: now,
@@ -114,33 +98,26 @@ export async function updateCategory(
       return { success: false, error: "Unauthorized" }
     }
 
+    if (isDemoUser(user.id)) {
+      return { success: false, error: "DEMO_READ_ONLY" }
+    }
+
     // admin only
     requirePermission(user, "channels", "create")
+    const orgId = requireOrg(user)
 
-    const { env } = await getCloudflareContext()
+    const { env} = await getCloudflareContext()
     const db = getDb(env.DB)
-
-    // get user's organization
-    const orgMember = await db
-      .select({ organizationId: sql<string>`organization_id` })
-      .from(sql`organization_members`)
-      .where(sql`user_id = ${user.id}`)
-      .limit(1)
-      .then((rows) => rows[0] ?? null)
-
-    if (!orgMember) {
-      return { success: false, error: "No organization found" }
-    }
 
     // verify category exists in user's org
     const category = await db
       .select()
       .from(channelCategories)
-      .where(eq(channelCategories.id, id))
+      .where(and(eq(channelCategories.id, id), eq(channelCategories.organizationId, orgId)))
       .limit(1)
       .then((rows) => rows[0] ?? null)
 
-    if (!category || category.organizationId !== orgMember.organizationId) {
+    if (!category) {
       return { success: false, error: "Category not found" }
     }
 
@@ -179,33 +156,26 @@ export async function deleteCategory(id: string) {
       return { success: false, error: "Unauthorized" }
     }
 
+    if (isDemoUser(user.id)) {
+      return { success: false, error: "DEMO_READ_ONLY" }
+    }
+
     // admin only
     requirePermission(user, "channels", "create")
+    const orgId = requireOrg(user)
 
     const { env } = await getCloudflareContext()
     const db = getDb(env.DB)
-
-    // get user's organization
-    const orgMember = await db
-      .select({ organizationId: sql<string>`organization_id` })
-      .from(sql`organization_members`)
-      .where(sql`user_id = ${user.id}`)
-      .limit(1)
-      .then((rows) => rows[0] ?? null)
-
-    if (!orgMember) {
-      return { success: false, error: "No organization found" }
-    }
 
     // verify category exists in user's org
     const category = await db
       .select()
       .from(channelCategories)
-      .where(eq(channelCategories.id, id))
+      .where(and(eq(channelCategories.id, id), eq(channelCategories.organizationId, orgId)))
       .limit(1)
       .then((rows) => rows[0] ?? null)
 
-    if (!category || category.organizationId !== orgMember.organizationId) {
+    if (!category) {
       return { success: false, error: "Category not found" }
     }
 
@@ -247,32 +217,25 @@ export async function reorderChannels(
       return { success: false, error: "Unauthorized" }
     }
 
+    if (isDemoUser(user.id)) {
+      return { success: false, error: "DEMO_READ_ONLY" }
+    }
+
     requirePermission(user, "channels", "update")
+    const orgId = requireOrg(user)
 
     const { env } = await getCloudflareContext()
     const db = getDb(env.DB)
-
-    // get user's organization
-    const orgMember = await db
-      .select({ organizationId: sql<string>`organization_id` })
-      .from(sql`organization_members`)
-      .where(sql`user_id = ${user.id}`)
-      .limit(1)
-      .then((rows) => rows[0] ?? null)
-
-    if (!orgMember) {
-      return { success: false, error: "No organization found" }
-    }
 
     // verify category exists and belongs to user's org
     const category = await db
       .select()
       .from(channelCategories)
-      .where(eq(channelCategories.id, categoryId))
+      .where(and(eq(channelCategories.id, categoryId), eq(channelCategories.organizationId, orgId)))
       .limit(1)
       .then((rows) => rows[0] ?? null)
 
-    if (!category || category.organizationId !== orgMember.organizationId) {
+    if (!category) {
       return { success: false, error: "Category not found" }
     }
 

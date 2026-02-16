@@ -426,7 +426,7 @@ export default function Home(): React.JSX.Element {
 						style={{ animationDelay: "0.65s" }}
 					>
 						<Link
-							href="/dashboard"
+							href="/demo"
 							className={
 								"group inline-flex " +
 								"items-center gap-3 " +
@@ -731,7 +731,7 @@ export default function Home(): React.JSX.Element {
 							workflows.
 						</p>
 						<Link
-							href="/dashboard"
+							href="/demo"
 							className={
 								"group inline-flex " +
 								"items-center gap-2 " +
@@ -1052,7 +1052,7 @@ export default function Home(): React.JSX.Element {
 							}
 						>
 							<Link
-								href="/dashboard"
+								href="/demo"
 								className={
 									"group inline-flex " +
 									"items-center gap-3 " +

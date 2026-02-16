@@ -1,9 +1,11 @@
 import { withAuth, signOut } from "@workos-inc/authkit-nextjs"
 import { getCloudflareContext } from "@opennextjs/cloudflare"
 import { getDb } from "@/db"
-import { users } from "@/db/schema"
+import { users, organizations, organizationMembers } from "@/db/schema"
 import type { User } from "@/db/schema"
 import { eq } from "drizzle-orm"
+import { cookies } from "next/headers"
+import { DEMO_USER } from "@/lib/demo"
 
 export type AuthUser = {
   readonly id: string
@@ -16,6 +18,9 @@ export type AuthUser = {
   readonly googleEmail: string | null
   readonly isActive: boolean
   readonly lastLoginAt: string | null
+  readonly organizationId: string | null
+  readonly organizationName: string | null
+  readonly organizationType: string | null
   readonly createdAt: string
   readonly updatedAt: string
 }
@@ -48,6 +53,15 @@ export function toSidebarUser(user: AuthUser): SidebarUser {
 
 export async function getCurrentUser(): Promise<AuthUser | null> {
   try {
+    // check for demo session cookie first
+    try {
+      const cookieStore = await cookies()
+      const isDemoSession = cookieStore.get("compass-demo")?.value === "true"
+      if (isDemoSession) return DEMO_USER
+    } catch {
+      // cookies() may throw in non-request contexts
+    }
+
     // check if workos is configured
     const isWorkOSConfigured =
       process.env.WORKOS_API_KEY &&
@@ -67,6 +81,9 @@ export async function getCurrentUser(): Promise<AuthUser | null> {
         googleEmail: null,
         isActive: true,
         lastLoginAt: new Date().toISOString(),
+        organizationId: "hps-org-001",
+        organizationName: "HPS",
+        organizationType: "internal",
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       }
@@ -102,6 +119,36 @@ export async function getCurrentUser(): Promise<AuthUser | null> {
       .where(eq(users.id, workosUser.id))
       .run()
 
+    // query org memberships
+    const orgMemberships = await db
+      .select({
+        orgId: organizations.id,
+        orgName: organizations.name,
+        orgType: organizations.type,
+        memberRole: organizationMembers.role,
+      })
+      .from(organizationMembers)
+      .innerJoin(
+        organizations,
+        eq(organizations.id, organizationMembers.organizationId)
+      )
+      .where(eq(organizationMembers.userId, dbUser.id))
+
+    let activeOrg: { orgId: string; orgName: string; orgType: string } | null =
+      null
+
+    if (orgMemberships.length > 0) {
+      // check for cookie preference
+      try {
+        const cookieStore = await cookies()
+        const preferredOrg = cookieStore.get("compass-active-org")?.value
+        const match = orgMemberships.find((m) => m.orgId === preferredOrg)
+        activeOrg = match ?? orgMemberships[0]
+      } catch {
+        activeOrg = orgMemberships[0]
+      }
+    }
+
     return {
       id: dbUser.id,
       email: dbUser.email,
@@ -113,6 +160,9 @@ export async function getCurrentUser(): Promise<AuthUser | null> {
       googleEmail: dbUser.googleEmail ?? null,
       isActive: dbUser.isActive,
       lastLoginAt: now,
+      organizationId: activeOrg?.orgId ?? null,
+      organizationName: activeOrg?.orgName ?? null,
+      organizationType: activeOrg?.orgType ?? null,
       createdAt: dbUser.createdAt,
       updatedAt: dbUser.updatedAt,
     }
@@ -165,6 +215,50 @@ export async function ensureUserExists(workosUser: {
   }
 
   await db.insert(users).values(newUser).run()
+
+  // create personal org
+  const personalOrgId = crypto.randomUUID()
+  const personalSlug = `${workosUser.id.slice(0, 8)}-personal`
+
+  await db
+    .insert(organizations)
+    .values({
+      id: personalOrgId,
+      name: `${workosUser.firstName ?? "User"}'s Workspace`,
+      slug: personalSlug,
+      type: "personal",
+      logoUrl: null,
+      isActive: true,
+      createdAt: now,
+      updatedAt: now,
+    })
+    .run()
+
+  // add user as admin member
+  await db
+    .insert(organizationMembers)
+    .values({
+      id: crypto.randomUUID(),
+      organizationId: personalOrgId,
+      userId: workosUser.id,
+      role: "admin",
+      joinedAt: now,
+    })
+    .run()
+
+  // set active org cookie
+  try {
+    const cookieStore = await cookies()
+    cookieStore.set("compass-active-org", personalOrgId, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      path: "/",
+      maxAge: 60 * 60 * 24 * 365, // 1 year
+    })
+  } catch {
+    // may not be in request context
+  }
 
   return newUser as User
 }
