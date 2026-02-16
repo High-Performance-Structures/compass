@@ -13,18 +13,12 @@ import {
   isToday,
   isSameMonth,
   isWeekend,
-  isSameDay,
   parseISO,
   isWithinInterval,
+  differenceInCalendarDays,
 } from "date-fns"
+import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
 import {
   IconChevronLeft,
   IconChevronRight,
@@ -35,14 +29,19 @@ import type {
 } from "@/lib/schedule/types"
 
 interface ScheduleCalendarViewProps {
-  projectId: string
-  tasks: ScheduleTaskData[]
-  exceptions: WorkdayExceptionData[]
+  readonly projectId: string
+  readonly tasks: readonly ScheduleTaskData[]
+  readonly exceptions: readonly WorkdayExceptionData[]
 }
+
+// How many task lanes to show before "+N more"
+const MAX_LANES = 3
+const LANE_HEIGHT = 22
+const DAY_HEADER_HEIGHT = 24
 
 function isExceptionDay(
   date: Date,
-  exceptions: WorkdayExceptionData[]
+  exceptions: readonly WorkdayExceptionData[]
 ): boolean {
   return exceptions.some((ex) => {
     const start = parseISO(ex.startDate)
@@ -52,72 +51,171 @@ function isExceptionDay(
 }
 
 function getTaskColor(task: ScheduleTaskData): string {
-  if (task.status === "COMPLETE") return "bg-green-500"
-  if (task.status === "IN_PROGRESS") return "bg-blue-500"
-  if (task.status === "BLOCKED") return "bg-red-500"
-  if (task.isCriticalPath) return "bg-orange-500"
-  return "bg-gray-400"
+  if (task.status === "COMPLETE") return "bg-green-600/90 dark:bg-green-600/80"
+  if (task.status === "IN_PROGRESS") return "bg-blue-600/90 dark:bg-blue-500/80"
+  if (task.status === "BLOCKED") return "bg-red-600/90 dark:bg-red-500/80"
+  if (task.isCriticalPath) return "bg-orange-600/90 dark:bg-orange-500/80"
+  return "bg-muted-foreground/70"
 }
 
-const MAX_VISIBLE_TASKS = 3
+interface WeekTask {
+  readonly task: ScheduleTaskData
+  readonly startCol: number
+  readonly span: number
+  readonly lane: number
+  readonly isStart: boolean
+  readonly isEnd: boolean
+}
+
+interface WeekRow {
+  readonly days: readonly Date[]
+  readonly tasks: WeekTask[]
+  readonly maxLane: number
+  readonly overflowByDay: readonly number[]
+}
+
+function buildWeekRows(
+  calendarDays: readonly Date[],
+  tasks: readonly ScheduleTaskData[]
+): WeekRow[] {
+  const weeks: {
+    days: Date[]
+    tasks: {
+      task: ScheduleTaskData
+      startCol: number
+      span: number
+      lane: number
+      isStart: boolean
+      isEnd: boolean
+    }[]
+  }[] = []
+
+  for (let i = 0; i < calendarDays.length; i += 7) {
+    weeks.push({
+      days: calendarDays.slice(i, i + 7) as Date[],
+      tasks: [],
+    })
+  }
+
+  // Place each task into the weeks it overlaps
+  for (const task of tasks) {
+    const taskStart = parseISO(task.startDate)
+    const taskEnd = parseISO(task.endDateCalculated)
+
+    for (const week of weeks) {
+      const weekStart = week.days[0]
+      const weekEnd = week.days[6]
+
+      // Check overlap: task must start on or before weekEnd,
+      // and end on or after weekStart
+      if (taskStart > weekEnd || taskEnd < weekStart) continue
+
+      const startCol = Math.max(
+        0,
+        differenceInCalendarDays(taskStart, weekStart)
+      )
+      const endCol = Math.min(
+        6,
+        differenceInCalendarDays(taskEnd, weekStart)
+      )
+      const span = endCol - startCol + 1
+
+      week.tasks.push({
+        task,
+        startCol,
+        span,
+        lane: 0,
+        isStart: taskStart >= weekStart,
+        isEnd: taskEnd <= weekEnd,
+      })
+    }
+  }
+
+  // Assign lanes using first-fit
+  return weeks.map((week) => {
+    // Sort: earlier start first, then longer tasks first (they anchor better)
+    week.tasks.sort(
+      (a, b) => a.startCol - b.startCol || b.span - a.span
+    )
+
+    const lanes: boolean[][] = []
+    for (const wt of week.tasks) {
+      let lane = 0
+      while (true) {
+        if (!lanes[lane]) lanes[lane] = Array(7).fill(false) as boolean[]
+        const cols = lanes[lane].slice(wt.startCol, wt.startCol + wt.span)
+        if (cols.every((occupied) => !occupied)) break
+        lane++
+      }
+      wt.lane = lane
+      if (!lanes[lane]) lanes[lane] = Array(7).fill(false) as boolean[]
+      for (let c = wt.startCol; c < wt.startCol + wt.span; c++) {
+        lanes[lane][c] = true
+      }
+    }
+
+    // Count overflow per day (tasks in lanes >= MAX_LANES)
+    const overflowByDay = Array(7).fill(0) as number[]
+    for (const wt of week.tasks) {
+      if (wt.lane >= MAX_LANES) {
+        for (let c = wt.startCol; c < wt.startCol + wt.span; c++) {
+          overflowByDay[c]++
+        }
+      }
+    }
+
+    const maxLane = week.tasks.reduce(
+      (max, wt) => Math.max(max, wt.lane),
+      -1
+    )
+
+    return {
+      days: week.days,
+      tasks: week.tasks,
+      maxLane: Math.min(maxLane, MAX_LANES - 1),
+      overflowByDay,
+    }
+  })
+}
 
 export function ScheduleCalendarView({
   tasks,
   exceptions,
 }: ScheduleCalendarViewProps) {
   const [currentDate, setCurrentDate] = useState(new Date())
-  const [expandedCells, setExpandedCells] = useState<Set<string>>(
-    new Set()
-  )
 
   const monthStart = startOfMonth(currentDate)
   const monthEnd = endOfMonth(currentDate)
   const calendarStart = startOfWeek(monthStart)
   const calendarEnd = endOfWeek(monthEnd)
 
-  const days = useMemo(
+  const calendarDays = useMemo(
     () => eachDayOfInterval({ start: calendarStart, end: calendarEnd }),
     [calendarStart.getTime(), calendarEnd.getTime()]
   )
 
-  const tasksByDate = useMemo(() => {
-    const map = new Map<string, ScheduleTaskData[]>()
-    for (const task of tasks) {
-      const key = task.startDate
-      if (!map.has(key)) map.set(key, [])
-      map.get(key)!.push(task)
-    }
-    return map
-  }, [tasks])
-
-  const toggleExpand = (dateKey: string) => {
-    setExpandedCells((prev) => {
-      const next = new Set(prev)
-      if (next.has(dateKey)) {
-        next.delete(dateKey)
-      } else {
-        next.add(dateKey)
-      }
-      return next
-    })
-  }
+  const weekRows = useMemo(
+    () => buildWeekRows(calendarDays, tasks),
+    [calendarDays, tasks]
+  )
 
   return (
     <div className="flex flex-col flex-1 min-h-0">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-2">
-        <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setCurrentDate(new Date())}
-            className="h-9"
-          >
-            Today
-          </Button>
+      {/* Calendar controls */}
+      <div className="flex items-center gap-2 mb-2">
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => setCurrentDate(new Date())}
+          className="h-8 text-xs"
+        >
+          Today
+        </Button>
+        <div className="flex items-center">
           <Button
             variant="ghost"
             size="icon"
-            className="size-9"
+            className="size-8"
             onClick={() => setCurrentDate(subMonths(currentDate, 1))}
           >
             <IconChevronLeft className="size-4" />
@@ -125,106 +223,121 @@ export function ScheduleCalendarView({
           <Button
             variant="ghost"
             size="icon"
-            className="size-9"
+            className="size-8"
             onClick={() => setCurrentDate(addMonths(currentDate, 1))}
           >
             <IconChevronRight className="size-4" />
           </Button>
-          <h2 className="text-base sm:text-lg font-medium whitespace-nowrap">
-            {format(currentDate, "MMMM yyyy")}
-          </h2>
         </div>
-        <Select defaultValue="month">
-          <SelectTrigger className="h-9 w-28 text-sm">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="month">Month</SelectItem>
-            <SelectItem value="day">Day</SelectItem>
-          </SelectContent>
-        </Select>
+        <h2 className="text-sm font-medium">
+          {format(currentDate, "MMMM yyyy")}
+        </h2>
       </div>
 
+      {/* Calendar grid */}
       <div className="border rounded-md overflow-hidden flex flex-col flex-1 min-h-0">
-        <div className="grid grid-cols-7 border-b">
-          {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map(
-            (day) => (
-              <div
-                key={day}
-                className="text-center text-xs font-medium text-muted-foreground py-2 border-r last:border-r-0"
-              >
-                {day}
-              </div>
-            )
-          )}
+        {/* Weekday headers */}
+        <div className="grid grid-cols-7 border-b bg-muted/30">
+          {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day) => (
+            <div
+              key={day}
+              className="text-center text-[11px] font-medium text-muted-foreground py-1.5 border-r last:border-r-0"
+            >
+              {day}
+            </div>
+          ))}
         </div>
 
-        <div className="grid grid-cols-7 flex-1">
-          {days.map((day) => {
-            const dateKey = format(day, "yyyy-MM-dd")
-            const dayTasks = tasksByDate.get(dateKey) || []
-            const isNonWork =
-              isWeekend(day) || isExceptionDay(day, exceptions)
-            const inMonth = isSameMonth(day, currentDate)
-            const expanded = expandedCells.has(dateKey)
-            const visibleTasks = expanded
-              ? dayTasks
-              : dayTasks.slice(0, MAX_VISIBLE_TASKS)
-            const overflow = dayTasks.length - MAX_VISIBLE_TASKS
+        {/* Week rows */}
+        <div className="flex flex-col flex-1 min-h-0">
+          {weekRows.map((week, weekIdx) => {
+            const visibleLanes = Math.min(week.maxLane + 1, MAX_LANES)
+            const contentHeight = DAY_HEADER_HEIGHT + visibleLanes * LANE_HEIGHT
+            const hasOverflow = week.overflowByDay.some((n) => n > 0)
+            const totalHeight = contentHeight + (hasOverflow ? 16 : 0)
 
             return (
               <div
-                key={dateKey}
-                className={`min-h-[60px] sm:min-h-[80px] border-r border-b last:border-r-0 p-1 sm:p-1.5 ${
-                  !inMonth ? "bg-muted/30" : ""
-                } ${isNonWork ? "bg-muted/50" : ""}`}
+                key={weekIdx}
+                className="relative border-b last:border-b-0 flex-1"
+                style={{ minHeight: `${Math.max(totalHeight, 60)}px` }}
               >
-                <div className="flex items-start justify-between mb-0.5 min-w-0">
-                  <span
-                    className={`text-xs shrink-0 ${
-                      isToday(day)
-                        ? "bg-primary text-primary-foreground rounded-full size-5 sm:size-6 flex items-center justify-center font-bold"
-                        : inMonth
-                          ? "text-foreground"
-                          : "text-muted-foreground"
-                    }`}
-                  >
-                    {format(day, "d")}
-                  </span>
-                  {isNonWork && (
-                    <span className="text-[8px] sm:text-[9px] text-muted-foreground truncate ml-1">
-                      <span className="hidden sm:inline">Non-workday</span>
-                      <span className="sm:hidden">Off</span>
-                    </span>
-                  )}
+                {/* Day cells (background + day numbers) */}
+                <div className="grid grid-cols-7 absolute inset-0">
+                  {week.days.map((day) => {
+                    const inMonth = isSameMonth(day, currentDate)
+                    const isNonWork =
+                      isWeekend(day) || isExceptionDay(day, exceptions)
+
+                    return (
+                      <div
+                        key={format(day, "yyyy-MM-dd")}
+                        className={cn(
+                          "border-r last:border-r-0 p-1",
+                          !inMonth && "bg-muted/20",
+                          isNonWork && inMonth && "bg-muted/40",
+                        )}
+                      >
+                        <span
+                          className={cn(
+                            "text-[11px] leading-none",
+                            isToday(day)
+                              ? "bg-primary text-primary-foreground rounded-full size-5 inline-flex items-center justify-center font-bold"
+                              : inMonth
+                                ? "text-foreground/80"
+                                : "text-muted-foreground/50",
+                          )}
+                        >
+                          {format(day, "d")}
+                        </span>
+                      </div>
+                    )
+                  })}
                 </div>
-                <div className="space-y-0.5">
-                  {visibleTasks.map((task) => (
+
+                {/* Task bars (overlaid) */}
+                {week.tasks
+                  .filter((wt) => wt.lane < MAX_LANES)
+                  .map((wt) => (
                     <div
-                      key={task.id}
-                      className={`${getTaskColor(task)} text-white text-[9px] sm:text-[10px] px-1 py-0.5 rounded truncate`}
-                      title={task.title}
+                      key={`${wt.task.id}-${weekIdx}`}
+                      className={cn(
+                        "absolute text-[10px] text-white font-medium truncate px-1.5 leading-[20px] cursor-default",
+                        getTaskColor(wt.task),
+                        wt.isStart && wt.isEnd && "rounded",
+                        wt.isStart && !wt.isEnd && "rounded-l",
+                        !wt.isStart && wt.isEnd && "rounded-r",
+                        !wt.isStart && !wt.isEnd && "rounded-none",
+                      )}
+                      style={{
+                        top: `${DAY_HEADER_HEIGHT + wt.lane * LANE_HEIGHT}px`,
+                        left: `${(wt.startCol / 7) * 100}%`,
+                        width: `${(wt.span / 7) * 100}%`,
+                        height: `${LANE_HEIGHT - 2}px`,
+                        paddingLeft: wt.isStart ? "6px" : "2px",
+                      }}
+                      title={`${wt.task.title} (${wt.task.startDate} - ${wt.task.endDateCalculated})`}
                     >
-                      {task.title.length > 15 ? `${task.title.slice(0, 12)}...` : task.title}
+                      {wt.isStart ? wt.task.title : ""}
                     </div>
                   ))}
-                  {!expanded && overflow > 0 && (
-                    <button
-                      className="text-[9px] sm:text-[10px] text-primary hover:underline"
-                      onClick={() => toggleExpand(dateKey)}
-                    >
-                      +{overflow}
-                    </button>
-                  )}
-                  {expanded && dayTasks.length > MAX_VISIBLE_TASKS && (
-                    <button
-                      className="text-[9px] sm:text-[10px] text-primary hover:underline"
-                      onClick={() => toggleExpand(dateKey)}
-                    >
-                      Less
-                    </button>
-                  )}
-                </div>
+
+                {/* Overflow indicators */}
+                {hasOverflow && (
+                  <div
+                    className="grid grid-cols-7 absolute left-0 right-0"
+                    style={{ top: `${contentHeight}px` }}
+                  >
+                    {week.overflowByDay.map((count, dayIdx) => (
+                      <div
+                        key={dayIdx}
+                        className="text-[10px] text-primary px-1 border-r last:border-r-0"
+                      >
+                        {count > 0 ? `+${count} more` : ""}
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             )
           })}

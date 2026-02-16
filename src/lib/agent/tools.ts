@@ -24,9 +24,106 @@ import {
 } from "@/app/actions/dashboards"
 import { THEME_PRESETS, findPreset } from "@/lib/theme/presets"
 import type { ThemeDefinition, ColorMap, ThemeFonts, ThemeTokens, ThemeShadows } from "@/lib/theme/types"
-import { projects, scheduleTasks } from "@/db/schema"
+import { projects, scheduleTasks, taskDependencies, workdayExceptions } from "@/db/schema"
 import { invoices, vendorBills } from "@/db/schema-netsuite"
-import { eq, and, like } from "drizzle-orm"
+import { eq, and, like, asc } from "drizzle-orm"
+import { calculateEndDate } from "@/lib/schedule/business-days"
+import { findCriticalPath } from "@/lib/schedule/critical-path"
+import { wouldCreateCycle } from "@/lib/schedule/dependency-validation"
+import { propagateDates } from "@/lib/schedule/propagate-dates"
+import { revalidatePath } from "next/cache"
+import { isDemoUser } from "@/lib/demo"
+import type {
+  TaskStatus,
+  DependencyType,
+  ExceptionCategory,
+  ExceptionRecurrence,
+  WorkdayExceptionData,
+} from "@/lib/schedule/types"
+
+// shared auth + project verification for schedule tools.
+// uses ID-only lookup (no org check) to match the schedule
+// page behavior -- the middleware already restricts access
+// to authenticated users.
+type ScheduleCtxOk = {
+  readonly ok: true
+  readonly db: ReturnType<typeof getDb>
+  readonly userId: string
+}
+type ScheduleCtxErr = {
+  readonly ok: false
+  readonly error: string
+}
+type ScheduleCtxResult = ScheduleCtxOk | ScheduleCtxErr
+
+async function requireScheduleCtx(
+  projectId: string,
+  writeable?: boolean,
+): Promise<ScheduleCtxResult> {
+  const user = await getCurrentUser()
+  if (!user) return { ok: false, error: "not authenticated" }
+  if (writeable && isDemoUser(user.id)) {
+    return { ok: false, error: "DEMO_READ_ONLY" }
+  }
+
+  const { env } = await getCloudflareContext()
+  const db = getDb(env.DB)
+
+  const [project] = await db
+    .select({ id: projects.id })
+    .from(projects)
+    .where(eq(projects.id, projectId))
+    .limit(1)
+
+  if (!project) {
+    return { ok: false, error: "Project not found" }
+  }
+  return { ok: true, db, userId: user.id }
+}
+
+// fetch workday exceptions for a project (typed)
+async function fetchProjectExceptions(
+  db: ReturnType<typeof getDb>,
+  projectId: string,
+): Promise<WorkdayExceptionData[]> {
+  const rows = await db
+    .select()
+    .from(workdayExceptions)
+    .where(eq(workdayExceptions.projectId, projectId))
+  return rows.map((r) => ({
+    ...r,
+    category: r.category as ExceptionCategory,
+    recurrence: r.recurrence as ExceptionRecurrence,
+  }))
+}
+
+// load deps filtered to a project's tasks
+async function fetchProjectDeps(
+  db: ReturnType<typeof getDb>,
+  projectId: string,
+) {
+  const tasks = await db
+    .select()
+    .from(scheduleTasks)
+    .where(eq(scheduleTasks.projectId, projectId))
+  const allDeps = await db.select().from(taskDependencies)
+  const taskIdSet = new Set(tasks.map((t) => t.id))
+  const deps = allDeps.filter(
+    (d) =>
+      taskIdSet.has(d.predecessorId) &&
+      taskIdSet.has(d.successorId),
+  )
+  return {
+    tasks: tasks.map((t) => ({
+      ...t,
+      status: t.status as TaskStatus,
+    })),
+    deps: deps.map((d) => ({
+      ...d,
+      type: d.type as DependencyType,
+    })),
+  }
+}
 
 const queryDataInputSchema = z.object({
   queryType: z.enum([
@@ -900,4 +997,593 @@ export const agentTools = {
       }
     },
   }),
+
+  getProjectSchedule: tool({
+    description:
+      "Get the full schedule for a project including tasks, " +
+      "dependencies, workday exceptions, and a computed summary " +
+      "(counts, overall %, critical path). Always call this " +
+      "before making schedule mutations to resolve task names " +
+      "to IDs.",
+    inputSchema: z.object({
+      projectId: z.string().describe("The project UUID"),
+    }),
+    execute: async (input: { projectId: string }) => {
+      const ctx = await requireScheduleCtx(input.projectId)
+      if (!ctx.ok) return { error: ctx.error }
+      const { db } = ctx
+
+      const { tasks: typedTasks, deps: typedDeps } =
+        await fetchProjectDeps(db, input.projectId)
+      const exceptions = await fetchProjectExceptions(
+        db,
+        input.projectId,
+      )
+
+      const total = typedTasks.length
+      const completed = typedTasks.filter(
+        (t) => t.status === "COMPLETE",
+      ).length
+      const inProgress = typedTasks.filter(
+        (t) => t.status === "IN_PROGRESS",
+      ).length
+      const blocked = typedTasks.filter(
+        (t) => t.status === "BLOCKED",
+      ).length
+      const overallPercent =
+        total > 0
+          ? Math.round(
+              typedTasks.reduce(
+                (sum, t) => sum + t.percentComplete,
+                0,
+              ) / total,
+            )
+          : 0
+      const criticalPath = typedTasks
+        .filter((t) => t.isCriticalPath)
+        .map((t) => ({
+          id: t.id,
+          title: t.title,
+          status: t.status,
+          startDate: t.startDate,
+          endDate: t.endDateCalculated,
+        }))
+
+      return {
+        tasks: typedTasks,
+        dependencies: typedDeps,
+        exceptions,
+        summary: {
+          total,
+          completed,
+          inProgress,
+          blocked,
+          pending: total - completed - inProgress - blocked,
+          overallPercent,
+          criticalPath,
+        },
+      }
+    },
+  }),
+
+  createScheduleTask: tool({
+    description:
+      "Create a new task on a project schedule. Returns a " +
+      "toast confirmation. Dates are ISO format (YYYY-MM-DD).",
+    inputSchema: z.object({
+      projectId: z.string().describe("The project UUID"),
+      title: z.string().describe("Task title"),
+      startDate: z
+        .string()
+        .describe("Start date in YYYY-MM-DD format"),
+      workdays: z
+        .number()
+        .describe("Duration in working days"),
+      phase: z
+        .string()
+        .describe(
+          "Construction phase (preconstruction, sitework, " +
+            "foundation, framing, roofing, electrical, plumbing, " +
+            "hvac, insulation, drywall, finish, landscaping, closeout)",
+        ),
+      isMilestone: z
+        .boolean()
+        .optional()
+        .describe("Whether this is a milestone (0 workdays)"),
+      percentComplete: z
+        .number()
+        .min(0)
+        .max(100)
+        .optional()
+        .describe("Initial percent complete (0-100)"),
+      assignedTo: z
+        .string()
+        .optional()
+        .describe("Name of the person assigned"),
+    }),
+    execute: async (input: {
+      projectId: string
+      title: string
+      startDate: string
+      workdays: number
+      phase: string
+      isMilestone?: boolean
+      percentComplete?: number
+      assignedTo?: string
+    }) => {
+      const ctx = await requireScheduleCtx(
+        input.projectId,
+        true,
+      )
+      if (!ctx.ok) return { error: ctx.error }
+      const { db } = ctx
+
+      const exceptions = await fetchProjectExceptions(
+        db,
+        input.projectId,
+      )
+
+      const endDate = calculateEndDate(
+        input.startDate,
+        input.workdays,
+        exceptions,
+      )
+      const now = new Date().toISOString()
+
+      const existing = await db
+        .select({ sortOrder: scheduleTasks.sortOrder })
+        .from(scheduleTasks)
+        .where(eq(scheduleTasks.projectId, input.projectId))
+        .orderBy(asc(scheduleTasks.sortOrder))
+
+      const nextOrder =
+        existing.length > 0
+          ? existing[existing.length - 1].sortOrder + 1
+          : 0
+
+      const id = crypto.randomUUID()
+      await db.insert(scheduleTasks).values({
+        id,
+        projectId: input.projectId,
+        title: input.title,
+        startDate: input.startDate,
+        workdays: input.workdays,
+        endDateCalculated: endDate,
+        phase: input.phase,
+        status: "PENDING",
+        isCriticalPath: false,
+        isMilestone: input.isMilestone ?? false,
+        percentComplete: input.percentComplete ?? 0,
+        assignedTo: input.assignedTo ?? null,
+        sortOrder: nextOrder,
+        createdAt: now,
+        updatedAt: now,
+      })
+
+      await recalcCriticalPathDirect(db, input.projectId)
+      revalidatePath(
+        `/dashboard/projects/${input.projectId}/schedule`,
+      )
+
+      return {
+        action: "toast" as const,
+        message: `Task "${input.title}" created`,
+        type: "success",
+      }
+    },
+  }),
+
+  updateScheduleTask: tool({
+    description:
+      "Update an existing schedule task. Provide only the " +
+      "fields to change. Use getProjectSchedule first to " +
+      "resolve task names to IDs.",
+    inputSchema: z.object({
+      taskId: z.string().describe("The task UUID"),
+      title: z.string().optional().describe("New title"),
+      startDate: z
+        .string()
+        .optional()
+        .describe("New start date (YYYY-MM-DD)"),
+      workdays: z
+        .number()
+        .optional()
+        .describe("New duration in working days"),
+      phase: z.string().optional().describe("New phase"),
+      status: z
+        .enum(["PENDING", "IN_PROGRESS", "COMPLETE", "BLOCKED"])
+        .optional()
+        .describe("New status"),
+      isMilestone: z
+        .boolean()
+        .optional()
+        .describe("Set milestone flag"),
+      percentComplete: z
+        .number()
+        .min(0)
+        .max(100)
+        .optional()
+        .describe("New percent complete (0-100)"),
+      assignedTo: z
+        .string()
+        .nullable()
+        .optional()
+        .describe("New assignee (null to unassign)"),
+    }),
+    execute: async (input: {
+      taskId: string
+      title?: string
+      startDate?: string
+      workdays?: number
+      phase?: string
+      status?: "PENDING" | "IN_PROGRESS" | "COMPLETE" | "BLOCKED"
+      isMilestone?: boolean
+      percentComplete?: number
+      assignedTo?: string | null
+    }) => {
+      const user = await getCurrentUser()
+      if (!user) return { error: "not authenticated" }
+      if (isDemoUser(user.id)) {
+        return { error: "DEMO_READ_ONLY" }
+      }
+      const { env } = await getCloudflareContext()
+      const db = getDb(env.DB)
+
+      const [task] = await db
+        .select()
+        .from(scheduleTasks)
+        .where(eq(scheduleTasks.id, input.taskId))
+        .limit(1)
+
+      if (!task) return { error: "Task not found" }
+
+      const { taskId, status, ...fields } = input
+      const hasFields = Object.keys(fields).length > 0
+
+      if (hasFields) {
+        const exceptions = await fetchProjectExceptions(
+          db,
+          task.projectId,
+        )
+
+        const startDate = fields.startDate ?? task.startDate
+        const workdays = fields.workdays ?? task.workdays
+        const endDate = calculateEndDate(
+          startDate,
+          workdays,
+          exceptions,
+        )
+
+        await db
+          .update(scheduleTasks)
+          .set({
+            ...(fields.title && { title: fields.title }),
+            startDate,
+            workdays,
+            endDateCalculated: endDate,
+            ...(fields.phase && { phase: fields.phase }),
+            ...(fields.isMilestone !== undefined && {
+              isMilestone: fields.isMilestone,
+            }),
+            ...(fields.percentComplete !== undefined && {
+              percentComplete: fields.percentComplete,
+            }),
+            ...(fields.assignedTo !== undefined && {
+              assignedTo: fields.assignedTo,
+            }),
+            updatedAt: new Date().toISOString(),
+          })
+          .where(eq(scheduleTasks.id, taskId))
+
+        // propagate date changes to downstream tasks
+        const allTasks = await db
+          .select()
+          .from(scheduleTasks)
+          .where(eq(scheduleTasks.projectId, task.projectId))
+        const allDeps = await db
+          .select()
+          .from(taskDependencies)
+        const taskIdSet = new Set(allTasks.map((t) => t.id))
+        const projectDeps = allDeps
+          .filter(
+            (d) =>
+              taskIdSet.has(d.predecessorId) &&
+              taskIdSet.has(d.successorId),
+          )
+          .map((d) => ({
+            ...d,
+            type: d.type as DependencyType,
+          }))
+
+        const updatedTask = {
+          ...task,
+          status: task.status as TaskStatus,
+          startDate,
+          workdays,
+          endDateCalculated: endDate,
+        }
+        const typedAll = allTasks.map((t) =>
+          t.id === taskId
+            ? updatedTask
+            : { ...t, status: t.status as TaskStatus },
+        )
+        const { updatedTasks } = propagateDates(
+          taskId,
+          typedAll,
+          projectDeps,
+          exceptions,
+        )
+
+        for (const [id, dates] of updatedTasks) {
+          await db
+            .update(scheduleTasks)
+            .set({
+              startDate: dates.startDate,
+              endDateCalculated: dates.endDateCalculated,
+              updatedAt: new Date().toISOString(),
+            })
+            .where(eq(scheduleTasks.id, id))
+        }
+      }
+
+      if (status) {
+        await db
+          .update(scheduleTasks)
+          .set({
+            status,
+            updatedAt: new Date().toISOString(),
+          })
+          .where(eq(scheduleTasks.id, taskId))
+      }
+
+      if (!hasFields && !status) {
+        return { error: "No fields provided to update" }
+      }
+
+      await recalcCriticalPathDirect(db, task.projectId)
+      revalidatePath(
+        `/dashboard/projects/${task.projectId}/schedule`,
+      )
+
+      return {
+        action: "toast" as const,
+        message: "Task updated",
+        type: "success",
+      }
+    },
+  }),
+
+  deleteScheduleTask: tool({
+    description:
+      "Delete a schedule task. Always confirm with the user " +
+      "before deleting. This also removes any dependencies " +
+      "involving the task.",
+    inputSchema: z.object({
+      taskId: z.string().describe("The task UUID to delete"),
+    }),
+    execute: async (input: { taskId: string }) => {
+      const user = await getCurrentUser()
+      if (!user) return { error: "not authenticated" }
+      if (isDemoUser(user.id)) {
+        return { error: "DEMO_READ_ONLY" }
+      }
+      const { env } = await getCloudflareContext()
+      const db = getDb(env.DB)
+
+      const [task] = await db
+        .select()
+        .from(scheduleTasks)
+        .where(eq(scheduleTasks.id, input.taskId))
+        .limit(1)
+
+      if (!task) return { error: "Task not found" }
+
+      await db
+        .delete(scheduleTasks)
+        .where(eq(scheduleTasks.id, input.taskId))
+      await recalcCriticalPathDirect(db, task.projectId)
+      revalidatePath(
+        `/dashboard/projects/${task.projectId}/schedule`,
+      )
+
+      return {
+        action: "toast" as const,
+        message: "Task deleted",
+        type: "success",
+      }
+    },
+  }),
+
+  createScheduleDependency: tool({
+    description:
+      "Create a dependency between two tasks. Has built-in " +
+      "cycle detection. Use getProjectSchedule first to " +
+      "resolve task names to IDs.",
+    inputSchema: z.object({
+      projectId: z
+        .string()
+        .describe("The project UUID"),
+      predecessorId: z
+        .string()
+        .describe("UUID of the predecessor task"),
+      successorId: z
+        .string()
+        .describe("UUID of the successor task"),
+      type: z
+        .enum(["FS", "SS", "FF", "SF"])
+        .describe(
+          "Dependency type: FS (finish-to-start), " +
+            "SS (start-to-start), FF (finish-to-finish), " +
+            "SF (start-to-finish)",
+        ),
+      lagDays: z
+        .number()
+        .optional()
+        .describe("Lag in working days (default 0)"),
+    }),
+    execute: async (input: {
+      projectId: string
+      predecessorId: string
+      successorId: string
+      type: "FS" | "SS" | "FF" | "SF"
+      lagDays?: number
+    }) => {
+      const ctx = await requireScheduleCtx(
+        input.projectId,
+        true,
+      )
+      if (!ctx.ok) return { error: ctx.error }
+      const { db } = ctx
+
+      // load schedule for cycle check + propagation
+      const { tasks: typedTasks, deps: existingDeps } =
+        await fetchProjectDeps(db, input.projectId)
+
+      if (
+        wouldCreateCycle(
+          existingDeps,
+          input.predecessorId,
+          input.successorId,
+        )
+      ) {
+        return {
+          error: "This dependency would create a cycle",
+        }
+      }
+
+      const depId = crypto.randomUUID()
+      await db.insert(taskDependencies).values({
+        id: depId,
+        predecessorId: input.predecessorId,
+        successorId: input.successorId,
+        type: input.type,
+        lagDays: input.lagDays ?? 0,
+      })
+
+      // propagate dates
+      const exceptions = await fetchProjectExceptions(
+        db,
+        input.projectId,
+      )
+
+      const updatedDeps = [
+        ...existingDeps,
+        {
+          id: depId,
+          predecessorId: input.predecessorId,
+          successorId: input.successorId,
+          type: input.type as DependencyType,
+          lagDays: input.lagDays ?? 0,
+        },
+      ]
+      const { updatedTasks } = propagateDates(
+        input.predecessorId,
+        typedTasks,
+        updatedDeps,
+        exceptions,
+      )
+
+      for (const [id, dates] of updatedTasks) {
+        await db
+          .update(scheduleTasks)
+          .set({
+            startDate: dates.startDate,
+            endDateCalculated: dates.endDateCalculated,
+            updatedAt: new Date().toISOString(),
+          })
+          .where(eq(scheduleTasks.id, id))
+      }
+
+      await recalcCriticalPathDirect(db, input.projectId)
+      revalidatePath(
+        `/dashboard/projects/${input.projectId}/schedule`,
+      )
+
+      return {
+        action: "toast" as const,
+        message: "Dependency created",
+        type: "success",
+      }
+    },
+  }),
+
+  deleteScheduleDependency: tool({
+    description:
+      "Delete a dependency between tasks. Use " +
+      "getProjectSchedule first to find the dependency ID.",
+    inputSchema: z.object({
+      dependencyId: z
+        .string()
+        .describe("The dependency UUID to delete"),
+      projectId: z
+        .string()
+        .describe("The project UUID (for revalidation)"),
+    }),
+    execute: async (input: {
+      dependencyId: string
+      projectId: string
+    }) => {
+      const ctx = await requireScheduleCtx(
+        input.projectId,
+        true,
+      )
+      if (!ctx.ok) return { error: ctx.error }
+      const { db } = ctx
+
+      await db
+        .delete(taskDependencies)
+        .where(eq(taskDependencies.id, input.dependencyId))
+      await recalcCriticalPathDirect(db, input.projectId)
+      revalidatePath(
+        `/dashboard/projects/${input.projectId}/schedule`,
+      )
+
+      return {
+        action: "toast" as const,
+        message: "Dependency removed",
+        type: "success",
+      }
+    },
+  }),
+}
+
+// recalculates critical path for a project (inline version
+// that doesn't depend on server action auth context)
+async function recalcCriticalPathDirect(
+  db: ReturnType<typeof getDb>,
+  projectId: string,
+): Promise<void> {
+  const tasks = await db
+    .select()
+    .from(scheduleTasks)
+    .where(eq(scheduleTasks.projectId, projectId))
+
+  const allDeps = await db.select().from(taskDependencies)
+  const taskIdSet = new Set(tasks.map((t) => t.id))
+  const projectDeps = allDeps.filter(
+    (d) =>
+      taskIdSet.has(d.predecessorId) &&
+      taskIdSet.has(d.successorId),
+  )
+
+  const criticalSet = findCriticalPath(
+    tasks.map((t) => ({
+      ...t,
+      status: t.status as TaskStatus,
+    })),
+    projectDeps.map((d) => ({
+      ...d,
+      type: d.type as DependencyType,
+    })),
+  )
+
+  for (const task of tasks) {
+    const isCritical = criticalSet.has(task.id)
+    if (task.isCriticalPath !== isCritical) {
+      await db
+        .update(scheduleTasks)
+        .set({ isCriticalPath: isCritical })
+        .where(eq(scheduleTasks.id, task.id))
+    }
+  }
 }

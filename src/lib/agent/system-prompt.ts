@@ -30,6 +30,7 @@ type ToolCategory =
   | "github"
   | "skills"
   | "feedback"
+  | "schedule"
 
 interface ToolMeta {
   readonly name: string
@@ -222,6 +223,54 @@ const TOOL_REGISTRY: ReadonlyArray<ToolMeta> = [
       "the user before deleting.",
     category: "ui",
   },
+  {
+    name: "getProjectSchedule",
+    summary:
+      "Get a project's full schedule: tasks, dependencies, " +
+      "exceptions, and a computed summary (counts, overall %, " +
+      "critical path). Always call before mutations to resolve " +
+      "task names to UUIDs.",
+    category: "schedule",
+  },
+  {
+    name: "createScheduleTask",
+    summary:
+      "Create a new task on a project schedule. Provide " +
+      "projectId, title, startDate (YYYY-MM-DD), workdays, " +
+      "and phase. Optional: isMilestone, percentComplete, " +
+      "assignedTo.",
+    category: "schedule",
+  },
+  {
+    name: "updateScheduleTask",
+    summary:
+      "Update a schedule task by ID. Provide only the " +
+      "fields to change: title, startDate, workdays, phase, " +
+      "status (PENDING/IN_PROGRESS/COMPLETE/BLOCKED), " +
+      "isMilestone, percentComplete, assignedTo.",
+    category: "schedule",
+  },
+  {
+    name: "deleteScheduleTask",
+    summary:
+      "Delete a schedule task. Always confirm with the " +
+      "user before deleting.",
+    category: "schedule",
+  },
+  {
+    name: "createScheduleDependency",
+    summary:
+      "Create a dependency between two tasks. Types: " +
+      "FS (finish-to-start), SS, FF, SF. Optional lagDays. " +
+      "Has built-in cycle detection.",
+    category: "schedule",
+  },
+  {
+    name: "deleteScheduleDependency",
+    summary:
+      "Delete a dependency between tasks by its ID.",
+    category: "schedule",
+  },
 ]
 
 // categories included in minimal mode
@@ -229,6 +278,7 @@ const MINIMAL_CATEGORIES: ReadonlySet<ToolCategory> = new Set([
   "data",
   "navigation",
   "ui",
+  "schedule",
 ])
 
 // categories included in demo mode (read-only subset)
@@ -236,6 +286,7 @@ const DEMO_CATEGORIES: ReadonlySet<ToolCategory> = new Set([
   "data",
   "navigation",
   "ui",
+  "schedule",
 ])
 
 // --- derived state ---
@@ -661,6 +712,62 @@ function buildDashboardRules(
   return lines
 }
 
+function buildScheduleGuidance(
+  mode: PromptMode,
+): ReadonlyArray<string> {
+  if (mode !== "full") return []
+  return [
+    "## Schedule Management",
+    "You can read and modify project schedules directly.",
+    "",
+    "**Resolving the projectId:**",
+    "- If the user is on a project page (URL contains " +
+      "/dashboard/projects/{id}), extract the projectId " +
+      "from the currentPage URL.",
+    "- Otherwise, ask which project or use queryData " +
+      '(queryType: "projects") to search by name.',
+    "",
+    "**Workflow — always read before writing:**",
+    "1. Call getProjectSchedule to load all tasks and " +
+      "dependencies.",
+    "2. Match the user's task name to a task UUID in the " +
+      "returned list.",
+    "3. Then call createScheduleTask, updateScheduleTask, " +
+      "deleteScheduleTask, createScheduleDependency, or " +
+      "deleteScheduleDependency as needed.",
+    "",
+    "**Construction phases:** preconstruction, sitework, " +
+      "foundation, framing, roofing, electrical, plumbing, " +
+      "hvac, insulation, drywall, finish, landscaping, closeout.",
+    "",
+    "**Task statuses:** PENDING, IN_PROGRESS, COMPLETE, BLOCKED.",
+    "",
+    "**Dependency types:**",
+    "- FS (finish-to-start): successor starts after " +
+      "predecessor finishes. Most common.",
+    "- SS (start-to-start): both start together.",
+    "- FF (finish-to-finish): both finish together.",
+    "- SF (start-to-finish): predecessor start triggers " +
+      "successor finish.",
+    "",
+    "**When to use getProjectSchedule vs queryData:**",
+    "- getProjectSchedule: full schedule with dependencies, " +
+      "critical path, exceptions — use for schedule questions " +
+      "and before any mutations.",
+    '- queryData (queryType: "schedule_tasks"): flat search ' +
+      "across ALL projects — use for cross-project task lookups.",
+    "",
+    "**Common patterns:**",
+    '- "mark X complete" → getProjectSchedule, find task ID, ' +
+      "updateScheduleTask with status: COMPLETE and " +
+      "percentComplete: 100.",
+    '- "what\'s on the critical path?" → getProjectSchedule, ' +
+      "read summary.criticalPath.",
+    '- "link X to Y" → getProjectSchedule, find both IDs, ' +
+      "createScheduleDependency with type FS.",
+  ]
+}
+
 function buildGuidelines(
   mode: PromptMode,
 ): ReadonlyArray<string> {
@@ -749,6 +856,7 @@ export function buildSystemPrompt(ctx: PromptContext): string {
     buildGitHubGuidance(state.mode),
     buildThemingRules(state.mode),
     buildDashboardRules(ctx, state.mode),
+    buildScheduleGuidance(state.mode),
     buildGuidelines(state.mode),
     buildPluginSections(ctx.pluginSections, state.mode),
   ]

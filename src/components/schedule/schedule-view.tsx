@@ -1,10 +1,57 @@
 "use client"
 
-import { useState, useMemo } from "react"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { useState, useMemo, useRef } from "react"
+import Link from "next/link"
+import { cn } from "@/lib/utils"
 import { useIsMobile } from "@/hooks/use-mobile"
-import { ScheduleToolbar, type TaskFilters } from "./schedule-toolbar"
-import { ProjectSwitcher } from "./project-switcher"
+import { Input } from "@/components/ui/input"
+import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
+import { Label } from "@/components/ui/label"
+import { Checkbox } from "@/components/ui/checkbox"
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover"
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetDescription,
+} from "@/components/ui/sheet"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import {
+  IconSearch,
+  IconFilter,
+  IconX,
+  IconPlus,
+  IconCalendar,
+  IconList,
+  IconTimeline,
+  IconChevronRight,
+  IconDots,
+  IconDownload,
+  IconUpload,
+  IconPrinter,
+  IconHistory,
+  IconCalendarOff,
+  IconLoader2,
+} from "@tabler/icons-react"
 import { ScheduleListView } from "./schedule-list-view"
 import { ScheduleGanttView } from "./schedule-gantt-view"
 import { ScheduleCalendarView } from "./schedule-calendar-view"
@@ -15,24 +62,30 @@ import { TaskFormDialog } from "./task-form-dialog"
 import type {
   ScheduleData,
   ScheduleBaselineData,
+  TaskFilters,
+  TaskStatus,
+  ConstructionPhase,
+} from "@/lib/schedule/types"
+import {
+  EMPTY_FILTERS,
+  STATUS_OPTIONS,
+  PHASE_OPTIONS,
 } from "@/lib/schedule/types"
 
-type TopTab = "schedule" | "baseline" | "exceptions"
-type ScheduleSubTab = "calendar" | "list" | "gantt"
+type View = "calendar" | "list" | "gantt"
 
-const DEFAULT_FILTERS: TaskFilters = {
-  status: [],
-  phase: [],
-  assignedTo: "",
-  search: "",
-}
+const VIEW_OPTIONS = [
+  { value: "calendar" as const, icon: IconCalendar, label: "Calendar" },
+  { value: "list" as const, icon: IconList, label: "List" },
+  { value: "gantt" as const, icon: IconTimeline, label: "Gantt" },
+]
 
 interface ScheduleViewProps {
-  projectId: string
-  projectName: string
-  initialData: ScheduleData
-  baselines: ScheduleBaselineData[]
-  allProjects?: { id: string; name: string }[]
+  readonly projectId: string
+  readonly projectName: string
+  readonly initialData: ScheduleData
+  readonly baselines: ScheduleBaselineData[]
+  readonly allProjects?: readonly { id: string; name: string }[]
 }
 
 export function ScheduleView({
@@ -40,13 +93,16 @@ export function ScheduleView({
   projectName,
   initialData,
   baselines,
-  allProjects = [],
 }: ScheduleViewProps) {
   const isMobile = useIsMobile()
-  const [topTab, setTopTab] = useState<TopTab>("schedule")
-  const [subTab, setSubTab] = useState<ScheduleSubTab>("calendar")
+  const [view, setView] = useState<View>("calendar")
   const [taskFormOpen, setTaskFormOpen] = useState(false)
-  const [filters, setFilters] = useState<TaskFilters>(DEFAULT_FILTERS)
+  const [filters, setFilters] = useState<TaskFilters>(EMPTY_FILTERS)
+  const [baselinesOpen, setBaselinesOpen] = useState(false)
+  const [exceptionsOpen, setExceptionsOpen] = useState(false)
+  const [importDialogOpen, setImportDialogOpen] = useState(false)
+  const [isImporting, setIsImporting] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   const filteredTasks = useMemo(() => {
     let tasks = initialData.tasks
@@ -54,147 +110,512 @@ export function ScheduleView({
     if (filters.status.length > 0) {
       tasks = tasks.filter((t) => filters.status.includes(t.status))
     }
-
     if (filters.phase.length > 0) {
-      tasks = tasks.filter((t) => filters.phase.includes(t.phase as never))
-    }
-
-    if (filters.assignedTo) {
-      const search = filters.assignedTo.toLowerCase()
-      tasks = tasks.filter(
-        (t) => t.assignedTo?.toLowerCase().includes(search)
+      tasks = tasks.filter((t) =>
+        filters.phase.includes(t.phase as ConstructionPhase)
       )
     }
-
+    if (filters.assignedTo) {
+      const search = filters.assignedTo.toLowerCase()
+      tasks = tasks.filter((t) =>
+        t.assignedTo?.toLowerCase().includes(search)
+      )
+    }
     if (filters.search) {
       const search = filters.search.toLowerCase()
-      tasks = tasks.filter((t) => t.title.toLowerCase().includes(search))
+      tasks = tasks.filter((t) =>
+        t.title.toLowerCase().includes(search)
+      )
     }
-
     return tasks
   }, [initialData.tasks, filters])
 
+  const activeFilterCount =
+    filters.status.length +
+    filters.phase.length +
+    (filters.assignedTo ? 1 : 0)
+
+  const toggleStatus = (status: TaskStatus) => {
+    const current = filters.status
+    const next = current.includes(status)
+      ? current.filter((s) => s !== status)
+      : [...current, status]
+    setFilters({ ...filters, status: next })
+  }
+
+  const togglePhase = (phase: ConstructionPhase) => {
+    const current = filters.phase
+    const next = current.includes(phase)
+      ? current.filter((p) => p !== phase)
+      : [...current, phase]
+    setFilters({ ...filters, phase: next })
+  }
+
+  const removeStatusChip = (status: TaskStatus) => {
+    setFilters({
+      ...filters,
+      status: filters.status.filter((s) => s !== status),
+    })
+  }
+
+  const removePhaseChip = (phase: ConstructionPhase) => {
+    setFilters({
+      ...filters,
+      phase: filters.phase.filter((p) => p !== phase),
+    })
+  }
+
+  const clearFilters = () => setFilters(EMPTY_FILTERS)
+
+  // CSV export
+  const handleExportCSV = () => {
+    const headers = [
+      "Title", "Phase", "Status", "Start Date", "End Date",
+      "Duration (days)", "% Complete", "Assigned To",
+      "Critical Path", "Milestone",
+    ]
+    const rows = filteredTasks.map((task) => [
+      task.title, task.phase, task.status, task.startDate,
+      task.endDateCalculated, task.workdays.toString(),
+      task.percentComplete.toString(), task.assignedTo ?? "",
+      task.isCriticalPath ? "Yes" : "No",
+      task.isMilestone ? "Yes" : "No",
+    ])
+
+    const escapeCSV = (value: string) => {
+      if (value.includes(",") || value.includes('"') || value.includes("\n")) {
+        return `"${value.replace(/"/g, '""')}"`
+      }
+      return value
+    }
+
+    const csvContent = [
+      headers.join(","),
+      ...rows.map((row) => row.map(escapeCSV).join(",")),
+    ].join("\n")
+
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" })
+    const link = document.createElement("a")
+    link.download = `${projectName.replace(/\s+/g, "-")}-schedule-${new Date().toISOString().split("T")[0]}.csv`
+    link.href = URL.createObjectURL(blob)
+    link.click()
+    URL.revokeObjectURL(link.href)
+  }
+
+  // CSV import
+  const handleFileSelect = async (
+    e: React.ChangeEvent<HTMLInputElement>
+  ) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    setIsImporting(true)
+    try {
+      const text = await file.text()
+      const lines = text.split("\n")
+      const headers = lines[0].split(",").map((h) => h.trim().toLowerCase())
+
+      const titleIdx = headers.findIndex(
+        (h) => h.includes("title") || h.includes("task")
+      )
+      const startIdx = headers.findIndex((h) => h.includes("start"))
+      const durationIdx = headers.findIndex(
+        (h) => h.includes("duration") || h.includes("days")
+      )
+      const phaseIdx = headers.findIndex((h) => h.includes("phase"))
+      const assignedIdx = headers.findIndex(
+        (h) => h.includes("assigned") || h.includes("owner")
+      )
+
+      const parsed: Record<string, unknown>[] = []
+      for (let i = 1; i < lines.length; i++) {
+        const line = lines[i].trim()
+        if (!line) continue
+
+        const values = line.split(",").map((v) => v.trim())
+        const task: Record<string, unknown> = {}
+
+        if (titleIdx >= 0 && values[titleIdx]) task.title = values[titleIdx]
+        if (startIdx >= 0 && values[startIdx]) task.startDate = values[startIdx]
+        if (durationIdx >= 0 && values[durationIdx]) {
+          task.workdays = parseInt(values[durationIdx]) || 1
+        }
+        if (phaseIdx >= 0 && values[phaseIdx]) task.phase = values[phaseIdx]
+        if (assignedIdx >= 0 && values[assignedIdx]) {
+          task.assignedTo = values[assignedIdx]
+        }
+
+        if (task.title) {
+          task.status = "PENDING"
+          task.percentComplete = 0
+          parsed.push(task)
+        }
+      }
+
+      if (parsed.length > 0) {
+        const blob = new Blob(
+          [JSON.stringify(parsed, null, 2)],
+          { type: "application/json" }
+        )
+        const url = URL.createObjectURL(blob)
+        const link = document.createElement("a")
+        link.href = url
+        link.download = `imported-tasks-${Date.now()}.json`
+        link.click()
+        URL.revokeObjectURL(url)
+        alert(`Parsed ${parsed.length} tasks from CSV. Downloaded as JSON for review.`)
+      } else {
+        alert("No valid tasks found in the CSV file.")
+      }
+    } catch (error) {
+      console.error("Import failed:", error)
+      alert("Failed to parse CSV file. Please check the format.")
+    } finally {
+      setIsImporting(false)
+      setImportDialogOpen(false)
+      if (fileInputRef.current) {
+        fileInputRef.current.value = ""
+      }
+    }
+  }
+
   return (
     <div className="flex flex-col flex-1 min-h-0">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-2">
-        <div className="flex items-center gap-3">
-          <ProjectSwitcher
-            projects={allProjects}
-            currentProjectId={projectId}
-            currentProjectName={projectName}
-          />
-          <span className="text-muted-foreground">- Schedule</span>
+      {/* Header: breadcrumb + view toggle + new task */}
+      <div className="flex items-center gap-3 mb-3">
+        <nav className="flex items-center gap-1.5 text-sm min-w-0">
+          <Link
+            href={`/dashboard/projects/${projectId}`}
+            className="text-muted-foreground hover:text-foreground truncate transition-colors"
+          >
+            {projectName}
+          </Link>
+          <IconChevronRight className="size-3.5 text-muted-foreground/60 shrink-0" />
+          <span className="font-medium">Schedule</span>
+        </nav>
+
+        <div className="ml-auto flex items-center gap-2">
+          {/* View switcher */}
+          <div className={cn(
+            "flex items-center rounded-lg border bg-muted/40 p-0.5",
+            isMobile ? "gap-0" : "gap-0",
+          )}>
+            {VIEW_OPTIONS.map(({ value, icon: Icon, label }) => (
+              <button
+                key={value}
+                onClick={() => setView(value)}
+                className={cn(
+                  "flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium transition-all",
+                  view === value
+                    ? "bg-background text-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
+                )}
+              >
+                <Icon className="size-3.5" />
+                {!isMobile && <span>{label}</span>}
+              </button>
+            ))}
+          </div>
+
+          <Button size="sm" onClick={() => setTaskFormOpen(true)} className="h-8">
+            <IconPlus className="size-3.5" />
+            <span className="hidden sm:inline ml-1.5">New Task</span>
+          </Button>
         </div>
-        <Tabs
-          value={topTab}
-          onValueChange={(v) => setTopTab(v as TopTab)}
-        >
-          <TabsList>
-            <TabsTrigger value="schedule">Schedule</TabsTrigger>
-            <TabsTrigger value="baseline">Baseline</TabsTrigger>
-            <TabsTrigger value="exceptions">
-              <span className="hidden sm:inline">Workday </span>Exceptions
-            </TabsTrigger>
-          </TabsList>
-        </Tabs>
       </div>
 
-      <Tabs
-        value={topTab}
-        onValueChange={(v) => setTopTab(v as TopTab)}
-        className="flex flex-col flex-1 min-h-0"
-      >
-        <TabsContent value="schedule" className="mt-0 flex flex-col flex-1 min-h-0">
-          <ScheduleToolbar
-            onNewItem={() => setTaskFormOpen(true)}
-            filters={filters}
-            onFiltersChange={setFilters}
-            projectName={projectName}
-            tasksCount={filteredTasks.length}
-            tasks={filteredTasks}
+      {/* Action bar: search, filters, overflow */}
+      <div className="flex items-center gap-2 mb-3 print:hidden">
+        {/* Search */}
+        <div className="relative flex-1 sm:flex-none sm:w-52">
+          <IconSearch className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground pointer-events-none" />
+          <Input
+            placeholder="Search tasks..."
+            value={filters.search}
+            onChange={(e) => setFilters({ ...filters, search: e.target.value })}
+            className="h-8 pl-8 text-sm"
           />
+        </div>
 
-          <Tabs
-            value={subTab}
-            onValueChange={(v) => setSubTab(v as ScheduleSubTab)}
-            className="flex flex-col flex-1 min-h-0"
-          >
-            <TabsList className="bg-transparent border-b rounded-none h-auto p-0 gap-4">
-              <TabsTrigger
-                value="calendar"
-                className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none pb-2"
-              >
-                Calendar
-              </TabsTrigger>
-              <TabsTrigger
-                value="list"
-                className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none pb-2"
-              >
-                List
-              </TabsTrigger>
-              <TabsTrigger
-                value="gantt"
-                className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none pb-2"
-              >
-                Gantt
-              </TabsTrigger>
-            </TabsList>
-
-            <TabsContent value="calendar" className="mt-2 flex flex-col flex-1 min-h-0" data-schedule-content>
-              {isMobile ? (
-                <ScheduleMobileView
-                  tasks={filteredTasks}
-                  exceptions={initialData.exceptions}
-                />
-              ) : (
-                <ScheduleCalendarView
-                  projectId={projectId}
-                  tasks={filteredTasks}
-                  exceptions={initialData.exceptions}
-                />
+        {/* Filter popover */}
+        <Popover>
+          <PopoverTrigger asChild>
+            <Button variant="outline" size="sm" className="h-8 shrink-0">
+              <IconFilter className="size-3.5" />
+              <span className="hidden sm:inline ml-1.5">Filters</span>
+              {activeFilterCount > 0 && (
+                <Badge
+                  variant="secondary"
+                  className="ml-1.5 h-4 min-w-4 px-1 text-[10px] rounded-full"
+                >
+                  {activeFilterCount}
+                </Badge>
               )}
-            </TabsContent>
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent align="start" className="w-64 p-3">
+            <div className="space-y-3">
+              <div>
+                <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                  Status
+                </Label>
+                <div className="mt-1.5 space-y-1">
+                  {STATUS_OPTIONS.map((opt) => (
+                    <label
+                      key={opt.value}
+                      className="flex items-center gap-2 py-0.5 cursor-pointer"
+                    >
+                      <Checkbox
+                        checked={filters.status.includes(opt.value)}
+                        onCheckedChange={() => toggleStatus(opt.value)}
+                      />
+                      <span className="text-sm">{opt.label}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                  Phase
+                </Label>
+                <div className="mt-1.5 space-y-1 max-h-40 overflow-y-auto">
+                  {PHASE_OPTIONS.map((opt) => (
+                    <label
+                      key={opt.value}
+                      className="flex items-center gap-2 py-0.5 cursor-pointer"
+                    >
+                      <Checkbox
+                        checked={filters.phase.includes(opt.value)}
+                        onCheckedChange={() => togglePhase(opt.value)}
+                      />
+                      <span className="text-sm">{opt.label}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                  Assigned To
+                </Label>
+                <Input
+                  placeholder="Filter by name..."
+                  value={filters.assignedTo}
+                  onChange={(e) =>
+                    setFilters({ ...filters, assignedTo: e.target.value })
+                  }
+                  className="mt-1.5 h-8 text-sm"
+                />
+              </div>
+              {activeFilterCount > 0 && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="w-full text-xs"
+                  onClick={clearFilters}
+                >
+                  <IconX className="size-3 mr-1" />
+                  Clear all filters
+                </Button>
+              )}
+            </div>
+          </PopoverContent>
+        </Popover>
 
-            <TabsContent value="list" className="mt-2 flex flex-col flex-1 min-h-0" data-schedule-content>
-              <ScheduleListView
-                projectId={projectId}
-                tasks={filteredTasks}
-                dependencies={initialData.dependencies}
-              />
-            </TabsContent>
+        {/* Active filter chips */}
+        <div className="hidden sm:flex items-center gap-1 overflow-x-auto min-w-0">
+          {filters.status.map((s) => (
+            <Badge
+              key={s}
+              variant="outline"
+              className="gap-1 shrink-0 text-xs py-0 h-6 cursor-pointer hover:bg-accent"
+              onClick={() => removeStatusChip(s)}
+            >
+              {STATUS_OPTIONS.find((o) => o.value === s)?.label ?? s}
+              <IconX className="size-3" />
+            </Badge>
+          ))}
+          {filters.phase.map((p) => (
+            <Badge
+              key={p}
+              variant="outline"
+              className="gap-1 shrink-0 text-xs py-0 h-6 cursor-pointer hover:bg-accent capitalize"
+              onClick={() => removePhaseChip(p)}
+            >
+              {p}
+              <IconX className="size-3" />
+            </Badge>
+          ))}
+          {filters.assignedTo && (
+            <Badge
+              variant="outline"
+              className="gap-1 shrink-0 text-xs py-0 h-6 cursor-pointer hover:bg-accent"
+              onClick={() => setFilters({ ...filters, assignedTo: "" })}
+            >
+              {filters.assignedTo}
+              <IconX className="size-3" />
+            </Badge>
+          )}
+        </div>
 
-            <TabsContent value="gantt" className="mt-2 flex flex-col flex-1 min-h-0" data-schedule-content>
-              <ScheduleGanttView
-                projectId={projectId}
-                tasks={filteredTasks}
-                dependencies={initialData.dependencies}
-              />
-            </TabsContent>
-          </Tabs>
-        </TabsContent>
+        <div className="ml-auto flex items-center gap-2 shrink-0">
+          <span className="text-xs text-muted-foreground hidden sm:inline tabular-nums">
+            {filteredTasks.length} task{filteredTasks.length !== 1 ? "s" : ""}
+          </span>
 
-        <TabsContent value="baseline" className="mt-2">
-          <ScheduleBaselineView
+          {/* Overflow menu */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon" className="size-8">
+                <IconDots className="size-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-48">
+              <DropdownMenuItem onClick={handleExportCSV}>
+                <IconDownload className="size-4 mr-2" />
+                Export CSV
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setImportDialogOpen(true)}>
+                <IconUpload className="size-4 mr-2" />
+                Import CSV
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => window.print()}>
+                <IconPrinter className="size-4 mr-2" />
+                Print
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={() => setBaselinesOpen(true)}>
+                <IconHistory className="size-4 mr-2" />
+                Baselines
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setExceptionsOpen(true)}>
+                <IconCalendarOff className="size-4 mr-2" />
+                Workday Exceptions
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      </div>
+
+      {/* View content */}
+      <div className="flex flex-col flex-1 min-h-0">
+        {view === "calendar" && (
+          isMobile ? (
+            <ScheduleMobileView
+              tasks={filteredTasks}
+              exceptions={initialData.exceptions}
+            />
+          ) : (
+            <ScheduleCalendarView
+              projectId={projectId}
+              tasks={filteredTasks}
+              exceptions={initialData.exceptions}
+            />
+          )
+        )}
+        {view === "list" && (
+          <ScheduleListView
             projectId={projectId}
-            baselines={baselines}
-            currentTasks={initialData.tasks}
+            tasks={filteredTasks}
+            dependencies={initialData.dependencies}
           />
-        </TabsContent>
-
-        <TabsContent value="exceptions" className="mt-2">
-          <WorkdayExceptionsView
+        )}
+        {view === "gantt" && (
+          <ScheduleGanttView
             projectId={projectId}
-            exceptions={initialData.exceptions}
+            tasks={filteredTasks}
+            dependencies={initialData.dependencies}
           />
-        </TabsContent>
-      </Tabs>
+        )}
+      </div>
 
+      {/* New task dialog */}
       <TaskFormDialog
         open={taskFormOpen}
         onOpenChange={setTaskFormOpen}
         projectId={projectId}
         editingTask={null}
+        allTasks={initialData.tasks}
+        dependencies={initialData.dependencies}
       />
+
+      {/* Import dialog */}
+      <Dialog open={importDialogOpen} onOpenChange={setImportDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Import Schedule</DialogTitle>
+            <DialogDescription>
+              Upload a CSV file with columns for title, start date, duration,
+              phase, and assigned to.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="border-2 border-dashed rounded-lg p-8 text-center">
+            <Input
+              ref={fileInputRef}
+              type="file"
+              accept=".csv"
+              className="hidden"
+              onChange={handleFileSelect}
+            />
+            <Button
+              variant="outline"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={isImporting}
+            >
+              {isImporting ? (
+                <>
+                  <IconLoader2 className="size-4 mr-2 animate-spin" />
+                  Importing...
+                </>
+              ) : (
+                <>
+                  <IconUpload className="size-4 mr-2" />
+                  Select CSV File
+                </>
+              )}
+            </Button>
+            <p className="text-xs text-muted-foreground mt-2">
+              Supported format: CSV with headers
+            </p>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Baselines sheet */}
+      <Sheet open={baselinesOpen} onOpenChange={setBaselinesOpen}>
+        <SheetContent side="right" className="w-full sm:max-w-lg overflow-y-auto">
+          <SheetHeader>
+            <SheetTitle>Baselines</SheetTitle>
+            <SheetDescription>
+              Save and compare schedule snapshots.
+            </SheetDescription>
+          </SheetHeader>
+          <div className="mt-4">
+            <ScheduleBaselineView
+              projectId={projectId}
+              baselines={baselines}
+              currentTasks={initialData.tasks}
+            />
+          </div>
+        </SheetContent>
+      </Sheet>
+
+      {/* Exceptions sheet */}
+      <Sheet open={exceptionsOpen} onOpenChange={setExceptionsOpen}>
+        <SheetContent side="right" className="w-full sm:max-w-lg overflow-y-auto">
+          <SheetHeader>
+            <SheetTitle>Workday Exceptions</SheetTitle>
+            <SheetDescription>
+              Holidays, vacation days, and other non-working days.
+            </SheetDescription>
+          </SheetHeader>
+          <div className="mt-4">
+            <WorkdayExceptionsView
+              projectId={projectId}
+              exceptions={initialData.exceptions}
+            />
+          </div>
+        </SheetContent>
+      </Sheet>
     </div>
   )
 }

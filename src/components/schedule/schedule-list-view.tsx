@@ -418,6 +418,8 @@ export function ScheduleListView({
         onOpenChange={setTaskFormOpen}
         projectId={projectId}
         editingTask={editingTask}
+        allTasks={localTasks}
+        dependencies={dependencies}
       />
 
       <DependencyDialog

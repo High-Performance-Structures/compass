@@ -79,3 +79,40 @@ export interface ScheduleData {
   dependencies: TaskDependencyData[]
   exceptions: WorkdayExceptionData[]
 }
+
+export interface TaskFilters {
+  readonly status: readonly TaskStatus[]
+  readonly phase: readonly ConstructionPhase[]
+  readonly assignedTo: string
+  readonly search: string
+}
+
+export const EMPTY_FILTERS: TaskFilters = {
+  status: [],
+  phase: [],
+  assignedTo: "",
+  search: "",
+}
+
+export const STATUS_OPTIONS: readonly { readonly value: TaskStatus; readonly label: string }[] = [
+  { value: "PENDING", label: "Pending" },
+  { value: "IN_PROGRESS", label: "In Progress" },
+  { value: "COMPLETE", label: "Complete" },
+  { value: "BLOCKED", label: "Blocked" },
+] as const
+
+export const PHASE_OPTIONS: readonly { readonly value: ConstructionPhase; readonly label: string }[] = [
+  { value: "preconstruction", label: "Preconstruction" },
+  { value: "sitework", label: "Sitework" },
+  { value: "foundation", label: "Foundation" },
+  { value: "framing", label: "Framing" },
+  { value: "roofing", label: "Roofing" },
+  { value: "electrical", label: "Electrical" },
+  { value: "plumbing", label: "Plumbing" },
+  { value: "hvac", label: "HVAC" },
+  { value: "insulation", label: "Insulation" },
+  { value: "drywall", label: "Drywall" },
+  { value: "finish", label: "Finish" },
+  { value: "landscaping", label: "Landscaping" },
+  { value: "closeout", label: "Closeout" },
+] as const

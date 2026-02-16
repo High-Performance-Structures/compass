@@ -26,7 +26,7 @@ import {
   IconPlus,
   IconChevronRight,
   IconChevronDown,
-  IconUsers,
+  IconSettings,
   IconZoomIn,
   IconZoomOut,
 } from "@tabler/icons-react"
@@ -37,6 +37,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { cn } from "@/lib/utils"
 import { useIsMobile } from "@/hooks/use-mobile"
 import { GanttChart } from "./gantt-chart"
 import { TaskFormDialog } from "./task-form-dialog"
@@ -58,9 +59,9 @@ import { format } from "date-fns"
 type ViewMode = "Day" | "Week" | "Month"
 
 interface ScheduleGanttViewProps {
-  projectId: string
-  tasks: ScheduleTaskData[]
-  dependencies: TaskDependencyData[]
+  readonly projectId: string
+  readonly tasks: readonly ScheduleTaskData[]
+  readonly dependencies: readonly TaskDependencyData[]
 }
 
 export function ScheduleGanttView({
@@ -71,7 +72,7 @@ export function ScheduleGanttView({
   const router = useRouter()
   const isMobile = useIsMobile()
   const [viewMode, setViewMode] = useState<ViewMode>("Week")
-  const [phaseGrouping, setPhaseGrouping] = useState<"off" | "grouped">("off")
+  const [phaseGrouping, setPhaseGrouping] = useState(false)
   const [collapsedPhases, setCollapsedPhases] = useState<Set<string>>(
     new Set()
   )
@@ -81,7 +82,6 @@ export function ScheduleGanttView({
     null
   )
   const [mobileView, setMobileView] = useState<"tasks" | "chart">("chart")
-
   const [panMode] = useState(false)
 
   const defaultWidths: Record<ViewMode, number> = {
@@ -105,13 +105,19 @@ export function ScheduleGanttView({
     ? tasks.filter((t) => t.isCriticalPath)
     : tasks
 
-  const isGrouped = phaseGrouping === "grouped"
-  const { frappeTasks, displayItems } = isGrouped
-    ? transformWithPhaseGroups(filteredTasks, dependencies, collapsedPhases)
+  const { frappeTasks, displayItems } = phaseGrouping
+    ? transformWithPhaseGroups(
+        filteredTasks as ScheduleTaskData[],
+        dependencies as TaskDependencyData[],
+        collapsedPhases,
+      )
     : {
-        frappeTasks: transformToFrappeTasks(filteredTasks, dependencies),
+        frappeTasks: transformToFrappeTasks(
+          filteredTasks as ScheduleTaskData[],
+          dependencies as TaskDependencyData[],
+        ),
         displayItems: filteredTasks.map(
-          (task): DisplayItem => ({ type: "task", task })
+          (task): DisplayItem => ({ type: "task", task: task as ScheduleTaskData })
         ),
       }
 
@@ -125,12 +131,14 @@ export function ScheduleGanttView({
   }
 
   const toggleClientView = () => {
-    if (phaseGrouping === "grouped") {
-      setPhaseGrouping("off")
+    if (phaseGrouping && collapsedPhases.size > 0) {
+      setPhaseGrouping(false)
       setCollapsedPhases(new Set())
     } else {
-      setPhaseGrouping("grouped")
-      const allPhases = new Set(filteredTasks.map((t) => t.phase || "uncategorized"))
+      setPhaseGrouping(true)
+      const allPhases = new Set(
+        filteredTasks.map((t) => t.phase || "uncategorized")
+      )
       setCollapsedPhases(allPhases)
     }
   }
@@ -157,22 +165,129 @@ export function ScheduleGanttView({
   )
 
   const scrollToToday = () => {
-    const todayEl = document.querySelector(".gantt-container .today-highlight")
+    const todayEl = document.querySelector(
+      ".gantt-container .today-highlight"
+    )
     if (todayEl) {
       todayEl.scrollIntoView({ behavior: "smooth", inline: "center" })
     }
   }
 
+  const taskTable = (
+    <Table>
+      <TableHeader>
+        <TableRow>
+          <TableHead className="text-xs">Title</TableHead>
+          <TableHead className="text-xs w-[80px]">Start</TableHead>
+          <TableHead className="text-xs w-[52px]">Days</TableHead>
+          <TableHead className="w-[40px]" />
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {displayItems.map((item) => {
+          if (item.type === "phase-header") {
+            const { phase, group, collapsed } = item
+            return (
+              <TableRow
+                key={`phase-${phase}`}
+                className="bg-muted/40 cursor-pointer hover:bg-muted/60"
+                onClick={() => togglePhase(phase)}
+              >
+                <TableCell
+                  colSpan={collapsed ? 4 : 1}
+                  className="text-xs py-1.5 font-medium"
+                >
+                  <span className="flex items-center gap-1">
+                    {collapsed
+                      ? <IconChevronRight className="size-3.5" />
+                      : <IconChevronDown className="size-3.5" />}
+                    {group.label}
+                    <span className="text-muted-foreground font-normal ml-1">
+                      ({group.tasks.length})
+                    </span>
+                    {collapsed && (
+                      <span className="text-muted-foreground font-normal ml-auto text-[10px]">
+                        {group.startDate.slice(5)} – {group.endDate.slice(5)}
+                      </span>
+                    )}
+                  </span>
+                </TableCell>
+                {!collapsed && (
+                  <>
+                    <TableCell className="text-xs py-1.5 text-muted-foreground">
+                      {group.startDate.slice(5)}
+                    </TableCell>
+                    <TableCell className="text-xs py-1.5" />
+                    <TableCell className="py-1.5" />
+                  </>
+                )}
+              </TableRow>
+            )
+          }
+
+          const { task } = item
+          return (
+            <TableRow key={task.id}>
+              <TableCell className="text-xs py-1.5 truncate max-w-[140px]">
+                <span className={phaseGrouping ? "pl-4" : ""}>
+                  {task.title}
+                </span>
+              </TableCell>
+              <TableCell className="text-xs py-1.5 text-muted-foreground">
+                {task.startDate.slice(5)}
+              </TableCell>
+              <TableCell className="text-xs py-1.5">
+                {task.workdays}
+              </TableCell>
+              <TableCell className="py-1.5">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="size-6"
+                  onClick={() => {
+                    setEditingTask(task)
+                    setTaskFormOpen(true)
+                  }}
+                >
+                  <IconPencil className="size-3" />
+                </Button>
+              </TableCell>
+            </TableRow>
+          )
+        })}
+        <TableRow>
+          <TableCell colSpan={4} className="py-1">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-xs w-full justify-start"
+              onClick={() => {
+                setEditingTask(null)
+                setTaskFormOpen(true)
+              }}
+            >
+              <IconPlus className="size-3 mr-1" />
+              Add Task
+            </Button>
+          </TableCell>
+        </TableRow>
+      </TableBody>
+    </Table>
+  )
+
   return (
     <div className="flex flex-col flex-1 min-h-0">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-2">
-        <div className="flex items-center gap-2">
+      {/* Compact controls row */}
+      <div className="flex items-center gap-2 mb-2">
+        <div className="flex items-center gap-1.5">
           {isMobile && (
             <Select
               value={mobileView}
-              onValueChange={(val) => setMobileView(val as "tasks" | "chart")}
+              onValueChange={(val) =>
+                setMobileView(val as "tasks" | "chart")
+              }
             >
-              <SelectTrigger className="h-9 w-24">
+              <SelectTrigger className="h-7 w-20 text-xs">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -181,71 +296,73 @@ export function ScheduleGanttView({
               </SelectContent>
             </Select>
           )}
-          <Select
-            value={viewMode}
-            onValueChange={(val) => handleViewModeChange(val as ViewMode)}
-          >
-            <SelectTrigger className="h-9 w-24 sm:w-28">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="Day">Day</SelectItem>
-              <SelectItem value="Week">Week</SelectItem>
-              <SelectItem value="Month">Month</SelectItem>
-            </SelectContent>
-          </Select>
+
+          {/* Day / Week / Month */}
+          <div className="flex items-center rounded-md border bg-muted/40 p-0.5">
+            {(["Day", "Week", "Month"] as const).map((mode) => (
+              <button
+                key={mode}
+                onClick={() => handleViewModeChange(mode)}
+                className={cn(
+                  "px-2 py-1 text-xs font-medium rounded-sm transition-all",
+                  viewMode === mode
+                    ? "bg-background text-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
+                )}
+              >
+                {mode}
+              </button>
+            ))}
+          </div>
+
           <Button
             variant="outline"
             size="sm"
             onClick={scrollToToday}
-            className="h-9 px-3"
+            className="h-7 px-2.5 text-xs"
           >
             Today
           </Button>
         </div>
-        <div className="flex items-center gap-2">
-          <div className="flex items-center gap-1">
-            <Button
-              variant="outline"
-              size="icon"
-              className="size-9"
-              onClick={() => handleZoom("out")}
-              title="Zoom out"
-            >
-              <IconZoomOut className="size-4" />
-            </Button>
-            <Button
-              variant="outline"
-              size="icon"
-              className="size-9"
-              onClick={() => handleZoom("in")}
-              title="Zoom in"
-            >
-              <IconZoomIn className="size-4" />
-            </Button>
-          </div>
+
+        <div className="flex items-center gap-1 ml-auto">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="size-7"
+            onClick={() => handleZoom("out")}
+            title="Zoom out"
+          >
+            <IconZoomOut className="size-3.5" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="size-7"
+            onClick={() => handleZoom("in")}
+            title="Zoom in"
+          >
+            <IconZoomIn className="size-3.5" />
+          </Button>
+
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="sm" className="h-9">
-                <IconUsers className="size-4 sm:mr-2" />
-                <span className="hidden sm:inline">Options</span>
+              <Button variant="ghost" size="icon" className="size-7">
+                <IconSettings className="size-3.5" />
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-52">
-              <div className="px-2 py-1.5">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-sm">Group by Phases</span>
+            <DropdownMenuContent align="end" className="w-48">
+              <div className="px-2 py-1.5 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs">Group by Phase</span>
                   <Switch
-                    checked={isGrouped}
-                    onCheckedChange={(checked) => {
-                      setPhaseGrouping(checked ? "grouped" : "off")
-                      if (!checked) setCollapsedPhases(new Set())
-                    }}
+                    checked={phaseGrouping}
+                    onCheckedChange={setPhaseGrouping}
                     className="scale-75"
                   />
                 </div>
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-sm">Show Critical Path</span>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs">Critical Path</span>
                   <Switch
                     checked={showCriticalPath}
                     onCheckedChange={setShowCriticalPath}
@@ -253,14 +370,16 @@ export function ScheduleGanttView({
                   />
                 </div>
                 <Button
-                  variant={phaseGrouping === "grouped" && collapsedPhases.size > 0 ? "default" : "outline"}
+                  variant={
+                    phaseGrouping && collapsedPhases.size > 0
+                      ? "default"
+                      : "outline"
+                  }
                   size="sm"
                   onClick={toggleClientView}
-                  className="w-full mt-2"
+                  className="w-full mt-1 text-xs h-7"
                 >
-                  <IconUsers className="size-4 mr-2" />
-                  <span className="hidden sm:inline">Client View</span>
-                  <span className="sm:hidden">Client</span>
+                  Client View
                 </Button>
               </div>
             </DropdownMenuContent>
@@ -268,113 +387,12 @@ export function ScheduleGanttView({
         </div>
       </div>
 
+      {/* Main content */}
       {isMobile ? (
         <div className="flex flex-col flex-1 min-h-0">
           {mobileView === "tasks" ? (
             <div className="border rounded-md flex-1 min-h-0 overflow-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="text-xs">Title</TableHead>
-                    <TableHead className="text-xs w-[80px]">
-                      Start
-                    </TableHead>
-                    <TableHead className="text-xs w-[60px]">
-                      Days
-                    </TableHead>
-                    <TableHead className="w-[60px]" />
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {displayItems.map((item) => {
-                    if (item.type === "phase-header") {
-                      const { phase, group, collapsed } = item
-                      return (
-                        <TableRow
-                          key={`phase-${phase}`}
-                          className="bg-muted/40 cursor-pointer hover:bg-muted/60"
-                          onClick={() => togglePhase(phase)}
-                        >
-                          <TableCell
-                            colSpan={collapsed ? 4 : 1}
-                            className="text-xs py-1.5 font-medium"
-                          >
-                            <span className="flex items-center gap-1">
-                              {collapsed
-                                ? <IconChevronRight className="size-3.5" />
-                                : <IconChevronDown className="size-3.5" />}
-                              {group.label}
-                              <span className="text-muted-foreground font-normal ml-1">
-                                ({group.tasks.length})
-                              </span>
-                              {collapsed && (
-                                <span className="text-muted-foreground font-normal ml-auto text-[10px]">
-                                  {group.startDate.slice(5)} – {group.endDate.slice(5)}
-                                </span>
-                              )}
-                            </span>
-                          </TableCell>
-                          {!collapsed && (
-                            <>
-                              <TableCell className="text-xs py-1.5 text-muted-foreground">
-                                {group.startDate.slice(5)}
-                              </TableCell>
-                              <TableCell className="text-xs py-1.5" />
-                              <TableCell className="py-1.5" />
-                            </>
-                          )}
-                        </TableRow>
-                      )
-                    }
-
-                    const { task } = item
-                    return (
-                      <TableRow key={task.id}>
-                        <TableCell className="text-xs py-1.5 truncate max-w-[120px]">
-                          <span className={isGrouped ? "pl-4" : ""}>
-                            {task.title}
-                          </span>
-                        </TableCell>
-                        <TableCell className="text-xs py-1.5 text-muted-foreground">
-                          {task.startDate.slice(5)}
-                        </TableCell>
-                        <TableCell className="text-xs py-1.5">
-                          {task.workdays}
-                        </TableCell>
-                        <TableCell className="py-1.5">
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="size-6"
-                            onClick={() => {
-                              setEditingTask(task)
-                              setTaskFormOpen(true)
-                            }}
-                          >
-                            <IconPencil className="size-3" />
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    )
-                  })}
-                  <TableRow>
-                    <TableCell colSpan={4} className="py-1">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="text-xs w-full justify-start"
-                        onClick={() => {
-                          setEditingTask(null)
-                          setTaskFormOpen(true)
-                        }}
-                      >
-                        <IconPlus className="size-3 mr-1" />
-                        Add Task
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                </TableBody>
-              </Table>
+              {taskTable}
             </div>
           ) : (
             <div className="border rounded-md flex-1 min-h-0 overflow-hidden p-2">
@@ -396,109 +414,7 @@ export function ScheduleGanttView({
         >
           <ResizablePanel defaultSize={30} minSize={20}>
             <div className="h-full overflow-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="text-xs">Title</TableHead>
-                    <TableHead className="text-xs w-[80px]">
-                      Start
-                    </TableHead>
-                    <TableHead className="text-xs w-[60px]">
-                      Days
-                    </TableHead>
-                    <TableHead className="w-[60px]" />
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {displayItems.map((item) => {
-                    if (item.type === "phase-header") {
-                      const { phase, group, collapsed } = item
-                      return (
-                        <TableRow
-                          key={`phase-${phase}`}
-                          className="bg-muted/40 cursor-pointer hover:bg-muted/60"
-                          onClick={() => togglePhase(phase)}
-                        >
-                          <TableCell
-                            colSpan={collapsed ? 4 : 1}
-                            className="text-xs py-1.5 font-medium"
-                          >
-                            <span className="flex items-center gap-1">
-                              {collapsed
-                                ? <IconChevronRight className="size-3.5" />
-                                : <IconChevronDown className="size-3.5" />}
-                              {group.label}
-                              <span className="text-muted-foreground font-normal ml-1">
-                                ({group.tasks.length})
-                              </span>
-                              {collapsed && (
-                                <span className="text-muted-foreground font-normal ml-auto text-[10px]">
-                                  {group.startDate.slice(5)} – {group.endDate.slice(5)}
-                                </span>
-                              )}
-                            </span>
-                          </TableCell>
-                          {!collapsed && (
-                            <>
-                              <TableCell className="text-xs py-1.5 text-muted-foreground">
-                                {group.startDate.slice(5)}
-                              </TableCell>
-                              <TableCell className="text-xs py-1.5" />
-                              <TableCell className="py-1.5" />
-                            </>
-                          )}
-                        </TableRow>
-                      )
-                    }
-
-                    const { task } = item
-                    return (
-                      <TableRow key={task.id}>
-                        <TableCell className="text-xs py-1.5 truncate max-w-[140px]">
-                          <span className={isGrouped ? "pl-4" : ""}>
-                            {task.title}
-                          </span>
-                        </TableCell>
-                        <TableCell className="text-xs py-1.5 text-muted-foreground">
-                          {task.startDate.slice(5)}
-                        </TableCell>
-                        <TableCell className="text-xs py-1.5">
-                          {task.workdays}
-                        </TableCell>
-                        <TableCell className="py-1.5">
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="size-6"
-                            onClick={() => {
-                              setEditingTask(task)
-                              setTaskFormOpen(true)
-                            }}
-                          >
-                            <IconPencil className="size-3" />
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    )
-                  })}
-                  <TableRow>
-                    <TableCell colSpan={4} className="py-1">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="text-xs w-full justify-start"
-                        onClick={() => {
-                          setEditingTask(null)
-                          setTaskFormOpen(true)
-                        }}
-                      >
-                        <IconPlus className="size-3 mr-1" />
-                        Add Task
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                </TableBody>
-              </Table>
+              {taskTable}
             </div>
           </ResizablePanel>
 
@@ -524,6 +440,8 @@ export function ScheduleGanttView({
         onOpenChange={setTaskFormOpen}
         projectId={projectId}
         editingTask={editingTask}
+        allTasks={tasks}
+        dependencies={dependencies}
       />
     </div>
   )
