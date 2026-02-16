@@ -10,5 +10,8 @@ export async function GET() {
     path: "/",
     maxAge: 60 * 60 * 24, // 24 hours
   })
+  // clear stale org preference so demo doesn't inherit
+  // a real user's last-active workspace
+  cookieStore.delete("compass-active-org")
   redirect("/dashboard")
 }
