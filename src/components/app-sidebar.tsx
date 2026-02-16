@@ -19,8 +19,10 @@ import { NavFiles } from "@/components/nav-files"
 import { NavProjects } from "@/components/nav-projects"
 import { NavConversations } from "@/components/nav-conversations"
 import { NavUser } from "@/components/nav-user"
+import { VoicePanel } from "@/components/voice/voice-panel"
 // settings is now a page at /dashboard/settings
 import { openFeedbackDialog } from "@/components/feedback-widget"
+import { useVoiceState } from "@/hooks/use-voice-state"
 import type { SidebarUser } from "@/lib/auth"
 import {
   Sidebar,
@@ -148,6 +150,7 @@ export function AppSidebar({
   readonly user: SidebarUser | null
 }) {
   const { isMobile } = useSidebar()
+  const { channelId } = useVoiceState()
 
   return (
     <Sidebar collapsible="icon" {...props}>
@@ -198,6 +201,7 @@ export function AppSidebar({
             </SidebarMenuItem>
           </SidebarMenu>
         )}
+        {channelId !== null && <VoicePanel />}
         <NavUser user={user} />
       </SidebarFooter>
     </Sidebar>

@@ -1,12 +1,18 @@
 "use client"
 
 import * as React from "react"
+import Link from "next/link"
 import {
   IconCreditCard,
-  IconDotsVertical,
   IconLogout,
   IconNotification,
   IconUserCircle,
+  IconMicrophone,
+  IconMicrophoneOff,
+  IconHeadphones,
+  IconHeadphonesOff,
+  IconSettings,
+  IconChevronUp,
 } from "@tabler/icons-react"
 
 import { logout } from "@/app/actions/profile"
@@ -31,26 +37,50 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from "@/components/ui/sidebar"
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover"
 import { AccountModal } from "@/components/account-modal"
+import { DevicePicker } from "@/components/voice/device-picker"
+import { useVoiceState } from "@/hooks/use-voice-state"
+import { cn } from "@/lib/utils"
 import { getInitials } from "@/lib/utils"
 import type { SidebarUser } from "@/lib/auth"
+
+function stopEvent(e: React.MouseEvent | React.PointerEvent): void {
+  e.stopPropagation()
+  e.preventDefault()
+}
 
 export function NavUser({
   user,
 }: {
   readonly user: SidebarUser | null
-}) {
+}): React.ReactElement | null {
   const { isMobile } = useSidebar()
   const [accountOpen, setAccountOpen] = React.useState(false)
+  const {
+    isMuted,
+    isDeafened,
+    inputDeviceId,
+    outputDeviceId,
+    inputDevices,
+    outputDevices,
+    toggleMute,
+    toggleDeafen,
+    setInputDevice,
+    setOutputDevice,
+  } = useVoiceState()
 
-  // Don't render if no user (shouldn't happen in authenticated routes)
   if (!user) {
     return null
   }
 
   const initials = getInitials(user.name)
 
-  async function handleLogout() {
+  async function handleLogout(): Promise<void> {
     await logout()
   }
 
@@ -63,17 +93,51 @@ export function NavUser({
               size="lg"
               className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
             >
-              <Avatar className="h-8 w-8 rounded-lg grayscale">
-                {user.avatar && <AvatarImage src={user.avatar} alt={user.name} />}
-                <AvatarFallback className="rounded-lg">{initials}</AvatarFallback>
+              <Avatar className="h-8 w-8 shrink-0 rounded-lg grayscale">
+                {user.avatar && (
+                  <AvatarImage src={user.avatar} alt={user.name} />
+                )}
+                <AvatarFallback className="rounded-lg">
+                  {initials}
+                </AvatarFallback>
               </Avatar>
-              <div className="grid flex-1 text-left text-sm leading-tight">
-                <span className="text-sidebar-foreground truncate font-medium">{user.name}</span>
-                <span className="text-sidebar-foreground/70 truncate text-xs">
-                  {user.email}
-                </span>
+              <span className="min-w-0 flex-1 truncate text-sm font-medium text-sidebar-foreground">
+                {user.name}
+              </span>
+              {/* Voice controls -- replace the old dots icon */}
+              <div className="group-data-[collapsible=icon]:hidden flex shrink-0 items-center">
+                <DeviceButtonGroup
+                  isMuted={isMuted}
+                  onToggle={(e) => { stopEvent(e); toggleMute() }}
+                  icon={isMuted ? IconMicrophoneOff : IconMicrophone}
+                  label={isMuted ? "Unmute" : "Mute"}
+                  dimmed={isMuted}
+                  devices={inputDevices}
+                  selectedDeviceId={inputDeviceId}
+                  onSelectDevice={setInputDevice}
+                  deviceLabel="Input Device"
+                />
+                <DeviceButtonGroup
+                  isMuted={isDeafened}
+                  onToggle={(e) => { stopEvent(e); toggleDeafen() }}
+                  icon={isDeafened ? IconHeadphonesOff : IconHeadphones}
+                  label={isDeafened ? "Undeafen" : "Deafen"}
+                  dimmed={isDeafened}
+                  devices={outputDevices}
+                  selectedDeviceId={outputDeviceId}
+                  onSelectDevice={setOutputDevice}
+                  deviceLabel="Output Device"
+                />
+                <Link
+                  href="/dashboard/settings"
+                  onClick={stopEvent}
+                  onPointerDown={stopEvent}
+                  aria-label="Settings"
+                  className="ml-px flex size-5 items-center justify-center rounded-sm text-sidebar-foreground/60 transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground"
+                >
+                  <IconSettings className="size-3" />
+                </Link>
               </div>
-              <IconDotsVertical className="text-sidebar-foreground/70 ml-auto size-4" />
             </SidebarMenuButton>
           </DropdownMenuTrigger>
           <DropdownMenuContent
@@ -85,12 +149,16 @@ export function NavUser({
             <DropdownMenuLabel className="p-0 font-normal">
               <div className="flex items-center gap-2 px-1 py-1.5 text-left text-sm">
                 <Avatar className="h-8 w-8 rounded-lg">
-                  {user.avatar && <AvatarImage src={user.avatar} alt={user.name} />}
-                  <AvatarFallback className="rounded-lg">{initials}</AvatarFallback>
+                  {user.avatar && (
+                    <AvatarImage src={user.avatar} alt={user.name} />
+                  )}
+                  <AvatarFallback className="rounded-lg">
+                    {initials}
+                  </AvatarFallback>
                 </Avatar>
                 <div className="grid flex-1 text-left text-sm leading-tight">
                   <span className="truncate font-medium">{user.name}</span>
-                  <span className="text-muted-foreground truncate text-xs">
+                  <span className="truncate text-xs text-muted-foreground">
                     {user.email}
                   </span>
                 </div>
@@ -119,7 +187,76 @@ export function NavUser({
           </DropdownMenuContent>
         </DropdownMenu>
       </SidebarMenuItem>
-      <AccountModal open={accountOpen} onOpenChange={setAccountOpen} user={user} />
+      <AccountModal
+        open={accountOpen}
+        onOpenChange={setAccountOpen}
+        user={user}
+      />
     </SidebarMenu>
+  )
+}
+
+/**
+ * Tight icon+chevron pair: toggle button and device picker
+ * as one visual group to save horizontal space.
+ */
+function DeviceButtonGroup({
+  onToggle,
+  icon: Icon,
+  label,
+  dimmed,
+  devices,
+  selectedDeviceId,
+  onSelectDevice,
+  deviceLabel,
+}: {
+  readonly isMuted: boolean
+  readonly onToggle: (e: React.MouseEvent) => void
+  readonly icon: React.ComponentType<{ className?: string }>
+  readonly label: string
+  readonly dimmed: boolean
+  readonly devices: MediaDeviceInfo[]
+  readonly selectedDeviceId: string | undefined
+  readonly onSelectDevice: (deviceId: string) => void
+  readonly deviceLabel: string
+}): React.ReactElement {
+  return (
+    <div className="flex items-center">
+      <button
+        type="button"
+        onClick={onToggle}
+        onPointerDown={stopEvent}
+        aria-label={label}
+        className={cn(
+          "flex size-5 items-center justify-center rounded-sm transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground",
+          dimmed
+            ? "text-sidebar-foreground/40"
+            : "text-sidebar-foreground/60",
+        )}
+      >
+        <Icon className="size-3" />
+      </button>
+      <Popover>
+        <PopoverTrigger asChild>
+          <button
+            type="button"
+            onClick={stopEvent}
+            onPointerDown={stopEvent}
+            aria-label={`Select ${deviceLabel.toLowerCase()}`}
+            className="flex h-5 w-3 items-center justify-center rounded-sm text-sidebar-foreground/40 transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground"
+          >
+            <IconChevronUp className="size-2.5" />
+          </button>
+        </PopoverTrigger>
+        <PopoverContent side="top" align="start" className="w-64 p-0">
+          <DevicePicker
+            devices={devices}
+            selectedDeviceId={selectedDeviceId}
+            onSelectDevice={onSelectDevice}
+            label={deviceLabel}
+          />
+        </PopoverContent>
+      </Popover>
+    </div>
   )
 }

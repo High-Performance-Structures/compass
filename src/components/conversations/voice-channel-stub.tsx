@@ -1,25 +1,35 @@
 "use client"
 
+import * as React from "react"
 import { Volume2 } from "lucide-react"
-import { Badge } from "@/components/ui/badge"
 import { SidebarMenuButton } from "@/components/ui/sidebar"
+import { useVoiceState } from "@/hooks/use-voice-state"
 
 type VoiceChannelStubProps = {
+  readonly id: string
   readonly name: string
 }
 
-export function VoiceChannelStub({ name }: VoiceChannelStubProps) {
+export function VoiceChannelStub({ id, name }: VoiceChannelStubProps): React.ReactElement {
+  const { channelId, joinChannel, leaveChannel } = useVoiceState()
+  const isActive = channelId === id
+
+  function handleClick(): void {
+    if (isActive) {
+      leaveChannel()
+    } else {
+      joinChannel(id, name)
+    }
+  }
+
   return (
     <SidebarMenuButton
-      className="cursor-not-allowed opacity-60"
-      disabled
-      tooltip={`${name} (Coming Soon)`}
+      onClick={handleClick}
+      isActive={isActive}
+      tooltip={name}
     >
       <Volume2 className="h-4 w-4" />
       <span>{name}</span>
-      <Badge variant="secondary" className="ml-auto text-[10px]">
-        Soon
-      </Badge>
     </SidebarMenuButton>
   )
 }

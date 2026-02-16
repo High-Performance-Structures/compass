@@ -279,7 +279,7 @@ export function NavConversations() {
             <SidebarMenu>
               {voiceChannels.map((channel) => (
                 <SidebarMenuItem key={channel.id}>
-                  <VoiceChannelStub name={channel.name} />
+                  <VoiceChannelStub id={channel.id} name={channel.name} />
                 </SidebarMenuItem>
               ))}
             </SidebarMenu>
