@@ -160,32 +160,6 @@ export function AppSidebar({
   return (
     <Sidebar collapsible="icon" {...props}>
       <SidebarHeader>
-        <SidebarMenu>
-          <SidebarMenuItem>
-            <SidebarMenuButton
-              asChild
-              className="data-[slot=sidebar-menu-button]:!p-1.5"
-            >
-              <a href="/dashboard">
-                <span
-                  aria-label="Compass"
-                  className="!size-5 shrink-0 block bg-current"
-                  style={{
-                    maskImage: "url(/logo-black.png)",
-                    maskSize: "contain",
-                    maskRepeat: "no-repeat",
-                    WebkitMaskImage: "url(/logo-black.png)",
-                    WebkitMaskSize: "contain",
-                    WebkitMaskRepeat: "no-repeat",
-                  }}
-                />
-                <span className="text-base font-semibold">
-                  COMPASS
-                </span>
-              </a>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-        </SidebarMenu>
         <OrgSwitcher activeOrgId={activeOrgId} activeOrgName={activeOrgName} />
       </SidebarHeader>
       <SidebarContent>
