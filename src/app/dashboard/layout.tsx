@@ -26,6 +26,7 @@ import { NativeShell } from "@/components/native/native-shell"
 import { PushNotificationRegistrar } from "@/hooks/use-native-push"
 import { DesktopShell } from "@/components/desktop/desktop-shell"
 import { DesktopOfflineBanner } from "@/components/desktop/offline-banner"
+import { VoiceProvider } from "@/components/voice/voice-provider"
 
 export default async function DashboardLayout({
   children,
@@ -45,6 +46,7 @@ export default async function DashboardLayout({
 
   return (
     <ChatProvider>
+    <VoiceProvider>
     <SettingsProvider>
     <ProjectListProvider projects={projectList}>
     <PageActionsProvider>
@@ -90,6 +92,7 @@ export default async function DashboardLayout({
     </PageActionsProvider>
     </ProjectListProvider>
     </SettingsProvider>
+    </VoiceProvider>
     </ChatProvider>
   )
 }
