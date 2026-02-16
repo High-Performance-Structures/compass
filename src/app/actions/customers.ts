@@ -1,26 +1,30 @@
 "use server"
 
 import { getCloudflareContext } from "@opennextjs/cloudflare"
-import { eq } from "drizzle-orm"
+import { eq, and } from "drizzle-orm"
 import { getDb } from "@/db"
 import { customers, type NewCustomer } from "@/db/schema"
-import { getCurrentUser } from "@/lib/auth"
+import { requireAuth } from "@/lib/auth"
 import { requirePermission } from "@/lib/permissions"
 import { revalidatePath } from "next/cache"
+import { requireOrg } from "@/lib/org-scope"
+import { isDemoUser } from "@/lib/demo"
 
 export async function getCustomers() {
-  const user = await getCurrentUser()
+  const user = await requireAuth()
   requirePermission(user, "customer", "read")
+  const orgId = requireOrg(user)
 
   const { env } = await getCloudflareContext()
   const db = getDb(env.DB)
 
-  return db.select().from(customers)
+  return db.select().from(customers).where(eq(customers.organizationId, orgId))
 }
 
 export async function getCustomer(id: string) {
-  const user = await getCurrentUser()
+  const user = await requireAuth()
   requirePermission(user, "customer", "read")
+  const orgId = requireOrg(user)
 
   const { env } = await getCloudflareContext()
   const db = getDb(env.DB)
@@ -28,18 +32,22 @@ export async function getCustomer(id: string) {
   const rows = await db
     .select()
     .from(customers)
-    .where(eq(customers.id, id))
+    .where(and(eq(customers.id, id), eq(customers.organizationId, orgId)))
     .limit(1)
 
   return rows[0] ?? null
 }
 
 export async function createCustomer(
-  data: Omit<NewCustomer, "id" | "createdAt" | "updatedAt">
+  data: Omit<NewCustomer, "id" | "createdAt" | "updatedAt" | "organizationId">
 ) {
   try {
-    const user = await getCurrentUser()
+    const user = await requireAuth()
+    if (isDemoUser(user.id)) {
+      return { success: false, error: "DEMO_READ_ONLY" }
+    }
     requirePermission(user, "customer", "create")
+    const orgId = requireOrg(user)
 
     const { env } = await getCloudflareContext()
     const db = getDb(env.DB)
@@ -49,6 +57,7 @@ export async function createCustomer(
 
     await db.insert(customers).values({
       id,
+      organizationId: orgId,
       ...data,
       createdAt: now,
       updatedAt: now,
@@ -70,8 +79,12 @@ export async function updateCustomer(
   data: Partial<NewCustomer>
 ) {
   try {
-    const user = await getCurrentUser()
+    const user = await requireAuth()
+    if (isDemoUser(user.id)) {
+      return { success: false, error: "DEMO_READ_ONLY" }
+    }
     requirePermission(user, "customer", "update")
+    const orgId = requireOrg(user)
 
     const { env } = await getCloudflareContext()
     const db = getDb(env.DB)
@@ -79,7 +92,7 @@ export async function updateCustomer(
     await db
       .update(customers)
       .set({ ...data, updatedAt: new Date().toISOString() })
-      .where(eq(customers.id, id))
+      .where(and(eq(customers.id, id), eq(customers.organizationId, orgId)))
 
     revalidatePath("/dashboard/customers")
     return { success: true }
@@ -94,13 +107,19 @@ export async function updateCustomer(
 
 export async function deleteCustomer(id: string) {
   try {
-    const user = await getCurrentUser()
+    const user = await requireAuth()
+    if (isDemoUser(user.id)) {
+      return { success: false, error: "DEMO_READ_ONLY" }
+    }
     requirePermission(user, "customer", "delete")
+    const orgId = requireOrg(user)
 
     const { env } = await getCloudflareContext()
     const db = getDb(env.DB)
 
-    await db.delete(customers).where(eq(customers.id, id))
+    await db
+      .delete(customers)
+      .where(and(eq(customers.id, id), eq(customers.organizationId, orgId)))
 
     revalidatePath("/dashboard/customers")
     return { success: true }

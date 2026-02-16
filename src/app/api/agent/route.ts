@@ -20,6 +20,7 @@ import { getRegistry } from "@/lib/agent/plugins/registry"
 import { saveStreamUsage } from "@/lib/agent/usage"
 import { getCurrentUser } from "@/lib/auth"
 import { getDb } from "@/db"
+import { isDemoUser } from "@/lib/demo"
 
 export async function POST(req: Request): Promise<Response> {
   const user = await getCurrentUser()
@@ -87,6 +88,9 @@ export async function POST(req: Request): Promise<Response> {
 
   const model = createModelFromId(apiKey, modelId)
 
+  // detect demo mode
+  const isDemo = isDemoUser(user.id)
+
   const result = streamText({
     model,
     system: buildSystemPrompt({
@@ -99,7 +103,7 @@ export async function POST(req: Request): Promise<Response> {
       dashboards: dashboardResult.success
         ? dashboardResult.data
         : [],
-      mode: "full",
+      mode: isDemo ? "demo" : "full",
     }),
     messages: await convertToModelMessages(
       body.messages

@@ -27,6 +27,8 @@ import { PushNotificationRegistrar } from "@/hooks/use-native-push"
 import { DesktopShell } from "@/components/desktop/desktop-shell"
 import { DesktopOfflineBanner } from "@/components/desktop/offline-banner"
 import { VoiceProvider } from "@/components/voice/voice-provider"
+import { DemoBanner } from "@/components/demo/demo-banner"
+import { isDemoUser } from "@/lib/demo"
 
 export default async function DashboardLayout({
   children,
@@ -40,9 +42,12 @@ export default async function DashboardLayout({
       getCustomDashboards(),
     ])
   const user = authUser ? toSidebarUser(authUser) : null
+  const activeOrgId = authUser?.organizationId ?? null
+  const activeOrgName = authUser?.organizationName ?? null
   const dashboardList = dashboardResult.success
     ? dashboardResult.data
     : []
+  const isDemo = authUser ? isDemoUser(authUser.id) : false
 
   return (
     <ChatProvider>
@@ -51,7 +56,7 @@ export default async function DashboardLayout({
     <ProjectListProvider projects={projectList}>
     <PageActionsProvider>
     <CommandMenuProvider>
-      <BiometricGuard>
+      <BiometricGuard userId={authUser?.id}>
       <DesktopShell>
       <FeedbackWidget>
       <DashboardContextMenu>
@@ -64,10 +69,18 @@ export default async function DashboardLayout({
           } as React.CSSProperties
         }
       >
-        <AppSidebar variant="inset" projects={projectList} dashboards={dashboardList} user={user} />
+        <AppSidebar
+          variant="inset"
+          projects={projectList}
+          dashboards={dashboardList}
+          user={user}
+          activeOrgId={activeOrgId}
+          activeOrgName={activeOrgName}
+        />
         <SidebarInset className="overflow-hidden">
           <DesktopOfflineBanner />
           <OfflineBanner />
+          <DemoBanner isDemo={isDemo} />
           <SiteHeader user={user} />
           <div className="flex min-h-0 flex-1 overflow-hidden">
             <MainContent>

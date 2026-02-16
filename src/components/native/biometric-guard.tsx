@@ -5,13 +5,16 @@ import { useNative } from "@/hooks/use-native"
 import { useBiometricAuth } from "@/hooks/use-biometric-auth"
 import { Fingerprint, KeyRound } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { isDemoUser } from "@/lib/demo"
 
 const BACKGROUND_THRESHOLD_MS = 30_000
 
 export function BiometricGuard({
   children,
+  userId,
 }: {
   readonly children: React.ReactNode
+  readonly userId?: string
 }) {
   const native = useNative()
   const {
@@ -22,6 +25,9 @@ export function BiometricGuard({
     setEnabled,
     markPrompted,
   } = useBiometricAuth()
+
+  // skip biometric for demo users
+  const isDemo = userId ? isDemoUser(userId) : false
 
   const [locked, setLocked] = useState(false)
   const [showPrompt, setShowPrompt] = useState(false)
@@ -104,7 +110,7 @@ export function BiometricGuard({
     if (success) setLocked(false)
   }, [authenticate])
 
-  if (!native) return <>{children}</>
+  if (!native || isDemo) return <>{children}</>
 
   return (
     <>

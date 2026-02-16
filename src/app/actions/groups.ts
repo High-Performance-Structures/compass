@@ -3,21 +3,27 @@
 import { getCloudflareContext } from "@opennextjs/cloudflare"
 import { getDb } from "@/db"
 import { groups, type Group, type NewGroup } from "@/db/schema"
-import { getCurrentUser } from "@/lib/auth"
+import { requireAuth } from "@/lib/auth"
 import { requirePermission } from "@/lib/permissions"
-import { eq } from "drizzle-orm"
+import { eq, and } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
+import { requireOrg } from "@/lib/org-scope"
+import { isDemoUser } from "@/lib/demo"
 
 export async function getGroups(): Promise<Group[]> {
   try {
-    const currentUser = await getCurrentUser()
+    const currentUser = await requireAuth()
     requirePermission(currentUser, "group", "read")
+    const orgId = requireOrg(currentUser)
 
     const { env } = await getCloudflareContext()
     if (!env?.DB) return []
 
     const db = getDb(env.DB)
-    const allGroups = await db.select().from(groups)
+    const allGroups = await db
+      .select()
+      .from(groups)
+      .where(eq(groups.organizationId, orgId))
 
     return allGroups
   } catch (error) {
@@ -27,14 +33,17 @@ export async function getGroups(): Promise<Group[]> {
 }
 
 export async function createGroup(
-  organizationId: string,
   name: string,
   description?: string,
   color?: string
 ): Promise<{ success: boolean; error?: string; data?: Group }> {
   try {
-    const currentUser = await getCurrentUser()
+    const currentUser = await requireAuth()
+    if (isDemoUser(currentUser.id)) {
+      return { success: false, error: "DEMO_READ_ONLY" }
+    }
     requirePermission(currentUser, "group", "create")
+    const orgId = requireOrg(currentUser)
 
     const { env } = await getCloudflareContext()
     if (!env?.DB) {
@@ -46,7 +55,7 @@ export async function createGroup(
 
     const newGroup: NewGroup = {
       id: crypto.randomUUID(),
-      organizationId,
+      organizationId: orgId,
       name,
       description: description ?? null,
       color: color ?? null,
@@ -70,8 +79,12 @@ export async function deleteGroup(
   groupId: string
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    const currentUser = await getCurrentUser()
+    const currentUser = await requireAuth()
+    if (isDemoUser(currentUser.id)) {
+      return { success: false, error: "DEMO_READ_ONLY" }
+    }
     requirePermission(currentUser, "group", "delete")
+    const orgId = requireOrg(currentUser)
 
     const { env } = await getCloudflareContext()
     if (!env?.DB) {
@@ -80,7 +93,10 @@ export async function deleteGroup(
 
     const db = getDb(env.DB)
 
-    await db.delete(groups).where(eq(groups.id, groupId)).run()
+    await db
+      .delete(groups)
+      .where(and(eq(groups.id, groupId), eq(groups.organizationId, orgId)))
+      .run()
 
     revalidatePath("/dashboard/people")
     return { success: true }

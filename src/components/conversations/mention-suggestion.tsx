@@ -197,7 +197,7 @@ export function createMentionSuggestion(organizationId: string) {
       ]
 
       // fetch users
-      const usersResult = await searchMentionableUsers(query, organizationId)
+      const usersResult = await searchMentionableUsers(query)
       const userItems: MentionItem[] = usersResult.success && usersResult.data
         ? usersResult.data.map((user) => ({
             id: user.id,

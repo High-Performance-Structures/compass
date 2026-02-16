@@ -10,6 +10,7 @@ import {
   hashApiKey,
 } from "@/lib/mcp/auth"
 import { revalidatePath } from "next/cache"
+import { isDemoUser } from "@/lib/demo"
 
 export async function createApiKey(
   name: string,
@@ -22,6 +23,10 @@ export async function createApiKey(
     const user = await getCurrentUser()
     if (!user) {
       return { success: false, error: "Unauthorized" }
+    }
+
+    if (isDemoUser(user.id)) {
+      return { success: false, error: "DEMO_READ_ONLY" }
     }
 
     const { env } = await getCloudflareContext()
@@ -129,6 +134,10 @@ export async function revokeApiKey(
       return { success: false, error: "Unauthorized" }
     }
 
+    if (isDemoUser(user.id)) {
+      return { success: false, error: "DEMO_READ_ONLY" }
+    }
+
     const { env } = await getCloudflareContext()
     const db = getDb(env.DB)
 
@@ -177,6 +186,10 @@ export async function deleteApiKey(
     const user = await getCurrentUser()
     if (!user) {
       return { success: false, error: "Unauthorized" }
+    }
+
+    if (isDemoUser(user.id)) {
+      return { success: false, error: "DEMO_READ_ONLY" }
     }
 
     const { env } = await getCloudflareContext()

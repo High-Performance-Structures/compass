@@ -5,6 +5,7 @@ import { getDb } from "@/db"
 import { agentConversations, agentMemories } from "@/db/schema"
 import { eq, desc } from "drizzle-orm"
 import { getCurrentUser } from "@/lib/auth"
+import { isDemoUser } from "@/lib/demo"
 
 interface SerializedMessage {
   readonly id: string
@@ -22,6 +23,10 @@ export async function saveConversation(
   try {
     const user = await getCurrentUser()
     if (!user) return { success: false, error: "Unauthorized" }
+
+    if (isDemoUser(user.id)) {
+      return { success: false, error: "DEMO_READ_ONLY" }
+    }
 
     const { env } = await getCloudflareContext()
     const db = getDb(env.DB)
@@ -180,6 +185,10 @@ export async function deleteConversation(
   try {
     const user = await getCurrentUser()
     if (!user) return { success: false, error: "Unauthorized" }
+
+    if (isDemoUser(user.id)) {
+      return { success: false, error: "DEMO_READ_ONLY" }
+    }
 
     const { env } = await getCloudflareContext()
     const db = getDb(env.DB)

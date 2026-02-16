@@ -290,9 +290,17 @@ async function checkResourceAuthorization(
 
   // Get user for role-based permission check
   const userRecords = await db.select().from(users).where(eq(users.id, userId)).limit(1)
-  const user = userRecords[0]
-  if (!user) {
+  const dbUser = userRecords[0]
+  if (!dbUser) {
     return { authorized: false, reason: "User not found" }
+  }
+
+  // Convert DB user to AuthUser for permission check (org fields not used by can())
+  const user = {
+    ...dbUser,
+    organizationId: null,
+    organizationName: null,
+    organizationType: null,
   }
 
   const action = operationToAction(operation)

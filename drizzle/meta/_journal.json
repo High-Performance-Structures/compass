@@ -183,6 +183,13 @@
       "when": 1771205359100,
       "tag": "0025_chunky_silverclaw",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "6",
+      "when": 1771215013379,
+      "tag": "0026_easy_professor_monster",
+      "breakpoints": true
     }
   ]
 }

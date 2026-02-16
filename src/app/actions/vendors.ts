@@ -1,26 +1,30 @@
 "use server"
 
 import { getCloudflareContext } from "@opennextjs/cloudflare"
-import { eq } from "drizzle-orm"
+import { eq, and } from "drizzle-orm"
 import { getDb } from "@/db"
 import { vendors, type NewVendor } from "@/db/schema"
-import { getCurrentUser } from "@/lib/auth"
+import { requireAuth } from "@/lib/auth"
 import { requirePermission } from "@/lib/permissions"
 import { revalidatePath } from "next/cache"
+import { requireOrg } from "@/lib/org-scope"
+import { isDemoUser } from "@/lib/demo"
 
 export async function getVendors() {
-  const user = await getCurrentUser()
+  const user = await requireAuth()
   requirePermission(user, "vendor", "read")
+  const orgId = requireOrg(user)
 
   const { env } = await getCloudflareContext()
   const db = getDb(env.DB)
 
-  return db.select().from(vendors)
+  return db.select().from(vendors).where(eq(vendors.organizationId, orgId))
 }
 
 export async function getVendor(id: string) {
-  const user = await getCurrentUser()
+  const user = await requireAuth()
   requirePermission(user, "vendor", "read")
+  const orgId = requireOrg(user)
 
   const { env } = await getCloudflareContext()
   const db = getDb(env.DB)
@@ -28,18 +32,22 @@ export async function getVendor(id: string) {
   const rows = await db
     .select()
     .from(vendors)
-    .where(eq(vendors.id, id))
+    .where(and(eq(vendors.id, id), eq(vendors.organizationId, orgId)))
     .limit(1)
 
   return rows[0] ?? null
 }
 
 export async function createVendor(
-  data: Omit<NewVendor, "id" | "createdAt" | "updatedAt">
+  data: Omit<NewVendor, "id" | "createdAt" | "updatedAt" | "organizationId">
 ) {
   try {
-    const user = await getCurrentUser()
+    const user = await requireAuth()
+    if (isDemoUser(user.id)) {
+      return { success: false, error: "DEMO_READ_ONLY" }
+    }
     requirePermission(user, "vendor", "create")
+    const orgId = requireOrg(user)
 
     const { env } = await getCloudflareContext()
     const db = getDb(env.DB)
@@ -49,6 +57,7 @@ export async function createVendor(
 
     await db.insert(vendors).values({
       id,
+      organizationId: orgId,
       ...data,
       createdAt: now,
       updatedAt: now,
@@ -70,8 +79,12 @@ export async function updateVendor(
   data: Partial<NewVendor>
 ) {
   try {
-    const user = await getCurrentUser()
+    const user = await requireAuth()
+    if (isDemoUser(user.id)) {
+      return { success: false, error: "DEMO_READ_ONLY" }
+    }
     requirePermission(user, "vendor", "update")
+    const orgId = requireOrg(user)
 
     const { env } = await getCloudflareContext()
     const db = getDb(env.DB)
@@ -79,7 +92,7 @@ export async function updateVendor(
     await db
       .update(vendors)
       .set({ ...data, updatedAt: new Date().toISOString() })
-      .where(eq(vendors.id, id))
+      .where(and(eq(vendors.id, id), eq(vendors.organizationId, orgId)))
 
     revalidatePath("/dashboard/vendors")
     return { success: true }
@@ -94,13 +107,19 @@ export async function updateVendor(
 
 export async function deleteVendor(id: string) {
   try {
-    const user = await getCurrentUser()
+    const user = await requireAuth()
+    if (isDemoUser(user.id)) {
+      return { success: false, error: "DEMO_READ_ONLY" }
+    }
     requirePermission(user, "vendor", "delete")
+    const orgId = requireOrg(user)
 
     const { env } = await getCloudflareContext()
     const db = getDb(env.DB)
 
-    await db.delete(vendors).where(eq(vendors.id, id))
+    await db
+      .delete(vendors)
+      .where(and(eq(vendors.id, id), eq(vendors.organizationId, orgId)))
 
     revalidatePath("/dashboard/vendors")
     return { success: true }

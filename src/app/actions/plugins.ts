@@ -11,6 +11,7 @@ import {
 import { getCurrentUser } from "@/lib/auth"
 import { fetchSkillFromGitHub } from "@/lib/agent/plugins/skills-client"
 import { clearRegistryCache } from "@/lib/agent/plugins/registry"
+import { isDemoUser } from "@/lib/demo"
 
 function skillId(source: string): string {
   return "skill-" + source.replace(/\//g, "-").toLowerCase()
@@ -22,6 +23,10 @@ export async function installSkill(source: string): Promise<
 > {
   const user = await getCurrentUser()
   if (!user) return { success: false, error: "not authenticated" }
+
+  if (isDemoUser(user.id)) {
+    return { success: false, error: "DEMO_READ_ONLY" }
+  }
 
   const { env } = await getCloudflareContext()
   const db = getDb(env.DB)
@@ -103,6 +108,10 @@ export async function uninstallSkill(pluginId: string): Promise<
   const user = await getCurrentUser()
   if (!user) return { success: false, error: "not authenticated" }
 
+  if (isDemoUser(user.id)) {
+    return { success: false, error: "DEMO_READ_ONLY" }
+  }
+
   const { env } = await getCloudflareContext()
   const db = getDb(env.DB)
 
@@ -136,6 +145,10 @@ export async function toggleSkill(
 > {
   const user = await getCurrentUser()
   if (!user) return { success: false, error: "not authenticated" }
+
+  if (isDemoUser(user.id)) {
+    return { success: false, error: "DEMO_READ_ONLY" }
+  }
 
   const { env } = await getCloudflareContext()
   const db = getDb(env.DB)

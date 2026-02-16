@@ -8,12 +8,15 @@ import {
   workdayExceptions,
   projects,
 } from "@/db/schema"
-import { eq, asc } from "drizzle-orm"
+import { eq, asc, and } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { calculateEndDate } from "@/lib/schedule/business-days"
 import { findCriticalPath } from "@/lib/schedule/critical-path"
 import { wouldCreateCycle } from "@/lib/schedule/dependency-validation"
 import { propagateDates } from "@/lib/schedule/propagate-dates"
+import { requireAuth } from "@/lib/auth"
+import { requireOrg } from "@/lib/org-scope"
+import { isDemoUser } from "@/lib/demo"
 import type {
   TaskStatus,
   DependencyType,
@@ -42,8 +45,22 @@ async function fetchExceptions(
 export async function getSchedule(
   projectId: string
 ): Promise<ScheduleData> {
+  const user = await requireAuth()
+  const orgId = requireOrg(user)
+
   const { env } = await getCloudflareContext()
   const db = getDb(env.DB)
+
+  // verify project belongs to user's org
+  const [project] = await db
+    .select()
+    .from(projects)
+    .where(and(eq(projects.id, projectId), eq(projects.organizationId, orgId)))
+    .limit(1)
+
+  if (!project) {
+    throw new Error("Project not found or access denied")
+  }
 
   const tasks = await db
     .select()
@@ -86,8 +103,25 @@ export async function createTask(
   }
 ): Promise<{ success: boolean; error?: string }> {
   try {
+    const user = await requireAuth()
+    if (isDemoUser(user.id)) {
+      return { success: false, error: "DEMO_READ_ONLY" }
+    }
+    const orgId = requireOrg(user)
+
     const { env } = await getCloudflareContext()
     const db = getDb(env.DB)
+
+    // verify project belongs to user's org
+    const [project] = await db
+      .select()
+      .from(projects)
+      .where(and(eq(projects.id, projectId), eq(projects.organizationId, orgId)))
+      .limit(1)
+
+    if (!project) {
+      return { success: false, error: "Project not found or access denied" }
+    }
 
     const exceptions = await fetchExceptions(db, projectId)
     const endDate = calculateEndDate(
@@ -146,6 +180,12 @@ export async function updateTask(
   }
 ): Promise<{ success: boolean; error?: string }> {
   try {
+    const user = await requireAuth()
+    if (isDemoUser(user.id)) {
+      return { success: false, error: "DEMO_READ_ONLY" }
+    }
+    const orgId = requireOrg(user)
+
     const { env } = await getCloudflareContext()
     const db = getDb(env.DB)
 
@@ -156,6 +196,17 @@ export async function updateTask(
       .limit(1)
 
     if (!task) return { success: false, error: "Task not found" }
+
+    // verify project belongs to user's org
+    const [project] = await db
+      .select()
+      .from(projects)
+      .where(and(eq(projects.id, task.projectId), eq(projects.organizationId, orgId)))
+      .limit(1)
+
+    if (!project) {
+      return { success: false, error: "Access denied" }
+    }
 
     const exceptions = await fetchExceptions(db, task.projectId)
     const startDate = data.startDate ?? task.startDate
@@ -223,6 +274,12 @@ export async function deleteTask(
   taskId: string
 ): Promise<{ success: boolean; error?: string }> {
   try {
+    const user = await requireAuth()
+    if (isDemoUser(user.id)) {
+      return { success: false, error: "DEMO_READ_ONLY" }
+    }
+    const orgId = requireOrg(user)
+
     const { env } = await getCloudflareContext()
     const db = getDb(env.DB)
 
@@ -233,6 +290,17 @@ export async function deleteTask(
       .limit(1)
 
     if (!task) return { success: false, error: "Task not found" }
+
+    // verify project belongs to user's org
+    const [project] = await db
+      .select()
+      .from(projects)
+      .where(and(eq(projects.id, task.projectId), eq(projects.organizationId, orgId)))
+      .limit(1)
+
+    if (!project) {
+      return { success: false, error: "Access denied" }
+    }
 
     await db.delete(scheduleTasks).where(eq(scheduleTasks.id, taskId))
     await recalcCriticalPath(db, task.projectId)
@@ -249,8 +317,25 @@ export async function reorderTasks(
   items: { id: string; sortOrder: number }[]
 ): Promise<{ success: boolean; error?: string }> {
   try {
+    const user = await requireAuth()
+    if (isDemoUser(user.id)) {
+      return { success: false, error: "DEMO_READ_ONLY" }
+    }
+    const orgId = requireOrg(user)
+
     const { env } = await getCloudflareContext()
     const db = getDb(env.DB)
+
+    // verify project belongs to user's org
+    const [project] = await db
+      .select()
+      .from(projects)
+      .where(and(eq(projects.id, projectId), eq(projects.organizationId, orgId)))
+      .limit(1)
+
+    if (!project) {
+      return { success: false, error: "Project not found or access denied" }
+    }
 
     for (const item of items) {
       await db
@@ -275,8 +360,25 @@ export async function createDependency(data: {
   projectId: string
 }): Promise<{ success: boolean; error?: string }> {
   try {
+    const user = await requireAuth()
+    if (isDemoUser(user.id)) {
+      return { success: false, error: "DEMO_READ_ONLY" }
+    }
+    const orgId = requireOrg(user)
+
     const { env } = await getCloudflareContext()
     const db = getDb(env.DB)
+
+    // verify project belongs to user's org
+    const [project] = await db
+      .select()
+      .from(projects)
+      .where(and(eq(projects.id, data.projectId), eq(projects.organizationId, orgId)))
+      .limit(1)
+
+    if (!project) {
+      return { success: false, error: "Project not found or access denied" }
+    }
 
     // get existing deps for cycle check
     const schedule = await getSchedule(data.projectId)
@@ -327,8 +429,25 @@ export async function deleteDependency(
   projectId: string
 ): Promise<{ success: boolean; error?: string }> {
   try {
+    const user = await requireAuth()
+    if (isDemoUser(user.id)) {
+      return { success: false, error: "DEMO_READ_ONLY" }
+    }
+    const orgId = requireOrg(user)
+
     const { env } = await getCloudflareContext()
     const db = getDb(env.DB)
+
+    // verify project belongs to user's org
+    const [project] = await db
+      .select()
+      .from(projects)
+      .where(and(eq(projects.id, projectId), eq(projects.organizationId, orgId)))
+      .limit(1)
+
+    if (!project) {
+      return { success: false, error: "Project not found or access denied" }
+    }
 
     await db.delete(taskDependencies).where(eq(taskDependencies.id, depId))
     await recalcCriticalPath(db, projectId)
@@ -345,6 +464,12 @@ export async function updateTaskStatus(
   status: TaskStatus
 ): Promise<{ success: boolean; error?: string }> {
   try {
+    const user = await requireAuth()
+    if (isDemoUser(user.id)) {
+      return { success: false, error: "DEMO_READ_ONLY" }
+    }
+    const orgId = requireOrg(user)
+
     const { env } = await getCloudflareContext()
     const db = getDb(env.DB)
 
@@ -355,6 +480,17 @@ export async function updateTaskStatus(
       .limit(1)
 
     if (!task) return { success: false, error: "Task not found" }
+
+    // verify project belongs to user's org
+    const [project] = await db
+      .select()
+      .from(projects)
+      .where(and(eq(projects.id, task.projectId), eq(projects.organizationId, orgId)))
+      .limit(1)
+
+    if (!project) {
+      return { success: false, error: "Access denied" }
+    }
 
     await db
       .update(scheduleTasks)

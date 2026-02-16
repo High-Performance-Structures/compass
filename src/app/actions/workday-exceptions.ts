@@ -2,9 +2,12 @@
 
 import { getCloudflareContext } from "@opennextjs/cloudflare"
 import { getDb } from "@/db"
-import { workdayExceptions } from "@/db/schema"
-import { eq } from "drizzle-orm"
+import { workdayExceptions, projects } from "@/db/schema"
+import { eq, and } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
+import { requireAuth } from "@/lib/auth"
+import { requireOrg } from "@/lib/org-scope"
+import { isDemoUser } from "@/lib/demo"
 import type {
   WorkdayExceptionData,
   ExceptionCategory,
@@ -14,8 +17,22 @@ import type {
 export async function getWorkdayExceptions(
   projectId: string
 ): Promise<WorkdayExceptionData[]> {
+  const user = await requireAuth()
+  const orgId = requireOrg(user)
+
   const { env } = await getCloudflareContext()
   const db = getDb(env.DB)
+
+  // verify project belongs to user's org
+  const [project] = await db
+    .select()
+    .from(projects)
+    .where(and(eq(projects.id, projectId), eq(projects.organizationId, orgId)))
+    .limit(1)
+
+  if (!project) {
+    throw new Error("Project not found or access denied")
+  }
 
   const rows = await db
     .select()
@@ -42,8 +59,26 @@ export async function createWorkdayException(
   }
 ): Promise<{ success: boolean; error?: string }> {
   try {
+    const user = await requireAuth()
+    if (isDemoUser(user.id)) {
+      return { success: false, error: "DEMO_READ_ONLY" }
+    }
+    const orgId = requireOrg(user)
+
     const { env } = await getCloudflareContext()
     const db = getDb(env.DB)
+
+    // verify project belongs to user's org
+    const [project] = await db
+      .select()
+      .from(projects)
+      .where(and(eq(projects.id, projectId), eq(projects.organizationId, orgId)))
+      .limit(1)
+
+    if (!project) {
+      return { success: false, error: "Project not found or access denied" }
+    }
+
     const now = new Date().toISOString()
 
     await db.insert(workdayExceptions).values({
@@ -81,6 +116,12 @@ export async function updateWorkdayException(
   }
 ): Promise<{ success: boolean; error?: string }> {
   try {
+    const user = await requireAuth()
+    if (isDemoUser(user.id)) {
+      return { success: false, error: "DEMO_READ_ONLY" }
+    }
+    const orgId = requireOrg(user)
+
     const { env } = await getCloudflareContext()
     const db = getDb(env.DB)
 
@@ -91,6 +132,17 @@ export async function updateWorkdayException(
       .limit(1)
 
     if (!existing) return { success: false, error: "Exception not found" }
+
+    // verify project belongs to user's org
+    const [project] = await db
+      .select()
+      .from(projects)
+      .where(and(eq(projects.id, existing.projectId), eq(projects.organizationId, orgId)))
+      .limit(1)
+
+    if (!project) {
+      return { success: false, error: "Access denied" }
+    }
 
     await db
       .update(workdayExceptions)
@@ -120,6 +172,12 @@ export async function deleteWorkdayException(
   exceptionId: string
 ): Promise<{ success: boolean; error?: string }> {
   try {
+    const user = await requireAuth()
+    if (isDemoUser(user.id)) {
+      return { success: false, error: "DEMO_READ_ONLY" }
+    }
+    const orgId = requireOrg(user)
+
     const { env } = await getCloudflareContext()
     const db = getDb(env.DB)
 
@@ -130,6 +188,17 @@ export async function deleteWorkdayException(
       .limit(1)
 
     if (!existing) return { success: false, error: "Exception not found" }
+
+    // verify project belongs to user's org
+    const [project] = await db
+      .select()
+      .from(projects)
+      .where(and(eq(projects.id, existing.projectId), eq(projects.organizationId, orgId)))
+      .limit(1)
+
+    if (!project) {
+      return { success: false, error: "Access denied" }
+    }
 
     await db
       .delete(workdayExceptions)
