@@ -4,7 +4,7 @@ An AI-native workspace platform that handles auth, deployment,
 and real-time collaboration -- so you can focus on building
 what actually matters.
 
-## Build With Direction
+## Build With Direction :)
 
 - **AI agent built in** -- every workspace ships with an intelligent
   assistant that understands your domain and takes action through
