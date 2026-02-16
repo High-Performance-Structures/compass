@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import Link from "next/link"
 import { useRouter } from "next/navigation"
 import {
   IconBuilding,
@@ -76,37 +77,49 @@ export function OrgSwitcher({
   return (
     <SidebarMenu>
       <SidebarMenuItem>
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild disabled={!hasOrgs}>
-            <SidebarMenuButton
-              size="lg"
-              className={cn(
-                "data-[state=open]:bg-sidebar-accent",
-                "data-[state=open]:text-sidebar-accent-foreground",
-              )}
-            >
-              <span
-                aria-label="Compass"
-                className="!size-5 shrink-0 block bg-current"
-                style={{
-                  maskImage: "url(/logo-black.png)",
-                  maskSize: "contain",
-                  maskRepeat: "no-repeat",
-                  WebkitMaskImage: "url(/logo-black.png)",
-                  WebkitMaskSize: "contain",
-                  WebkitMaskRepeat: "no-repeat",
-                }}
-              />
-              <span className="truncate text-sm font-semibold">
-                {displayName}
-              </span>
-              {hasOrgs && (
-                <IconSelector
-                  className="ml-auto size-4 shrink-0 opacity-50"
-                />
-              )}
-            </SidebarMenuButton>
-          </DropdownMenuTrigger>
+        <SidebarMenuButton
+          size="lg"
+          className="gap-0 px-0 hover:bg-transparent active:bg-transparent"
+          asChild={false}
+        >
+          <Link
+            href="/dashboard"
+            className="flex shrink-0 items-center justify-center size-8 rounded-md hover:bg-sidebar-accent transition-colors"
+            aria-label="Compass home"
+          >
+            <span
+              className="!size-5 block bg-current"
+              style={{
+                maskImage: "url(/logo-black.png)",
+                maskSize: "contain",
+                maskRepeat: "no-repeat",
+                WebkitMaskImage: "url(/logo-black.png)",
+                WebkitMaskSize: "contain",
+                WebkitMaskRepeat: "no-repeat",
+              }}
+            />
+          </Link>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild disabled={!hasOrgs}>
+              <button
+                className={cn(
+                  "flex min-w-0 flex-1 items-center gap-1 rounded-md px-2 py-1 text-left",
+                  "hover:bg-sidebar-accent transition-colors",
+                  "data-[state=open]:bg-sidebar-accent",
+                  "data-[state=open]:text-sidebar-accent-foreground",
+                  !hasOrgs && "cursor-default hover:bg-transparent",
+                )}
+              >
+                <span className="truncate text-sm font-semibold">
+                  {displayName}
+                </span>
+                {hasOrgs && (
+                  <IconSelector
+                    className="size-4 shrink-0 opacity-50"
+                  />
+                )}
+              </button>
+            </DropdownMenuTrigger>
           <DropdownMenuContent
             className="w-(--radix-dropdown-menu-trigger-width) min-w-56 rounded-lg"
             side={isMobile ? "bottom" : "right"}
@@ -139,8 +152,9 @@ export function OrgSwitcher({
                 </React.Fragment>
               )
             })}
-          </DropdownMenuContent>
-        </DropdownMenu>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </SidebarMenuButton>
       </SidebarMenuItem>
     </SidebarMenu>
   )
