@@ -1,7 +1,7 @@
 "use server"
 
 import { getCloudflareContext } from "@opennextjs/cloudflare"
-import { eq, and, desc, lt, sql } from "drizzle-orm"
+import { eq, and, desc, lt, sql, like, or } from "drizzle-orm"
 import { marked } from "marked"
 import { getDb } from "@/db"
 import {
@@ -9,10 +9,12 @@ import {
   messageReactions,
   channelMembers,
   channelReadState,
+  messageMentions,
   type NewMessage,
   type NewMessageReaction,
+  type NewMessageMention,
 } from "@/db/schema-conversations"
-import { users } from "@/db/schema"
+import { users, organizationMembers } from "@/db/schema"
 import { getCurrentUser } from "@/lib/auth"
 import { requirePermission } from "@/lib/permissions"
 import { revalidatePath } from "next/cache"
@@ -35,7 +37,7 @@ const ALLOWED_TAGS = new Set([
   "span", "div",
 ])
 
-const ALLOWED_ATTR = new Set(["href", "src", "alt", "title", "class", "id", "target", "rel"])
+const ALLOWED_ATTR = new Set(["href", "src", "alt", "title", "class", "id", "target", "rel", "data-type", "data-id", "data-mention-type"])
 
 // Regex to strip script tags and event handlers
 const DANGEROUS_PATTERNS = [
@@ -60,7 +62,7 @@ function sanitizeHtml(html: string): string {
   sanitized = sanitized.replace(/<\/?([a-z][a-z0-9]*)\b[^>]*>/gi, (match, tagName) => {
     if (ALLOWED_TAGS.has(tagName.toLowerCase())) {
       // For allowed tags, filter attributes
-      return match.replace(/(\w+)\s*=\s*["'][^"']*["']/gi, (attrMatch, attrName) => {
+      return match.replace(/([\w-]+)\s*=\s*["'][^"']*["']/gi, (attrMatch, attrName) => {
         if (ALLOWED_ATTR.has(attrName.toLowerCase())) {
           // Only allow safe URL schemes in href/src
           if (attrName.toLowerCase() === "href" || attrName.toLowerCase() === "src") {
@@ -86,10 +88,70 @@ async function renderMarkdown(content: string): Promise<string> {
   return sanitizeHtml(html)
 }
 
+export async function searchMentionableUsers(
+  query: string,
+  organizationId: string
+) {
+  try {
+    const user = await getCurrentUser()
+    if (!user) {
+      return { success: false, error: "Unauthorized" }
+    }
+
+    const { env } = await getCloudflareContext()
+    const db = getDb(env.DB)
+
+    const searchPattern = `%${query}%`
+    const results = await db
+      .select({
+        id: users.id,
+        displayName: users.displayName,
+        email: users.email,
+        avatarUrl: users.avatarUrl,
+      })
+      .from(users)
+      .innerJoin(
+        organizationMembers,
+        eq(organizationMembers.userId, users.id)
+      )
+      .where(
+        and(
+          eq(organizationMembers.organizationId, organizationId),
+          or(
+            like(users.displayName, searchPattern),
+            like(users.email, searchPattern),
+            like(users.firstName, searchPattern),
+            like(users.lastName, searchPattern)
+          )
+        )
+      )
+      .limit(10)
+
+    const data = results.map((u) => ({
+      ...u,
+      type: "user" as const,
+    }))
+
+    return { success: true, data }
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Failed to search users",
+    }
+  }
+}
+
+type MentionInput = {
+  mentionType: "user" | "channel" | "here" | "agent"
+  targetId: string | null
+}
+
 export async function sendMessage(data: {
   channelId: string
   content: string
   threadId?: string
+  mentions?: Array<MentionInput>
+  contentHtml?: string
 }) {
   try {
     const user = await getCurrentUser()
@@ -124,8 +186,10 @@ export async function sendMessage(data: {
     const now = new Date().toISOString()
     const messageId = crypto.randomUUID()
 
-    // Pre-render markdown to sanitized HTML
-    const contentHtml = await renderMarkdown(data.content)
+    // Use provided HTML or render markdown to sanitized HTML
+    const contentHtml = data.contentHtml
+      ? sanitizeHtml(data.contentHtml)
+      : await renderMarkdown(data.content)
 
     const newMessage: NewMessage = {
       id: messageId,
@@ -144,6 +208,37 @@ export async function sendMessage(data: {
     }
 
     await db.insert(messages).values(newMessage)
+
+    // insert mentions if provided
+    if (data.mentions && data.mentions.length > 0) {
+      const mentionRows: NewMessageMention[] = data.mentions.map((m) => ({
+        id: crypto.randomUUID(),
+        messageId,
+        mentionType: m.mentionType,
+        targetId: m.targetId,
+        createdAt: now,
+      }))
+      await db.insert(messageMentions).values(mentionRows)
+
+      // fire-and-forget notification (don't await, don't block on error)
+      const envRecord = env as unknown as Record<string, string>
+      const fcmKey = envRecord.FCM_SERVER_KEY
+      if (fcmKey) {
+        import("@/lib/conversations/notify-mentions")
+          .then(({ notifyMentionedUsers }) =>
+            notifyMentionedUsers(
+              env.DB,
+              fcmKey,
+              messageId,
+              data.channelId,
+              user.id,
+              user.displayName ?? user.email ?? "Someone",
+              data.mentions ?? [],
+            )
+          )
+          .catch(console.error)
+      }
+    }
 
     // if this is a thread reply, update parent message
     if (data.threadId) {
@@ -207,7 +302,14 @@ export async function sendMessage(data: {
   }
 }
 
-export async function editMessage(messageId: string, newContent: string) {
+export async function editMessage(
+  messageId: string,
+  newContent: string,
+  options?: {
+    mentions?: Array<MentionInput>
+    contentHtml?: string
+  }
+) {
   try {
     const user = await getCurrentUser()
     if (!user) {
@@ -240,8 +342,10 @@ export async function editMessage(messageId: string, newContent: string) {
 
     const now = new Date().toISOString()
 
-    // Re-render markdown to sanitized HTML
-    const contentHtml = await renderMarkdown(newContent)
+    // Use provided HTML or re-render markdown to sanitized HTML
+    const contentHtml = options?.contentHtml
+      ? sanitizeHtml(options.contentHtml)
+      : await renderMarkdown(newContent)
 
     await db
       .update(messages)
@@ -251,6 +355,27 @@ export async function editMessage(messageId: string, newContent: string) {
         editedAt: now,
       })
       .where(eq(messages.id, messageId))
+
+    // update mentions if provided
+    if (options?.mentions !== undefined) {
+      // delete existing mentions
+      await db
+        .delete(messageMentions)
+        .where(eq(messageMentions.messageId, messageId))
+
+      // insert new mentions
+      if (options.mentions.length > 0) {
+        const mentionRows: NewMessageMention[] = options.mentions.map((m) => ({
+          id: crypto.randomUUID(),
+          messageId,
+          mentionType: m.mentionType,
+          targetId: m.targetId,
+          createdAt: now,
+        }))
+        await db.insert(messageMentions).values(mentionRows)
+      }
+      // Note: we do NOT re-notify on edit (MVP requirement)
+    }
 
     revalidatePath("/dashboard")
     return { success: true }

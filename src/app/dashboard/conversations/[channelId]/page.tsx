@@ -36,7 +36,11 @@ export default async function ChannelPage({
           channelId={channelId}
           initialMessages={messages}
         />
-        <MessageComposer channelId={channelId} channelName={channel.name} />
+        <MessageComposer
+          channelId={channelId}
+          channelName={channel.name}
+          organizationId={channel.organizationId}
+        />
       </div>
       <ThreadPanel />
     </>

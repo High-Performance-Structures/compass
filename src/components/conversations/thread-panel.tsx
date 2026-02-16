@@ -8,6 +8,7 @@ import { Separator } from "@/components/ui/separator"
 import { cn } from "@/lib/utils"
 import { useConversations, type ThreadMessage } from "@/contexts/conversations-context"
 import { getThreadMessages } from "@/app/actions/chat-messages"
+import { getChannel } from "@/app/actions/conversations"
 import { MessageItem } from "./message-item"
 import { MessageComposer } from "./message-composer"
 import { useIsMobile } from "@/hooks/use-mobile"
@@ -17,6 +18,7 @@ export function ThreadPanel() {
   const isMobile = useIsMobile()
   const [replies, setReplies] = React.useState<readonly ThreadMessage[]>([])
   const [loading, setLoading] = React.useState(false)
+  const [organizationId, setOrganizationId] = React.useState<string | null>(null)
   const [panelWidth, setPanelWidth] = React.useState(400)
   const [isResizing, setIsResizing] = React.useState(false)
   const dragStartX = React.useRef(0)
@@ -25,18 +27,24 @@ export function ThreadPanel() {
   React.useEffect(() => {
     if (!threadMessageId) {
       setReplies([])
+      setOrganizationId(null)
       return
     }
 
     setLoading(true)
-    getThreadMessages(threadMessageId).then((result) => {
-      if (result.success && result.data) {
-        // replies come DESC from server; reverse for chronological
-        setReplies([...result.data].reverse())
+    Promise.all([
+      getThreadMessages(threadMessageId),
+      threadParentMessage ? getChannel(threadParentMessage.channelId) : null,
+    ]).then(([messagesResult, channelResult]) => {
+      if (messagesResult.success && messagesResult.data) {
+        setReplies([...messagesResult.data].reverse())
+      }
+      if (channelResult?.success && channelResult.data) {
+        setOrganizationId(channelResult.data.organizationId)
       }
       setLoading(false)
     })
-  }, [threadMessageId])
+  }, [threadMessageId, threadParentMessage])
 
   // resize handlers (follow ChatPanelShell pattern)
   React.useEffect(() => {
@@ -165,10 +173,11 @@ export function ThreadPanel() {
               </div>
             </ScrollArea>
 
-            {threadParentMessage && (
+            {threadParentMessage && organizationId && (
               <MessageComposer
                 channelId={threadParentMessage.channelId}
                 channelName="thread"
+                organizationId={organizationId}
                 threadId={threadMessageId ?? undefined}
                 placeholder="Reply to thread..."
                 onSent={refreshReplies}

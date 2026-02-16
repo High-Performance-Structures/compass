@@ -176,6 +176,13 @@
       "when": 1771105729640,
       "tag": "0024_thankful_slayback",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "6",
+      "when": 1771205359100,
+      "tag": "0025_chunky_silverclaw",
+      "breakpoints": true
     }
   ]
 }
