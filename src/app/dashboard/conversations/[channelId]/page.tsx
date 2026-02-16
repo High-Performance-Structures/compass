@@ -26,7 +26,10 @@ export default async function ChannelPage({
 
   return (
     <>
-      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+      <div
+        className="grid h-full overflow-hidden"
+        style={{ gridTemplateRows: "auto 1fr auto" }}
+      >
         <ChannelHeader
           name={channel.name}
           description={channel.description ?? undefined}

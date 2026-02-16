@@ -20,7 +20,7 @@ export function MainContent({
     <div
       {...rest}
       className={cn(
-        "flex flex-col overflow-x-hidden min-w-0",
+        "flex flex-col overflow-x-hidden min-w-0 min-h-0",
         "transition-[flex,opacity] duration-300 ease-in-out",
         isCollapsed
           ? "flex-[0_0_0%] opacity-0 overflow-hidden pointer-events-none"
@@ -31,7 +31,7 @@ export function MainContent({
       )}
     >
       <div className={cn(
-        "@container/main flex flex-1 flex-col min-w-0",
+        "@container/main flex flex-1 flex-col min-w-0 min-h-0",
         isConversations && "overflow-hidden"
       )}>
         {children}

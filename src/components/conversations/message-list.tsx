@@ -165,7 +165,7 @@ export function MessageList({ channelId, initialMessages }: MessageListProps) {
 
   if (messages.length === 0) {
     return (
-      <div className="flex min-h-0 flex-1 items-center justify-center p-8">
+      <div className="flex h-full min-h-0 items-center justify-center p-8 overflow-hidden">
         <p className="text-sm text-muted-foreground">
           No messages yet. Start the conversation!
         </p>
@@ -174,7 +174,7 @@ export function MessageList({ channelId, initialMessages }: MessageListProps) {
   }
 
   return (
-    <ScrollArea className="flex-1" ref={scrollRef}>
+    <ScrollArea className="h-full min-h-0 flex-1" ref={scrollRef}>
       <div className="flex flex-col gap-4 p-4">
         {hasMore && (
           <div className="flex justify-center">

@@ -231,6 +231,23 @@
   height: 0;
 }
 
+/* constrain composer editor height */
+.composer-editor .ProseMirror {
+  max-height: 200px;
+  overflow-y: auto;
+}
+@media (max-width: 639px) {
+  .composer-editor .ProseMirror {
+    max-height: 30vh;
+  }
+}
+
+/* emoji-mart theme overrides */
+em-emoji-picker {
+  --border-radius: 12px;
+  max-height: 350px;
+}
+
 /* mention pill styling in messages and editor */
 .mention {
   border-radius: calc(var(--radius) - 4px);
