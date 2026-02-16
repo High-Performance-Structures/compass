@@ -205,7 +205,9 @@ export function ChatProvider({
   // generate initial ID client-side only to avoid hydration mismatch
   React.useEffect(() => {
     setConversationId((prev) =>
-      prev === "" ? crypto.randomUUID() : prev
+      prev === ""
+        ? (crypto.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`)
+        : prev
     )
   }, [])
   const [resumeLoaded, setResumeLoaded] =

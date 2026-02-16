@@ -82,6 +82,17 @@ export const messageReactions = sqliteTable("message_reactions", {
   createdAt: text("created_at").notNull(),
 })
 
+// message_mentions - @user, @channel, @here, @agent mentions
+export const messageMentions = sqliteTable("message_mentions", {
+  id: text("id").primaryKey(),
+  messageId: text("message_id")
+    .notNull()
+    .references(() => messages.id, { onDelete: "cascade" }),
+  mentionType: text("mention_type").notNull(), // "user" | "channel" | "here" | "agent"
+  targetId: text("target_id"), // userId for user, "compass-agent" for agent, null for channel/here
+  createdAt: text("created_at").notNull(),
+})
+
 // channel_members - who can access which channels
 export const channelMembers = sqliteTable("channel_members", {
   id: text("id").primaryKey(),
@@ -156,6 +167,8 @@ export type MessageAttachment = typeof messageAttachments.$inferSelect
 export type NewMessageAttachment = typeof messageAttachments.$inferInsert
 export type MessageReaction = typeof messageReactions.$inferSelect
 export type NewMessageReaction = typeof messageReactions.$inferInsert
+export type MessageMention = typeof messageMentions.$inferSelect
+export type NewMessageMention = typeof messageMentions.$inferInsert
 export type ChannelMember = typeof channelMembers.$inferSelect
 export type NewChannelMember = typeof channelMembers.$inferInsert
 export type ChannelReadState = typeof channelReadState.$inferSelect

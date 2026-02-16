@@ -230,3 +230,12 @@
   float: left;
   height: 0;
 }
+
+/* mention pill styling in messages and editor */
+.mention {
+  border-radius: calc(var(--radius) - 4px);
+  background-color: color-mix(in oklch, var(--primary) 10%, transparent);
+  padding: 0.125rem 0.25rem;
+  font-weight: 500;
+  color: var(--primary);
+}
