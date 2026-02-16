@@ -92,51 +92,54 @@ export function NavUser({
             <SidebarMenuButton
               size="lg"
               className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
+              asChild
             >
-              <Avatar className="h-8 w-8 shrink-0 rounded-lg grayscale">
-                {user.avatar && (
-                  <AvatarImage src={user.avatar} alt={user.name} />
-                )}
-                <AvatarFallback className="rounded-lg">
-                  {initials}
-                </AvatarFallback>
-              </Avatar>
-              <span className="min-w-0 flex-1 truncate text-sm font-medium text-sidebar-foreground">
-                {user.name}
-              </span>
-              {/* Voice controls -- replace the old dots icon */}
-              <div className="group-data-[collapsible=icon]:hidden flex shrink-0 items-center">
-                <DeviceButtonGroup
-                  isMuted={isMuted}
-                  onToggle={(e) => { stopEvent(e); toggleMute() }}
-                  icon={isMuted ? IconMicrophoneOff : IconMicrophone}
-                  label={isMuted ? "Unmute" : "Mute"}
-                  dimmed={isMuted}
-                  devices={inputDevices}
-                  selectedDeviceId={inputDeviceId}
-                  onSelectDevice={setInputDevice}
-                  deviceLabel="Input Device"
-                />
-                <DeviceButtonGroup
-                  isMuted={isDeafened}
-                  onToggle={(e) => { stopEvent(e); toggleDeafen() }}
-                  icon={isDeafened ? IconHeadphonesOff : IconHeadphones}
-                  label={isDeafened ? "Undeafen" : "Deafen"}
-                  dimmed={isDeafened}
-                  devices={outputDevices}
-                  selectedDeviceId={outputDeviceId}
-                  onSelectDevice={setOutputDevice}
-                  deviceLabel="Output Device"
-                />
-                <Link
-                  href="/dashboard/settings"
-                  onClick={stopEvent}
-                  onPointerDown={stopEvent}
-                  aria-label="Settings"
-                  className="ml-px flex size-5 items-center justify-center rounded-sm text-sidebar-foreground/60 transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground"
-                >
-                  <IconSettings className="size-3" />
-                </Link>
+              <div className="flex w-full items-center gap-2">
+                <Avatar className="h-8 w-8 shrink-0 rounded-lg grayscale">
+                  {user.avatar && (
+                    <AvatarImage src={user.avatar} alt={user.name} />
+                  )}
+                  <AvatarFallback className="rounded-lg">
+                    {initials}
+                  </AvatarFallback>
+                </Avatar>
+                <span className="min-w-0 flex-1 truncate text-sm font-medium text-sidebar-foreground">
+                  {user.name}
+                </span>
+                {/* Voice controls -- replace the old dots icon */}
+                <div className="group-data-[collapsible=icon]:hidden flex shrink-0 items-center">
+                  <DeviceButtonGroup
+                    isMuted={isMuted}
+                    onToggle={(e) => { stopEvent(e); toggleMute() }}
+                    icon={isMuted ? IconMicrophoneOff : IconMicrophone}
+                    label={isMuted ? "Unmute" : "Mute"}
+                    dimmed={isMuted}
+                    devices={inputDevices}
+                    selectedDeviceId={inputDeviceId}
+                    onSelectDevice={setInputDevice}
+                    deviceLabel="Input Device"
+                  />
+                  <DeviceButtonGroup
+                    isMuted={isDeafened}
+                    onToggle={(e) => { stopEvent(e); toggleDeafen() }}
+                    icon={isDeafened ? IconHeadphonesOff : IconHeadphones}
+                    label={isDeafened ? "Undeafen" : "Deafen"}
+                    dimmed={isDeafened}
+                    devices={outputDevices}
+                    selectedDeviceId={outputDeviceId}
+                    onSelectDevice={setOutputDevice}
+                    deviceLabel="Output Device"
+                  />
+                  <Link
+                    href="/dashboard/settings"
+                    onClick={stopEvent}
+                    onPointerDown={stopEvent}
+                    aria-label="Settings"
+                    className="ml-px flex size-5 items-center justify-center rounded-sm text-sidebar-foreground/60 transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground"
+                  >
+                    <IconSettings className="size-3" />
+                  </Link>
+                </div>
               </div>
             </SidebarMenuButton>
           </DropdownMenuTrigger>

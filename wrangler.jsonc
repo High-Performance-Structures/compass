@@ -5,7 +5,7 @@
 {
 	"$schema": "node_modules/wrangler/config-schema.json",
 	"name": "compass",
-	"account_id": "8716137c706ea3d5c209b330084fa9e2",
+	// "account_id": "8716137c706ea3d5c209b330084fa9e2",
 	"main": ".open-next/worker.js",
 	"compatibility_date": "2025-12-01",
 	"compatibility_flags": [
