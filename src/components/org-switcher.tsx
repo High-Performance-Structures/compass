@@ -5,16 +5,18 @@ import { useRouter } from "next/navigation"
 import {
   IconBuilding,
   IconCheck,
-  IconChevronDown,
+  IconSelector,
   IconUser,
 } from "@tabler/icons-react"
 
-import { getUserOrganizations, switchOrganization } from "@/app/actions/organizations"
+import {
+  getUserOrganizations,
+  switchOrganization,
+} from "@/app/actions/organizations"
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
@@ -24,7 +26,6 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from "@/components/ui/sidebar"
-import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
 
 type OrgInfo = {
@@ -41,7 +42,7 @@ export function OrgSwitcher({
 }: {
   readonly activeOrgId: string | null
   readonly activeOrgName: string | null
-}): React.ReactElement | null {
+}): React.ReactElement {
   const router = useRouter()
   const { isMobile } = useSidebar()
   const [orgs, setOrgs] = React.useState<readonly OrgInfo[]>([])
@@ -69,40 +70,41 @@ export function OrgSwitcher({
     }
   }
 
-  if (!activeOrgId || !activeOrgName) {
-    return null
-  }
-
-  const activeOrg = orgs.find((org) => org.id === activeOrgId)
-  const orgInitial = activeOrgName[0]?.toUpperCase() ?? "O"
+  const displayName = activeOrgName ?? "Compass"
+  const hasOrgs = orgs.length > 1
 
   return (
     <SidebarMenu>
       <SidebarMenuItem>
         <DropdownMenu>
-          <DropdownMenuTrigger asChild>
+          <DropdownMenuTrigger asChild disabled={!hasOrgs}>
             <SidebarMenuButton
               size="lg"
-              className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
+              className={cn(
+                "data-[state=open]:bg-sidebar-accent",
+                "data-[state=open]:text-sidebar-accent-foreground",
+              )}
             >
-              <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
-                {activeOrg?.type === "personal" ? (
-                  <IconUser className="size-4" />
-                ) : (
-                  <IconBuilding className="size-4" />
-                )}
-              </div>
-              <div className="flex min-w-0 flex-1 flex-col items-start text-left">
-                <span className="truncate text-sm font-medium text-sidebar-foreground">
-                  {activeOrgName}
-                </span>
-                {activeOrg && (
-                  <span className="truncate text-xs text-sidebar-foreground/60">
-                    {activeOrg.role}
-                  </span>
-                )}
-              </div>
-              <IconChevronDown className="ml-auto size-4 shrink-0 text-sidebar-foreground/60" />
+              <span
+                aria-label="Compass"
+                className="!size-5 shrink-0 block bg-current"
+                style={{
+                  maskImage: "url(/logo-black.png)",
+                  maskSize: "contain",
+                  maskRepeat: "no-repeat",
+                  WebkitMaskImage: "url(/logo-black.png)",
+                  WebkitMaskSize: "contain",
+                  WebkitMaskRepeat: "no-repeat",
+                }}
+              />
+              <span className="truncate text-sm font-semibold">
+                {displayName}
+              </span>
+              {hasOrgs && (
+                <IconSelector
+                  className="ml-auto size-4 shrink-0 opacity-50"
+                />
+              )}
             </SidebarMenuButton>
           </DropdownMenuTrigger>
           <DropdownMenuContent
@@ -111,46 +113,30 @@ export function OrgSwitcher({
             align="start"
             sideOffset={4}
           >
-            <DropdownMenuLabel className="text-xs text-muted-foreground">
-              Organizations
-            </DropdownMenuLabel>
-            <DropdownMenuSeparator />
-            {orgs.map((org) => {
+            {orgs.map((org, i) => {
               const isActive = org.id === activeOrgId
-              const orgIcon =
+              const OrgIcon =
                 org.type === "personal" ? IconUser : IconBuilding
 
               return (
-                <DropdownMenuItem
-                  key={org.id}
-                  onClick={() => void handleOrgSwitch(org.id)}
-                  disabled={isLoading}
-                  className={cn(
-                    "flex items-center gap-2 px-2 py-1.5",
-                    isActive && "bg-accent"
-                  )}
-                >
-                  <div className="flex size-6 shrink-0 items-center justify-center rounded-md bg-muted">
-                    {React.createElement(orgIcon, { className: "size-3" })}
-                  </div>
-                  <div className="flex min-w-0 flex-1 flex-col">
-                    <span className="truncate text-sm font-medium">
+                <React.Fragment key={org.id}>
+                  {i > 0 && <DropdownMenuSeparator />}
+                  <DropdownMenuItem
+                    onClick={() => void handleOrgSwitch(org.id)}
+                    disabled={isLoading}
+                    className="gap-2 px-2 py-1.5"
+                  >
+                    <OrgIcon className="size-4 shrink-0 opacity-60" />
+                    <span className="truncate font-medium">
                       {org.name}
                     </span>
-                    <span className="truncate text-xs text-muted-foreground">
-                      {org.role}
-                    </span>
-                  </div>
-                  <Badge
-                    variant="secondary"
-                    className="shrink-0 text-[10px] font-normal"
-                  >
-                    {org.type}
-                  </Badge>
-                  {isActive && (
-                    <IconCheck className="ml-1 size-4 shrink-0 text-primary" />
-                  )}
-                </DropdownMenuItem>
+                    {isActive && (
+                      <IconCheck
+                        className="ml-auto size-4 shrink-0 text-primary"
+                      />
+                    )}
+                  </DropdownMenuItem>
+                </React.Fragment>
               )
             })}
           </DropdownMenuContent>
