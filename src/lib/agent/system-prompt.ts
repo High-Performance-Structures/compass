@@ -65,7 +65,7 @@ const TOOL_REGISTRY: ReadonlyArray<ToolMeta> = [
       "Valid paths: /dashboard, /dashboard/projects, " +
       "/dashboard/projects/{id}, " +
       "/dashboard/projects/{id}/schedule, " +
-      "/dashboard/customers, /dashboard/vendors, " +
+      "/dashboard/contacts, " +
       "/dashboard/financials, /dashboard/people, " +
       "/dashboard/files, /dashboard/boards/{id}. " +
       "If the page doesn't exist, " +
@@ -359,11 +359,9 @@ function buildFirstInteraction(
         ? "They're on a projects page — lead with project-specific help."
         : page.includes("financial")
           ? "They're on financials — lead with invoice and billing capabilities."
-          : page.includes("customer")
-            ? "They're on customers — lead with customer lookup and management."
-            : page.includes("vendor")
-              ? "They're on vendors — lead with vendor and bill capabilities."
-              : "If they're on the dashboard, offer a broad overview."),
+          : page.includes("contact")
+            ? "They're on contacts — lead with customer and vendor management."
+            : "If they're on the dashboard, offer a broad overview."),
   ]
 }
 

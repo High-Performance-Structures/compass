@@ -14,10 +14,9 @@ import {
   MessageCircle,
   LayoutDashboard,
   FolderKanban,
-  Users,
+  Settings,
   FolderOpen,
   UserRound,
-  Building2,
   DollarSign,
 } from "lucide-react"
 
@@ -49,9 +48,9 @@ const NAV_ITEMS = [
     icon: FolderKanban,
   },
   {
-    label: "People",
-    href: "/dashboard/people",
-    icon: Users,
+    label: "Settings",
+    href: "/dashboard/settings",
+    icon: Settings,
   },
   {
     label: "Files",
@@ -59,14 +58,9 @@ const NAV_ITEMS = [
     icon: FolderOpen,
   },
   {
-    label: "Customers",
-    href: "/dashboard/customers",
+    label: "Contacts",
+    href: "/dashboard/contacts",
     icon: UserRound,
-  },
-  {
-    label: "Vendors",
-    href: "/dashboard/vendors",
-    icon: Building2,
   },
   {
     label: "Financials",

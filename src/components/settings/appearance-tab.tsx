@@ -2,74 +2,137 @@
 
 import * as React from "react"
 import { useTheme } from "next-themes"
-import { Check, Sparkles, Trash2 } from "lucide-react"
+import { Check, Moon, Sparkles, Sun, Trash2 } from "lucide-react"
 import { toast } from "sonner"
-import { Label } from "@/components/ui/label"
-import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Separator } from "@/components/ui/separator"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
+import { cn } from "@/lib/utils"
 import { useCompassTheme } from "@/components/theme-provider"
 import { useAgentOptional } from "@/components/agent/chat-provider"
 import { THEME_PRESETS } from "@/lib/theme/presets"
 import { deleteCustomTheme } from "@/app/actions/themes"
-import type { ThemeDefinition } from "@/lib/theme/types"
+import type { ThemeDefinition, ColorMap } from "@/lib/theme/types"
+
+/**
+ * Mini UI preview showing what the theme actually looks like.
+ * Renders a tiny mockup: sidebar strip, background, primary accent,
+ * foreground text lines.
+ */
+function ThemePreview({
+  colors,
+}: {
+  readonly colors: ColorMap
+}) {
+  return (
+    <div
+      className="relative h-12 w-full overflow-hidden rounded-md"
+      style={{ backgroundColor: colors.background }}
+    >
+      {/* sidebar strip */}
+      <div
+        className="absolute inset-y-0 left-0 w-5"
+        style={{ backgroundColor: colors.sidebar }}
+      >
+        {/* sidebar dots */}
+        <div className="mt-2 flex flex-col items-center gap-0.5">
+          <div
+            className="size-1 rounded-full"
+            style={{
+              backgroundColor: colors["sidebar-foreground"],
+              opacity: 0.5,
+            }}
+          />
+          <div
+            className="size-1 rounded-full"
+            style={{
+              backgroundColor: colors["sidebar-accent"],
+            }}
+          />
+          <div
+            className="size-1 rounded-full"
+            style={{
+              backgroundColor: colors["sidebar-foreground"],
+              opacity: 0.5,
+            }}
+          />
+        </div>
+      </div>
+
+      {/* main content area */}
+      <div className="ml-5 p-1.5">
+        {/* primary accent bar */}
+        <div
+          className="mb-1 h-1 w-6 rounded-full"
+          style={{ backgroundColor: colors.primary }}
+        />
+        {/* text lines */}
+        <div
+          className="mb-0.5 h-0.5 w-10 rounded-full"
+          style={{
+            backgroundColor: colors.foreground,
+            opacity: 0.5,
+          }}
+        />
+        <div
+          className="mb-0.5 h-0.5 w-7 rounded-full"
+          style={{
+            backgroundColor: colors.foreground,
+            opacity: 0.25,
+          }}
+        />
+      </div>
+    </div>
+  )
+}
 
 function ThemeCard({
   theme,
   isActive,
+  isDark,
   onSelect,
   onDelete,
 }: {
   readonly theme: ThemeDefinition
   readonly isActive: boolean
+  readonly isDark: boolean
   readonly onSelect: (e: React.MouseEvent) => void
   readonly onDelete?: () => void
 }) {
+  const colors = isDark ? theme.dark : theme.light
+
   return (
     <button
       type="button"
       onClick={onSelect}
-      className={
-        "relative flex flex-col gap-1.5 rounded-lg border p-3 " +
-        "text-left transition-colors hover:bg-accent/50 " +
-        (isActive
+      className={cn(
+        "group relative flex flex-col overflow-hidden",
+        "rounded-lg border text-left transition-all duration-150",
+        "hover:border-muted-foreground/30",
+        isActive
           ? "border-primary ring-1 ring-primary"
-          : "border-border")
-      }
-    >
-      {isActive && (
-        <div className="absolute top-2 right-2 rounded-full bg-primary p-0.5">
-          <Check className="h-3 w-3 text-primary-foreground" />
-        </div>
+          : "border-border"
       )}
+    >
+      <ThemePreview colors={colors} />
 
-      <div className="flex gap-1">
-        {[
-          theme.previewColors.primary,
-          theme.previewColors.background,
-          theme.previewColors.foreground,
-        ].map((color, i) => (
-          <div
-            key={i}
-            className="h-5 w-5 rounded-full border border-border/50"
-            style={{ backgroundColor: color }}
-          />
-        ))}
-      </div>
-
-      <div className="flex items-center gap-1.5">
-        <span className="text-xs font-medium truncate">
+      <div className="flex items-center gap-1.5 px-2 py-1.5">
+        {isActive && (
+          <div className="flex size-4 shrink-0 items-center justify-center rounded-full bg-primary">
+            <Check className="size-2.5 text-primary-foreground" />
+          </div>
+        )}
+        <span
+          className={cn(
+            "truncate text-xs font-medium",
+            isActive ? "text-primary" : "text-foreground"
+          )}
+        >
           {theme.name}
         </span>
         {!theme.isPreset && (
-          <Badge variant="secondary" className="text-[10px] px-1 py-0">
+          <Badge
+            variant="secondary"
+            className="ml-auto shrink-0 text-[10px] px-1 py-0"
+          >
             Custom
           </Badge>
         )}
@@ -82,13 +145,15 @@ function ThemeCard({
             e.stopPropagation()
             onDelete()
           }}
-          className={
-            "absolute bottom-2 right-2 rounded p-1 " +
-            "text-muted-foreground hover:text-destructive " +
-            "hover:bg-destructive/10 transition-colors"
-          }
+          className={cn(
+            "absolute top-1.5 right-1.5 rounded-md p-1",
+            "bg-background/80 backdrop-blur-sm",
+            "text-muted-foreground hover:text-destructive",
+            "opacity-0 group-hover:opacity-100",
+            "transition-opacity duration-100"
+          )}
         >
-          <Trash2 className="h-3 w-3" />
+          <Trash2 className="size-3" />
         </button>
       )}
     </button>
@@ -96,7 +161,7 @@ function ThemeCard({
 }
 
 export function AppearanceTab() {
-  const { theme, setTheme } = useTheme()
+  const { resolvedTheme, setTheme } = useTheme()
   const {
     activeThemeId,
     setVisualTheme,
@@ -104,6 +169,8 @@ export function AppearanceTab() {
     refreshCustomThemes,
   } = useCompassTheme()
   const panel = useAgentOptional()
+
+  const isDark = resolvedTheme === "dark"
 
   const allThemes = React.useMemo<ReadonlyArray<ThemeDefinition>>(
     () => [...THEME_PRESETS, ...customThemes],
@@ -143,35 +210,52 @@ export function AppearanceTab() {
   }
 
   return (
-    <>
-      <div className="space-y-1.5">
-        <Label htmlFor="color-mode" className="text-xs">
-          Color mode
-        </Label>
-        <Select
-          value={theme ?? "light"}
-          onValueChange={setTheme}
-        >
-          <SelectTrigger id="color-mode" className="w-full h-9">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="light">Light</SelectItem>
-            <SelectItem value="dark">Dark</SelectItem>
-          </SelectContent>
-        </Select>
+    <div className="space-y-6">
+      {/* color mode toggle */}
+      <div className="space-y-2">
+        <p className="text-sm font-medium">Color mode</p>
+        <div className="inline-flex rounded-lg border p-0.5">
+          <button
+            type="button"
+            onClick={() => setTheme("light")}
+            className={cn(
+              "flex items-center gap-1.5 rounded-md px-3 py-1.5",
+              "text-sm transition-colors duration-100",
+              !isDark
+                ? "bg-secondary font-medium text-foreground"
+                : "text-muted-foreground hover:text-foreground"
+            )}
+          >
+            <Sun className="size-3.5" />
+            Light
+          </button>
+          <button
+            type="button"
+            onClick={() => setTheme("dark")}
+            className={cn(
+              "flex items-center gap-1.5 rounded-md px-3 py-1.5",
+              "text-sm transition-colors duration-100",
+              isDark
+                ? "bg-secondary font-medium text-foreground"
+                : "text-muted-foreground hover:text-foreground"
+            )}
+          >
+            <Moon className="size-3.5" />
+            Dark
+          </button>
+        </div>
       </div>
 
-      <Separator />
-
-      <div className="space-y-2">
-        <Label className="text-xs">Theme</Label>
-        <div className="grid grid-cols-3 gap-2">
+      {/* theme grid */}
+      <div className="space-y-3">
+        <p className="text-sm font-medium">Theme</p>
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
           {allThemes.map((t) => (
             <ThemeCard
               key={t.id}
               theme={t}
               isActive={activeThemeId === t.id}
+              isDark={isDark}
               onSelect={(e) => handleSelectTheme(t.id, e)}
               onDelete={
                 t.isPreset
@@ -180,20 +264,26 @@ export function AppearanceTab() {
               }
             />
           ))}
+
+          {/* create with AI card */}
+          <button
+            type="button"
+            onClick={handleCreateWithAI}
+            className={cn(
+              "flex flex-col items-center justify-center gap-1.5",
+              "rounded-lg border border-dashed",
+              "py-4 text-muted-foreground",
+              "transition-colors duration-100",
+              "hover:border-primary/50 hover:text-foreground"
+            )}
+          >
+            <Sparkles className="size-4" />
+            <span className="text-xs font-medium">
+              Create with AI
+            </span>
+          </button>
         </div>
       </div>
-
-      <Separator />
-
-      <Button
-        variant="outline"
-        size="sm"
-        className="w-full"
-        onClick={handleCreateWithAI}
-      >
-        <Sparkles className="h-3.5 w-3.5 mr-1.5" />
-        Create with AI
-      </Button>
-    </>
+    </div>
   )
 }

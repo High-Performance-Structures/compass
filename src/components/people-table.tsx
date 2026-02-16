@@ -16,6 +16,7 @@ import {
   type ColumnDef,
   type ColumnFiltersState,
   type SortingState,
+  type VisibilityState,
 } from "@tanstack/react-table"
 
 import type { UserWithRelations } from "@/app/actions/users"
@@ -52,12 +53,15 @@ interface PeopleTableProps {
   users: UserWithRelations[]
   onEditUser?: (user: UserWithRelations) => void
   onDeactivateUser?: (userId: string) => void
+  /** Hides select, teams, groups, and projects columns */
+  compact?: boolean
 }
 
 export function PeopleTable({
   users,
   onEditUser,
   onDeactivateUser,
+  compact = false,
 }: PeopleTableProps) {
   const isMobile = useIsMobile()
   const [sorting, setSorting] = React.useState<SortingState>([])
@@ -213,6 +217,10 @@ export function PeopleTable({
     },
   ]
 
+  const columnVisibility: VisibilityState = compact
+    ? { select: false, teams: false, groups: false, projects: false }
+    : {}
+
   const table = useReactTable({
     data: users,
     columns,
@@ -223,16 +231,18 @@ export function PeopleTable({
     getSortedRowModel: getSortedRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
     onRowSelectionChange: setRowSelection,
+    initialState: compact ? { pagination: { pageSize: 100 } } : undefined,
     state: {
       sorting,
       columnFilters,
       rowSelection,
+      columnVisibility,
     },
   })
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+    <div className={compact ? "flex min-h-0 flex-1 flex-col gap-4" : "space-y-4"}>
+      <div className="flex shrink-0 flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <Input
           placeholder="Search by name or email..."
           value={
@@ -317,7 +327,7 @@ export function PeopleTable({
         </div>
       ) : (
         <>
-          <div className="rounded-md border overflow-hidden">
+          <div className={compact ? "min-h-0 flex-1 rounded-md border overflow-y-auto" : "rounded-md border overflow-hidden"}>
             <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
@@ -368,11 +378,13 @@ export function PeopleTable({
             </div>
           </div>
 
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <div className="text-sm text-muted-foreground">
-              {table.getFilteredSelectedRowModel().rows.length} of{" "}
-              {table.getFilteredRowModel().rows.length} row(s) selected
-            </div>
+          <div className="flex shrink-0 flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            {!compact && (
+              <div className="text-sm text-muted-foreground">
+                {table.getFilteredSelectedRowModel().rows.length} of{" "}
+                {table.getFilteredRowModel().rows.length} row(s) selected
+              </div>
+            )}
             <div className="flex items-center justify-center sm:justify-end space-x-2">
               <Button
                 variant="outline"

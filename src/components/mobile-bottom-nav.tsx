@@ -7,8 +7,8 @@ import {
   IconHomeFilled,
   IconFolder,
   IconFolderFilled,
-  IconUsers,
-  IconUsersGroup,
+  IconSettings,
+  IconSettingsFilled,
   IconFile,
   IconFileFilled,
 } from "@tabler/icons-react"
@@ -99,13 +99,13 @@ export function MobileBottomNav() {
           isActive={isActive("/dashboard/projects")}
         />
         <NavItem
-          href="/dashboard/people"
-          icon={<IconUsers className="size-[22px]" />}
+          href="/dashboard/settings"
+          icon={<IconSettings className="size-[22px]" />}
           activeIcon={
-            <IconUsersGroup className="size-[22px]" />
+            <IconSettingsFilled className="size-[22px]" />
           }
-          label="People"
-          isActive={isActive("/dashboard/people")}
+          label="Settings"
+          isActive={isActive("/dashboard/settings")}
         />
         <NavItem
           href="/dashboard/files"

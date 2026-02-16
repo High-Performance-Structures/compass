@@ -54,6 +54,7 @@ type QueryDataInput = z.infer<typeof queryDataInputSchema>
 
 const VALID_ROUTES: ReadonlyArray<RegExp> = [
   /^\/dashboard$/,
+  /^\/dashboard\/contacts$/,
   /^\/dashboard\/customers$/,
   /^\/dashboard\/vendors$/,
   /^\/dashboard\/projects$/,
@@ -279,7 +280,7 @@ export const agentTools = {
             "Valid: /dashboard, /dashboard/projects, " +
             "/dashboard/projects/{id}, " +
             "/dashboard/projects/{id}/schedule, " +
-            "/dashboard/customers, /dashboard/vendors, " +
+            "/dashboard/contacts, " +
             "/dashboard/financials, /dashboard/people, " +
             "/dashboard/files, /dashboard/boards/{id}",
         }

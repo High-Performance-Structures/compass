@@ -33,10 +33,13 @@ import { SkillsTab } from "@/components/settings/skills-tab"
 import { AIModelTab } from "@/components/settings/ai-model-tab"
 import { AppearanceTab } from "@/components/settings/appearance-tab"
 import { ClaudeCodeTab } from "@/components/settings/claude-code-tab"
+import { TeamTab } from "@/components/settings/team-tab"
 import { useNative } from "@/hooks/use-native"
 import { useBiometricAuth } from "@/hooks/use-biometric-auth"
+import { cn } from "@/lib/utils"
 
 const SETTINGS_TABS = [
+  { value: "team", label: "Team" },
   { value: "general", label: "General" },
   { value: "notifications", label: "Notifications" },
   { value: "appearance", label: "Theme" },
@@ -48,7 +51,7 @@ const SETTINGS_TABS = [
 
 const CREATE_SETTING_TAB = {
   value: "create-setting",
-  label: "Create Setting",
+  label: "Create",
 } as const
 
 interface CustomSettingTab {
@@ -151,6 +154,9 @@ export function SettingsModal({
 
   const renderContent = () => {
     switch (activeTab) {
+      case "team":
+        return <TeamTab />
+
       case "general":
         return (
           <div className="space-y-4 pt-2">
@@ -362,22 +368,31 @@ export function SettingsModal({
     }
   }
 
+  const isWideTab = activeTab === "team"
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="h-[85vh] max-h-[700px] w-full max-w-[600px] overflow-hidden p-0 md:h-auto md:max-h-[85vh] md:max-w-[700px]">
+      <DialogContent
+        className={cn(
+          "w-full p-0 transition-[max-width] duration-200",
+          "h-[85vh] md:h-[700px]",
+          isWideTab
+            ? "sm:max-w-[900px]"
+            : "sm:max-w-[600px] md:max-w-[700px]"
+        )}
+      >
         <DialogHeader className="border-b px-6 py-4">
           <DialogTitle>Settings</DialogTitle>
           <DialogDescription>Manage your app preferences.</DialogDescription>
         </DialogHeader>
-        
-        <div className="flex h-[calc(85vh-80px)] flex-col overflow-hidden md:h-[500px]">
-          {/* Desktop: 2 columns | Mobile: Single column */}
-          <div className="flex flex-1 flex-col gap-6 overflow-hidden p-6 md:grid md:grid-cols-[180px_1fr]">
-            
-            {/* Left Column - Navigation (Desktop only) */}
-            <aside className="hidden md:flex md:flex-col md:overflow-hidden">
-              <div className="flex h-full flex-col justify-between rounded-xl border bg-muted/20 p-2">
-                <div className="flex flex-col gap-1 overflow-y-auto">
+
+        {/* Fixed layout: sidebar + content, no modal-level scroll */}
+        <div className="grid h-[calc(100%-73px)] grid-cols-1 gap-6 p-6 md:grid-cols-[180px_1fr]">
+
+          {/* Left Column - Navigation (Desktop only) */}
+          <aside className="hidden md:block">
+            <div className="flex h-full flex-col justify-between rounded-xl border bg-muted/20 p-2">
+              <div className="flex flex-col gap-1">
                   {menuTabs.map((tab) => (
                     <Button
                       key={tab.value}
@@ -398,50 +413,38 @@ export function SettingsModal({
                     className="h-8 w-full justify-start gap-1.5 text-sm"
                     onClick={openCreateSettingFlow}
                   >
-                    <IconPlus className="size-4" />
-                    {CREATE_SETTING_TAB.label}
+                    <IconPlus className="size-4 shrink-0" />
+                    <span className="truncate">{CREATE_SETTING_TAB.label}</span>
                   </Button>
                 </div>
               </div>
             </aside>
 
-            {/* Middle Column - Content */}
-            <div className="flex min-h-0 flex-col overflow-hidden">
-              {/* Mobile Navigation */}
-              <div className="mb-4 md:hidden">
-                <Select value={activeTab} onValueChange={handleSectionSelect}>
-                  <SelectTrigger className="h-10 w-full">
-                    <SelectValue placeholder="Select section" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {menuTabs.map((tab) => (
-                      <SelectItem key={tab.value} value={tab.value}>
-                        {tab.label}
-                      </SelectItem>
-                    ))}
-                    <SelectItem value={CREATE_SETTING_TAB.value}>
-                      {CREATE_SETTING_TAB.label}
+          {/* Right Column - Content */}
+          <div className="flex min-h-0 flex-col">
+            {/* Mobile Navigation */}
+            <div className="mb-4 md:hidden">
+              <Select value={activeTab} onValueChange={handleSectionSelect}>
+                <SelectTrigger className="h-10 w-full">
+                  <SelectValue placeholder="Select section" />
+                </SelectTrigger>
+                <SelectContent>
+                  {menuTabs.map((tab) => (
+                    <SelectItem key={tab.value} value={tab.value}>
+                      {tab.label}
                     </SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              {/* Settings Content - Scrollable */}
-              <div className="flex-1 overflow-y-auto pr-2">
-                {renderContent()}
-              </div>
+                  ))}
+                  <SelectItem value={CREATE_SETTING_TAB.value}>
+                    {CREATE_SETTING_TAB.label}
+                  </SelectItem>
+                </SelectContent>
+              </Select>
             </div>
 
-            {/* Right Column - AI Chat (Desktop only) - COMMENTED OUT */}
-            {/*
-            <div className="hidden overflow-hidden rounded-xl border bg-background/95 shadow-lg backdrop-blur-sm md:block">
-              <ChatView
-                variant="panel"
-                hideSuggestions
-                inputPlaceholder="Create a new setting"
-              />
+            {/* Settings Content - flex so children can fill height */}
+            <div className="flex min-h-0 flex-1 flex-col">
+              {renderContent()}
             </div>
-            */}
           </div>
         </div>
 

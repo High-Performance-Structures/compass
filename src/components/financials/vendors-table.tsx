@@ -16,6 +16,7 @@ import {
 
 import type { Vendor } from "@/db/schema"
 import { useIsMobile } from "@/hooks/use-mobile"
+import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -61,6 +62,7 @@ export function VendorsTable({
   const [columnFilters, setColumnFilters] =
     React.useState<ColumnFiltersState>([])
   const [rowSelection, setRowSelection] = React.useState({})
+  const [columnVisibility] = React.useState({ category: false })
 
   const sortKey = React.useMemo(() => {
     if (!sorting.length) return "name-asc"
@@ -110,9 +112,35 @@ export function VendorsTable({
     {
       accessorKey: "name",
       header: "Name",
-      cell: ({ row }) => (
-        <span className="font-medium">{row.getValue("name")}</span>
-      ),
+      cell: ({ row }) => {
+        const v = row.original
+        const initials = v.name
+          .split(/\s+/)
+          .map((w) => w[0])
+          .join("")
+          .slice(0, 2)
+          .toUpperCase()
+        return (
+          <div className="flex items-center gap-3">
+            <Avatar size="sm">
+              <AvatarFallback className="text-[10px]">
+                {initials}
+              </AvatarFallback>
+            </Avatar>
+            <div className="min-w-0 flex items-center gap-2">
+              <span className="font-medium truncate">
+                {v.name}
+              </span>
+              <Badge
+                variant="secondary"
+                className="shrink-0 text-[10px] px-1.5 py-0"
+              >
+                {v.category}
+              </Badge>
+            </div>
+          </div>
+        )
+      },
     },
     {
       accessorKey: "category",
@@ -128,18 +156,44 @@ export function VendorsTable({
     {
       accessorKey: "email",
       header: "Email",
-      cell: ({ row }) =>
-        row.getValue("email") || (
-          <span className="text-muted-foreground">-</span>
-        ),
+      cell: ({ row }) => {
+        const email = row.getValue("email") as string | null
+        if (!email) {
+          return (
+            <span className="text-muted-foreground/40">—</span>
+          )
+        }
+        return (
+          <a
+            href={`mailto:${email}`}
+            className="text-sm hover:underline"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {email}
+          </a>
+        )
+      },
     },
     {
       accessorKey: "phone",
       header: "Phone",
-      cell: ({ row }) =>
-        row.getValue("phone") || (
-          <span className="text-muted-foreground">-</span>
-        ),
+      cell: ({ row }) => {
+        const phone = row.getValue("phone") as string | null
+        if (!phone) {
+          return (
+            <span className="text-muted-foreground/40">—</span>
+          )
+        }
+        return (
+          <a
+            href={`tel:${phone}`}
+            className="text-sm tabular-nums hover:underline"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {phone}
+          </a>
+        )
+      },
     },
     {
       id: "actions",
@@ -181,7 +235,8 @@ export function VendorsTable({
     getSortedRowModel: getSortedRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
     onRowSelectionChange: setRowSelection,
-    state: { sorting, columnFilters, rowSelection },
+    initialState: { pagination: { pageSize: 100 } },
+    state: { sorting, columnFilters, rowSelection, columnVisibility },
   })
 
   const emptyState = (
@@ -202,7 +257,7 @@ export function VendorsTable({
         table.getColumn("category")?.setFilterValue(v === "all" ? "" : v)
       }
     >
-      <SelectTrigger className="flex-1 sm:w-[180px] sm:flex-none">
+      <SelectTrigger className="h-8 flex-1 sm:w-[200px] sm:flex-none">
         <SelectValue placeholder="Filter by category" />
       </SelectTrigger>
       <SelectContent>
@@ -277,6 +332,11 @@ export function VendorsTable({
                   key={row.id}
                   className="flex items-center gap-3 px-3 py-2.5"
                 >
+                  <Avatar size="sm">
+                    <AvatarFallback className="text-[10px]">
+                      {v.name.split(/\s+/).map((w) => w[0]).join("").slice(0, 2).toUpperCase()}
+                    </AvatarFallback>
+                  </Avatar>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
                       <p className="text-sm font-medium truncate">
@@ -329,22 +389,22 @@ export function VendorsTable({
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+    <div className="flex flex-1 flex-col min-h-0 gap-3">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center shrink-0">
         <Input
           placeholder="Search vendors..."
           value={(table.getColumn("name")?.getFilterValue() as string) ?? ""}
           onChange={(e) =>
             table.getColumn("name")?.setFilterValue(e.target.value)
           }
-          className="w-full sm:max-w-sm"
+          className="h-8 w-full sm:max-w-sm"
         />
         {categoryFilter}
       </div>
-      <div className="rounded-md border overflow-hidden">
-        <div className="overflow-x-auto">
+      <div className="rounded-md border flex-1 min-h-0 overflow-hidden">
+        <div className="overflow-auto h-full">
           <Table>
-            <TableHeader>
+            <TableHeader className="sticky top-0 z-10 bg-background">
               {table.getHeaderGroups().map((hg) => (
                 <TableRow key={hg.id}>
                   {hg.headers.map((header) => (
@@ -391,30 +451,36 @@ export function VendorsTable({
           </Table>
         </div>
       </div>
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div className="text-sm text-muted-foreground">
-          {table.getFilteredSelectedRowModel().rows.length} of{" "}
-          {table.getFilteredRowModel().rows.length} row(s) selected
+      {(table.getPageCount() > 1 ||
+        table.getFilteredSelectedRowModel().rows.length > 0) && (
+        <div className="flex items-center justify-between shrink-0">
+          <div className="text-xs text-muted-foreground">
+            {table.getFilteredSelectedRowModel().rows.length > 0
+              ? `${table.getFilteredSelectedRowModel().rows.length} of ${table.getFilteredRowModel().rows.length} selected`
+              : `${table.getFilteredRowModel().rows.length} contacts`}
+          </div>
+          {table.getPageCount() > 1 && (
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => table.previousPage()}
+                disabled={!table.getCanPreviousPage()}
+              >
+                Previous
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => table.nextPage()}
+                disabled={!table.getCanNextPage()}
+              >
+                Next
+              </Button>
+            </div>
+          )}
         </div>
-        <div className="flex items-center space-x-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => table.previousPage()}
-            disabled={!table.getCanPreviousPage()}
-          >
-            Previous
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => table.nextPage()}
-            disabled={!table.getCanNextPage()}
-          >
-            Next
-          </Button>
-        </div>
-      </div>
+      )}
     </div>
   )
 }

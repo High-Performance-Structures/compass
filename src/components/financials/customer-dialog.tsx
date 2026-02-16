@@ -85,9 +85,11 @@ export function CustomerDialog({
             <Input
               id="cust-name"
               className="h-9"
+              placeholder="Contact name"
               value={name}
               onChange={(e) => setName(e.target.value)}
               required
+              autoFocus
             />
           </div>
           <div className="space-y-1.5">
@@ -97,43 +99,48 @@ export function CustomerDialog({
             <Input
               id="cust-company"
               className="h-9"
+              placeholder="Company or organization"
               value={company}
               onChange={(e) => setCompany(e.target.value)}
             />
           </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="cust-email" className="text-xs">
-              Email
-            </Label>
-            <Input
-              id="cust-email"
-              type="email"
-              className="h-9"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-            />
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="cust-phone" className="text-xs">
-              Phone
-            </Label>
-            <Input
-              id="cust-phone"
-              className="h-9"
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-            />
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <Label htmlFor="cust-email" className="text-xs">
+                Email
+              </Label>
+              <Input
+                id="cust-email"
+                type="email"
+                className="h-9"
+                placeholder="email@example.com"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="cust-phone" className="text-xs">
+                Phone
+              </Label>
+              <Input
+                id="cust-phone"
+                className="h-9"
+                placeholder="(555) 123-4567"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+              />
+            </div>
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="cust-address" className="text-xs">
               Address
             </Label>
-            <Textarea
+            <Input
               id="cust-address"
+              className="h-9"
+              placeholder="Street, city, state"
               value={address}
               onChange={(e) => setAddress(e.target.value)}
-              rows={2}
-              className="text-sm"
             />
           </div>
           <div className="space-y-1.5">
@@ -145,7 +152,8 @@ export function CustomerDialog({
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               rows={2}
-              className="text-sm"
+              placeholder="Additional notes..."
+              className="text-sm resize-none"
             />
           </div>
         </ResponsiveDialogBody>
