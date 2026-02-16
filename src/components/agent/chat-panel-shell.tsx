@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react"
 import { usePathname } from "next/navigation"
-import { MessageSquare } from "lucide-react"
+import { MessageSquare, XIcon } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import {
@@ -148,16 +148,16 @@ export function ChatPanelShell() {
           isDashboard
             ? "flex-1 bg-background"
             : [
-                "bg-background dark:bg-[oklch(0.255_0_0)]",
-                "fixed inset-0 z-50",
-                "md:relative md:inset-auto md:z-auto",
-                "md:shrink-0 md:overflow-hidden",
-                "md:rounded-xl md:border md:border-border md:shadow-lg md:my-2 md:mr-2",
-                isResizing && "transition-none",
-                isOpen
-                  ? "translate-x-0 md:opacity-100"
-                  : "translate-x-full md:translate-x-0 md:w-0 md:border-transparent md:shadow-none md:opacity-0",
-              ]
+              "bg-background dark:bg-[oklch(0.255_0_0)]",
+              "fixed inset-0 z-50",
+              "md:relative md:inset-auto md:z-auto",
+              "md:shrink-0 md:overflow-hidden",
+              "md:rounded-xl md:border md:border-border md:shadow-lg md:my-2 md:mr-2",
+              isResizing && "transition-none",
+              isOpen
+                ? "translate-x-0 md:opacity-100"
+                : "translate-x-full md:translate-x-0 md:w-0 md:border-transparent md:shadow-none md:opacity-0",
+            ]
         )}
         style={{ ...panelStyle, ...keyboardStyle }}
       >
@@ -184,14 +184,22 @@ export function ChatPanelShell() {
       )}
 
       {/* Mobile FAB (panel mode only) */}
-      {!isDashboard && !isOpen && (
+      {/* Chat Toggle FAB (visible on specific pages) */}
+      {!isDashboard && (
         <Button
           size="icon"
-          className="fixed bottom-4 right-4 z-50 h-12 w-12 rounded-full shadow-lg md:hidden"
+          className={cn(
+            "fixed bottom-4 right-4 z-50 h-12 w-12 rounded-full shadow-lg transition-transform",
+            isOpen && "bg-muted-foreground text-background hover:bg-muted-foreground/90 rotate-90"
+          )}
           onClick={toggle}
-          aria-label="Open chat"
+          aria-label={isOpen ? "Close chat" : "Open chat"}
         >
-          <MessageSquare className="h-5 w-5" />
+          {isOpen ? (
+            <XIcon className="h-5 w-5" />
+          ) : (
+            <MessageSquare className="h-5 w-5" />
+          )}
         </Button>
       )}
     </>
