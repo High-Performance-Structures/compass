@@ -53,15 +53,6 @@ export function toSidebarUser(user: AuthUser): SidebarUser {
 
 export async function getCurrentUser(): Promise<AuthUser | null> {
   try {
-    // check for demo session cookie first
-    try {
-      const cookieStore = await cookies()
-      const isDemoSession = cookieStore.get("compass-demo")?.value === "true"
-      if (isDemoSession) return DEMO_USER
-    } catch {
-      // cookies() may throw in non-request contexts
-    }
-
     // check if workos is configured
     const isWorkOSConfigured =
       process.env.WORKOS_API_KEY &&
@@ -115,15 +106,8 @@ export async function getCurrentUser(): Promise<AuthUser | null> {
       return null
     }
 
-    // real session exists -- clear stale demo cookie if present
-    try {
-      const cookieStore = await cookies()
-      if (cookieStore.get("compass-demo")) {
-        cookieStore.delete("compass-demo")
-      }
-    } catch {
-      // cookies() may throw in non-request contexts
-    }
+    // demo cookie cleanup handled by middleware (can't delete
+    // cookies from Server Components -- only actions/routes)
 
     const workosUser = session.user
 
