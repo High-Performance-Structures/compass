@@ -16,7 +16,7 @@ import {
 
 import type { Customer } from "@/db/schema"
 import { useIsMobile } from "@/hooks/use-mobile"
-import { Badge } from "@/components/ui/badge"
+import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import {
@@ -110,49 +110,90 @@ export function CustomersTable({
     {
       accessorKey: "name",
       header: "Name",
-      cell: ({ row }) => (
-        <span className="font-medium">{row.getValue("name")}</span>
-      ),
-    },
-    {
-      accessorKey: "company",
-      header: "Company",
-      cell: ({ row }) =>
-        row.getValue("company") || (
-          <span className="text-muted-foreground">-</span>
-        ),
+      cell: ({ row }) => {
+        const c = row.original
+        const initials = c.name
+          .split(/\s+/)
+          .map((w) => w[0])
+          .join("")
+          .slice(0, 2)
+          .toUpperCase()
+        return (
+          <div className="flex items-center gap-3">
+            <Avatar size="sm">
+              <AvatarFallback className="text-[10px]">
+                {initials}
+              </AvatarFallback>
+            </Avatar>
+            <div className="min-w-0">
+              <span className="font-medium block truncate">
+                {c.name}
+              </span>
+              {c.company ? (
+                <span className="text-xs text-muted-foreground block truncate">
+                  {c.company}
+                </span>
+              ) : null}
+            </div>
+          </div>
+        )
+      },
     },
     {
       accessorKey: "email",
       header: "Email",
-      cell: ({ row }) =>
-        row.getValue("email") || (
-          <span className="text-muted-foreground">-</span>
-        ),
+      cell: ({ row }) => {
+        const email = row.getValue("email") as string | null
+        if (!email) {
+          return (
+            <span className="text-muted-foreground/40">—</span>
+          )
+        }
+        return (
+          <a
+            href={`mailto:${email}`}
+            className="text-sm hover:underline"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {email}
+          </a>
+        )
+      },
     },
     {
       accessorKey: "phone",
       header: "Phone",
-      cell: ({ row }) =>
-        row.getValue("phone") || (
-          <span className="text-muted-foreground">-</span>
-        ),
-    },
-    {
-      accessorKey: "netsuiteId",
-      header: "NetSuite ID",
       cell: ({ row }) => {
-        const nsId = row.getValue("netsuiteId") as string | null
-        if (!nsId) return <span className="text-muted-foreground">-</span>
-        return <Badge variant="outline">{nsId}</Badge>
+        const phone = row.getValue("phone") as string | null
+        if (!phone) {
+          return (
+            <span className="text-muted-foreground/40">—</span>
+          )
+        }
+        return (
+          <a
+            href={`tel:${phone}`}
+            className="text-sm tabular-nums hover:underline"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {phone}
+          </a>
+        )
       },
     },
     {
       accessorKey: "createdAt",
-      header: "Created",
+      header: "Added",
       cell: ({ row }) => {
         const d = row.getValue("createdAt") as string
-        return new Date(d).toLocaleDateString()
+        return (
+          <span className="text-muted-foreground text-xs tabular-nums">
+            {new Date(d).toLocaleDateString("en-US", {
+              month: "short",
+              year: "numeric",
+            })}
+          </span>
+        )
       },
     },
     {
@@ -195,6 +236,7 @@ export function CustomersTable({
     getSortedRowModel: getSortedRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
     onRowSelectionChange: setRowSelection,
+    initialState: { pagination: { pageSize: 100 } },
     state: { sorting, columnFilters, rowSelection },
   })
 
@@ -241,6 +283,11 @@ export function CustomersTable({
                   key={row.id}
                   className="flex items-center gap-3 px-3 py-2.5"
                 >
+                  <Avatar size="sm">
+                    <AvatarFallback className="text-[10px]">
+                      {c.name.split(/\s+/).map((w) => w[0]).join("").slice(0, 2).toUpperCase()}
+                    </AvatarFallback>
+                  </Avatar>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium truncate">
                       {c.name}
@@ -286,19 +333,19 @@ export function CustomersTable({
   }
 
   return (
-    <div className="space-y-4">
+    <div className="flex flex-1 flex-col min-h-0 gap-3">
       <Input
         placeholder="Search customers..."
         value={(table.getColumn("name")?.getFilterValue() as string) ?? ""}
         onChange={(e) =>
           table.getColumn("name")?.setFilterValue(e.target.value)
         }
-        className="w-full sm:max-w-sm"
+        className="h-8 w-full sm:max-w-sm shrink-0"
       />
-      <div className="rounded-md border overflow-hidden">
-        <div className="overflow-x-auto">
+      <div className="rounded-md border flex-1 min-h-0 overflow-hidden">
+        <div className="overflow-auto h-full">
           <Table>
-            <TableHeader>
+            <TableHeader className="sticky top-0 z-10 bg-background">
               {table.getHeaderGroups().map((headerGroup) => (
                 <TableRow key={headerGroup.id}>
                   {headerGroup.headers.map((header) => (
@@ -345,30 +392,36 @@ export function CustomersTable({
           </Table>
         </div>
       </div>
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div className="text-sm text-muted-foreground">
-          {table.getFilteredSelectedRowModel().rows.length} of{" "}
-          {table.getFilteredRowModel().rows.length} row(s) selected
+      {(table.getPageCount() > 1 ||
+        table.getFilteredSelectedRowModel().rows.length > 0) && (
+        <div className="flex items-center justify-between shrink-0">
+          <div className="text-xs text-muted-foreground">
+            {table.getFilteredSelectedRowModel().rows.length > 0
+              ? `${table.getFilteredSelectedRowModel().rows.length} of ${table.getFilteredRowModel().rows.length} selected`
+              : `${table.getFilteredRowModel().rows.length} contacts`}
+          </div>
+          {table.getPageCount() > 1 && (
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => table.previousPage()}
+                disabled={!table.getCanPreviousPage()}
+              >
+                Previous
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => table.nextPage()}
+                disabled={!table.getCanNextPage()}
+              >
+                Next
+              </Button>
+            </div>
+          )}
         </div>
-        <div className="flex items-center space-x-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => table.previousPage()}
-            disabled={!table.getCanPreviousPage()}
-          >
-            Previous
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => table.nextPage()}
-            disabled={!table.getCanNextPage()}
-          >
-            Next
-          </Button>
-        </div>
-      </div>
+      )}
     </div>
   )
 }

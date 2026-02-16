@@ -9,8 +9,6 @@ import {
   IconMessageCircle,
   IconReceipt,
   IconSettings,
-  IconTruck,
-  IconUsers,
 } from "@tabler/icons-react"
 import { usePathname } from "next/navigation"
 
@@ -21,7 +19,7 @@ import { NavFiles } from "@/components/nav-files"
 import { NavProjects } from "@/components/nav-projects"
 import { NavConversations } from "@/components/nav-conversations"
 import { NavUser } from "@/components/nav-user"
-import { useSettings } from "@/components/settings-provider"
+// settings is now a page at /dashboard/settings
 import { openFeedbackDialog } from "@/components/feedback-widget"
 import type { SidebarUser } from "@/lib/auth"
 import {
@@ -43,11 +41,6 @@ const data = {
       icon: IconFolder,
     },
     {
-      title: "Team",
-      url: "/dashboard/people",
-      icon: IconUsers,
-    },
-    {
       title: "Schedule",
       url: "/dashboard/projects/demo-project-1/schedule",
       icon: IconCalendarStats,
@@ -63,14 +56,9 @@ const data = {
       icon: IconFiles,
     },
     {
-      title: "Customers",
-      url: "/dashboard/customers",
+      title: "Contacts",
+      url: "/dashboard/contacts",
       icon: IconAddressBook,
-    },
-    {
-      title: "Vendors",
-      url: "/dashboard/vendors",
-      icon: IconTruck,
     },
     {
       title: "Financials",
@@ -81,7 +69,7 @@ const data = {
   navSecondary: [
     {
       title: "Settings",
-      url: "#",
+      url: "/dashboard/settings",
       icon: IconSettings,
     },
   ],
@@ -99,7 +87,6 @@ function SidebarNav({
 }) {
   const pathname = usePathname()
   const { state, setOpen } = useSidebar()
-  const { open: openSettings } = useSettings()
   const isExpanded = state === "expanded"
   const isFilesMode = pathname?.startsWith("/dashboard/files")
   const isConversationsMode = pathname?.startsWith("/dashboard/conversations")
@@ -124,13 +111,7 @@ function SidebarNav({
         ? "projects"
         : "main"
 
-  const secondaryItems = [
-    ...data.navSecondary.map((item) =>
-      item.title === "Settings"
-        ? { ...item, onClick: openSettings }
-        : item
-    ),
-  ]
+  const secondaryItems = [...data.navSecondary]
 
   return (
     <div key={mode} className="animate-in fade-in slide-in-from-left-1 flex flex-1 flex-col duration-150">

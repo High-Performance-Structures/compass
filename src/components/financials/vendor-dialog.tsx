@@ -16,7 +16,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { Textarea } from "@/components/ui/textarea"
 import type { Vendor } from "@/db/schema"
 
 const VENDOR_CATEGORIES = [
@@ -89,68 +88,79 @@ export function VendorDialog({
     >
       <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0">
         <ResponsiveDialogBody>
-          <div className="space-y-1.5">
-            <Label htmlFor="vendor-name" className="text-xs">
-              Name *
-            </Label>
-            <Input
-              id="vendor-name"
-              className="h-9"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              required
-            />
+          <div className="grid grid-cols-5 gap-3">
+            <div className="col-span-3 space-y-1.5">
+              <Label htmlFor="vendor-name" className="text-xs">
+                Name *
+              </Label>
+              <Input
+                id="vendor-name"
+                className="h-9"
+                placeholder="Vendor name"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                required
+                autoFocus
+              />
+            </div>
+            <div className="col-span-2 space-y-1.5">
+              <Label htmlFor="vendor-category" className="text-xs">
+                Category *
+              </Label>
+              <Select value={category} onValueChange={setCategory}>
+                <SelectTrigger
+                  id="vendor-category"
+                  className="h-9"
+                >
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {VENDOR_CATEGORIES.map((c) => (
+                    <SelectItem key={c} value={c}>
+                      {c}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="vendor-category" className="text-xs">
-              Category *
-            </Label>
-            <Select value={category} onValueChange={setCategory}>
-              <SelectTrigger id="vendor-category" className="h-9">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {VENDOR_CATEGORIES.map((c) => (
-                  <SelectItem key={c} value={c}>
-                    {c}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="vendor-email" className="text-xs">
-              Email
-            </Label>
-            <Input
-              id="vendor-email"
-              type="email"
-              className="h-9"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-            />
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="vendor-phone" className="text-xs">
-              Phone
-            </Label>
-            <Input
-              id="vendor-phone"
-              className="h-9"
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-            />
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <Label htmlFor="vendor-email" className="text-xs">
+                Email
+              </Label>
+              <Input
+                id="vendor-email"
+                type="email"
+                className="h-9"
+                placeholder="email@example.com"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="vendor-phone" className="text-xs">
+                Phone
+              </Label>
+              <Input
+                id="vendor-phone"
+                className="h-9"
+                placeholder="(555) 123-4567"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+              />
+            </div>
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="vendor-address" className="text-xs">
               Address
             </Label>
-            <Textarea
+            <Input
               id="vendor-address"
+              className="h-9"
+              placeholder="Street, city, state"
               value={address}
               onChange={(e) => setAddress(e.target.value)}
-              rows={2}
-              className="text-sm"
             />
           </div>
         </ResponsiveDialogBody>
