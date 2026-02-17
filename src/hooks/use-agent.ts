@@ -31,7 +31,7 @@ export interface UseAgentReturn {
  */
 export function useAgent(options: UseAgentOptions = {}): UseAgentReturn {
   const {
-    agentServerUrl = "http://localhost:3001",
+    agentServerUrl = "",
     sessionId = crypto.randomUUID(),
     currentPage = "/dashboard",
     timezone = Intl.DateTimeFormat().resolvedOptions().timeZone,
@@ -78,27 +78,36 @@ export function useAgent(options: UseAgentOptions = {}): UseAgentReturn {
       abortControllerRef.current = controller
 
       try {
-        // get auth token from server action
-        const { getAgentToken } = await import("@/app/actions/agent-auth")
-        const tokenResult = await getAgentToken()
+        // Determine endpoint based on mode
+        const isStandalone = agentServerUrl !== ""
+        const endpoint = isStandalone
+          ? `${agentServerUrl}/agent/chat`
+          : `/api/agent`
 
-        if ("error" in tokenResult) {
-          throw new Error(tokenResult.error)
+        const headers: Record<string, string> = {
+          "Content-Type": "application/json",
+          "x-session-id": sessionId,
+          "x-current-page": currentPage,
+          "x-timezone": timezone,
+          "x-model": getAgentModelId(),
+        }
+
+        // Standalone mode: JWT auth via server action
+        // Cloud mode: WorkOS session cookie (same-origin, automatic)
+        if (isStandalone) {
+          const { getAgentToken } = await import("@/app/actions/agent-auth")
+          const tokenResult = await getAgentToken()
+          if ("error" in tokenResult) {
+            throw new Error(tokenResult.error)
+          }
+          headers["Authorization"] = `Bearer ${tokenResult.token}`
         }
 
         const allMessages = [...messages, userMessage]
 
-        // POST to agent server
-        const response = await fetch(`${agentServerUrl}/agent/chat`, {
+        const response = await fetch(endpoint, {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${tokenResult.token}`,
-            "x-session-id": sessionId,
-            "x-current-page": currentPage,
-            "x-timezone": timezone,
-            "x-model": getAgentModelId(),
-          },
+          headers,
           body: JSON.stringify({
             messages: allMessages.map((m) => ({
               role: m.role,

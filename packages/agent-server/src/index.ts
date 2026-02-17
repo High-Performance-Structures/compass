@@ -1,12 +1,11 @@
 #!/usr/bin/env bun
 /**
  * Compass Agent Server
- * Standalone Node.js server wrapping Anthropic Agent SDK
+ * Standalone server using agent-core for the agentic loop
  */
 
 import { config } from "./config"
 import { validateAuth } from "./auth"
-import { getOrCreateSession } from "./sessions"
 import { createAgentStream } from "./stream"
 
 interface ChatRequest {
@@ -38,9 +37,6 @@ async function handleChat(request: Request): Promise<Response> {
   const currentPage = request.headers.get("x-current-page") || "/"
   const timezone = request.headers.get("x-timezone") || "UTC"
   const model = request.headers.get("x-model") || "sonnet"
-
-  // Get or create session
-  getOrCreateSession(sessionId)
 
   // Parse body
   let body: ChatRequest

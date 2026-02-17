@@ -34,7 +34,11 @@ export function useCompassChat(options?: UseCompassChatOptions) {
 
   // use the new agent hook
   const agent = useAgent({
-    agentServerUrl: "http://localhost:3001",
+    agentServerUrl:
+      typeof window !== "undefined" &&
+      "__TAURI__" in window
+        ? "http://localhost:3001"
+        : "",
     sessionId: options?.conversationId ?? undefined,
     currentPage: pathname,
     timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,

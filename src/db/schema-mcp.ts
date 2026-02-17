@@ -3,7 +3,7 @@ import {
   text,
   integer,
 } from "drizzle-orm/sqlite-core"
-import { users } from "./schema"
+import { users, organizations } from "./schema"
 
 export const mcpApiKeys = sqliteTable("mcp_api_keys", {
   id: text("id").primaryKey(),
@@ -41,3 +41,28 @@ export type McpApiKey = typeof mcpApiKeys.$inferSelect
 export type NewMcpApiKey = typeof mcpApiKeys.$inferInsert
 export type McpUsage = typeof mcpUsage.$inferSelect
 export type NewMcpUsage = typeof mcpUsage.$inferInsert
+
+export const mcpServers = sqliteTable("mcp_servers", {
+  id: text("id").primaryKey(),
+  orgId: text("org_id")
+    .notNull()
+    .references(() => organizations.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  slug: text("slug").notNull(), // used as tool name prefix
+  transport: text("transport").notNull(), // "stdio" | "http"
+  command: text("command"), // stdio only
+  args: text("args"), // stdio: JSON array
+  env: text("env"), // stdio: JSON env vars
+  url: text("url"), // http only
+  headers: text("headers"), // http: JSON headers
+  isEnabled: integer("is_enabled", { mode: "boolean" })
+    .notNull()
+    .default(true),
+  createdAt: text("created_at").notNull(),
+  createdBy: text("created_by")
+    .notNull()
+    .references(() => users.id),
+})
+
+export type McpServer = typeof mcpServers.$inferSelect
+export type NewMcpServer = typeof mcpServers.$inferInsert

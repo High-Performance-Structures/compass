@@ -1,7 +1,7 @@
 {
   "name": "agent-server",
   "version": "0.1.0",
-  "description": "Standalone Node.js agent server wrapping Anthropic Agent SDK",
+  "description": "Standalone agent server using agent-core",
   "type": "module",
   "bin": {
     "agent-server": "./src/index.ts"
@@ -12,8 +12,7 @@
     "build": "bun build src/index.ts --target=bun --outdir=dist --minify"
   },
   "dependencies": {
-    "@anthropic-ai/claude-agent-sdk": "^0.2.42",
-    "@anthropic-ai/sdk": "^0.74.0",
+    "agent-core": "file:../agent-core",
     "jose": "^5.9.6",
     "zod": "^3.24.1"
   },
