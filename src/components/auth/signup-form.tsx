@@ -45,11 +45,14 @@ export function SignupForm() {
         success: boolean
         message?: string
         error?: string
+        userId?: string
       }
 
       if (result.success) {
         toast.success(result.message || "Account created!")
-        router.push("/verify-email?email=" + encodeURIComponent(data.email))
+        router.push(
+          `/verify-email?email=${encodeURIComponent(data.email)}&userId=${encodeURIComponent(result.userId ?? "")}`
+        )
       } else {
         toast.error(result.error || "Signup failed")
       }

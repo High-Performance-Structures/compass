@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getWorkOS } from "@workos-inc/authkit-nextjs"
 import { z } from "zod"
+import { ensureUserExists } from "@/lib/auth"
 
 const verifyEmailSchema = z.object({
   code: z.string().min(1, "Verification code is required"),
@@ -50,6 +51,15 @@ export async function POST(request: NextRequest) {
 
     const workos = getWorkOS()
     await workos.userManagement.verifyEmail({ userId, code })
+
+    const user = await workos.userManagement.getUser(userId)
+    await ensureUserExists({
+      id: user.id,
+      email: user.email,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      profilePictureUrl: user.profilePictureUrl,
+    })
 
     return NextResponse.json({
       success: true,
