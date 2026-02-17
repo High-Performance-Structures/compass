@@ -116,7 +116,21 @@ export function DesktopShell({ children }: DesktopShellProps) {
         const { registerShortcuts } = await import(
           "@/lib/desktop/shortcuts"
         )
-        unregister = await registerShortcuts({ triggerSync })
+        const { WindowManager } = await import("@/lib/desktop/window-manager")
+        unregister = await registerShortcuts({
+          triggerSync,
+          onZoomIn: () => {
+            const current = WindowManager.getZoom()
+            WindowManager.setZoom(Math.round((current + 0.1) * 10) / 10)
+          },
+          onZoomOut: () => {
+            const current = WindowManager.getZoom()
+            WindowManager.setZoom(Math.round((current - 0.1) * 10) / 10)
+          },
+          onZoomReset: () => {
+            WindowManager.setZoom(1.0)
+          },
+        })
       } catch (error) {
         console.error("Failed to register desktop shortcuts:", error)
       }

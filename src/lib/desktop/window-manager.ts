@@ -13,6 +13,7 @@ export interface WindowState {
 }
 
 const WINDOW_STATE_KEY = "compass-window-state"
+const ZOOM_LEVEL_KEY = "compass-zoom-level"
 
 // Internal state cache
 let cachedState: WindowState | null = null
@@ -85,6 +86,9 @@ export const WindowManager = {
 
       // Also cache current state
       cachedState = await loadWindowStateFromStore()
+
+      // Restore zoom level
+      await this.restoreZoom()
     } catch (error) {
       console.error("Failed to restore window state:", error)
     }
@@ -173,6 +177,48 @@ export const WindowManager = {
       return await getCurrentWindow().isFocused()
     } catch {
       return true
+    }
+  },
+
+  // Set webview zoom via Tauri native API with CSS font-size fallback
+  async setZoom(level: number): Promise<void> {
+    const clamped = Math.min(2.0, Math.max(0.5, level))
+    try {
+      localStorage.setItem(ZOOM_LEVEL_KEY, String(clamped))
+    } catch {
+      // localStorage not available
+    }
+    try {
+      const { invoke } = await import("@tauri-apps/api/core")
+      await invoke("plugin:webview|set_webview_zoom", {
+        label: "main",
+        scaleFactor: clamped,
+      })
+      document.documentElement.style.fontSize = ""
+    } catch {
+      document.documentElement.style.fontSize = `${clamped * 16}px`
+    }
+  },
+
+  // Get stored zoom level (defaults to 1.0)
+  getZoom(): number {
+    try {
+      const stored = localStorage.getItem(ZOOM_LEVEL_KEY)
+      if (stored) {
+        const level = parseFloat(stored)
+        if (!isNaN(level) && level >= 0.5 && level <= 2.0) return level
+      }
+    } catch {
+      // localStorage not available
+    }
+    return 1.0
+  },
+
+  // Restore zoom from stored level
+  async restoreZoom(): Promise<void> {
+    const level = this.getZoom()
+    if (level !== 1.0) {
+      await this.setZoom(level)
     }
   },
 }

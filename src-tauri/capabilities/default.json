@@ -7,6 +7,7 @@
     "core:app:default",
     "core:window:default",
     "core:webview:default",
+    "core:webview:allow-set-webview-zoom",
     "shell:allow-open",
     "sql:default",
     "sql:allow-load",

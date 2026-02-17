@@ -8,6 +8,9 @@ export interface ShortcutHandlers {
   onNew?: () => void
   onSearch?: () => void
   onSettings?: () => void
+  onZoomIn?: () => void
+  onZoomOut?: () => void
+  onZoomReset?: () => void
 }
 
 interface RegisteredShortcut {
@@ -55,6 +58,18 @@ export async function registerShortcuts(
       // Settings: Cmd/Ctrl + ,
       ...(handlers.onSettings
         ? [{ shortcut: `${modifier}+,`, handler: handlers.onSettings }]
+        : []),
+      // Zoom in: Cmd/Ctrl + =
+      ...(handlers.onZoomIn
+        ? [{ shortcut: `${modifier}+=`, handler: handlers.onZoomIn }]
+        : []),
+      // Zoom out: Cmd/Ctrl + -
+      ...(handlers.onZoomOut
+        ? [{ shortcut: `${modifier}+-`, handler: handlers.onZoomOut }]
+        : []),
+      // Zoom reset: Cmd/Ctrl + 0
+      ...(handlers.onZoomReset
+        ? [{ shortcut: `${modifier}+0`, handler: handlers.onZoomReset }]
         : []),
     ]
 
@@ -128,4 +143,7 @@ export const SHORTCUTS = {
   reload: "Cmd/Ctrl + R",
   devTools: "Cmd/Ctrl + Shift + I",
   quit: "Cmd/Ctrl + Q",
+  zoomIn: "Cmd/Ctrl + =",
+  zoomOut: "Cmd/Ctrl + -",
+  zoomReset: "Cmd/Ctrl + 0",
 } as const

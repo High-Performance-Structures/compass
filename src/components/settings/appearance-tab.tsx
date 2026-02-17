@@ -2,9 +2,10 @@
 
 import * as React from "react"
 import { useTheme } from "next-themes"
-import { Check, Moon, Sparkles, Sun, Trash2 } from "lucide-react"
+import { Check, Moon, RotateCcw, Sparkles, Sun, Trash2 } from "lucide-react"
 import { toast } from "sonner"
 import { Badge } from "@/components/ui/badge"
+import { Slider } from "@/components/ui/slider"
 import { cn } from "@/lib/utils"
 import { useCompassTheme } from "@/components/theme-provider"
 import { useAgentOptional } from "@/components/agent/chat-provider"
@@ -172,6 +173,59 @@ export function AppearanceTab() {
 
   const isDark = resolvedTheme === "dark"
 
+  const [zoomLevel, setZoomLevel] = React.useState(1.0)
+
+  // Load persisted zoom level on mount
+  React.useEffect(() => {
+    try {
+      const stored = localStorage.getItem("compass-zoom-level")
+      if (stored) {
+        const level = parseFloat(stored)
+        if (!isNaN(level) && level >= 0.5 && level <= 2.0) {
+          setZoomLevel(level)
+        }
+      }
+    } catch {
+      // localStorage not available
+    }
+  }, [])
+
+  async function applyZoom(level: number): Promise<void> {
+    const clamped = Math.min(2.0, Math.max(0.5, level))
+    try {
+      localStorage.setItem("compass-zoom-level", String(clamped))
+    } catch {
+      // localStorage not available
+    }
+    // Use Tauri native webview zoom (true browser-level zoom)
+    try {
+      const { invoke } = await import("@tauri-apps/api/core")
+      await invoke("plugin:webview|set_webview_zoom", {
+        label: "main",
+        scaleFactor: clamped,
+      })
+      // Clear any CSS fallback
+      document.documentElement.style.fontSize = ""
+      return
+    } catch {
+      // Not in Tauri or permission denied — CSS fallback
+    }
+    // Fallback: scale root font-size (slightly thicker icons but functional)
+    document.documentElement.style.fontSize = `${clamped * 16}px`
+  }
+
+  function handleZoomChange(value: number[]): void {
+    const level = value[0]
+    if (level === undefined) return
+    setZoomLevel(level)
+    void applyZoom(level)
+  }
+
+  function handleZoomReset(): void {
+    setZoomLevel(1.0)
+    void applyZoom(1.0)
+  }
+
   const allThemes = React.useMemo<ReadonlyArray<ThemeDefinition>>(
     () => [...THEME_PRESETS, ...customThemes],
     [customThemes],
@@ -243,6 +297,40 @@ export function AppearanceTab() {
             <Moon className="size-3.5" />
             Dark
           </button>
+        </div>
+      </div>
+
+      {/* ui scale */}
+      <div className="space-y-2">
+        <div className="flex items-center justify-between">
+          <p className="text-sm font-medium">UI Scale</p>
+          <div className="flex items-center gap-2">
+            <span className="text-sm tabular-nums text-muted-foreground">
+              {Math.round(zoomLevel * 100)}%
+            </span>
+            {zoomLevel !== 1.0 && (
+              <button
+                type="button"
+                onClick={handleZoomReset}
+                className="flex items-center gap-1 rounded-md px-2 py-0.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+              >
+                <RotateCcw className="size-3" />
+                Reset
+              </button>
+            )}
+          </div>
+        </div>
+        <Slider
+          value={[zoomLevel]}
+          onValueChange={handleZoomChange}
+          min={0.5}
+          max={2.0}
+          step={0.1}
+          className="w-full"
+        />
+        <div className="flex justify-between text-xs text-muted-foreground">
+          <span>50%</span>
+          <span>200%</span>
         </div>
       </div>
 
