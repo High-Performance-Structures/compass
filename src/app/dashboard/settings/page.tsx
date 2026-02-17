@@ -3,20 +3,13 @@
 import * as React from "react"
 import {
   IconAdjustments,
-  IconBrain,
   IconPalette,
   IconPlug,
-  IconPuzzle,
   IconRobot,
-  IconTerminal2,
   IconUsers,
 } from "@tabler/icons-react"
 
 import { useIsMobile } from "@/hooks/use-mobile"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Separator } from "@/components/ui/separator"
 import {
   Select,
   SelectContent,
@@ -24,14 +17,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { Separator } from "@/components/ui/separator"
 import { cn } from "@/lib/utils"
 
 import { PreferencesTab } from "@/components/settings/preferences-tab"
 import { AppearanceTab } from "@/components/settings/appearance-tab"
 import { TeamTab } from "@/components/settings/team-tab"
-import { AIModelTab } from "@/components/settings/ai-model-tab"
-import { SkillsTab } from "@/components/settings/skills-tab"
-import { ClaudeCodeTab } from "@/components/settings/claude-code-tab"
+import { AgentTab } from "@/components/settings/agent-tab"
 import { NetSuiteConnectionStatus } from "@/components/netsuite/connection-status"
 import { SyncControls } from "@/components/netsuite/sync-controls"
 import { GoogleDriveConnectionStatus } from "@/components/google/connection-status"
@@ -40,45 +32,16 @@ const SETTINGS_TABS = [
   { value: "preferences", label: "Preferences", icon: IconAdjustments },
   { value: "appearance", label: "Theme", icon: IconPalette },
   { value: "team", label: "Team", icon: IconUsers },
-  { value: "ai-model", label: "AI Model", icon: IconBrain },
   { value: "agent", label: "Agent", icon: IconRobot },
-  { value: "skills", label: "Skills", icon: IconPuzzle },
   { value: "integrations", label: "Integrations", icon: IconPlug },
-  { value: "claude-code", label: "Code Bridge", icon: IconTerminal2 },
 ] as const
 
 type SectionValue = (typeof SETTINGS_TABS)[number]["value"]
 
 // wide sections get unconstrained width for tables/complex layouts
 const WIDE_SECTIONS = new Set<string>([
-  "appearance", "team", "ai-model", "claude-code",
+  "appearance", "team", "agent",
 ])
-
-function AgentSection() {
-  const [signetId, setSignetId] = React.useState("")
-
-  return (
-    <div className="space-y-4">
-      <div className="space-y-1.5">
-        <Label htmlFor="signet-id" className="text-xs">
-          Signet ID (ETH)
-        </Label>
-        <Input
-          id="signet-id"
-          value={signetId}
-          onChange={(e) => setSignetId(e.target.value)}
-          placeholder="0x..."
-          className="h-9 max-w-sm font-mono"
-          type="password"
-        />
-      </div>
-      <Separator />
-      <Button className="w-full max-w-sm">
-        Configure your agent
-      </Button>
-    </div>
-  )
-}
 
 function IntegrationsSection() {
   return (
@@ -106,16 +69,10 @@ export default function SettingsPage() {
         return <AppearanceTab />
       case "team":
         return <TeamTab />
-      case "ai-model":
-        return <AIModelTab />
       case "agent":
-        return <AgentSection />
-      case "skills":
-        return <SkillsTab />
+        return <AgentTab />
       case "integrations":
         return <IntegrationsSection />
-      case "claude-code":
-        return <ClaudeCodeTab />
       default:
         return null
     }

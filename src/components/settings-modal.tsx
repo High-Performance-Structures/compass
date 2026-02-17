@@ -29,10 +29,8 @@ import { Textarea } from "@/components/ui/textarea"
 import { NetSuiteConnectionStatus } from "@/components/netsuite/connection-status"
 import { SyncControls } from "@/components/netsuite/sync-controls"
 import { GoogleDriveConnectionStatus } from "@/components/google/connection-status"
-import { SkillsTab } from "@/components/settings/skills-tab"
-import { AIModelTab } from "@/components/settings/ai-model-tab"
 import { AppearanceTab } from "@/components/settings/appearance-tab"
-import { ClaudeCodeTab } from "@/components/settings/claude-code-tab"
+import { AgentTab } from "@/components/settings/agent-tab"
 import { TeamTab } from "@/components/settings/team-tab"
 import { useNative } from "@/hooks/use-native"
 import { useBiometricAuth } from "@/hooks/use-biometric-auth"
@@ -44,9 +42,7 @@ const SETTINGS_TABS = [
   { value: "notifications", label: "Notifications" },
   { value: "appearance", label: "Theme" },
   { value: "integrations", label: "Integrations" },
-  { value: "ai-model", label: "AI Model" },
   { value: "agent", label: "Agent" },
-  { value: "skills", label: "Skills" },
 ] as const
 
 const CREATE_SETTING_TAB = {
@@ -91,7 +87,6 @@ export function SettingsModal({
   const [pushNotifs, setPushNotifs] = React.useState(true)
   const [weeklyDigest, setWeeklyDigest] = React.useState(false)
   const [timezone, setTimezone] = React.useState("America/New_York")
-  const [signetId, setSignetId] = React.useState("")
   const [customTabs, setCustomTabs] = React.useState<ReadonlyArray<CustomSettingTab>>([])
   const [activeTab, setActiveTab] = React.useState<string>("general")
   const [newSettingName, setNewSettingName] = React.useState("")
@@ -263,41 +258,11 @@ export function SettingsModal({
             <Separator />
             <NetSuiteConnectionStatus />
             <SyncControls />
-            <Separator />
-            <ClaudeCodeTab />
           </div>
         )
-
-      case "ai-model":
-        return <div className="pt-2"><AIModelTab /></div>
 
       case "agent":
-        return (
-          <div className="space-y-4 pt-2">
-            <div className="space-y-1.5">
-              <Label htmlFor="signet-id" className="text-xs">
-                Signet ID (ETH)
-              </Label>
-              <Input
-                id="signet-id"
-                value={signetId}
-                onChange={(e) => setSignetId(e.target.value)}
-                placeholder="0x..."
-                className="h-9 font-mono"
-                type="password"
-              />
-            </div>
-
-            <Separator />
-
-            <Button className="w-full">
-              Configure your agent
-            </Button>
-          </div>
-        )
-
-      case "skills":
-        return <div className="pt-2"><SkillsTab /></div>
+        return <div className="flex min-h-0 flex-1 pt-2"><AgentTab /></div>
 
       case CREATE_SETTING_TAB.value:
         return (
