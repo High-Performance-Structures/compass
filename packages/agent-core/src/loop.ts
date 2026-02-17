@@ -16,6 +16,7 @@ interface AgentOptions {
   readonly tools?: readonly ToolDef[]
   readonly mcpClientManager?: McpClientManager
   readonly maxTurns?: number
+  readonly isOAuth?: boolean
 }
 
 export async function* runAgent(
@@ -66,6 +67,11 @@ export async function* runAgent(
     }
   }
 
+  // OAuth endpoint requires mcp_ prefix on tool names
+  const effectiveTools: Tool[] = opts.isOAuth
+    ? apiTools.map((t) => ({ ...t, name: `mcp_${t.name}` }))
+    : apiTools
+
   let turn = 0
 
   while (turn < maxTurns) {
@@ -77,7 +83,7 @@ export async function* runAgent(
         max_tokens: 8192,
         system: opts.systemPrompt,
         messages,
-        tools: apiTools,
+        tools: effectiveTools,
       })
 
       // Stream text deltas and tool_use starts to the caller
@@ -85,9 +91,13 @@ export async function* runAgent(
         if (event.type === "content_block_start") {
           const block = event.content_block
           if (block.type === "tool_use") {
+            const displayName =
+              opts.isOAuth && block.name.startsWith("mcp_")
+                ? block.name.slice(4)
+                : block.name
             yield {
               type: "tool_use",
-              name: block.name,
+              name: displayName,
               toolCallId: block.id,
               input: {},
             }
@@ -141,12 +151,18 @@ export async function* runAgent(
       for (const block of message.content) {
         if (block.type !== "tool_use") continue
 
-        const runFn = toolMap.get(block.name)
+        // Strip mcp_ prefix from OAuth tool calls for local dispatch
+        const toolName =
+          opts.isOAuth && block.name.startsWith("mcp_")
+            ? block.name.slice(4)
+            : block.name
+
+        const runFn = toolMap.get(toolName)
 
         // Route: direct tool -> MCP manager -> unknown
         if (!runFn && !mcpManager) {
           const errorResult = JSON.stringify({
-            error: `Unknown tool: ${block.name}`,
+            error: `Unknown tool: ${toolName}`,
           })
           yield {
             type: "tool_result",
@@ -168,12 +184,12 @@ export async function* runAgent(
             result = await runFn(block.input)
           } else if (mcpManager) {
             result = await mcpManager.callTool(
-              block.name,
+              toolName,
               block.input
             )
           } else {
             result = JSON.stringify({
-              error: `Unknown tool: ${block.name}`,
+              error: `Unknown tool: ${toolName}`,
             })
           }
           let parsed: unknown

@@ -79,6 +79,21 @@ export const agentUsage = sqliteTable("agent_usage", {
   createdAt: text("created_at").notNull(),
 })
 
+// per-user Anthropic OAuth tokens (separate from provider config
+// because OAuth needs refresh token + expiry tracking)
+export const anthropicOauthTokens = sqliteTable(
+  "anthropic_oauth_tokens",
+  {
+    userId: text("user_id")
+      .primaryKey()
+      .references(() => users.id, { onDelete: "cascade" }),
+    accessToken: text("access_token").notNull(),
+    refreshToken: text("refresh_token").notNull(),
+    expiresAt: text("expires_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  }
+)
+
 export type AgentConfig = typeof agentConfig.$inferSelect
 export type NewAgentConfig = typeof agentConfig.$inferInsert
 export type UserProviderConfig = typeof userProviderConfig.$inferSelect
@@ -89,3 +104,7 @@ export type UserModelPreference =
   typeof userModelPreference.$inferSelect
 export type NewUserModelPreference =
   typeof userModelPreference.$inferInsert
+export type AnthropicOauthToken =
+  typeof anthropicOauthTokens.$inferSelect
+export type NewAnthropicOauthToken =
+  typeof anthropicOauthTokens.$inferInsert

@@ -19,3 +19,9 @@ export type {
   DataSource,
   SSEData,
 } from "./types"
+export {
+  generatePKCE,
+  buildAuthUrl,
+  exchangeCode,
+  refreshAccessToken,
+} from "./oauth"

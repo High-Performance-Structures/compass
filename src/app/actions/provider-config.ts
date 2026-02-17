@@ -112,20 +112,21 @@ export async function getProviderConfigForJwt(
       env as unknown as Record<string, string>
     ).PROVIDER_KEY_ENCRYPTION_KEY
 
-    if (!encryptionKey) {
-      return null
-    }
-
     let decryptedApiKey: string | null = null
     if (config.apiKey) {
-      try {
-        decryptedApiKey = await decrypt(
-          config.apiKey,
-          encryptionKey,
-          userId
-        )
-      } catch {
+      if (!encryptionKey) {
+        // Can't decrypt, but still return the config without a key
         decryptedApiKey = null
+      } else {
+        try {
+          decryptedApiKey = await decrypt(
+            config.apiKey,
+            encryptionKey,
+            userId
+          )
+        } catch {
+          decryptedApiKey = null
+        }
       }
     }
 
@@ -189,20 +190,19 @@ export async function setUserProviderConfig(
       }
     }
 
-    const encryptionKey = (
-      env as unknown as Record<string, string>
-    ).PROVIDER_KEY_ENCRYPTION_KEY
-
-    if (!encryptionKey) {
-      return {
-        success: false,
-        error:
-          "Encryption key not configured (PROVIDER_KEY_ENCRYPTION_KEY)",
-      }
-    }
-
     let encryptedApiKey: string | null = null
     if (apiKey) {
+      const encryptionKey = (
+        env as unknown as Record<string, string>
+      ).PROVIDER_KEY_ENCRYPTION_KEY
+
+      if (!encryptionKey) {
+        return {
+          success: false,
+          error:
+            "Encryption key not configured (PROVIDER_KEY_ENCRYPTION_KEY)",
+        }
+      }
       encryptedApiKey = await encrypt(
         apiKey,
         encryptionKey,
@@ -376,20 +376,19 @@ export async function setOrgProviderConfig(
     const { env } = await getCloudflareContext()
     const db = getDb(env.DB)
 
-    const encryptionKey = (
-      env as unknown as Record<string, string>
-    ).PROVIDER_KEY_ENCRYPTION_KEY
-
-    if (!encryptionKey) {
-      return {
-        success: false,
-        error:
-          "Encryption key not configured (PROVIDER_KEY_ENCRYPTION_KEY)",
-      }
-    }
-
     let encryptedApiKey: string | null = null
     if (apiKey) {
+      const encryptionKey = (
+        env as unknown as Record<string, string>
+      ).PROVIDER_KEY_ENCRYPTION_KEY
+
+      if (!encryptionKey) {
+        return {
+          success: false,
+          error:
+            "Encryption key not configured (PROVIDER_KEY_ENCRYPTION_KEY)",
+        }
+      }
       encryptedApiKey = await encrypt(
         apiKey,
         encryptionKey,

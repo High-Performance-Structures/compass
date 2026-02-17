@@ -6,6 +6,7 @@
 
 import { getCurrentUser } from "@/lib/auth"
 import { getProviderConfigForJwt } from "@/app/actions/provider-config"
+import { getOAuthAccessToken } from "@/app/actions/anthropic-oauth"
 import { generateAgentToken } from "@/lib/agent/api-auth"
 import { getCloudflareContext } from "@opennextjs/cloudflare"
 import { getDb } from "@/db"
@@ -107,7 +108,7 @@ export async function POST(
     )
   }
 
-  const provider: ProviderConfig = providerConfig
+  let provider: ProviderConfig = providerConfig
     ? {
         type: mapProviderType(providerConfig.type),
         apiKey: providerConfig.apiKey ?? undefined,
@@ -116,6 +117,26 @@ export async function POST(
           providerConfig.modelOverrides ?? undefined,
       }
     : { type: "anthropic" }
+
+  // Resolve OAuth access token if needed
+  if (providerConfig?.type === "anthropic-oauth") {
+    const accessToken = await getOAuthAccessToken(user.id)
+    if (!accessToken) {
+      return new Response(
+        JSON.stringify({
+          error: "Anthropic OAuth not connected or token expired",
+        }),
+        {
+          status: 401,
+          headers: { "Content-Type": "application/json" },
+        }
+      )
+    }
+    provider = {
+      type: "anthropic",
+      apiKey: accessToken,
+    }
+  }
 
   // Generate JWT for bridge route auth
   const { env } = await getCloudflareContext()
@@ -261,12 +282,16 @@ export async function POST(
         : undefined,
   })
 
+  const isOAuth =
+    provider.apiKey?.startsWith("sk-ant-oat") ?? false
+
   const stream = runAgent({
     provider,
     model,
     systemPrompt,
     messages: msgs,
     mcpClientManager: manager,
+    isOAuth,
   })
 
   // Wrap stream to disconnect MCP after completion

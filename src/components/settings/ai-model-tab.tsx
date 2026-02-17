@@ -3,6 +3,7 @@
 import * as React from "react"
 import {
   Check,
+  ExternalLink,
   Loader2,
   Search,
   Eye,
@@ -47,6 +48,15 @@ import {
   setUserProviderConfig,
   clearUserProviderConfig,
 } from "@/app/actions/provider-config"
+import {
+  exchangeOAuthCode,
+  disconnectOAuth,
+  getOAuthStatus,
+} from "@/app/actions/anthropic-oauth"
+import {
+  generatePKCE,
+  buildAuthUrl,
+} from "@/lib/anthropic-oauth-client"
 import { Slider } from "@/components/ui/slider"
 import { Switch } from "@/components/ui/switch"
 import { cn } from "@/lib/utils"
@@ -224,6 +234,11 @@ function outputCostPerMillion(
 // Provider Configuration Section
 // ============================================================================
 
+type OAuthState =
+  | { step: "idle" }
+  | { step: "connecting"; verifier: string }
+  | { step: "connected"; expiresAt?: string }
+
 function ProviderConfigSection({
   onProviderChanged,
 }: {
@@ -239,16 +254,25 @@ function ProviderConfigSection({
   const [hasStoredKey, setHasStoredKey] =
     React.useState(false)
 
-  // load current config from D1
+  // OAuth state
+  const [oauth, setOAuth] = React.useState<OAuthState>({
+    step: "idle",
+  })
+  const [oauthCode, setOAuthCode] = React.useState("")
+
+  // load current config + OAuth status from D1
   React.useEffect(() => {
-    getUserProviderConfig()
-      .then((result) => {
+    Promise.all([
+      getUserProviderConfig(),
+      getOAuthStatus(),
+    ])
+      .then(([configResult, oauthStatus]) => {
         if (
-          "success" in result &&
-          result.success &&
-          result.data
+          "success" in configResult &&
+          configResult.success &&
+          configResult.data
         ) {
-          const d = result.data
+          const d = configResult.data
           const type = (
             PROVIDER_TYPES.includes(
               d.providerType as ProviderType
@@ -259,6 +283,12 @@ function ProviderConfigSection({
           setActiveType(type)
           setBaseUrl(d.baseUrl ?? "")
           setHasStoredKey(d.hasApiKey)
+        }
+        if (oauthStatus.connected) {
+          setOAuth({
+            step: "connected",
+            expiresAt: oauthStatus.expiresAt,
+          })
         }
       })
       .catch(() => {})
@@ -275,12 +305,64 @@ function ProviderConfigSection({
     setActiveType(type)
     setApiKey("")
     setShowKey(false)
+    setOAuthCode("")
+    if (type !== "anthropic-oauth") {
+      setOAuth({ step: "idle" })
+    }
     const newInfo = PROVIDERS.find(
       (p) => p.type === type
     )
     setBaseUrl(newInfo?.defaultBaseUrl ?? "")
     setHasStoredKey(false)
   }
+
+  const handleOAuthConnect = async (): Promise<void> => {
+    const { verifier, challenge } = await generatePKCE()
+    const url = buildAuthUrl(challenge)
+    setOAuth({ step: "connecting", verifier })
+    window.open(url, "_blank", "noopener")
+  }
+
+  const handleOAuthSubmit = async (): Promise<void> => {
+    if (oauth.step !== "connecting") return
+    const trimmed = oauthCode.trim()
+    if (!trimmed) return
+
+    // Parse "code#state" or just "code"
+    const hashIdx = trimmed.indexOf("#")
+    const code =
+      hashIdx >= 0 ? trimmed.slice(0, hashIdx) : trimmed
+    const state =
+      hashIdx >= 0 ? trimmed.slice(hashIdx + 1) : ""
+
+    setSaving(true)
+    const result = await exchangeOAuthCode(
+      code,
+      state,
+      oauth.verifier
+    )
+    setSaving(false)
+
+    if (result.success) {
+      toast.success("Connected to Anthropic")
+      setOAuth({ step: "connected" })
+      setOAuthCode("")
+      setProviderType("anthropic-oauth")
+      onProviderChanged()
+    } else {
+      toast.error(result.error ?? "OAuth failed")
+    }
+  }
+
+  const handleOAuthDisconnect =
+    async (): Promise<void> => {
+      setSaving(true)
+      await disconnectOAuth()
+      setSaving(false)
+      setOAuth({ step: "idle" })
+      toast.success("Disconnected")
+      onProviderChanged()
+    }
 
   const handleSave = async (): Promise<void> => {
     setSaving(true)
@@ -375,91 +457,184 @@ function ProviderConfigSection({
         {info.description}
       </p>
 
-      {/* credential inputs */}
-      {(info.needsApiKey || info.needsBaseUrl) && (
+      {/* OAuth flow for anthropic-oauth */}
+      {activeType === "anthropic-oauth" && (
         <div className="space-y-2">
-          {info.needsApiKey && (
-            <div className="space-y-1">
-              <Label className="text-[11px]">
-                API Key
-              </Label>
-              <div className="relative">
-                <Input
-                  type={showKey ? "text" : "password"}
-                  value={apiKey}
-                  onChange={(e) =>
-                    setApiKey(e.target.value)
-                  }
-                  placeholder={
-                    hasStoredKey
-                      ? "Key saved (enter new to replace)"
-                      : activeType === "openrouter"
-                        ? "sk-or-..."
-                        : activeType === "anthropic-key"
-                          ? "sk-ant-..."
-                          : "API key"
-                  }
-                  className="h-8 pr-10 text-xs"
-                />
-                <div className="absolute inset-y-0 right-0 flex items-center pr-1">
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setShowKey((v) => !v)
-                    }
-                    className="rounded p-1 text-muted-foreground hover:text-foreground"
-                    aria-label={
-                      showKey ? "Hide key" : "Show key"
-                    }
-                  >
-                    {showKey ? (
-                      <EyeOff className="h-3.5 w-3.5" />
-                    ) : (
-                      <Eye className="h-3.5 w-3.5" />
-                    )}
-                  </button>
-                </div>
+          {oauth.step === "connected" && (
+            <div className="flex items-center justify-between rounded-md border border-green-500/20 bg-green-500/5 px-3 py-2">
+              <div className="flex items-center gap-2">
+                <div className="h-2 w-2 rounded-full bg-green-500" />
+                <span className="text-xs font-medium text-green-700 dark:text-green-400">
+                  Connected
+                </span>
+                {oauth.expiresAt && (
+                  <span className="text-[10px] text-muted-foreground">
+                    expires{" "}
+                    {new Date(
+                      oauth.expiresAt
+                    ).toLocaleDateString()}
+                  </span>
+                )}
               </div>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-7 text-xs text-destructive hover:text-destructive"
+                onClick={handleOAuthDisconnect}
+                disabled={saving}
+              >
+                Disconnect
+              </Button>
             </div>
           )}
 
-          {info.needsBaseUrl && (
-            <div className="space-y-1">
-              <Label className="text-[11px]">
-                Base URL
-              </Label>
-              <Input
-                type="text"
-                value={
-                  baseUrl || info.defaultBaseUrl || ""
-                }
-                onChange={(e) =>
-                  setBaseUrl(e.target.value)
-                }
-                placeholder={
-                  info.defaultBaseUrl ?? "https://..."
-                }
-                className="h-8 text-xs"
-              />
+          {oauth.step === "idle" && (
+            <Button
+              size="sm"
+              className="h-8"
+              onClick={handleOAuthConnect}
+            >
+              <ExternalLink className="mr-1.5 h-3.5 w-3.5" />
+              Connect with Anthropic
+            </Button>
+          )}
+
+          {oauth.step === "connecting" && (
+            <div className="space-y-2">
+              <p className="text-[11px] text-muted-foreground">
+                Authorize in the browser tab that opened,
+                then paste the code below.
+              </p>
+              <div className="flex gap-2">
+                <Input
+                  type="text"
+                  value={oauthCode}
+                  onChange={(e) =>
+                    setOAuthCode(e.target.value)
+                  }
+                  placeholder="Paste authorization code here"
+                  className="h-8 text-xs font-mono"
+                  autoFocus
+                />
+                <Button
+                  size="sm"
+                  className="h-8 shrink-0"
+                  onClick={handleOAuthSubmit}
+                  disabled={saving || !oauthCode.trim()}
+                >
+                  {saving ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    "Submit"
+                  )}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-8 shrink-0"
+                  onClick={() => {
+                    setOAuth({ step: "idle" })
+                    setOAuthCode("")
+                  }}
+                >
+                  Cancel
+                </Button>
+              </div>
             </div>
           )}
         </div>
       )}
 
-      {/* actions */}
-      <div className="flex items-center gap-2">
-        <Button
-          size="sm"
-          className="h-8"
-          onClick={handleSave}
-          disabled={saving}
-        >
-          {saving && (
-            <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
-          )}
-          Save Provider
-        </Button>
-        {activeType !== "anthropic-oauth" && (
+      {/* credential inputs (non-OAuth providers) */}
+      {activeType !== "anthropic-oauth" &&
+        (info.needsApiKey || info.needsBaseUrl) && (
+          <div className="space-y-2">
+            {info.needsApiKey && (
+              <div className="space-y-1">
+                <Label className="text-[11px]">
+                  API Key
+                </Label>
+                <div className="relative">
+                  <Input
+                    type={showKey ? "text" : "password"}
+                    value={apiKey}
+                    onChange={(e) =>
+                      setApiKey(e.target.value)
+                    }
+                    placeholder={
+                      hasStoredKey
+                        ? "Key saved (enter new to replace)"
+                        : activeType === "openrouter"
+                          ? "sk-or-..."
+                          : activeType === "anthropic-key"
+                            ? "sk-ant-..."
+                            : "API key"
+                    }
+                    className="h-8 pr-10 text-xs"
+                  />
+                  <div className="absolute inset-y-0 right-0 flex items-center pr-1">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setShowKey((v) => !v)
+                      }
+                      className="rounded p-1 text-muted-foreground hover:text-foreground"
+                      aria-label={
+                        showKey
+                          ? "Hide key"
+                          : "Show key"
+                      }
+                    >
+                      {showKey ? (
+                        <EyeOff className="h-3.5 w-3.5" />
+                      ) : (
+                        <Eye className="h-3.5 w-3.5" />
+                      )}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {info.needsBaseUrl && (
+              <div className="space-y-1">
+                <Label className="text-[11px]">
+                  Base URL
+                </Label>
+                <Input
+                  type="text"
+                  value={
+                    baseUrl ||
+                    info.defaultBaseUrl ||
+                    ""
+                  }
+                  onChange={(e) =>
+                    setBaseUrl(e.target.value)
+                  }
+                  placeholder={
+                    info.defaultBaseUrl ?? "https://..."
+                  }
+                  className="h-8 text-xs"
+                />
+              </div>
+            )}
+          </div>
+        )}
+
+      {/* actions (non-OAuth providers) */}
+      {activeType !== "anthropic-oauth" && (
+        <div className="flex items-center gap-2">
+          <Button
+            size="sm"
+            className="h-8"
+            onClick={handleSave}
+            disabled={saving}
+          >
+            {saving && (
+              <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+            )}
+            Save Provider
+          </Button>
           <Button
             size="sm"
             variant="ghost"
@@ -470,8 +645,8 @@ function ProviderConfigSection({
             <X className="mr-1 h-3 w-3" />
             Reset to default
           </Button>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   )
 }

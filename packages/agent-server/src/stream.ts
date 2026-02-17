@@ -188,12 +188,16 @@ export async function createAgentStream(
         : undefined,
   })
 
+  const isOAuth =
+    provider.apiKey?.startsWith("sk-ant-oat") ?? false
+
   const agentStream = runAgent({
     provider,
     model: context.model,
     systemPrompt,
     messages,
     mcpClientManager: manager,
+    isOAuth,
   })
 
   // Wrap to disconnect MCP after stream ends
