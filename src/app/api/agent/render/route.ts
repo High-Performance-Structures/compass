@@ -1,7 +1,11 @@
-import { streamText } from "ai"
-import { getAgentModel } from "@/lib/agent/provider"
+import { getCloudflareContext } from "@opennextjs/cloudflare"
 import { getCurrentUser } from "@/lib/auth"
 import { compassCatalog } from "@/lib/agent/render/catalog"
+import { getDb } from "@/db"
+import { agentConfig } from "@/db/schema-ai-config"
+import { eq } from "drizzle-orm"
+
+const DEFAULT_MODEL_ID = "qwen/qwen3-coder-next"
 
 const SYSTEM_PROMPT = compassCatalog.prompt({
   customRules: [
@@ -53,6 +57,31 @@ const SYSTEM_PROMPT = compassCatalog.prompt({
 
 const MAX_PROMPT_LENGTH = 2000
 
+async function getModelConfig(): Promise<{
+  apiKey: string
+  modelId: string
+}> {
+  const { env } = await getCloudflareContext()
+  const apiKey = (env as unknown as Record<string, string>)
+    .OPENROUTER_API_KEY
+
+  if (!apiKey) {
+    throw new Error("OPENROUTER_API_KEY not configured")
+  }
+
+  const db = getDb(env.DB)
+  const config = await db
+    .select({ modelId: agentConfig.modelId })
+    .from(agentConfig)
+    .where(eq(agentConfig.id, "global"))
+    .get()
+
+  return {
+    apiKey,
+    modelId: config?.modelId ?? DEFAULT_MODEL_ID,
+  }
+}
+
 export async function POST(
   req: Request
 ): Promise<Response> {
@@ -61,7 +90,10 @@ export async function POST(
     return new Response("Unauthorized", { status: 401 })
   }
 
-  let body: { prompt?: string; context?: Record<string, unknown> }
+  let body: {
+    prompt?: string
+    context?: Record<string, unknown>
+  }
   try {
     body = (await req.json()) as {
       prompt?: string
@@ -70,14 +102,20 @@ export async function POST(
   } catch {
     return new Response(
       JSON.stringify({ error: "Invalid JSON body" }),
-      { status: 400, headers: { "Content-Type": "application/json" } }
+      {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      }
     )
   }
 
   const { prompt, context } = body
 
   const previousSpec = context?.previousSpec as
-    | { root?: string; elements?: Record<string, unknown> }
+    | {
+        root?: string
+        elements?: Record<string, unknown>
+      }
     | undefined
 
   const sanitizedPrompt = String(prompt || "").slice(
@@ -87,15 +125,15 @@ export async function POST(
 
   let userPrompt = sanitizedPrompt
 
-  // include data context if provided
   const dataContext = context?.dataContext as
     | Record<string, unknown>
     | undefined
   if (dataContext && Object.keys(dataContext).length > 0) {
-    userPrompt += `\n\nAVAILABLE DATA:\n${JSON.stringify(dataContext, null, 2)}`
+    userPrompt +=
+      `\n\nAVAILABLE DATA:\n` +
+      JSON.stringify(dataContext, null, 2)
   }
 
-  // include previous spec for iterative updates
   if (
     previousSpec?.root &&
     previousSpec.elements &&
@@ -115,14 +153,89 @@ IMPORTANT: The current UI is already loaded. Output ONLY the patches needed to m
 DO NOT output patches for elements that don't need to change. Only output what's necessary for the requested modification.`
   }
 
-  const model = await getAgentModel()
+  const { apiKey, modelId } = await getModelConfig()
 
-  const result = streamText({
-    model,
-    system: SYSTEM_PROMPT,
-    prompt: userPrompt,
-    temperature: 0.7,
+  // call OpenRouter directly (OpenAI-compatible streaming)
+  const response = await fetch(
+    "https://openrouter.ai/api/v1/chat/completions",
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+        "HTTP-Referer": "https://compass.build",
+        "X-Title": "Compass",
+      },
+      body: JSON.stringify({
+        model: modelId,
+        stream: true,
+        temperature: 0.7,
+        messages: [
+          { role: "system", content: SYSTEM_PROMPT },
+          { role: "user", content: userPrompt },
+        ],
+      }),
+    }
+  )
+
+  if (!response.ok || !response.body) {
+    return new Response("Model API error", {
+      status: 502,
+    })
+  }
+
+  // transform OpenAI SSE stream into plain text stream
+  // that useUIStream from @json-render/react expects
+  const reader = response.body.getReader()
+  const decoder = new TextDecoder()
+  const encoder = new TextEncoder()
+
+  const stream = new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      let buffer = ""
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) {
+          controller.close()
+          return
+        }
+
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split("\n")
+        buffer = lines.pop() ?? ""
+
+        for (const line of lines) {
+          if (!line.startsWith("data: ")) continue
+          const data = line.slice(6).trim()
+          if (data === "[DONE]") {
+            controller.close()
+            return
+          }
+
+          try {
+            const parsed = JSON.parse(data) as {
+              choices?: ReadonlyArray<{
+                delta?: { content?: string }
+              }>
+            }
+            const content =
+              parsed.choices?.[0]?.delta?.content
+            if (content) {
+              controller.enqueue(encoder.encode(content))
+            }
+          } catch {
+            // skip malformed chunks
+          }
+        }
+      }
+    },
   })
 
-  return result.toTextStreamResponse()
+  return new Response(stream, {
+    headers: {
+      "Content-Type": "text/plain; charset=utf-8",
+      "Transfer-Encoding": "chunked",
+    },
+  })
 }

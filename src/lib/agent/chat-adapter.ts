@@ -2,12 +2,14 @@
 
 // --- Shared utilities ---
 
+import type { AgentMessage } from "@/lib/agent/message-types"
+
 export function getTextFromParts(
-  parts: ReadonlyArray<{ type: string; text?: string }>
+  parts: ReadonlyArray<AgentMessage["parts"][number]>
 ): string {
   return parts
     .filter(
-      (p): p is { type: "text"; text: string } =>
+      (p): p is Extract<typeof p, { type: "text" }> =>
         p.type === "text"
     )
     .map((p) => p.text)

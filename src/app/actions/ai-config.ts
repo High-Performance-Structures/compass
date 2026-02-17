@@ -518,9 +518,7 @@ export async function updateModelPolicy(
         .where(eq(agentConfig.id, "global"))
         .run()
     } else {
-      const {
-        DEFAULT_MODEL_ID,
-      } = await import("@/lib/agent/provider")
+      const DEFAULT_MODEL_ID = "qwen/qwen3-coder-next"
       await db
         .insert(agentConfig)
         .values({

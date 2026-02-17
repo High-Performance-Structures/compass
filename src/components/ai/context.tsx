@@ -1,6 +1,6 @@
 "use client"
 
-import type { LanguageModelUsage } from "ai"
+import type { LanguageModelUsage } from "./types"
 import { type ComponentProps, createContext, useContext } from "react"
 import { getUsage } from "tokenlens"
 import { Button } from "@/components/ui/button"

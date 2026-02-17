@@ -20,14 +20,7 @@ import {
   IconAlertCircle,
   IconEye,
 } from "@tabler/icons-react"
-import {
-  isTextUIPart,
-  isToolUIPart,
-  isReasoningUIPart,
-  type UIMessage,
-  type ToolUIPart,
-  type DynamicToolUIPart,
-} from "ai"
+import type { AgentMessage } from "@/lib/agent/message-types"
 import { cn } from "@/lib/utils"
 import {
   Reasoning,
@@ -176,20 +169,18 @@ function friendlyToolName(raw: string): string {
 }
 
 interface ChatMessageProps {
-  readonly msg: UIMessage
+  readonly msg: AgentMessage
   readonly copiedId: string | null
   readonly onCopy: (id: string, text: string) => void
   readonly onRegenerate: () => void
   readonly isStreaming?: boolean
 }
 
-type AnyToolPart = ToolUIPart | DynamicToolUIPart
-
-function extractToolName(part: AnyToolPart): string {
-  if (part.type === "dynamic-tool") {
-    return part.toolName ?? ""
+function extractToolName(part: AgentMessage["parts"][number]): string {
+  if (part.type === "tool-call") {
+    return part.toolName
   }
-  return part.type.slice(5)
+  return ""
 }
 
 // renders parts in their natural order from the AI SDK
@@ -203,8 +194,8 @@ const ChatMessage = memo(
   }: ChatMessageProps) {
     if (msg.role === "user") {
       const text = msg.parts
-        .filter(isTextUIPart)
-        .map((p) => p.text)
+        .filter((p) => p.type === "text")
+        .map((p) => (p as Extract<typeof p, { type: "text" }>).text)
         .join("")
       return (
         <Message from="user">
@@ -264,19 +255,19 @@ const ChatMessage = memo(
     for (let i = 0; i < msg.parts.length; i++) {
       const part = msg.parts[i]
 
-      if (isReasoningUIPart(part)) {
+      if (part.type === "reasoning") {
         pendingReasoning += part.text
         reasoningStreaming = part.state === "streaming"
         continue
       }
 
-      if (isTextUIPart(part)) {
+      if (part.type === "text") {
         pendingText += part.text
         allText += part.text
         continue
       }
 
-      if (isToolUIPart(part)) {
+      if (part.type === "tool-call") {
         sawToolPart = true
         // flush reasoning accumulated before this tool
         flushThinking(pendingReasoning, i, reasoningStreaming)
@@ -284,24 +275,45 @@ const ChatMessage = memo(
         reasoningStreaming = false
         // flush text as thinking (not final)
         flushText(i, false)
-        const tp = part as AnyToolPart
-        const rawName = extractToolName(tp)
+        const rawName = part.toolName
+
+        // map our state to the expected Tool component state
+        const toolState =
+          part.state === "partial-call"
+            ? "partial-call"
+            : part.state === "call"
+            ? "call"
+            : "result"
+
+        // find matching result for this tool call
+        const resultPart = msg.parts.find(
+          (p) =>
+            p.type === "tool-result" &&
+            p.toolCallId === part.toolCallId
+        ) as Extract<
+          AgentMessage["parts"][number],
+          { type: "tool-result" }
+        > | undefined
+
         elements.push(
-          <Tool key={tp.toolCallId}>
+          <Tool key={`tool-${part.toolCallId}`}>
             <ToolHeader
               title={
                 friendlyToolName(rawName) || "Working"
               }
-              type={tp.type as ToolUIPart["type"]}
-              state={tp.state}
+              type={"tool-call" as const}
+              state={toolState}
             />
             <ToolContent>
-              <ToolInput input={tp.input} />
-              {(tp.state === "output-available" ||
-                tp.state === "output-error") && (
+              <ToolInput input={part.args} />
+              {resultPart && (
                 <ToolOutput
-                  output={tp.output}
-                  errorText={tp.errorText}
+                  output={resultPart.result}
+                  errorText={
+                    resultPart.isError
+                      ? String(resultPart.result)
+                      : undefined
+                  }
                 />
               )}
             </ToolContent>
@@ -316,20 +328,6 @@ const ChatMessage = memo(
       msg.parts.length,
       reasoningStreaming
     )
-
-    // while streaming, if no tool calls have arrived yet
-    // and text is substantial, it's likely chain-of-thought
-    // that'll be reclassified as thinking once tools come in.
-    // render it collapsed so it doesn't flood the screen.
-    const COT_THRESHOLD = 500
-    if (
-      msgStreaming &&
-      !sawToolPart &&
-      pendingText.length > COT_THRESHOLD
-    ) {
-      flushThinking(pendingText, msg.parts.length, true)
-      pendingText = ""
-    }
 
     // flush remaining text as the final response
     flushText(msg.parts.length, true)

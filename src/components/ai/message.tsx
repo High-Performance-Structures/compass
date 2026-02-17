@@ -1,6 +1,6 @@
 "use client"
 
-import type { FileUIPart, UIMessage } from "ai"
+import type { FileUIPart, UIMessage } from "./types"
 import { ChevronLeftIcon, ChevronRightIcon, PaperclipIcon, XIcon } from "lucide-react"
 import type { ComponentProps, HTMLAttributes, ReactElement } from "react"
 import { createContext, memo, useContext, useEffect, useState } from "react"

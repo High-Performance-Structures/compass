@@ -5,6 +5,9 @@ import {
   Check,
   Loader2,
   Search,
+  Eye,
+  EyeOff,
+  X,
 } from "lucide-react"
 import {
   Bar,
@@ -39,6 +42,11 @@ import {
   getUsageMetrics,
   updateModelPolicy,
 } from "@/app/actions/ai-config"
+import {
+  getUserProviderConfig,
+  setUserProviderConfig,
+  clearUserProviderConfig,
+} from "@/app/actions/provider-config"
 import { Slider } from "@/components/ui/slider"
 import { Switch } from "@/components/ui/switch"
 import { cn } from "@/lib/utils"
@@ -46,6 +54,11 @@ import {
   ProviderIcon,
   hasLogo,
 } from "@/components/agent/provider-icon"
+import { setProviderType } from "@/components/agent/model-dropdown"
+
+// ============================================================================
+// Types
+// ============================================================================
 
 const DEFAULT_MODEL_ID = "qwen/qwen3-coder-next"
 
@@ -93,6 +106,79 @@ interface UsageMetrics {
   }>
 }
 
+// ============================================================================
+// Provider types
+// ============================================================================
+
+const PROVIDER_TYPES = [
+  "anthropic-oauth",
+  "anthropic-key",
+  "openrouter",
+  "ollama",
+  "custom",
+] as const
+
+type ProviderType = (typeof PROVIDER_TYPES)[number]
+
+interface ProviderInfo {
+  readonly type: ProviderType
+  readonly label: string
+  readonly icon: string
+  readonly description: string
+  readonly needsApiKey: boolean
+  readonly needsBaseUrl: boolean
+  readonly defaultBaseUrl?: string
+}
+
+const PROVIDERS: ReadonlyArray<ProviderInfo> = [
+  {
+    type: "anthropic-oauth",
+    label: "Anthropic",
+    icon: "Anthropic",
+    description: "Uses CLI OAuth credentials",
+    needsApiKey: false,
+    needsBaseUrl: false,
+  },
+  {
+    type: "anthropic-key",
+    label: "Anthropic (API Key)",
+    icon: "Anthropic",
+    description: "Direct API access with your key",
+    needsApiKey: true,
+    needsBaseUrl: false,
+  },
+  {
+    type: "openrouter",
+    label: "OpenRouter",
+    icon: "OpenRouter",
+    description: "Multi-provider routing",
+    needsApiKey: true,
+    needsBaseUrl: false,
+    defaultBaseUrl: "https://openrouter.ai/api",
+  },
+  {
+    type: "ollama",
+    label: "Ollama",
+    icon: "Ollama",
+    description: "Local inference",
+    needsApiKey: false,
+    needsBaseUrl: true,
+    defaultBaseUrl: "http://localhost:11434",
+  },
+  {
+    type: "custom",
+    label: "Custom",
+    icon: "Custom",
+    description: "Any OpenAI-compatible endpoint",
+    needsApiKey: true,
+    needsBaseUrl: true,
+  },
+]
+
+// ============================================================================
+// Helpers
+// ============================================================================
+
 function formatCost(costPerToken: string): string {
   const perMillion =
     parseFloat(costPerToken) * 1_000_000
@@ -134,7 +220,265 @@ function outputCostPerMillion(
   return parseFloat(completionCost) * 1_000_000
 }
 
-// --- two-panel model picker ---
+// ============================================================================
+// Provider Configuration Section
+// ============================================================================
+
+function ProviderConfigSection({
+  onProviderChanged,
+}: {
+  readonly onProviderChanged: () => void
+}): React.JSX.Element {
+  const [activeType, setActiveType] =
+    React.useState<ProviderType>("anthropic-oauth")
+  const [apiKey, setApiKey] = React.useState("")
+  const [baseUrl, setBaseUrl] = React.useState("")
+  const [showKey, setShowKey] = React.useState(false)
+  const [saving, setSaving] = React.useState(false)
+  const [loading, setLoading] = React.useState(true)
+  const [hasStoredKey, setHasStoredKey] =
+    React.useState(false)
+
+  // load current config from D1
+  React.useEffect(() => {
+    getUserProviderConfig()
+      .then((result) => {
+        if (
+          "success" in result &&
+          result.success &&
+          result.data
+        ) {
+          const d = result.data
+          const type = (
+            PROVIDER_TYPES.includes(
+              d.providerType as ProviderType
+            )
+              ? d.providerType
+              : "anthropic-oauth"
+          ) as ProviderType
+          setActiveType(type)
+          setBaseUrl(d.baseUrl ?? "")
+          setHasStoredKey(d.hasApiKey)
+        }
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false))
+  }, [])
+
+  const info = PROVIDERS.find(
+    (p) => p.type === activeType
+  ) ?? PROVIDERS[0]
+
+  const handleProviderSelect = (
+    type: ProviderType
+  ): void => {
+    setActiveType(type)
+    setApiKey("")
+    setShowKey(false)
+    const newInfo = PROVIDERS.find(
+      (p) => p.type === type
+    )
+    setBaseUrl(newInfo?.defaultBaseUrl ?? "")
+    setHasStoredKey(false)
+  }
+
+  const handleSave = async (): Promise<void> => {
+    setSaving(true)
+    const result = await setUserProviderConfig(
+      activeType,
+      apiKey || undefined,
+      baseUrl || undefined
+    )
+    setSaving(false)
+    if (result.success) {
+      toast.success("Provider updated")
+      setProviderType(activeType)
+      setHasStoredKey(Boolean(apiKey))
+      setApiKey("")
+      onProviderChanged()
+    } else {
+      toast.error(result.error ?? "Failed to save")
+    }
+  }
+
+  const handleClear = async (): Promise<void> => {
+    setSaving(true)
+    const result = await clearUserProviderConfig()
+    setSaving(false)
+    if (result.success) {
+      toast.success("Reverted to default")
+      setActiveType("anthropic-oauth")
+      setApiKey("")
+      setBaseUrl("")
+      setHasStoredKey(false)
+      setProviderType("anthropic-oauth")
+      onProviderChanged()
+    } else {
+      toast.error(result.error ?? "Failed to clear")
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="space-y-3">
+        <Skeleton className="h-4 w-24" />
+        <Skeleton className="h-9 w-full" />
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="space-y-1">
+        <Label className="text-xs">AI Provider</Label>
+        <p className="text-muted-foreground text-xs">
+          Choose where your AI inference runs.
+        </p>
+      </div>
+
+      {/* provider pills */}
+      <div
+        className="flex flex-wrap gap-1.5"
+        role="radiogroup"
+        aria-label="AI Provider"
+      >
+        {PROVIDERS.map((p) => {
+          const isActive = p.type === activeType
+          return (
+            <button
+              key={p.type}
+              type="button"
+              role="radio"
+              aria-checked={isActive}
+              onClick={() =>
+                handleProviderSelect(p.type)
+              }
+              className={cn(
+                "flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition-all",
+                isActive
+                  ? "bg-primary/10 text-primary ring-1 ring-primary/20"
+                  : "text-muted-foreground hover:bg-muted/70"
+              )}
+            >
+              <ProviderIcon
+                provider={p.icon}
+                size={14}
+              />
+              <span>{p.label}</span>
+            </button>
+          )
+        })}
+      </div>
+
+      {/* description */}
+      <p className="text-[11px] text-muted-foreground">
+        {info.description}
+      </p>
+
+      {/* credential inputs */}
+      {(info.needsApiKey || info.needsBaseUrl) && (
+        <div className="space-y-2">
+          {info.needsApiKey && (
+            <div className="space-y-1">
+              <Label className="text-[11px]">
+                API Key
+              </Label>
+              <div className="relative">
+                <Input
+                  type={showKey ? "text" : "password"}
+                  value={apiKey}
+                  onChange={(e) =>
+                    setApiKey(e.target.value)
+                  }
+                  placeholder={
+                    hasStoredKey
+                      ? "Key saved (enter new to replace)"
+                      : activeType === "openrouter"
+                        ? "sk-or-..."
+                        : activeType === "anthropic-key"
+                          ? "sk-ant-..."
+                          : "API key"
+                  }
+                  className="h-8 pr-10 text-xs"
+                />
+                <div className="absolute inset-y-0 right-0 flex items-center pr-1">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setShowKey((v) => !v)
+                    }
+                    className="rounded p-1 text-muted-foreground hover:text-foreground"
+                    aria-label={
+                      showKey ? "Hide key" : "Show key"
+                    }
+                  >
+                    {showKey ? (
+                      <EyeOff className="h-3.5 w-3.5" />
+                    ) : (
+                      <Eye className="h-3.5 w-3.5" />
+                    )}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {info.needsBaseUrl && (
+            <div className="space-y-1">
+              <Label className="text-[11px]">
+                Base URL
+              </Label>
+              <Input
+                type="text"
+                value={
+                  baseUrl || info.defaultBaseUrl || ""
+                }
+                onChange={(e) =>
+                  setBaseUrl(e.target.value)
+                }
+                placeholder={
+                  info.defaultBaseUrl ?? "https://..."
+                }
+                className="h-8 text-xs"
+              />
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* actions */}
+      <div className="flex items-center gap-2">
+        <Button
+          size="sm"
+          className="h-8"
+          onClick={handleSave}
+          disabled={saving}
+        >
+          {saving && (
+            <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+          )}
+          Save Provider
+        </Button>
+        {activeType !== "anthropic-oauth" && (
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-8 text-xs"
+            onClick={handleClear}
+            disabled={saving}
+          >
+            <X className="mr-1 h-3 w-3" />
+            Reset to default
+          </Button>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ============================================================================
+// Two-panel model picker (existing, for OpenRouter admin)
+// ============================================================================
 
 function ModelPicker({
   groups,
@@ -159,7 +503,6 @@ function ModelPicker({
 
   const query = search.toLowerCase()
 
-  // sort: providers with logos first, then alphabetical
   const sortedGroups = React.useMemo(() => {
     return [...groups].sort((a, b) => {
       const aHas = hasLogo(a.provider) ? 0 : 1
@@ -169,7 +512,6 @@ function ModelPicker({
     })
   }, [groups])
 
-  // filter models by search + active provider + cost ceiling
   const filteredGroups = React.useMemo(() => {
     return sortedGroups
       .map((group) => {
@@ -240,7 +582,6 @@ function ModelPicker({
   return (
     <TooltipProvider delayDuration={200}>
     <div className="space-y-3">
-      {/* search bar */}
       <div className="relative">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
         <Input
@@ -251,9 +592,7 @@ function ModelPicker({
         />
       </div>
 
-      {/* two-panel layout - no outer border */}
       <div className="flex gap-2 h-80">
-        {/* provider sidebar */}
         <div className="w-12 shrink-0 overflow-y-auto flex flex-col items-center gap-1 py-0.5">
           <Tooltip>
             <TooltipTrigger asChild>
@@ -315,7 +654,6 @@ function ModelPicker({
           ))}
         </div>
 
-        {/* model list */}
         <div className="flex-1 overflow-y-auto pr-1">
           {filteredGroups.length === 0 ? (
             <div className="flex items-center justify-center h-full text-muted-foreground text-xs">
@@ -380,7 +718,6 @@ function ModelPicker({
         </div>
       </div>
 
-      {/* save bar */}
       {isDirty && (
         <div className="flex items-center justify-between pt-1">
           <p className="text-xs text-muted-foreground">
@@ -407,7 +744,9 @@ function ModelPicker({
   )
 }
 
-// --- usage metrics ---
+// ============================================================================
+// Usage section
+// ============================================================================
 
 const chartConfig = {
   tokens: {
@@ -527,7 +866,9 @@ function UsageSection({
   )
 }
 
-// --- main tab ---
+// ============================================================================
+// Main tab
+// ============================================================================
 
 export function AIModelTab() {
   const [loading, setLoading] = React.useState(true)
@@ -631,6 +972,13 @@ export function AIModelTab() {
 
   return (
     <div className="space-y-3">
+      {/* Provider configuration — always visible */}
+      <ProviderConfigSection
+        onProviderChanged={loadData}
+      />
+
+      <Separator />
+
       <div className="space-y-1.5">
         <Label className="text-xs">Active Model</Label>
         {activeConfig ? (

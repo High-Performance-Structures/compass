@@ -38,6 +38,22 @@ export const userModelPreference = sqliteTable(
   }
 )
 
+// per-user provider configuration
+export const userProviderConfig = sqliteTable(
+  "user_provider_config",
+  {
+    userId: text("user_id")
+      .primaryKey()
+      .references(() => users.id),
+    providerType: text("provider_type").notNull(), // anthropic-oauth | anthropic-key | openrouter | ollama | custom
+    apiKey: text("api_key"), // encrypted, nullable
+    baseUrl: text("base_url"), // nullable
+    modelOverrides: text("model_overrides"), // JSON, nullable
+    isActive: integer("is_active").notNull().default(1),
+    updatedAt: text("updated_at").notNull(),
+  }
+)
+
 // one row per streamText invocation
 export const agentUsage = sqliteTable("agent_usage", {
   id: text("id").primaryKey(),
@@ -65,6 +81,8 @@ export const agentUsage = sqliteTable("agent_usage", {
 
 export type AgentConfig = typeof agentConfig.$inferSelect
 export type NewAgentConfig = typeof agentConfig.$inferInsert
+export type UserProviderConfig = typeof userProviderConfig.$inferSelect
+export type NewUserProviderConfig = typeof userProviderConfig.$inferInsert
 export type AgentUsage = typeof agentUsage.$inferSelect
 export type NewAgentUsage = typeof agentUsage.$inferInsert
 export type UserModelPreference =

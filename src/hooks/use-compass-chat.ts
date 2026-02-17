@@ -2,12 +2,6 @@
 
 import { useEffect, useMemo, useRef } from "react"
 import { usePathname, useRouter } from "next/navigation"
-import { useChat } from "@ai-sdk/react"
-import {
-  DefaultChatTransport,
-  type ChatTransport,
-  type UIMessage,
-} from "ai"
 import { toast } from "sonner"
 import {
   initializeActionHandlers,
@@ -15,40 +9,16 @@ import {
   dispatchToolActions,
   ALL_HANDLER_TYPES,
 } from "@/lib/agent/chat-adapter"
+import { useAgent } from "@/hooks/use-agent"
+import type { AgentMessage } from "@/lib/agent/message-types"
 
 interface UseCompassChatOptions {
   readonly conversationId?: string | null
   readonly onFinish?: (params: {
-    messages: ReadonlyArray<UIMessage>
+    messages: ReadonlyArray<AgentMessage>
   }) => void | Promise<void>
   readonly openPanel?: () => void
-  readonly bridgeTransport?:
-    | ChatTransport<UIMessage>
-    | null
-}
-
-// useChat captures transport at init -- this wrapper
-// delegates at send-time so bridge/default swaps work
-class DynamicTransport
-  implements ChatTransport<UIMessage>
-{
-  private resolve: () => ChatTransport<UIMessage>
-
-  constructor(
-    resolve: () => ChatTransport<UIMessage>
-  ) {
-    this.resolve = resolve
-  }
-
-  sendMessages: ChatTransport<UIMessage>["sendMessages"] =
-    (options) => {
-      return this.resolve().sendMessages(options)
-    }
-
-  reconnectToStream: ChatTransport<UIMessage>["reconnectToStream"] =
-    async (options) => {
-      return this.resolve().reconnectToStream(options)
-    }
+  readonly bridgeTransport?: unknown | null // placeholder for future bridge integration
 }
 
 export function useCompassChat(options?: UseCompassChatOptions) {
@@ -62,68 +32,46 @@ export function useCompassChat(options?: UseCompassChatOptions) {
 
   const dispatchedRef = useRef(new Set<string>())
 
-  const bridgeRef = useRef(options?.bridgeTransport)
-  bridgeRef.current = options?.bridgeTransport
-
-  const defaultTransport = useMemo(
-    () =>
-      new DefaultChatTransport({
-        api: "/api/agent",
-        headers: {
-          "x-current-page": pathname,
-          "x-timezone":
-            Intl.DateTimeFormat().resolvedOptions()
-              .timeZone,
-          "x-conversation-id":
-            options?.conversationId ?? "",
-        },
-      }),
-    [pathname, options?.conversationId]
-  )
-
-  const defaultRef = useRef(defaultTransport)
-  defaultRef.current = defaultTransport
-
-  // stable transport -- delegates at send-time
-  const transport = useMemo(
-    () =>
-      new DynamicTransport(() => {
-        if (bridgeRef.current) {
-          console.log(
-            "[chat] routing → bridge transport"
-          )
-          return bridgeRef.current
-        }
-        console.log(
-          "[chat] routing → default transport"
-        )
-        return defaultRef.current
-      }),
-    []
-  )
-
-  const chatState = useChat({
-    transport,
-    onFinish: options?.onFinish,
-    onError: (err) => {
-      toast.error(err.message)
-    },
+  // use the new agent hook
+  const agent = useAgent({
+    agentServerUrl: "http://localhost:3001",
+    sessionId: options?.conversationId ?? undefined,
+    currentPage: pathname,
+    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+    onFinish: options?.onFinish
+      ? (messages) => options.onFinish?.({ messages })
+      : undefined,
   })
 
   const isGenerating =
-    chatState.status === "streaming" ||
-    chatState.status === "submitted"
+    agent.status === "streaming"
 
   // dispatch tool-based client actions on new messages
   useEffect(() => {
-    const last = chatState.messages.at(-1)
+    const last = agent.messages.at(-1)
     if (last?.role !== "assistant") return
 
+    // convert AgentPart[] to the format expected by dispatchToolActions
+    const toolParts = last.parts
+      .filter((p) => p.type === "tool-result")
+      .map((p) => {
+        const toolResult = p as Extract<
+          (typeof last.parts)[number],
+          { type: "tool-result" }
+        >
+        return {
+          type: "tool-result",
+          toolCallId: toolResult.toolCallId,
+          state: "output-available",
+          output: toolResult.result,
+        }
+      })
+
     dispatchToolActions(
-      last.parts as ReadonlyArray<Record<string, unknown>>,
+      toolParts as ReadonlyArray<Record<string, unknown>>,
       dispatchedRef.current
     )
-  }, [chatState.messages])
+  }, [agent.messages])
 
   // initialize action handlers
   useEffect(() => {
@@ -159,13 +107,13 @@ export function useCompassChat(options?: UseCompassChatOptions) {
   }, [])
 
   return {
-    messages: chatState.messages,
-    setMessages: chatState.setMessages,
-    sendMessage: chatState.sendMessage,
-    regenerate: chatState.regenerate,
-    stop: chatState.stop,
-    status: chatState.status,
-    error: chatState.error,
+    messages: agent.messages,
+    setMessages: agent.setMessages,
+    sendMessage: agent.sendMessage,
+    regenerate: agent.regenerate,
+    stop: agent.stop,
+    status: agent.status,
+    error: agent.error,
     isGenerating,
     pathname,
   }

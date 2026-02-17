@@ -1,516 +1,280 @@
 "use client"
 
 import * as React from "react"
-import {
-  ChevronDown,
-  Check,
-  Search,
-  Loader2,
-  Zap,
-} from "lucide-react"
-import { toast } from "sonner"
-import { Badge } from "@/components/ui/badge"
-import { Input } from "@/components/ui/input"
+import { ChevronDown, Check } from "lucide-react"
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover"
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip"
+import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
-import { ProviderIcon, hasLogo } from "./provider-icon"
-import { useBridgeState } from "./chat-provider"
-import {
-  getActiveModel,
-  getModelList,
-  getUserModelPreference,
-  setUserModelPreference,
-} from "@/app/actions/ai-config"
 
-const DEFAULT_MODEL_ID = "qwen/qwen3-coder-next"
-const DEFAULT_MODEL_NAME = "Qwen3 Coder"
-const DEFAULT_PROVIDER = "Alibaba (Qwen)"
+// ============================================================================
+// Inline Claude sparkle — rendered directly here to avoid stale HMR
+// from provider-icon.tsx. This is the ONLY icon the model dropdown needs.
+// ============================================================================
 
-// anthropic models available through the bridge
-const BRIDGE_MODELS = [
+function ClaudeSparkle({ size = 14 }: { size?: number }): React.JSX.Element {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <path
+        d="M12 2a.9.9 0 0 1 .84.58l2.32 5.94a4.5 4.5 0 0 0 2.6 2.6l5.94 2.32a.9.9 0 0 1 0 1.67l-5.94 2.32a4.5 4.5 0 0 0-2.6 2.6l-2.32 5.94a.9.9 0 0 1-1.68 0l-2.32-5.94a4.5 4.5 0 0 0-2.6-2.6L.3 15.11a.9.9 0 0 1 0-1.67l5.94-2.32a4.5 4.5 0 0 0 2.6-2.6L11.16 2.58A.9.9 0 0 1 12 2Z"
+        fill="#D97757"
+      />
+    </svg>
+  )
+}
+
+// ============================================================================
+// Types
+// ============================================================================
+
+const PROVIDER_TYPES = [
+  "anthropic-oauth",
+  "anthropic-key",
+  "openrouter",
+  "ollama",
+  "custom",
+] as const
+
+type ProviderType = (typeof PROVIDER_TYPES)[number]
+
+const AGENT_MODELS = [
   {
-    id: "claude-sonnet-4-5-20250929",
-    name: "Claude Sonnet 4.5",
-    provider: "Anthropic",
+    id: "sonnet",
+    name: "Sonnet",
+    description: "Fast and capable",
   },
   {
-    id: "claude-opus-4-6",
-    name: "Claude Opus 4.6",
-    provider: "Anthropic",
+    id: "opus",
+    name: "Opus",
+    description: "Most intelligent",
   },
   {
-    id: "claude-haiku-4-5-20251001",
-    name: "Claude Haiku 4.5",
-    provider: "Anthropic",
+    id: "haiku",
+    name: "Haiku",
+    description: "Quick and lightweight",
   },
 ] as const
 
-const DEFAULT_BRIDGE_MODEL = BRIDGE_MODELS[0]
+type AgentModel = (typeof AGENT_MODELS)[number]
 
-// --- shared state so all instances stay in sync ---
-
-interface SharedState {
-  readonly display: {
-    readonly id: string
-    readonly name: string
-    readonly provider: string
-  }
-  readonly global: {
-    readonly id: string
-    readonly name: string
-    readonly provider: string
-  }
-  readonly bridgeModel: {
-    readonly id: string
-    readonly name: string
-    readonly provider: string
-  }
-  readonly allowUserSelection: boolean
-  readonly isAdmin: boolean
-  readonly maxCostPerMillion: string | null
-  readonly configLoaded: boolean
+interface ProviderState {
+  providerType: ProviderType
+  model: AgentModel
+  customModelId: string
 }
 
-let shared: SharedState = {
-  display: {
-    id: DEFAULT_MODEL_ID,
-    name: DEFAULT_MODEL_NAME,
-    provider: DEFAULT_PROVIDER,
-  },
-  global: {
-    id: DEFAULT_MODEL_ID,
-    name: DEFAULT_MODEL_NAME,
-    provider: DEFAULT_PROVIDER,
-  },
-  bridgeModel: {
-    id: DEFAULT_BRIDGE_MODEL.id,
-    name: DEFAULT_BRIDGE_MODEL.name,
-    provider: DEFAULT_BRIDGE_MODEL.provider,
-  },
-  allowUserSelection: true,
-  isAdmin: false,
-  maxCostPerMillion: null,
-  configLoaded: false,
+// ============================================================================
+// Provider display helpers
+// ============================================================================
+
+function providerUsesModelPicker(type: ProviderType): boolean {
+  return (
+    type === "anthropic-oauth" ||
+    type === "anthropic-key" ||
+    type === "openrouter"
+  )
 }
 
+// ============================================================================
+// External store (shared across components)
+// ============================================================================
+
+const STORAGE_KEY = "compass-agent-model"
+const PROVIDER_STORAGE_KEY = "compass-agent-provider"
+
+function loadState(): ProviderState {
+  if (typeof window === "undefined") {
+    return defaultState()
+  }
+
+  try {
+    const raw = localStorage.getItem(PROVIDER_STORAGE_KEY)
+    if (raw) {
+      const parsed = JSON.parse(raw) as Record<string, unknown>
+      const providerType = (
+        PROVIDER_TYPES.includes(parsed.providerType as ProviderType)
+          ? parsed.providerType
+          : "anthropic-oauth"
+      ) as ProviderType
+
+      const modelObj = parsed.model as
+        | { id?: string }
+        | undefined
+      const model =
+        AGENT_MODELS.find((m) => m.id === modelObj?.id) ??
+        AGENT_MODELS[0]
+
+      return {
+        providerType,
+        model,
+        customModelId:
+          typeof parsed.customModelId === "string"
+            ? parsed.customModelId
+            : "",
+      }
+    }
+  } catch {
+    // fall through
+  }
+
+  // legacy: migrate from old model-only storage
+  const legacyModel = localStorage.getItem(STORAGE_KEY)
+  if (legacyModel) {
+    const model =
+      AGENT_MODELS.find((m) => m.id === legacyModel) ??
+      AGENT_MODELS[0]
+    return { ...defaultState(), model }
+  }
+
+  return defaultState()
+}
+
+function defaultState(): ProviderState {
+  return {
+    providerType: "anthropic-oauth",
+    model: AGENT_MODELS[0],
+    customModelId: "",
+  }
+}
+
+let state: ProviderState = defaultState()
 const listeners = new Set<() => void>()
 
-function getSnapshot(): SharedState {
-  return shared
-}
-
-function setShared(
-  next: Partial<SharedState>
-): void {
-  shared = { ...shared, ...next }
-  for (const l of listeners) l()
-}
-
-function subscribe(
-  listener: () => void
-): () => void {
+function subscribe(listener: () => void): () => void {
   listeners.add(listener)
   return () => {
     listeners.delete(listener)
   }
 }
 
-interface ModelInfo {
-  readonly id: string
-  readonly name: string
-  readonly provider: string
-  readonly contextLength: number
-  readonly promptCost: string
-  readonly completionCost: string
+function getSnapshot(): ProviderState {
+  return state
 }
 
-interface ProviderGroup {
-  readonly provider: string
-  readonly models: ReadonlyArray<ModelInfo>
+function getServerSnapshot(): ProviderState {
+  return defaultState()
 }
 
-function outputCostPerMillion(
-  completionCost: string
-): number {
-  return parseFloat(completionCost) * 1_000_000
+function emit(): void {
+  for (const l of listeners) l()
 }
 
-function formatOutputCost(
-  completionCost: string
-): string {
-  const cost = outputCostPerMillion(completionCost)
-  if (cost === 0) return "free"
-  if (cost < 0.01) return "<$0.01/M"
-  return `$${cost.toFixed(2)}/M`
+function persistState(): void {
+  try {
+    localStorage.setItem(
+      PROVIDER_STORAGE_KEY,
+      JSON.stringify(state)
+    )
+    localStorage.setItem(STORAGE_KEY, state.model.id)
+  } catch {
+    // storage full or unavailable
+  }
 }
+
+function updateState(patch: Partial<ProviderState>): void {
+  state = { ...state, ...patch }
+  persistState()
+  emit()
+}
+
+/**
+ * Update provider type from settings page.
+ * Called by ai-model-tab when the user changes provider.
+ */
+export function setProviderType(type: ProviderType): void {
+  updateState({ providerType: type })
+}
+
+// ============================================================================
+// Public API for use-agent.ts
+// ============================================================================
+
+/** Returns the model ID to send to the agent server */
+export function getAgentModelId(): string {
+  if (
+    state.providerType === "ollama" ||
+    state.providerType === "custom"
+  ) {
+    return state.customModelId || state.model.id
+  }
+  return state.model.id
+}
+
+/** Returns the provider type for context */
+export function getAgentProviderType(): ProviderType {
+  return state.providerType
+}
+
+// ============================================================================
+// Component
+// ============================================================================
 
 export function ModelDropdown(): React.JSX.Element {
   const [open, setOpen] = React.useState(false)
-  const state = React.useSyncExternalStore(
+  const current = React.useSyncExternalStore(
     subscribe,
     getSnapshot,
-    getSnapshot
+    getServerSnapshot
   )
-  const [groups, setGroups] = React.useState<
-    ReadonlyArray<ProviderGroup>
-  >([])
-  const [loading, setLoading] = React.useState(false)
-  const [search, setSearch] = React.useState("")
-  const [saving, setSaving] = React.useState<
-    string | null
-  >(null)
-  const [listLoaded, setListLoaded] =
-    React.useState(false)
-  const [activeProvider, setActiveProvider] =
-    React.useState<string | null>(null)
 
-  const bridge = useBridgeState()
-  const bridgeActive =
-    bridge.bridgeConnected && bridge.bridgeEnabled
-
+  // restore from localStorage on mount
   React.useEffect(() => {
-    if (state.configLoaded) return
-    setShared({ configLoaded: true })
-
-    // restore bridge model preference from localStorage
-    const storedBridge = localStorage.getItem(
-      "compass-bridge-model"
-    )
-    if (storedBridge) {
-      const found = BRIDGE_MODELS.find(
-        (m) => m.id === storedBridge
-      )
-      if (found) {
-        setShared({
-          bridgeModel: {
-            id: found.id,
-            name: found.name,
-            provider: found.provider,
-          },
-        })
-      }
+    const stored = loadState()
+    if (
+      stored.providerType !== state.providerType ||
+      stored.model.id !== state.model.id
+    ) {
+      state = stored
+      emit()
     }
+  }, [])
 
-    Promise.all([
-      getActiveModel(),
-      getUserModelPreference(),
-    ]).then(([configResult, prefResult]) => {
-      let gModelId = DEFAULT_MODEL_ID
-      let gModelName = DEFAULT_MODEL_NAME
-      let gProvider = DEFAULT_PROVIDER
-      let canSelect = true
-      let ceiling: string | null = null
+  // hydrate provider type from D1 on mount
+  React.useEffect(() => {
+    import("@/app/actions/provider-config")
+      .then(({ getUserProviderConfig }) => {
+        getUserProviderConfig()
+          .then((result) => {
+            if (!("success" in result) || !result.success)
+              return
+            if (!result.data) return
 
-      let admin = false
+            const d = result.data
+            const providerType = (
+              PROVIDER_TYPES.includes(
+                d.providerType as ProviderType
+              )
+                ? d.providerType
+                : state.providerType
+            ) as ProviderType
 
-      if (configResult.success && configResult.data) {
-        gModelId = configResult.data.modelId
-        gModelName = configResult.data.modelName
-        gProvider = configResult.data.provider
-        canSelect =
-          configResult.data.allowUserSelection
-        ceiling =
-          configResult.data.maxCostPerMillion
-        admin = configResult.data.isAdmin
-      }
-
-      const base: Partial<SharedState> = {
-        global: {
-          id: gModelId,
-          name: gModelName,
-          provider: gProvider,
-        },
-        allowUserSelection: canSelect,
-        isAdmin: admin,
-        maxCostPerMillion: ceiling,
-      }
-
-      if (
-        canSelect &&
-        prefResult.success &&
-        prefResult.data
-      ) {
-        const prefValid =
-          ceiling === null ||
-          outputCostPerMillion(
-            prefResult.data.completionCost
-          ) <= parseFloat(ceiling)
-
-        if (prefValid) {
-          const slashIdx =
-            prefResult.data.modelId.indexOf("/")
-          setShared({
-            ...base,
-            display: {
-              id: prefResult.data.modelId,
-              name:
-                slashIdx > 0
-                  ? prefResult.data.modelId.slice(
-                      slashIdx + 1
-                    )
-                  : prefResult.data.modelId,
-              provider: "",
-            },
+            if (providerType !== state.providerType) {
+              updateState({ providerType })
+            }
           })
-          return
-        }
-      }
-
-      setShared({
-        ...base,
-        display: {
-          id: gModelId,
-          name: gModelName,
-          provider: gProvider,
-        },
+          .catch(() => {})
       })
-    })
-  }, [state.configLoaded])
+      .catch(() => {})
+  }, [])
 
-  React.useEffect(() => {
-    if (!open || listLoaded || bridgeActive) return
-    setLoading(true)
-    getModelList().then((result) => {
-      if (result.success) {
-        const sorted = [...result.data]
-          .sort((a, b) => {
-            const aHas = hasLogo(a.provider) ? 0 : 1
-            const bHas = hasLogo(b.provider) ? 0 : 1
-            if (aHas !== bHas) return aHas - bHas
-            return a.provider.localeCompare(
-              b.provider
-            )
-          })
-          .map((g) => ({
-            ...g,
-            models: [...g.models].sort(
-              (a, b) =>
-                outputCostPerMillion(
-                  a.completionCost
-                ) -
-                outputCostPerMillion(
-                  b.completionCost
-                )
-            ),
-          }))
-        setGroups(sorted)
-      }
-      setListLoaded(true)
-      setLoading(false)
-    })
-  }, [open, listLoaded, bridgeActive])
+  const usesModelPicker = providerUsesModelPicker(
+    current.providerType
+  )
 
-  // reset provider filter when popover closes
-  React.useEffect(() => {
-    if (!open) {
-      setActiveProvider(null)
-      setSearch("")
-    }
-  }, [open])
+  const displayName = usesModelPicker
+    ? current.model.name
+    : current.customModelId || "Custom"
 
-  const query = search.toLowerCase()
-  const ceiling = state.maxCostPerMillion
-    ? parseFloat(state.maxCostPerMillion)
-    : null
-
-  const filtered = React.useMemo(() => {
-    return groups
-      .map((g) => ({
-        ...g,
-        models: g.models.filter((m) => {
-          if (ceiling !== null) {
-            if (
-              outputCostPerMillion(
-                m.completionCost
-              ) > ceiling
-            )
-              return false
-          }
-          if (
-            activeProvider &&
-            g.provider !== activeProvider
-          ) {
-            return false
-          }
-          if (!query) return true
-          return (
-            m.name.toLowerCase().includes(query) ||
-            m.id.toLowerCase().includes(query)
-          )
-        }),
-      }))
-      .filter((g) => g.models.length > 0)
-  }, [groups, query, ceiling, activeProvider])
-
-  const totalFiltered = React.useMemo(() => {
-    let count = 0
-    for (const g of groups) {
-      for (const m of g.models) {
-        if (
-          ceiling === null ||
-          outputCostPerMillion(m.completionCost) <=
-            ceiling
-        ) {
-          count++
-        }
-      }
-    }
-    return count
-  }, [groups, ceiling])
-
-  // sorted groups for provider sidebar (cost-filtered)
-  const sortedGroups = React.useMemo(() => {
-    return groups
-      .map((g) => ({
-        ...g,
-        models: g.models.filter((m) => {
-          if (ceiling === null) return true
-          return (
-            outputCostPerMillion(
-              m.completionCost
-            ) <= ceiling
-          )
-        }),
-      }))
-      .filter((g) => g.models.length > 0)
-  }, [groups, ceiling])
-
-  const handleSelect = async (
-    model: ModelInfo
-  ): Promise<void> => {
-    if (model.id === state.display.id) {
-      setOpen(false)
-      return
-    }
-    setSaving(model.id)
-    const result = await setUserModelPreference(
-      model.id,
-      model.promptCost,
-      model.completionCost
-    )
-    setSaving(null)
-    if (result.success) {
-      setShared({
-        display: {
-          id: model.id,
-          name: model.name,
-          provider: model.provider,
-        },
-      })
-      toast.success(`Switched to ${model.name}`)
-      setOpen(false)
-    } else {
-      toast.error(result.error ?? "Failed to switch")
-    }
-  }
-
-  const handleBridgeModelSelect = (
-    model: typeof BRIDGE_MODELS[number]
-  ): void => {
-    setShared({
-      bridgeModel: {
-        id: model.id,
-        name: model.name,
-        provider: model.provider,
-      },
-    })
-    localStorage.setItem(
-      "compass-bridge-model",
-      model.id
-    )
-    toast.success(`Bridge model: ${model.name}`)
+  const handleModelSelect = (m: AgentModel): void => {
+    updateState({ model: m })
     setOpen(false)
   }
 
-  // bridge active: show bridge model selector
-  if (bridgeActive) {
-    return (
-      <Popover open={open} onOpenChange={setOpen}>
-        <PopoverTrigger asChild>
-          <button
-            type="button"
-            className={cn(
-              "flex items-center gap-1.5 rounded-md px-2 py-1 text-xs",
-              "hover:bg-muted hover:text-foreground transition-colors",
-              "text-emerald-600 dark:text-emerald-400",
-              open && "bg-muted text-foreground"
-            )}
-          >
-            <Zap className="h-3 w-3" />
-            <span className="max-w-32 truncate">
-              {state.bridgeModel.name}
-            </span>
-            <ChevronDown className="h-3 w-3 opacity-50" />
-          </button>
-        </PopoverTrigger>
-        <PopoverContent
-          align="start"
-          side="top"
-          className="w-64 p-1"
-        >
-          <div className="px-2 py-1.5 mb-1">
-            <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
-              Claude Code Bridge
-            </p>
-          </div>
-          {BRIDGE_MODELS.map((model) => {
-            const isActive =
-              model.id === state.bridgeModel.id
-            return (
-              <button
-                key={model.id}
-                type="button"
-                onClick={() =>
-                  handleBridgeModelSelect(model)
-                }
-                className={cn(
-                  "w-full text-left rounded-lg px-2.5 py-2 flex items-center gap-2.5 transition-all",
-                  isActive
-                    ? "bg-primary/10 ring-1 ring-primary/30"
-                    : "hover:bg-muted/70"
-                )}
-              >
-                <ProviderIcon
-                  provider="Anthropic"
-                  size={20}
-                  className="shrink-0"
-                />
-                <span className="text-xs font-medium flex-1">
-                  {model.name}
-                </span>
-                {isActive && (
-                  <Check className="h-3 w-3 text-primary shrink-0" />
-                )}
-              </button>
-            )
-          })}
-        </PopoverContent>
-      </Popover>
-    )
-  }
-
-  if (!state.allowUserSelection && !state.isAdmin) {
-    return (
-      <div className="flex items-center gap-1.5 rounded-md px-2 py-1 text-xs text-muted-foreground">
-        <ProviderIcon
-          provider={state.global.provider}
-          size={14}
-        />
-        <span className="max-w-28 truncate">
-          {state.global.name}
-        </span>
-      </div>
-    )
+  const handleCustomModelChange = (v: string): void => {
+    updateState({ customModelId: v })
   }
 
   return (
@@ -519,17 +283,15 @@ export function ModelDropdown(): React.JSX.Element {
         <button
           type="button"
           className={cn(
-            "flex items-center gap-1.5 rounded-md px-2 py-1 text-xs text-muted-foreground",
+            "flex items-center gap-1.5 rounded-md px-2 py-1 text-xs",
             "hover:bg-muted hover:text-foreground transition-colors",
+            "text-muted-foreground",
             open && "bg-muted text-foreground"
           )}
         >
-          <ProviderIcon
-            provider={state.display.provider}
-            size={14}
-          />
-          <span className="max-w-28 truncate">
-            {state.display.name}
+          <ClaudeSparkle size={14} />
+          <span className="max-w-36 truncate">
+            {displayName}
           </span>
           <ChevronDown className="h-3 w-3 opacity-50" />
         </button>
@@ -537,173 +299,57 @@ export function ModelDropdown(): React.JSX.Element {
       <PopoverContent
         align="start"
         side="top"
-        className="w-96 p-0"
-        onOpenAutoFocus={(e) => e.preventDefault()}
+        className="w-56 p-1"
       >
-        <TooltipProvider delayDuration={200}>
-          {/* search */}
-          <div className="p-2 border-b">
-            <div className="relative">
-              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-              <Input
-                value={search}
-                onChange={(e) =>
-                  setSearch(e.target.value)
-                }
-                placeholder="Search models..."
-                className="h-8 pl-8 text-xs"
-              />
-            </div>
-          </div>
-
-          {/* two-panel layout */}
-          <div className="flex h-72">
-            {/* provider sidebar */}
-            <div className="w-11 shrink-0 overflow-y-auto flex flex-col items-center gap-0.5 py-1 border-r">
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setActiveProvider(null)
-                    }
-                    className={cn(
-                      "w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-semibold transition-all shrink-0",
-                      activeProvider === null
-                        ? "bg-primary/15 text-primary"
-                        : "text-muted-foreground hover:bg-muted"
-                    )}
-                  >
-                    All
-                  </button>
-                </TooltipTrigger>
-                <TooltipContent side="right">
-                  <p className="text-xs">
-                    All providers
-                  </p>
-                </TooltipContent>
-              </Tooltip>
-              {sortedGroups.map((group) => (
-                <Tooltip key={group.provider}>
-                  <TooltipTrigger asChild>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setActiveProvider(
-                          activeProvider ===
-                            group.provider
-                            ? null
-                            : group.provider
-                        )
-                      }
-                      className={cn(
-                        "w-8 h-8 rounded-full flex items-center justify-center transition-all shrink-0",
-                        activeProvider ===
-                          group.provider
-                          ? "bg-primary/15 scale-110"
-                          : "hover:bg-muted"
-                      )}
-                    >
-                      <ProviderIcon
-                        provider={group.provider}
-                        size={18}
-                      />
-                    </button>
-                  </TooltipTrigger>
-                  <TooltipContent side="right">
-                    <p className="text-xs">
-                      {group.provider} (
-                      {group.models.length})
-                    </p>
-                  </TooltipContent>
-                </Tooltip>
-              ))}
-            </div>
-
-            {/* model list */}
-            <div className="flex-1 overflow-y-auto p-1">
-              {loading ? (
-                <div className="flex items-center justify-center h-full">
-                  <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-                </div>
-              ) : filtered.length === 0 ? (
-                <div className="flex items-center justify-center h-full text-xs text-muted-foreground">
-                  No models found.
-                </div>
-              ) : (
-                <div className="space-y-1">
-                  {filtered.map((group) =>
-                    group.models.map((model) => {
-                      const isActive =
-                        model.id === state.display.id
-                      const isSaving =
-                        saving === model.id
-
-                      return (
-                        <button
-                          key={model.id}
-                          type="button"
-                          disabled={
-                            isSaving ||
-                            saving !== null
-                          }
-                          onClick={() =>
-                            handleSelect(model)
-                          }
-                          className={cn(
-                            "w-full text-left rounded-lg px-2.5 py-2 flex items-center gap-2.5 transition-all",
-                            isActive
-                              ? "bg-primary/10 ring-1 ring-primary/30"
-                              : "hover:bg-muted/70",
-                            isSaving && "opacity-50"
-                          )}
-                        >
-                          <ProviderIcon
-                            provider={
-                              model.provider
-                            }
-                            size={20}
-                            className="shrink-0"
-                          />
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-1.5">
-                              <span className="text-xs font-medium truncate">
-                                {model.name}
-                              </span>
-                              {isSaving ? (
-                                <Loader2 className="h-3 w-3 animate-spin shrink-0" />
-                              ) : isActive ? (
-                                <Check className="h-3 w-3 text-primary shrink-0" />
-                              ) : null}
-                            </div>
-                            <Badge
-                              variant="secondary"
-                              className="text-[10px] px-1 py-0 h-3.5 mt-0.5 font-normal"
-                            >
-                              {formatOutputCost(
-                                model.completionCost
-                              )}
-                            </Badge>
-                          </div>
-                        </button>
-                      )
-                    })
+        {usesModelPicker ? (
+          <div role="radiogroup" aria-label="Model">
+            {AGENT_MODELS.map((m) => {
+              const isActive = m.id === current.model.id
+              return (
+                <button
+                  key={m.id}
+                  type="button"
+                  role="radio"
+                  aria-checked={isActive}
+                  onClick={() => handleModelSelect(m)}
+                  className={cn(
+                    "w-full text-left rounded-md px-2.5 py-2 flex items-center gap-2.5 transition-all",
+                    isActive
+                      ? "bg-primary/10 ring-1 ring-primary/30"
+                      : "hover:bg-muted/70"
                   )}
-                </div>
-              )}
-            </div>
+                >
+                  <div className="flex-1 min-w-0">
+                    <span className="text-xs font-medium">
+                      {m.name}
+                    </span>
+                    <p className="text-[10px] text-muted-foreground">
+                      {m.description}
+                    </p>
+                  </div>
+                  {isActive && (
+                    <Check className="h-3 w-3 text-primary shrink-0" />
+                  )}
+                </button>
+              )
+            })}
           </div>
-
-          {/* budget footer */}
-          {ceiling !== null && listLoaded && (
-            <div className="border-t px-3 py-1.5">
-              <p className="text-[10px] text-muted-foreground">
-                {totalFiltered} models within $
-                {state.maxCostPerMillion}/M budget
-              </p>
-            </div>
-          )}
-        </TooltipProvider>
+        ) : (
+          <div className="p-1.5">
+            <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mb-1 block">
+              Model ID
+            </label>
+            <Input
+              type="text"
+              value={current.customModelId}
+              onChange={(e) =>
+                handleCustomModelChange(e.target.value)
+              }
+              placeholder="llama3.2"
+              className="h-7 text-xs"
+            />
+          </div>
+        )}
       </PopoverContent>
     </Popover>
   )

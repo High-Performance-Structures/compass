@@ -1,6 +1,6 @@
 "use client"
 
-import type { ChatStatus, FileUIPart } from "ai"
+import type { ChatStatus, FileUIPart } from "./types"
 import {
   CornerDownLeftIcon,
   ImageIcon,

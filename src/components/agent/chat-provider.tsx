@@ -1,7 +1,6 @@
 "use client"
 
 import * as React from "react"
-import { type UIMessage } from "ai"
 import { useUIStream, type Spec } from "@json-render/react"
 import { usePathname, useRouter } from "next/navigation"
 import {
@@ -11,8 +10,8 @@ import {
 } from "@/app/actions/agent"
 import { getTextFromParts } from "@/lib/agent/chat-adapter"
 import { useCompassChat } from "@/hooks/use-compass-chat"
+import type { AgentMessage } from "@/lib/agent/message-types"
 import {
-  WebSocketChatTransport,
   detectBridge,
 } from "@/lib/agent/ws-transport"
 import {
@@ -47,11 +46,11 @@ export function useChatPanel(): PanelContextValue {
 // --- Chat state context ---
 
 interface ChatStateValue {
-  readonly messages: ReadonlyArray<UIMessage>
+  readonly messages: ReadonlyArray<AgentMessage>
   setMessages: (
     messages:
-      | UIMessage[]
-      | ((prev: UIMessage[]) => UIMessage[])
+      | AgentMessage[]
+      | ((prev: AgentMessage[]) => AgentMessage[])
   ) => void
   sendMessage: (params: { text: string }) => void
   regenerate: () => void
@@ -148,7 +147,7 @@ export function useAgentOptional(): PanelContextValue | null {
 // --- Helper: extract generateUI output from parts ---
 
 function findGenerateUIOutput(
-  parts: ReadonlyArray<unknown>,
+  parts: ReadonlyArray<AgentMessage["parts"][number]>,
   dispatched: Set<string>
 ): {
   renderPrompt: string
@@ -156,24 +155,13 @@ function findGenerateUIOutput(
   callId: string
 } | null {
   for (const part of parts) {
-    const p = part as Record<string, unknown>
-    const pType = p.type as string | undefined
+    // only check tool-result parts
+    if (part.type !== "tool-result") continue
 
-    // handle both static tool parts (tool-<name>)
-    // and dynamic tool parts (dynamic-tool)
-    const isToolPart =
-      typeof pType === "string" &&
-      (pType.startsWith("tool-") ||
-        pType === "dynamic-tool")
-    if (!isToolPart) continue
+    const callId = part.toolCallId
+    if (dispatched.has(callId)) continue
 
-    const state = p.state as string | undefined
-    if (state !== "output-available") continue
-
-    const callId = p.toolCallId as string | undefined
-    if (!callId || dispatched.has(callId)) continue
-
-    const output = p.output as
+    const output = part.result as
       | Record<string, unknown>
       | undefined
     if (output?.action !== "generateUI") continue
@@ -239,10 +227,11 @@ export function ChatProvider({
     }
   }, [])
 
+  // TODO: Re-implement bridge transport for new agent architecture
   const bridgeTransport = React.useMemo(() => {
-    if (bridge.bridgeConnected && bridge.bridgeEnabled) {
-      return new WebSocketChatTransport()
-    }
+    // if (bridge.bridgeConnected && bridge.bridgeEnabled) {
+    //   return new WebSocketChatTransport()
+    // }
     return null
   }, [bridge.bridgeConnected, bridge.bridgeEnabled])
 
@@ -256,14 +245,9 @@ export function ChatProvider({
       const serialized = finalMessages.map((m) => ({
         id: m.id,
         role: m.role,
-        content: getTextFromParts(
-          m.parts as ReadonlyArray<{
-            type: string
-            text?: string
-          }>
-        ),
+        content: getTextFromParts(m.parts),
         parts: m.parts,
-        createdAt: new Date().toISOString(),
+        createdAt: m.createdAt.toISOString(),
       }))
 
       await saveConversation(conversationId, serialized)
@@ -344,7 +328,7 @@ export function ChatProvider({
     if (!lastMsg || lastMsg.role !== "assistant") return
 
     const result = findGenerateUIOutput(
-      lastMsg.parts as ReadonlyArray<unknown>,
+      lastMsg.parts,
       renderDispatchedRef.current
     )
     if (!result) return
@@ -525,14 +509,15 @@ export function ChatProvider({
 
       setConversationId(lastConv.id)
 
-      const restored: UIMessage[] = msgResult.data.map(
+      const restored: AgentMessage[] = msgResult.data.map(
         (m) => ({
           id: m.id,
           role: m.role as "user" | "assistant",
           parts:
-            (m.parts as UIMessage["parts"]) ?? [
+            (m.parts as AgentMessage["parts"]) ?? [
               { type: "text" as const, text: m.content },
             ],
+          createdAt: m.createdAt ? new Date(m.createdAt) : new Date(),
         })
       )
 
@@ -541,15 +526,14 @@ export function ChatProvider({
       // renders or navigate to /dashboard on resume
       for (const m of restored) {
         if (m.role !== "assistant") continue
-        const parts = m.parts as ReadonlyArray<unknown>
         let result = findGenerateUIOutput(
-          parts,
+          m.parts,
           renderDispatchedRef.current
         )
         while (result) {
           renderDispatchedRef.current.add(result.callId)
           result = findGenerateUIOutput(
-            parts,
+            m.parts,
             renderDispatchedRef.current
           )
         }

@@ -1,6 +1,15 @@
 "use client"
 
-import type { ToolUIPart } from "ai"
+// Tool state types (no longer dependent on AI SDK)
+type ToolState =
+  | "input-streaming"
+  | "input-available"
+  | "output-available"
+  | "output-error"
+  | "output-denied"
+  | "partial-call"
+  | "call"
+  | "result"
 import {
   CheckCircleIcon,
   ChevronDownIcon,
@@ -21,12 +30,12 @@ export const Tool = ({ className, ...props }: ToolProps) => (
 
 export interface ToolHeaderProps {
   title?: string
-  type: ToolUIPart["type"]
-  state: ToolUIPart["state"]
+  type: string
+  state: ToolState
   className?: string
 }
 
-const getStatusIcon = (status: ToolUIPart["state"]): ReactNode => {
+const getStatusIcon = (status: ToolState): ReactNode => {
   switch (status) {
     case "input-streaming":
     case "input-available":
@@ -41,8 +50,11 @@ const getStatusIcon = (status: ToolUIPart["state"]): ReactNode => {
   }
 }
 
-const isInProgress = (status: ToolUIPart["state"]): boolean =>
-  status === "input-streaming" || status === "input-available"
+const isInProgress = (status: ToolState): boolean =>
+  status === "input-streaming" ||
+  status === "input-available" ||
+  status === "partial-call" ||
+  status === "call"
 
 export const ToolHeader = ({ className, title, type, state, ...props }: ToolHeaderProps) => (
   <CollapsibleTrigger
@@ -74,7 +86,7 @@ export const ToolContent = ({ className, ...props }: ToolContentProps) => (
 )
 
 export type ToolInputProps = ComponentProps<"div"> & {
-  input: ToolUIPart["input"]
+  input: unknown
 }
 
 export const ToolInput = ({ className, input, ...props }: ToolInputProps) => (
@@ -89,8 +101,8 @@ export const ToolInput = ({ className, input, ...props }: ToolInputProps) => (
 )
 
 export type ToolOutputProps = ComponentProps<"div"> & {
-  output: ToolUIPart["output"]
-  errorText: ToolUIPart["errorText"]
+  output: unknown
+  errorText?: string
 }
 
 export const ToolOutput = ({ className, output, errorText, ...props }: ToolOutputProps) => {
