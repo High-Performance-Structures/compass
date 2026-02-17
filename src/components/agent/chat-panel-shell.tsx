@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react"
 import { usePathname } from "next/navigation"
-import { MessageSquare, XIcon } from "lucide-react"
+import { XIcon, ChevronLeft } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import {
@@ -131,7 +131,7 @@ export function ChatPanelShell() {
   // container width/style for panel mode
   const panelStyle =
     !isDashboard && isOpen
-      ? { width: panelWidth }
+      ? ({ "--panel-width": `${panelWidth}px` } as React.CSSProperties)
       : undefined
 
   const keyboardStyle =
@@ -146,11 +146,13 @@ export function ChatPanelShell() {
           "flex flex-col",
           "transition-[flex,width,border-color,box-shadow,opacity,transform] duration-300 ease-in-out",
           isDashboard
-            ? "flex-1 bg-background"
+            ? "flex-1 bg-background pb-[calc(3.5rem+env(safe-area-inset-bottom))] md:pb-0"
             : [
               "bg-background dark:bg-[oklch(0.255_0_0)]",
-              "fixed inset-0 z-50",
-              "md:relative md:inset-auto md:z-auto",
+              "fixed inset-0 z-[60]",
+              "pb-[env(safe-area-inset-bottom)]",
+              "w-full md:w-[var(--panel-width)]", // Use CSS var for responsive width
+              "md:relative md:inset-auto md:z-auto md:pb-0",
               "md:shrink-0 md:overflow-hidden",
               "md:rounded-xl md:border md:border-border md:shadow-lg md:my-2 md:mr-2",
               isResizing && "transition-none",
@@ -161,6 +163,24 @@ export function ChatPanelShell() {
         )}
         style={{ ...panelStyle, ...keyboardStyle }}
       >
+        {/* Header with Back/Close Button */}
+        {!isDashboard && isOpen && (
+          <div className="flex items-center p-2 border-b shrink-0 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+            <Button variant="ghost" size="sm" onClick={close} className="gap-1 text-muted-foreground hover:text-foreground">
+              {/* Mobile Back */}
+              <span className="flex items-center gap-1 md:hidden">
+                <ChevronLeft className="h-4 w-4" />
+                Back
+              </span>
+              {/* Desktop Close */}
+              <span className="hidden md:flex items-center gap-1">
+                <XIcon className="h-4 w-4" />
+                Close
+              </span>
+            </Button>
+          </div>
+        )}
+
         {/* Desktop resize handle (panel mode only) */}
         {!isDashboard && (
           <div
@@ -169,9 +189,13 @@ export function ChatPanelShell() {
           />
         )}
 
-        <ChatView
-          variant={isDashboard ? "page" : "panel"}
-        />
+        {isDashboard ? (
+          <ChatView variant="page" />
+        ) : (
+          <div className="flex-1 min-h-0 relative">
+            <ChatView variant="panel" />
+          </div>
+        )}
       </div>
 
       {/* Mobile backdrop (panel mode only) */}
@@ -187,10 +211,11 @@ export function ChatPanelShell() {
       {/* Chat Toggle FAB (visible on specific pages) */}
       {!isDashboard && (
         <Button
-          size="icon"
           className={cn(
-            "fixed bottom-4 right-4 z-50 h-12 w-12 rounded-full shadow-lg transition-transform",
-            isOpen && "bg-muted-foreground text-background hover:bg-muted-foreground/90 rotate-90"
+            "fixed right-4 z-50 h-12 rounded-full shadow-lg transition-transform",
+            "w-12 p-0 md:w-auto md:px-4", // Adaptive width/shape
+            "bottom-[4.5rem] md:bottom-4", // Positioning
+            isOpen && "hidden" // Hide when open
           )}
           onClick={toggle}
           aria-label={isOpen ? "Close chat" : "Open chat"}
@@ -198,7 +223,23 @@ export function ChatPanelShell() {
           {isOpen ? (
             <XIcon className="h-5 w-5" />
           ) : (
-            <MessageSquare className="h-5 w-5" />
+            <>
+              <span
+                className={cn(
+                  "!size-6 block bg-current",
+                  !isOpen && "animate-[spin_5s_ease-in-out_infinite_alternate]"
+                )}
+                style={{
+                  maskImage: "url(/logo-black.png)",
+                  maskSize: "contain",
+                  maskRepeat: "no-repeat",
+                  WebkitMaskImage: "url(/logo-black.png)",
+                  WebkitMaskSize: "contain",
+                  WebkitMaskRepeat: "no-repeat",
+                }}
+              />
+              <span className="hidden md:ml-2 md:block font-semibold">Compass</span>
+            </>
           )}
         </Button>
       )}
