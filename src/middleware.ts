@@ -23,6 +23,7 @@ const bridgePaths = [
 function isPublicPath(pathname: string): boolean {
   return (
     publicPaths.includes(pathname) ||
+    pathname.startsWith("/join/") ||
     bridgePaths.includes(pathname) ||
     pathname.startsWith("/api/auth/") ||
     pathname.startsWith("/api/netsuite/") ||

@@ -44,6 +44,23 @@ export const organizationMembers = sqliteTable("organization_members", {
   joinedAt: text("joined_at").notNull(),
 })
 
+export const organizationInvites = sqliteTable("organization_invites", {
+  id: text("id").primaryKey(),
+  organizationId: text("organization_id")
+    .notNull()
+    .references(() => organizations.id, { onDelete: "cascade" }),
+  code: text("code").notNull().unique(),
+  role: text("role").notNull().default("office"),
+  maxUses: integer("max_uses"),
+  useCount: integer("use_count").notNull().default(0),
+  expiresAt: text("expires_at"),
+  createdBy: text("created_by")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  isActive: integer("is_active", { mode: "boolean" }).notNull().default(true),
+  createdAt: text("created_at").notNull(),
+})
+
 export const teams = sqliteTable("teams", {
   id: text("id").primaryKey(),
   organizationId: text("organization_id")
@@ -238,6 +255,8 @@ export type Organization = typeof organizations.$inferSelect
 export type NewOrganization = typeof organizations.$inferInsert
 export type OrganizationMember = typeof organizationMembers.$inferSelect
 export type NewOrganizationMember = typeof organizationMembers.$inferInsert
+export type OrganizationInvite = typeof organizationInvites.$inferSelect
+export type NewOrganizationInvite = typeof organizationInvites.$inferInsert
 export type Team = typeof teams.$inferSelect
 export type NewTeam = typeof teams.$inferInsert
 export type TeamMember = typeof teamMembers.$inferSelect

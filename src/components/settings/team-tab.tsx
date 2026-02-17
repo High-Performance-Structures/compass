@@ -6,9 +6,11 @@ import { toast } from "sonner"
 
 import { getUsers, deactivateUser, type UserWithRelations } from "@/app/actions/users"
 import { Button } from "@/components/ui/button"
+import { Separator } from "@/components/ui/separator"
 import { PeopleTable } from "@/components/people-table"
 import { UserDrawer } from "@/components/people/user-drawer"
 import { InviteDialog } from "@/components/people/invite-dialog"
+import { InviteLinksSection } from "@/components/settings/invite-links-section"
 
 export function TeamTab() {
   const [users, setUsers] = React.useState<UserWithRelations[]>([])
@@ -100,6 +102,9 @@ export function TeamTab() {
           />
         )}
       </div>
+
+      <Separator className="my-6" />
+      <InviteLinksSection />
 
       <UserDrawer
         user={selectedUser}
