@@ -317,10 +317,13 @@ function ProviderConfigSection({
   }
 
   const handleOAuthConnect = async (): Promise<void> => {
+    // Open window immediately in the click handler to avoid
+    // popup blockers (async gap kills the user gesture)
+    const popup = window.open("about:blank", "_blank", "noopener")
     const { verifier, challenge } = await generatePKCE()
     const url = buildAuthUrl(challenge)
+    if (popup) popup.location.href = url
     setOAuth({ step: "connecting", verifier })
-    window.open(url, "_blank", "noopener")
   }
 
   const handleOAuthSubmit = async (): Promise<void> => {
