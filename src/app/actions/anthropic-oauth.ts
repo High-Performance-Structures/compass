@@ -181,7 +181,8 @@ export async function getOAuthAccessToken(
       .run()
 
     return fresh.access
-  } catch {
+  } catch (err) {
+    console.error("Failed to get/refresh OAuth access token:", err)
     return null
   }
 }

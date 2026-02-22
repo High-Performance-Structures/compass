@@ -529,6 +529,9 @@ export function ChatView({
   const [copiedId, setCopiedId] = useState<string | null>(
     null
   )
+  const [dismissedError, setDismissedError] = useState<
+    string | null
+  >(null)
 
   // typewriter animation state (page variant only)
   const [animatedPlaceholder, setAnimatedPlaceholder] =
@@ -791,6 +794,28 @@ export function ChatView({
                 </div>
               </div>
             )}
+            {/* Error banner - page variant */}
+            {chat.error && chat.error !== dismissedError && (
+              <div className="mx-auto w-full max-w-3xl px-4 pb-2">
+                <div className="flex items-start gap-3 rounded-lg border border-destructive/50 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+                  <IconAlertCircle className="size-4 shrink-0 mt-0.5" />
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium">Request failed</p>
+                    <p className="text-destructive/80 truncate">
+                      {chat.error}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setDismissedError(chat.error)}
+                    className="shrink-0 rounded-md p-1 hover:bg-destructive/20 transition-colors"
+                    aria-label="Dismiss error"
+                  >
+                    <XIcon className="size-4" />
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
@@ -881,6 +906,29 @@ export function ChatView({
         </ConversationContent>
         <ConversationScrollButton />
       </Conversation>
+
+      {/* Error banner - panel variant */}
+      {chat.error && chat.error !== dismissedError && (
+        <div className="px-3 pb-2">
+          <div className="flex items-start gap-3 rounded-lg border border-destructive/50 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+            <IconAlertCircle className="size-4 shrink-0 mt-0.5" />
+            <div className="flex-1 min-w-0">
+              <p className="font-medium">Request failed</p>
+              <p className="text-destructive/80 truncate">
+                {chat.error}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setDismissedError(chat.error)}
+              className="shrink-0 rounded-md p-1 hover:bg-destructive/20 transition-colors"
+              aria-label="Dismiss error"
+            >
+              <XIcon className="size-4" />
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Input */}
       <div className="p-3">

@@ -9,6 +9,7 @@
     "core:webview:default",
     "core:webview:allow-set-webview-zoom",
     "shell:allow-open",
+    "opener:default",
     "sql:default",
     "sql:allow-load",
     "sql:allow-execute",
@@ -47,6 +48,9 @@
         },
         {
           "path": "$LOCALDATA/**"
+        },
+        {
+          "path": "$HOME/.claude/**"
         }
       ]
     },

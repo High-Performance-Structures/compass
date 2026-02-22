@@ -124,7 +124,8 @@ export async function getProviderConfigForJwt(
             encryptionKey,
             userId
           )
-        } catch {
+        } catch (err) {
+          console.error("Failed to decrypt API key:", err)
           decryptedApiKey = null
         }
       }
@@ -147,7 +148,8 @@ export async function getProviderConfigForJwt(
       baseUrl: config.baseUrl,
       modelOverrides,
     }
-  } catch {
+  } catch (err) {
+    console.error("Failed to get provider config for JWT:", err)
     return null
   }
 }
@@ -248,6 +250,59 @@ export async function setUserProviderConfig(
         err instanceof Error
           ? err.message
           : "Failed to set provider config",
+    }
+  }
+}
+
+export async function updateUserModelOverrides(
+  modelOverrides: Record<string, string>
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const user = await getCurrentUser()
+    if (!user) {
+      return { success: false, error: "Unauthorized" }
+    }
+
+    if (isDemoUser(user.id)) {
+      return { success: false, error: "DEMO_READ_ONLY" }
+    }
+
+    const { env } = await getCloudflareContext()
+    const db = getDb(env.DB)
+
+    const existing = await db
+      .select()
+      .from(userProviderConfig)
+      .where(eq(userProviderConfig.userId, user.id))
+      .get()
+
+    if (!existing) {
+      return {
+        success: false,
+        error: "No provider configured — save a provider first",
+      }
+    }
+
+    const now = new Date().toISOString()
+
+    await db
+      .update(userProviderConfig)
+      .set({
+        modelOverrides: JSON.stringify(modelOverrides),
+        updatedAt: now,
+      })
+      .where(eq(userProviderConfig.userId, user.id))
+      .run()
+
+    revalidatePath("/dashboard")
+    return { success: true }
+  } catch (err) {
+    return {
+      success: false,
+      error:
+        err instanceof Error
+          ? err.message
+          : "Failed to update model overrides",
     }
   }
 }

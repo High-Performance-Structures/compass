@@ -43,16 +43,19 @@ type ProviderType = (typeof PROVIDER_TYPES)[number]
 const AGENT_MODELS = [
   {
     id: "sonnet",
+    modelId: "claude-sonnet-4-20250514",
     name: "Sonnet",
     description: "Fast and capable",
   },
   {
     id: "opus",
+    modelId: "claude-opus-4-20250514",
     name: "Opus",
     description: "Most intelligent",
   },
   {
     id: "haiku",
+    modelId: "claude-3-5-haiku-20241022",
     name: "Haiku",
     description: "Quick and lightweight",
   },
@@ -194,13 +197,26 @@ export function setProviderType(type: ProviderType): void {
 
 /** Returns the model ID to send to the agent server */
 export function getAgentModelId(): string {
-  if (
-    state.providerType === "ollama" ||
-    state.providerType === "custom"
-  ) {
-    return state.customModelId || state.model.id
+  const { providerType, model, customModelId } = state
+
+  // Ollama and custom providers use the user-entered model ID
+  if (providerType === "ollama" || providerType === "custom") {
+    return customModelId || model.id
   }
-  return state.model.id
+
+  // OpenRouter uses the anthropic/ prefix
+  if (providerType === "openrouter") {
+    // Map full model IDs to OpenRouter format
+    const openRouterMap: Record<string, string> = {
+      "claude-sonnet-4-20250514": "anthropic/claude-sonnet-4",
+      "claude-opus-4-20250514": "anthropic/claude-opus-4",
+      "claude-3-5-haiku-20241022": "anthropic/claude-3.5-haiku",
+    }
+    return openRouterMap[model.modelId] ?? `anthropic/${model.id}`
+  }
+
+  // Anthropic OAuth and API key use full model IDs
+  return model.modelId
 }
 
 /** Returns the provider type for context */

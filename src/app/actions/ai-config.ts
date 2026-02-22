@@ -712,6 +712,55 @@ export async function clearUserModelPreference(): Promise<{
   }
 }
 
+// --- ollama models ---
+
+export async function getOllamaModels(
+  baseUrl = "http://localhost:11434"
+): Promise<
+  | { success: true; data: ReadonlyArray<{ id: string; name: string }> }
+  | { success: false; error: string }
+> {
+  try {
+    const res = await fetch(`${baseUrl}/api/tags`, {
+      signal: AbortSignal.timeout(5000),
+    })
+
+    if (!res.ok) {
+      return {
+        success: false,
+        error: `Ollama API error: ${res.status}`,
+      }
+    }
+
+    const json = (await res.json()) as {
+      models: ReadonlyArray<{
+        name: string
+        modified_at: string
+        size: number
+      }>
+    }
+
+    const models = json.models.map((m) => ({
+      id: m.name,
+      name: m.name,
+    }))
+
+    return { success: true, data: models }
+  } catch (err) {
+    if (err instanceof Error && err.name === "TimeoutError") {
+      return {
+        success: false,
+        error: "Ollama server not responding",
+      }
+    }
+    return {
+      success: false,
+      error:
+        err instanceof Error ? err.message : "Failed to fetch Ollama models",
+    }
+  }
+}
+
 // --- helpers ---
 
 function formatProvider(slug: string): string {

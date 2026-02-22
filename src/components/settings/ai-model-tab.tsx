@@ -47,6 +47,7 @@ import {
   getUserProviderConfig,
   setUserProviderConfig,
   clearUserProviderConfig,
+  updateUserModelOverrides,
 } from "@/app/actions/provider-config"
 import {
   exchangeOAuthCode,
@@ -57,6 +58,7 @@ import {
   generatePKCE,
   buildAuthUrl,
 } from "@/lib/anthropic-oauth-client"
+import { openExternalUrl } from "@/lib/native/platform"
 import { Slider } from "@/components/ui/slider"
 import { Switch } from "@/components/ui/switch"
 import { cn } from "@/lib/utils"
@@ -145,7 +147,7 @@ const PROVIDERS: ReadonlyArray<ProviderInfo> = [
     type: "anthropic-oauth",
     label: "Anthropic",
     icon: "Anthropic",
-    description: "Uses CLI OAuth credentials",
+    description: "Claude Pro/Max subscription with OAuth",
     needsApiKey: false,
     needsBaseUrl: false,
   },
@@ -236,7 +238,7 @@ function outputCostPerMillion(
 
 type OAuthState =
   | { step: "idle" }
-  | { step: "connecting"; verifier: string }
+  | { step: "connecting"; verifier: string; state: string }
   | { step: "connected"; expiresAt?: string }
 
 function ProviderConfigSection({
@@ -317,17 +319,37 @@ function ProviderConfigSection({
   }
 
   const handleOAuthConnect = async (): Promise<void> => {
-    // Open window immediately in the click handler to avoid
-    // popup blockers (async gap kills the user gesture).
-    // Can't use noopener here — it makes window.open return null.
-    const popup = window.open("about:blank", "_blank")
-    const { verifier, challenge } = await generatePKCE()
-    const url = buildAuthUrl(challenge)
-    if (popup) {
-      popup.opener = null
-      popup.location.href = url
+    try {
+      // Generate PKCE and state first
+      const { verifier, challenge, state } = await generatePKCE()
+      const url = buildAuthUrl(challenge, state)
+
+      // Open URL using platform-aware function (Tauri shell or browser popup)
+      const opened = await openExternalUrl(url, {
+        windowName: "anthropic-oauth",
+        windowFeatures: "width=600,height=800",
+      })
+
+      if (!opened) {
+        // Popup was blocked - provide manual link
+        toast.error(
+          "Could not open browser. Please manually open this URL: " + url
+        )
+        // Still set state so user can paste code manually
+        setOAuth({ step: "connecting", verifier, state })
+        return
+      }
+
+      // URL opened successfully
+      setOAuth({ step: "connecting", verifier, state })
+    } catch (err) {
+      console.error("OAuth connect failed:", err)
+      toast.error(
+        err instanceof Error
+          ? err.message
+          : "Failed to start OAuth flow"
+      )
     }
-    setOAuth({ step: "connecting", verifier })
   }
 
   const handleOAuthSubmit = async (): Promise<void> => {
@@ -336,16 +358,25 @@ function ProviderConfigSection({
     if (!trimmed) return
 
     // Parse "code#state" or just "code"
+    // The user pastes the code from the redirect URL
     const hashIdx = trimmed.indexOf("#")
     const code =
       hashIdx >= 0 ? trimmed.slice(0, hashIdx) : trimmed
-    const state =
+    // Use our stored state - Anthropic returns it in the callback
+    const returnedState =
       hashIdx >= 0 ? trimmed.slice(hashIdx + 1) : ""
+
+    // Verify state matches (CSRF protection)
+    if (returnedState && returnedState !== oauth.state) {
+      toast.error("Invalid state - possible CSRF attack. Please try again.")
+      setOAuth({ step: "idle" })
+      return
+    }
 
     setSaving(true)
     const result = await exchangeOAuthCode(
       code,
-      state,
+      oauth.state,
       oauth.verifier
     )
     setSaving(false)
@@ -467,6 +498,12 @@ function ProviderConfigSection({
       {/* OAuth flow for anthropic-oauth */}
       {activeType === "anthropic-oauth" && (
         <div className="space-y-2">
+          {/* Help text */}
+          <p className="text-[10px] text-muted-foreground">
+            Requires an active Claude Pro/Max subscription. Uses your Claude Code CLI credentials.
+            Alternatively, use "Anthropic (API Key)" with an API key from console.anthropic.com.
+          </p>
+
           {oauth.step === "connected" && (
             <div className="flex items-center justify-between rounded-md border border-green-500/20 bg-green-500/5 px-3 py-2">
               <div className="flex items-center gap-2">
@@ -667,11 +704,13 @@ function ModelPicker({
   activeConfig,
   onSaved,
   maxCostPerMillion,
+  saveAsOverride,
 }: {
   readonly groups: ReadonlyArray<ProviderGroup>
   readonly activeConfig: ActiveConfig | null
   readonly onSaved: () => void
   readonly maxCostPerMillion: number | null
+  readonly saveAsOverride?: boolean
 }) {
   const [search, setSearch] = React.useState("")
   const [activeProvider, setActiveProvider] =
@@ -743,14 +782,29 @@ function ModelPicker({
   const handleSave = async () => {
     if (!selected) return
     setSaving(true)
-    const result = await setActiveModel(
-      selected.id,
-      selected.name,
-      selected.provider,
-      selected.promptCost,
-      selected.completionCost,
-      selected.contextLength
-    )
+
+    let result: { success: boolean; error?: string }
+
+    if (saveAsOverride) {
+      // Save as modelOverrides on the user's provider config
+      // Maps all dropdown slots to the selected model
+      const overrides: Record<string, string> = {
+        sonnet: selected.id,
+        opus: selected.id,
+        haiku: selected.id,
+      }
+      result = await updateUserModelOverrides(overrides)
+    } else {
+      result = await setActiveModel(
+        selected.id,
+        selected.name,
+        selected.provider,
+        selected.promptCost,
+        selected.completionCost,
+        selected.contextLength
+      )
+    }
+
     setSaving(false)
     if (result.success) {
       toast.success("Model updated")
@@ -1070,14 +1124,22 @@ export function AIModelTab() {
     React.useState<number | null>(null)
   const [policySaving, setPolicySaving] =
     React.useState(false)
+  const [userProviderType, setUserProviderType] =
+    React.useState<string | null>(null)
 
   const loadData = React.useCallback(async () => {
     setLoading(true)
 
-    const configResult = await getActiveModel()
+    const [configResult, providerResult] =
+      await Promise.all([
+        getActiveModel(),
+        getUserProviderConfig(),
+      ])
+
     if (configResult.success) {
       setActiveConfig(configResult.data)
       if (configResult.data) {
+        setIsAdmin(configResult.data.isAdmin)
         setAllowUserSelection(
           configResult.data.allowUserSelection
         )
@@ -1089,6 +1151,18 @@ export function AIModelTab() {
             : null
         )
       }
+    }
+
+    if (
+      "success" in providerResult &&
+      providerResult.success &&
+      providerResult.data
+    ) {
+      setUserProviderType(
+        providerResult.data.providerType
+      )
+    } else {
+      setUserProviderType(null)
     }
 
     const [modelsResult, metricsResult] =
@@ -1106,11 +1180,6 @@ export function AIModelTab() {
 
     if (metricsResult.success) {
       setMetrics(metricsResult.data)
-      setIsAdmin(true)
-    } else if (
-      metricsResult.error !== "Permission denied"
-    ) {
-      setIsAdmin(false)
     }
 
     setLoading(false)
@@ -1181,6 +1250,37 @@ export function AIModelTab() {
           </p>
         )}
       </div>
+
+      {/* Model picker for non-admin users with a custom provider */}
+      {!isAdmin &&
+        userProviderType !== null &&
+        userProviderType !== "anthropic-oauth" &&
+        userProviderType !== "anthropic-key" && (
+          <>
+            <Separator />
+            <div className="space-y-1.5">
+              <Label className="text-xs">
+                Choose Model
+              </Label>
+              <p className="text-muted-foreground text-xs">
+                Pick a model for your provider.
+              </p>
+              {modelsError ? (
+                <p className="text-destructive text-xs">
+                  {modelsError}
+                </p>
+              ) : (
+                <ModelPicker
+                  groups={groups}
+                  activeConfig={activeConfig}
+                  onSaved={loadData}
+                  maxCostPerMillion={costCeiling}
+                  saveAsOverride
+                />
+              )}
+            </div>
+          </>
+        )}
 
       {isAdmin && (
         <>
@@ -1275,8 +1375,11 @@ export function AIModelTab() {
               Change Model
             </Label>
             <p className="text-muted-foreground text-xs">
-              Select a model from OpenRouter. Applies
-              to all users.
+              {userProviderType &&
+              userProviderType !== "anthropic-oauth" &&
+              userProviderType !== "anthropic-key"
+                ? "Pick a model for your provider."
+                : "Select a model from OpenRouter. Applies to all users."}
             </p>
             {modelsError ? (
               <p className="text-destructive text-xs">
@@ -1288,6 +1391,11 @@ export function AIModelTab() {
                 activeConfig={activeConfig}
                 onSaved={loadData}
                 maxCostPerMillion={costCeiling}
+                saveAsOverride={
+                  userProviderType !== null &&
+                  userProviderType !== "anthropic-oauth" &&
+                  userProviderType !== "anthropic-key"
+                }
               />
             )}
           </div>

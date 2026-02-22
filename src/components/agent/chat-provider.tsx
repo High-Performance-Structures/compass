@@ -57,6 +57,7 @@ interface ChatStateValue {
   stop: () => void
   readonly status: string
   readonly isGenerating: boolean
+  readonly error: string | null
   readonly conversationId: string
   newChat: () => void
   readonly pathname: string
@@ -574,6 +575,7 @@ export function ChatProvider({
       stop: chat.stop,
       status: chat.status,
       isGenerating: chat.isGenerating,
+      error: chat.error,
       conversationId,
       newChat,
       pathname: chat.pathname,
@@ -586,6 +588,7 @@ export function ChatProvider({
       chat.stop,
       chat.status,
       chat.isGenerating,
+      chat.error,
       conversationId,
       newChat,
       chat.pathname,

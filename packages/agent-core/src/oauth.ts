@@ -3,7 +3,7 @@ const CLIENT_ID = "9d1c250a-e61b-44d9-88ed-5944d1962f5e"
 const AUTHORIZE_URL = "https://claude.ai/oauth/authorize"
 const TOKEN_URL = "https://console.anthropic.com/v1/oauth/token"
 const REDIRECT_URI = "https://console.anthropic.com/oauth/code/callback"
-const SCOPES = "org:create_api_key user:profile user:inference"
+const SCOPES = "org:create_api_key user:profile user:inference user:sessions:claude_code"
 
 interface OAuthTokenResponse {
   readonly access_token: string
@@ -24,20 +24,25 @@ function base64url(buffer: ArrayBuffer): string {
 export async function generatePKCE(): Promise<{
   verifier: string
   challenge: string
+  state: string
 }> {
   // 32 random bytes -> 43 base64url chars, well within 43-128 range
   const verifierBytes = crypto.getRandomValues(new Uint8Array(32))
   const verifier = base64url(verifierBytes.buffer)
+
+  // Generate random state for CSRF protection
+  const stateBytes = crypto.getRandomValues(new Uint8Array(16))
+  const state = base64url(stateBytes.buffer)
 
   const encoder = new TextEncoder()
   const data = encoder.encode(verifier)
   const hash = await crypto.subtle.digest("SHA-256", data)
   const challenge = base64url(hash)
 
-  return { verifier, challenge }
+  return { verifier, challenge, state }
 }
 
-export function buildAuthUrl(challenge: string): string {
+export function buildAuthUrl(challenge: string, state: string): string {
   const params = new URLSearchParams({
     response_type: "code",
     client_id: CLIENT_ID,
@@ -45,6 +50,7 @@ export function buildAuthUrl(challenge: string): string {
     scope: SCOPES,
     code_challenge: challenge,
     code_challenge_method: "S256",
+    state,
   })
   return `${AUTHORIZE_URL}?${params.toString()}`
 }

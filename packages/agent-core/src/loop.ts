@@ -78,8 +78,11 @@ export async function* runAgent(
     turn++
 
     try {
+      const resolvedModel =
+        opts.provider.modelOverrides?.[opts.model] ?? opts.model
+
       const stream = client.messages.stream({
-        model: opts.model,
+        model: resolvedModel,
         max_tokens: 8192,
         system: opts.systemPrompt,
         messages,

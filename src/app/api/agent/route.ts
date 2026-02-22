@@ -48,6 +48,48 @@ function mapProviderType(
   }
 }
 
+/**
+ * Resolves short model names (sonnet, opus, haiku) to full model IDs
+ * based on the provider type. Passes through full model IDs unchanged.
+ */
+function resolveModelId(
+  model: string,
+  providerType: string
+): string {
+  // If already a full model ID, use as-is
+  if (model.includes("/") || model.startsWith("claude-")) {
+    return model
+  }
+
+  // Map short names to full IDs
+  const anthropicModels: Record<string, string> = {
+    sonnet: "claude-sonnet-4-20250514",
+    opus: "claude-opus-4-20250514",
+    haiku: "claude-3-5-haiku-20241022",
+  }
+
+  const openrouterModels: Record<string, string> = {
+    sonnet: "anthropic/claude-sonnet-4",
+    opus: "anthropic/claude-opus-4",
+    haiku: "anthropic/claude-3.5-haiku",
+  }
+
+  if (
+    providerType === "anthropic" ||
+    providerType === "anthropic-oauth" ||
+    providerType === "anthropic-key"
+  ) {
+    return anthropicModels[model] ?? model
+  }
+
+  if (providerType === "openrouter") {
+    return openrouterModels[model] ?? model
+  }
+
+  // Ollama and custom use the model as-is
+  return model
+}
+
 export async function POST(
   request: Request
 ): Promise<Response> {
@@ -98,6 +140,13 @@ export async function POST(
   const timezone =
     request.headers.get("x-timezone") ?? "UTC"
 
+  // Get env context early for fallback
+  const { env } = await getCloudflareContext()
+  const envRecord = env as unknown as Record<
+    string,
+    string
+  >
+
   // Resolve provider config from DB
   let providerConfig = await getProviderConfigForJwt(
     user.id
@@ -116,7 +165,20 @@ export async function POST(
         modelOverrides:
           providerConfig.modelOverrides ?? undefined,
       }
-    : { type: "anthropic" }
+    : {
+        type: "anthropic",
+        apiKey: envRecord.ANTHROPIC_API_KEY,
+      }
+
+  // Log warning if no API key available (unless using OAuth which handles its own auth)
+  if (
+    !provider.apiKey &&
+    providerConfig?.type !== "anthropic-oauth"
+  ) {
+    console.warn(
+      "No API key configured for agent - requests may fail"
+    )
+  }
 
   // Resolve OAuth access token if needed
   if (providerConfig?.type === "anthropic-oauth") {
@@ -139,11 +201,6 @@ export async function POST(
   }
 
   // Generate JWT for bridge route auth
-  const { env } = await getCloudflareContext()
-  const envRecord = env as unknown as Record<
-    string,
-    string
-  >
   const agentSecret = envRecord.AGENT_AUTH_SECRET
   if (!agentSecret) {
     return new Response(
@@ -285,9 +342,15 @@ export async function POST(
   const isOAuth =
     provider.apiKey?.startsWith("sk-ant-oat") ?? false
 
+  // Resolve short model names to full model IDs based on provider
+  const resolvedModel = resolveModelId(
+    model,
+    providerConfig?.type ?? "anthropic"
+  )
+
   const stream = runAgent({
     provider,
-    model,
+    model: resolvedModel,
     systemPrompt,
     messages: msgs,
     mcpClientManager: manager,
@@ -296,6 +359,7 @@ export async function POST(
 
   // Wrap stream to disconnect MCP after completion
   const sseStream = createSSEStream(stream)
+  const encoder = new TextEncoder()
   const wrappedStream = new ReadableStream<Uint8Array>({
     async start(controller) {
       const reader = sseStream.getReader()
@@ -305,6 +369,16 @@ export async function POST(
           if (done) break
           controller.enqueue(value)
         }
+      } catch (err) {
+        // Send error event before closing
+        const errorEvent = `data: ${JSON.stringify({
+          type: "error",
+          error:
+            err instanceof Error
+              ? err.message
+              : String(err),
+        })}\n\n`
+        controller.enqueue(encoder.encode(errorEvent))
       } finally {
         controller.close()
         await manager.disconnect()

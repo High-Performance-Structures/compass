@@ -81,3 +81,36 @@ export function getMobilePlatform(): "ios" | "android" | "web" {
 export function isAnyNative(): boolean {
   return isNative() || isTauri()
 }
+
+// Open an external URL in the system browser.
+// On Tauri desktop, uses the opener plugin to open in the default browser.
+// On web, opens in a new window/tab.
+export async function openExternalUrl(
+  url: string,
+  options?: {
+    windowName?: string
+    windowFeatures?: string
+  },
+): Promise<boolean> {
+  // On Tauri desktop, use opener plugin to open in system browser
+  if (isTauri()) {
+    try {
+      const { openUrl } = await import("@tauri-apps/plugin-opener")
+      await openUrl(url)
+      return true
+    } catch (error) {
+      console.error("Failed to open URL via Tauri opener:", error)
+      // Fallback to window.open (may not work in some Tauri configs)
+      const popup = window.open(url, options?.windowName ?? "_blank")
+      return !!popup
+    }
+  }
+
+  // On web/mobile, use standard window.open
+  const popup = window.open(
+    url,
+    options?.windowName ?? "_blank",
+    options?.windowFeatures ?? "noopener,noreferrer",
+  )
+  return !!popup
+}

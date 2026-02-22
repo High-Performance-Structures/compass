@@ -1,9 +1,22 @@
 "use client"
 
-import { useEffect, createContext, useContext, useCallback, type ReactNode } from "react"
+import { useEffect, useState, useTransition, createContext, useContext, useCallback, type ReactNode } from "react"
+import { KeyRoundIcon, XIcon, Loader2Icon } from "lucide-react"
 import { useDesktop, useTauriReady } from "@/hooks/use-desktop"
 import { useTriggerSync, useSyncStatus, updateSyncState } from "@/hooks/use-sync-status"
 import { getBackupQueueCount } from "@/lib/sync/queue/mutation-queue"
+import {
+  detectClaudeCodeCredentials,
+  areCredentialsExpired,
+  isCredentialsDismissed,
+  setCredentialsDismissed,
+} from "@/lib/desktop/claude-code-credentials"
+import {
+  hasOAuthConfigured,
+  storeDetectedOAuthCredentials,
+} from "@/app/actions/desktop-oauth-detection"
+import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
 
 interface DesktopContextValue {
   isDesktop: boolean
@@ -11,6 +24,8 @@ interface DesktopContextValue {
   triggerSync: () => Promise<boolean>
   syncStatus: "idle" | "syncing" | "error" | "offline"
   pendingCount: number
+  showCredentialsBanner: boolean
+  dismissCredentialsBanner: () => void
 }
 
 const DesktopContext = createContext<DesktopContextValue>({
@@ -19,6 +34,8 @@ const DesktopContext = createContext<DesktopContextValue>({
   triggerSync: async () => false,
   syncStatus: "idle",
   pendingCount: 0,
+  showCredentialsBanner: false,
+  dismissCredentialsBanner: () => {},
 })
 
 export function useDesktopContext(): DesktopContextValue {
@@ -36,6 +53,11 @@ export function DesktopShell({ children }: DesktopShellProps) {
   const tauriReady = useTauriReady()
   const triggerSync = useTriggerSync()
   const { status: syncStatus, pendingCount } = useSyncStatus()
+  const [showCredentialsBanner, setShowCredentialsBanner] = useState(false)
+
+  const dismissCredentialsBanner = useCallback(() => {
+    setShowCredentialsBanner(false)
+  }, [])
 
   // Handle beforeunload to warn about pending sync operations
   const handleBeforeUnload = useCallback(
@@ -86,6 +108,17 @@ export function DesktopShell({ children }: DesktopShellProps) {
         if (backupCount > 0) {
           console.info(`Found ${backupCount} backed-up mutations to restore`)
           updateSyncState({ pendingCount: backupCount })
+        }
+
+        // Check for Claude Code credentials and offer to use them
+        if (!isCredentialsDismissed()) {
+          const creds = await detectClaudeCodeCredentials()
+          if (creds && !areCredentialsExpired(creds)) {
+            const hasExisting = await hasOAuthConfigured()
+            if (!hasExisting) {
+              setShowCredentialsBanner(true)
+            }
+          }
         }
 
         // Start initial sync after a short delay (let app load first)
@@ -167,9 +200,110 @@ export function DesktopShell({ children }: DesktopShellProps) {
         triggerSync,
         syncStatus,
         pendingCount,
+        showCredentialsBanner,
+        dismissCredentialsBanner,
       }}
     >
+      {showCredentialsBanner && (
+        <ClaudeCodeDetectionBannerInternal
+          onDismiss={dismissCredentialsBanner}
+        />
+      )}
       {children}
     </DesktopContext.Provider>
+  )
+}
+
+// Internal banner component that uses the context
+function ClaudeCodeDetectionBannerInternal({
+  onDismiss,
+}: {
+  onDismiss: () => void
+}) {
+  const [dismissed, setDismissed] = useState(false)
+  const [dontAskAgain, setDontAskAgain] = useState(false)
+  const [isPending, startTransition] = useTransition()
+
+  if (dismissed) return null
+
+  const handleDismiss = () => {
+    if (dontAskAgain) {
+      setCredentialsDismissed()
+    }
+    setDismissed(true)
+    onDismiss()
+  }
+
+  const handleUseCredentials = () => {
+    startTransition(async () => {
+      const creds = await detectClaudeCodeCredentials()
+      if (!creds || areCredentialsExpired(creds)) {
+        setDismissed(true)
+        onDismiss()
+        return
+      }
+
+      const result = await storeDetectedOAuthCredentials(
+        creds.accessToken,
+        creds.refreshToken,
+        creds.expiresAt
+      )
+
+      if (result.success) {
+        setDismissed(true)
+        onDismiss()
+      }
+    })
+  }
+
+  return (
+    <div className="bg-primary/10 border-b border-primary/20 px-4 py-3 fixed top-0 left-0 right-0 z-50">
+      <div className="flex items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <KeyRoundIcon className="text-primary h-5 w-5 shrink-0" />
+          <div className="flex flex-col">
+            <span className="text-sm font-medium">
+              Claude Code credentials detected
+            </span>
+            <span className="text-muted-foreground text-xs">
+              Use them for the Compass agent?
+            </span>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-3">
+          <label className="text-muted-foreground flex items-center gap-2 text-xs">
+            <Checkbox
+              checked={dontAskAgain}
+              onCheckedChange={(checked) =>
+                setDontAskAgain(checked === true)
+              }
+            />
+            Don&apos;t ask again
+          </label>
+
+          <Button
+            variant="ghost"
+            size="xs"
+            onClick={handleDismiss}
+            disabled={isPending}
+          >
+            <XIcon className="h-3 w-3" />
+          </Button>
+
+          <Button
+            size="xs"
+            onClick={handleUseCredentials}
+            disabled={isPending}
+          >
+            {isPending ? (
+              <Loader2Icon className="h-3 w-3 animate-spin" />
+            ) : (
+              "Use Credentials"
+            )}
+          </Button>
+        </div>
+      </div>
+    </div>
   )
 }
