@@ -1,4 +1,4 @@
-import { NextRequest } from "next/server"
+import { NextRequest, NextResponse } from "next/server"
 import { authkit, handleAuthkitHeaders } from "@workos-inc/authkit-nextjs"
 
 // public routes that don't require authentication
@@ -33,6 +33,18 @@ function isPublicPath(pathname: string): boolean {
 
 export default async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
+
+  // ── dev bypass: skip all auth when BYPASS_AUTH=true ──
+  // getCurrentUser() in lib/auth.ts returns a mock admin user
+  // when WorkOS keys contain "placeholder", so server actions
+  // and page data loaders still work without a real session.
+  if (process.env.BYPASS_AUTH === "true") {
+    // redirect landing page straight to dashboard for convenience
+    if (pathname === "/" || pathname === "/login" || pathname === "/signup") {
+      return NextResponse.redirect(new URL("/dashboard", request.url))
+    }
+    return NextResponse.next()
+  }
 
   // get session and headers from authkit (handles token refresh automatically)
   const { session, headers } = await authkit(request)

@@ -5,7 +5,6 @@ import { useTheme } from "next-themes"
 import {
   IconLogout,
   IconMenu2,
-  IconMessageCircle,
   IconMoon,
   IconSearch,
   IconSparkles,
@@ -28,7 +27,9 @@ import {
 import { SidebarTrigger, useSidebar } from "@/components/ui/sidebar"
 import { NotificationsPopover } from "@/components/notifications-popover"
 import { useCommandMenu } from "@/components/command-menu-provider"
-import { useAgentOptional } from "@/components/agent/chat-provider"
+import { useAgentOptional, useChatState, useRenderState } from "@/components/agent/chat-provider"
+import { usePathname } from "next/navigation"
+import { ChevronLeft } from "lucide-react"
 import { AccountModal } from "@/components/account-modal"
 import { getInitials } from "@/lib/utils"
 import type { SidebarUser } from "@/lib/auth"
@@ -45,6 +46,14 @@ export function SiteHeader({
   const agentContext = useAgentOptional()
   const [accountOpen, setAccountOpen] = React.useState(false)
   const { toggleSidebar } = useSidebar()
+  const pathname = usePathname()
+  const agentState = useChatState()
+  const renderState = useRenderState()
+
+  // Determine if we are on the main dashboard chat view with active messages
+  // In this state, we replace the sidebar toggle with a "Back" button to reset the chat
+  const hasRenderedUI = !!renderState.spec?.root || renderState.isRendering
+  const isDashboardChatActive = pathname === "/dashboard" && !hasRenderedUI && agentState.messages.length > 0
 
   const initials = user ? getInitials(user.name) : "?"
 
@@ -61,11 +70,19 @@ export function SiteHeader({
             type="button"
             className="flex size-10 shrink-0 items-center justify-center rounded-full -ml-0.5 hover:bg-background/60"
             onClick={() => {
-              toggleSidebar()
+              if (isDashboardChatActive) {
+                agentState.newChat()
+              } else {
+                toggleSidebar()
+              }
             }}
-            aria-label="Open menu"
+            aria-label={isDashboardChatActive ? "Back to new chat" : "Open menu"}
           >
-            <IconMenu2 className="size-5 text-muted-foreground" />
+            {isDashboardChatActive ? (
+              <ChevronLeft className="size-5 text-muted-foreground" />
+            ) : (
+              <IconMenu2 className="size-5 text-muted-foreground" />
+            )}
           </button>
           <button
             type="button"

@@ -5,7 +5,7 @@ import { SiteHeader } from "@/components/site-header"
 import { MobileBottomNav } from "@/components/mobile-bottom-nav"
 import { CommandMenuProvider } from "@/components/command-menu-provider"
 import { SettingsProvider } from "@/components/settings-provider"
-import { FeedbackWidget } from "@/components/feedback-widget"
+
 import { PageActionsProvider } from "@/components/page-actions-provider"
 import { DashboardContextMenu } from "@/components/dashboard-context-menu"
 import { Toaster } from "@/components/ui/sonner"
@@ -54,61 +54,59 @@ export default async function DashboardLayout({
 
   return (
     <ChatProvider>
-    <VoiceProvider>
-    <SettingsProvider>
-    <ProjectListProvider projects={projectList}>
-    <PageActionsProvider>
-    <CommandMenuProvider>
-      <BiometricGuard userId={authUser?.id}>
-      <DesktopShell>
-      <FeedbackWidget>
-      <DashboardContextMenu>
-      <SidebarProvider
-        defaultOpen={sidebarOpen}
-        className="h-screen overflow-hidden"
-        style={
-          {
-            "--sidebar-width": "calc(var(--spacing) * 72)",
-          } as React.CSSProperties
-        }
-      >
-        <AppSidebar
-          variant="inset"
-          projects={projectList}
-          dashboards={dashboardList}
-          user={user}
-          activeOrgId={activeOrgId}
-          activeOrgName={activeOrgName}
-        />
-        <SidebarInset className="overflow-hidden">
-          <DesktopOfflineBanner />
-          <OfflineBanner />
-          <DemoBanner isDemo={isDemo} />
-          <SiteHeader user={user} />
-          <div className="flex min-h-0 flex-1 overflow-hidden">
-            <MainContent>
-              {children}
-            </MainContent>
-            <ChatPanelShell />
-          </div>
-        </SidebarInset>
-        <MobileBottomNav />
-        <NativeShell />
-        <PushNotificationRegistrar />
-        <p className="pointer-events-none fixed bottom-3 left-0 right-0 hidden text-center text-xs text-muted-foreground/60 md:block">
-          Pre-alpha build
-        </p>
-        <Toaster position="bottom-right" />
-      </SidebarProvider>
-      </DashboardContextMenu>
-      </FeedbackWidget>
-      </DesktopShell>
-      </BiometricGuard>
-    </CommandMenuProvider>
-    </PageActionsProvider>
-    </ProjectListProvider>
-    </SettingsProvider>
-    </VoiceProvider>
+      <VoiceProvider>
+        <SettingsProvider>
+          <ProjectListProvider projects={projectList}>
+            <PageActionsProvider>
+              <CommandMenuProvider>
+                <BiometricGuard userId={authUser?.id}>
+                  <DesktopShell>
+                    <DashboardContextMenu>
+                      <SidebarProvider
+                        defaultOpen={sidebarOpen}
+                        className="h-screen overflow-hidden"
+                        style={
+                          {
+                            "--sidebar-width": "calc(var(--spacing) * 72)",
+                          } as React.CSSProperties
+                        }
+                      >
+                        <AppSidebar
+                          variant="inset"
+                          projects={projectList}
+                          dashboards={dashboardList}
+                          user={user}
+                          activeOrgId={activeOrgId}
+                          activeOrgName={activeOrgName}
+                        />
+                        <SidebarInset className="overflow-hidden">
+                          <DesktopOfflineBanner />
+                          <OfflineBanner />
+                          <DemoBanner isDemo={isDemo} />
+                          <SiteHeader user={user} />
+                          <div className="flex min-h-0 flex-1 overflow-hidden">
+                            <MainContent>
+                              {children}
+                            </MainContent>
+                            <ChatPanelShell />
+                          </div>
+                        </SidebarInset>
+                        <MobileBottomNav />
+                        <NativeShell />
+                        <PushNotificationRegistrar />
+                        <p className="pointer-events-none fixed bottom-3 left-0 right-0 hidden text-center text-xs text-muted-foreground/60 md:block">
+                          Pre-alpha build
+                        </p>
+                        <Toaster position="bottom-right" />
+                      </SidebarProvider>
+                    </DashboardContextMenu>
+                  </DesktopShell>
+                </BiometricGuard>
+              </CommandMenuProvider>
+            </PageActionsProvider>
+          </ProjectListProvider>
+        </SettingsProvider>
+      </VoiceProvider>
     </ChatProvider>
   )
 }
