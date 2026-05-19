@@ -1,5 +1,5 @@
 import { withAuth, signOut } from "@workos-inc/authkit-nextjs"
-import { getCloudflareContext } from "@opennextjs/cloudflare"
+import { getCloudflareContext } from "@/lib/db"
 import { getDb } from "@/db"
 import { users, organizations, organizationMembers } from "@/db/schema"
 import type { User } from "@/db/schema"
@@ -151,8 +151,12 @@ export async function getCurrentUser(): Promise<AuthUser | null> {
       )
       .where(eq(organizationMembers.userId, dbUser.id))
 
-    let activeOrg: { orgId: string; orgName: string; orgType: string } | null =
-      null
+    let activeOrg: {
+      readonly orgId: string
+      readonly orgName: string
+      readonly orgType: string
+      readonly memberRole: string
+    } | null = null
 
     if (orgMemberships.length > 0) {
       // check for cookie preference
@@ -173,7 +177,7 @@ export async function getCurrentUser(): Promise<AuthUser | null> {
       lastName: dbUser.lastName,
       displayName: dbUser.displayName,
       avatarUrl: dbUser.avatarUrl,
-      role: dbUser.role,
+      role: activeOrg?.memberRole ?? dbUser.role,
       googleEmail: dbUser.googleEmail ?? null,
       isActive: dbUser.isActive,
       lastLoginAt: now,

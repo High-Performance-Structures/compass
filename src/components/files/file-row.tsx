@@ -31,6 +31,9 @@ export const FileRow = forwardRef<
 ) {
   const router = useRouter()
   const { starFile, state, dispatch } = useFiles()
+  const projectCaption =
+    file.projectFile?.sourceLabel ??
+    file.projectFile?.categoryLabel
 
   const handleDoubleClick = () => {
     if (file.type === "folder") {
@@ -71,8 +74,15 @@ export const FileRow = forwardRef<
       <TableCell className="w-[40%]">
         <div className="flex items-center gap-2.5 min-w-0">
           <FileIcon type={file.type} size={18} />
-          <span className="truncate text-sm font-medium">
-            {file.name}
+          <span className="min-w-0">
+            <span className="block truncate text-sm font-medium">
+              {file.name}
+            </span>
+            {projectCaption && (
+              <span className="block truncate text-xs text-muted-foreground">
+                {projectCaption}
+              </span>
+            )}
           </span>
           {file.shared && (
             <IconUsers

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
-import { getCloudflareContext } from "@opennextjs/cloudflare"
+import { getCloudflareContext } from "@/lib/db"
 import { getDb } from "@/db"
 import { validateApiKey } from "@/lib/mcp/auth"
 import { loadMemoriesForPrompt } from "@/lib/agent/memory"

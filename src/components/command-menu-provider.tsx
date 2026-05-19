@@ -29,6 +29,11 @@ export function CommandMenuProvider({
   const [mobileSearchOpen, setMobileSearchOpen] =
     React.useState(false)
   const [initialQuery, setInitialQuery] = React.useState("")
+  const [mounted, setMounted] = React.useState(false)
+
+  React.useEffect(() => {
+    setMounted(true)
+  }, [])
 
   const handleSetOpen = React.useCallback((next: boolean) => {
     setIsOpen(next)
@@ -60,15 +65,19 @@ export function CommandMenuProvider({
   return (
     <CommandMenuContext.Provider value={value}>
       {children}
-      <CommandMenu
-        open={isOpen}
-        setOpen={handleSetOpen}
-        initialQuery={initialQuery}
-      />
-      <MobileSearch
-        open={mobileSearchOpen}
-        setOpen={setMobileSearchOpen}
-      />
+      {mounted && (
+        <>
+          <CommandMenu
+            open={isOpen}
+            setOpen={handleSetOpen}
+            initialQuery={initialQuery}
+          />
+          <MobileSearch
+            open={mobileSearchOpen}
+            setOpen={setMobileSearchOpen}
+          />
+        </>
+      )}
     </CommandMenuContext.Provider>
   )
 }

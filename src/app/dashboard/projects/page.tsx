@@ -1,35 +1,68 @@
 export const dynamic = "force-dynamic"
 
-import { getCloudflareContext } from "@opennextjs/cloudflare"
+import { asc, eq } from "drizzle-orm"
+
 import { getDb } from "@/db"
 import { projects } from "@/db/schema"
-import { asc } from "drizzle-orm"
-import { redirect } from "next/navigation"
-import { IconFolder } from "@tabler/icons-react"
+import { ProjectsHub } from "@/components/projects/projects-hub"
+import { getCurrentUser } from "@/lib/auth"
+import { getCloudflareContext } from "@/lib/db"
+import { canManageProjectRegistry } from "@/lib/permissions"
 
-export default async function ProjectsPage() {
+export type ProjectsHubProject = {
+  readonly id: string
+  readonly projectNumber: string | null
+  readonly name: string
+  readonly status: string
+  readonly address: string | null
+  readonly clientName: string | null
+  readonly projectManager: string | null
+  readonly sageJobNumber: string | null
+  readonly googleDriveFolderId: string | null
+  readonly createdAt: string
+}
+
+export default async function ProjectsPage(): Promise<React.ReactElement> {
+  let hubProjects: ProjectsHubProject[] = []
+  let canCreateOrUpdateProjects = false
+
   try {
+    const currentUser = await getCurrentUser()
+    canCreateOrUpdateProjects = canManageProjectRegistry(currentUser)
+
     const { env } = await getCloudflareContext()
     if (!env?.DB) throw new Error("D1 not available")
 
     const db = getDb(env.DB)
-    const [first] = await db
-      .select({ id: projects.id })
-      .from(projects)
-      .orderBy(asc(projects.name))
-      .limit(1)
+    const organizationId = currentUser?.organizationId ?? null
 
-    if (first) redirect(`/dashboard/projects/${first.id}`)
-  } catch (e) {
-    if (e && typeof e === "object" && "digest" in e) throw e
+    const query = db
+      .select({
+        id: projects.id,
+        projectNumber: projects.projectNumber,
+        name: projects.name,
+        status: projects.status,
+        address: projects.address,
+        clientName: projects.clientName,
+        projectManager: projects.projectManager,
+        sageJobNumber: projects.sageJobNumber,
+        googleDriveFolderId: projects.googleDriveFolderId,
+        createdAt: projects.createdAt,
+      })
+      .from(projects)
+      .orderBy(asc(projects.projectNumber), asc(projects.name))
+
+    hubProjects = organizationId
+      ? await query.where(eq(projects.organizationId, organizationId))
+      : await query
+  } catch (error) {
+    console.warn("Project hub unavailable", error)
   }
 
   return (
-    <div className="flex flex-1 items-center justify-center text-center text-muted-foreground">
-      <div>
-        <IconFolder className="mx-auto mb-4 size-12 opacity-50" />
-        <p>No projects yet.</p>
-      </div>
-    </div>
+    <ProjectsHub
+      projects={hubProjects}
+      canCreateOrUpdateProjects={canCreateOrUpdateProjects}
+    />
   )
 }

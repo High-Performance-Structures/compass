@@ -19,12 +19,14 @@ import {
 
 interface MobileProjectSwitcherProps {
   projectName: string
+  projectNumber?: string | null
   projectId: string
   status?: string
 }
 
 export function MobileProjectSwitcher({
   projectName,
+  projectNumber = null,
   projectId,
   status,
 }: MobileProjectSwitcherProps) {
@@ -32,14 +34,22 @@ export function MobileProjectSwitcher({
   const router = useRouter()
   const projects = useProjectList()
   const [open, setOpen] = React.useState(false)
+  const displayName = projectNumber ?? projectName
 
   // on desktop or single project, just render name normally
   if (!isMobile || projects.length < 2) {
     return (
       <div className="flex flex-wrap items-center gap-2 sm:gap-3 mb-1">
-        <h1 className="text-2xl font-semibold">
-          {projectName}
-        </h1>
+        <div>
+          <h1 className="text-2xl font-semibold">
+            {displayName}
+          </h1>
+          {projectNumber && (
+            <p className="text-sm text-muted-foreground">
+              {projectName}
+            </p>
+          )}
+        </div>
         {status && (
           <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-primary/10 text-primary">
             {status}
@@ -56,9 +66,14 @@ export function MobileProjectSwitcher({
         className="text-left mb-1 active:opacity-70"
       >
         <span className="text-2xl font-semibold">
-          {projectName}
+          {displayName}
         </span>
         <IconChevronDown className="size-4 text-muted-foreground inline ml-1 -mt-0.5 align-middle" />
+        {projectNumber && (
+          <span className="block text-sm text-muted-foreground">
+            {projectName}
+          </span>
+        )}
       </button>
       {status && (
         <div>
@@ -108,13 +123,20 @@ export function MobileProjectSwitcher({
                         : "text-muted-foreground"
                     )}
                   />
-                  <span
-                    className={cn(
-                      "text-sm flex-1 truncate",
-                      isActive && "font-medium"
+                  <span className="min-w-0 flex-1">
+                    <span
+                      className={cn(
+                        "block truncate text-sm",
+                        isActive && "font-medium"
+                      )}
+                    >
+                      {project.projectNumber ?? project.name}
+                    </span>
+                    {project.projectNumber && (
+                      <span className="block truncate text-xs text-muted-foreground">
+                        {project.name}
+                      </span>
                     )}
-                  >
-                    {project.name}
                   </span>
                   {isActive && (
                     <IconCheck className="size-4 text-primary shrink-0" />

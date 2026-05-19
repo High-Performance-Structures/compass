@@ -31,6 +31,8 @@ cp .dev-setup/files/middleware.ts src/middleware.ts
 cp .dev-setup/files/next.config.ts next.config.ts
 cp .dev-setup/files/cloudflare-context.ts src/lib/cloudflare-context.ts
 cp .dev-setup/files/db.ts src/lib/db.ts
+mkdir -p src/types
+cp .dev-setup/files/types/sql-js.d.ts src/types/sql-js.d.ts
 mkdir -p scripts
 cp .dev-setup/files/init-local-db.ts scripts/init-local-db.ts
 
@@ -58,6 +60,7 @@ Or manually:
 ```bash
 git checkout HEAD -- src/middleware.ts next.config.ts package.json bun.lock
 rm -f src/lib/cloudflare-context.ts src/lib/db.ts scripts/init-local-db.ts
+rm -f src/types/sql-js.d.ts
 find src -name "*.ts" -o -name "*.tsx" | xargs sed -i '' 's|from "@/lib/db"|from "@opennextjs/cloudflare"|g'
 bun remove sql.js
 rm -f local.db local.db-wal local.db-shm
@@ -71,6 +74,7 @@ rm -f local.db local.db-wal local.db-shm
 | `files/next.config.ts` | Removes Cloudflare dev proxy |
 | `files/cloudflare-context.ts` | sql.js wrapper mimicking D1 |
 | `files/db.ts` | Conditional import wrapper |
+| `files/types/sql-js.d.ts` | Minimal sql.js types for the local D1 shim |
 | `files/init-local-db.ts` | Migration runner for local DB |
 
 ## Environment Variables

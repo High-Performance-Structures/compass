@@ -20,6 +20,9 @@ cp "$SCRIPT_DIR/files/middleware.ts" src/middleware.ts
 cp "$SCRIPT_DIR/files/next.config.ts" next.config.ts
 cp "$SCRIPT_DIR/files/cloudflare-context.ts" src/lib/cloudflare-context.ts
 cp "$SCRIPT_DIR/files/db.ts" src/lib/db.ts
+mkdir -p src/types
+cp "$SCRIPT_DIR/files/types/sql-js.d.ts" src/types/sql-js.d.ts
+cp "$SCRIPT_DIR/files/types/better-sqlite3.d.ts" src/types/better-sqlite3.d.ts
 mkdir -p scripts
 cp "$SCRIPT_DIR/files/init-local-db.ts" scripts/init-local-db.ts
 

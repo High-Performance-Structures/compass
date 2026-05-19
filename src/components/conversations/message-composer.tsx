@@ -27,7 +27,7 @@ import {
 import { sendMessage } from "@/app/actions/chat-messages"
 import { setTyping } from "@/app/actions/conversations-realtime"
 import { useRouter } from "next/navigation"
-import { useTheme } from "next-themes"
+import { useTheme } from "@/components/theme-provider"
 import { cn } from "@/lib/utils"
 import { createMentionSuggestion } from "./mention-suggestion"
 

@@ -23,7 +23,6 @@ import {
 } from "@/components/ui/dropdown-menu"
 import {
   SidebarMenu,
-  SidebarMenuButton,
   SidebarMenuItem,
   useSidebar,
 } from "@/components/ui/sidebar"
@@ -77,10 +76,16 @@ export function OrgSwitcher({
   return (
     <SidebarMenu>
       <SidebarMenuItem>
-        <SidebarMenuButton
-          size="lg"
-          className="gap-0 px-0 hover:bg-transparent active:bg-transparent"
-          asChild={false}
+        <div
+          data-slot="sidebar-menu-button"
+          data-sidebar="menu-button"
+          data-size="lg"
+          data-active={false}
+          className={cn(
+            "peer/menu-button flex h-12 w-full items-center gap-0 overflow-hidden rounded-md px-0 text-left text-sm outline-hidden ring-sidebar-ring transition-[width,height,padding]",
+            "group-data-[collapsible=icon]:size-9! group-data-[collapsible=icon]:justify-center! group-data-[collapsible=icon]:gap-0! group-data-[collapsible=icon]:p-2! group-data-[collapsible=icon]:[&>*:nth-child(n+2)]:hidden",
+            "[data-mobile=true]_&:h-14 [data-mobile=true]_&:text-base",
+          )}
         >
           <Link
             href="/dashboard"
@@ -152,9 +157,9 @@ export function OrgSwitcher({
                   </React.Fragment>
                 )
               })}
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </SidebarMenuButton>
+              </DropdownMenuContent>
+            </DropdownMenu>
+        </div>
       </SidebarMenuItem>
     </SidebarMenu>
   )

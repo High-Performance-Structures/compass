@@ -31,6 +31,7 @@ export default async function ChannelPage({
         style={{ gridTemplateRows: "auto 1fr auto" }}
       >
         <ChannelHeader
+          channelId={channelId}
           name={channel.name}
           description={channel.description ?? undefined}
           memberCount={channel.memberCount}

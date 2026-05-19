@@ -16,6 +16,7 @@ git checkout HEAD -- src/middleware.ts next.config.ts package.json bun.lock
 echo "📦 Removing dev-only files..."
 rm -f src/lib/cloudflare-context.ts
 rm -f src/lib/db.ts
+rm -f src/types/sql-js.d.ts
 rm -f scripts/init-local-db.ts
 echo "✓ Removed dev files"
 

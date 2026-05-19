@@ -52,6 +52,7 @@ import {
   IconCalendarOff,
   IconLoader2,
 } from "@tabler/icons-react"
+import { toast } from "sonner"
 import { ScheduleListView } from "./schedule-list-view"
 import { ScheduleGanttView } from "./schedule-gantt-view"
 import { ScheduleCalendarView } from "./schedule-calendar-view"
@@ -64,12 +65,10 @@ import type {
   ScheduleBaselineData,
   TaskFilters,
   TaskStatus,
-  ConstructionPhase,
 } from "@/lib/schedule/types"
 import {
   EMPTY_FILTERS,
   STATUS_OPTIONS,
-  PHASE_OPTIONS,
 } from "@/lib/schedule/types"
 
 type View = "calendar" | "list" | "gantt"
@@ -85,7 +84,11 @@ interface ScheduleViewProps {
   readonly projectName: string
   readonly initialData: ScheduleData
   readonly baselines: ScheduleBaselineData[]
-  readonly allProjects?: readonly { id: string; name: string }[]
+  readonly allProjects?: readonly {
+    readonly id: string
+    readonly name: string
+    readonly projectNumber: string | null
+  }[]
 }
 
 export function ScheduleView({
@@ -95,7 +98,7 @@ export function ScheduleView({
   baselines,
 }: ScheduleViewProps) {
   const isMobile = useIsMobile()
-  const [view, setView] = useState<View>("calendar")
+  const [view, setView] = useState<View>("gantt")
   const [taskFormOpen, setTaskFormOpen] = useState(false)
   const [filters, setFilters] = useState<TaskFilters>(EMPTY_FILTERS)
   const [baselinesOpen, setBaselinesOpen] = useState(false)
@@ -104,6 +107,18 @@ export function ScheduleView({
   const [isImporting, setIsImporting] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
+  const phaseOptions = useMemo(() => {
+    const seen = new Set<string>()
+    return initialData.tasks
+      .map((task) => task.phase)
+      .filter((phase) => {
+        if (!phase || seen.has(phase)) return false
+        seen.add(phase)
+        return true
+      })
+      .map((phase) => ({ value: phase, label: phase }))
+  }, [initialData.tasks])
+
   const filteredTasks = useMemo(() => {
     let tasks = initialData.tasks
 
@@ -111,9 +126,7 @@ export function ScheduleView({
       tasks = tasks.filter((t) => filters.status.includes(t.status))
     }
     if (filters.phase.length > 0) {
-      tasks = tasks.filter((t) =>
-        filters.phase.includes(t.phase as ConstructionPhase)
-      )
+      tasks = tasks.filter((t) => filters.phase.includes(t.phase))
     }
     if (filters.assignedTo) {
       const search = filters.assignedTo.toLowerCase()
@@ -143,7 +156,7 @@ export function ScheduleView({
     setFilters({ ...filters, status: next })
   }
 
-  const togglePhase = (phase: ConstructionPhase) => {
+  const togglePhase = (phase: string) => {
     const current = filters.phase
     const next = current.includes(phase)
       ? current.filter((p) => p !== phase)
@@ -158,7 +171,7 @@ export function ScheduleView({
     })
   }
 
-  const removePhaseChip = (phase: ConstructionPhase) => {
+  const removePhaseChip = (phase: string) => {
     setFilters({
       ...filters,
       phase: filters.phase.filter((p) => p !== phase),
@@ -263,13 +276,13 @@ export function ScheduleView({
         link.download = `imported-tasks-${Date.now()}.json`
         link.click()
         URL.revokeObjectURL(url)
-        alert(`Parsed ${parsed.length} tasks from CSV. Downloaded as JSON for review.`)
+        toast.success(`Parsed ${parsed.length} tasks from CSV for review.`)
       } else {
-        alert("No valid tasks found in the CSV file.")
+        toast.error("No valid tasks found in the CSV file.")
       }
     } catch (error) {
       console.error("Import failed:", error)
-      alert("Failed to parse CSV file. Please check the format.")
+      toast.error("Failed to parse CSV file. Please check the format.")
     } finally {
       setIsImporting(false)
       setImportDialogOpen(false)
@@ -379,7 +392,7 @@ export function ScheduleView({
                   Phase
                 </Label>
                 <div className="mt-1.5 space-y-1 max-h-40 overflow-y-auto">
-                  {PHASE_OPTIONS.map((opt) => (
+                  {phaseOptions.map((opt) => (
                     <label
                       key={opt.value}
                       className="flex items-center gap-2 py-0.5 cursor-pointer"
@@ -438,7 +451,7 @@ export function ScheduleView({
             <Badge
               key={p}
               variant="outline"
-              className="gap-1 shrink-0 text-xs py-0 h-6 cursor-pointer hover:bg-accent capitalize"
+              className="gap-1 shrink-0 text-xs py-0 h-6 cursor-pointer hover:bg-accent"
               onClick={() => removePhaseChip(p)}
             >
               {p}

@@ -1,9 +1,9 @@
-import { getCloudflareContext } from "@opennextjs/cloudflare"
+import { getCloudflareContext } from "@/lib/db"
 import { getDb } from "@/db"
 import { validateAgentAuth } from "@/lib/agent/api-auth"
-import { projects, scheduleTasks } from "@/db/schema"
+import { projectOperations, projects, scheduleTasks } from "@/db/schema"
 import { invoices, vendorBills } from "@/db/schema-netsuite"
-import { eq, and, like } from "drizzle-orm"
+import { eq, and, like, or } from "drizzle-orm"
 
 export async function POST(req: Request): Promise<Response> {
   const { env } = await getCloudflareContext()
@@ -87,7 +87,13 @@ export async function POST(req: Request): Promise<Response> {
           where: (p, { eq: eqFunc, like: likeFunc, and: andFunc }) => {
             const conditions = [eqFunc(p.organizationId, orgId)]
             if (body.search) {
-              conditions.push(likeFunc(p.name, `%${body.search}%`))
+              const searchCondition = or(
+                likeFunc(p.name, `%${body.search}%`),
+                likeFunc(p.projectNumber, `%${body.search}%`)
+              )
+              if (searchCondition) {
+                conditions.push(searchCondition)
+              }
             }
             return conditions.length > 1
               ? andFunc(...conditions)
@@ -207,8 +213,65 @@ export async function POST(req: Request): Promise<Response> {
         )
       }
 
+      case "project_operations": {
+        const whereConditions = [eq(projects.organizationId, orgId)]
+        if (body.id) {
+          whereConditions.push(eq(projectOperations.projectId, body.id))
+        }
+        if (body.search) {
+          const search = `%${body.search}%`
+          const searchCondition = or(
+            like(projectOperations.title, search),
+            like(projectOperations.sourceRecordNumber, search),
+            like(projectOperations.companyName, search),
+            like(projectOperations.assigneeName, search)
+          )
+          if (searchCondition) {
+            whereConditions.push(searchCondition)
+          }
+        }
+        const rows = await db
+          .select({
+            id: projectOperations.id,
+            projectId: projectOperations.projectId,
+            sourceSystem: projectOperations.sourceSystem,
+            sourceRecordType: projectOperations.sourceRecordType,
+            sourceRecordId: projectOperations.sourceRecordId,
+            sourceRecordNumber: projectOperations.sourceRecordNumber,
+            title: projectOperations.title,
+            description: projectOperations.description,
+            status: projectOperations.status,
+            priority: projectOperations.priority,
+            assigneeType: projectOperations.assigneeType,
+            assigneeName: projectOperations.assigneeName,
+            companyName: projectOperations.companyName,
+            costCode: projectOperations.costCode,
+            startDate: projectOperations.startDate,
+            dueDate: projectOperations.dueDate,
+            amount: projectOperations.amount,
+            syncStatus: projectOperations.syncStatus,
+            projectName: projects.name,
+            projectNumber: projects.projectNumber,
+          })
+          .from(projectOperations)
+          .innerJoin(projects, eq(projectOperations.projectId, projects.id))
+          .where(
+            whereConditions.length > 1
+              ? and(...whereConditions)
+              : whereConditions[0]
+          )
+          .limit(cap)
+        return new Response(
+          JSON.stringify({ data: rows, count: rows.length }),
+          {
+            headers: { "Content-Type": "application/json" },
+          }
+        )
+      }
+
       case "project_detail": {
-        if (!body.id) {
+        const queryId = body.id
+        if (!queryId) {
           return new Response(
             JSON.stringify({ error: "id required for detail query" }),
             {
@@ -219,7 +282,7 @@ export async function POST(req: Request): Promise<Response> {
         }
         const row = await db.query.projects.findFirst({
           where: (p, { eq: eqFunc, and: andFunc }) =>
-            andFunc(eqFunc(p.id, body.id!), eqFunc(p.organizationId, orgId)),
+            andFunc(eqFunc(p.id, queryId), eqFunc(p.organizationId, orgId)),
         })
         if (!row) {
           return new Response(JSON.stringify({ error: "not found" }), {
@@ -233,7 +296,8 @@ export async function POST(req: Request): Promise<Response> {
       }
 
       case "customer_detail": {
-        if (!body.id) {
+        const queryId = body.id
+        if (!queryId) {
           return new Response(
             JSON.stringify({ error: "id required for detail query" }),
             {
@@ -244,7 +308,7 @@ export async function POST(req: Request): Promise<Response> {
         }
         const row = await db.query.customers.findFirst({
           where: (c, { eq: eqFunc, and: andFunc }) =>
-            andFunc(eqFunc(c.id, body.id!), eqFunc(c.organizationId, orgId)),
+            andFunc(eqFunc(c.id, queryId), eqFunc(c.organizationId, orgId)),
         })
         if (!row) {
           return new Response(JSON.stringify({ error: "not found" }), {
@@ -258,7 +322,8 @@ export async function POST(req: Request): Promise<Response> {
       }
 
       case "vendor_detail": {
-        if (!body.id) {
+        const queryId = body.id
+        if (!queryId) {
           return new Response(
             JSON.stringify({ error: "id required for detail query" }),
             {
@@ -269,7 +334,7 @@ export async function POST(req: Request): Promise<Response> {
         }
         const row = await db.query.vendors.findFirst({
           where: (v, { eq: eqFunc, and: andFunc }) =>
-            andFunc(eqFunc(v.id, body.id!), eqFunc(v.organizationId, orgId)),
+            andFunc(eqFunc(v.id, queryId), eqFunc(v.organizationId, orgId)),
         })
         if (!row) {
           return new Response(JSON.stringify({ error: "not found" }), {

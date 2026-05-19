@@ -5,7 +5,7 @@ import {
   Renderer,
   type ComponentRegistry,
   type Spec,
-  DataProvider,
+  StateProvider,
   VisibilityProvider,
   ActionProvider,
 } from "@json-render/react"
@@ -122,7 +122,7 @@ export function CompassRenderer({
   if (!spec) return null
 
   return (
-    <DataProvider initialData={data}>
+    <StateProvider initialState={data}>
       <VisibilityProvider>
         <ActionProvider handlers={actionHandlers}>
           <Renderer
@@ -133,6 +133,6 @@ export function CompassRenderer({
           />
         </ActionProvider>
       </VisibilityProvider>
-    </DataProvider>
+    </StateProvider>
   )
 }

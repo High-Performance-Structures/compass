@@ -106,6 +106,7 @@ export const groupMembers = sqliteTable("group_members", {
 
 export const projects = sqliteTable("projects", {
   id: text("id").primaryKey(),
+  projectNumber: text("project_number"),
   name: text("name").notNull(),
   status: text("status").notNull().default("OPEN"),
   address: text("address"),
@@ -113,7 +114,314 @@ export const projects = sqliteTable("projects", {
   projectManager: text("project_manager"),
   organizationId: text("organization_id").references(() => organizations.id),
   netsuiteJobId: text("netsuite_job_id"),
+  sageJobId: text("sage_job_id"),
+  sageJobNumber: text("sage_job_number"),
+  googleDriveFolderId: text("google_drive_folder_id"),
+  googleScheduleSheetId: text("google_schedule_sheet_id"),
+  googleDailyLogSheetId: text("google_daily_log_sheet_id"),
+  googleCalendarId: text("google_calendar_id"),
+  buildertrendProjectId: text("buildertrend_project_id"),
+  ownerUpdatesEnabled: integer("owner_updates_enabled", {
+    mode: "boolean",
+  }).notNull().default(true),
+  ownerUpdateChannel: text("owner_update_channel").notNull().default("compass"),
+  ownerUpdateCadence: text("owner_update_cadence").notNull().default("weekly"),
   createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at"),
+})
+
+export const projectExternalLinks = sqliteTable("project_external_links", {
+  id: text("id").primaryKey(),
+  projectId: text("project_id")
+    .notNull()
+    .references(() => projects.id, { onDelete: "cascade" }),
+  system: text("system").notNull(),
+  label: text("label").notNull(),
+  externalId: text("external_id"),
+  externalNumber: text("external_number"),
+  externalUrl: text("external_url"),
+  syncDirection: text("sync_direction").notNull().default("read"),
+  syncStatus: text("sync_status").notNull().default("unmapped"),
+  metadata: text("metadata"),
+  lastSyncedAt: text("last_synced_at"),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+})
+
+export const dailyLogs = sqliteTable("daily_logs", {
+  id: text("id").primaryKey(),
+  projectId: text("project_id")
+    .notNull()
+    .references(() => projects.id, { onDelete: "cascade" }),
+  authorId: text("author_id").references(() => users.id),
+  sourceSystem: text("source_system").notNull().default("compass"),
+  sourceExternalId: text("source_external_id"),
+  logDate: text("log_date").notNull(),
+  weatherTempF: integer("weather_temp_f"),
+  weatherConditions: text("weather_conditions"),
+  weatherPrecipitation: text("weather_precipitation"),
+  weatherSource: text("weather_source").notNull().default("manual"),
+  workCompleted: text("work_completed").notNull(),
+  issues: text("issues"),
+  materialsUsed: text("materials_used"),
+  crewPresent: text("crew_present"),
+  hoursWorked: real("hours_worked"),
+  safetyIncidents: text("safety_incidents"),
+  visitorLog: text("visitor_log"),
+  notes: text("notes"),
+  isClientVisible: integer("is_client_visible", {
+    mode: "boolean",
+  }).notNull().default(false),
+  reviewStatus: text("review_status").notNull().default("draft"),
+  tags: text("tags"),
+  syncStatus: text("sync_status").notNull().default("synced"),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+})
+
+export const dailyLogPhotos = sqliteTable("daily_log_photos", {
+  id: text("id").primaryKey(),
+  projectId: text("project_id")
+    .notNull()
+    .references(() => projects.id, { onDelete: "cascade" }),
+  dailyLogId: text("daily_log_id").references(() => dailyLogs.id, {
+    onDelete: "set null",
+  }),
+  uploadedBy: text("uploaded_by").references(() => users.id),
+  sourceSystem: text("source_system").notNull().default("compass"),
+  sourceExternalId: text("source_external_id"),
+  fileName: text("file_name").notNull(),
+  fileSize: integer("file_size"),
+  mimeType: text("mime_type"),
+  driveFileId: text("drive_file_id"),
+  driveUrl: text("drive_url"),
+  thumbnailUrl: text("thumbnail_url"),
+  caption: text("caption"),
+  capturedAt: text("captured_at"),
+  gpsLat: real("gps_lat"),
+  gpsLng: real("gps_lng"),
+  uploadStatus: text("upload_status").notNull().default("pending"),
+  reviewStatus: text("review_status").notNull().default("needs_review"),
+  ownerVisible: integer("owner_visible", {
+    mode: "boolean",
+  }).notNull().default(false),
+  subVendorVisible: integer("sub_vendor_visible", {
+    mode: "boolean",
+  }).notNull().default(false),
+  publicShareable: integer("public_shareable", {
+    mode: "boolean",
+  }).notNull().default(false),
+  photoKind: text("photo_kind").notNull().default("progress"),
+  sortOrder: integer("sort_order").notNull().default(0),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+})
+
+export const ownerProjectUpdates = sqliteTable("owner_project_updates", {
+  id: text("id").primaryKey(),
+  projectId: text("project_id")
+    .notNull()
+    .references(() => projects.id, { onDelete: "cascade" }),
+  createdBy: text("created_by").references(() => users.id),
+  title: text("title").notNull(),
+  updateDate: text("update_date").notNull(),
+  summary: text("summary").notNull(),
+  status: text("status").notNull().default("draft"),
+  channel: text("channel").notNull().default("compass"),
+  sourceDailyLogIds: text("source_daily_log_ids"),
+  selectedPhotoIds: text("selected_photo_ids"),
+  publishedAt: text("published_at"),
+  sentAt: text("sent_at"),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+})
+
+export const projectOperations = sqliteTable("project_operations", {
+  id: text("id").primaryKey(),
+  projectId: text("project_id")
+    .notNull()
+    .references(() => projects.id, { onDelete: "cascade" }),
+  sourceSystem: text("source_system").notNull().default("sage"),
+  sourceRecordType: text("source_record_type").notNull(),
+  sourceRecordId: text("source_record_id"),
+  sourceRecordNumber: text("source_record_number"),
+  title: text("title").notNull(),
+  description: text("description"),
+  status: text("status").notNull().default("open"),
+  priority: text("priority").notNull().default("normal"),
+  assigneeType: text("assignee_type"),
+  assigneeName: text("assignee_name"),
+  companyName: text("company_name"),
+  costCode: text("cost_code"),
+  startDate: text("start_date"),
+  dueDate: text("due_date"),
+  amount: real("amount"),
+  externalUrl: text("external_url"),
+  syncDirection: text("sync_direction").notNull().default("read"),
+  syncStatus: text("sync_status").notNull().default("synced"),
+  lastSyncedAt: text("last_synced_at"),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+})
+
+export const projectBudgetApplications = sqliteTable("project_budget_applications", {
+  id: text("id").primaryKey(),
+  projectId: text("project_id")
+    .notNull()
+    .references(() => projects.id, { onDelete: "cascade" }),
+  sourceSystem: text("source_system").notNull().default("sage"),
+  sourceRecordId: text("source_record_id"),
+  applicationNumber: text("application_number").notNull(),
+  periodTo: text("period_to"),
+  status: text("status").notNull().default("current"),
+  originalContractSum: real("original_contract_sum").notNull().default(0),
+  netChanges: real("net_changes").notNull().default(0),
+  contractSumToDate: real("contract_sum_to_date").notNull().default(0),
+  totalCompletedStoredToDate: real("total_completed_stored_to_date")
+    .notNull()
+    .default(0),
+  retainageHeld: real("retainage_held").notNull().default(0),
+  totalEarnedLessRetainage: real("total_earned_less_retainage")
+    .notNull()
+    .default(0),
+  previousCertificates: real("previous_certificates").notNull().default(0),
+  currentPaymentDue: real("current_payment_due").notNull().default(0),
+  balanceToFinish: real("balance_to_finish").notNull().default(0),
+  ownerVisible: integer("owner_visible", { mode: "boolean" })
+    .notNull()
+    .default(false),
+  sourceUrl: text("source_url"),
+  syncStatus: text("sync_status").notNull().default("synced"),
+  lastSyncedAt: text("last_synced_at"),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+})
+
+export const projectBudgetLines = sqliteTable("project_budget_lines", {
+  id: text("id").primaryKey(),
+  projectId: text("project_id")
+    .notNull()
+    .references(() => projects.id, { onDelete: "cascade" }),
+  applicationId: text("application_id").references(
+    () => projectBudgetApplications.id,
+    { onDelete: "set null" }
+  ),
+  sourceSystem: text("source_system").notNull().default("sage"),
+  sourceRecordId: text("source_record_id"),
+  sourceRecordNumber: text("source_record_number"),
+  costCode: text("cost_code").notNull(),
+  csiDivision: text("csi_division").notNull(),
+  csiDivisionName: text("csi_division_name").notNull(),
+  description: text("description").notNull(),
+  notes: text("notes"),
+  originalEstimate: real("original_estimate").notNull().default(0),
+  priorChanges: real("prior_changes").notNull().default(0),
+  currentChanges: real("current_changes").notNull().default(0),
+  totalChanges: real("total_changes").notNull().default(0),
+  adjustedEstimate: real("adjusted_estimate").notNull().default(0),
+  priorCosts: real("prior_costs").notNull().default(0),
+  currentCosts: real("current_costs").notNull().default(0),
+  totalCosts: real("total_costs").notNull().default(0),
+  percentComplete: real("percent_complete").notNull().default(0),
+  balanceToFinish: real("balance_to_finish").notNull().default(0),
+  retainageHeld: real("retainage_held").notNull().default(0),
+  vendorName: text("vendor_name"),
+  ownerLabel: text("owner_label"),
+  ownerVisible: integer("owner_visible", { mode: "boolean" })
+    .notNull()
+    .default(false),
+  internalNotes: text("internal_notes"),
+  sortOrder: integer("sort_order").notNull().default(0),
+  syncStatus: text("sync_status").notNull().default("synced"),
+  lastSyncedAt: text("last_synced_at"),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+})
+
+export const projectRfis = sqliteTable("project_rfis", {
+  id: text("id").primaryKey(),
+  projectId: text("project_id")
+    .notNull()
+    .references(() => projects.id, { onDelete: "cascade" }),
+  sourceSystem: text("source_system").notNull().default("compass"),
+  sourceRecordId: text("source_record_id"),
+  rfiNumber: text("rfi_number").notNull(),
+  subject: text("subject").notNull(),
+  question: text("question").notNull(),
+  answer: text("answer"),
+  status: text("status").notNull().default("open"),
+  priority: text("priority").notNull().default("normal"),
+  audience: text("audience").notNull().default("internal"),
+  requesterName: text("requester_name"),
+  assignedToName: text("assigned_to_name"),
+  companyName: text("company_name"),
+  dueDate: text("due_date"),
+  submittedAt: text("submitted_at").notNull(),
+  answeredAt: text("answered_at"),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+})
+
+export const projectContacts = sqliteTable("project_contacts", {
+  id: text("id").primaryKey(),
+  projectId: text("project_id")
+    .notNull()
+    .references(() => projects.id, { onDelete: "cascade" }),
+  contactType: text("contact_type").notNull(), // owner, supplier, subcontractor, internal
+  sourceSystem: text("source_system").notNull().default("compass"),
+  sourceRecordId: text("source_record_id"),
+  sourceEntityType: text("source_entity_type").notNull().default("manual"),
+  sourceEntityId: text("source_entity_id"),
+  displayName: text("display_name").notNull(),
+  companyName: text("company_name"),
+  role: text("role"),
+  trade: text("trade"),
+  csiDivision: text("csi_division"),
+  csiDivisionName: text("csi_division_name"),
+  primaryCostCode: text("primary_cost_code"),
+  email: text("email"),
+  phone: text("phone"),
+  notes: text("notes"),
+  ownerPortalVisible: integer("owner_portal_visible", {
+    mode: "boolean",
+  }).notNull().default(false),
+  subVendorPortalVisible: integer("sub_vendor_portal_visible", {
+    mode: "boolean",
+  }).notNull().default(false),
+  internalVisible: integer("internal_visible", {
+    mode: "boolean",
+  }).notNull().default(true),
+  primaryContact: integer("primary_contact", {
+    mode: "boolean",
+  }).notNull().default(false),
+  active: integer("active", { mode: "boolean" }).notNull().default(true),
+  sortOrder: integer("sort_order").notNull().default(0),
+  syncStatus: text("sync_status").notNull().default("synced"),
+  lastSyncedAt: text("last_synced_at"),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+})
+
+export const projectContactSourceLinks = sqliteTable("project_contact_source_links", {
+  id: text("id").primaryKey(),
+  projectId: text("project_id")
+    .notNull()
+    .references(() => projects.id, { onDelete: "cascade" }),
+  projectContactId: text("project_contact_id").references(
+    () => projectContacts.id,
+    { onDelete: "set null" }
+  ),
+  sourceSystem: text("source_system").notNull(),
+  sourceRecordType: text("source_record_type").notNull(),
+  sourceRecordId: text("source_record_id").notNull(),
+  sourceRecordNumber: text("source_record_number"),
+  sourceLabel: text("source_label").notNull(),
+  sourceName: text("source_name").notNull(),
+  matchStatus: text("match_status").notNull().default("unmatched"),
+  matchConfidence: real("match_confidence").notNull().default(0),
+  matchReason: text("match_reason"),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
 })
 
 export const projectMembers = sqliteTable("project_members", {
@@ -150,6 +458,18 @@ export const scheduleTasks = sqliteTable("schedule_tasks", {
   sortOrder: integer("sort_order").notNull().default(0),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
+})
+
+export const dailyLogTaskLinks = sqliteTable("daily_log_task_links", {
+  id: text("id").primaryKey(),
+  dailyLogId: text("daily_log_id")
+    .notNull()
+    .references(() => dailyLogs.id, { onDelete: "cascade" }),
+  scheduleTaskId: text("schedule_task_id")
+    .notNull()
+    .references(() => scheduleTasks.id, { onDelete: "cascade" }),
+  notes: text("notes"),
+  createdAt: text("created_at").notNull(),
 })
 
 export const taskDependencies = sqliteTable("task_dependencies", {
@@ -212,12 +532,45 @@ export const vendors = sqliteTable("vendors", {
   phone: text("phone"),
   address: text("address"),
   netsuiteId: text("netsuite_id"),
+  sourceSystem: text("source_system").notNull().default("manual"),
+  sourceRecordId: text("source_record_id"),
+  sourceRecordNumber: text("source_record_number"),
+  sourceMetadata: text("source_metadata"),
+  directoryStatus: text("directory_status").notNull().default("active"),
+  syncStatus: text("sync_status").notNull().default("manual"),
+  lastSyncedAt: text("last_synced_at"),
   organizationId: text("organization_id").references(() => organizations.id),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at"),
 })
 
 export type Project = typeof projects.$inferSelect
+export type ProjectExternalLink = typeof projectExternalLinks.$inferSelect
+export type NewProjectExternalLink = typeof projectExternalLinks.$inferInsert
+export type DailyLog = typeof dailyLogs.$inferSelect
+export type NewDailyLog = typeof dailyLogs.$inferInsert
+export type DailyLogPhoto = typeof dailyLogPhotos.$inferSelect
+export type NewDailyLogPhoto = typeof dailyLogPhotos.$inferInsert
+export type DailyLogTaskLink = typeof dailyLogTaskLinks.$inferSelect
+export type NewDailyLogTaskLink = typeof dailyLogTaskLinks.$inferInsert
+export type OwnerProjectUpdate = typeof ownerProjectUpdates.$inferSelect
+export type NewOwnerProjectUpdate = typeof ownerProjectUpdates.$inferInsert
+export type ProjectOperation = typeof projectOperations.$inferSelect
+export type NewProjectOperation = typeof projectOperations.$inferInsert
+export type ProjectBudgetApplication =
+  typeof projectBudgetApplications.$inferSelect
+export type NewProjectBudgetApplication =
+  typeof projectBudgetApplications.$inferInsert
+export type ProjectBudgetLine = typeof projectBudgetLines.$inferSelect
+export type NewProjectBudgetLine = typeof projectBudgetLines.$inferInsert
+export type ProjectRfi = typeof projectRfis.$inferSelect
+export type NewProjectRfi = typeof projectRfis.$inferInsert
+export type ProjectContact = typeof projectContacts.$inferSelect
+export type NewProjectContact = typeof projectContacts.$inferInsert
+export type ProjectContactSourceLink =
+  typeof projectContactSourceLinks.$inferSelect
+export type NewProjectContactSourceLink =
+  typeof projectContactSourceLinks.$inferInsert
 export type ScheduleTask = typeof scheduleTasks.$inferSelect
 export type NewScheduleTask = typeof scheduleTasks.$inferInsert
 export type TaskDependency = typeof taskDependencies.$inferSelect

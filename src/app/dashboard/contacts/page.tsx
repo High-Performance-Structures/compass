@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { IconPlus } from "@tabler/icons-react"
+import { IconPlus, IconShieldCheck } from "@tabler/icons-react"
 import { Plus } from "lucide-react"
 import { useSearchParams, useRouter } from "next/navigation"
 import { toast } from "sonner"
@@ -15,11 +15,14 @@ import {
 } from "@/app/actions/customers"
 import {
   getVendors,
+  getInternalDirectoryContacts,
   createVendor,
   updateVendor,
   deleteVendor,
+  type InternalDirectoryContact,
 } from "@/app/actions/vendors"
 import type { Customer, Vendor } from "@/db/schema"
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
   Tabs,
@@ -33,7 +36,93 @@ import { CustomerDialog } from "@/components/financials/customer-dialog"
 import { VendorsTable } from "@/components/financials/vendors-table"
 import { VendorDialog } from "@/components/financials/vendor-dialog"
 
-type Tab = "customers" | "vendors"
+type Tab = "customers" | "vendors" | "internal"
+
+const DEFAULT_VENDOR_CATEGORIES = [
+  "Supplier",
+  "Subcontractor",
+  "Consultant",
+  "Governmental Agency",
+  "Miscellaneous Vendor",
+  "Building Department",
+  "Bank / Lender",
+] as const
+
+function toContactsTab(value: string | null): Tab {
+  if (value === "vendors") return "vendors"
+  if (value === "internal") return "internal"
+  return "customers"
+}
+
+function isInternalVendor(vendor: Vendor): boolean {
+  return vendor.category.trim().toLowerCase() === "internal"
+}
+
+function InternalContactsTable({
+  contacts,
+}: {
+  readonly contacts: readonly InternalDirectoryContact[]
+}): React.ReactElement {
+  if (contacts.length === 0) {
+    return (
+      <div className="rounded-md border border-dashed p-8 text-center">
+        <p className="text-muted-foreground">No internal contacts yet</p>
+        <p className="mt-1 text-sm text-muted-foreground/70">
+          HPS, Nu-Tech, ORC, and employee records will appear here after they
+          are imported or assigned to projects.
+        </p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="min-h-0 overflow-auto rounded-md border">
+      <table className="w-full text-sm">
+        <thead className="sticky top-0 bg-muted/80 text-xs text-muted-foreground backdrop-blur">
+          <tr className="border-b">
+            <th className="px-3 py-2 text-left font-medium">Name</th>
+            <th className="px-3 py-2 text-left font-medium">Company</th>
+            <th className="px-3 py-2 text-left font-medium">Role</th>
+            <th className="px-3 py-2 text-left font-medium">Contact</th>
+            <th className="px-3 py-2 text-left font-medium">Source</th>
+          </tr>
+        </thead>
+        <tbody>
+          {contacts.map((contact) => (
+            <tr key={contact.id} className="border-b last:border-b-0">
+              <td className="px-3 py-2 font-medium">{contact.name}</td>
+              <td className="px-3 py-2 text-muted-foreground">
+                {contact.company ?? "Internal"}
+              </td>
+              <td className="px-3 py-2">
+                <Badge variant="secondary">{contact.role ?? "Internal"}</Badge>
+              </td>
+              <td className="px-3 py-2 text-muted-foreground">
+                <div className="flex flex-col gap-0.5">
+                  {contact.email ? (
+                    <a href={`mailto:${contact.email}`} className="hover:underline">
+                      {contact.email}
+                    </a>
+                  ) : (
+                    <span>No email</span>
+                  )}
+                  {contact.phone ? (
+                    <a href={`tel:${contact.phone}`} className="hover:underline">
+                      {contact.phone}
+                    </a>
+                  ) : null}
+                </div>
+              </td>
+              <td className="px-3 py-2">
+                <Badge variant="outline">{contact.sourceLabel}</Badge>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
 
 export default function ContactsPage() {
   return (
@@ -59,13 +148,16 @@ function ContactsSkeleton() {
 function ContactsContent() {
   const searchParams = useSearchParams()
   const router = useRouter()
-  const initialTab = (searchParams.get("tab") as Tab) || "customers"
+  const initialTab = toContactsTab(searchParams.get("tab"))
 
   const [tab, setTab] = React.useState<Tab>(initialTab)
   const [loading, setLoading] = React.useState(true)
 
   const [customersList, setCustomersList] = React.useState<Customer[]>([])
   const [vendorsList, setVendorsList] = React.useState<Vendor[]>([])
+  const [internalContactsList, setInternalContactsList] = React.useState<
+    readonly InternalDirectoryContact[]
+  >([])
 
   const [customerDialogOpen, setCustomerDialogOpen] = React.useState(false)
   const [editingCustomer, setEditingCustomer] =
@@ -77,12 +169,14 @@ function ContactsContent() {
 
   const loadAll = async () => {
     try {
-      const [customers, vendors] = await Promise.all([
+      const [customers, vendors, internalContacts] = await Promise.all([
         getCustomers(),
         getVendors(),
+        getInternalDirectoryContacts(),
       ])
       setCustomersList(customers)
       setVendorsList(vendors)
+      setInternalContactsList(internalContacts)
     } catch {
       toast.error("Failed to load contacts")
     } finally {
@@ -119,11 +213,18 @@ function ContactsContent() {
         label: "Add Vendor",
         onSelect: openVendor,
       },
+      internal: {
+        id: "internal-directory",
+        label: "Internal Directory",
+        onSelect: () => undefined,
+      },
     }),
     [openCustomer, openVendor]
   )
 
   const pageActions = React.useMemo(() => {
+    if (tab === "internal") return []
+
     const action = TAB_ACTIONS[tab]
     return [{ ...action, icon: Plus }]
   }, [tab, TAB_ACTIONS])
@@ -131,8 +232,9 @@ function ContactsContent() {
   useRegisterPageActions(pageActions)
 
   const handleTabChange = (value: string) => {
-    setTab(value as Tab)
-    router.replace(`/dashboard/contacts?tab=${value}`, { scroll: false })
+    const nextTab = toContactsTab(value)
+    setTab(nextTab)
+    router.replace(`/dashboard/contacts?tab=${nextTab}`, { scroll: false })
   }
 
   const handleCustomerSubmit = async (data: {
@@ -216,8 +318,19 @@ function ContactsContent() {
     return <ContactsSkeleton />
   }
 
+  const vendorContacts = vendorsList.filter((vendor) => !isInternalVendor(vendor))
   const addLabel = tab === "customers" ? "Add Customer" : "Add Vendor"
   const addHandler = tab === "customers" ? openCustomer : openVendor
+  const vendorCategories = Array.from(
+    new Set([
+      ...DEFAULT_VENDOR_CATEGORIES,
+      ...vendorContacts
+        .map((vendor) => vendor.category?.trim())
+        .filter((category): category is string => {
+          return Boolean(category) && category.toLowerCase() !== "internal"
+        }),
+    ])
+  ).sort((left, right) => left.localeCompare(right))
 
   return (
     <>
@@ -239,15 +352,28 @@ function ContactsContent() {
               <TabsTrigger value="vendors" className="text-xs sm:text-sm">
                 Vendors
                 <span className="ml-1.5 text-muted-foreground tabular-nums">
-                  {vendorsList.length}
+                  {vendorContacts.length}
+                </span>
+              </TabsTrigger>
+              <TabsTrigger value="internal" className="text-xs sm:text-sm">
+                Internal
+                <span className="ml-1.5 text-muted-foreground tabular-nums">
+                  {internalContactsList.length}
                 </span>
               </TabsTrigger>
             </TabsList>
 
-            <Button onClick={addHandler} size="sm" className="h-8 shrink-0">
-              <IconPlus className="size-3.5" />
-              <span className="hidden sm:inline ml-1.5">{addLabel}</span>
-            </Button>
+            {tab !== "internal" ? (
+              <Button onClick={addHandler} size="sm" className="h-8 shrink-0">
+                <IconPlus className="size-3.5" />
+                <span className="hidden sm:inline ml-1.5">{addLabel}</span>
+              </Button>
+            ) : (
+              <Badge variant="outline" className="h-8 gap-1.5 px-3">
+                <IconShieldCheck className="size-3.5" />
+                HPS / Nu-Tech / ORC
+              </Badge>
+            )}
           </div>
 
           <TabsContent
@@ -269,13 +395,21 @@ function ContactsContent() {
             className="mt-3 flex-1 min-h-0 flex flex-col"
           >
             <VendorsTable
-              vendors={vendorsList}
+              vendors={vendorContacts}
+              categories={vendorCategories}
               onEdit={(vendor) => {
                 setEditingVendor(vendor)
                 setVendorDialogOpen(true)
               }}
               onDelete={handleDeleteVendor}
             />
+          </TabsContent>
+
+          <TabsContent
+            value="internal"
+            className="mt-3 flex-1 min-h-0 flex flex-col"
+          >
+            <InternalContactsTable contacts={internalContactsList} />
           </TabsContent>
         </Tabs>
       </div>
@@ -291,6 +425,7 @@ function ContactsContent() {
         open={vendorDialogOpen}
         onOpenChange={setVendorDialogOpen}
         initialData={editingVendor}
+        categories={vendorCategories}
         onSubmit={handleVendorSubmit}
       />
     </>

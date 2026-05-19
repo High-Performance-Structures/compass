@@ -1,20 +1,61 @@
 export const dynamic = "force-dynamic"
 
-import { getCloudflareContext } from "@opennextjs/cloudflare"
+import { getCloudflareContext } from "@/lib/db"
 import { getDb } from "@/db"
-import { projects, scheduleTasks } from "@/db/schema"
-import { eq } from "drizzle-orm"
+import {
+  projectContacts,
+  projectMembers,
+  projects,
+  scheduleTasks,
+} from "@/db/schema"
+import { getCurrentUser } from "@/lib/auth"
+import { canManageProjectRegistry } from "@/lib/permissions"
+import { and, eq } from "drizzle-orm"
 import { notFound } from "next/navigation"
 import Link from "next/link"
 import { MobileProjectSwitcher } from "@/components/mobile-project-switcher"
+import {
+  getProjectFieldSummary,
+  type ProjectFieldSummary,
+} from "@/app/actions/project-field"
+import {
+  getProjectRegistry,
+  type ProjectRegistry,
+} from "@/app/actions/project-registry"
+import {
+  getProjectOperationsSummary,
+  type ProjectOperationsSummary,
+} from "@/app/actions/project-operations"
+import {
+  getProjectBudgetSummary,
+  type ProjectBudgetSummary,
+} from "@/app/actions/project-budget"
+import {
+  getProjectContactsSummary,
+  type ProjectContactsSummary,
+} from "@/app/actions/project-contacts"
+import {
+  getProjectRfiSummary,
+  type ProjectRfiSummary,
+} from "@/app/actions/project-rfis"
+import { ProjectFieldPanel } from "@/components/projects/project-field-panel"
+import { ProjectBudgetPanel } from "@/components/projects/project-budget-panel"
+import { ProjectContactsPanel } from "@/components/projects/project-contacts-panel"
+import { ProjectActionsMenu } from "@/components/projects/project-actions-menu"
+import { ProjectOperationsPanel } from "@/components/projects/project-operations-panel"
+import { ProjectRfiPanel } from "@/components/projects/project-rfi-panel"
+import { ProjectWorkspaceShell } from "@/components/projects/project-workspace-shell"
+import { defaultWorkflowRoleId } from "@/lib/project-workflow-roles"
 import {
   IconAlertTriangle,
   IconCalendarStats,
   IconCheck,
   IconClock,
-  IconDots,
+  IconEye,
+  IconFileDollar,
   IconFlag,
   IconThumbUp,
+  IconUsers,
 } from "@tabler/icons-react"
 import type { ScheduleTask } from "@/db/schema"
 
@@ -44,6 +85,21 @@ function isTaskOnDate(task: ScheduleTask, dateStr: string): boolean {
   return task.startDate <= dateStr && task.endDateCalculated >= dateStr
 }
 
+function hasDigest(error: unknown): error is { readonly digest: string } {
+  return typeof error === "object" && error !== null && "digest" in error
+}
+
+function normalizeContactIdentity(value: string | null): string {
+  return value
+    ? value
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, " ")
+        .replace(/\s+/g, " ")
+        .trim()
+    : ""
+}
+
 export default async function ProjectSummaryPage({
   params,
 }: {
@@ -53,6 +109,7 @@ export default async function ProjectSummaryPage({
 
   let project: {
     id: string
+    projectNumber: string | null
     name: string
     status: string
     address: string | null
@@ -61,8 +118,21 @@ export default async function ProjectSummaryPage({
     createdAt: string
   } | null = null
   let tasks: ScheduleTask[] = []
+  let registry: ProjectRegistry | null = null
+  let fieldSummary: ProjectFieldSummary | null = null
+  let budgetSummary: ProjectBudgetSummary | null = null
+  let contactsSummary: ProjectContactsSummary | null = null
+  let operationsSummary: ProjectOperationsSummary | null = null
+  let rfiSummary: ProjectRfiSummary | null = null
+  let canEditRegistry = false
+  let userRole: string | null = null
+  let projectRole: string | null = null
 
   try {
+    const currentUser = await getCurrentUser()
+    canEditRegistry = canManageProjectRegistry(currentUser)
+    userRole = currentUser?.role ?? null
+
     const { env } = await getCloudflareContext()
     if (!env?.DB) throw new Error("D1 not available")
 
@@ -81,31 +151,105 @@ export default async function ProjectSummaryPage({
       .select()
       .from(scheduleTasks)
       .where(eq(scheduleTasks.projectId, id))
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  } catch (e: any) {
-    if (e?.digest === "NEXT_NOT_FOUND") throw e
+    if (currentUser) {
+      const membership = await db
+        .select({ role: projectMembers.role })
+        .from(projectMembers)
+        .where(
+          and(
+            eq(projectMembers.projectId, id),
+            eq(projectMembers.userId, currentUser.id),
+          ),
+        )
+        .get()
+
+      projectRole = membership?.role ?? null
+
+      if (!projectRole) {
+        const internalContacts = await db
+          .select({
+            displayName: projectContacts.displayName,
+            email: projectContacts.email,
+            role: projectContacts.role,
+          })
+          .from(projectContacts)
+          .where(
+            and(
+              eq(projectContacts.projectId, id),
+              eq(projectContacts.contactType, "internal"),
+              eq(projectContacts.active, true),
+            ),
+          )
+
+        const fullName =
+          `${currentUser.firstName ?? ""} ${currentUser.lastName ?? ""}`.trim()
+        const emailName = currentUser.email.includes("@")
+          ? currentUser.email.split("@")[0].replaceAll(".", " ")
+          : currentUser.email
+        const identityCandidates = [
+          currentUser.displayName,
+          fullName,
+          emailName,
+        ]
+          .map((candidate) => normalizeContactIdentity(candidate))
+          .filter((candidate) => candidate.length > 0)
+        const userIdentityMatches = new Set(identityCandidates)
+        const emailCandidates = [currentUser.email, currentUser.googleEmail]
+          .filter((candidate): candidate is string => {
+            return typeof candidate === "string" && candidate.trim().length > 0
+          })
+          .map((candidate) => candidate.trim().toLowerCase())
+        const userEmailMatches = new Set(emailCandidates)
+
+        for (const contact of internalContacts) {
+          const contactEmail = contact.email
+            ? contact.email.trim().toLowerCase()
+            : ""
+          const contactName = normalizeContactIdentity(contact.displayName)
+          const matchesEmail =
+            contactEmail.length > 0 && userEmailMatches.has(contactEmail)
+          const matchesName =
+            contactName.length > 0 && userIdentityMatches.has(contactName)
+
+          if (contact.role && (matchesEmail || matchesName)) {
+            projectRole = contact.role
+            break
+          }
+        }
+      }
+    }
+    if (canEditRegistry) {
+      registry = await getProjectRegistry(id)
+    }
+    fieldSummary = await getProjectFieldSummary(id)
+    budgetSummary = await getProjectBudgetSummary(id, "internal")
+    contactsSummary = await getProjectContactsSummary(id, "internal")
+    operationsSummary = await getProjectOperationsSummary(id)
+    rfiSummary = await getProjectRfiSummary(id)
+  } catch (error) {
+    if (hasDigest(error) && error.digest === "NEXT_NOT_FOUND") throw error
     console.warn("D1 unavailable in dev mode, using empty data")
   }
 
   const projectName = project?.name ?? "Project"
   const projectStatus = project?.status ?? "OPEN"
+  const initialWorkflowRoleId = defaultWorkflowRoleId({
+    projectRole,
+    userRole,
+    canUseDeveloperMode: canEditRegistry,
+  })
   const todayStr = formatDateStr(new Date())
 
   const completedTasks = tasks.filter((t) => t.status === "COMPLETE")
   const activeTasks = tasks.filter((t) => t.status !== "COMPLETE")
   const totalCount = tasks.length
-  const completedPercent = totalCount > 0
-    ? Math.round((completedTasks.length / totalCount) * 100)
-    : 0
+  const completedPercent =
+    totalCount > 0 ? Math.round((completedTasks.length / totalCount) * 100) : 0
 
-  const pastDue = activeTasks.filter(
-    (t) => t.endDateCalculated < todayStr
-  )
-  const dueToday = activeTasks.filter(
-    (t) => t.endDateCalculated === todayStr
-  )
+  const pastDue = activeTasks.filter((t) => t.endDateCalculated < todayStr)
+  const dueToday = activeTasks.filter((t) => t.endDateCalculated === todayStr)
   const upcomingMilestones = tasks.filter(
-    (t) => t.isMilestone && t.startDate >= todayStr && t.status !== "COMPLETE"
+    (t) => t.isMilestone && t.startDate >= todayStr && t.status !== "COMPLETE",
   )
 
   // phase breakdown
@@ -139,12 +283,11 @@ export default async function ProjectSummaryPage({
         <div className="flex items-start justify-between mb-1">
           <MobileProjectSwitcher
             projectName={projectName}
+            projectNumber={project?.projectNumber}
             projectId={id}
             status={projectStatus}
           />
-          <button className="p-1.5 rounded-lg hover:bg-accent transition-colors text-muted-foreground shrink-0 mt-0.5">
-            <IconDots className="size-5" />
-          </button>
+          <ProjectActionsMenu projectId={id} />
         </div>
 
         {/* meta line: address + tasks */}
@@ -152,24 +295,85 @@ export default async function ProjectSummaryPage({
           {project?.address && <p>{project.address}</p>}
           <p>
             {totalCount} tasks &middot; {completedPercent}% complete
-            {project?.clientName && (
-              <> &middot; {project.clientName}</>
-            )}
-            {project?.projectManager && (
-              <> &middot; {project.projectManager}</>
-            )}
+            {project?.clientName && <> &middot; {project.clientName}</>}
+            {project?.projectManager && <> &middot; {project.projectManager}</>}
           </p>
         </div>
 
-        {/* schedule link */}
-        <div className="mb-5 sm:mb-6">
+        {/* quick project views */}
+        <div className="mb-5 flex flex-wrap gap-2 sm:mb-6">
           <Link
             href={`/dashboard/projects/${id}/schedule`}
-            className="text-sm text-primary hover:underline inline-flex items-center gap-1.5"
+            className="inline-flex items-center gap-1.5 rounded-md border bg-background px-3 py-1.5 text-sm font-medium transition-colors hover:bg-accent"
           >
             <IconCalendarStats className="size-4" />
             View schedule
           </Link>
+          <Link
+            href={`/dashboard/projects/${id}/preview/owner`}
+            className="inline-flex items-center gap-1.5 rounded-md border bg-background px-3 py-1.5 text-sm font-medium transition-colors hover:bg-accent"
+          >
+            <IconEye className="size-4" />
+            Owner preview
+          </Link>
+          <Link
+            href={`/dashboard/projects/${id}/budget`}
+            className="inline-flex items-center gap-1.5 rounded-md border bg-background px-3 py-1.5 text-sm font-medium transition-colors hover:bg-accent"
+          >
+            <IconFileDollar className="size-4" />
+            Budget
+          </Link>
+          <Link
+            href={`/dashboard/projects/${id}/contacts`}
+            className="inline-flex items-center gap-1.5 rounded-md border bg-background px-3 py-1.5 text-sm font-medium transition-colors hover:bg-accent"
+          >
+            <IconUsers className="size-4" />
+            Contacts
+          </Link>
+          <Link
+            href={`/dashboard/projects/${id}/preview/sub-vendor`}
+            className="inline-flex items-center gap-1.5 rounded-md border bg-background px-3 py-1.5 text-sm font-medium transition-colors hover:bg-accent"
+          >
+            <IconUsers className="size-4" />
+            Sub/vendor preview
+          </Link>
+        </div>
+
+        <div className="mb-4 sm:mb-6">
+          <ProjectWorkspaceShell
+            projectId={id}
+            projectNumber={project?.projectNumber ?? null}
+            totalTaskCount={totalCount}
+            pastDueCount={pastDue.length}
+            operationsSummary={operationsSummary}
+            contactsSummary={contactsSummary}
+            fieldSummary={fieldSummary}
+            budgetSummary={budgetSummary}
+            rfiSummary={rfiSummary}
+            registry={registry}
+            canEditRegistry={canEditRegistry}
+            initialRoleId={initialWorkflowRoleId}
+          />
+        </div>
+
+        <div className="mb-4 sm:mb-6">
+          <ProjectFieldPanel projectId={id} summary={fieldSummary} />
+        </div>
+
+        <div className="mb-4 sm:mb-6">
+          <ProjectBudgetPanel projectId={id} summary={budgetSummary} />
+        </div>
+
+        <div className="mb-4 sm:mb-6">
+          <ProjectContactsPanel projectId={id} summary={contactsSummary} />
+        </div>
+
+        <div id="sage-operations" className="mb-4 scroll-mt-24 sm:mb-6">
+          <ProjectOperationsPanel summary={operationsSummary} />
+        </div>
+
+        <div id="rfis" className="mb-4 scroll-mt-24 sm:mb-6">
+          <ProjectRfiPanel projectId={id} summary={rfiSummary} />
         </div>
 
         {/* progress bar */}
@@ -206,7 +410,8 @@ export default async function ProjectSummaryPage({
                     <span className="text-sm truncate mr-2">{t.title}</span>
                     <span className="text-xs text-destructive font-medium shrink-0">
                       {new Date(t.endDateCalculated).toLocaleDateString(
-                        "en-US", { month: "short", day: "numeric" }
+                        "en-US",
+                        { month: "short", day: "numeric" },
                       )}
                     </span>
                   </div>
@@ -232,7 +437,9 @@ export default async function ProjectSummaryPage({
             {dueToday.length > 0 ? (
               <div className="space-y-2">
                 {dueToday.map((t) => (
-                  <div key={t.id} className="text-sm truncate">{t.title}</div>
+                  <div key={t.id} className="text-sm truncate">
+                    {t.title}
+                  </div>
                 ))}
               </div>
             ) : (
@@ -253,9 +460,10 @@ export default async function ProjectSummaryPage({
                   <div key={t.id} className="flex items-center justify-between">
                     <span className="text-sm truncate mr-2">{t.title}</span>
                     <span className="text-xs text-muted-foreground shrink-0">
-                      {new Date(t.startDate).toLocaleDateString(
-                        "en-US", { month: "short", day: "numeric" }
-                      )}
+                      {new Date(t.startDate).toLocaleDateString("en-US", {
+                        month: "short",
+                        day: "numeric",
+                      })}
                     </span>
                   </div>
                 ))}
@@ -366,13 +574,18 @@ export default async function ProjectSummaryPage({
                   <div className="min-w-0 flex-1">
                     <p className="text-sm truncate">{t.title}</p>
                     <p className="text-xs text-muted-foreground">
-                      {t.status === "COMPLETE" ? "Completed" : `${t.percentComplete}% complete`}
+                      {t.status === "COMPLETE"
+                        ? "Completed"
+                        : `${t.percentComplete}% complete`}
                       {" \u00b7 "}
                       {t.phase}
                       {" \u00b7 "}
-                      {new Date(t.updatedAt).toLocaleDateString(
-                        "en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }
-                      )}
+                      {new Date(t.updatedAt).toLocaleDateString("en-US", {
+                        month: "short",
+                        day: "numeric",
+                        hour: "numeric",
+                        minute: "2-digit",
+                      })}
                     </p>
                   </div>
                 </div>
@@ -406,9 +619,11 @@ export default async function ProjectSummaryPage({
               }`}
             >
               <div className="text-center shrink-0 w-10">
-                <p className={`text-lg font-semibold leading-none ${
-                  day.isToday ? "text-primary" : ""
-                }`}>
+                <p
+                  className={`text-lg font-semibold leading-none ${
+                    day.isToday ? "text-primary" : ""
+                  }`}
+                >
                   {day.date.getDate()}
                 </p>
               </div>
@@ -419,7 +634,10 @@ export default async function ProjectSummaryPage({
                 ) : day.dayTasks.length > 0 ? (
                   <div className="space-y-0.5">
                     {day.dayTasks.slice(0, 3).map((t) => (
-                      <p key={t.id} className="text-xs text-muted-foreground truncate">
+                      <p
+                        key={t.id}
+                        className="text-xs text-muted-foreground truncate"
+                      >
                         {t.title}
                       </p>
                     ))}

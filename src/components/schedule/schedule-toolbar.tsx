@@ -24,13 +24,6 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
-import {
   IconFilter,
   IconPlus,
   IconDots,
@@ -40,6 +33,7 @@ import {
   IconX,
   IconLoader2,
 } from "@tabler/icons-react"
+import { toast } from "sonner"
 import type { TaskStatus, ConstructionPhase, ScheduleTaskData } from "@/lib/schedule/types"
 
 const STATUSES: { value: TaskStatus; label: string }[] = [
@@ -211,13 +205,13 @@ export function ScheduleToolbar({
         link.download = `imported-tasks-${Date.now()}.json`
         link.click()
         URL.revokeObjectURL(url)
-        alert(`Parsed ${tasks.length} tasks from CSV. Downloaded as JSON for review.`)
+        toast.success(`Parsed ${tasks.length} tasks from CSV for review.`)
       } else {
-        alert("No valid tasks found in the CSV file.")
+        toast.error("No valid tasks found in the CSV file.")
       }
     } catch (error) {
       console.error("Import failed:", error)
-      alert("Failed to parse CSV file. Please check the format.")
+      toast.error("Failed to parse CSV file. Please check the format.")
     } finally {
       setIsImporting(false)
       setImportDialogOpen(false)

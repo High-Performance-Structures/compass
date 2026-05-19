@@ -1,7 +1,6 @@
-import { NextRequest } from "next/server"
+import { NextRequest, NextResponse } from "next/server"
 import { authkit, handleAuthkitHeaders } from "@workos-inc/authkit-nextjs"
 
-// public routes that don't require authentication
 const publicPaths = [
   "/",
   "/login",
@@ -10,10 +9,9 @@ const publicPaths = [
   "/verify-email",
   "/invite",
   "/callback",
-  "/demo",
+  "/manifest.json",
 ]
 
-// bridge routes use their own API key auth
 const bridgePaths = [
   "/api/bridge/register",
   "/api/bridge/tools",
@@ -23,7 +21,6 @@ const bridgePaths = [
 function isPublicPath(pathname: string): boolean {
   return (
     publicPaths.includes(pathname) ||
-    pathname.startsWith("/join/") ||
     bridgePaths.includes(pathname) ||
     pathname.startsWith("/api/auth/") ||
     pathname.startsWith("/api/netsuite/") ||
@@ -31,47 +28,35 @@ function isPublicPath(pathname: string): boolean {
   )
 }
 
+const isWorkOSConfigured =
+  process.env.WORKOS_API_KEY &&
+  process.env.WORKOS_CLIENT_ID &&
+  !process.env.WORKOS_API_KEY.includes("placeholder")
+
 export default async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
 
-  // get session and headers from authkit (handles token refresh automatically)
+  if (!isWorkOSConfigured) {
+    return NextResponse.next()
+  }
+
   const { session, headers } = await authkit(request)
 
-  // allow public paths
   if (isPublicPath(pathname)) {
     return handleAuthkitHeaders(request, headers)
   }
 
-  const hasDemoCookie =
-    request.cookies.get("compass-demo")?.value === "true"
-
-  // real session trumps demo cookie -- clear the stale cookie
-  if (session.user && hasDemoCookie) {
-    const response = handleAuthkitHeaders(request, headers)
-    response.cookies.delete("compass-demo")
-    return response
-  }
-
-  // demo sessions bypass auth (no real session present)
-  if (hasDemoCookie) {
-    return handleAuthkitHeaders(request, headers)
-  }
-
-  // redirect unauthenticated users to our custom login page
   if (!session.user) {
     const loginUrl = new URL("/login", request.url)
     loginUrl.searchParams.set("from", pathname)
-    return handleAuthkitHeaders(request, headers, {
-      redirect: loginUrl.toString(),
-    })
+    return handleAuthkitHeaders(request, headers, { redirect: loginUrl.toString() })
   }
 
-  // authenticated - continue with authkit headers
   return handleAuthkitHeaders(request, headers)
 }
 
 export const config = {
   matcher: [
-    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+    "/((?!_next/static|_next/image|favicon.ico|manifest.json|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
   ],
 }

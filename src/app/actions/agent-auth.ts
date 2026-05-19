@@ -2,7 +2,7 @@
 
 import { SignJWT } from "jose"
 import { getCurrentUser } from "@/lib/auth"
-import { getCloudflareContext } from "@opennextjs/cloudflare"
+import { getCloudflareContext } from "@/lib/db"
 import { isDemoUser } from "@/lib/demo"
 import { getProviderConfigForJwt } from "./provider-config"
 

@@ -1,0 +1,22 @@
+CREATE TABLE `project_rfis` (
+	`id` text PRIMARY KEY NOT NULL,
+	`project_id` text NOT NULL,
+	`source_system` text DEFAULT 'compass' NOT NULL,
+	`source_record_id` text,
+	`rfi_number` text NOT NULL,
+	`subject` text NOT NULL,
+	`question` text NOT NULL,
+	`answer` text,
+	`status` text DEFAULT 'open' NOT NULL,
+	`priority` text DEFAULT 'normal' NOT NULL,
+	`audience` text DEFAULT 'internal' NOT NULL,
+	`requester_name` text,
+	`assigned_to_name` text,
+	`company_name` text,
+	`due_date` text,
+	`submitted_at` text NOT NULL,
+	`answered_at` text,
+	`created_at` text NOT NULL,
+	`updated_at` text NOT NULL,
+	FOREIGN KEY (`project_id`) REFERENCES `projects`(`id`) ON UPDATE no action ON DELETE cascade
+);

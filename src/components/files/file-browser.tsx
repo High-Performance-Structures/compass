@@ -17,6 +17,7 @@ import { FileBreadcrumb } from "./file-breadcrumb"
 import { FileToolbar, type NewFileType } from "./file-toolbar"
 import { FileGrid } from "./file-grid"
 import { FileList } from "./file-list"
+import { ProjectFileGroups } from "./project-file-groups"
 import { FileUploadDialog } from "./file-upload-dialog"
 import { FileNewFolderDialog } from "./file-new-folder-dialog"
 import { FileRenameDialog } from "./file-rename-dialog"
@@ -24,6 +25,15 @@ import { FileMoveDialog } from "./file-move-dialog"
 import { FileDropZone } from "./file-drop-zone"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Button } from "@/components/ui/button"
+
+const FILE_VIEWS = new Set<FileView>([
+  "projects",
+  "my-files",
+  "shared",
+  "recent",
+  "starred",
+  "trash",
+])
 
 export function FileBrowser({
   path,
@@ -34,7 +44,12 @@ export function FileBrowser({
 }) {
   const searchParams = useSearchParams()
   const viewParam = searchParams.get("view") as FileView | null
-  const currentView = viewParam ?? "my-files"
+  const currentView =
+    viewParam && FILE_VIEWS.has(viewParam)
+      ? viewParam
+      : folderId || path?.length
+        ? "my-files"
+        : "projects"
 
   const {
     state,
@@ -42,11 +57,10 @@ export function FileBrowser({
     getFilesForView,
     fetchFiles,
     loadMore,
-    createFolder,
-    starFile,
   } = useFiles()
 
   const effectivePath = path ?? []
+  const isViewChanging = state.currentView !== currentView
   const files = getFilesForView(currentView, effectivePath)
 
   const [uploadOpen, setUploadOpen] = useState(false)
@@ -65,6 +79,21 @@ export function FileBrowser({
         dispatch({ type: "SET_SELECTED", payload: ids }),
     }
   )
+
+  useEffect(() => {
+    dispatch({
+      type: "SET_CURRENT_VIEW",
+      payload: currentView,
+    })
+  }, [currentView, dispatch])
+
+  useEffect(() => {
+    if (currentView !== "projects") return
+    dispatch({
+      type: "SET_SORT",
+      payload: { field: "modified", direction: "desc" },
+    })
+  }, [currentView, dispatch])
 
   // fetch files when connected and folder/view changes
   useEffect(() => {
@@ -116,6 +145,7 @@ export function FileBrowser({
   }, [])
 
   const viewTitle: Record<FileView, string> = {
+    projects: "Project Files",
     "my-files": "",
     shared: "Shared with me",
     recent: "Recent",
@@ -200,19 +230,29 @@ export function FileBrowser({
           setUploadFiles([])
           setUploadOpen(true)
         }}
+        currentView={currentView}
       />
       <FileDropZone onDrop={handleDrop}>
         <ScrollArea
           className="flex-1"
           onClick={handleBackgroundClick}
         >
-          {state.isLoading && state.files.length === 0 ? (
+          {isViewChanging || (state.isLoading && state.files.length === 0) ? (
             <div className="flex items-center justify-center py-20">
               <IconLoader2
                 size={24}
                 className="animate-spin text-muted-foreground"
               />
             </div>
+          ) : currentView === "projects" ? (
+            <ProjectFileGroups
+              files={files}
+              selectedIds={state.selectedIds}
+              viewMode={state.viewMode}
+              onItemClick={handleClick}
+              onRename={setRenameFile}
+              onMove={setMoveFile}
+            />
           ) : state.viewMode === "grid" ? (
             <FileGrid
               files={files}

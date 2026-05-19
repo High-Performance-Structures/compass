@@ -1,6 +1,6 @@
 export const dynamic = "force-dynamic"
 
-import { getCloudflareContext } from "@opennextjs/cloudflare"
+import { getCloudflareContext } from "@/lib/db"
 import { getDb } from "@/db"
 import { projects } from "@/db/schema"
 import { eq, asc } from "drizzle-orm"
@@ -26,7 +26,7 @@ export default async function SchedulePage({
   let projectName = "Project"
   let schedule: ScheduleData = emptySchedule
   let baselines: ScheduleBaselineData[] = []
-  let allProjects: { id: string; name: string }[] = []
+  let allProjects: { id: string; name: string; projectNumber: string | null }[] = []
 
   try {
     const { env } = await getCloudflareContext()
@@ -41,14 +41,18 @@ export default async function SchedulePage({
 
     if (!project) notFound()
 
-    projectName = project.name
+    projectName = project.projectNumber ?? project.name
     ;[schedule, baselines, allProjects] = await Promise.all([
       getSchedule(id),
       getBaselines(id),
       db
-        .select({ id: projects.id, name: projects.name })
+        .select({
+          id: projects.id,
+          name: projects.name,
+          projectNumber: projects.projectNumber,
+        })
         .from(projects)
-        .orderBy(asc(projects.name)),
+        .orderBy(asc(projects.projectNumber), asc(projects.name)),
     ])
   } catch (e: unknown) {
     if (e && typeof e === "object" && "digest" in e && e.digest === "NEXT_NOT_FOUND") throw e

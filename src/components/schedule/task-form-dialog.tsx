@@ -350,7 +350,6 @@ export function TaskFormDialog({
                                 field.onChange(format(date, "yyyy-MM-dd"))
                               }
                             }}
-                            initialFocus
                           />
                         </PopoverContent>
                       </Popover>

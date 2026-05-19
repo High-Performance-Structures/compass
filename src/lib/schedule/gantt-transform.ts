@@ -15,6 +15,23 @@ export interface FrappeTask {
   custom_class: string
 }
 
+function ganttSafeToken(value: string): string {
+  const token = value
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+
+  return token.length > 0 ? token : "uncategorized"
+}
+
+function phaseTaskId(phase: string): string {
+  return `phase-${ganttSafeToken(phase)}`
+}
+
+function phaseClassName(phase: string): string {
+  return `phase-${ganttSafeToken(phase)}`
+}
+
 export function transformToFrappeTasks(
   tasks: ScheduleTaskData[],
   dependencies: TaskDependencyData[]
@@ -39,7 +56,7 @@ export function transformToFrappeTasks(
 
     // frappe-gantt uses classList.add() which throws on spaces,
     // so we can only pass a single class name
-    let customClass = `phase-${task.phase}`
+    let customClass = phaseClassName(task.phase)
     if (task.isCriticalPath) customClass = "critical-path"
     if (task.isMilestone) customClass = "milestone"
 
@@ -133,7 +150,7 @@ function derivePhaseDeps(
       g.tasks.some((t) => t.id === dep.predecessorId)
     )
     if (predGroup && collapsedPhases.has(predGroup.phase)) {
-      predecessorPhases.add(`phase-${predGroup.phase}`)
+      predecessorPhases.add(phaseTaskId(predGroup.phase))
     }
   }
 
@@ -175,13 +192,13 @@ export function transformWithPhaseGroups(
         group.phase, groups, dependencies, collapsedPhases
       )
       frappeTasks.push({
-        id: `phase-${group.phase}`,
+        id: phaseTaskId(group.phase),
         name: group.label,
         start: group.startDate,
         end: group.endDate,
         progress: group.progress,
         dependencies: phaseDeps.join(", "),
-        custom_class: `phase-${group.phase}`,
+        custom_class: phaseClassName(group.phase),
       })
     } else {
       for (const task of group.tasks) {
@@ -193,7 +210,7 @@ export function transformWithPhaseGroups(
             g.tasks.some((t) => t.id === predId)
           )
           if (predGroup && collapsedPhases.has(predGroup.phase)) {
-            return `phase-${predGroup.phase}`
+            return phaseTaskId(predGroup.phase)
           }
           return predId
         })
@@ -203,7 +220,7 @@ export function transformWithPhaseGroups(
         if (task.status === "COMPLETE") progress = 100
         else if (task.status === "IN_PROGRESS") progress = 50
 
-        let customClass = `phase-${task.phase}`
+        let customClass = phaseClassName(task.phase)
         if (task.isCriticalPath) customClass = "critical-path"
         if (task.isMilestone) customClass = "milestone"
 

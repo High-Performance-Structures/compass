@@ -16,6 +16,7 @@ const queryDataSchema = z.object({
     "invoices",
     "vendor_bills",
     "schedule_tasks",
+    "project_operations",
     "project_detail",
     "customer_detail",
     "vendor_detail",
@@ -30,8 +31,6 @@ const queryDataSchema = z.object({
     .optional()
     .describe("Max results to return (default 20)"),
 })
-
-type QueryDataInput = z.infer<typeof queryDataSchema>
 
 export function dataTools(dataSource: DataSource): ToolDef[] {
   return [

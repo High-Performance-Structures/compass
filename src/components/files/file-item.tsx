@@ -39,6 +39,10 @@ export const FolderCard = forwardRef<
 ) {
   const router = useRouter()
   const { starFile, state, dispatch } = useFiles()
+  const projectCaption =
+    file.projectFile?.projectNumber ??
+    file.projectFile?.sourceLabel ??
+    file.projectFile?.categoryLabel
 
   const handleDoubleClick = () => {
     if (state.isConnected === true) {
@@ -78,8 +82,15 @@ export const FolderCard = forwardRef<
         size={22}
         className="shrink-0"
       />
-      <span className="text-sm font-medium line-clamp-2 flex-1 break-words">
-        {file.name}
+      <span className="min-w-0 flex-1">
+        <span className="block text-sm font-medium line-clamp-2 break-words">
+          {file.name}
+        </span>
+        {projectCaption && (
+          <span className="block truncate text-xs text-muted-foreground">
+            {projectCaption}
+          </span>
+        )}
       </span>
       {file.shared && (
         <IconUsers

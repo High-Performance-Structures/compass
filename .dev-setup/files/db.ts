@@ -1,17 +1,16 @@
-export async function getCloudflareContext(): Promise<{
-    env: {
-        DB: D1Database
-        [key: string]: unknown
-    }
+type CompassCloudflareContext = {
+    env: CloudflareEnv
     ctx: {
         waitUntil: (promise: Promise<unknown>) => void
     }
     cf: unknown
-}> {
+}
+
+export async function getCloudflareContext(): Promise<CompassCloudflareContext> {
+    const useCloudflareDevProxy =
+        process.env.COMPASS_USE_CLOUDFLARE_DEV_PROXY === "true"
     const isLocalDev =
-        process.env.NODE_ENV === "development" &&
-        (!process.env.WORKOS_API_KEY ||
-            process.env.WORKOS_API_KEY.includes("placeholder"))
+        process.env.NODE_ENV === "development" && !useCloudflareDevProxy
 
     if (isLocalDev) {
         const { getCloudflareContext: getLocalContext } = await import(

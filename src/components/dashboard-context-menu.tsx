@@ -2,7 +2,7 @@
 
 import * as React from "react"
 import { usePathname, useRouter } from "next/navigation"
-import { useTheme } from "next-themes"
+import { useTheme } from "@/components/theme-provider"
 import { toast } from "sonner"
 import {
   ArrowLeft,

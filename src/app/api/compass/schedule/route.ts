@@ -1,4 +1,4 @@
-import { getCloudflareContext } from "@opennextjs/cloudflare"
+import { getCloudflareContext } from "@/lib/db"
 import { getDb } from "@/db"
 import { validateAgentAuth } from "@/lib/agent/api-auth"
 import { projects, scheduleTasks, taskDependencies, workdayExceptions } from "@/db/schema"

@@ -25,57 +25,82 @@ import {
 } from "@/components/ui/sheet"
 import { useIsMobile } from "@/hooks/use-mobile"
 
-const notifications = [
+type NotificationItem = {
+  readonly icon: typeof IconClipboardCheck
+  readonly title: string
+  readonly description: string
+  readonly time: string
+}
+
+const initialNotifications: readonly NotificationItem[] = [
   {
     icon: IconClipboardCheck,
-    title: "Task assigned",
-    description: "You've been assigned to \"Update homepage layout\"",
+    title: "Schedule item assigned",
+    description: "Foundation prep and ICF coordination is ready to review.",
     time: "2m ago",
   },
   {
     icon: IconMessageCircle,
-    title: "New comment",
-    description: "Sarah left a comment on the brand assets file",
+    title: "Project message",
+    description: "A subcontractor channel is waiting for its first message.",
     time: "15m ago",
   },
   {
     icon: IconAlertCircle,
-    title: "Deadline approaching",
-    description: "\"Q1 Report\" is due tomorrow",
+    title: "RFI due soon",
+    description: "Anchor bolt layout confirmation is due May 17.",
     time: "1h ago",
   },
   {
     icon: IconClock,
-    title: "Status changed",
-    description: "\"API Integration\" moved to In Review",
+    title: "Photos awaiting review",
+    description: "Buildertrend import photos are staged for visibility review.",
     time: "3h ago",
   },
 ]
 
-function NotificationsList() {
+function NotificationsList({
+  notifications,
+  onClear,
+}: {
+  readonly notifications: readonly NotificationItem[]
+  readonly onClear: () => void
+}) {
   return (
     <>
       <div className="max-h-[60vh] overflow-y-auto">
-        {notifications.map((item, index) => (
-          <div
-            key={`${item.title}-${index}`}
-            className="hover:bg-muted/50 flex gap-3 border-b px-4 py-3 last:border-0"
-          >
-            <item.icon className="text-muted-foreground mt-0.5 size-4 shrink-0" />
-            <div className="min-w-0 flex-1">
-              <p className="text-sm font-medium">{item.title}</p>
-              <p className="text-muted-foreground line-clamp-2 break-words text-xs">
-                {item.description}
-              </p>
-              <p className="text-muted-foreground mt-0.5 text-xs">
-                {item.time}
-              </p>
+        {notifications.length > 0 ? (
+          notifications.map((item, index) => (
+            <div
+              key={`${item.title}-${index}`}
+              className="hover:bg-muted/50 flex gap-3 border-b px-4 py-3 last:border-0"
+            >
+              <item.icon className="text-muted-foreground mt-0.5 size-4 shrink-0" />
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-medium">{item.title}</p>
+                <p className="text-muted-foreground line-clamp-2 break-words text-xs">
+                  {item.description}
+                </p>
+                <p className="text-muted-foreground mt-0.5 text-xs">
+                  {item.time}
+                </p>
+              </div>
             </div>
+          ))
+        ) : (
+          <div className="px-4 py-8 text-center text-sm text-muted-foreground">
+            No unread notifications.
           </div>
-        ))}
+        )}
       </div>
       <div className="border-t px-4 py-2">
-        <Button variant="ghost" size="sm" className="h-9 w-full text-xs">
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-9 w-full text-xs"
+          disabled={notifications.length === 0}
+          onClick={onClear}
+        >
           Mark all as read
         </Button>
       </div>
@@ -86,10 +111,13 @@ function NotificationsList() {
 export function NotificationsPopover() {
   const isMobile = useIsMobile()
   const [open, setOpen] = useState(false)
+  const [notifications, setNotifications] =
+    useState<readonly NotificationItem[]>(initialNotifications)
+  const hasUnread = notifications.length > 0
 
   const trigger = (
     <Button variant="ghost" size="icon" className="relative size-8">
-      <BadgeIndicator dot>
+      <BadgeIndicator dot={hasUnread}>
         <IconBell className="size-4" />
       </BadgeIndicator>
     </Button>
@@ -103,7 +131,10 @@ export function NotificationsPopover() {
           <SheetHeader className="border-b px-4 py-3 text-left">
             <SheetTitle className="text-base font-medium">Notifications</SheetTitle>
           </SheetHeader>
-          <NotificationsList />
+          <NotificationsList
+            notifications={notifications}
+            onClear={() => setNotifications([])}
+          />
         </SheetContent>
       </Sheet>
     )
@@ -116,7 +147,10 @@ export function NotificationsPopover() {
         <div className="border-b px-4 py-3">
           <p className="text-sm font-medium">Notifications</p>
         </div>
-        <NotificationsList />
+        <NotificationsList
+          notifications={notifications}
+          onClear={() => setNotifications([])}
+        />
       </PopoverContent>
     </Popover>
   )

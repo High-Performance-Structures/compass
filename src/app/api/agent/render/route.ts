@@ -1,4 +1,4 @@
-import { getCloudflareContext } from "@opennextjs/cloudflare"
+import { getCloudflareContext } from "@/lib/db"
 import { getCurrentUser } from "@/lib/auth"
 import { compassCatalog } from "@/lib/agent/render/catalog"
 import { getDb } from "@/db"

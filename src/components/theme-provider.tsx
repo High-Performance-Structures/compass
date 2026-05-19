@@ -1,12 +1,10 @@
 "use client"
 
 import * as React from "react"
-import { ThemeProvider as NextThemesProvider } from "next-themes"
 import type { ThemeDefinition } from "@/lib/theme/types"
 import { applyTheme, removeThemeOverride } from "@/lib/theme/apply"
 import { applyThemeAnimated } from "@/lib/theme/transition"
 import {
-  THEME_PRESETS,
   DEFAULT_THEME_ID,
   findPreset,
 } from "@/lib/theme/presets"
@@ -18,6 +16,18 @@ import {
 
 const ID_KEY = "compass-active-theme"
 const DATA_KEY = "compass-theme-data"
+const MODE_KEY = "theme"
+
+type ThemeMode = "light" | "dark"
+
+type ThemeModeState = {
+  readonly theme: ThemeMode
+  readonly resolvedTheme: ThemeMode
+  readonly setTheme: (theme: ThemeMode | ((theme: ThemeMode) => ThemeMode)) => void
+  readonly themes: readonly ThemeMode[]
+  readonly forcedTheme?: ThemeMode
+  readonly systemTheme?: ThemeMode
+}
 
 interface CompassThemeState {
   readonly activeThemeId: string
@@ -35,6 +45,21 @@ interface CompassThemeState {
 const CompassThemeContext = React.createContext<
   CompassThemeState | null
 >(null)
+const ThemeModeContext = React.createContext<ThemeModeState | null>(null)
+
+export function useTheme(): ThemeModeState {
+  const ctx = React.useContext(ThemeModeContext)
+  if (!ctx) {
+    return {
+      theme: "light",
+      resolvedTheme: "light",
+      setTheme: () => {},
+      themes: ["light", "dark"],
+    }
+  }
+
+  return ctx
+}
 
 export function useCompassTheme(): CompassThemeState {
   const ctx = React.useContext(CompassThemeContext)
@@ -60,6 +85,61 @@ function cacheTheme(id: string, theme: ThemeDefinition | null): void {
   } else {
     localStorage.removeItem(DATA_KEY)
   }
+}
+
+function toThemeMode(value: string | null): ThemeMode {
+  return value === "dark" ? "dark" : "light"
+}
+
+function applyThemeMode(mode: ThemeMode): void {
+  const root = document.documentElement
+  root.classList.remove("light", "dark")
+  root.classList.add(mode)
+  root.style.colorScheme = mode
+}
+
+function ThemeModeProvider({
+  children,
+}: {
+  readonly children: React.ReactNode
+}): React.ReactElement {
+  const [theme, setThemeState] = React.useState<ThemeMode>("light")
+
+  React.useLayoutEffect(() => {
+    const cachedTheme = toThemeMode(localStorage.getItem(MODE_KEY))
+    applyThemeMode(cachedTheme)
+    setThemeState(cachedTheme)
+  }, [])
+
+  const setTheme = React.useCallback(
+    (nextTheme: ThemeMode | ((theme: ThemeMode) => ThemeMode)) => {
+      setThemeState((currentTheme) => {
+        const resolvedTheme =
+          typeof nextTheme === "function" ? nextTheme(currentTheme) : nextTheme
+        localStorage.setItem(MODE_KEY, resolvedTheme)
+        applyThemeMode(resolvedTheme)
+        return resolvedTheme
+      })
+    },
+    []
+  )
+
+  const value = React.useMemo<ThemeModeState>(
+    () => ({
+      theme,
+      resolvedTheme: theme,
+      setTheme,
+      themes: ["light", "dark"],
+      systemTheme: theme,
+    }),
+    [theme, setTheme]
+  )
+
+  return (
+    <ThemeModeContext.Provider value={value}>
+      {children}
+    </ThemeModeContext.Provider>
+  )
 }
 
 function CompassThemeProvider({
@@ -294,13 +374,9 @@ export function ThemeProvider({
 }) {
   return (
     <CompassThemeProvider>
-      <NextThemesProvider
-        attribute="class"
-        defaultTheme="light"
-        enableSystem={false}
-      >
+      <ThemeModeProvider>
         {children}
-      </NextThemesProvider>
+      </ThemeModeProvider>
     </CompassThemeProvider>
   )
 }

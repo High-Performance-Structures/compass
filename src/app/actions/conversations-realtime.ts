@@ -1,6 +1,6 @@
 "use server"
 
-import { getCloudflareContext } from "@opennextjs/cloudflare"
+import { getCloudflareContext } from "@/lib/db"
 import { eq, and, gt, desc, sql } from "drizzle-orm"
 import { getDb } from "@/db"
 import { messages, typingSessions, channelMembers } from "@/db/schema-conversations"

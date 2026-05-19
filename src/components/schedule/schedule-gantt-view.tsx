@@ -72,7 +72,7 @@ export function ScheduleGanttView({
   const router = useRouter()
   const isMobile = useIsMobile()
   const [viewMode, setViewMode] = useState<ViewMode>("Week")
-  const [phaseGrouping, setPhaseGrouping] = useState(false)
+  const [phaseGrouping, setPhaseGrouping] = useState(true)
   const [collapsedPhases, setCollapsedPhases] = useState<Set<string>>(
     new Set()
   )

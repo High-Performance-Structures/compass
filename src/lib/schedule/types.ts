@@ -82,7 +82,7 @@ export interface ScheduleData {
 
 export interface TaskFilters {
   readonly status: readonly TaskStatus[]
-  readonly phase: readonly ConstructionPhase[]
+  readonly phase: readonly string[]
   readonly assignedTo: string
   readonly search: string
 }

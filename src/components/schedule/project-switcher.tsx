@@ -10,7 +10,7 @@ import {
 import { IconChevronDown, IconBuilding } from "@tabler/icons-react"
 
 interface ProjectSwitcherProps {
-  projects: { id: string; name: string }[]
+  projects: { id: string; name: string; projectNumber?: string | null }[]
   currentProjectId: string
   currentProjectName: string
 }
@@ -47,7 +47,7 @@ export function ProjectSwitcher({
       <SelectContent>
         {projects.map((project) => (
           <SelectItem key={project.id} value={project.id}>
-            {project.name}
+            {project.projectNumber ?? project.name}
           </SelectItem>
         ))}
       </SelectContent>

@@ -1,4 +1,4 @@
-import { getCloudflareContext } from "@opennextjs/cloudflare"
+import { getCloudflareContext } from "@/lib/db"
 import { drizzle } from "drizzle-orm/d1"
 import { feedback } from "@/db/schema"
 import { sql } from "drizzle-orm"

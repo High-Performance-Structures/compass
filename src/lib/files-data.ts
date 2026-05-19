@@ -39,6 +39,16 @@ export type FileItem = {
   trashed: boolean
   parentId: string | null
   webViewLink?: string
+  projectFile?: {
+    kind: "source" | "project" | "category"
+    sourceKey?: string
+    sourceLabel?: string
+    projectNumber?: string
+    categoryKey?: string
+    categoryLabel?: string
+    structureVersion?: "current" | "legacy"
+    hiddenByDefault?: boolean
+  }
 }
 
 export type StorageUsage = {

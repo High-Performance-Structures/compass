@@ -3,6 +3,7 @@
 import {
   IconArrowLeft,
   IconFiles,
+  IconFolderOpen,
   IconUsers,
   IconClock,
   IconStar,
@@ -23,6 +24,7 @@ import {
 import { cn } from "@/lib/utils"
 
 type FileView =
+  | "projects"
   | "my-files"
   | "shared"
   | "recent"
@@ -34,6 +36,11 @@ const fileNavItems: {
   view: FileView
   icon: typeof IconFiles
 }[] = [
+  {
+    title: "Project Files",
+    view: "projects",
+    icon: IconFolderOpen,
+  },
   { title: "My Files", view: "my-files", icon: IconFiles },
   {
     title: "Shared with me",
@@ -48,7 +55,11 @@ const fileNavItems: {
 export function NavFiles() {
   const pathname = usePathname()
   const searchParams = useSearchParams()
-  const activeView = searchParams.get("view") ?? "my-files"
+  const activeView =
+    searchParams.get("view") ??
+    (pathname && pathname !== "/dashboard/files"
+      ? "my-files"
+      : "projects")
   const files = useFilesOptional()
   const storageUsage = files?.storageUsage
 
@@ -89,8 +100,10 @@ export function NavFiles() {
                 >
                   <Link
                     href={
-                      item.view === "my-files"
+                      item.view === "projects"
                         ? "/dashboard/files"
+                        : item.view === "my-files"
+                          ? "/dashboard/files?view=my-files"
                         : `/dashboard/files?view=${item.view}`
                     }
                   >

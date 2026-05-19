@@ -1,42 +1,68 @@
-import initSqlJs, { Database as SqlJsDatabase } from "sql.js"
-import { readFileSync, writeFileSync, existsSync } from "fs"
-import { createRequire } from "module"
-import { getDb } from "@/db"
-
-const require = createRequire(import.meta.url)
-const sqlJsWasm = require.resolve("sql.js/dist/sql-wasm.wasm")
-
 const DB_PATH = process.env.LOCAL_DB_PATH || "local.db"
 
-let sqlJs: Awaited<ReturnType<typeof initSqlJs>> | null = null
-let db: SqlJsDatabase | null = null
+let db: SqliteDatabase | null = null
 
-async function getLocalDb(): Promise<SqlJsDatabase> {
-    if (!sqlJs) {
-        sqlJs = await initSqlJs({
-            locateFile: (file: string) => {
-                if (file.endsWith(".wasm")) {
-                    return sqlJsWasm
-                }
-                return file
-            },
-        })
-    }
-    if (!db) {
-        if (existsSync(DB_PATH)) {
-            const buffer = readFileSync(DB_PATH)
-            db = new sqlJs.Database(buffer)
-        } else {
-            db = new sqlJs.Database()
-        }
-    }
-    return db
+type SqlValue = string | number | Uint8Array | null
+
+type SqliteRunResult = {
+    changes: number
+    lastInsertRowid: number | bigint
 }
 
-function saveDb(db: SqlJsDatabase) {
-    const data = db.export()
-    const buffer = Buffer.from(data)
-    writeFileSync(DB_PATH, buffer)
+type SqliteStatement = {
+    get: (...params: readonly SqlValue[]) => unknown
+    all: (...params: readonly SqlValue[]) => unknown[]
+    run: (...params: readonly SqlValue[]) => SqliteRunResult
+    raw: (raw?: boolean) => SqliteStatement
+}
+
+type SqliteDatabase = {
+    prepare: (sql: string) => SqliteStatement
+    exec: (sql: string) => void
+    close: () => void
+}
+
+type CompassCloudflareContext = {
+    env: CloudflareEnv
+    ctx: {
+        waitUntil: (promise: Promise<unknown>) => void
+    }
+    cf: unknown
+}
+
+function toSqlValue(value: unknown): SqlValue {
+    if (
+        typeof value === "string" ||
+        typeof value === "number" ||
+        value instanceof Uint8Array ||
+        value === null
+    ) {
+        return value
+    }
+
+    if (typeof value === "boolean") {
+        return value ? 1 : 0
+    }
+
+    if (value instanceof Date) {
+        return value.toISOString()
+    }
+
+    return String(value)
+}
+
+function toSqlValues(values: readonly unknown[]): readonly SqlValue[] {
+    return values.map(toSqlValue)
+}
+
+async function getLocalDb(): Promise<SqliteDatabase> {
+    if (!db) {
+        const Database = (await import("better-sqlite3")).default
+        const initializedDb = new Database(DB_PATH)
+        db = initializedDb
+        return initializedDb
+    }
+    return db
 }
 
 interface D1Result<T = unknown> {
@@ -52,11 +78,11 @@ interface D1Result<T = unknown> {
 }
 
 class LocalPreparedStatement {
-    private db: SqlJsDatabase
+    private db: SqliteDatabase
     private query: string
     private boundValues: unknown[] = []
 
-    constructor(db: SqlJsDatabase, query: string) {
+    constructor(db: SqliteDatabase, query: string) {
         this.db = db
         this.query = query
     }
@@ -68,44 +94,31 @@ class LocalPreparedStatement {
 
     async first<T = unknown>(): Promise<T | null> {
         const stmt = this.db.prepare(this.query)
-        if (this.boundValues.length > 0) {
-            stmt.bind(this.boundValues as number[])
-        }
-        if (stmt.step()) {
-            const row = stmt.getAsObject() as T
-            stmt.free()
-            return row
-        }
-        stmt.free()
-        return null
+        const row = stmt.get(...toSqlValues(this.boundValues))
+        return row ? (row as T) : null
     }
 
     async run(): Promise<D1Result> {
-        this.db.run(this.query, this.boundValues as number[])
-        saveDb(this.db)
+        const result = this.db
+            .prepare(this.query)
+            .run(...toSqlValues(this.boundValues))
         return {
             results: [],
             success: true,
             meta: {
                 duration: 0,
-                changes: this.db.getRowsModified(),
-                last_row_id: Number(this.db.exec("SELECT last_insert_rowid()")[0]?.values[0]?.[0] || 0),
+                changes: result.changes,
+                last_row_id: Number(result.lastInsertRowid),
                 rows_read: 0,
-                rows_written: this.db.getRowsModified(),
+                rows_written: result.changes,
             },
         }
     }
 
     async all<T = unknown>(): Promise<D1Result<T>> {
-        const stmt = this.db.prepare(this.query)
-        if (this.boundValues.length > 0) {
-            stmt.bind(this.boundValues as number[])
-        }
-        const results: T[] = []
-        while (stmt.step()) {
-            results.push(stmt.getAsObject() as T)
-        }
-        stmt.free()
+        const results = this.db
+            .prepare(this.query)
+            .all(...toSqlValues(this.boundValues)) as T[]
         return {
             results,
             success: true,
@@ -120,13 +133,15 @@ class LocalPreparedStatement {
     }
 
     async raw<T = unknown>(): Promise<T[]> {
-        const results = this.db.exec(this.query, this.boundValues as number[])
-        return results[0]?.values as T[] ?? []
+        return this.db
+            .prepare(this.query)
+            .raw(true)
+            .all(...toSqlValues(this.boundValues)) as T[]
     }
 }
 
 class LocalD1Database {
-    constructor(private db: SqlJsDatabase) {}
+    constructor(private db: SqliteDatabase) {}
 
     prepare(query: string): LocalPreparedStatement {
         return new LocalPreparedStatement(this.db, query)
@@ -143,44 +158,93 @@ class LocalD1Database {
     }
 
     async exec(query: string): Promise<D1Result> {
-        this.db.run(query)
-        saveDb(this.db)
+        this.db.exec(query)
         return {
             results: [],
             success: true,
             meta: {
                 duration: 0,
-                changes: this.db.getRowsModified(),
+                changes: 0,
                 last_row_id: 0,
                 rows_read: 0,
-                rows_written: this.db.getRowsModified(),
+                rows_written: 0,
             },
         }
     }
 
     async dump(): Promise<ArrayBuffer> {
-        const data = this.db.export()
-        return data.buffer as ArrayBuffer
+        const { readFile } = await import("fs/promises")
+        const data = await readFile(DB_PATH)
+        return data.buffer.slice(
+            data.byteOffset,
+            data.byteOffset + data.byteLength
+        )
     }
 }
 
-export async function getCloudflareContext(): Promise<{
-    env: {
-        DB: D1Database
-        [key: string]: unknown
+function createUnavailableFetcher(name: string): Fetcher {
+    return {
+        fetch: async () =>
+            new Response(`${name} is unavailable in local development`, {
+                status: 501,
+            }),
+        connect: () => {
+            throw new Error(`${name} sockets are unavailable in local development`)
+        },
     }
-    ctx: {
-        waitUntil: (promise: Promise<unknown>) => void
+}
+
+function createLocalEnv(DB: D1Database): CloudflareEnv {
+    return {
+        WORKOS_REDIRECT_URI: "https://compass.openrangeconstruction.ltd/callback",
+        WORKOS_API_KEY: process.env.WORKOS_API_KEY ?? "placeholder",
+        WORKOS_CLIENT_ID: process.env.WORKOS_CLIENT_ID ?? "placeholder",
+        WORKOS_COOKIE_PASSWORD:
+            process.env.WORKOS_COOKIE_PASSWORD ??
+            "placeholder-local-cookie-password-32",
+        NEXT_PUBLIC_WORKOS_REDIRECT_URI:
+            process.env.NEXT_PUBLIC_WORKOS_REDIRECT_URI ??
+            "http://localhost:3000/callback",
+        NETSUITE_ACCOUNT_ID: process.env.NETSUITE_ACCOUNT_ID ?? "",
+        NETSUITE_CLIENT_ID: process.env.NETSUITE_CLIENT_ID ?? "",
+        NETSUITE_CLIENT_SECRET: process.env.NETSUITE_CLIENT_SECRET ?? "",
+        NETSUITE_REDIRECT_URI:
+            process.env.NETSUITE_REDIRECT_URI ??
+            "http://localhost:3000/api/netsuite/callback",
+        NETSUITE_TOKEN_ENCRYPTION_KEY:
+            process.env.NETSUITE_TOKEN_ENCRYPTION_KEY ?? "",
+        NETSUITE_CONCURRENCY_LIMIT:
+            process.env.NETSUITE_CONCURRENCY_LIMIT ?? "15",
+        GITHUB_TOKEN: process.env.GITHUB_TOKEN ?? "",
+        GITHUB_REPO:
+            process.env.GITHUB_REPO ?? "High-Performance-Structures/compass",
+        OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY ?? "",
+        DB,
+        WORKER_SELF_REFERENCE: createUnavailableFetcher(
+            "WORKER_SELF_REFERENCE"
+        ) as CloudflareEnv["WORKER_SELF_REFERENCE"],
+        AI: {
+            run: async () => {
+                throw new Error("Cloudflare AI is unavailable in local development")
+            },
+        } as unknown as Ai,
+        IMAGES: {
+            input: async () => {
+                throw new Error(
+                    "Cloudflare Images is unavailable in local development"
+                )
+            },
+        } as unknown as ImagesBinding,
+        ASSETS: createUnavailableFetcher("ASSETS"),
     }
-    cf: unknown
-}> {
+}
+
+export async function getCloudflareContext(): Promise<CompassCloudflareContext> {
     const localDb = await getLocalDb()
     const d1 = new LocalD1Database(localDb) as unknown as D1Database
 
     return {
-        env: {
-            DB: d1,
-        },
+        env: createLocalEnv(d1),
         ctx: {
             waitUntil: () => {},
         },

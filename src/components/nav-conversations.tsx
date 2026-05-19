@@ -5,7 +5,6 @@ import {
   IconArrowLeft,
   IconHash,
   IconPlus,
-  IconSearch,
 } from "@tabler/icons-react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
@@ -31,11 +30,6 @@ import { cn } from "@/lib/utils"
 import { CreateChannelDialog } from "@/components/conversations/create-channel-dialog"
 import { VoiceChannelStub } from "@/components/conversations/voice-channel-stub"
 import { ChevronRight } from "lucide-react"
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip"
 
 type ChannelData = {
   readonly id: string
@@ -288,19 +282,6 @@ export function NavConversations() {
       )}
 
       <div className="mt-auto flex gap-2 px-3 pb-3">
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button variant="outline" size="sm" className="flex-1">
-              <IconSearch className="h-4 w-4" />
-              {isExpanded && <span className="ml-2">Search</span>}
-            </Button>
-          </TooltipTrigger>
-          {isExpanded && (
-            <TooltipContent side="top">
-              <p>Search messages (Cmd+K)</p>
-            </TooltipContent>
-          )}
-        </Tooltip>
         <Button
           variant="outline"
           size="sm"

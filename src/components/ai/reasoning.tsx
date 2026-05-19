@@ -177,7 +177,7 @@ export const ReasoningContent = memo(({ className, children, ...props }: Reasoni
         ref={scrollRef}
         className={cn(isStreaming && "max-h-[3.75rem] overflow-hidden")}
       >
-        <Streamdown {...props}>{children}</Streamdown>
+        <Streamdown>{children}</Streamdown>
       </div>
     </CollapsibleContent>
   )

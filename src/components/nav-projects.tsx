@@ -12,11 +12,16 @@ import {
   SidebarMenuItem,
 } from "@/components/ui/sidebar"
 import { cn } from "@/lib/utils"
+import type { ProjectListItem } from "@/app/actions/projects"
+
+function projectDisplay(project: ProjectListItem): string {
+  return project.projectNumber ?? project.name
+}
 
 export function NavProjects({
   projects,
 }: {
-  projects: { id: string; name: string }[]
+  projects: ReadonlyArray<ProjectListItem>
 }) {
   const pathname = usePathname()
   const activeId = pathname?.match(
@@ -56,7 +61,7 @@ export function NavProjects({
                 <SidebarMenuItem key={project.id}>
                   <SidebarMenuButton
                     asChild
-                    tooltip={project.name}
+                    tooltip={`${projectDisplay(project)} - ${project.name}`}
                     className={cn(
                       activeId === project.id &&
                         "bg-sidebar-foreground/10 font-medium"
@@ -64,8 +69,15 @@ export function NavProjects({
                   >
                     <Link href={`/dashboard/projects/${project.id}`}>
                       <IconFolder />
-                      <span className="truncate">
-                        {project.name}
+                      <span className="flex min-w-0 flex-col">
+                        <span className="truncate">
+                          {projectDisplay(project)}
+                        </span>
+                        {project.projectNumber && (
+                          <span className="truncate text-xs text-muted-foreground">
+                            {project.name}
+                          </span>
+                        )}
                       </span>
                     </Link>
                   </SidebarMenuButton>

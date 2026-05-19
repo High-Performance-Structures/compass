@@ -1,18 +1,25 @@
 "use client"
 
 import * as React from "react"
-import { useRouter } from "next/navigation"
-import { useTheme } from "next-themes"
+import { usePathname, useRouter } from "next/navigation"
+import { useTheme } from "@/components/theme-provider"
 import {
+  IconAddressBook,
+  IconAutomation,
   IconDashboard,
   IconFolder,
   IconFiles,
+  IconReceipt,
   IconCalendarStats,
   IconMessageCircle,
+  IconSettings,
   IconSun,
-  IconSearch,
+  IconSparkles,
 } from "@tabler/icons-react"
-import { useAgentOptional } from "@/components/agent/chat-provider"
+import {
+  useAgentOptional,
+  useChatStateOptional,
+} from "@/components/agent/chat-provider"
 
 import {
   CommandDialog,
@@ -33,8 +40,10 @@ export function CommandMenu({
   readonly initialQuery?: string
 }) {
   const router = useRouter()
+  const pathname = usePathname()
   const { theme, setTheme } = useTheme()
   const agent = useAgentOptional()
+  const chat = useChatStateOptional()
   const [query, setQuery] = React.useState("")
 
   React.useEffect(() => {
@@ -59,6 +68,21 @@ export function CommandMenu({
     cmd()
   }
 
+  function askAgent(): void {
+    const prompt = query.trim()
+    if (!prompt) return
+
+    agent?.open()
+    chat?.sendMessage({ text: prompt })
+  }
+
+  function schedulePath(): string {
+    const match = pathname?.match(/^\/dashboard\/projects\/([^/]+)/)
+    return match
+      ? `/dashboard/projects/${match[1]}/schedule`
+      : "/dashboard/projects"
+  }
+
   return (
     <CommandDialog open={open} onOpenChange={setOpen}>
       <CommandInput
@@ -81,12 +105,41 @@ export function CommandMenu({
             <IconFiles />
             Files
           </CommandItem>
-          <CommandItem onSelect={() => runCommand(() => router.push("/dashboard/projects/demo-project-1/schedule"))}>
+          <CommandItem onSelect={() => runCommand(() => router.push(schedulePath()))}>
             <IconCalendarStats />
             Schedule
           </CommandItem>
+          <CommandItem onSelect={() => runCommand(() => router.push("/dashboard/conversations"))}>
+            <IconMessageCircle />
+            Conversations
+          </CommandItem>
+          <CommandItem onSelect={() => runCommand(() => router.push("/dashboard/contacts"))}>
+            <IconAddressBook />
+            Contacts
+          </CommandItem>
+          <CommandItem onSelect={() => runCommand(() => router.push("/dashboard/financials"))}>
+            <IconReceipt />
+            Financials
+          </CommandItem>
+          <CommandItem onSelect={() => runCommand(() => router.push("/dashboard/automations"))}>
+            <IconAutomation />
+            Automations
+          </CommandItem>
+          <CommandItem onSelect={() => runCommand(() => router.push("/dashboard/settings"))}>
+            <IconSettings />
+            Settings
+          </CommandItem>
         </CommandGroup>
         <CommandGroup heading="Actions">
+          {query.trim() && agent && chat && (
+            <CommandItem
+              value={`ask compass ${query}`}
+              onSelect={() => runCommand(askAgent)}
+            >
+              <IconSparkles />
+              Ask Compass: {query}
+            </CommandItem>
+          )}
           {agent && (
             <CommandItem onSelect={() => runCommand(() => agent.open())}>
               <IconMessageCircle />
@@ -97,9 +150,9 @@ export function CommandMenu({
             <IconSun />
             Toggle theme
           </CommandItem>
-          <CommandItem onSelect={() => runCommand(() => setOpen(true))}>
-            <IconSearch />
-            Search files
+          <CommandItem onSelect={() => runCommand(() => router.push("/dashboard/files"))}>
+            <IconFiles />
+            Open files
           </CommandItem>
         </CommandGroup>
       </CommandList>
