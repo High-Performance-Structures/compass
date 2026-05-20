@@ -8,6 +8,10 @@ Compass should become the project management shell for HPS. Google Workspace sho
 
 Buildertrend is the system being displaced. The transition should run Compass and Buildertrend in parallel until active project documents, daily logs, trade contacts, open RFQs, open purchase orders, and schedules have been mapped into Compass.
 
+Security is a gating concern for this integration track. See
+[Compass Security Plan](compass-security-plan-2026-05-19.md) before adding new
+Google Workspace, Sage, owner/subcontractor portal, or agent write workflows.
+
 ## System Roles
 
 ### Compass
