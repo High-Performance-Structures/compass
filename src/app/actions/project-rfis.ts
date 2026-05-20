@@ -160,6 +160,15 @@ function isOwnerVisible(item: ProjectRfiItem): boolean {
   return item.audience === "owner" || item.audience === "public"
 }
 
+function isMissingAttachmentTableError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false
+  const message = error.message.toLowerCase()
+  return (
+    message.includes("project_rfi_attachments") &&
+    (message.includes("no such table") || message.includes("failed query"))
+  )
+}
+
 function toRfiItem(
   row: typeof projectRfis.$inferSelect,
   attachments: readonly ProjectRfiAttachmentItem[]
@@ -221,18 +230,28 @@ export async function getProjectRfis(
     .where(eq(projectRfis.projectId, projectId))
     .orderBy(asc(projectRfis.dueDate), asc(projectRfis.rfiNumber))
 
-  const attachmentRows = await db
-    .select({
-      id: projectRfiAttachments.id,
-      rfiId: projectRfiAttachments.rfiId,
-      fileName: projectRfiAttachments.fileName,
-      mimeType: projectRfiAttachments.mimeType,
-      fileSize: projectRfiAttachments.fileSize,
-      storageUrl: projectRfiAttachments.storageUrl,
-      storageStatus: projectRfiAttachments.storageStatus,
-    })
-    .from(projectRfiAttachments)
-    .where(eq(projectRfiAttachments.projectId, projectId))
+  let attachmentRows: ReadonlyArray<ProjectRfiAttachmentItem & {
+    readonly rfiId: string
+  }> = []
+
+  try {
+    attachmentRows = await db
+      .select({
+        id: projectRfiAttachments.id,
+        rfiId: projectRfiAttachments.rfiId,
+        fileName: projectRfiAttachments.fileName,
+        mimeType: projectRfiAttachments.mimeType,
+        fileSize: projectRfiAttachments.fileSize,
+        storageUrl: projectRfiAttachments.storageUrl,
+        storageStatus: projectRfiAttachments.storageStatus,
+      })
+      .from(projectRfiAttachments)
+      .where(eq(projectRfiAttachments.projectId, projectId))
+  } catch (error) {
+    if (!isMissingAttachmentTableError(error)) {
+      throw error
+    }
+  }
 
   const attachmentsByRfi = new Map<string, ProjectRfiAttachmentItem[]>()
   for (const attachment of attachmentRows) {
@@ -301,7 +320,13 @@ export async function createProjectRfi(
     }))
 
     if (attachmentRows.length > 0) {
-      await db.insert(projectRfiAttachments).values(attachmentRows)
+      try {
+        await db.insert(projectRfiAttachments).values(attachmentRows)
+      } catch (error) {
+        if (!isMissingAttachmentTableError(error)) {
+          throw error
+        }
+      }
     }
 
     revalidatePath(`/dashboard/projects/${projectId}`)
