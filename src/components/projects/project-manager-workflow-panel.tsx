@@ -395,7 +395,7 @@ export function ProjectManagerWorkflowPanel({
     {
       id: "rfqs",
       label: "Prepare RFIs / RFQs",
-      href: `#rfis`,
+      href: `/dashboard/projects/${projectId}/rfis`,
       eyebrow: "Questions and bid scopes",
       status: rfiStatus(rfiSummary),
       detail: rfiDetail(rfiSummary),
@@ -406,7 +406,7 @@ export function ProjectManagerWorkflowPanel({
     {
       id: "purchase-orders",
       label: "Prepare purchase orders",
-      href: `#sage-operations`,
+      href: `/dashboard/projects/${projectId}/purchase-orders`,
       eyebrow: "Sage commitments",
       status: purchaseOrderStatus(operationsSummary),
       detail: purchaseOrderDetail(operationsSummary),

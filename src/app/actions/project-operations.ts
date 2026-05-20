@@ -1,6 +1,7 @@
 "use server"
 
 import { and, asc, eq, gte, inArray } from "drizzle-orm"
+import { revalidatePath } from "next/cache"
 
 import { getDb } from "@/db"
 import { projectOperations, projects, scheduleTasks } from "@/db/schema"
@@ -24,6 +25,7 @@ export type ProjectOperationItem = {
   readonly startDate: string | null
   readonly dueDate: string | null
   readonly amount: number | null
+  readonly syncStatus: string
 }
 
 export type NextScheduleItem = {
@@ -42,6 +44,21 @@ export type ProjectOperationsSummary = {
   readonly nextScheduleItem: NextScheduleItem | null
   readonly purchaseOrders: readonly ProjectOperationItem[]
   readonly commitments: readonly ProjectOperationItem[]
+}
+
+type ProjectOperationActionResult =
+  | { readonly success: true; readonly id: string }
+  | { readonly success: false; readonly error: string }
+
+export type CreatePurchaseOrderRequestInput = {
+  readonly title: string
+  readonly description: string | null
+  readonly companyName: string | null
+  readonly assigneeName: string | null
+  readonly costCode: string | null
+  readonly dueDate: string | null
+  readonly amount: number | null
+  readonly priority: string
 }
 
 async function verifyProjectAccess(
@@ -67,6 +84,46 @@ async function verifyProjectAccess(
   return db
 }
 
+async function verifyProjectUpdateAccess(
+  projectId: string
+): Promise<ReturnType<typeof getDb>> {
+  const user = await requireAuth()
+  requirePermission(user, "project", "update")
+  const orgId = requireOrg(user)
+
+  const { env } = await getCloudflareContext()
+  const db = getDb(env.DB)
+
+  const existing = await db
+    .select({ id: projects.id })
+    .from(projects)
+    .where(and(eq(projects.id, projectId), eq(projects.organizationId, orgId)))
+    .limit(1)
+
+  if (!existing[0]) {
+    throw new Error("Project not found")
+  }
+
+  return db
+}
+
+function cleanText(value: string | null): string | null {
+  const trimmed = value?.trim() ?? ""
+  return trimmed.length > 0 ? trimmed : null
+}
+
+function requireText(value: string, label: string): string {
+  const trimmed = value.trim()
+  if (trimmed.length === 0) {
+    throw new Error(`${label} is required`)
+  }
+  return trimmed
+}
+
+function purchaseOrderRequestNumberFor(existingCount: number): string {
+  return `PO-REQ-${String(existingCount + 1).padStart(3, "0")}`
+}
+
 function toOperationItem(row: typeof projectOperations.$inferSelect): ProjectOperationItem {
   return {
     id: row.id,
@@ -83,6 +140,7 @@ function toOperationItem(row: typeof projectOperations.$inferSelect): ProjectOpe
     startDate: row.startDate,
     dueDate: row.dueDate,
     amount: row.amount,
+    syncStatus: row.syncStatus,
   }
 }
 
@@ -172,5 +230,81 @@ export async function getProjectOperationsSummary(
     nextScheduleItem,
     purchaseOrders: purchaseOrders.slice(0, 5).map(toOperationItem),
     commitments: commitments.slice(0, 6).map(toOperationItem),
+  }
+}
+
+export async function getProjectPurchaseOrders(
+  projectId: string
+): Promise<readonly ProjectOperationItem[]> {
+  const db = await verifyProjectAccess(projectId)
+  const rows = await db
+    .select()
+    .from(projectOperations)
+    .where(
+      and(
+        eq(projectOperations.projectId, projectId),
+        eq(projectOperations.sourceRecordType, "purchase_order")
+      )
+    )
+    .orderBy(asc(projectOperations.dueDate), asc(projectOperations.title))
+
+  return rows.map(toOperationItem)
+}
+
+export async function createPurchaseOrderRequest(
+  projectId: string,
+  input: CreatePurchaseOrderRequestInput
+): Promise<ProjectOperationActionResult> {
+  try {
+    const db = await verifyProjectUpdateAccess(projectId)
+    const purchaseOrders = await db
+      .select({ id: projectOperations.id })
+      .from(projectOperations)
+      .where(
+        and(
+          eq(projectOperations.projectId, projectId),
+          eq(projectOperations.sourceRecordType, "purchase_order")
+        )
+      )
+
+    const now = new Date().toISOString()
+    const id = crypto.randomUUID()
+    const inserted: typeof projectOperations.$inferInsert = {
+      id,
+      projectId,
+      sourceSystem: "compass",
+      sourceRecordType: "purchase_order",
+      sourceRecordNumber: purchaseOrderRequestNumberFor(purchaseOrders.length),
+      title: requireText(input.title, "Title"),
+      description: cleanText(input.description),
+      status: "draft",
+      priority: input.priority,
+      assigneeType: "vendor",
+      assigneeName: cleanText(input.assigneeName),
+      companyName: cleanText(input.companyName),
+      costCode: cleanText(input.costCode),
+      dueDate: cleanText(input.dueDate),
+      amount: input.amount,
+      syncDirection: "write",
+      syncStatus: "pending_sage",
+      createdAt: now,
+      updatedAt: now,
+    }
+
+    await db.insert(projectOperations).values(inserted)
+    revalidatePath(`/dashboard/projects/${projectId}`)
+    revalidatePath(`/dashboard/projects/${projectId}/purchase-orders`)
+    revalidatePath("/dashboard/financials")
+    revalidatePath("/dashboard/schedule")
+
+    return { success: true, id }
+  } catch (error) {
+    return {
+      success: false,
+      error:
+        error instanceof Error
+          ? error.message
+          : "Failed to create purchase order request",
+    }
   }
 }

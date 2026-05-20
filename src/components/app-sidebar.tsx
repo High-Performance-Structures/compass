@@ -96,7 +96,7 @@ const NAV_MAIN = [
     title: "RFIs",
     url: "/dashboard/projects",
     icon: IconMessageCircleQuestion,
-    projectPath: "",
+    projectPath: "/rfis",
   },
   {
     title: "Conversations",
@@ -120,8 +120,9 @@ const NAV_MAIN = [
   },
   {
     title: "Purchase Orders",
-    url: "/dashboard/financials",
+    url: "/dashboard/projects",
     icon: IconShoppingCart,
+    projectPath: "/purchase-orders",
   },
 ]
 

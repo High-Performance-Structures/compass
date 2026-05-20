@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import Link from "next/link"
 import {
   IconBell,
   IconMessageCircle,
@@ -30,6 +31,7 @@ type NotificationItem = {
   readonly title: string
   readonly description: string
   readonly time: string
+  readonly href: string
 }
 
 const initialNotifications: readonly NotificationItem[] = [
@@ -38,46 +40,59 @@ const initialNotifications: readonly NotificationItem[] = [
     title: "Schedule item assigned",
     description: "Foundation prep and ICF coordination is ready to review.",
     time: "2m ago",
+    href: "/dashboard/schedule",
   },
   {
     icon: IconMessageCircle,
     title: "Project message",
     description: "A subcontractor channel is waiting for its first message.",
     time: "15m ago",
+    href: "/dashboard/conversations",
   },
   {
     icon: IconAlertCircle,
     title: "RFI due soon",
     description: "Anchor bolt layout confirmation is due May 17.",
     time: "1h ago",
+    href: "/dashboard/projects",
   },
   {
     icon: IconClock,
     title: "Photos awaiting review",
     description: "Buildertrend import photos are staged for visibility review.",
     time: "3h ago",
+    href: "/dashboard/projects",
   },
 ]
 
 function NotificationsList({
   notifications,
   onClear,
+  onNavigate,
 }: {
   readonly notifications: readonly NotificationItem[]
   readonly onClear: () => void
+  readonly onNavigate: () => void
 }) {
   return (
     <>
       <div className="max-h-[60vh] overflow-y-auto">
         {notifications.length > 0 ? (
           notifications.map((item, index) => (
-            <div
+            <Link
               key={`${item.title}-${index}`}
-              className="hover:bg-muted/50 flex gap-3 border-b px-4 py-3 last:border-0"
+              href={item.href}
+              onClick={onNavigate}
+              className="hover:bg-muted/50 flex gap-3 border-b px-4 py-3 transition-colors last:border-0"
             >
               <item.icon className="text-muted-foreground mt-0.5 size-4 shrink-0" />
               <div className="min-w-0 flex-1">
-                <p className="text-sm font-medium">{item.title}</p>
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-sm font-medium">{item.title}</p>
+                  <span className="text-[11px] font-medium text-primary">
+                    Open
+                  </span>
+                </div>
                 <p className="text-muted-foreground line-clamp-2 break-words text-xs">
                   {item.description}
                 </p>
@@ -85,7 +100,7 @@ function NotificationsList({
                   {item.time}
                 </p>
               </div>
-            </div>
+            </Link>
           ))
         ) : (
           <div className="px-4 py-8 text-center text-sm text-muted-foreground">
@@ -134,6 +149,7 @@ export function NotificationsPopover() {
           <NotificationsList
             notifications={notifications}
             onClear={() => setNotifications([])}
+            onNavigate={() => setOpen(false)}
           />
         </SheetContent>
       </Sheet>
@@ -150,6 +166,7 @@ export function NotificationsPopover() {
         <NotificationsList
           notifications={notifications}
           onClear={() => setNotifications([])}
+          onNavigate={() => setOpen(false)}
         />
       </PopoverContent>
     </Popover>

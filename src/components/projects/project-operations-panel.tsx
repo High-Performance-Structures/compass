@@ -1,9 +1,11 @@
 import {
   IconCalendarStats,
   IconClipboardCheck,
+  IconExternalLink,
   IconReceipt,
   IconUsers,
 } from "@tabler/icons-react"
+import Link from "next/link"
 
 import type {
   ProjectOperationItem,
@@ -75,8 +77,10 @@ function OperationRow({
 }
 
 export function ProjectOperationsPanel({
+  projectId,
   summary,
 }: {
+  readonly projectId: string
   readonly summary: ProjectOperationsSummary | null
 }): React.ReactElement {
   if (!summary) {
@@ -109,6 +113,13 @@ export function ProjectOperationsPanel({
         <Badge variant="secondary">
           {summary.activeCommitmentCount} active commitments
         </Badge>
+        <Link
+          href={`/dashboard/projects/${projectId}/purchase-orders`}
+          className="inline-flex items-center gap-1.5 rounded-md border bg-background px-3 py-1.5 text-sm font-medium transition-colors hover:bg-accent"
+        >
+          Purchase orders
+          <IconExternalLink className="size-4" />
+        </Link>
       </div>
 
       <div className="mt-4 grid grid-cols-1 gap-3 lg:grid-cols-3">

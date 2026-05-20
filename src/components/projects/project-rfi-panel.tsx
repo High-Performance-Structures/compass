@@ -1,6 +1,7 @@
 import Link from "next/link"
 import {
   IconAlertCircle,
+  IconExternalLink,
   IconEye,
   IconMessageQuestion,
   IconUsers,
@@ -133,6 +134,13 @@ export function ProjectRfiPanel({
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
+          <Link
+            href={`/dashboard/projects/${projectId}/rfis`}
+            className="inline-flex items-center gap-1.5 rounded-md border bg-background px-3 py-1.5 text-sm font-medium transition-colors hover:bg-accent"
+          >
+            Manage RFIs
+            <IconExternalLink className="size-4" />
+          </Link>
           <Link
             href={`/dashboard/projects/${projectId}/preview/sub-vendor`}
             className="inline-flex items-center gap-1.5 rounded-md border bg-background px-3 py-1.5 text-sm font-medium transition-colors hover:bg-accent"

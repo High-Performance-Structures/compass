@@ -381,7 +381,7 @@ export default async function ProjectSummaryPage({
         </div>
 
         <div id="sage-operations" className="mb-4 scroll-mt-24 sm:mb-6">
-          <ProjectOperationsPanel summary={operationsSummary} />
+          <ProjectOperationsPanel projectId={id} summary={operationsSummary} />
         </div>
 
         <div id="rfis" className="mb-4 scroll-mt-24 sm:mb-6">
