@@ -94,9 +94,8 @@ const NAV_MAIN = [
   },
   {
     title: "RFIs",
-    url: "/dashboard/projects",
+    url: "/dashboard/rfis",
     icon: IconMessageCircleQuestion,
-    projectPath: "/rfis",
   },
   {
     title: "Conversations",

@@ -122,6 +122,26 @@ export default async function ProjectRfisPage({
         </Badge>
       </div>
 
+      <section className="rounded-xl border bg-emerald-50/80 p-4 text-emerald-950 dark:border-emerald-900/60 dark:bg-emerald-950/20 dark:text-emerald-100">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <p className="text-xs font-medium uppercase opacity-70">
+              Current RFI project
+            </p>
+            <h2 className="mt-1 text-lg font-semibold">
+              {project?.projectNumber ? `${project.projectNumber} - ` : ""}
+              {project?.name ?? "Project"}
+            </h2>
+            {project?.clientName && (
+              <p className="mt-1 text-sm opacity-80">{project.clientName}</p>
+            )}
+          </div>
+          <Button asChild variant="outline" size="sm">
+            <Link href="/dashboard/rfis">Switch project</Link>
+          </Button>
+        </div>
+      </section>
+
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(20rem,26rem)_1fr]">
         <section className="rounded-lg border bg-background p-4">
           <div className="flex items-center gap-2">
