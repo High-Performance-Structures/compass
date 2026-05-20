@@ -1,6 +1,17 @@
 NetSuite Integration
 ===
 
+Status: legacy/generic ERP module. This document is preserved because the
+NetSuite implementation contains useful patterns for OAuth, encrypted token
+storage, rate limiting, delta sync, idempotency, mappers, and conflict handling.
+For HPS production work, Sage 100 Contractor is the active ERP/accounting
+integration target. Do not add new HPS financial, scheduling, purchase order,
+estimate, billing, or job-cost workflows to NetSuite without an explicit
+architecture decision. See
+[`docs/wip/sage-api-bridge-2026-05-14.md`](../wip/sage-api-bridge-2026-05-14.md)
+and
+[`docs/wip/compass-security-plan-2026-05-19.md`](../wip/compass-security-plan-2026-05-19.md).
+
 The NetSuite module is a bidirectional REST API integration that syncs customers, vendors, projects, invoices, and vendor bills between Compass (D1/SQLite) and NetSuite (Oracle's ERP). It handles OAuth 2.0 authentication, encrypted token storage, rate limiting, delta sync with conflict resolution, and per-record error tracking.
 
 The integration exists because construction companies using NetSuite need their financial and contact data accessible in Compass without manual re-entry. NetSuite's REST API is powerful but full of surprising behaviors that this module works hard to handle gracefully.

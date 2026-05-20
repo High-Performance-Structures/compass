@@ -3,9 +3,11 @@ HPS Compass Modules
 
 Compass is a platform. HPS Compass is a product built on that platform.
 
-The distinction matters. Compass Core provides authentication, an AI agent, theming, a plugin system, and dashboards. These are generic capabilities useful to any organization. HPS Compass adds construction-specific modules on top: scheduling with Gantt charts and critical path analysis, financial tracking tied to NetSuite, Google Drive integration for project documents, and a Capacitor mobile app for field workers taking photos on jobsites.
+The distinction matters. Compass Core provides authentication, an AI agent, theming, a plugin system, and dashboards. These are generic capabilities useful to any organization. HPS Compass adds construction-specific modules on top: scheduling with Gantt charts and critical path analysis, Sage-oriented project operations and financial visibility, Google Drive integration for project documents, and a Capacitor mobile app for field workers taking photos on jobsites.
 
-This separation isn't just organizational tidiness. It's the foundation for making Compass reusable. A mechanical engineering firm could rip out the construction modules and replace them with their own domain package. The scheduling module doesn't know about the AI agent. The NetSuite module doesn't know about theming. They integrate through Compass Core's extension points: schema tables, server actions, components, and optionally agent tools.
+This separation isn't just organizational tidiness. It's the foundation for making Compass reusable. A mechanical engineering firm could rip out the construction modules and replace them with their own domain package. The scheduling module doesn't know about the AI agent. ERP modules don't know about theming. They integrate through Compass Core's extension points: schema tables, server actions, components, and optionally agent tools.
+
+ERP status: NetSuite remains in this repository as the first ERP sync implementation and as reusable reference architecture. HPS's active production path is Sage 100 Contractor. New HPS financial, schedule, purchase order, estimate, progress billing, and job-cost work should follow the Sage integration and security plans unless there is an explicit architecture decision to reactivate NetSuite for that workflow.
 
 
 what is a module
@@ -40,14 +42,15 @@ Modules are the parts specific to HPS's construction business:
 
 | module | what it does | key directories |
 |--------|-------------|-----------------|
-| NetSuite | bidirectional ERP sync | `lib/netsuite/`, `actions/netsuite-sync.ts`, `components/netsuite/` |
+| NetSuite | legacy/generic bidirectional ERP sync reference | `lib/netsuite/`, `actions/netsuite-sync.ts`, `components/netsuite/` |
+| Sage bridge | HPS active Sage 100 Contractor read-model and controlled-write path | `docs/wip/sage-api-bridge-2026-05-14.md`, `lib/sage/` |
 | Google Drive | document management via workspace delegation | `lib/google/`, `actions/google-drive.ts`, `components/files/` |
 | Scheduling | Gantt charts, CPM, baseline tracking | `lib/schedule/`, `actions/schedule.ts`, `components/schedule/` |
 | Financials | invoices, bills, payments, credit memos | `actions/invoices.ts`, `actions/vendor-bills.ts`, `components/financials/` |
 | Mobile | Capacitor native wrapper, offline photos, push | `lib/native/`, `lib/push/`, `hooks/use-native*.ts`, `components/native/` |
 | Claude Code | local bridge daemon, own API key, filesystem + terminal access | `lib/mcp/`, `lib/agent/ws-transport.ts`, `packages/compass-bridge/` |
 
-Some tables blur the line. The `customers` and `vendors` tables in `schema.ts` are core entities used by multiple modules, but they have `netsuiteId` columns that only matter when the NetSuite module is active. The `projects` table has a `netsuiteJobId` column for the same reason. The `pushTokens` table lives in the core schema but is only meaningful to the mobile module. These are pragmatic compromises: splitting them into separate schemas would add complexity without real benefit at the current scale.
+Some tables blur the line. The `customers` and `vendors` tables in `schema.ts` are core entities used by multiple modules, but they have `netsuiteId` columns that only matter when the NetSuite module is active. The `projects` table has legacy `netsuiteJobId` plus active Sage mapping fields (`sageJobId`, `sageJobNumber`) for the current HPS integration track. The `pushTokens` table lives in the core schema but is only meaningful to the mobile module. These are pragmatic compromises: splitting them into separate schemas would add complexity without real benefit at the current scale.
 
 
 how modules integrate
