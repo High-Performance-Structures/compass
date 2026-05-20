@@ -12,6 +12,7 @@ export type ProjectListItem = {
   readonly name: string
   readonly projectNumber: string | null
   readonly clientName: string | null
+  readonly googleDriveFolderId: string | null
   readonly createdAt: string
 }
 
@@ -30,6 +31,7 @@ export async function getProjects(): Promise<ProjectListItem[]> {
         name: projects.name,
         projectNumber: projects.projectNumber,
         clientName: projects.clientName,
+        googleDriveFolderId: projects.googleDriveFolderId,
         createdAt: projects.createdAt,
       })
       .from(projects)

@@ -388,6 +388,25 @@ export const projectRfis = sqliteTable("project_rfis", {
   updatedAt: text("updated_at").notNull(),
 })
 
+export const projectRfiAttachments = sqliteTable("project_rfi_attachments", {
+  id: text("id").primaryKey(),
+  projectId: text("project_id")
+    .notNull()
+    .references(() => projects.id, { onDelete: "cascade" }),
+  rfiId: text("rfi_id")
+    .notNull()
+    .references(() => projectRfis.id, { onDelete: "cascade" }),
+  fileName: text("file_name").notNull(),
+  mimeType: text("mime_type"),
+  fileSize: integer("file_size").notNull().default(0),
+  storageProvider: text("storage_provider").notNull().default("google_drive"),
+  storageId: text("storage_id"),
+  storageUrl: text("storage_url"),
+  storageStatus: text("storage_status").notNull().default("uploaded"),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+})
+
 export const projectContacts = sqliteTable("project_contacts", {
   id: text("id").primaryKey(),
   projectId: text("project_id")
@@ -591,6 +610,8 @@ export type ProjectBudgetLine = typeof projectBudgetLines.$inferSelect
 export type NewProjectBudgetLine = typeof projectBudgetLines.$inferInsert
 export type ProjectRfi = typeof projectRfis.$inferSelect
 export type NewProjectRfi = typeof projectRfis.$inferInsert
+export type ProjectRfiAttachment = typeof projectRfiAttachments.$inferSelect
+export type NewProjectRfiAttachment = typeof projectRfiAttachments.$inferInsert
 export type ProjectContact = typeof projectContacts.$inferSelect
 export type NewProjectContact = typeof projectContacts.$inferInsert
 export type ProjectContactSourceLink =

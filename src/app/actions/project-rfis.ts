@@ -4,11 +4,20 @@ import { and, asc, eq } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
 import { getDb } from "@/db"
-import { projectRfis, projects } from "@/db/schema"
+import { projectRfiAttachments, projectRfis, projects } from "@/db/schema"
 import { requireAuth } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
 import { requireOrg } from "@/lib/org-scope"
 import { requirePermission } from "@/lib/permissions"
+
+export type ProjectRfiAttachmentItem = {
+  readonly id: string
+  readonly fileName: string
+  readonly mimeType: string | null
+  readonly fileSize: number
+  readonly storageUrl: string | null
+  readonly storageStatus: string
+}
 
 export type ProjectRfiItem = {
   readonly id: string
@@ -25,6 +34,8 @@ export type ProjectRfiItem = {
   readonly dueDate: string | null
   readonly submittedAt: string
   readonly answeredAt: string | null
+  readonly attachmentCount: number
+  readonly attachments: readonly ProjectRfiAttachmentItem[]
 }
 
 export type ProjectRfiSummary = {
@@ -41,6 +52,15 @@ type ProjectRfiActionResult =
   | { readonly success: true; readonly id: string }
   | { readonly success: false; readonly error: string }
 
+export type ProjectRfiAttachmentInput = {
+  readonly fileName: string
+  readonly mimeType: string | null
+  readonly fileSize: number
+  readonly storageProvider: string
+  readonly storageId: string | null
+  readonly storageUrl: string | null
+}
+
 export type CreateProjectRfiInput = {
   readonly subject: string
   readonly question: string
@@ -50,6 +70,7 @@ export type CreateProjectRfiInput = {
   readonly assignedToName: string | null
   readonly companyName: string | null
   readonly dueDate: string | null
+  readonly attachments: readonly ProjectRfiAttachmentInput[]
 }
 
 export type UpdateProjectRfiInput = {
@@ -139,7 +160,10 @@ function isOwnerVisible(item: ProjectRfiItem): boolean {
   return item.audience === "owner" || item.audience === "public"
 }
 
-function toRfiItem(row: typeof projectRfis.$inferSelect): ProjectRfiItem {
+function toRfiItem(
+  row: typeof projectRfis.$inferSelect,
+  attachments: readonly ProjectRfiAttachmentItem[]
+): ProjectRfiItem {
   return {
     id: row.id,
     rfiNumber: row.rfiNumber,
@@ -155,6 +179,8 @@ function toRfiItem(row: typeof projectRfis.$inferSelect): ProjectRfiItem {
     dueDate: row.dueDate,
     submittedAt: row.submittedAt,
     answeredAt: row.answeredAt,
+    attachmentCount: attachments.length,
+    attachments,
   }
 }
 
@@ -169,7 +195,7 @@ export async function getProjectRfiSummary(
     .where(eq(projectRfis.projectId, projectId))
     .orderBy(asc(projectRfis.dueDate), asc(projectRfis.rfiNumber))
 
-  const items = rows.map(toRfiItem)
+  const items = rows.map((row) => toRfiItem(row, []))
   const openItems = items.filter(isOpenRfi)
 
   return {
@@ -195,7 +221,36 @@ export async function getProjectRfis(
     .where(eq(projectRfis.projectId, projectId))
     .orderBy(asc(projectRfis.dueDate), asc(projectRfis.rfiNumber))
 
-  return rows.map(toRfiItem)
+  const attachmentRows = await db
+    .select({
+      id: projectRfiAttachments.id,
+      rfiId: projectRfiAttachments.rfiId,
+      fileName: projectRfiAttachments.fileName,
+      mimeType: projectRfiAttachments.mimeType,
+      fileSize: projectRfiAttachments.fileSize,
+      storageUrl: projectRfiAttachments.storageUrl,
+      storageStatus: projectRfiAttachments.storageStatus,
+    })
+    .from(projectRfiAttachments)
+    .where(eq(projectRfiAttachments.projectId, projectId))
+
+  const attachmentsByRfi = new Map<string, ProjectRfiAttachmentItem[]>()
+  for (const attachment of attachmentRows) {
+    const existing = attachmentsByRfi.get(attachment.rfiId) ?? []
+    attachmentsByRfi.set(attachment.rfiId, [
+      ...existing,
+      {
+        id: attachment.id,
+        fileName: attachment.fileName,
+        mimeType: attachment.mimeType,
+        fileSize: attachment.fileSize,
+        storageUrl: attachment.storageUrl,
+        storageStatus: attachment.storageStatus,
+      },
+    ])
+  }
+
+  return rows.map((row) => toRfiItem(row, attachmentsByRfi.get(row.id) ?? []))
 }
 
 export async function createProjectRfi(
@@ -230,6 +285,25 @@ export async function createProjectRfi(
     }
 
     await db.insert(projectRfis).values(inserted)
+    const attachmentRows = input.attachments.map((attachment) => ({
+      id: crypto.randomUUID(),
+      projectId,
+      rfiId: id,
+      fileName: requireText(attachment.fileName, "Attachment file name"),
+      mimeType: cleanText(attachment.mimeType),
+      fileSize: Math.max(0, Math.round(attachment.fileSize)),
+      storageProvider: cleanText(attachment.storageProvider) ?? "google_drive",
+      storageId: cleanText(attachment.storageId),
+      storageUrl: cleanText(attachment.storageUrl),
+      storageStatus: cleanText(attachment.storageId) ? "uploaded" : "pending",
+      createdAt: now,
+      updatedAt: now,
+    }))
+
+    if (attachmentRows.length > 0) {
+      await db.insert(projectRfiAttachments).values(attachmentRows)
+    }
+
     revalidatePath(`/dashboard/projects/${projectId}`)
     revalidatePath(`/dashboard/projects/${projectId}/rfis`)
     revalidatePath("/dashboard/schedule")

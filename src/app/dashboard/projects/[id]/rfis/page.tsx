@@ -4,21 +4,15 @@ import {
   IconArrowLeft,
   IconCircleCheck,
   IconClock,
-  IconMailForward,
   IconMessageQuestion,
-  IconPlus,
 } from "@tabler/icons-react"
 
-import {
-  createProjectRfi,
-  getProjectRfis,
-  updateProjectRfi,
-} from "@/app/actions/project-rfis"
+import { getProjectRfis, updateProjectRfi } from "@/app/actions/project-rfis"
 import { getProjectContactsSummary } from "@/app/actions/project-contacts"
 import { getProjects } from "@/app/actions/projects"
+import { ProjectRfiCreateForm } from "@/components/projects/project-rfi-create-form"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 
 function readFormText(formData: FormData, name: string): string {
@@ -93,27 +87,6 @@ export default async function ProjectRfisPage({
     )
   )
 
-  async function createRfiAction(formData: FormData): Promise<void> {
-    "use server"
-
-    const result = await createProjectRfi(id, {
-      subject: readFormText(formData, "subject"),
-      question: readFormText(formData, "question"),
-      priority: readFormText(formData, "priority"),
-      audience: readFormText(formData, "audience"),
-      requesterName: cleanFormText(formData, "requesterName"),
-      assignedToName: cleanFormText(formData, "assignedToName"),
-      companyName: cleanFormText(formData, "companyName"),
-      dueDate: cleanFormText(formData, "dueDate"),
-    })
-
-    if (!result.success) {
-      throw new Error(result.error)
-    }
-
-    redirect(`/dashboard/projects/${id}/rfis`)
-  }
-
   async function updateRfiAction(formData: FormData): Promise<void> {
     "use server"
 
@@ -179,94 +152,12 @@ export default async function ProjectRfisPage({
       </section>
 
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(20rem,26rem)_1fr]">
-        <section className="rounded-lg border bg-background p-4">
-          <div className="flex items-center gap-2">
-            <IconPlus className="size-4 text-muted-foreground" />
-            <h2 className="text-sm font-semibold">Create RFI</h2>
-          </div>
-          <form action={createRfiAction} className="mt-4 space-y-3">
-            <datalist id="rfi-company-or-trade-options">
-              {companyOrTradeOptions.map((option) => (
-                <option key={option} value={option} />
-              ))}
-            </datalist>
-            <datalist id="rfi-person-options">
-              {peopleOptions.map((option) => (
-                <option key={option} value={option} />
-              ))}
-            </datalist>
-            <Input name="subject" placeholder="Subject" required />
-            <Textarea
-              name="question"
-              placeholder="Question, scope gap, or clarification needed"
-              required
-              className="min-h-28"
-            />
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <Input
-                name="companyName"
-                list="rfi-company-or-trade-options"
-                placeholder="Company or trade"
-              />
-              <Input
-                name="assignedToName"
-                list="rfi-person-options"
-                placeholder="Assigned to"
-              />
-              <Input
-                name="requesterName"
-                list="rfi-person-options"
-                placeholder="Requested by"
-              />
-              <div>
-                <label
-                  htmlFor="rfi-due-date"
-                  className="mb-1 block text-xs font-medium text-muted-foreground"
-                >
-                  Response needed by
-                </label>
-                <Input id="rfi-due-date" name="dueDate" type="date" />
-              </div>
-            </div>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <select
-                name="priority"
-                defaultValue="normal"
-                className="h-9 rounded-md border bg-background px-3 text-sm"
-              >
-                <option value="normal">Normal priority</option>
-                <option value="high">High priority</option>
-                <option value="low">Low priority</option>
-              </select>
-              <select
-                name="audience"
-                defaultValue="internal"
-                className="h-9 rounded-md border bg-background px-3 text-sm"
-              >
-                <option value="internal">Internal only</option>
-                <option value="sub_vendor">Sub/vendor visible</option>
-                <option value="owner">Owner visible</option>
-                <option value="public">Owner and sub/vendor visible</option>
-              </select>
-            </div>
-            <div className="rounded-md border bg-muted/20 p-3">
-              <div className="flex items-start gap-2">
-                <IconMailForward className="mt-0.5 size-4 text-muted-foreground" />
-                <div>
-                  <p className="text-sm font-medium">Assignee notification</p>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    Next step: queue this RFI to the assigned contact through
-                    their Compass, email, or text preference once notification
-                    preferences are connected.
-                  </p>
-                </div>
-              </div>
-            </div>
-            <Button type="submit" className="w-full">
-              Create RFI
-            </Button>
-          </form>
-        </section>
+        <ProjectRfiCreateForm
+          projectId={id}
+          projectDriveFolderId={project?.googleDriveFolderId ?? null}
+          companyOrTradeOptions={companyOrTradeOptions}
+          peopleOptions={peopleOptions}
+        />
 
         <section className="space-y-3">
           {rfis.length > 0 ? (
@@ -296,7 +187,42 @@ export default async function ProjectRfisPage({
                   {rfi.companyName && <span>{rfi.companyName}</span>}
                   {rfi.assignedToName && <span>Assigned: {rfi.assignedToName}</span>}
                   <span>Response needed by {formatDate(rfi.dueDate)}</span>
+                  {rfi.attachmentCount > 0 && (
+                    <span>
+                      {rfi.attachmentCount} attachment
+                      {rfi.attachmentCount === 1 ? "" : "s"}
+                    </span>
+                  )}
                 </div>
+                {rfi.attachments.length > 0 && (
+                  <div className="mt-3 rounded-md border bg-muted/20 p-3">
+                    <p className="text-xs font-medium text-muted-foreground">
+                      Attachments
+                    </p>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {rfi.attachments.map((attachment) =>
+                        attachment.storageUrl ? (
+                          <a
+                            key={attachment.id}
+                            href={attachment.storageUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="rounded-md border bg-background px-2.5 py-1 text-xs font-medium hover:bg-muted"
+                          >
+                            {attachment.fileName}
+                          </a>
+                        ) : (
+                          <span
+                            key={attachment.id}
+                            className="rounded-md border bg-background px-2.5 py-1 text-xs font-medium text-muted-foreground"
+                          >
+                            {attachment.fileName}
+                          </span>
+                        )
+                      )}
+                    </div>
+                  </div>
+                )}
 
                 <form action={updateRfiAction} className="mt-4 space-y-3">
                   <input type="hidden" name="rfiId" value={rfi.id} />
