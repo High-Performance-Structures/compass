@@ -121,10 +121,14 @@ function rfiNumberFor(existingCount: number): string {
   return `RFI-${String(existingCount + 1).padStart(3, "0")}`
 }
 
-function isOpenRfi(item: ProjectRfiItem): boolean {
-  return !["answered", "closed", "void", "cancelled"].includes(
-    item.status.toLowerCase()
+function isClosedRfiStatus(status: string): boolean {
+  return ["complete", "closed", "void", "cancelled"].includes(
+    status.toLowerCase()
   )
+}
+
+function isOpenRfi(item: ProjectRfiItem): boolean {
+  return !isClosedRfiStatus(item.status)
 }
 
 function isSubVendorVisible(item: ProjectRfiItem): boolean {
@@ -213,6 +217,7 @@ export async function createProjectRfi(
       rfiNumber: rfiNumberFor(rows.length),
       subject: requireText(input.subject, "Subject"),
       question: requireText(input.question, "Question"),
+      status: "new",
       priority: input.priority,
       audience: input.audience,
       requesterName: cleanText(input.requesterName),
@@ -247,13 +252,14 @@ export async function updateProjectRfi(
     const db = await verifyProjectUpdateAccess(projectId)
     const now = new Date().toISOString()
     const answer = cleanText(input.answer)
+    const status = answer && input.status === "new" ? "in_progress" : input.status
     await db
       .update(projectRfis)
       .set({
         answer,
-        status: input.status,
+        status,
         audience: input.audience,
-        answeredAt: answer ? now : null,
+        answeredAt: status === "complete" ? now : null,
         updatedAt: now,
       })
       .where(and(eq(projectRfis.id, rfiId), eq(projectRfis.projectId, projectId)))

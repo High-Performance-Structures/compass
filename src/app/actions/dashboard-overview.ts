@@ -436,7 +436,7 @@ export async function getDashboardOverview(): Promise<DashboardOverview> {
         .orderBy(asc(projectRfis.dueDate), asc(projectRfis.rfiNumber))
 
       const projectOpenRfis = rfiRows.filter(
-        (rfi) => !isClosedStatus(rfi.status) && rfi.status !== "answered"
+        (rfi) => !isClosedStatus(rfi.status)
       )
       for (const rfi of projectOpenRfis) {
         openRfis.push({

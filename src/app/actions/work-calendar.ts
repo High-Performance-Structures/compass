@@ -158,7 +158,7 @@ export async function getWorkCalendar(): Promise<WorkCalendarData> {
       .orderBy(asc(projectRfis.dueDate), asc(projectRfis.rfiNumber))
 
     for (const rfi of rfiRows) {
-      if (isClosedStatus(rfi.status) || rfi.status === "answered") continue
+      if (isClosedStatus(rfi.status) || rfi.status === "complete") continue
       if (!rfi.dueDate || rfi.dueDate < rangeStart || rfi.dueDate > rangeEnd) {
         continue
       }
@@ -176,7 +176,7 @@ export async function getWorkCalendar(): Promise<WorkCalendarData> {
         assignedTo: rfi.assignedToName,
         companyName: rfi.companyName,
         sourceLabel: `RFI ${rfi.rfiNumber}`,
-        href: `/dashboard/projects/${project.id}#rfis`,
+        href: `/dashboard/projects/${project.id}/rfis`,
       })
     }
 

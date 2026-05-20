@@ -4,6 +4,7 @@ import {
   IconArrowLeft,
   IconCircleCheck,
   IconClock,
+  IconMailForward,
   IconMessageQuestion,
   IconPlus,
 } from "@tabler/icons-react"
@@ -13,6 +14,7 @@ import {
   getProjectRfis,
   updateProjectRfi,
 } from "@/app/actions/project-rfis"
+import { getProjectContactsSummary } from "@/app/actions/project-contacts"
 import { getProjects } from "@/app/actions/projects"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -45,17 +47,51 @@ function label(value: string): string {
     .join(" ")
 }
 
+function isActiveRfiStatus(status: string): boolean {
+  return !["complete", "closed", "void", "cancelled"].includes(
+    status.toLowerCase()
+  )
+}
+
+function unique(values: readonly (string | null | undefined)[]): readonly string[] {
+  return Array.from(
+    new Set(
+      values
+        .map((value) => value?.trim() ?? "")
+        .filter((value) => value.length > 0)
+    )
+  ).sort((a, b) => a.localeCompare(b))
+}
+
 export default async function ProjectRfisPage({
   params,
 }: {
   readonly params: Promise<{ readonly id: string }>
 }) {
   const { id } = await params
-  const [projects, rfis] = await Promise.all([getProjects(), getProjectRfis(id)])
+  const [projects, rfis, contactsSummary] = await Promise.all([
+    getProjects(),
+    getProjectRfis(id),
+    getProjectContactsSummary(id, "internal"),
+  ])
   const project = projects.find((item) => item.id === id)
-  const openCount = rfis.filter(
-    (rfi) => !["answered", "closed", "void", "cancelled"].includes(rfi.status)
-  ).length
+  const openCount = rfis.filter((rfi) => isActiveRfiStatus(rfi.status)).length
+  const contacts = contactsSummary.allContacts
+  const companyOrTradeOptions = unique(
+    contacts.flatMap((contact) => [
+      contact.companyName,
+      contact.trade,
+      contact.csiDivisionName,
+      contact.displayName,
+    ])
+  )
+  const peopleOptions = unique(
+    contacts.map((contact) =>
+      contact.companyName && contact.companyName !== contact.displayName
+        ? `${contact.displayName} - ${contact.companyName}`
+        : contact.displayName
+    )
+  )
 
   async function createRfiAction(formData: FormData): Promise<void> {
     "use server"
@@ -149,6 +185,16 @@ export default async function ProjectRfisPage({
             <h2 className="text-sm font-semibold">Create RFI</h2>
           </div>
           <form action={createRfiAction} className="mt-4 space-y-3">
+            <datalist id="rfi-company-or-trade-options">
+              {companyOrTradeOptions.map((option) => (
+                <option key={option} value={option} />
+              ))}
+            </datalist>
+            <datalist id="rfi-person-options">
+              {peopleOptions.map((option) => (
+                <option key={option} value={option} />
+              ))}
+            </datalist>
             <Input name="subject" placeholder="Subject" required />
             <Textarea
               name="question"
@@ -157,10 +203,30 @@ export default async function ProjectRfisPage({
               className="min-h-28"
             />
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <Input name="companyName" placeholder="Company or trade" />
-              <Input name="assignedToName" placeholder="Assigned to" />
-              <Input name="requesterName" placeholder="Requested by" />
-              <Input name="dueDate" type="date" />
+              <Input
+                name="companyName"
+                list="rfi-company-or-trade-options"
+                placeholder="Company or trade"
+              />
+              <Input
+                name="assignedToName"
+                list="rfi-person-options"
+                placeholder="Assigned to"
+              />
+              <Input
+                name="requesterName"
+                list="rfi-person-options"
+                placeholder="Requested by"
+              />
+              <div>
+                <label
+                  htmlFor="rfi-due-date"
+                  className="mb-1 block text-xs font-medium text-muted-foreground"
+                >
+                  Response needed by
+                </label>
+                <Input id="rfi-due-date" name="dueDate" type="date" />
+              </div>
             </div>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <select
@@ -183,6 +249,19 @@ export default async function ProjectRfisPage({
                 <option value="public">Owner and sub/vendor visible</option>
               </select>
             </div>
+            <div className="rounded-md border bg-muted/20 p-3">
+              <div className="flex items-start gap-2">
+                <IconMailForward className="mt-0.5 size-4 text-muted-foreground" />
+                <div>
+                  <p className="text-sm font-medium">Assignee notification</p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Next step: queue this RFI to the assigned contact through
+                    their Compass, email, or text preference once notification
+                    preferences are connected.
+                  </p>
+                </div>
+              </div>
+            </div>
             <Button type="submit" className="w-full">
               Create RFI
             </Button>
@@ -203,7 +282,7 @@ export default async function ProjectRfisPage({
                     </h2>
                   </div>
                   <div className="flex flex-wrap gap-1">
-                    <Badge variant={rfi.status === "open" ? "secondary" : "outline"}>
+                    <Badge variant={isActiveRfiStatus(rfi.status) ? "secondary" : "outline"}>
                       {label(rfi.status)}
                     </Badge>
                     <Badge variant="outline">{label(rfi.audience)}</Badge>
@@ -216,7 +295,7 @@ export default async function ProjectRfisPage({
                 <div className="mt-3 flex flex-wrap gap-3 text-xs text-muted-foreground">
                   {rfi.companyName && <span>{rfi.companyName}</span>}
                   {rfi.assignedToName && <span>Assigned: {rfi.assignedToName}</span>}
-                  <span>Due {formatDate(rfi.dueDate)}</span>
+                  <span>Response needed by {formatDate(rfi.dueDate)}</span>
                 </div>
 
                 <form action={updateRfiAction} className="mt-4 space-y-3">
@@ -224,7 +303,7 @@ export default async function ProjectRfisPage({
                   <Textarea
                     name="answer"
                     defaultValue={rfi.answer ?? ""}
-                    placeholder="Answer, decision, or next step"
+                    placeholder="Response, decision, additional question, or next step"
                   />
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_1fr_auto]">
                     <select
@@ -232,9 +311,10 @@ export default async function ProjectRfisPage({
                       defaultValue={rfi.status}
                       className="h-9 rounded-md border bg-background px-3 text-sm"
                     >
-                      <option value="open">Open</option>
-                      <option value="answered">Answered</option>
-                      <option value="closed">Closed</option>
+                      <option value="new">New</option>
+                      <option value="in_progress">In progress</option>
+                      <option value="info_needed">Additional information needed</option>
+                      <option value="complete">Complete</option>
                       <option value="void">Void</option>
                     </select>
                     <select

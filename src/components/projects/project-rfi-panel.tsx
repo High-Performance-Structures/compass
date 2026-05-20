@@ -43,6 +43,12 @@ function audienceLabel(value: string): string {
   }
 }
 
+function isActiveRfiStatus(status: string): boolean {
+  return !["complete", "closed", "void", "cancelled"].includes(
+    status.toLowerCase()
+  )
+}
+
 function RfiMetric({
   icon,
   label,
@@ -80,7 +86,7 @@ function RfiRow({
           </p>
         </div>
         <div className="flex shrink-0 flex-wrap gap-1">
-          <Badge variant={item.status === "open" ? "secondary" : "outline"}>
+          <Badge variant={isActiveRfiStatus(item.status) ? "secondary" : "outline"}>
             {statusLabel(item.status)}
           </Badge>
           <Badge variant="outline">{audienceLabel(item.audience)}</Badge>
@@ -94,7 +100,7 @@ function RfiRow({
       <div className="mt-3 flex flex-wrap gap-2 text-xs text-muted-foreground">
         {item.companyName && <span>{item.companyName}</span>}
         {item.assignedToName && <span>Assigned: {item.assignedToName}</span>}
-        <span>Due {formatDate(item.dueDate)}</span>
+        <span>Response needed by {formatDate(item.dueDate)}</span>
       </div>
     </div>
   )

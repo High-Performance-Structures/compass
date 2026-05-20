@@ -169,6 +169,10 @@ function RfiRow({
 }: {
   readonly item: AudienceRfi
 }): React.ReactElement {
+  const isActive = !["complete", "closed", "void", "cancelled"].includes(
+    item.status.toLowerCase()
+  )
+
   return (
     <article className="rounded-md border bg-background p-3">
       <div className="flex flex-wrap items-start justify-between gap-2">
@@ -181,7 +185,7 @@ function RfiRow({
           </h3>
         </div>
         <div className="flex gap-1">
-          <Badge variant={item.status === "open" ? "secondary" : "outline"}>
+          <Badge variant={isActive ? "secondary" : "outline"}>
             {statusLabel(item.status)}
           </Badge>
           {item.priority === "high" && <Badge>High</Badge>}
