@@ -377,6 +377,55 @@ export function defaultWorkflowRoleId({
   return PROJECT_MANAGER_ROLE_LENS.id
 }
 
+const ALL_WORKFLOW_ROLE_IDS = PROJECT_WORKFLOW_ROLE_LENSES.map(
+  (role) => role.id,
+)
+
+const OFFICE_WORKFLOW_ROLE_IDS: readonly ProjectWorkflowRoleId[] = [
+  "project-manager",
+  "assistant-project-manager",
+  "project-administrator",
+  "design-estimating",
+  "office-manager",
+]
+
+const FIELD_WORKFLOW_ROLE_IDS: readonly ProjectWorkflowRoleId[] = [
+  "field-superintendent",
+  "field-crew",
+]
+
+export function allowedWorkflowRoleIds({
+  projectRole,
+  userRole,
+  canUseDeveloperMode,
+}: {
+  readonly projectRole: string | null
+  readonly userRole: string | null
+  readonly canUseDeveloperMode: boolean
+}): readonly ProjectWorkflowRoleId[] {
+  if (canUseDeveloperMode) return ALL_WORKFLOW_ROLE_IDS
+
+  const projectWorkflowRole = workflowRoleIdFromString(projectRole)
+  if (projectWorkflowRole) return [projectWorkflowRole]
+
+  if (userRole === "field") return FIELD_WORKFLOW_ROLE_IDS
+  if (userRole === "office") return OFFICE_WORKFLOW_ROLE_IDS
+
+  const userWorkflowRole = workflowRoleIdFromString(userRole)
+  if (userWorkflowRole && userWorkflowRole !== "admin-owner") {
+    return [userWorkflowRole]
+  }
+
+  return []
+}
+
+export function workflowRoleIsAllowed(
+  roleId: ProjectWorkflowRoleId,
+  allowedRoleIds: readonly ProjectWorkflowRoleId[],
+): boolean {
+  return allowedRoleIds.includes(roleId)
+}
+
 export function isProjectWorkflowRoleId(
   value: string | null,
 ): value is ProjectWorkflowRoleId {

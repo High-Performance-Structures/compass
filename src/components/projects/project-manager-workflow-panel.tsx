@@ -318,6 +318,7 @@ export function ProjectManagerWorkflowPanel({
   onActiveRoleChange,
   workspaceMode,
   canUseDeveloperMode,
+  allowedRoleIds,
 }: {
   readonly projectId: string
   readonly projectNumber: string | null
@@ -332,8 +333,12 @@ export function ProjectManagerWorkflowPanel({
   readonly onActiveRoleChange: (roleId: ProjectWorkflowRoleId) => void
   readonly workspaceMode: ProjectWorkspaceMode
   readonly canUseDeveloperMode: boolean
+  readonly allowedRoleIds: readonly ProjectWorkflowRoleId[]
 }): ReactElement {
   const activeRole = roleLensForId(activeRoleId)
+  const availableRoles = PROJECT_WORKFLOW_ROLE_LENSES.filter((role) =>
+    allowedRoleIds.includes(role.id)
+  )
   const modeBadge =
     workspaceMode === "developer" && canUseDeveloperMode
       ? "Developer mode"
@@ -461,10 +466,10 @@ export function ProjectManagerWorkflowPanel({
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="text-xs font-medium uppercase text-muted-foreground">
-            Project manager workflow
+            Role dashboard
           </p>
           <h2 className="mt-1 text-lg font-semibold">
-            Run today from the project
+            Run today as {activeRole.label}
           </h2>
           <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
             You are already in the job. Move through the work queues that keep
@@ -475,8 +480,16 @@ export function ProjectManagerWorkflowPanel({
       </div>
 
       <div className="mt-4 rounded-lg border bg-background/70 p-3">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <p className="text-xs font-medium uppercase text-muted-foreground">
+            {canUseDeveloperMode ? "Preview role dashboard" : "Your role dashboard"}
+          </p>
+          {canUseDeveloperMode && (
+            <Badge variant="outline">Admin preview</Badge>
+          )}
+        </div>
         <div className="flex flex-wrap items-center gap-2">
-          {PROJECT_WORKFLOW_ROLE_LENSES.map((role) => (
+          {availableRoles.map((role) => (
             <button
               key={role.id}
               type="button"
@@ -522,7 +535,7 @@ export function ProjectManagerWorkflowPanel({
           </Badge>
         </div>
         <div className="mt-3 grid grid-cols-1 gap-2 lg:grid-cols-2">
-          {PROJECT_WORKFLOW_ROLE_LENSES.map((role) => (
+          {availableRoles.map((role) => (
             <div key={role.label} className="rounded-md border bg-muted/20 p-3">
               <p className="text-sm font-medium">{role.label}</p>
               <p className="mt-1 text-xs text-muted-foreground">

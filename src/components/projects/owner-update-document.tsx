@@ -201,14 +201,12 @@ export function OwnerUpdateDocument({
                 </div>
                 {document.photoFolder && (
                   <Button asChild variant="outline" size="sm">
-                    <a
-                      href={document.photoFolder.url}
-                      target="_blank"
-                      rel="noreferrer"
+                    <Link
+                      href={`/dashboard/projects/${document.project.id}/preview/owner#photos`}
                     >
                       <IconPhotoUp className="size-4" />
-                      View all photos
-                    </a>
+                      View all approved photos
+                    </Link>
                   </Button>
                 )}
               </div>
@@ -226,7 +224,7 @@ export function OwnerUpdateDocument({
               {document.photoFolder && (
                 <p className="mt-3 text-xs text-muted-foreground">
                   Showing selected owner-visible photos. The full weekly set is
-                  available in {document.photoFolder.label}.
+                  available in the approved Compass photo gallery.
                 </p>
               )}
             </section>

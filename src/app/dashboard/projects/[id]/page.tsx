@@ -45,7 +45,10 @@ import { ProjectActionsMenu } from "@/components/projects/project-actions-menu"
 import { ProjectOperationsPanel } from "@/components/projects/project-operations-panel"
 import { ProjectRfiPanel } from "@/components/projects/project-rfi-panel"
 import { ProjectWorkspaceShell } from "@/components/projects/project-workspace-shell"
-import { defaultWorkflowRoleId } from "@/lib/project-workflow-roles"
+import {
+  allowedWorkflowRoleIds,
+  defaultWorkflowRoleId,
+} from "@/lib/project-workflow-roles"
 import {
   IconAlertTriangle,
   IconCalendarStats,
@@ -238,6 +241,14 @@ export default async function ProjectSummaryPage({
     userRole,
     canUseDeveloperMode: canEditRegistry,
   })
+  const allowedRoleIds = allowedWorkflowRoleIds({
+    projectRole,
+    userRole,
+    canUseDeveloperMode: canEditRegistry,
+  })
+  const safeInitialWorkflowRoleId = allowedRoleIds.includes(initialWorkflowRoleId)
+    ? initialWorkflowRoleId
+    : (allowedRoleIds[0] ?? initialWorkflowRoleId)
   const todayStr = formatDateStr(new Date())
 
   const completedTasks = tasks.filter((t) => t.status === "COMPLETE")
@@ -352,7 +363,8 @@ export default async function ProjectSummaryPage({
             rfiSummary={rfiSummary}
             registry={registry}
             canEditRegistry={canEditRegistry}
-            initialRoleId={initialWorkflowRoleId}
+            initialRoleId={safeInitialWorkflowRoleId}
+            allowedRoleIds={allowedRoleIds}
           />
         </div>
 

@@ -4,12 +4,21 @@ import { useState } from "react"
 import Image from "next/image"
 import { IconExternalLink, IconPhoto } from "@tabler/icons-react"
 
-function browserHref(value: string | null): string | null {
+function browserHref(
+  value: string | null,
+  allowExternalSource: boolean
+): string | null {
   if (value === null) return null
-  if (value.startsWith("https://") || value.startsWith("http://")) return value
+  if (value.startsWith("https://") || value.startsWith("http://")) {
+    return allowExternalSource ? value : null
+  }
   if (value.startsWith("/owner-update-photos/")) return value
   if (value.startsWith("/project-photo-previews/")) return value
   return null
+}
+
+function externalHref(value: string): boolean {
+  return value.startsWith("https://") || value.startsWith("http://")
 }
 
 export function OwnerUpdatePhotoTile({
@@ -17,16 +26,19 @@ export function OwnerUpdatePhotoTile({
   driveUrl,
   thumbnailUrl,
   caption,
+  allowExternalSource = false,
 }: {
   readonly fileName: string
   readonly driveUrl: string | null
   readonly thumbnailUrl: string | null
   readonly caption: string | null
+  readonly allowExternalSource?: boolean
 }): React.ReactElement {
   const [imageFailed, setImageFailed] = useState(false)
   const title = caption ?? fileName
   const showImage = thumbnailUrl !== null && !imageFailed
-  const href = browserHref(driveUrl)
+  const href = browserHref(driveUrl, allowExternalSource)
+  const opensExternally = href !== null && externalHref(href)
 
   return (
     <div className="overflow-hidden rounded-md border bg-background">
@@ -57,8 +69,8 @@ export function OwnerUpdatePhotoTile({
         {href && (
           <a
             href={href}
-            target="_blank"
-            rel="noreferrer"
+            target={opensExternally ? "_blank" : undefined}
+            rel={opensExternally ? "noreferrer" : undefined}
             className="mt-2 inline-flex items-center gap-1 text-xs text-primary hover:underline print:hidden"
             aria-label={`Open ${fileName}`}
           >

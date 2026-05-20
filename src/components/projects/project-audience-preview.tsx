@@ -2,13 +2,16 @@ import type * as React from "react"
 import Link from "next/link"
 import {
   IconArrowLeft,
+  IconArrowRight,
   IconCalendarStats,
+  IconChevronDown,
   IconClipboardCheck,
   IconExternalLink,
   IconFolder,
   IconMessageCircle,
   IconPhoto,
   IconQuestionMark,
+  IconSparkles,
   IconUsers,
 } from "@tabler/icons-react"
 
@@ -16,6 +19,7 @@ import type {
   AudienceMessageChannel,
   AudienceContact,
   AudienceOperationItem,
+  AudienceOwnerUpdate,
   AudienceProjectOption,
   AudienceRfi,
   AudienceScheduleItem,
@@ -24,6 +28,13 @@ import type {
 } from "@/app/actions/project-audience-preview"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import { OwnerCoverPhotoControl } from "@/components/projects/owner-cover-photo-control"
 import { OwnerUpdatePhotoTile } from "@/components/projects/owner-update-photo-tile"
 
 function formatDate(value: string | null): string {
@@ -153,41 +164,6 @@ function OperationRow({
   )
 }
 
-function ProjectOptionRow({
-  audience,
-  currentProjectId,
-  project,
-}: {
-  readonly audience: ProjectAudience
-  readonly currentProjectId: string
-  readonly project: AudienceProjectOption
-}): React.ReactElement {
-  const active = project.id === currentProjectId
-
-  return (
-    <Link
-      href={previewPath(project.id, audience)}
-      className={`block rounded-md border px-3 py-2 text-sm transition-colors ${
-        active ? "border-primary bg-primary/10" : "bg-background hover:bg-accent"
-      }`}
-    >
-      <div className="flex items-center justify-between gap-3">
-        <span className="line-clamp-1 font-medium">
-          {project.projectNumber ?? project.name}
-        </span>
-        <Badge variant={active ? "default" : "outline"}>
-          {active ? "Current" : project.status}
-        </Badge>
-      </div>
-      {project.projectNumber && (
-        <p className="mt-1 line-clamp-1 text-xs text-muted-foreground">
-          {project.name}
-        </p>
-      )}
-    </Link>
-  )
-}
-
 function RfiRow({
   item,
 }: {
@@ -294,6 +270,296 @@ function ContactRow({
   )
 }
 
+function ownerHeroTitle(data: ProjectAudiencePreviewData): string {
+  return data.project.clientName
+    ? `${data.project.clientName} Project`
+    : projectLabel(data)
+}
+
+function OwnerPreviewControls({
+  projectId,
+}: {
+  readonly projectId: string
+}): React.ReactElement {
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-3">
+      <Button asChild variant="ghost" size="sm">
+        <Link href={`/dashboard/projects/${projectId}`}>
+          <IconArrowLeft className="size-4" />
+          Project
+        </Link>
+      </Button>
+      <div className="flex flex-wrap gap-2">
+        <Button asChild variant="default" size="sm">
+          <Link href={`/dashboard/projects/${projectId}/preview/owner`}>
+            Owner
+          </Link>
+        </Button>
+        <Button asChild variant="outline" size="sm">
+          <Link href={`/dashboard/projects/${projectId}/preview/sub-vendor`}>
+            Sub/vendor
+          </Link>
+        </Button>
+      </div>
+    </div>
+  )
+}
+
+function OwnerUpdateCard({
+  projectId,
+  update,
+  featured,
+}: {
+  readonly projectId: string
+  readonly update: AudienceOwnerUpdate
+  readonly featured?: boolean
+}): React.ReactElement {
+  return (
+    <article
+      className={
+        featured
+          ? "rounded-lg border bg-background p-5 shadow-sm"
+          : "rounded-md border bg-background p-4"
+      }
+    >
+      <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+        <span>{formatDate(update.updateDate)}</span>
+        {update.publishedAt && (
+          <>
+            <span>&middot;</span>
+            <span>Published</span>
+          </>
+        )}
+      </div>
+      <h3
+        className={
+          featured ? "mt-3 text-lg font-semibold" : "mt-2 text-sm font-medium"
+        }
+      >
+        {update.title}
+      </h3>
+      <p className="mt-2 line-clamp-4 text-sm leading-6 text-muted-foreground">
+        {update.summary}
+      </p>
+      <Button
+        asChild
+        variant={featured ? "default" : "outline"}
+        size="sm"
+        className="mt-4"
+      >
+        <Link href={`/dashboard/projects/${projectId}/owner-updates/${update.id}`}>
+          Open update
+          <IconArrowRight className="size-4" />
+        </Link>
+      </Button>
+    </article>
+  )
+}
+
+function OwnerScheduleCard({
+  item,
+}: {
+  readonly item: AudienceScheduleItem
+}): React.ReactElement {
+  return (
+    <article className="rounded-md border bg-background p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="line-clamp-2 text-sm font-medium">{item.title}</p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            {formatDate(item.startDate)}
+            {" - "}
+            {formatDate(item.endDate)}
+          </p>
+        </div>
+        <Badge variant={item.isMilestone ? "default" : "secondary"}>
+          {item.isMilestone ? "Milestone" : `${item.percentComplete}%`}
+        </Badge>
+      </div>
+      <div className="mt-4 h-1.5 rounded-full bg-muted">
+        <div
+          className="h-full rounded-full bg-[oklch(0.53_0.11_150)]"
+          style={{ width: `${item.percentComplete}%` }}
+        />
+      </div>
+    </article>
+  )
+}
+
+function OwnerProjectPreview({
+  data,
+}: {
+  readonly data: ProjectAudiencePreviewData
+}): React.ReactElement {
+  const latestUpdate = data.ownerUpdates[0]
+  const olderUpdates = data.ownerUpdates.slice(1)
+  const nextScheduleItem = data.scheduleItems[0]
+
+  return (
+    <main className="min-h-screen bg-[oklch(0.96_0.018_115)]">
+      <div className="mx-auto flex max-w-6xl flex-col gap-4 px-4 py-4 sm:px-6 lg:px-8">
+        <OwnerPreviewControls projectId={data.project.id} />
+        <OwnerCoverPhotoControl
+          projectId={data.project.id}
+          projectTitle={ownerHeroTitle(data)}
+          projectLabel={projectLabel(data)}
+          projectAddress={data.project.address}
+          latestUpdate={
+            latestUpdate
+              ? {
+                  id: latestUpdate.id,
+                  title: latestUpdate.title,
+                }
+              : null
+          }
+          nextScheduleItem={
+            nextScheduleItem
+              ? {
+                  title: nextScheduleItem.title,
+                  dateRange:
+                    `${formatDate(nextScheduleItem.startDate)} - ` +
+                    formatDate(nextScheduleItem.endDate),
+                }
+              : null
+          }
+          approvedPhotos={data.photos.map((photo) => ({
+            id: photo.id,
+            fileName: photo.fileName,
+            thumbnailUrl: photo.thumbnailUrl,
+            caption: photo.caption,
+          }))}
+        />
+
+        <section className="grid gap-4 lg:grid-cols-[1.15fr_0.85fr]">
+          <div className="space-y-4">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-xs font-medium uppercase text-muted-foreground">
+                  Project story
+                </p>
+                <h2 className="text-xl font-semibold">Recent updates</h2>
+              </div>
+              <Badge variant="outline">{data.ownerUpdates.length} published</Badge>
+            </div>
+            {latestUpdate ? (
+              <OwnerUpdateCard
+                projectId={data.project.id}
+                update={latestUpdate}
+                featured
+              />
+            ) : (
+              <div className="rounded-lg border bg-background p-5 text-sm text-muted-foreground">
+                No published owner updates are visible yet.
+              </div>
+            )}
+            {olderUpdates.length > 0 && (
+              <div className="grid gap-3 md:grid-cols-2">
+                {olderUpdates.map((update) => (
+                  <OwnerUpdateCard
+                    key={update.id}
+                    projectId={data.project.id}
+                    update={update}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+
+          <aside className="space-y-4">
+            <section className="rounded-lg border bg-background p-5">
+              <div className="flex items-center gap-2">
+                <IconCalendarStats className="size-4 text-muted-foreground" />
+                <h2 className="text-sm font-semibold">What happens next</h2>
+              </div>
+              {data.scheduleItems.length > 0 ? (
+                <div className="mt-4 space-y-3">
+                  {data.scheduleItems.slice(0, 3).map((item) => (
+                    <OwnerScheduleCard key={item.id} item={item} />
+                  ))}
+                </div>
+              ) : (
+                <p className="mt-4 rounded-md border p-3 text-sm text-muted-foreground">
+                  Upcoming schedule items will appear here.
+                </p>
+              )}
+            </section>
+
+            <section className="rounded-lg border bg-background p-5">
+              <div className="flex items-center gap-2">
+                <IconSparkles className="size-4 text-muted-foreground" />
+                <h2 className="text-sm font-semibold">Your project team</h2>
+              </div>
+              <div className="mt-4 space-y-3 text-sm">
+                {data.project.projectManager && (
+                  <div>
+                    <p className="text-xs font-medium uppercase text-muted-foreground">
+                      Project manager
+                    </p>
+                    <p className="mt-1 font-medium">{data.project.projectManager}</p>
+                  </div>
+                )}
+                {data.contacts.slice(0, 3).map((contact) => {
+                  const contactDetail = [
+                    contact.companyName,
+                    contact.role,
+                    contact.trade,
+                  ].filter(Boolean).join(" · ")
+
+                  return (
+                    <div key={contact.id} className="border-t pt-3">
+                      <p className="font-medium">{contact.displayName}</p>
+                      {contactDetail && (
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          {contactDetail}
+                        </p>
+                      )}
+                    </div>
+                  )
+                })}
+                {!data.project.projectManager && data.contacts.length === 0 && (
+                  <p className="rounded-md border p-3 text-sm text-muted-foreground">
+                    Project contacts will appear here once they are approved.
+                  </p>
+                )}
+              </div>
+            </section>
+          </aside>
+        </section>
+
+        <section
+          id="photos"
+          className="scroll-mt-6 rounded-lg border bg-background p-4 sm:p-5"
+        >
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <IconPhoto className="size-4 text-muted-foreground" />
+              <h2 className="text-sm font-semibold">Approved Photo Gallery</h2>
+            </div>
+            <Badge variant="outline">{data.photos.length} photos</Badge>
+          </div>
+          {data.photos.length > 0 ? (
+            <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+              {data.photos.map((photo) => (
+                <OwnerUpdatePhotoTile
+                  key={photo.id}
+                  fileName={photo.fileName}
+                  driveUrl={photo.driveUrl}
+                  thumbnailUrl={photo.thumbnailUrl}
+                  caption={photo.caption}
+                />
+              ))}
+            </div>
+          ) : (
+            <p className="mt-4 rounded-md border p-3 text-sm text-muted-foreground">
+              No photos have been approved for this audience yet.
+            </p>
+          )}
+        </section>
+      </div>
+    </main>
+  )
+}
+
 export function ProjectAudiencePreview({
   data,
 }: {
@@ -307,6 +573,10 @@ export function ProjectAudiencePreview({
     projectNumber: data.project.projectNumber,
     status: "OPEN",
   })
+
+  if (isOwner) {
+    return <OwnerProjectPreview data={data} />
+  }
 
   return (
     <main className="min-h-screen bg-muted/30">
@@ -367,34 +637,55 @@ export function ProjectAudiencePreview({
           </div>
         </section>
 
-        <section className="rounded-lg border bg-background p-4 sm:p-5">
-          <div className="flex flex-wrap items-start justify-between gap-4">
-            <div className="flex items-start gap-3">
-              <div className="rounded-md border bg-muted/30 p-2">
-                <IconFolder className="size-4 text-muted-foreground" />
-              </div>
-              <div>
-                <h2 className="text-sm font-semibold">
-                  Current project context
-                </h2>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  Actions in this view apply to {selectedProjectLabel}.
+        {!isOwner && (
+          <section className="rounded-lg border bg-background/80 px-3 py-2">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex min-w-0 items-center gap-2">
+                <IconFolder className="size-4 shrink-0 text-muted-foreground" />
+                <p className="min-w-0 text-sm">
+                  <span className="text-muted-foreground">Current project: </span>
+                  <span className="font-medium">{selectedProjectLabel}</span>
                 </p>
               </div>
+              {data.projectOptions.length > 1 ? (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="outline" size="sm" className="h-8">
+                      Switch project
+                      <IconChevronDown className="size-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-72">
+                    {data.projectOptions.map((project) => {
+                      const active = project.id === data.project.id
+
+                      return (
+                        <DropdownMenuItem key={project.id} asChild>
+                          <Link
+                            href={previewPath(project.id, data.audience)}
+                            className="flex items-center justify-between gap-3"
+                          >
+                            <span className="min-w-0">
+                              <span className="block truncate text-sm font-medium">
+                                {projectOptionLabel(project)}
+                              </span>
+                              <span className="block truncate text-xs text-muted-foreground">
+                                {project.status}
+                              </span>
+                            </span>
+                            {active && <Badge variant="secondary">Current</Badge>}
+                          </Link>
+                        </DropdownMenuItem>
+                      )
+                    })}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              ) : (
+                <Badge variant="outline">Project scoped</Badge>
+              )}
             </div>
-            <Badge variant="secondary">{label}</Badge>
-          </div>
-          <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-            {data.projectOptions.map((project) => (
-              <ProjectOptionRow
-                key={project.id}
-                audience={data.audience}
-                currentProjectId={data.project.id}
-                project={project}
-              />
-            ))}
-          </div>
-        </section>
+          </section>
+        )}
 
         <section className="rounded-lg border bg-background p-4 sm:p-5">
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -586,7 +877,10 @@ export function ProjectAudiencePreview({
           </section>
         )}
 
-        <section className="rounded-lg border bg-background p-4 sm:p-5">
+        <section
+          id="photos"
+          className="scroll-mt-6 rounded-lg border bg-background p-4 sm:p-5"
+        >
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center gap-2">
               <IconPhoto className="size-4 text-muted-foreground" />

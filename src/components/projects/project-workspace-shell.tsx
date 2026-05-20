@@ -15,6 +15,7 @@ import { ProjectManagerWorkflowPanel } from "@/components/projects/project-manag
 import { ProjectRegistryPanel } from "@/components/projects/project-registry-panel"
 import {
   workflowRoleIdFromString,
+  workflowRoleIsAllowed,
   type ProjectWorkflowRoleId,
   type ProjectWorkspaceMode,
 } from "@/lib/project-workflow-roles"
@@ -81,6 +82,7 @@ export function ProjectWorkspaceShell({
   registry,
   canEditRegistry,
   initialRoleId,
+  allowedRoleIds,
 }: {
   readonly projectId: string
   readonly projectNumber: string | null
@@ -94,7 +96,8 @@ export function ProjectWorkspaceShell({
   readonly registry: ProjectRegistry | null
   readonly canEditRegistry: boolean
   readonly initialRoleId: ProjectWorkflowRoleId
-}): ReactElement {
+  readonly allowedRoleIds: readonly ProjectWorkflowRoleId[]
+}): ReactElement | null {
   const [activeRoleId, setActiveRoleId] =
     useState<ProjectWorkflowRoleId>(initialRoleId)
   const [workspaceMode, setWorkspaceMode] =
@@ -102,11 +105,13 @@ export function ProjectWorkspaceShell({
 
   useEffect(() => {
     const savedRole = storedWorkflowRole(projectId)
-    if (savedRole) setActiveRoleId(savedRole)
+    if (savedRole && workflowRoleIsAllowed(savedRole, allowedRoleIds)) {
+      setActiveRoleId(savedRole)
+    }
 
     const savedMode = storedWorkspaceMode(projectId, canEditRegistry)
     if (savedMode) setWorkspaceMode(savedMode)
-  }, [canEditRegistry, projectId])
+  }, [allowedRoleIds, canEditRegistry, projectId])
 
   const developerModeEnabled = canEditRegistry && workspaceMode === "developer"
   const modeDescription = useMemo(() => {
@@ -120,6 +125,8 @@ export function ProjectWorkspaceShell({
   }, [canEditRegistry, developerModeEnabled])
 
   function handleRoleChange(roleId: ProjectWorkflowRoleId): void {
+    if (!workflowRoleIsAllowed(roleId, allowedRoleIds)) return
+
     setActiveRoleId(roleId)
     saveWorkflowRole(projectId, roleId)
   }
@@ -130,26 +137,12 @@ export function ProjectWorkspaceShell({
     saveWorkspaceMode(projectId, nextMode)
   }
 
+  if (allowedRoleIds.length === 0) return null
+
   return (
     <div className="space-y-4 sm:space-y-6">
-      <ProjectManagerWorkflowPanel
-        projectId={projectId}
-        projectNumber={projectNumber}
-        totalTaskCount={totalTaskCount}
-        pastDueCount={pastDueCount}
-        operationsSummary={operationsSummary}
-        contactsSummary={contactsSummary}
-        fieldSummary={fieldSummary}
-        budgetSummary={budgetSummary}
-        rfiSummary={rfiSummary}
-        activeRoleId={activeRoleId}
-        onActiveRoleChange={handleRoleChange}
-        workspaceMode={workspaceMode}
-        canUseDeveloperMode={canEditRegistry}
-      />
-
       {canEditRegistry && (
-        <section className="rounded-lg border bg-background/80 p-3 sm:p-4">
+        <section className="rounded-xl border bg-emerald-950/[0.03] p-3 shadow-sm sm:p-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-start gap-2">
               {developerModeEnabled ? (
@@ -159,7 +152,7 @@ export function ProjectWorkspaceShell({
               )}
               <div>
                 <p className="text-sm font-medium">
-                  Admin-owner workspace mode
+                  Work mode / developer mode
                 </p>
                 <p className="mt-1 text-xs text-muted-foreground">
                   {modeDescription}
@@ -179,6 +172,23 @@ export function ProjectWorkspaceShell({
           </div>
         </section>
       )}
+
+      <ProjectManagerWorkflowPanel
+        projectId={projectId}
+        projectNumber={projectNumber}
+        totalTaskCount={totalTaskCount}
+        pastDueCount={pastDueCount}
+        operationsSummary={operationsSummary}
+        contactsSummary={contactsSummary}
+        fieldSummary={fieldSummary}
+        budgetSummary={budgetSummary}
+        rfiSummary={rfiSummary}
+        activeRoleId={activeRoleId}
+        onActiveRoleChange={handleRoleChange}
+        workspaceMode={workspaceMode}
+        canUseDeveloperMode={canEditRegistry}
+        allowedRoleIds={allowedRoleIds}
+      />
 
       {developerModeEnabled && (
         <ProjectRegistryPanel projectId={projectId} registry={registry} />

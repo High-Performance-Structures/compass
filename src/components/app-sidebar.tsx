@@ -28,6 +28,7 @@ import { NavProjects } from "@/components/nav-projects"
 import { NavConversations } from "@/components/nav-conversations"
 import { NavUser } from "@/components/nav-user"
 import { OrgSwitcher } from "@/components/org-switcher"
+import { PersonalDeskPhoto } from "@/components/personal-desk-photo"
 import { VoicePanel } from "@/components/voice/voice-panel"
 // settings is now a page at /dashboard/settings
 import { openFeedbackDialog } from "@/components/feedback-widget"
@@ -240,6 +241,7 @@ export function AppSidebar({
           </SidebarMenu>
         )}
         {channelId !== null && <VoicePanel />}
+        <PersonalDeskPhoto user={user} />
         <NavUser user={user} />
       </SidebarFooter>
     </Sidebar>

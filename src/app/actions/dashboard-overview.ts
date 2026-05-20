@@ -15,6 +15,12 @@ import {
 import { requireAuth } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
 import { requireOrg } from "@/lib/org-scope"
+import { canManageProjectRegistry } from "@/lib/permissions"
+import {
+  allowedWorkflowRoleIds,
+  defaultWorkflowRoleId,
+  type ProjectWorkflowRoleId,
+} from "@/lib/project-workflow-roles"
 import { getSageBridgeStatus } from "@/lib/sage/config"
 
 type DashboardTask = {
@@ -98,6 +104,12 @@ type DashboardFieldPhoto = {
 
 export type DashboardOverview = {
   readonly today: string
+  readonly user: {
+    readonly role: string | null
+    readonly canUseDeveloperMode: boolean
+    readonly defaultWorkflowRoleId: ProjectWorkflowRoleId
+    readonly allowedWorkflowRoleIds: readonly ProjectWorkflowRoleId[]
+  }
   readonly metrics: {
     readonly activeProjects: number
     readonly upcomingTasks: number
@@ -128,6 +140,12 @@ function emptyOverview(): DashboardOverview {
 
   return {
     today,
+    user: {
+      role: null,
+      canUseDeveloperMode: false,
+      defaultWorkflowRoleId: "project-manager",
+      allowedWorkflowRoleIds: [],
+    },
     metrics: {
       activeProjects: 0,
       upcomingTasks: 0,
@@ -471,8 +489,29 @@ export async function getDashboardOverview(): Promise<DashboardOverview> {
       )
       .slice(0, 10)
 
+    const canUseDeveloperMode = canManageProjectRegistry(user)
+    const allowedRoleIds = allowedWorkflowRoleIds({
+      projectRole: null,
+      userRole: user.role,
+      canUseDeveloperMode,
+    })
+    const defaultRoleId = defaultWorkflowRoleId({
+      projectRole: null,
+      userRole: user.role,
+      canUseDeveloperMode,
+    })
+    const safeDefaultRoleId = allowedRoleIds.includes(defaultRoleId)
+      ? defaultRoleId
+      : (allowedRoleIds[0] ?? "project-manager")
+
     return {
       today,
+      user: {
+        role: user.role,
+        canUseDeveloperMode,
+        defaultWorkflowRoleId: safeDefaultRoleId,
+        allowedWorkflowRoleIds: allowedRoleIds,
+      },
       metrics: {
         activeProjects: dashboardProjects.filter(
           (project) => !isClosedStatus(project.status)

@@ -44,6 +44,32 @@ export const organizationMembers = sqliteTable("organization_members", {
   joinedAt: text("joined_at").notNull(),
 })
 
+export const cherishPulseResponses = sqliteTable("cherish_pulse_responses", {
+  id: text("id").primaryKey(),
+  organizationId: text("organization_id")
+    .notNull()
+    .references(() => organizations.id, { onDelete: "cascade" }),
+  submittedBy: text("submitted_by").references(() => users.id, {
+    onDelete: "set null",
+  }),
+  submittedByName: text("submitted_by_name"),
+  submittedByEmail: text("submitted_by_email"),
+  weekStart: text("week_start").notNull(),
+  cherishValue: text("cherish_value").notNull(),
+  responseType: text("response_type").notNull(),
+  message: text("message").notNull(),
+  source: text("source").notNull().default("compass_dashboard"),
+  visibility: text("visibility").notNull().default("team"),
+  reviewStatus: text("review_status").notNull().default("needs_review"),
+  reviewedBy: text("reviewed_by").references(() => users.id, {
+    onDelete: "set null",
+  }),
+  reviewedAt: text("reviewed_at"),
+  publishedAt: text("published_at"),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+})
+
 export const organizationInvites = sqliteTable("organization_invites", {
   id: text("id").primaryKey(),
   organizationId: text("organization_id")

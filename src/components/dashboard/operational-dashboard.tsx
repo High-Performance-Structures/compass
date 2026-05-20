@@ -1,12 +1,13 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useState, useTransition } from "react"
 import Image from "next/image"
 import Link from "next/link"
 import {
   IconAlertCircle,
   IconArrowRight,
   IconAutomation,
+  IconBriefcase,
   IconCalendarWeek,
   IconChevronRight,
   IconCurrencyDollar,
@@ -21,10 +22,21 @@ import {
   IconRoute,
   IconSparkles,
   IconTargetArrow,
+  IconTools,
   IconTrendingUp,
+  IconUserHeart,
 } from "@tabler/icons-react"
 
 import type { DashboardOverview } from "@/app/actions/dashboard-overview"
+import {
+  getCherishPulseReviewQueue,
+  reviewCherishPulseResponse,
+  submitCherishPulseResponse,
+  type CherishPulseReviewDecision,
+  type CherishPulseResponseType,
+  type CherishPulseReviewItem,
+  type CherishValue,
+} from "@/app/actions/cherish-pulse"
 import {
   useChatPanel,
   useRenderState,
@@ -40,7 +52,18 @@ import {
   CardTitle,
 } from "@/components/ui/card"
 import { Progress } from "@/components/ui/progress"
+import { Switch } from "@/components/ui/switch"
+import { Textarea } from "@/components/ui/textarea"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
+import {
+  PROJECT_WORKFLOW_ROLE_LENSES,
+  roleLensForId,
+  workflowRoleIdFromString,
+  workflowRoleIsAllowed,
+  type ProjectWorkflowRoleId,
+  type ProjectWorkspaceMode,
+  type WorkflowStepId,
+} from "@/lib/project-workflow-roles"
 import { cn } from "@/lib/utils"
 
 type DashboardLayoutMode = "list" | "compass"
@@ -73,6 +96,99 @@ type DashboardField = {
   readonly tone: SignalTone
   readonly href: string
   readonly icon: React.ReactNode
+}
+
+type DashboardRoleAction = {
+  readonly label: string
+  readonly href: string
+  readonly status: string
+  readonly detail: string
+}
+
+const DASHBOARD_ROLE_STORAGE_KEY = "compass-dashboard-role-lens"
+const DASHBOARD_MODE_STORAGE_KEY = "compass-dashboard-workspace-mode"
+
+const CHERISH_VALUES: readonly CherishValue[] = [
+  "Camaraderie",
+  "Honor",
+  "Excellence",
+  "Reliability",
+  "Integrity",
+  "Servitude",
+  "Humility",
+] as const
+
+const CHERISH_RESPONSE_COPY: Record<
+  CherishPulseResponseType,
+  {
+    readonly label: string
+    readonly prompt: string
+    readonly placeholder: string
+    readonly visibility: "team" | "private"
+  }
+> = {
+  shoutout: {
+    label: "Shoutout",
+    prompt: "Who deserves credit this week, and for what?",
+    placeholder: "Example: Nolan helped solve the delivery issue before it slowed the crew down.",
+    visibility: "team",
+  },
+  concern: {
+    label: "Private concern",
+    prompt: "What should leadership know?",
+    placeholder: "Share what is getting in the way, what feels unclear, or what needs attention.",
+    visibility: "private",
+  },
+  win: {
+    label: "Project win",
+    prompt: "What went well on the job?",
+    placeholder: "A small win, a client moment, a safety save, or something the team should see.",
+    visibility: "team",
+  },
+}
+
+function storedDashboardRole(
+  allowedRoleIds: readonly ProjectWorkflowRoleId[]
+): ProjectWorkflowRoleId | null {
+  try {
+    const roleId = workflowRoleIdFromString(
+      window.localStorage.getItem(DASHBOARD_ROLE_STORAGE_KEY)
+    )
+    return roleId && workflowRoleIsAllowed(roleId, allowedRoleIds)
+      ? roleId
+      : null
+  } catch {
+    return null
+  }
+}
+
+function storedDashboardMode(
+  canUseDeveloperMode: boolean
+): ProjectWorkspaceMode | null {
+  if (!canUseDeveloperMode) return null
+
+  try {
+    const value = window.localStorage.getItem(DASHBOARD_MODE_STORAGE_KEY)
+    return value === "developer" || value === "worker" ? value : null
+  } catch {
+    return null
+  }
+}
+
+function saveDashboardRole(roleId: ProjectWorkflowRoleId): void {
+  try {
+    window.localStorage.setItem(DASHBOARD_ROLE_STORAGE_KEY, roleId)
+  } catch {
+    // Local storage is a convenience, not an app dependency.
+  }
+}
+
+function saveDashboardMode(mode: ProjectWorkspaceMode): void {
+  try {
+    window.localStorage.setItem(DASHBOARD_MODE_STORAGE_KEY, mode)
+  } catch {
+    // Local storage is a convenience, not an app dependency.
+  }
 }
 
 function formatDate(value: string | null): string {
@@ -480,6 +596,191 @@ function DashboardCommandCenter({
   )
 }
 
+function dashboardRoleAction(
+  stepId: WorkflowStepId,
+  overview: DashboardOverview
+): DashboardRoleAction {
+  switch (stepId) {
+    case "schedule":
+      return {
+        label: "Work calendar",
+        href: "/dashboard/schedule",
+        status: `${overview.metrics.upcomingTasks} upcoming`,
+        detail: "Schedule and task commitments across active jobs.",
+      }
+    case "contacts":
+      return {
+        label: "Contacts",
+        href: "/dashboard/contacts",
+        status: "Directory",
+        detail: "Customers, vendors, internal teams, and job assignments.",
+      }
+    case "field":
+      return {
+        label: "Field input",
+        href: "/dashboard/projects",
+        status: `${overview.metrics.photosToReview} photos`,
+        detail: "Daily logs, photos, and field review queues.",
+      }
+    case "owner-update":
+      return {
+        label: "Owner updates",
+        href: "/dashboard/projects",
+        status: `${overview.metrics.draftOwnerUpdates} drafts`,
+        detail: "Prepare weekly updates from logs, photos, and schedule.",
+      }
+    case "budget":
+      return {
+        label: "Budget",
+        href: "/dashboard/financials",
+        status: formatMoney(overview.metrics.openPoAmount),
+        detail: "Budget, commitments, billing, and G703-style flow.",
+      }
+    case "rfqs":
+      return {
+        label: "RFIs / RFQs",
+        href: "/dashboard/projects",
+        status: `${overview.metrics.openRfis} open`,
+        detail: "Questions, quote requests, and decisions needing action.",
+      }
+    case "purchase-orders":
+      return {
+        label: "Purchase orders",
+        href: "/dashboard/financials",
+        status: `${overview.operations.length} items`,
+        detail: "Sage-backed commitments and purchasing work.",
+      }
+    case "bills-draws":
+      return {
+        label: "Bills / draws",
+        href: "/dashboard/financials",
+        status: "Financials",
+        detail: "Vendor bills and owner pay application readiness.",
+      }
+    case "intake":
+      return {
+        label: "Drive intake",
+        href: "/dashboard/files",
+        status: "Files",
+        detail: "Google Drive, scripts, uploads, and intake cleanup.",
+      }
+    case "context":
+      return {
+        label: "Projects",
+        href: "/dashboard/projects",
+        status: `${overview.metrics.activeProjects} active`,
+        detail: "Choose the job context before acting.",
+      }
+  }
+}
+
+function DashboardRoleWorkspaceControl({
+  overview,
+  activeRoleId,
+  onActiveRoleChange,
+  workspaceMode,
+  onWorkspaceModeChange,
+}: {
+  readonly overview: DashboardOverview
+  readonly activeRoleId: ProjectWorkflowRoleId
+  readonly onActiveRoleChange: (roleId: ProjectWorkflowRoleId) => void
+  readonly workspaceMode: ProjectWorkspaceMode
+  readonly onWorkspaceModeChange: (mode: ProjectWorkspaceMode) => void
+}): React.ReactElement | null {
+  const allowedRoleIds = overview.user.allowedWorkflowRoleIds
+  if (allowedRoleIds.length === 0) return null
+
+  const canUseDeveloperMode = overview.user.canUseDeveloperMode
+  const activeRole = roleLensForId(activeRoleId)
+  const availableRoles = PROJECT_WORKFLOW_ROLE_LENSES.filter((role) =>
+    allowedRoleIds.includes(role.id)
+  )
+  const actions = activeRole.priority
+    .slice(0, 4)
+    .map((stepId) => dashboardRoleAction(stepId, overview))
+  const developerModeEnabled = canUseDeveloperMode && workspaceMode === "developer"
+
+  return (
+    <Card className="rounded-lg border-emerald-900/10 bg-emerald-950/[0.025]">
+      <CardContent className="grid gap-4 p-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="rounded-md border bg-background p-1.5 text-emerald-800">
+              <IconBriefcase className="size-4" />
+            </span>
+            <p className="text-sm font-semibold">Role dashboard</p>
+            <Badge variant={canUseDeveloperMode ? "secondary" : "outline"}>
+              {canUseDeveloperMode ? "Admin preview" : "Permission based"}
+            </Badge>
+            <Badge variant={developerModeEnabled ? "secondary" : "outline"}>
+              {developerModeEnabled ? "Developer mode" : "Work mode"}
+            </Badge>
+          </div>
+          <p className="mt-2 text-sm text-muted-foreground">
+            {activeRole.focus}
+          </p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {availableRoles.map((role) => (
+              <button
+                key={role.id}
+                type="button"
+                onClick={() => onActiveRoleChange(role.id)}
+                className={cn(
+                  "rounded-md border px-3 py-1.5 text-xs font-medium transition-colors",
+                  activeRoleId === role.id
+                    ? "border-emerald-700 bg-emerald-700 text-white shadow-sm"
+                    : "border-border bg-background text-muted-foreground hover:border-emerald-300 hover:bg-emerald-50 hover:text-foreground"
+                )}
+              >
+                {role.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {canUseDeveloperMode && (
+          <div className="flex items-center justify-between gap-3 rounded-md border bg-background/80 px-3 py-2 lg:min-w-64">
+            <div className="flex items-center gap-2">
+              <IconTools className="size-4 text-muted-foreground" />
+              <div>
+                <p className="text-xs font-medium">Work / developer</p>
+                <p className="text-xs text-muted-foreground">
+                  {developerModeEnabled ? "Buildout controls visible" : "Daily work view"}
+                </p>
+              </div>
+            </div>
+            <Switch
+              checked={developerModeEnabled}
+              onCheckedChange={(checked) =>
+                onWorkspaceModeChange(checked ? "developer" : "worker")
+              }
+              aria-label="Toggle dashboard developer mode"
+            />
+          </div>
+        )}
+
+        <div className="grid gap-2 lg:col-span-2 sm:grid-cols-2 xl:grid-cols-4">
+          {actions.map((action) => (
+            <Link
+              key={action.label}
+              href={action.href}
+              className="rounded-md border bg-background/80 p-3 text-sm transition-all hover:-translate-y-0.5 hover:border-emerald-300 hover:shadow-md"
+            >
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-medium">{action.label}</span>
+                <Badge variant="outline">{action.status}</Badge>
+              </div>
+              <p className="mt-2 line-clamp-2 text-xs text-muted-foreground">
+                {action.detail}
+              </p>
+            </Link>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
 function FieldPulse({
   photos,
 }: {
@@ -613,6 +914,338 @@ function FieldPulse({
       </CardContent>
     </Card>
   )
+}
+
+function CherishPulse(): React.ReactElement {
+  const [responseType, setResponseType] =
+    useState<CherishPulseResponseType>("shoutout")
+  const [responseText, setResponseText] = useState("")
+  const [responses, setResponses] = useState<readonly CherishPulseReviewItem[]>([])
+  const [reviewQueueAvailable, setReviewQueueAvailable] = useState(true)
+  const [submitMessage, setSubmitMessage] = useState<string | null>(null)
+  const [reviewMessage, setReviewMessage] = useState<string | null>(null)
+  const [reviewingId, setReviewingId] = useState<string | null>(null)
+  const [isPending, startTransition] = useTransition()
+  const activeCopy = CHERISH_RESPONSE_COPY[responseType]
+
+  useEffect(() => {
+    let componentIsMounted = true
+
+    async function loadReviewQueue(): Promise<void> {
+      const result = await getCherishPulseReviewQueue()
+      if (!componentIsMounted) return
+
+      if (result.success) {
+        setResponses(result.data)
+        setReviewQueueAvailable(true)
+      } else {
+        setReviewQueueAvailable(false)
+      }
+    }
+
+    void loadReviewQueue()
+
+    return () => {
+      componentIsMounted = false
+    }
+  }, [])
+
+  function handleStageResponse(): void {
+    const trimmedText = responseText.trim()
+    if (trimmedText.length === 0) return
+
+    startTransition(async () => {
+      setSubmitMessage(null)
+      const result = await submitCherishPulseResponse({
+        cherishValue: "Reliability",
+        responseType,
+        message: trimmedText,
+        source: "compass_dashboard",
+      })
+
+      if (!result.success) {
+        setSubmitMessage(result.error)
+        return
+      }
+
+      setResponses((current) => [result.data, ...current])
+      setResponseText("")
+      setSubmitMessage(
+        activeCopy.visibility === "private"
+          ? "Saved privately for leadership review."
+          : "Saved to the review queue."
+      )
+    })
+  }
+
+  function handleReviewResponse(
+    id: string,
+    decision: CherishPulseReviewDecision
+  ): void {
+    setReviewMessage(null)
+    setReviewingId(id)
+
+    async function reviewResponse(): Promise<void> {
+      const result = await reviewCherishPulseResponse({ id, decision })
+      if (!result.success) {
+        setReviewMessage(result.error)
+        setReviewingId(null)
+        return
+      }
+
+      setResponses((current) =>
+        current.filter((response) => response.id !== result.data.id)
+      )
+      setReviewMessage(
+        result.data.reviewStatus === "approved"
+          ? "Approved for the team-visible CHERISH stream."
+          : "Archived from the review queue."
+      )
+      setReviewingId(null)
+    }
+
+    void reviewResponse()
+  }
+
+  return (
+    <Card className="rounded-lg border-emerald-900/10 bg-emerald-950/[0.025]">
+      <CardContent className="grid gap-4 p-4 xl:grid-cols-[minmax(0,1fr)_22rem]">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="rounded-md border bg-background p-2 text-emerald-800">
+              <IconUserHeart className="size-4" />
+            </span>
+            <p className="text-sm font-semibold">Thursday Pulse</p>
+            <Badge variant="secondary">CHERISH</Badge>
+            <Badge variant="outline">Field friendly</Badge>
+          </div>
+
+          <div className="mt-4 rounded-lg border bg-background p-4">
+            <p className="text-xs font-semibold uppercase tracking-normal text-muted-foreground">
+              This week: Reliability
+            </p>
+            <h2 className="mt-1 text-xl font-semibold tracking-tight">
+              Who helped keep something moving this week?
+            </h2>
+            <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
+              Tell us where you saw the good stuff. A shoutout, a project win,
+              or something leadership should hear privately.
+            </p>
+            <div className="mt-4 flex flex-wrap gap-2">
+              {CHERISH_VALUES.map((value) => (
+                <span
+                  key={value}
+                  className={cn(
+                    "rounded-full border px-2.5 py-1 text-xs font-medium",
+                    value === "Reliability"
+                      ? "border-emerald-700 bg-emerald-700 text-white"
+                      : "bg-muted/40 text-muted-foreground"
+                  )}
+                >
+                  {value}
+                </span>
+              ))}
+            </div>
+          </div>
+
+          <div className="mt-3 grid gap-3 md:grid-cols-3">
+            {(["shoutout", "concern", "win"] as const).map((type) => {
+              const copy = CHERISH_RESPONSE_COPY[type]
+              const active = responseType === type
+
+              return (
+                <button
+                  key={type}
+                  type="button"
+                  onClick={() => setResponseType(type)}
+                  className={cn(
+                    "rounded-lg border bg-background p-3 text-left transition-all hover:-translate-y-0.5 hover:border-emerald-300 hover:shadow-md",
+                    active && "border-emerald-700 bg-emerald-50 shadow-sm"
+                  )}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-sm font-semibold">{copy.label}</p>
+                    <Badge variant={copy.visibility === "private" ? "secondary" : "outline"}>
+                      {copy.visibility === "private" ? "Private" : "Team"}
+                    </Badge>
+                  </div>
+                  <p className="mt-2 line-clamp-2 text-xs text-muted-foreground">
+                    {copy.prompt}
+                  </p>
+                </button>
+              )
+            })}
+          </div>
+
+          <div className="mt-3 rounded-lg border bg-background p-3">
+            <p className="text-sm font-medium">{activeCopy.prompt}</p>
+            <Textarea
+              value={responseText}
+              onChange={(event) => setResponseText(event.target.value)}
+              placeholder={activeCopy.placeholder}
+              className="mt-2 min-h-24 resize-none"
+            />
+            <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+              <p className="text-xs text-muted-foreground">
+                Routed as {activeCopy.visibility === "private" ? "private leadership feedback" : "team-visible after review"}.
+              </p>
+              <Button
+                type="button"
+                size="sm"
+                onClick={handleStageResponse}
+                disabled={responseText.trim().length === 0 || isPending}
+              >
+                {isPending ? "Saving..." : "Stage response"}
+              </Button>
+            </div>
+            {submitMessage && (
+              <p
+                className={cn(
+                  "mt-2 text-xs",
+                  submitMessage.startsWith("Saved")
+                    ? "text-emerald-700"
+                    : "text-destructive"
+                )}
+              >
+                {submitMessage}
+              </p>
+            )}
+          </div>
+        </div>
+
+        <aside className="rounded-lg border bg-background p-4">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="text-sm font-semibold">Response doors</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Same prompt, different ways in.
+              </p>
+            </div>
+            <Badge variant="outline">Compass storage</Badge>
+          </div>
+          <div className="mt-4 grid gap-2">
+            {[
+              ["Compass app", "Big mobile buttons for crew and office."],
+              ["Telegram", "Reply to the weekly prompt in the field."],
+              ["ExakTime", "Review comments that should become feedback."],
+              ["Admin entry", "Log a phone call or text on someone’s behalf."],
+            ].map(([label, detail]) => (
+              <div key={label} className="rounded-md border bg-muted/20 p-2.5">
+                <p className="text-xs font-semibold">{label}</p>
+                <p className="mt-1 text-xs text-muted-foreground">{detail}</p>
+              </div>
+            ))}
+          </div>
+
+          <div className="mt-4 border-t pt-4">
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-sm font-semibold">
+                {reviewQueueAvailable ? "Review queue" : "Leadership review"}
+              </p>
+              <Badge variant="secondary">{reviewQueueAvailable ? responses.length : "Secure"}</Badge>
+            </div>
+            <div className="mt-3 space-y-2">
+              {!reviewQueueAvailable && (
+                <div className="rounded-md border bg-muted/20 p-2.5">
+                  <p className="text-xs text-muted-foreground">
+                    Responses are stored in Compass. Private concerns stay with
+                    admins and are handled through the review controls.
+                  </p>
+                </div>
+              )}
+              {reviewQueueAvailable && responses.length === 0 && (
+                <div className="rounded-md border bg-muted/20 p-2.5">
+                  <p className="text-xs text-muted-foreground">
+                    Nothing is waiting for review yet.
+                  </p>
+                </div>
+              )}
+              {reviewQueueAvailable && responses.slice(0, 4).map((response) => (
+                <div
+                  key={response.id}
+                  className={cn(
+                    "rounded-md border p-2.5",
+                    response.visibility === "private" && "border-amber-200 bg-amber-50/40"
+                  )}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <Badge variant={response.visibility === "private" ? "secondary" : "outline"}>
+                      {CHERISH_RESPONSE_COPY[response.responseType].label}
+                    </Badge>
+                    <span className="text-xs text-muted-foreground">
+                      {sourceLabel(response.source)}
+                    </span>
+                  </div>
+                  <p className="mt-2 line-clamp-2 text-xs text-muted-foreground">
+                    {response.message}
+                  </p>
+                  <p className="mt-2 text-[11px] text-muted-foreground">
+                    {response.submittedByName ?? "Team member"} · {formatShortDate(response.createdAt)}
+                  </p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    <Button
+                      type="button"
+                      size="sm"
+                      className="h-7 px-2 text-xs"
+                      onClick={() => handleReviewResponse(response.id, "approve")}
+                      disabled={reviewingId === response.id}
+                    >
+                      {reviewingId === response.id ? "Working..." : "Approve"}
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="h-7 px-2 text-xs"
+                      onClick={() => handleReviewResponse(response.id, "archive")}
+                      disabled={reviewingId === response.id}
+                    >
+                      Archive
+                    </Button>
+                  </div>
+                </div>
+              ))}
+              {reviewMessage && (
+                <p
+                  className={cn(
+                    "text-xs",
+                    reviewMessage.startsWith("Approved") ||
+                      reviewMessage.startsWith("Archived")
+                      ? "text-emerald-700"
+                      : "text-destructive"
+                  )}
+                >
+                  {reviewMessage}
+                </p>
+              )}
+            </div>
+          </div>
+        </aside>
+      </CardContent>
+    </Card>
+  )
+}
+
+function sourceLabel(source: CherishPulseReviewItem["source"]): string {
+  switch (source) {
+    case "compass_mobile":
+      return "Compass app"
+    case "telegram":
+      return "Telegram"
+    case "exaktime":
+      return "ExakTime"
+    case "admin_entry":
+      return "Admin entry"
+    default:
+      return "Compass dashboard"
+  }
+}
+
+function formatShortDate(value: string): string {
+  return new Date(value).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+  })
 }
 
 function formatDateTime(value: string | null): string {
@@ -910,7 +1543,45 @@ export function OperationalDashboard({
   const chatPanel = useChatPanel()
   const [layoutMode, setLayoutMode] =
     useState<DashboardLayoutMode>("list")
+  const [activeRoleId, setActiveRoleId] = useState<ProjectWorkflowRoleId>(
+    overview.user.defaultWorkflowRoleId
+  )
+  const [workspaceMode, setWorkspaceMode] =
+    useState<ProjectWorkspaceMode>("worker")
   const hasRenderedUI = !!spec?.root || isRendering
+  const allowedRoleIds = overview.user.allowedWorkflowRoleIds
+
+  useEffect(() => {
+    const savedRole = storedDashboardRole(allowedRoleIds)
+    if (savedRole) {
+      setActiveRoleId(savedRole)
+      return
+    }
+
+    if (!workflowRoleIsAllowed(activeRoleId, allowedRoleIds)) {
+      setActiveRoleId(overview.user.defaultWorkflowRoleId)
+    }
+  }, [activeRoleId, allowedRoleIds, overview.user.defaultWorkflowRoleId])
+
+  useEffect(() => {
+    const savedMode = storedDashboardMode(overview.user.canUseDeveloperMode)
+    if (savedMode) setWorkspaceMode(savedMode)
+  }, [overview.user.canUseDeveloperMode])
+
+  function handleDashboardRoleChange(roleId: ProjectWorkflowRoleId): void {
+    if (!workflowRoleIsAllowed(roleId, allowedRoleIds)) return
+
+    setActiveRoleId(roleId)
+    saveDashboardRole(roleId)
+  }
+
+  function handleDashboardModeChange(mode: ProjectWorkspaceMode): void {
+    if (!overview.user.canUseDeveloperMode && mode === "developer") return
+
+    setWorkspaceMode(mode)
+    saveDashboardMode(mode)
+  }
+
   const attentionProjects = useMemo(
     () =>
       overview.projects
@@ -995,11 +1666,21 @@ export function OperationalDashboard({
         </div>
       </div>
 
+      <DashboardRoleWorkspaceControl
+        overview={overview}
+        activeRoleId={activeRoleId}
+        onActiveRoleChange={handleDashboardRoleChange}
+        workspaceMode={workspaceMode}
+        onWorkspaceModeChange={handleDashboardModeChange}
+      />
+
       {layoutMode === "compass" && <CompassDashboard overview={overview} />}
 
       {layoutMode === "list" && (
         <>
       <FieldPulse photos={overview.fieldPhotos} />
+
+      <CherishPulse />
 
       <DashboardCommandCenter overview={overview} />
 
