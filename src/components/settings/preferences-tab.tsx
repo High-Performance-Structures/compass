@@ -2,6 +2,12 @@
 
 import * as React from "react"
 
+import {
+  getNotificationPreferences,
+  updateNotificationPreferences,
+  type NotificationPreferenceState,
+} from "@/app/actions/notifications"
+import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import { Separator } from "@/components/ui/separator"
 import { Switch } from "@/components/ui/switch"
@@ -16,12 +22,55 @@ import { useNative } from "@/hooks/use-native"
 import { useBiometricAuth } from "@/hooks/use-biometric-auth"
 
 export function PreferencesTab() {
-  const [emailNotifs, setEmailNotifs] = React.useState(true)
-  const [pushNotifs, setPushNotifs] = React.useState(true)
-  const [weeklyDigest, setWeeklyDigest] = React.useState(false)
+  const [preferences, setPreferences] =
+    React.useState<NotificationPreferenceState>({
+      inAppEnabled: true,
+      emailEnabled: true,
+      pushEnabled: true,
+      weeklyDigestEnabled: false,
+      rfiEnabled: true,
+      ownerUpdateEnabled: true,
+      scheduleEnabled: true,
+      poEnabled: true,
+    })
+  const [saving, setSaving] = React.useState(false)
+  const [message, setMessage] = React.useState<string | null>(null)
   const [timezone, setTimezone] = React.useState("America/New_York")
   const native = useNative()
   const biometric = useBiometricAuth()
+
+  React.useEffect(() => {
+    let cancelled = false
+    async function loadPreferences(): Promise<void> {
+      const result = await getNotificationPreferences()
+      if (!cancelled && result.success) {
+        setPreferences(result.data)
+      }
+    }
+    loadPreferences()
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  function updatePreference<K extends keyof NotificationPreferenceState>(
+    key: K,
+    value: NotificationPreferenceState[K]
+  ): void {
+    setPreferences((current) => ({ ...current, [key]: value }))
+    setMessage(null)
+  }
+
+  async function savePreferences(): Promise<void> {
+    setSaving(true)
+    const result = await updateNotificationPreferences(preferences)
+    setSaving(false)
+    setMessage(
+      result.success
+        ? "Notification preferences saved."
+        : result.error
+    )
+  }
 
   return (
     <div className="space-y-6">
@@ -67,8 +116,10 @@ export function PreferencesTab() {
               </p>
             </div>
             <Switch
-              checked={weeklyDigest}
-              onCheckedChange={setWeeklyDigest}
+              checked={preferences.weeklyDigestEnabled}
+              onCheckedChange={(checked) =>
+                updatePreference("weeklyDigestEnabled", checked)
+              }
               className="shrink-0"
             />
           </div>
@@ -88,8 +139,10 @@ export function PreferencesTab() {
               </p>
             </div>
             <Switch
-              checked={emailNotifs}
-              onCheckedChange={setEmailNotifs}
+              checked={preferences.emailEnabled}
+              onCheckedChange={(checked) =>
+                updatePreference("emailEnabled", checked)
+              }
               className="shrink-0"
             />
           </div>
@@ -104,10 +157,67 @@ export function PreferencesTab() {
               </p>
             </div>
             <Switch
-              checked={pushNotifs}
-              onCheckedChange={setPushNotifs}
+              checked={preferences.pushEnabled}
+              onCheckedChange={(checked) =>
+                updatePreference("pushEnabled", checked)
+              }
               className="shrink-0"
             />
+          </div>
+
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <Label className="text-xs">In-app notifications</Label>
+              <p className="text-muted-foreground text-xs">
+                Show actionable alerts in the Compass notification bell.
+              </p>
+            </div>
+            <Switch
+              checked={preferences.inAppEnabled}
+              onCheckedChange={(checked) =>
+                updatePreference("inAppEnabled", checked)
+              }
+              className="shrink-0"
+            />
+          </div>
+
+          <div className="grid grid-cols-1 gap-3 rounded-md border p-3 sm:grid-cols-2">
+            <div className="flex items-center justify-between gap-3">
+              <Label className="text-xs">RFIs</Label>
+              <Switch
+                checked={preferences.rfiEnabled}
+                onCheckedChange={(checked) =>
+                  updatePreference("rfiEnabled", checked)
+                }
+              />
+            </div>
+            <div className="flex items-center justify-between gap-3">
+              <Label className="text-xs">Owner updates</Label>
+              <Switch
+                checked={preferences.ownerUpdateEnabled}
+                onCheckedChange={(checked) =>
+                  updatePreference("ownerUpdateEnabled", checked)
+                }
+              />
+            </div>
+            <div className="flex items-center justify-between gap-3">
+              <Label className="text-xs">Schedule</Label>
+              <Switch
+                checked={preferences.scheduleEnabled}
+                onCheckedChange={(checked) =>
+                  updatePreference("scheduleEnabled", checked)
+                }
+              />
+            </div>
+            <div className="flex items-center justify-between gap-3">
+              <Label className="text-xs">Purchase orders</Label>
+              <Switch
+                checked={preferences.poEnabled}
+                onCheckedChange={(checked) =>
+                  updatePreference("poEnabled", checked)
+                }
+              />
+            </div>
           </div>
 
           {native && biometric.isAvailable && (
@@ -126,6 +236,14 @@ export function PreferencesTab() {
               />
             </div>
           )}
+          <div className="flex flex-wrap items-center gap-3">
+            <Button size="sm" onClick={savePreferences} disabled={saving}>
+              {saving ? "Saving..." : "Save notification preferences"}
+            </Button>
+            {message && (
+              <p className="text-xs text-muted-foreground">{message}</p>
+            )}
+          </div>
         </div>
       </div>
     </div>

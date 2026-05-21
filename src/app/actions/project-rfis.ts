@@ -5,7 +5,9 @@ import { revalidatePath } from "next/cache"
 
 import { getDb } from "@/db"
 import { projectRfiAttachments, projectRfis, projects } from "@/db/schema"
+import { notifyRfiCreated } from "@/app/actions/notifications"
 import { requireAuth } from "@/lib/auth"
+import type { AuthUser } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
 import { requireOrg } from "@/lib/org-scope"
 import { requirePermission } from "@/lib/permissions"
@@ -51,6 +53,12 @@ export type ProjectRfiSummary = {
 type ProjectRfiActionResult =
   | { readonly success: true; readonly id: string }
   | { readonly success: false; readonly error: string }
+
+type ProjectUpdateContext = {
+  readonly db: ReturnType<typeof getDb>
+  readonly user: AuthUser
+  readonly orgId: string
+}
 
 export type ProjectRfiAttachmentInput = {
   readonly fileName: string
@@ -105,6 +113,13 @@ async function verifyProjectAccess(
 async function verifyProjectUpdateAccess(
   projectId: string
 ): Promise<ReturnType<typeof getDb>> {
+  const context = await getProjectUpdateContext(projectId)
+  return context.db
+}
+
+async function getProjectUpdateContext(
+  projectId: string
+): Promise<ProjectUpdateContext> {
   const user = await requireAuth()
   requirePermission(user, "project", "update")
   const orgId = requireOrg(user)
@@ -122,7 +137,7 @@ async function verifyProjectUpdateAccess(
     throw new Error("Project not found")
   }
 
-  return db
+  return { db, user, orgId }
 }
 
 function cleanText(value: string | null): string | null {
@@ -277,7 +292,7 @@ export async function createProjectRfi(
   input: CreateProjectRfiInput
 ): Promise<ProjectRfiActionResult> {
   try {
-    const db = await verifyProjectUpdateAccess(projectId)
+    const { db, user, orgId } = await getProjectUpdateContext(projectId)
     const rows = await db
       .select({ id: projectRfis.id })
       .from(projectRfis)
@@ -332,6 +347,20 @@ export async function createProjectRfi(
     revalidatePath(`/dashboard/projects/${projectId}`)
     revalidatePath(`/dashboard/projects/${projectId}/rfis`)
     revalidatePath("/dashboard/schedule")
+
+    try {
+      await notifyRfiCreated({
+        organizationId: orgId,
+        projectId,
+        rfiId: id,
+        rfiNumber: inserted.rfiNumber,
+        subject: inserted.subject,
+        assignedToName: inserted.assignedToName ?? null,
+        createdBy: user,
+      })
+    } catch (notificationError) {
+      console.error("[project-rfis] notification error", notificationError)
+    }
 
     return { success: true, id }
   } catch (error) {

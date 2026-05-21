@@ -70,6 +70,96 @@ export const cherishPulseResponses = sqliteTable("cherish_pulse_responses", {
   updatedAt: text("updated_at").notNull(),
 })
 
+export const notificationPreferences = sqliteTable("notification_preferences", {
+  userId: text("user_id")
+    .primaryKey()
+    .references(() => users.id, { onDelete: "cascade" }),
+  inAppEnabled: integer("in_app_enabled", { mode: "boolean" })
+    .notNull()
+    .default(true),
+  emailEnabled: integer("email_enabled", { mode: "boolean" })
+    .notNull()
+    .default(true),
+  pushEnabled: integer("push_enabled", { mode: "boolean" })
+    .notNull()
+    .default(true),
+  weeklyDigestEnabled: integer("weekly_digest_enabled", { mode: "boolean" })
+    .notNull()
+    .default(false),
+  rfiEnabled: integer("rfi_enabled", { mode: "boolean" })
+    .notNull()
+    .default(true),
+  ownerUpdateEnabled: integer("owner_update_enabled", { mode: "boolean" })
+    .notNull()
+    .default(true),
+  scheduleEnabled: integer("schedule_enabled", { mode: "boolean" })
+    .notNull()
+    .default(true),
+  poEnabled: integer("po_enabled", { mode: "boolean" })
+    .notNull()
+    .default(true),
+  updatedAt: text("updated_at").notNull(),
+})
+
+export const notificationEvents = sqliteTable("notification_events", {
+  id: text("id").primaryKey(),
+  organizationId: text("organization_id")
+    .notNull()
+    .references(() => organizations.id, { onDelete: "cascade" }),
+  projectId: text("project_id").references(() => projects.id, {
+    onDelete: "cascade",
+  }),
+  eventType: text("event_type").notNull(),
+  sourceType: text("source_type").notNull(),
+  sourceId: text("source_id"),
+  title: text("title").notNull(),
+  body: text("body").notNull(),
+  href: text("href").notNull(),
+  priority: text("priority").notNull().default("normal"),
+  audience: text("audience").notNull().default("internal"),
+  createdBy: text("created_by").references(() => users.id, {
+    onDelete: "set null",
+  }),
+  createdAt: text("created_at").notNull(),
+})
+
+export const notificationRecipients = sqliteTable("notification_recipients", {
+  id: text("id").primaryKey(),
+  eventId: text("event_id")
+    .notNull()
+    .references(() => notificationEvents.id, { onDelete: "cascade" }),
+  userId: text("user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  inApp: integer("in_app", { mode: "boolean" }).notNull().default(true),
+  email: integer("email", { mode: "boolean" }).notNull().default(false),
+  push: integer("push", { mode: "boolean" }).notNull().default(false),
+  readAt: text("read_at"),
+  dismissedAt: text("dismissed_at"),
+  createdAt: text("created_at").notNull(),
+})
+
+export const notificationDeliveries = sqliteTable("notification_deliveries", {
+  id: text("id").primaryKey(),
+  eventId: text("event_id")
+    .notNull()
+    .references(() => notificationEvents.id, { onDelete: "cascade" }),
+  recipientId: text("recipient_id")
+    .notNull()
+    .references(() => notificationRecipients.id, { onDelete: "cascade" }),
+  userId: text("user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  channel: text("channel").notNull(),
+  status: text("status").notNull().default("queued"),
+  toAddress: text("to_address"),
+  provider: text("provider"),
+  providerMessageId: text("provider_message_id"),
+  error: text("error"),
+  attemptedAt: text("attempted_at"),
+  createdAt: text("created_at").notNull(),
+})
+
 export const organizationInvites = sqliteTable("organization_invites", {
   id: text("id").primaryKey(),
   organizationId: text("organization_id")
@@ -655,6 +745,19 @@ export type Organization = typeof organizations.$inferSelect
 export type NewOrganization = typeof organizations.$inferInsert
 export type OrganizationMember = typeof organizationMembers.$inferSelect
 export type NewOrganizationMember = typeof organizationMembers.$inferInsert
+export type NotificationPreference =
+  typeof notificationPreferences.$inferSelect
+export type NewNotificationPreference =
+  typeof notificationPreferences.$inferInsert
+export type NotificationEvent = typeof notificationEvents.$inferSelect
+export type NewNotificationEvent = typeof notificationEvents.$inferInsert
+export type NotificationRecipient =
+  typeof notificationRecipients.$inferSelect
+export type NewNotificationRecipient =
+  typeof notificationRecipients.$inferInsert
+export type NotificationDelivery = typeof notificationDeliveries.$inferSelect
+export type NewNotificationDelivery =
+  typeof notificationDeliveries.$inferInsert
 export type OrganizationInvite = typeof organizationInvites.$inferSelect
 export type NewOrganizationInvite = typeof organizationInvites.$inferInsert
 export type Team = typeof teams.$inferSelect
