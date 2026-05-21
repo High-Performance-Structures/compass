@@ -16,6 +16,7 @@ import {
   ProjectContactsDirectory,
   ProjectContactsPanel,
 } from "@/components/projects/project-contacts-panel"
+import { ProjectContextSwitcher } from "@/components/projects/project-context-switcher"
 import { Badge } from "@/components/ui/badge"
 
 export default async function ProjectContactsPage({
@@ -55,15 +56,23 @@ export default async function ProjectContactsPage({
             Nu-Tech, and ORC team for this project.
           </p>
         </div>
-        <div className="flex flex-wrap gap-2">
-          <Badge variant="outline">
-            <IconEye className="mr-1 size-3" />
-            Portal visibility
-          </Badge>
-          <Badge variant="secondary">
-            <IconUsers className="mr-1 size-3" />
-            Sage / Buildertrend mapping
-          </Badge>
+        <div className="flex flex-col items-stretch gap-2 sm:items-end">
+          <ProjectContextSwitcher
+            currentProjectId={id}
+            targetSection="contacts"
+            placeholder="Switch contacts project..."
+            className="w-full sm:w-[280px]"
+          />
+          <div className="flex flex-wrap justify-end gap-2">
+            <Badge variant="outline">
+              <IconEye className="mr-1 size-3" />
+              Portal visibility
+            </Badge>
+            <Badge variant="secondary">
+              <IconUsers className="mr-1 size-3" />
+              Source mapping
+            </Badge>
+          </div>
         </div>
       </div>
 

@@ -214,9 +214,9 @@ export function ProjectContactsPanel({
         </div>
       </div>
 
-      <div className="mt-4 grid gap-3 sm:grid-cols-3">
+      <div className="mt-4 grid gap-x-5 gap-y-3 border-y py-3 sm:grid-cols-3">
         {displayGroups.map((group) => (
-          <div key={group.id} className="rounded-md border bg-background p-3">
+          <div key={group.id} className="min-w-0">
             <div className="flex items-center justify-between gap-3">
               <div className="flex items-center gap-2">
                 {typeIcon(group.id)}
@@ -259,7 +259,7 @@ export function ProjectContactsPanel({
         </p>
       )}
 
-      <div className="mt-4 flex items-start gap-2 rounded-md border bg-muted/35 p-3 text-xs text-muted-foreground">
+      <div className="mt-4 flex items-start gap-2 border-t pt-3 text-xs text-muted-foreground">
         <IconUsers className="mt-0.5 size-4 shrink-0" />
         <p>
           This layer will reconcile Buildertrend contacts, Sage vendors, Sage

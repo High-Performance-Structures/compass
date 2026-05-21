@@ -262,7 +262,7 @@ function buildOwnerCategoryLines(
 
     return {
       id: `owner-budget-category-${division.csiDivision}-${index}`,
-      sourceSystem: firstLine?.sourceSystem ?? "sage",
+      sourceSystem: firstLine?.sourceSystem ?? "compass",
       costCode: `${division.csiDivision} 00 00`,
       csiDivision: division.csiDivision,
       csiDivisionName: division.csiDivisionName,

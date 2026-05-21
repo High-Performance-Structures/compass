@@ -373,8 +373,46 @@ export const projectOperations = sqliteTable("project_operations", {
   dueDate: text("due_date"),
   amount: real("amount"),
   externalUrl: text("external_url"),
+  sageJobId: text("sage_job_id"),
+  sageJobNumber: text("sage_job_number"),
+  sageVendorId: text("sage_vendor_id"),
+  sageVendorName: text("sage_vendor_name"),
+  sagePhaseCode: text("sage_phase_code"),
+  sageCostCode: text("sage_cost_code"),
+  sageTaxGroup: text("sage_tax_group"),
+  sageShipTo: text("sage_ship_to"),
+  sageOrderDate: text("sage_order_date"),
+  sageRequiredDate: text("sage_required_date"),
+  sageWriteStatus: text("sage_write_status").notNull().default("not_ready"),
+  sagePayloadJson: text("sage_payload_json"),
   syncDirection: text("sync_direction").notNull().default("read"),
   syncStatus: text("sync_status").notNull().default("synced"),
+  lastSyncedAt: text("last_synced_at"),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+})
+
+export const projectPurchaseOrderLines = sqliteTable("project_purchase_order_lines", {
+  id: text("id").primaryKey(),
+  operationId: text("operation_id")
+    .notNull()
+    .references(() => projectOperations.id, { onDelete: "cascade" }),
+  projectId: text("project_id")
+    .notNull()
+    .references(() => projects.id, { onDelete: "cascade" }),
+  sourceSystem: text("source_system").notNull().default("compass"),
+  sourceRecordId: text("source_record_id"),
+  lineNumber: integer("line_number").notNull().default(1),
+  costCode: text("cost_code"),
+  phaseCode: text("phase_code"),
+  description: text("description").notNull(),
+  quantity: real("quantity").notNull().default(1),
+  unitCost: real("unit_cost").notNull().default(0),
+  unit: text("unit"),
+  amount: real("amount").notNull().default(0),
+  taxGroup: text("tax_group"),
+  sagePayloadJson: text("sage_payload_json"),
+  syncStatus: text("sync_status").notNull().default("pending_sage"),
   lastSyncedAt: text("last_synced_at"),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
@@ -692,6 +730,10 @@ export type OwnerProjectUpdate = typeof ownerProjectUpdates.$inferSelect
 export type NewOwnerProjectUpdate = typeof ownerProjectUpdates.$inferInsert
 export type ProjectOperation = typeof projectOperations.$inferSelect
 export type NewProjectOperation = typeof projectOperations.$inferInsert
+export type ProjectPurchaseOrderLine =
+  typeof projectPurchaseOrderLines.$inferSelect
+export type NewProjectPurchaseOrderLine =
+  typeof projectPurchaseOrderLines.$inferInsert
 export type ProjectBudgetApplication =
   typeof projectBudgetApplications.$inferSelect
 export type NewProjectBudgetApplication =

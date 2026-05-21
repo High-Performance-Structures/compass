@@ -38,28 +38,12 @@ import {
   getProjectRfiSummary,
   type ProjectRfiSummary,
 } from "@/app/actions/project-rfis"
-import { ProjectFieldPanel } from "@/components/projects/project-field-panel"
-import { ProjectBudgetPanel } from "@/components/projects/project-budget-panel"
-import { ProjectContactsPanel } from "@/components/projects/project-contacts-panel"
 import { ProjectActionsMenu } from "@/components/projects/project-actions-menu"
-import { ProjectOperationsPanel } from "@/components/projects/project-operations-panel"
-import { ProjectRfiPanel } from "@/components/projects/project-rfi-panel"
 import { ProjectWorkspaceShell } from "@/components/projects/project-workspace-shell"
 import {
   allowedWorkflowRoleIds,
   defaultWorkflowRoleId,
 } from "@/lib/project-workflow-roles"
-import {
-  IconAlertTriangle,
-  IconCalendarStats,
-  IconCheck,
-  IconClock,
-  IconEye,
-  IconFileDollar,
-  IconFlag,
-  IconThumbUp,
-  IconUsers,
-} from "@tabler/icons-react"
 import type { ScheduleTask } from "@/db/schema"
 
 function getWeekDays(): { date: Date; dayName: string }[] {
@@ -263,20 +247,6 @@ export default async function ProjectSummaryPage({
     (t) => t.isMilestone && t.startDate >= todayStr && t.status !== "COMPLETE",
   )
 
-  // phase breakdown
-  const phases = new Map<string, { total: number; completed: number }>()
-  for (const t of tasks) {
-    const entry = phases.get(t.phase) ?? { total: 0, completed: 0 }
-    entry.total++
-    if (t.status === "COMPLETE") entry.completed++
-    phases.set(t.phase, entry)
-  }
-
-  // recent updates (tasks sorted by updatedAt desc)
-  const recentUpdates = [...tasks]
-    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
-    .slice(0, 5)
-
   // week agenda
   const weekDays = getWeekDays()
   const weekAgenda = weekDays.map((day) => {
@@ -311,44 +281,77 @@ export default async function ProjectSummaryPage({
           </p>
         </div>
 
-        {/* quick project views */}
-        <div className="mb-5 flex flex-wrap gap-2 sm:mb-6">
+        <section className="mb-4 grid grid-cols-2 gap-x-5 gap-y-3 border-y py-3 sm:mb-5 lg:grid-cols-4">
           <Link
             href={`/dashboard/projects/${id}/schedule`}
-            className="inline-flex items-center gap-1.5 rounded-md border bg-background px-3 py-1.5 text-sm font-medium transition-colors hover:bg-accent"
+            className="group min-w-0 transition-colors hover:text-primary"
           >
-            <IconCalendarStats className="size-4" />
-            View schedule
+            <div className="flex items-baseline gap-2">
+              <p className="text-xl font-semibold tabular-nums">
+                {completedPercent}%
+              </p>
+              <p className="text-xs font-medium uppercase text-muted-foreground group-hover:text-primary/70">
+                Progress
+              </p>
+            </div>
+            <p className="mt-0.5 truncate text-xs text-muted-foreground">
+              {completedTasks.length} complete{" "}
+              <span aria-hidden="true">&middot;</span>{" "}
+              {activeTasks.length} active
+            </p>
           </Link>
+
           <Link
-            href={`/dashboard/projects/${id}/preview/owner`}
-            className="inline-flex items-center gap-1.5 rounded-md border bg-background px-3 py-1.5 text-sm font-medium transition-colors hover:bg-accent"
+            href={`/dashboard/projects/${id}/schedule`}
+            className="group min-w-0 transition-colors hover:text-primary"
           >
-            <IconEye className="size-4" />
-            Owner preview
+            <div className="flex items-baseline gap-2">
+              <p className="text-xl font-semibold tabular-nums">
+                {pastDue.length}
+              </p>
+              <p className="text-xs font-medium uppercase text-muted-foreground group-hover:text-primary/70">
+                Past due
+              </p>
+            </div>
+            <p className="mt-0.5 truncate text-xs text-muted-foreground">
+              {pastDue[0]?.title ?? "Nothing past due"}
+            </p>
           </Link>
+
           <Link
-            href={`/dashboard/projects/${id}/budget`}
-            className="inline-flex items-center gap-1.5 rounded-md border bg-background px-3 py-1.5 text-sm font-medium transition-colors hover:bg-accent"
+            href={`/dashboard/projects/${id}/schedule`}
+            className="group min-w-0 transition-colors hover:text-primary"
           >
-            <IconFileDollar className="size-4" />
-            Budget
+            <div className="flex items-baseline gap-2">
+              <p className="text-xl font-semibold tabular-nums">
+                {dueToday.length}
+              </p>
+              <p className="text-xs font-medium uppercase text-muted-foreground group-hover:text-primary/70">
+                Due today
+              </p>
+            </div>
+            <p className="mt-0.5 truncate text-xs text-muted-foreground">
+              {dueToday[0]?.title ?? "No schedule items due today"}
+            </p>
           </Link>
+
           <Link
-            href={`/dashboard/projects/${id}/contacts`}
-            className="inline-flex items-center gap-1.5 rounded-md border bg-background px-3 py-1.5 text-sm font-medium transition-colors hover:bg-accent"
+            href={`/dashboard/projects/${id}/schedule`}
+            className="group min-w-0 transition-colors hover:text-primary"
           >
-            <IconUsers className="size-4" />
-            Contacts
+            <div className="flex items-baseline gap-2">
+              <p className="text-xl font-semibold tabular-nums">
+                {upcomingMilestones.length}
+              </p>
+              <p className="text-xs font-medium uppercase text-muted-foreground group-hover:text-primary/70">
+                Milestones
+              </p>
+            </div>
+            <p className="mt-0.5 truncate text-xs text-muted-foreground">
+              {upcomingMilestones[0]?.title ?? "No upcoming milestones"}
+            </p>
           </Link>
-          <Link
-            href={`/dashboard/projects/${id}/preview/sub-vendor`}
-            className="inline-flex items-center gap-1.5 rounded-md border bg-background px-3 py-1.5 text-sm font-medium transition-colors hover:bg-accent"
-          >
-            <IconUsers className="size-4" />
-            Sub/vendor preview
-          </Link>
-        </div>
+        </section>
 
         <div className="mb-4 sm:mb-6">
           <ProjectWorkspaceShell
@@ -366,246 +369,6 @@ export default async function ProjectSummaryPage({
             initialRoleId={safeInitialWorkflowRoleId}
             allowedRoleIds={allowedRoleIds}
           />
-        </div>
-
-        <div className="mb-4 sm:mb-6">
-          <ProjectFieldPanel projectId={id} summary={fieldSummary} />
-        </div>
-
-        <div className="mb-4 sm:mb-6">
-          <ProjectBudgetPanel projectId={id} summary={budgetSummary} />
-        </div>
-
-        <div className="mb-4 sm:mb-6">
-          <ProjectContactsPanel projectId={id} summary={contactsSummary} />
-        </div>
-
-        <div id="sage-operations" className="mb-4 scroll-mt-24 sm:mb-6">
-          <ProjectOperationsPanel projectId={id} summary={operationsSummary} />
-        </div>
-
-        <div id="rfis" className="mb-4 scroll-mt-24 sm:mb-6">
-          <ProjectRfiPanel projectId={id} summary={rfiSummary} />
-        </div>
-
-        {/* progress bar */}
-        <div className="rounded-lg border p-3 sm:p-4 mb-4 sm:mb-6">
-          <div className="flex items-center justify-between mb-2">
-            <p className="text-sm font-medium">Overall Progress</p>
-            <p className="text-sm font-semibold">{completedPercent}%</p>
-          </div>
-          <div className="w-full h-2 rounded-full bg-muted">
-            <div
-              className="h-full rounded-full bg-primary transition-all"
-              style={{ width: `${completedPercent}%` }}
-            />
-          </div>
-          <div className="flex gap-4 mt-3 text-xs text-muted-foreground">
-            <span>{completedTasks.length} completed</span>
-            <span>{activeTasks.length} in progress</span>
-            {pastDue.length > 0 && (
-              <span className="text-destructive">{pastDue.length} overdue</span>
-            )}
-          </div>
-        </div>
-
-        {/* urgency columns */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-px rounded-lg border overflow-hidden mb-4 sm:mb-6">
-          <div className="p-3 sm:p-4 bg-background">
-            <p className="text-xs font-medium uppercase text-muted-foreground mb-3">
-              Past Due
-            </p>
-            {pastDue.length > 0 ? (
-              <div className="space-y-2">
-                {pastDue.slice(0, 4).map((t) => (
-                  <div key={t.id} className="flex items-center justify-between">
-                    <span className="text-sm truncate mr-2">{t.title}</span>
-                    <span className="text-xs text-destructive font-medium shrink-0">
-                      {new Date(t.endDateCalculated).toLocaleDateString(
-                        "en-US",
-                        { month: "short", day: "numeric" },
-                      )}
-                    </span>
-                  </div>
-                ))}
-                {pastDue.length > 4 && (
-                  <p className="text-xs text-muted-foreground">
-                    +{pastDue.length - 4} more
-                  </p>
-                )}
-              </div>
-            ) : (
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <IconThumbUp className="size-4" />
-                Nothing past due
-              </div>
-            )}
-          </div>
-
-          <div className="p-3 sm:p-4 bg-background border-t sm:border-t-0 sm:border-x">
-            <p className="text-xs font-medium uppercase text-muted-foreground mb-3">
-              Due Today
-            </p>
-            {dueToday.length > 0 ? (
-              <div className="space-y-2">
-                {dueToday.map((t) => (
-                  <div key={t.id} className="text-sm truncate">
-                    {t.title}
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <IconThumbUp className="size-4" />
-                Nothing due today
-              </div>
-            )}
-          </div>
-
-          <div className="p-3 sm:p-4 bg-background border-t sm:border-t-0">
-            <p className="text-xs font-medium uppercase text-muted-foreground mb-3">
-              Upcoming Milestones
-            </p>
-            {upcomingMilestones.length > 0 ? (
-              <div className="space-y-2">
-                {upcomingMilestones.slice(0, 4).map((t) => (
-                  <div key={t.id} className="flex items-center justify-between">
-                    <span className="text-sm truncate mr-2">{t.title}</span>
-                    <span className="text-xs text-muted-foreground shrink-0">
-                      {new Date(t.startDate).toLocaleDateString("en-US", {
-                        month: "short",
-                        day: "numeric",
-                      })}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <IconFlag className="size-4" />
-                No upcoming milestones
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* two-column: phases + active tasks */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6 mb-4 sm:mb-6">
-          {/* phase breakdown */}
-          <div>
-            <h2 className="text-xs font-medium uppercase text-muted-foreground mb-3">
-              Phases
-            </h2>
-            {phases.size > 0 ? (
-              <div className="space-y-3">
-                {[...phases.entries()].map(([phase, data]) => {
-                  const pct = Math.round((data.completed / data.total) * 100)
-                  return (
-                    <div key={phase}>
-                      <div className="flex items-center justify-between mb-1">
-                        <span className="text-sm capitalize">{phase}</span>
-                        <span className="text-xs text-muted-foreground">
-                          {data.completed}/{data.total}
-                        </span>
-                      </div>
-                      <div className="w-full h-1.5 rounded-full bg-muted">
-                        <div
-                          className="h-full rounded-full bg-primary/70"
-                          style={{ width: `${pct}%` }}
-                        />
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-            ) : (
-              <p className="text-sm text-muted-foreground">No phases yet.</p>
-            )}
-          </div>
-
-          {/* active tasks */}
-          <div>
-            <h2 className="text-xs font-medium uppercase text-muted-foreground mb-3">
-              Active Tasks
-            </h2>
-            {activeTasks.length > 0 ? (
-              <div className="space-y-2.5">
-                {activeTasks
-                  .sort((a, b) => a.startDate.localeCompare(b.startDate))
-                  .slice(0, 8)
-                  .map((t) => (
-                    <div key={t.id} className="flex items-center gap-2 text-sm">
-                      {t.endDateCalculated < todayStr ? (
-                        <IconAlertTriangle className="size-3.5 text-destructive shrink-0" />
-                      ) : (
-                        <IconClock className="size-3.5 text-muted-foreground shrink-0" />
-                      )}
-                      <span className="truncate flex-1">{t.title}</span>
-                      <div className="w-12 h-1.5 rounded-full bg-muted shrink-0">
-                        <div
-                          className="h-full rounded-full bg-foreground/50"
-                          style={{ width: `${t.percentComplete}%` }}
-                        />
-                      </div>
-                    </div>
-                  ))}
-                {activeTasks.length > 8 && (
-                  <Link
-                    href={`/dashboard/projects/${id}/schedule`}
-                    className="text-xs text-primary hover:underline"
-                  >
-                    +{activeTasks.length - 8} more in schedule
-                  </Link>
-                )}
-              </div>
-            ) : (
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <IconCheck className="size-4" />
-                All tasks complete
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* recent updates */}
-        <div>
-          <h2 className="text-xs font-medium uppercase text-muted-foreground mb-3">
-            Recent Updates
-          </h2>
-          {recentUpdates.length > 0 ? (
-            <div className="space-y-3">
-              {recentUpdates.map((t) => (
-                <div key={t.id} className="flex items-start gap-3">
-                  <div className="size-7 rounded-full bg-muted flex items-center justify-center mt-0.5 shrink-0">
-                    {t.status === "COMPLETE" ? (
-                      <IconCheck className="size-3.5 text-primary" />
-                    ) : (
-                      <IconClock className="size-3.5 text-muted-foreground" />
-                    )}
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm truncate">{t.title}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {t.status === "COMPLETE"
-                        ? "Completed"
-                        : `${t.percentComplete}% complete`}
-                      {" \u00b7 "}
-                      {t.phase}
-                      {" \u00b7 "}
-                      {new Date(t.updatedAt).toLocaleDateString("en-US", {
-                        month: "short",
-                        day: "numeric",
-                        hour: "numeric",
-                        minute: "2-digit",
-                      })}
-                    </p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <p className="text-sm text-muted-foreground">No recent activity.</p>
-          )}
         </div>
       </div>
 
@@ -666,6 +429,7 @@ export default async function ProjectSummaryPage({
             </div>
           ))}
         </div>
+        <div id={`project-workspace-controls-${id}`} />
       </div>
     </div>
   )

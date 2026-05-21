@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { useRouter } from "next/navigation"
+import { usePathname, useRouter } from "next/navigation"
 import {
   IconChevronDown,
   IconFolder,
@@ -24,6 +24,29 @@ interface MobileProjectSwitcherProps {
   status?: string
 }
 
+function projectSectionHref(
+  pathname: string | null,
+  projectId: string
+): string {
+  const baseHref = `/dashboard/projects/${projectId}`
+  const suffix = pathname?.replace(/^\/dashboard\/projects\/[^/]+/, "") ?? ""
+  const section = suffix.split("/").filter(Boolean)[0]
+
+  switch (section) {
+    case "budget":
+    case "contacts":
+    case "daily-logs":
+    case "owner-updates":
+    case "photos":
+    case "purchase-orders":
+    case "rfis":
+    case "schedule":
+      return `${baseHref}/${section}`
+    default:
+      return baseHref
+  }
+}
+
 export function MobileProjectSwitcher({
   projectName,
   projectNumber = null,
@@ -32,6 +55,7 @@ export function MobileProjectSwitcher({
 }: MobileProjectSwitcherProps) {
   const isMobile = useIsMobile()
   const router = useRouter()
+  const pathname = usePathname()
   const projects = useProjectList()
   const [open, setOpen] = React.useState(false)
   const displayName = projectNumber ?? projectName
@@ -110,7 +134,7 @@ export function MobileProjectSwitcher({
                     setOpen(false)
                     if (!isActive) {
                       router.push(
-                        `/dashboard/projects/${project.id}`
+                        projectSectionHref(pathname, project.id)
                       )
                     }
                   }}

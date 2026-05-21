@@ -362,25 +362,25 @@ export function WorkCalendar({
             <h2 className="text-sm font-semibold">Task Sources</h2>
             <div className="mt-3 grid gap-2">
               <Link
-                href="/dashboard/projects"
+                href="/dashboard/projects/select?target=daily-logs"
                 className="rounded-md border bg-background p-3 text-sm font-medium transition-colors hover:bg-muted/60"
               >
                 Daily logs
               </Link>
               <Link
-                href="/dashboard/projects"
+                href="/dashboard/projects/select?target=schedule"
                 className="rounded-md border bg-background p-3 text-sm font-medium transition-colors hover:bg-muted/60"
               >
                 Project schedules
               </Link>
               <Link
-                href="/dashboard/projects"
+                href="/dashboard/rfis"
                 className="rounded-md border bg-background p-3 text-sm font-medium transition-colors hover:bg-muted/60"
               >
                 RFIs
               </Link>
               <Link
-                href="/dashboard/financials"
+                href="/dashboard/purchase-orders"
                 className="rounded-md border bg-background p-3 text-sm font-medium transition-colors hover:bg-muted/60"
               >
                 Purchase orders

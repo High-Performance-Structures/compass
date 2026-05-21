@@ -323,3 +323,28 @@ em-emoji-picker {
   font-weight: 500;
   color: var(--primary);
 }
+
+@media print {
+  @page {
+    margin: 0.5in;
+  }
+
+  body.po-printing-selected > * {
+    visibility: hidden;
+  }
+
+  body.po-printing-selected [data-print-selected="true"],
+  body.po-printing-selected [data-print-selected="true"] * {
+    visibility: visible;
+  }
+
+  body.po-printing-selected [data-print-selected="true"] {
+    position: absolute;
+    inset: 0 auto auto 0;
+    width: 100%;
+  }
+
+  body.po-printing-selected [data-print-selected="true"] .print\:hidden {
+    display: none;
+  }
+}

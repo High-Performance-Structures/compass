@@ -10,9 +10,13 @@ import {
 import { IconChevronDown, IconBuilding } from "@tabler/icons-react"
 
 interface ProjectSwitcherProps {
-  projects: { id: string; name: string; projectNumber?: string | null }[]
-  currentProjectId: string
-  currentProjectName: string
+  readonly projects: readonly {
+    readonly id: string
+    readonly name: string
+    readonly projectNumber?: string | null
+  }[]
+  readonly currentProjectId: string
+  readonly currentProjectName: string
 }
 
 export function ProjectSwitcher({

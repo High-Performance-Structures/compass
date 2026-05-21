@@ -119,9 +119,8 @@ const NAV_MAIN = [
   },
   {
     title: "Purchase Orders",
-    url: "/dashboard/projects",
+    url: "/dashboard/purchase-orders",
     icon: IconShoppingCart,
-    projectPath: "/purchase-orders",
   },
 ]
 
@@ -153,9 +152,11 @@ function SidebarNav({
   const isExpanded = state === "expanded"
   const isFilesMode = pathname?.startsWith("/dashboard/files")
   const isConversationsMode = pathname?.startsWith("/dashboard/conversations")
-  const isProjectMode = /^\/dashboard\/projects\/[^/]+/.test(
-    pathname ?? ""
-  )
+  const projectPathMatch = pathname?.match(/^\/dashboard\/projects\/([^/]+)/)
+  const isProjectMode =
+    projectPathMatch !== null &&
+    projectPathMatch !== undefined &&
+    projectPathMatch[1] !== "select"
 
   const showContext = isExpanded && (isFilesMode || isProjectMode || isConversationsMode)
 
@@ -167,10 +168,14 @@ function SidebarNav({
         ? "projects"
         : "main"
 
-  const firstProjectId = projects[0]?.id
   const navMain = NAV_MAIN.map((item) =>
-    "projectPath" in item && firstProjectId
-      ? { ...item, url: `/dashboard/projects/${firstProjectId}${item.projectPath}` }
+    typeof item.projectPath === "string"
+      ? {
+          ...item,
+          url: `/dashboard/projects/select?target=${encodeURIComponent(
+            item.projectPath.replace(/^\//, "")
+          )}`,
+        }
       : item
   )
   const secondaryItems = [...NAV_SECONDARY]

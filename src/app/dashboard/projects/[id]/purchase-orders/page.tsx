@@ -1,38 +1,22 @@
+import type * as React from "react"
 import Link from "next/link"
-import { redirect } from "next/navigation"
 import {
   IconArrowLeft,
   IconExternalLink,
-  IconPlus,
   IconShoppingCart,
 } from "@tabler/icons-react"
 
 import {
-  createPurchaseOrderRequest,
   getProjectPurchaseOrders,
+  type ProjectPurchaseOrderItem,
 } from "@/app/actions/project-operations"
 import { getProjects } from "@/app/actions/projects"
+import { ProjectPurchaseOrderEmailButton } from "@/components/projects/project-purchase-order-email-button"
+import { ProjectPurchaseOrderCreateForm } from "@/components/projects/project-purchase-order-create-form"
+import { ProjectPurchaseOrderPrintButton } from "@/components/projects/project-purchase-order-print-button"
+import { ProjectQuickSwitcher } from "@/components/projects/project-quick-switcher"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Textarea } from "@/components/ui/textarea"
-
-function readFormText(formData: FormData, name: string): string {
-  const value = formData.get(name)
-  return typeof value === "string" ? value : ""
-}
-
-function cleanFormText(formData: FormData, name: string): string | null {
-  const value = readFormText(formData, name).trim()
-  return value.length > 0 ? value : null
-}
-
-function readMoney(formData: FormData, name: string): number | null {
-  const value = readFormText(formData, name).replaceAll(",", "").trim()
-  if (value.length === 0) return null
-  const parsed = Number(value)
-  return Number.isFinite(parsed) ? parsed : null
-}
 
 function money(value: number | null): string {
   if (value === null) return "Amount TBD"
@@ -59,6 +43,208 @@ function label(value: string): string {
     .join(" ")
 }
 
+function PurchaseOrderCard({
+  order,
+  projectId,
+  projectLabel,
+}: {
+  readonly order: ProjectPurchaseOrderItem
+  readonly projectId: string
+  readonly projectLabel: string
+}): React.ReactElement {
+  return (
+    <article
+      data-po-id={order.id}
+      className="po-printable rounded-lg border bg-background p-4 print:border-0 print:p-0"
+    >
+      <div className="print:hidden">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-xs font-medium text-muted-foreground">
+              {order.sourceRecordNumber ?? "Unnumbered"}
+            </p>
+            <h2 className="mt-1 text-base font-semibold">{order.title}</h2>
+          </div>
+          <div className="flex flex-wrap gap-1">
+            <Badge variant={order.status === "draft" ? "secondary" : "outline"}>
+              {label(order.status)}
+            </Badge>
+            <Badge variant="outline">{label(order.syncStatus)}</Badge>
+            {order.priority === "high" && (
+              <Badge variant="destructive">High</Badge>
+            )}
+            <ProjectPurchaseOrderEmailButton
+              projectId={projectId}
+              purchaseOrderId={order.id}
+              poNumber={order.sourceRecordNumber}
+              projectLabel={projectLabel}
+              supplierName={order.companyName}
+              supplierEmail={order.vendorEmail}
+            />
+            <ProjectPurchaseOrderPrintButton purchaseOrderId={order.id} />
+          </div>
+        </div>
+        <div className="mt-3 grid grid-cols-1 gap-2 text-sm text-muted-foreground sm:grid-cols-2 lg:grid-cols-4">
+          <span>{order.companyName ?? "Vendor TBD"}</span>
+          <span>{order.assigneeName ?? "Owner TBD"}</span>
+          <span>
+            {order.lines.length > 1
+              ? `${order.lines.length} cost lines`
+              : order.costCode ?? "Cost code TBD"}
+          </span>
+          <span>{formatDate(order.dueDate)}</span>
+        </div>
+        <p className="mt-3 text-sm font-medium">{money(order.amount)}</p>
+        <div className="mt-3 rounded-md border bg-muted/20 p-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-xs font-medium uppercase text-muted-foreground">
+              Accounting sync
+            </p>
+            <Badge variant="outline">{label(order.sageWriteStatus)}</Badge>
+          </div>
+          <div className="mt-2 grid grid-cols-1 gap-2 text-xs text-muted-foreground sm:grid-cols-2 lg:grid-cols-4">
+            <span>
+              Job: {order.sageJobNumber ?? order.sageJobId ?? "Compass only"}
+            </span>
+            <span>Vendor ID: {order.sageVendorId ?? "Not linked"}</span>
+            <span>
+              Phase:{" "}
+              {order.lines.length > 1
+                ? "Multiple"
+                : order.sagePhaseCode ?? "TBD"}
+            </span>
+            <span>
+              Cost code:{" "}
+              {order.lines.length > 1
+                ? "Multiple"
+                : order.sageCostCode ?? order.costCode ?? "TBD"}
+            </span>
+          </div>
+          {order.lines.length > 0 && (
+            <div className="mt-3 overflow-hidden rounded-md border bg-background">
+              {order.lines.map((line) => (
+                <div
+                  key={line.id}
+                  className="grid grid-cols-1 gap-2 border-b px-3 py-2 text-xs last:border-b-0 sm:grid-cols-[3rem_minmax(0,1fr)_5rem_6rem_6rem]"
+                >
+                  <span className="font-medium">#{line.lineNumber}</span>
+                  <span className="truncate">{line.description}</span>
+                  <span>
+                    {line.quantity} {line.unit ?? ""}
+                  </span>
+                  <span>{money(line.unitCost)}</span>
+                  <span className="font-medium">{money(line.amount)}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="hidden text-[11px] leading-tight text-black print:block">
+        <div className="flex items-start justify-between border-b-2 border-black pb-4">
+          <div className="flex items-center gap-3">
+            <img
+              src="/hps-h-logo.png"
+              alt="HPS logo"
+              className="h-16 w-16 shrink-0 object-contain"
+            />
+            <div>
+              <p className="text-sm font-bold uppercase">
+                High Performance Structures, Inc.
+              </p>
+              <p>P.O. Box 878</p>
+              <p>Woodland Park, CO 80866</p>
+            </div>
+          </div>
+          <div className="text-right">
+            <h1 className="text-3xl font-bold uppercase tracking-wide">
+              Purchase Order
+            </h1>
+            <p className="mt-2 text-sm font-semibold">
+              {order.sourceRecordNumber ?? "Unnumbered"}
+            </p>
+            <p>P.O. Date: {formatDate(order.sageOrderDate)}</p>
+            <p>Required By: {formatDate(order.dueDate)}</p>
+          </div>
+        </div>
+
+        <div className="mt-4 grid grid-cols-2 gap-4">
+          <div className="border border-black">
+            <div className="border-b border-black px-2 py-1 text-xs font-bold uppercase">
+              Vendor
+            </div>
+            <div className="min-h-20 p-2">
+              <p className="font-semibold">{order.companyName ?? "Vendor TBD"}</p>
+              <p>Vendor ID: {order.sageVendorId ?? "Not linked"}</p>
+            </div>
+          </div>
+          <div className="border border-black">
+            <div className="border-b border-black px-2 py-1 text-xs font-bold uppercase">
+              Project / Pickup
+            </div>
+            <div className="min-h-20 p-2">
+              <p className="font-semibold">{projectLabel}</p>
+              <p>Ship To / Pickup: {order.sageShipTo ?? "TBD"}</p>
+              <p>Internal Owner: {order.assigneeName ?? "TBD"}</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-4 border border-black">
+          <div className="grid grid-cols-[2.5rem_minmax(0,1fr)_4.5rem_5rem_4rem_4rem_5.5rem_6rem] border-b border-black px-2 py-1 text-xs font-bold uppercase">
+            <span>Line</span>
+            <span>Description</span>
+            <span>Phase</span>
+            <span>Cost Code</span>
+            <span className="text-right">Qty</span>
+            <span>Unit</span>
+            <span className="text-right">Unit Cost</span>
+            <span className="text-right">Amount</span>
+          </div>
+          {order.lines.map((line) => (
+            <div
+              key={line.id}
+              className="grid min-h-9 grid-cols-[2.5rem_minmax(0,1fr)_4.5rem_5rem_4rem_4rem_5.5rem_6rem] border-t border-black px-2 py-1"
+            >
+              <span>{line.lineNumber}</span>
+              <span>{line.description}</span>
+              <span>{line.phaseCode ?? "-"}</span>
+              <span>{line.costCode ?? "-"}</span>
+              <span className="text-right">{line.quantity}</span>
+              <span>{line.unit ?? "-"}</span>
+              <span className="text-right">{money(line.unitCost)}</span>
+              <span className="text-right font-semibold">
+                {money(line.amount)}
+              </span>
+            </div>
+          ))}
+          <div className="grid grid-cols-[1fr_6rem] border-t-2 border-black px-2 py-2 text-sm font-bold">
+            <span className="text-right">Total</span>
+            <span className="text-right">{money(order.amount)}</span>
+          </div>
+        </div>
+
+        <div className="mt-4 border border-black">
+          <div className="border-b border-black px-2 py-1 text-xs font-bold uppercase">
+            Notes / Instructions
+          </div>
+          <div className="min-h-16 p-2">
+            <p>{order.title}</p>
+            {order.description && <p className="mt-1">{order.description}</p>}
+          </div>
+        </div>
+
+        <div className="mt-10 grid grid-cols-3 gap-8 text-xs">
+          <div className="border-t border-black pt-2">Authorized By</div>
+          <div className="border-t border-black pt-2">Picked Up By</div>
+          <div className="border-t border-black pt-2">Date</div>
+        </div>
+      </div>
+    </article>
+  )
+}
+
 export default async function ProjectPurchaseOrdersPage({
   params,
 }: {
@@ -78,27 +264,6 @@ export default async function ProjectPurchaseOrdersPage({
     0
   )
 
-  async function createPurchaseOrderAction(formData: FormData): Promise<void> {
-    "use server"
-
-    const result = await createPurchaseOrderRequest(id, {
-      title: readFormText(formData, "title"),
-      description: cleanFormText(formData, "description"),
-      companyName: cleanFormText(formData, "companyName"),
-      assigneeName: cleanFormText(formData, "assigneeName"),
-      costCode: cleanFormText(formData, "costCode"),
-      dueDate: cleanFormText(formData, "dueDate"),
-      amount: readMoney(formData, "amount"),
-      priority: readFormText(formData, "priority"),
-    })
-
-    if (!result.success) {
-      throw new Error(result.error)
-    }
-
-    redirect(`/dashboard/projects/${id}/purchase-orders`)
-  }
-
   return (
     <div className="flex-1 space-y-6 p-4 pt-6 sm:p-6 md:p-8">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -117,65 +282,40 @@ export default async function ProjectPurchaseOrdersPage({
           </div>
           <p className="mt-1 text-sm text-muted-foreground">
             {project?.projectNumber ? `${project.projectNumber} - ` : ""}
-            {project?.name ?? "Project"} PO requests, Sage commitments, and
-            draft handoff.
+            {project?.name ?? "Project"} purchase orders, vendor commitments,
+            and optional accounting sync.
           </p>
         </div>
-        <div className="flex flex-wrap gap-2">
-          <Badge variant="secondary">
-            {openPurchaseOrders.length} open / draft
-          </Badge>
-          <Badge variant="outline">{money(openTotal)}</Badge>
+        <div className="flex flex-col items-stretch gap-2 sm:items-end">
+          <ProjectQuickSwitcher
+            projects={projects}
+            currentProjectId={id}
+            targetSection="purchase-orders"
+            placeholder="Switch PO project..."
+            className="w-full sm:w-[300px]"
+          />
+          <div className="flex flex-wrap justify-end gap-2">
+            <Badge variant="secondary">
+              {openPurchaseOrders.length} open / draft
+            </Badge>
+            <Badge variant="outline">{money(openTotal)}</Badge>
+          </div>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(20rem,26rem)_1fr]">
-        <section className="rounded-lg border bg-background p-4">
-          <div className="flex items-center gap-2">
-            <IconPlus className="size-4 text-muted-foreground" />
-            <h2 className="text-sm font-semibold">Request PO</h2>
-          </div>
-          <p className="mt-1 text-xs text-muted-foreground">
-            This creates a Compass draft queued for Sage review/writeback.
-          </p>
-          <form action={createPurchaseOrderAction} className="mt-4 space-y-3">
-            <Input name="title" placeholder="PO title or scope" required />
-            <Textarea
-              name="description"
-              placeholder="Scope, material, delivery notes, or billing context"
-              className="min-h-28"
-            />
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <Input name="companyName" placeholder="Vendor / supplier" />
-              <Input name="assigneeName" placeholder="Internal owner" />
-              <Input name="costCode" placeholder="Cost code" />
-              <Input name="amount" inputMode="decimal" placeholder="Amount" />
-              <Input name="dueDate" type="date" />
-              <select
-                name="priority"
-                defaultValue="normal"
-                className="h-9 rounded-md border bg-background px-3 text-sm"
-              >
-                <option value="normal">Normal priority</option>
-                <option value="high">High priority</option>
-                <option value="low">Low priority</option>
-              </select>
-            </div>
-            <Button type="submit" className="w-full">
-              Create PO Request
-            </Button>
-          </form>
-        </section>
+      <div className="space-y-4">
+        <ProjectPurchaseOrderCreateForm projectId={id} />
 
         <section className="space-y-3">
-          <div className="rounded-lg border bg-muted/20 p-4">
+          <div className="border-y py-3">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
-                <h2 className="text-sm font-semibold">Sage handoff path</h2>
+                <h2 className="text-sm font-semibold">Accounting sync path</h2>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  Compass can stage requests here first, then the Sage bridge
-                  can write approved POs once permissions and sync rules are
-                  finalized.
+                  Compass P.O.s work on their own for project tracking, print,
+                  and supplier email. When Sage is connected, approved P.O.s can
+                  be synced through the bridge with confirmation and audit
+                  history.
                 </p>
               </div>
               <Button asChild variant="outline" size="sm">
@@ -189,34 +329,16 @@ export default async function ProjectPurchaseOrdersPage({
 
           {purchaseOrders.length > 0 ? (
             purchaseOrders.map((order) => (
-              <article key={order.id} className="rounded-lg border bg-background p-4">
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <p className="text-xs font-medium text-muted-foreground">
-                      {order.sourceRecordNumber ?? "Unnumbered"}
-                    </p>
-                    <h2 className="mt-1 text-base font-semibold">
-                      {order.title}
-                    </h2>
-                  </div>
-                  <div className="flex flex-wrap gap-1">
-                    <Badge variant={order.status === "draft" ? "secondary" : "outline"}>
-                      {label(order.status)}
-                    </Badge>
-                    <Badge variant="outline">{label(order.syncStatus)}</Badge>
-                    {order.priority === "high" && (
-                      <Badge variant="destructive">High</Badge>
-                    )}
-                  </div>
-                </div>
-                <div className="mt-3 grid grid-cols-1 gap-2 text-sm text-muted-foreground sm:grid-cols-2 lg:grid-cols-4">
-                  <span>{order.companyName ?? "Vendor TBD"}</span>
-                  <span>{order.assigneeName ?? "Owner TBD"}</span>
-                  <span>{order.costCode ?? "Cost code TBD"}</span>
-                  <span>{formatDate(order.dueDate)}</span>
-                </div>
-                <p className="mt-3 text-sm font-medium">{money(order.amount)}</p>
-              </article>
+              <PurchaseOrderCard
+                key={order.id}
+                order={order}
+                projectId={id}
+                projectLabel={
+                  `${project?.projectNumber ? `${project.projectNumber} - ` : ""}${
+                    project?.name ?? "Project"
+                  }`
+                }
+              />
             ))
           ) : (
             <div className="rounded-lg border bg-background p-8 text-center">

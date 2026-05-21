@@ -60,6 +60,7 @@ import { ScheduleMobileView } from "./schedule-mobile-view"
 import { WorkdayExceptionsView } from "./workday-exceptions-view"
 import { ScheduleBaselineView } from "./schedule-baseline-view"
 import { TaskFormDialog } from "./task-form-dialog"
+import { ProjectSwitcher } from "./project-switcher"
 import type {
   ScheduleData,
   ScheduleBaselineData,
@@ -96,6 +97,7 @@ export function ScheduleView({
   projectName,
   initialData,
   baselines,
+  allProjects = [],
 }: ScheduleViewProps) {
   const isMobile = useIsMobile()
   const [view, setView] = useState<View>("gantt")
@@ -308,6 +310,12 @@ export function ScheduleView({
         </nav>
 
         <div className="ml-auto flex items-center gap-2">
+          <ProjectSwitcher
+            projects={allProjects}
+            currentProjectId={projectId}
+            currentProjectName={projectName}
+          />
+
           {/* View switcher */}
           <div className={cn(
             "flex items-center rounded-lg border bg-muted/40 p-0.5",

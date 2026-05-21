@@ -23,6 +23,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
+import { ProjectContextSwitcher } from "@/components/projects/project-context-switcher"
 
 function hasDigest(error: unknown): error is { readonly digest: string } {
   return typeof error === "object" && error !== null && "digest" in error
@@ -82,47 +83,55 @@ export default async function ProjectOwnerUpdatesPage({
             from approved daily logs and owner-visible photos.
           </p>
         </div>
-        <div className="flex flex-wrap gap-2">
-          <Button asChild>
-            <Link href={`/dashboard/projects/${workspace.project.id}/daily-logs`}>
-              <IconClipboardText className="size-4" />
-              Build From Logs
-            </Link>
-          </Button>
-          <Button asChild variant="outline">
-            <Link href={`/dashboard/projects/${workspace.project.id}/photos`}>
-              <IconPhoto className="size-4" />
-              Review Photos
-            </Link>
-          </Button>
+        <div className="flex flex-col items-stretch gap-2 sm:items-end">
+          <ProjectContextSwitcher
+            currentProjectId={workspace.project.id}
+            targetSection="owner-updates"
+            placeholder="Switch owner update project..."
+            className="w-full sm:w-[280px]"
+          />
+          <div className="flex flex-wrap justify-end gap-2">
+            <Button asChild>
+              <Link href={`/dashboard/projects/${workspace.project.id}/daily-logs`}>
+                <IconClipboardText className="size-4" />
+                Build From Logs
+              </Link>
+            </Button>
+            <Button asChild variant="outline">
+              <Link href={`/dashboard/projects/${workspace.project.id}/photos`}>
+                <IconPhoto className="size-4" />
+                Review Photos
+              </Link>
+            </Button>
+          </div>
         </div>
       </div>
 
-      <section className="grid grid-cols-1 gap-3 md:grid-cols-3">
-        <Card className="rounded-lg">
-          <CardHeader>
-            <CardDescription>Total updates</CardDescription>
-            <CardTitle className="text-3xl tabular-nums">
-              {summary.ownerUpdateCount}
-            </CardTitle>
-          </CardHeader>
-        </Card>
-        <Card className="rounded-lg border-amber-200 bg-amber-50 dark:border-amber-900/60 dark:bg-amber-950/20">
-          <CardHeader>
-            <CardDescription>Drafts</CardDescription>
-            <CardTitle className="text-3xl tabular-nums">
-              {summary.draftOwnerUpdateCount}
-            </CardTitle>
-          </CardHeader>
-        </Card>
-        <Card className="rounded-lg border-emerald-200 bg-emerald-50 dark:border-emerald-900/60 dark:bg-emerald-950/20">
-          <CardHeader>
-            <CardDescription>Owner-visible photos</CardDescription>
-            <CardTitle className="text-3xl tabular-nums">
-              {summary.ownerVisiblePhotoCount}
-            </CardTitle>
-          </CardHeader>
-        </Card>
+      <section className="grid grid-cols-3 gap-x-5 gap-y-2 border-y py-3">
+        <div>
+          <p className="text-xl font-semibold tabular-nums">
+            {summary.ownerUpdateCount}
+          </p>
+          <p className="text-xs font-medium uppercase text-muted-foreground">
+            Total updates
+          </p>
+        </div>
+        <div>
+          <p className="text-xl font-semibold tabular-nums">
+            {summary.draftOwnerUpdateCount}
+          </p>
+          <p className="text-xs font-medium uppercase text-muted-foreground">
+            Drafts
+          </p>
+        </div>
+        <div>
+          <p className="text-xl font-semibold tabular-nums">
+            {summary.ownerVisiblePhotoCount}
+          </p>
+          <p className="text-xs font-medium uppercase text-muted-foreground">
+            Owner photos
+          </p>
+        </div>
       </section>
 
       <Card className="rounded-lg">

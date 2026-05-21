@@ -52,11 +52,19 @@ import {
   CardTitle,
 } from "@/components/ui/card"
 import { Progress } from "@/components/ui/progress"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
 import {
   PROJECT_WORKFLOW_ROLE_LENSES,
+  isProjectWorkflowRoleId,
   roleLensForId,
   workflowRoleIdFromString,
   workflowRoleIsAllowed,
@@ -224,6 +232,14 @@ function labelize(value: string): string {
     .split("_")
     .map((part) => `${part.slice(0, 1).toUpperCase()}${part.slice(1)}`)
     .join(" ")
+}
+
+function operationHref(projectId: string, type: string): string {
+  if (type === "purchase_order") {
+    return `/dashboard/projects/${projectId}/purchase-orders`
+  }
+
+  return `/dashboard/projects/${projectId}/schedule`
 }
 
 function clampPercent(value: number): number {
@@ -429,7 +445,9 @@ function DashboardCommandCenter({
       note: topRfi
         ? `${topRfi.projectLabel} · due ${formatDate(topRfi.dueDate)}`
         : "No open RFIs in the current dashboard set",
-      href: topRfi ? `/dashboard/projects/${topRfi.projectId}` : "/dashboard/projects",
+      href: topRfi
+        ? `/dashboard/projects/${topRfi.projectId}/rfis`
+        : "/dashboard/rfis",
       tone: overview.metrics.openRfis > 0 ? "amber" : "green",
       icon: <IconAlertCircle className="size-4" />,
     },
@@ -625,7 +643,7 @@ function dashboardRoleAction(
     case "owner-update":
       return {
         label: "Owner updates",
-        href: "/dashboard/projects",
+        href: "/dashboard/projects/select?target=owner-updates",
         status: `${overview.metrics.draftOwnerUpdates} drafts`,
         detail: "Prepare weekly updates from logs, photos, and schedule.",
       }
@@ -639,14 +657,14 @@ function dashboardRoleAction(
     case "rfqs":
       return {
         label: "RFIs / RFQs",
-        href: "/dashboard/projects",
+        href: "/dashboard/rfis",
         status: `${overview.metrics.openRfis} open`,
         detail: "Questions, quote requests, and decisions needing action.",
       }
     case "purchase-orders":
       return {
         label: "Purchase orders",
-        href: "/dashboard/financials",
+        href: "/dashboard/purchase-orders",
         status: `${overview.operations.length} items`,
         detail: "Sage-backed commitments and purchasing work.",
       }
@@ -719,22 +737,33 @@ function DashboardRoleWorkspaceControl({
           <p className="mt-2 text-sm text-muted-foreground">
             {activeRole.focus}
           </p>
-          <div className="mt-3 flex flex-wrap gap-2">
-            {availableRoles.map((role) => (
-              <button
-                key={role.id}
-                type="button"
-                onClick={() => onActiveRoleChange(role.id)}
-                className={cn(
-                  "rounded-md border px-3 py-1.5 text-xs font-medium transition-colors",
-                  activeRoleId === role.id
-                    ? "border-emerald-700 bg-emerald-700 text-white shadow-sm"
-                    : "border-border bg-background text-muted-foreground hover:border-emerald-300 hover:bg-emerald-50 hover:text-foreground"
-                )}
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <Select
+              value={activeRoleId}
+              onValueChange={(value) => {
+                if (!isProjectWorkflowRoleId(value)) return
+                if (!workflowRoleIsAllowed(value, allowedRoleIds)) return
+                onActiveRoleChange(value)
+              }}
+            >
+              <SelectTrigger
+                size="sm"
+                className="w-[240px] bg-background"
+                aria-label="Select role dashboard"
               >
-                {role.label}
-              </button>
-            ))}
+                <SelectValue placeholder="Choose role view" />
+              </SelectTrigger>
+              <SelectContent align="start">
+                {availableRoles.map((role) => (
+                  <SelectItem key={role.id} value={role.id}>
+                    {role.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <span className="text-xs text-muted-foreground">
+              Viewing {activeRole.label}
+            </span>
           </div>
         </div>
 
@@ -1405,8 +1434,8 @@ function CompassDashboard({
           ? `${topRfi.rfiNumber} · ${topRfi.subject}`
           : "No open RFIs",
         href: topRfi
-          ? `/dashboard/projects/${topRfi.projectId}`
-          : "/dashboard/projects",
+          ? `/dashboard/projects/${topRfi.projectId}/rfis`
+          : "/dashboard/rfis",
         icon: <IconMessageCircleQuestion className="size-4" />,
         tone: "decision",
       },
@@ -1417,7 +1446,9 @@ function CompassDashboard({
         note: topOperation
           ? `${topOperation.projectLabel} · ${topOperation.title}`
           : "No open Sage operation records",
-        href: "/dashboard/financials",
+        href: topOperation
+          ? operationHref(topOperation.projectId, topOperation.type)
+          : "/dashboard/purchase-orders",
         icon: <IconCurrencyDollar className="size-4" />,
         tone: "money",
       },
@@ -1717,7 +1748,7 @@ export function OperationalDashboard({
                   {overview.openRfis.slice(0, 1).map((rfi) => (
                     <Link
                       key={rfi.id}
-                      href={`/dashboard/projects/${rfi.projectId}`}
+                      href={`/dashboard/projects/${rfi.projectId}/rfis`}
                       className="flex min-w-0 items-center rounded-md border bg-background/80 px-2.5 py-1.5 text-xs transition-colors hover:bg-background"
                     >
                       <span className="shrink-0 font-medium">RFI</span>
@@ -1728,7 +1759,7 @@ export function OperationalDashboard({
                   {overview.operations.slice(0, 1).map((operation) => (
                     <Link
                       key={operation.id}
-                      href={`/dashboard/projects/${operation.projectId}`}
+                      href={operationHref(operation.projectId, operation.type)}
                       className="flex min-w-0 items-center rounded-md border bg-background/80 px-2.5 py-1.5 text-xs transition-colors hover:bg-background"
                     >
                       <span className="shrink-0 font-medium">

@@ -539,7 +539,7 @@ export function ProjectsHub({
             <Input
               value={query}
               onChange={(event) => setQuery(event.target.value)}
-              placeholder="Search by project number, client, address, Sage job..."
+              placeholder="Search by project number, client, address, or accounting job..."
               className="pl-9"
             />
           </div>
@@ -609,7 +609,7 @@ export function ProjectsHub({
 
         <div className="grid gap-3 sm:grid-cols-3">
           <div className="rounded-md border bg-background p-3">
-            <p className="text-xs text-muted-foreground">Sage linked</p>
+            <p className="text-xs text-muted-foreground">Accounting linked</p>
             <p className="mt-1 text-xl font-semibold">{linkedToSageCount}</p>
           </div>
           <div className="rounded-md border bg-background p-3">
@@ -648,9 +648,9 @@ export function ProjectsHub({
                   Project creation and registry flow
                 </h2>
                 <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                  This is the natural home for the Google Apps Script setup:
-                  choose O, H, N, or D, create or link the Drive folder, then
-                  connect the Compass registry and Sage job.
+                  This is the natural home for project setup: choose O, H, N,
+                  or D, create the Compass project, then optionally link Drive,
+                  Sage, Buildertrend, or other integration records.
                 </p>
               </div>
               <div className="flex flex-wrap gap-2">

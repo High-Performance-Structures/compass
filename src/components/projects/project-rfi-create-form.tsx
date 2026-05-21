@@ -16,6 +16,14 @@ import {
 } from "@/app/actions/project-rfis"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from "@/components/ui/sheet"
 import { Textarea } from "@/components/ui/textarea"
 
 type ProjectRfiCreateFormProps = {
@@ -24,6 +32,11 @@ type ProjectRfiCreateFormProps = {
   readonly companyOrTradeOptions: readonly string[]
   readonly peopleOptions: readonly string[]
 }
+
+const DOCUMENT_INPUT_CLASS =
+  "rounded-none border-x-0 border-t-0 px-0 shadow-none focus-visible:ring-0 focus-visible:border-foreground"
+const DOCUMENT_SELECT_CLASS =
+  "h-9 w-full rounded-none border-x-0 border-t-0 bg-background px-0 text-sm shadow-none outline-none focus:border-foreground"
 
 function formText(formData: FormData, name: string): string {
   const value = formData.get(name)
@@ -117,6 +130,7 @@ export function ProjectRfiCreateForm({
   const [selectedFiles, setSelectedFiles] = React.useState<readonly File[]>([])
   const [message, setMessage] = React.useState<string | null>(null)
   const [submitting, setSubmitting] = React.useState(false)
+  const [open, setOpen] = React.useState(false)
 
   async function handleSubmit(
     event: React.FormEvent<HTMLFormElement>
@@ -170,6 +184,7 @@ export function ProjectRfiCreateForm({
         fileInputRef.current.value = ""
       }
       setMessage("RFI created.")
+      setOpen(false)
       router.refresh()
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Could not create RFI.")
@@ -186,18 +201,39 @@ export function ProjectRfiCreateForm({
   }
 
   return (
-    <section className="rounded-lg border bg-background p-4">
-      <div className="flex items-center gap-2">
-        <IconPlus className="size-4 text-muted-foreground" />
-        <h2 className="text-sm font-semibold">Create RFI</h2>
+    <Sheet open={open} onOpenChange={setOpen}>
+      <div className="flex justify-end border-y py-3">
+        <SheetTrigger asChild>
+          <Button type="button">
+            <IconPlus className="size-4" />
+            New RFI
+          </Button>
+        </SheetTrigger>
       </div>
-      <form ref={formRef} onSubmit={handleSubmit} className="mt-4 space-y-3">
-        <Input name="subject" placeholder="Subject" required />
+      <SheetContent className="w-[min(94vw,720px)] overflow-y-auto sm:max-w-none">
+        <SheetHeader className="border-b px-5 py-4">
+          <SheetTitle>Create RFI</SheetTitle>
+          <SheetDescription>
+            Capture the question, assignment, due date, visibility, and any
+            supporting photos or documents.
+          </SheetDescription>
+        </SheetHeader>
+        <form
+          ref={formRef}
+          onSubmit={handleSubmit}
+          className="space-y-3 px-5 pb-6"
+        >
+        <Input
+          name="subject"
+          placeholder="Subject"
+          required
+          className={DOCUMENT_INPUT_CLASS}
+        />
         <Textarea
           name="question"
           placeholder="Question, scope gap, or clarification needed"
           required
-          className="min-h-28"
+          className={`min-h-28 ${DOCUMENT_INPUT_CLASS}`}
         />
         <div className="space-y-3">
           <div>
@@ -207,7 +243,7 @@ export function ProjectRfiCreateForm({
             <select
               name="companyNameSelect"
               defaultValue=""
-              className="h-9 w-full rounded-md border bg-background px-3 text-sm"
+              className={DOCUMENT_SELECT_CLASS}
             >
               <option value="">Choose from project contacts</option>
               {companyOrTradeOptions.map((option) => (
@@ -219,7 +255,7 @@ export function ProjectRfiCreateForm({
             <Input
               name="companyNameCustom"
               placeholder="Or type company/trade"
-              className="mt-2"
+              className={`mt-2 ${DOCUMENT_INPUT_CLASS}`}
             />
           </div>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -230,7 +266,7 @@ export function ProjectRfiCreateForm({
               <select
                 name="assignedToNameSelect"
                 defaultValue=""
-                className="h-9 w-full rounded-md border bg-background px-3 text-sm"
+                className={DOCUMENT_SELECT_CLASS}
               >
                 <option value="">Choose project contact</option>
                 {peopleOptions.map((option) => (
@@ -242,7 +278,7 @@ export function ProjectRfiCreateForm({
               <Input
                 name="assignedToNameCustom"
                 placeholder="Or type assignee"
-                className="mt-2"
+                className={`mt-2 ${DOCUMENT_INPUT_CLASS}`}
               />
             </div>
             <div>
@@ -252,7 +288,7 @@ export function ProjectRfiCreateForm({
               <select
                 name="requesterNameSelect"
                 defaultValue=""
-                className="h-9 w-full rounded-md border bg-background px-3 text-sm"
+                className={DOCUMENT_SELECT_CLASS}
               >
                 <option value="">Choose project contact</option>
                 {peopleOptions.map((option) => (
@@ -264,7 +300,7 @@ export function ProjectRfiCreateForm({
               <Input
                 name="requesterNameCustom"
                 placeholder="Or type requester"
-                className="mt-2"
+                className={`mt-2 ${DOCUMENT_INPUT_CLASS}`}
               />
             </div>
           </div>
@@ -275,14 +311,19 @@ export function ProjectRfiCreateForm({
             >
               Response needed by
             </label>
-            <Input id="rfi-due-date" name="dueDate" type="date" />
+            <Input
+              id="rfi-due-date"
+              name="dueDate"
+              type="date"
+              className={DOCUMENT_INPUT_CLASS}
+            />
           </div>
         </div>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <select
             name="priority"
             defaultValue="normal"
-            className="h-9 rounded-md border bg-background px-3 text-sm"
+            className={DOCUMENT_SELECT_CLASS}
           >
             <option value="normal">Normal priority</option>
             <option value="high">High priority</option>
@@ -291,7 +332,7 @@ export function ProjectRfiCreateForm({
           <select
             name="audience"
             defaultValue="internal"
-            className="h-9 rounded-md border bg-background px-3 text-sm"
+            className={DOCUMENT_SELECT_CLASS}
           >
             <option value="internal">Internal only</option>
             <option value="sub_vendor">Sub/vendor visible</option>
@@ -299,7 +340,7 @@ export function ProjectRfiCreateForm({
             <option value="public">Owner and sub/vendor visible</option>
           </select>
         </div>
-        <div className="rounded-md border bg-muted/20 p-3">
+        <div className="border-t pt-3">
           <label className="flex items-start gap-2 text-sm font-medium">
             <IconPaperclip className="mt-0.5 size-4 text-muted-foreground" />
             <span>
@@ -315,7 +356,7 @@ export function ProjectRfiCreateForm({
             multiple
             accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt"
             onChange={handleFileChange}
-            className="mt-3"
+            className={`mt-3 ${DOCUMENT_INPUT_CLASS}`}
           />
           {selectedFiles.length > 0 && (
             <div className="mt-3 space-y-1 text-xs text-muted-foreground">
@@ -328,7 +369,7 @@ export function ProjectRfiCreateForm({
             </div>
           )}
         </div>
-        <div className="rounded-md border bg-muted/20 p-3">
+        <div className="border-t pt-3">
           <div className="flex items-start gap-2">
             <IconMailForward className="mt-0.5 size-4 text-muted-foreground" />
             <div>
@@ -342,14 +383,17 @@ export function ProjectRfiCreateForm({
           </div>
         </div>
         {message && (
-          <p className="rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground">
+          <p className="border-l-2 border-l-primary px-3 py-2 text-xs text-muted-foreground">
             {message}
           </p>
         )}
-        <Button type="submit" className="w-full" disabled={submitting}>
-          {submitting ? "Creating..." : "Create RFI"}
-        </Button>
+        <div className="flex justify-end">
+          <Button type="submit" disabled={submitting}>
+            {submitting ? "Creating..." : "Create RFI"}
+          </Button>
+        </div>
       </form>
-    </section>
+      </SheetContent>
+    </Sheet>
   )
 }

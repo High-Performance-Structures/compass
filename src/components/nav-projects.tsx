@@ -1,6 +1,21 @@
 "use client"
 
-import { IconArrowLeft, IconFolder } from "@tabler/icons-react"
+import type { Icon } from "@tabler/icons-react"
+import {
+  IconAddressBook,
+  IconArrowLeft,
+  IconCalendarStats,
+  IconClipboardText,
+  IconEye,
+  IconFileDollar,
+  IconFolder,
+  IconHome2,
+  IconMailForward,
+  IconMessageCircleQuestion,
+  IconPhoto,
+  IconShoppingCart,
+  IconUsers,
+} from "@tabler/icons-react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 
@@ -14,8 +29,127 @@ import {
 import { cn } from "@/lib/utils"
 import type { ProjectListItem } from "@/app/actions/projects"
 
+type ProjectSectionKey =
+  | "overview"
+  | "schedule"
+  | "owner-updates"
+  | "daily-logs"
+  | "photos"
+  | "rfis"
+  | "purchase-orders"
+  | "budget"
+  | "contacts"
+  | "preview-owner"
+  | "preview-sub-vendor"
+
+type ProjectSectionItem = {
+  readonly title: string
+  readonly hrefSuffix: string
+  readonly icon: Icon
+  readonly section: ProjectSectionKey
+}
+
+const PROJECT_SECTION_ITEMS: readonly ProjectSectionItem[] = [
+  {
+    title: "Overview",
+    hrefSuffix: "",
+    icon: IconHome2,
+    section: "overview",
+  },
+  {
+    title: "Schedule",
+    hrefSuffix: "schedule",
+    icon: IconCalendarStats,
+    section: "schedule",
+  },
+  {
+    title: "Owner Updates",
+    hrefSuffix: "owner-updates",
+    icon: IconMailForward,
+    section: "owner-updates",
+  },
+  {
+    title: "Daily Logs",
+    hrefSuffix: "daily-logs",
+    icon: IconClipboardText,
+    section: "daily-logs",
+  },
+  {
+    title: "Photos",
+    hrefSuffix: "photos",
+    icon: IconPhoto,
+    section: "photos",
+  },
+  {
+    title: "RFIs",
+    hrefSuffix: "rfis",
+    icon: IconMessageCircleQuestion,
+    section: "rfis",
+  },
+  {
+    title: "Purchase Orders",
+    hrefSuffix: "purchase-orders",
+    icon: IconShoppingCart,
+    section: "purchase-orders",
+  },
+  {
+    title: "Budget / G703",
+    hrefSuffix: "budget",
+    icon: IconFileDollar,
+    section: "budget",
+  },
+  {
+    title: "Contacts",
+    hrefSuffix: "contacts",
+    icon: IconAddressBook,
+    section: "contacts",
+  },
+  {
+    title: "Owner Preview",
+    hrefSuffix: "preview/owner",
+    icon: IconEye,
+    section: "preview-owner",
+  },
+  {
+    title: "Sub/Vendor Preview",
+    hrefSuffix: "preview/sub-vendor",
+    icon: IconUsers,
+    section: "preview-sub-vendor",
+  },
+]
+
 function projectDisplay(project: ProjectListItem): string {
   return project.projectNumber ?? project.name
+}
+
+function projectSectionHref(projectId: string, suffix: string): string {
+  const baseHref = `/dashboard/projects/${projectId}`
+  return suffix ? `${baseHref}/${suffix}` : baseHref
+}
+
+function activeProjectSection(pathname: string | null): ProjectSectionKey {
+  const suffix = pathname?.replace(/^\/dashboard\/projects\/[^/]+/, "") ?? ""
+  const parts = suffix.split("/").filter(Boolean)
+  const section = parts[0] ?? "overview"
+
+  if (section === "preview" && parts[1] === "owner") return "preview-owner"
+  if (section === "preview" && parts[1] === "sub-vendor") {
+    return "preview-sub-vendor"
+  }
+
+  switch (section) {
+    case "budget":
+    case "contacts":
+    case "daily-logs":
+    case "owner-updates":
+    case "photos":
+    case "purchase-orders":
+    case "rfis":
+    case "schedule":
+      return section
+    default:
+      return "overview"
+  }
 }
 
 export function NavProjects({
@@ -27,6 +161,8 @@ export function NavProjects({
   const activeId = pathname?.match(
     /^\/dashboard\/projects\/([^/]+)/
   )?.[1]
+  const activeProject = projects.find((project) => project.id === activeId)
+  const activeSection = activeProjectSection(pathname)
 
   return (
     <>
@@ -34,51 +170,59 @@ export function NavProjects({
         <SidebarGroupContent>
           <SidebarMenu>
             <SidebarMenuItem>
-              <SidebarMenuButton asChild tooltip="Back to Dashboard">
-                <Link href="/dashboard">
+              <SidebarMenuButton asChild tooltip="All projects">
+                <Link href="/dashboard/projects">
                   <IconArrowLeft />
-                  <span>Back</span>
+                  <span>All projects</span>
                 </Link>
               </SidebarMenuButton>
             </SidebarMenuItem>
           </SidebarMenu>
         </SidebarGroupContent>
       </SidebarGroup>
+
+      {activeProject && (
+        <div className="mx-2 mb-2 rounded-lg border border-sidebar-border/70 bg-sidebar-accent/35 px-3 py-2">
+          <div className="flex min-w-0 items-start gap-2">
+            <IconFolder className="mt-0.5 size-4 shrink-0 text-sidebar-foreground/70" />
+            <div className="min-w-0">
+              <p className="truncate text-sm font-semibold">
+                {projectDisplay(activeProject)}
+              </p>
+              {activeProject.projectNumber && (
+                <p className="truncate text-xs text-sidebar-foreground/60">
+                  {activeProject.name}
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       <SidebarGroup>
         <SidebarGroupContent>
           <SidebarMenu>
-            {projects.length === 0 ? (
+            {!activeId ? (
               <SidebarMenuItem>
                 <SidebarMenuButton disabled>
                   <IconFolder />
-                  <span className="text-muted-foreground">
-                    No projects
-                  </span>
+                  <span className="text-muted-foreground">No project selected</span>
                 </SidebarMenuButton>
               </SidebarMenuItem>
             ) : (
-              projects.map((project) => (
-                <SidebarMenuItem key={project.id}>
+              PROJECT_SECTION_ITEMS.map((item) => (
+                <SidebarMenuItem key={item.section}>
                   <SidebarMenuButton
                     asChild
-                    tooltip={`${projectDisplay(project)} - ${project.name}`}
+                    tooltip={item.title}
                     className={cn(
-                      activeId === project.id &&
+                      activeSection === item.section &&
                         "bg-sidebar-foreground/10 font-medium"
                     )}
                   >
-                    <Link href={`/dashboard/projects/${project.id}`}>
-                      <IconFolder />
-                      <span className="flex min-w-0 flex-col">
-                        <span className="truncate">
-                          {projectDisplay(project)}
-                        </span>
-                        {project.projectNumber && (
-                          <span className="truncate text-xs text-muted-foreground">
-                            {project.name}
-                          </span>
-                        )}
-                      </span>
+                    <Link href={projectSectionHref(activeId, item.hrefSuffix)}>
+                      <item.icon />
+                      <span>{item.title}</span>
                     </Link>
                   </SidebarMenuButton>
                 </SidebarMenuItem>

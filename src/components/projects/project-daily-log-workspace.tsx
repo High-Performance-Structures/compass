@@ -23,6 +23,7 @@ import {
 } from "@/app/actions/project-field"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { ProjectContextSwitcher } from "@/components/projects/project-context-switcher"
 import { cn } from "@/lib/utils"
 
 type LogFilter = "all" | "needs_review" | "approved" | "owner_visible"
@@ -144,12 +145,14 @@ function LogMetric({
   readonly icon: React.ReactNode
 }): React.ReactElement {
   return (
-    <div className="rounded-md border bg-background p-3">
-      <div className="flex items-center justify-between gap-3">
-        <p className="text-xs text-muted-foreground">{label}</p>
-        <span className="text-muted-foreground">{icon}</span>
+    <div className="min-w-0">
+      <div className="flex items-center gap-1.5 text-muted-foreground">
+        <span>{icon}</span>
+        <p className="truncate text-xs font-medium uppercase">{label}</p>
       </div>
-      <p className="mt-2 text-2xl font-semibold leading-none">{value}</p>
+      <p className="mt-1 text-xl font-semibold leading-none tabular-nums">
+        {value}
+      </p>
     </div>
   )
 }
@@ -318,25 +321,33 @@ export function ProjectDailyLogWorkspace({
               · Review field notes, attached photos, and owner update readiness.
             </p>
           </div>
-          <div className="flex flex-wrap gap-2">
-            <Button asChild variant="outline" size="sm">
-              <Link href={`/dashboard/projects/${workspace.project.id}/photos`}>
-                <IconPhoto className="size-4" />
-                Photo review
-              </Link>
-            </Button>
-            <Button
-              size="sm"
-              onClick={draftOwnerUpdate}
-              disabled={isPending || selectedIdsInView.length === 0}
-            >
-              <IconMailForward className="size-4" />
-              Draft owner update
-            </Button>
+          <div className="flex flex-col items-stretch gap-2 sm:items-end">
+            <ProjectContextSwitcher
+              currentProjectId={workspace.project.id}
+              targetSection="daily-logs"
+              placeholder="Switch daily log project..."
+              className="w-full sm:w-[280px]"
+            />
+            <div className="flex flex-wrap justify-end gap-2">
+              <Button asChild variant="outline" size="sm">
+                <Link href={`/dashboard/projects/${workspace.project.id}/photos`}>
+                  <IconPhoto className="size-4" />
+                  Photo review
+                </Link>
+              </Button>
+              <Button
+                size="sm"
+                onClick={draftOwnerUpdate}
+                disabled={isPending || selectedIdsInView.length === 0}
+              >
+                <IconMailForward className="size-4" />
+                Draft owner update
+              </Button>
+            </div>
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-2 lg:grid-cols-6">
+        <div className="grid grid-cols-2 gap-x-5 gap-y-3 border-y py-3 lg:grid-cols-6">
           <LogMetric
             label="Logs"
             value={logs.length}

@@ -88,10 +88,10 @@ export function ProjectOperationsPanel({
       <section className="rounded-lg border p-3 sm:p-4">
         <div className="flex items-center gap-2">
           <IconClipboardCheck className="size-4 text-muted-foreground" />
-          <h2 className="text-sm font-medium">Sage Operations</h2>
+          <h2 className="text-sm font-medium">Project Operations</h2>
         </div>
         <p className="mt-2 text-sm text-muted-foreground">
-          Sage operational details are unavailable for this project.
+          Operational details are unavailable for this project.
         </p>
       </section>
     )
@@ -103,7 +103,7 @@ export function ProjectOperationsPanel({
         <div>
           <div className="flex items-center gap-2">
             <IconClipboardCheck className="size-4 text-muted-foreground" />
-            <h2 className="text-sm font-medium">Sage Operations</h2>
+            <h2 className="text-sm font-medium">Project Operations</h2>
           </div>
           <p className="mt-1 text-xs text-muted-foreground">
             Purchase orders, staff/sub/supplier commitments, and the next
@@ -147,7 +147,7 @@ export function ProjectOperationsPanel({
             {summary.activeCommitmentCount}
           </p>
           <p className="mt-1 text-xs text-muted-foreground">
-            Active Sage commitments
+            Active commitments
           </p>
         </div>
 
@@ -191,7 +191,7 @@ export function ProjectOperationsPanel({
             ))
           ) : (
             <p className="rounded-md border p-3 text-sm text-muted-foreground">
-              No Sage purchase orders mapped yet.
+              No purchase orders yet.
             </p>
           )}
         </div>
@@ -206,7 +206,7 @@ export function ProjectOperationsPanel({
             ))
           ) : (
             <p className="rounded-md border p-3 text-sm text-muted-foreground">
-              No Sage staff/sub/supplier commitments mapped yet.
+              No staff/sub/supplier commitments yet.
             </p>
           )}
         </div>

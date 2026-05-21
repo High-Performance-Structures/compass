@@ -11,6 +11,7 @@ import { getProjectRfis, updateProjectRfi } from "@/app/actions/project-rfis"
 import { getProjectContactsSummary } from "@/app/actions/project-contacts"
 import { getProjects } from "@/app/actions/projects"
 import { ProjectRfiCreateForm } from "@/components/projects/project-rfi-create-form"
+import { ProjectQuickSwitcher } from "@/components/projects/project-quick-switcher"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
@@ -126,30 +127,19 @@ export default async function ProjectRfisPage({
             {project?.name ?? "Project"} questions, answers, and visibility.
           </p>
         </div>
-        <Badge variant={openCount > 0 ? "secondary" : "outline"}>
-          {openCount} open
-        </Badge>
-      </div>
-
-      <section className="rounded-xl border bg-emerald-50/80 p-4 text-emerald-950 dark:border-emerald-900/60 dark:bg-emerald-950/20 dark:text-emerald-100">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <p className="text-xs font-medium uppercase opacity-70">
-              Current RFI project
-            </p>
-            <h2 className="mt-1 text-lg font-semibold">
-              {project?.projectNumber ? `${project.projectNumber} - ` : ""}
-              {project?.name ?? "Project"}
-            </h2>
-            {project?.clientName && (
-              <p className="mt-1 text-sm opacity-80">{project.clientName}</p>
-            )}
-          </div>
-          <Button asChild variant="outline" size="sm">
-            <Link href="/dashboard/rfis">Switch project</Link>
-          </Button>
+        <div className="flex flex-col items-stretch gap-2 sm:items-end">
+          <ProjectQuickSwitcher
+            projects={projects}
+            currentProjectId={id}
+            targetSection="rfis"
+            placeholder="Switch RFI project..."
+            className="w-full sm:w-[300px]"
+          />
+          <Badge variant={openCount > 0 ? "secondary" : "outline"}>
+            {openCount} open
+          </Badge>
         </div>
-      </section>
+      </div>
 
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(20rem,26rem)_1fr]">
         <ProjectRfiCreateForm
@@ -162,7 +152,7 @@ export default async function ProjectRfisPage({
         <section className="space-y-3">
           {rfis.length > 0 ? (
             rfis.map((rfi) => (
-              <article key={rfi.id} className="rounded-lg border bg-background p-4">
+              <article key={rfi.id} className="border-l-2 border-l-orange-500 border-y border-r bg-background px-4 py-3">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div className="min-w-0">
                     <p className="text-xs font-medium text-muted-foreground">

@@ -222,7 +222,7 @@ export async function getWorkCalendar(): Promise<WorkCalendarData> {
         ),
         href:
           operation.sourceRecordType === "purchase_order"
-            ? "/dashboard/financials"
+            ? `/dashboard/projects/${project.id}/purchase-orders`
             : `/dashboard/projects/${project.id}`,
       })
     }

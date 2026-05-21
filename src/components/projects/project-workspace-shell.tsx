@@ -1,7 +1,7 @@
 "use client"
 
-import { useEffect, useMemo, useState, type ReactElement } from "react"
-import { IconLock, IconTools } from "@tabler/icons-react"
+import { useEffect, useState, type ReactElement } from "react"
+import { createPortal } from "react-dom"
 
 import type { ProjectBudgetSummary } from "@/app/actions/project-budget"
 import type { ProjectContactsSummary } from "@/app/actions/project-contacts"
@@ -9,11 +9,20 @@ import type { ProjectFieldSummary } from "@/app/actions/project-field"
 import type { ProjectOperationsSummary } from "@/app/actions/project-operations"
 import type { ProjectRegistry } from "@/app/actions/project-registry"
 import type { ProjectRfiSummary } from "@/app/actions/project-rfis"
-import { Badge } from "@/components/ui/badge"
 import { Switch } from "@/components/ui/switch"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { ProjectManagerWorkflowPanel } from "@/components/projects/project-manager-workflow-panel"
 import { ProjectRegistryPanel } from "@/components/projects/project-registry-panel"
 import {
+  PROJECT_WORKFLOW_ROLE_LENSES,
+  isProjectWorkflowRoleId,
+  roleLensForId,
   workflowRoleIdFromString,
   workflowRoleIsAllowed,
   type ProjectWorkflowRoleId,
@@ -69,6 +78,94 @@ function saveWorkspaceMode(
   }
 }
 
+function ProjectWorkspaceControlsPortal({
+  projectId,
+  activeRoleId,
+  workspaceMode,
+  canEditRegistry,
+  allowedRoleIds,
+  onActiveRoleChange,
+  onWorkspaceModeChange,
+}: {
+  readonly projectId: string
+  readonly activeRoleId: ProjectWorkflowRoleId
+  readonly workspaceMode: ProjectWorkspaceMode
+  readonly canEditRegistry: boolean
+  readonly allowedRoleIds: readonly ProjectWorkflowRoleId[]
+  readonly onActiveRoleChange: (roleId: ProjectWorkflowRoleId) => void
+  readonly onWorkspaceModeChange: (isDeveloperMode: boolean) => void
+}): ReactElement | null {
+  const [target, setTarget] = useState<HTMLElement | null>(null)
+  const availableRoles = PROJECT_WORKFLOW_ROLE_LENSES.filter((role) =>
+    allowedRoleIds.includes(role.id)
+  )
+  const activeRole = roleLensForId(activeRoleId)
+  const developerModeEnabled = canEditRegistry && workspaceMode === "developer"
+
+  useEffect(() => {
+    setTarget(document.getElementById(`project-workspace-controls-${projectId}`))
+  }, [projectId])
+
+  if (!target || (!canEditRegistry && availableRoles.length < 2)) return null
+
+  return createPortal(
+    <div className="mt-4 space-y-4 border-t pt-4">
+      {canEditRegistry && (
+        <div className="space-y-2">
+          <p className="text-xs font-medium uppercase text-muted-foreground">
+            Workspace Mode
+          </p>
+          <div className="flex items-center justify-between gap-3 text-sm">
+            <span className={!developerModeEnabled ? "font-medium" : ""}>
+              Worker
+            </span>
+            <Switch
+              checked={developerModeEnabled}
+              onCheckedChange={onWorkspaceModeChange}
+              aria-label="Toggle developer mode"
+            />
+            <span className={developerModeEnabled ? "font-medium" : ""}>
+              Developer
+            </span>
+          </div>
+        </div>
+      )}
+
+      {availableRoles.length > 1 && (
+        <div className="space-y-2">
+          <p className="text-xs font-medium uppercase text-muted-foreground">
+            Preview Role
+          </p>
+          <Select
+            value={activeRoleId}
+            onValueChange={(value) => {
+              if (!isProjectWorkflowRoleId(value)) return
+              if (!allowedRoleIds.includes(value)) return
+              onActiveRoleChange(value)
+            }}
+          >
+            <SelectTrigger
+              size="sm"
+              className="w-full bg-background"
+              aria-label="Preview role dashboard"
+            >
+              <SelectValue placeholder={activeRole.label} />
+            </SelectTrigger>
+            <SelectContent align="start">
+              {availableRoles.map((role) => (
+                <SelectItem key={role.id} value={role.id}>
+                  {role.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
+    </div>,
+    target
+  )
+}
+
 export function ProjectWorkspaceShell({
   projectId,
   projectNumber,
@@ -114,15 +211,6 @@ export function ProjectWorkspaceShell({
   }, [allowedRoleIds, canEditRegistry, projectId])
 
   const developerModeEnabled = canEditRegistry && workspaceMode === "developer"
-  const modeDescription = useMemo(() => {
-    if (!canEditRegistry) {
-      return "Developer tools are restricted to admin-owner and secondary admin roles."
-    }
-    if (developerModeEnabled) {
-      return "Registry, integrations, and buildout controls are visible for this project."
-    }
-    return "Registry and integration controls stay hidden while you work the job."
-  }, [canEditRegistry, developerModeEnabled])
 
   function handleRoleChange(roleId: ProjectWorkflowRoleId): void {
     if (!workflowRoleIsAllowed(roleId, allowedRoleIds)) return
@@ -141,37 +229,15 @@ export function ProjectWorkspaceShell({
 
   return (
     <div className="space-y-4 sm:space-y-6">
-      {canEditRegistry && (
-        <section className="rounded-xl border bg-emerald-950/[0.03] p-3 shadow-sm sm:p-4">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="flex items-start gap-2">
-              {developerModeEnabled ? (
-                <IconTools className="mt-0.5 size-4 text-emerald-700" />
-              ) : (
-                <IconLock className="mt-0.5 size-4 text-muted-foreground" />
-              )}
-              <div>
-                <p className="text-sm font-medium">
-                  Work mode / developer mode
-                </p>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  {modeDescription}
-                </p>
-              </div>
-            </div>
-            <div className="flex items-center gap-3">
-              <Badge variant={developerModeEnabled ? "secondary" : "outline"}>
-                {developerModeEnabled ? "Developer mode" : "Worker mode"}
-              </Badge>
-              <Switch
-                checked={developerModeEnabled}
-                onCheckedChange={handleModeChange}
-                aria-label="Toggle developer mode"
-              />
-            </div>
-          </div>
-        </section>
-      )}
+      <ProjectWorkspaceControlsPortal
+        projectId={projectId}
+        activeRoleId={activeRoleId}
+        workspaceMode={workspaceMode}
+        canEditRegistry={canEditRegistry}
+        allowedRoleIds={allowedRoleIds}
+        onActiveRoleChange={handleRoleChange}
+        onWorkspaceModeChange={handleModeChange}
+      />
 
       <ProjectManagerWorkflowPanel
         projectId={projectId}
@@ -188,6 +254,7 @@ export function ProjectWorkspaceShell({
         workspaceMode={workspaceMode}
         canUseDeveloperMode={canEditRegistry}
         allowedRoleIds={allowedRoleIds}
+        showRoleControls={false}
       />
 
       {developerModeEnabled && (

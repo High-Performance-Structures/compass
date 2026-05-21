@@ -1,9 +1,13 @@
 import { notFound } from "next/navigation"
 import { getChannel } from "@/app/actions/conversations"
 import { getMessages } from "@/app/actions/chat-messages"
+import { getProjectContactsSummary } from "@/app/actions/project-contacts"
 import { ChannelHeader } from "@/components/conversations/channel-header"
 import { MessageList } from "@/components/conversations/message-list"
-import { MessageComposer } from "@/components/conversations/message-composer"
+import {
+  MessageComposer,
+  type ProjectRecipientContact,
+} from "@/components/conversations/message-composer"
 import { ThreadPanel } from "@/components/conversations/thread-panel"
 
 export default async function ChannelPage({
@@ -23,6 +27,19 @@ export default async function ChannelPage({
 
   const channel = channelResult.data
   const messages = messagesResult.success && messagesResult.data ? messagesResult.data : []
+  const contactsSummary = channel.projectId
+    ? await getProjectContactsSummary(channel.projectId).catch(() => null)
+    : null
+  const projectRecipients: readonly ProjectRecipientContact[] =
+    contactsSummary?.allContacts.map((contact) => ({
+      id: contact.id,
+      contactType: contact.contactType,
+      displayName: contact.displayName,
+      companyName: contact.companyName,
+      role: contact.role,
+      trade: contact.trade,
+      email: contact.email,
+    })) ?? []
 
   return (
     <div className="flex h-full w-full min-w-0 overflow-hidden">
@@ -44,6 +61,7 @@ export default async function ChannelPage({
           channelId={channelId}
           channelName={channel.name}
           organizationId={channel.organizationId}
+          projectRecipients={projectRecipients}
         />
       </div>
       <ThreadPanel />

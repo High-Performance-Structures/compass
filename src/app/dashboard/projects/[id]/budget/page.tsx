@@ -16,6 +16,7 @@ import {
   ProjectBudgetG703Table,
   ProjectBudgetPanel,
 } from "@/components/projects/project-budget-panel"
+import { ProjectContextSwitcher } from "@/components/projects/project-context-switcher"
 import { Badge } from "@/components/ui/badge"
 
 export default async function ProjectBudgetPage({
@@ -53,19 +54,27 @@ export default async function ProjectBudgetPage({
             </h1>
           </div>
           <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
-            Internal Sage detail and owner-safe Schedule of Values view for this
-            project.
+            Internal budget detail and owner-safe Schedule of Values view for
+            this project. Sage can sync into this view when connected.
           </p>
         </div>
-        <div className="flex flex-wrap gap-2">
-          <Badge variant="outline">
-            <IconLock className="mr-1 size-3" />
-            Internal detail
-          </Badge>
-          <Badge variant="secondary">
-            <IconEye className="mr-1 size-3" />
-            Owner-filtered preview
-          </Badge>
+        <div className="flex flex-col items-stretch gap-2 sm:items-end">
+          <ProjectContextSwitcher
+            currentProjectId={id}
+            targetSection="budget"
+            placeholder="Switch budget project..."
+            className="w-full sm:w-[280px]"
+          />
+          <div className="flex flex-wrap justify-end gap-2">
+            <Badge variant="outline">
+              <IconLock className="mr-1 size-3" />
+              Internal detail
+            </Badge>
+            <Badge variant="secondary">
+              <IconEye className="mr-1 size-3" />
+              Owner-filtered preview
+            </Badge>
+          </div>
         </div>
       </div>
 

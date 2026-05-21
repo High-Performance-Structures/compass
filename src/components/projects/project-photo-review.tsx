@@ -17,6 +17,7 @@ import {
 } from "@/app/actions/project-photos"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { ProjectContextSwitcher } from "@/components/projects/project-context-switcher"
 
 type VisibilityFilter =
   | "all"
@@ -157,9 +158,13 @@ export function ProjectPhotoReview({
 }: {
   readonly library: ProjectPhotoLibrary
 }): React.ReactElement {
+  const initialPhotoDate =
+    library.photos
+      .map((photo) => photo.photoDate)
+      .sort((left, right) => right.localeCompare(left))[0] ?? ""
   const [photos, setPhotos] =
     React.useState<readonly ProjectPhotoLibraryItem[]>(library.photos)
-  const [dateFilter, setDateFilter] = React.useState("all")
+  const [dateFilter, setDateFilter] = React.useState(initialPhotoDate)
   const [visibilityFilter, setVisibilityFilter] =
     React.useState<VisibilityFilter>("all")
   const [selectedIds, setSelectedIds] = React.useState<readonly string[]>([])
@@ -173,15 +178,11 @@ export function ProjectPhotoReview({
   const [isPending, startTransition] = React.useTransition()
 
   const selectedSet = React.useMemo(() => new Set(selectedIds), [selectedIds])
-  const dates = React.useMemo(
-    () => [...new Set(photos.map((photo) => photo.photoDate))].sort(),
-    [photos]
-  )
   const filteredPhotos = React.useMemo(
     () =>
       photos.filter(
         (photo) =>
-          (dateFilter === "all" || photo.photoDate === dateFilter) &&
+          (dateFilter.length === 0 || photo.photoDate === dateFilter) &&
           matchesVisibility(photo, visibilityFilter)
       ),
     [dateFilter, photos, visibilityFilter]
@@ -278,37 +279,64 @@ export function ProjectPhotoReview({
               {projectLabel(library)} · Internal staff can review every project
               photo before owners, subs, vendors, or public links can see it.
             </p>
+            <p className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+              <span>
+                <strong className="font-semibold text-foreground">
+                  {counts.total}
+                </strong>{" "}
+                photos
+              </span>
+              <span>
+                <strong className="font-semibold text-foreground">
+                  {counts.needsReview}
+                </strong>{" "}
+                need review
+              </span>
+              <span>
+                <strong className="font-semibold text-foreground">
+                  {counts.owner}
+                </strong>{" "}
+                owner-visible
+              </span>
+              <span>
+                <strong className="font-semibold text-foreground">
+                  {counts.subVendor}
+                </strong>{" "}
+                subs/vendors
+              </span>
+              <span>
+                <strong className="font-semibold text-foreground">
+                  {counts.internal}
+                </strong>{" "}
+                internal
+              </span>
+            </p>
           </div>
-          <div className="flex flex-wrap gap-2">
-            <Badge variant="secondary">{counts.total} photos</Badge>
-            <Badge variant="outline">{counts.needsReview} needs review</Badge>
-            <Badge variant="outline">{counts.owner} owner</Badge>
-            <Badge variant="outline">{counts.subVendor} subs/vendors</Badge>
-            <Badge variant="outline">{counts.internal} internal</Badge>
+          <div className="flex flex-col items-stretch gap-2 sm:items-end">
+            <ProjectContextSwitcher
+              currentProjectId={library.project.id}
+              targetSection="photos"
+              placeholder="Switch photo project..."
+              className="w-full sm:w-[280px]"
+            />
           </div>
         </div>
 
-        <section className="rounded-lg border bg-background p-3">
-          <div className="grid gap-3 lg:grid-cols-[1fr_auto]">
-            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-              <label className="space-y-1 text-sm">
+        <section className="border-y py-3">
+          <div className="space-y-3">
+            <div className="flex flex-wrap items-end gap-3">
+              <label className="w-full space-y-1 text-sm sm:w-56">
                 <span className="text-xs font-medium uppercase text-muted-foreground">
                   Date
                 </span>
-                <select
+                <input
+                  type="date"
                   value={dateFilter}
                   onChange={(event) => setDateFilter(event.target.value)}
                   className="h-9 w-full rounded-md border bg-background px-3 text-sm"
-                >
-                  <option value="all">All dates</option>
-                  {dates.map((date) => (
-                    <option key={date} value={date}>
-                      {date}
-                    </option>
-                  ))}
-                </select>
+                />
               </label>
-              <label className="space-y-1 text-sm">
+              <label className="w-full space-y-1 text-sm sm:w-56">
                 <span className="text-xs font-medium uppercase text-muted-foreground">
                   Visibility
                 </span>
@@ -328,7 +356,16 @@ export function ProjectPhotoReview({
                   <option value="approved">Approved</option>
                 </select>
               </label>
-              <div className="flex items-end gap-2">
+              <div className="flex flex-wrap gap-2">
+                {dateFilter.length > 0 && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    onClick={() => setDateFilter("")}
+                  >
+                    All dates
+                  </Button>
+                )}
                 <Button
                   type="button"
                   variant="outline"
@@ -348,71 +385,70 @@ export function ProjectPhotoReview({
               </div>
             </div>
 
-            <div className="rounded-md border bg-muted/20 p-3">
-              <div className="flex flex-wrap items-center gap-2">
-                <Badge variant={selectedIds.length > 0 ? "default" : "outline"}>
-                  {selectedIds.length} selected
-                </Badge>
-                <select
-                  value={reviewStatus}
-                  onChange={(event) => setReviewStatus(event.target.value)}
-                  className="h-8 rounded-md border bg-background px-2 text-sm"
-                >
-                  <option value="needs_review">Needs review</option>
-                  <option value="approved">Approved</option>
-                  <option value="rejected">Rejected</option>
-                </select>
-                <select
-                  value={photoKind}
-                  onChange={(event) => setPhotoKind(event.target.value)}
-                  className="h-8 rounded-md border bg-background px-2 text-sm"
-                >
-                  <option value="progress">Progress</option>
-                  <option value="issue">Issue</option>
-                  <option value="delivery">Delivery</option>
-                  <option value="selection">Selection</option>
-                  <option value="archive">Archive</option>
-                </select>
-                <label className="inline-flex items-center gap-1.5 text-sm">
-                  <input
-                    type="checkbox"
-                    checked={ownerVisible}
-                    onChange={(event) => setOwnerVisible(event.target.checked)}
-                  />
-                  Owner
-                </label>
-                <label className="inline-flex items-center gap-1.5 text-sm">
-                  <input
-                    type="checkbox"
-                    checked={subVendorVisible}
-                    onChange={(event) =>
-                      setSubVendorVisible(event.target.checked)
-                    }
-                  />
-                  Subs/vendors
-                </label>
-                <label className="inline-flex items-center gap-1.5 text-sm">
-                  <input
-                    type="checkbox"
-                    checked={publicShareable}
-                    onChange={(event) =>
-                      setPublicShareable(event.target.checked)
-                    }
-                  />
-                  Public
-                </label>
-                <Button
-                  type="button"
-                  size="sm"
-                  onClick={applyPermissions}
-                  disabled={selectedIds.length === 0 || isPending}
-                >
-                  <IconUsers className="size-4" />
-                  Apply
-                </Button>
-              </div>
+            <div className="flex flex-wrap items-center gap-2 border-t pt-3">
+              <span className="mr-1 text-sm font-medium">
+                {selectedIds.length} selected
+              </span>
+              <select
+                value={reviewStatus}
+                onChange={(event) => setReviewStatus(event.target.value)}
+                className="h-9 rounded-md border bg-background px-2 text-sm"
+              >
+                <option value="needs_review">Needs review</option>
+                <option value="approved">Approved</option>
+                <option value="rejected">Rejected</option>
+              </select>
+              <select
+                value={photoKind}
+                onChange={(event) => setPhotoKind(event.target.value)}
+                className="h-9 rounded-md border bg-background px-2 text-sm"
+              >
+                <option value="progress">Progress</option>
+                <option value="issue">Issue</option>
+                <option value="delivery">Delivery</option>
+                <option value="selection">Selection</option>
+                <option value="archive">Archive</option>
+              </select>
+              <label className="inline-flex h-9 items-center gap-1.5 text-sm">
+                <input
+                  type="checkbox"
+                  checked={ownerVisible}
+                  onChange={(event) => setOwnerVisible(event.target.checked)}
+                />
+                Owner
+              </label>
+              <label className="inline-flex h-9 items-center gap-1.5 text-sm">
+                <input
+                  type="checkbox"
+                  checked={subVendorVisible}
+                  onChange={(event) =>
+                    setSubVendorVisible(event.target.checked)
+                  }
+                />
+                Subs/vendors
+              </label>
+              <label className="inline-flex h-9 items-center gap-1.5 text-sm">
+                <input
+                  type="checkbox"
+                  checked={publicShareable}
+                  onChange={(event) =>
+                    setPublicShareable(event.target.checked)
+                  }
+                />
+                Public
+              </label>
+              <Button
+                type="button"
+                onClick={applyPermissions}
+                disabled={selectedIds.length === 0 || isPending}
+              >
+                <IconUsers className="size-4" />
+                Apply
+              </Button>
               {message && (
-                <p className="mt-2 text-xs text-muted-foreground">{message}</p>
+                <p className="basis-full text-xs text-muted-foreground">
+                  {message}
+                </p>
               )}
             </div>
           </div>

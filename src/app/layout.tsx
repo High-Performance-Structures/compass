@@ -25,8 +25,8 @@ export const metadata: Metadata = {
 	title: "Compass",
 	description: "Construction project management by High Performance Structures",
 	icons: {
-		icon: "/favicon.png",
-		apple: "/apple-touch-icon.png",
+		icon: "/hps-icon-64.png",
+		apple: "/hps-icon-512.png",
 	},
 	manifest: "/manifest.json",
 };

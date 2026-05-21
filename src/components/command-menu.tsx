@@ -80,7 +80,7 @@ export function CommandMenu({
     const match = pathname?.match(/^\/dashboard\/projects\/([^/]+)/)
     return match
       ? `/dashboard/projects/${match[1]}/schedule`
-      : "/dashboard/projects"
+      : "/dashboard/projects/select?target=schedule"
   }
 
   return (

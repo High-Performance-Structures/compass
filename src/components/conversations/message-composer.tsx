@@ -17,14 +17,30 @@ import {
   Smile,
   Sticker,
   Gift,
+  SendToBack,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover"
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectLabel,
+  SelectSeparator,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { sendMessage } from "@/app/actions/chat-messages"
+import {
+  sendProjectMessage,
+  type ProjectMessageRecipient,
+} from "@/app/actions/project-messages"
 import { setTyping } from "@/app/actions/conversations-realtime"
 import { useRouter } from "next/navigation"
 import { useTheme } from "@/components/theme-provider"
@@ -84,9 +100,20 @@ type MessageComposerProps = {
   readonly channelId: string
   readonly channelName: string
   readonly organizationId: string
+  readonly projectRecipients?: readonly ProjectRecipientContact[]
   readonly threadId?: string
   readonly placeholder?: string
   readonly onSent?: () => void
+}
+
+export type ProjectRecipientContact = {
+  readonly id: string
+  readonly contactType: "owner" | "supplier" | "subcontractor" | "internal"
+  readonly displayName: string
+  readonly companyName: string | null
+  readonly role: string | null
+  readonly trade: string | null
+  readonly email: string | null
 }
 
 type MentionInput = {
@@ -129,10 +156,76 @@ function extractMentions(
   return mentions
 }
 
+function contactLabel(contact: ProjectRecipientContact): string {
+  const detail = contact.companyName ?? contact.trade ?? contact.role
+  return detail ? `${contact.displayName} - ${detail}` : contact.displayName
+}
+
+function recipientFromValue(value: string): ProjectMessageRecipient {
+  if (value === "internal") return { kind: "internal" }
+  if (value === "owners") return { kind: "owners" }
+  if (value === "sub_vendors") return { kind: "sub_vendors" }
+  if (value.startsWith("contact:")) {
+    return { kind: "contact", contactId: value.slice("contact:".length) }
+  }
+  return { kind: "channel" }
+}
+
+function recipientDetail(
+  value: string,
+  contacts: readonly ProjectRecipientContact[]
+): string {
+  if (value === "channel") {
+    return "Posts only to this channel history."
+  }
+  if (value === "internal") {
+    const count = contacts.filter(
+      (contact) => contact.contactType === "internal"
+    ).length
+    return `${count} internal project contact${count === 1 ? "" : "s"} selected.`
+  }
+  if (value === "owners") {
+    const count = contacts.filter(
+      (contact) => contact.contactType === "owner"
+    ).length
+    return `${count} owner contact${count === 1 ? "" : "s"} selected.`
+  }
+  if (value === "sub_vendors") {
+    const count = contacts.filter(
+      (contact) =>
+        contact.contactType === "supplier" ||
+        contact.contactType === "subcontractor"
+    ).length
+    return `${count} sub/vendor contact${count === 1 ? "" : "s"} selected.`
+  }
+  if (value.startsWith("contact:")) {
+    const contactId = value.slice("contact:".length)
+    const contact = contacts.find((item) => item.id === contactId)
+    return contact?.email
+      ? `Targets ${contact.email}.`
+      : "This contact does not have an email yet."
+  }
+  return "Posts to this channel."
+}
+
+function groupLabel(contactType: ProjectRecipientContact["contactType"]): string {
+  switch (contactType) {
+    case "owner":
+      return "Owners"
+    case "supplier":
+      return "Suppliers"
+    case "subcontractor":
+      return "Subcontractors"
+    case "internal":
+      return "Internal"
+  }
+}
+
 export function MessageComposer({
   channelId,
   channelName,
   organizationId,
+  projectRecipients = [],
   threadId,
   placeholder,
   onSent,
@@ -142,8 +235,11 @@ export function MessageComposer({
   const emojiThemeVars = useEmojiThemeVars()
   const [isSending, setIsSending] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
+  const [deliveryNote, setDeliveryNote] = React.useState<string | null>(null)
   const [showToolbar, setShowToolbar] = React.useState(false)
   const [emojiOpen, setEmojiOpen] = React.useState(false)
+  const [recipientValue, setRecipientValue] = React.useState("channel")
+  const hasProjectRecipients = projectRecipients.length > 0 && !threadId
 
   const lastTypingSentRef = React.useRef<number>(0)
   const TYPING_DEBOUNCE_MS = 3000
@@ -204,6 +300,19 @@ export function MessageComposer({
     },
   })
 
+  const groupedContacts = React.useMemo(() => {
+    const groups = new Map<
+      ProjectRecipientContact["contactType"],
+      ProjectRecipientContact[]
+    >()
+    for (const contact of projectRecipients) {
+      const existing = groups.get(contact.contactType) ?? []
+      existing.push(contact)
+      groups.set(contact.contactType, existing)
+    }
+    return groups
+  }, [projectRecipients])
+
   const handleEmojiSelect = React.useCallback(
     (emoji: EmojiData) => {
       if (!editor) return
@@ -221,6 +330,7 @@ export function MessageComposer({
 
     setIsSending(true)
     setError(null)
+    setDeliveryNote(null)
 
     try {
       const mentions = extractMentions(
@@ -233,15 +343,43 @@ export function MessageComposer({
       >
       const markdown = storage.markdown?.getMarkdown?.() ?? plainText
 
-      const result = await sendMessage({
-        channelId,
-        content: markdown,
-        threadId,
-        mentions: mentions.length > 0 ? mentions : undefined,
-      })
+      const result =
+        recipientValue === "channel" || threadId
+          ? await sendMessage({
+              channelId,
+              content: markdown,
+              threadId,
+              mentions: mentions.length > 0 ? mentions : undefined,
+            })
+          : await sendProjectMessage({
+              channelId,
+              content: markdown,
+              recipient: recipientFromValue(recipientValue),
+              mentions: mentions.length > 0 ? mentions : undefined,
+            })
 
       if (result.success) {
         editor.commands.clearContent()
+        if ("data" in result && result.data && "recipientLabel" in result.data) {
+          const noteParts = [`Sent to ${result.data.recipientLabel}`]
+          if (result.data.notifiedUserCount > 0) {
+            noteParts.push(
+              `${result.data.notifiedUserCount} Compass user${
+                result.data.notifiedUserCount === 1 ? "" : "s"
+              } notified`
+            )
+          }
+          if (result.data.unmatchedContactCount > 0) {
+            noteParts.push(
+              `${result.data.unmatchedContactCount} contact${
+                result.data.unmatchedContactCount === 1 ? "" : "s"
+              } still need Compass login/email matching`
+            )
+          }
+          setDeliveryNote(`${noteParts.join(". ")}.`)
+        } else {
+          setDeliveryNote("Sent to the channel.")
+        }
         router.refresh()
         onSent?.()
       } else {
@@ -254,7 +392,15 @@ export function MessageComposer({
     } finally {
       setIsSending(false)
     }
-  }, [editor, channelId, threadId, router, onSent, isSending])
+  }, [
+    editor,
+    channelId,
+    threadId,
+    router,
+    onSent,
+    isSending,
+    recipientValue,
+  ])
 
   React.useEffect(() => {
     if (!editor) return
@@ -276,6 +422,65 @@ export function MessageComposer({
 
   return (
     <div className="min-h-[68px] px-2 pb-4 pt-2 sm:px-4">
+      {hasProjectRecipients && (
+        <div className="mb-2 flex flex-col gap-2 rounded-lg border bg-background/80 px-3 py-2 shadow-xs sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex min-w-0 flex-1 items-center gap-2">
+            <SendToBack className="h-4 w-4 shrink-0 text-muted-foreground" />
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-xs font-medium text-muted-foreground">
+                  Send to
+                </span>
+                <Select
+                  value={recipientValue}
+                  onValueChange={setRecipientValue}
+                >
+                  <SelectTrigger
+                    size="sm"
+                    className="h-8 w-[220px] bg-background"
+                    aria-label="Message recipient"
+                  >
+                    <SelectValue placeholder="Choose recipient" />
+                  </SelectTrigger>
+                  <SelectContent align="start" className="max-h-80">
+                    <SelectItem value="channel">Project channel only</SelectItem>
+                    <SelectSeparator />
+                    <SelectGroup>
+                      <SelectLabel>Project groups</SelectLabel>
+                      <SelectItem value="internal">Internal team</SelectItem>
+                      <SelectItem value="owners">Owner team</SelectItem>
+                      <SelectItem value="sub_vendors">Subs/vendors</SelectItem>
+                    </SelectGroup>
+                    <SelectSeparator />
+                    {Array.from(groupedContacts.entries()).map(
+                      ([contactType, contacts]) => (
+                        <SelectGroup key={contactType}>
+                          <SelectLabel>{groupLabel(contactType)}</SelectLabel>
+                          {contacts.map((contact) => (
+                            <SelectItem
+                              key={contact.id}
+                              value={`contact:${contact.id}`}
+                            >
+                              {contactLabel(contact)}
+                            </SelectItem>
+                          ))}
+                        </SelectGroup>
+                      )
+                    )}
+                  </SelectContent>
+                </Select>
+                <Badge variant="outline" className="rounded-md">
+                  #{channelName}
+                </Badge>
+              </div>
+              <p className="mt-1 truncate text-xs text-muted-foreground">
+                {recipientDetail(recipientValue, projectRecipients)}
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* formatting toolbar */}
       {editor && showToolbar && (
         <div className="mb-1.5 flex items-center gap-0.5 pl-10 sm:pl-12">
@@ -473,6 +678,9 @@ export function MessageComposer({
 
       {error && (
         <p className="mt-1.5 text-xs text-destructive">{error}</p>
+      )}
+      {deliveryNote && !error && (
+        <p className="mt-1.5 text-xs text-muted-foreground">{deliveryNote}</p>
       )}
     </div>
   )

@@ -93,10 +93,10 @@ export function ProjectBudgetPanel({
         </div>
       </div>
 
-      <div className="mt-4 grid grid-cols-1 gap-3 lg:grid-cols-4">
-        <div className="rounded-md border bg-background p-3">
+      <div className="mt-4 grid grid-cols-2 gap-x-5 gap-y-3 border-y py-3 lg:grid-cols-4">
+        <div className="min-w-0">
           <p className="text-xs text-muted-foreground">Contract to date</p>
-          <p className="mt-2 text-2xl font-semibold leading-none">
+          <p className="mt-1 truncate text-xl font-semibold leading-none">
             {money(
               summary.currentApplication?.contractSumToDate ??
                 summary.totals.adjustedEstimate
@@ -106,27 +106,27 @@ export function ProjectBudgetPanel({
             {formatDate(summary.currentApplication?.periodTo ?? null)}
           </p>
         </div>
-        <div className="rounded-md border bg-background p-3">
+        <div className="min-w-0">
           <p className="text-xs text-muted-foreground">Complete + stored</p>
-          <p className="mt-2 text-2xl font-semibold leading-none">
+          <p className="mt-1 truncate text-xl font-semibold leading-none">
             {money(summary.totals.totalCosts)}
           </p>
           <p className="mt-1 text-xs text-muted-foreground">
             {pct(summary.totals.percentComplete)} of visible budget
           </p>
         </div>
-        <div className="rounded-md border bg-background p-3">
+        <div className="min-w-0">
           <p className="text-xs text-muted-foreground">Current period</p>
-          <p className="mt-2 text-2xl font-semibold leading-none">
+          <p className="mt-1 truncate text-xl font-semibold leading-none">
             {money(summary.totals.currentCosts)}
           </p>
           <p className="mt-1 text-xs text-muted-foreground">
             This draw / current costs
           </p>
         </div>
-        <div className="rounded-md border bg-background p-3">
+        <div className="min-w-0">
           <p className="text-xs text-muted-foreground">Balance to finish</p>
-          <p className="mt-2 text-2xl font-semibold leading-none">
+          <p className="mt-1 truncate text-xl font-semibold leading-none">
             {money(summary.totals.balanceToFinish)}
           </p>
           <p className="mt-1 text-xs text-muted-foreground">
@@ -139,7 +139,7 @@ export function ProjectBudgetPanel({
 
       <div className="mt-4 space-y-3">
         {topDivisions.map((division) => (
-          <div key={division.csiDivision} className="rounded-md border p-3">
+          <div key={division.csiDivision} className="border-l-2 border-l-teal-500 border-y border-r px-3 py-2">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div className="min-w-0">
                 <p className="text-sm font-medium">
@@ -163,7 +163,7 @@ export function ProjectBudgetPanel({
         ))}
       </div>
 
-      <div className="mt-4 flex items-start gap-2 rounded-md border bg-muted/35 p-3 text-xs text-muted-foreground">
+      <div className="mt-4 flex items-start gap-2 border-t pt-3 text-xs text-muted-foreground">
         <IconLock className="mt-0.5 size-4 shrink-0" />
         <p>
           Internal users can see all Sage/SOV detail. Owner view uses approved

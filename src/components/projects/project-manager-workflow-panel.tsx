@@ -22,13 +22,20 @@ import type { ProjectOperationsSummary } from "@/app/actions/project-operations"
 import type { ProjectRfiSummary } from "@/app/actions/project-rfis"
 import { Badge } from "@/components/ui/badge"
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import {
   PROJECT_WORKFLOW_ROLE_LENSES,
+  isProjectWorkflowRoleId,
   roleLensForId,
   type ProjectWorkflowRoleId,
   type ProjectWorkspaceMode,
   type WorkflowStepId,
 } from "@/lib/project-workflow-roles"
-import { cn } from "@/lib/utils"
 
 type WorkflowTone =
   | "project"
@@ -77,7 +84,7 @@ function scheduleDetail(
     return operationsSummary.nextScheduleItem.title
   }
   if (totalTaskCount > 0) {
-    return "Open the Sage-backed schedule view."
+    return "Open the project schedule view."
   }
   return "Import or create the working schedule."
 }
@@ -94,7 +101,7 @@ function contactsDetail(summary: ProjectContactsSummary | null): string {
   if (!summary) return "Contact mapping is not available."
   const needsReview = reviewCount(summary)
   if (needsReview > 0) {
-    return "Resolve Sage, schedule, or Buildertrend names."
+    return "Resolve imported schedule, accounting, or Buildertrend names."
   }
   if (summary.pendingAssignmentSourceCount > 0) {
     return `${summary.pendingAssignmentSourceCount} TBD names are parked until assigned.`
@@ -144,7 +151,7 @@ function ownerDetail(summary: ProjectFieldSummary | null): string {
 }
 
 function budgetStatus(summary: ProjectBudgetSummary | null): string {
-  if (!summary || summary.allLines.length === 0) return "Needs Sage budget"
+  if (!summary || summary.allLines.length === 0) return "Needs budget"
   if (summary.currentApplication) {
     return `Pay app ${summary.currentApplication.applicationNumber}`
   }
@@ -153,7 +160,7 @@ function budgetStatus(summary: ProjectBudgetSummary | null): string {
 
 function budgetDetail(summary: ProjectBudgetSummary | null): string {
   if (!summary || summary.allLines.length === 0) {
-    return "Map the Sage/G703 budget snapshot."
+    return "Add or import the budget/G703 snapshot."
   }
   return summary.detailMode === "category"
     ? "Owner view is rolled up by category."
@@ -199,11 +206,11 @@ function purchaseOrderStatus(summary: ProjectOperationsSummary | null): string {
 function purchaseOrderDetail(summary: ProjectOperationsSummary | null): string {
   if (!summary) return "Purchase order details are not available."
   if (summary.purchaseOrders[0]) return summary.purchaseOrders[0].title
-  return "Prepare PO requests and keep Sage commitments visible."
+  return "Prepare, print, email, and optionally sync purchase orders."
 }
 
 function billsAndDrawsStatus(summary: ProjectBudgetSummary | null): string {
-  if (!summary || summary.allLines.length === 0) return "Needs Sage budget"
+  if (!summary || summary.allLines.length === 0) return "Needs budget"
   if (summary.currentApplication) {
     return `Pay app ${summary.currentApplication.applicationNumber}`
   }
@@ -212,35 +219,35 @@ function billsAndDrawsStatus(summary: ProjectBudgetSummary | null): string {
 
 function billsAndDrawsDetail(summary: ProjectBudgetSummary | null): string {
   if (!summary || summary.allLines.length === 0) {
-    return "Map Sage budget data before owner draws or pay applications."
+    return "Add budget data before owner draws or pay applications."
   }
   return "Enter vendor bills, then prepare owner draws/pay applications."
 }
 
-function stepClassName(tone: WorkflowTone, urgent: boolean): string {
+function stepAccentClassName(tone: WorkflowTone, urgent: boolean): string {
   if (urgent) {
-    return "border-amber-300 bg-amber-50/80 text-amber-950 hover:bg-amber-100 dark:border-amber-900/60 dark:bg-amber-950/20 dark:text-amber-100"
+    return "border-l-amber-500 bg-amber-50/55 dark:bg-amber-950/15"
   }
 
   switch (tone) {
     case "project":
-      return "border-emerald-200 bg-emerald-50/80 hover:bg-emerald-100 dark:border-emerald-900/60 dark:bg-emerald-950/20"
+      return "border-l-emerald-500"
     case "schedule":
-      return "border-sky-200 bg-sky-50/80 hover:bg-sky-100 dark:border-sky-900/60 dark:bg-sky-950/20"
+      return "border-l-sky-500"
     case "people":
-      return "border-violet-200 bg-violet-50/80 hover:bg-violet-100 dark:border-violet-900/60 dark:bg-violet-950/20"
+      return "border-l-violet-500"
     case "field":
-      return "border-lime-200 bg-lime-50/80 hover:bg-lime-100 dark:border-lime-900/60 dark:bg-lime-950/20"
+      return "border-l-lime-500"
     case "owner":
-      return "border-rose-200 bg-rose-50/80 hover:bg-rose-100 dark:border-rose-900/60 dark:bg-rose-950/20"
+      return "border-l-rose-500"
     case "money":
-      return "border-teal-200 bg-teal-50/80 hover:bg-teal-100 dark:border-teal-900/60 dark:bg-teal-950/20"
+      return "border-l-teal-500"
     case "google":
-      return "border-indigo-200 bg-indigo-50/80 hover:bg-indigo-100 dark:border-indigo-900/60 dark:bg-indigo-950/20"
+      return "border-l-indigo-500"
     case "procurement":
-      return "border-orange-200 bg-orange-50/80 hover:bg-orange-100 dark:border-orange-900/60 dark:bg-orange-950/20"
+      return "border-l-orange-500"
     case "admin":
-      return "border-slate-200 bg-slate-50/80 hover:bg-slate-100 dark:border-slate-800 dark:bg-slate-950/20"
+      return "border-l-slate-500"
   }
 }
 
@@ -274,31 +281,30 @@ function WorkflowCard({
   return (
     <Link
       href={step.href}
-      className={`group relative flex min-h-44 flex-col justify-between rounded-lg border p-4 shadow-sm transition-all duration-200 hover:-translate-y-1.5 hover:shadow-lg ${stepClassName(step.tone, step.urgent)}`}
+      className={`group grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 border-l-2 px-3 py-3 transition-colors hover:bg-muted/45 ${stepAccentClassName(step.tone, step.urgent)}`}
     >
-      <div>
-        <div className="flex items-start justify-between gap-3">
-          <div className="flex items-center gap-2">
-            <span className="flex size-8 items-center justify-center rounded-full bg-background/80 text-xs font-semibold shadow-sm">
-              {number}
-            </span>
-            <span className="text-muted-foreground">{step.icon}</span>
-          </div>
-          <Badge variant={step.urgent ? "secondary" : "outline"}>
-            {step.status}
-          </Badge>
+      <div className="flex items-center gap-2 text-muted-foreground">
+        <span className="w-5 text-right text-xs tabular-nums">{number}</span>
+        <span className="flex size-8 items-center justify-center rounded-md border bg-background">
+          {step.icon}
+        </span>
+      </div>
+      <div className="min-w-0">
+        <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+          <h2 className="truncate text-sm font-semibold">{step.label}</h2>
+          <p className="text-xs font-medium uppercase text-muted-foreground">
+            {step.eyebrow}
+          </p>
         </div>
-        <p className="mt-4 text-xs font-medium uppercase text-muted-foreground">
-          {step.eyebrow}
-        </p>
-        <h2 className="mt-1 text-base font-semibold">{step.label}</h2>
-        <p className="mt-2 line-clamp-2 text-sm text-muted-foreground">
+        <p className="mt-1 line-clamp-1 text-sm text-muted-foreground">
           {step.detail}
         </p>
       </div>
-      <div className="mt-4 flex items-center justify-between text-sm font-medium">
-        <span>Open</span>
-        <IconChevronRight className="size-4 transition-transform group-hover:translate-x-1" />
+      <div className="flex items-center gap-2">
+        <Badge variant={step.urgent ? "secondary" : "outline"} className="hidden sm:inline-flex">
+          {step.status}
+        </Badge>
+        <IconChevronRight className="size-4 text-muted-foreground transition-transform group-hover:translate-x-1 group-hover:text-foreground" />
       </div>
     </Link>
   )
@@ -319,6 +325,7 @@ export function ProjectManagerWorkflowPanel({
   workspaceMode,
   canUseDeveloperMode,
   allowedRoleIds,
+  showRoleControls = true,
 }: {
   readonly projectId: string
   readonly projectNumber: string | null
@@ -334,15 +341,12 @@ export function ProjectManagerWorkflowPanel({
   readonly workspaceMode: ProjectWorkspaceMode
   readonly canUseDeveloperMode: boolean
   readonly allowedRoleIds: readonly ProjectWorkflowRoleId[]
+  readonly showRoleControls?: boolean
 }): ReactElement {
   const activeRole = roleLensForId(activeRoleId)
   const availableRoles = PROJECT_WORKFLOW_ROLE_LENSES.filter((role) =>
     allowedRoleIds.includes(role.id)
   )
-  const modeBadge =
-    workspaceMode === "developer" && canUseDeveloperMode
-      ? "Developer mode"
-      : activeRole.badge
   const needsContactReview = reviewCount(contactsSummary) > 0
   const steps: readonly WorkflowStep[] = [
     {
@@ -361,7 +365,7 @@ export function ProjectManagerWorkflowPanel({
       id: "schedule",
       label: "Review schedule",
       href: `/dashboard/projects/${projectId}/schedule`,
-      eyebrow: "Sage-backed plan",
+      eyebrow: "Project plan",
       status: scheduleStatus(totalTaskCount, pastDueCount, operationsSummary),
       detail: scheduleDetail(totalTaskCount, operationsSummary),
       icon: <IconCalendarStats className="size-5" />,
@@ -407,7 +411,7 @@ export function ProjectManagerWorkflowPanel({
       id: "purchase-orders",
       label: "Prepare purchase orders",
       href: `/dashboard/projects/${projectId}/purchase-orders`,
-      eyebrow: "Sage commitments",
+      eyebrow: "Vendor commitments",
       status: purchaseOrderStatus(operationsSummary),
       detail: purchaseOrderDetail(operationsSummary),
       icon: <IconShoppingCart className="size-5" />,
@@ -440,7 +444,7 @@ export function ProjectManagerWorkflowPanel({
       id: "budget",
       label: "Budget / G703",
       href: `/dashboard/projects/${projectId}/budget`,
-      eyebrow: "Sage snapshot",
+      eyebrow: "Budget snapshot",
       status: budgetStatus(budgetSummary),
       detail: budgetDetail(budgetSummary),
       icon: <IconFileDollar className="size-5" />,
@@ -462,7 +466,7 @@ export function ProjectManagerWorkflowPanel({
   const orderedSteps = orderedWorkflowSteps(steps, activeRole.priority)
 
   return (
-    <section className="rounded-xl border bg-muted/25 p-3 sm:p-4">
+    <section className="space-y-3">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="text-xs font-medium uppercase text-muted-foreground">
@@ -476,75 +480,89 @@ export function ProjectManagerWorkflowPanel({
             the project moving, then switch jobs only when the context changes.
           </p>
         </div>
-        <Badge variant="secondary">{modeBadge}</Badge>
       </div>
 
-      <div className="mt-4 rounded-lg border bg-background/70 p-3">
-        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-          <p className="text-xs font-medium uppercase text-muted-foreground">
-            {canUseDeveloperMode ? "Preview role dashboard" : "Your role dashboard"}
-          </p>
-          {canUseDeveloperMode && (
-            <Badge variant="outline">Admin preview</Badge>
-          )}
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          {availableRoles.map((role) => (
-            <button
-              key={role.id}
-              type="button"
-              onClick={() => onActiveRoleChange(role.id)}
-              className={cn(
-                "rounded-md border px-3 py-1.5 text-xs font-medium transition-colors",
-                activeRoleId === role.id
-                  ? "border-emerald-700 bg-emerald-700 text-white shadow-sm"
-                  : "border-border bg-background text-muted-foreground hover:border-emerald-300 hover:bg-emerald-50 hover:text-foreground",
-              )}
+      {showRoleControls && (
+        <div className="mt-4 rounded-lg border bg-background/70 p-3">
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+            <p className="text-xs font-medium uppercase text-muted-foreground">
+              {canUseDeveloperMode ? "Preview role dashboard" : "Your role dashboard"}
+            </p>
+            {canUseDeveloperMode && (
+              <Badge variant="outline">Admin preview</Badge>
+            )}
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <Select
+              value={activeRoleId}
+              onValueChange={(value) => {
+                if (!isProjectWorkflowRoleId(value)) return
+                if (!allowedRoleIds.includes(value)) return
+                onActiveRoleChange(value)
+              }}
             >
-              {role.label}
-            </button>
-          ))}
+              <SelectTrigger
+                size="sm"
+                className="w-[240px] bg-background"
+                aria-label="Select role dashboard"
+              >
+                <SelectValue placeholder="Choose role view" />
+              </SelectTrigger>
+              <SelectContent align="start">
+                {availableRoles.map((role) => (
+                  <SelectItem key={role.id} value={role.id}>
+                    {role.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <span className="text-xs text-muted-foreground">
+              Viewing {activeRole.label}
+            </span>
+          </div>
+          <p className="mt-3 text-sm font-medium">{activeRole.label} lens</p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {activeRole.focus}
+          </p>
         </div>
-        <p className="mt-3 text-sm font-medium">{activeRole.label} lens</p>
-        <p className="mt-1 text-sm text-muted-foreground">
-          {activeRole.focus}
-        </p>
-      </div>
+      )}
 
-      <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2 2xl:grid-cols-3">
+      <div className="divide-y border-y bg-background">
         {orderedSteps.map((step, index) => (
           <WorkflowCard key={step.label} step={step} number={index + 1} />
         ))}
       </div>
 
-      <div className="mt-4 rounded-lg border bg-background/70 p-3">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <p className="text-xs font-medium uppercase text-muted-foreground">
-              Role lenses
-            </p>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Next step: let each internal role see its own version of this
-              workflow.
-            </p>
-          </div>
-          <Badge variant="outline">
-            {workspaceMode === "developer" && canUseDeveloperMode
-              ? "Developer tools visible"
-              : "Worker mode first"}
-          </Badge>
-        </div>
-        <div className="mt-3 grid grid-cols-1 gap-2 lg:grid-cols-2">
-          {availableRoles.map((role) => (
-            <div key={role.label} className="rounded-md border bg-muted/20 p-3">
-              <p className="text-sm font-medium">{role.label}</p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                {role.detail}
+      {showRoleControls && (
+        <div className="mt-4 rounded-lg border bg-background/70 p-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="text-xs font-medium uppercase text-muted-foreground">
+                Role lenses
+              </p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Next step: let each internal role see its own version of this
+                workflow.
               </p>
             </div>
-          ))}
+            <Badge variant="outline">
+              {workspaceMode === "developer" && canUseDeveloperMode
+                ? "Developer tools visible"
+                : "Worker mode first"}
+            </Badge>
+          </div>
+          <div className="mt-3 grid grid-cols-1 gap-2 lg:grid-cols-2">
+            {availableRoles.map((role) => (
+              <div key={role.label} className="rounded-md border bg-muted/20 p-3">
+                <p className="text-sm font-medium">{role.label}</p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {role.detail}
+                </p>
+              </div>
+            ))}
+          </div>
         </div>
-      </div>
+      )}
     </section>
   )
 }
