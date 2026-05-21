@@ -229,7 +229,8 @@ export function OwnerCoverPhotoControl({
   async function handleUpload(
     event: React.ChangeEvent<HTMLInputElement>
   ): Promise<void> {
-    const file = event.currentTarget.files?.[0]
+    const input = event.currentTarget
+    const file = input.files?.[0]
     if (!file) return
 
     if (!file.type.startsWith("image/")) {
@@ -258,7 +259,7 @@ export function OwnerCoverPhotoControl({
       )
     } finally {
       setUploading(false)
-      event.currentTarget.value = ""
+      input.value = ""
     }
   }
 
