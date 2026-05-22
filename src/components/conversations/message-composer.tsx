@@ -18,6 +18,8 @@ import {
   Sticker,
   Gift,
   SendToBack,
+  Check,
+  ChevronsUpDown,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -27,15 +29,14 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover"
 import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectLabel,
-  SelectSeparator,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+  CommandSeparator,
+} from "@/components/ui/command"
 import { sendMessage } from "@/app/actions/chat-messages"
 import {
   sendProjectMessage,
@@ -100,6 +101,7 @@ type MessageComposerProps = {
   readonly channelId: string
   readonly channelName: string
   readonly organizationId: string
+  readonly isProjectChannel?: boolean
   readonly projectRecipients?: readonly ProjectRecipientContact[]
   readonly threadId?: string
   readonly placeholder?: string
@@ -119,6 +121,15 @@ export type ProjectRecipientContact = {
 type MentionInput = {
   mentionType: "user" | "channel" | "here" | "agent"
   targetId: string | null
+}
+
+type RecipientOption = {
+  readonly value: string
+  readonly label: string
+  readonly detail: string
+  readonly search: string
+  readonly group: string
+  readonly disabled?: boolean
 }
 
 function extractMentions(
@@ -176,19 +187,19 @@ function recipientDetail(
   contacts: readonly ProjectRecipientContact[]
 ): string {
   if (value === "channel") {
-    return "Posts only to this channel history."
+    return "Saved to this channel only. Use @mentions when a specific Compass user needs a nudge."
   }
   if (value === "internal") {
     const count = contacts.filter(
       (contact) => contact.contactType === "internal"
     ).length
-    return `${count} internal project contact${count === 1 ? "" : "s"} selected.`
+    return `Saved here and queues Compass/email notifications for ${count} internal project contact${count === 1 ? "" : "s"}.`
   }
   if (value === "owners") {
     const count = contacts.filter(
       (contact) => contact.contactType === "owner"
     ).length
-    return `${count} owner contact${count === 1 ? "" : "s"} selected.`
+    return `Saved here and queues Compass/email notifications for ${count} owner contact${count === 1 ? "" : "s"}.`
   }
   if (value === "sub_vendors") {
     const count = contacts.filter(
@@ -196,14 +207,14 @@ function recipientDetail(
         contact.contactType === "supplier" ||
         contact.contactType === "subcontractor"
     ).length
-    return `${count} sub/vendor contact${count === 1 ? "" : "s"} selected.`
+    return `Saved here and queues Compass/email notifications for ${count} sub/vendor contact${count === 1 ? "" : "s"}.`
   }
   if (value.startsWith("contact:")) {
     const contactId = value.slice("contact:".length)
     const contact = contacts.find((item) => item.id === contactId)
     return contact?.email
-      ? `Targets ${contact.email}.`
-      : "This contact does not have an email yet."
+      ? `Saved here and targets ${contact.email} if that address has a Compass login.`
+      : "Saved here, but this contact does not have an email yet."
   }
   return "Posts to this channel."
 }
@@ -221,10 +232,85 @@ function groupLabel(contactType: ProjectRecipientContact["contactType"]): string
   }
 }
 
+function contactSearchValue(contact: ProjectRecipientContact): string {
+  return [
+    contact.displayName,
+    contact.companyName,
+    contact.role,
+    contact.trade,
+    contact.email,
+    contact.contactType,
+  ]
+    .filter((value): value is string => Boolean(value))
+    .join(" ")
+}
+
+function buildRecipientOptions(
+  contacts: readonly ProjectRecipientContact[]
+): readonly RecipientOption[] {
+  const internalCount = contacts.filter(
+    (contact) => contact.contactType === "internal"
+  ).length
+  const ownerCount = contacts.filter(
+    (contact) => contact.contactType === "owner"
+  ).length
+  const subVendorCount = contacts.filter(
+    (contact) =>
+      contact.contactType === "supplier" ||
+      contact.contactType === "subcontractor"
+  ).length
+
+  const groupOptions: readonly RecipientOption[] = [
+    {
+      value: "channel",
+      label: "Post to channel only",
+      detail: "Saves the message without notifying a project audience.",
+      search: "channel history only no notification",
+      group: "Delivery",
+    },
+    {
+      value: "internal",
+      label: `Notify internal team (${internalCount})`,
+      detail: "Internal HPS, ORC, Nu-Tech, and Design project contacts.",
+      search: "internal staff team hps orc nutech design",
+      group: "Delivery",
+      disabled: internalCount === 0,
+    },
+    {
+      value: "owners",
+      label: `Notify owner team (${ownerCount})`,
+      detail: "Owner contacts assigned to this project.",
+      search: "owners clients owner team",
+      group: "Delivery",
+      disabled: ownerCount === 0,
+    },
+    {
+      value: "sub_vendors",
+      label: `Notify subs/vendors (${subVendorCount})`,
+      detail: "Suppliers and subcontractors assigned to this project.",
+      search: "subcontractors suppliers vendors trades subs",
+      group: "Delivery",
+      disabled: subVendorCount === 0,
+    },
+  ]
+
+  const contactOptions = contacts.map((contact) => ({
+    value: `contact:${contact.id}`,
+    label: contactLabel(contact),
+    detail: contact.email ?? "No email on file",
+    search: contactSearchValue(contact),
+    group: groupLabel(contact.contactType),
+    disabled: false,
+  }))
+
+  return [...groupOptions, ...contactOptions]
+}
+
 export function MessageComposer({
   channelId,
   channelName,
   organizationId,
+  isProjectChannel = false,
   projectRecipients = [],
   threadId,
   placeholder,
@@ -238,8 +324,9 @@ export function MessageComposer({
   const [deliveryNote, setDeliveryNote] = React.useState<string | null>(null)
   const [showToolbar, setShowToolbar] = React.useState(false)
   const [emojiOpen, setEmojiOpen] = React.useState(false)
+  const [recipientOpen, setRecipientOpen] = React.useState(false)
   const [recipientValue, setRecipientValue] = React.useState("channel")
-  const hasProjectRecipients = projectRecipients.length > 0 && !threadId
+  const hasProjectDelivery = isProjectChannel && !threadId
 
   const lastTypingSentRef = React.useRef<number>(0)
   const TYPING_DEBOUNCE_MS = 3000
@@ -300,18 +387,28 @@ export function MessageComposer({
     },
   })
 
-  const groupedContacts = React.useMemo(() => {
-    const groups = new Map<
-      ProjectRecipientContact["contactType"],
-      ProjectRecipientContact[]
-    >()
-    for (const contact of projectRecipients) {
-      const existing = groups.get(contact.contactType) ?? []
-      existing.push(contact)
-      groups.set(contact.contactType, existing)
-    }
-    return groups
+  const recipientOptions = React.useMemo(() => {
+    return buildRecipientOptions(projectRecipients)
   }, [projectRecipients])
+  const selectedRecipient = recipientOptions.find(
+    (option) => option.value === recipientValue
+  )
+
+  const groupedRecipientOptions = React.useMemo(() => {
+    const groups = new Map<string, RecipientOption[]>()
+    for (const option of recipientOptions) {
+      const existing = groups.get(option.group) ?? []
+      existing.push(option)
+      groups.set(option.group, existing)
+    }
+    return Array.from(groups.entries())
+  }, [recipientOptions])
+
+  React.useEffect(() => {
+    if (!hasProjectDelivery) return
+    if (selectedRecipient && !selectedRecipient.disabled) return
+    setRecipientValue("channel")
+  }, [hasProjectDelivery, selectedRecipient])
 
   const handleEmojiSelect = React.useCallback(
     (emoji: EmojiData) => {
@@ -366,7 +463,7 @@ export function MessageComposer({
             noteParts.push(
               `${result.data.notifiedUserCount} Compass user${
                 result.data.notifiedUserCount === 1 ? "" : "s"
-              } notified`
+              } queued for notification/email preferences`
             )
           }
           if (result.data.unmatchedContactCount > 0) {
@@ -422,53 +519,79 @@ export function MessageComposer({
 
   return (
     <div className="min-h-[68px] px-2 pb-4 pt-2 sm:px-4">
-      {hasProjectRecipients && (
-        <div className="mb-2 flex flex-col gap-2 rounded-lg border bg-background/80 px-3 py-2 shadow-xs sm:flex-row sm:items-center sm:justify-between">
+      {hasProjectDelivery && (
+        <div className="mb-2 flex flex-col gap-2 border-y bg-background/80 px-1 py-2 sm:flex-row sm:items-center sm:justify-between sm:border sm:px-3">
           <div className="flex min-w-0 flex-1 items-center gap-2">
             <SendToBack className="h-4 w-4 shrink-0 text-muted-foreground" />
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
                 <span className="text-xs font-medium text-muted-foreground">
-                  Send to
+                  Delivery
                 </span>
-                <Select
-                  value={recipientValue}
-                  onValueChange={setRecipientValue}
-                >
-                  <SelectTrigger
-                    size="sm"
-                    className="h-8 w-[220px] bg-background"
-                    aria-label="Message recipient"
+                <Popover open={recipientOpen} onOpenChange={setRecipientOpen}>
+                  <PopoverTrigger asChild>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      role="combobox"
+                      aria-expanded={recipientOpen}
+                      aria-label="Message delivery"
+                      className="h-8 w-[260px] justify-between bg-background px-2 text-xs font-normal"
+                    >
+                      <span className="truncate">
+                        {selectedRecipient?.label ?? "Post to channel only"}
+                      </span>
+                      <ChevronsUpDown className="ml-2 size-3.5 shrink-0 opacity-50" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent
+                    align="start"
+                    className="w-[min(420px,calc(100vw-2rem))] p-0"
                   >
-                    <SelectValue placeholder="Choose recipient" />
-                  </SelectTrigger>
-                  <SelectContent align="start" className="max-h-80">
-                    <SelectItem value="channel">Project channel only</SelectItem>
-                    <SelectSeparator />
-                    <SelectGroup>
-                      <SelectLabel>Project groups</SelectLabel>
-                      <SelectItem value="internal">Internal team</SelectItem>
-                      <SelectItem value="owners">Owner team</SelectItem>
-                      <SelectItem value="sub_vendors">Subs/vendors</SelectItem>
-                    </SelectGroup>
-                    <SelectSeparator />
-                    {Array.from(groupedContacts.entries()).map(
-                      ([contactType, contacts]) => (
-                        <SelectGroup key={contactType}>
-                          <SelectLabel>{groupLabel(contactType)}</SelectLabel>
-                          {contacts.map((contact) => (
-                            <SelectItem
-                              key={contact.id}
-                              value={`contact:${contact.id}`}
-                            >
-                              {contactLabel(contact)}
-                            </SelectItem>
-                          ))}
-                        </SelectGroup>
-                      )
-                    )}
-                  </SelectContent>
-                </Select>
+                    <Command>
+                      <CommandInput placeholder="Search delivery, contact, trade, or email..." />
+                      <CommandList>
+                        <CommandEmpty>No matching recipients.</CommandEmpty>
+                        {groupedRecipientOptions.map(([group, options], index) => (
+                          <React.Fragment key={group}>
+                            {index > 0 && <CommandSeparator />}
+                            <CommandGroup heading={group}>
+                              {options.map((option) => (
+                                <CommandItem
+                                  key={option.value}
+                                  value={`${option.label} ${option.search}`}
+                                  disabled={option.disabled}
+                                  onSelect={() => {
+                                    setRecipientValue(option.value)
+                                    setRecipientOpen(false)
+                                  }}
+                                  className="items-start gap-2 py-2"
+                                >
+                                  <Check
+                                    className={cn(
+                                      "mt-0.5 size-4",
+                                      recipientValue === option.value
+                                        ? "opacity-100"
+                                        : "opacity-0"
+                                    )}
+                                  />
+                                  <span className="min-w-0 flex-1">
+                                    <span className="block truncate font-medium">
+                                      {option.label}
+                                    </span>
+                                    <span className="block truncate text-xs text-muted-foreground">
+                                      {option.detail}
+                                    </span>
+                                  </span>
+                                </CommandItem>
+                              ))}
+                            </CommandGroup>
+                          </React.Fragment>
+                        ))}
+                      </CommandList>
+                    </Command>
+                  </PopoverContent>
+                </Popover>
                 <Badge variant="outline" className="rounded-md">
                   #{channelName}
                 </Badge>

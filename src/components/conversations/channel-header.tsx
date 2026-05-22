@@ -2,7 +2,14 @@
 
 import * as React from "react"
 import { useRouter } from "next/navigation"
-import { IconHash, IconSearch, IconPin, IconUsers } from "@tabler/icons-react"
+import Link from "next/link"
+import {
+  IconFolder,
+  IconHash,
+  IconPin,
+  IconSearch,
+  IconUsers,
+} from "@tabler/icons-react"
 import { Button } from "@/components/ui/button"
 import { PinnedMessagesPanel } from "@/components/conversations/pinned-messages-panel"
 import { SearchDialog } from "@/components/conversations/search-dialog"
@@ -11,13 +18,26 @@ type ChannelHeaderProps = {
   readonly channelId: string
   readonly name: string
   readonly description?: string
+  readonly project?: {
+    readonly id: string
+    readonly name: string
+    readonly projectNumber: string | null
+    readonly clientName: string | null
+  } | null
   readonly memberCount: number
+}
+
+function projectLabel(project: NonNullable<ChannelHeaderProps["project"]>): string {
+  return project.projectNumber
+    ? `${project.projectNumber} - ${project.name}`
+    : project.name
 }
 
 export function ChannelHeader({
   channelId,
   name,
   description,
+  project = null,
   memberCount,
 }: ChannelHeaderProps) {
   const router = useRouter()
@@ -35,11 +55,27 @@ export function ChannelHeader({
           <IconHash className="h-5 w-5 shrink-0 text-muted-foreground" />
           <div className="min-w-0 flex-1">
             <h1 className="truncate text-base font-semibold">{name}</h1>
-            {description && (
-              <p className="truncate text-xs text-muted-foreground">
-                {description}
-              </p>
-            )}
+            <div className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
+              {project ? (
+                <>
+                  <IconFolder className="size-3.5 shrink-0" />
+                  <Link
+                    href={`/dashboard/projects/${project.id}`}
+                    className="truncate font-medium text-foreground/80 hover:text-foreground hover:underline"
+                  >
+                    {projectLabel(project)}
+                  </Link>
+                  {description && (
+                    <>
+                      <span className="shrink-0">·</span>
+                      <span className="truncate">{description}</span>
+                    </>
+                  )}
+                </>
+              ) : (
+                description && <span className="truncate">{description}</span>
+              )}
+            </div>
           </div>
         </div>
         <div className="flex items-center gap-1">

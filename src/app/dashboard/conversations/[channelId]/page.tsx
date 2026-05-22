@@ -2,6 +2,7 @@ import { notFound } from "next/navigation"
 import { getChannel } from "@/app/actions/conversations"
 import { getMessages } from "@/app/actions/chat-messages"
 import { getProjectContactsSummary } from "@/app/actions/project-contacts"
+import { getProjects } from "@/app/actions/projects"
 import { ChannelHeader } from "@/components/conversations/channel-header"
 import { MessageList } from "@/components/conversations/message-list"
 import {
@@ -27,9 +28,16 @@ export default async function ChannelPage({
 
   const channel = channelResult.data
   const messages = messagesResult.success && messagesResult.data ? messagesResult.data : []
-  const contactsSummary = channel.projectId
-    ? await getProjectContactsSummary(channel.projectId).catch(() => null)
-    : null
+  const [contactsSummary, projects] = await Promise.all([
+    channel.projectId
+      ? getProjectContactsSummary(channel.projectId).catch(() => null)
+      : Promise.resolve(null),
+    channel.projectId ? getProjects() : Promise.resolve([]),
+  ])
+  const project =
+    channel.projectId
+      ? projects.find((item) => item.id === channel.projectId) ?? null
+      : null
   const projectRecipients: readonly ProjectRecipientContact[] =
     contactsSummary?.allContacts.map((contact) => ({
       id: contact.id,
@@ -51,6 +59,7 @@ export default async function ChannelPage({
           channelId={channelId}
           name={channel.name}
           description={channel.description ?? undefined}
+          project={project}
           memberCount={channel.memberCount}
         />
         <MessageList
@@ -61,6 +70,7 @@ export default async function ChannelPage({
           channelId={channelId}
           channelName={channel.name}
           organizationId={channel.organizationId}
+          isProjectChannel={Boolean(channel.projectId)}
           projectRecipients={projectRecipients}
         />
       </div>
