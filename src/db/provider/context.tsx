@@ -55,9 +55,7 @@ export interface DatabaseProviderProps {
   }
 }
 
-function createUnavailableMemoryProvider(
-  _config?: MemoryProviderConfig
-): DatabaseProvider {
+function createUnavailableMemoryProvider(): DatabaseProvider {
   throw new Error(
     "Memory provider is only available through direct test imports. " +
       "Use D1 in the web app or Tauri SQLite in the desktop app."
@@ -100,7 +98,7 @@ export function DatabaseProvider({
 
           case "memory":
           default: {
-            newProvider = createUnavailableMemoryProvider(config?.memory)
+            newProvider = createUnavailableMemoryProvider()
             break
           }
         }
