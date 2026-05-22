@@ -3,6 +3,12 @@ Compass Core Architecture
 
 Compass is a construction project management platform, but the architecture underneath it is designed to be something more general: a composable, AI-native dashboard framework that can serve any domain. The construction-specific features (schedules, change orders, submittals) are a *module* built on top of a generic platform layer. This document describes that platform layer.
 
+Compass's product north star is simple: **serious tools, with soul**. The
+platform has to be durable enough for enterprise operations, permissions,
+financial workflows, and integrations, but the resulting experience should
+still respect the people using it: owners, field crews, subcontractors, office
+staff, and administrators.
+
 
 why two layers
 ---

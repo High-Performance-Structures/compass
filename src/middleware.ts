@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { authkit, handleAuthkitHeaders } from "@workos-inc/authkit-nextjs"
+import { isLocalDevelopment, isWorkOSConfigured } from "@/lib/auth-config"
 
 const publicPaths = [
   "/",
@@ -28,16 +29,29 @@ function isPublicPath(pathname: string): boolean {
   )
 }
 
-const isWorkOSConfigured =
-  process.env.WORKOS_API_KEY &&
-  process.env.WORKOS_CLIENT_ID &&
-  !process.env.WORKOS_API_KEY.includes("placeholder")
-
 export default async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
 
-  if (!isWorkOSConfigured) {
-    return NextResponse.next()
+  if (!isWorkOSConfigured()) {
+    if (isLocalDevelopment()) {
+      return NextResponse.next()
+    }
+
+    if (isPublicPath(pathname)) {
+      return NextResponse.next()
+    }
+
+    if (pathname.startsWith("/api/")) {
+      return NextResponse.json(
+        { success: false, error: "Authentication is not configured." },
+        { status: 503 }
+      )
+    }
+
+    const loginUrl = new URL("/login", request.url)
+    loginUrl.searchParams.set("error", "auth_unavailable")
+    loginUrl.searchParams.set("from", pathname)
+    return NextResponse.redirect(loginUrl)
   }
 
   const { session, headers } = await authkit(request)

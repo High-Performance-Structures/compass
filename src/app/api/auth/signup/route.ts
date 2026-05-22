@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getWorkOS } from "@workos-inc/authkit-nextjs"
 import { z } from "zod"
+import {
+  isDevAuthFallbackAllowed,
+  isWorkOSConfigured,
+} from "@/lib/auth-config"
 
 // input validation schema
 const signupRequestSchema = z.object({
@@ -48,21 +52,23 @@ export async function POST(request: NextRequest) {
     }
 
     const { email, password, firstName, lastName } = parseResult.data
-    const workos = getWorkOS()
 
-    // check if workos is configured (dev mode fallback)
-    const isConfigured =
-      process.env.WORKOS_API_KEY &&
-      process.env.WORKOS_CLIENT_ID &&
-      !process.env.WORKOS_API_KEY.includes("placeholder")
+    if (!isWorkOSConfigured()) {
+      if (!isDevAuthFallbackAllowed()) {
+        return NextResponse.json(
+          { success: false, error: "Authentication is not configured." },
+          { status: 503 }
+        )
+      }
 
-    if (!isConfigured) {
       return NextResponse.json({
         success: true,
         userId: "dev-user-" + Date.now(),
         message: "Account created (dev mode)",
       })
     }
+
+    const workos = getWorkOS()
 
     const user = await workos.userManagement.createUser({
       email,

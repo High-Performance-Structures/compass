@@ -6,6 +6,10 @@ import type { User } from "@/db/schema"
 import { eq } from "drizzle-orm"
 import { cookies } from "next/headers"
 import { DEMO_USER } from "@/lib/demo"
+import {
+  isDevAuthFallbackAllowed,
+  isWorkOSConfigured,
+} from "@/lib/auth-config"
 
 export type AuthUser = {
   readonly id: string
@@ -53,13 +57,9 @@ export function toSidebarUser(user: AuthUser): SidebarUser {
 
 export async function getCurrentUser(): Promise<AuthUser | null> {
   try {
-    // check if workos is configured
-    const isWorkOSConfigured =
-      process.env.WORKOS_API_KEY &&
-      process.env.WORKOS_CLIENT_ID &&
-      !process.env.WORKOS_API_KEY.includes("placeholder")
+    if (!isWorkOSConfigured()) {
+      if (!isDevAuthFallbackAllowed()) return null
 
-    if (!isWorkOSConfigured) {
       // check demo cookie when WorkOS isn't available
       try {
         const cookieStore = await cookies()
@@ -299,13 +299,7 @@ export async function requireAuth(): Promise<AuthUser> {
 export async function requireEmailVerified(): Promise<AuthUser> {
   const user = await requireAuth()
 
-  // check verification status
-  const isWorkOSConfigured =
-    process.env.WORKOS_API_KEY &&
-    process.env.WORKOS_CLIENT_ID &&
-    !process.env.WORKOS_API_KEY.includes("placeholder")
-
-  if (isWorkOSConfigured) {
+  if (isWorkOSConfigured()) {
     const session = await withAuth()
     if (session?.user && !session.user.emailVerified) {
       throw new Error("Email not verified")

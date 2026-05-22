@@ -48,8 +48,6 @@ android/app/build/
 
 # Local auth bypass (dev only)
 src/lib/auth-bypass.ts
-src/lib/cloudflare-context.ts
-src/lib/db.ts
 scripts/init-local-db.ts
 
 # local dev database

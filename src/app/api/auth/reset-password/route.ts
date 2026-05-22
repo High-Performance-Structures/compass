@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getWorkOS } from "@workos-inc/authkit-nextjs"
 import { z } from "zod"
+import {
+  isDevAuthFallbackAllowed,
+  isWorkOSConfigured,
+} from "@/lib/auth-config"
 
 const resetPasswordSchema = z.object({
   token: z.string().min(1, "Reset token is required"),
@@ -40,13 +44,14 @@ export async function POST(request: NextRequest) {
 
     const { token, newPassword } = parseResult.data
 
-    // check if workos is configured
-    const isConfigured =
-      process.env.WORKOS_API_KEY &&
-      process.env.WORKOS_CLIENT_ID &&
-      !process.env.WORKOS_API_KEY.includes("placeholder")
+    if (!isWorkOSConfigured()) {
+      if (!isDevAuthFallbackAllowed()) {
+        return NextResponse.json(
+          { success: false, error: "Authentication is not configured." },
+          { status: 503 }
+        )
+      }
 
-    if (!isConfigured) {
       return NextResponse.json({
         success: true,
         message: "Password reset successful (dev mode)",

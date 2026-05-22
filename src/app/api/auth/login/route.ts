@@ -2,6 +2,10 @@ import { NextRequest, NextResponse } from "next/server"
 import { getWorkOS, saveSession } from "@workos-inc/authkit-nextjs"
 import { z } from "zod"
 import { ensureUserExists } from "@/lib/auth"
+import {
+  isDevAuthFallbackAllowed,
+  isWorkOSConfigured,
+} from "@/lib/auth-config"
 
 // input validation schema
 const loginRequestSchema = z.discriminatedUnion("type", [
@@ -52,21 +56,23 @@ export async function POST(request: NextRequest) {
     }
 
     const data = parseResult.data
-    const workos = getWorkOS()
 
-    // check if workos is configured (dev mode fallback)
-    const isConfigured =
-      process.env.WORKOS_API_KEY &&
-      process.env.WORKOS_CLIENT_ID &&
-      !process.env.WORKOS_API_KEY.includes("placeholder")
+    if (!isWorkOSConfigured()) {
+      if (!isDevAuthFallbackAllowed()) {
+        return NextResponse.json(
+          { success: false, error: "Authentication is not configured." },
+          { status: 503 }
+        )
+      }
 
-    if (!isConfigured) {
       return NextResponse.json({
         success: true,
         redirectUrl: "/dashboard",
         devMode: true,
       })
     }
+
+    const workos = getWorkOS()
 
     if (data.type === "password") {
       const result = await workos.userManagement.authenticateWithPassword({

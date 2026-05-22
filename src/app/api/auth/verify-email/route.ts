@@ -2,6 +2,10 @@ import { NextRequest, NextResponse } from "next/server"
 import { getWorkOS } from "@workos-inc/authkit-nextjs"
 import { z } from "zod"
 import { ensureUserExists } from "@/lib/auth"
+import {
+  isDevAuthFallbackAllowed,
+  isWorkOSConfigured,
+} from "@/lib/auth-config"
 
 const verifyEmailSchema = z.object({
   code: z.string().min(1, "Verification code is required"),
@@ -36,13 +40,14 @@ export async function POST(request: NextRequest) {
 
     const { code, userId } = parseResult.data
 
-    // check if workos is configured
-    const isConfigured =
-      process.env.WORKOS_API_KEY &&
-      process.env.WORKOS_CLIENT_ID &&
-      !process.env.WORKOS_API_KEY.includes("placeholder")
+    if (!isWorkOSConfigured()) {
+      if (!isDevAuthFallbackAllowed()) {
+        return NextResponse.json(
+          { success: false, error: "Authentication is not configured." },
+          { status: 503 }
+        )
+      }
 
-    if (!isConfigured) {
       return NextResponse.json({
         success: true,
         message: "Email verified (dev mode)",

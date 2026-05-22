@@ -3,6 +3,11 @@ Compass Documentation
 
 Compass is two things: a platform and a product.
 
+**Product principle:** serious tools, with soul. Compass should handle the
+hard business machinery -- schedules, RFIs, purchase orders, budgets,
+permissions, ERP sync, documents, and communication -- while still feeling
+calm, humane, and worth using by the people doing the work.
+
 **Compass Core** is an agentic dashboard platform -- authentication, an AI assistant, visual theming, a plugin system, and custom dashboards. It's built with Next.js 15, React 19, Cloudflare D1, and the AI SDK. It's generic. Any industry could use it.
 
 **HPS Compass** is a construction project management product built on top of Compass Core. It adds scheduling with Gantt charts, Sage-oriented project operations and financial visibility, Google Drive integration for project documents, and a Capacitor mobile app for field workers. It's specific to construction, but the architecture is designed so other industries could build their own module packages.
