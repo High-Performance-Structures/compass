@@ -185,6 +185,11 @@ export function ProjectRfiCreateForm({
       }
       setMessage("RFI created.")
       setOpen(false)
+      router.push(
+        `/dashboard/projects/${projectId}/rfis?created=${encodeURIComponent(
+          result.id
+        )}`
+      )
       router.refresh()
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Could not create RFI.")
@@ -202,14 +207,12 @@ export function ProjectRfiCreateForm({
 
   return (
     <Sheet open={open} onOpenChange={setOpen}>
-      <div className="flex justify-end border-y py-3">
-        <SheetTrigger asChild>
-          <Button type="button">
-            <IconPlus className="size-4" />
-            New RFI
-          </Button>
-        </SheetTrigger>
-      </div>
+      <SheetTrigger asChild>
+        <Button type="button">
+          <IconPlus className="size-4" />
+          New RFI
+        </Button>
+      </SheetTrigger>
       <SheetContent className="w-[min(94vw,720px)] overflow-y-auto sm:max-w-none">
         <SheetHeader className="border-b px-5 py-4">
           <SheetTitle>Create RFI</SheetTitle>

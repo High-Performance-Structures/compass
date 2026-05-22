@@ -15,6 +15,7 @@ import { ProjectQuickSwitcher } from "@/components/projects/project-quick-switch
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
+import { cn } from "@/lib/utils"
 
 function readFormText(formData: FormData, name: string): string {
   const value = formData.get(name)
@@ -60,10 +61,18 @@ function unique(values: readonly (string | null | undefined)[]): readonly string
 
 export default async function ProjectRfisPage({
   params,
+  searchParams,
 }: {
   readonly params: Promise<{ readonly id: string }>
+  readonly searchParams: Promise<{
+    readonly created?: string | readonly string[]
+  }>
 }) {
   const { id } = await params
+  const query = await searchParams
+  const createdRfiId = Array.isArray(query.created)
+    ? query.created[0] ?? null
+    : query.created ?? null
   const [projects, rfis, contactsSummary] = await Promise.all([
     getProjects(),
     getProjectRfis(id),
@@ -141,18 +150,36 @@ export default async function ProjectRfisPage({
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(20rem,26rem)_1fr]">
-        <ProjectRfiCreateForm
-          projectId={id}
-          projectDriveFolderId={project?.googleDriveFolderId ?? null}
-          companyOrTradeOptions={companyOrTradeOptions}
-          peopleOptions={peopleOptions}
-        />
+      <section className="space-y-3">
+        <div className="flex flex-wrap items-end justify-between gap-3 border-y py-3">
+          <div>
+            <h2 className="text-sm font-semibold">RFI queue</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Track questions, assignments, due dates, visibility, and
+              responses from one project context.
+            </p>
+          </div>
+          <ProjectRfiCreateForm
+            projectId={id}
+            projectDriveFolderId={project?.googleDriveFolderId ?? null}
+            companyOrTradeOptions={companyOrTradeOptions}
+            peopleOptions={peopleOptions}
+          />
+        </div>
 
-        <section className="space-y-3">
-          {rfis.length > 0 ? (
-            rfis.map((rfi) => (
-              <article key={rfi.id} className="border-l-2 border-l-orange-500 border-y border-r bg-background px-4 py-3">
+        {rfis.length > 0 ? (
+          rfis.map((rfi) => {
+            const isCreated = rfi.id === createdRfiId
+            return (
+              <article
+                key={rfi.id}
+                className={cn(
+                  "border-l-2 border-y border-r bg-background px-4 py-3",
+                  isCreated
+                    ? "border-l-emerald-600 bg-emerald-50/40"
+                    : "border-l-orange-500"
+                )}
+              >
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div className="min-w-0">
                     <p className="text-xs font-medium text-muted-foreground">
@@ -163,7 +190,14 @@ export default async function ProjectRfisPage({
                     </h2>
                   </div>
                   <div className="flex flex-wrap gap-1">
-                    <Badge variant={isActiveRfiStatus(rfi.status) ? "secondary" : "outline"}>
+                    {isCreated && (
+                      <Badge variant="secondary">Just created</Badge>
+                    )}
+                    <Badge
+                      variant={
+                        isActiveRfiStatus(rfi.status) ? "secondary" : "outline"
+                      }
+                    >
                       {label(rfi.status)}
                     </Badge>
                     <Badge variant="outline">{label(rfi.audience)}</Badge>
@@ -250,18 +284,18 @@ export default async function ProjectRfisPage({
                   </div>
                 </form>
               </article>
-            ))
-          ) : (
-            <div className="rounded-lg border bg-background p-8 text-center">
-              <IconClock className="mx-auto size-6 text-muted-foreground" />
-              <h2 className="mt-3 text-sm font-semibold">No RFIs yet</h2>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Create the first clarification from this project context.
-              </p>
-            </div>
-          )}
-        </section>
-      </div>
+            )
+          })
+        ) : (
+          <div className="rounded-lg border bg-background p-8 text-center">
+            <IconClock className="mx-auto size-6 text-muted-foreground" />
+            <h2 className="mt-3 text-sm font-semibold">No RFIs yet</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Create the first clarification from this project context.
+            </p>
+          </div>
+        )}
+      </section>
     </div>
   )
 }

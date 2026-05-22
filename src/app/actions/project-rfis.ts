@@ -346,6 +346,7 @@ export async function createProjectRfi(
 
     revalidatePath(`/dashboard/projects/${projectId}`)
     revalidatePath(`/dashboard/projects/${projectId}/rfis`)
+    revalidatePath("/dashboard/rfis")
     revalidatePath("/dashboard/schedule")
 
     try {

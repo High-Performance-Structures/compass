@@ -202,6 +202,11 @@ export function ProjectPurchaseOrderCreateForm({
       setSageVendorId("")
       setMessage("P.O. request saved in Compass.")
       setOpen(false)
+      router.push(
+        `/dashboard/projects/${projectId}/purchase-orders?created=${encodeURIComponent(
+          result.id
+        )}`
+      )
       router.refresh()
     } catch (error) {
       setMessage(
@@ -216,14 +221,12 @@ export function ProjectPurchaseOrderCreateForm({
 
   return (
     <Sheet open={open} onOpenChange={setOpen}>
-      <div className="flex justify-end border-y py-3">
-        <SheetTrigger asChild>
-          <Button type="button">
-            <IconPlus className="size-4" />
-            New PO
-          </Button>
-        </SheetTrigger>
-      </div>
+      <SheetTrigger asChild>
+        <Button type="button">
+          <IconPlus className="size-4" />
+          New PO
+        </Button>
+      </SheetTrigger>
       <SheetContent className="w-[min(96vw,1180px)] overflow-y-auto sm:max-w-none">
         <SheetHeader className="border-b px-5 py-4">
           <SheetTitle>Request Purchase Order</SheetTitle>

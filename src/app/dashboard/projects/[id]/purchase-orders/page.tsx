@@ -17,6 +17,7 @@ import { ProjectPurchaseOrderPrintButton } from "@/components/projects/project-p
 import { ProjectQuickSwitcher } from "@/components/projects/project-quick-switcher"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { cn } from "@/lib/utils"
 
 function money(value: number | null): string {
   if (value === null) return "Amount TBD"
@@ -47,15 +48,20 @@ function PurchaseOrderCard({
   order,
   projectId,
   projectLabel,
+  isCreated,
 }: {
   readonly order: ProjectPurchaseOrderItem
   readonly projectId: string
   readonly projectLabel: string
+  readonly isCreated: boolean
 }): React.ReactElement {
   return (
     <article
       data-po-id={order.id}
-      className="po-printable rounded-lg border bg-background p-4 print:border-0 print:p-0"
+      className={cn(
+        "po-printable rounded-lg border bg-background p-4 print:border-0 print:p-0",
+        isCreated && "border-emerald-600 bg-emerald-50/40"
+      )}
     >
       <div className="print:hidden">
         <div className="flex flex-wrap items-start justify-between gap-3">
@@ -66,6 +72,7 @@ function PurchaseOrderCard({
             <h2 className="mt-1 text-base font-semibold">{order.title}</h2>
           </div>
           <div className="flex flex-wrap gap-1">
+            {isCreated && <Badge variant="secondary">Just created</Badge>}
             <Badge variant={order.status === "draft" ? "secondary" : "outline"}>
               {label(order.status)}
             </Badge>
@@ -247,10 +254,18 @@ function PurchaseOrderCard({
 
 export default async function ProjectPurchaseOrdersPage({
   params,
+  searchParams,
 }: {
   readonly params: Promise<{ readonly id: string }>
+  readonly searchParams: Promise<{
+    readonly created?: string | readonly string[]
+  }>
 }) {
   const { id } = await params
+  const query = await searchParams
+  const createdPurchaseOrderId = Array.isArray(query.created)
+    ? query.created[0] ?? null
+    : query.created ?? null
   const [projects, purchaseOrders] = await Promise.all([
     getProjects(),
     getProjectPurchaseOrders(id),
@@ -303,54 +318,50 @@ export default async function ProjectPurchaseOrdersPage({
         </div>
       </div>
 
-      <div className="space-y-4">
-        <ProjectPurchaseOrderCreateForm projectId={id} />
-
-        <section className="space-y-3">
-          <div className="border-y py-3">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <h2 className="text-sm font-semibold">Accounting sync path</h2>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  Compass P.O.s work on their own for project tracking, print,
-                  and supplier email. When Sage is connected, approved P.O.s can
-                  be synced through the bridge with confirmation and audit
-                  history.
-                </p>
-              </div>
-              <Button asChild variant="outline" size="sm">
-                <Link href="/dashboard/financials?tab=bills">
-                  Financials
-                  <IconExternalLink className="size-4" />
-                </Link>
-              </Button>
-            </div>
+      <section className="space-y-3">
+        <div className="flex flex-wrap items-end justify-between gap-3 border-y py-3">
+          <div>
+            <h2 className="text-sm font-semibold">P.O. queue</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Stage vendor commitments, print pickup copies, email suppliers,
+              and keep the Sage write path visible without blocking the workday.
+            </p>
           </div>
+          <div className="flex flex-wrap gap-2">
+            <Button asChild variant="outline" size="sm">
+              <Link href="/dashboard/financials?tab=bills">
+                Financials
+                <IconExternalLink className="size-4" />
+              </Link>
+            </Button>
+            <ProjectPurchaseOrderCreateForm projectId={id} />
+          </div>
+        </div>
 
-          {purchaseOrders.length > 0 ? (
-            purchaseOrders.map((order) => (
-              <PurchaseOrderCard
-                key={order.id}
-                order={order}
-                projectId={id}
-                projectLabel={
-                  `${project?.projectNumber ? `${project.projectNumber} - ` : ""}${
-                    project?.name ?? "Project"
-                  }`
-                }
-              />
-            ))
-          ) : (
-            <div className="rounded-lg border bg-background p-8 text-center">
-              <IconShoppingCart className="mx-auto size-6 text-muted-foreground" />
-              <h2 className="mt-3 text-sm font-semibold">No PO requests yet</h2>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Create a PO request when a vendor commitment is ready to stage.
-              </p>
-            </div>
-          )}
-        </section>
-      </div>
+        {purchaseOrders.length > 0 ? (
+          purchaseOrders.map((order) => (
+            <PurchaseOrderCard
+              key={order.id}
+              order={order}
+              projectId={id}
+              projectLabel={
+                `${project?.projectNumber ? `${project.projectNumber} - ` : ""}${
+                  project?.name ?? "Project"
+                }`
+              }
+              isCreated={order.id === createdPurchaseOrderId}
+            />
+          ))
+        ) : (
+          <div className="rounded-lg border bg-background p-8 text-center">
+            <IconShoppingCart className="mx-auto size-6 text-muted-foreground" />
+            <h2 className="mt-3 text-sm font-semibold">No PO requests yet</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Create a PO request when a vendor commitment is ready to stage.
+            </p>
+          </div>
+        )}
+      </section>
     </div>
   )
 }

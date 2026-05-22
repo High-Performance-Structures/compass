@@ -926,6 +926,7 @@ export async function createPurchaseOrderRequest(
     )
     revalidatePath(`/dashboard/projects/${projectId}`)
     revalidatePath(`/dashboard/projects/${projectId}/purchase-orders`)
+    revalidatePath("/dashboard/purchase-orders")
     revalidatePath("/dashboard/financials")
     revalidatePath("/dashboard/schedule")
 
