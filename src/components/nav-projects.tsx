@@ -211,7 +211,7 @@ export function NavProjects({
               </SidebarMenuItem>
             ) : (
               PROJECT_SECTION_ITEMS.map((item) => (
-                <SidebarMenuItem key={item.section}>
+                <SidebarMenuItem key={`${activeId}-${item.section}`}>
                   <SidebarMenuButton
                     asChild
                     tooltip={item.title}

@@ -72,6 +72,17 @@ export function ProjectQuickSwitcher({
           role="combobox"
           aria-expanded={open}
           aria-label="Switch project"
+          onClick={() => setOpen(true)}
+          onKeyDown={(event) => {
+            if (
+              event.key === "Enter" ||
+              event.key === " " ||
+              event.key === "ArrowDown"
+            ) {
+              event.preventDefault()
+              setOpen(true)
+            }
+          }}
           className={cn(
             "h-10 min-w-0 justify-between px-3 font-normal",
             className

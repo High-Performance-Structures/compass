@@ -60,7 +60,8 @@ import { ScheduleMobileView } from "./schedule-mobile-view"
 import { WorkdayExceptionsView } from "./workday-exceptions-view"
 import { ScheduleBaselineView } from "./schedule-baseline-view"
 import { TaskFormDialog } from "./task-form-dialog"
-import { ProjectSwitcher } from "./project-switcher"
+import { ProjectQuickSwitcher } from "@/components/projects/project-quick-switcher"
+import type { ProjectListItem } from "@/app/actions/projects"
 import type {
   ScheduleData,
   ScheduleBaselineData,
@@ -85,11 +86,7 @@ interface ScheduleViewProps {
   readonly projectName: string
   readonly initialData: ScheduleData
   readonly baselines: ScheduleBaselineData[]
-  readonly allProjects?: readonly {
-    readonly id: string
-    readonly name: string
-    readonly projectNumber: string | null
-  }[]
+  readonly allProjects?: readonly ProjectListItem[]
 }
 
 export function ScheduleView({
@@ -296,9 +293,9 @@ export function ScheduleView({
 
   return (
     <div className="flex flex-col flex-1 min-h-0">
-      {/* Header: breadcrumb + view toggle + new task */}
-      <div className="flex items-center gap-3 mb-3">
-        <nav className="flex items-center gap-1.5 text-sm min-w-0">
+      {/* Header: breadcrumb + project switcher + view toggle + new task */}
+      <div className="mb-3 flex flex-col gap-2 lg:flex-row lg:items-center">
+        <nav className="flex min-w-0 items-center gap-1.5 text-sm">
           <Link
             href={`/dashboard/projects/${projectId}`}
             className="text-muted-foreground hover:text-foreground truncate transition-colors"
@@ -309,11 +306,13 @@ export function ScheduleView({
           <span className="font-medium">Schedule</span>
         </nav>
 
-        <div className="ml-auto flex items-center gap-2">
-          <ProjectSwitcher
+        <div className="flex flex-wrap items-center gap-2 lg:ml-auto lg:justify-end">
+          <ProjectQuickSwitcher
             projects={allProjects}
             currentProjectId={projectId}
-            currentProjectName={projectName}
+            targetSection="schedule"
+            placeholder="Switch schedule project..."
+            className="w-full sm:w-[300px]"
           />
 
           {/* View switcher */}
