@@ -129,6 +129,26 @@ export type SendPurchaseOrderEmailInput = {
   readonly message: string
 }
 
+export type ProjectTaskRecordType =
+  | "staff_task"
+  | "subcontractor_task"
+  | "supplier_task"
+  | "schedule_task"
+
+export type CreateProjectTaskInput = {
+  readonly title: string
+  readonly description: string | null
+  readonly sourceRecordType: ProjectTaskRecordType
+  readonly sourceRecordId: string | null
+  readonly sourceRecordNumber: string | null
+  readonly assigneeName: string | null
+  readonly companyName: string | null
+  readonly startDate: string | null
+  readonly dueDate: string | null
+  readonly priority: string
+  readonly externalUrl: string | null
+}
+
 type SagePurchaseOrderPayload = {
   readonly source: "compass_po_request"
   readonly header: {
@@ -275,6 +295,17 @@ function parseEmailList(value: string | null): readonly string[] {
 
 function purchaseOrderRequestNumberFor(existingCount: number): string {
   return `PO-REQ-${String(existingCount + 1).padStart(3, "0")}`
+}
+
+function projectTaskNumberFor(existingCount: number): string {
+  return `TASK-${String(existingCount + 1).padStart(3, "0")}`
+}
+
+function normalizeTaskRecordType(value: ProjectTaskRecordType): ProjectTaskRecordType {
+  if (value === "subcontractor_task") return "subcontractor_task"
+  if (value === "supplier_task") return "supplier_task"
+  if (value === "schedule_task") return "schedule_task"
+  return "staff_task"
 }
 
 function numberOrDefault(value: number | null, fallback: number): number {
@@ -938,6 +969,105 @@ export async function createPurchaseOrderRequest(
         error instanceof Error
           ? error.message
           : "Failed to create purchase order request",
+    }
+  }
+}
+
+export async function createProjectTask(
+  projectId: string,
+  input: CreateProjectTaskInput
+): Promise<ProjectOperationActionResult> {
+  try {
+    const db = await verifyProjectUpdateAccess(projectId)
+    const [project] = await db
+      .select({
+        sageJobId: projects.sageJobId,
+        sageJobNumber: projects.sageJobNumber,
+      })
+      .from(projects)
+      .where(eq(projects.id, projectId))
+      .limit(1)
+
+    const taskRows = await db
+      .select({ id: projectOperations.id })
+      .from(projectOperations)
+      .where(
+        and(
+          eq(projectOperations.projectId, projectId),
+          inArray(projectOperations.sourceRecordType, [
+            "staff_task",
+            "subcontractor_task",
+            "supplier_task",
+            "schedule_task",
+          ])
+        )
+      )
+
+    const now = new Date().toISOString()
+    const id = crypto.randomUUID()
+    const title = requireText(input.title, "Title")
+    const sourceRecordType = normalizeTaskRecordType(input.sourceRecordType)
+    const dueDate = cleanText(input.dueDate)
+    const startDate = cleanText(input.startDate)
+
+    await db.insert(projectOperations).values({
+      id,
+      projectId,
+      sourceSystem: "compass",
+      sourceRecordType,
+      sourceRecordId: cleanText(input.sourceRecordId),
+      sourceRecordNumber: projectTaskNumberFor(taskRows.length),
+      title,
+      description: cleanText(input.description),
+      status: "open",
+      priority: cleanText(input.priority) ?? "normal",
+      assigneeType:
+        sourceRecordType === "subcontractor_task"
+          ? "subcontractor"
+          : sourceRecordType === "supplier_task"
+            ? "supplier"
+            : "internal",
+      assigneeName: cleanText(input.assigneeName),
+      companyName: cleanText(input.companyName),
+      startDate,
+      dueDate,
+      externalUrl: cleanText(input.externalUrl),
+      sageJobId: project?.sageJobId ?? null,
+      sageJobNumber: project?.sageJobNumber ?? null,
+      sageWriteStatus: "not_ready",
+      sagePayloadJson: JSON.stringify({
+        source: "compass_task",
+        linkedRecordId: cleanText(input.sourceRecordId),
+        linkedRecordNumber: cleanText(input.sourceRecordNumber),
+        taskType: sourceRecordType,
+        title,
+        description: cleanText(input.description),
+        assigneeName: cleanText(input.assigneeName),
+        companyName: cleanText(input.companyName),
+        startDate,
+        dueDate,
+        priority: cleanText(input.priority) ?? "normal",
+      }),
+      syncDirection: "write",
+      syncStatus: "compass_only",
+      createdAt: now,
+      updatedAt: now,
+    })
+
+    revalidatePath(`/dashboard/projects/${projectId}`)
+    revalidatePath(`/dashboard/projects/${projectId}/rfis`)
+    revalidatePath(`/dashboard/projects/${projectId}/purchase-orders`)
+    revalidatePath("/dashboard")
+    revalidatePath("/dashboard/schedule")
+
+    return { success: true, id }
+  } catch (error) {
+    return {
+      success: false,
+      error:
+        error instanceof Error
+          ? error.message
+          : "Failed to create project task",
     }
   }
 }

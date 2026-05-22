@@ -14,6 +14,7 @@ import { getProjects } from "@/app/actions/projects"
 import { ProjectPurchaseOrderEmailButton } from "@/components/projects/project-purchase-order-email-button"
 import { ProjectPurchaseOrderCreateForm } from "@/components/projects/project-purchase-order-create-form"
 import { ProjectPurchaseOrderPrintButton } from "@/components/projects/project-purchase-order-print-button"
+import { ProjectTaskCreateButton } from "@/components/projects/project-task-create-button"
 import { ProjectQuickSwitcher } from "@/components/projects/project-quick-switcher"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -42,6 +43,28 @@ function label(value: string): string {
     .split("_")
     .map((part) => `${part.slice(0, 1).toUpperCase()}${part.slice(1)}`)
     .join(" ")
+}
+
+function purchaseOrderTaskTitle(order: ProjectPurchaseOrderItem): string {
+  return `Follow up P.O.: ${order.sourceRecordNumber ?? order.title}`
+}
+
+function purchaseOrderTaskDescription(order: ProjectPurchaseOrderItem): string {
+  const lines = order.lines.map((line) => {
+    const amount = money(line.amount)
+    return `Line ${line.lineNumber}: ${line.description} (${amount})`
+  })
+
+  return [
+    order.description ?? order.title,
+    "",
+    order.companyName ? `Vendor: ${order.companyName}` : null,
+    order.sageShipTo ? `Ship to / pickup: ${order.sageShipTo}` : null,
+    lines.length > 0 ? "Lines:" : null,
+    ...lines,
+  ]
+    .filter((line) => line !== null)
+    .join("\n")
 }
 
 function PurchaseOrderCard({
@@ -87,6 +110,20 @@ function PurchaseOrderCard({
               projectLabel={projectLabel}
               supplierName={order.companyName}
               supplierEmail={order.vendorEmail}
+            />
+            <ProjectTaskCreateButton
+              projectId={projectId}
+              sourceLabel="Purchase Order"
+              sourceRecordId={order.id}
+              sourceRecordNumber={order.sourceRecordNumber}
+              sourceHref={`/dashboard/projects/${projectId}/purchase-orders`}
+              defaultTitle={purchaseOrderTaskTitle(order)}
+              defaultDescription={purchaseOrderTaskDescription(order)}
+              defaultAssigneeName={order.assigneeName}
+              defaultCompanyName={order.companyName}
+              defaultDueDate={order.dueDate}
+              defaultPriority={order.priority}
+              defaultTaskType="supplier_task"
             />
             <ProjectPurchaseOrderPrintButton purchaseOrderId={order.id} />
           </div>

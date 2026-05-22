@@ -11,6 +11,7 @@ import { getProjectRfis, updateProjectRfi } from "@/app/actions/project-rfis"
 import { getProjectContactsSummary } from "@/app/actions/project-contacts"
 import { getProjects } from "@/app/actions/projects"
 import { ProjectRfiCreateForm } from "@/components/projects/project-rfi-create-form"
+import { ProjectTaskCreateButton } from "@/components/projects/project-task-create-button"
 import { ProjectQuickSwitcher } from "@/components/projects/project-quick-switcher"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -57,6 +58,10 @@ function unique(values: readonly (string | null | undefined)[]): readonly string
         .filter((value) => value.length > 0)
     )
   ).sort((a, b) => a.localeCompare(b))
+}
+
+function rfiTaskTitle(subject: string): string {
+  return `Follow up RFI: ${subject}`
 }
 
 export default async function ProjectRfisPage({
@@ -204,6 +209,22 @@ export default async function ProjectRfisPage({
                     {rfi.priority === "high" && (
                       <Badge variant="destructive">High</Badge>
                     )}
+                    <ProjectTaskCreateButton
+                      projectId={id}
+                      sourceLabel="RFI"
+                      sourceRecordId={rfi.id}
+                      sourceRecordNumber={rfi.rfiNumber}
+                      sourceHref={`/dashboard/projects/${id}/rfis`}
+                      defaultTitle={rfiTaskTitle(rfi.subject)}
+                      defaultDescription={rfi.question}
+                      defaultAssigneeName={rfi.assignedToName}
+                      defaultCompanyName={rfi.companyName}
+                      defaultDueDate={rfi.dueDate}
+                      defaultPriority={rfi.priority}
+                      defaultTaskType={
+                        rfi.companyName ? "subcontractor_task" : "staff_task"
+                      }
+                    />
                   </div>
                 </div>
                 <p className="mt-3 text-sm text-muted-foreground">{rfi.question}</p>
