@@ -10,6 +10,10 @@ function hasDigest(error: unknown): error is { readonly digest: string } {
   return typeof error === "object" && error !== null && "digest" in error
 }
 
+function isProjectNotFound(error: unknown): boolean {
+  return error instanceof Error && error.message === "Project not found"
+}
+
 export default async function ProjectPhotosPage({
   params,
 }: {
@@ -21,8 +25,9 @@ export default async function ProjectPhotosPage({
   try {
     library = await getProjectPhotoLibrary(id)
   } catch (error) {
-    if (hasDigest(error) && error.digest === "NEXT_NOT_FOUND") throw error
-    notFound()
+    if (hasDigest(error)) throw error
+    if (isProjectNotFound(error)) notFound()
+    throw error
   }
 
   return <ProjectPhotoReview library={library} />
