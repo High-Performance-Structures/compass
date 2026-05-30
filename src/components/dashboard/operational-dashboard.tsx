@@ -440,7 +440,7 @@ function DashboardCommandCenter({
       icon: <IconAlertCircle className="size-4" />,
     },
     {
-      label: "Owner Update Due",
+      label: "Updates",
       value:
         overview.metrics.draftOwnerUpdates > 0
           ? `${overview.metrics.draftOwnerUpdates} drafts`
