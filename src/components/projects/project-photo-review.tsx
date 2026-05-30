@@ -85,6 +85,21 @@ function sourceLabel(value: string): string {
   }
 }
 
+function sourceInitial(value: string): string {
+  switch (value) {
+    case "buildertrend":
+      return "B"
+    case "google_drive":
+      return "G"
+    case "telegram":
+      return "T"
+    case "mobile":
+      return "A"
+    default:
+      return "C"
+  }
+}
+
 function projectLabel(library: ProjectPhotoLibrary): string {
   return library.project.projectNumber ?? library.project.name
 }
@@ -794,6 +809,7 @@ export function ProjectPhotoReview({
             const selected = selectedSet.has(photo.id)
             const href = browserHref(photo.driveUrl)
             const imageSrc = photo.thumbnailUrl ?? photo.driveUrl
+            const sourceName = sourceLabel(photo.sourceSystem)
 
             return (
               <article
@@ -835,7 +851,6 @@ export function ProjectPhotoReview({
                       {photo.caption ?? photo.fileName}
                     </p>
                     <div className="flex flex-wrap gap-1">
-                      <Badge variant="outline">{sourceLabel(photo.sourceSystem)}</Badge>
                       <Badge
                         variant={
                           photo.reviewStatus === "approved"
@@ -898,17 +913,30 @@ export function ProjectPhotoReview({
                     </Select>
                   </label>
                 </div>
-                {href && (
-                  <a
-                    href={href}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="flex items-center gap-1 border-t px-2 py-1.5 text-xs text-primary hover:bg-accent"
+                <div className="flex items-center justify-between gap-2 border-t px-2 py-1.5">
+                  {href ? (
+                    <a
+                      href={href}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="flex items-center gap-1 text-xs text-primary hover:underline"
+                    >
+                      <IconExternalLink className="size-3" />
+                      Open
+                    </a>
+                  ) : (
+                    <span className="text-xs text-muted-foreground">
+                      No link
+                    </span>
+                  )}
+                  <span
+                    className="flex size-5 shrink-0 items-center justify-center rounded border border-border/70 bg-muted/40 text-[10px] font-semibold text-muted-foreground"
+                    title={`Source: ${sourceName}`}
+                    aria-label={`Source: ${sourceName}`}
                   >
-                    <IconExternalLink className="size-3" />
-                    Open
-                  </a>
-                )}
+                    {sourceInitial(photo.sourceSystem)}
+                  </span>
+                </div>
               </article>
             )
           })}
