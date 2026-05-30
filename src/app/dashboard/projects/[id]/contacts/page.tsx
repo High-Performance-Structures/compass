@@ -52,8 +52,7 @@ export default async function ProjectContactsPage({
             </h1>
           </div>
           <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
-            Contacts grouped as customers, vendors, and the internal HPS,
-            Nu-Tech, and ORC team for this project.
+            Customers, vendors, and internal team members for this project.
           </p>
         </div>
         <div className="flex flex-col items-stretch gap-2 sm:items-end">

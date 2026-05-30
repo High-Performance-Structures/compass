@@ -51,8 +51,7 @@ export default async function ProjectContactMatchReviewPage({
             </h1>
           </div>
           <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
-            Review names coming from imports, schedules, accounting, and
-            Buildertrend before they become trusted Compass contact links.
+            Match imported names to trusted contacts.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">

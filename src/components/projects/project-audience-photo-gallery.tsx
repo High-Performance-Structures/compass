@@ -267,7 +267,6 @@ export function ProjectAudiencePhotoGallery({
                       <Badge variant="outline">
                         {photo.schedulePhaseConfidence}% match
                       </Badge>
-                      <Badge variant="secondary">Click to enlarge</Badge>
                     </div>
                   </div>
                 </button>

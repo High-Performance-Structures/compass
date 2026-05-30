@@ -27,7 +27,7 @@ const TARGETS: readonly ProjectTarget[] = [
     section: "owner-updates",
     title: "Owner Updates",
     description:
-      "Choose the project before drafting, reviewing, or publishing an owner update.",
+      "Choose a project before drafting or publishing an owner update.",
     placeholder: "Search projects for owner updates...",
     badge: "Owner update context",
     icon: <IconMailForward className="size-5 text-muted-foreground" />,
@@ -35,8 +35,7 @@ const TARGETS: readonly ProjectTarget[] = [
   {
     section: "daily-logs",
     title: "Daily Logs",
-    description:
-      "Choose the project before reviewing field notes or drafting from logs.",
+    description: "Choose a project before reviewing field notes.",
     placeholder: "Search projects for daily logs...",
     badge: "Daily log context",
     icon: <IconClipboardText className="size-5 text-muted-foreground" />,
@@ -44,8 +43,7 @@ const TARGETS: readonly ProjectTarget[] = [
   {
     section: "photos",
     title: "Photos",
-    description:
-      "Choose the project before reviewing visibility, permissions, or galleries.",
+    description: "Choose a project before reviewing photos.",
     placeholder: "Search projects for photos...",
     badge: "Photo context",
     icon: <IconPhoto className="size-5 text-muted-foreground" />,
@@ -53,8 +51,7 @@ const TARGETS: readonly ProjectTarget[] = [
   {
     section: "budget",
     title: "Budget / G703",
-    description:
-      "Choose the project before viewing internal budget detail or owner-safe SOV views.",
+    description: "Choose a project before opening budget detail.",
     placeholder: "Search projects for budget...",
     badge: "Budget context",
     icon: <IconFileDollar className="size-5 text-muted-foreground" />,
@@ -62,8 +59,7 @@ const TARGETS: readonly ProjectTarget[] = [
   {
     section: "contacts",
     title: "Project Contacts",
-    description:
-      "Choose the project before assigning contacts or reviewing portal visibility.",
+    description: "Choose a project before assigning contacts.",
     placeholder: "Search projects for contacts...",
     badge: "Contact context",
     icon: <IconAddressBook className="size-5 text-muted-foreground" />,
@@ -71,8 +67,7 @@ const TARGETS: readonly ProjectTarget[] = [
   {
     section: "schedule",
     title: "Project Schedule",
-    description:
-      "Choose the project before editing tasks, milestones, dependencies, or Gantt views.",
+    description: "Choose a project before opening the schedule.",
     placeholder: "Search projects for schedule...",
     badge: "Schedule context",
     icon: <IconFolderSearch className="size-5 text-muted-foreground" />,
@@ -115,8 +110,7 @@ export default async function ProjectSectionPickerPage({
             </h1>
           </div>
           <p className="mt-2 text-sm text-muted-foreground">
-            {target.description} Compass will not guess a project for this
-            workflow.
+            {target.description}
           </p>
         </div>
 
@@ -125,8 +119,7 @@ export default async function ProjectSectionPickerPage({
             <div>
               <p className="text-sm font-semibold">Project required first</p>
               <p className="mt-1 text-sm text-muted-foreground">
-                This keeps owner updates, logs, photos, budgets, contacts, and
-                schedules attached to the intended job.
+                Select the job first so the work lands in the right place.
               </p>
             </div>
             <Badge variant="secondary">{target.badge}</Badge>
@@ -150,7 +143,7 @@ export default async function ProjectSectionPickerPage({
                 className="w-full"
               />
               <p className="mt-3 text-xs text-muted-foreground">
-                Choosing a project opens that project&apos;s {target.title} view.
+                Opens {target.title} for the selected project.
               </p>
             </div>
           ) : (
@@ -160,7 +153,7 @@ export default async function ProjectSectionPickerPage({
                 No projects available
               </h2>
               <p className="mt-1 text-sm text-muted-foreground">
-                Add projects before opening this workflow.
+                Add or sync projects first.
               </p>
             </div>
           )}

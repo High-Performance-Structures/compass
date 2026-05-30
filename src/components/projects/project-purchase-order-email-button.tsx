@@ -112,8 +112,7 @@ export function ProjectPurchaseOrderEmailButton({
           <DialogHeader>
             <DialogTitle>Email purchase order</DialogTitle>
             <DialogDescription>
-              Send a supplier-ready copy of this P.O. through Compass. You can
-              edit the recipients and message before sending.
+              Edit the recipients and message before sending.
             </DialogDescription>
           </DialogHeader>
 
@@ -186,7 +185,7 @@ export function ProjectPurchaseOrderEmailButton({
                 ? "Sending..."
                 : status.kind === "sent"
                   ? "Sent"
-                  : "Send through Compass"}
+                  : "Send email"}
             </Button>
           </DialogFooter>
         </form>

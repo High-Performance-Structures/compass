@@ -84,9 +84,9 @@ function scheduleDetail(
     return operationsSummary.nextScheduleItem.title
   }
   if (totalTaskCount > 0) {
-    return "Open the project schedule view."
+    return "Open the project schedule."
   }
-  return "Import or create the working schedule."
+  return "Add the working schedule."
 }
 
 function contactsStatus(summary: ProjectContactsSummary | null): string {
@@ -101,12 +101,12 @@ function contactsDetail(summary: ProjectContactsSummary | null): string {
   if (!summary) return "Contact mapping is not available."
   const needsReview = reviewCount(summary)
   if (needsReview > 0) {
-    return "Resolve imported schedule, accounting, or Buildertrend names."
+    return "Resolve imported names."
   }
   if (summary.pendingAssignmentSourceCount > 0) {
     return `${summary.pendingAssignmentSourceCount} TBD names are parked until assigned.`
   }
-  return "Owners, subs, suppliers, and internal contacts are grouped."
+  return "Owners, vendors, and internal contacts."
 }
 
 function fieldStatus(summary: ProjectFieldSummary | null): string {
@@ -126,7 +126,7 @@ function fieldDetail(summary: ProjectFieldSummary | null): string {
   if (summary.latestDailyLog) {
     return summary.latestDailyLog.workCompleted
   }
-  return "Daily logs and photos will feed owner updates."
+  return "No daily logs yet."
 }
 
 function ownerStatus(summary: ProjectFieldSummary | null): string {
@@ -145,9 +145,9 @@ function ownerDetail(summary: ProjectFieldSummary | null): string {
   if (!summary) return "Owner update status is not available."
   if (summary.latestOwnerUpdate) return summary.latestOwnerUpdate.title
   if (summary.approvedDailyLogCount > 0 || summary.ownerVisiblePhotoCount > 0) {
-    return "Use approved logs, photos, and the next schedule item."
+    return "Use approved logs, photos, and schedule items."
   }
-  return "Approve field content before publishing."
+  return "Approve field content first."
 }
 
 function budgetStatus(summary: ProjectBudgetSummary | null): string {
@@ -160,11 +160,11 @@ function budgetStatus(summary: ProjectBudgetSummary | null): string {
 
 function budgetDetail(summary: ProjectBudgetSummary | null): string {
   if (!summary || summary.allLines.length === 0) {
-    return "Add or import the budget/G703 snapshot."
+    return "Add the budget/G703 snapshot."
   }
   return summary.detailMode === "category"
     ? "Owner view is rolled up by category."
-    : "Internal detail and owner-visible cost codes are available."
+    : "Internal detail and owner-visible cost codes."
 }
 
 function intakeStatus(summary: ProjectFieldSummary | null): string {
@@ -178,9 +178,9 @@ function intakeStatus(summary: ProjectFieldSummary | null): string {
 function intakeDetail(summary: ProjectFieldSummary | null): string {
   if (!summary) return "Google intake status is not available."
   if (summary.photoReviewFolder) {
-    return "Staged photos, logs, and script-fed records land in review."
+    return "Photos and logs are ready for review."
   }
-  return "Google scripts can feed Compass; Compass owns review and visibility."
+  return "Photo and log intake."
 }
 
 function rfiStatus(summary: ProjectRfiSummary | null): string {
@@ -192,7 +192,7 @@ function rfiStatus(summary: ProjectRfiSummary | null): string {
 function rfiDetail(summary: ProjectRfiSummary | null): string {
   if (!summary) return "RFI details are not available."
   if (summary.nextDue) return summary.nextDue.subject
-  return "Prepare RFIs, RFQs, and scope questions from this project context."
+  return "Prepare RFIs, RFQs, and scope questions."
 }
 
 function purchaseOrderStatus(summary: ProjectOperationsSummary | null): string {
@@ -206,7 +206,7 @@ function purchaseOrderStatus(summary: ProjectOperationsSummary | null): string {
 function purchaseOrderDetail(summary: ProjectOperationsSummary | null): string {
   if (!summary) return "Purchase order details are not available."
   if (summary.purchaseOrders[0]) return summary.purchaseOrders[0].title
-  return "Prepare, print, email, and optionally sync purchase orders."
+  return "Prepare, print, and email purchase orders."
 }
 
 function billsAndDrawsStatus(summary: ProjectBudgetSummary | null): string {
@@ -219,9 +219,9 @@ function billsAndDrawsStatus(summary: ProjectBudgetSummary | null): string {
 
 function billsAndDrawsDetail(summary: ProjectBudgetSummary | null): string {
   if (!summary || summary.allLines.length === 0) {
-    return "Add budget data before owner draws or pay applications."
+    return "Add budget data first."
   }
-  return "Enter vendor bills, then prepare owner draws/pay applications."
+  return "Enter vendor bills and prepare owner draws."
 }
 
 function stepAccentClassName(tone: WorkflowTone, urgent: boolean): string {
@@ -356,7 +356,7 @@ export function ProjectManagerWorkflowPanel({
       eyebrow: projectNumber ?? "Project search",
       status: "Switch job",
       detail:
-        "You are already in this job. Use this only when you need to jump to another project.",
+        "Jump to another project when needed.",
       icon: <IconFolder className="size-5" />,
       tone: "project",
       urgent: false,
@@ -476,8 +476,7 @@ export function ProjectManagerWorkflowPanel({
             Run today as {activeRole.label}
           </h2>
           <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
-            You are already in the job. Move through the work queues that keep
-            the project moving, then switch jobs only when the context changes.
+            Work queues for the current job.
           </p>
         </div>
       </div>
@@ -486,10 +485,10 @@ export function ProjectManagerWorkflowPanel({
         <div className="mt-4 rounded-lg border bg-background/70 p-3">
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
             <p className="text-xs font-medium uppercase text-muted-foreground">
-              {canUseDeveloperMode ? "Preview role dashboard" : "Your role dashboard"}
+              {canUseDeveloperMode ? "Preview role" : "Your role"}
             </p>
             {canUseDeveloperMode && (
-              <Badge variant="outline">Admin preview</Badge>
+              <Badge variant="outline">Admin</Badge>
             )}
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -541,8 +540,7 @@ export function ProjectManagerWorkflowPanel({
                 Role lenses
               </p>
               <p className="mt-1 text-sm text-muted-foreground">
-                Next step: let each internal role see its own version of this
-                workflow.
+                Role-specific work queues.
               </p>
             </div>
             <Badge variant="outline">

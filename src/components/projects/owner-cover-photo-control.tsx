@@ -304,8 +304,7 @@ export function OwnerCoverPhotoControl({
                 <DialogHeader>
                   <DialogTitle>Choose a cover photo</DialogTitle>
                   <DialogDescription>
-                    Pick from approved project photos or upload a personal
-                    cover image for this project view.
+                    Pick an approved project photo or upload your own.
                   </DialogDescription>
                 </DialogHeader>
 
@@ -323,9 +322,7 @@ export function OwnerCoverPhotoControl({
                       onChange={handleUpload}
                     />
                     <p className="mt-2 text-xs text-muted-foreground">
-                      For this preview, uploaded covers are saved on this
-                      device. Approved project photos remain the shared source
-                      of truth.
+                      Uploaded covers are saved on this device.
                     </p>
                   </div>
 
@@ -380,8 +377,7 @@ export function OwnerCoverPhotoControl({
                       (photo) => photo.thumbnailUrl === null
                     ) && (
                       <p className="mt-3 rounded-md border p-3 text-sm text-muted-foreground">
-                        No approved project photos are ready for cover selection
-                        yet.
+                        No approved project photos ready yet.
                       </p>
                     )}
                   </div>
@@ -452,7 +448,7 @@ export function OwnerCoverPhotoControl({
                 </p>
                 <p className="mt-2 line-clamp-2 text-sm font-medium">
                   {nextScheduleItem?.title ??
-                    "Upcoming schedule items will appear here."}
+                    "No upcoming schedule items."}
                 </p>
                 {nextScheduleItem && (
                   <p className="mt-2 text-xs text-white/75">

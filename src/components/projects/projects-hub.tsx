@@ -94,7 +94,7 @@ const STATUS_FILTERS: readonly StatusFilterConfig[] = [
   {
     id: "active",
     label: "Active",
-    description: "Current work and jobs that should be visible day to day.",
+    description: "Current work and day-to-day jobs.",
   },
   {
     id: "warranty",
@@ -648,9 +648,8 @@ export function ProjectsHub({
                   Project creation and registry flow
                 </h2>
                 <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                  This is the natural home for project setup: choose O, H, N,
-                  or D, create the Compass project, then optionally link Drive,
-                  Sage, Buildertrend, or other integration records.
+                  Choose O, H, N, or D, then link Drive, Sage, Buildertrend, or
+                  other records.
                 </p>
               </div>
               <div className="flex flex-wrap gap-2">
@@ -676,7 +675,7 @@ export function ProjectsHub({
             <IconFolder className="mx-auto mb-3 size-10 text-muted-foreground" />
             <p className="font-medium">No projects yet.</p>
             <p className="mt-1 text-sm text-muted-foreground">
-              New projects will appear here after the registry is seeded.
+              No projects match this view yet.
             </p>
           </div>
         ) : visibleGroups.length > 0 ? (

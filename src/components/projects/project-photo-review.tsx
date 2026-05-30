@@ -572,8 +572,7 @@ export function ProjectPhotoReview({
               Photo Review
             </h1>
             <p className="text-sm text-muted-foreground">
-              {projectLabel(library)} · Internal staff can review every project
-              photo before owners, subs, vendors, or public links can see it.
+              {projectLabel(library)} · Review dates, phases, and visibility.
             </p>
             <p className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
               <span>
@@ -748,7 +747,7 @@ export function ProjectPhotoReview({
                   {selectedIds.length} selected
                 </p>
                 <p className="text-xs text-muted-foreground">
-                  Apply marks photos reviewed.
+                  Apply updates visibility.
                 </p>
               </div>
               <Select
@@ -976,12 +975,12 @@ export function ProjectPhotoReview({
             {previewPhoto && (
               <div className="grid max-h-[92vh] grid-rows-[auto_minmax(0,1fr)]">
                 <DialogHeader className="border-b px-4 py-3">
-                  <DialogTitle className="line-clamp-1 text-base">
-                    {previewPhoto.caption ?? previewPhoto.fileName}
-                  </DialogTitle>
-                  <DialogDescription>
-                    {previewPhoto.photoDate} · {previewPhoto.schedulePhase} ·{" "}
-                    {previewPhoto.schedulePhaseConfidence}% confidence ·{" "}
+                <DialogTitle className="line-clamp-1 text-base">
+                  {previewPhoto.caption ?? previewPhoto.fileName}
+                </DialogTitle>
+                <DialogDescription>
+                  {previewPhoto.photoDate} · {previewPhoto.schedulePhase} ·{" "}
+                    {previewPhoto.schedulePhaseConfidence}% match ·{" "}
                     {statusLabel(previewPhoto.reviewStatus)}
                   </DialogDescription>
                 </DialogHeader>
@@ -1050,8 +1049,7 @@ export function ProjectPhotoReview({
             <SheetHeader>
               <SheetTitle>Upload Project Photos</SheetTitle>
               <SheetDescription>
-                Originals are saved to the mapped Google Drive photo folder.
-                Compass keeps review status, phase, and visibility metadata.
+                Saves originals to the project photo folder.
               </SheetDescription>
             </SheetHeader>
             <div className="space-y-4 px-4">
@@ -1154,7 +1152,7 @@ export function ProjectPhotoReview({
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="all">Let Compass suggest</SelectItem>
+                    <SelectItem value="all">Suggest phase</SelectItem>
                     {library.phases.map((phase) => (
                       <SelectItem key={phase.value} value={phase.value}>
                         {phase.label}
@@ -1165,8 +1163,7 @@ export function ProjectPhotoReview({
               </label>
 
               <div className="rounded-md border bg-muted/20 p-3 text-xs text-muted-foreground">
-                Uploaded photos start as internal-only and need review before
-                owners, subs, vendors, or public links can see them.
+                Uploads start internal-only.
               </div>
 
               {uploadMessage && (

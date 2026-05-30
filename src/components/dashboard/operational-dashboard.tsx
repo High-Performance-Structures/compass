@@ -419,7 +419,7 @@ function DashboardCommandCenter({
       value: nextTask ? formatDate(nextTask.startDate) : "No task",
       note: nextTask
         ? `${nextTask.projectLabel} · ${nextTask.title}`
-        : "No upcoming schedule task found",
+        : "No upcoming task",
       href: scheduleHref,
       tone: "blue",
       icon: <IconCalendarWeek className="size-4" />,
@@ -432,7 +432,7 @@ function DashboardCommandCenter({
           : "Clear",
       note: topRfi
         ? `${topRfi.projectLabel} · due ${formatDate(topRfi.dueDate)}`
-        : "No open RFIs in the current dashboard set",
+        : "No open RFIs",
       href: topRfi
         ? `/dashboard/projects/${topRfi.projectId}/rfis`
         : "/dashboard/rfis",
@@ -446,8 +446,8 @@ function DashboardCommandCenter({
           ? `${overview.metrics.draftOwnerUpdates} drafts`
           : "Ready",
       note: topProject
-        ? `${topProject.projectNumber ?? topProject.name} · daily logs and publish queue`
-        : "No active project selected",
+        ? `${topProject.projectNumber ?? topProject.name} · daily logs`
+        : "No project selected",
       href: ownerUpdateHref,
       tone: overview.metrics.draftOwnerUpdates > 0 ? "amber" : "green",
       icon: <IconMailForward className="size-4" />,
@@ -470,7 +470,7 @@ function DashboardCommandCenter({
       value: String(overview.metrics.upcomingTasks),
       note: nextTask
         ? `${nextTask.projectLabel} is next in queue`
-        : "No active schedule queue",
+        : "No schedule queue",
       progress: Math.min(100, overview.metrics.upcomingTasks * 12.5),
       tone: "blue",
       href: scheduleHref,
@@ -493,7 +493,7 @@ function DashboardCommandCenter({
       value: formatMoney(overview.metrics.openPoAmount),
       note: topOperation
         ? `${topOperation.projectLabel} · ${topOperation.title}`
-        : "No open Sage operation records",
+        : "No open POs",
       progress: Math.min(100, overview.metrics.openPoAmount / 1000),
       tone: "green",
       href: "/dashboard/financials",
@@ -533,7 +533,7 @@ function DashboardCommandCenter({
               <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
                 {nextTask
                   ? `${nextTask.projectLabel} · ${formatDate(nextTask.startDate)} - ${formatDate(nextTask.endDate)}`
-                  : "Once Sage-backed schedule items are available, the next operational item will anchor this space."}
+                  : "No schedule item yet."}
               </p>
               <div className="mt-3 flex flex-wrap gap-2">
                 <Button asChild size="sm">
@@ -654,7 +654,7 @@ function DashboardRoleWorkspaceControl({
           </SelectContent>
         </Select>
         <span className="text-xs text-muted-foreground">
-          {canUseDeveloperMode ? "Admin preview" : "Permission based"}
+          {canUseDeveloperMode ? "Admin" : "Role based"}
         </span>
       </div>
 
@@ -689,10 +689,10 @@ function ProjectPulse({
           <div>
             <CardTitle>Project Pulse</CardTitle>
             <CardDescription>
-              Recent field progress paired with a quick CHERISH check-in.
+              Field photos and team notes
             </CardDescription>
           </div>
-          <Badge variant="secondary">Field + Thursday</Badge>
+          <Badge variant="secondary">This week</Badge>
         </div>
       </CardHeader>
       <CardContent className="grid gap-4 pt-0 2xl:grid-cols-[minmax(0,1fr)_22rem]">
@@ -738,12 +738,12 @@ function FieldPulse({
             <div>
               <p className="text-sm font-semibold">Field Pulse</p>
               <p className="text-xs text-muted-foreground">
-                Approved progress photos will rotate here.
+                Approved photos
               </p>
             </div>
           </div>
           <p className="mt-3 max-w-md text-sm text-muted-foreground">
-            No field photos are available for this dashboard view yet.
+            No approved photos yet.
           </p>
         </div>
       </div>
@@ -820,7 +820,7 @@ function FieldPulse({
             <div>
               <p className="text-sm font-semibold">Field Pulse</p>
               <p className="text-xs text-muted-foreground">
-                Recent approved progress photos.
+                Approved photos
               </p>
             </div>
           </div>
@@ -977,8 +977,7 @@ function CherishPulse(): React.ReactElement {
               Who helped keep something moving?
             </h2>
             <p className="mt-1.5 max-w-3xl text-sm leading-5 text-muted-foreground">
-              A lightweight place for shoutouts, project wins, and private
-              concerns without pulling the dashboard away from project work.
+              Share a shoutout, project win, or private concern.
             </p>
             <div className="mt-3 flex flex-wrap gap-1.5">
               {CHERISH_VALUES.map((value) => (
@@ -1002,7 +1001,7 @@ function CherishPulse(): React.ReactElement {
             <div>
               <p className="text-sm font-semibold">Respond</p>
               <p className="mt-1 text-xs text-muted-foreground">
-                Keep it quick; Compass routes it appropriately.
+                Keep it quick.
               </p>
             </div>
             <Badge variant={activeCopy.visibility === "private" ? "secondary" : "outline"}>
@@ -1034,7 +1033,7 @@ function CherishPulse(): React.ReactElement {
             />
             <div className="flex flex-wrap items-center justify-between gap-2">
               <p className="line-clamp-1 text-xs text-muted-foreground">
-                Routed as {activeCopy.visibility === "private" ? "private leadership feedback" : "team-visible after review"}.
+                {activeCopy.visibility === "private" ? "Private to leadership." : "Visible after review."}
               </p>
               <Button
                 type="button"
@@ -1071,10 +1070,10 @@ function CherishPulse(): React.ReactElement {
               >
                 <span>
                   <span className="block text-xs font-semibold">
-                    Response doors
+                    Other ways to respond
                   </span>
                   <span className="text-xs text-muted-foreground">
-                    Same prompt, different ways in.
+                    Field and office options.
                   </span>
                 </span>
                 <IconChevronDown
@@ -1090,7 +1089,7 @@ function CherishPulse(): React.ReactElement {
                 {[
                   ["Compass app", "Big mobile buttons for crew and office."],
                   ["Telegram", "Reply to the weekly prompt in the field."],
-                  ["ExakTime", "Review comments that should become feedback."],
+                  ["ExakTime", "Review time-clock comments."],
                   ["Admin entry", "Log a phone call or text on someone’s behalf."],
                 ].map(([label, detail]) => (
                   <div key={label} className="rounded-md border bg-background p-2">
@@ -1415,7 +1414,7 @@ function CompassDashboard({
         key: "automations",
         label: "Automations",
         value: overview.sageBridge.configured ? "Ready" : "Needs setup",
-        note: "Google scripts, Sage bridge, and workflow handoffs",
+        note: "Scripts, Sage bridge, and handoffs",
         href: "/dashboard/automations",
         icon: <IconAutomation className="size-4" />,
         tone: "automation",
@@ -1491,7 +1490,7 @@ function CompassDashboard({
               <CardTitle>Compass View</CardTitle>
             </div>
             <CardDescription>
-              The same dashboard signals arranged as an operational map.
+              Operational map
             </CardDescription>
           </CardHeader>
         </Card>

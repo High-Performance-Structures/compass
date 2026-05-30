@@ -557,8 +557,7 @@ export function ProjectContactMatchReviewPanel({
               <h2 className="text-sm font-semibold">Compass Contacts</h2>
             </div>
             <p className="mt-1 text-xs text-muted-foreground">
-              These are the approved project contacts available for assigning
-              Sage, schedule, and Buildertrend source names.
+              Approved contacts available for imported names.
             </p>
           </div>
           <Badge variant="secondary">{review.contacts.length} contacts</Badge>

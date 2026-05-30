@@ -334,8 +334,7 @@ export default async function ProjectPurchaseOrdersPage({
           </div>
           <p className="mt-1 text-sm text-muted-foreground">
             {project?.projectNumber ? `${project.projectNumber} - ` : ""}
-            {project?.name ?? "Project"} purchase orders, vendor commitments,
-            and optional accounting sync.
+            {project?.name ?? "Project"} purchase orders and vendor commitments.
           </p>
         </div>
         <div className="flex flex-col items-stretch gap-2 sm:items-end">
@@ -360,8 +359,7 @@ export default async function ProjectPurchaseOrdersPage({
           <div>
             <h2 className="text-sm font-semibold">P.O. queue</h2>
             <p className="mt-1 text-sm text-muted-foreground">
-              Stage vendor commitments, print pickup copies, email suppliers,
-              and keep the Sage write path visible without blocking the workday.
+              Stage commitments, print pickup copies, and email suppliers.
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -394,7 +392,7 @@ export default async function ProjectPurchaseOrdersPage({
             <IconShoppingCart className="mx-auto size-6 text-muted-foreground" />
             <h2 className="mt-3 text-sm font-semibold">No PO requests yet</h2>
             <p className="mt-1 text-sm text-muted-foreground">
-              Create a PO request when a vendor commitment is ready to stage.
+              Create a PO when a vendor commitment is ready.
             </p>
           </div>
         )}

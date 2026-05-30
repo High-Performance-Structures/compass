@@ -68,8 +68,7 @@ function InternalContactsTable({
       <div className="rounded-md border border-dashed p-8 text-center">
         <p className="text-muted-foreground">No internal contacts yet</p>
         <p className="mt-1 text-sm text-muted-foreground/70">
-          HPS, Nu-Tech, ORC, and employee records will appear here after they
-          are imported or assigned to projects.
+          Import or assign employees to projects.
         </p>
       </div>
     )

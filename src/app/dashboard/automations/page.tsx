@@ -55,7 +55,7 @@ const GOOGLE_SCRIPTS: readonly AutomationScript[] = [
     source: "HPS Projects",
     scriptId: "1lURNLz1gp29Df2kMD8veaSoJQrAB4lNvRX-FtzFcbAwP8HD_vB7lJg8Z",
     summary:
-      "Keeps the existing Google intake flow available while Compass takes over review, registry, and project visibility decisions.",
+      "Keeps Google intake available while project review moves into Compass.",
     owns: ["Form submit trigger", "Intake handoff", "Drive-side setup"],
   },
   {
@@ -65,7 +65,7 @@ const GOOGLE_SCRIPTS: readonly AutomationScript[] = [
     source: "HPS Projects",
     scriptId: "11BxRLRu6YYVbWwvlqDNlnpPlCcs3fBhq5OkKaaugfAm-mZUxkBWvxqZ5",
     summary:
-      "Belongs with NuTech order intake until purchase/order workflows are modeled directly in Compass.",
+      "Supports NuTech order intake until Compass order tools are ready.",
     owns: ["PO intake", "Order tracking", "Google-side handoff"],
   },
   {
@@ -75,7 +75,7 @@ const GOOGLE_SCRIPTS: readonly AutomationScript[] = [
     source: "Developer",
     scriptId: "1Xjes03vcZScLxnmoEfnuwghe3v-ehR0sZDklyCJF3b2J29bGQYP8_ljX",
     summary:
-      "Useful as a schedule template/generation reference while Compass standardizes schedule records and project calendar outputs.",
+      "Reference for schedule templates and project calendar exports.",
     owns: ["Schedule templates", "Sheet output", "Calendar handoff"],
   },
 ]
@@ -86,28 +86,28 @@ const WORKFLOW_LANES = [
     icon: IconFolderPlus,
     owner: "Compass primary",
     body:
-      "Compass should own the final project record, registry mapping, and permission decisions. Google can still create folders and templates during the transition.",
+      "Compass owns project records, registry mapping, and permission decisions. Google can still create folders and templates during the transition.",
   },
   {
     title: "Form intake",
     icon: IconForms,
     owner: "Google trigger",
     body:
-      "Keep Google-native form-submit triggers where the event starts in Forms or Sheets, then hand the result to Compass for review.",
+      "Keep form-submit triggers in Forms or Sheets, then hand results to Compass.",
   },
   {
     title: "Schedule refresh",
     icon: IconCalendarStats,
     owner: "Compass primary",
     body:
-      "Compass should display and compare schedule data. Existing Sheets scripts are references or import/export helpers, not the long-term schedule UI.",
+      "Compass displays and compares schedule data. Existing Sheets scripts are reference import/export helpers.",
   },
   {
     title: "Order handoff",
     icon: IconClipboardText,
     owner: "Bridge first",
     body:
-      "NuTech order tools can stay in Google until Compass has clean order, vendor, product, and Sage handoff models.",
+      "NuTech order tools can stay in Google until order, vendor, product, and Sage handoffs are ready.",
   },
 ] as const
 
@@ -175,8 +175,7 @@ export default async function AutomationsPage() {
             <Badge variant="outline">Google transition layer</Badge>
           </div>
           <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
-            Google-native triggers stay visible here while Compass becomes the
-            review, registry, permission, and dashboard surface.
+            Google scripts, triggers, and handoffs.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -203,7 +202,7 @@ export default async function AutomationsPage() {
               <CardTitle>Script Inventory</CardTitle>
             </div>
             <CardDescription>
-              Existing Google scripts with clear ownership and a migration path.
+              Existing Google scripts and ownership.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
@@ -274,7 +273,7 @@ export default async function AutomationsPage() {
                 <CardTitle>Placement Rule</CardTitle>
               </div>
               <CardDescription>
-                Keep triggers close to their source; keep decisions in Compass.
+                Triggers stay close to their source.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-3 text-sm text-muted-foreground">
@@ -294,8 +293,7 @@ export default async function AutomationsPage() {
                   Compass
                 </div>
                 <p className="mt-1">
-                  Project registry, review queues, dashboard visibility, Sage
-                  handoff, and audit-friendly status.
+                  Project registry, review queues, visibility, and Sage handoff.
                 </p>
               </div>
             </CardContent>
@@ -305,7 +303,7 @@ export default async function AutomationsPage() {
             <CardHeader>
               <CardTitle>Workflow Lanes</CardTitle>
               <CardDescription>
-                Where each script family should land.
+                Script groups and owners.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">

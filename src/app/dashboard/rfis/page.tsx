@@ -1,12 +1,7 @@
-import Link from "next/link"
-import {
-  IconMessageQuestion,
-  IconSearch,
-} from "@tabler/icons-react"
+import { IconMessageQuestion } from "@tabler/icons-react"
 
 import { getProjects } from "@/app/actions/projects"
 import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
 import { ProjectQuickSwitcher } from "@/components/projects/project-quick-switcher"
 
 export default async function RfiProjectPickerPage() {
@@ -20,9 +15,7 @@ export default async function RfiProjectPickerPage() {
           <h1 className="text-2xl font-semibold tracking-tight">RFIs</h1>
         </div>
         <p className="mt-2 text-sm text-muted-foreground">
-          Choose the project before creating or answering an RFI. Compass keeps
-          the form locked behind a project selection so questions stay attached
-          to the right job.
+          Choose a project before creating or answering an RFI.
         </p>
       </div>
 
@@ -31,28 +24,21 @@ export default async function RfiProjectPickerPage() {
           <div>
             <p className="text-sm font-semibold">Project required first</p>
             <p className="mt-1 text-sm opacity-80">
-              If a subcontractor works on more than one job, this screen should
-              be their pause point before they type the question.
+              Keeps questions tied to the right job.
             </p>
           </div>
-          <Badge variant="secondary">Wrong-job protection</Badge>
+          <Badge variant="secondary">Project lock</Badge>
         </div>
       </section>
 
       <section className="space-y-3">
-        <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
           <div>
             <h2 className="text-sm font-semibold">Select project</h2>
             <p className="mt-1 text-sm text-muted-foreground">
               Search by project number, name, client, or accounting context.
             </p>
           </div>
-          <Button asChild variant="outline" size="sm">
-            <Link href="/dashboard/projects">
-              <IconSearch className="size-4" />
-              Browse projects
-            </Link>
-          </Button>
         </div>
 
         {projects.length > 0 ? (
@@ -64,7 +50,7 @@ export default async function RfiProjectPickerPage() {
               className="w-full"
             />
             <p className="mt-3 text-xs text-muted-foreground">
-              Choosing a project opens that project&apos;s RFI queue directly.
+              Opens the RFI queue for the selected project.
             </p>
           </div>
         ) : (
@@ -72,7 +58,7 @@ export default async function RfiProjectPickerPage() {
             <IconMessageQuestion className="mx-auto size-6 text-muted-foreground" />
             <h2 className="mt-3 text-sm font-semibold">No projects available</h2>
             <p className="mt-1 text-sm text-muted-foreground">
-              Add or sync projects before creating RFIs.
+              Add or sync projects first.
             </p>
           </div>
         )}

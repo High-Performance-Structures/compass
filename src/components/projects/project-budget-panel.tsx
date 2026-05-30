@@ -50,7 +50,7 @@ export function ProjectBudgetPanel({
           <h2 className="text-sm font-medium">Project Budget</h2>
         </div>
         <p className="mt-2 text-sm text-muted-foreground">
-          No Sage budget snapshot has been mapped into Compass yet.
+          No budget snapshot mapped yet.
         </p>
       </section>
     )
@@ -69,7 +69,7 @@ export function ProjectBudgetPanel({
             <h2 className="text-sm font-medium">Project Budget</h2>
           </div>
           <p className="mt-1 text-xs text-muted-foreground">
-            Sage-backed Schedule of Values, shaped like a running G703.
+            Schedule of Values and G703 progress.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -166,8 +166,8 @@ export function ProjectBudgetPanel({
       <div className="mt-4 flex items-start gap-2 border-t pt-3 text-xs text-muted-foreground">
         <IconLock className="mt-0.5 size-4 shrink-0" />
         <p>
-          Internal users can see all Sage/SOV detail. Owner view uses approved
-          owner-safe budget detail, with H jobs rolled up to category level.
+          Internal view shows all budget detail. Owner view uses approved
+          detail, with H jobs rolled up to category level.
         </p>
       </div>
     </section>

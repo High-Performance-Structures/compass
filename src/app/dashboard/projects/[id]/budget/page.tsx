@@ -54,8 +54,7 @@ export default async function ProjectBudgetPage({
             </h1>
           </div>
           <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
-            Internal budget detail and owner-safe Schedule of Values view for
-            this project. Sage can sync into this view when connected.
+            Internal budget detail and owner-safe Schedule of Values.
           </p>
         </div>
         <div className="flex flex-col items-stretch gap-2 sm:items-end">
@@ -72,7 +71,7 @@ export default async function ProjectBudgetPage({
             </Badge>
             <Badge variant="secondary">
               <IconEye className="mr-1 size-3" />
-              Owner-filtered preview
+              Owner view
             </Badge>
           </div>
         </div>
@@ -87,8 +86,8 @@ export default async function ProjectBudgetPage({
           <div className="mb-3 flex items-center justify-between gap-3">
             <div>
               <h2 className="text-sm font-semibold">Internal G703</h2>
-              <p className="text-xs text-muted-foreground">
-                All mapped lines, including internal-only details.
+            <p className="text-xs text-muted-foreground">
+                All mapped lines and internal-only detail.
               </p>
             </div>
           </div>
@@ -101,9 +100,9 @@ export default async function ProjectBudgetPage({
           <div className="mb-3 flex items-center justify-between gap-3">
             <div>
               <h2 className="text-sm font-semibold">Owner View</h2>
-              <p className="text-xs text-muted-foreground">
-                O jobs show owner-approved cost-code detail. H jobs roll the
-                owner view up to overall categories.
+            <p className="text-xs text-muted-foreground">
+                O jobs show approved cost-code detail. H jobs roll up to
+                categories.
               </p>
             </div>
           </div>

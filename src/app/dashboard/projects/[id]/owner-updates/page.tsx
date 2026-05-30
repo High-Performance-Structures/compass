@@ -79,8 +79,7 @@ export default async function ProjectOwnerUpdatesPage({
             Owner Updates
           </h1>
           <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
-            A dedicated publishing queue for owner-facing updates generated
-            from approved daily logs and owner-visible photos.
+            Draft, review, and publish owner-facing updates.
           </p>
         </div>
         <div className="flex flex-col items-stretch gap-2 sm:items-end">
@@ -141,7 +140,7 @@ export default async function ProjectOwnerUpdatesPage({
             <CardTitle>Latest Owner Update</CardTitle>
           </div>
           <CardDescription>
-            This page is the build-out home for the owner update queue.
+            Latest published or drafted update.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -175,8 +174,8 @@ export default async function ProjectOwnerUpdatesPage({
             </Link>
           ) : (
             <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
-              No owner updates have been drafted for this project yet. Start
-              from Daily Logs when approved field notes are ready.
+              No owner updates have been drafted yet. Start from Daily Logs
+              when field notes are ready.
             </div>
           )}
         </CardContent>

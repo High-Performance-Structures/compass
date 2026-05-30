@@ -136,7 +136,7 @@ export function ProjectRfiPanel({
             <h2 className="text-sm font-medium">RFIs</h2>
           </div>
           <p className="mt-1 text-xs text-muted-foreground">
-            Questions, answers, and visibility for owner/sub/vendor previews.
+            Questions, answers, and visibility.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">

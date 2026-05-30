@@ -160,8 +160,7 @@ export default async function ProjectRfisPage({
           <div>
             <h2 className="text-sm font-semibold">RFI queue</h2>
             <p className="mt-1 text-sm text-muted-foreground">
-              Track questions, assignments, due dates, visibility, and
-              responses from one project context.
+              Track questions, assignments, due dates, visibility, and responses.
             </p>
           </div>
           <ProjectRfiCreateForm
@@ -312,7 +311,7 @@ export default async function ProjectRfisPage({
             <IconClock className="mx-auto size-6 text-muted-foreground" />
             <h2 className="mt-3 text-sm font-semibold">No RFIs yet</h2>
             <p className="mt-1 text-sm text-muted-foreground">
-              Create the first clarification from this project context.
+              Create the first clarification for this project.
             </p>
           </div>
         )}

@@ -142,9 +142,7 @@ export function ProjectTaskCreateButton({
           <DialogHeader>
             <DialogTitle>Create task</DialogTitle>
             <DialogDescription>
-              Add a trackable to-do from this {sourceLabel.toLowerCase()}.
-              It will stay linked to this project and show up in operations and
-              the work calendar.
+              Add a to-do from this {sourceLabel.toLowerCase()}.
             </DialogDescription>
           </DialogHeader>
 

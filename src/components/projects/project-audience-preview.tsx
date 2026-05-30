@@ -58,8 +58,8 @@ function audienceLabel(value: ProjectAudience): string {
 
 function audienceDescription(value: ProjectAudience): string {
   return value === "owner"
-    ? "This is the owner-facing project view based on approved updates, schedule items, and owner-visible photos."
-    : "This is the sub/vendor-facing project view based on visible commitments, schedule items, and approved sub/vendor photos."
+    ? "Approved updates, schedule items, and owner-visible photos."
+    : "Visible commitments, schedule items, RFIs, and project photos."
 }
 
 function projectLabel(data: ProjectAudiencePreviewData): string {
@@ -547,7 +547,7 @@ function OwnerProjectPreview({
                 </div>
               ) : (
                 <p className="mt-4 rounded-md border p-3 text-sm text-muted-foreground">
-                  Upcoming schedule items will appear here.
+                  No upcoming schedule items.
                 </p>
               )}
             </section>
@@ -586,7 +586,7 @@ function OwnerProjectPreview({
                 })}
                 {!data.project.projectManager && data.contacts.length === 0 && (
                   <p className="rounded-md border p-3 text-sm text-muted-foreground">
-                    Project contacts will appear here once they are approved.
+                    No approved project contacts yet.
                   </p>
                 )}
               </div>
@@ -911,8 +911,7 @@ export function ProjectAudiencePreview({
               ) : (
                 <div className="mt-4 rounded-md border p-3">
                   <p className="text-sm text-muted-foreground">
-                    Project-scoped messaging is ready to connect when the
-                    project channel is created.
+                    No project channel yet.
                   </p>
                   <p className="mt-2 text-xs font-medium text-foreground">
                     Message target: {label}
