@@ -13,12 +13,16 @@ function main() {
 
     console.log(`Running ${migrations.length} migrations on ${DB_PATH}...`)
 
-    try {
-        for (const migration of migrations) {
+    const applyMigrations = db.transaction((migrationFiles) => {
+        for (const migration of migrationFiles) {
             const sql = readFileSync(join(MIGRATIONS_DIR, migration), "utf-8")
             console.log(`  ${migration}`)
             db.exec(sql)
         }
+    })
+
+    try {
+        applyMigrations(migrations)
     } finally {
         db.close()
     }
