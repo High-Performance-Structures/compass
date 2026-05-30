@@ -9,6 +9,7 @@ import {
   IconAutomation,
   IconBriefcase,
   IconCalendarWeek,
+  IconChevronDown,
   IconChevronRight,
   IconCurrencyDollar,
   IconDatabaseImport,
@@ -51,6 +52,11 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible"
 import { Progress } from "@/components/ui/progress"
 import {
   Select,
@@ -948,6 +954,7 @@ function CherishPulse(): React.ReactElement {
     useState<CherishPulseResponseType>("shoutout")
   const [responseText, setResponseText] = useState("")
   const [responses, setResponses] = useState<readonly CherishPulseReviewItem[]>([])
+  const [responseDoorsOpen, setResponseDoorsOpen] = useState(false)
   const [reviewQueueAvailable, setReviewQueueAvailable] = useState(true)
   const [submitMessage, setSubmitMessage] = useState<string | null>(null)
   const [reviewMessage, setReviewMessage] = useState<string | null>(null)
@@ -1005,6 +1012,12 @@ function CherishPulse(): React.ReactElement {
     })
   }
 
+  function handleResponseTypeChange(value: string): void {
+    if (value === "shoutout" || value === "concern" || value === "win") {
+      setResponseType(value)
+    }
+  }
+
   function handleReviewResponse(
     id: string,
     decision: CherishPulseReviewDecision
@@ -1036,10 +1049,10 @@ function CherishPulse(): React.ReactElement {
 
   return (
     <Card className="rounded-lg border-emerald-900/10 bg-emerald-950/[0.025]">
-      <CardContent className="grid gap-4 p-4 xl:grid-cols-[minmax(0,1fr)_22rem]">
+      <CardContent className="grid gap-3 p-3 xl:grid-cols-[minmax(0,1fr)_19rem]">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="rounded-md border bg-background p-2 text-emerald-800">
+            <span className="rounded-md border bg-background p-1.5 text-emerald-800">
               <IconUserHeart className="size-4" />
             </span>
             <p className="text-sm font-semibold">Thursday Pulse</p>
@@ -1047,23 +1060,26 @@ function CherishPulse(): React.ReactElement {
             <Badge variant="outline">Field friendly</Badge>
           </div>
 
-          <div className="mt-4 rounded-lg border bg-background p-4">
-            <p className="text-xs font-semibold uppercase tracking-normal text-muted-foreground">
-              This week: Reliability
-            </p>
-            <h2 className="mt-1 text-xl font-semibold tracking-tight">
-              Who helped keep something moving this week?
+          <div className="mt-3 rounded-lg border bg-background p-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="text-xs font-semibold uppercase tracking-normal text-muted-foreground">
+                This week
+              </p>
+              <Badge className="bg-emerald-700">Reliability</Badge>
+            </div>
+            <h2 className="mt-2 text-lg font-semibold tracking-tight">
+              Who helped keep something moving?
             </h2>
-            <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
-              Tell us where you saw the good stuff. A shoutout, a project win,
-              or something leadership should hear privately.
+            <p className="mt-1.5 max-w-3xl text-sm leading-5 text-muted-foreground">
+              A lightweight place for shoutouts, project wins, and private
+              concerns without pulling the dashboard away from project work.
             </p>
-            <div className="mt-4 flex flex-wrap gap-2">
+            <div className="mt-3 flex flex-wrap gap-1.5">
               {CHERISH_VALUES.map((value) => (
                 <span
                   key={value}
                   className={cn(
-                    "rounded-full border px-2.5 py-1 text-xs font-medium",
+                    "rounded-full border px-2 py-0.5 text-[11px] font-medium",
                     value === "Reliability"
                       ? "border-emerald-700 bg-emerald-700 text-white"
                       : "bg-muted/40 text-muted-foreground"
@@ -1074,46 +1090,45 @@ function CherishPulse(): React.ReactElement {
               ))}
             </div>
           </div>
+        </div>
 
-          <div className="mt-3 grid gap-3 md:grid-cols-3">
-            {(["shoutout", "concern", "win"] as const).map((type) => {
-              const copy = CHERISH_RESPONSE_COPY[type]
-              const active = responseType === type
-
-              return (
-                <button
-                  key={type}
-                  type="button"
-                  onClick={() => setResponseType(type)}
-                  className={cn(
-                    "rounded-lg border bg-background p-3 text-left transition-all hover:-translate-y-0.5 hover:border-emerald-300 hover:shadow-md",
-                    active && "border-emerald-700 bg-emerald-50 shadow-sm"
-                  )}
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <p className="text-sm font-semibold">{copy.label}</p>
-                    <Badge variant={copy.visibility === "private" ? "secondary" : "outline"}>
-                      {copy.visibility === "private" ? "Private" : "Team"}
-                    </Badge>
-                  </div>
-                  <p className="mt-2 line-clamp-2 text-xs text-muted-foreground">
-                    {copy.prompt}
-                  </p>
-                </button>
-              )
-            })}
+        <aside className="rounded-lg border bg-background p-3">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="text-sm font-semibold">Respond</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Keep it quick; Compass routes it appropriately.
+              </p>
+            </div>
+            <Badge variant={activeCopy.visibility === "private" ? "secondary" : "outline"}>
+              {activeCopy.visibility === "private" ? "Private" : "Team"}
+            </Badge>
           </div>
 
-          <div className="mt-3 rounded-lg border bg-background p-3">
-            <p className="text-sm font-medium">{activeCopy.prompt}</p>
+          <div className="mt-3 grid gap-2">
+            <Select value={responseType} onValueChange={handleResponseTypeChange}>
+              <SelectTrigger className="h-9">
+                <SelectValue aria-label={activeCopy.label} />
+              </SelectTrigger>
+              <SelectContent>
+                {(["shoutout", "concern", "win"] as const).map((type) => (
+                  <SelectItem key={type} value={type}>
+                    {CHERISH_RESPONSE_COPY[type].label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="line-clamp-2 text-xs text-muted-foreground">
+              {activeCopy.prompt}
+            </p>
             <Textarea
               value={responseText}
               onChange={(event) => setResponseText(event.target.value)}
               placeholder={activeCopy.placeholder}
-              className="mt-2 min-h-24 resize-none"
+              className="min-h-16 resize-none"
             />
-            <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
-              <p className="text-xs text-muted-foreground">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="line-clamp-1 text-xs text-muted-foreground">
                 Routed as {activeCopy.visibility === "private" ? "private leadership feedback" : "team-visible after review"}.
               </p>
               <Button
@@ -1138,40 +1153,60 @@ function CherishPulse(): React.ReactElement {
               </p>
             )}
           </div>
-        </div>
 
-        <aside className="rounded-lg border bg-background p-4">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <p className="text-sm font-semibold">Response doors</p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                Same prompt, different ways in.
-              </p>
-            </div>
-            <Badge variant="outline">Compass storage</Badge>
-          </div>
-          <div className="mt-4 grid gap-2">
-            {[
-              ["Compass app", "Big mobile buttons for crew and office."],
-              ["Telegram", "Reply to the weekly prompt in the field."],
-              ["ExakTime", "Review comments that should become feedback."],
-              ["Admin entry", "Log a phone call or text on someone’s behalf."],
-            ].map(([label, detail]) => (
-              <div key={label} className="rounded-md border bg-muted/20 p-2.5">
-                <p className="text-xs font-semibold">{label}</p>
-                <p className="mt-1 text-xs text-muted-foreground">{detail}</p>
+          <Collapsible
+            open={responseDoorsOpen}
+            onOpenChange={setResponseDoorsOpen}
+            className="mt-3 rounded-md border bg-muted/20"
+          >
+            <CollapsibleTrigger asChild>
+              <button
+                type="button"
+                className="flex w-full items-center justify-between gap-3 px-2.5 py-2 text-left"
+              >
+                <span>
+                  <span className="block text-xs font-semibold">
+                    Response doors
+                  </span>
+                  <span className="text-xs text-muted-foreground">
+                    Same prompt, different ways in.
+                  </span>
+                </span>
+                <IconChevronDown
+                  className={cn(
+                    "size-4 shrink-0 text-muted-foreground transition-transform",
+                    responseDoorsOpen && "rotate-180"
+                  )}
+                />
+              </button>
+            </CollapsibleTrigger>
+            <CollapsibleContent>
+              <div className="grid gap-2 border-t p-2.5">
+                {[
+                  ["Compass app", "Big mobile buttons for crew and office."],
+                  ["Telegram", "Reply to the weekly prompt in the field."],
+                  ["ExakTime", "Review comments that should become feedback."],
+                  ["Admin entry", "Log a phone call or text on someone’s behalf."],
+                ].map(([label, detail]) => (
+                  <div key={label} className="rounded-md border bg-background p-2">
+                    <p className="text-xs font-semibold">{label}</p>
+                    <p className="mt-1 text-xs text-muted-foreground">{detail}</p>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
+            </CollapsibleContent>
+          </Collapsible>
 
-          <div className="mt-4 border-t pt-4">
+          <div className="mt-3 border-t pt-3">
             <div className="flex items-center justify-between gap-3">
               <p className="text-sm font-semibold">
                 {reviewQueueAvailable ? "Review queue" : "Leadership review"}
               </p>
-              <Badge variant="secondary">{reviewQueueAvailable ? responses.length : "Secure"}</Badge>
+              <Badge variant="secondary">
+                {reviewQueueAvailable ? responses.length : "Secure"}
+              </Badge>
             </div>
-            <div className="mt-3 space-y-2">
+            <div className="mt-2 space-y-2">
               {!reviewQueueAvailable && (
                 <div className="rounded-md border bg-muted/20 p-2.5">
                   <p className="text-xs text-muted-foreground">
@@ -1187,7 +1222,7 @@ function CherishPulse(): React.ReactElement {
                   </p>
                 </div>
               )}
-              {reviewQueueAvailable && responses.slice(0, 4).map((response) => (
+              {reviewQueueAvailable && responses.slice(0, 2).map((response) => (
                 <div
                   key={response.id}
                   className={cn(
@@ -1709,8 +1744,6 @@ export function OperationalDashboard({
         <>
       <FieldPulse photos={overview.fieldPhotos} />
 
-      <CherishPulse />
-
       <DashboardCommandCenter overview={overview} />
 
       <div className="grid grid-cols-1 gap-4">
@@ -1870,6 +1903,8 @@ export function OperationalDashboard({
         </Card>
 
       </div>
+
+      <CherishPulse />
 
       <Card className="rounded-lg">
         <CardContent className="grid gap-3 p-3 md:grid-cols-[minmax(0,1fr)_auto_auto_auto] md:items-center">
