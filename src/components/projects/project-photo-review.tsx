@@ -506,6 +506,9 @@ export function ProjectPhotoReview({
         )
         setMessage(`Updated ${result.updatedCount} photos.`)
         clearSelection()
+        setOwnerVisible(false)
+        setSubVendorVisible(false)
+        setPublicShareable(false)
       } else {
         setMessage(result.error)
       }
@@ -545,6 +548,9 @@ export function ProjectPhotoReview({
         )
         setMessage(`Rejected ${result.updatedCount} photos.`)
         clearSelection()
+        setOwnerVisible(false)
+        setSubVendorVisible(false)
+        setPublicShareable(false)
       } else {
         setMessage(result.error)
       }
