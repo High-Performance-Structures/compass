@@ -95,63 +95,79 @@ export default async function ProjectSectionPickerPage({
   const projects = await getProjects()
 
   return (
-    <div className="flex-1 space-y-6 p-4 pt-6 sm:p-6 md:p-8">
-      <div className="max-w-3xl">
-        <div className="flex items-center gap-2">
-          {target.icon}
-          <h1 className="text-2xl font-semibold tracking-tight">
-            {target.title}
-          </h1>
-        </div>
-        <p className="mt-2 text-sm text-muted-foreground">
-          {target.description} Compass will not guess a project for this
-          workflow.
-        </p>
-      </div>
-
-      <section className="rounded-xl border bg-muted/30 p-4">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <p className="text-sm font-semibold">Project required first</p>
-            <p className="mt-1 text-sm text-muted-foreground">
-              This keeps owner updates, logs, photos, budgets, contacts, and
-              schedules attached to the intended job.
-            </p>
+    <div className="relative flex-1 overflow-hidden p-4 pt-6 sm:p-6 md:p-8">
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-0 z-0 bg-cover bg-center opacity-[0.07] grayscale"
+        style={{
+          backgroundImage:
+            "url('/owner-update-photos/loomis/2026-04-13-144739.jpg')",
+        }}
+      />
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-0 z-0 bg-gradient-to-br from-background via-background/95 to-background/80"
+      />
+      <div className="relative z-10 space-y-6">
+        <div className="max-w-3xl">
+          <div className="flex items-center gap-2">
+            {target.icon}
+            <h1 className="text-2xl font-semibold tracking-tight">
+              {target.title}
+            </h1>
           </div>
-          <Badge variant="secondary">{target.badge}</Badge>
-        </div>
-      </section>
-
-      <section className="space-y-3">
-        <div>
-          <h2 className="text-sm font-semibold">Select project</h2>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Search by project number, name, client, or accounting context.
+          <p className="mt-2 text-sm text-muted-foreground">
+            {target.description} Compass will not guess a project for this
+            workflow.
           </p>
         </div>
 
-        {projects.length > 0 ? (
-          <div className="max-w-xl rounded-xl border bg-background p-4 shadow-sm">
-            <ProjectQuickSwitcher
-              projects={projects}
-              targetSection={target.section}
-              placeholder={target.placeholder}
-              className="w-full"
-            />
-            <p className="mt-3 text-xs text-muted-foreground">
-              Choosing a project opens that project&apos;s {target.title} view.
-            </p>
+        <section className="rounded-xl border bg-muted/30 p-4">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <p className="text-sm font-semibold">Project required first</p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                This keeps owner updates, logs, photos, budgets, contacts, and
+                schedules attached to the intended job.
+              </p>
+            </div>
+            <Badge variant="secondary">{target.badge}</Badge>
           </div>
-        ) : (
-          <div className="rounded-lg border bg-background p-8 text-center">
-            <IconFolderSearch className="mx-auto size-6 text-muted-foreground" />
-            <h2 className="mt-3 text-sm font-semibold">No projects available</h2>
+        </section>
+
+        <section className="space-y-3">
+          <div>
+            <h2 className="text-sm font-semibold">Select project</h2>
             <p className="mt-1 text-sm text-muted-foreground">
-              Add projects before opening this workflow.
+              Search by project number, name, client, or accounting context.
             </p>
           </div>
-        )}
-      </section>
+
+          {projects.length > 0 ? (
+            <div className="max-w-xl rounded-xl border bg-background p-4 shadow-sm">
+              <ProjectQuickSwitcher
+                projects={projects}
+                targetSection={target.section}
+                placeholder={target.placeholder}
+                className="w-full"
+              />
+              <p className="mt-3 text-xs text-muted-foreground">
+                Choosing a project opens that project&apos;s {target.title} view.
+              </p>
+            </div>
+          ) : (
+            <div className="rounded-lg border bg-background p-8 text-center">
+              <IconFolderSearch className="mx-auto size-6 text-muted-foreground" />
+              <h2 className="mt-3 text-sm font-semibold">
+                No projects available
+              </h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Add projects before opening this workflow.
+              </p>
+            </div>
+          )}
+        </section>
+      </div>
     </div>
   )
 }
