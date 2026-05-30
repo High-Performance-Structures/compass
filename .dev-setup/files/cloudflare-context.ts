@@ -19,6 +19,7 @@ type SqliteStatement = {
 type SqliteDatabase = {
     prepare: (sql: string) => SqliteStatement
     exec: (sql: string) => void
+    transaction: <T>(fn: () => T) => () => T
     close: () => void
 }
 
@@ -99,6 +100,10 @@ class LocalPreparedStatement {
     }
 
     async run(): Promise<D1Result> {
+        return this.runSync()
+    }
+
+    runSync(): D1Result {
         const results: unknown[] = []
         const result = this.db
             .prepare(this.query)
@@ -117,11 +122,15 @@ class LocalPreparedStatement {
     }
 
     async executeBatch<T = unknown>(): Promise<D1Result<T>> {
+        return this.executeBatchSync<T>()
+    }
+
+    executeBatchSync<T = unknown>(): D1Result<T> {
         if (this.returnsRows()) {
-            return this.all<T>()
+            return this.allSync<T>()
         }
 
-        const result = await this.run()
+        const result = this.runSync()
         return {
             results: [],
             success: result.success,
@@ -130,6 +139,10 @@ class LocalPreparedStatement {
     }
 
     async all<T = unknown>(): Promise<D1Result<T>> {
+        return this.allSync<T>()
+    }
+
+    allSync<T = unknown>(): D1Result<T> {
         const results = this.db
             .prepare(this.query)
             .all(...toSqlValues(this.boundValues)) as T[]
@@ -172,11 +185,10 @@ class LocalD1Database {
     async batch<T = unknown>(
         statements: LocalPreparedStatement[]
     ): Promise<D1Result<T>[]> {
-        const results: D1Result<T>[] = []
-        for (const stmt of statements) {
-            results.push(await stmt.executeBatch<T>())
-        }
-        return results
+        const runBatch = this.db.transaction(() =>
+            statements.map((stmt) => stmt.executeBatchSync<T>())
+        )
+        return runBatch()
     }
 
     async exec(query: string): Promise<D1Result> {
