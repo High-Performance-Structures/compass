@@ -1,5 +1,4 @@
 import type * as React from "react"
-import Link from "next/link"
 import {
   IconAddressBook,
   IconClipboardText,
@@ -7,13 +6,11 @@ import {
   IconFolderSearch,
   IconMailForward,
   IconPhoto,
-  IconSearch,
 } from "@tabler/icons-react"
 
 import { getProjects } from "@/app/actions/projects"
 import { ProjectQuickSwitcher } from "@/components/projects/project-quick-switcher"
 import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
 
 type ProjectTarget = {
   readonly section: string
@@ -126,19 +123,11 @@ export default async function ProjectSectionPickerPage({
       </section>
 
       <section className="space-y-3">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h2 className="text-sm font-semibold">Select project</h2>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Search by project number, name, client, or accounting context.
-            </p>
-          </div>
-          <Button asChild variant="outline" size="sm">
-            <Link href="/dashboard/projects">
-              <IconSearch className="size-4" />
-              Browse projects
-            </Link>
-          </Button>
+        <div>
+          <h2 className="text-sm font-semibold">Select project</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Search by project number, name, client, or accounting context.
+          </p>
         </div>
 
         {projects.length > 0 ? (
