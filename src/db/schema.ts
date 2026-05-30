@@ -328,6 +328,7 @@ export const dailyLogPhotos = sqliteTable("daily_log_photos", {
     mode: "boolean",
   }).notNull().default(false),
   photoKind: text("photo_kind").notNull().default("progress"),
+  schedulePhaseOverride: text("schedule_phase_override"),
   sortOrder: integer("sort_order").notNull().default(0),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),

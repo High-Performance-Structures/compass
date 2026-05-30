@@ -11,6 +11,7 @@ import {
 } from "@tabler/icons-react"
 
 import {
+  updateProjectPhotoPhase,
   updateProjectPhotoPermissions,
   type ProjectPhotoLibrary,
   type ProjectPhotoLibraryItem,
@@ -276,6 +277,36 @@ export function ProjectPhotoReview({
 
   function openPreview(photo: ProjectPhotoLibraryItem): void {
     setPreviewPhoto(photo)
+  }
+
+  function changePhotoPhase(photoId: string, phase: string): void {
+    setMessage(null)
+    startTransition(async () => {
+      const result = await updateProjectPhotoPhase(
+        library.project.id,
+        photoId,
+        phase
+      )
+
+      if (result.success) {
+        setPhotos((current) =>
+          current.map((photo) =>
+            photo.id === photoId
+              ? {
+                  ...photo,
+                  schedulePhase: result.phase,
+                  schedulePhaseConfidence: 100,
+                  schedulePhaseReason:
+                    "Phase was manually assigned during photo review.",
+                }
+              : photo
+          )
+        )
+        setMessage(`Updated phase to ${result.phase}.`)
+      } else {
+        setMessage(result.error)
+      }
+    })
   }
 
   function applyPermissions(): void {
@@ -644,9 +675,23 @@ export function ProjectPhotoReview({
                     </span>
                     {selected ? "Selected" : "Select"}
                   </button>
-                  <span className="truncate text-xs text-muted-foreground">
-                    Suggested: {photo.schedulePhase}
-                  </span>
+                  <label className="flex min-w-0 flex-1 items-center justify-end gap-1 text-xs text-muted-foreground">
+                    <span className="shrink-0">Phase</span>
+                    <select
+                      value={photo.schedulePhase}
+                      onChange={(event) =>
+                        changePhotoPhase(photo.id, event.target.value)
+                      }
+                      disabled={isPending}
+                      className="h-7 min-w-0 max-w-[150px] rounded border bg-background px-1.5 text-xs text-foreground"
+                    >
+                      {library.phases.map((phase) => (
+                        <option key={phase.value} value={phase.value}>
+                          {phase.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
                 </div>
                 {href && (
                   <a

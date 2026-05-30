@@ -63,6 +63,10 @@ type UpdateResult =
   | { readonly success: true; readonly updatedCount: number }
   | { readonly success: false; readonly error: string }
 
+type UpdatePhotoPhaseResult =
+  | { readonly success: true; readonly phase: string }
+  | { readonly success: false; readonly error: string }
+
 type PhaseSuggestion = {
   readonly phase: string
   readonly confidence: number
@@ -276,20 +280,22 @@ function suggestPhaseForPhoto(
 }
 
 function phaseOptions(
-  photos: readonly ProjectPhotoLibraryItem[]
+  photos: readonly ProjectPhotoLibraryItem[],
+  phases: readonly string[]
 ): readonly ProjectPhotoPhaseOption[] {
   const counts = new Map<string, number>()
   for (const photo of photos) {
     counts.set(photo.schedulePhase, (counts.get(photo.schedulePhase) ?? 0) + 1)
   }
 
-  return [...counts.entries()]
-    .sort(([left], [right]) => {
+  return [...new Set([...phases, ...counts.keys(), "Unassigned phase"])]
+    .filter((phase) => phase.trim().length > 0)
+    .sort((left, right) => {
       if (left === "Unassigned phase") return 1
       if (right === "Unassigned phase") return -1
       return left.localeCompare(right)
     })
-    .map(([value, count]) => ({ value, label: value, count }))
+    .map((value) => ({ value, label: value, count: counts.get(value) ?? 0 }))
 }
 
 export async function getProjectPhotoLibrary(
@@ -328,6 +334,7 @@ export async function getProjectPhotoLibrary(
       subVendorVisible: dailyLogPhotos.subVendorVisible,
       publicShareable: dailyLogPhotos.publicShareable,
       photoKind: dailyLogPhotos.photoKind,
+      schedulePhaseOverride: dailyLogPhotos.schedulePhaseOverride,
       createdAt: dailyLogPhotos.createdAt,
       logDate: dailyLogs.logDate,
       logWorkCompleted: dailyLogs.workCompleted,
@@ -349,6 +356,7 @@ export async function getProjectPhotoLibrary(
     .from(scheduleTasks)
     .where(eq(scheduleTasks.projectId, projectId))
     .orderBy(asc(scheduleTasks.sortOrder), asc(scheduleTasks.startDate))
+  const phaseNames = [...new Set(tasks.map((task) => task.phase))]
 
   const photos = rows.filter(isImage).map((row) => {
     const resolvedPhotoDate = photoDate({
@@ -356,20 +364,27 @@ export async function getProjectPhotoLibrary(
       logDate: row.logDate,
       createdAt: row.createdAt,
     })
-    const suggestion = suggestPhaseForPhoto(
-      resolvedPhotoDate,
-      [
-        row.fileName,
-        row.caption,
-        row.photoKind,
-        row.logWorkCompleted,
-        row.logIssues,
-        row.logNotes,
-      ]
-        .filter((part) => part !== null && part.trim().length > 0)
-        .join(" "),
-      tasks
-    )
+    const suggestion =
+      row.schedulePhaseOverride && row.schedulePhaseOverride.trim().length > 0
+        ? {
+            phase: row.schedulePhaseOverride,
+            confidence: 100,
+            reason: "Phase was manually assigned during photo review.",
+          }
+        : suggestPhaseForPhoto(
+            resolvedPhotoDate,
+            [
+              row.fileName,
+              row.caption,
+              row.photoKind,
+              row.logWorkCompleted,
+              row.logIssues,
+              row.logNotes,
+            ]
+              .filter((part) => part !== null && part.trim().length > 0)
+              .join(" "),
+            tasks
+          )
 
     return {
       id: row.id,
@@ -398,7 +413,65 @@ export async function getProjectPhotoLibrary(
   return {
     project,
     photos,
-    phases: phaseOptions(photos),
+    phases: phaseOptions(photos, phaseNames),
+  }
+}
+
+export async function updateProjectPhotoPhase(
+  projectId: string,
+  photoId: string,
+  phase: string
+): Promise<UpdatePhotoPhaseResult> {
+  try {
+    const user = await requireAuth()
+    if (isDemoUser(user.id)) {
+      return { success: false, error: "DEMO_READ_ONLY" }
+    }
+    requirePermission(user, "project", "update")
+    const orgId = requireOrg(user)
+
+    const { env } = await getCloudflareContext()
+    const db = getDb(env.DB)
+
+    const existing = await db
+      .select({ id: projects.id })
+      .from(projects)
+      .where(
+        and(eq(projects.id, projectId), eq(projects.organizationId, orgId))
+      )
+      .limit(1)
+
+    if (!existing[0]) {
+      return { success: false, error: "Project not found" }
+    }
+
+    const normalizedPhase = phase.trim()
+    if (normalizedPhase.length === 0) {
+      return { success: false, error: "Select a phase." }
+    }
+
+    await db
+      .update(dailyLogPhotos)
+      .set({
+        schedulePhaseOverride: normalizedPhase,
+        updatedAt: new Date().toISOString(),
+      })
+      .where(
+        and(eq(dailyLogPhotos.projectId, projectId), eq(dailyLogPhotos.id, photoId))
+      )
+
+    revalidatePath(`/dashboard/projects/${projectId}`)
+    revalidatePath(`/dashboard/projects/${projectId}/photos`)
+    revalidatePath(`/dashboard/projects/${projectId}/preview/owner`)
+    revalidatePath(`/dashboard/projects/${projectId}/preview/sub-vendor`)
+
+    return { success: true, phase: normalizedPhase }
+  } catch (error) {
+    return {
+      success: false,
+      error:
+        error instanceof Error ? error.message : "Unable to update photo phase",
+    }
   }
 }
 

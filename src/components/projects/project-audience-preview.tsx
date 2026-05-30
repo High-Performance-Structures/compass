@@ -9,7 +9,6 @@ import {
   IconExternalLink,
   IconFolder,
   IconMessageCircle,
-  IconPhoto,
   IconQuestionMark,
   IconSparkles,
   IconUsers,
@@ -35,7 +34,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { OwnerCoverPhotoControl } from "@/components/projects/owner-cover-photo-control"
-import { OwnerUpdatePhotoTile } from "@/components/projects/owner-update-photo-tile"
+import { ProjectAudiencePhotoGallery } from "@/components/projects/project-audience-photo-gallery"
 
 function formatDate(value: string | null): string {
   if (!value) return "Unscheduled"
@@ -595,35 +594,11 @@ function OwnerProjectPreview({
           </aside>
         </section>
 
-        <section
-          id="photos"
-          className="scroll-mt-6 rounded-lg border bg-background p-4 sm:p-5"
-        >
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="flex items-center gap-2">
-              <IconPhoto className="size-4 text-muted-foreground" />
-              <h2 className="text-sm font-semibold">Approved Photo Gallery</h2>
-            </div>
-            <Badge variant="outline">{data.photos.length} photos</Badge>
-          </div>
-          {data.photos.length > 0 ? (
-            <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-              {data.photos.map((photo) => (
-                <OwnerUpdatePhotoTile
-                  key={photo.id}
-                  fileName={photo.fileName}
-                  driveUrl={null}
-                  thumbnailUrl={photo.thumbnailUrl}
-                  caption={photo.caption}
-                />
-              ))}
-            </div>
-          ) : (
-            <p className="mt-4 rounded-md border p-3 text-sm text-muted-foreground">
-              No photos have been approved for this audience yet.
-            </p>
-          )}
-        </section>
+        <ProjectAudiencePhotoGallery
+          photos={data.photos}
+          title="Approved Photo Gallery"
+          emptyMessage="No photos have been approved for this audience yet."
+        />
       </div>
     </main>
   )
@@ -948,35 +923,11 @@ export function ProjectAudiencePreview({
           </section>
         )}
 
-        <section
-          id="photos"
-          className="scroll-mt-6 rounded-lg border bg-background p-4 sm:p-5"
-        >
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="flex items-center gap-2">
-              <IconPhoto className="size-4 text-muted-foreground" />
-              <h2 className="text-sm font-semibold">Visible Photos</h2>
-            </div>
-            <Badge variant="outline">{data.photos.length} photos</Badge>
-          </div>
-          {data.photos.length > 0 ? (
-            <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-              {data.photos.map((photo) => (
-                <OwnerUpdatePhotoTile
-                  key={photo.id}
-                  fileName={photo.fileName}
-                  driveUrl={null}
-                  thumbnailUrl={photo.thumbnailUrl}
-                  caption={photo.caption}
-                />
-              ))}
-            </div>
-          ) : (
-            <p className="mt-4 rounded-md border p-3 text-sm text-muted-foreground">
-              No photos have been approved for this audience yet.
-            </p>
-          )}
-        </section>
+        <ProjectAudiencePhotoGallery
+          photos={data.photos}
+          title="Visible Photos"
+          emptyMessage="No photos have been approved for this audience yet."
+        />
       </div>
     </main>
   )

@@ -5,6 +5,7 @@ import { and, asc, desc, eq, gte, isNull, or } from "drizzle-orm"
 import { getDb } from "@/db"
 import {
   dailyLogPhotos,
+  dailyLogs,
   ownerProjectUpdates,
   projectContacts,
   projectOperations,
@@ -26,6 +27,10 @@ export type AudiencePhoto = {
   readonly thumbnailUrl: string | null
   readonly caption: string | null
   readonly capturedAt: string | null
+  readonly photoDate: string
+  readonly schedulePhase: string
+  readonly schedulePhaseConfidence: number
+  readonly schedulePhaseReason: string
 }
 
 export type AudienceScheduleItem = {
@@ -172,6 +177,161 @@ function isImage(value: {
   return value.thumbnailUrl !== null || value.mimeType?.startsWith("image/") === true
 }
 
+function photoDate(value: {
+  readonly capturedAt: string | null
+  readonly logDate: string | null
+  readonly createdAt: string
+}): string {
+  if (value.capturedAt) return value.capturedAt.slice(0, 10)
+  if (value.logDate) return value.logDate
+  return value.createdAt.slice(0, 10)
+}
+
+function phaseKeywords(phase: string): readonly string[] {
+  const normalized = phase.toLowerCase()
+  const terms = new Set(
+    normalized
+      .split(/[^a-z0-9]+/)
+      .filter((part) => part.length > 2)
+  )
+
+  const keywordGroups: readonly {
+    readonly match: string
+    readonly keywords: readonly string[]
+  }[] = [
+    {
+      match: "foundation",
+      keywords: ["footing", "footer", "forms", "rebar", "pour", "concrete"],
+    },
+    {
+      match: "excavat",
+      keywords: ["dig", "soil", "grading", "trench", "utility", "backfill"],
+    },
+    {
+      match: "floor",
+      keywords: ["joist", "decking", "subfloor", "rim", "beam"],
+    },
+    {
+      match: "framing",
+      keywords: ["wall", "truss", "roof", "sheathing", "stud", "plate"],
+    },
+    {
+      match: "mechanical",
+      keywords: ["hvac", "duct", "furnace", "vent", "rough"],
+    },
+    {
+      match: "electrical",
+      keywords: ["wire", "panel", "outlet", "switch", "rough"],
+    },
+    {
+      match: "plumbing",
+      keywords: ["pipe", "drain", "water", "rough", "fixture"],
+    },
+    {
+      match: "insulation",
+      keywords: ["batts", "foam", "seal", "thermal"],
+    },
+    {
+      match: "drywall",
+      keywords: ["sheetrock", "tape", "mud", "texture"],
+    },
+    {
+      match: "finish",
+      keywords: ["cabinet", "trim", "paint", "flooring", "tile", "counter"],
+    },
+    {
+      match: "inspection",
+      keywords: ["inspect", "correction", "certificate", "co", "punch"],
+    },
+  ]
+
+  for (const group of keywordGroups) {
+    if (normalized.includes(group.match)) {
+      for (const keyword of group.keywords) terms.add(keyword)
+    }
+  }
+
+  return [...terms]
+}
+
+function keywordScore(phase: string, text: string): number {
+  const normalizedText = text.toLowerCase()
+  return phaseKeywords(phase).reduce(
+    (score, keyword) =>
+      normalizedText.includes(keyword.toLowerCase()) ? score + 1 : score,
+    0
+  )
+}
+
+function suggestPhaseForPhoto(
+  photoDateValue: string,
+  contextText: string,
+  tasks: readonly {
+    readonly phase: string
+    readonly startDate: string
+    readonly endDateCalculated: string
+  }[]
+): {
+  readonly phase: string
+  readonly confidence: number
+  readonly reason: string
+} {
+  const matchingTask = tasks.find(
+    (task) =>
+      task.phase.trim().length > 0 &&
+      task.startDate <= photoDateValue &&
+      task.endDateCalculated >= photoDateValue
+  )
+
+  const phaseNames = [...new Set(tasks.map((task) => task.phase))]
+  const scoredPhases = phaseNames
+    .map((phase) => ({
+      phase,
+      score: keywordScore(phase, contextText),
+    }))
+    .filter((item) => item.score > 0)
+    .sort((left, right) => right.score - left.score)
+  const keywordMatch = scoredPhases[0]
+
+  if (keywordMatch && matchingTask?.phase === keywordMatch.phase) {
+    return {
+      phase: keywordMatch.phase,
+      confidence: 92,
+      reason: "Schedule date and photo context both point to this phase.",
+    }
+  }
+
+  if (keywordMatch && keywordMatch.score >= 2) {
+    return {
+      phase: keywordMatch.phase,
+      confidence: 78,
+      reason: "Photo caption, filename, or daily log text matches this phase.",
+    }
+  }
+
+  if (matchingTask) {
+    return {
+      phase: matchingTask.phase,
+      confidence: 64,
+      reason: "Photo date falls inside this scheduled phase.",
+    }
+  }
+
+  if (keywordMatch) {
+    return {
+      phase: keywordMatch.phase,
+      confidence: 56,
+      reason: "Photo context lightly matches this phase.",
+    }
+  }
+
+  return {
+    phase: "Unassigned phase",
+    confidence: 0,
+    reason: "No schedule date or photo context match was found.",
+  }
+}
+
 function normalizeVisibleName(value: string | null): string {
   return value?.trim().toLowerCase() ?? ""
 }
@@ -229,8 +389,16 @@ export async function getProjectAudiencePreview(
       mimeType: dailyLogPhotos.mimeType,
       caption: dailyLogPhotos.caption,
       capturedAt: dailyLogPhotos.capturedAt,
+      createdAt: dailyLogPhotos.createdAt,
+      logDate: dailyLogs.logDate,
+      logWorkCompleted: dailyLogs.workCompleted,
+      logIssues: dailyLogs.issues,
+      logNotes: dailyLogs.notes,
+      photoKind: dailyLogPhotos.photoKind,
+      schedulePhaseOverride: dailyLogPhotos.schedulePhaseOverride,
     })
     .from(dailyLogPhotos)
+    .leftJoin(dailyLogs, eq(dailyLogPhotos.dailyLogId, dailyLogs.id))
     .where(
       and(
         eq(dailyLogPhotos.projectId, projectId),
@@ -239,6 +407,17 @@ export async function getProjectAudiencePreview(
       )
     )
     .orderBy(desc(dailyLogPhotos.capturedAt), desc(dailyLogPhotos.createdAt))
+
+  const phaseTaskRows = await db
+    .select({
+      phase: scheduleTasks.phase,
+      startDate: scheduleTasks.startDate,
+      endDateCalculated: scheduleTasks.endDateCalculated,
+      sortOrder: scheduleTasks.sortOrder,
+    })
+    .from(scheduleTasks)
+    .where(eq(scheduleTasks.projectId, projectId))
+    .orderBy(asc(scheduleTasks.sortOrder), asc(scheduleTasks.startDate))
 
   const scheduleRows = await db
     .select({
@@ -397,13 +576,47 @@ export async function getProjectAudiencePreview(
     projectOptions,
     project,
     ownerUpdates: ownerUpdateRows,
-    photos: photoRows.filter(isImage).slice(0, 24).map((photo) => ({
-      id: photo.id,
-      fileName: photo.fileName,
-      thumbnailUrl: photo.thumbnailUrl,
-      caption: photo.caption,
-      capturedAt: photo.capturedAt,
-    })),
+    photos: photoRows.filter(isImage).map((photo) => {
+      const resolvedPhotoDate = photoDate({
+        capturedAt: photo.capturedAt,
+        logDate: photo.logDate,
+        createdAt: photo.createdAt,
+      })
+      const suggestion =
+        photo.schedulePhaseOverride &&
+        photo.schedulePhaseOverride.trim().length > 0
+          ? {
+              phase: photo.schedulePhaseOverride,
+              confidence: 100,
+              reason: "Phase was manually assigned during photo review.",
+            }
+          : suggestPhaseForPhoto(
+              resolvedPhotoDate,
+              [
+                photo.fileName,
+                photo.caption,
+                photo.photoKind,
+                photo.logWorkCompleted,
+                photo.logIssues,
+                photo.logNotes,
+              ]
+                .filter((part) => part !== null && part.trim().length > 0)
+                .join(" "),
+              phaseTaskRows
+            )
+
+      return {
+        id: photo.id,
+        fileName: photo.fileName,
+        thumbnailUrl: photo.thumbnailUrl,
+        caption: photo.caption,
+        capturedAt: photo.capturedAt,
+        photoDate: resolvedPhotoDate,
+        schedulePhase: suggestion.phase,
+        schedulePhaseConfidence: suggestion.confidence,
+        schedulePhaseReason: suggestion.reason,
+      }
+    }),
     scheduleItems: scheduleRows,
     operations: operationRows
       .filter(
