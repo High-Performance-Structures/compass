@@ -3,10 +3,12 @@
 import * as React from "react"
 import Image from "next/image"
 import Link from "next/link"
+import { useRouter } from "next/navigation"
 import {
   IconArrowLeft,
   IconExternalLink,
   IconPhoto,
+  IconUpload,
   IconUsers,
 } from "@tabler/icons-react"
 
@@ -25,6 +27,14 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet"
 import { ProjectContextSwitcher } from "@/components/projects/project-context-switcher"
 
 type VisibilityFilter =
@@ -199,6 +209,7 @@ export function ProjectPhotoReview({
 }: {
   readonly library: ProjectPhotoLibrary
 }): React.ReactElement {
+  const router = useRouter()
   const initialPhotoDate =
     library.photos
       .map((photo) => photo.photoDate)
@@ -220,6 +231,15 @@ export function ProjectPhotoReview({
   const [message, setMessage] = React.useState<string | null>(null)
   const [previewPhoto, setPreviewPhoto] =
     React.useState<ProjectPhotoLibraryItem | null>(null)
+  const [uploadOpen, setUploadOpen] = React.useState(false)
+  const [uploadFiles, setUploadFiles] = React.useState<readonly File[]>([])
+  const [uploadCaption, setUploadCaption] = React.useState("")
+  const [uploadCapturedDate, setUploadCapturedDate] =
+    React.useState(initialPhotoDate)
+  const [uploadPhotoKind, setUploadPhotoKind] = React.useState("progress")
+  const [uploadPhase, setUploadPhase] = React.useState("")
+  const [uploadMessage, setUploadMessage] = React.useState<string | null>(null)
+  const [uploading, setUploading] = React.useState(false)
   const [isPending, startTransition] = React.useTransition()
 
   const selectedSet = React.useMemo(() => new Set(selectedIds), [selectedIds])
@@ -277,6 +297,69 @@ export function ProjectPhotoReview({
 
   function openPreview(photo: ProjectPhotoLibraryItem): void {
     setPreviewPhoto(photo)
+  }
+
+  function resetUploadForm(): void {
+    setUploadFiles([])
+    setUploadCaption("")
+    setUploadCapturedDate(initialPhotoDate)
+    setUploadPhotoKind("progress")
+    setUploadPhase("")
+  }
+
+  async function uploadSelectedPhotos(): Promise<void> {
+    if (uploadFiles.length === 0) {
+      setUploadMessage("Choose at least one image to upload.")
+      return
+    }
+
+    const formData = new FormData()
+    for (const file of uploadFiles) {
+      formData.append("files", file)
+    }
+    formData.set("caption", uploadCaption)
+    formData.set("capturedDate", uploadCapturedDate)
+    formData.set("photoKind", uploadPhotoKind)
+    formData.set("schedulePhase", uploadPhase)
+
+    setUploading(true)
+    setUploadMessage(null)
+    try {
+      const response = await fetch(
+        `/api/projects/${library.project.id}/photos/upload`,
+        {
+          method: "POST",
+          body: formData,
+        }
+      )
+      const result: unknown = await response.json()
+
+      if (
+        typeof result === "object" &&
+        result !== null &&
+        "success" in result &&
+        result.success === true
+      ) {
+        setUploadMessage("Photos uploaded to Drive and queued for review.")
+        resetUploadForm()
+        setUploadOpen(false)
+        router.refresh()
+        return
+      }
+
+      const error =
+        typeof result === "object" &&
+        result !== null &&
+        "error" in result &&
+        typeof result.error === "string"
+          ? result.error
+          : "Unable to upload photos."
+      setUploadMessage(error)
+    } catch {
+      setUploadMessage("Unable to upload photos.")
+    } finally {
+      setUploading(false)
+    }
   }
 
   function changePhotoPhase(photoId: string, phase: string): void {
@@ -404,6 +487,10 @@ export function ProjectPhotoReview({
             </p>
           </div>
           <div className="flex flex-col items-stretch gap-2 sm:items-end">
+            <Button type="button" onClick={() => setUploadOpen(true)}>
+              <IconUpload className="size-4" />
+              Upload photos
+            </Button>
             <ProjectContextSwitcher
               currentProjectId={library.project.id}
               targetSection="photos"
@@ -787,6 +874,144 @@ export function ProjectPhotoReview({
             )}
           </DialogContent>
         </Dialog>
+
+        <Sheet open={uploadOpen} onOpenChange={setUploadOpen}>
+          <SheetContent className="w-full overflow-y-auto sm:max-w-xl">
+            <SheetHeader>
+              <SheetTitle>Upload Project Photos</SheetTitle>
+              <SheetDescription>
+                Originals are saved to the mapped Google Drive photo folder.
+                Compass keeps review status, phase, and visibility metadata.
+              </SheetDescription>
+            </SheetHeader>
+            <div className="space-y-4 px-4">
+              <label className="block space-y-2 text-sm">
+                <span className="text-xs font-medium uppercase text-muted-foreground">
+                  Images
+                </span>
+                <input
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  onChange={(event) =>
+                    setUploadFiles(
+                      Array.from(event.currentTarget.files ?? [])
+                    )
+                  }
+                  className="block w-full rounded-md border bg-background px-3 py-2 text-sm file:mr-3 file:rounded-md file:border-0 file:bg-muted file:px-3 file:py-1.5 file:text-sm file:font-medium"
+                />
+              </label>
+
+              {uploadFiles.length > 0 && (
+                <div className="rounded-md border bg-muted/20 p-3 text-xs text-muted-foreground">
+                  <p className="font-medium text-foreground">
+                    {uploadFiles.length} selected
+                  </p>
+                  <ul className="mt-2 space-y-1">
+                    {uploadFiles.slice(0, 5).map((file) => (
+                      <li key={`${file.name}-${file.size}`} className="truncate">
+                        {file.name}
+                      </li>
+                    ))}
+                  </ul>
+                  {uploadFiles.length > 5 && (
+                    <p className="mt-1">+{uploadFiles.length - 5} more</p>
+                  )}
+                </div>
+              )}
+
+              <label className="block space-y-2 text-sm">
+                <span className="text-xs font-medium uppercase text-muted-foreground">
+                  Caption or note
+                </span>
+                <textarea
+                  value={uploadCaption}
+                  onChange={(event) => setUploadCaption(event.target.value)}
+                  rows={3}
+                  className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+                  placeholder="Optional note for this batch"
+                />
+              </label>
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label className="block space-y-2 text-sm">
+                  <span className="text-xs font-medium uppercase text-muted-foreground">
+                    Photo date
+                  </span>
+                  <input
+                    type="date"
+                    value={uploadCapturedDate}
+                    onChange={(event) =>
+                      setUploadCapturedDate(event.target.value)
+                    }
+                    className="h-9 w-full rounded-md border bg-background px-3 text-sm"
+                  />
+                </label>
+                <label className="block space-y-2 text-sm">
+                  <span className="text-xs font-medium uppercase text-muted-foreground">
+                    Photo type
+                  </span>
+                  <select
+                    value={uploadPhotoKind}
+                    onChange={(event) => setUploadPhotoKind(event.target.value)}
+                    className="h-9 w-full rounded-md border bg-background px-3 text-sm"
+                  >
+                    <option value="progress">Progress</option>
+                    <option value="issue">Issue</option>
+                    <option value="delivery">Delivery</option>
+                    <option value="selection">Selection</option>
+                    <option value="archive">Archive</option>
+                  </select>
+                </label>
+              </div>
+
+              <label className="block space-y-2 text-sm">
+                <span className="text-xs font-medium uppercase text-muted-foreground">
+                  Phase
+                </span>
+                <select
+                  value={uploadPhase}
+                  onChange={(event) => setUploadPhase(event.target.value)}
+                  className="h-9 w-full rounded-md border bg-background px-3 text-sm"
+                >
+                  <option value="">Let Compass suggest</option>
+                  {library.phases.map((phase) => (
+                    <option key={phase.value} value={phase.value}>
+                      {phase.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <div className="rounded-md border bg-muted/20 p-3 text-xs text-muted-foreground">
+                Uploaded photos start as internal-only and need review before
+                owners, subs, vendors, or public links can see them.
+              </div>
+
+              {uploadMessage && (
+                <p className="text-sm text-muted-foreground">{uploadMessage}</p>
+              )}
+            </div>
+            <SheetFooter>
+              <Button
+                type="button"
+                onClick={uploadSelectedPhotos}
+                disabled={uploading || uploadFiles.length === 0}
+              >
+                <IconUpload className="size-4" />
+                {uploading ? "Uploading..." : "Upload to Drive"}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setUploadOpen(false)}
+                disabled={uploading}
+              >
+                Cancel
+              </Button>
+            </SheetFooter>
+          </SheetContent>
+        </Sheet>
       </div>
     </main>
   )

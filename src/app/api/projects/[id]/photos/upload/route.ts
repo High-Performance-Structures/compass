@@ -1,0 +1,309 @@
+import { and, eq } from "drizzle-orm"
+import { NextRequest, NextResponse } from "next/server"
+import { revalidatePath } from "next/cache"
+
+import { getDb } from "@/db"
+import {
+  dailyLogPhotos,
+  projectExternalLinks,
+  projects,
+} from "@/db/schema"
+import { googleAuth } from "@/db/schema-google"
+import { requireAuth } from "@/lib/auth"
+import { decrypt } from "@/lib/crypto"
+import { getCloudflareContext } from "@/lib/db"
+import { DriveClient } from "@/lib/google/client/drive-client"
+import {
+  getGoogleConfig,
+  getGoogleCryptoSalt,
+  parseServiceAccountKey,
+} from "@/lib/google/config"
+import { requireOrg } from "@/lib/org-scope"
+import { requirePermission } from "@/lib/permissions"
+
+const GOOGLE_FOLDER_MIME_TYPE = "application/vnd.google-apps.folder"
+const DEFAULT_PHOTO_FOLDER_NAME = "Pictures"
+const MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024
+
+type UploadPhotoResult =
+  | {
+      readonly success: true
+      readonly uploadedCount: number
+    }
+  | {
+      readonly success: false
+      readonly error: string
+    }
+
+function isFile(value: FormDataEntryValue): value is File {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "arrayBuffer" in value &&
+    "name" in value &&
+    "size" in value &&
+    "type" in value
+  )
+}
+
+function formText(formData: FormData, name: string): string {
+  const value = formData.get(name)
+  return typeof value === "string" ? value.trim() : ""
+}
+
+function normalizedPhotoKind(value: string): string {
+  switch (value) {
+    case "progress":
+    case "issue":
+    case "delivery":
+    case "selection":
+    case "archive":
+      return value
+    default:
+      return "progress"
+  }
+}
+
+function capturedAtFromDate(value: string): string {
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return `${value}T12:00:00.000Z`
+  }
+  return new Date().toISOString()
+}
+
+function safeFileName(value: string): string {
+  const normalized = value.replace(/[/:\\]/g, "-").trim()
+  return normalized.length > 0 ? normalized : "compass-photo.jpg"
+}
+
+function driveFolderIdFromUrl(value: string | null): string | null {
+  if (!value) return null
+
+  const folderMatch = value.match(/\/folders\/([^/?#]+)/)
+  if (folderMatch) return folderMatch[1] ?? null
+
+  const idMatch = value.match(/[?&]id=([^&#]+)/)
+  if (idMatch) return idMatch[1] ?? null
+
+  return null
+}
+
+function escapeDriveQueryValue(value: string): string {
+  return value.replace(/\\/g, "\\\\").replace(/'/g, "\\'")
+}
+
+async function findOrCreatePhotosFolder(
+  client: DriveClient,
+  googleEmail: string,
+  projectFolderId: string,
+  driveId: string | null
+): Promise<string> {
+  const candidates = [DEFAULT_PHOTO_FOLDER_NAME, "Photos"]
+
+  for (const name of candidates) {
+    const result = await client.listFiles(googleEmail, {
+      folderId: projectFolderId,
+      driveId: driveId ?? undefined,
+      pageSize: 10,
+      query:
+        `mimeType = '${GOOGLE_FOLDER_MIME_TYPE}' and ` +
+        `name = '${escapeDriveQueryValue(name)}'`,
+    })
+    const folder = result.files[0]
+    if (folder) return folder.id
+  }
+
+  const folder = await client.createFolder(googleEmail, {
+    name: DEFAULT_PHOTO_FOLDER_NAME,
+    parentId: projectFolderId,
+    driveId: driveId ?? undefined,
+  })
+  return folder.id
+}
+
+async function resolveUploadFolderId(
+  client: DriveClient,
+  googleEmail: string,
+  db: ReturnType<typeof getDb>,
+  projectId: string,
+  projectDriveFolderId: string | null,
+  sharedDriveId: string | null
+): Promise<string> {
+  const [photoFolderLink] = await db
+    .select({
+      externalId: projectExternalLinks.externalId,
+      externalUrl: projectExternalLinks.externalUrl,
+    })
+    .from(projectExternalLinks)
+    .where(
+      and(
+        eq(projectExternalLinks.projectId, projectId),
+        eq(projectExternalLinks.system, "google_progress_photos_folder")
+      )
+    )
+    .limit(1)
+
+  const linkedFolderId =
+    photoFolderLink?.externalId ??
+    driveFolderIdFromUrl(photoFolderLink?.externalUrl ?? null)
+  if (linkedFolderId) return linkedFolderId
+
+  if (!projectDriveFolderId) {
+    throw new Error("Map this project to a Google Drive folder before uploading.")
+  }
+
+  return findOrCreatePhotosFolder(
+    client,
+    googleEmail,
+    projectDriveFolderId,
+    sharedDriveId
+  )
+}
+
+export async function POST(
+  request: NextRequest,
+  { params }: { readonly params: Promise<{ readonly id: string }> }
+): Promise<NextResponse<UploadPhotoResult>> {
+  try {
+    const user = await requireAuth()
+    requirePermission(user, "project", "update")
+    const organizationId = requireOrg(user)
+    const googleEmail = user.googleEmail ?? user.email
+    const { id: projectId } = await params
+
+    const { env } = await getCloudflareContext()
+    const envRecord = env as unknown as Record<string, string>
+    const config = getGoogleConfig(envRecord)
+    const db = getDb(env.DB)
+
+    const [project] = await db
+      .select({
+        id: projects.id,
+        googleDriveFolderId: projects.googleDriveFolderId,
+      })
+      .from(projects)
+      .where(
+        and(eq(projects.id, projectId), eq(projects.organizationId, organizationId))
+      )
+      .limit(1)
+
+    if (!project) {
+      return NextResponse.json(
+        { success: false, error: "Project not found" },
+        { status: 404 }
+      )
+    }
+
+    const [auth] = await db.select().from(googleAuth).limit(1)
+    if (!auth) {
+      return NextResponse.json(
+        { success: false, error: "Google Drive is not connected." },
+        { status: 400 }
+      )
+    }
+
+    const keyJson = await decrypt(
+      auth.serviceAccountKeyEncrypted,
+      config.encryptionKey,
+      getGoogleCryptoSalt()
+    )
+    const serviceAccountKey = parseServiceAccountKey(keyJson)
+    const client = new DriveClient({ serviceAccountKey })
+
+    const formData = await request.formData()
+    const files = formData.getAll("files").filter(isFile)
+    if (files.length === 0) {
+      return NextResponse.json(
+        { success: false, error: "Choose at least one image to upload." },
+        { status: 400 }
+      )
+    }
+
+    const invalidFile = files.find(
+      (file) => !file.type.startsWith("image/") || file.size > MAX_FILE_SIZE_BYTES
+    )
+    if (invalidFile) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: `${invalidFile.name} is not an image or is larger than 50 MB.`,
+        },
+        { status: 400 }
+      )
+    }
+
+    const now = new Date().toISOString()
+    const caption = formText(formData, "caption")
+    const capturedAt = capturedAtFromDate(formText(formData, "capturedDate"))
+    const photoKind = normalizedPhotoKind(formText(formData, "photoKind"))
+    const schedulePhase = formText(formData, "schedulePhase")
+    const dailyLogId = formText(formData, "dailyLogId")
+    const targetFolderId = await resolveUploadFolderId(
+      client,
+      googleEmail,
+      db,
+      projectId,
+      project.googleDriveFolderId,
+      auth.sharedDriveId
+    )
+
+    for (const file of files) {
+      const driveFile = await client.uploadFile(googleEmail, {
+        name: safeFileName(file.name),
+        mimeType: file.type,
+        parentId: targetFolderId,
+        driveId: auth.sharedDriveId ?? undefined,
+        data: file,
+      })
+
+      await db.insert(dailyLogPhotos).values({
+        id: crypto.randomUUID(),
+        projectId,
+        dailyLogId: dailyLogId.length > 0 ? dailyLogId : null,
+        uploadedBy: user.id,
+        sourceSystem: "compass_upload",
+        sourceExternalId: driveFile.id,
+        fileName: driveFile.name,
+        fileSize: Number(driveFile.size ?? file.size),
+        mimeType: driveFile.mimeType,
+        driveFileId: driveFile.id,
+        driveUrl: driveFile.webViewLink ?? null,
+        thumbnailUrl: `/api/google/download/${driveFile.id}`,
+        caption: caption.length > 0 ? caption : null,
+        capturedAt,
+        uploadStatus: "uploaded",
+        reviewStatus: "needs_review",
+        ownerVisible: false,
+        subVendorVisible: false,
+        publicShareable: false,
+        photoKind,
+        schedulePhaseOverride:
+          schedulePhase.length > 0 && schedulePhase !== "all"
+            ? schedulePhase
+            : null,
+        sortOrder: 0,
+        createdAt: now,
+        updatedAt: now,
+      })
+    }
+
+    revalidatePath(`/dashboard/projects/${projectId}`)
+    revalidatePath(`/dashboard/projects/${projectId}/photos`)
+    revalidatePath(`/dashboard/projects/${projectId}/daily-logs`)
+    revalidatePath(`/dashboard/projects/${projectId}/owner-updates`)
+
+    return NextResponse.json({
+      success: true,
+      uploadedCount: files.length,
+    })
+  } catch (error) {
+    return NextResponse.json(
+      {
+        success: false,
+        error:
+          error instanceof Error ? error.message : "Unable to upload photos.",
+      },
+      { status: 500 }
+    )
+  }
+}

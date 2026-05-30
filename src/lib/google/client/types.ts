@@ -79,6 +79,10 @@ export type UploadOptions = {
   readonly driveId?: string
 }
 
+export type UploadFileOptions = UploadOptions & {
+  readonly data: Blob
+}
+
 // fields we always request from the API
 export const DRIVE_FILE_FIELDS =
   "id,name,mimeType,size,createdTime,modifiedTime,owners," +
