@@ -324,10 +324,9 @@ function PriorityRailItem({
     <Link
       href={signal.href}
       className={cn(
-        "group relative z-0 block overflow-hidden rounded-lg border p-2.5 shadow-sm transition-all duration-200 ease-out",
-        "after:absolute after:inset-0 after:bg-muted/70 after:opacity-0 after:transition-opacity after:duration-200 after:content-['']",
-        "hover:z-[100] hover:-translate-y-3 hover:scale-[1.04] hover:shadow-xl hover:after:opacity-100",
-        "focus-visible:z-[100] focus-visible:-translate-y-3 focus-visible:scale-[1.04] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:after:opacity-100",
+        "group relative block min-w-0 overflow-hidden rounded-lg border p-2 shadow-sm transition-colors duration-200 ease-out",
+        "hover:shadow-md",
+        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
         signalClasses(signal.tone),
         signalHoverClasses(signal.tone)
       )}
@@ -338,18 +337,18 @@ function PriorityRailItem({
           signalAccentClasses(signal.tone)
         )}
       />
-      <div className="relative z-10 flex items-start gap-2 pl-1">
-        <span className="mt-0.5 rounded-md bg-background/70 p-1.5 shadow-sm">
+      <div className="relative z-10 flex items-center gap-2 pl-1">
+        <span className="rounded-md bg-background/70 p-1.5 shadow-sm">
           {signal.icon}
         </span>
         <div className="min-w-0 flex-1">
-          <div className="flex items-start justify-between gap-2">
-            <p className="text-xs font-semibold uppercase tracking-normal text-current/65">
+          <div className="flex items-center justify-between gap-2">
+            <p className="min-w-0 truncate text-xs font-semibold uppercase tracking-normal text-current/65">
               {signal.label}
             </p>
             <IconChevronRight className="size-4 shrink-0 opacity-40 transition-transform group-hover:translate-x-0.5" />
           </div>
-          <p className="mt-0.5 text-base font-semibold leading-tight">
+          <p className="truncate text-sm font-semibold leading-tight">
             {signal.value}
           </p>
           <p className="mt-0.5 line-clamp-1 text-xs text-current/70">
@@ -370,10 +369,9 @@ function DashboardFieldCard({
     <Link
       href={field.href}
       className={cn(
-        "group relative z-0 block overflow-hidden rounded-lg border p-3 shadow-sm transition-all duration-200 ease-out",
-        "after:absolute after:inset-0 after:bg-muted/70 after:opacity-0 after:transition-opacity after:duration-200 after:content-['']",
-        "hover:z-[100] hover:-translate-y-3 hover:scale-[1.04] hover:shadow-xl hover:after:opacity-100",
-        "focus-visible:z-[100] focus-visible:-translate-y-3 focus-visible:scale-[1.04] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:after:opacity-100",
+        "group relative block overflow-hidden rounded-lg border p-2.5 shadow-sm transition-colors duration-200 ease-out",
+        "hover:shadow-md",
+        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
         signalClasses(field.tone),
         signalHoverClasses(field.tone)
       )}
@@ -384,19 +382,19 @@ function DashboardFieldCard({
         </span>
         <IconArrowRight className="size-4 opacity-40 transition-transform group-hover:translate-x-0.5" />
       </div>
-      <p className="relative z-10 mt-3 text-xs font-semibold uppercase tracking-normal text-current/65">
+      <p className="relative z-10 mt-2 text-xs font-semibold uppercase tracking-normal text-current/65">
         {field.label}
       </p>
-      <p className="relative z-10 mt-0.5 text-xl font-semibold tabular-nums">
+      <p className="relative z-10 mt-0.5 text-lg font-semibold tabular-nums">
         {field.value}
       </p>
-      <div className="relative z-10 mt-2 h-1.5 overflow-hidden rounded-full bg-background/70">
+      <div className="relative z-10 mt-1.5 h-1 overflow-hidden rounded-full bg-background/70">
         <span
           className={cn("block h-full", signalAccentClasses(field.tone))}
           style={{ width: `${clampPercent(field.progress)}%` }}
         />
       </div>
-      <p className="relative z-10 mt-1.5 line-clamp-1 text-xs text-current/70">
+      <p className="relative z-10 mt-1 line-clamp-1 text-xs text-current/70">
         {field.note}
       </p>
     </Link>
@@ -514,15 +512,15 @@ function DashboardCommandCenter({
   ]
 
   return (
-    <section className="grid grid-cols-1 gap-3 xl:grid-cols-[15rem_minmax(0,1fr)]">
+    <section className="space-y-2">
       <div className="space-y-2">
-        <div>
+        <div className="flex items-baseline justify-between gap-3">
+          <h2 className="text-sm font-semibold">Start Here</h2>
           <p className="text-xs font-semibold uppercase tracking-normal text-muted-foreground">
             Priority Rail
           </p>
-          <h2 className="mt-0.5 text-base font-semibold">Start Here</h2>
         </div>
-        <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-1">
+        <div className="grid gap-2 sm:grid-cols-2 2xl:grid-cols-4">
           {prioritySignals.map((signal) => (
             <PriorityRailItem key={signal.label} signal={signal} />
           ))}
@@ -531,23 +529,23 @@ function DashboardCommandCenter({
 
       <div className="grid gap-3">
         <Card className="overflow-hidden rounded-lg border-primary/20">
-          <CardContent className="grid gap-3 p-0 lg:grid-cols-[minmax(0,1fr)_13rem]">
-            <div className="p-4">
+          <CardContent className="grid gap-2 p-0 lg:grid-cols-[minmax(0,1fr)_12rem]">
+            <div className="p-3">
               <div className="flex flex-wrap items-center gap-2">
                 <Badge variant="secondary">Next Schedule Item</Badge>
                 {nextTask?.assignedTo && (
                   <Badge variant="outline">{nextTask.assignedTo}</Badge>
                 )}
               </div>
-              <h2 className="mt-3 max-w-3xl text-xl font-semibold tracking-normal">
+              <h2 className="mt-2 max-w-3xl text-lg font-semibold tracking-normal">
                 {nextTask?.title ?? "No active schedule item"}
               </h2>
-              <p className="mt-1.5 max-w-3xl text-sm text-muted-foreground">
+              <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
                 {nextTask
                   ? `${nextTask.projectLabel} · ${formatDate(nextTask.startDate)} - ${formatDate(nextTask.endDate)}`
                   : "Once Sage-backed schedule items are available, the next operational item will anchor this space."}
               </p>
-              <div className="mt-4 flex flex-wrap gap-2">
+              <div className="mt-3 flex flex-wrap gap-2">
                 <Button asChild size="sm">
                   <Link href={scheduleHref}>
                     <IconCalendarWeek className="size-4" />
@@ -568,14 +566,14 @@ function DashboardCommandCenter({
                 </Button>
               </div>
             </div>
-            <div className="border-t bg-muted/35 p-4 lg:border-l lg:border-t-0">
+            <div className="border-t bg-muted/35 p-3 lg:border-l lg:border-t-0">
               <p className="text-xs font-semibold uppercase tracking-normal text-muted-foreground">
                 Project Pulse
               </p>
-              <p className="mt-1.5 truncate text-base font-semibold">
+              <p className="mt-1 truncate text-sm font-semibold">
                 {nextProject?.projectNumber ?? nextTask?.projectLabel ?? "Compass"}
               </p>
-              <div className="mt-3 space-y-3">
+              <div className="mt-2 space-y-2">
                 <div>
                   <div className="flex items-center justify-between gap-3 text-xs">
                     <span className="text-muted-foreground">Progress</span>
@@ -583,18 +581,18 @@ function DashboardCommandCenter({
                       {nextProject?.progress ?? 0}%
                     </span>
                   </div>
-                  <Progress value={nextProject?.progress ?? 0} className="mt-2 h-1.5" />
+                  <Progress value={nextProject?.progress ?? 0} className="mt-1.5 h-1" />
                 </div>
                 <div className="grid grid-cols-2 gap-2">
-                  <div className="rounded-md border bg-background p-2">
+                  <div className="rounded-md border bg-background p-1.5">
                     <p className="text-xs text-muted-foreground">RFIs</p>
-                    <p className="mt-0.5 text-base font-semibold tabular-nums">
+                    <p className="text-sm font-semibold tabular-nums">
                       {nextProject?.openRfiCount ?? overview.metrics.openRfis}
                     </p>
                   </div>
-                  <div className="rounded-md border bg-background p-2">
+                  <div className="rounded-md border bg-background p-1.5">
                     <p className="text-xs text-muted-foreground">Photos</p>
-                    <p className="mt-0.5 text-base font-semibold tabular-nums">
+                    <p className="text-sm font-semibold tabular-nums">
                       {nextProject?.photosToReview ?? overview.metrics.photosToReview}
                     </p>
                   </div>
