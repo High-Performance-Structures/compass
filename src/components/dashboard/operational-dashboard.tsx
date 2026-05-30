@@ -1551,6 +1551,9 @@ export function OperationalDashboard({
     saveDashboardMode(mode)
   }
 
+  const developerModeEnabled =
+    overview.user.canUseDeveloperMode && workspaceMode === "developer"
+
   const attentionProjects = useMemo(
     () =>
       overview.projects
@@ -1807,53 +1810,55 @@ export function OperationalDashboard({
 
       </div>
 
-      <Card className="rounded-lg">
-        <CardContent className="grid gap-3 p-3 md:grid-cols-[minmax(0,1fr)_auto_auto_auto] md:items-center">
-          <div className="flex min-w-0 items-center gap-2">
-            <span className="rounded-md border bg-background p-1.5 text-muted-foreground">
-              <IconDatabaseImport className="size-4" />
-            </span>
-            <div className="min-w-0">
-              <div className="flex flex-wrap items-center gap-2">
-                <h2 className="text-sm font-medium">Sage API bridge</h2>
-                <Badge
-                  variant={
-                    overview.sageBridge.configured ? "secondary" : "outline"
-                  }
-                >
-                  {overview.sageBridge.configured
-                    ? overview.sageBridge.readOnly
-                      ? "Read-only"
-                      : "Write-gated"
-                    : "Needs secrets"}
-                </Badge>
+      {developerModeEnabled && (
+        <Card className="rounded-lg">
+          <CardContent className="grid gap-3 p-3 md:grid-cols-[minmax(0,1fr)_auto_auto_auto] md:items-center">
+            <div className="flex min-w-0 items-center gap-2">
+              <span className="rounded-md border bg-background p-1.5 text-muted-foreground">
+                <IconDatabaseImport className="size-4" />
+              </span>
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h2 className="text-sm font-medium">Sage API bridge</h2>
+                  <Badge
+                    variant={
+                      overview.sageBridge.configured ? "secondary" : "outline"
+                    }
+                  >
+                    {overview.sageBridge.configured
+                      ? overview.sageBridge.readOnly
+                        ? "Read-only"
+                        : "Write-gated"
+                      : "Needs secrets"}
+                  </Badge>
+                </div>
+                <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                  {overview.sageBridge.message}
+                </p>
               </div>
-              <p className="mt-0.5 truncate text-xs text-muted-foreground">
-                {overview.sageBridge.message}
+            </div>
+
+            <div>
+              <p className="text-xs text-muted-foreground">Mapped projects</p>
+              <p className="mt-0.5 text-sm font-semibold tabular-nums">
+                {overview.sageBridge.mappedProjectCount}
               </p>
             </div>
-          </div>
-
-          <div>
-            <p className="text-xs text-muted-foreground">Mapped projects</p>
-            <p className="mt-0.5 text-sm font-semibold tabular-nums">
-              {overview.sageBridge.mappedProjectCount}
-            </p>
-          </div>
-          <div>
-            <p className="text-xs text-muted-foreground">Sage records</p>
-            <p className="mt-0.5 text-sm font-medium tabular-nums">
-              {overview.sageBridge.mappedOperationCount}
-            </p>
-          </div>
-          <div>
-            <p className="text-xs text-muted-foreground">Last sync</p>
-            <p className="mt-0.5 text-sm font-medium">
-              {formatDateTime(overview.sageBridge.lastSyncedAt)}
-            </p>
-          </div>
-        </CardContent>
-      </Card>
+            <div>
+              <p className="text-xs text-muted-foreground">Sage records</p>
+              <p className="mt-0.5 text-sm font-medium tabular-nums">
+                {overview.sageBridge.mappedOperationCount}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground">Last sync</p>
+              <p className="mt-0.5 text-sm font-medium">
+                {formatDateTime(overview.sageBridge.lastSyncedAt)}
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
         </>
       )}
     </div>
