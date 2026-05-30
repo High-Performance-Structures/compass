@@ -239,7 +239,6 @@ export function ProjectPhotoReview({
     React.useState<VisibilityFilter>("all")
   const [selectedIds, setSelectedIds] = React.useState<readonly string[]>([])
   const [lastSelectedId, setLastSelectedId] = React.useState<string | null>(null)
-  const [reviewStatus, setReviewStatus] = React.useState("needs_review")
   const [photoKind, setPhotoKind] = React.useState("progress")
   const [ownerVisible, setOwnerVisible] = React.useState(false)
   const [subVendorVisible, setSubVendorVisible] = React.useState(false)
@@ -443,7 +442,7 @@ export function ProjectPhotoReview({
 
   function applyPermissions(): void {
     const photoIds = selectedIds
-    const nextReviewStatus = reviewStatus
+    const nextReviewStatus = "approved"
     const nextPhotoKind = photoKind
     const nextOwnerVisible = ownerVisible
     const nextSubVendorVisible = subVendorVisible
@@ -477,6 +476,45 @@ export function ProjectPhotoReview({
           )
         )
         setMessage(`Updated ${result.updatedCount} photos.`)
+        clearSelection()
+      } else {
+        setMessage(result.error)
+      }
+    })
+  }
+
+  function rejectSelectedPhotos(): void {
+    const photoIds = selectedIds
+    const nextPhotoKind = photoKind
+
+    setMessage(null)
+    startTransition(async () => {
+      const result = await updateProjectPhotoPermissions(library.project.id, {
+        photoIds,
+        reviewStatus: "rejected",
+        ownerVisible: false,
+        subVendorVisible: false,
+        publicShareable: false,
+        photoKind: nextPhotoKind,
+      })
+
+      if (result.success) {
+        const updatedIds = new Set(photoIds)
+        setPhotos((current) =>
+          current.map((photo) =>
+            updatedIds.has(photo.id)
+              ? {
+                  ...photo,
+                  reviewStatus: "rejected",
+                  ownerVisible: false,
+                  subVendorVisible: false,
+                  publicShareable: false,
+                  photoKind: nextPhotoKind,
+                }
+              : photo
+          )
+        )
+        setMessage(`Rejected ${result.updatedCount} photos.`)
         clearSelection()
       } else {
         setMessage(result.error)
@@ -670,22 +708,14 @@ export function ProjectPhotoReview({
             </div>
 
             <div className="flex flex-wrap items-center gap-2 border-t pt-3">
-              <span className="mr-1 text-sm font-medium">
-                {selectedIds.length} selected
-              </span>
-              <Select
-                value={reviewStatus}
-                onValueChange={setReviewStatus}
-              >
-                <SelectTrigger aria-label="Review status" className="w-40">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="needs_review">Needs review</SelectItem>
-                  <SelectItem value="approved">Approved</SelectItem>
-                  <SelectItem value="rejected">Rejected</SelectItem>
-                </SelectContent>
-              </Select>
+              <div className="mr-2 min-w-40">
+                <p className="text-sm font-medium">
+                  {selectedIds.length} selected
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Apply marks photos reviewed.
+                </p>
+              </div>
               <Select
                 value={photoKind}
                 onValueChange={setPhotoKind}
@@ -735,7 +765,15 @@ export function ProjectPhotoReview({
                 disabled={selectedIds.length === 0 || isPending}
               >
                 <IconUsers className="size-4" />
-                Apply
+                Apply visibility
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={rejectSelectedPhotos}
+                disabled={selectedIds.length === 0 || isPending}
+              >
+                Reject selected
               </Button>
               {message && (
                 <p className="basis-full text-xs text-muted-foreground">
