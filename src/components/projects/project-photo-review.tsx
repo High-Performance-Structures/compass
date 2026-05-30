@@ -6,6 +6,8 @@ import Link from "next/link"
 import { useRouter } from "next/navigation"
 import {
   IconArrowLeft,
+  IconCompass,
+  IconCompassFilled,
   IconExternalLink,
   IconPhoto,
   IconUpload,
@@ -179,6 +181,49 @@ function compareByPhase(
   return compareByDate(left, right, direction)
 }
 
+function nextSelectedIds(
+  current: readonly string[],
+  filteredPhotos: readonly ProjectPhotoLibraryItem[],
+  photoId: string,
+  event: React.MouseEvent,
+  lastSelectedId: string | null
+): readonly string[] {
+  const next = new Set(current)
+
+  if (event.shiftKey && lastSelectedId !== null) {
+    const currentIndex = filteredPhotos.findIndex((photo) => photo.id === photoId)
+    const lastIndex = filteredPhotos.findIndex(
+      (photo) => photo.id === lastSelectedId
+    )
+
+    if (currentIndex >= 0 && lastIndex >= 0) {
+      const start = Math.min(currentIndex, lastIndex)
+      const end = Math.max(currentIndex, lastIndex)
+      for (const photo of filteredPhotos.slice(start, end + 1)) {
+        next.add(photo.id)
+      }
+      return [...next]
+    }
+  }
+
+  if (event.metaKey || event.ctrlKey) {
+    if (next.has(photoId)) {
+      next.delete(photoId)
+    } else {
+      next.add(photoId)
+    }
+    return [...next]
+  }
+
+  if (next.has(photoId)) {
+    next.delete(photoId)
+  } else {
+    next.add(photoId)
+  }
+
+  return [...next]
+}
+
 export function ProjectPhotoReview({
   library,
 }: {
@@ -193,6 +238,7 @@ export function ProjectPhotoReview({
   const [visibilityFilter, setVisibilityFilter] =
     React.useState<VisibilityFilter>("all")
   const [selectedIds, setSelectedIds] = React.useState<readonly string[]>([])
+  const [lastSelectedId, setLastSelectedId] = React.useState<string | null>(null)
   const [reviewStatus, setReviewStatus] = React.useState("needs_review")
   const [photoKind, setPhotoKind] = React.useState("progress")
   const [ownerVisible, setOwnerVisible] = React.useState(false)
@@ -247,12 +293,21 @@ export function ProjectPhotoReview({
     [photos]
   )
 
+  function togglePhoto(photoId: string, event: React.MouseEvent): void {
+    setSelectedIds((current) =>
+      nextSelectedIds(current, filteredPhotos, photoId, event, lastSelectedId)
+    )
+    setLastSelectedId(photoId)
+  }
+
   function selectFiltered(): void {
     setSelectedIds(filteredPhotos.map((photo) => photo.id))
+    setLastSelectedId(filteredPhotos[0]?.id ?? null)
   }
 
   function clearSelection(): void {
     setSelectedIds([])
+    setLastSelectedId(null)
   }
 
   function openPreview(photo: ProjectPhotoLibraryItem): void {
@@ -705,7 +760,7 @@ export function ProjectPhotoReview({
             return (
               <article
                 key={photo.id}
-                className={`overflow-hidden rounded-md border bg-background ${
+                className={`relative overflow-hidden rounded-md border bg-background ${
                   selected ? "ring-2 ring-primary" : ""
                 }`}
               >
@@ -761,6 +816,24 @@ export function ProjectPhotoReview({
                       {photo.publicShareable && <span>Public</span>}
                     </div>
                   </div>
+                </button>
+                <button
+                  type="button"
+                  onClick={(event) => togglePhoto(photo.id, event)}
+                  aria-pressed={selected}
+                  aria-label={`${selected ? "Deselect" : "Select"} ${photo.caption ?? photo.fileName}`}
+                  title={`${selected ? "Deselect" : "Select"} photo`}
+                  className={`absolute right-2 top-2 z-10 flex size-7 items-center justify-center rounded border shadow-sm backdrop-blur transition ${
+                    selected
+                      ? "border-primary bg-primary text-primary-foreground"
+                      : "border-border bg-background/90 text-muted-foreground hover:bg-background hover:text-foreground"
+                  }`}
+                >
+                  {selected ? (
+                    <IconCompassFilled className="size-4" />
+                  ) : (
+                    <IconCompass className="size-4" />
+                  )}
                 </button>
                 <div className="border-t px-2 py-1.5">
                   <label className="flex min-w-0 items-center justify-between gap-2 text-xs text-muted-foreground">
