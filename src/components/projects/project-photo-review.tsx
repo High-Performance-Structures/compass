@@ -172,49 +172,6 @@ function compareByPhase(
   return compareByDate(left, right, direction)
 }
 
-function nextSelectedIds(
-  current: readonly string[],
-  filteredPhotos: readonly ProjectPhotoLibraryItem[],
-  photoId: string,
-  event: React.MouseEvent,
-  lastSelectedId: string | null
-): readonly string[] {
-  const next = new Set(current)
-
-  if (event.shiftKey && lastSelectedId !== null) {
-    const currentIndex = filteredPhotos.findIndex((photo) => photo.id === photoId)
-    const lastIndex = filteredPhotos.findIndex(
-      (photo) => photo.id === lastSelectedId
-    )
-
-    if (currentIndex >= 0 && lastIndex >= 0) {
-      const start = Math.min(currentIndex, lastIndex)
-      const end = Math.max(currentIndex, lastIndex)
-      for (const photo of filteredPhotos.slice(start, end + 1)) {
-        next.add(photo.id)
-      }
-      return [...next]
-    }
-  }
-
-  if (event.metaKey || event.ctrlKey) {
-    if (next.has(photoId)) {
-      next.delete(photoId)
-    } else {
-      next.add(photoId)
-    }
-    return [...next]
-  }
-
-  if (next.has(photoId)) {
-    next.delete(photoId)
-  } else {
-    next.add(photoId)
-  }
-
-  return [...next]
-}
-
 export function ProjectPhotoReview({
   library,
 }: {
@@ -229,7 +186,6 @@ export function ProjectPhotoReview({
   const [visibilityFilter, setVisibilityFilter] =
     React.useState<VisibilityFilter>("all")
   const [selectedIds, setSelectedIds] = React.useState<readonly string[]>([])
-  const [lastSelectedId, setLastSelectedId] = React.useState<string | null>(null)
   const [reviewStatus, setReviewStatus] = React.useState("needs_review")
   const [photoKind, setPhotoKind] = React.useState("progress")
   const [ownerVisible, setOwnerVisible] = React.useState(false)
@@ -284,21 +240,12 @@ export function ProjectPhotoReview({
     [photos]
   )
 
-  function togglePhoto(photoId: string, event: React.MouseEvent): void {
-    setSelectedIds((current) =>
-      nextSelectedIds(current, filteredPhotos, photoId, event, lastSelectedId)
-    )
-    setLastSelectedId(photoId)
-  }
-
   function selectFiltered(): void {
     setSelectedIds(filteredPhotos.map((photo) => photo.id))
-    setLastSelectedId(filteredPhotos[0]?.id ?? null)
   }
 
   function clearSelection(): void {
     setSelectedIds([])
-    setLastSelectedId(null)
   }
 
   function openPreview(photo: ProjectPhotoLibraryItem): void {
@@ -784,25 +731,8 @@ export function ProjectPhotoReview({
                     </div>
                   </div>
                 </button>
-                <div className="flex items-center justify-between gap-2 border-t px-2 py-1.5">
-                  <button
-                    type="button"
-                    onClick={(event) => togglePhoto(photo.id, event)}
-                    className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-foreground"
-                    aria-pressed={selected}
-                  >
-                    <span
-                      className={`flex size-4 items-center justify-center rounded border ${
-                        selected
-                          ? "border-primary bg-primary text-primary-foreground"
-                          : "bg-background"
-                      }`}
-                    >
-                      {selected ? "✓" : ""}
-                    </span>
-                    {selected ? "Selected" : "Select"}
-                  </button>
-                  <label className="flex min-w-0 flex-1 items-center justify-end gap-1 text-xs text-muted-foreground">
+                <div className="border-t px-2 py-1.5">
+                  <label className="flex min-w-0 items-center justify-between gap-2 text-xs text-muted-foreground">
                     <span className="shrink-0">Phase</span>
                     <select
                       value={photo.schedulePhase}
@@ -810,7 +740,7 @@ export function ProjectPhotoReview({
                         changePhotoPhase(photo.id, event.target.value)
                       }
                       disabled={isPending}
-                      className="h-7 min-w-0 max-w-[150px] rounded border bg-background px-1.5 text-xs text-foreground"
+                      className="h-7 min-w-0 flex-1 rounded border bg-background px-1.5 text-xs text-foreground"
                     >
                       {library.phases.map((phase) => (
                         <option key={phase.value} value={phase.value}>
