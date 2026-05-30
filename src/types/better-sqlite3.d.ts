@@ -30,7 +30,6 @@ declare module "better-sqlite3" {
     transaction<T>(fn: () => T): () => T
     pragma(query: string, options?: PragmaOptions): unknown
     close(): void
-    open(): void
     readonly name: string
     readonly open: boolean
     readonly readonly: boolean

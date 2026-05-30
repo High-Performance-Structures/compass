@@ -99,11 +99,12 @@ class LocalPreparedStatement {
     }
 
     async run(): Promise<D1Result> {
+        const results: unknown[] = []
         const result = this.db
             .prepare(this.query)
             .run(...toSqlValues(this.boundValues))
         return {
-            results: [],
+            results,
             success: true,
             meta: {
                 duration: 0,
@@ -112,6 +113,19 @@ class LocalPreparedStatement {
                 rows_read: 0,
                 rows_written: result.changes,
             },
+        }
+    }
+
+    async executeBatch<T = unknown>(): Promise<D1Result<T>> {
+        if (this.returnsRows()) {
+            return this.all<T>()
+        }
+
+        const result = await this.run()
+        return {
+            results: [],
+            success: result.success,
+            meta: result.meta,
         }
     }
 
@@ -138,6 +152,14 @@ class LocalPreparedStatement {
             .raw(true)
             .all(...toSqlValues(this.boundValues)) as T[]
     }
+
+    private returnsRows(): boolean {
+        const normalizedQuery = this.query.trim().toLowerCase()
+        return (
+            /^(select|pragma|with|explain)\b/.test(normalizedQuery) ||
+            /\breturning\b/.test(normalizedQuery)
+        )
+    }
 }
 
 class LocalD1Database {
@@ -152,7 +174,7 @@ class LocalD1Database {
     ): Promise<D1Result<T>[]> {
         const results: D1Result<T>[] = []
         for (const stmt of statements) {
-            results.push(await stmt.all<T>())
+            results.push(await stmt.executeBatch<T>())
         }
         return results
     }
