@@ -53,6 +53,10 @@ function stopEvent(e: React.MouseEvent | React.PointerEvent): void {
   e.preventDefault()
 }
 
+function stopPropagation(e: React.MouseEvent | React.PointerEvent): void {
+  e.stopPropagation()
+}
+
 export function NavUser({
   user,
 }: {
@@ -140,8 +144,8 @@ export function NavUser({
                 />
                 <Link
                   href="/dashboard/settings"
-                  onClick={stopEvent}
-                  onPointerDown={stopEvent}
+                  onClick={stopPropagation}
+                  onPointerDown={stopPropagation}
                   aria-label="Settings"
                   className="ml-px flex size-5 items-center justify-center rounded-sm text-sidebar-foreground/60 transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground"
                 >
