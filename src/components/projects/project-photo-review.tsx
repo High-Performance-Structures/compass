@@ -48,7 +48,7 @@ type VisibilityFilter =
 
 type PhotoSort = "newest" | "oldest" | "phase_newest" | "phase_oldest"
 
-const MAX_UPLOAD_BATCH_BYTES = 95 * 1024 * 1024
+const MAX_UPLOAD_FILE_BYTES = 50 * 1024 * 1024
 
 function statusLabel(value: string): string {
   return value
@@ -91,6 +91,10 @@ function browserHref(value: string | null): string | null {
 function formatBytes(value: number): string {
   if (value < 1024 * 1024) return `${Math.ceil(value / 1024)} KB`
   return `${(value / (1024 * 1024)).toFixed(1)} MB`
+}
+
+function currentDateInputValue(): string {
+  return new Date().toISOString().slice(0, 10)
 }
 
 function isInternalOnly(photo: ProjectPhotoLibraryItem): boolean {
@@ -217,13 +221,9 @@ export function ProjectPhotoReview({
   readonly library: ProjectPhotoLibrary
 }): React.ReactElement {
   const router = useRouter()
-  const initialPhotoDate =
-    library.photos
-      .map((photo) => photo.photoDate)
-      .sort((left, right) => right.localeCompare(left))[0] ?? ""
   const [photos, setPhotos] =
     React.useState<readonly ProjectPhotoLibraryItem[]>(library.photos)
-  const [dateFilter, setDateFilter] = React.useState(initialPhotoDate)
+  const [dateFilter, setDateFilter] = React.useState("")
   const [phaseFilter, setPhaseFilter] = React.useState("all")
   const [photoSort, setPhotoSort] = React.useState<PhotoSort>("newest")
   const [visibilityFilter, setVisibilityFilter] =
@@ -241,8 +241,7 @@ export function ProjectPhotoReview({
   const [uploadOpen, setUploadOpen] = React.useState(false)
   const [uploadFiles, setUploadFiles] = React.useState<readonly File[]>([])
   const [uploadCaption, setUploadCaption] = React.useState("")
-  const [uploadCapturedDate, setUploadCapturedDate] =
-    React.useState(initialPhotoDate)
+  const [uploadCapturedDate, setUploadCapturedDate] = React.useState("")
   const [uploadPhotoKind, setUploadPhotoKind] = React.useState("progress")
   const [uploadPhase, setUploadPhase] = React.useState("")
   const [uploadMessage, setUploadMessage] = React.useState<string | null>(null)
@@ -309,9 +308,16 @@ export function ProjectPhotoReview({
   function resetUploadForm(): void {
     setUploadFiles([])
     setUploadCaption("")
-    setUploadCapturedDate(initialPhotoDate)
+    setUploadCapturedDate(currentDateInputValue())
     setUploadPhotoKind("progress")
     setUploadPhase("")
+  }
+
+  function openUploadSheet(): void {
+    if (uploadCapturedDate.length === 0) {
+      setUploadCapturedDate(currentDateInputValue())
+    }
+    setUploadOpen(true)
   }
 
   async function uploadSelectedPhotos(): Promise<void> {
@@ -320,56 +326,75 @@ export function ProjectPhotoReview({
       return
     }
 
-    const batchSize = uploadFiles.reduce((sum, file) => sum + file.size, 0)
-    if (batchSize > MAX_UPLOAD_BATCH_BYTES) {
+    const oversizedFile = uploadFiles.find(
+      (file) => file.size > MAX_UPLOAD_FILE_BYTES
+    )
+    if (oversizedFile) {
       setUploadMessage(
-        `This batch is ${formatBytes(batchSize)}. Upload fewer photos at a time.`
+        `${oversizedFile.name} is ${formatBytes(oversizedFile.size)}. Upload photos under 50 MB each.`
       )
       return
     }
 
-    const formData = new FormData()
-    for (const file of uploadFiles) {
-      formData.append("files", file)
-    }
-    formData.set("caption", uploadCaption)
-    formData.set("capturedDate", uploadCapturedDate)
-    formData.set("photoKind", uploadPhotoKind)
-    formData.set("schedulePhase", uploadPhase)
+    const filesToUpload = uploadFiles
 
     setUploading(true)
     setUploadMessage(null)
     try {
-      const response = await fetch(
-        `/api/projects/${library.project.id}/photos/upload`,
-        {
-          method: "POST",
-          body: formData,
-        }
-      )
-      const result: unknown = await response.json()
+      let uploadedCount = 0
 
-      if (
-        typeof result === "object" &&
-        result !== null &&
-        "success" in result &&
-        result.success === true
-      ) {
-        setUploadMessage("Photos uploaded to Drive and queued for review.")
-        resetUploadForm()
-        setUploadOpen(false)
+      for (const [index, file] of filesToUpload.entries()) {
+        setUploadMessage(
+          `Uploading ${index + 1} of ${filesToUpload.length}: ${file.name}`
+        )
+
+        const formData = new FormData()
+        formData.append("files", file)
+        formData.set("caption", uploadCaption)
+        formData.set("capturedDate", uploadCapturedDate)
+        formData.set("photoKind", uploadPhotoKind)
+        formData.set("schedulePhase", uploadPhase)
+
+        const response = await fetch(
+          `/api/projects/${library.project.id}/photos/upload`,
+          {
+            method: "POST",
+            body: formData,
+          }
+        )
+        const result: unknown = await response.json()
+
+        if (
+          typeof result === "object" &&
+          result !== null &&
+          "success" in result &&
+          result.success === true
+        ) {
+          uploadedCount += 1
+          continue
+        }
+
+        const error =
+          typeof result === "object" &&
+          result !== null &&
+          "error" in result &&
+          typeof result.error === "string"
+            ? result.error
+            : "Unable to upload photo."
+        setUploadFiles(filesToUpload.slice(index))
+        setUploadMessage(
+          `Uploaded ${uploadedCount} of ${filesToUpload.length}. ${file.name}: ${error}`
+        )
         router.refresh()
         return
       }
 
-      const error =
-        typeof result === "object" &&
-        result !== null &&
-        "error" in result &&
-        typeof result.error === "string"
-          ? result.error
-          : "Unable to upload photos."
-      setUploadMessage(error)
+      setUploadMessage(
+        `Uploaded ${uploadedCount} photo${uploadedCount === 1 ? "" : "s"} to Drive and queued for review.`
+      )
+      resetUploadForm()
+      setUploadOpen(false)
+      router.refresh()
     } catch {
       setUploadMessage("Unable to upload photos.")
     } finally {
@@ -502,7 +527,7 @@ export function ProjectPhotoReview({
             </p>
           </div>
           <div className="flex flex-col items-stretch gap-2 sm:items-end">
-            <Button type="button" onClick={() => setUploadOpen(true)}>
+            <Button type="button" onClick={openUploadSheet}>
               <IconUpload className="size-4" />
               Upload photos
             </Button>
