@@ -20,7 +20,6 @@ import {
 } from "@tabler/icons-react"
 
 import type { ProjectsHubProject } from "@/app/dashboard/projects/page"
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
@@ -203,6 +202,51 @@ function googleDriveUrl(folderId: string): string {
   return `https://drive.google.com/drive/folders/${folderId}`
 }
 
+function departmentBorderClassName(departmentId: DepartmentId): string {
+  switch (departmentId) {
+    case "O":
+      return "border-l-emerald-700"
+    case "H":
+      return "border-l-sky-700"
+    case "N":
+      return "border-l-amber-700"
+    case "D":
+      return "border-l-violet-700"
+    case "UNASSIGNED":
+      return "border-l-muted-foreground"
+  }
+}
+
+function departmentHeaderClassName(departmentId: DepartmentId): string {
+  switch (departmentId) {
+    case "O":
+      return "border-emerald-900/20 bg-emerald-900/[0.04]"
+    case "H":
+      return "border-sky-900/20 bg-sky-900/[0.04]"
+    case "N":
+      return "border-amber-900/25 bg-amber-900/[0.045]"
+    case "D":
+      return "border-violet-900/20 bg-violet-900/[0.04]"
+    case "UNASSIGNED":
+      return "border-muted bg-muted/30"
+  }
+}
+
+function departmentTabClassName(departmentId: DepartmentId): string {
+  switch (departmentId) {
+    case "O":
+      return "border-b-emerald-700"
+    case "H":
+      return "border-b-sky-700"
+    case "N":
+      return "border-b-amber-700"
+    case "D":
+      return "border-b-violet-700"
+    case "UNASSIGNED":
+      return "border-b-muted-foreground"
+  }
+}
+
 function projectMatchesSearch(
   project: ProjectsHubProject,
   normalizedQuery: string
@@ -232,10 +276,18 @@ function ProjectCard({
 }): React.ReactElement {
   const label = projectLabel(project)
   const subtitle = projectSubtitle(project)
+  const departmentId = departmentIdForProject(project)
+  const actionClassName =
+    "inline-flex items-center gap-1 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
 
   return (
-    <article className="group rounded-lg border bg-background p-3 transition-all duration-200 hover:-translate-y-1 hover:border-emerald-800/35 hover:bg-muted/45 hover:shadow-lg">
-      <div className="flex items-start justify-between gap-3">
+    <article
+      className={cn(
+        "group border-l-2 border-y border-r bg-background px-3 py-2.5 transition-colors hover:bg-muted/35",
+        departmentBorderClassName(departmentId)
+      )}
+    >
+      <div className="flex items-start justify-between gap-4">
         <div className="min-w-0">
           <Link
             href={`/dashboard/projects/${project.id}`}
@@ -249,29 +301,29 @@ function ProjectCard({
             </p>
           )}
         </div>
-        <Badge variant="outline" className="shrink-0">
+        <span className="shrink-0 pt-0.5 text-xs font-medium text-muted-foreground">
           {statusLabel(project.status)}
-        </Badge>
+        </span>
       </div>
 
-      <div className="mt-3 flex flex-wrap gap-1.5">
+      <div className="mt-3 flex flex-wrap gap-x-4 gap-y-2 border-t pt-2">
         <Link
           href={`/dashboard/projects/${project.id}/schedule`}
-          className="inline-flex h-7 items-center gap-1 rounded-md border bg-background px-2 text-xs font-medium transition-colors hover:bg-accent"
+          className={actionClassName}
         >
           <IconCalendarStats className="size-3.5" />
           Schedule
         </Link>
         <Link
           href={`/dashboard/projects/${project.id}/contacts`}
-          className="inline-flex h-7 items-center gap-1 rounded-md border bg-background px-2 text-xs font-medium transition-colors hover:bg-accent"
+          className={actionClassName}
         >
           <IconAddressBook className="size-3.5" />
           Contacts
         </Link>
         <Link
           href={`/dashboard/projects/${project.id}/budget`}
-          className="inline-flex h-7 items-center gap-1 rounded-md border bg-background px-2 text-xs font-medium transition-colors hover:bg-accent"
+          className={actionClassName}
         >
           <IconFileDollar className="size-3.5" />
           Budget
@@ -281,7 +333,7 @@ function ProjectCard({
             href={googleDriveUrl(project.googleDriveFolderId)}
             target="_blank"
             rel="noreferrer"
-            className="inline-flex h-7 items-center gap-1 rounded-md border bg-background px-2 text-xs font-medium transition-colors hover:bg-accent"
+            className={actionClassName}
           >
             <IconBrandGoogleDrive className="size-3.5" />
             Drive
@@ -305,14 +357,17 @@ function DepartmentLane({
   return (
     <section
       id={`department-${group.id}`}
-      className="scroll-mt-20 rounded-lg border bg-card p-4"
+      className={cn(
+        "scroll-mt-20 overflow-hidden rounded-md border bg-card",
+        departmentHeaderClassName(group.id)
+      )}
     >
-      <div className="flex flex-wrap items-start justify-between gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b bg-background/70 px-4 py-3">
         <div className="min-w-0">
           <div className="flex items-center gap-2">
             <span
               className={cn(
-                "inline-flex size-8 items-center justify-center rounded-full border",
+                "inline-flex size-8 items-center justify-center rounded-md border",
                 group.accentClassName
               )}
             >
@@ -326,8 +381,13 @@ function DepartmentLane({
             </div>
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          <Badge variant="secondary">{group.projects.length} projects</Badge>
+        <div className="flex items-center gap-3">
+          <span className="text-sm font-semibold tabular-nums">
+            {group.projects.length}
+            <span className="ml-1 text-xs font-medium text-muted-foreground">
+              projects
+            </span>
+          </span>
           {!isFiltered && group.projects.length > visibleProjects.length && (
             <Button size="sm" variant="outline" asChild>
               <Link href={`/dashboard/projects?department=${group.id}`}>
@@ -339,13 +399,13 @@ function DepartmentLane({
       </div>
 
       {visibleProjects.length > 0 ? (
-        <div className="mt-4 grid gap-3 xl:grid-cols-2">
+        <div className="grid gap-2 p-3 xl:grid-cols-2">
           {visibleProjects.map((project) => (
             <ProjectCard key={project.id} project={project} />
           ))}
         </div>
       ) : (
-        <div className="mt-4 rounded-md border border-dashed p-4 text-sm text-muted-foreground">
+        <div className="m-3 border border-dashed bg-background/70 p-4 text-sm text-muted-foreground">
           No projects in this lane yet.
         </div>
       )}
@@ -367,15 +427,17 @@ function DepartmentButton({
       type="button"
       onClick={onClick}
       className={cn(
-        "rounded-lg border bg-background p-3 text-left transition-all duration-200 hover:-translate-y-1 hover:bg-muted/60 hover:shadow-md",
-        active && "border-emerald-800/40 bg-muted shadow-sm"
+        "border-b-2 border-transparent bg-background px-3 py-3 text-left transition-colors hover:bg-muted/45",
+        active
+          ? cn("bg-muted/50", departmentTabClassName(group.id))
+          : "text-muted-foreground"
       )}
     >
       <span className="flex items-center justify-between gap-3">
         <span className="flex items-center gap-2">
           <span
             className={cn(
-              "inline-flex size-8 items-center justify-center rounded-full border",
+              "inline-flex size-7 items-center justify-center rounded-md border",
               group.accentClassName
             )}
           >
@@ -509,22 +571,22 @@ export function ProjectsHub({
             </p>
           </div>
 
-          <div className="grid grid-cols-3 gap-2 rounded-lg border bg-muted/30 p-3">
-            <div>
+          <div className="grid grid-cols-3 divide-x border-y bg-background text-center">
+            <div className="px-3 py-2">
               <p className="text-xs text-muted-foreground">Active</p>
-              <p className="mt-1 text-2xl font-semibold">
+              <p className="mt-1 text-xl font-semibold">
                 {activeProjects.length}
               </p>
             </div>
-            <div>
+            <div className="px-3 py-2">
               <p className="text-xs text-muted-foreground">Warranty</p>
-              <p className="mt-1 text-2xl font-semibold">
+              <p className="mt-1 text-xl font-semibold">
                 {warrantyProjects.length}
               </p>
             </div>
-            <div>
+            <div className="px-3 py-2">
               <p className="text-xs text-muted-foreground">Complete</p>
-              <p className="mt-1 text-2xl font-semibold">
+              <p className="mt-1 text-xl font-semibold">
                 {completeProjects.length}
               </p>
             </div>
@@ -563,7 +625,7 @@ export function ProjectsHub({
           </div>
         </div>
 
-        <div className="flex flex-col gap-3 rounded-lg border bg-muted/25 p-3 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex flex-col gap-3 border-y bg-background py-3 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <p className="text-xs font-medium uppercase tracking-normal text-muted-foreground">
               Status view
@@ -607,27 +669,27 @@ export function ProjectsHub({
           </div>
         </div>
 
-        <div className="grid gap-3 sm:grid-cols-3">
-          <div className="rounded-md border bg-background p-3">
-            <p className="text-xs text-muted-foreground">Accounting linked</p>
-            <p className="mt-1 text-xl font-semibold">{linkedToSageCount}</p>
-          </div>
-          <div className="rounded-md border bg-background p-3">
-            <p className="text-xs text-muted-foreground">Drive linked</p>
-            <p className="mt-1 text-xl font-semibold">{linkedToDriveCount}</p>
-          </div>
-          <div className="rounded-md border bg-background p-3">
-            <p className="text-xs text-muted-foreground">Needs status cleanup</p>
-            <p className="mt-1 text-xl font-semibold">
+        <div className="flex flex-wrap items-center gap-x-6 gap-y-2 border-b pb-3 text-sm">
+          <span>
+            <span className="font-semibold tabular-nums">{linkedToSageCount}</span>{" "}
+            <span className="text-muted-foreground">accounting linked</span>
+          </span>
+          <span>
+            <span className="font-semibold tabular-nums">{linkedToDriveCount}</span>{" "}
+            <span className="text-muted-foreground">Drive linked</span>
+          </span>
+          <span>
+            <span className="font-semibold tabular-nums">
               {
                 projects.filter((project) => statusBucket(project.status) === "other")
                   .length
               }
-            </p>
-          </div>
+            </span>{" "}
+            <span className="text-muted-foreground">need status cleanup</span>
+          </span>
         </div>
 
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+        <div className="grid overflow-hidden rounded-md border md:grid-cols-2 xl:grid-cols-4">
           {groups
             .filter((group) => group.id !== "UNASSIGNED")
             .map((group) => (
