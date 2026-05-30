@@ -3,6 +3,7 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
     transpilePackages: ["agent-core"],
     experimental: {
+        proxyClientMaxBodySize: "100mb",
         optimizePackageImports: [
             "@tabler/icons-react",
             "lucide-react",

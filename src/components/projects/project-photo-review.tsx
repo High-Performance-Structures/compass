@@ -48,6 +48,8 @@ type VisibilityFilter =
 
 type PhotoSort = "newest" | "oldest" | "phase_newest" | "phase_oldest"
 
+const MAX_UPLOAD_BATCH_BYTES = 95 * 1024 * 1024
+
 function statusLabel(value: string): string {
   return value
     .split("_")
@@ -84,6 +86,11 @@ function browserHref(value: string | null): string | null {
   if (value.startsWith("/owner-update-photos/")) return value
   if (value.startsWith("/project-photo-previews/")) return value
   return null
+}
+
+function formatBytes(value: number): string {
+  if (value < 1024 * 1024) return `${Math.ceil(value / 1024)} KB`
+  return `${(value / (1024 * 1024)).toFixed(1)} MB`
 }
 
 function isInternalOnly(photo: ProjectPhotoLibraryItem): boolean {
@@ -310,6 +317,14 @@ export function ProjectPhotoReview({
   async function uploadSelectedPhotos(): Promise<void> {
     if (uploadFiles.length === 0) {
       setUploadMessage("Choose at least one image to upload.")
+      return
+    }
+
+    const batchSize = uploadFiles.reduce((sum, file) => sum + file.size, 0)
+    if (batchSize > MAX_UPLOAD_BATCH_BYTES) {
+      setUploadMessage(
+        `This batch is ${formatBytes(batchSize)}. Upload fewer photos at a time.`
+      )
       return
     }
 
@@ -905,7 +920,10 @@ export function ProjectPhotoReview({
               {uploadFiles.length > 0 && (
                 <div className="rounded-md border bg-muted/20 p-3 text-xs text-muted-foreground">
                   <p className="font-medium text-foreground">
-                    {uploadFiles.length} selected
+                    {uploadFiles.length} selected ·{" "}
+                    {formatBytes(
+                      uploadFiles.reduce((sum, file) => sum + file.size, 0)
+                    )}
                   </p>
                   <ul className="mt-2 space-y-1">
                     {uploadFiles.slice(0, 5).map((file) => (
