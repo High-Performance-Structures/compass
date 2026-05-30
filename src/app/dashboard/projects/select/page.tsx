@@ -98,7 +98,7 @@ export default async function ProjectSectionPickerPage({
     <div className="relative flex-1 overflow-hidden p-4 pt-6 sm:p-6 md:p-8">
       <div
         aria-hidden="true"
-        className="pointer-events-none absolute inset-0 z-0 bg-cover bg-center opacity-[0.07] grayscale"
+        className="pointer-events-none absolute inset-0 z-0 bg-cover bg-center opacity-[0.16] grayscale"
         style={{
           backgroundImage:
             "url('/owner-update-photos/loomis/2026-04-13-144739.jpg')",
@@ -106,7 +106,7 @@ export default async function ProjectSectionPickerPage({
       />
       <div
         aria-hidden="true"
-        className="pointer-events-none absolute inset-0 z-0 bg-gradient-to-br from-background via-background/95 to-background/80"
+        className="pointer-events-none absolute inset-0 z-0 bg-gradient-to-br from-background via-background/88 to-background/65"
       />
       <div className="relative z-10 space-y-6">
         <div className="max-w-3xl">
