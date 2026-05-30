@@ -3,9 +3,9 @@
 import * as React from "react"
 import Link from "next/link"
 import {
+  IconAutomation,
   IconCreditCard,
   IconLogout,
-  IconNotification,
   IconUserCircle,
   IconMicrophone,
   IconMicrophoneOff,
@@ -188,8 +188,14 @@ export function NavUser({
               </DropdownMenuItem>
               <DropdownMenuItem asChild>
                 <Link href="/dashboard/settings">
-                  <IconNotification />
-                  Notification settings
+                  <IconSettings />
+                  Settings
+                </Link>
+              </DropdownMenuItem>
+              <DropdownMenuItem asChild>
+                <Link href="/dashboard/automations">
+                  <IconAutomation />
+                  Automations
                 </Link>
               </DropdownMenuItem>
             </DropdownMenuGroup>

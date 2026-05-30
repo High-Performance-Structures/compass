@@ -3,7 +3,6 @@
 import * as React from "react"
 import {
   IconAddressBook,
-  IconAutomation,
   IconCalendarStats,
   IconClipboardText,
   IconFiles,
@@ -15,14 +14,12 @@ import {
   IconMessageCircleQuestion,
   IconPhoto,
   IconReceipt,
-  IconSettings,
   IconShoppingCart,
 } from "@tabler/icons-react"
 import { usePathname } from "next/navigation"
 
 import { NavMain } from "@/components/nav-main"
 import { NavDashboards } from "@/components/nav-dashboards"
-import { NavSecondary } from "@/components/nav-secondary"
 import { NavFiles } from "@/components/nav-files"
 import { NavProjects } from "@/components/nav-projects"
 import { NavConversations } from "@/components/nav-conversations"
@@ -121,19 +118,6 @@ const NAV_MAIN = [
     title: "Purchase Orders",
     url: "/dashboard/purchase-orders",
     icon: IconShoppingCart,
-  },
-]
-
-const NAV_SECONDARY = [
-  {
-    title: "Automations",
-    url: "/dashboard/automations",
-    icon: IconAutomation,
-  },
-  {
-    title: "Settings",
-    url: "/dashboard/settings",
-    icon: IconSettings,
   },
 ]
 
@@ -243,10 +227,6 @@ export function AppSidebar({
             </SidebarMenuItem>
           </SidebarMenu>
         )}
-        <NavSecondary
-          items={[...NAV_SECONDARY]}
-          className="p-0 group-data-[collapsible=icon]:p-0"
-        />
         {channelId !== null && <VoicePanel />}
         <PersonalDeskPhoto user={user} />
         <NavUser user={user} />
