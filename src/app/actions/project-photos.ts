@@ -1,10 +1,10 @@
 "use server"
 
-import { and, desc, eq, inArray } from "drizzle-orm"
+import { and, asc, desc, eq, inArray } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
 import { getDb } from "@/db"
-import { dailyLogPhotos, dailyLogs, projects } from "@/db/schema"
+import { dailyLogPhotos, dailyLogs, projects, scheduleTasks } from "@/db/schema"
 import { requireAuth } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
 import { isDemoUser } from "@/lib/demo"
@@ -29,6 +29,15 @@ export type ProjectPhotoLibraryItem = {
   readonly subVendorVisible: boolean
   readonly publicShareable: boolean
   readonly photoKind: string
+  readonly schedulePhase: string
+  readonly schedulePhaseConfidence: number
+  readonly schedulePhaseReason: string
+}
+
+export type ProjectPhotoPhaseOption = {
+  readonly value: string
+  readonly label: string
+  readonly count: number
 }
 
 export type ProjectPhotoLibrary = {
@@ -38,6 +47,7 @@ export type ProjectPhotoLibrary = {
     readonly projectNumber: string | null
   }
   readonly photos: readonly ProjectPhotoLibraryItem[]
+  readonly phases: readonly ProjectPhotoPhaseOption[]
 }
 
 type PhotoPermissionInput = {
@@ -52,6 +62,12 @@ type PhotoPermissionInput = {
 type UpdateResult =
   | { readonly success: true; readonly updatedCount: number }
   | { readonly success: false; readonly error: string }
+
+type PhaseSuggestion = {
+  readonly phase: string
+  readonly confidence: number
+  readonly reason: string
+}
 
 async function verifyProjectAccess(
   projectId: string,
@@ -118,6 +134,164 @@ function isImage(value: {
   return value.thumbnailUrl !== null || value.mimeType?.startsWith("image/") === true
 }
 
+function phaseKeywords(phase: string): readonly string[] {
+  const normalized = phase.toLowerCase()
+  const terms = new Set(
+    normalized
+      .split(/[^a-z0-9]+/)
+      .filter((part) => part.length > 2)
+  )
+
+  const keywordGroups: readonly {
+    readonly match: string
+    readonly keywords: readonly string[]
+  }[] = [
+    {
+      match: "foundation",
+      keywords: ["footing", "footer", "forms", "rebar", "pour", "concrete"],
+    },
+    {
+      match: "excavat",
+      keywords: ["dig", "soil", "grading", "trench", "utility", "backfill"],
+    },
+    {
+      match: "floor",
+      keywords: ["joist", "decking", "subfloor", "rim", "beam"],
+    },
+    {
+      match: "framing",
+      keywords: ["wall", "truss", "roof", "sheathing", "stud", "plate"],
+    },
+    {
+      match: "mechanical",
+      keywords: ["hvac", "duct", "furnace", "vent", "rough"],
+    },
+    {
+      match: "electrical",
+      keywords: ["wire", "panel", "outlet", "switch", "rough"],
+    },
+    {
+      match: "plumbing",
+      keywords: ["pipe", "drain", "water", "rough", "fixture"],
+    },
+    {
+      match: "insulation",
+      keywords: ["batts", "foam", "seal", "thermal"],
+    },
+    {
+      match: "drywall",
+      keywords: ["sheetrock", "tape", "mud", "texture"],
+    },
+    {
+      match: "finish",
+      keywords: ["cabinet", "trim", "paint", "flooring", "tile", "counter"],
+    },
+    {
+      match: "inspection",
+      keywords: ["inspect", "correction", "certificate", "co", "punch"],
+    },
+  ]
+
+  for (const group of keywordGroups) {
+    if (normalized.includes(group.match)) {
+      for (const keyword of group.keywords) terms.add(keyword)
+    }
+  }
+
+  return [...terms]
+}
+
+function keywordScore(phase: string, text: string): number {
+  const normalizedText = text.toLowerCase()
+  return phaseKeywords(phase).reduce(
+    (score, keyword) =>
+      normalizedText.includes(keyword.toLowerCase()) ? score + 1 : score,
+    0
+  )
+}
+
+function suggestPhaseForPhoto(
+  photoDateValue: string,
+  contextText: string,
+  tasks: readonly {
+    readonly phase: string
+    readonly startDate: string
+    readonly endDateCalculated: string
+  }[]
+): PhaseSuggestion {
+  const matchingTask = tasks.find(
+    (task) =>
+      task.phase.trim().length > 0 &&
+      task.startDate <= photoDateValue &&
+      task.endDateCalculated >= photoDateValue
+  )
+
+  const phaseNames = [...new Set(tasks.map((task) => task.phase))]
+  const scoredPhases = phaseNames
+    .map((phase) => ({
+      phase,
+      score: keywordScore(phase, contextText),
+    }))
+    .filter((item) => item.score > 0)
+    .sort((left, right) => right.score - left.score)
+  const keywordMatch = scoredPhases[0]
+
+  if (keywordMatch && matchingTask?.phase === keywordMatch.phase) {
+    return {
+      phase: keywordMatch.phase,
+      confidence: 92,
+      reason: "Schedule date and photo context both point to this phase.",
+    }
+  }
+
+  if (keywordMatch && keywordMatch.score >= 2) {
+    return {
+      phase: keywordMatch.phase,
+      confidence: 78,
+      reason: "Photo caption, filename, or daily log text matches this phase.",
+    }
+  }
+
+  if (matchingTask) {
+    return {
+      phase: matchingTask.phase,
+      confidence: 64,
+      reason: "Photo date falls inside this scheduled phase.",
+    }
+  }
+
+  if (keywordMatch) {
+    return {
+      phase: keywordMatch.phase,
+      confidence: 56,
+      reason: "Photo context lightly matches this phase.",
+    }
+  }
+
+  return {
+    phase: "Unassigned phase",
+    confidence: 0,
+    reason: "No schedule date or photo context match was found.",
+  }
+}
+
+function phaseOptions(
+  photos: readonly ProjectPhotoLibraryItem[]
+): readonly ProjectPhotoPhaseOption[] {
+  const counts = new Map<string, number>()
+  for (const photo of photos) {
+    counts.set(photo.schedulePhase, (counts.get(photo.schedulePhase) ?? 0) + 1)
+  }
+
+  return [...counts.entries()]
+    .sort(([left], [right]) => {
+      if (left === "Unassigned phase") return 1
+      if (right === "Unassigned phase") return -1
+      return left.localeCompare(right)
+    })
+    .map(([value, count]) => ({ value, label: value, count }))
+}
+
 export async function getProjectPhotoLibrary(
   projectId: string
 ): Promise<ProjectPhotoLibrary> {
@@ -156,15 +330,48 @@ export async function getProjectPhotoLibrary(
       photoKind: dailyLogPhotos.photoKind,
       createdAt: dailyLogPhotos.createdAt,
       logDate: dailyLogs.logDate,
+      logWorkCompleted: dailyLogs.workCompleted,
+      logIssues: dailyLogs.issues,
+      logNotes: dailyLogs.notes,
     })
     .from(dailyLogPhotos)
     .leftJoin(dailyLogs, eq(dailyLogPhotos.dailyLogId, dailyLogs.id))
     .where(eq(dailyLogPhotos.projectId, projectId))
     .orderBy(desc(dailyLogPhotos.capturedAt), desc(dailyLogPhotos.createdAt))
 
-  return {
-    project,
-    photos: rows.filter(isImage).map((row) => ({
+  const tasks = await db
+    .select({
+      phase: scheduleTasks.phase,
+      startDate: scheduleTasks.startDate,
+      endDateCalculated: scheduleTasks.endDateCalculated,
+      sortOrder: scheduleTasks.sortOrder,
+    })
+    .from(scheduleTasks)
+    .where(eq(scheduleTasks.projectId, projectId))
+    .orderBy(asc(scheduleTasks.sortOrder), asc(scheduleTasks.startDate))
+
+  const photos = rows.filter(isImage).map((row) => {
+    const resolvedPhotoDate = photoDate({
+      capturedAt: row.capturedAt,
+      logDate: row.logDate,
+      createdAt: row.createdAt,
+    })
+    const suggestion = suggestPhaseForPhoto(
+      resolvedPhotoDate,
+      [
+        row.fileName,
+        row.caption,
+        row.photoKind,
+        row.logWorkCompleted,
+        row.logIssues,
+        row.logNotes,
+      ]
+        .filter((part) => part !== null && part.trim().length > 0)
+        .join(" "),
+      tasks
+    )
+
+    return {
       id: row.id,
       projectId: row.projectId,
       dailyLogId: row.dailyLogId,
@@ -176,17 +383,22 @@ export async function getProjectPhotoLibrary(
       caption: row.caption,
       capturedAt: row.capturedAt,
       logDate: row.logDate,
-      photoDate: photoDate({
-        capturedAt: row.capturedAt,
-        logDate: row.logDate,
-        createdAt: row.createdAt,
-      }),
+      photoDate: resolvedPhotoDate,
       reviewStatus: row.reviewStatus,
       ownerVisible: row.ownerVisible,
       subVendorVisible: row.subVendorVisible,
       publicShareable: row.publicShareable,
       photoKind: row.photoKind,
-    })),
+      schedulePhase: suggestion.phase,
+      schedulePhaseConfidence: suggestion.confidence,
+      schedulePhaseReason: suggestion.reason,
+    }
+  })
+
+  return {
+    project,
+    photos,
+    phases: phaseOptions(photos),
   }
 }
 
