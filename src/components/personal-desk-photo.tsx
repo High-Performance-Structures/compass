@@ -155,15 +155,15 @@ export function PersonalDeskPhoto({
   }
 
   return (
-    <div className="group-data-[collapsible=icon]:hidden px-2 pb-2">
+    <div className="group-data-[collapsible=icon]:hidden px-1 pb-1">
       <Popover>
         <PopoverTrigger asChild>
           <button
             type="button"
-            className="group/photo block w-full rounded-md border border-sidebar-border bg-sidebar-accent/30 p-1.5 text-left shadow-sm transition hover:-translate-y-0.5 hover:bg-sidebar-accent hover:shadow-md"
+            className="group/photo block w-full rounded-md border border-sidebar-border bg-sidebar-accent/30 p-1 text-left shadow-sm transition hover:-translate-y-0.5 hover:bg-sidebar-accent hover:shadow-md"
             aria-label="Edit desk photo"
           >
-            <div className="relative aspect-[16/10] overflow-hidden rounded-sm bg-sidebar-accent">
+            <div className="relative h-[clamp(4.5rem,12vh,6.75rem)] overflow-hidden rounded-sm bg-sidebar-accent">
               <Image
                 src={photoUrl}
                 alt={`${user.name}'s desk photo`}

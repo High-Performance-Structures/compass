@@ -178,7 +178,6 @@ function SidebarNav({
         }
       : item
   )
-  const secondaryItems = [...NAV_SECONDARY]
 
   return (
     <div key={mode} className="animate-in fade-in slide-in-from-left-1 flex flex-1 flex-col duration-150">
@@ -197,7 +196,6 @@ function SidebarNav({
         <>
           <NavMain items={navMain} />
           <NavDashboards dashboards={dashboards} />
-          <NavSecondary items={secondaryItems} className="mt-auto" />
         </>
       )}
     </div>
@@ -232,7 +230,7 @@ export function AppSidebar({
           dashboards={dashboards}
         />
       </SidebarContent>
-      <SidebarFooter>
+      <SidebarFooter className="border-t border-sidebar-border/60">
         {isMobile && (
           <SidebarMenu>
             <SidebarMenuItem>
@@ -245,6 +243,10 @@ export function AppSidebar({
             </SidebarMenuItem>
           </SidebarMenu>
         )}
+        <NavSecondary
+          items={[...NAV_SECONDARY]}
+          className="p-0 group-data-[collapsible=icon]:p-0"
+        />
         {channelId !== null && <VoicePanel />}
         <PersonalDeskPhoto user={user} />
         <NavUser user={user} />
