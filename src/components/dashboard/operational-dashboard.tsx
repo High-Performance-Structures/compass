@@ -76,7 +76,6 @@ import {
   workflowRoleIsAllowed,
   type ProjectWorkflowRoleId,
   type ProjectWorkspaceMode,
-  type WorkflowStepId,
 } from "@/lib/project-workflow-roles"
 import { cn } from "@/lib/utils"
 
@@ -110,13 +109,6 @@ type DashboardField = {
   readonly tone: SignalTone
   readonly href: string
   readonly icon: React.ReactNode
-}
-
-type DashboardRoleAction = {
-  readonly label: string
-  readonly href: string
-  readonly status: string
-  readonly detail: string
 }
 
 const DASHBOARD_ROLE_STORAGE_KEY = "compass-dashboard-role-lens"
@@ -618,84 +610,6 @@ function DashboardCommandCenter({
   )
 }
 
-function dashboardRoleAction(
-  stepId: WorkflowStepId,
-  overview: DashboardOverview
-): DashboardRoleAction {
-  switch (stepId) {
-    case "schedule":
-      return {
-        label: "Work calendar",
-        href: "/dashboard/schedule",
-        status: `${overview.metrics.upcomingTasks} upcoming`,
-        detail: "Schedule and task commitments across active jobs.",
-      }
-    case "contacts":
-      return {
-        label: "Contacts",
-        href: "/dashboard/contacts",
-        status: "Directory",
-        detail: "Customers, vendors, internal teams, and job assignments.",
-      }
-    case "field":
-      return {
-        label: "Field input",
-        href: "/dashboard/projects/select?target=daily-logs",
-        status: `${overview.metrics.photosToReview} photos`,
-        detail: "Daily logs, photos, and field review queues.",
-      }
-    case "owner-update":
-      return {
-        label: "Owner updates",
-        href: "/dashboard/projects/select?target=owner-updates",
-        status: `${overview.metrics.draftOwnerUpdates} drafts`,
-        detail: "Prepare weekly updates from logs, photos, and schedule.",
-      }
-    case "budget":
-      return {
-        label: "Budget",
-        href: "/dashboard/financials",
-        status: formatMoney(overview.metrics.openPoAmount),
-        detail: "Budget, commitments, billing, and G703-style flow.",
-      }
-    case "rfqs":
-      return {
-        label: "RFIs / RFQs",
-        href: "/dashboard/rfis",
-        status: `${overview.metrics.openRfis} open`,
-        detail: "Questions, quote requests, and decisions needing action.",
-      }
-    case "purchase-orders":
-      return {
-        label: "Purchase orders",
-        href: "/dashboard/purchase-orders",
-        status: `${overview.operations.length} items`,
-        detail: "Sage-backed commitments and purchasing work.",
-      }
-    case "bills-draws":
-      return {
-        label: "Bills / draws",
-        href: "/dashboard/financials",
-        status: "Financials",
-        detail: "Vendor bills and owner pay application readiness.",
-      }
-    case "intake":
-      return {
-        label: "Drive intake",
-        href: "/dashboard/files",
-        status: "Files",
-        detail: "Google Drive, scripts, uploads, and intake cleanup.",
-      }
-    case "context":
-      return {
-        label: "Projects",
-        href: "/dashboard/projects",
-        status: `${overview.metrics.activeProjects} active`,
-        detail: "Choose the job context before acting.",
-      }
-  }
-}
-
 function DashboardRoleWorkspaceControl({
   overview,
   activeRoleId,
@@ -717,100 +631,57 @@ function DashboardRoleWorkspaceControl({
   const availableRoles = PROJECT_WORKFLOW_ROLE_LENSES.filter((role) =>
     allowedRoleIds.includes(role.id)
   )
-  const actions = activeRole.priority
-    .slice(0, 4)
-    .map((stepId) => dashboardRoleAction(stepId, overview))
   const developerModeEnabled = canUseDeveloperMode && workspaceMode === "developer"
 
   return (
-    <Card className="rounded-lg border-emerald-900/10 bg-emerald-950/[0.025]">
-      <CardContent className="grid gap-4 p-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
-        <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="rounded-md border bg-background p-1.5 text-emerald-800">
-              <IconBriefcase className="size-4" />
-            </span>
-            <p className="text-sm font-semibold">Role dashboard</p>
-            <Badge variant={canUseDeveloperMode ? "secondary" : "outline"}>
-              {canUseDeveloperMode ? "Admin preview" : "Permission based"}
-            </Badge>
-            <Badge variant={developerModeEnabled ? "secondary" : "outline"}>
-              {developerModeEnabled ? "Developer mode" : "Work mode"}
-            </Badge>
-          </div>
-          <p className="mt-2 text-sm text-muted-foreground">
-            {activeRole.focus}
+    <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border/60 py-1.5">
+      <div className="flex min-w-0 flex-wrap items-center gap-2">
+        <IconBriefcase className="size-4 text-emerald-800" />
+        <p className="text-sm font-semibold">Role</p>
+        <Select
+          value={activeRoleId}
+          onValueChange={(value) => {
+            if (!isProjectWorkflowRoleId(value)) return
+            if (!workflowRoleIsAllowed(value, allowedRoleIds)) return
+            onActiveRoleChange(value)
+          }}
+        >
+          <SelectTrigger
+            size="sm"
+            className="h-8 w-[220px] bg-background"
+            aria-label="Select role dashboard"
+          >
+            <SelectValue placeholder={activeRole.label} />
+          </SelectTrigger>
+          <SelectContent align="start">
+            {availableRoles.map((role) => (
+              <SelectItem key={role.id} value={role.id}>
+                {role.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <span className="text-xs text-muted-foreground">
+          {canUseDeveloperMode ? "Admin preview" : "Permission based"}
+        </span>
+      </div>
+
+      {canUseDeveloperMode && (
+        <div className="flex items-center gap-2">
+          <IconTools className="size-4 text-muted-foreground" />
+          <p className="text-xs font-medium">
+            {developerModeEnabled ? "Developer" : "Work"}
           </p>
-          <div className="mt-3 flex flex-wrap items-center gap-2">
-            <Select
-              value={activeRoleId}
-              onValueChange={(value) => {
-                if (!isProjectWorkflowRoleId(value)) return
-                if (!workflowRoleIsAllowed(value, allowedRoleIds)) return
-                onActiveRoleChange(value)
-              }}
-            >
-              <SelectTrigger
-                size="sm"
-                className="w-[240px] bg-background"
-                aria-label="Select role dashboard"
-              >
-                <SelectValue placeholder="Choose role view" />
-              </SelectTrigger>
-              <SelectContent align="start">
-                {availableRoles.map((role) => (
-                  <SelectItem key={role.id} value={role.id}>
-                    {role.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <span className="text-xs text-muted-foreground">
-              Viewing {activeRole.label}
-            </span>
-          </div>
+          <Switch
+            checked={developerModeEnabled}
+            onCheckedChange={(checked) =>
+              onWorkspaceModeChange(checked ? "developer" : "worker")
+            }
+            aria-label="Toggle dashboard developer mode"
+          />
         </div>
-
-        {canUseDeveloperMode && (
-          <div className="flex items-center justify-between gap-3 rounded-md border bg-background/80 px-3 py-2 lg:min-w-64">
-            <div className="flex items-center gap-2">
-              <IconTools className="size-4 text-muted-foreground" />
-              <div>
-                <p className="text-xs font-medium">Work / developer</p>
-                <p className="text-xs text-muted-foreground">
-                  {developerModeEnabled ? "Buildout controls visible" : "Daily work view"}
-                </p>
-              </div>
-            </div>
-            <Switch
-              checked={developerModeEnabled}
-              onCheckedChange={(checked) =>
-                onWorkspaceModeChange(checked ? "developer" : "worker")
-              }
-              aria-label="Toggle dashboard developer mode"
-            />
-          </div>
-        )}
-
-        <div className="grid gap-2 lg:col-span-2 sm:grid-cols-2 xl:grid-cols-4">
-          {actions.map((action) => (
-            <Link
-              key={action.label}
-              href={action.href}
-              className="rounded-md border bg-background/80 p-3 text-sm transition-all hover:-translate-y-0.5 hover:border-emerald-300 hover:shadow-md"
-            >
-              <div className="flex items-center justify-between gap-2">
-                <span className="font-medium">{action.label}</span>
-                <Badge variant="outline">{action.status}</Badge>
-              </div>
-              <p className="mt-2 line-clamp-2 text-xs text-muted-foreground">
-                {action.detail}
-              </p>
-            </Link>
-          ))}
-        </div>
-      </CardContent>
-    </Card>
+      )}
+    </div>
   )
 }
 
