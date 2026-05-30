@@ -209,14 +209,6 @@ function formatDate(value: string | null): string {
   })
 }
 
-function browserHref(value: string | null): string | null {
-  if (value === null) return null
-  if (value.startsWith("https://") || value.startsWith("http://")) return value
-  if (value.startsWith("/owner-update-photos/")) return value
-  if (value.startsWith("/project-photo-previews/")) return value
-  return null
-}
-
 function formatMoney(value: number): string {
   return new Intl.NumberFormat("en-US", {
     style: "currency",
@@ -685,11 +677,40 @@ function DashboardRoleWorkspaceControl({
   )
 }
 
+function ProjectPulse({
+  overview,
+}: {
+  readonly overview: DashboardOverview
+}): React.ReactElement {
+  return (
+    <Card className="overflow-hidden rounded-lg">
+      <CardHeader className="pb-3">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <CardTitle>Project Pulse</CardTitle>
+            <CardDescription>
+              Recent field progress paired with a quick CHERISH check-in.
+            </CardDescription>
+          </div>
+          <Badge variant="secondary">Field + Thursday</Badge>
+        </div>
+      </CardHeader>
+      <CardContent className="grid gap-4 pt-0 2xl:grid-cols-[minmax(0,1fr)_22rem]">
+        <div className="space-y-4">
+          <FieldPulse photos={overview.fieldPhotos} />
+          <DashboardCommandCenter overview={overview} />
+        </div>
+        <CherishPulse />
+      </CardContent>
+    </Card>
+  )
+}
+
 function FieldPulse({
   photos,
 }: {
   readonly photos: DashboardOverview["fieldPhotos"]
-}): React.ReactElement | null {
+}): React.ReactElement {
   const [activeIndex, setActiveIndex] = useState(0)
   const [failedPhotoIds, setFailedPhotoIds] = useState<readonly string[]>([])
 
@@ -703,37 +724,74 @@ function FieldPulse({
     return () => window.clearInterval(timer)
   }, [photos.length])
 
-  if (photos.length === 0) return null
+  if (photos.length === 0) {
+    return (
+      <div className="grid min-w-0 gap-3 lg:grid-cols-[minmax(18rem,22rem)_minmax(0,1fr)]">
+        <div className="flex aspect-[4/3] items-center justify-center rounded-lg border bg-muted/40">
+          <IconPhoto className="size-10 text-muted-foreground" />
+        </div>
+        <div className="flex min-w-0 flex-col justify-center">
+          <div className="flex items-center gap-2">
+            <span className="rounded-md border bg-background p-1.5 text-muted-foreground">
+              <IconPhoto className="size-4" />
+            </span>
+            <div>
+              <p className="text-sm font-semibold">Field Pulse</p>
+              <p className="text-xs text-muted-foreground">
+                Approved progress photos will rotate here.
+              </p>
+            </div>
+          </div>
+          <p className="mt-3 max-w-md text-sm text-muted-foreground">
+            No field photos are available for this dashboard view yet.
+          </p>
+        </div>
+      </div>
+    )
+  }
 
   const activePhoto = photos[activeIndex] ?? photos[0]
-  if (!activePhoto) return null
-
-  const photoHref = browserHref(activePhoto.driveUrl)
+  if (!activePhoto) {
+    return (
+      <div className="flex min-h-48 items-center justify-center rounded-lg border bg-muted/40">
+        <IconPhoto className="size-10 text-muted-foreground" />
+      </div>
+    )
+  }
 
   return (
-    <Card className="overflow-hidden rounded-lg">
-      <CardContent className="grid gap-0 p-0 lg:grid-cols-[minmax(0,1fr)_18rem]">
-        <div className="relative min-h-[15rem] overflow-hidden bg-muted">
-          {photos.map((photo, index) => {
-            const imageFailed = failedPhotoIds.includes(photo.id)
+    <div className="grid min-w-0 gap-3 lg:grid-cols-[minmax(18rem,22rem)_minmax(0,1fr)]">
+      <div className="relative aspect-[4/3] overflow-hidden rounded-lg border bg-muted">
+        {photos.map((photo, index) => {
+          const imageFailed = failedPhotoIds.includes(photo.id)
 
-            return (
-              <div
-                key={photo.id}
-                className={cn(
-                  "absolute inset-0 transition-opacity duration-1000 ease-in-out",
-                  index === activeIndex ? "opacity-100" : "opacity-0"
-                )}
-                aria-hidden={index !== activeIndex}
-              >
-                {!imageFailed ? (
+          return (
+            <div
+              key={photo.id}
+              className={cn(
+                "absolute inset-0 transition-opacity duration-1000 ease-in-out",
+                index === activeIndex ? "opacity-100" : "opacity-0"
+              )}
+              aria-hidden={index !== activeIndex}
+            >
+              {!imageFailed ? (
+                <>
+                  <Image
+                    src={photo.imageUrl}
+                    alt=""
+                    fill
+                    sizes="(min-width: 1280px) 384px, (min-width: 1024px) 384px, 100vw"
+                    unoptimized
+                    className="scale-105 object-cover opacity-20 blur-md"
+                    aria-hidden="true"
+                  />
                   <Image
                     src={photo.imageUrl}
                     alt={photo.caption ?? photo.fileName}
                     fill
-                    sizes="(min-width: 1024px) 900px, 100vw"
+                    sizes="(min-width: 1280px) 384px, (min-width: 1024px) 384px, 100vw"
                     unoptimized
-                    className="object-cover"
+                    className="object-contain"
                     onError={() =>
                       setFailedPhotoIds((current) =>
                         current.includes(photo.id)
@@ -742,81 +800,59 @@ function FieldPulse({
                       )
                     }
                   />
-                ) : (
-                  <div className="flex h-full min-h-[15rem] items-center justify-center">
-                    <IconPhoto className="size-12 text-muted-foreground" />
-                  </div>
-                )}
-              </div>
-            )
-          })}
-          <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/75 via-black/35 to-transparent p-4 text-white">
-            <p className="text-xs font-medium uppercase tracking-normal text-white/70">
-              Field Pulse
-            </p>
-            <h2 className="mt-1 line-clamp-2 text-xl font-semibold">
-              {activePhoto.caption ?? activePhoto.fileName}
-            </h2>
-            <p className="mt-1 text-sm text-white/80">
-              {activePhoto.projectLabel} · {formatDate(activePhoto.capturedAt)}
-            </p>
-          </div>
-        </div>
-
-        <div className="flex flex-col justify-between gap-4 border-t bg-card p-4 lg:border-l lg:border-t-0">
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="rounded-md border bg-background p-2 text-muted-foreground">
-                <IconPhoto className="size-4" />
-              </span>
-              <div>
-                <CardTitle className="text-base">Field Pulse</CardTitle>
-                <CardDescription>Recent approved progress photos.</CardDescription>
-              </div>
-            </div>
-            <p className="mt-4 line-clamp-3 text-sm text-muted-foreground">
-              {activePhoto.projectName}
-            </p>
-          </div>
-
-          <div className="grid gap-2">
-            <div className="grid grid-cols-10 gap-1.5">
-              {photos.map((photo, index) => (
-                <button
-                  key={photo.id}
-                  type="button"
-                  aria-label={`Show field photo ${index + 1}`}
-                  onClick={() => setActiveIndex(index)}
-                  className={cn(
-                    "h-1.5 rounded-full bg-muted transition-colors",
-                    index === activeIndex && "bg-primary"
-                  )}
-                />
-              ))}
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <Button asChild size="sm">
-                <Link href={`/dashboard/projects/${activePhoto.projectId}/photos`}>
-                  Review photos
-                </Link>
-              </Button>
-              <Button asChild size="sm" variant="outline">
-                <Link href={`/dashboard/projects/${activePhoto.projectId}`}>
-                  Open project
-                </Link>
-              </Button>
-              {photoHref && (
-                <Button asChild size="sm" variant="ghost">
-                  <a href={photoHref} target="_blank" rel="noreferrer">
-                    Source
-                  </a>
-                </Button>
+                </>
+              ) : (
+                <div className="flex h-full items-center justify-center">
+                  <IconPhoto className="size-10 text-muted-foreground" />
+                </div>
               )}
             </div>
+          )
+        })}
+      </div>
+
+      <div className="flex min-w-0 flex-col justify-between gap-3">
+        <div>
+          <div className="flex items-center gap-2">
+            <span className="rounded-md border bg-background p-1.5 text-muted-foreground">
+              <IconPhoto className="size-4" />
+            </span>
+            <div>
+              <p className="text-sm font-semibold">Field Pulse</p>
+              <p className="text-xs text-muted-foreground">
+                Recent approved progress photos.
+              </p>
+            </div>
+          </div>
+          <h2 className="mt-3 line-clamp-2 text-lg font-semibold">
+            {activePhoto.caption ?? activePhoto.fileName}
+          </h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {activePhoto.projectLabel} · {formatDate(activePhoto.capturedAt)}
+          </p>
+          <p className="mt-2 line-clamp-2 text-sm text-muted-foreground">
+            {activePhoto.projectName}
+          </p>
+        </div>
+
+        <div className="grid gap-2">
+          <div className="grid grid-cols-10 gap-1.5">
+            {photos.map((photo, index) => (
+              <button
+                key={photo.id}
+                type="button"
+                aria-label={`Show field photo ${index + 1}`}
+                onClick={() => setActiveIndex(index)}
+                className={cn(
+                  "h-1.5 rounded-full bg-muted transition-colors",
+                  index === activeIndex && "bg-primary"
+                )}
+              />
+            ))}
           </div>
         </div>
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   )
 }
 
@@ -919,9 +955,8 @@ function CherishPulse(): React.ReactElement {
   }
 
   return (
-    <Card className="rounded-lg border-emerald-900/10 bg-emerald-950/[0.025]">
-      <CardContent className="grid gap-3 p-3 xl:grid-cols-[minmax(0,1fr)_19rem]">
-        <div className="min-w-0">
+    <div className="min-w-0 rounded-lg border bg-background p-3">
+      <div>
           <div className="flex flex-wrap items-center gap-2">
             <span className="rounded-md border bg-background p-1.5 text-emerald-800">
               <IconUserHeart className="size-4" />
@@ -931,7 +966,7 @@ function CherishPulse(): React.ReactElement {
             <Badge variant="outline">Field friendly</Badge>
           </div>
 
-          <div className="mt-3 rounded-lg border bg-background p-3">
+          <div className="mt-3 rounded-md bg-emerald-950/[0.04] p-3">
             <div className="flex flex-wrap items-center gap-2">
               <p className="text-xs font-semibold uppercase tracking-normal text-muted-foreground">
                 This week
@@ -961,9 +996,8 @@ function CherishPulse(): React.ReactElement {
               ))}
             </div>
           </div>
-        </div>
 
-        <aside className="rounded-lg border bg-background p-3">
+        <div className="mt-3 border-t pt-3">
           <div className="flex items-start justify-between gap-3">
             <div>
               <p className="text-sm font-semibold">Respond</p>
@@ -1153,9 +1187,9 @@ function CherishPulse(): React.ReactElement {
               )}
             </div>
           </div>
-        </aside>
-      </CardContent>
-    </Card>
+        </div>
+      </div>
+    </div>
   )
 }
 
@@ -1613,9 +1647,7 @@ export function OperationalDashboard({
 
       {layoutMode === "list" && (
         <>
-      <FieldPulse photos={overview.fieldPhotos} />
-
-      <DashboardCommandCenter overview={overview} />
+      <ProjectPulse overview={overview} />
 
       <div className="grid grid-cols-1 gap-4">
         <Card className="rounded-lg">
@@ -1774,8 +1806,6 @@ export function OperationalDashboard({
         </Card>
 
       </div>
-
-      <CherishPulse />
 
       <Card className="rounded-lg">
         <CardContent className="grid gap-3 p-3 md:grid-cols-[minmax(0,1fr)_auto_auto_auto] md:items-center">
