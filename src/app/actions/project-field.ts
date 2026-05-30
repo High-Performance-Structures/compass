@@ -75,7 +75,7 @@ type OwnerUpdateDailyLog = {
 type OwnerUpdatePhoto = {
   readonly id: string
   readonly fileName: string
-  readonly driveUrl: string | null
+  readonly driveUrl: null
   readonly thumbnailUrl: string | null
   readonly caption: string | null
   readonly capturedAt: string | null
@@ -83,7 +83,6 @@ type OwnerUpdatePhoto = {
 
 type OwnerUpdatePhotoFolder = {
   readonly label: string
-  readonly url: string
 }
 
 type PhotoReviewFolder = {
@@ -921,7 +920,6 @@ export async function getOwnerProjectUpdateDocument(
     .select({
       id: dailyLogPhotos.id,
       fileName: dailyLogPhotos.fileName,
-      driveUrl: dailyLogPhotos.driveUrl,
       thumbnailUrl: dailyLogPhotos.thumbnailUrl,
       mimeType: dailyLogPhotos.mimeType,
       caption: dailyLogPhotos.caption,
@@ -936,7 +934,6 @@ export async function getOwnerProjectUpdateDocument(
   const [photoFolder] = await db
     .select({
       label: projectExternalLinks.label,
-      url: projectExternalLinks.externalUrl,
     })
     .from(projectExternalLinks)
     .where(
@@ -1002,7 +999,7 @@ export async function getOwnerProjectUpdateDocument(
     .map((row) => ({
       id: row.id,
       fileName: row.fileName,
-      driveUrl: row.driveUrl,
+      driveUrl: null,
       thumbnailUrl: row.thumbnailUrl,
       caption: row.caption,
       capturedAt: row.capturedAt,
@@ -1023,10 +1020,9 @@ export async function getOwnerProjectUpdateDocument(
     dailyLogs: dailyLogsForUpdate,
     photos: photosForUpdate,
     photoFolder:
-      photoFolder?.url
+      photoFolder
         ? {
             label: photoFolder.label,
-            url: photoFolder.url,
           }
         : null,
     nextScheduleItem: nextTask ?? null,

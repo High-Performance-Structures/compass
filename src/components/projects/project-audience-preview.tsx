@@ -94,6 +94,13 @@ function recordTypeLabel(value: string): string {
   }
 }
 
+function operationReferenceLabel(item: AudienceOperationItem): string {
+  const label = recordTypeLabel(item.sourceRecordType)
+  return item.sourceRecordNumber
+    ? `${label} ${item.sourceRecordNumber}`
+    : `${label} commitment`
+}
+
 function ScheduleRow({
   item,
 }: {
@@ -146,9 +153,7 @@ function OperationRow({
             </Badge>
           </div>
           <p className="mt-1 text-xs text-muted-foreground">
-            {item.sourceRecordNumber
-              ? `Sage ${item.sourceRecordNumber}`
-              : "Compass/Sage commitment"}
+            {operationReferenceLabel(item)}
             {item.companyName ? ` · ${item.companyName}` : ""}
             {item.assigneeName ? ` · ${item.assigneeName}` : ""}
           </p>
@@ -607,7 +612,7 @@ function OwnerProjectPreview({
                 <OwnerUpdatePhotoTile
                   key={photo.id}
                   fileName={photo.fileName}
-                  driveUrl={photo.driveUrl}
+                  driveUrl={null}
                   thumbnailUrl={photo.thumbnailUrl}
                   caption={photo.caption}
                 />
@@ -960,7 +965,7 @@ export function ProjectAudiencePreview({
                 <OwnerUpdatePhotoTile
                   key={photo.id}
                   fileName={photo.fileName}
-                  driveUrl={photo.driveUrl}
+                  driveUrl={null}
                   thumbnailUrl={photo.thumbnailUrl}
                   caption={photo.caption}
                 />

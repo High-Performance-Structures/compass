@@ -112,3 +112,27 @@ Client-facing polish depends on behavior as much as visuals:
 
 Compass can keep evolving quickly internally, but the outside experience should
 feel steady, deliberate, and trustworthy.
+
+## Alpha Guardrails Started
+
+As of the first alpha-hardening pass, owner and sub/vendor preview data follows
+these safeguards:
+
+- approved photo previews do not serialize raw Google Drive file or folder URLs
+  to the audience preview component
+- owner update documents route "view all approved photos" back into Compass
+  instead of carrying a Google photo-folder URL in the document payload
+- sub/vendor preview project switching is scoped to the current project until a
+  real external-user project assignment model exists
+- sub/vendor preview messages exclude private or archived internal channels
+- sub/vendor commitments avoid Sage-branded labels and only show active
+  commitments that match visible project contacts
+
+Still needed before a broader alpha:
+
+- real external owner/sub/vendor account-to-project assignments
+- route-level audience permission checks outside of internal preview mode
+- an approved-photo serving path that can proxy or sign image access without
+  exposing Drive as the navigation surface
+- audit records for visibility changes on photos, contacts, RFIs, P.O.s, and
+  owner updates

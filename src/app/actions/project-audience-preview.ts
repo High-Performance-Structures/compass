@@ -1,6 +1,6 @@
 "use server"
 
-import { and, asc, desc, eq, gte, or } from "drizzle-orm"
+import { and, asc, desc, eq, gte, isNull, or } from "drizzle-orm"
 
 import { getDb } from "@/db"
 import {
@@ -23,13 +23,9 @@ export type ProjectAudience = "owner" | "sub_vendor"
 export type AudiencePhoto = {
   readonly id: string
   readonly fileName: string
-  readonly driveUrl: string | null
   readonly thumbnailUrl: string | null
   readonly caption: string | null
   readonly capturedAt: string | null
-  readonly sourceSystem: string
-  readonly photoKind: string
-  readonly publicShareable: boolean
 }
 
 export type AudienceScheduleItem = {
@@ -176,6 +172,10 @@ function isImage(value: {
   return value.thumbnailUrl !== null || value.mimeType?.startsWith("image/") === true
 }
 
+function normalizeVisibleName(value: string | null): string {
+  return value?.trim().toLowerCase() ?? ""
+}
+
 export async function getProjectAudiencePreview(
   projectId: string,
   audience: ProjectAudience
@@ -191,6 +191,7 @@ export async function getProjectAudiencePreview(
       address: projects.address,
       clientName: projects.clientName,
       projectManager: projects.projectManager,
+      status: projects.status,
     })
     .from(projects)
     .where(eq(projects.id, projectId))
@@ -200,16 +201,14 @@ export async function getProjectAudiencePreview(
     throw new Error("Project not found")
   }
 
-  const projectOptions = await db
-    .select({
-      id: projects.id,
-      name: projects.name,
-      projectNumber: projects.projectNumber,
-      status: projects.status,
-    })
-    .from(projects)
-    .where(eq(projects.organizationId, organizationId))
-    .orderBy(asc(projects.projectNumber), asc(projects.name))
+  const projectOptions: readonly AudienceProjectOption[] = [
+    {
+      id: project.id,
+      name: project.name,
+      projectNumber: project.projectNumber,
+      status: project.status,
+    },
+  ]
 
   const visibilityFilter =
     audience === "owner"
@@ -226,14 +225,10 @@ export async function getProjectAudiencePreview(
     .select({
       id: dailyLogPhotos.id,
       fileName: dailyLogPhotos.fileName,
-      driveUrl: dailyLogPhotos.driveUrl,
       thumbnailUrl: dailyLogPhotos.thumbnailUrl,
       mimeType: dailyLogPhotos.mimeType,
       caption: dailyLogPhotos.caption,
       capturedAt: dailyLogPhotos.capturedAt,
-      sourceSystem: dailyLogPhotos.sourceSystem,
-      photoKind: dailyLogPhotos.photoKind,
-      publicShareable: dailyLogPhotos.publicShareable,
     })
     .from(dailyLogPhotos)
     .where(
@@ -381,10 +376,21 @@ export async function getProjectAudiencePreview(
       and(
         eq(channels.organizationId, organizationId),
         eq(channels.projectId, projectId),
-        eq(channels.type, "text")
+        eq(channels.type, "text"),
+        eq(channels.isPrivate, false),
+        isNull(channels.archivedAt)
       )
     )
     .orderBy(asc(channels.sortOrder), asc(channels.name))
+
+  const visibleContactNames = new Set(
+    contactRows
+      .flatMap((contact) => [
+        normalizeVisibleName(contact.displayName),
+        normalizeVisibleName(contact.companyName),
+      ])
+      .filter((value) => value.length > 0)
+  )
 
   return {
     audience,
@@ -394,20 +400,18 @@ export async function getProjectAudiencePreview(
     photos: photoRows.filter(isImage).slice(0, 24).map((photo) => ({
       id: photo.id,
       fileName: photo.fileName,
-      driveUrl: photo.driveUrl,
       thumbnailUrl: photo.thumbnailUrl,
       caption: photo.caption,
       capturedAt: photo.capturedAt,
-      sourceSystem: photo.sourceSystem,
-      photoKind: photo.photoKind,
-      publicShareable: photo.publicShareable,
     })),
     scheduleItems: scheduleRows,
     operations: operationRows
       .filter(
         (operation) =>
           isSubVendorOperation(operation.sourceRecordType) &&
-          isActiveStatus(operation.status)
+          isActiveStatus(operation.status) &&
+          (visibleContactNames.has(normalizeVisibleName(operation.companyName)) ||
+            visibleContactNames.has(normalizeVisibleName(operation.assigneeName)))
       )
       .slice(0, 10),
     rfis: rfiRows,
