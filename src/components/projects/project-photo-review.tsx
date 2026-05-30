@@ -9,9 +9,12 @@ import {
   IconCompass,
   IconCompassFilled,
   IconExternalLink,
+  IconCheck,
+  IconHourglass,
   IconPhoto,
   IconUpload,
   IconUsers,
+  IconX,
 } from "@tabler/icons-react"
 
 import {
@@ -97,6 +100,17 @@ function sourceInitial(value: string): string {
       return "A"
     default:
       return "C"
+  }
+}
+
+function reviewStatusIcon(value: string): React.ReactElement {
+  switch (value) {
+    case "approved":
+      return <IconCheck className="size-3.5" />
+    case "rejected":
+      return <IconX className="size-3.5" />
+    default:
+      return <IconHourglass className="size-3.5" />
   }
 }
 
@@ -850,16 +864,20 @@ export function ProjectPhotoReview({
                     <p className="line-clamp-2 min-h-10 text-xs font-medium">
                       {photo.caption ?? photo.fileName}
                     </p>
-                    <div className="flex flex-wrap gap-1">
-                      <Badge
-                        variant={
+                    <div className="flex flex-wrap items-center gap-1">
+                      <span
+                        className={`flex size-5 items-center justify-center rounded border text-muted-foreground ${
                           photo.reviewStatus === "approved"
-                            ? "default"
-                            : "secondary"
-                        }
+                            ? "border-primary/30 bg-primary/10 text-primary"
+                            : photo.reviewStatus === "rejected"
+                              ? "border-destructive/30 bg-destructive/10 text-destructive"
+                              : "border-border bg-muted/40"
+                        }`}
+                        title={`Review status: ${statusLabel(photo.reviewStatus)}`}
+                        aria-label={`Review status: ${statusLabel(photo.reviewStatus)}`}
                       >
-                        {statusLabel(photo.reviewStatus)}
-                      </Badge>
+                        {reviewStatusIcon(photo.reviewStatus)}
+                      </span>
                       <Badge variant="outline">{kindLabel(photo.photoKind)}</Badge>
                     </div>
                     <div className="flex flex-wrap gap-1 text-xs text-muted-foreground">
