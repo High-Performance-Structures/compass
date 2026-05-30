@@ -55,15 +55,23 @@ export async function setUserThemePreference(
     }
   }
 
+  if (isDemoUser(user.id)) {
+    return { success: true }
+  }
+
   const now = new Date().toISOString()
 
-  await db
-    .insert(userThemePreference)
-    .values({ userId: user.id, activeThemeId: themeId, updatedAt: now })
-    .onConflictDoUpdate({
-      target: userThemePreference.userId,
-      set: { activeThemeId: themeId, updatedAt: now },
-    })
+  try {
+    await db
+      .insert(userThemePreference)
+      .values({ userId: user.id, activeThemeId: themeId, updatedAt: now })
+      .onConflictDoUpdate({
+        target: userThemePreference.userId,
+        set: { activeThemeId: themeId, updatedAt: now },
+      })
+  } catch {
+    return { success: false, error: "Unable to save theme preference." }
+  }
 
   revalidatePath("/", "layout")
   return { success: true }

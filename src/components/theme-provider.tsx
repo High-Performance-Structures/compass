@@ -256,7 +256,14 @@ function CompassThemeProvider({
       setActiveThemeId(themeId)
       savedIdRef.current = themeId
       cacheTheme(themeId, theme)
-      await setUserThemePreference(themeId)
+      try {
+        const result = await setUserThemePreference(themeId)
+        if (!result.success) {
+          console.warn(result.error)
+        }
+      } catch {
+        console.warn("Unable to save theme preference.")
+      }
     },
     [customThemes],
   )
