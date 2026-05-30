@@ -208,7 +208,7 @@ export function AppSidebar({
       <SidebarHeader>
         <OrgSwitcher activeOrgId={activeOrgId} activeOrgName={activeOrgName} />
       </SidebarHeader>
-      <SidebarContent>
+      <SidebarContent className="compass-sidebar-scroll">
         <SidebarNav
           projects={projects}
           dashboards={dashboards}

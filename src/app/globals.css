@@ -222,6 +222,33 @@
   display: none; /* chrome, safari, opera */
 }
 
+.compass-sidebar-scroll {
+  scrollbar-color: color-mix(in oklch, var(--sidebar-foreground) 28%, transparent) transparent;
+  scrollbar-width: thin;
+  -ms-overflow-style: auto;
+}
+
+.compass-sidebar-scroll::-webkit-scrollbar {
+  display: block;
+  width: 6px;
+}
+
+.compass-sidebar-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.compass-sidebar-scroll::-webkit-scrollbar-thumb {
+  background: color-mix(in oklch, var(--sidebar-foreground) 24%, transparent);
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background-clip: content-box;
+}
+
+.compass-sidebar-scroll:hover::-webkit-scrollbar-thumb {
+  background: color-mix(in oklch, var(--sidebar-foreground) 38%, transparent);
+  background-clip: content-box;
+}
+
 /* tiptap editor placeholder */
 .tiptap p.is-editor-empty:first-child::before {
   content: attr(data-placeholder);
