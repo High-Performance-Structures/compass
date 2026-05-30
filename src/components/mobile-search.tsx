@@ -76,8 +76,8 @@ const staticItems: SearchItem[] = [
   },
   {
     icon: IconCalendarStats,
-    label: "Schedule",
-    href: "/dashboard/projects",
+    label: "Work Calendar",
+    href: "/dashboard/schedule",
     category: "navigation",
   },
   {

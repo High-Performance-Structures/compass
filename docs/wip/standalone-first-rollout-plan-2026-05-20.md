@@ -6,6 +6,8 @@ Compass should be usable as a stand-alone construction project management tool b
 
 Integrations remain important, but they should enhance Compass records instead of being required to create, view, edit, print, email, or complete core workflows.
 
+Client-facing and subcontractor-facing screens also need a stable product shell once a pattern is accepted. See [Client Portal Stability Principles](client-portal-stability-principles-2026-05-29.md) for the owner/sub/vendor experience contract.
+
 For HPS, this is also a business-continuity requirement. If Sage is unavailable during the workday because of a network issue, server issue, power outage, failed UPS backup, VPN/Tailscale interruption, or accounting-system maintenance, staff should still be able to work inside Compass. Compass should keep capturing operational records and queue accounting sync for later rather than blocking field, office, owner, or vendor workflows.
 
 The preferred pattern is:

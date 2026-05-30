@@ -10,6 +10,7 @@ const publicPaths = [
   "/verify-email",
   "/invite",
   "/callback",
+  "/demo",
   "/manifest.json",
 ]
 
@@ -61,6 +62,11 @@ export default async function middleware(request: NextRequest) {
   }
 
   if (!session.user) {
+    const isDemoSession = request.cookies.get("compass-demo")?.value === "true"
+    if (isDemoSession) {
+      return handleAuthkitHeaders(request, headers)
+    }
+
     const loginUrl = new URL("/login", request.url)
     loginUrl.searchParams.set("from", pathname)
     return handleAuthkitHeaders(request, headers, { redirect: loginUrl.toString() })

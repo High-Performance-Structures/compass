@@ -107,7 +107,7 @@ export function CommandMenu({
           </CommandItem>
           <CommandItem onSelect={() => runCommand(() => router.push(schedulePath()))}>
             <IconCalendarStats />
-            Schedule
+            Work Calendar
           </CommandItem>
           <CommandItem onSelect={() => runCommand(() => router.push("/dashboard/conversations"))}>
             <IconMessageCircle />

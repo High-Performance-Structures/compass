@@ -360,6 +360,66 @@ function OwnerUpdateCard({
   )
 }
 
+function AudienceMetricStrip({
+  data,
+}: {
+  readonly data: ProjectAudiencePreviewData
+}): React.ReactElement {
+  const metrics: readonly {
+    readonly label: string
+    readonly value: string
+    readonly detail: string
+    readonly icon: React.ReactElement
+  }[] = [
+    {
+      label: "Schedule",
+      value: String(data.scheduleItems.length),
+      detail: "visible items",
+      icon: <IconCalendarStats className="size-4" />,
+    },
+    {
+      label: "RFIs",
+      value: String(data.rfis.length),
+      detail: "visible questions",
+      icon: <IconQuestionMark className="size-4" />,
+    },
+    {
+      label: "Commitments",
+      value: String(data.operations.length),
+      detail: "active records",
+      icon: <IconClipboardCheck className="size-4" />,
+    },
+    {
+      label: "Messages",
+      value: String(data.messageChannels.length),
+      detail: "project channels",
+      icon: <IconMessageCircle className="size-4" />,
+    },
+  ]
+
+  return (
+    <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      {metrics.map((metric) => (
+        <div
+          key={metric.label}
+          className="rounded-lg border bg-background p-4 shadow-sm"
+        >
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-muted-foreground">{metric.icon}</span>
+            <span className="text-2xl font-semibold tabular-nums">
+              {metric.value}
+            </span>
+          </div>
+          <p className="mt-3 text-sm font-medium">{metric.label}</p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            {metric.detail}
+          </p>
+        </div>
+      ))}
+    </section>
+  )
+}
+
 function OwnerScheduleCard({
   item,
 }: {
@@ -690,6 +750,8 @@ export function ProjectAudiencePreview({
             </div>
           </section>
         )}
+
+        {!isOwner && <AudienceMetricStrip data={data} />}
 
         <section className="rounded-lg border bg-background p-4 sm:p-5">
           <div className="flex flex-wrap items-center justify-between gap-3">

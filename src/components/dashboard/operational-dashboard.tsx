@@ -417,13 +417,13 @@ function DashboardCommandCenter({
     : null
   const scheduleHref = nextTask
     ? `/dashboard/projects/${nextTask.projectId}/schedule`
-    : "/dashboard/projects"
+    : "/dashboard/schedule"
   const ownerUpdateHref = topProject
     ? `/dashboard/projects/${topProject.id}/daily-logs`
-    : "/dashboard/projects"
+    : "/dashboard/projects/select?target=owner-updates"
   const photosHref = topProject
     ? `/dashboard/projects/${topProject.id}/photos`
-    : "/dashboard/projects"
+    : "/dashboard/projects/select?target=photos"
 
   const prioritySignals: readonly PrioritySignal[] = [
     {
@@ -636,7 +636,7 @@ function dashboardRoleAction(
     case "field":
       return {
         label: "Field input",
-        href: "/dashboard/projects",
+        href: "/dashboard/projects/select?target=daily-logs",
         status: `${overview.metrics.photosToReview} photos`,
         detail: "Daily logs, photos, and field review queues.",
       }
@@ -1408,7 +1408,7 @@ function CompassDashboard({
           : "No upcoming tasks found",
         href: nextTask
           ? `/dashboard/projects/${nextTask.projectId}/schedule`
-          : "/dashboard/projects",
+          : "/dashboard/schedule",
         icon: <IconCalendarWeek className="size-4" />,
         tone: "schedule",
       },
@@ -1422,7 +1422,7 @@ function CompassDashboard({
             : "No photos waiting on review",
         href: topProject
           ? `/dashboard/projects/${topProject.id}/photos`
-          : "/dashboard/projects",
+          : "/dashboard/projects/select?target=photos",
         icon: <IconPhoto className="size-4" />,
         tone: "field",
       },
