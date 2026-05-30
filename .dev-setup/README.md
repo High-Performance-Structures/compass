@@ -79,14 +79,18 @@ rm -f local.db local.db-wal local.db-shm
 
 ## Environment Variables
 
-To use real WorkOS auth (disables dev mode):
+To use real WorkOS auth with Cloudflare-backed bindings instead of the local
+SQLite/auth shim:
 
 ```env
 WORKOS_API_KEY=sk_dev_xxxxx
 WORKOS_CLIENT_ID=client_xxxxx
+COMPASS_USE_CLOUDFLARE_DEV_PROXY=true
 ```
 
-Values containing "placeholder" trigger dev mode.
+Missing values, or values containing "placeholder", trigger the local dev mode.
+When real WorkOS credentials are present, the database wrapper stops using the
+local SQLite shim and delegates to `@opennextjs/cloudflare`.
 
 ## Database
 
