@@ -14,6 +14,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 
 type AudiencePhotoSort = "newest" | "oldest" | "phase_newest" | "phase_oldest"
 
@@ -155,33 +162,45 @@ export function ProjectAudiencePhotoGallery({
               <span className="text-xs font-medium uppercase text-muted-foreground">
                 Phase
               </span>
-              <select
+              <Select
                 value={phaseFilter}
-                onChange={(event) => setPhaseFilter(event.target.value)}
-                className="h-9 w-full rounded-md border bg-background px-3 text-sm"
+                onValueChange={setPhaseFilter}
               >
-                <option value="all">All phases</option>
-                {phases.map((phase) => (
-                  <option key={phase.value} value={phase.value}>
-                    {phase.value} ({phase.count})
-                  </option>
-                ))}
-              </select>
+                <SelectTrigger aria-label="Photo phase" className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All phases</SelectItem>
+                  {phases.map((phase) => (
+                    <SelectItem key={phase.value} value={phase.value}>
+                      {phase.value} ({phase.count})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </label>
             <label className="w-full space-y-1 text-sm sm:w-56">
               <span className="text-xs font-medium uppercase text-muted-foreground">
                 Sort
               </span>
-              <select
+              <Select
                 value={photoSort}
-                onChange={(event) => setPhotoSort(sortValue(event.target.value))}
-                className="h-9 w-full rounded-md border bg-background px-3 text-sm"
+                onValueChange={(value) => setPhotoSort(sortValue(value))}
               >
-                <option value="newest">Date, newest first</option>
-                <option value="oldest">Date, oldest first</option>
-                <option value="phase_newest">Phase, newest first</option>
-                <option value="phase_oldest">Phase, oldest first</option>
-              </select>
+                <SelectTrigger aria-label="Sort photos" className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="newest">Date, newest first</SelectItem>
+                  <SelectItem value="oldest">Date, oldest first</SelectItem>
+                  <SelectItem value="phase_newest">
+                    Phase, newest first
+                  </SelectItem>
+                  <SelectItem value="phase_oldest">
+                    Phase, oldest first
+                  </SelectItem>
+                </SelectContent>
+              </Select>
             </label>
             <div className="flex flex-wrap gap-2">
               {dateFilter.length > 0 && (

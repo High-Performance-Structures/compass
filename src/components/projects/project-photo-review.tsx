@@ -35,6 +35,13 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { ProjectContextSwitcher } from "@/components/projects/project-context-switcher"
 
 type VisibilityFilter =
@@ -199,7 +206,7 @@ export function ProjectPhotoReview({
   const [uploadCaption, setUploadCaption] = React.useState("")
   const [uploadCapturedDate, setUploadCapturedDate] = React.useState("")
   const [uploadPhotoKind, setUploadPhotoKind] = React.useState("progress")
-  const [uploadPhase, setUploadPhase] = React.useState("")
+  const [uploadPhase, setUploadPhase] = React.useState("all")
   const [uploadMessage, setUploadMessage] = React.useState<string | null>(null)
   const [uploading, setUploading] = React.useState(false)
   const [isPending, startTransition] = React.useTransition()
@@ -257,7 +264,7 @@ export function ProjectPhotoReview({
     setUploadCaption("")
     setUploadCapturedDate(currentDateInputValue())
     setUploadPhotoKind("progress")
-    setUploadPhase("")
+    setUploadPhase("all")
   }
 
   function openUploadSheet(): void {
@@ -505,53 +512,69 @@ export function ProjectPhotoReview({
                 <span className="text-xs font-medium uppercase text-muted-foreground">
                   Visibility
                 </span>
-                <select
+                <Select
                   value={visibilityFilter}
-                  onChange={(event) =>
-                    setVisibilityFilter(visibilityFilterValue(event.target.value))
+                  onValueChange={(value) =>
+                    setVisibilityFilter(visibilityFilterValue(value))
                   }
-                  className="h-9 w-full rounded-md border bg-background px-3 text-sm"
                 >
-                  <option value="all">All photos</option>
-                  <option value="internal">Internal only</option>
-                  <option value="owner">Owner visible</option>
-                  <option value="subs_vendors">Subs/vendors</option>
-                  <option value="public">Public/shareable</option>
-                  <option value="needs_review">Needs review</option>
-                  <option value="approved">Approved</option>
-                </select>
+                  <SelectTrigger aria-label="Visibility" className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All photos</SelectItem>
+                    <SelectItem value="internal">Internal only</SelectItem>
+                    <SelectItem value="owner">Owner visible</SelectItem>
+                    <SelectItem value="subs_vendors">Subs/vendors</SelectItem>
+                    <SelectItem value="public">Public/shareable</SelectItem>
+                    <SelectItem value="needs_review">Needs review</SelectItem>
+                    <SelectItem value="approved">Approved</SelectItem>
+                  </SelectContent>
+                </Select>
               </label>
               <label className="w-full space-y-1 text-sm sm:w-60">
                 <span className="text-xs font-medium uppercase text-muted-foreground">
                   Suggested phase
                 </span>
-                <select
+                <Select
                   value={phaseFilter}
-                  onChange={(event) => setPhaseFilter(event.target.value)}
-                  className="h-9 w-full rounded-md border bg-background px-3 text-sm"
+                  onValueChange={setPhaseFilter}
                 >
-                  <option value="all">All phases</option>
-                  {library.phases.map((phase) => (
-                    <option key={phase.value} value={phase.value}>
-                      {phase.label} ({phase.count})
-                    </option>
-                  ))}
-                </select>
+                  <SelectTrigger aria-label="Suggested phase" className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All phases</SelectItem>
+                    {library.phases.map((phase) => (
+                      <SelectItem key={phase.value} value={phase.value}>
+                        {phase.label} ({phase.count})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </label>
               <label className="w-full space-y-1 text-sm sm:w-56">
                 <span className="text-xs font-medium uppercase text-muted-foreground">
                   Sort
                 </span>
-                <select
+                <Select
                   value={photoSort}
-                  onChange={(event) => setPhotoSort(photoSortValue(event.target.value))}
-                  className="h-9 w-full rounded-md border bg-background px-3 text-sm"
+                  onValueChange={(value) => setPhotoSort(photoSortValue(value))}
                 >
-                  <option value="newest">Date, newest first</option>
-                  <option value="oldest">Date, oldest first</option>
-                  <option value="phase_newest">Phase, newest first</option>
-                  <option value="phase_oldest">Phase, oldest first</option>
-                </select>
+                  <SelectTrigger aria-label="Sort photos" className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="newest">Date, newest first</SelectItem>
+                    <SelectItem value="oldest">Date, oldest first</SelectItem>
+                    <SelectItem value="phase_newest">
+                      Phase, newest first
+                    </SelectItem>
+                    <SelectItem value="phase_oldest">
+                      Phase, oldest first
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
               </label>
               <div className="flex flex-wrap gap-2">
                 {dateFilter.length > 0 && (
@@ -595,26 +618,34 @@ export function ProjectPhotoReview({
               <span className="mr-1 text-sm font-medium">
                 {selectedIds.length} selected
               </span>
-              <select
+              <Select
                 value={reviewStatus}
-                onChange={(event) => setReviewStatus(event.target.value)}
-                className="h-9 rounded-md border bg-background px-2 text-sm"
+                onValueChange={setReviewStatus}
               >
-                <option value="needs_review">Needs review</option>
-                <option value="approved">Approved</option>
-                <option value="rejected">Rejected</option>
-              </select>
-              <select
+                <SelectTrigger aria-label="Review status" className="w-40">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="needs_review">Needs review</SelectItem>
+                  <SelectItem value="approved">Approved</SelectItem>
+                  <SelectItem value="rejected">Rejected</SelectItem>
+                </SelectContent>
+              </Select>
+              <Select
                 value={photoKind}
-                onChange={(event) => setPhotoKind(event.target.value)}
-                className="h-9 rounded-md border bg-background px-2 text-sm"
+                onValueChange={setPhotoKind}
               >
-                <option value="progress">Progress</option>
-                <option value="issue">Issue</option>
-                <option value="delivery">Delivery</option>
-                <option value="selection">Selection</option>
-                <option value="archive">Archive</option>
-              </select>
+                <SelectTrigger aria-label="Photo type" className="w-36">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="progress">Progress</SelectItem>
+                  <SelectItem value="issue">Issue</SelectItem>
+                  <SelectItem value="delivery">Delivery</SelectItem>
+                  <SelectItem value="selection">Selection</SelectItem>
+                  <SelectItem value="archive">Archive</SelectItem>
+                </SelectContent>
+              </Select>
               <label className="inline-flex h-9 items-center gap-1.5 text-sm">
                 <input
                   type="checkbox"
@@ -734,20 +765,26 @@ export function ProjectPhotoReview({
                 <div className="border-t px-2 py-1.5">
                   <label className="flex min-w-0 items-center justify-between gap-2 text-xs text-muted-foreground">
                     <span className="shrink-0">Phase</span>
-                    <select
+                    <Select
                       value={photo.schedulePhase}
-                      onChange={(event) =>
-                        changePhotoPhase(photo.id, event.target.value)
-                      }
+                      onValueChange={(value) => changePhotoPhase(photo.id, value)}
                       disabled={isPending}
-                      className="h-7 min-w-0 flex-1 rounded border bg-background px-1.5 text-xs text-foreground"
                     >
-                      {library.phases.map((phase) => (
-                        <option key={phase.value} value={phase.value}>
-                          {phase.label}
-                        </option>
-                      ))}
-                    </select>
+                      <SelectTrigger
+                        aria-label={`Phase for ${photo.caption ?? photo.fileName}`}
+                        size="sm"
+                        className="h-7 min-w-0 flex-1 px-1.5 text-xs"
+                      >
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {library.phases.map((phase) => (
+                          <SelectItem key={phase.value} value={phase.value}>
+                            {phase.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </label>
                 </div>
                 {href && (
@@ -924,17 +961,21 @@ export function ProjectPhotoReview({
                   <span className="text-xs font-medium uppercase text-muted-foreground">
                     Photo type
                   </span>
-                  <select
+                  <Select
                     value={uploadPhotoKind}
-                    onChange={(event) => setUploadPhotoKind(event.target.value)}
-                    className="h-9 w-full rounded-md border bg-background px-3 text-sm"
+                    onValueChange={setUploadPhotoKind}
                   >
-                    <option value="progress">Progress</option>
-                    <option value="issue">Issue</option>
-                    <option value="delivery">Delivery</option>
-                    <option value="selection">Selection</option>
-                    <option value="archive">Archive</option>
-                  </select>
+                    <SelectTrigger aria-label="Upload photo type" className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="progress">Progress</SelectItem>
+                      <SelectItem value="issue">Issue</SelectItem>
+                      <SelectItem value="delivery">Delivery</SelectItem>
+                      <SelectItem value="selection">Selection</SelectItem>
+                      <SelectItem value="archive">Archive</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </label>
               </div>
 
@@ -942,18 +983,22 @@ export function ProjectPhotoReview({
                 <span className="text-xs font-medium uppercase text-muted-foreground">
                   Phase
                 </span>
-                <select
+                <Select
                   value={uploadPhase}
-                  onChange={(event) => setUploadPhase(event.target.value)}
-                  className="h-9 w-full rounded-md border bg-background px-3 text-sm"
+                  onValueChange={setUploadPhase}
                 >
-                  <option value="">Let Compass suggest</option>
-                  {library.phases.map((phase) => (
-                    <option key={phase.value} value={phase.value}>
-                      {phase.label}
-                    </option>
-                  ))}
-                </select>
+                  <SelectTrigger aria-label="Upload phase" className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Let Compass suggest</SelectItem>
+                    {library.phases.map((phase) => (
+                      <SelectItem key={phase.value} value={phase.value}>
+                        {phase.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </label>
 
               <div className="rounded-md border bg-muted/20 p-3 text-xs text-muted-foreground">
