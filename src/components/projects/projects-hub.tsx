@@ -25,6 +25,7 @@ import {
   updateProjectStatus,
   type ProjectStatusValue,
 } from "@/app/actions/projects"
+import { updateProjectRegistry } from "@/app/actions/project-registry"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import {
@@ -439,6 +440,62 @@ function ProjectStatusSelect({
   )
 }
 
+function RegistryTextField({
+  label,
+  name,
+  value,
+  placeholder,
+}: {
+  readonly label: string
+  readonly name: string
+  readonly value: string | null
+  readonly placeholder?: string
+}): React.ReactElement {
+  return (
+    <label className="grid gap-1.5 text-xs font-medium text-muted-foreground">
+      {label}
+      <Input
+        name={name}
+        defaultValue={value ?? ""}
+        placeholder={placeholder}
+        className="h-9 bg-background text-sm font-normal text-foreground"
+      />
+    </label>
+  )
+}
+
+function RegistrySelectField({
+  label,
+  name,
+  value,
+  options,
+}: {
+  readonly label: string
+  readonly name: string
+  readonly value: string
+  readonly options: readonly {
+    readonly value: string
+    readonly label: string
+  }[]
+}): React.ReactElement {
+  return (
+    <label className="grid gap-1.5 text-xs font-medium text-muted-foreground">
+      {label}
+      <select
+        name={name}
+        defaultValue={value}
+        className="h-9 rounded-md border border-input bg-background px-3 text-sm font-normal text-foreground shadow-xs outline-none transition-colors focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
+      >
+        {options.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+    </label>
+  )
+}
+
 function ProjectCard({
   project,
   canUpdateStatus,
@@ -641,12 +698,18 @@ export function ProjectsHub({
   const [query, setQuery] = React.useState("")
   const [isCreatingProject, startCreateProjectTransition] =
     React.useTransition()
+  const [isSavingRegistry, startSaveRegistryTransition] = React.useTransition()
   const [showCreateProject, setShowCreateProject] = React.useState(false)
   const [newProjectDepartment, setNewProjectDepartment] =
     React.useState<DepartmentId>("O")
   const [registryProjectQuery, setRegistryProjectQuery] = React.useState("")
+  const [selectedRegistryProjectId, setSelectedRegistryProjectId] =
+    React.useState<string | null>(null)
   const [createProjectMessage, setCreateProjectMessage] =
     React.useState<string | null>(null)
+  const [registryMessage, setRegistryMessage] = React.useState<string | null>(
+    null
+  )
   const [activeDepartment, setActiveDepartment] = React.useState<
     DepartmentId | "ALL"
   >("ALL")
@@ -728,6 +791,28 @@ export function ProjectsHub({
     })
   }
 
+  function updateRegistryFromForm(
+    event: React.FormEvent<HTMLFormElement>
+  ): void {
+    event.preventDefault()
+    const formData = new FormData(event.currentTarget)
+    const selectedProjectId = selectedRegistryProjectId
+
+    if (!selectedProjectId) return
+
+    setRegistryMessage(null)
+    startSaveRegistryTransition(async () => {
+      const result = await updateProjectRegistry(selectedProjectId, formData)
+      if (!result.success) {
+        setRegistryMessage(result.error)
+        return
+      }
+
+      setRegistryMessage("Project registry updated.")
+      router.refresh()
+    })
+  }
+
   const normalizedQuery = normalizeSearchValue(query)
   const normalizedRegistryProjectQuery = normalizeSearchValue(registryProjectQuery)
   const registryProjectMatches = normalizedRegistryProjectQuery
@@ -737,6 +822,9 @@ export function ProjectsHub({
         )
         .slice(0, 6)
     : []
+  const selectedRegistryProject = selectedRegistryProjectId
+    ? projects.find((project) => project.id === selectedRegistryProjectId) ?? null
+    : null
   const statusFilteredProjects = projects.filter((project) =>
     activeStatusFilters.includes(statusBucket(project.status))
   )
@@ -1045,11 +1133,19 @@ export function ProjectsHub({
                     registryProjectMatches.map((project) => (
                       <div
                         key={project.id}
-                        className="flex items-center justify-between gap-3 px-3 py-2 text-sm transition-colors hover:bg-muted/65"
+                        className={cn(
+                          "flex items-center justify-between gap-3 px-3 py-2 text-sm transition-colors hover:bg-muted/65",
+                          selectedRegistryProjectId === project.id &&
+                            "bg-muted/70"
+                        )}
                       >
-                        <Link
-                          href={`/dashboard/projects/${project.id}`}
-                          className="min-w-0 flex-1"
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedRegistryProjectId(project.id)
+                            setRegistryMessage(null)
+                          }}
+                          className="min-w-0 flex-1 text-left"
                         >
                           <span className="block truncate font-medium">
                             {projectLabel(project)}
@@ -1057,7 +1153,7 @@ export function ProjectsHub({
                           <span className="block truncate text-xs text-muted-foreground">
                             {projectSubtitle(project) || statusLabel(project.status)}
                           </span>
-                        </Link>
+                        </button>
                         <ProjectStatusSelect
                           projectId={project.id}
                           currentStatus={project.status}
@@ -1073,6 +1169,132 @@ export function ProjectsHub({
                     </p>
                   )}
                 </div>
+                {selectedRegistryProject && (
+                  <form
+                    key={selectedRegistryProject.id}
+                    className="mt-4 border-t pt-4"
+                    onSubmit={updateRegistryFromForm}
+                  >
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <h4 className="text-sm font-semibold">
+                          Registry fields for {projectLabel(selectedRegistryProject)}
+                        </h4>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          Update the setup fields that feed the project creation
+                          and integration scripts.
+                        </p>
+                      </div>
+                      <Button size="sm" variant="outline" asChild>
+                        <Link
+                          href={`/dashboard/projects/${selectedRegistryProject.id}`}
+                        >
+                          Open project
+                        </Link>
+                      </Button>
+                    </div>
+
+                    <div className="mt-4 grid gap-3 md:grid-cols-2">
+                      <RegistryTextField
+                        label="Project number"
+                        name="projectNumber"
+                        value={selectedRegistryProject.projectNumber}
+                        placeholder="O-### or H-###"
+                      />
+                      <RegistrySelectField
+                        label="Status"
+                        name="status"
+                        value={projectStatusValue(selectedRegistryProject.status)}
+                        options={PROJECT_STATUS_OPTIONS}
+                      />
+                      <RegistryTextField
+                        label="Sage job number"
+                        name="sageJobNumber"
+                        value={selectedRegistryProject.sageJobNumber}
+                        placeholder="722"
+                      />
+                      <RegistryTextField
+                        label="Sage internal ID"
+                        name="sageJobId"
+                        value={selectedRegistryProject.sageJobId}
+                      />
+                      <RegistryTextField
+                        label="Google Drive folder ID"
+                        name="googleDriveFolderId"
+                        value={selectedRegistryProject.googleDriveFolderId}
+                      />
+                      <RegistryTextField
+                        label="Buildertrend project ID"
+                        name="buildertrendProjectId"
+                        value={selectedRegistryProject.buildertrendProjectId}
+                      />
+                      <RegistryTextField
+                        label="Schedule sheet ID"
+                        name="googleScheduleSheetId"
+                        value={selectedRegistryProject.googleScheduleSheetId}
+                      />
+                      <RegistryTextField
+                        label="Daily log sheet ID"
+                        name="googleDailyLogSheetId"
+                        value={selectedRegistryProject.googleDailyLogSheetId}
+                      />
+                      <RegistryTextField
+                        label="Google calendar ID"
+                        name="googleCalendarId"
+                        value={selectedRegistryProject.googleCalendarId}
+                      />
+                      <RegistryTextField
+                        label="Telegram intake chat ID"
+                        name="telegramChatId"
+                        value={selectedRegistryProject.telegramChatId}
+                      />
+                      <RegistrySelectField
+                        label="Owner update channel"
+                        name="ownerUpdateChannel"
+                        value={selectedRegistryProject.ownerUpdateChannel}
+                        options={[
+                          { value: "compass", label: "Compass" },
+                          { value: "telegram", label: "Telegram" },
+                          { value: "email", label: "Email" },
+                        ]}
+                      />
+                      <RegistrySelectField
+                        label="Owner update cadence"
+                        name="ownerUpdateCadence"
+                        value={selectedRegistryProject.ownerUpdateCadence}
+                        options={[
+                          { value: "weekly", label: "Weekly" },
+                          { value: "daily", label: "Daily" },
+                          { value: "milestone", label: "Milestone" },
+                        ]}
+                      />
+                    </div>
+
+                    <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+                      <label className="inline-flex items-center gap-2 text-sm text-muted-foreground">
+                        <input
+                          type="checkbox"
+                          name="ownerUpdatesEnabled"
+                          defaultChecked={
+                            selectedRegistryProject.ownerUpdatesEnabled
+                          }
+                          className="size-4 rounded border-input"
+                        />
+                        Owner updates enabled
+                      </label>
+                      <div className="flex items-center gap-3">
+                        {registryMessage && (
+                          <p className="text-sm text-muted-foreground">
+                            {registryMessage}
+                          </p>
+                        )}
+                        <Button type="submit" disabled={isSavingRegistry}>
+                          {isSavingRegistry ? "Saving..." : "Save Registry"}
+                        </Button>
+                      </div>
+                    </div>
+                  </form>
+                )}
               </div>
             </div>
           </section>

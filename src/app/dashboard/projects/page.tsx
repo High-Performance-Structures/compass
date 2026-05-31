@@ -1,9 +1,9 @@
 export const dynamic = "force-dynamic"
 
-import { asc, eq } from "drizzle-orm"
+import { and, asc, eq, inArray } from "drizzle-orm"
 
 import { getDb } from "@/db"
-import { projects } from "@/db/schema"
+import { projectExternalLinks, projects } from "@/db/schema"
 import { ProjectsHub } from "@/components/projects/projects-hub"
 import { getCurrentUser } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
@@ -17,8 +17,17 @@ export type ProjectsHubProject = {
   readonly address: string | null
   readonly clientName: string | null
   readonly projectManager: string | null
+  readonly sageJobId: string | null
   readonly sageJobNumber: string | null
   readonly googleDriveFolderId: string | null
+  readonly googleScheduleSheetId: string | null
+  readonly googleDailyLogSheetId: string | null
+  readonly googleCalendarId: string | null
+  readonly buildertrendProjectId: string | null
+  readonly telegramChatId: string | null
+  readonly ownerUpdatesEnabled: boolean
+  readonly ownerUpdateChannel: string
+  readonly ownerUpdateCadence: string
   readonly createdAt: string
 }
 
@@ -45,16 +54,55 @@ export default async function ProjectsPage(): Promise<React.ReactElement> {
         address: projects.address,
         clientName: projects.clientName,
         projectManager: projects.projectManager,
+        sageJobId: projects.sageJobId,
         sageJobNumber: projects.sageJobNumber,
         googleDriveFolderId: projects.googleDriveFolderId,
+        googleScheduleSheetId: projects.googleScheduleSheetId,
+        googleDailyLogSheetId: projects.googleDailyLogSheetId,
+        googleCalendarId: projects.googleCalendarId,
+        buildertrendProjectId: projects.buildertrendProjectId,
+        ownerUpdatesEnabled: projects.ownerUpdatesEnabled,
+        ownerUpdateChannel: projects.ownerUpdateChannel,
+        ownerUpdateCadence: projects.ownerUpdateCadence,
         createdAt: projects.createdAt,
       })
       .from(projects)
       .orderBy(asc(projects.projectNumber), asc(projects.name))
 
-    hubProjects = organizationId
+    const loadedProjects = organizationId
       ? await query.where(eq(projects.organizationId, organizationId))
       : await query
+    hubProjects = loadedProjects.map((project) => ({
+      ...project,
+      telegramChatId: null,
+    }))
+
+    if (hubProjects.length > 0) {
+      const projectIds = hubProjects.map((project) => project.id)
+      const telegramLinks = await db
+        .select({
+          projectId: projectExternalLinks.projectId,
+          externalId: projectExternalLinks.externalId,
+        })
+        .from(projectExternalLinks)
+        .where(
+          and(
+            inArray(projectExternalLinks.projectId, projectIds),
+            eq(projectExternalLinks.system, "telegram_owner_updates")
+          )
+        )
+
+      hubProjects = hubProjects.map((project) => {
+        const telegramLink = telegramLinks.find(
+          (link) => link.projectId === project.id
+        )
+
+        return {
+          ...project,
+          telegramChatId: telegramLink?.externalId ?? null,
+        }
+      })
+    }
   } catch (error) {
     console.warn("Project hub unavailable", error)
   }
