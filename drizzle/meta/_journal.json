@@ -211,6 +211,104 @@
       "when": 1771303716734,
       "tag": "0029_fantastic_mach_iv",
       "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "6",
+      "when": 1778707500000,
+      "tag": "0030_project_registry",
+      "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "6",
+      "when": 1778710020000,
+      "tag": "0031_daily_logs_owner_updates",
+      "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "6",
+      "when": 1778712600000,
+      "tag": "0032_project_operations",
+      "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "6",
+      "when": 1778716800000,
+      "tag": "0033_photo_visibility",
+      "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "6",
+      "when": 1778718780000,
+      "tag": "0034_project_rfis",
+      "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "6",
+      "when": 1779039600000,
+      "tag": "0035_project_budget",
+      "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "6",
+      "when": 1779052320000,
+      "tag": "0036_project_contacts",
+      "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "6",
+      "when": 1779069300000,
+      "tag": "0037_project_contact_source_links",
+      "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "6",
+      "when": 1779080400000,
+      "tag": "0038_vendor_directory_source_fields",
+      "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "6",
+      "when": 1779280200000,
+      "tag": "0039_cherish_pulse",
+      "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "6",
+      "when": 1779283020000,
+      "tag": "0040_project_rfi_attachments",
+      "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "6",
+      "when": 1779294900000,
+      "tag": "0041_notifications",
+      "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "6",
+      "when": 1779307500000,
+      "tag": "0042_sage_purchase_order_format",
+      "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "6",
+      "when": 1780107300000,
+      "tag": "0043_photo_phase_override",
+      "breakpoints": true
     }
   ]
 }

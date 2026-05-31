@@ -1,4 +1,4 @@
-import { getCloudflareContext } from "@opennextjs/cloudflare"
+import { getCloudflareContext } from "@/lib/db"
 import { getDb } from "@/db"
 import { saveMemory, searchMemories } from "@/lib/agent/memory"
 import {
@@ -127,6 +127,31 @@ const bridgeToolRegistry: Readonly<
                 ? {
                     where: (t, { like }) =>
                       like(t.title, `%${search}%`),
+                  }
+                : {}),
+          })
+          return { data: rows, count: rows.length }
+        }
+        case "project_operations": {
+          const rows =
+            await db.query.projectOperations.findMany({
+              limit: cap,
+              ...(id || search
+                ? {
+                    where: (operation, { eq, like, and }) => {
+                      const conditions = []
+                      if (id) {
+                        conditions.push(eq(operation.projectId, id))
+                      }
+                      if (search) {
+                        conditions.push(
+                          like(operation.title, `%${search}%`),
+                        )
+                      }
+                      return conditions.length > 1
+                        ? and(...conditions)
+                        : conditions[0]
+                    },
                   }
                 : {}),
             })

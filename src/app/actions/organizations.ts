@@ -1,6 +1,6 @@
 "use server"
 
-import { getCloudflareContext } from "@opennextjs/cloudflare"
+import { getCloudflareContext } from "@/lib/db"
 import { getDb } from "@/db"
 import { organizations, organizationMembers, type Organization, type NewOrganization } from "@/db/schema"
 import { getCurrentUser } from "@/lib/auth"

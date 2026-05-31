@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getWorkOS, saveSession } from "@workos-inc/authkit-nextjs"
 import { ensureUserExists } from "@/lib/auth"
+import {
+  isDevAuthFallbackAllowed,
+  isWorkOSConfigured,
+} from "@/lib/auth-config"
 
 export async function GET(request: NextRequest) {
   const code = request.nextUrl.searchParams.get("code")
@@ -13,17 +17,17 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const workos = getWorkOS()
+    if (!isWorkOSConfigured()) {
+      if (!isDevAuthFallbackAllowed()) {
+        return NextResponse.redirect(
+          new URL("/login?error=auth_unavailable", request.url)
+        )
+      }
 
-    // check if workos is configured (dev mode fallback)
-    const isConfigured =
-      process.env.WORKOS_API_KEY &&
-      process.env.WORKOS_CLIENT_ID &&
-      !process.env.WORKOS_API_KEY.includes("placeholder")
-
-    if (!isConfigured) {
       return NextResponse.redirect(new URL("/dashboard", request.url))
     }
+
+    const workos = getWorkOS()
 
     const result = await workos.userManagement.authenticateWithCode({
       code,

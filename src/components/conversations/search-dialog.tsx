@@ -71,8 +71,8 @@ export function SearchDialog({
   // filter state
   const [channels, setChannels] = React.useState<Channel[]>([])
   const [users, setUsers] = React.useState<User[]>([])
-  const [selectedChannel, setSelectedChannel] = React.useState<string>("")
-  const [selectedUser, setSelectedUser] = React.useState<string>("")
+  const [selectedChannel, setSelectedChannel] = React.useState<string>("all")
+  const [selectedUser, setSelectedUser] = React.useState<string>("all")
   const [startDate, setStartDate] = React.useState<Date | undefined>()
   const [endDate, setEndDate] = React.useState<Date | undefined>()
 
@@ -119,8 +119,8 @@ export function SearchDialog({
         endDate?: string
       } = {}
 
-      if (selectedChannel) filters.channelId = selectedChannel
-      if (selectedUser) filters.userId = selectedUser
+      if (selectedChannel !== "all") filters.channelId = selectedChannel
+      if (selectedUser !== "all") filters.userId = selectedUser
       if (startDate) filters.startDate = startDate.toISOString()
       if (endDate) filters.endDate = endDate.toISOString()
 
@@ -157,13 +157,17 @@ export function SearchDialog({
   }
 
   const clearFilters = () => {
-    setSelectedChannel("")
-    setSelectedUser("")
+    setSelectedChannel("all")
+    setSelectedUser("all")
     setStartDate(undefined)
     setEndDate(undefined)
   }
 
-  const hasActiveFilters = selectedChannel || selectedUser || startDate || endDate
+  const hasActiveFilters =
+    selectedChannel !== "all" ||
+    selectedUser !== "all" ||
+    startDate !== undefined ||
+    endDate !== undefined
 
   return (
     <CommandDialog
@@ -193,7 +197,7 @@ export function SearchDialog({
             <SelectValue placeholder="Channel" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="">All Channels</SelectItem>
+            <SelectItem value="all">All Channels</SelectItem>
             {channels.map((channel) => (
               <SelectItem key={channel.id} value={channel.id}>
                 {channel.name}
@@ -208,7 +212,7 @@ export function SearchDialog({
             <SelectValue placeholder="User" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="">All Users</SelectItem>
+            <SelectItem value="all">All Users</SelectItem>
             {users.map((user) => (
               <SelectItem key={user.id} value={user.id}>
                 {user.displayName ?? user.email.split("@")[0]}

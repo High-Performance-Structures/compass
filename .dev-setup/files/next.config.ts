@@ -20,4 +20,4 @@ const nextConfig: NextConfig = {
 
 export default nextConfig;
 
-// Cloudflare dev proxy removed for local dev - uses sql.js instead
+// Cloudflare dev proxy removed for local dev - uses the local SQLite D1 shim instead

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server"
-import { getCloudflareContext } from "@opennextjs/cloudflare"
+import { getCloudflareContext } from "@/lib/db"
 import { getDb } from "@/db"
 import { pushTokens } from "@/db/schema"
 import { getCurrentUser } from "@/lib/auth"

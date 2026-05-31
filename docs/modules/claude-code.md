@@ -125,7 +125,7 @@ Tools are split into two categories: Compass tools (executed remotely via the Co
 
 | tool | scope | what it does |
 |------|-------|-------------|
-| `queryData` | read | query the database (customers, vendors, projects, invoices, etc.) |
+| `queryData` | read | query the database (customers, vendors, projects, invoices, schedule tasks, Sage project operations, etc.) |
 | `recallMemory` | read | search the user's persistent memories |
 | `listThemes` | read | list preset and custom visual themes |
 | `listDashboards` | read | list saved custom dashboards |

@@ -2,11 +2,11 @@
 
 import * as React from "react"
 
-type Project = { id: string; name: string }
+import type { ProjectListItem } from "@/app/actions/projects"
 
-const ProjectListContext = React.createContext<Project[]>([])
+const ProjectListContext = React.createContext<ProjectListItem[]>([])
 
-export function useProjectList() {
+export function useProjectList(): ProjectListItem[] {
   return React.useContext(ProjectListContext)
 }
 
@@ -14,8 +14,8 @@ export function ProjectListProvider({
   projects,
   children,
 }: {
-  projects: Project[]
-  children: React.ReactNode
+  readonly projects: ProjectListItem[]
+  readonly children: React.ReactNode
 }) {
   return (
     <ProjectListContext.Provider value={projects}>

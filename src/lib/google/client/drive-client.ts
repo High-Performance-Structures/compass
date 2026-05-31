@@ -23,6 +23,7 @@ import {
   type DriveAbout,
   type DriveSharedDriveList,
   type ListFilesOptions,
+  type UploadFileOptions,
   type UploadOptions,
 } from "./types"
 
@@ -271,6 +272,29 @@ export class DriveClient {
 
       return location
     })
+  }
+
+  async uploadFile(
+    userEmail: string,
+    options: UploadFileOptions
+  ): Promise<DriveFile> {
+    const uploadUrl = await this.initiateResumableUpload(userEmail, options)
+
+    const response = await fetch(uploadUrl, {
+      method: "PUT",
+      headers: {
+        "Content-Type": options.mimeType,
+        "Content-Length": String(options.data.size),
+      },
+      body: options.data,
+    })
+
+    if (!response.ok) {
+      const body = await response.text()
+      throw new Error(`Failed to upload file (${response.status}): ${body}`)
+    }
+
+    return response.json() as Promise<DriveFile>
   }
 
   async downloadFile(

@@ -26,6 +26,8 @@ dist/
 
 # dev tools
 .playwright-mcp
+.codex-snapshots/
+outputs/
 mobile-ui-references/
 .fuse_*
 
@@ -33,6 +35,9 @@ mobile-ui-references/
 tmp/
 references/
 conversations-interface-references/
+public/owner-update-photos/
+public/project-photo-previews/
+public/user-desk-photos/
 
 # capacitor native builds
 ios/App/Pods/
@@ -43,8 +48,6 @@ android/app/build/
 
 # Local auth bypass (dev only)
 src/lib/auth-bypass.ts
-src/lib/cloudflare-context.ts
-src/lib/db.ts
 scripts/init-local-db.ts
 
 # local dev database

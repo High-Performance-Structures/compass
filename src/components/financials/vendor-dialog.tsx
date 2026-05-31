@@ -18,19 +18,11 @@ import {
 } from "@/components/ui/select"
 import type { Vendor } from "@/db/schema"
 
-const VENDOR_CATEGORIES = [
-  "Subcontractor",
-  "Supplier",
-  "Equipment",
-  "Material",
-  "Consultant",
-  "Other",
-] as const
-
 interface VendorDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   initialData?: Vendor | null
+  categories: readonly string[]
   onSubmit: (data: {
     name: string
     category: string
@@ -44,6 +36,7 @@ export function VendorDialog({
   open,
   onOpenChange,
   initialData,
+  categories,
   onSubmit,
 }: VendorDialogProps) {
   const [name, setName] = React.useState("")
@@ -115,9 +108,9 @@ export function VendorDialog({
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {VENDOR_CATEGORIES.map((c) => (
-                    <SelectItem key={c} value={c}>
-                      {c}
+                  {categories.map((categoryOption) => (
+                    <SelectItem key={categoryOption} value={categoryOption}>
+                      {categoryOption}
                     </SelectItem>
                   ))}
                 </SelectContent>

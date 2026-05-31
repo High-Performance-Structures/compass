@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getWorkOS } from "@workos-inc/authkit-nextjs"
+import {
+  isDevAuthFallbackAllowed,
+  isWorkOSConfigured,
+} from "@/lib/auth-config"
 
 const VALID_PROVIDERS = [
   "GoogleOAuth",
@@ -20,13 +24,13 @@ export async function GET(request: NextRequest) {
     )
   }
 
-  // check if workos is configured (dev mode fallback)
-  const isConfigured =
-    process.env.WORKOS_API_KEY &&
-    process.env.WORKOS_CLIENT_ID &&
-    !process.env.WORKOS_API_KEY.includes("placeholder")
+  if (!isWorkOSConfigured()) {
+    if (!isDevAuthFallbackAllowed()) {
+      return NextResponse.redirect(
+        new URL("/login?error=auth_unavailable", request.url)
+      )
+    }
 
-  if (!isConfigured) {
     return NextResponse.redirect(new URL("/dashboard", request.url))
   }
 

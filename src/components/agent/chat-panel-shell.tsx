@@ -1,44 +1,20 @@
 "use client"
 
 import { useState, useEffect, useRef, useCallback } from "react"
-import { usePathname } from "next/navigation"
-import { MessageSquare } from "lucide-react"
+import { MessageSquare, PanelRightClose } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import {
   useChatPanel,
-  useChatState,
-  useRenderState,
 } from "./chat-provider"
 import { ChatView } from "./chat-view"
 import { isNative } from "@/lib/native/platform"
 
 export function ChatPanelShell() {
-  const { isOpen, open, close, toggle } = useChatPanel()
-  const chat = useChatState()
-  const { spec: renderSpec, isRendering } =
-    useRenderState()
-  const pathname = usePathname()
-  const hasRenderedUI = !!renderSpec?.root || isRendering
-  // dashboard acts as "page" variant only when NOT rendering
-  const isDashboard =
-    pathname === "/dashboard" && !hasRenderedUI
-
-  // auto-open panel when leaving dashboard with messages
-  const prevIsDashboard = useRef(isDashboard)
-  useEffect(() => {
-    if (
-      prevIsDashboard.current &&
-      !isDashboard &&
-      chat.messages.length > 0
-    ) {
-      open()
-    }
-    prevIsDashboard.current = isDashboard
-  }, [isDashboard, chat.messages.length, open])
+  const { isOpen, close, toggle } = useChatPanel()
 
   // resize state (panel mode only)
-  const [panelWidth, setPanelWidth] = useState(480)
+  const [panelWidth, setPanelWidth] = useState(420)
   const [isResizing, setIsResizing] = useState(false)
   const dragStartX = useRef(0)
   const dragStartWidth = useRef(0)
@@ -80,10 +56,8 @@ export function ChatPanelShell() {
     [panelWidth]
   )
 
-  // keyboard shortcuts (panel mode only)
+  // keyboard shortcuts
   useEffect(() => {
-    if (isDashboard) return
-
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === ".") {
         e.preventDefault()
@@ -97,7 +71,7 @@ export function ChatPanelShell() {
     window.addEventListener("keydown", handleKeyDown)
     return () =>
       window.removeEventListener("keydown", handleKeyDown)
-  }, [isDashboard, isOpen, close, toggle])
+  }, [isOpen, close, toggle])
 
   // native keyboard offset for chat input
   const [keyboardHeight, setKeyboardHeight] = useState(0)
@@ -128,11 +102,8 @@ export function ChatPanelShell() {
     return () => cleanup?.()
   }, [])
 
-  // container width/style for panel mode
-  const panelStyle =
-    !isDashboard && isOpen
-      ? { width: panelWidth }
-      : undefined
+  // container width/style
+  const panelStyle = isOpen ? { width: panelWidth } : undefined
 
   const keyboardStyle =
     keyboardHeight > 0
@@ -145,37 +116,42 @@ export function ChatPanelShell() {
         className={cn(
           "flex flex-col",
           "transition-[flex,width,border-color,box-shadow,opacity,transform] duration-300 ease-in-out",
-          isDashboard
-            ? "flex-1 bg-background"
-            : [
-                "bg-background dark:bg-[oklch(0.255_0_0)]",
-                "fixed inset-0 z-50",
-                "md:relative md:inset-auto md:z-auto",
-                "md:shrink-0 md:overflow-hidden",
-                "md:rounded-xl md:border md:border-border md:shadow-lg md:my-2 md:mr-2",
-                isResizing && "transition-none",
-                isOpen
-                  ? "translate-x-0 md:opacity-100"
-                  : "translate-x-full md:translate-x-0 md:w-0 md:border-transparent md:shadow-none md:opacity-0",
-              ]
+          [
+            "bg-background dark:bg-[oklch(0.255_0_0)]",
+            "fixed inset-0 z-50",
+            "md:relative md:inset-auto md:z-auto",
+            "md:shrink-0 md:overflow-hidden",
+            "md:rounded-xl md:border md:border-border md:shadow-lg md:my-2 md:mr-2",
+            isResizing && "transition-none",
+            isOpen
+              ? "translate-x-0 md:opacity-100"
+              : "pointer-events-none translate-x-full md:translate-x-0 md:w-0 md:border-transparent md:shadow-none md:opacity-0",
+          ]
         )}
         style={{ ...panelStyle, ...keyboardStyle }}
+        aria-hidden={!isOpen}
       >
-        {/* Desktop resize handle (panel mode only) */}
-        {!isDashboard && (
-          <div
-            className="absolute -left-1 top-0 z-10 hidden h-full w-2 cursor-col-resize md:block hover:bg-border/60 active:bg-border"
-            onMouseDown={handleResizeStart}
-          />
-        )}
-
-        <ChatView
-          variant={isDashboard ? "page" : "panel"}
+        <div
+          className="absolute -left-1 top-0 z-10 hidden h-full w-2 cursor-col-resize md:block hover:bg-border/60 active:bg-border"
+          onMouseDown={handleResizeStart}
         />
+
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-sm"
+          className="absolute right-3 top-3 z-20 size-8 rounded-full bg-background/80 text-muted-foreground shadow-sm backdrop-blur hover:bg-accent hover:text-foreground"
+          onClick={close}
+          aria-label="Collapse assistant"
+          title="Collapse assistant"
+        >
+          <PanelRightClose className="size-4" />
+        </Button>
+
+        <ChatView variant="panel" />
       </div>
 
-      {/* Mobile backdrop (panel mode only) */}
-      {!isDashboard && isOpen && (
+      {isOpen && (
         <div
           className="fixed inset-0 z-40 bg-black/20 md:hidden"
           onClick={close}
@@ -183,8 +159,7 @@ export function ChatPanelShell() {
         />
       )}
 
-      {/* Mobile FAB (panel mode only) */}
-      {!isDashboard && !isOpen && (
+      {!isOpen && (
         <Button
           size="icon"
           className="fixed bottom-4 right-4 z-50 h-12 w-12 rounded-full shadow-lg md:hidden"

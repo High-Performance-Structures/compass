@@ -1,11 +1,15 @@
 import { withAuth, signOut } from "@workos-inc/authkit-nextjs"
-import { getCloudflareContext } from "@opennextjs/cloudflare"
+import { getCloudflareContext } from "@/lib/db"
 import { getDb } from "@/db"
 import { users, organizations, organizationMembers } from "@/db/schema"
 import type { User } from "@/db/schema"
 import { eq } from "drizzle-orm"
 import { cookies } from "next/headers"
 import { DEMO_USER } from "@/lib/demo"
+import {
+  isDevAuthFallbackAllowed,
+  isWorkOSConfigured,
+} from "@/lib/auth-config"
 
 export type AuthUser = {
   readonly id: string
@@ -53,13 +57,9 @@ export function toSidebarUser(user: AuthUser): SidebarUser {
 
 export async function getCurrentUser(): Promise<AuthUser | null> {
   try {
-    // check if workos is configured
-    const isWorkOSConfigured =
-      process.env.WORKOS_API_KEY &&
-      process.env.WORKOS_CLIENT_ID &&
-      !process.env.WORKOS_API_KEY.includes("placeholder")
+    if (!isWorkOSConfigured()) {
+      if (!isDevAuthFallbackAllowed()) return null
 
-    if (!isWorkOSConfigured) {
       // check demo cookie when WorkOS isn't available
       try {
         const cookieStore = await cookies()
@@ -151,8 +151,12 @@ export async function getCurrentUser(): Promise<AuthUser | null> {
       )
       .where(eq(organizationMembers.userId, dbUser.id))
 
-    let activeOrg: { orgId: string; orgName: string; orgType: string } | null =
-      null
+    let activeOrg: {
+      readonly orgId: string
+      readonly orgName: string
+      readonly orgType: string
+      readonly memberRole: string
+    } | null = null
 
     if (orgMemberships.length > 0) {
       // check for cookie preference
@@ -173,7 +177,7 @@ export async function getCurrentUser(): Promise<AuthUser | null> {
       lastName: dbUser.lastName,
       displayName: dbUser.displayName,
       avatarUrl: dbUser.avatarUrl,
-      role: dbUser.role,
+      role: activeOrg?.memberRole ?? dbUser.role,
       googleEmail: dbUser.googleEmail ?? null,
       isActive: dbUser.isActive,
       lastLoginAt: now,
@@ -295,13 +299,7 @@ export async function requireAuth(): Promise<AuthUser> {
 export async function requireEmailVerified(): Promise<AuthUser> {
   const user = await requireAuth()
 
-  // check verification status
-  const isWorkOSConfigured =
-    process.env.WORKOS_API_KEY &&
-    process.env.WORKOS_CLIENT_ID &&
-    !process.env.WORKOS_API_KEY.includes("placeholder")
-
-  if (isWorkOSConfigured) {
+  if (isWorkOSConfigured()) {
     const session = await withAuth()
     if (session?.user && !session.user.emailVerified) {
       throw new Error("Email not verified")

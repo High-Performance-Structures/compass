@@ -55,21 +55,11 @@ export interface DatabaseProviderProps {
   }
 }
 
-// Lazy-loaded memory provider factory - only loaded when actually needed
-// This avoids bundling better-sqlite3 (a native Node.js module) in
-// environments like Cloudflare Workers where it can't run
-let createMemoryProviderFn: typeof import("./memory-provider")["createMemoryProvider"] | null = null
-
-async function getMemoryProvider(config?: MemoryProviderConfig): Promise<DatabaseProvider> {
-  if (!createMemoryProviderFn) {
-    // Construct the path dynamically to prevent static analysis by bundlers
-    // The path segments are concatenated at runtime
-    const providerDir = "."
-    const providerFile = "memory-provider"
-    const loadedModule = await import(/* webpackIgnore: true */ `${providerDir}/${providerFile}`)
-    createMemoryProviderFn = loadedModule.createMemoryProvider
-  }
-  return createMemoryProviderFn!(config)
+function createUnavailableMemoryProvider(): DatabaseProvider {
+  throw new Error(
+    "Memory provider is only available through direct test imports. " +
+      "Use D1 in the web app or Tauri SQLite in the desktop app."
+  )
 }
 
 export function DatabaseProvider({
@@ -108,7 +98,7 @@ export function DatabaseProvider({
 
           case "memory":
           default: {
-            newProvider = await getMemoryProvider(config?.memory)
+            newProvider = createUnavailableMemoryProvider()
             break
           }
         }

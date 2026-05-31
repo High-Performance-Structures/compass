@@ -69,6 +69,12 @@ interface ProviderState {
   customModelId: string
 }
 
+const DEFAULT_PROVIDER_STATE: ProviderState = {
+  providerType: "anthropic-oauth",
+  model: AGENT_MODELS[0],
+  customModelId: "",
+}
+
 // ============================================================================
 // Provider display helpers
 // ============================================================================
@@ -136,14 +142,10 @@ function loadState(): ProviderState {
 }
 
 function defaultState(): ProviderState {
-  return {
-    providerType: "anthropic-oauth",
-    model: AGENT_MODELS[0],
-    customModelId: "",
-  }
+  return DEFAULT_PROVIDER_STATE
 }
 
-let state: ProviderState = defaultState()
+let state: ProviderState = DEFAULT_PROVIDER_STATE
 const listeners = new Set<() => void>()
 
 function subscribe(listener: () => void): () => void {
@@ -158,7 +160,7 @@ function getSnapshot(): ProviderState {
 }
 
 function getServerSnapshot(): ProviderState {
-  return defaultState()
+  return DEFAULT_PROVIDER_STATE
 }
 
 function emit(): void {

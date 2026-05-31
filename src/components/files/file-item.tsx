@@ -15,15 +15,15 @@ import { useFiles } from "@/hooks/use-files"
 import { cn } from "@/lib/utils"
 
 const fileTypeColors: Record<string, string> = {
-  document: "bg-blue-50 dark:bg-blue-950/30",
-  spreadsheet: "bg-green-50 dark:bg-green-950/30",
-  image: "bg-purple-50 dark:bg-purple-950/30",
-  video: "bg-red-50 dark:bg-red-950/30",
-  pdf: "bg-red-50 dark:bg-red-950/30",
-  code: "bg-emerald-50 dark:bg-emerald-950/30",
-  archive: "bg-orange-50 dark:bg-orange-950/30",
-  audio: "bg-pink-50 dark:bg-pink-950/30",
-  unknown: "bg-muted",
+  document: "border border-[#2f5963] bg-card text-[#2f5963]",
+  spreadsheet: "border border-[#3f7d4d] bg-card text-[#3f7d4d]",
+  image: "border border-[#6f471f] bg-card text-[#6f471f]",
+  video: "border border-[#8a3a2e] bg-card text-[#8a3a2e]",
+  pdf: "border border-[#8a3a2e] bg-card text-[#8a3a2e]",
+  code: "border border-[#3f7d4d] bg-card text-[#3f7d4d]",
+  archive: "border border-[#9d832c] bg-card text-[#715d1c]",
+  audio: "border border-[#585149] bg-card text-[#585149]",
+  unknown: "border bg-card text-muted-foreground",
 }
 
 export const FolderCard = forwardRef<
@@ -39,6 +39,10 @@ export const FolderCard = forwardRef<
 ) {
   const router = useRouter()
   const { starFile, state, dispatch } = useFiles()
+  const projectCaption =
+    file.projectFile?.projectNumber ??
+    file.projectFile?.sourceLabel ??
+    file.projectFile?.categoryLabel
 
   const handleDoubleClick = () => {
     if (state.isConnected === true) {
@@ -78,8 +82,15 @@ export const FolderCard = forwardRef<
         size={22}
         className="shrink-0"
       />
-      <span className="text-sm font-medium line-clamp-2 flex-1 break-words">
-        {file.name}
+      <span className="min-w-0 flex-1">
+        <span className="block text-sm font-medium line-clamp-2 break-words">
+          {file.name}
+        </span>
+        {projectCaption && (
+          <span className="block truncate text-xs text-muted-foreground">
+            {projectCaption}
+          </span>
+        )}
       </span>
       {file.shared && (
         <IconUsers

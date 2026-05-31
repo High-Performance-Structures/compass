@@ -1,7 +1,7 @@
 "use server"
 
 import { getWorkOS, signOut } from "@workos-inc/authkit-nextjs"
-import { getCloudflareContext } from "@opennextjs/cloudflare"
+import { getCloudflareContext } from "@/lib/db"
 import { getDb } from "@/db"
 import { users } from "@/db/schema"
 import { eq } from "drizzle-orm"

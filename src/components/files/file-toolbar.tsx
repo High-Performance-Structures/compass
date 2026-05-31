@@ -1,6 +1,5 @@
 "use client"
 
-import { useState } from "react"
 import {
   IconLayoutGrid,
   IconList,
@@ -15,7 +14,12 @@ import {
   IconPresentation,
 } from "@tabler/icons-react"
 
-import { useFiles, type SortField, type ViewMode } from "@/hooks/use-files"
+import {
+  useFiles,
+  type FileView,
+  type SortField,
+  type ViewMode,
+} from "@/hooks/use-files"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
@@ -32,12 +36,13 @@ export type NewFileType = "folder" | "document" | "spreadsheet" | "presentation"
 export function FileToolbar({
   onNew,
   onUpload,
+  currentView,
 }: {
   onNew: (type: NewFileType) => void
   onUpload: () => void
+  currentView: FileView
 }) {
   const { state, dispatch } = useFiles()
-  const [searchFocused, setSearchFocused] = useState(false)
 
   const sortLabels: Record<SortField, string> = {
     name: "Name",
@@ -51,6 +56,11 @@ export function FileToolbar({
       state.sortBy === field && state.sortDirection === "asc" ? "desc" : "asc"
     dispatch({ type: "SET_SORT", payload: { field, direction } })
   }
+
+  const searchPlaceholder =
+    currentView === "projects"
+      ? "Search project folders..."
+      : "Search files..."
 
   return (
     <div className="flex flex-col sm:flex-row gap-2">
@@ -93,13 +103,11 @@ export function FileToolbar({
             className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
           />
           <Input
-            placeholder="Search files..."
+            placeholder={searchPlaceholder}
             value={state.searchQuery}
             onChange={(e) =>
               dispatch({ type: "SET_SEARCH", payload: e.target.value })
             }
-            onFocus={() => setSearchFocused(true)}
-            onBlur={() => setSearchFocused(false)}
             className="h-10 sm:h-9 pl-9 text-sm"
           />
         </div>

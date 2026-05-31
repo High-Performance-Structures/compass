@@ -3,9 +3,9 @@
 import * as React from "react"
 import Link from "next/link"
 import {
+  IconAutomation,
   IconCreditCard,
   IconLogout,
-  IconNotification,
   IconUserCircle,
   IconMicrophone,
   IconMicrophoneOff,
@@ -33,7 +33,6 @@ import {
 } from "@/components/ui/dropdown-menu"
 import {
   SidebarMenu,
-  SidebarMenuButton,
   SidebarMenuItem,
   useSidebar,
 } from "@/components/ui/sidebar"
@@ -52,6 +51,10 @@ import type { SidebarUser } from "@/lib/auth"
 function stopEvent(e: React.MouseEvent | React.PointerEvent): void {
   e.stopPropagation()
   e.preventDefault()
+}
+
+function stopPropagation(e: React.MouseEvent | React.PointerEvent): void {
+  e.stopPropagation()
 }
 
 export function NavUser({
@@ -89,9 +92,20 @@ export function NavUser({
       <SidebarMenuItem>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <SidebarMenuButton
-              size="lg"
-              className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
+            <div
+              role="button"
+              tabIndex={0}
+              data-slot="sidebar-menu-button"
+              data-sidebar="menu-button"
+              data-size="lg"
+              data-active={false}
+              className={cn(
+                "peer/menu-button flex h-12 w-full items-center gap-2 overflow-hidden rounded-md p-2 text-left text-sm outline-hidden ring-sidebar-ring transition-[width,height,padding]",
+                "hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground",
+                "data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground",
+                "group-data-[collapsible=icon]:size-9! group-data-[collapsible=icon]:justify-center! group-data-[collapsible=icon]:gap-0! group-data-[collapsible=icon]:p-2! group-data-[collapsible=icon]:[&>*:nth-child(n+2)]:hidden",
+                "[data-mobile=true]_&:h-14 [data-mobile=true]_&:text-base",
+              )}
             >
               <Avatar className="h-8 w-8 shrink-0 rounded-lg grayscale">
                 {user.avatar && (
@@ -130,15 +144,15 @@ export function NavUser({
                 />
                 <Link
                   href="/dashboard/settings"
-                  onClick={stopEvent}
-                  onPointerDown={stopEvent}
+                  onClick={stopPropagation}
+                  onPointerDown={stopPropagation}
                   aria-label="Settings"
                   className="ml-px flex size-5 items-center justify-center rounded-sm text-sidebar-foreground/60 transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground"
                 >
                   <IconSettings className="size-3" />
                 </Link>
               </div>
-            </SidebarMenuButton>
+            </div>
           </DropdownMenuTrigger>
           <DropdownMenuContent
             className="w-(--radix-dropdown-menu-trigger-width) min-w-56 rounded-lg"
@@ -170,13 +184,23 @@ export function NavUser({
                 <IconUserCircle />
                 Account
               </DropdownMenuItem>
-              <DropdownMenuItem>
-                <IconCreditCard />
-                Billing
+              <DropdownMenuItem asChild>
+                <Link href="/dashboard/financials">
+                  <IconCreditCard />
+                  Financials
+                </Link>
               </DropdownMenuItem>
-              <DropdownMenuItem>
-                <IconNotification />
-                Notifications
+              <DropdownMenuItem asChild>
+                <Link href="/dashboard/settings">
+                  <IconSettings />
+                  Settings
+                </Link>
+              </DropdownMenuItem>
+              <DropdownMenuItem asChild>
+                <Link href="/dashboard/automations">
+                  <IconAutomation />
+                  Automations
+                </Link>
               </DropdownMenuItem>
             </DropdownMenuGroup>
             <DropdownMenuSeparator />

@@ -5,13 +5,13 @@ import {
   IconArrowLeft,
   IconHash,
   IconPlus,
-  IconSearch,
 } from "@tabler/icons-react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 
 import { listChannels } from "@/app/actions/conversations"
 import { listCategories } from "@/app/actions/channel-categories"
+import { getProjects, type ProjectListItem } from "@/app/actions/projects"
 import {
   SidebarGroup,
   SidebarGroupContent,
@@ -31,11 +31,6 @@ import { cn } from "@/lib/utils"
 import { CreateChannelDialog } from "@/components/conversations/create-channel-dialog"
 import { VoiceChannelStub } from "@/components/conversations/voice-channel-stub"
 import { ChevronRight } from "lucide-react"
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip"
 
 type ChannelData = {
   readonly id: string
@@ -70,6 +65,7 @@ export function NavConversations() {
   const isExpanded = state === "expanded"
   const [channels, setChannels] = React.useState<ChannelData[]>([])
   const [categories, setCategories] = React.useState<CategoryData[]>([])
+  const [projects, setProjects] = React.useState<ProjectListItem[]>([])
   const [loading, setLoading] = React.useState(true)
   const [createDialogOpen, setCreateDialogOpen] = React.useState(false)
   const [projectsOpen, setProjectsOpen] = React.useState(true)
@@ -88,9 +84,10 @@ export function NavConversations() {
 
   React.useEffect(() => {
     async function loadData() {
-      const [channelsResult, categoriesResult] = await Promise.all([
+      const [channelsResult, categoriesResult, projectRows] = await Promise.all([
         listChannels(),
         listCategories(),
+        getProjects(),
       ])
 
       if (channelsResult.success && channelsResult.data) {
@@ -117,6 +114,8 @@ export function NavConversations() {
         )
       }
 
+      setProjects([...projectRows])
+
       setLoading(false)
     }
     loadData()
@@ -127,6 +126,30 @@ export function NavConversations() {
   )
   const projectChannels = channels.filter((c) => c.projectId && c.type === "text")
   const voiceChannels = channels.filter((c) => c.type === "voice")
+  const projectChannelsByProject = React.useMemo(() => {
+    const projectById = new Map(projects.map((project) => [project.id, project]))
+    const grouped = new Map<string, ChannelData[]>()
+    const orphanChannels: ChannelData[] = []
+
+    for (const channel of projectChannels) {
+      if (!channel.projectId || !projectById.has(channel.projectId)) {
+        orphanChannels.push(channel)
+        continue
+      }
+      const existing = grouped.get(channel.projectId) ?? []
+      existing.push(channel)
+      grouped.set(channel.projectId, existing)
+    }
+
+    const projectGroups = projects
+      .map((project) => ({
+        project,
+        channels: grouped.get(project.id) ?? [],
+      }))
+      .filter((group) => group.channels.length > 0)
+
+    return { projectGroups, orphanChannels }
+  }, [projectChannels, projects])
 
   // group channels by category (only non-project text channels)
   const channelsByCategory = React.useMemo(() => {
@@ -175,6 +198,21 @@ export function NavConversations() {
           )}
         </Link>
       </SidebarMenuButton>
+    </SidebarMenuItem>
+  )
+
+  const renderProjectLabel = (project: ProjectListItem) => (
+    <SidebarMenuItem key={`project-label-${project.id}`}>
+      <div className="px-2 pb-1 pt-2 text-[11px] font-medium uppercase tracking-wide text-sidebar-foreground/60">
+        <span className="block truncate">
+          {project.projectNumber ?? project.name}
+        </span>
+        {project.projectNumber && (
+          <span className="block truncate normal-case tracking-normal text-sidebar-foreground/45">
+            {project.name}
+          </span>
+        )}
+      </div>
     </SidebarMenuItem>
   )
 
@@ -263,7 +301,22 @@ export function NavConversations() {
             <CollapsibleContent>
               <SidebarGroupContent>
                 <SidebarMenu>
-                  {projectChannels.map(renderChannelItem)}
+                  {projectChannelsByProject.projectGroups.map((group) => (
+                    <React.Fragment key={group.project.id}>
+                      {renderProjectLabel(group.project)}
+                      {group.channels.map(renderChannelItem)}
+                    </React.Fragment>
+                  ))}
+                  {projectChannelsByProject.orphanChannels.length > 0 && (
+                    <>
+                      <SidebarMenuItem>
+                        <div className="px-2 pb-1 pt-2 text-[11px] font-medium uppercase tracking-wide text-sidebar-foreground/60">
+                          Unmapped
+                        </div>
+                      </SidebarMenuItem>
+                      {projectChannelsByProject.orphanChannels.map(renderChannelItem)}
+                    </>
+                  )}
                 </SidebarMenu>
               </SidebarGroupContent>
             </CollapsibleContent>
@@ -288,19 +341,6 @@ export function NavConversations() {
       )}
 
       <div className="mt-auto flex gap-2 px-3 pb-3">
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button variant="outline" size="sm" className="flex-1">
-              <IconSearch className="h-4 w-4" />
-              {isExpanded && <span className="ml-2">Search</span>}
-            </Button>
-          </TooltipTrigger>
-          {isExpanded && (
-            <TooltipContent side="top">
-              <p>Search messages (Cmd+K)</p>
-            </TooltipContent>
-          )}
-        </Tooltip>
         <Button
           variant="outline"
           size="sm"

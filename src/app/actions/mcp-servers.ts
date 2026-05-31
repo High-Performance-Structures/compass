@@ -1,6 +1,6 @@
 "use server"
 
-import { getCloudflareContext } from "@opennextjs/cloudflare"
+import { getCloudflareContext } from "@/lib/db"
 import { getDb } from "@/db"
 import { mcpServers } from "@/db/schema-mcp"
 import type { McpServer } from "@/db/schema-mcp"

@@ -4,26 +4,33 @@ import * as React from "react"
 import {
   IconAddressBook,
   IconCalendarStats,
+  IconClipboardText,
   IconFiles,
+  IconFileDollar,
   IconFolder,
+  IconHome2,
+  IconMailForward,
   IconMessageCircle,
+  IconMessageCircleQuestion,
+  IconPhoto,
   IconReceipt,
-  IconSettings,
+  IconShoppingCart,
 } from "@tabler/icons-react"
 import { usePathname } from "next/navigation"
 
 import { NavMain } from "@/components/nav-main"
 import { NavDashboards } from "@/components/nav-dashboards"
-import { NavSecondary } from "@/components/nav-secondary"
 import { NavFiles } from "@/components/nav-files"
 import { NavProjects } from "@/components/nav-projects"
 import { NavConversations } from "@/components/nav-conversations"
 import { NavUser } from "@/components/nav-user"
 import { OrgSwitcher } from "@/components/org-switcher"
+import { PersonalDeskPhoto } from "@/components/personal-desk-photo"
 import { VoicePanel } from "@/components/voice/voice-panel"
 // settings is now a page at /dashboard/settings
 import { openFeedbackDialog } from "@/components/feedback-widget"
 import { useVoiceState } from "@/hooks/use-voice-state"
+import type { ProjectListItem } from "@/app/actions/projects"
 import type { SidebarUser } from "@/lib/auth"
 import {
   Sidebar,
@@ -36,73 +43,104 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar"
 
-const data = {
-  navMain: [
-    {
-      title: "Projects",
-      url: "/dashboard/projects",
-      icon: IconFolder,
-    },
-    {
-      title: "Schedule",
-      url: "/dashboard/projects/demo-project-1/schedule",
-      icon: IconCalendarStats,
-    },
-    {
-      title: "Conversations",
-      url: "/dashboard/conversations",
-      icon: IconMessageCircle,
-    },
-    {
-      title: "Files",
-      url: "/dashboard/files",
-      icon: IconFiles,
-    },
-    {
-      title: "Contacts",
-      url: "/dashboard/contacts",
-      icon: IconAddressBook,
-    },
-    {
-      title: "Financials",
-      url: "/dashboard/financials",
-      icon: IconReceipt,
-    },
-  ],
-  navSecondary: [
-    {
-      title: "Settings",
-      url: "/dashboard/settings",
-      icon: IconSettings,
-    },
-  ],
-}
+const NAV_MAIN = [
+  {
+    title: "Dashboard",
+    url: "/dashboard",
+    icon: IconHome2,
+  },
+  {
+    title: "Projects",
+    url: "/dashboard/projects",
+    icon: IconFolder,
+  },
+  {
+    title: "Work Calendar",
+    url: "/dashboard/schedule",
+    icon: IconCalendarStats,
+  },
+  {
+    title: "Owner Updates",
+    url: "/dashboard/projects",
+    icon: IconMailForward,
+    projectPath: "/owner-updates",
+  },
+  {
+    title: "Daily Logs",
+    url: "/dashboard/projects",
+    icon: IconClipboardText,
+    projectPath: "/daily-logs",
+  },
+  {
+    title: "Photos",
+    url: "/dashboard/projects",
+    icon: IconPhoto,
+    projectPath: "/photos",
+  },
+  {
+    title: "Budget",
+    url: "/dashboard/projects",
+    icon: IconFileDollar,
+    projectPath: "/budget",
+  },
+  {
+    title: "Project Contacts",
+    url: "/dashboard/projects",
+    icon: IconAddressBook,
+    projectPath: "/contacts",
+  },
+  {
+    title: "RFIs",
+    url: "/dashboard/rfis",
+    icon: IconMessageCircleQuestion,
+  },
+  {
+    title: "Conversations",
+    url: "/dashboard/conversations",
+    icon: IconMessageCircle,
+  },
+  {
+    title: "Files",
+    url: "/dashboard/files",
+    icon: IconFiles,
+  },
+  {
+    title: "Contacts",
+    url: "/dashboard/contacts",
+    icon: IconAddressBook,
+  },
+  {
+    title: "Financials",
+    url: "/dashboard/financials",
+    icon: IconReceipt,
+  },
+  {
+    title: "Purchase Orders",
+    url: "/dashboard/purchase-orders",
+    icon: IconShoppingCart,
+  },
+]
 
 function SidebarNav({
   projects,
   dashboards = [],
 }: {
-  projects: { id: string; name: string }[]
+  projects: ReadonlyArray<ProjectListItem>
   dashboards?: ReadonlyArray<{
     readonly id: string
     readonly name: string
   }>
 }) {
   const pathname = usePathname()
-  const { state, setOpen } = useSidebar()
+  const { state } = useSidebar()
   const isExpanded = state === "expanded"
   const isFilesMode = pathname?.startsWith("/dashboard/files")
   const isConversationsMode = pathname?.startsWith("/dashboard/conversations")
-  const isProjectMode = /^\/dashboard\/projects\/[^/]+/.test(
-    pathname ?? ""
-  )
-
-  // Allow manual collapse/expand in all modes
-  // React.useEffect(() => {
-  //   if ((isFilesMode || isProjectMode) && !isExpanded) {
-  //     setOpen(true)
-  //   }
-  // }, [isFilesMode, isProjectMode, isExpanded, setOpen])
+  const projectPathMatch = pathname?.match(/^\/dashboard\/projects\/([^/]+)/)
+  const isProjectMode =
+    projectPathMatch !== null &&
+    projectPathMatch !== undefined &&
+    projectPathMatch[1] !== "select"
 
   const showContext = isExpanded && (isFilesMode || isProjectMode || isConversationsMode)
 
@@ -114,7 +152,16 @@ function SidebarNav({
         ? "projects"
         : "main"
 
-  const secondaryItems = [...data.navSecondary]
+  const navMain = NAV_MAIN.map((item) =>
+    typeof item.projectPath === "string"
+      ? {
+          ...item,
+          url: `/dashboard/projects/select?target=${encodeURIComponent(
+            item.projectPath.replace(/^\//, "")
+          )}`,
+        }
+      : item
+  )
 
   return (
     <div key={mode} className="animate-in fade-in slide-in-from-left-1 flex flex-1 flex-col duration-150">
@@ -131,9 +178,8 @@ function SidebarNav({
       {mode === "projects" && <NavProjects projects={projects} />}
       {mode === "main" && (
         <>
-          <NavMain items={data.navMain} />
+          <NavMain items={navMain} />
           <NavDashboards dashboards={dashboards} />
-          <NavSecondary items={secondaryItems} className="mt-auto" />
         </>
       )}
     </div>
@@ -148,7 +194,7 @@ export function AppSidebar({
   activeOrgName = null,
   ...props
 }: React.ComponentProps<typeof Sidebar> & {
-  readonly projects?: ReadonlyArray<{ readonly id: string; readonly name: string }>
+  readonly projects?: ReadonlyArray<ProjectListItem>
   readonly dashboards?: ReadonlyArray<{ readonly id: string; readonly name: string }>
   readonly user: SidebarUser | null
   readonly activeOrgId?: string | null
@@ -162,13 +208,13 @@ export function AppSidebar({
       <SidebarHeader>
         <OrgSwitcher activeOrgId={activeOrgId} activeOrgName={activeOrgName} />
       </SidebarHeader>
-      <SidebarContent>
+      <SidebarContent className="compass-sidebar-scroll">
         <SidebarNav
-          projects={projects as { id: string; name: string }[]}
+          projects={projects}
           dashboards={dashboards}
         />
       </SidebarContent>
-      <SidebarFooter>
+      <SidebarFooter className="border-t border-sidebar-border/60">
         {isMobile && (
           <SidebarMenu>
             <SidebarMenuItem>
@@ -182,6 +228,7 @@ export function AppSidebar({
           </SidebarMenu>
         )}
         {channelId !== null && <VoicePanel />}
+        <PersonalDeskPhoto user={user} />
         <NavUser user={user} />
       </SidebarFooter>
     </Sidebar>

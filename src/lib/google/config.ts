@@ -5,7 +5,9 @@ export type GoogleConfig = {
 export function getGoogleConfig(
   env: Record<string, string | undefined>
 ): GoogleConfig {
-  const encryptionKey = env.GOOGLE_SERVICE_ACCOUNT_ENCRYPTION_KEY
+  const encryptionKey =
+    env.GOOGLE_SERVICE_ACCOUNT_ENCRYPTION_KEY ??
+    process.env.GOOGLE_SERVICE_ACCOUNT_ENCRYPTION_KEY
   if (!encryptionKey) {
     throw new Error(
       "GOOGLE_SERVICE_ACCOUNT_ENCRYPTION_KEY not configured"

@@ -11,10 +11,10 @@
     "build": "bun build src/index.ts --target=bun --outdir=dist --minify"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.39.0",
-    "@mariozechner/pi-ai": "^0.52.8"
+    "@anthropic-ai/sdk": "^0.95.2",
+    "@mariozechner/pi-ai": "^0.73.1"
   },
   "devDependencies": {
-    "@types/bun": "latest"
+    "@types/bun": "^1.3.14"
   }
 }

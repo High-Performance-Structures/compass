@@ -3,7 +3,9 @@ Financials Module
 
 The financials module tracks invoices, vendor bills, payments, and credit memos. These are the bread-and-butter financial documents in construction project management: invoices go out to clients, vendor bills come in from subcontractors and suppliers, payments record money moving, and credit memos adjust balances.
 
-The module is designed to work both standalone (manual data entry in Compass) and as the local representation of NetSuite records (synced bidirectionally by the NetSuite module). Every financial table has a `netsuiteId` column that links to the NetSuite internal record when sync is active.
+The module was originally designed to work both standalone (manual data entry in Compass) and as the local representation of NetSuite records (synced bidirectionally by the NetSuite module). Every financial table has a `netsuiteId` column that links to the NetSuite internal record when sync is active.
+
+Current HPS direction: Sage 100 Contractor is the active financial, job-cost, purchase order, estimate, progress billing, and scheduling source of truth. The existing NetSuite financial model remains useful reference material, but new HPS financial workflows should be designed around Sage read models, approval-gated writes, and the security plan.
 
 
 data model
@@ -111,6 +113,8 @@ export async function createInvoice(
 
 NetSuite sync integration
 ---
+
+Status: legacy/generic reference for HPS. This section describes the existing NetSuite sync architecture. For HPS production financial workflows, use the Sage bridge plan and do not assume NetSuite is the active accounting backend.
 
 When the NetSuite module is active, financial records flow bidirectionally:
 

@@ -501,7 +501,7 @@ function ProviderConfigSection({
           {/* Help text */}
           <p className="text-[10px] text-muted-foreground">
             Requires an active Claude Pro/Max subscription. Uses your Claude Code CLI credentials.
-            Alternatively, use "Anthropic (API Key)" with an API key from console.anthropic.com.
+            Alternatively, use &quot;Anthropic (API Key)&quot; with an API key from console.anthropic.com.
           </p>
 
           {oauth.step === "connected" && (

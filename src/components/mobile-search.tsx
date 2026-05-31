@@ -3,7 +3,7 @@
 import * as React from "react"
 import { createPortal } from "react-dom"
 import { useRouter } from "next/navigation"
-import { useTheme } from "next-themes"
+import { useTheme } from "@/components/theme-provider"
 import {
   IconArrowLeft,
   IconX,
@@ -16,8 +16,13 @@ import {
   IconCheck,
   IconUsers,
   IconBuildingStore,
+  IconSparkles,
 } from "@tabler/icons-react"
 import { cn } from "@/lib/utils"
+import {
+  useAgentOptional,
+  useChatStateOptional,
+} from "@/components/agent/chat-provider"
 import {
   Sheet,
   SheetContent,
@@ -71,8 +76,8 @@ const staticItems: SearchItem[] = [
   },
   {
     icon: IconCalendarStats,
-    label: "Schedule",
-    href: "/dashboard/projects/demo-project-1/schedule",
+    label: "Work Calendar",
+    href: "/dashboard/schedule",
     category: "navigation",
   },
   {
@@ -83,9 +88,9 @@ const staticItems: SearchItem[] = [
   },
   {
     icon: IconSearch,
-    label: "Search files",
+    label: "Open files",
     category: "action",
-    action: "search-files",
+    href: "/dashboard/files",
   },
 ]
 
@@ -139,6 +144,8 @@ export function MobileSearch({
 }: MobileSearchProps) {
   const router = useRouter()
   const { theme, setTheme } = useTheme()
+  const agent = useAgentOptional()
+  const chat = useChatStateOptional()
   const [query, setQuery] = React.useState("")
   const [visible, setVisible] = React.useState(false)
   const [animating, setAnimating] = React.useState(false)
@@ -206,9 +213,12 @@ export function MobileSearch({
           category: "vendor" as const,
           createdAt: v.createdAt,
         })),
-        ...(projects as { id: string; name: string; createdAt: string }[]).map((p) => ({
+        ...projects.map((p) => ({
           icon: IconFolder,
-          label: p.name,
+          label: p.projectNumber ?? p.name,
+          sublabel: p.projectNumber
+            ? [p.name, p.clientName].filter(Boolean).join(" - ")
+            : p.clientName ?? undefined,
           href: `/dashboard/projects/${p.id}`,
           category: "project" as const,
           createdAt: p.createdAt,
@@ -239,22 +249,44 @@ export function MobileSearch({
   }
 
   function runAction(action: string) {
+    if (action === "ask-agent") {
+      const prompt = query.trim()
+      if (prompt) {
+        agent?.open()
+        chat?.sendMessage({ text: prompt })
+      }
+      close()
+      return
+    }
     if (action === "toggle-theme") {
       setTheme(theme === "dark" ? "light" : "dark")
-    }
-    if (action === "search-files") {
-      inputRef.current?.focus()
-      return
     }
     close()
   }
 
-  const allItems = [...staticItems, ...dynamicItems]
+  const agentItems: SearchItem[] =
+    query.trim() && agent && chat
+      ? [
+          {
+            icon: IconSparkles,
+            label: `Ask Compass: ${query.trim()}`,
+            sublabel: "Use the project agent to navigate or build a view",
+            category: "action",
+            action: "ask-agent",
+          },
+        ]
+      : []
+
+  const allItems = [...agentItems, ...staticItems, ...dynamicItems]
 
   const filtered = allItems.filter((item) => {
+    const searchable = [item.label, item.sublabel]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase()
     if (
       query.trim() &&
-      !item.label.toLowerCase().includes(query.toLowerCase())
+      !searchable.includes(query.toLowerCase())
     ) {
       return false
     }

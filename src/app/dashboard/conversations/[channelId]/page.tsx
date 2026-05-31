@@ -1,9 +1,14 @@
 import { notFound } from "next/navigation"
 import { getChannel } from "@/app/actions/conversations"
 import { getMessages } from "@/app/actions/chat-messages"
+import { getProjectContactsSummary } from "@/app/actions/project-contacts"
+import { getProjects } from "@/app/actions/projects"
 import { ChannelHeader } from "@/components/conversations/channel-header"
 import { MessageList } from "@/components/conversations/message-list"
-import { MessageComposer } from "@/components/conversations/message-composer"
+import {
+  MessageComposer,
+  type ProjectRecipientContact,
+} from "@/components/conversations/message-composer"
 import { ThreadPanel } from "@/components/conversations/thread-panel"
 
 export default async function ChannelPage({
@@ -23,6 +28,26 @@ export default async function ChannelPage({
 
   const channel = channelResult.data
   const messages = messagesResult.success && messagesResult.data ? messagesResult.data : []
+  const [contactsSummary, projects] = await Promise.all([
+    channel.projectId
+      ? getProjectContactsSummary(channel.projectId).catch(() => null)
+      : Promise.resolve(null),
+    channel.projectId ? getProjects() : Promise.resolve([]),
+  ])
+  const project =
+    channel.projectId
+      ? projects.find((item) => item.id === channel.projectId) ?? null
+      : null
+  const projectRecipients: readonly ProjectRecipientContact[] =
+    contactsSummary?.allContacts.map((contact) => ({
+      id: contact.id,
+      contactType: contact.contactType,
+      displayName: contact.displayName,
+      companyName: contact.companyName,
+      role: contact.role,
+      trade: contact.trade,
+      email: contact.email,
+    })) ?? []
 
   return (
     <div className="flex h-full w-full min-w-0 overflow-hidden">
@@ -31,8 +56,10 @@ export default async function ChannelPage({
         style={{ gridTemplateRows: "auto 1fr auto" }}
       >
         <ChannelHeader
+          channelId={channelId}
           name={channel.name}
           description={channel.description ?? undefined}
+          project={project}
           memberCount={channel.memberCount}
         />
         <MessageList
@@ -43,6 +70,8 @@ export default async function ChannelPage({
           channelId={channelId}
           channelName={channel.name}
           organizationId={channel.organizationId}
+          isProjectChannel={Boolean(channel.projectId)}
+          projectRecipients={projectRecipients}
         />
       </div>
       <ThreadPanel />

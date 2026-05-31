@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { eq } from "drizzle-orm"
-import { getCloudflareContext } from "@opennextjs/cloudflare"
+import { getCloudflareContext } from "@/lib/db"
 import { getDb } from "@/db"
 import { users } from "@/db/schema"
 import { validateApiKey } from "@/lib/mcp/auth"

@@ -13,7 +13,6 @@ import {
   IconFileFilled,
 } from "@tabler/icons-react"
 import { cn } from "@/lib/utils"
-import { useChatPanel } from "@/components/agent/chat-provider"
 
 interface NavItemProps {
   href: string

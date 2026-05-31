@@ -52,6 +52,7 @@ import {
   IconCalendarOff,
   IconLoader2,
 } from "@tabler/icons-react"
+import { toast } from "sonner"
 import { ScheduleListView } from "./schedule-list-view"
 import { ScheduleGanttView } from "./schedule-gantt-view"
 import { ScheduleCalendarView } from "./schedule-calendar-view"
@@ -59,17 +60,17 @@ import { ScheduleMobileView } from "./schedule-mobile-view"
 import { WorkdayExceptionsView } from "./workday-exceptions-view"
 import { ScheduleBaselineView } from "./schedule-baseline-view"
 import { TaskFormDialog } from "./task-form-dialog"
+import { ProjectQuickSwitcher } from "@/components/projects/project-quick-switcher"
+import type { ProjectListItem } from "@/app/actions/projects"
 import type {
   ScheduleData,
   ScheduleBaselineData,
   TaskFilters,
   TaskStatus,
-  ConstructionPhase,
 } from "@/lib/schedule/types"
 import {
   EMPTY_FILTERS,
   STATUS_OPTIONS,
-  PHASE_OPTIONS,
 } from "@/lib/schedule/types"
 
 type View = "calendar" | "list" | "gantt"
@@ -85,7 +86,7 @@ interface ScheduleViewProps {
   readonly projectName: string
   readonly initialData: ScheduleData
   readonly baselines: ScheduleBaselineData[]
-  readonly allProjects?: readonly { id: string; name: string }[]
+  readonly allProjects?: readonly ProjectListItem[]
 }
 
 export function ScheduleView({
@@ -93,9 +94,10 @@ export function ScheduleView({
   projectName,
   initialData,
   baselines,
+  allProjects = [],
 }: ScheduleViewProps) {
   const isMobile = useIsMobile()
-  const [view, setView] = useState<View>("calendar")
+  const [view, setView] = useState<View>("gantt")
   const [taskFormOpen, setTaskFormOpen] = useState(false)
   const [filters, setFilters] = useState<TaskFilters>(EMPTY_FILTERS)
   const [baselinesOpen, setBaselinesOpen] = useState(false)
@@ -104,6 +106,18 @@ export function ScheduleView({
   const [isImporting, setIsImporting] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
+  const phaseOptions = useMemo(() => {
+    const seen = new Set<string>()
+    return initialData.tasks
+      .map((task) => task.phase)
+      .filter((phase) => {
+        if (!phase || seen.has(phase)) return false
+        seen.add(phase)
+        return true
+      })
+      .map((phase) => ({ value: phase, label: phase }))
+  }, [initialData.tasks])
+
   const filteredTasks = useMemo(() => {
     let tasks = initialData.tasks
 
@@ -111,9 +125,7 @@ export function ScheduleView({
       tasks = tasks.filter((t) => filters.status.includes(t.status))
     }
     if (filters.phase.length > 0) {
-      tasks = tasks.filter((t) =>
-        filters.phase.includes(t.phase as ConstructionPhase)
-      )
+      tasks = tasks.filter((t) => filters.phase.includes(t.phase))
     }
     if (filters.assignedTo) {
       const search = filters.assignedTo.toLowerCase()
@@ -143,7 +155,7 @@ export function ScheduleView({
     setFilters({ ...filters, status: next })
   }
 
-  const togglePhase = (phase: ConstructionPhase) => {
+  const togglePhase = (phase: string) => {
     const current = filters.phase
     const next = current.includes(phase)
       ? current.filter((p) => p !== phase)
@@ -158,7 +170,7 @@ export function ScheduleView({
     })
   }
 
-  const removePhaseChip = (phase: ConstructionPhase) => {
+  const removePhaseChip = (phase: string) => {
     setFilters({
       ...filters,
       phase: filters.phase.filter((p) => p !== phase),
@@ -263,13 +275,13 @@ export function ScheduleView({
         link.download = `imported-tasks-${Date.now()}.json`
         link.click()
         URL.revokeObjectURL(url)
-        alert(`Parsed ${parsed.length} tasks from CSV. Downloaded as JSON for review.`)
+        toast.success(`Parsed ${parsed.length} tasks from CSV for review.`)
       } else {
-        alert("No valid tasks found in the CSV file.")
+        toast.error("No valid tasks found in the CSV file.")
       }
     } catch (error) {
       console.error("Import failed:", error)
-      alert("Failed to parse CSV file. Please check the format.")
+      toast.error("Failed to parse CSV file. Please check the format.")
     } finally {
       setIsImporting(false)
       setImportDialogOpen(false)
@@ -281,9 +293,9 @@ export function ScheduleView({
 
   return (
     <div className="flex flex-col flex-1 min-h-0">
-      {/* Header: breadcrumb + view toggle + new task */}
-      <div className="flex items-center gap-3 mb-3">
-        <nav className="flex items-center gap-1.5 text-sm min-w-0">
+      {/* Header: breadcrumb + project switcher + view toggle + new task */}
+      <div className="mb-3 flex flex-col gap-2 lg:flex-row lg:items-center">
+        <nav className="flex min-w-0 items-center gap-1.5 text-sm">
           <Link
             href={`/dashboard/projects/${projectId}`}
             className="text-muted-foreground hover:text-foreground truncate transition-colors"
@@ -294,7 +306,15 @@ export function ScheduleView({
           <span className="font-medium">Schedule</span>
         </nav>
 
-        <div className="ml-auto flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2 lg:ml-auto lg:justify-end">
+          <ProjectQuickSwitcher
+            projects={allProjects}
+            currentProjectId={projectId}
+            targetSection="schedule"
+            placeholder="Switch schedule project..."
+            className="w-full sm:w-[300px]"
+          />
+
           {/* View switcher */}
           <div className={cn(
             "flex items-center rounded-lg border bg-muted/40 p-0.5",
@@ -379,7 +399,7 @@ export function ScheduleView({
                   Phase
                 </Label>
                 <div className="mt-1.5 space-y-1 max-h-40 overflow-y-auto">
-                  {PHASE_OPTIONS.map((opt) => (
+                  {phaseOptions.map((opt) => (
                     <label
                       key={opt.value}
                       className="flex items-center gap-2 py-0.5 cursor-pointer"
@@ -438,7 +458,7 @@ export function ScheduleView({
             <Badge
               key={p}
               variant="outline"
-              className="gap-1 shrink-0 text-xs py-0 h-6 cursor-pointer hover:bg-accent capitalize"
+              className="gap-1 shrink-0 text-xs py-0 h-6 cursor-pointer hover:bg-accent"
               onClick={() => removePhaseChip(p)}
             >
               {p}

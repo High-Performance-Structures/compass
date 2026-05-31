@@ -17,17 +17,34 @@ import {
   Smile,
   Sticker,
   Gift,
+  SendToBack,
+  Check,
+  ChevronsUpDown,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover"
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+  CommandSeparator,
+} from "@/components/ui/command"
 import { sendMessage } from "@/app/actions/chat-messages"
+import {
+  sendProjectMessage,
+  type ProjectMessageRecipient,
+} from "@/app/actions/project-messages"
 import { setTyping } from "@/app/actions/conversations-realtime"
 import { useRouter } from "next/navigation"
-import { useTheme } from "next-themes"
+import { useTheme } from "@/components/theme-provider"
 import { cn } from "@/lib/utils"
 import { createMentionSuggestion } from "./mention-suggestion"
 
@@ -84,14 +101,35 @@ type MessageComposerProps = {
   readonly channelId: string
   readonly channelName: string
   readonly organizationId: string
+  readonly isProjectChannel?: boolean
+  readonly projectRecipients?: readonly ProjectRecipientContact[]
   readonly threadId?: string
   readonly placeholder?: string
   readonly onSent?: () => void
 }
 
+export type ProjectRecipientContact = {
+  readonly id: string
+  readonly contactType: "owner" | "supplier" | "subcontractor" | "internal"
+  readonly displayName: string
+  readonly companyName: string | null
+  readonly role: string | null
+  readonly trade: string | null
+  readonly email: string | null
+}
+
 type MentionInput = {
   mentionType: "user" | "channel" | "here" | "agent"
   targetId: string | null
+}
+
+type RecipientOption = {
+  readonly value: string
+  readonly label: string
+  readonly detail: string
+  readonly search: string
+  readonly group: string
+  readonly disabled?: boolean
 }
 
 function extractMentions(
@@ -129,10 +167,151 @@ function extractMentions(
   return mentions
 }
 
+function contactLabel(contact: ProjectRecipientContact): string {
+  const detail = contact.companyName ?? contact.trade ?? contact.role
+  return detail ? `${contact.displayName} - ${detail}` : contact.displayName
+}
+
+function recipientFromValue(value: string): ProjectMessageRecipient {
+  if (value === "internal") return { kind: "internal" }
+  if (value === "owners") return { kind: "owners" }
+  if (value === "sub_vendors") return { kind: "sub_vendors" }
+  if (value.startsWith("contact:")) {
+    return { kind: "contact", contactId: value.slice("contact:".length) }
+  }
+  return { kind: "channel" }
+}
+
+function recipientDetail(
+  value: string,
+  contacts: readonly ProjectRecipientContact[]
+): string {
+  if (value === "channel") {
+    return "Saved to this channel only. Use @mentions when a specific Compass user needs a nudge."
+  }
+  if (value === "internal") {
+    const count = contacts.filter(
+      (contact) => contact.contactType === "internal"
+    ).length
+    return `Saved here and queues Compass/email notifications for ${count} internal project contact${count === 1 ? "" : "s"}.`
+  }
+  if (value === "owners") {
+    const count = contacts.filter(
+      (contact) => contact.contactType === "owner"
+    ).length
+    return `Saved here and queues Compass/email notifications for ${count} owner contact${count === 1 ? "" : "s"}.`
+  }
+  if (value === "sub_vendors") {
+    const count = contacts.filter(
+      (contact) =>
+        contact.contactType === "supplier" ||
+        contact.contactType === "subcontractor"
+    ).length
+    return `Saved here and queues Compass/email notifications for ${count} sub/vendor contact${count === 1 ? "" : "s"}.`
+  }
+  if (value.startsWith("contact:")) {
+    const contactId = value.slice("contact:".length)
+    const contact = contacts.find((item) => item.id === contactId)
+    return contact?.email
+      ? `Saved here and targets ${contact.email} if that address has a Compass login.`
+      : "Saved here, but this contact does not have an email yet."
+  }
+  return "Posts to this channel."
+}
+
+function groupLabel(contactType: ProjectRecipientContact["contactType"]): string {
+  switch (contactType) {
+    case "owner":
+      return "Owners"
+    case "supplier":
+      return "Suppliers"
+    case "subcontractor":
+      return "Subcontractors"
+    case "internal":
+      return "Internal"
+  }
+}
+
+function contactSearchValue(contact: ProjectRecipientContact): string {
+  return [
+    contact.displayName,
+    contact.companyName,
+    contact.role,
+    contact.trade,
+    contact.email,
+    contact.contactType,
+  ]
+    .filter((value): value is string => Boolean(value))
+    .join(" ")
+}
+
+function buildRecipientOptions(
+  contacts: readonly ProjectRecipientContact[]
+): readonly RecipientOption[] {
+  const internalCount = contacts.filter(
+    (contact) => contact.contactType === "internal"
+  ).length
+  const ownerCount = contacts.filter(
+    (contact) => contact.contactType === "owner"
+  ).length
+  const subVendorCount = contacts.filter(
+    (contact) =>
+      contact.contactType === "supplier" ||
+      contact.contactType === "subcontractor"
+  ).length
+
+  const groupOptions: readonly RecipientOption[] = [
+    {
+      value: "channel",
+      label: "Post to channel only",
+      detail: "Saves the message without notifying a project audience.",
+      search: "channel history only no notification",
+      group: "Delivery",
+    },
+    {
+      value: "internal",
+      label: `Notify internal team (${internalCount})`,
+      detail: "Internal HPS, ORC, Nu-Tech, and Design project contacts.",
+      search: "internal staff team hps orc nutech design",
+      group: "Delivery",
+      disabled: internalCount === 0,
+    },
+    {
+      value: "owners",
+      label: `Notify owner team (${ownerCount})`,
+      detail: "Owner contacts assigned to this project.",
+      search: "owners clients owner team",
+      group: "Delivery",
+      disabled: ownerCount === 0,
+    },
+    {
+      value: "sub_vendors",
+      label: `Notify subs/vendors (${subVendorCount})`,
+      detail: "Suppliers and subcontractors assigned to this project.",
+      search: "subcontractors suppliers vendors trades subs",
+      group: "Delivery",
+      disabled: subVendorCount === 0,
+    },
+  ]
+
+  const contactOptions = contacts.map((contact) => ({
+    value: `contact:${contact.id}`,
+    label: contactLabel(contact),
+    detail: contact.email ?? "No email on file",
+    search: contactSearchValue(contact),
+    group: groupLabel(contact.contactType),
+    disabled: false,
+  }))
+
+  return [...groupOptions, ...contactOptions]
+}
+
 export function MessageComposer({
   channelId,
   channelName,
   organizationId,
+  isProjectChannel = false,
+  projectRecipients = [],
   threadId,
   placeholder,
   onSent,
@@ -142,8 +321,12 @@ export function MessageComposer({
   const emojiThemeVars = useEmojiThemeVars()
   const [isSending, setIsSending] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
+  const [deliveryNote, setDeliveryNote] = React.useState<string | null>(null)
   const [showToolbar, setShowToolbar] = React.useState(false)
   const [emojiOpen, setEmojiOpen] = React.useState(false)
+  const [recipientOpen, setRecipientOpen] = React.useState(false)
+  const [recipientValue, setRecipientValue] = React.useState("channel")
+  const hasProjectDelivery = isProjectChannel && !threadId
 
   const lastTypingSentRef = React.useRef<number>(0)
   const TYPING_DEBOUNCE_MS = 3000
@@ -204,6 +387,29 @@ export function MessageComposer({
     },
   })
 
+  const recipientOptions = React.useMemo(() => {
+    return buildRecipientOptions(projectRecipients)
+  }, [projectRecipients])
+  const selectedRecipient = recipientOptions.find(
+    (option) => option.value === recipientValue
+  )
+
+  const groupedRecipientOptions = React.useMemo(() => {
+    const groups = new Map<string, RecipientOption[]>()
+    for (const option of recipientOptions) {
+      const existing = groups.get(option.group) ?? []
+      existing.push(option)
+      groups.set(option.group, existing)
+    }
+    return Array.from(groups.entries())
+  }, [recipientOptions])
+
+  React.useEffect(() => {
+    if (!hasProjectDelivery) return
+    if (selectedRecipient && !selectedRecipient.disabled) return
+    setRecipientValue("channel")
+  }, [hasProjectDelivery, selectedRecipient])
+
   const handleEmojiSelect = React.useCallback(
     (emoji: EmojiData) => {
       if (!editor) return
@@ -221,6 +427,7 @@ export function MessageComposer({
 
     setIsSending(true)
     setError(null)
+    setDeliveryNote(null)
 
     try {
       const mentions = extractMentions(
@@ -233,15 +440,43 @@ export function MessageComposer({
       >
       const markdown = storage.markdown?.getMarkdown?.() ?? plainText
 
-      const result = await sendMessage({
-        channelId,
-        content: markdown,
-        threadId,
-        mentions: mentions.length > 0 ? mentions : undefined,
-      })
+      const result =
+        recipientValue === "channel" || threadId
+          ? await sendMessage({
+              channelId,
+              content: markdown,
+              threadId,
+              mentions: mentions.length > 0 ? mentions : undefined,
+            })
+          : await sendProjectMessage({
+              channelId,
+              content: markdown,
+              recipient: recipientFromValue(recipientValue),
+              mentions: mentions.length > 0 ? mentions : undefined,
+            })
 
       if (result.success) {
         editor.commands.clearContent()
+        if ("data" in result && result.data && "recipientLabel" in result.data) {
+          const noteParts = [`Sent to ${result.data.recipientLabel}`]
+          if (result.data.notifiedUserCount > 0) {
+            noteParts.push(
+              `${result.data.notifiedUserCount} Compass user${
+                result.data.notifiedUserCount === 1 ? "" : "s"
+              } queued for notification/email preferences`
+            )
+          }
+          if (result.data.unmatchedContactCount > 0) {
+            noteParts.push(
+              `${result.data.unmatchedContactCount} contact${
+                result.data.unmatchedContactCount === 1 ? "" : "s"
+              } still need Compass login/email matching`
+            )
+          }
+          setDeliveryNote(`${noteParts.join(". ")}.`)
+        } else {
+          setDeliveryNote("Sent to the channel.")
+        }
         router.refresh()
         onSent?.()
       } else {
@@ -254,7 +489,15 @@ export function MessageComposer({
     } finally {
       setIsSending(false)
     }
-  }, [editor, channelId, threadId, router, onSent, isSending])
+  }, [
+    editor,
+    channelId,
+    threadId,
+    router,
+    onSent,
+    isSending,
+    recipientValue,
+  ])
 
   React.useEffect(() => {
     if (!editor) return
@@ -276,6 +519,91 @@ export function MessageComposer({
 
   return (
     <div className="min-h-[68px] px-2 pb-4 pt-2 sm:px-4">
+      {hasProjectDelivery && (
+        <div className="mb-2 flex flex-col gap-2 border-y bg-background/80 px-1 py-2 sm:flex-row sm:items-center sm:justify-between sm:border sm:px-3">
+          <div className="flex min-w-0 flex-1 items-center gap-2">
+            <SendToBack className="h-4 w-4 shrink-0 text-muted-foreground" />
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-xs font-medium text-muted-foreground">
+                  Delivery
+                </span>
+                <Popover open={recipientOpen} onOpenChange={setRecipientOpen}>
+                  <PopoverTrigger asChild>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      role="combobox"
+                      aria-expanded={recipientOpen}
+                      aria-label="Message delivery"
+                      className="h-8 w-[260px] justify-between bg-background px-2 text-xs font-normal"
+                    >
+                      <span className="truncate">
+                        {selectedRecipient?.label ?? "Post to channel only"}
+                      </span>
+                      <ChevronsUpDown className="ml-2 size-3.5 shrink-0 opacity-50" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent
+                    align="start"
+                    className="w-[min(420px,calc(100vw-2rem))] p-0"
+                  >
+                    <Command>
+                      <CommandInput placeholder="Search delivery, contact, trade, or email..." />
+                      <CommandList>
+                        <CommandEmpty>No matching recipients.</CommandEmpty>
+                        {groupedRecipientOptions.map(([group, options], index) => (
+                          <React.Fragment key={group}>
+                            {index > 0 && <CommandSeparator />}
+                            <CommandGroup heading={group}>
+                              {options.map((option) => (
+                                <CommandItem
+                                  key={option.value}
+                                  value={`${option.label} ${option.search}`}
+                                  disabled={option.disabled}
+                                  onSelect={() => {
+                                    setRecipientValue(option.value)
+                                    setRecipientOpen(false)
+                                  }}
+                                  className="items-start gap-2 py-2"
+                                >
+                                  <Check
+                                    className={cn(
+                                      "mt-0.5 size-4",
+                                      recipientValue === option.value
+                                        ? "opacity-100"
+                                        : "opacity-0"
+                                    )}
+                                  />
+                                  <span className="min-w-0 flex-1">
+                                    <span className="block truncate font-medium">
+                                      {option.label}
+                                    </span>
+                                    <span className="block truncate text-xs text-muted-foreground">
+                                      {option.detail}
+                                    </span>
+                                  </span>
+                                </CommandItem>
+                              ))}
+                            </CommandGroup>
+                          </React.Fragment>
+                        ))}
+                      </CommandList>
+                    </Command>
+                  </PopoverContent>
+                </Popover>
+                <Badge variant="outline" className="rounded-md">
+                  #{channelName}
+                </Badge>
+              </div>
+              <p className="mt-1 truncate text-xs text-muted-foreground">
+                {recipientDetail(recipientValue, projectRecipients)}
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* formatting toolbar */}
       {editor && showToolbar && (
         <div className="mb-1.5 flex items-center gap-0.5 pl-10 sm:pl-12">
@@ -473,6 +801,9 @@ export function MessageComposer({
 
       {error && (
         <p className="mt-1.5 text-xs text-destructive">{error}</p>
+      )}
+      {deliveryNote && !error && (
+        <p className="mt-1.5 text-xs text-muted-foreground">{deliveryNote}</p>
       )}
     </div>
   )

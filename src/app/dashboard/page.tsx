@@ -1,16 +1,8 @@
-"use client"
+import { getDashboardOverview } from "@/app/actions/dashboard-overview"
+import { OperationalDashboard } from "@/components/dashboard/operational-dashboard"
 
-import { useRenderState } from "@/components/agent/chat-provider"
-import { RenderedView } from "@/components/agent/rendered-view"
-import { ChatView } from "@/components/agent/chat-view"
+export default async function Page() {
+  const overview = await getDashboardOverview()
 
-export default function Page() {
-  const { spec, isRendering } = useRenderState()
-  const hasRenderedUI = !!spec?.root || isRendering
-
-  if (hasRenderedUI) {
-    return <RenderedView />
-  }
-
-  return <ChatView variant="page" />
+  return <OperationalDashboard overview={overview} />
 }

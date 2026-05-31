@@ -138,3 +138,12 @@ export function hasAnyPermission(
   const resourcePermissions = rolePermissions[resource]
   return !!resourcePermissions && resourcePermissions.length > 0
 }
+
+export function canManageProjectRegistry(user: AuthUser | null): boolean {
+  if (!user || !user.isActive) return false
+
+  return (
+    user.role === "secondary_admin" ||
+    can(user, "organization", "update")
+  )
+}

@@ -1,4 +1,4 @@
-import { getCloudflareContext } from "@opennextjs/cloudflare"
+import { getCloudflareContext } from "@/lib/db"
 
 const API_BASE = "https://api.github.com"
 const USER_AGENT = "compass-agent"

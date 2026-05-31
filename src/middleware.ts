@@ -1,7 +1,7 @@
-import { NextRequest } from "next/server"
+import { NextRequest, NextResponse } from "next/server"
 import { authkit, handleAuthkitHeaders } from "@workos-inc/authkit-nextjs"
+import { isLocalDevelopment, isWorkOSConfigured } from "@/lib/auth-config"
 
-// public routes that don't require authentication
 const publicPaths = [
   "/",
   "/login",
@@ -11,9 +11,9 @@ const publicPaths = [
   "/invite",
   "/callback",
   "/demo",
+  "/manifest.json",
 ]
 
-// bridge routes use their own API key auth
 const bridgePaths = [
   "/api/bridge/register",
   "/api/bridge/tools",
@@ -23,7 +23,6 @@ const bridgePaths = [
 function isPublicPath(pathname: string): boolean {
   return (
     publicPaths.includes(pathname) ||
-    pathname.startsWith("/join/") ||
     bridgePaths.includes(pathname) ||
     pathname.startsWith("/api/auth/") ||
     pathname.startsWith("/api/netsuite/") ||
@@ -34,44 +33,50 @@ function isPublicPath(pathname: string): boolean {
 export default async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
 
-  // get session and headers from authkit (handles token refresh automatically)
+  if (!isWorkOSConfigured()) {
+    if (isLocalDevelopment()) {
+      return NextResponse.next()
+    }
+
+    if (isPublicPath(pathname)) {
+      return NextResponse.next()
+    }
+
+    if (pathname.startsWith("/api/")) {
+      return NextResponse.json(
+        { success: false, error: "Authentication is not configured." },
+        { status: 503 }
+      )
+    }
+
+    const loginUrl = new URL("/login", request.url)
+    loginUrl.searchParams.set("error", "auth_unavailable")
+    loginUrl.searchParams.set("from", pathname)
+    return NextResponse.redirect(loginUrl)
+  }
+
   const { session, headers } = await authkit(request)
 
-  // allow public paths
   if (isPublicPath(pathname)) {
     return handleAuthkitHeaders(request, headers)
   }
 
-  const hasDemoCookie =
-    request.cookies.get("compass-demo")?.value === "true"
-
-  // real session trumps demo cookie -- clear the stale cookie
-  if (session.user && hasDemoCookie) {
-    const response = handleAuthkitHeaders(request, headers)
-    response.cookies.delete("compass-demo")
-    return response
-  }
-
-  // demo sessions bypass auth (no real session present)
-  if (hasDemoCookie) {
-    return handleAuthkitHeaders(request, headers)
-  }
-
-  // redirect unauthenticated users to our custom login page
   if (!session.user) {
+    const isDemoSession = request.cookies.get("compass-demo")?.value === "true"
+    if (isDemoSession) {
+      return handleAuthkitHeaders(request, headers)
+    }
+
     const loginUrl = new URL("/login", request.url)
     loginUrl.searchParams.set("from", pathname)
-    return handleAuthkitHeaders(request, headers, {
-      redirect: loginUrl.toString(),
-    })
+    return handleAuthkitHeaders(request, headers, { redirect: loginUrl.toString() })
   }
 
-  // authenticated - continue with authkit headers
   return handleAuthkitHeaders(request, headers)
 }
 
 export const config = {
   matcher: [
-    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+    "/((?!_next/static|_next/image|favicon.ico|manifest.json|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
   ],
 }

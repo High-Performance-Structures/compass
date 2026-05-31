@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { useTheme } from "next-themes"
+import { useTheme } from "@/components/theme-provider"
 import { Check, Moon, RotateCcw, Sparkles, Sun, Trash2 } from "lucide-react"
 import { toast } from "sonner"
 import { Badge } from "@/components/ui/badge"

@@ -32,6 +32,7 @@ import {
 } from "@/app/actions/google-drive"
 
 export type FileView =
+  | "projects"
   | "my-files"
   | "shared"
   | "recent"
@@ -97,6 +98,9 @@ function filesReducer(
         ...state,
         currentView: action.payload,
         selectedIds: new Set(),
+        files: [],
+        nextPageToken: null,
+        isLoading: state.isConnected === true,
       }
     case "SET_SELECTED":
       return { ...state, selectedIds: action.payload }
@@ -193,10 +197,10 @@ function filesReducer(
 
 const initialState: FilesState = {
   viewMode: "grid",
-  currentView: "my-files",
+  currentView: "projects",
   selectedIds: new Set(),
-  sortBy: "name",
-  sortDirection: "asc",
+  sortBy: "modified",
+  sortDirection: "desc",
   searchQuery: "",
   files: [],
   isConnected: null,
@@ -258,7 +262,7 @@ export function FilesProvider({
 }) {
   const [state, dispatch] = useReducer(filesReducer, initialState)
   const currentFolderRef = useRef<string | undefined>(undefined)
-  const currentViewRef = useRef<FileView>("my-files")
+  const currentViewRef = useRef<FileView>("projects")
 
   // check connection on mount
   useEffect(() => {
@@ -322,6 +326,8 @@ export function FilesProvider({
       currentViewRef.current = view ?? "my-files"
       dispatch({ type: "SET_LOADING", payload: true })
       dispatch({ type: "SET_ERROR", payload: null })
+      dispatch({ type: "SET_FILES", payload: [] })
+      dispatch({ type: "SET_NEXT_PAGE_TOKEN", payload: null })
 
       try {
         let result
@@ -635,6 +641,14 @@ export function FilesProvider({
       let files: FileItem[]
 
       switch (view) {
+        case "projects":
+          files = allFiles.filter(
+            f =>
+              !f.trashed &&
+              f.type === "folder" &&
+              /^[OHDN]-\d+/i.test(f.name)
+          )
+          break
         case "my-files":
           files = getFilesForPath(path)
           break

@@ -1,6 +1,6 @@
 "use server"
 
-import { getCloudflareContext } from "@opennextjs/cloudflare"
+import { getCloudflareContext } from "@/lib/db"
 import { eq, and } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { getDb } from "@/db"
@@ -19,6 +19,14 @@ import {
 import { DriveClient } from "@/lib/google/client/drive-client"
 import { mapDriveFileToFileItem } from "@/lib/google/mapper"
 import type { FileItem } from "@/lib/files-data"
+import {
+  PROJECT_FILE_SOURCES,
+  getProjectFolderMatch,
+  isProjectFolderName,
+  withProjectCategoryMetadata,
+  withProjectFileSource,
+  withProjectFolderMetadata,
+} from "@/lib/project-files"
 
 // helpers
 
@@ -63,6 +71,127 @@ async function getStarredIds(
     .from(googleStarredFiles)
     .where(eq(googleStarredFiles.userId, userId))
   return new Set(rows.map(r => r.googleFileId))
+}
+
+async function listProjectSourceFileItems(
+  client: DriveClient,
+  googleEmail: string,
+  starredIds: ReadonlySet<string>
+): Promise<FileItem[]> {
+  const files: FileItem[] = []
+
+  for (const source of PROJECT_FILE_SOURCES) {
+    try {
+      const driveFile = await client.getFile(
+        googleEmail,
+        source.folderId
+      )
+      files.push(
+        withProjectFileSource(
+          mapDriveFileToFileItem(driveFile, starredIds, null),
+          source
+        )
+      )
+    } catch {
+      files.push({
+        id: source.folderId,
+        name: source.label,
+        type: "folder",
+        size: 0,
+        path: [],
+        createdAt: "2026-04-06T00:00:00.000Z",
+        modifiedAt: "2026-04-06T00:00:00.000Z",
+        owner: { name: "HPS" },
+        starred: false,
+        shared: true,
+        trashed: false,
+        parentId: null,
+        webViewLink: `https://drive.google.com/drive/folders/${source.folderId}`,
+        projectFile: {
+          kind: "source",
+          sourceKey: source.key,
+          sourceLabel: source.label,
+        },
+      })
+    }
+  }
+
+  return files
+}
+
+function mergePinnedProjectSources(
+  files: FileItem[],
+  pinnedSources: FileItem[]
+): FileItem[] {
+  const seen = new Set<string>()
+  const merged: FileItem[] = []
+
+  for (const file of [...pinnedSources, ...files]) {
+    if (seen.has(file.id)) continue
+    seen.add(file.id)
+    merged.push(file)
+  }
+
+  return merged
+}
+
+async function listProjectDriveFolders(
+  client: DriveClient,
+  googleEmail: string,
+  starredIds: ReadonlySet<string>
+): Promise<FileItem[]> {
+  const projectFolders: FileItem[] = []
+  const errors: string[] = []
+
+  for (const source of PROJECT_FILE_SOURCES) {
+    try {
+      let pageToken: string | undefined
+
+      do {
+        const result = await client.listFiles(googleEmail, {
+          folderId: source.folderId,
+          query: "mimeType = 'application/vnd.google-apps.folder'",
+          orderBy: "modifiedTime desc",
+          pageSize: 100,
+          pageToken,
+        })
+
+        for (const driveFile of result.files) {
+          if (!isProjectFolderName(driveFile.name)) continue
+          const match = getProjectFolderMatch(driveFile.name)
+          if (!match || match.source.key !== source.key) continue
+
+          projectFolders.push(
+            withProjectFolderMetadata(
+              mapDriveFileToFileItem(
+                driveFile,
+                starredIds,
+                source.folderId
+              ),
+              match
+            )
+          )
+        }
+
+        pageToken = result.nextPageToken ?? undefined
+      } while (pageToken)
+    } catch (err) {
+      errors.push(
+        err instanceof Error ? err.message : "Unknown Drive error"
+      )
+      // A missing business-line root should not prevent other roots
+      // from loading.
+    }
+  }
+
+  if (
+    projectFolders.length === 0 &&
+    errors.length === PROJECT_FILE_SOURCES.length
+  ) {
+    throw new Error(errors[0])
+  }
+
+  return projectFolders
 }
 
 // connection management
@@ -301,7 +430,7 @@ export async function listDriveFiles(
     const starredIds = await getStarredIds(db, user.id)
 
     const targetFolder =
-      folderId ?? auth.sharedDriveId ?? undefined
+      folderId ?? auth.sharedDriveId ?? "root"
     const result = await client.listFiles(googleEmail, {
       folderId: targetFolder,
       driveId: auth.sharedDriveId ?? undefined,
@@ -309,9 +438,20 @@ export async function listDriveFiles(
       orderBy: "folder,name",
     })
 
-    const files = result.files.map(f =>
-      mapDriveFileToFileItem(f, starredIds, folderId ?? null)
+    let files = result.files.map(f =>
+      withProjectCategoryMetadata(
+        mapDriveFileToFileItem(f, starredIds, folderId ?? null)
+      )
     )
+
+    if (!folderId && !pageToken) {
+      const projectSources = await listProjectSourceFileItems(
+        client,
+        googleEmail,
+        starredIds
+      )
+      files = mergePinnedProjectSources(files, projectSources)
+    }
 
     return {
       success: true,
@@ -364,6 +504,17 @@ export async function listDriveFilesForView(
     let result
 
     switch (view) {
+      case "projects":
+        return {
+          success: true,
+          files: await listProjectDriveFolders(
+            client,
+            googleEmail,
+            starredIds
+          ),
+          nextPageToken: null,
+        }
+
       case "shared":
         result = await client.listFiles(googleEmail, {
           sharedWithMe: true,
@@ -422,9 +573,20 @@ export async function listDriveFilesForView(
         return { success: false, error: `Unknown view: ${view}` }
     }
 
-    const files = result.files.map(f =>
-      mapDriveFileToFileItem(f, starredIds, null)
+    let files = result.files.map(f =>
+      withProjectCategoryMetadata(
+        mapDriveFileToFileItem(f, starredIds, null)
+      )
     )
+
+    if (view === "shared" && !pageToken) {
+      const projectSources = await listProjectSourceFileItems(
+        client,
+        googleEmail,
+        starredIds
+      )
+      files = mergePinnedProjectSources(files, projectSources)
+    }
 
     return {
       success: true,
@@ -1001,7 +1163,7 @@ export async function listDriveFolders(
     )
 
     const targetFolder =
-      parentId ?? auth.sharedDriveId ?? undefined
+      parentId ?? auth.sharedDriveId ?? "root"
     const result = await client.listFiles(googleEmail, {
       folderId: targetFolder,
       query:

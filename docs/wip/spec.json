@@ -2575,9 +2575,9 @@
     "features": [
       {
         "name": "Payment Processing",
-        "reason": "Client prefers to use NetSuite for payment workflows",
+        "reason": "Legacy note referenced NetSuite; HPS active direction is Sage 100 Contractor for accounting and payment-related workflows",
         "originalEstimate": "2 weeks",
-        "dependsOn": "NetSuite Integration"
+        "dependsOn": "Sage Integration"
       },
       {
         "name": "Purchase Orders",
@@ -2586,8 +2586,8 @@
       },
       {
         "name": "Project Reporting",
-        "reason": "Can use NetSuite for these reports initially",
-        "scope": "Sub usage reports, financial reports"
+        "reason": "Use Sage-derived read models for HPS financial and job-cost reports",
+        "scope": "Sub usage reports, financial reports, Sage job-cost summaries"
       },
       {
         "name": "Subcontractor Insurance Tracking",
@@ -2595,9 +2595,9 @@
         "scope": "Single source of truth for insurance documentation"
       },
       {
-        "name": "NetSuite Integration",
-        "reason": "Complex integration requiring Phase One stability first",
-        "scope": "Bidirectional sync, notifications/flags from NetSuite"
+        "name": "Sage Integration",
+        "reason": "Complex integration requiring Phase One stability and security guardrails first",
+        "scope": "Server-side Sage bridge, read models first, approval-gated writes later"
       },
       {
         "name": "Lead/Opportunity Management",

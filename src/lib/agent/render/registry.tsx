@@ -3,7 +3,7 @@
 import { useState, type ReactNode } from "react"
 import type { z } from "zod"
 import type { BundledLanguage } from "shiki"
-import { useDataBinding, useData } from "@json-render/react"
+import { useStateBinding, useStateStore } from "@json-render/react"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -164,7 +164,7 @@ function BoundInput({
 }) {
   const formId = useFormId()
   const path = `/form/${formId}/${name}`
-  const [value, setValue] = useDataBinding<string>(path)
+  const [value, setValue] = useStateBinding<string>(path)
 
   // seed default value on first render
   if (value === undefined && defaultValue) {
@@ -201,7 +201,7 @@ function BoundTextarea({
 }) {
   const formId = useFormId()
   const path = `/form/${formId}/${name}`
-  const [value, setValue] = useDataBinding<string>(path)
+  const [value, setValue] = useStateBinding<string>(path)
 
   if (value === undefined && defaultValue) {
     setValue(defaultValue)
@@ -237,7 +237,7 @@ function BoundSelect({
 }) {
   const formId = useFormId()
   const path = `/form/${formId}/${name}`
-  const [value, setValue] = useDataBinding<string>(path)
+  const [value, setValue] = useStateBinding<string>(path)
 
   if (value === undefined && defaultValue) {
     setValue(defaultValue)
@@ -286,7 +286,7 @@ function BoundCheckbox({
   const formId = useFormId()
   const path = `/form/${formId}/${name}`
   const [value, setValue] =
-    useDataBinding<boolean>(path)
+    useStateBinding<boolean>(path)
 
   if (value === undefined) {
     setValue(defaultChecked)
@@ -340,7 +340,7 @@ function BoundRadio({
 }) {
   const formId = useFormId()
   const path = `/form/${formId}/${name}`
-  const [value, setValue] = useDataBinding<string>(path)
+  const [value, setValue] = useStateBinding<string>(path)
 
   const initial = defaultValue ?? options[0] ?? ""
   if (value === undefined) {
@@ -397,7 +397,7 @@ function BoundSwitch({
   const formId = useFormId()
   const path = `/form/${formId}/${name}`
   const [value, setValue] =
-    useDataBinding<boolean>(path)
+    useStateBinding<boolean>(path)
 
   if (value === undefined) {
     setValue(defaultChecked)
@@ -455,7 +455,7 @@ function FormComponent({
     type: "success" | "error"
     message: string
   } | null>(null)
-  const dataCtx = useData()
+  const stateCtx = useStateStore()
 
   const handleSubmit = async () => {
     setSubmitting(true)
@@ -465,7 +465,7 @@ function FormComponent({
     const formData: Record<string, unknown> = {}
 
     // walk the data model to find form values
-    const allData = dataCtx.data
+    const allData = stateCtx.state
     if (
       allData &&
       typeof allData === "object" &&
@@ -481,8 +481,8 @@ function FormComponent({
     }
 
     // also try path-based get for nested data
-    // the DataProvider supports path-based access
-    const rawVal = dataCtx.get(`/form/${formId}`)
+    // StateProvider supports path-based access.
+    const rawVal = stateCtx.get(`/form/${formId}`)
     if (rawVal && typeof rawVal === "object") {
       Object.assign(
         formData,

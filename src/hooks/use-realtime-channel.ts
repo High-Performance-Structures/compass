@@ -42,6 +42,10 @@ type PollingOptions = {
 const DEFAULT_VISIBLE_POLL_INTERVAL = 2500 // 2.5 seconds when tab is visible
 const DEFAULT_HIDDEN_POLL_INTERVAL = 10000 // 10 seconds when tab is hidden
 
+function isTransientFetchError(error: unknown): boolean {
+  return error instanceof TypeError && error.message === "Failed to fetch"
+}
+
 export function useRealtimeChannel(
   channelId: string,
   lastMessageId: string | null,
@@ -92,6 +96,10 @@ export function useRealtimeChannel(
         setTypingUsers(result.data.typingUsers)
       }
     } catch (error) {
+      if (isTransientFetchError(error)) {
+        return
+      }
+
       console.error("[useRealtimeChannel] poll error:", error)
     } finally {
       setIsPolling(false)
@@ -128,7 +136,7 @@ export function useRealtimeChannel(
     return () => {
       document.removeEventListener("visibilitychange", handleVisibilityChange)
     }
-  }, [poll])
+  }, [poll, visibleInterval, hiddenInterval])
 
   // main polling setup
   useEffect(() => {
@@ -159,7 +167,7 @@ export function useRealtimeChannel(
         pollingRef.current = null
       }
     }
-  }, [channelId, lastMessageId, poll])
+  }, [channelId, lastMessageId, poll, visibleInterval, hiddenInterval])
 
   return {
     newMessages,

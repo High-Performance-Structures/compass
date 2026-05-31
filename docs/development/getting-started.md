@@ -56,9 +56,36 @@ Wrangler reads `.dev.vars` automatically when running the local dev server. For 
 |----------|-------------|
 | `OPENROUTER_API_KEY` | API key from OpenRouter. The AI agent routes through OpenRouter to access the kimi-k2.5 model. Without this, the chat agent won't function. |
 
-### NetSuite integration (optional)
+### Sage integration (HPS active path, optional)
 
-Only needed if connecting to NetSuite for financial sync.
+Sage 100 Contractor is the active HPS accounting, job cost, purchase order,
+estimate, progress billing, and scheduling integration target. Local developers
+usually do not need Sage credentials unless they are working directly on the
+server-side Sage bridge.
+
+Production Sage values must be stored as Cloudflare secrets, not committed to
+the repository.
+
+| Variable | Description |
+|----------|-------------|
+| `SAGE_SQL_SERVER` | Sage SQL Server host or private network name. |
+| `SAGE_SQL_DATABASE` | Sage company database name. |
+| `SAGE_SQL_USER` | Least-privilege Sage/SQL integration user. |
+| `SAGE_SQL_PASSWORD` | Integration user password. |
+| `SAGE_SQL_PORT` | Optional SQL Server port. |
+| `SAGE_SQL_INSTANCE` | Optional named SQL Server instance. |
+| `SAGE_SQL_ENCRYPT` | Optional SQL encryption flag, depending on certificate setup. |
+| `SAGE_READ_ONLY` | Defaults to read-only unless explicitly disabled for approved write workflows. |
+
+See `docs/wip/sage-api-bridge-2026-05-14.md` and
+`docs/wip/compass-security-plan-2026-05-19.md` before adding or enabling Sage
+write behavior.
+
+### NetSuite integration (legacy/generic, optional)
+
+Only needed if working on the legacy/generic NetSuite module. HPS production
+work should use the Sage integration path unless a separate architecture
+decision reactivates NetSuite for a specific workflow.
 
 | Variable | Description |
 |----------|-------------|
@@ -120,7 +147,7 @@ The schema files that Drizzle watches (configured in `drizzle.config.ts`):
 
 ```
 src/db/schema.ts           - core tables (users, projects, customers, vendors, etc.)
-src/db/schema-netsuite.ts  - netsuite sync tables
+src/db/schema-netsuite.ts  - legacy/generic NetSuite sync and financial tables
 src/db/schema-plugins.ts   - plugin/skills tables
 src/db/schema-agent.ts     - agent conversation tables
 src/db/schema-ai-config.ts - AI usage tracking and model preferences

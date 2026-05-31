@@ -148,7 +148,7 @@ tech stack
 | database | Cloudflare D1 (SQLite) via Drizzle ORM |
 | auth | WorkOS (SSO, directory sync) |
 | ai agent | AI SDK v6 + OpenRouter |
-| integrations | NetSuite REST API, Google Drive API |
+| integrations | Sage 100 Contractor bridge for HPS, legacy NetSuite REST module, Google Drive API |
 | mobile | Capacitor (iOS + Android webview) |
 | desktop | Tauri 2.0 (Rust backend, webview frontend) |
 | rich text | TipTap (mentions, links, placeholder) |
@@ -162,10 +162,11 @@ tech stack
 
 each module contributes schema tables, server actions, components, and optionally agent tools. see [docs/modules/overview.md](docs/modules/overview.md) for the full module system design.
 
-- **netsuite**: bidirectional ERP sync in `src/lib/netsuite/`. oauth, rate limiting (15 concurrent max), delta sync with conflict resolution. see [docs/modules/netsuite.md](docs/modules/netsuite.md).
+- **sage**: HPS active ERP/accounting/job-cost/scheduling path. Sage access must stay server-side, read-only by default, and follow the security/approval model in `docs/wip/compass-security-plan-2026-05-19.md` and `docs/wip/sage-api-bridge-2026-05-14.md`.
+- **netsuite**: legacy/generic bidirectional ERP sync in `src/lib/netsuite/`. oauth, rate limiting (15 concurrent max), delta sync with conflict resolution. Preserve as reference architecture unless an explicit decision reactivates it for HPS. see [docs/modules/netsuite.md](docs/modules/netsuite.md).
 - **google drive**: domain-wide delegation via service account in `src/lib/google/`. two-layer permissions (compass RBAC + workspace). see [docs/modules/google-drive.md](docs/modules/google-drive.md).
 - **scheduling**: gantt charts, critical path, baselines in `src/lib/schedule/`. see [docs/modules/scheduling.md](docs/modules/scheduling.md).
-- **financials**: invoices, vendor bills, payments, credit memos. tied to netsuite sync. see [docs/modules/financials.md](docs/modules/financials.md).
+- **financials**: invoices, vendor bills, payments, credit memos. Existing tables include legacy NetSuite sync fields; HPS production financial workflows should be Sage-oriented and approval-gated. see [docs/modules/financials.md](docs/modules/financials.md).
 - **conversations**: slack-like channels and messaging. text/voice/announcement channels, threading, reactions, attachments, @mentions. schema in `src/db/schema-conversations.ts`. components in `src/components/conversations/`.
 - **voice**: discord-style voice controls with user bar, transcription via `/api/transcribe/`. components in `src/components/voice/`, state in `use-voice-state.ts`.
 - **offline sync**: queue-based sync engine in `src/lib/sync/` with conflict resolution. API routes at `/api/sync/` (checkpoint, delta, mutate).
@@ -268,6 +269,7 @@ required:
 environment variables, and openrouter.
 
 optional (enable specific modules):
+- `SAGE_SQL_SERVER`, `SAGE_SQL_DATABASE`, `SAGE_SQL_USER`, `SAGE_SQL_PASSWORD`, optional `SAGE_SQL_PORT`, `SAGE_SQL_INSTANCE`, `SAGE_SQL_ENCRYPT`, `SAGE_READ_ONLY` -- Sage 100 Contractor bridge. Server-side only; read-only by default.
 - `NETSUITE_CLIENT_ID`, `NETSUITE_CLIENT_SECRET`, `NETSUITE_ACCOUNT_ID`, `NETSUITE_REDIRECT_URI`, `NETSUITE_TOKEN_ENCRYPTION_KEY` -- netsuite sync
 - `NETSUITE_CONCURRENCY_LIMIT` -- defaults to 15
 - `GOOGLE_SERVICE_ACCOUNT_ENCRYPTION_KEY` -- google drive
@@ -313,5 +315,3 @@ see [docs/modules/netsuite.md](docs/modules/netsuite.md) for full context.
 
 - @mentions use TipTap mention extension -- mention data stored as JSON in message content
 - DOMPurify import: use `dompurify` (not `isomorphic-dompurify`) for edge compatibility
-
-

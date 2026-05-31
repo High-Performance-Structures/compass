@@ -2,6 +2,12 @@ import { NextRequest, NextResponse } from "next/server"
 import { getWorkOS, saveSession } from "@workos-inc/authkit-nextjs"
 import { z } from "zod"
 import { ensureUserExists } from "@/lib/auth"
+import {
+  isDevAuthFallbackAllowed,
+  isWorkOSConfigured,
+} from "@/lib/auth-config"
+
+const WORKOS_AUTH_TIMEOUT_MS = 12_000
 
 // input validation schema
 const loginRequestSchema = z.discriminatedUnion("type", [
@@ -21,7 +27,39 @@ const loginRequestSchema = z.discriminatedUnion("type", [
   }),
 ])
 
+function workOSTimeoutError(label: string): Error {
+  const error = new Error(
+    `${label} is taking longer than expected. Please try again.`
+  )
+  error.name = "WorkOSTimeoutError"
+  return error
+}
+
+async function withWorkOSTimeout<T>(
+  operation: Promise<T>,
+  label: string
+): Promise<T> {
+  let timeout: ReturnType<typeof setTimeout> | null = null
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timeout = setTimeout(() => {
+      reject(workOSTimeoutError(label))
+    }, WORKOS_AUTH_TIMEOUT_MS)
+  })
+
+  try {
+    return await Promise.race([operation, timeoutPromise])
+  } finally {
+    if (timeout !== null) {
+      clearTimeout(timeout)
+    }
+  }
+}
+
 function mapWorkOSError(error: unknown): string {
+  if (error instanceof Error && error.name === "WorkOSTimeoutError") {
+    return error.message
+  }
+
   const err = error as { code?: string; message?: string }
   switch (err.code) {
     case "invalid_credentials":
@@ -35,6 +73,20 @@ function mapWorkOSError(error: unknown): string {
     default:
       return err.message || "An error occurred. Please try again."
   }
+}
+
+function statusForLoginError(error: unknown): number {
+  if (error instanceof Error && error.name === "WorkOSTimeoutError") return 504
+
+  const err = error as { code?: string }
+  const isAuthError = [
+    "invalid_credentials",
+    "user_not_found",
+    "expired_code",
+    "invalid_code",
+  ].includes(err.code || "")
+
+  return isAuthError ? 401 : 500
 }
 
 export async function POST(request: NextRequest) {
@@ -52,15 +104,15 @@ export async function POST(request: NextRequest) {
     }
 
     const data = parseResult.data
-    const workos = getWorkOS()
 
-    // check if workos is configured (dev mode fallback)
-    const isConfigured =
-      process.env.WORKOS_API_KEY &&
-      process.env.WORKOS_CLIENT_ID &&
-      !process.env.WORKOS_API_KEY.includes("placeholder")
+    if (!isWorkOSConfigured()) {
+      if (!isDevAuthFallbackAllowed()) {
+        return NextResponse.json(
+          { success: false, error: "Authentication is not configured." },
+          { status: 503 }
+        )
+      }
 
-    if (!isConfigured) {
       return NextResponse.json({
         success: true,
         redirectUrl: "/dashboard",
@@ -68,12 +120,17 @@ export async function POST(request: NextRequest) {
       })
     }
 
+    const workos = getWorkOS()
+
     if (data.type === "password") {
-      const result = await workos.userManagement.authenticateWithPassword({
-        email: data.email,
-        password: data.password,
-        clientId: process.env.WORKOS_CLIENT_ID!,
-      })
+      const result = await withWorkOSTimeout(
+        workos.userManagement.authenticateWithPassword({
+          email: data.email,
+          password: data.password,
+          clientId: process.env.WORKOS_CLIENT_ID!,
+        }),
+        "Password sign-in"
+      )
 
       // sync user to our database
       await ensureUserExists({
@@ -102,9 +159,12 @@ export async function POST(request: NextRequest) {
     }
 
     if (data.type === "passwordless_send") {
-      const magicAuth = await workos.userManagement.createMagicAuth({
-        email: data.email,
-      })
+      const magicAuth = await withWorkOSTimeout(
+        workos.userManagement.createMagicAuth({
+          email: data.email,
+        }),
+        "Sign-in code delivery"
+      )
 
       return NextResponse.json({
         success: true,
@@ -113,11 +173,14 @@ export async function POST(request: NextRequest) {
     }
 
     if (data.type === "passwordless_verify") {
-      const result = await workos.userManagement.authenticateWithMagicAuth({
-        code: data.code,
-        email: data.email,
-        clientId: process.env.WORKOS_CLIENT_ID!,
-      })
+      const result = await withWorkOSTimeout(
+        workos.userManagement.authenticateWithMagicAuth({
+          code: data.code,
+          email: data.email,
+          clientId: process.env.WORKOS_CLIENT_ID!,
+        }),
+        "Sign-in code verification"
+      )
 
       // sync user to our database
       await ensureUserExists({
@@ -151,12 +214,9 @@ export async function POST(request: NextRequest) {
     )
   } catch (error) {
     console.error("Login error:", error)
-    const err = error as { code?: string }
-    const isAuthError = ["invalid_credentials", "user_not_found",
-      "expired_code", "invalid_code"].includes(err.code || "")
     return NextResponse.json(
       { success: false, error: mapWorkOSError(error) },
-      { status: isAuthError ? 401 : 500 }
+      { status: statusForLoginError(error) }
     )
   }
 }

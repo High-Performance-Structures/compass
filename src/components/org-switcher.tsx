@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import Image from "next/image"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import {
@@ -23,7 +24,6 @@ import {
 } from "@/components/ui/dropdown-menu"
 import {
   SidebarMenu,
-  SidebarMenuButton,
   SidebarMenuItem,
   useSidebar,
 } from "@/components/ui/sidebar"
@@ -77,26 +77,30 @@ export function OrgSwitcher({
   return (
     <SidebarMenu>
       <SidebarMenuItem>
-        <SidebarMenuButton
-          size="lg"
-          className="gap-0 px-0 hover:bg-transparent active:bg-transparent"
-          asChild={false}
+        <div
+          data-slot="sidebar-menu-button"
+          data-sidebar="menu-button"
+          data-size="lg"
+          data-active={false}
+          className={cn(
+            "peer/menu-button flex h-12 w-full items-center gap-0 overflow-visible rounded-none px-0 text-left text-sm outline-hidden ring-sidebar-ring transition-[width,height,padding]",
+            "group-data-[collapsible=icon]:size-9! group-data-[collapsible=icon]:justify-center! group-data-[collapsible=icon]:gap-0! group-data-[collapsible=icon]:p-2! group-data-[collapsible=icon]:[&>*:nth-child(n+2)]:hidden",
+            "[data-mobile=true]_&:h-14 [data-mobile=true]_&:text-base",
+          )}
         >
           <Link
             href="/dashboard"
-            className="flex shrink-0 items-center justify-center size-8 rounded-md hover:bg-sidebar-accent transition-colors"
+            className="flex size-9 shrink-0 items-center justify-center transition-transform hover:scale-[1.03]"
             aria-label="Compass home"
           >
-            <span
-              className="!size-5 block bg-current"
-              style={{
-                maskImage: "url(/logo-black.png)",
-                maskSize: "contain",
-                maskRepeat: "no-repeat",
-                WebkitMaskImage: "url(/logo-black.png)",
-                WebkitMaskSize: "contain",
-                WebkitMaskRepeat: "no-repeat",
-              }}
+            <Image
+              src="/department-logos/hps-h-green.svg"
+              alt="HPS"
+              width={36}
+              height={36}
+              className="size-9 rounded-[5px] object-contain"
+              priority
+              unoptimized
             />
           </Link>
           <DropdownMenu>
@@ -152,9 +156,9 @@ export function OrgSwitcher({
                   </React.Fragment>
                 )
               })}
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </SidebarMenuButton>
+              </DropdownMenuContent>
+            </DropdownMenu>
+        </div>
       </SidebarMenuItem>
     </SidebarMenu>
   )

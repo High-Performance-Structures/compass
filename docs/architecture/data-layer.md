@@ -59,12 +59,17 @@ The split isn't arbitrary. Each file maps to a feature boundary:
 - `slabMemories` -- persistent memory (preferences, workflows, facts, decisions)
 - `pushTokens` -- native app push notification tokens
 
-**`schema-netsuite.ts`** -- NetSuite integration tables.
+**`schema-netsuite.ts`** -- legacy/generic NetSuite integration tables.
 
 - `netsuiteAuth` -- encrypted OAuth tokens
 - `netsuiteSyncMetadata` -- per-record sync tracking (status, conflicts, retries)
 - `netsuiteSyncLog` -- sync run history
 - `invoices`, `vendorBills`, `payments`, `creditMemos` -- financial records that sync bidirectionally
+
+NetSuite is retained as reusable ERP sync reference architecture. HPS's active
+production integration path is Sage 100 Contractor, with Sage mappings stored in
+core/project operation tables such as `projects.sageJobId`,
+`projects.sageJobNumber`, and `project_operations`.
 
 **`schema-plugins.ts`** -- plugin/skills system.
 

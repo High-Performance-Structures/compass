@@ -1,11 +1,10 @@
 "use server"
 
-import { eq, and, desc, inArray } from "drizzle-orm"
-import { getCloudflareContext } from "@opennextjs/cloudflare"
+import { eq, and, desc } from "drizzle-orm"
+import { getCloudflareContext } from "@/lib/db"
 import { getDb } from "@/db"
 import { customDashboards } from "@/db/schema-dashboards"
-import { customers, vendors, projects, scheduleTasks } from "@/db/schema"
-import { invoices, vendorBills } from "@/db/schema-netsuite"
+import { projects } from "@/db/schema"
 import { getCurrentUser } from "@/lib/auth"
 import { requireOrg } from "@/lib/org-scope"
 import { isDemoUser } from "@/lib/demo"
@@ -351,10 +350,41 @@ export async function executeDashboardQueries(
           dataContext[q.key] = { data: rows, count: rows.length }
           break
         }
+        case "project_operations": {
+          const orgProjects = await db
+            .select({ id: projects.id })
+            .from(projects)
+            .where(eq(projects.organizationId, orgId))
+          const projectIds = orgProjects.map((p) => p.id)
+          const scopedProjectIds = q.id
+            ? projectIds.filter((projectId) => projectId === q.id)
+            : projectIds
+          const rows =
+            scopedProjectIds.length > 0
+              ? await db.query.projectOperations.findMany({
+                  limit: cap,
+                  ...(q.search
+                    ? {
+                        where: (operation, { like, inArray, and }) =>
+                          and(
+                            inArray(operation.projectId, scopedProjectIds),
+                            like(operation.title, `%${q.search}%`),
+                          ),
+                      }
+                    : {
+                        where: (operation, { inArray }) =>
+                          inArray(operation.projectId, scopedProjectIds),
+                      }),
+                })
+              : []
+          dataContext[q.key] = { data: rows, count: rows.length }
+          break
+        }
         case "project_detail": {
-          if (q.id) {
+          const queryId = q.id
+          if (queryId) {
             const row = await db.query.projects.findFirst({
-              where: (p, { eq: e }) => e(p.id, q.id!),
+              where: (p, { eq: e }) => e(p.id, queryId),
             })
             if (row && row.organizationId !== orgId) {
               dataContext[q.key] = { error: "not found" }
@@ -367,9 +397,10 @@ export async function executeDashboardQueries(
           break
         }
         case "customer_detail": {
-          if (q.id) {
+          const queryId = q.id
+          if (queryId) {
             const row = await db.query.customers.findFirst({
-              where: (c, { eq: e }) => e(c.id, q.id!),
+              where: (c, { eq: e }) => e(c.id, queryId),
             })
             if (row && row.organizationId !== orgId) {
               dataContext[q.key] = { error: "not found" }
@@ -382,9 +413,10 @@ export async function executeDashboardQueries(
           break
         }
         case "vendor_detail": {
-          if (q.id) {
+          const queryId = q.id
+          if (queryId) {
             const row = await db.query.vendors.findFirst({
-              where: (v, { eq: e }) => e(v.id, q.id!),
+              where: (v, { eq: e }) => e(v.id, queryId),
             })
             if (row && row.organizationId !== orgId) {
               dataContext[q.key] = { error: "not found" }

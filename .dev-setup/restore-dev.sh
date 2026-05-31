@@ -10,22 +10,23 @@ fi
 
 # Revert tracked files
 echo "📦 Restoring modified files..."
-git checkout HEAD -- src/middleware.ts next.config.ts package.json bun.lock
+git checkout HEAD -- src/middleware.ts next.config.ts package.json bun.lock src/lib/db.ts
 
 # Remove dev-only files
 echo "📦 Removing dev-only files..."
 rm -f src/lib/cloudflare-context.ts
-rm -f src/lib/db.ts
-rm -f scripts/init-local-db.ts
+rm -f src/types/better-sqlite3.d.ts
+rm -f src/types/sql-js.d.ts
+rm -f scripts/init-local-db.ts scripts/init-local-db.mjs
 echo "✓ Removed dev files"
 
 # Restore original imports
 echo "📦 Restoring original imports..."
 find src -name "*.ts" -o -name "*.tsx" | xargs sed -i '' 's|from "@/lib/db"|from "@opennextjs/cloudflare"|g'
 
-# Remove sql.js
-echo "📦 Removing sql.js..."
-bun remove sql.js
+# Remove old local setup residue from earlier sql.js-based dev setups.
+echo "📦 Cleaning old sql.js setup residue..."
+bun remove sql.js >/dev/null 2>&1 || true
 
 # Remove local database
 rm -f local.db local.db-wal local.db-shm

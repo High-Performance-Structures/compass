@@ -1,4 +1,4 @@
-import { getCloudflareContext } from "@opennextjs/cloudflare"
+import { getCloudflareContext } from "@/lib/db"
 import { getDb } from "@/db"
 import { getNetSuiteConfig } from "@/lib/netsuite/config"
 import { exchangeCodeForTokens } from "@/lib/netsuite/auth/oauth-client"

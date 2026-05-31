@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server"
-import { getCloudflareContext } from "@opennextjs/cloudflare"
+import { getCloudflareContext } from "@/lib/db"
 import { requireAuth } from "@/lib/auth"
 import { requirePermission } from "@/lib/permissions"
 import { getDb } from "@/db"

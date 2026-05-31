@@ -10,9 +10,9 @@ fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# 1. Install sql.js
-echo "📦 Installing sql.js..."
-bun add sql.js
+# 1. Install the local SQLite runtime used by the D1 shim
+echo "📦 Installing better-sqlite3..."
+bun add better-sqlite3
 
 # 2. Copy dev files
 echo "📦 Copying dev files..."
@@ -20,8 +20,10 @@ cp "$SCRIPT_DIR/files/middleware.ts" src/middleware.ts
 cp "$SCRIPT_DIR/files/next.config.ts" next.config.ts
 cp "$SCRIPT_DIR/files/cloudflare-context.ts" src/lib/cloudflare-context.ts
 cp "$SCRIPT_DIR/files/db.ts" src/lib/db.ts
+mkdir -p src/types
+cp "$SCRIPT_DIR/files/types/better-sqlite3.d.ts" src/types/better-sqlite3.d.ts
 mkdir -p scripts
-cp "$SCRIPT_DIR/files/init-local-db.ts" scripts/init-local-db.ts
+cp "$SCRIPT_DIR/files/init-local-db.mjs" scripts/init-local-db.mjs
 
 # 3. Replace all @opennextjs/cloudflare imports with local wrapper
 echo "📦 Updating imports..."
@@ -34,7 +36,7 @@ if ! grep -q '"db:init-local"' package.json; then
   node -e '
     const fs = require("fs");
     const pkg = JSON.parse(fs.readFileSync("package.json"));
-    pkg.scripts["db:init-local"] = "bun scripts/init-local-db.ts";
+    pkg.scripts["db:init-local"] = "node scripts/init-local-db.mjs";
     fs.writeFileSync("package.json", JSON.stringify(pkg, null, 2) + "\n");
   '
 fi

@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Sora, IBM_Plex_Mono, Playfair_Display } from "next/font/google";
 import { AuthKitProvider } from "@workos-inc/authkit-nextjs/components";
 import { ThemeProvider } from "@/components/theme-provider";
@@ -25,15 +25,16 @@ export const metadata: Metadata = {
 	title: "Compass",
 	description: "Construction project management by High Performance Structures",
 	icons: {
-		icon: "/favicon.png",
-		apple: "/apple-touch-icon.png",
+		icon: "/hps-icon-64.png",
+		apple: "/hps-icon-512.png",
 	},
 	manifest: "/manifest.json",
-	viewport: {
-		width: "device-width",
-		initialScale: 1,
-		maximumScale: 5,
-	},
+};
+
+export const viewport: Viewport = {
+	width: "device-width",
+	initialScale: 1,
+	maximumScale: 5,
 };
 
 export default function RootLayout({

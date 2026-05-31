@@ -3,6 +3,12 @@ Compass Core Architecture
 
 Compass is a construction project management platform, but the architecture underneath it is designed to be something more general: a composable, AI-native dashboard framework that can serve any domain. The construction-specific features (schedules, change orders, submittals) are a *module* built on top of a generic platform layer. This document describes that platform layer.
 
+Compass's product north star is simple: **serious tools, with soul**. The
+platform has to be durable enough for enterprise operations, permissions,
+financial workflows, and integrations, but the resulting experience should
+still respect the people using it: owners, field crews, subcontractors, office
+staff, and administrators.
+
 
 why two layers
 ---
@@ -21,7 +27,7 @@ the layers in practice
 +--------------------------------------------------+
 |              HPS Compass Module                   |
 |  (projects, schedules, customers, vendors,        |
-|   invoices, vendor bills, NetSuite sync,          |
+|   invoices, vendor bills, Sage bridge,            |
 |   Google Drive, Gantt charts)                     |
 +--------------------------------------------------+
 |              Compass Core Platform                |
@@ -51,7 +57,7 @@ The bottom layer is the Cloudflare Workers runtime. Compass deploys as a Next.js
 
 The middle layer is Compass Core. This is where the platform capabilities live: authentication via WorkOS, role-based access control, the server action pattern for all data mutations, the AI agent harness, the plugin/skills system, the visual theme engine, and agent-built custom dashboards.
 
-The top layer is the domain module. For HPS (High Performance Structures), this is construction project management. The module contributes its own database tables, server actions, UI pages, and AI agent tools. It also brings integrations (NetSuite for accounting, Google Drive for document management) that make sense for the construction domain.
+The top layer is the domain module. For HPS (High Performance Structures), this is construction project management. The module contributes its own database tables, server actions, UI pages, and AI agent tools. It also brings integrations that make sense for the construction domain. Google Drive is the document-management integration. Sage 100 Contractor is the active HPS accounting/job-cost/schedule integration direction. The repository still contains a NetSuite module as legacy/generic ERP sync reference architecture.
 
 
 relationship to OpenClaw
@@ -94,7 +100,8 @@ The codebase follows Next.js 15 App Router conventions with a few additions:
 - `src/db/` -- Drizzle schema files (8 files, split by domain)
 - `src/lib/agent/` -- AI agent harness (provider, tools, prompt, memory, plugins)
 - `src/lib/theme/` -- visual theme engine (presets, apply, fonts)
-- `src/lib/netsuite/` -- NetSuite integration (auth, client, sync, mappers)
+- `src/lib/netsuite/` -- legacy/generic NetSuite integration reference (auth, client, sync, mappers)
+- `src/lib/sage/` -- Sage bridge configuration and server-side integration boundary
 - `src/lib/google/` -- Google Drive integration (auth, client, mapper)
 - `src/components/agent/` -- chat UI (ChatProvider, ChatView, ChatPanelShell)
 - `src/hooks/` -- shared React hooks (chat, native, audio)

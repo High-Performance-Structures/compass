@@ -46,12 +46,26 @@ import {
 
 interface VendorsTableProps {
   vendors: Vendor[]
+  categories: readonly string[]
   onEdit?: (vendor: Vendor) => void
   onDelete?: (id: string) => void
 }
 
+function vendorSourceLabel(vendor: Vendor): string {
+  if (vendor.sourceSystem?.includes("sage")) return "Sage"
+  if (vendor.sourceSystem === "buildertrend") return "BT only"
+  return "Compass"
+}
+
+function vendorSyncLabel(vendor: Vendor): string {
+  if (vendor.syncStatus === "needs_sage_review") return "Needs Sage review"
+  if (vendor.syncStatus === "synced") return "Synced"
+  return "Manual"
+}
+
 export function VendorsTable({
   vendors,
+  categories,
   onEdit,
   onDelete,
 }: VendorsTableProps) {
@@ -196,6 +210,26 @@ export function VendorsTable({
       },
     },
     {
+      id: "source",
+      header: "Source",
+      cell: ({ row }) => {
+        const vendor = row.original
+        const needsReview = vendor.syncStatus === "needs_sage_review"
+        return (
+          <div className="flex items-center gap-1.5">
+            <Badge variant={needsReview ? "outline" : "secondary"}>
+              {vendorSourceLabel(vendor)}
+            </Badge>
+            {needsReview && (
+              <Badge variant="outline" className="text-amber-700">
+                Review
+              </Badge>
+            )}
+          </div>
+        )
+      },
+    },
+    {
       id: "actions",
       cell: ({ row }) => {
         const vendor = row.original
@@ -262,12 +296,11 @@ export function VendorsTable({
       </SelectTrigger>
       <SelectContent>
         <SelectItem value="all">All Categories</SelectItem>
-        <SelectItem value="Subcontractor">Subcontractor</SelectItem>
-        <SelectItem value="Supplier">Supplier</SelectItem>
-        <SelectItem value="Equipment">Equipment</SelectItem>
-        <SelectItem value="Material">Material</SelectItem>
-        <SelectItem value="Consultant">Consultant</SelectItem>
-        <SelectItem value="Other">Other</SelectItem>
+        {categories.map((categoryOption) => (
+          <SelectItem key={categoryOption} value={categoryOption}>
+            {categoryOption}
+          </SelectItem>
+        ))}
       </SelectContent>
     </Select>
   )
@@ -314,12 +347,11 @@ export function VendorsTable({
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Categories</SelectItem>
-              <SelectItem value="Subcontractor">Subcontractor</SelectItem>
-              <SelectItem value="Supplier">Supplier</SelectItem>
-              <SelectItem value="Equipment">Equipment</SelectItem>
-              <SelectItem value="Material">Material</SelectItem>
-              <SelectItem value="Consultant">Consultant</SelectItem>
-              <SelectItem value="Other">Other</SelectItem>
+              {categories.map((categoryOption) => (
+                <SelectItem key={categoryOption} value={categoryOption}>
+                  {categoryOption}
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
         </div>
@@ -352,6 +384,9 @@ export function VendorsTable({
                     <p className="text-xs text-muted-foreground truncate">
                       {[v.email, v.phone].filter(Boolean).join(" \u00b7 ") ||
                         "No contact info"}
+                    </p>
+                    <p className="mt-1 text-[11px] text-muted-foreground">
+                      {vendorSourceLabel(v)} · {vendorSyncLabel(v)}
                     </p>
                   </div>
                   <DropdownMenu>

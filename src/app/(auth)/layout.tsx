@@ -1,3 +1,5 @@
+import Image from "next/image"
+
 import { Card, CardContent } from "@/components/ui/card"
 import { Toaster } from "@/components/ui/sonner"
 
@@ -11,6 +13,15 @@ export default function AuthLayout({
       <div className="w-full max-w-md">
         {/* logo */}
         <div className="mb-8 text-center">
+          <Image
+            src="/department-logos/hps-h-green.svg"
+            alt="High Performance Structures"
+            width={56}
+            height={56}
+            className="mx-auto mb-3 size-14 rounded-md object-contain"
+            priority
+            unoptimized
+          />
           <h1 className="text-2xl font-bold text-primary">Compass</h1>
           <p className="text-sm text-muted-foreground mt-1">
             Construction Project Management

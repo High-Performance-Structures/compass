@@ -1,6 +1,6 @@
 "use server"
 
-import { getCloudflareContext } from "@opennextjs/cloudflare"
+import { getCloudflareContext } from "@/lib/db"
 import { getDb } from "@/db"
 import { workdayExceptions, projects } from "@/db/schema"
 import { eq, and } from "drizzle-orm"
