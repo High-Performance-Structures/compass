@@ -229,8 +229,13 @@ function createUnavailableFetcher(name: string): Fetcher {
 }
 
 function createLocalEnv(DB: D1Database): CloudflareEnv {
+    const localWorkOsRedirectUri =
+        process.env.WORKOS_REDIRECT_URI ??
+        process.env.NEXT_PUBLIC_WORKOS_REDIRECT_URI ??
+        "http://localhost:3000/callback"
+
     return {
-        WORKOS_REDIRECT_URI: "https://compass.openrangeconstruction.ltd/callback",
+        WORKOS_REDIRECT_URI: localWorkOsRedirectUri,
         WORKOS_API_KEY: process.env.WORKOS_API_KEY ?? "placeholder",
         WORKOS_CLIENT_ID: process.env.WORKOS_CLIENT_ID ?? "placeholder",
         WORKOS_COOKIE_PASSWORD:

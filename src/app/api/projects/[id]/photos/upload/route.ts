@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache"
 
 import { getDb } from "@/db"
 import {
+  dailyLogs,
   dailyLogPhotos,
   projectExternalLinks,
   projects,
@@ -238,6 +239,31 @@ export async function POST(
     const photoKind = normalizedPhotoKind(formText(formData, "photoKind"))
     const schedulePhase = formText(formData, "schedulePhase")
     const dailyLogId = formText(formData, "dailyLogId")
+    const validatedDailyLogId =
+      dailyLogId.length > 0
+        ? await db
+            .select({ id: dailyLogs.id })
+            .from(dailyLogs)
+            .where(
+              and(
+                eq(dailyLogs.id, dailyLogId),
+                eq(dailyLogs.projectId, projectId)
+              )
+            )
+            .limit(1)
+            .then((rows) => rows[0]?.id ?? null)
+        : null
+
+    if (dailyLogId.length > 0 && !validatedDailyLogId) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Daily log does not belong to this project.",
+        },
+        { status: 400 }
+      )
+    }
+
     const targetFolderId = await resolveUploadFolderId(
       client,
       googleEmail,
@@ -259,7 +285,7 @@ export async function POST(
       await db.insert(dailyLogPhotos).values({
         id: crypto.randomUUID(),
         projectId,
-        dailyLogId: dailyLogId.length > 0 ? dailyLogId : null,
+        dailyLogId: validatedDailyLogId,
         uploadedBy: user.id,
         sourceSystem: "compass_upload",
         sourceExternalId: driveFile.id,

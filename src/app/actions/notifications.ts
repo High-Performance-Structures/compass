@@ -17,6 +17,7 @@ import {
 import type { AuthUser } from "@/lib/auth"
 import { getCurrentUser, requireAuth } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
+import { requireOrg } from "@/lib/org-scope"
 
 export type NotificationPreferenceState = {
   readonly inAppEnabled: boolean
@@ -413,12 +414,44 @@ export async function markAllNotificationsRead(): Promise<NotificationActionResu
 export async function createNotificationEvent(
   input: CreateNotificationInput
 ): Promise<void> {
-  if (input.recipients.length === 0) return
+  const user = await requireAuth()
+  const orgId = requireOrg(user)
+
+  if (orgId !== input.organizationId) {
+    throw new Error("Cannot create notifications outside the active organization")
+  }
+
+  if (input.createdBy !== user.id) {
+    throw new Error("Cannot create notifications on behalf of another user")
+  }
+
+  const requestedRecipientIds = Array.from(
+    new Set(input.recipients.map((recipient) => recipient.userId))
+  )
+  if (requestedRecipientIds.length === 0) return
 
   const { env } = await getCloudflareContext()
   const db = getDb(env.DB)
   const now = new Date().toISOString()
   const eventId = crypto.randomUUID()
+
+  const recipients = await db
+    .select({
+      userId: users.id,
+      email: users.email,
+      googleEmail: users.googleEmail,
+    })
+    .from(organizationMembers)
+    .innerJoin(users, eq(users.id, organizationMembers.userId))
+    .where(
+      and(
+        eq(organizationMembers.organizationId, orgId),
+        eq(users.isActive, true),
+        inArray(organizationMembers.userId, requestedRecipientIds)
+      )
+    )
+
+  if (recipients.length === 0) return
 
   try {
     await db.insert(notificationEvents).values({
@@ -437,7 +470,7 @@ export async function createNotificationEvent(
       createdAt: now,
     })
 
-    for (const recipient of input.recipients) {
+    for (const recipient of recipients) {
       const preferences = await getPreferenceForUser(db, recipient.userId)
       if (!notificationCategoryEnabled(preferences, input.eventType)) continue
 
@@ -460,7 +493,7 @@ export async function createNotificationEvent(
       if (emailEnabled) {
         const delivery = await sendResendEmail(
           env,
-          recipient.email,
+          recipient.googleEmail ?? recipient.email,
           input.title,
           notificationEmailBody(input)
         )

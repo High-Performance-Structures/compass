@@ -153,8 +153,10 @@ function requireText(value: string, label: string): string {
   return trimmed
 }
 
-function rfiNumberFor(existingCount: number): string {
-  return `RFI-${String(existingCount + 1).padStart(3, "0")}`
+function rfiNumberFor(existingCount: number, id: string): string {
+  const sequence = String(existingCount + 1).padStart(3, "0")
+  const collisionSuffix = id.slice(0, 6).toUpperCase()
+  return `RFI-${sequence}-${collisionSuffix}`
 }
 
 function isClosedRfiStatus(status: string): boolean {
@@ -303,7 +305,7 @@ export async function createProjectRfi(
     const inserted: typeof projectRfis.$inferInsert = {
       id,
       projectId,
-      rfiNumber: rfiNumberFor(rows.length),
+      rfiNumber: rfiNumberFor(rows.length, id),
       subject: requireText(input.subject, "Subject"),
       question: requireText(input.question, "Question"),
       status: "new",

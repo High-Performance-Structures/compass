@@ -331,8 +331,13 @@ function parseEmailList(value: string | null): readonly string[] {
     .filter((email) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
 }
 
-function purchaseOrderRequestNumberFor(existingCount: number): string {
-  return `PO-REQ-${String(existingCount + 1).padStart(3, "0")}`
+function purchaseOrderRequestNumberFor(
+  existingCount: number,
+  id: string
+): string {
+  const sequence = String(existingCount + 1).padStart(3, "0")
+  const collisionSuffix = id.slice(0, 6).toUpperCase()
+  return `PO-REQ-${sequence}-${collisionSuffix}`
 }
 
 function projectTaskNumberFor(existingCount: number): string {
@@ -1151,7 +1156,10 @@ export async function createPurchaseOrderRequest(
 
     const now = new Date().toISOString()
     const id = crypto.randomUUID()
-    const sourceRecordNumber = purchaseOrderRequestNumberFor(purchaseOrders.length)
+    const sourceRecordNumber = purchaseOrderRequestNumberFor(
+      purchaseOrders.length,
+      id
+    )
     const title = requireText(input.title, "Title")
     const description = cleanText(input.description)
     const companyName = cleanText(input.companyName)
