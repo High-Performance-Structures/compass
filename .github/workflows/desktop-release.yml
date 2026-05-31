@@ -6,11 +6,11 @@ on:
       - "v*"
 
 env:
-  CARGO_TERM_COLOR: always
+  ELECTRON_BUILDER_CACHE: ${{ github.workspace }}/.cache/electron-builder
 
 jobs:
   build:
-    name: Build ${{ matrix.platform.os-name }} (${{ matrix.target }})
+    name: Build ${{ matrix.platform.os-name }} (${{ matrix.arch }})
     runs-on: ${{ matrix.platform.os }}
     strategy:
       fail-fast: false
@@ -20,26 +20,20 @@ jobs:
           - platform:
               os: ubuntu-latest
               os-name: linux
-            target: x86_64-unknown-linux-gnu
-            bundles: deb,rpm,appimage
-          # Linux ARM64
-          - platform:
-              os: ubuntu-latest
-              os-name: linux
-            target: aarch64-unknown-linux-gnu
-            bundles: deb,rpm,appimage
+            arch: x64
+            electron_args: --linux deb rpm AppImage --x64
           # macOS (universal binary)
           - platform:
               os: macos-latest
               os-name: macos
-            target: universal-apple-darwin
-            bundles: dmg
+            arch: universal
+            electron_args: --mac dmg zip --universal
           # Windows
           - platform:
               os: windows-latest
               os-name: windows
-            target: x86_64-pc-windows-msvc
-            bundles: nsis
+            arch: x64
+            electron_args: --win nsis --x64
 
     steps:
       - name: Checkout repository
@@ -47,21 +41,6 @@ jobs:
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ matrix.target }}
-
-      - name: Cache Cargo registry
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-
 
       - name: Cache Bun dependencies
         uses: actions/cache@v4
@@ -71,34 +50,25 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-bun-
 
-      - name: Cache Rust target
+      - name: Cache Electron Builder
         uses: actions/cache@v4
         with:
           path: |
-            src-tauri/target
-          key: ${{ runner.os }}-${{ matrix.target }}-rust-target-${{ hashFiles('**/Cargo.lock') }}
+            .cache/electron-builder
+            ~/.cache/electron
+            ~/Library/Caches/electron
+            ~/AppData/Local/electron/Cache
+          key: ${{ runner.os }}-${{ matrix.arch }}-electron-${{ hashFiles('bun.lock', 'electron-builder.yml') }}
           restore-keys: |
-            ${{ runner.os }}-${{ matrix.target }}-rust-target-
+            ${{ runner.os }}-${{ matrix.arch }}-electron-
 
       - name: Install Linux dependencies
         if: matrix.platform.os == 'ubuntu-latest'
         run: |
           sudo apt-get update
           sudo apt-get install -y \
-            libwebkit2gtk-4.1-dev \
-            libgtk-3-dev \
-            libayatana-appindicator3-dev \
-            librsvg2-dev \
-            libsoup-3.0-dev \
-            libjavascriptcoregtk-4.1-dev \
-            patchelf
-
-          # Cross-compilation support for ARM64
-          if [ "${{ matrix.target }}" = "aarch64-unknown-linux-gnu" ]; then
-            sudo apt-get install -y \
-              gcc-aarch64-linux-gnu \
-              g++-aarch64-linux-gnu
-          fi
+            fakeroot \
+            rpm
 
       - name: Setup macOS keychain (for signing)
         if: matrix.platform.os == 'macos-latest'
@@ -130,11 +100,8 @@ jobs:
       - name: Install frontend dependencies
         run: bun install --frozen-lockfile
 
-      - name: Build frontend
-        run: bun run build
-
-      - name: Build Tauri app
-        uses: tauri-apps/tauri-action@v0
+      - name: Build Electron app
+        run: bun run desktop:build && bunx electron-builder ${{ matrix.electron_args }} --publish never
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # macOS signing
@@ -147,19 +114,13 @@ jobs:
           # Windows signing
           WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
           WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
-          # Cross-compilation for Linux ARM64
-          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
-          CC_aarch64_unknown_linux_gnu: aarch64-linux-gnu-gcc
-          CXX_aarch64_unknown_linux_gnu: aarch64-linux-gnu-g++
+
+      - name: Upload desktop artifacts
+        uses: actions/upload-artifact@v4
         with:
-          tagName: ${{ github.ref_name }}
-          releaseName: "Compass Desktop ${{ github.ref_name }}"
-          releaseBody: "See CHANGELOG.md for details."
-          releaseDraft: true
-          prerelease: false
-          args: |
-            --target ${{ matrix.target }}
-            --bundles ${{ matrix.bundles }}
+          name: compass-desktop-${{ matrix.platform.os-name }}-${{ matrix.arch }}
+          path: release/**
+          if-no-files-found: error
 
   release:
     name: Create Release
@@ -169,6 +130,13 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Download desktop artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: compass-desktop-*
+          path: release
+          merge-multiple: true
 
       - name: Generate Release Notes
         id: release-notes
@@ -196,5 +164,6 @@ jobs:
           body_path: /tmp/release-notes.md
           draft: true
           generate_release_notes: true
+          files: release/**
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

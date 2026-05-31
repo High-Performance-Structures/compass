@@ -1,4 +1,4 @@
-import { z } from "zod"
+import { z } from "zod/v4"
 import type { ToolDef } from "./data"
 import { zodToJsonSchema } from "./data"
 

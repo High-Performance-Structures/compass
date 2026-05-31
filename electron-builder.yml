@@ -1,0 +1,28 @@
+appId: ltd.openrangeconstruction.compass
+productName: Compass
+directories:
+  output: release
+files:
+  - dist-electron/**
+  - public/**
+  - package.json
+  - next.config.ts
+  - node_modules/**
+asarUnpack:
+  - node_modules/better-sqlite3/**
+  - node_modules/@mapbox/node-pre-gyp/**
+extraMetadata:
+  main: dist-electron/electron/main.js
+linux:
+  target:
+    - AppImage
+    - deb
+    - rpm
+  category: Office
+mac:
+  target:
+    - dmg
+    - zip
+win:
+  target:
+    - nsis

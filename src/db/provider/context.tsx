@@ -14,7 +14,7 @@ import {
   detectPlatform,
 } from "./interface"
 import { createD1Provider, getD1FromContext } from "./d1-provider"
-import { createTauriProvider } from "./tauri-provider"
+import { createElectronProvider } from "./electron-provider"
 import type { MemoryProviderConfig } from "./memory-types"
 
 interface DatabaseContextValue {
@@ -50,7 +50,7 @@ export interface DatabaseProviderProps {
   // Custom provider configuration
   config?: {
     d1?: Parameters<typeof createD1Provider>[0]
-    tauri?: Parameters<typeof createTauriProvider>[0]
+    electron?: Parameters<typeof createElectronProvider>[0]
     memory?: MemoryProviderConfig
   }
 }
@@ -92,8 +92,8 @@ export function DatabaseProvider({
             )
             break
 
-          case "tauri":
-            newProvider = createTauriProvider(config?.tauri)
+          case "electron":
+            newProvider = createElectronProvider(config?.electron)
             break
 
           case "memory":
@@ -160,9 +160,8 @@ export async function getServerDb(): Promise<DrizzleDB> {
       return provider.getDb()
     }
 
-    case "tauri": {
-      // Tauri doesn't run on server
-      throw new Error("Tauri provider cannot be used on the server")
+    case "electron": {
+      throw new Error("Electron provider cannot be used on the server")
     }
 
     case "memory":

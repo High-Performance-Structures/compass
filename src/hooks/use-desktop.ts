@@ -1,10 +1,11 @@
 "use client"
 
 import { useSyncExternalStore, useCallback } from "react"
-import { isTauri, isDesktop, getPlatform, type Platform } from "@/lib/native/platform"
+import { isElectron, isDesktop, getPlatform, type Platform } from "@/lib/native/platform"
+import type { DesktopReadyState } from "@/types/desktop-bridge"
 
 // SSR-safe subscribe (never changes after initial load)
-function subscribe(_onStoreChange: () => void): () => void {
+function subscribe(): () => void {
   return () => {}
 }
 
@@ -16,7 +17,6 @@ function getServerSnapshot(): boolean {
   return false
 }
 
-// Hook to check if running in Tauri desktop environment
 export function useDesktop(): boolean {
   return useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot)
 }
@@ -30,56 +30,30 @@ export function useDesktopPlatform(): Platform {
   )
 }
 
-// Hook to check if Tauri is ready (API is available)
-type TauriReadyState = "loading" | "ready" | "error"
-
-function getTauriReadySnapshot(): TauriReadyState {
+function getDesktopReadySnapshot(): DesktopReadyState {
   if (typeof window === "undefined") return "loading"
-  const tauri = (window as unknown as Record<string, unknown>).__TAURI__
-  if (!tauri) return "error"
-  return "ready"
+  return window.compassDesktop ? "ready" : "error"
 }
 
-function getTauriReadyServerSnapshot(): TauriReadyState {
+function getDesktopReadyServerSnapshot(): DesktopReadyState {
   return "loading"
 }
 
-export function useTauriReady(): TauriReadyState {
+export function useDesktopReady(): DesktopReadyState {
   return useSyncExternalStore(
     subscribe,
-    getTauriReadySnapshot,
-    getTauriReadyServerSnapshot,
+    getDesktopReadySnapshot,
+    getDesktopReadyServerSnapshot,
   )
 }
 
-// Utility to safely invoke Tauri commands
-export async function invokeTauri<T>(
-  cmd: string,
-  args?: Record<string, unknown>,
-): Promise<T | null> {
-  if (!isTauri()) return null
+export function useDesktopBridge() {
+  const isReady = useDesktopReady()
 
-  try {
-    const { invoke } = await import("@tauri-apps/api/core")
-    return await invoke<T>(cmd, args)
-  } catch (error) {
-    console.error(`Tauri invoke error (${cmd}):`, error)
-    return null
-  }
+  return useCallback(() => {
+    if (isReady !== "ready") return null
+    return window.compassDesktop ?? null
+  }, [isReady])
 }
 
-// Hook for invoking Tauri commands with loading state
-export function useTauriInvoke() {
-  const isReady = useTauriReady()
-
-  return useCallback(
-    async <T>(cmd: string, args?: Record<string, unknown>): Promise<T | null> => {
-      if (isReady !== "ready") return null
-      return invokeTauri<T>(cmd, args)
-    },
-    [isReady],
-  )
-}
-
-// Re-export isTauri for direct use
-export { isTauri }
+export { isElectron }

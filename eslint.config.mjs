@@ -13,6 +13,21 @@ function withoutReactRules(config) {
 }
 
 const eslintConfig = [
+	{
+		ignores: [
+			".next/**",
+			".open-next/**",
+			".wrangler/**",
+			"android/**",
+			"conversations-interface-references/**",
+			"dist-electron/**",
+			"ios/**",
+			"mobile-ui-references/**",
+			"node_modules/**",
+			"packages/**/dist/**",
+			"references/**",
+		],
+	},
 	...nextVitals.map(withoutReactRules),
 	...nextTypescript,
 	{

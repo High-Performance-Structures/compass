@@ -1,61 +1,31 @@
-// Claude Code credential detection for Tauri desktop app.
-// Reads OAuth tokens from ~/.claude/.credentials.json for auto-configuration.
+// Claude Code credential detection for Electron desktop app.
+// The renderer only receives presence/expiry metadata; tokens stay in the
+// Electron main process.
 
-export interface ClaudeOAuthCredentials {
-  accessToken: string
-  refreshToken: string
+export interface ClaudeCredentialsStatus {
+  hasCredentials: boolean
   expiresAt: number // Unix timestamp in seconds
   subscriptionType?: string
 }
 
-interface ClaudeCredentialsFile {
-  claudeAiOauth?: {
-    accessToken: string
-    refreshToken: string
-    expiresAt: number
-    subscriptionType?: string
-  }
-}
-
 // Check if credentials are expired or expiring within 5 minutes
 export function areCredentialsExpired(
-  creds: ClaudeOAuthCredentials
+  creds: ClaudeCredentialsStatus
 ): boolean {
   const bufferMs = 5 * 60 * 1000 // 5 minutes
   return Date.now() > creds.expiresAt * 1000 - bufferMs
 }
 
-// Read credentials via Tauri fs plugin (desktop only)
+// Read credentials via Electron main process (desktop only)
 // Returns null if not on desktop, file doesn't exist, or on any error
-export async function detectClaudeCodeCredentials(): Promise<ClaudeOAuthCredentials | null> {
-  // Dynamic import gated behind platform check
+export async function detectClaudeCodeCredentials(): Promise<ClaudeCredentialsStatus | null> {
   if (typeof window === "undefined") return null
 
-  // Check if we're in Tauri by looking for __TAURI__ global
-  const tauriGlobal = (
-    window as unknown as Record<string, unknown>
-  ).__TAURI__
-  if (!tauriGlobal) return null
+  const desktop = window.compassDesktop
+  if (!desktop) return null
 
   try {
-    const { readTextFile } = await import("@tauri-apps/plugin-fs")
-    const { homeDir } = await import("@tauri-apps/api/path")
-
-    const home = await homeDir()
-    const credentialsPath = `${home}.claude/.credentials.json`
-
-    const content = await readTextFile(credentialsPath)
-    const data = JSON.parse(content) as ClaudeCredentialsFile
-
-    if (!data.claudeAiOauth) return null
-
-    const oauth = data.claudeAiOauth
-    return {
-      accessToken: oauth.accessToken,
-      refreshToken: oauth.refreshToken,
-      expiresAt: oauth.expiresAt,
-      subscriptionType: oauth.subscriptionType,
-    }
+    return await desktop.fs.detectClaudeCodeCredentials()
   } catch {
     // File doesn't exist or parse error — credentials not available
     return null

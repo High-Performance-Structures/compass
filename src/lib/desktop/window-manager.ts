@@ -1,7 +1,7 @@
-// Window state persistence using tauri-plugin-window-state
+// Window state persistence using the Electron desktop bridge.
 // Saves and restores window position, size, and state across sessions
 
-import { isTauri } from "@/lib/native/platform"
+import { isElectron } from "@/lib/native/platform"
 
 export interface WindowState {
   x: number
@@ -19,28 +19,10 @@ const ZOOM_LEVEL_KEY = "compass-zoom-level"
 let cachedState: WindowState | null = null
 
 async function loadWindowStateFromStore(): Promise<WindowState | null> {
-  if (!isTauri()) return null
+  if (!isElectron()) return null
 
   try {
-    const { getCurrentWindow } = await import("@tauri-apps/api/window")
-    const appWindow = getCurrentWindow()
-
-    // Get current window state
-    const [position, size, isMaximized, isFullscreen] = await Promise.all([
-      appWindow.outerPosition(),
-      appWindow.outerSize(),
-      appWindow.isMaximized(),
-      appWindow.isFullscreen(),
-    ])
-
-    return {
-      x: position.x,
-      y: position.y,
-      width: size.width,
-      height: size.height,
-      isMaximized,
-      isFullscreen,
-    }
+    return await window.compassDesktop!.window.getState()
   } catch (error) {
     console.error("Failed to load window state:", error)
     return null
@@ -70,24 +52,11 @@ function loadFromLocalStorage(): WindowState | null {
 }
 
 export const WindowManager = {
-  // Restore window state from Tauri plugin or localStorage fallback
   async restoreState(): Promise<void> {
-    if (!isTauri()) return
+    if (!isElectron()) return
 
     try {
-      // Try using tauri-plugin-window-state if available
-      const { invoke } = await import("@tauri-apps/api/core")
-
-      // The window-state plugin automatically restores state if configured
-      // This is just a check that we're in a Tauri environment
-      await invoke("plugin:window-state|restore_state").catch(() => {
-        // Plugin not configured, use manual restoration
-      })
-
-      // Also cache current state
       cachedState = await loadWindowStateFromStore()
-
-      // Restore zoom level
       await this.restoreZoom()
     } catch (error) {
       console.error("Failed to restore window state:", error)
@@ -96,7 +65,7 @@ export const WindowManager = {
 
   // Save current window state
   async saveState(): Promise<void> {
-    if (!isTauri()) return
+    if (!isElectron()) return
 
     try {
       const state = await loadWindowStateFromStore()
@@ -105,28 +74,23 @@ export const WindowManager = {
         saveToLocalStorage(state)
       }
 
-      // Also try the plugin save
-      const { invoke } = await import("@tauri-apps/api/core")
-      await invoke("plugin:window-state|save_state").catch(() => {
-        // Plugin not configured
-      })
+      await window.compassDesktop!.window.saveState()
     } catch (error) {
       console.error("Failed to save window state:", error)
     }
   },
 
-  // Get cached window state (doesn't query Tauri)
+  // Get cached window state without crossing the desktop bridge.
   getCachedState(): WindowState | null {
     return cachedState ?? loadFromLocalStorage()
   },
 
   // Minimize window
   async minimize(): Promise<void> {
-    if (!isTauri()) return
+    if (!isElectron()) return
 
     try {
-      const { getCurrentWindow } = await import("@tauri-apps/api/window")
-      await getCurrentWindow().minimize()
+      await window.compassDesktop!.window.minimize()
     } catch (error) {
       console.error("Failed to minimize window:", error)
     }
@@ -134,11 +98,10 @@ export const WindowManager = {
 
   // Toggle maximize
   async toggleMaximize(): Promise<void> {
-    if (!isTauri()) return
+    if (!isElectron()) return
 
     try {
-      const { getCurrentWindow } = await import("@tauri-apps/api/window")
-      await getCurrentWindow().toggleMaximize()
+      await window.compassDesktop!.window.toggleMaximize()
     } catch (error) {
       console.error("Failed to toggle maximize:", error)
     }
@@ -146,11 +109,10 @@ export const WindowManager = {
 
   // Close window
   async close(): Promise<void> {
-    if (!isTauri()) return
+    if (!isElectron()) return
 
     try {
-      const { getCurrentWindow } = await import("@tauri-apps/api/window")
-      await getCurrentWindow().close()
+      await window.compassDesktop!.window.close()
     } catch (error) {
       console.error("Failed to close window:", error)
     }
@@ -158,11 +120,10 @@ export const WindowManager = {
 
   // Set window title
   async setTitle(title: string): Promise<void> {
-    if (!isTauri()) return
+    if (!isElectron()) return
 
     try {
-      const { getCurrentWindow } = await import("@tauri-apps/api/window")
-      await getCurrentWindow().setTitle(title)
+      await window.compassDesktop!.window.setTitle(title)
     } catch (error) {
       console.error("Failed to set window title:", error)
     }
@@ -170,17 +131,16 @@ export const WindowManager = {
 
   // Check if window is focused
   async isFocused(): Promise<boolean> {
-    if (!isTauri()) return true
+    if (!isElectron()) return true
 
     try {
-      const { getCurrentWindow } = await import("@tauri-apps/api/window")
-      return await getCurrentWindow().isFocused()
+      return await window.compassDesktop!.window.isFocused()
     } catch {
       return true
     }
   },
 
-  // Set webview zoom via Tauri native API with CSS font-size fallback
+  // Set webview zoom via Electron native API with CSS font-size fallback
   async setZoom(level: number): Promise<void> {
     const clamped = Math.min(2.0, Math.max(0.5, level))
     try {
@@ -189,11 +149,7 @@ export const WindowManager = {
       // localStorage not available
     }
     try {
-      const { invoke } = await import("@tauri-apps/api/core")
-      await invoke("plugin:webview|set_webview_zoom", {
-        label: "main",
-        scaleFactor: clamped,
-      })
+      await window.compassDesktop?.window.setZoom(clamped)
       document.documentElement.style.fontSize = ""
     } catch {
       document.documentElement.style.fontSize = `${clamped * 16}px`

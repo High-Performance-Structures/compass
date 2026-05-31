@@ -122,7 +122,7 @@ A complete offline-first sync engine exists in `src/lib/sync/` but isn't connect
 - Delta sync with checkpoints
 - Tombstones for deletions
 
-This was built for the Tauri desktop app. When the mobile app needs offline messaging, this infrastructure is ready to connect.
+This was built for the desktop offline sync path. When the mobile app needs offline messaging, this infrastructure is ready to connect.
 
 ## Recent Fixes
 

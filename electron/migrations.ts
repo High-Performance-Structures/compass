@@ -1,7 +1,4 @@
--- Compass Desktop SQLite Schema
--- Mirrors the Drizzle schema for local offline storage
-
--- Auth and user management tables
+export const initialSql = `
 CREATE TABLE IF NOT EXISTS users (
     id TEXT PRIMARY KEY,
     email TEXT NOT NULL UNIQUE,
@@ -67,7 +64,6 @@ CREATE TABLE IF NOT EXISTS group_members (
     joined_at TEXT NOT NULL
 );
 
--- Project management tables
 CREATE TABLE IF NOT EXISTS projects (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
@@ -88,7 +84,6 @@ CREATE TABLE IF NOT EXISTS project_members (
     assigned_at TEXT NOT NULL
 );
 
--- Schedule tables
 CREATE TABLE IF NOT EXISTS schedule_tasks (
     id TEXT PRIMARY KEY,
     project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
@@ -137,7 +132,6 @@ CREATE TABLE IF NOT EXISTS schedule_baselines (
     created_at TEXT NOT NULL
 );
 
--- Customer and vendor tables
 CREATE TABLE IF NOT EXISTS customers (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
@@ -163,7 +157,6 @@ CREATE TABLE IF NOT EXISTS vendors (
     updated_at TEXT
 );
 
--- Agent memory tables
 CREATE TABLE IF NOT EXISTS agent_conversations (
     id TEXT PRIMARY KEY,
     user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -183,7 +176,6 @@ CREATE TABLE IF NOT EXISTS agent_memories (
     created_at TEXT NOT NULL
 );
 
--- Slab persistent memory
 CREATE TABLE IF NOT EXISTS slab_memories (
     id TEXT PRIMARY KEY,
     user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -197,7 +189,6 @@ CREATE TABLE IF NOT EXISTS slab_memories (
     created_at TEXT NOT NULL
 );
 
--- Feedback tables
 CREATE TABLE IF NOT EXISTS feedback (
     id TEXT PRIMARY KEY,
     type TEXT NOT NULL,
@@ -228,7 +219,6 @@ CREATE TABLE IF NOT EXISTS feedback_interviews (
     created_at TEXT NOT NULL
 );
 
--- Push notification tokens
 CREATE TABLE IF NOT EXISTS push_tokens (
     id TEXT PRIMARY KEY,
     user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -238,7 +228,6 @@ CREATE TABLE IF NOT EXISTS push_tokens (
     updated_at TEXT NOT NULL
 );
 
--- Sync metadata for offline-first support
 CREATE TABLE IF NOT EXISTS sync_metadata (
     id TEXT PRIMARY KEY,
     table_name TEXT NOT NULL UNIQUE,
@@ -252,15 +241,14 @@ CREATE TABLE IF NOT EXISTS sync_queue (
     id TEXT PRIMARY KEY,
     table_name TEXT NOT NULL,
     record_id TEXT NOT NULL,
-    operation TEXT NOT NULL, -- 'create', 'update', 'delete'
-    data TEXT, -- JSON payload for create/update
+    operation TEXT NOT NULL,
+    data TEXT,
     created_at TEXT NOT NULL,
     attempts INTEGER NOT NULL DEFAULT 0,
     last_attempt_at TEXT,
     error TEXT
 );
 
--- Create indexes for common queries
 CREATE INDEX IF NOT EXISTS idx_schedule_tasks_project ON schedule_tasks(project_id);
 CREATE INDEX IF NOT EXISTS idx_task_dependencies_predecessor ON task_dependencies(predecessor_id);
 CREATE INDEX IF NOT EXISTS idx_task_dependencies_successor ON task_dependencies(successor_id);
@@ -270,3 +258,4 @@ CREATE INDEX IF NOT EXISTS idx_agent_memories_conversation ON agent_memories(con
 CREATE INDEX IF NOT EXISTS idx_agent_memories_user ON agent_memories(user_id);
 CREATE INDEX IF NOT EXISTS idx_sync_queue_table ON sync_queue(table_name);
 CREATE INDEX IF NOT EXISTS idx_sync_queue_record ON sync_queue(record_id);
+`

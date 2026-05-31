@@ -197,18 +197,15 @@ export function AppearanceTab() {
     } catch {
       // localStorage not available
     }
-    // Use Tauri native webview zoom (true browser-level zoom)
-    try {
-      const { invoke } = await import("@tauri-apps/api/core")
-      await invoke("plugin:webview|set_webview_zoom", {
-        label: "main",
-        scaleFactor: clamped,
-      })
-      // Clear any CSS fallback
-      document.documentElement.style.fontSize = ""
-      return
-    } catch {
-      // Not in Tauri or permission denied — CSS fallback
+    // Use Electron native webview zoom when available.
+    if (window.compassDesktop) {
+      try {
+        await window.compassDesktop.window.setZoom(clamped)
+        document.documentElement.style.fontSize = ""
+        return
+      } catch {
+        // Desktop bridge is unavailable or denied; use CSS fallback.
+      }
     }
     // Fallback: scale root font-size (slightly thicker icons but functional)
     document.documentElement.style.fontSize = `${clamped * 16}px`

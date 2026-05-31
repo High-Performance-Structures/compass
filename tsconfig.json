@@ -43,6 +43,8 @@
     "node_modules",
     "references",
     "packages",
-    "scripts"
+    "scripts",
+    "electron",
+    "dist-electron"
   ]
 }

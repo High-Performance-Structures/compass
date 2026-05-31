@@ -1,4 +1,4 @@
-// Safe platform detection for Capacitor native apps and Tauri desktop.
+// Safe platform detection for Capacitor native apps and Electron desktop.
 // All exports are safe to call in browser (return false / no-op).
 
 type CapacitorGlobal = {
@@ -12,12 +12,9 @@ function getCapacitor(): CapacitorGlobal | undefined {
     .Capacitor as CapacitorGlobal | undefined
 }
 
-// Tauri injects __TAURI__ global when running in desktop app
-function getTauriGlobal(): Record<string, unknown> | undefined {
+function getDesktopBridge(): Window["compassDesktop"] {
   if (typeof window === "undefined") return undefined
-  return (window as unknown as Record<string, unknown>).__TAURI__ as
-    | Record<string, unknown>
-    | undefined
+  return window.compassDesktop
 }
 
 export function isNative(): boolean {
@@ -32,18 +29,20 @@ export function isAndroid(): boolean {
   return getCapacitor()?.getPlatform() === "android"
 }
 
-export function isTauri(): boolean {
-  return !!getTauriGlobal()
+export function isElectron(): boolean {
+  return !!getDesktopBridge()
 }
 
 export function isDesktop(): boolean {
-  return isTauri()
+  return isElectron()
 }
 
 export type Platform = "ios" | "android" | "windows" | "macos" | "linux" | "web"
 
-// Detect OS platform when running in Tauri desktop
 function detectDesktopOS(): "windows" | "macos" | "linux" {
+  const desktop = getDesktopBridge()
+  if (desktop) return desktop.platform.os
+
   if (typeof navigator === "undefined") return "linux"
 
   const ua = navigator.userAgent.toLowerCase()
@@ -53,8 +52,7 @@ function detectDesktopOS(): "windows" | "macos" | "linux" {
 }
 
 export function getPlatform(): Platform {
-  // Check Tauri desktop first
-  if (isTauri()) {
+  if (isElectron()) {
     return detectDesktopOS()
   }
   // Then check Capacitor mobile
@@ -77,13 +75,13 @@ export function getMobilePlatform(): "ios" | "android" | "web" {
   return "web"
 }
 
-// Returns true for any native platform (Capacitor mobile or Tauri desktop)
+// Returns true for any native platform (Capacitor mobile or Electron desktop)
 export function isAnyNative(): boolean {
-  return isNative() || isTauri()
+  return isNative() || isElectron()
 }
 
 // Open an external URL in the system browser.
-// On Tauri desktop, uses the opener plugin to open in the default browser.
+// On Electron desktop, uses the main process to open in the default browser.
 // On web, opens in a new window/tab.
 export async function openExternalUrl(
   url: string,
@@ -92,15 +90,11 @@ export async function openExternalUrl(
     windowFeatures?: string
   },
 ): Promise<boolean> {
-  // On Tauri desktop, use opener plugin to open in system browser
-  if (isTauri()) {
+  if (isElectron()) {
     try {
-      const { openUrl } = await import("@tauri-apps/plugin-opener")
-      await openUrl(url)
-      return true
+      return await window.compassDesktop!.shell.openExternal(url)
     } catch (error) {
-      console.error("Failed to open URL via Tauri opener:", error)
-      // Fallback to window.open (may not work in some Tauri configs)
+      console.error("Failed to open URL via Electron shell:", error)
       const popup = window.open(url, options?.windowName ?? "_blank")
       return !!popup
     }

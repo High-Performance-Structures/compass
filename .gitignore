@@ -18,6 +18,8 @@ credentials/
 
 # build
 dist/
+dist-electron/
+release/
 
 # misc
 .DS_Store

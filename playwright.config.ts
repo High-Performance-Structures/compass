@@ -1,8 +1,8 @@
 import { defineConfig, devices } from "@playwright/test"
 
-// Detect if running in Tauri desktop environment
-const isTauri = () => {
-  return process.env.TAURI === "true" || process.env.TAURI_TEST === "true"
+// Detect if running in Electron desktop environment
+const isElectron = () => {
+  return process.env.ELECTRON === "true" || process.env.ELECTRON_TEST === "true"
 }
 
 // Web-specific projects
@@ -21,14 +21,14 @@ const webProjects = [
   },
 ]
 
-// Desktop (Tauri) project
+// Desktop (Electron) project
 const desktopProjects = [
   {
     name: "desktop-chromium",
     testDir: "./e2e/desktop",
     use: {
       ...devices["Desktop Chrome"],
-      baseURL: "tauri://localhost",
+      baseURL: "http://127.0.0.1:3000",
       ignoreHTTPSErrors: true,
     },
   },
@@ -52,13 +52,11 @@ export default defineConfig({
   },
   outputDir: "test-results",
   preserveOutput: "always",
-  projects: isTauri() ? desktopProjects : webProjects,
-  webServer: isTauri()
-    ? undefined
-    : {
-        command: "bun dev",
-        port: 3000,
-        timeout: 120000,
-        reuseExistingServer: !process.env.CI,
-      },
+  projects: isElectron() ? desktopProjects : webProjects,
+  webServer: {
+    command: "bun dev",
+    port: 3000,
+    timeout: 120000,
+    reuseExistingServer: !process.env.CI,
+  },
 })
