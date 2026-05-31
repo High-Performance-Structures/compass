@@ -1,8 +1,9 @@
 "use client"
 
-import { useEffect, useState, useTransition, createContext, useContext, useCallback, type ReactNode } from "react"
-import { KeyRoundIcon, XIcon, Loader2Icon } from "lucide-react"
-import { useDesktop, useTauriReady } from "@/hooks/use-desktop"
+import { useEffect, useState, createContext, useContext, useCallback, type ReactNode } from "react"
+import { KeyRoundIcon, XIcon } from "lucide-react"
+import { useDesktop, useDesktopReady } from "@/hooks/use-desktop"
+import type { DesktopReadyState } from "@/types/desktop-bridge"
 import { useTriggerSync, useSyncStatus, updateSyncState } from "@/hooks/use-sync-status"
 import { getBackupQueueCount } from "@/lib/sync/queue/mutation-queue"
 import {
@@ -13,14 +14,13 @@ import {
 } from "@/lib/desktop/claude-code-credentials"
 import {
   hasOAuthConfigured,
-  storeDetectedOAuthCredentials,
 } from "@/app/actions/desktop-oauth-detection"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 
 interface DesktopContextValue {
   isDesktop: boolean
-  tauriReady: "loading" | "ready" | "error"
+  desktopReady: DesktopReadyState
   triggerSync: () => Promise<boolean>
   syncStatus: "idle" | "syncing" | "error" | "offline"
   pendingCount: number
@@ -30,7 +30,7 @@ interface DesktopContextValue {
 
 const DesktopContext = createContext<DesktopContextValue>({
   isDesktop: false,
-  tauriReady: "loading",
+  desktopReady: "loading",
   triggerSync: async () => false,
   syncStatus: "idle",
   pendingCount: 0,
@@ -46,11 +46,11 @@ interface DesktopShellProps {
   readonly children: ReactNode
 }
 
-// Desktop shell initializes Tauri-specific features and provides context.
+// Desktop shell initializes Electron-specific features and provides context.
 // Returns children unchanged on non-desktop platforms.
 export function DesktopShell({ children }: DesktopShellProps) {
   const isDesktop = useDesktop()
-  const tauriReady = useTauriReady()
+  const desktopReady = useDesktopReady()
   const triggerSync = useTriggerSync()
   const { status: syncStatus, pendingCount } = useSyncStatus()
   const [showCredentialsBanner, setShowCredentialsBanner] = useState(false)
@@ -93,9 +93,9 @@ export function DesktopShell({ children }: DesktopShellProps) {
     }
   }, [isDesktop])
 
-  // Initialize window state restoration and sync on mount
+  // Initialize desktop-specific state on mount.
   useEffect(() => {
-    if (!isDesktop || tauriReady !== "ready") return
+    if (!isDesktop || desktopReady !== "ready") return
 
     async function initializeDesktop() {
       try {
@@ -120,27 +120,17 @@ export function DesktopShell({ children }: DesktopShellProps) {
             }
           }
         }
-
-        // Start initial sync after a short delay (let app load first)
-        const timeoutId = setTimeout(() => {
-          triggerSync()
-        }, 2000)
-
-        return () => clearTimeout(timeoutId)
       } catch (error) {
         console.error("Failed to initialize desktop shell:", error)
       }
     }
 
-    const cleanup = initializeDesktop()
-    return () => {
-      cleanup?.then((fn) => fn?.())
-    }
-  }, [isDesktop, tauriReady, triggerSync])
+    initializeDesktop()
+  }, [isDesktop, desktopReady])
 
   // Set up keyboard shortcuts
   useEffect(() => {
-    if (!isDesktop || tauriReady !== "ready") return
+    if (!isDesktop || desktopReady !== "ready") return
 
     let unregister: (() => void) | undefined
 
@@ -171,7 +161,7 @@ export function DesktopShell({ children }: DesktopShellProps) {
 
     setupShortcuts()
     return () => unregister?.()
-  }, [isDesktop, tauriReady, triggerSync])
+  }, [isDesktop, desktopReady, triggerSync])
 
   // Set up beforeunload and visibility change handlers
   useEffect(() => {
@@ -196,7 +186,7 @@ export function DesktopShell({ children }: DesktopShellProps) {
     <DesktopContext.Provider
       value={{
         isDesktop,
-        tauriReady,
+        desktopReady,
         triggerSync,
         syncStatus,
         pendingCount,
@@ -222,7 +212,6 @@ function ClaudeCodeDetectionBannerInternal({
 }) {
   const [dismissed, setDismissed] = useState(false)
   const [dontAskAgain, setDontAskAgain] = useState(false)
-  const [isPending, startTransition] = useTransition()
 
   if (dismissed) return null
 
@@ -232,28 +221,6 @@ function ClaudeCodeDetectionBannerInternal({
     }
     setDismissed(true)
     onDismiss()
-  }
-
-  const handleUseCredentials = () => {
-    startTransition(async () => {
-      const creds = await detectClaudeCodeCredentials()
-      if (!creds || areCredentialsExpired(creds)) {
-        setDismissed(true)
-        onDismiss()
-        return
-      }
-
-      const result = await storeDetectedOAuthCredentials(
-        creds.accessToken,
-        creds.refreshToken,
-        creds.expiresAt
-      )
-
-      if (result.success) {
-        setDismissed(true)
-        onDismiss()
-      }
-    })
   }
 
   return (
@@ -266,7 +233,7 @@ function ClaudeCodeDetectionBannerInternal({
               Claude Code credentials detected
             </span>
             <span className="text-muted-foreground text-xs">
-              Use them for the Compass agent?
+              Configure Claude OAuth in settings to connect them.
             </span>
           </div>
         </div>
@@ -286,21 +253,8 @@ function ClaudeCodeDetectionBannerInternal({
             variant="ghost"
             size="xs"
             onClick={handleDismiss}
-            disabled={isPending}
           >
             <XIcon className="h-3 w-3" />
-          </Button>
-
-          <Button
-            size="xs"
-            onClick={handleUseCredentials}
-            disabled={isPending}
-          >
-            {isPending ? (
-              <Loader2Icon className="h-3 w-3 animate-spin" />
-            ) : (
-              "Use Credentials"
-            )}
           </Button>
         </div>
       </div>

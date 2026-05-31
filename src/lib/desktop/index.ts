@@ -1,4 +1,4 @@
-// Desktop utilities for Tauri apps
+// Desktop utilities for Electron apps
 // All exports are safe to use on web (no-ops or returns null)
 
 export {

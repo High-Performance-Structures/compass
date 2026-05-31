@@ -1,12 +1,12 @@
 // Database provider abstraction layer
-// Supports D1 (Cloudflare), Tauri (desktop), and in-memory (testing)
+// Supports D1 (Cloudflare), Electron (desktop), and in-memory (testing)
 
 // Interface and types
 export {
   type DatabaseProvider as DatabaseProviderInterface,
   type DrizzleDB,
   type ProviderType,
-  isTauri,
+  isElectron,
   isCloudflareWorker,
   detectPlatform,
 } from "./interface"
@@ -19,9 +19,9 @@ export {
 } from "./d1-provider"
 
 export {
-  createTauriProvider,
-  type TauriProviderConfig,
-} from "./tauri-provider"
+  createElectronProvider,
+  type ElectronProviderConfig,
+} from "./electron-provider"
 
 // Memory provider is only exported as type for config purposes
 // Use dynamic import: const { createMemoryProvider } = await import("./memory-provider")

@@ -19,7 +19,7 @@ const initialState: SyncState = {
   errorMessage: null,
 }
 
-// Store for sync state (used by Tauri event listeners)
+// Store for sync state (used by Electron event listeners)
 let syncState = { ...initialState }
 const listeners = new Set<() => void>()
 
@@ -40,7 +40,7 @@ function subscribeToSync(onStoreChange: () => void): () => void {
   return () => listeners.delete(onStoreChange)
 }
 
-// Update sync state (called by Tauri event handlers)
+// Update sync state (called by Electron event handlers)
 export function updateSyncState(updates: Partial<SyncState>): void {
   syncState = { ...syncState, ...updates }
   notifyListeners()
@@ -56,39 +56,22 @@ export function useSyncStatus(): SyncState {
     getSyncServerSnapshot,
   )
 
-  // Set up Tauri event listeners for sync updates
+  // Set up Electron event listeners for sync updates
   useEffect(() => {
-    if (!isDesktop) return
+    const desktop = window.compassDesktop
+    if (!isDesktop || !desktop) return
 
-    let unlisten: (() => void) | undefined
+    const unlistenSync = desktop.sync.onStatus((state) => {
+      updateSyncState(state)
+    })
+    const unlistenQueue = desktop.sync.onQueueChanged((payload) => {
+      updateSyncState({ pendingCount: payload.count })
+    })
 
-    async function setupListeners() {
-      try {
-        const { listen } = await import("@tauri-apps/api/event")
-
-        // Listen for sync status changes
-        const unlistenSync = await listen<SyncState>("sync:status", (event) => {
-          updateSyncState(event.payload)
-        })
-
-        const unlistenQueue = await listen<{ count: number }>(
-          "sync:queue-changed",
-          (event) => {
-            updateSyncState({ pendingCount: event.payload.count })
-          },
-        )
-
-        unlisten = () => {
-          unlistenSync()
-          unlistenQueue()
-        }
-      } catch (error) {
-        console.error("Failed to set up sync listeners:", error)
-      }
+    return () => {
+      unlistenSync()
+      unlistenQueue()
     }
-
-    setupListeners()
-    return () => unlisten?.()
   }, [isDesktop])
 
   return isDesktop ? state : initialState
@@ -102,9 +85,8 @@ export function useTriggerSync() {
     if (!isDesktop) return false
 
     try {
-      const { invoke } = await import("@tauri-apps/api/core")
-      await invoke("sync_now")
-      return true
+      const triggered = await window.compassDesktop?.sync.trigger()
+      return triggered === true
     } catch (error) {
       console.error("Failed to trigger sync:", error)
       return false
@@ -112,7 +94,7 @@ export function useTriggerSync() {
   }, [isDesktop])
 }
 
-// Hook for offline detection (desktop-specific with Tauri network plugin)
+// Hook for offline detection.
 export function useDesktopOnlineStatus(): boolean {
   const isDesktopApp = useDesktop()
   const [online, setOnline] = useState(
@@ -132,7 +114,7 @@ export function useDesktopOnlineStatus(): boolean {
       }
     }
 
-    // Use navigator events (Tauri webview supports these)
+    // Electron's Chromium webview supports navigator online/offline events.
     const handleOnline = () => setOnline(true)
     const handleOffline = () => setOnline(false)
     setOnline(navigator.onLine)

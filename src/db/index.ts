@@ -38,12 +38,12 @@ export type {
 } from "./provider"
 
 export {
-  isTauri,
+  isElectron,
   isCloudflareWorker,
   detectPlatform,
   createD1Provider,
   getD1FromContext,
-  createTauriProvider,
+  createElectronProvider,
   DatabaseProvider,
   useDatabase,
   useDb,

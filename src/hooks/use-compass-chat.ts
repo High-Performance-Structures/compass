@@ -36,7 +36,7 @@ export function useCompassChat(options?: UseCompassChatOptions) {
   const agent = useAgent({
     agentServerUrl:
       typeof window !== "undefined" &&
-      "__TAURI__" in window
+      "compassDesktop" in window
         ? "http://localhost:3001"
         : "",
     sessionId: options?.conversationId ?? undefined,

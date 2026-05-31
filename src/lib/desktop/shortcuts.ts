@@ -1,7 +1,7 @@
-// Global keyboard shortcuts using tauri-plugin-global-shortcut
+// Global keyboard shortcuts using the Electron desktop bridge.
 // Desktop-only: provides common shortcuts like Cmd/Ctrl+S for sync
 
-import { isTauri } from "@/lib/native/platform"
+import { isElectron } from "@/lib/native/platform"
 
 export interface ShortcutHandlers {
   triggerSync: () => Promise<boolean>
@@ -27,16 +27,12 @@ function getModifierKey(): "CommandOrControl" | "Ctrl" {
   return isMac ? "CommandOrControl" : "Ctrl"
 }
 
-// Register global shortcuts with Tauri
 export async function registerShortcuts(
   handlers: ShortcutHandlers,
 ): Promise<() => void> {
-  if (!isTauri()) return () => {}
+  if (!isElectron() || !window.compassDesktop) return () => {}
 
   try {
-    const { register, unregister } = await import(
-      "@tauri-apps/plugin-global-shortcut"
-    )
     const modifier = getModifierKey()
 
     const shortcuts: Array<{ shortcut: string; handler: () => void }> = [
@@ -73,25 +69,17 @@ export async function registerShortcuts(
         : []),
     ]
 
-    // Register each shortcut
-    for (const { shortcut, handler } of shortcuts) {
-      try {
-        await register(shortcut, () => handler())
-        registeredShortcuts.push({ id: shortcut, handler })
-      } catch (error) {
-        console.warn(`Failed to register shortcut ${shortcut}:`, error)
-      }
-    }
+    const byShortcut = new Map(shortcuts.map(({ shortcut, handler }) => [shortcut, handler]))
+    const unlisten = window.compassDesktop.shortcuts.onPressed((shortcut) => {
+      byShortcut.get(shortcut)?.()
+    })
 
-    // Return unregister function
+    await window.compassDesktop.shortcuts.register(shortcuts.map(({ shortcut }) => shortcut))
+    registeredShortcuts.push(...shortcuts.map(({ shortcut, handler }) => ({ id: shortcut, handler })))
+
     return async () => {
-      for (const { id } of registeredShortcuts) {
-        try {
-          await unregister(id)
-        } catch {
-          // Already unregistered or failed
-        }
-      }
+      unlisten()
+      await window.compassDesktop?.shortcuts.unregisterAll()
       registeredShortcuts.length = 0
     }
   } catch (error) {
@@ -102,13 +90,10 @@ export async function registerShortcuts(
 
 // Unregister a specific shortcut
 export async function unregisterShortcut(shortcut: string): Promise<void> {
-  if (!isTauri()) return
+  if (!isElectron() || !window.compassDesktop) return
 
   try {
-    const { unregister } = await import(
-      "@tauri-apps/plugin-global-shortcut"
-    )
-    await unregister(shortcut)
+    await window.compassDesktop.shortcuts.unregisterAll()
     const index = registeredShortcuts.findIndex((s) => s.id === shortcut)
     if (index >= 0) {
       registeredShortcuts.splice(index, 1)
@@ -122,13 +107,10 @@ export async function unregisterShortcut(shortcut: string): Promise<void> {
 export async function isShortcutRegistered(
   shortcut: string,
 ): Promise<boolean> {
-  if (!isTauri()) return false
+  if (!isElectron() || !window.compassDesktop) return false
 
   try {
-    const { isRegistered } = await import(
-      "@tauri-apps/plugin-global-shortcut"
-    )
-    return await isRegistered(shortcut)
+    return await window.compassDesktop.shortcuts.isRegistered(shortcut)
   } catch {
     return false
   }

@@ -4,14 +4,14 @@ import type { DatabaseProvider } from "../interface"
 
 // Provider-agnostic tests using describe.each
 // Currently only MemoryProvider is fully functional for testing
-// D1 and Tauri providers require specific runtime environments
+  // D1 and Electron providers require specific runtime environments
 
 type ProviderFactory = () => Promise<DatabaseProvider> | DatabaseProvider
 
 const providerFactories: Array<[string, ProviderFactory]> = [
   ["MemoryProvider", () => createMemoryProvider()],
   // D1 provider requires Cloudflare Workers environment
-  // Tauri provider requires Tauri runtime
+  // Electron provider requires Electron runtime
 ]
 
 describe.each(providerFactories)("%s", (name, createProvider) => {

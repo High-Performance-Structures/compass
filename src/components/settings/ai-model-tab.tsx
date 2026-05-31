@@ -324,7 +324,7 @@ function ProviderConfigSection({
       const { verifier, challenge, state } = await generatePKCE()
       const url = buildAuthUrl(challenge, state)
 
-      // Open URL using platform-aware function (Tauri shell or browser popup)
+      // Open URL using the platform-aware browser/desktop shell helper.
       const opened = await openExternalUrl(url, {
         windowName: "anthropic-oauth",
         windowFeatures: "width=600,height=800",

@@ -6,7 +6,7 @@ export type DrizzleDB =
   | DrizzleD1Database<Record<string, unknown>>
   | BetterSQLite3Database<Record<string, unknown>>
 
-export type ProviderType = "d1" | "tauri" | "memory"
+export type ProviderType = "d1" | "electron" | "memory"
 
 export interface DatabaseProvider {
   readonly type: ProviderType
@@ -16,11 +16,11 @@ export interface DatabaseProvider {
   close?(): Promise<void>
 }
 
-// Platform detection for Tauri desktop
+// Platform detection for Electron desktop
 // Safe for SSR - returns false when window is undefined
-export function isTauri(): boolean {
+export function isElectron(): boolean {
   if (typeof window === "undefined") return false
-  return "__TAURI__" in window
+  return !!window.compassDesktop
 }
 
 // Check if running in Cloudflare Workers (D1 available)
@@ -38,7 +38,7 @@ export function isCloudflareWorker(): boolean {
 
 // Detect current platform
 export function detectPlatform(): ProviderType {
-  if (isTauri()) return "tauri"
+  if (isElectron()) return "electron"
   if (isCloudflareWorker()) return "d1"
   return "memory"
 }
