@@ -2,7 +2,6 @@ import type * as React from "react"
 import {
   IconAddressBook,
   IconClipboardText,
-  IconCompass,
   IconFileDollar,
   IconFolderSearch,
   IconMailForward,
@@ -10,6 +9,7 @@ import {
 } from "@tabler/icons-react"
 
 import { getProjects } from "@/app/actions/projects"
+import { ProjectContextWatermarkShell } from "@/components/projects/project-context-watermark-shell"
 import { ProjectQuickSwitcher } from "@/components/projects/project-quick-switcher"
 import { Badge } from "@/components/ui/badge"
 
@@ -91,74 +91,63 @@ export default async function ProjectSectionPickerPage({
   const projects = await getProjects()
 
   return (
-    <div className="relative flex-1 overflow-hidden p-4 pt-6 sm:p-6 md:p-8">
-      <IconCompass
-        aria-hidden="true"
-        stroke={1}
-        className="pointer-events-none absolute -right-16 bottom-8 z-0 size-[32rem] rotate-[-14deg] text-primary/20"
-      />
-      <div
-        aria-hidden="true"
-        className="pointer-events-none absolute inset-0 z-0 bg-gradient-to-br from-background via-background/88 to-background/70"
-      />
-      <div className="relative z-10 space-y-6">
-        <div className="max-w-3xl">
-          <div className="flex items-center gap-2">
-            {target.icon}
-            <h1 className="text-2xl font-semibold tracking-tight">
-              {target.title}
-            </h1>
+    <ProjectContextWatermarkShell>
+      <div className="max-w-3xl">
+        <div className="flex items-center gap-2">
+          {target.icon}
+          <h1 className="text-2xl font-semibold tracking-tight">
+            {target.title}
+          </h1>
+        </div>
+        <p className="mt-2 text-sm text-muted-foreground">
+          {target.description}
+        </p>
+      </div>
+
+      <section className="rounded-xl border bg-muted/30 p-4">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <p className="text-sm font-semibold">Project required first</p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Select the job first so the work lands in the right place.
+            </p>
           </div>
-          <p className="mt-2 text-sm text-muted-foreground">
-            {target.description}
+          <Badge variant="secondary">{target.badge}</Badge>
+        </div>
+      </section>
+
+      <section className="space-y-3">
+        <div>
+          <h2 className="text-sm font-semibold">Select project</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Search by project number, name, client, or accounting context.
           </p>
         </div>
 
-        <section className="rounded-xl border bg-muted/30 p-4">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <p className="text-sm font-semibold">Project required first</p>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Select the job first so the work lands in the right place.
-              </p>
-            </div>
-            <Badge variant="secondary">{target.badge}</Badge>
-          </div>
-        </section>
-
-        <section className="space-y-3">
-          <div>
-            <h2 className="text-sm font-semibold">Select project</h2>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Search by project number, name, client, or accounting context.
+        {projects.length > 0 ? (
+          <div className="max-w-xl rounded-xl border bg-background p-4 shadow-sm">
+            <ProjectQuickSwitcher
+              projects={projects}
+              targetSection={target.section}
+              placeholder={target.placeholder}
+              className="w-full"
+            />
+            <p className="mt-3 text-xs text-muted-foreground">
+              Opens {target.title} for the selected project.
             </p>
           </div>
-
-          {projects.length > 0 ? (
-            <div className="max-w-xl rounded-xl border bg-background p-4 shadow-sm">
-              <ProjectQuickSwitcher
-                projects={projects}
-                targetSection={target.section}
-                placeholder={target.placeholder}
-                className="w-full"
-              />
-              <p className="mt-3 text-xs text-muted-foreground">
-                Opens {target.title} for the selected project.
-              </p>
-            </div>
-          ) : (
-            <div className="rounded-lg border bg-background p-8 text-center">
-              <IconFolderSearch className="mx-auto size-6 text-muted-foreground" />
-              <h2 className="mt-3 text-sm font-semibold">
-                No projects available
-              </h2>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Add or sync projects first.
-              </p>
-            </div>
-          )}
-        </section>
-      </div>
-    </div>
+        ) : (
+          <div className="rounded-lg border bg-background p-8 text-center">
+            <IconFolderSearch className="mx-auto size-6 text-muted-foreground" />
+            <h2 className="mt-3 text-sm font-semibold">
+              No projects available
+            </h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Add or sync projects first.
+            </p>
+          </div>
+        )}
+      </section>
+    </ProjectContextWatermarkShell>
   )
 }

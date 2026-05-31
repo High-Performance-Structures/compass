@@ -38,6 +38,7 @@ type ProjectSectionKey =
   | "rfis"
   | "purchase-orders"
   | "budget"
+  | "financials"
   | "contacts"
   | "preview-owner"
   | "preview-sub-vendor"
@@ -99,6 +100,12 @@ const PROJECT_SECTION_ITEMS: readonly ProjectSectionItem[] = [
     section: "budget",
   },
   {
+    title: "Financials",
+    hrefSuffix: "financials",
+    icon: IconFileDollar,
+    section: "financials",
+  },
+  {
     title: "Contacts",
     hrefSuffix: "contacts",
     icon: IconAddressBook,
@@ -141,6 +148,7 @@ function activeProjectSection(pathname: string | null): ProjectSectionKey {
     case "budget":
     case "contacts":
     case "daily-logs":
+    case "financials":
     case "owner-updates":
     case "photos":
     case "purchase-orders":

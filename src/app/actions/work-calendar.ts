@@ -61,9 +61,16 @@ function projectLabel(project: ProjectRow): string {
 }
 
 function isClosedStatus(status: string): boolean {
-  return ["closed", "complete", "completed", "cancelled", "void"].includes(
-    status.trim().toLowerCase()
-  )
+  return [
+    "closed",
+    "complete",
+    "completed",
+    "inactive",
+    "archive",
+    "archived",
+    "cancelled",
+    "void",
+  ].includes(status.trim().toLowerCase())
 }
 
 function operationKind(recordType: string): WorkCalendarEntryKind {

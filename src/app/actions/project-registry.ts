@@ -297,7 +297,7 @@ export async function updateProjectRegistry(
     const status = optionValue(
       formData,
       "status",
-      ["OPEN", "WARRANTY", "COMPLETE", "OTHER"],
+      ["OPEN", "WARRANTY", "COMPLETE", "INACTIVE", "ARCHIVE", "OTHER"],
       "OPEN"
     )
     const sageJobId = nullableString(formData, "sageJobId")

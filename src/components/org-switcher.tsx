@@ -94,7 +94,7 @@ export function OrgSwitcher({
             aria-label="Compass home"
           >
             <Image
-              src="/hps-h-logo.png"
+              src="/department-logos/hps-h-green.svg"
               alt="HPS"
               width={36}
               height={36}

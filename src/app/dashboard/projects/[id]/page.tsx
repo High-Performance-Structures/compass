@@ -25,6 +25,8 @@ import {
 import {
   getProjectOperationsSummary,
   type ProjectOperationsSummary,
+  getProjectSageSyncQueue,
+  type ProjectSageSyncQueue,
 } from "@/app/actions/project-operations"
 import {
   getProjectBudgetSummary,
@@ -110,6 +112,7 @@ export default async function ProjectSummaryPage({
   let budgetSummary: ProjectBudgetSummary | null = null
   let contactsSummary: ProjectContactsSummary | null = null
   let operationsSummary: ProjectOperationsSummary | null = null
+  let sageSyncQueue: ProjectSageSyncQueue | null = null
   let rfiSummary: ProjectRfiSummary | null = null
   let canEditRegistry = false
   let userRole: string | null = null
@@ -207,6 +210,7 @@ export default async function ProjectSummaryPage({
     }
     if (canEditRegistry) {
       registry = await getProjectRegistry(id)
+      sageSyncQueue = await getProjectSageSyncQueue(id)
     }
     fieldSummary = await getProjectFieldSummary(id)
     budgetSummary = await getProjectBudgetSummary(id, "internal")
@@ -365,6 +369,7 @@ export default async function ProjectSummaryPage({
             budgetSummary={budgetSummary}
             rfiSummary={rfiSummary}
             registry={registry}
+            sageSyncQueue={sageSyncQueue}
             canEditRegistry={canEditRegistry}
             initialRoleId={safeInitialWorkflowRoleId}
             allowedRoleIds={allowedRoleIds}

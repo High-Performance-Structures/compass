@@ -267,41 +267,41 @@ function taskFallsOnDay(
 
 function signalClasses(tone: SignalTone): string {
   if (tone === "green") {
-    return "border-emerald-200 bg-emerald-50 text-emerald-950 dark:border-emerald-900/60 dark:bg-emerald-950/20 dark:text-emerald-100"
+    return "border-[#3f7d4d] bg-card text-foreground"
   }
   if (tone === "amber") {
-    return "border-amber-200 bg-amber-50 text-amber-950 dark:border-amber-900/60 dark:bg-amber-950/20 dark:text-amber-100"
+    return "border-[#9d832c] bg-card text-foreground"
   }
   if (tone === "blue") {
-    return "border-sky-200 bg-sky-50 text-sky-950 dark:border-sky-900/60 dark:bg-sky-950/20 dark:text-sky-100"
+    return "border-[#2f5963] bg-card text-foreground"
   }
   if (tone === "red") {
-    return "border-rose-200 bg-rose-50 text-rose-950 dark:border-rose-900/60 dark:bg-rose-950/20 dark:text-rose-100"
+    return "border-[#8a3a2e] bg-card text-foreground"
   }
-  return "border-border bg-muted/50 text-foreground"
+  return "border-border bg-card text-foreground"
 }
 
 function signalHoverClasses(tone: SignalTone): string {
   if (tone === "green") {
-    return "hover:border-emerald-500 hover:bg-emerald-200/70 hover:ring-2 hover:ring-emerald-400/35 dark:hover:border-emerald-500 dark:hover:bg-emerald-800/45 dark:hover:ring-emerald-400/30"
+    return "hover:border-[#3f7d4d] hover:bg-muted hover:ring-2 hover:ring-[#3f7d4d]/25"
   }
   if (tone === "amber") {
-    return "hover:border-amber-500 hover:bg-amber-200/75 hover:ring-2 hover:ring-amber-400/35 dark:hover:border-amber-500 dark:hover:bg-amber-800/45 dark:hover:ring-amber-400/30"
+    return "hover:border-[#9d832c] hover:bg-muted hover:ring-2 hover:ring-[#9d832c]/25"
   }
   if (tone === "blue") {
-    return "hover:border-sky-500 hover:bg-sky-200/75 hover:ring-2 hover:ring-sky-400/35 dark:hover:border-sky-500 dark:hover:bg-sky-800/45 dark:hover:ring-sky-400/30"
+    return "hover:border-[#2f5963] hover:bg-muted hover:ring-2 hover:ring-[#2f5963]/25"
   }
   if (tone === "red") {
-    return "hover:border-rose-500 hover:bg-rose-200/75 hover:ring-2 hover:ring-rose-400/35 dark:hover:border-rose-500 dark:hover:bg-rose-800/45 dark:hover:ring-rose-400/30"
+    return "hover:border-[#8a3a2e] hover:bg-muted hover:ring-2 hover:ring-[#8a3a2e]/25"
   }
   return "hover:border-primary hover:bg-accent hover:ring-2 hover:ring-primary/25"
 }
 
 function signalAccentClasses(tone: SignalTone): string {
-  if (tone === "green") return "bg-emerald-500"
-  if (tone === "amber") return "bg-amber-500"
-  if (tone === "blue") return "bg-sky-500"
-  if (tone === "red") return "bg-rose-500"
+  if (tone === "green") return "bg-[#3f7d4d]"
+  if (tone === "amber") return "bg-[#9d832c]"
+  if (tone === "blue") return "bg-[#2f5963]"
+  if (tone === "red") return "bg-[#8a3a2e]"
   return "bg-muted-foreground"
 }
 
@@ -966,7 +966,7 @@ function CherishPulse(): React.ReactElement {
             <Badge variant="outline">Field friendly</Badge>
           </div>
 
-          <div className="mt-3 rounded-md bg-emerald-950/[0.04] p-3">
+          <div className="mt-3 rounded-md border bg-card p-3">
             <div className="flex flex-wrap items-center gap-2">
               <p className="text-xs font-semibold uppercase tracking-normal text-muted-foreground">
                 This week
@@ -1131,7 +1131,7 @@ function CherishPulse(): React.ReactElement {
                   key={response.id}
                   className={cn(
                     "rounded-md border p-2.5",
-                    response.visibility === "private" && "border-amber-200 bg-amber-50/40"
+                    response.visibility === "private" && "border-[#9d832c] bg-card"
                   )}
                 >
                   <div className="flex items-center justify-between gap-2">
@@ -1260,15 +1260,15 @@ function CompassNodeCard({
         )}
         <span
           className={cn(
-            "rounded-md border p-2 text-muted-foreground transition-colors group-hover:text-foreground",
-            node.tone === "project" && "bg-emerald-50 dark:bg-emerald-950/20",
-            node.tone === "schedule" && "bg-sky-50 dark:bg-sky-950/20",
-            node.tone === "field" && "bg-amber-50 dark:bg-amber-950/20",
-            node.tone === "decision" && "bg-rose-50 dark:bg-rose-950/20",
-            node.tone === "money" && "bg-lime-50 dark:bg-lime-950/20",
-            node.tone === "files" && "bg-cyan-50 dark:bg-cyan-950/20",
-            node.tone === "talk" && "bg-indigo-50 dark:bg-indigo-950/20",
-            node.tone === "automation" && "bg-violet-50 dark:bg-violet-950/20"
+            "rounded-md border bg-card p-2 text-muted-foreground transition-colors group-hover:text-foreground",
+            node.tone === "project" && "border-[#6f471f] text-[#6f471f]",
+            node.tone === "schedule" && "border-[#2f5963] text-[#2f5963]",
+            node.tone === "field" && "border-[#9d832c] text-[#715d1c]",
+            node.tone === "decision" && "border-[#8a3a2e] text-[#8a3a2e]",
+            node.tone === "money" && "border-[#3f7d4d] text-[#3f7d4d]",
+            node.tone === "files" && "border-[#585149] text-[#585149]",
+            node.tone === "talk" && "border-[#2f5963] text-[#2f5963]",
+            node.tone === "automation" && "border-[#6f471f] text-[#6f471f]"
           )}
         >
           {node.icon}
@@ -1671,9 +1671,9 @@ export function OperationalDashboard({
           </CardHeader>
           <CardContent className="space-y-4">
             {(overview.openRfis.length > 0 || overview.operations.length > 0) && (
-              <div className="grid gap-2 rounded-md border border-amber-700/25 bg-amber-700/10 px-3 py-2 lg:grid-cols-[auto_minmax(0,1fr)] lg:items-center">
+              <div className="grid gap-2 rounded-md border border-[#9d832c] bg-card px-3 py-2 lg:grid-cols-[auto_minmax(0,1fr)] lg:items-center">
                 <div className="flex min-w-0 items-center gap-2 text-sm font-semibold">
-                  <IconAlertCircle className="size-4 shrink-0 text-amber-900" />
+                  <IconAlertCircle className="size-4 shrink-0 text-[#715d1c]" />
                   <span className="truncate">Critical Attention</span>
                   <Badge variant="outline">
                     {overview.openRfis.length + overview.operations.length}
@@ -1745,7 +1745,7 @@ export function OperationalDashboard({
                         <Link
                           key={`${day}-${task.id}`}
                           href={`/dashboard/projects/${task.projectId}/schedule`}
-                          className="block rounded-md border border-sky-700/20 bg-sky-700/10 p-2 text-xs transition-colors hover:bg-sky-700/15"
+                          className="block rounded-md border border-[#2f5963] bg-card p-2 text-xs transition-colors hover:bg-muted"
                         >
                           <span className="line-clamp-2 font-medium">
                             {task.title}

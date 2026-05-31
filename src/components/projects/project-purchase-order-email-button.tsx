@@ -161,7 +161,7 @@ export function ProjectPurchaseOrderEmailButton({
           </div>
 
           {status.kind === "sent" && (
-            <p className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+            <p className="rounded-md border border-[#3f7d4d] bg-card px-3 py-2 text-sm text-[#3f7d4d]">
               {status.message}
             </p>
           )}

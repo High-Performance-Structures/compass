@@ -108,13 +108,13 @@ function kindLabel(kind: WorkCalendarEntryKind): string {
 function kindTone(kind: WorkCalendarEntryKind): string {
   switch (kind) {
     case "schedule":
-      return "border-sky-700/25 bg-sky-700/10 text-sky-900"
+      return "border-[#2f5963] bg-card text-[#2f5963]"
     case "task":
-      return "border-emerald-700/25 bg-emerald-700/10 text-emerald-900"
+      return "border-[#3f7d4d] bg-card text-[#3f7d4d]"
     case "rfi":
-      return "border-amber-700/30 bg-amber-700/10 text-amber-900"
+      return "border-[#9d832c] bg-card text-[#715d1c]"
     case "purchase_order":
-      return "border-violet-700/25 bg-violet-700/10 text-violet-900"
+      return "border-[#6f471f] bg-card text-[#6f471f]"
   }
 }
 
@@ -228,7 +228,7 @@ export function WorkCalendar({
         <div className="mx-auto grid max-w-7xl gap-6 px-4 py-5 md:px-6 lg:grid-cols-[minmax(0,1fr)_26rem]">
           <div className="min-w-0">
             <div className="flex items-center gap-2">
-              <span className="inline-flex size-10 items-center justify-center rounded-full border border-emerald-800/30 bg-emerald-800/10 text-emerald-900">
+              <span className="inline-flex size-10 items-center justify-center rounded-md border border-[#3f7d4d] bg-card text-[#3f7d4d]">
                 <IconCalendarEvent className="size-5" />
               </span>
               <div>

@@ -36,6 +36,7 @@ function projectSectionHref(
     case "budget":
     case "contacts":
     case "daily-logs":
+    case "financials":
     case "owner-updates":
     case "photos":
     case "purchase-orders":

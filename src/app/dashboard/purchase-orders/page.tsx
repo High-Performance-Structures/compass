@@ -1,6 +1,7 @@
 import { IconShoppingCart } from "@tabler/icons-react"
 
 import { getProjects } from "@/app/actions/projects"
+import { ProjectContextWatermarkShell } from "@/components/projects/project-context-watermark-shell"
 import { ProjectQuickSwitcher } from "@/components/projects/project-quick-switcher"
 import { Badge } from "@/components/ui/badge"
 
@@ -8,7 +9,7 @@ export default async function PurchaseOrderProjectPickerPage() {
   const projects = await getProjects()
 
   return (
-    <div className="flex-1 space-y-6 p-4 pt-6 sm:p-6 md:p-8">
+    <ProjectContextWatermarkShell>
       <div className="max-w-3xl">
         <div className="flex items-center gap-2">
           <IconShoppingCart className="size-5 text-muted-foreground" />
@@ -21,7 +22,7 @@ export default async function PurchaseOrderProjectPickerPage() {
         </p>
       </div>
 
-      <section className="rounded-xl border bg-emerald-50/80 p-4 text-emerald-950 dark:border-emerald-900/60 dark:bg-emerald-950/20 dark:text-emerald-100">
+      <section className="clarity-panel border-l-[6px] border-l-[#3f7d4d] p-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <p className="text-sm font-semibold">Project required first</p>
@@ -65,6 +66,6 @@ export default async function PurchaseOrderProjectPickerPage() {
           </div>
         )}
       </section>
-    </div>
+    </ProjectContextWatermarkShell>
   )
 }

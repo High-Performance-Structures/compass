@@ -5,6 +5,8 @@ import { revalidatePath } from "next/cache"
 
 import { getDb } from "@/db"
 import {
+  projectBudgetApplications,
+  projectBudgetLines,
   projectContacts,
   projectOperations,
   projectPurchaseOrderLines,
@@ -86,6 +88,38 @@ export type ProjectOperationsSummary = {
   readonly commitments: readonly ProjectOperationItem[]
 }
 
+export type ProjectSageSyncItemKind =
+  | "purchase_order"
+  | "task"
+  | "vendor_bill"
+  | "owner_pay_application"
+  | "rfq"
+  | "budget_application"
+  | "budget_line"
+
+export type ProjectSageSyncItem = {
+  readonly id: string
+  readonly kind: ProjectSageSyncItemKind
+  readonly table: "project_operations" | "project_budget_applications" | "project_budget_lines"
+  readonly title: string
+  readonly recordNumber: string | null
+  readonly status: string
+  readonly syncStatus: string
+  readonly sageWriteStatus: string | null
+  readonly syncDirection: string | null
+  readonly amount: number | null
+  readonly dueDate: string | null
+  readonly updatedAt: string
+  readonly detail: string | null
+}
+
+export type ProjectSageSyncQueue = {
+  readonly pendingItems: readonly ProjectSageSyncItem[]
+  readonly readyCount: number
+  readonly queuedCount: number
+  readonly blockedCount: number
+}
+
 type ProjectOperationActionResult =
   | { readonly success: true; readonly id: string }
   | { readonly success: false; readonly error: string }
@@ -96,6 +130,10 @@ type ProjectOperationEmailActionResult =
       readonly status: string
       readonly providerMessageId: string | null
     }
+  | { readonly success: false; readonly error: string }
+
+type ProjectSyncActionResult =
+  | { readonly success: true; readonly updatedCount: number }
   | { readonly success: false; readonly error: string }
 
 export type CreatePurchaseOrderRequestInput = {
@@ -306,6 +344,40 @@ function normalizeTaskRecordType(value: ProjectTaskRecordType): ProjectTaskRecor
   if (value === "supplier_task") return "supplier_task"
   if (value === "schedule_task") return "schedule_task"
   return "staff_task"
+}
+
+function operationSyncKind(recordType: string): ProjectSageSyncItemKind {
+  if (recordType === "purchase_order") return "purchase_order"
+  if (recordType === "vendor_bill") return "vendor_bill"
+  if (recordType === "owner_pay_application") return "owner_pay_application"
+  if (recordType === "rfq") return "rfq"
+  return "task"
+}
+
+function operationCanQueueForSage(
+  operation: typeof projectOperations.$inferSelect
+): boolean {
+  if (operation.syncDirection !== "write") return false
+  if (["queued_sage", "syncing", "synced"].includes(operation.syncStatus)) {
+    return false
+  }
+  if (operation.sageWriteStatus === "not_ready") return false
+  return ["pending_sage", "needs_review", "failed", "compass_only"].includes(
+    operation.syncStatus
+  )
+}
+
+function syncQueueStatus(item: {
+  readonly syncStatus: string
+  readonly sageWriteStatus: string | null
+  readonly syncDirection: string | null
+}): "ready" | "queued" | "blocked" {
+  if (item.syncStatus === "queued_sage" || item.syncStatus === "syncing") {
+    return "queued"
+  }
+  if (item.syncDirection !== "write") return "blocked"
+  if (item.sageWriteStatus === "not_ready") return "blocked"
+  return "ready"
 }
 
 function numberOrDefault(value: number | null, fallback: number): number {
@@ -775,6 +847,212 @@ export async function getProjectOperationsSummary(
     nextScheduleItem,
     purchaseOrders: purchaseOrders.slice(0, 5).map(toOperationItem),
     commitments: commitments.slice(0, 6).map(toOperationItem),
+  }
+}
+
+export async function getProjectSageSyncQueue(
+  projectId: string
+): Promise<ProjectSageSyncQueue> {
+  const db = await verifyProjectAccess(projectId)
+
+  const operationRows = await db
+    .select()
+    .from(projectOperations)
+    .where(eq(projectOperations.projectId, projectId))
+    .orderBy(asc(projectOperations.updatedAt), asc(projectOperations.title))
+
+  const applicationRows = await db
+    .select()
+    .from(projectBudgetApplications)
+    .where(eq(projectBudgetApplications.projectId, projectId))
+    .orderBy(asc(projectBudgetApplications.updatedAt))
+
+  const budgetLineRows = await db
+    .select()
+    .from(projectBudgetLines)
+    .where(eq(projectBudgetLines.projectId, projectId))
+    .orderBy(asc(projectBudgetLines.updatedAt), asc(projectBudgetLines.costCode))
+
+  const operationItems: ProjectSageSyncItem[] = operationRows
+    .filter(
+      (operation) =>
+        operation.syncDirection === "write" ||
+        operation.syncStatus !== "synced" ||
+        operation.sageWriteStatus !== "not_ready"
+    )
+    .map((operation) => ({
+      id: operation.id,
+      kind: operationSyncKind(operation.sourceRecordType),
+      table: "project_operations",
+      title: operation.title,
+      recordNumber: operation.sourceRecordNumber,
+      status: operation.status,
+      syncStatus: operation.syncStatus,
+      sageWriteStatus: operation.sageWriteStatus,
+      syncDirection: operation.syncDirection,
+      amount: operation.amount,
+      dueDate: operation.dueDate ?? operation.startDate,
+      updatedAt: operation.updatedAt,
+      detail: operation.companyName ?? operation.assigneeName,
+    }))
+
+  const applicationItems: ProjectSageSyncItem[] = applicationRows
+    .filter((application) => application.syncStatus !== "synced")
+    .map((application) => ({
+      id: application.id,
+      kind: "budget_application",
+      table: "project_budget_applications",
+      title: `Pay application ${application.applicationNumber}`,
+      recordNumber: application.applicationNumber,
+      status: application.status,
+      syncStatus: application.syncStatus,
+      sageWriteStatus: null,
+      syncDirection: "read",
+      amount: application.currentPaymentDue,
+      dueDate: application.periodTo,
+      updatedAt: application.updatedAt,
+      detail: application.ownerVisible ? "Owner visible" : "Internal only",
+    }))
+
+  const budgetLineItems: ProjectSageSyncItem[] = budgetLineRows
+    .filter((line) => line.syncStatus !== "synced")
+    .slice(0, 25)
+    .map((line) => ({
+      id: line.id,
+      kind: "budget_line",
+      table: "project_budget_lines",
+      title: line.description,
+      recordNumber: line.costCode,
+      status: "budget_line",
+      syncStatus: line.syncStatus,
+      sageWriteStatus: null,
+      syncDirection: "read",
+      amount: line.currentCosts,
+      dueDate: null,
+      updatedAt: line.updatedAt,
+      detail: `${line.csiDivision} - ${line.csiDivisionName}`,
+    }))
+
+  const pendingItems = [
+    ...operationItems,
+    ...applicationItems,
+    ...budgetLineItems,
+  ]
+
+  const counts = pendingItems.reduce(
+    (summary, item) => {
+      const status = syncQueueStatus(item)
+      if (status === "queued") return { ...summary, queuedCount: summary.queuedCount + 1 }
+      if (status === "blocked") return { ...summary, blockedCount: summary.blockedCount + 1 }
+      return { ...summary, readyCount: summary.readyCount + 1 }
+    },
+    { readyCount: 0, queuedCount: 0, blockedCount: 0 }
+  )
+
+  return {
+    pendingItems,
+    readyCount: counts.readyCount,
+    queuedCount: counts.queuedCount,
+    blockedCount: counts.blockedCount,
+  }
+}
+
+export async function queueProjectOperationForSageSync(
+  projectId: string,
+  operationId: string
+): Promise<ProjectSyncActionResult> {
+  try {
+    const db = await verifyProjectUpdateAccess(projectId)
+    const [operation] = await db
+      .select()
+      .from(projectOperations)
+      .where(
+        and(
+          eq(projectOperations.projectId, projectId),
+          eq(projectOperations.id, operationId)
+        )
+      )
+      .limit(1)
+
+    if (!operation) return { success: false, error: "Sync item not found" }
+    if (!operationCanQueueForSage(operation)) {
+      return {
+        success: false,
+        error: "This item is not ready for Sage sync yet.",
+      }
+    }
+
+    const now = new Date().toISOString()
+    await db
+      .update(projectOperations)
+      .set({
+        syncStatus: "queued_sage",
+        sageWriteStatus: "queued",
+        updatedAt: now,
+      })
+      .where(eq(projectOperations.id, operationId))
+
+    await db
+      .update(projectPurchaseOrderLines)
+      .set({ syncStatus: "queued_sage", updatedAt: now })
+      .where(eq(projectPurchaseOrderLines.operationId, operationId))
+
+    revalidatePath(`/dashboard/projects/${projectId}`)
+    revalidatePath(`/dashboard/projects/${projectId}/purchase-orders`)
+    revalidatePath("/dashboard")
+    return { success: true, updatedCount: 1 }
+  } catch (error) {
+    return {
+      success: false,
+      error:
+        error instanceof Error ? error.message : "Failed to queue Sage sync",
+    }
+  }
+}
+
+export async function queueProjectOperationsForSageSync(
+  projectId: string
+): Promise<ProjectSyncActionResult> {
+  try {
+    const db = await verifyProjectUpdateAccess(projectId)
+    const operations = await db
+      .select()
+      .from(projectOperations)
+      .where(eq(projectOperations.projectId, projectId))
+
+    const readyIds = operations
+      .filter(operationCanQueueForSage)
+      .map((operation) => operation.id)
+
+    if (readyIds.length === 0) {
+      return { success: false, error: "No Sage-ready items to queue." }
+    }
+
+    const now = new Date().toISOString()
+    await db
+      .update(projectOperations)
+      .set({
+        syncStatus: "queued_sage",
+        sageWriteStatus: "queued",
+        updatedAt: now,
+      })
+      .where(inArray(projectOperations.id, readyIds))
+
+    await db
+      .update(projectPurchaseOrderLines)
+      .set({ syncStatus: "queued_sage", updatedAt: now })
+      .where(inArray(projectPurchaseOrderLines.operationId, readyIds))
+
+    revalidatePath(`/dashboard/projects/${projectId}`)
+    revalidatePath(`/dashboard/projects/${projectId}/purchase-orders`)
+    revalidatePath("/dashboard")
+    return { success: true, updatedCount: readyIds.length }
+  } catch (error) {
+    return {
+      success: false,
+      error:
+        error instanceof Error ? error.message : "Failed to queue Sage sync",
+    }
   }
 }
 

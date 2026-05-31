@@ -2,7 +2,7 @@
 
 import * as React from "react"
 import Link from "next/link"
-import { useSearchParams } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import {
   IconAddressBook,
   IconBrandGoogleDrive,
@@ -20,12 +20,36 @@ import {
 } from "@tabler/icons-react"
 
 import type { ProjectsHubProject } from "@/app/dashboard/projects/page"
+import {
+  createProjectShell,
+  updateProjectStatus,
+  type ProjectStatusValue,
+} from "@/app/actions/projects"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { cn } from "@/lib/utils"
 
 type DepartmentId = "O" | "H" | "N" | "D" | "UNASSIGNED"
-type ProjectStatusBucket = "active" | "warranty" | "complete" | "other"
+type ProjectStatusBucket =
+  | "active"
+  | "warranty"
+  | "complete"
+  | "inactive"
+  | "archive"
+  | "other"
+
+type ProjectStatusOption = {
+  readonly value: ProjectStatusValue
+  readonly label: string
+  readonly bucket: ProjectStatusBucket
+}
 
 type DepartmentConfig = {
   readonly id: DepartmentId
@@ -33,6 +57,7 @@ type DepartmentConfig = {
   readonly shortLabel: string
   readonly description: string
   readonly accentClassName: string
+  readonly logoSrc: string | null
   readonly icon: React.ReactNode
 }
 
@@ -52,7 +77,8 @@ const DEPARTMENTS: readonly DepartmentConfig[] = [
     label: "ORC Projects",
     shortLabel: "ORC",
     description: "Open Range Construction jobs and owner-facing builds.",
-    accentClassName: "border-emerald-700/35 bg-emerald-700/10 text-emerald-900",
+    accentClassName: "border-[#6f471f] bg-[#6f471f] text-white",
+    logoSrc: "/department-logos/orc-mark.png",
     icon: <IconHome className="size-4" />,
   },
   {
@@ -60,7 +86,8 @@ const DEPARTMENTS: readonly DepartmentConfig[] = [
     label: "HPS Projects",
     shortLabel: "HPS",
     description: "High Performance Structures work and internal construction.",
-    accentClassName: "border-sky-700/30 bg-sky-700/10 text-sky-900",
+    accentClassName: "border-[#3f7d4d] bg-[#3f7d4d] text-white",
+    logoSrc: "/department-logos/hps-h-green.svg",
     icon: <IconBuildingCommunity className="size-4" />,
   },
   {
@@ -68,7 +95,8 @@ const DEPARTMENTS: readonly DepartmentConfig[] = [
     label: "Nu-Tech Projects",
     shortLabel: "Nu-Tech",
     description: "ICF sales, bracing rental, support, and related projects.",
-    accentClassName: "border-amber-700/30 bg-amber-700/10 text-amber-900",
+    accentClassName: "border-[#9d832c] bg-[#9d832c] text-white",
+    logoSrc: "/department-logos/nu-tech-n.png",
     icon: <IconTool className="size-4" />,
   },
   {
@@ -76,7 +104,8 @@ const DEPARTMENTS: readonly DepartmentConfig[] = [
     label: "Design Projects",
     shortLabel: "Design",
     description: "Design-only scopes, drafting, estimating, and handoff work.",
-    accentClassName: "border-violet-700/30 bg-violet-700/10 text-violet-900",
+    accentClassName: "border-[#6f471f] bg-[#6f471f] text-white",
+    logoSrc: "/department-logos/orc-mark.png",
     icon: <IconPaint className="size-4" />,
   },
   {
@@ -85,6 +114,7 @@ const DEPARTMENTS: readonly DepartmentConfig[] = [
     shortLabel: "Other",
     description: "Projects that still need an O, H, N, or D project number.",
     accentClassName: "border-muted-foreground/25 bg-muted text-muted-foreground",
+    logoSrc: null,
     icon: <IconFolder className="size-4" />,
   },
 ]
@@ -103,13 +133,32 @@ const STATUS_FILTERS: readonly StatusFilterConfig[] = [
   {
     id: "complete",
     label: "Complete",
-    description: "Closed, archived, or historical projects.",
+    description: "Completed projects still kept in regular project records.",
+  },
+  {
+    id: "inactive",
+    label: "Inactive",
+    description: "Paused work that should not appear in day-to-day active views.",
+  },
+  {
+    id: "archive",
+    label: "Archive",
+    description: "Historical projects kept for reference.",
   },
   {
     id: "other",
     label: "Other",
     description: "Imported statuses that need cleanup or mapping.",
   },
+]
+
+const PROJECT_STATUS_OPTIONS: readonly ProjectStatusOption[] = [
+  { value: "OPEN", label: "Active", bucket: "active" },
+  { value: "WARRANTY", label: "Warranty", bucket: "warranty" },
+  { value: "COMPLETE", label: "Complete", bucket: "complete" },
+  { value: "INACTIVE", label: "Inactive", bucket: "inactive" },
+  { value: "ARCHIVE", label: "Archive", bucket: "archive" },
+  { value: "OTHER", label: "Other", bucket: "other" },
 ]
 
 function normalizeSearchValue(value: string): string {
@@ -149,10 +198,14 @@ function statusLabel(status: string): string {
   if (normalized === "construction") return "Active"
   if (normalized === "warranty") return "Warranty"
   if (normalized === "warranty service") return "Warranty"
+  if (normalized === "inactive") return "Inactive"
+  if (normalized === "paused") return "Inactive"
+  if (normalized === "archive") return "Archive"
+  if (normalized === "archived") return "Archive"
   if (normalized === "closed") return "Complete"
   if (normalized === "complete") return "Complete"
   if (normalized === "completed") return "Complete"
-  if (normalized === "archived") return "Complete"
+  if (normalized === "other") return "Other"
   return status
 }
 
@@ -175,17 +228,35 @@ function statusBucket(status: string): ProjectStatusBucket {
     return "warranty"
   }
 
+  if (normalized === "inactive" || normalized === "paused") {
+    return "inactive"
+  }
+
+  if (normalized === "archive" || normalized === "archived") {
+    return "archive"
+  }
+
   if (
     normalized === "closed" ||
     normalized === "complete" ||
-    normalized === "completed" ||
-    normalized === "archived" ||
-    normalized === "inactive"
+    normalized === "completed"
   ) {
     return "complete"
   }
 
   return "other"
+}
+
+function projectStatusValue(status: string): ProjectStatusValue {
+  const normalized = status.trim().toUpperCase().replace(/[^A-Z0-9]+/g, "_")
+  const option = PROJECT_STATUS_OPTIONS.find((item) => item.value === normalized)
+  if (option) return option.value
+
+  const bucket = statusBucket(status)
+  const bucketOption = PROJECT_STATUS_OPTIONS.find(
+    (item) => item.bucket === bucket
+  )
+  return bucketOption?.value ?? "OTHER"
 }
 
 function statusFilterLabel(statusFilters: readonly ProjectStatusBucket[]): string {
@@ -205,13 +276,13 @@ function googleDriveUrl(folderId: string): string {
 function departmentBorderClassName(departmentId: DepartmentId): string {
   switch (departmentId) {
     case "O":
-      return "border-l-emerald-700"
+      return "border-l-[#6f471f]"
     case "H":
-      return "border-l-sky-700"
+      return "border-l-[#3f7d4d]"
     case "N":
-      return "border-l-amber-700"
+      return "border-l-[#9d832c]"
     case "D":
-      return "border-l-violet-700"
+      return "border-l-[#6f471f]"
     case "UNASSIGNED":
       return "border-l-muted-foreground"
   }
@@ -220,13 +291,13 @@ function departmentBorderClassName(departmentId: DepartmentId): string {
 function departmentHeaderClassName(departmentId: DepartmentId): string {
   switch (departmentId) {
     case "O":
-      return "border-emerald-900/20 bg-emerald-900/[0.04]"
+      return "border-[#6f471f]/60 bg-card"
     case "H":
-      return "border-sky-900/20 bg-sky-900/[0.04]"
+      return "border-[#3f7d4d]/60 bg-card"
     case "N":
-      return "border-amber-900/25 bg-amber-900/[0.045]"
+      return "border-[#9d832c]/60 bg-card"
     case "D":
-      return "border-violet-900/20 bg-violet-900/[0.04]"
+      return "border-[#6f471f]/60 bg-card"
     case "UNASSIGNED":
       return "border-muted bg-muted/30"
   }
@@ -235,13 +306,13 @@ function departmentHeaderClassName(departmentId: DepartmentId): string {
 function departmentTabClassName(departmentId: DepartmentId): string {
   switch (departmentId) {
     case "O":
-      return "border-b-emerald-700"
+      return "border-b-[#6f471f] text-[#6f471f]"
     case "H":
-      return "border-b-sky-700"
+      return "border-b-[#3f7d4d] text-[#3f7d4d]"
     case "N":
-      return "border-b-amber-700"
+      return "border-b-[#9d832c] text-[#715d1c]"
     case "D":
-      return "border-b-violet-700"
+      return "border-b-[#6f471f] text-[#6f471f]"
     case "UNASSIGNED":
       return "border-b-muted-foreground"
   }
@@ -269,10 +340,111 @@ function projectMatchesSearch(
   return haystack.includes(normalizedQuery)
 }
 
+function DepartmentMark({
+  department,
+  size = "md",
+}: {
+  readonly department: DepartmentConfig
+  readonly size?: "sm" | "md"
+}): React.ReactElement {
+  const sizeClassName = size === "sm" ? "size-7" : "size-8"
+
+  if (department.logoSrc) {
+    return (
+      <span
+        className={cn(
+          "inline-flex items-center justify-center overflow-hidden rounded-[4px] border bg-background shadow-sm",
+          sizeClassName
+        )}
+      >
+        <img
+          src={department.logoSrc}
+          alt={`${department.shortLabel} logo`}
+          className="size-full object-contain p-0.5"
+        />
+      </span>
+    )
+  }
+
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center justify-center rounded-[4px] border shadow-sm",
+        sizeClassName,
+        department.accentClassName
+      )}
+    >
+      {department.icon}
+    </span>
+  )
+}
+
+function ProjectStatusSelect({
+  projectId,
+  currentStatus,
+  projectLabelText,
+}: {
+  readonly projectId: string
+  readonly currentStatus: string
+  readonly projectLabelText: string
+}): React.ReactElement {
+  const router = useRouter()
+  const [statusMessage, setStatusMessage] = React.useState<string | null>(null)
+  const [isUpdatingStatus, startStatusTransition] = React.useTransition()
+
+  function selectProjectStatus(nextStatus: string): void {
+    const statusOption = PROJECT_STATUS_OPTIONS.find(
+      (option) => option.value === nextStatus
+    )
+    if (!statusOption) return
+
+    setStatusMessage(null)
+    startStatusTransition(async () => {
+      const result = await updateProjectStatus(projectId, statusOption.value)
+      if (!result.success) {
+        setStatusMessage(result.error)
+        return
+      }
+
+      router.refresh()
+    })
+  }
+
+  return (
+    <div className="shrink-0">
+      <Select
+        value={projectStatusValue(currentStatus)}
+        onValueChange={selectProjectStatus}
+        disabled={isUpdatingStatus}
+      >
+        <SelectTrigger
+          size="sm"
+          className="h-7 w-[7.5rem] bg-background text-xs"
+          aria-label={`Change status for ${projectLabelText}`}
+        >
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent align="end">
+          {PROJECT_STATUS_OPTIONS.map((option) => (
+            <SelectItem key={option.value} value={option.value}>
+              {option.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      {statusMessage && (
+        <p className="mt-1 text-xs text-destructive">{statusMessage}</p>
+      )}
+    </div>
+  )
+}
+
 function ProjectCard({
   project,
+  canUpdateStatus,
 }: {
   readonly project: ProjectsHubProject
+  readonly canUpdateStatus: boolean
 }): React.ReactElement {
   const label = projectLabel(project)
   const subtitle = projectSubtitle(project)
@@ -283,7 +455,7 @@ function ProjectCard({
   return (
     <article
       className={cn(
-        "group border-l-2 border-y border-r bg-background px-3 py-2.5 transition-colors hover:bg-muted/35",
+        "group rounded-md border border-l-[6px] bg-card px-3 py-2.5 shadow-sm transition-colors hover:bg-muted/55",
         departmentBorderClassName(departmentId)
       )}
     >
@@ -301,9 +473,17 @@ function ProjectCard({
             </p>
           )}
         </div>
-        <span className="shrink-0 pt-0.5 text-xs font-medium text-muted-foreground">
-          {statusLabel(project.status)}
-        </span>
+        {canUpdateStatus ? (
+          <ProjectStatusSelect
+            projectId={project.id}
+            currentStatus={project.status}
+            projectLabelText={label}
+          />
+        ) : (
+          <span className="shrink-0 pt-0.5 text-xs font-medium text-muted-foreground">
+            {statusLabel(project.status)}
+          </span>
+        )}
       </div>
 
       <div className="mt-3 flex flex-wrap gap-x-4 gap-y-2 border-t pt-2">
@@ -347,9 +527,11 @@ function ProjectCard({
 function DepartmentLane({
   group,
   activeDepartment,
+  canUpdateStatus,
 }: {
   readonly group: DepartmentGroup
   readonly activeDepartment: DepartmentId | "ALL"
+  readonly canUpdateStatus: boolean
 }): React.ReactElement {
   const isFiltered = activeDepartment !== "ALL"
   const visibleProjects = isFiltered ? group.projects : group.projects.slice(0, 5)
@@ -358,21 +540,15 @@ function DepartmentLane({
     <section
       id={`department-${group.id}`}
       className={cn(
-        "scroll-mt-20 overflow-hidden rounded-md border bg-card",
+        "clarity-panel-strong scroll-mt-20 overflow-hidden border-l-[8px]",
+        departmentBorderClassName(group.id),
         departmentHeaderClassName(group.id)
       )}
     >
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b bg-background/70 px-4 py-3">
+      <div className="clarity-section-header flex flex-wrap items-center justify-between gap-3 px-4 py-3">
         <div className="min-w-0">
           <div className="flex items-center gap-2">
-            <span
-              className={cn(
-                "inline-flex size-8 items-center justify-center rounded-md border",
-                group.accentClassName
-              )}
-            >
-              {group.icon}
-            </span>
+            <DepartmentMark department={group} />
             <div>
               <h2 className="text-sm font-semibold">{group.label}</h2>
               <p className="mt-0.5 text-xs text-muted-foreground">
@@ -399,13 +575,17 @@ function DepartmentLane({
       </div>
 
       {visibleProjects.length > 0 ? (
-        <div className="grid gap-2 p-3 xl:grid-cols-2">
+        <div className="grid gap-3 p-3 xl:grid-cols-2">
           {visibleProjects.map((project) => (
-            <ProjectCard key={project.id} project={project} />
+            <ProjectCard
+              key={project.id}
+              project={project}
+              canUpdateStatus={canUpdateStatus}
+            />
           ))}
         </div>
       ) : (
-        <div className="m-3 border border-dashed bg-background/70 p-4 text-sm text-muted-foreground">
+        <div className="m-3 rounded-md border border-dashed bg-background/70 p-4 text-sm text-muted-foreground">
           No projects in this lane yet.
         </div>
       )}
@@ -427,22 +607,15 @@ function DepartmentButton({
       type="button"
       onClick={onClick}
       className={cn(
-        "border-b-2 border-transparent bg-background px-3 py-3 text-left transition-colors hover:bg-muted/45",
+        "border-b-2 border-r border-transparent bg-card px-3 py-3 text-left transition-colors last:border-r-0 hover:bg-muted/55",
         active
-          ? cn("bg-muted/50", departmentTabClassName(group.id))
+          ? cn("bg-muted/70 shadow-[inset_0_-3px_0_currentColor]", departmentTabClassName(group.id))
           : "text-muted-foreground"
       )}
     >
       <span className="flex items-center justify-between gap-3">
         <span className="flex items-center gap-2">
-          <span
-            className={cn(
-              "inline-flex size-7 items-center justify-center rounded-md border",
-              group.accentClassName
-            )}
-          >
-            {group.icon}
-          </span>
+          <DepartmentMark department={group} size="sm" />
           <span>
             <span className="block text-sm font-semibold">{group.shortLabel}</span>
             <span className="text-xs text-muted-foreground">{group.label}</span>
@@ -463,8 +636,17 @@ export function ProjectsHub({
   readonly projects: readonly ProjectsHubProject[]
   readonly canCreateOrUpdateProjects: boolean
 }): React.ReactElement {
+  const router = useRouter()
   const searchParams = useSearchParams()
   const [query, setQuery] = React.useState("")
+  const [isCreatingProject, startCreateProjectTransition] =
+    React.useTransition()
+  const [showCreateProject, setShowCreateProject] = React.useState(false)
+  const [newProjectDepartment, setNewProjectDepartment] =
+    React.useState<DepartmentId>("O")
+  const [registryProjectQuery, setRegistryProjectQuery] = React.useState("")
+  const [createProjectMessage, setCreateProjectMessage] =
+    React.useState<string | null>(null)
   const [activeDepartment, setActiveDepartment] = React.useState<
     DepartmentId | "ALL"
   >("ALL")
@@ -496,6 +678,8 @@ export function ProjectsHub({
             value === "active" ||
             value === "warranty" ||
             value === "complete" ||
+            value === "inactive" ||
+            value === "archive" ||
             value === "other"
           )
         })
@@ -511,7 +695,48 @@ export function ProjectsHub({
     setActiveStatusFilters([status])
   }
 
+  function createProjectFromForm(
+    event: React.FormEvent<HTMLFormElement>
+  ): void {
+    event.preventDefault()
+    const form = event.currentTarget
+    const formData = new FormData(form)
+    const name = String(formData.get("name") ?? "").trim()
+    const clientName = String(formData.get("clientName") ?? "").trim()
+    const address = String(formData.get("address") ?? "").trim()
+
+    setCreateProjectMessage(null)
+    startCreateProjectTransition(async () => {
+      const result = await createProjectShell({
+        projectNumber: null,
+        name,
+        department: newProjectDepartment,
+        clientName: clientName.length > 0 ? clientName : null,
+        address: address.length > 0 ? address : null,
+        status: "OPEN",
+      })
+
+      if (!result.success) {
+        setCreateProjectMessage(result.error)
+        return
+      }
+
+      form.reset()
+      setCreateProjectMessage("Project shell created.")
+      router.push(`/dashboard/projects/${result.id}`)
+      router.refresh()
+    })
+  }
+
   const normalizedQuery = normalizeSearchValue(query)
+  const normalizedRegistryProjectQuery = normalizeSearchValue(registryProjectQuery)
+  const registryProjectMatches = normalizedRegistryProjectQuery
+    ? projects
+        .filter((project) =>
+          projectMatchesSearch(project, normalizedRegistryProjectQuery)
+        )
+        .slice(0, 6)
+    : []
   const statusFilteredProjects = projects.filter((project) =>
     activeStatusFilters.includes(statusBucket(project.status))
   )
@@ -560,7 +785,7 @@ export function ProjectsHub({
                   Project hub
                 </p>
                 <h1 className="text-2xl font-semibold tracking-tight">
-                  Choose the lane, then the job.
+                  Choose the department, then the job.
                 </h1>
               </div>
             </div>
@@ -571,7 +796,7 @@ export function ProjectsHub({
             </p>
           </div>
 
-          <div className="grid grid-cols-3 divide-x border-y bg-background text-center">
+          <div className="clarity-panel grid grid-cols-3 divide-x text-center">
             <div className="px-3 py-2">
               <p className="text-xs text-muted-foreground">Active</p>
               <p className="mt-1 text-xl font-semibold">
@@ -625,7 +850,7 @@ export function ProjectsHub({
           </div>
         </div>
 
-        <div className="flex flex-col gap-3 border-y bg-background py-3 lg:flex-row lg:items-center lg:justify-between">
+        <div className="clarity-panel flex flex-col gap-3 px-4 py-3 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <p className="text-xs font-medium uppercase tracking-normal text-muted-foreground">
               Status view
@@ -669,7 +894,7 @@ export function ProjectsHub({
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-x-6 gap-y-2 border-b pb-3 text-sm">
+        <div className="flex flex-wrap items-center gap-x-6 gap-y-2 rounded-md border bg-muted/20 px-4 py-2 text-sm">
           <span>
             <span className="font-semibold tabular-nums">{linkedToSageCount}</span>{" "}
             <span className="text-muted-foreground">accounting linked</span>
@@ -689,7 +914,7 @@ export function ProjectsHub({
           </span>
         </div>
 
-        <div className="grid overflow-hidden rounded-md border md:grid-cols-2 xl:grid-cols-4">
+        <div className="clarity-panel grid overflow-hidden md:grid-cols-2 xl:grid-cols-4">
           {groups
             .filter((group) => group.id !== "UNASSIGNED")
             .map((group) => (
@@ -703,15 +928,15 @@ export function ProjectsHub({
         </div>
 
         {canCreateOrUpdateProjects && (
-          <section className="rounded-lg border bg-muted/30 p-4">
-            <div className="flex flex-wrap items-center justify-between gap-3">
+          <section className="clarity-panel-strong overflow-hidden">
+            <div className="clarity-section-header flex flex-wrap items-center justify-between gap-3 px-4 py-3">
               <div>
                 <h2 className="text-sm font-semibold">
-                  Project creation and registry flow
+                  Create or Update an Existing Project
                 </h2>
                 <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                  Choose O, H, N, or D, then link Drive, Sage, Buildertrend, or
-                  other records.
+                  Create a new Compass shell or open an existing job to update
+                  its Drive, Sage, Buildertrend, and registry links.
                 </p>
               </div>
               <div className="flex flex-wrap gap-2">
@@ -721,12 +946,133 @@ export function ProjectsHub({
                     Drive files
                   </Link>
                 </Button>
-                <Button size="sm" variant="secondary" asChild>
-                  <Link href="/dashboard/projects?department=O">
-                    <IconPlus className="size-4" />
-                    Start with ORC
-                  </Link>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  type="button"
+                  onClick={() => {
+                    setShowCreateProject((open) => !open)
+                    setNewProjectDepartment("O")
+                  }}
+                >
+                  <IconPlus className="size-4" />
+                  Create project
                 </Button>
+              </div>
+            </div>
+            <div className="grid gap-4 p-4 lg:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
+              {showCreateProject && (
+                <form
+                  className="rounded-md border bg-card p-3"
+                  onSubmit={createProjectFromForm}
+                >
+                  <div>
+                    <h3 className="text-sm font-semibold">Create new project</h3>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Choose the department. Compass will create the shell first;
+                      the project number can be assigned in the registry step.
+                    </p>
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {DEPARTMENTS.filter((department) => department.id !== "UNASSIGNED").map(
+                      (department) => (
+                        <Button
+                          key={department.id}
+                          type="button"
+                          size="sm"
+                          variant={
+                            newProjectDepartment === department.id
+                              ? "default"
+                              : "outline"
+                          }
+                          onClick={() => setNewProjectDepartment(department.id)}
+                        >
+                          {department.shortLabel}
+                        </Button>
+                      )
+                    )}
+                  </div>
+                  <div className="mt-3 grid gap-3 lg:grid-cols-2">
+                    <Input
+                      name="name"
+                      placeholder="Project name"
+                      aria-label="Project name"
+                      required
+                    />
+                    <Input
+                      name="clientName"
+                      placeholder="Client"
+                      aria-label="Client"
+                    />
+                  </div>
+                  <div className="mt-3 grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto]">
+                    <Input
+                      name="address"
+                      placeholder="Address"
+                      aria-label="Address"
+                    />
+                    <Button type="submit" disabled={isCreatingProject}>
+                      {isCreatingProject ? "Creating..." : "Create Shell"}
+                    </Button>
+                  </div>
+                  {createProjectMessage && (
+                    <p className="mt-3 text-sm text-muted-foreground">
+                      {createProjectMessage}
+                    </p>
+                  )}
+                </form>
+              )}
+
+              <div className="rounded-md border bg-card p-3">
+                <div>
+                  <h3 className="text-sm font-semibold">Update existing project</h3>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Search by project number, client, address, or accounting job.
+                  </p>
+                </div>
+                <div className="relative mt-3">
+                  <IconSearch className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    value={registryProjectQuery}
+                    onChange={(event) => setRegistryProjectQuery(event.target.value)}
+                    placeholder="Find project to update..."
+                    aria-label="Find project to update"
+                    className="pl-9"
+                  />
+                </div>
+                <div className="mt-3 divide-y rounded-md border">
+                  {registryProjectMatches.length > 0 ? (
+                    registryProjectMatches.map((project) => (
+                      <div
+                        key={project.id}
+                        className="flex items-center justify-between gap-3 px-3 py-2 text-sm transition-colors hover:bg-muted/65"
+                      >
+                        <Link
+                          href={`/dashboard/projects/${project.id}`}
+                          className="min-w-0 flex-1"
+                        >
+                          <span className="block truncate font-medium">
+                            {projectLabel(project)}
+                          </span>
+                          <span className="block truncate text-xs text-muted-foreground">
+                            {projectSubtitle(project) || statusLabel(project.status)}
+                          </span>
+                        </Link>
+                        <ProjectStatusSelect
+                          projectId={project.id}
+                          currentStatus={project.status}
+                          projectLabelText={projectLabel(project)}
+                        />
+                      </div>
+                    ))
+                  ) : (
+                    <p className="px-3 py-4 text-sm text-muted-foreground">
+                      {normalizedRegistryProjectQuery
+                        ? "No projects match that search."
+                        : "Start typing to find a project."}
+                    </p>
+                  )}
+                </div>
               </div>
             </div>
           </section>
@@ -747,6 +1093,7 @@ export function ProjectsHub({
                 key={group.id}
                 group={group}
                 activeDepartment={activeDepartment}
+                canUpdateStatus={canCreateOrUpdateProjects}
               />
             ))}
           </div>

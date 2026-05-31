@@ -14,7 +14,7 @@ export default function AuthLayout({
         {/* logo */}
         <div className="mb-8 text-center">
           <Image
-            src="/hps-h-logo.png"
+            src="/department-logos/hps-h-green.svg"
             alt="High Performance Structures"
             width={56}
             height={56}

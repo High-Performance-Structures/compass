@@ -6,7 +6,10 @@ import { createPortal } from "react-dom"
 import type { ProjectBudgetSummary } from "@/app/actions/project-budget"
 import type { ProjectContactsSummary } from "@/app/actions/project-contacts"
 import type { ProjectFieldSummary } from "@/app/actions/project-field"
-import type { ProjectOperationsSummary } from "@/app/actions/project-operations"
+import type {
+  ProjectOperationsSummary,
+  ProjectSageSyncQueue,
+} from "@/app/actions/project-operations"
 import type { ProjectRegistry } from "@/app/actions/project-registry"
 import type { ProjectRfiSummary } from "@/app/actions/project-rfis"
 import { Switch } from "@/components/ui/switch"
@@ -19,6 +22,7 @@ import {
 } from "@/components/ui/select"
 import { ProjectManagerWorkflowPanel } from "@/components/projects/project-manager-workflow-panel"
 import { ProjectRegistryPanel } from "@/components/projects/project-registry-panel"
+import { ProjectSageSyncQueuePanel } from "@/components/projects/project-sage-sync-queue-panel"
 import {
   PROJECT_WORKFLOW_ROLE_LENSES,
   isProjectWorkflowRoleId,
@@ -177,6 +181,7 @@ export function ProjectWorkspaceShell({
   budgetSummary,
   rfiSummary,
   registry,
+  sageSyncQueue,
   canEditRegistry,
   initialRoleId,
   allowedRoleIds,
@@ -191,6 +196,7 @@ export function ProjectWorkspaceShell({
   readonly budgetSummary: ProjectBudgetSummary | null
   readonly rfiSummary: ProjectRfiSummary | null
   readonly registry: ProjectRegistry | null
+  readonly sageSyncQueue: ProjectSageSyncQueue | null
   readonly canEditRegistry: boolean
   readonly initialRoleId: ProjectWorkflowRoleId
   readonly allowedRoleIds: readonly ProjectWorkflowRoleId[]
@@ -258,7 +264,10 @@ export function ProjectWorkspaceShell({
       />
 
       {developerModeEnabled && (
-        <ProjectRegistryPanel projectId={projectId} registry={registry} />
+        <div className="space-y-4">
+          <ProjectSageSyncQueuePanel projectId={projectId} queue={sageSyncQueue} />
+          <ProjectRegistryPanel projectId={projectId} registry={registry} />
+        </div>
       )}
     </div>
   )

@@ -226,28 +226,28 @@ function billsAndDrawsDetail(summary: ProjectBudgetSummary | null): string {
 
 function stepAccentClassName(tone: WorkflowTone, urgent: boolean): string {
   if (urgent) {
-    return "border-l-amber-500 bg-amber-50/55 dark:bg-amber-950/15"
+    return "border-l-[#9d832c] bg-card"
   }
 
   switch (tone) {
     case "project":
-      return "border-l-emerald-500"
+      return "border-l-[#6f471f] bg-card"
     case "schedule":
-      return "border-l-sky-500"
+      return "border-l-[#2f5963] bg-card"
     case "people":
-      return "border-l-violet-500"
+      return "border-l-[#3f7d4d] bg-card"
     case "field":
-      return "border-l-lime-500"
+      return "border-l-[#9d832c] bg-card"
     case "owner":
-      return "border-l-rose-500"
+      return "border-l-[#6f471f] bg-card"
     case "money":
-      return "border-l-teal-500"
+      return "border-l-[#2f5963] bg-card"
     case "google":
-      return "border-l-indigo-500"
+      return "border-l-[#3f7d4d] bg-card"
     case "procurement":
-      return "border-l-orange-500"
+      return "border-l-[#9d832c] bg-card"
     case "admin":
-      return "border-l-slate-500"
+      return "border-l-[#585149] bg-card"
   }
 }
 
@@ -281,11 +281,11 @@ function WorkflowCard({
   return (
     <Link
       href={step.href}
-      className={`group grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 border-l-2 px-3 py-3 transition-colors hover:bg-muted/45 ${stepAccentClassName(step.tone, step.urgent)}`}
+      className={`group grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 border-l-4 px-3 py-3 transition-colors hover:bg-muted/65 ${stepAccentClassName(step.tone, step.urgent)}`}
     >
       <div className="flex items-center gap-2 text-muted-foreground">
         <span className="w-5 text-right text-xs tabular-nums">{number}</span>
-        <span className="flex size-8 items-center justify-center rounded-md border bg-background">
+        <span className="flex size-8 items-center justify-center rounded-md border border-border/80 bg-background shadow-sm">
           {step.icon}
         </span>
       </div>
@@ -432,7 +432,7 @@ export function ProjectManagerWorkflowPanel({
     {
       id: "bills-draws",
       label: "Bills and owner draws",
-      href: `/dashboard/financials?tab=bills`,
+      href: `/dashboard/projects/${projectId}/financials`,
       eyebrow: "Bills / pay applications",
       status: billsAndDrawsStatus(budgetSummary),
       detail: billsAndDrawsDetail(budgetSummary),
@@ -526,7 +526,7 @@ export function ProjectManagerWorkflowPanel({
         </div>
       )}
 
-      <div className="divide-y border-y bg-background">
+      <div className="clarity-panel overflow-hidden divide-y">
         {orderedSteps.map((step, index) => (
           <WorkflowCard key={step.label} step={step} number={index + 1} />
         ))}

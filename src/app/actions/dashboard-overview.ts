@@ -179,6 +179,9 @@ function isClosedStatus(status: string): boolean {
     normalized === "completed" ||
     normalized === "done" ||
     normalized === "closed" ||
+    normalized === "inactive" ||
+    normalized === "archive" ||
+    normalized === "archived" ||
     normalized === "cancelled" ||
     normalized === "canceled"
   )

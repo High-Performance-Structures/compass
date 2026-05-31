@@ -10,6 +10,7 @@ import {
   getProjectPurchaseOrders,
   type ProjectPurchaseOrderItem,
 } from "@/app/actions/project-operations"
+import { getProjectTaskAssigneeOptions } from "@/app/actions/project-contacts"
 import { getProjects } from "@/app/actions/projects"
 import { ProjectPurchaseOrderEmailButton } from "@/components/projects/project-purchase-order-email-button"
 import { ProjectPurchaseOrderCreateForm } from "@/components/projects/project-purchase-order-create-form"
@@ -72,18 +73,22 @@ function PurchaseOrderCard({
   projectId,
   projectLabel,
   isCreated,
+  taskAssigneeOptions,
 }: {
   readonly order: ProjectPurchaseOrderItem
   readonly projectId: string
   readonly projectLabel: string
   readonly isCreated: boolean
+  readonly taskAssigneeOptions: React.ComponentProps<
+    typeof ProjectTaskCreateButton
+  >["assigneeOptions"]
 }): React.ReactElement {
   return (
     <article
       data-po-id={order.id}
       className={cn(
         "po-printable rounded-lg border bg-background p-4 print:border-0 print:p-0",
-        isCreated && "border-emerald-600 bg-emerald-50/40"
+        isCreated && "border-[#3f7d4d] bg-card"
       )}
     >
       <div className="print:hidden">
@@ -124,6 +129,7 @@ function PurchaseOrderCard({
               defaultDueDate={order.dueDate}
               defaultPriority={order.priority}
               defaultTaskType="supplier_task"
+              assigneeOptions={taskAssigneeOptions}
             />
             <ProjectPurchaseOrderPrintButton purchaseOrderId={order.id} />
           </div>
@@ -189,7 +195,7 @@ function PurchaseOrderCard({
         <div className="flex items-start justify-between border-b-2 border-black pb-4">
           <div className="flex items-center gap-3">
             <img
-              src="/hps-h-logo.png"
+              src="/department-logos/hps-h-green.svg"
               alt="HPS logo"
               className="h-16 w-16 shrink-0 object-contain"
             />
@@ -303,11 +309,16 @@ export default async function ProjectPurchaseOrdersPage({
   const createdPurchaseOrderId = Array.isArray(query.created)
     ? query.created[0] ?? null
     : query.created ?? null
-  const [projects, purchaseOrders] = await Promise.all([
+  const [projects, purchaseOrders, taskAssigneeOptions] = await Promise.all([
     getProjects(),
     getProjectPurchaseOrders(id),
+    getProjectTaskAssigneeOptions(id),
   ])
   const project = projects.find((item) => item.id === id)
+  const taskAssignees = [
+    ...taskAssigneeOptions.projectContacts,
+    ...taskAssigneeOptions.directoryContacts,
+  ]
   const openPurchaseOrders = purchaseOrders.filter(
     (order) => !["closed", "void", "complete"].includes(order.status)
   )
@@ -385,6 +396,7 @@ export default async function ProjectPurchaseOrdersPage({
                 }`
               }
               isCreated={order.id === createdPurchaseOrderId}
+              taskAssigneeOptions={taskAssignees}
             />
           ))
         ) : (

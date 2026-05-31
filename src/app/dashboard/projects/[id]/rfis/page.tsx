@@ -8,7 +8,10 @@ import {
 } from "@tabler/icons-react"
 
 import { getProjectRfis, updateProjectRfi } from "@/app/actions/project-rfis"
-import { getProjectContactsSummary } from "@/app/actions/project-contacts"
+import {
+  getProjectContactsSummary,
+  getProjectTaskAssigneeOptions,
+} from "@/app/actions/project-contacts"
 import { getProjects } from "@/app/actions/projects"
 import { ProjectRfiCreateForm } from "@/components/projects/project-rfi-create-form"
 import { ProjectTaskCreateButton } from "@/components/projects/project-task-create-button"
@@ -78,12 +81,18 @@ export default async function ProjectRfisPage({
   const createdRfiId = Array.isArray(query.created)
     ? query.created[0] ?? null
     : query.created ?? null
-  const [projects, rfis, contactsSummary] = await Promise.all([
-    getProjects(),
-    getProjectRfis(id),
-    getProjectContactsSummary(id, "internal"),
-  ])
+  const [projects, rfis, contactsSummary, taskAssigneeOptions] =
+    await Promise.all([
+      getProjects(),
+      getProjectRfis(id),
+      getProjectContactsSummary(id, "internal"),
+      getProjectTaskAssigneeOptions(id),
+    ])
   const project = projects.find((item) => item.id === id)
+  const taskAssignees = [
+    ...taskAssigneeOptions.projectContacts,
+    ...taskAssigneeOptions.directoryContacts,
+  ]
   const openCount = rfis.filter((rfi) => isActiveRfiStatus(rfi.status)).length
   const contacts = contactsSummary.allContacts
   const companyOrTradeOptions = unique(
@@ -180,8 +189,8 @@ export default async function ProjectRfisPage({
                 className={cn(
                   "border-l-2 border-y border-r bg-background px-4 py-3",
                   isCreated
-                    ? "border-l-emerald-600 bg-emerald-50/40"
-                    : "border-l-orange-500"
+                    ? "border-l-[#3f7d4d] bg-card"
+                    : "border-l-[#9d832c]"
                 )}
               >
                 <div className="flex flex-wrap items-start justify-between gap-3">
@@ -223,6 +232,7 @@ export default async function ProjectRfisPage({
                       defaultTaskType={
                         rfi.companyName ? "subcontractor_task" : "staff_task"
                       }
+                      assigneeOptions={taskAssignees}
                     />
                   </div>
                 </div>

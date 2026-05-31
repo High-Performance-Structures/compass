@@ -100,7 +100,17 @@ const PROJECT_STATUS_OPTIONS: readonly ProjectStatusOption[] = [
   {
     value: "COMPLETE",
     label: "Complete",
-    description: "Closed, archived, or historical projects.",
+    description: "Completed projects that are still useful in regular records.",
+  },
+  {
+    value: "INACTIVE",
+    label: "Inactive",
+    description: "Paused work that should not appear in day-to-day active views.",
+  },
+  {
+    value: "ARCHIVE",
+    label: "Archive",
+    description: "Historical projects kept for reference.",
   },
   {
     value: "OTHER",

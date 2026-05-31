@@ -128,6 +128,29 @@ export type ContactMatchResult =
   | { readonly success: true }
   | { readonly success: false; readonly error: string }
 
+export type ProjectTaskAssigneeOption = {
+  readonly id: string
+  readonly label: string
+  readonly name: string
+  readonly companyName: string | null
+  readonly email: string | null
+  readonly phone: string | null
+  readonly contactType: ProjectContactType
+  readonly source: "project" | "directory"
+  readonly projectContactId: string | null
+  readonly directoryContactId: string | null
+  readonly projectAccess: boolean
+}
+
+export type ProjectTaskAssigneeOptions = {
+  readonly projectContacts: readonly ProjectTaskAssigneeOption[]
+  readonly directoryContacts: readonly ProjectTaskAssigneeOption[]
+}
+
+export type AddTaskAssigneeContactResult =
+  | { readonly success: true; readonly contact: ProjectTaskAssigneeOption }
+  | { readonly success: false; readonly error: string }
+
 const CONTACT_TYPES: readonly ProjectContactType[] = [
   "owner",
   "supplier",
@@ -321,6 +344,8 @@ function revalidateContactPaths(projectId: string): void {
   revalidatePath(`/dashboard/projects/${projectId}`)
   revalidatePath(`/dashboard/projects/${projectId}/contacts`)
   revalidatePath(`/dashboard/projects/${projectId}/contacts/review`)
+  revalidatePath(`/dashboard/projects/${projectId}/rfis`)
+  revalidatePath(`/dashboard/projects/${projectId}/purchase-orders`)
 }
 
 function sourceIdPart(value: string): string {
@@ -330,6 +355,61 @@ function sourceIdPart(value: string): string {
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-|-$/g, "")
     .slice(0, 70)
+}
+
+function normalizeDirectoryKey(value: string | null): string {
+  return (value ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim()
+}
+
+function projectContactToTaskAssigneeOption(
+  contact: ProjectContactItem
+): ProjectTaskAssigneeOption {
+  const companySuffix =
+    contact.companyName && contact.companyName !== contact.displayName
+      ? ` - ${contact.companyName}`
+      : ""
+
+  return {
+    id: `project:${contact.id}`,
+    label: `${contact.displayName}${companySuffix}`,
+    name: contact.displayName,
+    companyName: contact.companyName,
+    email: contact.email,
+    phone: contact.phone,
+    contactType: contact.contactType,
+    source: "project",
+    projectContactId: contact.id,
+    directoryContactId: null,
+    projectAccess: true,
+  }
+}
+
+function directoryContactToTaskAssigneeOption(input: {
+  readonly id: string
+  readonly name: string
+  readonly category: string
+  readonly email: string | null
+  readonly phone: string | null
+}): ProjectTaskAssigneeOption {
+  const contactType = vendorCategoryToContactType(input.category)
+
+  return {
+    id: `directory:${input.id}`,
+    label: `${input.name} - Directory`,
+    name: input.name,
+    companyName: input.name,
+    email: input.email,
+    phone: input.phone,
+    contactType,
+    source: "directory",
+    projectContactId: null,
+    directoryContactId: input.id,
+    projectAccess: false,
+  }
 }
 
 export async function getProjectContactsSummary(
@@ -417,6 +497,67 @@ export async function getProjectContactsSummary(
     groups: buildGroups(allContacts),
     csiGroups: buildCsiGroups(allContacts),
     allContacts,
+  }
+}
+
+export async function getProjectTaskAssigneeOptions(
+  projectId: string
+): Promise<ProjectTaskAssigneeOptions> {
+  const db = await verifyProjectAccess(projectId)
+  const user = await requireAuth()
+  const orgId = requireOrg(user)
+
+  const projectContactRows = await db
+    .select()
+    .from(projectContacts)
+    .where(
+      and(eq(projectContacts.projectId, projectId), eq(projectContacts.active, true))
+    )
+    .orderBy(
+      asc(projectContacts.contactType),
+      asc(projectContacts.displayName)
+    )
+
+  const projectContactItems = projectContactRows.map(toContactItem)
+  const projectSourceVendorIds = new Set(
+    projectContactItems
+      .map((contact) =>
+        contact.sourceEntityType === "vendor" ? contact.sourceEntityId : null
+      )
+      .filter((value): value is string => value !== null)
+  )
+  const projectNameKeys = new Set(
+    projectContactItems.map((contact) =>
+      normalizeDirectoryKey(contact.companyName ?? contact.displayName)
+    )
+  )
+
+  const directoryRows = await db
+    .select({
+      id: vendors.id,
+      name: vendors.name,
+      category: vendors.category,
+      email: vendors.email,
+      phone: vendors.phone,
+    })
+    .from(vendors)
+    .where(
+      and(eq(vendors.organizationId, orgId), eq(vendors.directoryStatus, "active"))
+    )
+    .orderBy(asc(vendors.name))
+
+  const directoryContacts = directoryRows
+    .filter(
+      (vendor) =>
+        isDirectoryAssignable(vendor.category) &&
+        !projectSourceVendorIds.has(vendor.id) &&
+        !projectNameKeys.has(normalizeDirectoryKey(vendor.name))
+    )
+    .map(directoryContactToTaskAssigneeOption)
+
+  return {
+    projectContacts: projectContactItems.map(projectContactToTaskAssigneeOption),
+    directoryContacts,
   }
 }
 
@@ -592,6 +733,124 @@ export async function addIndependentContactToProjectFromReview(
   } catch (error) {
     console.error("Failed to add directory contact to project", error)
     return { success: false, error: "Failed to add directory contact" }
+  }
+}
+
+export async function addDirectoryContactToProjectForTask(
+  projectId: string,
+  directoryContactId: string
+): Promise<AddTaskAssigneeContactResult> {
+  try {
+    const user = await requireAuth()
+    if (isDemoUser(user.id)) return { success: false, error: "DEMO_READ_ONLY" }
+
+    const orgId = requireOrg(user)
+    const db = await verifyProjectAccess(projectId, "update")
+
+    const [vendor] = await db
+      .select()
+      .from(vendors)
+      .where(
+        and(
+          eq(vendors.id, directoryContactId),
+          eq(vendors.organizationId, orgId),
+          eq(vendors.directoryStatus, "active")
+        )
+      )
+      .limit(1)
+
+    if (!vendor) {
+      return { success: false, error: "Directory contact not found" }
+    }
+    if (!isDirectoryAssignable(vendor.category)) {
+      return { success: false, error: "This directory contact is not assignable" }
+    }
+
+    const [existing] = await db
+      .select()
+      .from(projectContacts)
+      .where(
+        and(
+          eq(projectContacts.projectId, projectId),
+          eq(projectContacts.sourceEntityType, "vendor"),
+          eq(projectContacts.sourceEntityId, vendor.id)
+        )
+      )
+      .limit(1)
+
+    if (existing) {
+      const existingContact = toContactItem(existing)
+      revalidateContactPaths(projectId)
+      return {
+        success: true,
+        contact: projectContactToTaskAssigneeOption(existingContact),
+      }
+    }
+
+    const now = new Date().toISOString()
+    const contactType = vendorCategoryToContactType(vendor.category)
+    const role =
+      contactType === "supplier"
+        ? "Supplier"
+        : contactType === "internal"
+          ? "Internal"
+          : "Subcontractor"
+    const contactId = `project-contact-${sourceIdPart(projectId)}-${sourceIdPart(contactType)}-${sourceIdPart(vendor.id)}`
+
+    await db.insert(projectContacts).values({
+      id: contactId,
+      projectId,
+      contactType,
+      sourceSystem: "global_directory",
+      sourceRecordId: vendor.id,
+      sourceEntityType: "vendor",
+      sourceEntityId: vendor.id,
+      displayName: vendor.name,
+      companyName: vendor.name,
+      role,
+      trade: null,
+      csiDivision: null,
+      csiDivisionName: null,
+      primaryCostCode: null,
+      email: vendor.email,
+      phone: vendor.phone,
+      notes:
+        "Added from task assignment in Compass. Portal visibility should be reviewed separately.",
+      ownerPortalVisible: false,
+      subVendorPortalVisible: false,
+      internalVisible: true,
+      primaryContact: false,
+      active: true,
+      sortOrder: 850,
+      syncStatus:
+        vendor.syncStatus === "needs_sage_review"
+          ? "needs_sage_review"
+          : "synced",
+      lastSyncedAt: vendor.lastSyncedAt ?? now,
+      createdAt: now,
+      updatedAt: now,
+    })
+
+    revalidateContactPaths(projectId)
+    return {
+      success: true,
+      contact: {
+        id: `project:${contactId}`,
+        label: vendor.name,
+        name: vendor.name,
+        companyName: vendor.name,
+        email: vendor.email,
+        phone: vendor.phone,
+        contactType,
+        source: "project",
+        projectContactId: contactId,
+        directoryContactId: null,
+        projectAccess: true,
+      },
+    }
+  } catch (error) {
+    console.error("Failed to add task assignee to project contacts", error)
+    return { success: false, error: "Failed to add contact to project" }
   }
 }
 
