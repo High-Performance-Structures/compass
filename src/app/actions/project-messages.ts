@@ -3,7 +3,7 @@
 import { and, eq } from "drizzle-orm"
 
 import { sendMessage } from "@/app/actions/chat-messages"
-import { createNotificationEvent } from "@/app/actions/notifications"
+import { createNotificationEvent } from "@/lib/notifications/events"
 import { getDb } from "@/db"
 import {
   organizationMembers,

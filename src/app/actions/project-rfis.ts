@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache"
 
 import { getDb } from "@/db"
 import { projectRfiAttachments, projectRfis, projects } from "@/db/schema"
-import { notifyRfiCreated } from "@/app/actions/notifications"
+import { notifyRfiCreated } from "@/lib/notifications/events"
 import { requireAuth } from "@/lib/auth"
 import type { AuthUser } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
