@@ -21,6 +21,7 @@ import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 
 function formatKind(kind: ProjectSageSyncItem["kind"]): string {
+  if (kind === "project_handoff") return "Project handoff"
   if (kind === "purchase_order") return "Purchase order"
   if (kind === "vendor_bill") return "Vendor bill"
   if (kind === "owner_pay_application") return "Owner pay app"

@@ -9,6 +9,7 @@ import {
   IconBuildingCommunity,
   IconCalendarStats,
   IconCompass,
+  IconExternalLink,
   IconFileDollar,
   IconFolder,
   IconHome,
@@ -27,6 +28,13 @@ import {
 } from "@/app/actions/projects"
 import { updateProjectRegistry } from "@/app/actions/project-registry"
 import { Button } from "@/components/ui/button"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import {
   Select,
@@ -161,6 +169,42 @@ const PROJECT_STATUS_OPTIONS: readonly ProjectStatusOption[] = [
   { value: "ARCHIVE", label: "Archive", bucket: "archive" },
   { value: "OTHER", label: "Other", bucket: "other" },
 ]
+
+const HPS_PROJECT_MANAGER_EDITOR_URL =
+  "https://script.google.com/d/1NzKjO6r_WS5optIHxwGxB5mby3PX0TSHhctU73xZIFtWXXgLueksPN-s/edit"
+
+const DEFAULT_HPS_PROJECT_MANAGER_WEB_APP_URL =
+  "https://script.google.com/a/macros/hps-colorado.com/s/AKfycbyeCqsdObrPp91LRmpEHSLZ8xdGerw7ExF2mFSSzYkxGnTrliv9OvHsYOFXicnVC5nQ/exec"
+
+const CONFIGURED_HPS_PROJECT_MANAGER_WEB_APP_URL =
+  process.env.NEXT_PUBLIC_HPS_PROJECT_MANAGER_WEB_APP_URL ?? ""
+
+const HPS_PROJECT_MANAGER_WEB_APP_URL =
+  CONFIGURED_HPS_PROJECT_MANAGER_WEB_APP_URL ||
+  DEFAULT_HPS_PROJECT_MANAGER_WEB_APP_URL
+const DASHBOARD_MODE_STORAGE_KEY = "compass-dashboard-workspace-mode"
+
+function openProjectManagerWorkWindow(appUrl: string): void {
+  const projectManagerWindow = window.open(
+    appUrl,
+    "hps-project-manager",
+    "popup=yes,width=1180,height=860,menubar=no,toolbar=yes,location=yes,status=no,scrollbars=yes,resizable=yes"
+  )
+
+  if (projectManagerWindow) {
+    projectManagerWindow.focus()
+  }
+}
+
+function storedDashboardDeveloperMode(canUseDeveloperMode: boolean): boolean {
+  if (!canUseDeveloperMode) return false
+
+  try {
+    return window.localStorage.getItem(DASHBOARD_MODE_STORAGE_KEY) === "developer"
+  } catch {
+    return false
+  }
+}
 
 function normalizeSearchValue(value: string): string {
   return value
@@ -686,6 +730,147 @@ function DepartmentButton({
   )
 }
 
+function ProjectManagerEmbedDialog({
+  open,
+  onOpenChange,
+  appUrl,
+  embedUrl,
+  urlInput,
+  onUrlInputChange,
+}: {
+  readonly open: boolean
+  readonly onOpenChange: (open: boolean) => void
+  readonly appUrl: string
+  readonly embedUrl: string | null
+  readonly urlInput: string
+  readonly onUrlInputChange: (value: string) => void
+}): React.ReactElement {
+  const handleOpenDetachedWindow = React.useCallback(() => {
+    openProjectManagerWorkWindow(appUrl)
+  }, [appUrl])
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="flex h-[min(92vh,900px)] max-w-[min(96vw,1180px)] flex-col gap-0 overflow-hidden p-0">
+        <DialogHeader className="border-b px-4 py-3 text-left">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+            <div>
+              <DialogTitle>HPS Project Manager</DialogTitle>
+              <DialogDescription>
+                Google project setup for numbering, Drive folders, and tracker
+                updates.
+              </DialogDescription>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button size="sm" onClick={handleOpenDetachedWindow}>
+                <IconExternalLink className="size-4" />
+                Open work window
+              </Button>
+              <Button size="sm" variant="outline" asChild>
+                <a href={appUrl} target="_blank" rel="noreferrer">
+                  <IconExternalLink className="size-4" />
+                  Open app tab
+                </a>
+              </Button>
+              <Button size="sm" variant="outline" asChild>
+                <a
+                  href={HPS_PROJECT_MANAGER_EDITOR_URL}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  <IconExternalLink className="size-4" />
+                  Script editor
+                </a>
+              </Button>
+            </div>
+          </div>
+        </DialogHeader>
+
+        <div className="border-b bg-muted/25 px-4 py-3">
+          <label className="text-xs font-medium text-muted-foreground">
+            Deployed web app URL
+          </label>
+          <Input
+            value={urlInput}
+            onChange={(event) => onUrlInputChange(event.target.value)}
+            placeholder={
+              HPS_PROJECT_MANAGER_WEB_APP_URL
+                ? HPS_PROJECT_MANAGER_WEB_APP_URL
+                : "Paste the Apps Script /macros/s/.../exec URL"
+            }
+            className="mt-1"
+          />
+          {!embedUrl && (
+            <p className="mt-2 text-xs text-muted-foreground">
+              The current HPS-domain deployment opens cleanly in a tab, but
+              Google blocks its sign-in redirect inside a Compass iframe. Paste
+              a new embed-capable /exec URL here to test it in this browser
+              session.
+            </p>
+          )}
+        </div>
+
+        {embedUrl ? (
+          <iframe
+            title="HPS Project Manager"
+            src={embedUrl}
+            className="min-h-0 flex-1 border-0 bg-background"
+            referrerPolicy="strict-origin-when-cross-origin"
+          />
+        ) : (
+          <div className="flex min-h-0 flex-1 items-center justify-center bg-background p-6">
+            <div className="w-full max-w-2xl overflow-hidden rounded-md border bg-card shadow-sm">
+              <div className="flex items-center justify-between border-b bg-muted/40 px-4 py-2">
+                <div className="flex items-center gap-2">
+                  <span className="size-2 rounded-full bg-[#d14b3a]" />
+                  <span className="size-2 rounded-full bg-[#d8a742]" />
+                  <span className="size-2 rounded-full bg-[#3f7d4d]" />
+                </div>
+                <span className="text-xs font-medium text-muted-foreground">
+                  Secure Google window
+                </span>
+              </div>
+              <div className="p-6">
+                <div className="flex items-start gap-4">
+                  <div className="flex size-11 shrink-0 items-center justify-center rounded-sm border bg-background text-[#3f7d4d]">
+                    <IconSettingsAutomation className="size-6" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <h3 className="text-base font-semibold">
+                      Project setup opens in a focused work window
+                    </h3>
+                    <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                      Google blocks this HPS-domain app from rendering directly
+                      inside Compass during sign-in. The work window keeps the
+                      flow beside Compass while we replace this with a native
+                      Compass project setup screen.
+                    </p>
+                    <div className="mt-5 flex flex-wrap gap-2">
+                      <Button onClick={handleOpenDetachedWindow}>
+                        <IconExternalLink className="size-4" />
+                        Open work window
+                      </Button>
+                      <Button variant="outline" asChild>
+                        <a href={appUrl} target="_blank" rel="noreferrer">
+                          Open in new tab
+                        </a>
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div className="border-t bg-muted/25 px-6 py-3 text-xs text-muted-foreground">
+                True in-Compass editing will need a Compass-native bridge to the
+                project registry and Drive folder script logic.
+              </div>
+            </div>
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 export function ProjectsHub({
   projects,
   canCreateOrUpdateProjects,
@@ -710,6 +895,10 @@ export function ProjectsHub({
   const [registryMessage, setRegistryMessage] = React.useState<string | null>(
     null
   )
+  const [projectManagerOpen, setProjectManagerOpen] = React.useState(false)
+  const [projectManagerUrlInput, setProjectManagerUrlInput] =
+    React.useState("")
+  const [developerModeEnabled, setDeveloperModeEnabled] = React.useState(false)
   const [activeDepartment, setActiveDepartment] = React.useState<
     DepartmentId | "ALL"
   >("ALL")
@@ -753,6 +942,12 @@ export function ProjectsHub({
       setActiveStatusFilters(["active"])
     }
   }, [searchParams])
+
+  React.useEffect(() => {
+    setDeveloperModeEnabled(
+      storedDashboardDeveloperMode(canCreateOrUpdateProjects)
+    )
+  }, [canCreateOrUpdateProjects])
 
   function selectStatusFilter(status: ProjectStatusBucket): void {
     setActiveStatusFilters([status])
@@ -815,6 +1010,14 @@ export function ProjectsHub({
 
   const normalizedQuery = normalizeSearchValue(query)
   const normalizedRegistryProjectQuery = normalizeSearchValue(registryProjectQuery)
+  const projectManagerAppUrl =
+    projectManagerUrlInput.trim() || HPS_PROJECT_MANAGER_WEB_APP_URL
+  const showProjectManagerDeveloperDialog =
+    canCreateOrUpdateProjects && developerModeEnabled
+  const projectManagerEmbedUrl =
+    projectManagerUrlInput.trim() ||
+    CONFIGURED_HPS_PROJECT_MANAGER_WEB_APP_URL.trim() ||
+    null
   const registryProjectMatches = normalizedRegistryProjectQuery
     ? projects
         .filter((project) =>
@@ -859,8 +1062,26 @@ export function ProjectsHub({
     Boolean(project.googleDriveFolderId)
   ).length
 
+  function openProjectManager(): void {
+    openProjectManagerWorkWindow(projectManagerAppUrl)
+  }
+
+  function openProjectManagerDetails(): void {
+    setProjectManagerOpen(true)
+  }
+
   return (
     <div className="min-h-0 flex-1 overflow-y-auto">
+      {showProjectManagerDeveloperDialog && (
+        <ProjectManagerEmbedDialog
+          open={projectManagerOpen}
+          onOpenChange={setProjectManagerOpen}
+          appUrl={projectManagerAppUrl}
+          embedUrl={projectManagerEmbedUrl}
+          urlInput={projectManagerUrlInput}
+          onUrlInputChange={setProjectManagerUrlInput}
+        />
+      )}
       <section className="border-b bg-background">
         <div className="mx-auto grid max-w-7xl gap-6 px-4 py-5 md:px-6 lg:grid-cols-[minmax(0,1fr)_22rem]">
           <div className="min-w-0">
@@ -1023,31 +1244,55 @@ export function ProjectsHub({
                   Create or Update an Existing Project
                 </h2>
                 <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                  Create a new Compass shell or open an existing job to update
-                  its Drive, Sage, Buildertrend, and registry links.
+                  Use the HPS Project Manager workflow for project numbering,
+                  Drive provisioning, and tracker updates. Compass stores the
+                  resulting links and accounting IDs after it runs.
                 </p>
               </div>
               <div className="flex flex-wrap gap-2">
-                <Button size="sm" variant="outline" asChild>
-                  <Link href="/dashboard/files">
-                    <IconBrandGoogleDrive className="size-4" />
-                    Drive files
-                  </Link>
-                </Button>
                 <Button
                   size="sm"
-                  variant="secondary"
+                  variant="default"
                   type="button"
-                  onClick={() => {
-                    setShowCreateProject((open) => !open)
-                    setNewProjectDepartment("O")
-                  }}
+                  onClick={openProjectManager}
                 >
-                  <IconPlus className="size-4" />
-                  Create project
+                  <IconSettingsAutomation className="size-4" />
+                  HPS Project Manager
                 </Button>
+                {showProjectManagerDeveloperDialog && (
+                  <>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      type="button"
+                      onClick={openProjectManagerDetails}
+                    >
+                      <IconExternalLink className="size-4" />
+                      Script details
+                    </Button>
+                    <Button size="sm" variant="outline" asChild>
+                      <Link href="/dashboard/files">
+                        <IconBrandGoogleDrive className="size-4" />
+                        Drive files
+                      </Link>
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      type="button"
+                      onClick={() => {
+                        setShowCreateProject((open) => !open)
+                        setNewProjectDepartment("O")
+                      }}
+                    >
+                      <IconPlus className="size-4" />
+                      Create project
+                    </Button>
+                  </>
+                )}
               </div>
             </div>
+            {showProjectManagerDeveloperDialog && (
             <div className="grid gap-4 p-4 lg:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
               {showCreateProject && (
                 <form
@@ -1057,8 +1302,9 @@ export function ProjectsHub({
                   <div>
                     <h3 className="text-sm font-semibold">Create new project</h3>
                     <p className="mt-1 text-xs text-muted-foreground">
-                      Choose the department. Compass will create the shell first;
-                      the project number can be assigned in the registry step.
+                      This only creates a Compass shell. Use HPS Project
+                      Manager when the job also needs official
+                      numbering, folders, and tracker rows.
                     </p>
                   </div>
                   <div className="mt-3 flex flex-wrap gap-2">
@@ -1113,9 +1359,12 @@ export function ProjectsHub({
 
               <div className="rounded-md border bg-card p-3">
                 <div>
-                  <h3 className="text-sm font-semibold">Update existing project</h3>
+                  <h3 className="text-sm font-semibold">
+                    Update Compass registry
+                  </h3>
                   <p className="mt-1 text-xs text-muted-foreground">
-                    Search by project number, client, address, or accounting job.
+                    Search for a Compass job, then paste or confirm the IDs
+                    produced by the HPS Project Manager workflow.
                   </p>
                 </div>
                 <div className="relative mt-3">
@@ -1178,20 +1427,32 @@ export function ProjectsHub({
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div>
                         <h4 className="text-sm font-semibold">
-                          Registry fields for {projectLabel(selectedRegistryProject)}
+                          Compass registry for {projectLabel(selectedRegistryProject)}
                         </h4>
                         <p className="mt-1 text-xs text-muted-foreground">
-                          Update the setup fields that feed the project creation
-                          and integration scripts.
+                          These fields record the project number, Drive folder,
+                          and handoff IDs created by the HPS Project Manager
+                          workflow or by Sage/Buildertrend.
                         </p>
                       </div>
-                      <Button size="sm" variant="outline" asChild>
-                        <Link
-                          href={`/dashboard/projects/${selectedRegistryProject.id}`}
+                      <div className="flex flex-wrap gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          type="button"
+                          onClick={openProjectManager}
                         >
-                          Open project
-                        </Link>
-                      </Button>
+                          <IconSettingsAutomation className="size-4" />
+                          Open Project Manager
+                        </Button>
+                        <Button size="sm" variant="outline" asChild>
+                          <Link
+                            href={`/dashboard/projects/${selectedRegistryProject.id}`}
+                          >
+                            Open project
+                          </Link>
+                        </Button>
+                      </div>
                     </div>
 
                     <div className="mt-4 grid gap-3 md:grid-cols-2">
@@ -1297,6 +1558,7 @@ export function ProjectsHub({
                 )}
               </div>
             </div>
+            )}
           </section>
         )}
 

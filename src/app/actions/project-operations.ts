@@ -89,6 +89,7 @@ export type ProjectOperationsSummary = {
 }
 
 export type ProjectSageSyncItemKind =
+  | "project_handoff"
   | "purchase_order"
   | "task"
   | "vendor_bill"
@@ -352,6 +353,7 @@ function normalizeTaskRecordType(value: ProjectTaskRecordType): ProjectTaskRecor
 }
 
 function operationSyncKind(recordType: string): ProjectSageSyncItemKind {
+  if (recordType === "sage_project_handoff") return "project_handoff"
   if (recordType === "purchase_order") return "purchase_order"
   if (recordType === "vendor_bill") return "vendor_bill"
   if (recordType === "owner_pay_application") return "owner_pay_application"
