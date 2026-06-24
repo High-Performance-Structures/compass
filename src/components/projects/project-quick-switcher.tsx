@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation"
 import { Check, ChevronsUpDown } from "lucide-react"
 
 import type { ProjectListItem } from "@/app/actions/projects"
+import { useActiveProject } from "@/components/project-list-provider"
 import { Button } from "@/components/ui/button"
 import {
   Command,
@@ -59,6 +60,7 @@ export function ProjectQuickSwitcher({
   className,
 }: ProjectQuickSwitcherProps): React.ReactElement {
   const router = useRouter()
+  const { setActiveProjectId } = useActiveProject()
   const [open, setOpen] = React.useState(false)
   const selectedProject =
     projects.find((project) => project.id === currentProjectId) ?? null
@@ -117,6 +119,7 @@ export function ProjectQuickSwitcher({
                     value={projectSearchValue(project)}
                     onSelect={() => {
                       setOpen(false)
+                      setActiveProjectId(project.id)
                       router.push(projectHref(project.id, targetSection))
                     }}
                   >

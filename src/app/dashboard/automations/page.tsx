@@ -33,8 +33,10 @@ type AutomationScript = Readonly<{
   status: ScriptStatus
   source: string
   scriptId: string
+  webAppUrl: string | null
   summary: string
   owns: readonly string[]
+  compassHandoff: string
 }>
 
 const GOOGLE_SCRIPTS: readonly AutomationScript[] = [
@@ -44,9 +46,12 @@ const GOOGLE_SCRIPTS: readonly AutomationScript[] = [
     status: "bridge-candidate",
     source: "Developer / GoogleIntegration",
     scriptId: "1NzKjO6r_WS5optIHxwGxB5mby3PX0TSHhctU73xZIFtWXXgLueksPN-s",
+    webAppUrl:
+      "https://script.google.com/a/macros/hps-colorado.com/s/AKfycbyeCqsdObrPp91LRmpEHSLZ8xdGerw7ExF2mFSSzYkxGnTrliv9OvHsYOFXicnVC5nQ/exec",
     summary:
       "Searches clients and projects, creates new project numbers, creates Drive folders, adds subfolders, and updates tracker rows.",
     owns: ["Project intake", "Folder creation", "Tracker updates"],
+    compassHandoff: "Posts project create/update records to Compass and stages Sage job review.",
   },
   {
     name: "HPS Project Intake Automation",
@@ -54,9 +59,11 @@ const GOOGLE_SCRIPTS: readonly AutomationScript[] = [
     status: "google-native",
     source: "HPS Projects",
     scriptId: "1lURNLz1gp29Df2kMD8veaSoJQrAB4lNvRX-FtzFcbAwP8HD_vB7lJg8Z",
+    webAppUrl: null,
     summary:
       "Keeps Google intake available while project review moves into Compass.",
     owns: ["Form submit trigger", "Intake handoff", "Drive-side setup"],
+    compassHandoff: "Ready for /api/google/script-handoff once its trigger payload is confirmed.",
   },
   {
     name: "Nu-Tech PO Order Manager",
@@ -64,19 +71,23 @@ const GOOGLE_SCRIPTS: readonly AutomationScript[] = [
     status: "google-native",
     source: "HPS Projects",
     scriptId: "11BxRLRu6YYVbWwvlqDNlnpPlCcs3fBhq5OkKaaugfAm-mZUxkBWvxqZ5",
+    webAppUrl: null,
     summary:
       "Supports NuTech order intake until Compass order tools are ready.",
     owns: ["PO intake", "Order tracking", "Google-side handoff"],
+    compassHandoff: "Ready for /api/google/script-handoff and staged as a PO handoff when deployed.",
   },
   {
     name: "Finish Schedule Generator",
-    division: "Project operations",
+    division: "Design",
     status: "bridge-candidate",
     source: "Developer",
     scriptId: "1Xjes03vcZScLxnmoEfnuwghe3v-ehR0sZDklyCJF3b2J29bGQYP8_ljX",
+    webAppUrl: null,
     summary:
-      "Reference for schedule templates and project calendar exports.",
-    owns: ["Schedule templates", "Sheet output", "Calendar handoff"],
+      "Design-side finish schedule tool for selections, finish records, and project handoff references.",
+    owns: ["Finish schedules", "Selections", "Design handoff"],
+    compassHandoff: "Ready for /api/google/script-handoff after the deployed work URL is confirmed.",
   },
 ]
 
@@ -136,6 +147,8 @@ function statusVariant(status: ScriptStatus): "default" | "secondary" | "outline
 function scriptUrl(scriptId: string): string {
   return `https://script.google.com/d/${scriptId}/edit`
 }
+
+const GENERIC_HANDOFF_URL = "/api/google/script-handoff"
 
 export default async function AutomationsPage() {
   const user = await getCurrentUser()
@@ -226,16 +239,34 @@ export default async function AutomationsPage() {
                       {script.summary}
                     </p>
                   </div>
-                  <Button asChild variant="outline" size="sm">
-                    <a
-                      href={scriptUrl(script.scriptId)}
-                      target="_blank"
-                      rel="noreferrer"
-                    >
-                      <IconExternalLink className="size-4" />
-                      Open script
-                    </a>
-                  </Button>
+                  <div className="flex flex-wrap gap-2">
+                    {script.webAppUrl ? (
+                      <Button asChild size="sm">
+                        <a
+                          href={script.webAppUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          <IconExternalLink className="size-4" />
+                          Open work window
+                        </a>
+                      </Button>
+                    ) : (
+                      <Button disabled variant="outline" size="sm">
+                        Needs web app URL
+                      </Button>
+                    )}
+                    <Button asChild variant="outline" size="sm">
+                      <a
+                        href={scriptUrl(script.scriptId)}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        <IconExternalLink className="size-4" />
+                        Open script
+                      </a>
+                    </Button>
+                  </div>
                 </div>
 
                 <Separator className="my-3" />
@@ -259,6 +290,12 @@ export default async function AutomationsPage() {
                     </p>
                     <p className="mt-2 text-sm">{script.source}</p>
                   </div>
+                </div>
+                <div className="mt-3 rounded-md border bg-muted/25 px-3 py-2">
+                  <p className="text-xs font-medium text-muted-foreground">
+                    Compass handoff
+                  </p>
+                  <p className="mt-1 text-sm">{script.compassHandoff}</p>
                 </div>
               </div>
             ))}
@@ -294,6 +331,9 @@ export default async function AutomationsPage() {
                 </div>
                 <p className="mt-1">
                   Project registry, review queues, visibility, and Sage handoff.
+                </p>
+                <p className="mt-2 font-mono text-xs text-foreground">
+                  {GENERIC_HANDOFF_URL}
                 </p>
               </div>
             </CardContent>

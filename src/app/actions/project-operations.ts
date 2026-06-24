@@ -97,6 +97,7 @@ export type ProjectSageSyncItemKind =
   | "rfq"
   | "budget_application"
   | "budget_line"
+  | "google_handoff"
 
 export type ProjectSageSyncItem = {
   readonly id: string
@@ -354,10 +355,18 @@ function normalizeTaskRecordType(value: ProjectTaskRecordType): ProjectTaskRecor
 
 function operationSyncKind(recordType: string): ProjectSageSyncItemKind {
   if (recordType === "sage_project_handoff") return "project_handoff"
+  if (recordType === "google_project_intake") return "project_handoff"
   if (recordType === "purchase_order") return "purchase_order"
+  if (recordType === "google_nutech_order") return "purchase_order"
   if (recordType === "vendor_bill") return "vendor_bill"
   if (recordType === "owner_pay_application") return "owner_pay_application"
   if (recordType === "rfq") return "rfq"
+  if (
+    recordType === "google_finish_schedule" ||
+    recordType === "google_script_handoff"
+  ) {
+    return "google_handoff"
+  }
   return "task"
 }
 

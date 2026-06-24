@@ -8,25 +8,109 @@ import {
   IconArrowLeft,
   IconCalendarStats,
   IconClipboardText,
+  IconCloud,
   IconExternalLink,
+  IconFileText,
   IconMailForward,
+  IconPencil,
   IconPhoto,
+  IconPlus,
   IconShieldCheck,
+  IconUpload,
   IconUsers,
 } from "@tabler/icons-react"
 
 import {
+  createProjectDailyLog,
   draftOwnerUpdateFromDailyLogs,
+  getProjectWeatherSnapshot,
   updateDailyLogReview,
+  updateProjectDailyLog,
   type ProjectDailyLogItem,
   type ProjectDailyLogWorkspace as ProjectDailyLogWorkspaceData,
 } from "@/app/actions/project-field"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
 import { ProjectContextSwitcher } from "@/components/projects/project-context-switcher"
 import { cn } from "@/lib/utils"
 
 type LogFilter = "all" | "needs_review" | "approved" | "owner_visible"
+
+const MAX_DAILY_LOG_UPLOAD_BYTES = 50 * 1024 * 1024
+
+type DailyLogDraft = {
+  readonly logDate: string
+  readonly weatherTempF: string
+  readonly weatherConditions: string
+  readonly weatherPrecipitation: string
+  readonly workCompleted: string
+  readonly crewPresent: string
+  readonly hoursWorked: string
+  readonly materialsUsed: string
+  readonly issues: string
+  readonly safetyIncidents: string
+  readonly visitorLog: string
+  readonly notes: string
+}
+
+function todayInputValue(): string {
+  return new Date().toISOString().slice(0, 10)
+}
+
+function emptyDailyLogDraft(): DailyLogDraft {
+  return {
+    logDate: todayInputValue(),
+    weatherTempF: "",
+    weatherConditions: "",
+    weatherPrecipitation: "",
+    workCompleted: "",
+    crewPresent: "",
+    hoursWorked: "",
+    materialsUsed: "",
+    issues: "",
+    safetyIncidents: "",
+    visitorLog: "",
+    notes: "",
+  }
+}
+
+function draftFromLog(log: ProjectDailyLogItem): DailyLogDraft {
+  return {
+    logDate: log.logDate,
+    weatherTempF: log.weatherTempF === null ? "" : String(log.weatherTempF),
+    weatherConditions: log.weatherConditions ?? "",
+    weatherPrecipitation: log.weatherPrecipitation ?? "",
+    workCompleted: log.workCompleted,
+    crewPresent: log.crewPresent ?? "",
+    hoursWorked: log.hoursWorked === null ? "" : String(log.hoursWorked),
+    materialsUsed: log.materialsUsed ?? "",
+    issues: log.issues ?? "",
+    safetyIncidents: log.safetyIncidents ?? "",
+    visitorLog: log.visitorLog ?? "",
+    notes: log.notes ?? "",
+  }
+}
+
+function optionalNumber(value: string): number | null {
+  const trimmed = value.trim()
+  if (trimmed.length === 0) return null
+
+  const parsed = Number(trimmed)
+  return Number.isFinite(parsed) ? parsed : null
+}
+
+function formatBytes(value: number): string {
+  if (value < 1024) return `${value} B`
+  if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`
+  return `${(value / (1024 * 1024)).toFixed(1)} MB`
+}
+
+function isImageFile(mimeType: string | null): boolean {
+  return mimeType !== null && mimeType.startsWith("image/")
+}
 
 function formatDate(value: string): string {
   return new Date(`${value}T00:00:00`).toLocaleDateString("en-US", {
@@ -157,6 +241,167 @@ function LogMetric({
   )
 }
 
+function DailyLogFields({
+  draft,
+  idPrefix,
+  updateDraft,
+}: {
+  readonly draft: DailyLogDraft
+  readonly idPrefix: string
+  readonly updateDraft: (field: keyof DailyLogDraft, value: string) => void
+}): React.ReactElement {
+  return (
+    <>
+      <div className="grid gap-3 md:grid-cols-[160px_110px_1fr_1fr]">
+        <div className="grid gap-1.5">
+          <Label htmlFor={`${idPrefix}-date`}>Date</Label>
+          <Input
+            id={`${idPrefix}-date`}
+            type="date"
+            value={draft.logDate}
+            onChange={(event) =>
+              updateDraft("logDate", event.currentTarget.value)
+            }
+            required
+          />
+        </div>
+        <div className="grid gap-1.5">
+          <Label htmlFor={`${idPrefix}-temp`}>Temp</Label>
+          <Input
+            id={`${idPrefix}-temp`}
+            inputMode="numeric"
+            value={draft.weatherTempF}
+            onChange={(event) =>
+              updateDraft("weatherTempF", event.currentTarget.value)
+            }
+            placeholder="F"
+          />
+        </div>
+        <div className="grid gap-1.5">
+          <Label htmlFor={`${idPrefix}-weather`}>Weather</Label>
+          <Input
+            id={`${idPrefix}-weather`}
+            value={draft.weatherConditions}
+            onChange={(event) =>
+              updateDraft("weatherConditions", event.currentTarget.value)
+            }
+            placeholder="Sunny, cloudy, windy..."
+          />
+        </div>
+        <div className="grid gap-1.5">
+          <Label htmlFor={`${idPrefix}-precipitation`}>Precipitation</Label>
+          <Input
+            id={`${idPrefix}-precipitation`}
+            value={draft.weatherPrecipitation}
+            onChange={(event) =>
+              updateDraft("weatherPrecipitation", event.currentTarget.value)
+            }
+            placeholder="Optional field note..."
+          />
+        </div>
+      </div>
+
+      <div className="grid gap-1.5">
+        <Label htmlFor={`${idPrefix}-work`}>Work completed</Label>
+        <Textarea
+          id={`${idPrefix}-work`}
+          value={draft.workCompleted}
+          onChange={(event) =>
+            updateDraft("workCompleted", event.currentTarget.value)
+          }
+          placeholder="Summarize progress, crews, inspections, and important field activity."
+          className="min-h-28"
+          required
+        />
+      </div>
+
+      <div className="grid gap-3 lg:grid-cols-3">
+        <div className="grid gap-1.5">
+          <Label htmlFor={`${idPrefix}-crew`}>Crew present</Label>
+          <Textarea
+            id={`${idPrefix}-crew`}
+            value={draft.crewPresent}
+            onChange={(event) =>
+              updateDraft("crewPresent", event.currentTarget.value)
+            }
+            placeholder="Companies, names, counts..."
+          />
+        </div>
+        <div className="grid gap-1.5">
+          <Label htmlFor={`${idPrefix}-hours`}>Hours worked</Label>
+          <Input
+            id={`${idPrefix}-hours`}
+            inputMode="decimal"
+            value={draft.hoursWorked}
+            onChange={(event) =>
+              updateDraft("hoursWorked", event.currentTarget.value)
+            }
+            placeholder="Total hours"
+          />
+        </div>
+        <div className="grid gap-1.5">
+          <Label htmlFor={`${idPrefix}-materials`}>Materials</Label>
+          <Textarea
+            id={`${idPrefix}-materials`}
+            value={draft.materialsUsed}
+            onChange={(event) =>
+              updateDraft("materialsUsed", event.currentTarget.value)
+            }
+            placeholder="Deliveries, materials used, shortages..."
+          />
+        </div>
+      </div>
+
+      <div className="grid gap-3 lg:grid-cols-4">
+        <div className="grid gap-1.5">
+          <Label htmlFor={`${idPrefix}-issues`}>Issues</Label>
+          <Textarea
+            id={`${idPrefix}-issues`}
+            value={draft.issues}
+            onChange={(event) =>
+              updateDraft("issues", event.currentTarget.value)
+            }
+            placeholder="Delays, conflicts, blockers..."
+          />
+        </div>
+        <div className="grid gap-1.5">
+          <Label htmlFor={`${idPrefix}-safety`}>Safety</Label>
+          <Textarea
+            id={`${idPrefix}-safety`}
+            value={draft.safetyIncidents}
+            onChange={(event) =>
+              updateDraft("safetyIncidents", event.currentTarget.value)
+            }
+            placeholder="Incidents or no incidents."
+          />
+        </div>
+        <div className="grid gap-1.5">
+          <Label htmlFor={`${idPrefix}-visitors`}>Visitors</Label>
+          <Textarea
+            id={`${idPrefix}-visitors`}
+            value={draft.visitorLog}
+            onChange={(event) =>
+              updateDraft("visitorLog", event.currentTarget.value)
+            }
+            placeholder="Owners, inspectors, suppliers..."
+          />
+        </div>
+        <div className="grid gap-1.5">
+          <Label htmlFor={`${idPrefix}-notes`}>Notes / Next</Label>
+          <Textarea
+            id={`${idPrefix}-notes`}
+            value={draft.notes}
+            onChange={(event) =>
+              updateDraft("notes", event.currentTarget.value)
+            }
+            placeholder="Follow-ups and next steps."
+          />
+        </div>
+      </div>
+    </>
+  )
+}
+
 function PhotoStrip({
   log,
 }: {
@@ -164,19 +409,26 @@ function PhotoStrip({
 }): React.ReactElement | null {
   if (log.photos.length === 0) return null
 
+  const ownerVisibleCount = log.photos.filter((photo) => photo.ownerVisible).length
+
   return (
     <div className="mt-3">
       <div className="mb-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
         <IconPhoto className="size-3.5" />
-        <span>{log.photos.length} photos tied to this log</span>
-        <span>&middot;</span>
         <span>
-          {log.photos.filter((photo) => photo.ownerVisible).length} owner visible
+          {log.photos.length} file{log.photos.length === 1 ? "" : "s"} tied to
+          this log
         </span>
+        <span>&middot;</span>
+        <span>{ownerVisibleCount} owner visible</span>
       </div>
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-6">
         {log.photos.slice(0, 6).map((photo) => {
           const href = browserHref(photo.driveUrl)
+          const imageSrc =
+            photo.thumbnailUrl !== null && isImageFile(photo.mimeType)
+              ? photo.thumbnailUrl
+              : null
           return (
             <a
               key={photo.id}
@@ -188,9 +440,9 @@ function PhotoStrip({
                 href ? "cursor-pointer" : "cursor-default"
               )}
             >
-              {photo.thumbnailUrl ? (
+              {imageSrc !== null ? (
                 <Image
-                  src={photo.thumbnailUrl}
+                  src={imageSrc}
                   alt={photo.caption ?? photo.fileName}
                   fill
                   sizes="160px"
@@ -198,8 +450,11 @@ function PhotoStrip({
                   className="object-cover transition-transform group-hover:scale-[1.03]"
                 />
               ) : (
-                <div className="flex h-full items-center justify-center p-2 text-center text-xs text-muted-foreground">
-                  {photo.caption ?? photo.fileName}
+                <div className="flex h-full flex-col items-center justify-center gap-2 p-3 text-center text-xs text-muted-foreground">
+                  <IconFileText className="size-6" />
+                  <span className="line-clamp-3 break-words">
+                    {photo.caption ?? photo.fileName}
+                  </span>
                 </div>
               )}
               <div className="absolute inset-x-0 bottom-0 bg-background/85 px-2 py-1 text-[11px]">
@@ -223,8 +478,26 @@ export function ProjectDailyLogWorkspace({
     React.useState<readonly ProjectDailyLogItem[]>(workspace.logs)
   const [filter, setFilter] = React.useState<LogFilter>("all")
   const [selectedIds, setSelectedIds] = React.useState<readonly string[]>([])
+  const [showNewLog, setShowNewLog] = React.useState(false)
+  const [draft, setDraft] = React.useState<DailyLogDraft>(emptyDailyLogDraft)
+  const [editingLogId, setEditingLogId] = React.useState<string | null>(null)
+  const [editDraft, setEditDraft] =
+    React.useState<DailyLogDraft>(emptyDailyLogDraft)
+  const [uploadingLogId, setUploadingLogId] = React.useState<string | null>(null)
+  const [uploadFiles, setUploadFiles] = React.useState<readonly File[]>([])
+  const [uploadCaption, setUploadCaption] = React.useState("")
+  const [uploadMessage, setUploadMessage] = React.useState<string | null>(null)
+  const [isUploading, setUploading] = React.useState(false)
   const [message, setMessage] = React.useState<string | null>(null)
   const [isPending, startTransition] = React.useTransition()
+  const [isWeatherPending, startWeatherTransition] = React.useTransition()
+
+  React.useEffect(() => {
+    setLogs(workspace.logs)
+    setSelectedIds([])
+    setEditingLogId(null)
+    setUploadingLogId(null)
+  }, [workspace.logs])
 
   const filteredLogs = React.useMemo(
     () => logs.filter((log) => matchesFilter(log, filter)),
@@ -247,6 +520,235 @@ export function ProjectDailyLogWorkspace({
 
   function clearSelection(): void {
     setSelectedIds([])
+  }
+
+  function updateDraft(field: keyof DailyLogDraft, value: string): void {
+    setDraft((current) => ({
+      ...current,
+      [field]: value,
+    }))
+  }
+
+  function updateEditDraft(field: keyof DailyLogDraft, value: string): void {
+    setEditDraft((current) => ({
+      ...current,
+      [field]: value,
+    }))
+  }
+
+  function startEditingLog(log: ProjectDailyLogItem): void {
+    setMessage(null)
+    setShowNewLog(false)
+    setEditingLogId(log.id)
+    setEditDraft(draftFromLog(log))
+  }
+
+  function cancelEditingLog(): void {
+    setEditingLogId(null)
+    setEditDraft(emptyDailyLogDraft())
+  }
+
+  function startUploadingFiles(log: ProjectDailyLogItem): void {
+    setMessage(null)
+    setUploadMessage(null)
+    setUploadingLogId(log.id)
+    setUploadFiles([])
+    setUploadCaption("")
+  }
+
+  function cancelUploadingFiles(): void {
+    setUploadingLogId(null)
+    setUploadFiles([])
+    setUploadCaption("")
+    setUploadMessage(null)
+  }
+
+  function chooseUploadFiles(fileList: FileList | null): void {
+    setUploadFiles(fileList === null ? [] : Array.from(fileList))
+  }
+
+  async function uploadDailyLogFiles(log: ProjectDailyLogItem): Promise<void> {
+    if (uploadFiles.length === 0) {
+      setUploadMessage("Choose at least one photo or document.")
+      return
+    }
+
+    const oversizedFile = uploadFiles.find(
+      (file) => file.size > MAX_DAILY_LOG_UPLOAD_BYTES
+    )
+    if (oversizedFile) {
+      setUploadMessage(
+        `${oversizedFile.name} is ${formatBytes(
+          oversizedFile.size
+        )}. Upload files under 50 MB each.`
+      )
+      return
+    }
+
+    setUploading(true)
+    setUploadMessage(null)
+
+    try {
+      const formData = new FormData()
+      for (const file of uploadFiles) {
+        formData.append("files", file)
+      }
+      formData.set("dailyLogId", log.id)
+      formData.set("caption", uploadCaption)
+      formData.set("capturedDate", log.logDate)
+      formData.set("photoKind", "progress")
+
+      const response = await fetch(
+        `/api/projects/${workspace.project.id}/photos/upload`,
+        {
+          method: "POST",
+          body: formData,
+        }
+      )
+      const result: unknown = await response.json()
+
+      if (
+        typeof result === "object" &&
+        result !== null &&
+        "success" in result &&
+        result.success === true
+      ) {
+        const uploadedCount =
+          "uploadedCount" in result && typeof result.uploadedCount === "number"
+            ? result.uploadedCount
+            : uploadFiles.length
+        setUploadMessage(
+          `Uploaded ${uploadedCount} file${
+            uploadedCount === 1 ? "" : "s"
+          } to Google Drive.`
+        )
+        setUploadFiles([])
+        setUploadCaption("")
+        router.refresh()
+        return
+      }
+
+      const error =
+        typeof result === "object" &&
+        result !== null &&
+        "error" in result &&
+        typeof result.error === "string"
+          ? result.error
+          : "Unable to upload files."
+      setUploadMessage(error)
+    } catch {
+      setUploadMessage("Unable to upload files.")
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  function submitDailyLog(event: React.FormEvent<HTMLFormElement>): void {
+    event.preventDefault()
+    setMessage(null)
+
+    if (draft.workCompleted.trim().length === 0) {
+      setMessage("Work completed is required before saving a daily log.")
+      return
+    }
+
+    startTransition(async () => {
+      const result = await createProjectDailyLog(workspace.project.id, {
+        logDate: draft.logDate,
+        weatherTempF: optionalNumber(draft.weatherTempF),
+        weatherConditions: draft.weatherConditions,
+        weatherPrecipitation: draft.weatherPrecipitation,
+        workCompleted: draft.workCompleted,
+        crewPresent: draft.crewPresent,
+        hoursWorked: optionalNumber(draft.hoursWorked),
+        materialsUsed: draft.materialsUsed,
+        issues: draft.issues,
+        safetyIncidents: draft.safetyIncidents,
+        visitorLog: draft.visitorLog,
+        notes: draft.notes,
+      })
+
+      if (result.success) {
+        setDraft(emptyDailyLogDraft())
+        setShowNewLog(false)
+        setMessage("Daily log saved. Review it before making it owner visible.")
+        router.refresh()
+      } else {
+        setMessage(result.error)
+      }
+    })
+  }
+
+  function submitDailyLogEdit(
+    event: React.FormEvent<HTMLFormElement>,
+    log: ProjectDailyLogItem
+  ): void {
+    event.preventDefault()
+    setMessage(null)
+
+    if (editDraft.workCompleted.trim().length === 0) {
+      setMessage("Work completed is required before saving a daily log.")
+      return
+    }
+
+    startTransition(async () => {
+      const result = await updateProjectDailyLog(workspace.project.id, {
+        dailyLogId: log.id,
+        logDate: editDraft.logDate,
+        weatherTempF: optionalNumber(editDraft.weatherTempF),
+        weatherConditions: editDraft.weatherConditions,
+        weatherPrecipitation: editDraft.weatherPrecipitation,
+        workCompleted: editDraft.workCompleted,
+        crewPresent: editDraft.crewPresent,
+        hoursWorked: optionalNumber(editDraft.hoursWorked),
+        materialsUsed: editDraft.materialsUsed,
+        issues: editDraft.issues,
+        safetyIncidents: editDraft.safetyIncidents,
+        visitorLog: editDraft.visitorLog,
+        notes: editDraft.notes,
+      })
+
+      if (result.success) {
+        cancelEditingLog()
+        setMessage("Daily log updated and returned to review.")
+        router.refresh()
+      } else {
+        setMessage(result.error)
+      }
+    })
+  }
+
+  function useProjectWeather(): void {
+    setMessage(null)
+    startWeatherTransition(async () => {
+      const result = await getProjectWeatherSnapshot(workspace.project.id, {
+        logDate: draft.logDate,
+      })
+
+      if (!result.success) {
+        setMessage(result.error)
+        return
+      }
+
+      setDraft((current) => ({
+        ...current,
+        weatherTempF:
+          result.weather.tempF === null ? "" : String(result.weather.tempF),
+        weatherConditions: result.weather.conditions,
+      }))
+      setMessage(
+        [
+          `Weather filled from ${result.weather.source}`,
+          result.weather.station ? `station ${result.weather.station}` : null,
+          result.weather.locationLabel
+            ? `near ${result.weather.locationLabel}`
+            : null,
+        ]
+          .filter((part): part is string => part !== null)
+          .join(" ")
+          .concat(".")
+      )
+    })
   }
 
   function updateReview(
@@ -329,6 +831,15 @@ export function ProjectDailyLogWorkspace({
               className="w-full sm:w-[280px]"
             />
             <div className="flex flex-wrap justify-end gap-2">
+              <Button
+                type="button"
+                variant={showNewLog ? "secondary" : "default"}
+                size="sm"
+                onClick={() => setShowNewLog((current) => !current)}
+              >
+                <IconPlus className="size-4" />
+                New daily log
+              </Button>
               <Button asChild variant="outline" size="sm">
                 <Link href={`/dashboard/projects/${workspace.project.id}/photos`}>
                   <IconPhoto className="size-4" />
@@ -379,6 +890,62 @@ export function ProjectDailyLogWorkspace({
             icon={<IconShieldCheck className="size-4" />}
           />
         </div>
+
+        {showNewLog && (
+          <section className="border-y py-4">
+            <form onSubmit={submitDailyLog} className="grid gap-4">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <h2 className="text-base font-semibold">New Daily Log</h2>
+                  <p className="text-sm text-muted-foreground">
+                    Saved logs enter review before owner visibility.
+                  </p>
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      setDraft(emptyDailyLogDraft())
+                      setShowNewLog(false)
+                    }}
+                  >
+                    Cancel
+                  </Button>
+                  <Button type="submit" size="sm" disabled={isPending}>
+                    Save daily log
+                  </Button>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center justify-between gap-2 border-y py-3">
+                <div>
+                  <p className="text-sm font-medium">Weather reference</p>
+                  <p className="text-xs text-muted-foreground">
+                    Uses the project address and selected log date.
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={isWeatherPending}
+                  onClick={useProjectWeather}
+                >
+                  <IconCloud className="size-4" />
+                  {isWeatherPending ? "Filling weather..." : "Fill weather"}
+                </Button>
+              </div>
+
+              <DailyLogFields
+                draft={draft}
+                idPrefix="daily-log"
+                updateDraft={updateDraft}
+              />
+            </form>
+          </section>
+        )}
 
         <section className="rounded-lg border p-3 sm:p-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -476,6 +1043,24 @@ export function ProjectDailyLogWorkspace({
 
                 <div className="flex flex-wrap gap-2">
                   <Button
+                    variant={editingLogId === log.id ? "secondary" : "outline"}
+                    size="sm"
+                    disabled={isPending}
+                    onClick={() => startEditingLog(log)}
+                  >
+                    <IconPencil className="size-4" />
+                    Edit
+                  </Button>
+                  <Button
+                    variant={uploadingLogId === log.id ? "secondary" : "outline"}
+                    size="sm"
+                    disabled={isUploading}
+                    onClick={() => startUploadingFiles(log)}
+                  >
+                    <IconUpload className="size-4" />
+                    Add files
+                  </Button>
+                  <Button
                     variant="outline"
                     size="sm"
                     disabled={isPending}
@@ -504,55 +1089,175 @@ export function ProjectDailyLogWorkspace({
                 </div>
               </div>
 
-              <p className="mt-3 text-sm leading-6">{log.workCompleted}</p>
+              {editingLogId === log.id ? (
+                <form
+                  onSubmit={(event) => submitDailyLogEdit(event, log)}
+                  className="mt-4 grid gap-4 border-t pt-4"
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <h3 className="text-sm font-semibold">Edit Daily Log</h3>
+                      <p className="text-xs text-muted-foreground">
+                        Saving changes returns the log to review.
+                      </p>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={cancelEditingLog}
+                      >
+                        Cancel
+                      </Button>
+                      <Button type="submit" size="sm" disabled={isPending}>
+                        Save edits
+                      </Button>
+                    </div>
+                  </div>
+                  <DailyLogFields
+                    draft={editDraft}
+                    idPrefix={`daily-log-edit-${log.id}`}
+                    updateDraft={updateEditDraft}
+                  />
+                </form>
+              ) : (
+                <>
+                  <p className="mt-3 text-sm leading-6">{log.workCompleted}</p>
 
-              {(log.issues ||
-                materialsUsed ||
-                log.safetyIncidents ||
-                log.visitorLog ||
-                log.notes) && (
-                <dl className="mt-3 grid gap-3 text-sm md:grid-cols-2 xl:grid-cols-5">
-                  {log.issues && (
-                    <div className="rounded-md border bg-muted/20 p-3">
-                      <dt className="text-xs font-medium uppercase text-muted-foreground">
-                        Issues
-                      </dt>
-                      <dd className="mt-1">{log.issues}</dd>
-                    </div>
+                  {(log.issues ||
+                    materialsUsed ||
+                    log.safetyIncidents ||
+                    log.visitorLog ||
+                    log.notes) && (
+                    <dl className="mt-3 grid gap-3 text-sm md:grid-cols-2 xl:grid-cols-5">
+                      {log.issues && (
+                        <div className="rounded-md border bg-muted/20 p-3">
+                          <dt className="text-xs font-medium uppercase text-muted-foreground">
+                            Issues
+                          </dt>
+                          <dd className="mt-1">{log.issues}</dd>
+                        </div>
+                      )}
+                      {materialsUsed && (
+                        <div className="rounded-md border bg-muted/20 p-3">
+                          <dt className="text-xs font-medium uppercase text-muted-foreground">
+                            Materials
+                          </dt>
+                          <dd className="mt-1">{materialsUsed}</dd>
+                        </div>
+                      )}
+                      {log.safetyIncidents && (
+                        <div className="rounded-md border bg-muted/20 p-3">
+                          <dt className="text-xs font-medium uppercase text-muted-foreground">
+                            Safety
+                          </dt>
+                          <dd className="mt-1">{log.safetyIncidents}</dd>
+                        </div>
+                      )}
+                      {log.visitorLog && (
+                        <div className="rounded-md border bg-muted/20 p-3">
+                          <dt className="text-xs font-medium uppercase text-muted-foreground">
+                            Visitors
+                          </dt>
+                          <dd className="mt-1">{log.visitorLog}</dd>
+                        </div>
+                      )}
+                      {log.notes && (
+                        <div className="rounded-md border bg-muted/20 p-3">
+                          <dt className="text-xs font-medium uppercase text-muted-foreground">
+                            Notes / Next
+                          </dt>
+                          <dd className="mt-1">{log.notes}</dd>
+                        </div>
+                      )}
+                    </dl>
                   )}
-                  {materialsUsed && (
-                    <div className="rounded-md border bg-muted/20 p-3">
-                      <dt className="text-xs font-medium uppercase text-muted-foreground">
-                        Materials
-                      </dt>
-                      <dd className="mt-1">{materialsUsed}</dd>
+                </>
+              )}
+
+              {uploadingLogId === log.id && (
+                <div className="mt-4 border-t pt-4">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <h3 className="text-sm font-semibold">
+                        Add Photos or Documents
+                      </h3>
+                      <p className="text-xs text-muted-foreground">
+                        Files save to Google Drive and stay attached to this log.
+                      </p>
                     </div>
-                  )}
-                  {log.safetyIncidents && (
-                    <div className="rounded-md border bg-muted/20 p-3">
-                      <dt className="text-xs font-medium uppercase text-muted-foreground">
-                        Safety
-                      </dt>
-                      <dd className="mt-1">{log.safetyIncidents}</dd>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={cancelUploadingFiles}
+                      disabled={isUploading}
+                    >
+                      Cancel
+                    </Button>
+                  </div>
+
+                  <div className="mt-3 grid gap-3 lg:grid-cols-[1fr_1fr_auto]">
+                    <div className="grid gap-1.5">
+                      <Label htmlFor={`daily-log-files-${log.id}`}>
+                        Photos / documents
+                      </Label>
+                      <Input
+                        key={uploadingLogId}
+                        id={`daily-log-files-${log.id}`}
+                        type="file"
+                        multiple
+                        accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.csv,.txt"
+                        onChange={(event) =>
+                          chooseUploadFiles(event.currentTarget.files)
+                        }
+                      />
+                      {uploadFiles.length > 0 && (
+                        <p className="text-xs text-muted-foreground">
+                          {uploadFiles.length} selected ·{" "}
+                          {formatBytes(
+                            uploadFiles.reduce(
+                              (total, file) => total + file.size,
+                              0
+                            )
+                          )}
+                        </p>
+                      )}
                     </div>
-                  )}
-                  {log.visitorLog && (
-                    <div className="rounded-md border bg-muted/20 p-3">
-                      <dt className="text-xs font-medium uppercase text-muted-foreground">
-                        Visitors
-                      </dt>
-                      <dd className="mt-1">{log.visitorLog}</dd>
+                    <div className="grid gap-1.5">
+                      <Label htmlFor={`daily-log-file-caption-${log.id}`}>
+                        Caption / note
+                      </Label>
+                      <Input
+                        id={`daily-log-file-caption-${log.id}`}
+                        value={uploadCaption}
+                        onChange={(event) =>
+                          setUploadCaption(event.currentTarget.value)
+                        }
+                        placeholder="Optional shared note for selected files"
+                      />
                     </div>
-                  )}
-                  {log.notes && (
-                    <div className="rounded-md border bg-muted/20 p-3">
-                      <dt className="text-xs font-medium uppercase text-muted-foreground">
-                        Notes / Next
-                      </dt>
-                      <dd className="mt-1">{log.notes}</dd>
+                    <div className="flex items-end">
+                      <Button
+                        type="button"
+                        onClick={() => {
+                          void uploadDailyLogFiles(log)
+                        }}
+                        disabled={isUploading || uploadFiles.length === 0}
+                      >
+                        <IconUpload className="size-4" />
+                        {isUploading ? "Uploading..." : "Upload to Drive"}
+                      </Button>
                     </div>
+                  </div>
+
+                  {uploadMessage && (
+                    <p className="mt-3 rounded-md border bg-muted/30 px-3 py-2 text-sm">
+                      {uploadMessage}
+                    </p>
                   )}
-                </dl>
+                </div>
               )}
 
               {log.tasks.length > 0 && (

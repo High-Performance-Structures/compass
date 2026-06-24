@@ -15,6 +15,7 @@ import {
   IconPhoto,
   IconReceipt,
   IconShoppingCart,
+  IconShoppingCartQuestion,
 } from "@tabler/icons-react"
 import { usePathname } from "next/navigation"
 
@@ -27,6 +28,7 @@ import { NavUser } from "@/components/nav-user"
 import { OrgSwitcher } from "@/components/org-switcher"
 import { PersonalDeskPhoto } from "@/components/personal-desk-photo"
 import { VoicePanel } from "@/components/voice/voice-panel"
+import { useActiveProject } from "@/components/project-list-provider"
 // settings is now a page at /dashboard/settings
 import { openFeedbackDialog } from "@/components/feedback-widget"
 import { useVoiceState } from "@/hooks/use-voice-state"
@@ -95,6 +97,12 @@ const NAV_MAIN = [
     icon: IconMessageCircleQuestion,
   },
   {
+    title: "RFQs",
+    url: "/dashboard/projects",
+    icon: IconShoppingCartQuestion,
+    projectPath: "/rfqs",
+  },
+  {
     title: "Conversations",
     url: "/dashboard/conversations",
     icon: IconMessageCircle,
@@ -134,6 +142,7 @@ function SidebarNav({
   const pathname = usePathname()
   const { state } = useSidebar()
   const isExpanded = state === "expanded"
+  const { activeProjectId } = useActiveProject()
   const isFilesMode = pathname?.startsWith("/dashboard/files")
   const isConversationsMode = pathname?.startsWith("/dashboard/conversations")
   const projectPathMatch = pathname?.match(/^\/dashboard\/projects\/([^/]+)/)
@@ -156,9 +165,11 @@ function SidebarNav({
     typeof item.projectPath === "string"
       ? {
           ...item,
-          url: `/dashboard/projects/select?target=${encodeURIComponent(
-            item.projectPath.replace(/^\//, "")
-          )}`,
+          url: activeProjectId
+            ? `/dashboard/projects/${activeProjectId}${item.projectPath}`
+            : `/dashboard/projects/select?target=${encodeURIComponent(
+                item.projectPath.replace(/^\//, "")
+              )}`,
         }
       : item
   )

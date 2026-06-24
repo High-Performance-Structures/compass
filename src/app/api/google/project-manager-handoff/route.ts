@@ -61,6 +61,105 @@ function textValue(record: StringRecord, key: string): string | null {
   return trimmed.length > 0 ? trimmed : null
 }
 
+function firstTextValue(
+  record: StringRecord,
+  keys: readonly string[]
+): string | null {
+  for (const key of keys) {
+    const value = textValue(record, key)
+    if (value !== null) return value
+  }
+  return null
+}
+
+function composeAddress(value: StringRecord): string | null {
+  const directAddress = firstTextValue(value, [
+    "address",
+    "Address",
+    "projectAddress",
+    "Project Address",
+    "jobsiteAddress",
+    "jobSiteAddress",
+    "siteAddress",
+    "Site Address",
+  ])
+  const streetNumber = firstTextValue(value, [
+    "streetNum",
+    "streetNumber",
+    "projectStreetNumber",
+    "siteStreetNumber",
+    "PROJECT STREET NUMBER",
+    "Project Street Number",
+  ])
+  const streetName = firstTextValue(value, [
+    "streetName",
+    "projectStreetName",
+    "siteStreetName",
+    "PROJECT STREET NAME",
+    "Project Street Name",
+  ])
+  const street = firstTextValue(value, [
+    "streetAddress",
+    "addressLine1",
+    "siteStreet",
+    "projectStreet",
+  ])
+  const addressLine2 = firstTextValue(value, [
+    "addressLine2",
+    "siteAddressLine2",
+    "projectAddressLine2",
+  ])
+  const cityState = firstTextValue(value, [
+    "cityState",
+    "cityStateZip",
+    "cityStatePostal",
+    "projectCityState",
+    "siteCityState",
+    "City, State Zip",
+    "CITY, STATE ZIP",
+  ])
+  const city = firstTextValue(value, ["city", "siteCity", "projectCity"])
+  const state = firstTextValue(value, ["state", "siteState", "projectState"])
+  const zip = firstTextValue(value, [
+    "zip",
+    "zipcode",
+    "zipCode",
+    "postalCode",
+    "siteZip",
+    "projectZip",
+    "jobZip",
+    "jobsiteZip",
+    "projectZipCode",
+    "siteZipCode",
+    "jobZipCode",
+    "jobsiteZipCode",
+    "ZIP",
+    "Zip",
+    "ZIP CODE",
+    "Zip Code",
+  ])
+  const streetFromParts = [streetNumber, streetName]
+    .filter((part): part is string => part !== null)
+    .join(" ")
+  const streetLine = [
+    street ?? (streetFromParts.length > 0 ? streetFromParts : directAddress),
+    addressLine2,
+  ]
+    .filter((part): part is string => part !== null)
+    .join(", ")
+  const stateZip = [state, zip]
+    .filter((part): part is string => part !== null)
+    .join(" ")
+  const cityLine = [city ?? cityState, stateZip.length > 0 ? stateZip : null]
+    .filter((part): part is string => part !== null)
+    .join(", ")
+  const composed = [streetLine, cityLine]
+    .filter((part) => part.length > 0)
+    .join(", ")
+
+  return composed.length > 0 ? composed : directAddress
+}
+
 function numberValue(record: StringRecord, key: string): number | null {
   const value = record[key]
   if (typeof value === "number" && Number.isFinite(value)) return value
@@ -105,6 +204,18 @@ function driveFolderUrl(folderId: string | null, fallback: string | null): strin
     : null
 }
 
+function driveFolderIdFromUrl(value: string | null): string | null {
+  if (!value) return null
+
+  const folderMatch = value.match(/\/folders\/([^/?#]+)/)
+  if (folderMatch) return folderMatch[1] ?? null
+
+  const idMatch = value.match(/[?&]id=([^&#]+)/)
+  if (idMatch) return idMatch[1] ?? null
+
+  return null
+}
+
 function isRecord(value: unknown): value is StringRecord {
   return typeof value === "object" && value !== null && !Array.isArray(value)
 }
@@ -142,7 +253,7 @@ function parsePayload(value: unknown): ParseResult {
       projectNumber,
       name,
       clientName: textValue(value, "clientName"),
-      address: textValue(value, "address"),
+      address: composeAddress(value),
       status: textValue(value, "status"),
       folderId: textValue(value, "folderId"),
       folderLink: textValue(value, "folderLink"),
@@ -252,6 +363,8 @@ async function stageProjectForSageSync(
     input.payload.action === "create_project"
       ? "Create or match this Google Project Manager project in Sage."
       : "Review Google Project Manager changes and update the Sage job if needed."
+  const folderId =
+    input.payload.folderId ?? driveFolderIdFromUrl(input.payload.folderLink)
   const values = {
     sourceSystem: "google_project_manager",
     sourceRecordType: "sage_project_handoff",
@@ -264,7 +377,7 @@ async function stageProjectForSageSync(
     assigneeType: "internal",
     assigneeName: input.payload.assignedTo,
     companyName: input.payload.clientName,
-    externalUrl: driveFolderUrl(input.payload.folderId, input.payload.folderLink),
+    externalUrl: driveFolderUrl(folderId, input.payload.folderLink),
     sageJobId: null,
     sageJobNumber: null,
     sageWriteStatus: "needs_review",
@@ -339,27 +452,30 @@ export async function POST(request: Request): Promise<Response> {
     )
     .limit(1)
 
-  const folderUrl = driveFolderUrl(payload.folderId, payload.folderLink)
+  const folderId = payload.folderId ?? driveFolderIdFromUrl(payload.folderLink)
+  const folderUrl = driveFolderUrl(folderId, payload.folderLink)
   const projectStatus = normalizeProjectStatus(payload.status)
   const projectId =
     existingProject?.id ??
     `proj-${slugPart(payload.projectNumber)}-${crypto.randomUUID().slice(0, 8)}`
 
   if (existingProject) {
+    const projectUpdates = {
+      name: payload.name,
+      status: projectStatus,
+      clientName: payload.clientName,
+      projectManager: payload.assignedTo,
+      googleDriveFolderId: folderId,
+      ownerUpdatesEnabled: true,
+      ownerUpdateChannel: "compass",
+      ownerUpdateCadence: "weekly",
+      updatedAt: now,
+      ...(payload.address === null ? {} : { address: payload.address }),
+    }
+
     await db
       .update(projects)
-      .set({
-        name: payload.name,
-        status: projectStatus,
-        address: payload.address,
-        clientName: payload.clientName,
-        projectManager: payload.assignedTo,
-        googleDriveFolderId: payload.folderId,
-        ownerUpdatesEnabled: true,
-        ownerUpdateChannel: "compass",
-        ownerUpdateCadence: "weekly",
-        updatedAt: now,
-      })
+      .set(projectUpdates)
       .where(eq(projects.id, existingProject.id))
   } else {
     await db.insert(projects).values({
@@ -371,7 +487,7 @@ export async function POST(request: Request): Promise<Response> {
       address: payload.address,
       clientName: payload.clientName,
       projectManager: payload.assignedTo,
-      googleDriveFolderId: payload.folderId,
+      googleDriveFolderId: folderId,
       ownerUpdatesEnabled: true,
       ownerUpdateChannel: "compass",
       ownerUpdateCadence: "weekly",
@@ -403,11 +519,11 @@ export async function POST(request: Request): Promise<Response> {
     projectId,
     system: "google_drive",
     label: "Project Drive folder",
-    externalId: payload.folderId,
+    externalId: folderId,
     externalNumber: null,
     externalUrl: folderUrl,
     syncDirection: "read_write",
-    syncStatus: payload.folderId ? "mapped" : "unmapped",
+    syncStatus: folderId ? "mapped" : "unmapped",
     metadata: payload.folderName
       ? JSON.stringify({ folderName: payload.folderName })
       : null,

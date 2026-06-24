@@ -5,10 +5,13 @@ import {
   IconFileDollar,
   IconFolderSearch,
   IconMailForward,
+  IconMessageCircleQuestion,
   IconPhoto,
+  IconShoppingCartQuestion,
 } from "@tabler/icons-react"
 
 import { getProjects } from "@/app/actions/projects"
+import { ActiveProjectSectionRedirect } from "@/components/projects/active-project-section-redirect"
 import { ProjectContextWatermarkShell } from "@/components/projects/project-context-watermark-shell"
 import { ProjectQuickSwitcher } from "@/components/projects/project-quick-switcher"
 import { Badge } from "@/components/ui/badge"
@@ -65,6 +68,22 @@ const TARGETS: readonly ProjectTarget[] = [
     icon: <IconAddressBook className="size-5 text-muted-foreground" />,
   },
   {
+    section: "rfis",
+    title: "RFIs",
+    description: "Choose a project before opening RFIs.",
+    placeholder: "Search projects for RFIs...",
+    badge: "RFI context",
+    icon: <IconMessageCircleQuestion className="size-5 text-muted-foreground" />,
+  },
+  {
+    section: "rfqs",
+    title: "RFQs",
+    description: "Choose a project before drafting quote requests.",
+    placeholder: "Search projects for RFQs...",
+    badge: "RFQ context",
+    icon: <IconShoppingCartQuestion className="size-5 text-muted-foreground" />,
+  },
+  {
     section: "schedule",
     title: "Project Schedule",
     description: "Choose a project before opening the schedule.",
@@ -115,6 +134,11 @@ export default async function ProjectSectionPickerPage({
           <Badge variant="secondary">{target.badge}</Badge>
         </div>
       </section>
+
+      <ActiveProjectSectionRedirect
+        targetSection={target.section}
+        label={`Open ${target.title}`}
+      />
 
       <section className="space-y-3">
         <div>

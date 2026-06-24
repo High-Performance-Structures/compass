@@ -95,6 +95,7 @@ function FormField({
 }
 
 function FinancialFormPanel({
+  id,
   title,
   description,
   accentClassName,
@@ -104,6 +105,7 @@ function FinancialFormPanel({
   onSubmit,
   children,
 }: {
+  readonly id?: string
   readonly title: string
   readonly description: string
   readonly accentClassName: string
@@ -115,6 +117,7 @@ function FinancialFormPanel({
 }): ReactElement {
   return (
     <form
+      id={id}
       className={`clarity-panel-strong overflow-hidden border-l-4 ${accentClassName}`}
       onSubmit={onSubmit}
     >
@@ -141,13 +144,17 @@ function FinancialFormPanel({
 export function ProjectFinancialWorkspace({
   projectId,
   items,
+  mode = "all",
 }: {
   readonly projectId: string
   readonly items: readonly ProjectFinancialWorkflowItem[]
+  readonly mode?: "all" | "rfq"
 }): ReactElement {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
   const [message, setMessage] = useState<string | null>(null)
+  const visibleItems =
+    mode === "rfq" ? items.filter((item) => item.type === "rfq") : items
 
   function handleVendorBill(event: FormEvent<HTMLFormElement>): void {
     event.preventDefault()
@@ -219,16 +226,21 @@ export function ProjectFinancialWorkspace({
         </div>
       )}
 
-      <section className="grid gap-4 xl:grid-cols-3">
-        <FinancialFormPanel
-          title="Enter Vendor Bill"
-          description="Stage a project bill for Sage review."
-          accentClassName="border-l-[#2f5963]"
-          icon={<IconReceipt className="size-5" />}
-          actionLabel="Stage Bill"
-          isPending={isPending}
-          onSubmit={handleVendorBill}
-        >
+      <section
+        className={
+          mode === "rfq" ? "grid max-w-4xl gap-4" : "grid gap-4 xl:grid-cols-3"
+        }
+      >
+        {mode === "all" && (
+          <FinancialFormPanel
+            title="Enter Vendor Bill"
+            description="Stage a project bill for Sage review."
+            accentClassName="border-l-[#2f5963]"
+            icon={<IconReceipt className="size-5" />}
+            actionLabel="Stage Bill"
+            isPending={isPending}
+            onSubmit={handleVendorBill}
+          >
             <FormField label="Vendor" htmlFor="vendorName">
               <Input id="vendorName" name="vendorName" required />
             </FormField>
@@ -259,17 +271,19 @@ export function ProjectFinancialWorkspace({
             <FormField label="Description" htmlFor="vendorBillDescription">
               <Textarea id="vendorBillDescription" name="description" rows={3} />
             </FormField>
-        </FinancialFormPanel>
+          </FinancialFormPanel>
+        )}
 
-        <FinancialFormPanel
-          title="Owner Pay Application"
-          description="Stage an AIA-style draw request."
-          accentClassName="border-l-[#3f7d4d]"
-          icon={<IconFileDollar className="size-5" />}
-          actionLabel="Stage Pay App"
-          isPending={isPending}
-          onSubmit={handlePayApplication}
-        >
+        {mode === "all" && (
+          <FinancialFormPanel
+            title="Owner Pay Application"
+            description="Stage an AIA-style draw request."
+            accentClassName="border-l-[#3f7d4d]"
+            icon={<IconFileDollar className="size-5" />}
+            actionLabel="Stage Pay App"
+            isPending={isPending}
+            onSubmit={handlePayApplication}
+          >
             <FormField label="Application number" htmlFor="applicationNumber">
               <Input id="applicationNumber" name="applicationNumber" />
             </FormField>
@@ -288,9 +302,11 @@ export function ProjectFinancialWorkspace({
             <FormField label="Notes" htmlFor="payApplicationNotes">
               <Textarea id="payApplicationNotes" name="notes" rows={7} />
             </FormField>
-        </FinancialFormPanel>
+          </FinancialFormPanel>
+        )}
 
         <FinancialFormPanel
+          id="rfq"
           title="Request for Quote"
           description="Draft scope by vendor category."
           accentClassName="border-l-[#9d832c]"
@@ -331,17 +347,23 @@ export function ProjectFinancialWorkspace({
       <section className="clarity-panel overflow-hidden">
         <div className="clarity-section-header flex flex-wrap items-center justify-between gap-3 px-4 py-3">
           <div>
-            <h2 className="text-sm font-semibold">Project Financial Queue</h2>
+            <h2 className="text-sm font-semibold">
+              {mode === "rfq" ? "RFQ Queue" : "Project Financial Queue"}
+            </h2>
             <p className="text-xs text-muted-foreground">
-              Drafts entered here feed developer-mode Sage sync review.
+              {mode === "rfq"
+                ? "Quote requests stay visible here and feed the sync review queue when needed."
+                : "Drafts entered here feed developer-mode Sage sync review."}
             </p>
           </div>
-          <Badge variant="outline">{items.length} records</Badge>
+          <Badge variant="outline">{visibleItems.length} records</Badge>
         </div>
 
-        {items.length === 0 ? (
+        {visibleItems.length === 0 ? (
           <p className="px-4 py-4 text-sm text-muted-foreground">
-            No project financial records have been staged yet.
+            {mode === "rfq"
+              ? "No RFQs have been drafted for this project yet."
+              : "No project financial records have been staged yet."}
           </p>
         ) : (
           <div className="m-4 overflow-hidden rounded-md border">
@@ -352,7 +374,7 @@ export function ProjectFinancialWorkspace({
               <span>Status</span>
             </div>
             <div className="divide-y">
-              {items.map((item) => (
+              {visibleItems.map((item) => (
                 <div
                   key={item.id}
                   className="grid gap-2 px-3 py-3 text-sm sm:grid-cols-[1fr_.7fr_.7fr_.8fr] sm:items-center sm:gap-3"

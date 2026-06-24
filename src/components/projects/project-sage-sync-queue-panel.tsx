@@ -27,6 +27,7 @@ function formatKind(kind: ProjectSageSyncItem["kind"]): string {
   if (kind === "owner_pay_application") return "Owner pay app"
   if (kind === "budget_application") return "Budget application"
   if (kind === "budget_line") return "Budget line"
+  if (kind === "google_handoff") return "Google handoff"
   if (kind === "rfq") return "RFQ"
   return "Task"
 }

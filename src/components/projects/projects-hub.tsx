@@ -5,6 +5,7 @@ import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
 import {
   IconAddressBook,
+  IconArrowLeft,
   IconBrandGoogleDrive,
   IconBuildingCommunity,
   IconCalendarStats,
@@ -17,6 +18,7 @@ import {
   IconPlus,
   IconSearch,
   IconSettingsAutomation,
+  IconSparkles,
   IconTool,
 } from "@tabler/icons-react"
 
@@ -72,6 +74,14 @@ type DepartmentConfig = {
 
 type DepartmentGroup = DepartmentConfig & {
   readonly projects: readonly ProjectsHubProject[]
+  readonly allProjects: readonly ProjectsHubProject[]
+}
+
+type DepartmentTool = {
+  readonly label: string
+  readonly description: string
+  readonly kind: "project-manager" | "link"
+  readonly href: string | null
 }
 
 type StatusFilterConfig = {
@@ -183,6 +193,39 @@ const HPS_PROJECT_MANAGER_WEB_APP_URL =
   CONFIGURED_HPS_PROJECT_MANAGER_WEB_APP_URL ||
   DEFAULT_HPS_PROJECT_MANAGER_WEB_APP_URL
 const DASHBOARD_MODE_STORAGE_KEY = "compass-dashboard-workspace-mode"
+
+const DEPARTMENT_TOOLS: readonly (DepartmentTool & {
+  readonly departments: readonly DepartmentId[]
+})[] = [
+  {
+    departments: ["O", "H", "D"],
+    label: "HPS Project Manager",
+    description: "Project numbers, Drive folders, and tracker updates.",
+    kind: "project-manager",
+    href: null,
+  },
+  {
+    departments: ["N"],
+    label: "Nu-Tech PO Order Manager",
+    description: "Google-side order intake while Compass PO tools mature.",
+    kind: "link",
+    href: "/dashboard/automations",
+  },
+  {
+    departments: ["D"],
+    label: "Finish Schedule Generator",
+    description: "Selections and finish schedule handoff work.",
+    kind: "link",
+    href: "/dashboard/automations",
+  },
+  {
+    departments: ["O", "H", "N", "D"],
+    label: "Automation Center",
+    description: "Google scripts, handoffs, and transition tools.",
+    kind: "link",
+    href: "/dashboard/automations",
+  },
+]
 
 function openProjectManagerWorkWindow(appUrl: string): void {
   const projectManagerWindow = window.open(
@@ -348,19 +391,48 @@ function departmentHeaderClassName(departmentId: DepartmentId): string {
   }
 }
 
-function departmentTabClassName(departmentId: DepartmentId): string {
+function departmentRingClassName(departmentId: DepartmentId): string {
   switch (departmentId) {
     case "O":
-      return "border-b-[#6f471f] text-[#6f471f]"
+      return "ring-[#6f471f]/35"
     case "H":
-      return "border-b-[#3f7d4d] text-[#3f7d4d]"
+      return "ring-[#3f7d4d]/35"
     case "N":
-      return "border-b-[#9d832c] text-[#715d1c]"
+      return "ring-[#9d832c]/35"
     case "D":
-      return "border-b-[#6f471f] text-[#6f471f]"
+      return "ring-[#6f471f]/35"
     case "UNASSIGNED":
-      return "border-b-muted-foreground"
+      return "ring-muted-foreground/25"
   }
+}
+
+function departmentSurfaceClassName(departmentId: DepartmentId): string {
+  switch (departmentId) {
+    case "O":
+      return "border-[#6f471f]/40 bg-[#6f471f]/10 hover:bg-[#6f471f]/15"
+    case "H":
+      return "border-[#3f7d4d]/40 bg-[#3f7d4d]/10 hover:bg-[#3f7d4d]/15"
+    case "N":
+      return "border-[#9d832c]/40 bg-[#9d832c]/10 hover:bg-[#9d832c]/15"
+    case "D":
+      return "border-[#6f471f]/40 bg-[#6f471f]/10 hover:bg-[#6f471f]/15"
+    case "UNASSIGNED":
+      return "border-muted bg-muted/25 hover:bg-muted/35"
+  }
+}
+
+function toolsForDepartment(departmentId: DepartmentId): readonly DepartmentTool[] {
+  return DEPARTMENT_TOOLS.filter((tool) =>
+    tool.departments.includes(departmentId)
+  )
+}
+
+function countByStatusBucket(
+  projects: readonly ProjectsHubProject[],
+  bucket: ProjectStatusBucket
+): number {
+  return projects.filter((project) => statusBucket(project.status) === bucket)
+    .length
 }
 
 function projectMatchesSearch(
@@ -703,30 +775,234 @@ function DepartmentButton({
   readonly active: boolean
   readonly onClick: () => void
 }): React.ReactElement {
+  const activeCount = countByStatusBucket(group.allProjects, "active")
+  const warrantyCount = countByStatusBucket(group.allProjects, "warranty")
+  const completeCount = countByStatusBucket(group.allProjects, "complete")
+
   return (
     <button
       type="button"
       onClick={onClick}
       className={cn(
-        "border-b-2 border-r border-transparent bg-card px-3 py-3 text-left transition-colors last:border-r-0 hover:bg-muted/55",
+        "group flex min-h-[11rem] flex-col rounded-lg border p-4 text-left shadow-sm transition-colors hover:border-foreground/20 hover:shadow-md",
+        departmentSurfaceClassName(group.id),
         active
-          ? cn("bg-muted/70 shadow-[inset_0_-3px_0_currentColor]", departmentTabClassName(group.id))
-          : "text-muted-foreground"
+          ? cn(
+              "ring-2 ring-offset-2 ring-offset-background",
+              departmentRingClassName(group.id)
+            )
+          : "text-foreground"
       )}
     >
-      <span className="flex items-center justify-between gap-3">
-        <span className="flex items-center gap-2">
-          <DepartmentMark department={group} size="sm" />
+      <span className="flex items-start justify-between gap-3">
+        <span className="flex min-w-0 items-center gap-3">
+          <DepartmentMark department={group} />
           <span>
-            <span className="block text-sm font-semibold">{group.shortLabel}</span>
-            <span className="text-xs text-muted-foreground">{group.label}</span>
+            <span className="block text-base font-semibold">
+              {group.shortLabel}
+            </span>
+            <span className="text-xs text-muted-foreground">
+              {group.label}
+            </span>
           </span>
         </span>
-        <span className="text-lg font-semibold tabular-nums">
-          {group.projects.length}
+        <span className="rounded-md border bg-background/80 px-2 py-1 text-sm font-semibold tabular-nums">
+          {activeCount}
+          <span className="ml-1 text-xs font-medium text-muted-foreground">
+            active
+          </span>
+        </span>
+      </span>
+      <span className="mt-4 block text-sm leading-6 text-muted-foreground">
+        {group.description}
+      </span>
+      <span className="mt-auto grid grid-cols-3 gap-2 pt-4 text-center text-xs">
+        <span className="rounded-md border bg-background/70 px-2 py-1.5">
+          <span className="block font-semibold tabular-nums">
+            {group.allProjects.length}
+          </span>
+          <span className="text-muted-foreground">Total</span>
+        </span>
+        <span className="rounded-md border bg-background/70 px-2 py-1.5">
+          <span className="block font-semibold tabular-nums">
+            {warrantyCount}
+          </span>
+          <span className="text-muted-foreground">Warranty</span>
+        </span>
+        <span className="rounded-md border bg-background/70 px-2 py-1.5">
+          <span className="block font-semibold tabular-nums">
+            {completeCount}
+          </span>
+          <span className="text-muted-foreground">Complete</span>
         </span>
       </span>
     </button>
+  )
+}
+
+function DepartmentToolButton({
+  tool,
+  onOpenProjectManager,
+}: {
+  readonly tool: DepartmentTool
+  readonly onOpenProjectManager: () => void
+}): React.ReactElement {
+  if (tool.kind === "project-manager") {
+    return (
+      <Button type="button" variant="outline" onClick={onOpenProjectManager}>
+        <IconSettingsAutomation className="size-4" />
+        {tool.label}
+      </Button>
+    )
+  }
+
+  if (!tool.href) {
+    return (
+      <Button type="button" variant="outline" disabled>
+        {tool.label}
+      </Button>
+    )
+  }
+
+  return (
+    <Button variant="outline" asChild>
+      <Link href={tool.href}>
+        <IconExternalLink className="size-4" />
+        {tool.label}
+      </Link>
+    </Button>
+  )
+}
+
+function DepartmentLanding({
+  group,
+  canUpdateStatus,
+  canOpenTools,
+  onOpenProjectManager,
+}: {
+  readonly group: DepartmentGroup
+  readonly canUpdateStatus: boolean
+  readonly canOpenTools: boolean
+  readonly onOpenProjectManager: () => void
+}): React.ReactElement {
+  const tools = toolsForDepartment(group.id)
+  const activeCount = countByStatusBucket(group.allProjects, "active")
+  const warrantyCount = countByStatusBucket(group.allProjects, "warranty")
+  const completeCount = countByStatusBucket(group.allProjects, "complete")
+  const needsStatusCleanupCount = countByStatusBucket(group.allProjects, "other")
+
+  return (
+    <section
+      className={cn(
+        "clarity-panel-strong overflow-hidden border-l-[8px]",
+        departmentBorderClassName(group.id),
+        departmentHeaderClassName(group.id)
+      )}
+    >
+      <div className="grid gap-4 border-b bg-background/70 p-4 lg:grid-cols-[minmax(0,1fr)_minmax(18rem,0.45fr)]">
+        <div className="min-w-0">
+          <div className="flex items-start gap-3">
+            <DepartmentMark department={group} />
+            <div>
+              <p className="text-xs font-medium uppercase tracking-normal text-muted-foreground">
+                Department hub
+              </p>
+              <h2 className="mt-1 text-xl font-semibold tracking-tight">
+                {group.label}
+              </h2>
+              <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
+                {group.description}
+              </p>
+            </div>
+          </div>
+        </div>
+        <div className="grid grid-cols-4 overflow-hidden rounded-md border bg-card text-center text-xs">
+          <div className="border-r px-2 py-2">
+            <p className="text-muted-foreground">Active</p>
+            <p className="mt-1 text-lg font-semibold tabular-nums">
+              {activeCount}
+            </p>
+          </div>
+          <div className="border-r px-2 py-2">
+            <p className="text-muted-foreground">Warranty</p>
+            <p className="mt-1 text-lg font-semibold tabular-nums">
+              {warrantyCount}
+            </p>
+          </div>
+          <div className="border-r px-2 py-2">
+            <p className="text-muted-foreground">Complete</p>
+            <p className="mt-1 text-lg font-semibold tabular-nums">
+              {completeCount}
+            </p>
+          </div>
+          <div className="px-2 py-2">
+            <p className="text-muted-foreground">Other</p>
+            <p className="mt-1 text-lg font-semibold tabular-nums">
+              {needsStatusCleanupCount}
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {canOpenTools && tools.length > 0 && (
+        <div className="border-b bg-muted/20 p-4">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h3 className="text-sm font-semibold">Quick tools</h3>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Department scripts and handoff utilities.
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {tools.map((tool) => (
+                <DepartmentToolButton
+                  key={tool.label}
+                  tool={tool}
+                  onOpenProjectManager={onOpenProjectManager}
+                />
+              ))}
+            </div>
+          </div>
+          <div className="mt-3 grid gap-2 md:grid-cols-2">
+            {tools.map((tool) => (
+              <div
+                key={`${tool.label}-detail`}
+                className="rounded-md border bg-background/75 px-3 py-2"
+              >
+                <p className="text-sm font-medium">{tool.label}</p>
+                <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                  {tool.description}
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div className="p-4">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h3 className="text-sm font-semibold">Projects</h3>
+          <p className="text-xs text-muted-foreground">
+            {group.projects.length} shown from {group.allProjects.length} total.
+          </p>
+        </div>
+        {group.projects.length > 0 ? (
+          <div className="mt-3 grid gap-3 xl:grid-cols-2">
+            {group.projects.map((project) => (
+              <ProjectCard
+                key={project.id}
+                project={project}
+                canUpdateStatus={canUpdateStatus}
+              />
+            ))}
+          </div>
+        ) : (
+          <div className="mt-3 rounded-md border border-dashed bg-background/70 p-6 text-center text-sm text-muted-foreground">
+            No projects match this department view.
+          </div>
+        )}
+      </div>
+    </section>
   )
 }
 
@@ -918,6 +1194,8 @@ export function ProjectsHub({
       departmentParam === "UNASSIGNED"
     ) {
       setActiveDepartment(departmentParam)
+    } else {
+      setActiveDepartment("ALL")
     }
 
     if (statusParam === "all") {
@@ -951,6 +1229,21 @@ export function ProjectsHub({
 
   function selectStatusFilter(status: ProjectStatusBucket): void {
     setActiveStatusFilters([status])
+  }
+
+  function selectDepartment(department: DepartmentId | "ALL"): void {
+    setActiveDepartment(department)
+    const params = new URLSearchParams(searchParams.toString())
+    if (department === "ALL") {
+      params.delete("department")
+    } else {
+      params.set("department", department)
+    }
+
+    const nextUrl = params.toString()
+      ? `/dashboard/projects?${params.toString()}`
+      : "/dashboard/projects"
+    router.replace(nextUrl, { scroll: false })
   }
 
   function createProjectFromForm(
@@ -1036,6 +1329,9 @@ export function ProjectsHub({
   )
   const groups: readonly DepartmentGroup[] = DEPARTMENTS.map((department) => ({
     ...department,
+    allProjects: projects.filter(
+      (project) => departmentIdForProject(project) === department.id
+    ),
     projects: searchedProjects.filter(
       (project) => departmentIdForProject(project) === department.id
     ),
@@ -1061,6 +1357,10 @@ export function ProjectsHub({
   const linkedToDriveCount = projects.filter((project) =>
     Boolean(project.googleDriveFolderId)
   ).length
+  const selectedDepartmentGroup =
+    activeDepartment === "ALL"
+      ? null
+      : groups.find((group) => group.id === activeDepartment) ?? null
 
   function openProjectManager(): void {
     openProjectManagerWorkWindow(projectManagerAppUrl)
@@ -1135,7 +1435,11 @@ export function ProjectsHub({
             <Input
               value={query}
               onChange={(event) => setQuery(event.target.value)}
-              placeholder="Search by project number, client, address, or accounting job..."
+              placeholder={
+                selectedDepartmentGroup
+                  ? `Search ${selectedDepartmentGroup.shortLabel} projects...`
+                  : "Search by project number, client, address, or accounting job..."
+              }
               className="pl-9"
             />
           </div>
@@ -1144,7 +1448,7 @@ export function ProjectsHub({
               type="button"
               variant={activeDepartment === "ALL" ? "default" : "outline"}
               size="sm"
-              onClick={() => setActiveDepartment("ALL")}
+              onClick={() => selectDepartment("ALL")}
             >
               All departments
             </Button>
@@ -1223,7 +1527,7 @@ export function ProjectsHub({
           </span>
         </div>
 
-        <div className="clarity-panel grid overflow-hidden md:grid-cols-2 xl:grid-cols-4">
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
           {groups
             .filter((group) => group.id !== "UNASSIGNED")
             .map((group) => (
@@ -1231,7 +1535,7 @@ export function ProjectsHub({
                 key={group.id}
                 group={group}
                 active={activeDepartment === group.id}
-                onClick={() => setActiveDepartment(group.id)}
+                onClick={() => selectDepartment(group.id)}
               />
             ))}
         </div>
@@ -1562,6 +1866,19 @@ export function ProjectsHub({
           </section>
         )}
 
+        {selectedDepartmentGroup && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="w-fit"
+            onClick={() => selectDepartment("ALL")}
+          >
+            <IconArrowLeft className="size-4" />
+            Department overview
+          </Button>
+        )}
+
         {projects.length === 0 ? (
           <div className="rounded-lg border border-dashed p-10 text-center">
             <IconFolder className="mx-auto mb-3 size-10 text-muted-foreground" />
@@ -1570,8 +1887,19 @@ export function ProjectsHub({
               No projects match this view yet.
             </p>
           </div>
-        ) : visibleGroups.length > 0 ? (
-          <div className="grid gap-4">
+        ) : selectedDepartmentGroup ? (
+          <DepartmentLanding
+            group={selectedDepartmentGroup}
+            canUpdateStatus={canCreateOrUpdateProjects}
+            canOpenTools={canCreateOrUpdateProjects}
+            onOpenProjectManager={openProjectManager}
+          />
+        ) : normalizedQuery && visibleGroups.length > 0 ? (
+          <section className="grid gap-4">
+            <div className="clarity-section-header flex items-center gap-2 px-4 py-3">
+              <IconSearch className="size-4 text-muted-foreground" />
+              <h2 className="text-sm font-semibold">Search results</h2>
+            </div>
             {visibleGroups.map((group) => (
               <DepartmentLane
                 key={group.id}
@@ -1580,6 +1908,14 @@ export function ProjectsHub({
                 canUpdateStatus={canCreateOrUpdateProjects}
               />
             ))}
+          </section>
+        ) : activeDepartment === "ALL" ? (
+          <div className="rounded-lg border border-dashed bg-muted/10 p-8 text-center">
+            <IconSparkles className="mx-auto mb-3 size-8 text-muted-foreground" />
+            <p className="font-medium">Choose a department to start.</p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              The logo cards above open the department work hubs.
+            </p>
           </div>
         ) : (
           <div className="rounded-lg border border-dashed p-10 text-center">

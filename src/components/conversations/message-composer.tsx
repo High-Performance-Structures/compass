@@ -18,6 +18,7 @@ import {
   Sticker,
   Gift,
   SendToBack,
+  Bell,
   Check,
   ChevronsUpDown,
 } from "lucide-react"
@@ -326,6 +327,7 @@ export function MessageComposer({
   const [emojiOpen, setEmojiOpen] = React.useState(false)
   const [recipientOpen, setRecipientOpen] = React.useState(false)
   const [recipientValue, setRecipientValue] = React.useState("channel")
+  const [importantDelivery, setImportantDelivery] = React.useState(false)
   const hasProjectDelivery = isProjectChannel && !threadId
 
   const lastTypingSentRef = React.useRef<number>(0)
@@ -410,6 +412,12 @@ export function MessageComposer({
     setRecipientValue("channel")
   }, [hasProjectDelivery, selectedRecipient])
 
+  React.useEffect(() => {
+    if (recipientValue === "channel") {
+      setImportantDelivery(false)
+    }
+  }, [recipientValue])
+
   const handleEmojiSelect = React.useCallback(
     (emoji: EmojiData) => {
       if (!editor) return
@@ -452,11 +460,13 @@ export function MessageComposer({
               channelId,
               content: markdown,
               recipient: recipientFromValue(recipientValue),
+              priority: importantDelivery ? "high" : "normal",
               mentions: mentions.length > 0 ? mentions : undefined,
             })
 
       if (result.success) {
         editor.commands.clearContent()
+        setImportantDelivery(false)
         if ("data" in result && result.data && "recipientLabel" in result.data) {
           const noteParts = [`Sent to ${result.data.recipientLabel}`]
           if (result.data.notifiedUserCount > 0) {
@@ -497,6 +507,7 @@ export function MessageComposer({
     onSent,
     isSending,
     recipientValue,
+    importantDelivery,
   ])
 
   React.useEffect(() => {
@@ -595,9 +606,23 @@ export function MessageComposer({
                 <Badge variant="outline" className="rounded-md">
                   #{channelName}
                 </Badge>
+                {recipientValue !== "channel" && (
+                  <Button
+                    type="button"
+                    variant={importantDelivery ? "default" : "outline"}
+                    size="sm"
+                    className="h-8 rounded-md px-2 text-xs"
+                    onClick={() => setImportantDelivery((current) => !current)}
+                  >
+                    <Bell className="size-3.5" />
+                    Important
+                  </Button>
+                )}
               </div>
               <p className="mt-1 truncate text-xs text-muted-foreground">
-                {recipientDetail(recipientValue, projectRecipients)}
+                {importantDelivery
+                  ? `${recipientDetail(recipientValue, projectRecipients)} Marked important.`
+                  : recipientDetail(recipientValue, projectRecipients)}
               </p>
             </div>
           </div>

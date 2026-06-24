@@ -245,6 +245,21 @@ export function ProjectWorkspaceShell({
         onWorkspaceModeChange={handleModeChange}
       />
 
+      {developerModeEnabled && (
+        <section className="space-y-4 border-y py-4">
+          <div>
+            <p className="text-xs font-medium uppercase text-muted-foreground">
+              Developer Tools
+            </p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Project mapping, Sage sync queue, and workspace connections.
+            </p>
+          </div>
+          <ProjectRegistryPanel projectId={projectId} registry={registry} />
+          <ProjectSageSyncQueuePanel projectId={projectId} queue={sageSyncQueue} />
+        </section>
+      )}
+
       <ProjectManagerWorkflowPanel
         projectId={projectId}
         projectNumber={projectNumber}
@@ -262,13 +277,6 @@ export function ProjectWorkspaceShell({
         allowedRoleIds={allowedRoleIds}
         showRoleControls={false}
       />
-
-      {developerModeEnabled && (
-        <div className="space-y-4">
-          <ProjectSageSyncQueuePanel projectId={projectId} queue={sageSyncQueue} />
-          <ProjectRegistryPanel projectId={projectId} registry={registry} />
-        </div>
-      )}
     </div>
   )
 }
