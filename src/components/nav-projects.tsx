@@ -12,6 +12,7 @@ import {
   IconHome2,
   IconMailForward,
   IconMessageCircleQuestion,
+  IconPalette,
   IconPhoto,
   IconShoppingCart,
   IconShoppingCartQuestion,
@@ -36,6 +37,7 @@ type ProjectSectionKey =
   | "owner-updates"
   | "daily-logs"
   | "photos"
+  | "selections"
   | "rfis"
   | "rfqs"
   | "purchase-orders"
@@ -82,6 +84,12 @@ const PROJECT_SECTION_ITEMS: readonly ProjectSectionItem[] = [
     hrefSuffix: "photos",
     icon: IconPhoto,
     section: "photos",
+  },
+  {
+    title: "Selections",
+    hrefSuffix: "selections",
+    icon: IconPalette,
+    section: "selections",
   },
   {
     title: "RFIs",
@@ -159,6 +167,7 @@ function activeProjectSection(pathname: string | null): ProjectSectionKey {
     case "financials":
     case "owner-updates":
     case "photos":
+    case "selections":
     case "purchase-orders":
     case "rfqs":
     case "rfis":

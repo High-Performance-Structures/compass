@@ -9,7 +9,7 @@ export function ProjectContextWatermarkShell({
   children,
 }: ProjectContextWatermarkShellProps) {
   return (
-    <div className="relative flex-1 overflow-hidden p-4 pt-6 sm:p-6 md:p-8">
+    <div className="compass-content-scroll relative min-h-full overflow-x-hidden p-4 pt-6 sm:p-6 md:p-8">
       <IconCompass
         aria-hidden="true"
         stroke={1}

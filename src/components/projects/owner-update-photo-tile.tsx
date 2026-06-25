@@ -41,8 +41,8 @@ export function OwnerUpdatePhotoTile({
   const opensExternally = href !== null && externalHref(href)
 
   return (
-    <div className="overflow-hidden rounded-md border bg-background">
-      <div className="flex aspect-[4/3] items-center justify-center bg-muted/50">
+    <div className="owner-update-photo-tile overflow-hidden rounded-md border bg-background print:break-inside-avoid print:rounded-none">
+      <div className="owner-update-photo-frame flex aspect-[4/3] items-center justify-center bg-muted/50">
         {showImage ? (
           <Image
             src={thumbnailUrl}

@@ -12,6 +12,7 @@ import {
   IconMailForward,
   IconMessageCircle,
   IconMessageCircleQuestion,
+  IconPalette,
   IconPhoto,
   IconReceipt,
   IconShoppingCart,
@@ -78,6 +79,12 @@ const NAV_MAIN = [
     url: "/dashboard/projects",
     icon: IconPhoto,
     projectPath: "/photos",
+  },
+  {
+    title: "Selections",
+    url: "/dashboard/projects",
+    icon: IconPalette,
+    projectPath: "/selections",
   },
   {
     title: "Budget",

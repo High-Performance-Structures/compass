@@ -6,6 +6,7 @@ import {
   IconFolderSearch,
   IconMailForward,
   IconMessageCircleQuestion,
+  IconPalette,
   IconPhoto,
   IconShoppingCartQuestion,
 } from "@tabler/icons-react"
@@ -50,6 +51,14 @@ const TARGETS: readonly ProjectTarget[] = [
     placeholder: "Search projects for photos...",
     badge: "Photo context",
     icon: <IconPhoto className="size-5 text-muted-foreground" />,
+  },
+  {
+    section: "selections",
+    title: "Finish Selections",
+    description: "Choose a project before reviewing finish selections.",
+    placeholder: "Search projects for selections...",
+    badge: "Selection context",
+    icon: <IconPalette className="size-5 text-muted-foreground" />,
   },
   {
     section: "budget",

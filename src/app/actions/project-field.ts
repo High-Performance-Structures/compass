@@ -75,7 +75,7 @@ type OwnerUpdateDailyLog = {
 type OwnerUpdatePhoto = {
   readonly id: string
   readonly fileName: string
-  readonly driveUrl: null
+  readonly driveUrl: string | null
   readonly thumbnailUrl: string | null
   readonly caption: string | null
   readonly capturedAt: string | null
@@ -199,6 +199,13 @@ type OwnerUpdateDraftInput = {
   readonly dailyLogIds: readonly string[]
 }
 
+export type OwnerUpdateDraftEditInput = {
+  readonly title: string
+  readonly updateDate: string
+  readonly summary: string
+  readonly selectedPhotoIds: readonly string[]
+}
+
 type DailyLogMutationResult =
   | { readonly success: true }
   | { readonly success: false; readonly error: string }
@@ -230,9 +237,11 @@ export type OwnerProjectUpdateDocument = {
     readonly channel: string
     readonly publishedAt: string | null
     readonly sentAt: string | null
+    readonly selectedPhotoIds: readonly string[]
   }
   readonly dailyLogs: readonly OwnerUpdateDailyLog[]
   readonly photos: readonly OwnerUpdatePhoto[]
+  readonly availablePhotos: readonly OwnerUpdatePhoto[]
   readonly photoFolder: OwnerUpdatePhotoFolder | null
   readonly nextScheduleItem: {
     readonly title: string
@@ -240,6 +249,12 @@ export type OwnerProjectUpdateDocument = {
     readonly endDate: string
     readonly assignedTo: string | null
   } | null
+  readonly lookAheadScheduleItems: readonly {
+    readonly title: string
+    readonly startDate: string
+    readonly endDate: string
+    readonly assignedTo: string | null
+  }[]
 }
 
 export type ProjectFieldSummary = {
@@ -273,6 +288,14 @@ function parseIdList(value: string | null): readonly string[] {
   } catch {
     return []
   }
+}
+
+function ownerFacingDailyLogNotes(value: string | null): string | null {
+  const trimmed = value?.trim() ?? ""
+  if (trimmed.length === 0) return null
+  if (trimmed.startsWith("Buildertrend title:")) return null
+  if (trimmed.includes("Buildertrend job ID:")) return null
+  return trimmed
 }
 
 function photoReviewPhotoCount(value: string | null): number | null {
@@ -1550,6 +1573,7 @@ export async function getOwnerProjectUpdateDocument(
     .select({
       id: dailyLogPhotos.id,
       fileName: dailyLogPhotos.fileName,
+      driveUrl: dailyLogPhotos.driveUrl,
       thumbnailUrl: dailyLogPhotos.thumbnailUrl,
       mimeType: dailyLogPhotos.mimeType,
       caption: dailyLogPhotos.caption,
@@ -1574,7 +1598,7 @@ export async function getOwnerProjectUpdateDocument(
     )
     .limit(1)
 
-  const [nextTask] = await db
+  const lookAheadTasks = await db
     .select({
       title: scheduleTasks.title,
       startDate: scheduleTasks.startDate,
@@ -1589,7 +1613,7 @@ export async function getOwnerProjectUpdateDocument(
       )
     )
     .orderBy(asc(scheduleTasks.startDate), asc(scheduleTasks.sortOrder))
-    .limit(1)
+    .limit(6)
 
   const dailyLogIds = new Set(selectedDailyLogIds)
   const photoIds = new Set(selectedPhotoIds)
@@ -1608,7 +1632,7 @@ export async function getOwnerProjectUpdateDocument(
       manpower: row.crewPresent,
       safetyNotes: row.safetyIncidents,
       issues: row.issues,
-      nextSteps: row.notes,
+      nextSteps: ownerFacingDailyLogNotes(row.notes),
       authorName: displayName({
         displayName: row.authorDisplayName,
         firstName: row.authorFirstName,
@@ -1629,7 +1653,23 @@ export async function getOwnerProjectUpdateDocument(
     .map((row) => ({
       id: row.id,
       fileName: row.fileName,
-      driveUrl: null,
+      driveUrl: row.driveUrl,
+      thumbnailUrl: row.thumbnailUrl,
+      caption: row.caption,
+      capturedAt: row.capturedAt,
+    }))
+
+  const availablePhotos = allPhotoRows
+    .filter((row) => {
+      const isImage =
+        row.thumbnailUrl !== null || row.mimeType?.startsWith("image/") === true
+      return isImage && row.ownerVisible && row.reviewStatus === "approved"
+    })
+    .slice(0, 80)
+    .map((row) => ({
+      id: row.id,
+      fileName: row.fileName,
+      driveUrl: row.driveUrl,
       thumbnailUrl: row.thumbnailUrl,
       caption: row.caption,
       capturedAt: row.capturedAt,
@@ -1646,16 +1686,117 @@ export async function getOwnerProjectUpdateDocument(
       channel: update.channel,
       publishedAt: update.publishedAt,
       sentAt: update.sentAt,
+      selectedPhotoIds,
     },
     dailyLogs: dailyLogsForUpdate,
     photos: photosForUpdate,
+    availablePhotos,
     photoFolder:
       photoFolder
         ? {
             label: photoFolder.label,
           }
         : null,
-    nextScheduleItem: nextTask ?? null,
+    nextScheduleItem: lookAheadTasks[0] ?? null,
+    lookAheadScheduleItems: lookAheadTasks,
+  }
+}
+
+export async function updateOwnerProjectUpdateDraft(
+  projectId: string,
+  updateId: string,
+  input: OwnerUpdateDraftEditInput
+): Promise<
+  | { readonly success: true }
+  | { readonly success: false; readonly error: string }
+> {
+  try {
+    const { db } = await verifyProjectMutationAccess(projectId)
+    const title = input.title.trim()
+    const updateDate = input.updateDate.trim()
+    const summary = input.summary.trim()
+    const selectedPhotoIds = [...new Set(input.selectedPhotoIds)]
+      .map((id) => id.trim())
+      .filter((id) => id.length > 0)
+
+    if (title.length === 0) {
+      return { success: false, error: "Title is required." }
+    }
+    if (updateDate.length === 0) {
+      return { success: false, error: "Update date is required." }
+    }
+    if (summary.length === 0) {
+      return { success: false, error: "Summary is required." }
+    }
+
+    const [update] = await db
+      .select({ id: ownerProjectUpdates.id, status: ownerProjectUpdates.status })
+      .from(ownerProjectUpdates)
+      .where(
+        and(
+          eq(ownerProjectUpdates.id, updateId),
+          eq(ownerProjectUpdates.projectId, projectId)
+        )
+      )
+      .limit(1)
+
+    if (!update) {
+      return { success: false, error: "Owner update not found." }
+    }
+    if (update.status === "published") {
+      return {
+        success: false,
+        error: "Published owner updates cannot be edited here.",
+      }
+    }
+
+    if (selectedPhotoIds.length > 0) {
+      const eligiblePhotos = await db
+        .select({ id: dailyLogPhotos.id })
+        .from(dailyLogPhotos)
+        .where(
+          and(
+            eq(dailyLogPhotos.projectId, projectId),
+            inArray(dailyLogPhotos.id, selectedPhotoIds),
+            eq(dailyLogPhotos.ownerVisible, true),
+            eq(dailyLogPhotos.reviewStatus, "approved")
+          )
+        )
+
+      if (eligiblePhotos.length !== selectedPhotoIds.length) {
+        return {
+          success: false,
+          error: "Only approved owner-visible photos can be selected.",
+        }
+      }
+    }
+
+    await db
+      .update(ownerProjectUpdates)
+      .set({
+        title,
+        updateDate,
+        summary,
+        selectedPhotoIds: JSON.stringify(selectedPhotoIds),
+        updatedAt: new Date().toISOString(),
+      })
+      .where(eq(ownerProjectUpdates.id, updateId))
+
+    revalidatePath(`/dashboard/projects/${projectId}`)
+    revalidatePath(`/dashboard/projects/${projectId}/owner-updates`)
+    revalidatePath(
+      `/dashboard/projects/${projectId}/owner-updates/${updateId}`
+    )
+
+    return { success: true }
+  } catch (error) {
+    return {
+      success: false,
+      error:
+        error instanceof Error
+          ? error.message
+          : "Unable to update owner draft.",
+    }
   }
 }
 
