@@ -1695,6 +1695,66 @@ export async function createRfqRequest(
   }
 }
 
+export async function deletePurchaseOrderRequest(
+  projectId: string,
+  purchaseOrderId: string
+): Promise<ProjectOperationActionResult> {
+  try {
+    const db = await verifyProjectUpdateAccess(projectId)
+    const [existing] = await db
+      .select({ id: projectOperations.id })
+      .from(projectOperations)
+      .where(
+        and(
+          eq(projectOperations.id, purchaseOrderId),
+          eq(projectOperations.projectId, projectId),
+          eq(projectOperations.sourceRecordType, "purchase_order")
+        )
+      )
+      .limit(1)
+
+    if (!existing) {
+      return { success: false, error: "Purchase order not found." }
+    }
+
+    await db
+      .delete(projectPurchaseOrderLines)
+      .where(
+        and(
+          eq(projectPurchaseOrderLines.operationId, purchaseOrderId),
+          eq(projectPurchaseOrderLines.projectId, projectId)
+        )
+      )
+    await db
+      .delete(projectOperations)
+      .where(
+        and(
+          eq(projectOperations.id, purchaseOrderId),
+          eq(projectOperations.projectId, projectId),
+          eq(projectOperations.sourceRecordType, "purchase_order")
+        )
+      )
+
+    revalidatePath(`/dashboard/projects/${projectId}`)
+    revalidatePath(`/dashboard/projects/${projectId}/purchase-orders`)
+    revalidatePath(`/dashboard/projects/${projectId}/financials`)
+    revalidatePath("/dashboard")
+    revalidatePath("/dashboard/purchase-orders")
+    revalidatePath("/dashboard/financials")
+    revalidatePath("/dashboard/schedule")
+
+    return { success: true, id: purchaseOrderId }
+  } catch (error) {
+    return {
+      success: false,
+      error:
+        error instanceof Error
+          ? error.message
+          : "Failed to delete purchase order",
+    }
+  }
+}
+
 export async function updateRfqRequest(
   projectId: string,
   rfqId: string,
@@ -1815,6 +1875,55 @@ export async function updateRfqRequest(
         error instanceof Error
           ? error.message
           : "Failed to update request for quote",
+    }
+  }
+}
+
+export async function deleteRfqRequest(
+  projectId: string,
+  rfqId: string
+): Promise<ProjectOperationActionResult> {
+  try {
+    const db = await verifyProjectUpdateAccess(projectId)
+    const [existing] = await db
+      .select({ id: projectOperations.id })
+      .from(projectOperations)
+      .where(
+        and(
+          eq(projectOperations.id, rfqId),
+          eq(projectOperations.projectId, projectId),
+          eq(projectOperations.sourceRecordType, "rfq")
+        )
+      )
+      .limit(1)
+
+    if (!existing) {
+      return { success: false, error: "RFQ not found." }
+    }
+
+    await db
+      .delete(projectOperations)
+      .where(
+        and(
+          eq(projectOperations.id, rfqId),
+          eq(projectOperations.projectId, projectId),
+          eq(projectOperations.sourceRecordType, "rfq")
+        )
+      )
+
+    revalidatePath(`/dashboard/projects/${projectId}`)
+    revalidatePath(`/dashboard/projects/${projectId}/rfqs`)
+    revalidatePath(`/dashboard/projects/${projectId}/financials`)
+    revalidatePath("/dashboard")
+
+    return { success: true, id: rfqId }
+  } catch (error) {
+    return {
+      success: false,
+      error:
+        error instanceof Error
+          ? error.message
+          : "Failed to delete request for quote",
     }
   }
 }

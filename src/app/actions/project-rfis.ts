@@ -417,3 +417,54 @@ export async function updateProjectRfi(
     }
   }
 }
+
+export async function deleteProjectRfi(
+  projectId: string,
+  rfiId: string
+): Promise<ProjectRfiActionResult> {
+  try {
+    const db = await verifyProjectUpdateAccess(projectId)
+    const [existing] = await db
+      .select({ id: projectRfis.id })
+      .from(projectRfis)
+      .where(and(eq(projectRfis.id, rfiId), eq(projectRfis.projectId, projectId)))
+      .limit(1)
+
+    if (!existing) {
+      return { success: false, error: "RFI not found." }
+    }
+
+    try {
+      await db
+        .delete(projectRfiAttachments)
+        .where(
+          and(
+            eq(projectRfiAttachments.rfiId, rfiId),
+            eq(projectRfiAttachments.projectId, projectId)
+          )
+        )
+    } catch (error) {
+      if (!isMissingAttachmentTableError(error)) {
+        throw error
+      }
+    }
+
+    await db
+      .delete(projectRfis)
+      .where(and(eq(projectRfis.id, rfiId), eq(projectRfis.projectId, projectId)))
+
+    revalidatePath(`/dashboard/projects/${projectId}`)
+    revalidatePath(`/dashboard/projects/${projectId}/rfis`)
+    revalidatePath(`/dashboard/projects/${projectId}/preview/owner`)
+    revalidatePath(`/dashboard/projects/${projectId}/preview/sub-vendor`)
+    revalidatePath("/dashboard/rfis")
+    revalidatePath("/dashboard/schedule")
+
+    return { success: true, id: rfiId }
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Failed to delete RFI",
+    }
+  }
+}

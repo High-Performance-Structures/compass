@@ -12,6 +12,7 @@ import {
 } from "@/app/actions/project-operations"
 import { getProjectTaskAssigneeOptions } from "@/app/actions/project-contacts"
 import { getProjects } from "@/app/actions/projects"
+import { ProjectPurchaseOrderDeleteButton } from "@/components/projects/project-purchase-order-delete-button"
 import { ProjectPurchaseOrderEmailButton } from "@/components/projects/project-purchase-order-email-button"
 import { ProjectPurchaseOrderCreateForm } from "@/components/projects/project-purchase-order-create-form"
 import { ProjectPurchaseOrderPrintButton } from "@/components/projects/project-purchase-order-print-button"
@@ -115,6 +116,12 @@ function PurchaseOrderCard({
               projectLabel={projectLabel}
               supplierName={order.companyName}
               supplierEmail={order.vendorEmail}
+            />
+            <ProjectPurchaseOrderDeleteButton
+              poNumber={order.sourceRecordNumber}
+              projectId={projectId}
+              purchaseOrderId={order.id}
+              title={order.title}
             />
             <ProjectTaskCreateButton
               projectId={projectId}

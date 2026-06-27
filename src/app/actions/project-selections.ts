@@ -1215,3 +1215,58 @@ export async function updateProjectSelectionStatus(
     }
   }
 }
+
+export async function deleteProjectSelection(
+  projectId: string,
+  selectionId: string
+): Promise<ActionResult> {
+  try {
+    const db = await verifyProjectAccess(projectId, "update")
+    const [existing] = await db
+      .select({
+        id: projectFinishSelections.id,
+        status: projectFinishSelections.status,
+        ownerApproved: projectFinishSelections.ownerApproved,
+      })
+      .from(projectFinishSelections)
+      .where(
+        and(
+          eq(projectFinishSelections.id, selectionId),
+          eq(projectFinishSelections.projectId, projectId)
+        )
+      )
+      .limit(1)
+
+    if (!existing) {
+      return { success: false, error: "Selection not found." }
+    }
+
+    if (existing.ownerApproved || existing.status === "approved") {
+      return {
+        success: false,
+        error:
+          "Approved selections cannot be deleted. Change the selection status or create a change review instead.",
+      }
+    }
+
+    await db
+      .delete(projectFinishSelections)
+      .where(
+        and(
+          eq(projectFinishSelections.id, selectionId),
+          eq(projectFinishSelections.projectId, projectId)
+        )
+      )
+
+    revalidatePath(`/dashboard/projects/${projectId}/selections`)
+    revalidatePath(`/dashboard/projects/${projectId}`)
+    revalidatePath(`/dashboard/projects/${projectId}/preview/owner`)
+    return { success: true, id: selectionId }
+  } catch (error) {
+    return {
+      success: false,
+      error:
+        error instanceof Error ? error.message : "Failed to delete selection",
+    }
+  }
+}

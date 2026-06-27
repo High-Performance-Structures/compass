@@ -21,6 +21,7 @@ import {
 } from "@/app/actions/project-selections"
 import { getProjects } from "@/app/actions/projects"
 import { ProjectRfqCreateForm } from "@/components/projects/project-rfq-create-form"
+import { ProjectRfqDeleteButton } from "@/components/projects/project-rfq-delete-button"
 import { ProjectRfqEditForm } from "@/components/projects/project-rfq-edit-form"
 import { ProjectRfqShareActions } from "@/components/projects/project-rfq-share-actions"
 import { ProjectTaskCreateButton } from "@/components/projects/project-task-create-button"
@@ -160,6 +161,12 @@ function RfqCard({
             projectId={projectId}
             projectLabel={projectLabel}
             rfq={rfq}
+          />
+          <ProjectRfqDeleteButton
+            projectId={projectId}
+            rfqId={rfq.id}
+            rfqNumber={rfq.sourceRecordNumber}
+            title={rfq.title}
           />
           <ProjectTaskCreateButton
             projectId={projectId}

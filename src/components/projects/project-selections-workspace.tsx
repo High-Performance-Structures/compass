@@ -16,6 +16,7 @@ import {
   type ProjectSelectionsSummary,
 } from "@/app/actions/project-selections"
 import { ProjectSelectionCreateForm } from "@/components/projects/project-selection-create-form"
+import { ProjectSelectionDeleteButton } from "@/components/projects/project-selection-delete-button"
 import { ProjectSelectionEditForm } from "@/components/projects/project-selection-edit-form"
 import { ProjectSelectionShareActions } from "@/components/projects/project-selection-share-actions"
 import { ProjectSelectionStatusSelect } from "@/components/projects/project-selection-status-select"
@@ -360,6 +361,10 @@ function SelectionRow({
       <div className="space-y-2">
         <ProjectSelectionEditForm
           options={options}
+          projectId={projectId}
+          selection={selection}
+        />
+        <ProjectSelectionDeleteButton
           projectId={projectId}
           selection={selection}
         />
