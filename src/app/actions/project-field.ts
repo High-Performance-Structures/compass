@@ -34,6 +34,7 @@ type LatestPhoto = {
   readonly id: string
   readonly sourceSystem: string
   readonly fileName: string
+  readonly driveFileId: string | null
   readonly driveUrl: string | null
   readonly thumbnailUrl: string | null
   readonly caption: string | null
@@ -75,6 +76,7 @@ type OwnerUpdateDailyLog = {
 type OwnerUpdatePhoto = {
   readonly id: string
   readonly fileName: string
+  readonly driveFileId: string | null
   readonly driveUrl: string | null
   readonly thumbnailUrl: string | null
   readonly caption: string | null
@@ -102,6 +104,7 @@ export type ProjectDailyLogPhoto = {
   readonly id: string
   readonly fileName: string
   readonly mimeType: string | null
+  readonly driveFileId: string | null
   readonly driveUrl: string | null
   readonly thumbnailUrl: string | null
   readonly caption: string | null
@@ -843,6 +846,7 @@ export async function getProjectFieldSummary(
       sourceSystem: dailyLogPhotos.sourceSystem,
       fileName: dailyLogPhotos.fileName,
       mimeType: dailyLogPhotos.mimeType,
+      driveFileId: dailyLogPhotos.driveFileId,
       driveUrl: dailyLogPhotos.driveUrl,
       thumbnailUrl: dailyLogPhotos.thumbnailUrl,
       caption: dailyLogPhotos.caption,
@@ -955,6 +959,7 @@ export async function getProjectFieldSummary(
       id: photo.id,
       sourceSystem: photo.sourceSystem,
       fileName: photo.fileName,
+      driveFileId: photo.driveFileId,
       driveUrl: photo.driveUrl,
       thumbnailUrl: photo.thumbnailUrl,
       caption: photo.caption,
@@ -1044,6 +1049,7 @@ export async function getProjectDailyLogWorkspace(
       dailyLogId: dailyLogPhotos.dailyLogId,
       fileName: dailyLogPhotos.fileName,
       mimeType: dailyLogPhotos.mimeType,
+      driveFileId: dailyLogPhotos.driveFileId,
       driveUrl: dailyLogPhotos.driveUrl,
       thumbnailUrl: dailyLogPhotos.thumbnailUrl,
       caption: dailyLogPhotos.caption,
@@ -1088,6 +1094,7 @@ export async function getProjectDailyLogWorkspace(
       id: row.id,
       fileName: row.fileName,
       mimeType: row.mimeType,
+      driveFileId: row.driveFileId,
       driveUrl: row.driveUrl,
       thumbnailUrl: row.thumbnailUrl,
       caption: row.caption,
@@ -1573,6 +1580,7 @@ export async function getOwnerProjectUpdateDocument(
     .select({
       id: dailyLogPhotos.id,
       fileName: dailyLogPhotos.fileName,
+      driveFileId: dailyLogPhotos.driveFileId,
       driveUrl: dailyLogPhotos.driveUrl,
       thumbnailUrl: dailyLogPhotos.thumbnailUrl,
       mimeType: dailyLogPhotos.mimeType,
@@ -1654,6 +1662,7 @@ export async function getOwnerProjectUpdateDocument(
       id: row.id,
       fileName: row.fileName,
       driveUrl: row.driveUrl,
+      driveFileId: row.driveFileId,
       thumbnailUrl: row.thumbnailUrl,
       caption: row.caption,
       capturedAt: row.capturedAt,
@@ -1670,6 +1679,7 @@ export async function getOwnerProjectUpdateDocument(
       id: row.id,
       fileName: row.fileName,
       driveUrl: row.driveUrl,
+      driveFileId: row.driveFileId,
       thumbnailUrl: row.thumbnailUrl,
       caption: row.caption,
       capturedAt: row.capturedAt,

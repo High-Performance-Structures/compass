@@ -18,6 +18,7 @@ export type ProjectPhotoLibraryItem = {
   readonly sourceSystem: string
   readonly fileName: string
   readonly mimeType: string | null
+  readonly driveFileId: string | null
   readonly driveUrl: string | null
   readonly thumbnailUrl: string | null
   readonly caption: string | null
@@ -325,6 +326,7 @@ export async function getProjectPhotoLibrary(
       sourceSystem: dailyLogPhotos.sourceSystem,
       fileName: dailyLogPhotos.fileName,
       mimeType: dailyLogPhotos.mimeType,
+      driveFileId: dailyLogPhotos.driveFileId,
       driveUrl: dailyLogPhotos.driveUrl,
       thumbnailUrl: dailyLogPhotos.thumbnailUrl,
       caption: dailyLogPhotos.caption,
@@ -393,6 +395,7 @@ export async function getProjectPhotoLibrary(
       sourceSystem: row.sourceSystem,
       fileName: row.fileName,
       mimeType: row.mimeType,
+      driveFileId: row.driveFileId,
       driveUrl: row.driveUrl,
       thumbnailUrl: row.thumbnailUrl,
       caption: row.caption,

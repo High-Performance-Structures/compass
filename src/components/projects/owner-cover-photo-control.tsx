@@ -22,10 +22,12 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
+import { resolvePhotoImageSource } from "@/lib/photo-sources"
 
 type OwnerCoverPhotoOption = {
   readonly id: string
   readonly fileName: string
+  readonly driveFileId: string | null
   readonly thumbnailUrl: string | null
   readonly caption: string | null
 }
@@ -184,11 +186,17 @@ function approvedCoverPhotoUrl(
     const selectedPhoto = approvedPhotos.find(
       (photo) => photo.id === selection.photoId
     )
+    if (selectedPhoto) {
+      return resolvePhotoImageSource(selectedPhoto).src ?? selection.url
+    }
 
-    return selectedPhoto?.thumbnailUrl ?? selection.url
+    return selection.url
   }
 
-  return approvedPhotos[0]?.thumbnailUrl ?? null
+  const firstPhoto = approvedPhotos.find(
+    (photo) => resolvePhotoImageSource(photo).src !== null
+  )
+  return firstPhoto ? resolvePhotoImageSource(firstPhoto).src : null
 }
 
 export function OwnerCoverPhotoControl({
@@ -213,12 +221,13 @@ export function OwnerCoverPhotoControl({
   const coverUrl = approvedCoverPhotoUrl(selection, approvedPhotos)
 
   function handleSelectApproved(photo: OwnerCoverPhotoOption): void {
-    if (!photo.thumbnailUrl) return
+    const photoUrl = resolvePhotoImageSource(photo).src
+    if (photoUrl === null) return
 
     const nextSelection: OwnerCoverPhotoSelection = {
       kind: "approved",
       photoId: photo.id,
-      url: photo.thumbnailUrl,
+      url: photoUrl,
     }
     setSelection(nextSelection)
     saveCoverSelection(projectId, nextSelection)
@@ -337,7 +346,7 @@ export function OwnerCoverPhotoControl({
                       <Badge variant="outline">
                         {
                           approvedPhotos.filter(
-                            (photo) => photo.thumbnailUrl !== null
+                            (photo) => resolvePhotoImageSource(photo).src !== null
                           ).length
                         }{" "}
                         available
@@ -345,36 +354,38 @@ export function OwnerCoverPhotoControl({
                     </div>
                     <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3">
                       {approvedPhotos
-                        .filter((photo) => photo.thumbnailUrl !== null)
-                        .map((photo) => (
+                        .map((photo) => {
+                          const photoUrl = resolvePhotoImageSource(photo).src
+                          if (photoUrl === null) return null
+
+                          return (
                           <button
                             key={photo.id}
                             type="button"
                             className="group overflow-hidden rounded-md border bg-background text-left transition hover:-translate-y-0.5 hover:border-primary hover:shadow-md"
                             onClick={() => handleSelectApproved(photo)}
                           >
-                            {photo.thumbnailUrl && (
-                              <div className="relative aspect-[4/3]">
-                                <Image
-                                  src={photo.thumbnailUrl}
-                                  alt={photo.caption ?? photo.fileName}
-                                  fill
-                                  sizes="240px"
-                                  unoptimized
-                                  className="object-cover"
-                                />
-                              </div>
-                            )}
+                            <div className="relative aspect-[4/3]">
+                              <Image
+                                src={photoUrl}
+                                alt={photo.caption ?? photo.fileName}
+                                fill
+                                sizes="240px"
+                                unoptimized
+                                className="object-cover"
+                              />
+                            </div>
                             <div className="p-2">
                               <p className="line-clamp-2 text-xs font-medium">
                                 {photo.caption ?? photo.fileName}
                               </p>
                             </div>
                           </button>
-                        ))}
+                          )
+                        })}
                     </div>
                     {approvedPhotos.every(
-                      (photo) => photo.thumbnailUrl === null
+                      (photo) => resolvePhotoImageSource(photo).src === null
                     ) && (
                       <p className="mt-3 rounded-md border p-3 text-sm text-muted-foreground">
                         No approved project photos ready yet.

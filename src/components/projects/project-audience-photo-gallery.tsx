@@ -21,6 +21,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { resolvePhotoImageSource } from "@/lib/photo-sources"
 
 type AudiencePhotoSort = "newest" | "oldest" | "phase_newest" | "phase_oldest"
 
@@ -108,8 +109,15 @@ export function ProjectAudiencePhotoGallery({
   const [previewPhoto, setPreviewPhoto] = React.useState<AudiencePhoto | null>(
     null
   )
+  const [failedImageIds, setFailedImageIds] = React.useState<readonly string[]>(
+    []
+  )
 
   const phases = React.useMemo(() => phaseOptions(photos), [photos])
+  const failedImageSet = React.useMemo(
+    () => new Set(failedImageIds),
+    [failedImageIds]
+  )
   const filteredPhotos = React.useMemo(() => {
     const filtered = photos.filter(
       (photo) =>
@@ -130,6 +138,13 @@ export function ProjectAudiencePhotoGallery({
       }
     })
   }, [dateFilter, phaseFilter, photoSort, photos])
+
+  function markImageFailed(photoId: string): void {
+    setFailedImageIds((current) => {
+      if (current.includes(photoId)) return current
+      return [...current, photoId]
+    })
+  }
 
   return (
     <section
@@ -226,51 +241,59 @@ export function ProjectAudiencePhotoGallery({
 
           {filteredPhotos.length > 0 ? (
             <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-              {filteredPhotos.map((photo) => (
-                <button
-                  key={photo.id}
-                  type="button"
-                  onClick={() => setPreviewPhoto(photo)}
-                  className="overflow-hidden rounded-md border bg-background text-left transition hover:-translate-y-1 hover:border-primary/50 hover:bg-muted/30 hover:shadow-md"
-                  aria-label={`Open larger preview for ${photo.caption ?? photo.fileName}`}
-                >
-                  <div className="relative flex aspect-[4/3] items-center justify-center bg-muted/50">
-                    {photo.thumbnailUrl ? (
-                      <Image
-                        src={photo.thumbnailUrl}
-                        alt={photo.caption ?? photo.fileName}
-                        fill
-                        sizes="(min-width: 1024px) 25vw, (min-width: 640px) 33vw, 50vw"
-                        unoptimized
-                        className="object-cover"
-                      />
-                    ) : (
-                      <div className="flex h-full w-full flex-col items-center justify-center gap-2 p-3 text-center">
-                        <IconPhoto className="size-8 text-muted-foreground" />
-                        <span className="line-clamp-2 text-xs text-muted-foreground">
-                          Photo preview
-                        </span>
-                      </div>
-                    )}
-                    <span className="absolute left-2 top-2 rounded bg-background/90 px-2 py-0.5 text-xs font-medium">
-                      {photo.photoDate}
-                    </span>
-                    <span className="absolute bottom-2 left-2 max-w-[calc(100%-1rem)] rounded bg-background/90 px-2 py-0.5 text-xs font-medium">
-                      {photo.schedulePhase}
-                    </span>
-                  </div>
-                  <div className="space-y-2 p-2">
-                    <p className="line-clamp-2 min-h-10 text-xs font-medium">
-                      {photo.caption ?? photo.fileName}
-                    </p>
-                    <div className="flex flex-wrap items-center gap-1">
-                      <Badge variant="outline">
-                        {photo.schedulePhaseConfidence}% match
-                      </Badge>
+              {filteredPhotos.map((photo) => {
+                const resolvedImage = resolvePhotoImageSource(photo)
+                const imageSrc = failedImageSet.has(photo.id)
+                  ? null
+                  : resolvedImage.src
+
+                return (
+                  <button
+                    key={photo.id}
+                    type="button"
+                    onClick={() => setPreviewPhoto(photo)}
+                    className="overflow-hidden rounded-md border bg-background text-left transition hover:-translate-y-1 hover:border-primary/50 hover:bg-muted/30 hover:shadow-md"
+                    aria-label={`Open larger preview for ${photo.caption ?? photo.fileName}`}
+                  >
+                    <div className="relative flex aspect-[4/3] items-center justify-center bg-muted/50">
+                      {imageSrc ? (
+                        <Image
+                          src={imageSrc}
+                          alt={photo.caption ?? photo.fileName}
+                          fill
+                          sizes="(min-width: 1024px) 25vw, (min-width: 640px) 33vw, 50vw"
+                          unoptimized
+                          className="object-cover"
+                          onError={() => markImageFailed(photo.id)}
+                        />
+                      ) : (
+                        <div className="flex h-full w-full flex-col items-center justify-center gap-2 p-3 text-center">
+                          <IconPhoto className="size-8 text-muted-foreground" />
+                          <span className="line-clamp-2 text-xs text-muted-foreground">
+                            {resolvedImage.label}
+                          </span>
+                        </div>
+                      )}
+                      <span className="absolute left-2 top-2 rounded bg-background/90 px-2 py-0.5 text-xs font-medium">
+                        {photo.photoDate}
+                      </span>
+                      <span className="absolute bottom-2 left-2 max-w-[calc(100%-1rem)] rounded bg-background/90 px-2 py-0.5 text-xs font-medium">
+                        {photo.schedulePhase}
+                      </span>
                     </div>
-                  </div>
-                </button>
-              ))}
+                    <div className="space-y-2 p-2">
+                      <p className="line-clamp-2 min-h-10 text-xs font-medium">
+                        {photo.caption ?? photo.fileName}
+                      </p>
+                      <div className="flex flex-wrap items-center gap-1">
+                        <Badge variant="outline">
+                          {photo.schedulePhaseConfidence}% match
+                        </Badge>
+                      </div>
+                    </div>
+                  </button>
+                )
+              })}
             </div>
           ) : (
             <div className="mt-4 rounded-md border bg-muted/20 p-6 text-sm text-muted-foreground">
@@ -295,6 +318,13 @@ export function ProjectAudiencePhotoGallery({
       >
         <DialogContent className="max-h-[92vh] overflow-hidden p-0 sm:max-w-5xl">
           {previewPhoto && (
+            (() => {
+              const resolvedImage = resolvePhotoImageSource(previewPhoto)
+              const imageSrc = failedImageSet.has(previewPhoto.id)
+                ? null
+                : resolvedImage.src
+
+              return (
             <div className="grid max-h-[92vh] grid-rows-[auto_minmax(0,1fr)]">
               <DialogHeader className="border-b px-4 py-3">
                 <DialogTitle className="line-clamp-1 text-base">
@@ -308,18 +338,22 @@ export function ProjectAudiencePhotoGallery({
               </DialogHeader>
               <div className="flex min-h-0 flex-col bg-muted/40">
                 <div className="relative min-h-[55vh] flex-1">
-                  {previewPhoto.thumbnailUrl ? (
+                  {imageSrc ? (
                     <Image
-                      src={previewPhoto.thumbnailUrl}
+                      src={imageSrc}
                       alt={previewPhoto.caption ?? previewPhoto.fileName}
                       fill
                       sizes="90vw"
                       unoptimized
                       className="object-contain"
+                      onError={() => markImageFailed(previewPhoto.id)}
                     />
                   ) : (
-                    <div className="flex h-full items-center justify-center">
+                    <div className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center">
                       <IconPhoto className="size-12 text-muted-foreground" />
+                      <p className="text-sm font-medium text-muted-foreground">
+                        {resolvedImage.label}
+                      </p>
                     </div>
                   )}
                 </div>
@@ -347,6 +381,8 @@ export function ProjectAudiencePhotoGallery({
                 </div>
               </div>
             </div>
+              )
+            })()
           )}
         </DialogContent>
       </Dialog>

@@ -13,18 +13,13 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
+import { resolvePhotoImageSource } from "@/lib/photo-sources"
 
 type DraftStatus =
   | { readonly kind: "idle" }
   | { readonly kind: "saving" }
   | { readonly kind: "saved"; readonly message: string }
   | { readonly kind: "error"; readonly message: string }
-
-function photoSrc(
-  photo: OwnerProjectUpdateDocument["availablePhotos"][number]
-): string | null {
-  return photo.thumbnailUrl ?? photo.driveUrl
-}
 
 export function OwnerUpdateDraftEditor({
   document,
@@ -39,7 +34,11 @@ export function OwnerUpdateDraftEditor({
     document.update.selectedPhotoIds
   )
   const [status, setStatus] = React.useState<DraftStatus>({ kind: "idle" })
+  const [failedImageIds, setFailedImageIds] = React.useState<readonly string[]>(
+    []
+  )
   const selectedPhotoIdSet = new Set(selectedPhotoIds)
+  const failedImageSet = new Set(failedImageIds)
 
   function togglePhoto(photoId: string, checked: boolean): void {
     setSelectedPhotoIds((current) => {
@@ -54,6 +53,13 @@ export function OwnerUpdateDraftEditor({
 
   function clearPhotos(): void {
     setSelectedPhotoIds([])
+  }
+
+  function markImageFailed(photoId: string): void {
+    setFailedImageIds((current) => {
+      if (current.includes(photoId)) return current
+      return [...current, photoId]
+    })
   }
 
   async function saveDraft(
@@ -175,7 +181,10 @@ export function OwnerUpdateDraftEditor({
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
               {document.availablePhotos.map((photo) => {
                 const checked = selectedPhotoIdSet.has(photo.id)
-                const src = photoSrc(photo)
+                const resolvedImage = resolvePhotoImageSource(photo)
+                const src = failedImageSet.has(photo.id)
+                  ? null
+                  : resolvedImage.src
 
                 return (
                   <label
@@ -196,10 +205,12 @@ export function OwnerUpdateDraftEditor({
                         src={src}
                         alt={photo.caption ?? photo.fileName}
                         className="aspect-[4/3] w-full object-cover"
+                        onError={() => markImageFailed(photo.id)}
                       />
                     ) : (
-                      <div className="flex aspect-[4/3] w-full items-center justify-center text-xs text-muted-foreground">
-                        No preview
+                      <div className="flex aspect-[4/3] w-full flex-col items-center justify-center gap-2 p-3 text-center text-xs text-muted-foreground">
+                        <IconPhoto className="size-6" />
+                        {resolvedImage.label}
                       </div>
                     )}
                     <div className="border-t bg-background px-2 py-1.5">

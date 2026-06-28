@@ -16,6 +16,7 @@ import { requireAuth } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
 import { requireOrg } from "@/lib/org-scope"
 import { canManageProjectRegistry } from "@/lib/permissions"
+import { resolvePhotoImageSource } from "@/lib/photo-sources"
 import {
   allowedWorkflowRoleIds,
   defaultWorkflowRoleId,
@@ -285,6 +286,7 @@ export async function getDashboardOverview(): Promise<DashboardOverview> {
         .select({
           id: dailyLogPhotos.id,
           fileName: dailyLogPhotos.fileName,
+          driveFileId: dailyLogPhotos.driveFileId,
           driveUrl: dailyLogPhotos.driveUrl,
           thumbnailUrl: dailyLogPhotos.thumbnailUrl,
           caption: dailyLogPhotos.caption,
@@ -308,9 +310,7 @@ export async function getDashboardOverview(): Promise<DashboardOverview> {
       photosToReview += projectPhotosToReview
 
       const progressPhotoRows = photoRows.filter((photo) => {
-        const hasImage =
-          photo.thumbnailUrl !== null ||
-          (photo.driveUrl !== null && photo.mimeType?.startsWith("image/") === true)
+        const hasImage = resolvePhotoImageSource(photo).src !== null
         return (
           hasImage &&
           photo.reviewStatus === "approved" &&
@@ -319,7 +319,7 @@ export async function getDashboardOverview(): Promise<DashboardOverview> {
       })
 
       for (const photo of progressPhotoRows.slice(0, 5)) {
-        const imageUrl = photo.thumbnailUrl ?? photo.driveUrl
+        const imageUrl = resolvePhotoImageSource(photo).src
         if (imageUrl === null) continue
 
         fieldPhotos.push({
