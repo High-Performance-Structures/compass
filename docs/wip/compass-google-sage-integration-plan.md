@@ -185,6 +185,20 @@ Best reuse:
 
 Apps Script access still depends on Google Admin OAuth scopes. The known required scopes include Apps Script project/process scopes in addition to Drive/Sheets/Form scopes.
 
+Current Compass bridge endpoints:
+
+- `/api/google/project-manager-handoff` is the dedicated HPS Project Manager receiver. It creates or updates the Compass project, maps the Drive folder, and stages Sage job review.
+- Project Manager handoffs should use the active tracker spreadsheets in the `________Developer` Google Drive folder: ORC Tracker, HPS Tracker, Nu-Tech Tracker, and Design Tracker. ORC and Design currently expose a full `Address` column; HPS and Nu-Tech expose `Project Address`. Compass accepts those raw tracker headers directly, plus normalized names such as `address`, `projectAddress`, and `jobsiteAddress`.
+- When a tracker or script sends split address fields, Compass also accepts `streetAddress`, `addressLine1`, `city`, `state`, `zip`, the Project Manager form names `streetNum`, `streetName`, and `cityState`, and raw sheet headers such as `PROJECT STREET NUMBER`, `PROJECT STREET NAME`, and `City, State Zip`. Zip code is captured when it is included in `Address`/`Project Address`/`City, State Zip` or sent separately as `zip`/`zipCode`; older rows that only contain city should be cleaned up or flagged as incomplete address data. Compass composes those fields into `projects.address` and will not erase an existing address when a later handoff omits address data.
+- `/api/google/script-handoff` is the generic receiver for the remaining Google scripts. The first target scripts are HPS Project Intake Automation, Nu-Tech PO Order Manager, and the Design-owned Finish Schedule Generator. Each request must include a bearer token and a project number so Compass can attach the handoff to the correct project.
+
+Generic script handoff payloads should include:
+
+- `source`: stable script key such as `hps_project_intake`, `nutech_po_order_manager`, or `finish_schedule_generator`.
+- `projectNumber`: Compass project number using the department-letter prefix.
+- `title`, `description`, `action`, `handoffId`, and `occurredAt` when available.
+- Optional workflow fields such as `companyName`, `assigneeName`, `amount`, `dueDate`, `externalUrl`, and source-specific row data. Compass stores the raw payload for review and later Sage mapping.
+
 ## First Implementation Track
 
 ### Phase 1: Project Registry

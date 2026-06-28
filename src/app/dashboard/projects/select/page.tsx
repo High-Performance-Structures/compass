@@ -5,10 +5,14 @@ import {
   IconFileDollar,
   IconFolderSearch,
   IconMailForward,
+  IconMessageCircleQuestion,
+  IconPalette,
   IconPhoto,
+  IconShoppingCartQuestion,
 } from "@tabler/icons-react"
 
 import { getProjects } from "@/app/actions/projects"
+import { ActiveProjectSectionRedirect } from "@/components/projects/active-project-section-redirect"
 import { ProjectContextWatermarkShell } from "@/components/projects/project-context-watermark-shell"
 import { ProjectQuickSwitcher } from "@/components/projects/project-quick-switcher"
 import { Badge } from "@/components/ui/badge"
@@ -49,6 +53,14 @@ const TARGETS: readonly ProjectTarget[] = [
     icon: <IconPhoto className="size-5 text-muted-foreground" />,
   },
   {
+    section: "selections",
+    title: "Finish Selections",
+    description: "Choose a project before reviewing finish selections.",
+    placeholder: "Search projects for selections...",
+    badge: "Selection context",
+    icon: <IconPalette className="size-5 text-muted-foreground" />,
+  },
+  {
     section: "budget",
     title: "Budget / G703",
     description: "Choose a project before opening budget detail.",
@@ -63,6 +75,22 @@ const TARGETS: readonly ProjectTarget[] = [
     placeholder: "Search projects for contacts...",
     badge: "Contact context",
     icon: <IconAddressBook className="size-5 text-muted-foreground" />,
+  },
+  {
+    section: "rfis",
+    title: "RFIs",
+    description: "Choose a project before opening RFIs.",
+    placeholder: "Search projects for RFIs...",
+    badge: "RFI context",
+    icon: <IconMessageCircleQuestion className="size-5 text-muted-foreground" />,
+  },
+  {
+    section: "rfqs",
+    title: "RFQs",
+    description: "Choose a project before drafting quote requests.",
+    placeholder: "Search projects for RFQs...",
+    badge: "RFQ context",
+    icon: <IconShoppingCartQuestion className="size-5 text-muted-foreground" />,
   },
   {
     section: "schedule",
@@ -115,6 +143,11 @@ export default async function ProjectSectionPickerPage({
           <Badge variant="secondary">{target.badge}</Badge>
         </div>
       </section>
+
+      <ActiveProjectSectionRedirect
+        targetSection={target.section}
+        label={`Open ${target.title}`}
+      />
 
       <section className="space-y-3">
         <div>

@@ -58,6 +58,7 @@ type ProjectUpdateContext = {
   readonly db: ReturnType<typeof getDb>
   readonly user: AuthUser
   readonly orgId: string
+  readonly projectNumber: string | null
 }
 
 export type ProjectRfiAttachmentInput = {
@@ -98,7 +99,7 @@ async function verifyProjectAccess(
   const db = getDb(env.DB)
 
   const existing = await db
-    .select({ id: projects.id })
+    .select({ id: projects.id, projectNumber: projects.projectNumber })
     .from(projects)
     .where(and(eq(projects.id, projectId), eq(projects.organizationId, orgId)))
     .limit(1)
@@ -128,7 +129,7 @@ async function getProjectUpdateContext(
   const db = getDb(env.DB)
 
   const existing = await db
-    .select({ id: projects.id })
+    .select({ id: projects.id, projectNumber: projects.projectNumber })
     .from(projects)
     .where(and(eq(projects.id, projectId), eq(projects.organizationId, orgId)))
     .limit(1)
@@ -137,7 +138,7 @@ async function getProjectUpdateContext(
     throw new Error("Project not found")
   }
 
-  return { db, user, orgId }
+  return { db, user, orgId, projectNumber: existing[0].projectNumber }
 }
 
 function cleanText(value: string | null): string | null {
@@ -153,8 +154,15 @@ function requireText(value: string, label: string): string {
   return trimmed
 }
 
-function rfiNumberFor(existingCount: number, id: string): string {
+function rfiNumberFor(
+  projectNumber: string | null,
+  existingCount: number,
+  id: string
+): string {
   const sequence = String(existingCount + 1).padStart(3, "0")
+  const prefix = cleanText(projectNumber)
+  if (prefix) return `${prefix}-RFI-${sequence}`
+
   const collisionSuffix = id.slice(0, 6).toUpperCase()
   return `RFI-${sequence}-${collisionSuffix}`
 }
@@ -294,7 +302,8 @@ export async function createProjectRfi(
   input: CreateProjectRfiInput
 ): Promise<ProjectRfiActionResult> {
   try {
-    const { db, user, orgId } = await getProjectUpdateContext(projectId)
+    const { db, user, orgId, projectNumber } =
+      await getProjectUpdateContext(projectId)
     const rows = await db
       .select({ id: projectRfis.id })
       .from(projectRfis)
@@ -305,7 +314,7 @@ export async function createProjectRfi(
     const inserted: typeof projectRfis.$inferInsert = {
       id,
       projectId,
-      rfiNumber: rfiNumberFor(rows.length, id),
+      rfiNumber: rfiNumberFor(projectNumber, rows.length, id),
       subject: requireText(input.subject, "Subject"),
       question: requireText(input.question, "Question"),
       status: "new",
@@ -405,6 +414,57 @@ export async function updateProjectRfi(
     return {
       success: false,
       error: error instanceof Error ? error.message : "Failed to update RFI",
+    }
+  }
+}
+
+export async function deleteProjectRfi(
+  projectId: string,
+  rfiId: string
+): Promise<ProjectRfiActionResult> {
+  try {
+    const db = await verifyProjectUpdateAccess(projectId)
+    const [existing] = await db
+      .select({ id: projectRfis.id })
+      .from(projectRfis)
+      .where(and(eq(projectRfis.id, rfiId), eq(projectRfis.projectId, projectId)))
+      .limit(1)
+
+    if (!existing) {
+      return { success: false, error: "RFI not found." }
+    }
+
+    try {
+      await db
+        .delete(projectRfiAttachments)
+        .where(
+          and(
+            eq(projectRfiAttachments.rfiId, rfiId),
+            eq(projectRfiAttachments.projectId, projectId)
+          )
+        )
+    } catch (error) {
+      if (!isMissingAttachmentTableError(error)) {
+        throw error
+      }
+    }
+
+    await db
+      .delete(projectRfis)
+      .where(and(eq(projectRfis.id, rfiId), eq(projectRfis.projectId, projectId)))
+
+    revalidatePath(`/dashboard/projects/${projectId}`)
+    revalidatePath(`/dashboard/projects/${projectId}/rfis`)
+    revalidatePath(`/dashboard/projects/${projectId}/preview/owner`)
+    revalidatePath(`/dashboard/projects/${projectId}/preview/sub-vendor`)
+    revalidatePath("/dashboard/rfis")
+    revalidatePath("/dashboard/schedule")
+
+    return { success: true, id: rfiId }
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Failed to delete RFI",
     }
   }
 }

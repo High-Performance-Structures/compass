@@ -23,6 +23,8 @@ export type ProjectMessageRecipient =
   | { readonly kind: "sub_vendors" }
   | { readonly kind: "contact"; readonly contactId: string }
 
+type ProjectMessagePriority = "normal" | "high"
+
 export type ProjectMessageResult =
   | {
       readonly success: true
@@ -145,6 +147,7 @@ export async function sendProjectMessage(input: {
   readonly channelId: string
   readonly content: string
   readonly recipient: ProjectMessageRecipient
+  readonly priority?: ProjectMessagePriority
   readonly mentions?: readonly {
     readonly mentionType: "user" | "channel" | "here" | "agent"
     readonly targetId: string | null
@@ -238,6 +241,8 @@ export async function sendProjectMessage(input: {
     const projectLabel = project?.projectNumber
       ? `${project.projectNumber} - ${project.name}`
       : project?.name ?? channel.name
+    const priority = input.priority === "high" ? "high" : "normal"
+    const importantPrefix = priority === "high" ? "Important: " : ""
 
     await createNotificationEvent({
       organizationId,
@@ -245,10 +250,10 @@ export async function sendProjectMessage(input: {
       eventType: "message.project",
       sourceType: "message",
       sourceId: sent.data.id,
-      title: `New Compass message for ${projectLabel}`,
-      body: `${user.displayName ?? user.email} sent a project message to ${label}.`,
+      title: `${importantPrefix}New Compass message for ${projectLabel}`,
+      body: `${importantPrefix}${user.displayName ?? user.email} sent a project message to ${label}.`,
       href: `/dashboard/conversations/${input.channelId}`,
-      priority: "normal",
+      priority,
       audience: input.recipient.kind,
       createdBy: user.id,
       recipients: matchedUsers,

@@ -39,7 +39,9 @@ function projectSectionHref(
     case "financials":
     case "owner-updates":
     case "photos":
+    case "selections":
     case "purchase-orders":
+    case "rfqs":
     case "rfis":
     case "schedule":
       return `${baseHref}/${section}`

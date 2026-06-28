@@ -5,10 +5,12 @@ import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
 import {
   IconAddressBook,
+  IconArrowLeft,
   IconBrandGoogleDrive,
   IconBuildingCommunity,
   IconCalendarStats,
   IconCompass,
+  IconExternalLink,
   IconFileDollar,
   IconFolder,
   IconHome,
@@ -16,6 +18,7 @@ import {
   IconPlus,
   IconSearch,
   IconSettingsAutomation,
+  IconSparkles,
   IconTool,
 } from "@tabler/icons-react"
 
@@ -27,6 +30,13 @@ import {
 } from "@/app/actions/projects"
 import { updateProjectRegistry } from "@/app/actions/project-registry"
 import { Button } from "@/components/ui/button"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import {
   Select,
@@ -64,6 +74,14 @@ type DepartmentConfig = {
 
 type DepartmentGroup = DepartmentConfig & {
   readonly projects: readonly ProjectsHubProject[]
+  readonly allProjects: readonly ProjectsHubProject[]
+}
+
+type DepartmentTool = {
+  readonly label: string
+  readonly description: string
+  readonly kind: "project-manager" | "link"
+  readonly href: string | null
 }
 
 type StatusFilterConfig = {
@@ -161,6 +179,75 @@ const PROJECT_STATUS_OPTIONS: readonly ProjectStatusOption[] = [
   { value: "ARCHIVE", label: "Archive", bucket: "archive" },
   { value: "OTHER", label: "Other", bucket: "other" },
 ]
+
+const HPS_PROJECT_MANAGER_EDITOR_URL =
+  "https://script.google.com/d/1NzKjO6r_WS5optIHxwGxB5mby3PX0TSHhctU73xZIFtWXXgLueksPN-s/edit"
+
+const DEFAULT_HPS_PROJECT_MANAGER_WEB_APP_URL =
+  "https://script.google.com/a/macros/hps-colorado.com/s/AKfycbyeCqsdObrPp91LRmpEHSLZ8xdGerw7ExF2mFSSzYkxGnTrliv9OvHsYOFXicnVC5nQ/exec"
+
+const CONFIGURED_HPS_PROJECT_MANAGER_WEB_APP_URL =
+  process.env.NEXT_PUBLIC_HPS_PROJECT_MANAGER_WEB_APP_URL ?? ""
+
+const HPS_PROJECT_MANAGER_WEB_APP_URL =
+  CONFIGURED_HPS_PROJECT_MANAGER_WEB_APP_URL ||
+  DEFAULT_HPS_PROJECT_MANAGER_WEB_APP_URL
+const DASHBOARD_MODE_STORAGE_KEY = "compass-dashboard-workspace-mode"
+
+const DEPARTMENT_TOOLS: readonly (DepartmentTool & {
+  readonly departments: readonly DepartmentId[]
+})[] = [
+  {
+    departments: ["O", "H", "D"],
+    label: "HPS Project Manager",
+    description: "Project numbers, Drive folders, and tracker updates.",
+    kind: "project-manager",
+    href: null,
+  },
+  {
+    departments: ["N"],
+    label: "Nu-Tech PO Order Manager",
+    description: "Google-side order intake while Compass PO tools mature.",
+    kind: "link",
+    href: "/dashboard/automations",
+  },
+  {
+    departments: ["D"],
+    label: "Finish Schedule Generator",
+    description: "Selections and finish schedule handoff work.",
+    kind: "link",
+    href: "/dashboard/automations",
+  },
+  {
+    departments: ["O", "H", "N", "D"],
+    label: "Automation Center",
+    description: "Google scripts, handoffs, and transition tools.",
+    kind: "link",
+    href: "/dashboard/automations",
+  },
+]
+
+function openProjectManagerWorkWindow(appUrl: string): void {
+  const projectManagerWindow = window.open(
+    appUrl,
+    "hps-project-manager",
+    "popup=yes,width=1180,height=860,menubar=no,toolbar=yes,location=yes,status=no,scrollbars=yes,resizable=yes"
+  )
+
+  if (projectManagerWindow) {
+    projectManagerWindow.focus()
+  }
+}
+
+function storedDashboardDeveloperMode(canUseDeveloperMode: boolean): boolean {
+  if (!canUseDeveloperMode) return false
+
+  try {
+    return window.localStorage.getItem(DASHBOARD_MODE_STORAGE_KEY) === "developer"
+  } catch {
+    return false
+  }
+}
 
 function normalizeSearchValue(value: string): string {
   return value
@@ -304,19 +391,48 @@ function departmentHeaderClassName(departmentId: DepartmentId): string {
   }
 }
 
-function departmentTabClassName(departmentId: DepartmentId): string {
+function departmentRingClassName(departmentId: DepartmentId): string {
   switch (departmentId) {
     case "O":
-      return "border-b-[#6f471f] text-[#6f471f]"
+      return "ring-[#6f471f]/35"
     case "H":
-      return "border-b-[#3f7d4d] text-[#3f7d4d]"
+      return "ring-[#3f7d4d]/35"
     case "N":
-      return "border-b-[#9d832c] text-[#715d1c]"
+      return "ring-[#9d832c]/35"
     case "D":
-      return "border-b-[#6f471f] text-[#6f471f]"
+      return "ring-[#6f471f]/35"
     case "UNASSIGNED":
-      return "border-b-muted-foreground"
+      return "ring-muted-foreground/25"
   }
+}
+
+function departmentSurfaceClassName(departmentId: DepartmentId): string {
+  switch (departmentId) {
+    case "O":
+      return "border-[#6f471f]/40 bg-[#6f471f]/10 hover:bg-[#6f471f]/15"
+    case "H":
+      return "border-[#3f7d4d]/40 bg-[#3f7d4d]/10 hover:bg-[#3f7d4d]/15"
+    case "N":
+      return "border-[#9d832c]/40 bg-[#9d832c]/10 hover:bg-[#9d832c]/15"
+    case "D":
+      return "border-[#6f471f]/40 bg-[#6f471f]/10 hover:bg-[#6f471f]/15"
+    case "UNASSIGNED":
+      return "border-muted bg-muted/25 hover:bg-muted/35"
+  }
+}
+
+function toolsForDepartment(departmentId: DepartmentId): readonly DepartmentTool[] {
+  return DEPARTMENT_TOOLS.filter((tool) =>
+    tool.departments.includes(departmentId)
+  )
+}
+
+function countByStatusBucket(
+  projects: readonly ProjectsHubProject[],
+  bucket: ProjectStatusBucket
+): number {
+  return projects.filter((project) => statusBucket(project.status) === bucket)
+    .length
 }
 
 function projectMatchesSearch(
@@ -659,30 +775,375 @@ function DepartmentButton({
   readonly active: boolean
   readonly onClick: () => void
 }): React.ReactElement {
+  const activeCount = countByStatusBucket(group.allProjects, "active")
+  const warrantyCount = countByStatusBucket(group.allProjects, "warranty")
+  const completeCount = countByStatusBucket(group.allProjects, "complete")
+
   return (
     <button
       type="button"
       onClick={onClick}
       className={cn(
-        "border-b-2 border-r border-transparent bg-card px-3 py-3 text-left transition-colors last:border-r-0 hover:bg-muted/55",
+        "group flex min-h-[11rem] flex-col rounded-lg border p-4 text-left shadow-sm transition-colors hover:border-foreground/20 hover:shadow-md",
+        departmentSurfaceClassName(group.id),
         active
-          ? cn("bg-muted/70 shadow-[inset_0_-3px_0_currentColor]", departmentTabClassName(group.id))
-          : "text-muted-foreground"
+          ? cn(
+              "ring-2 ring-offset-2 ring-offset-background",
+              departmentRingClassName(group.id)
+            )
+          : "text-foreground"
       )}
     >
-      <span className="flex items-center justify-between gap-3">
-        <span className="flex items-center gap-2">
-          <DepartmentMark department={group} size="sm" />
+      <span className="flex items-start justify-between gap-3">
+        <span className="flex min-w-0 items-center gap-3">
+          <DepartmentMark department={group} />
           <span>
-            <span className="block text-sm font-semibold">{group.shortLabel}</span>
-            <span className="text-xs text-muted-foreground">{group.label}</span>
+            <span className="block text-base font-semibold">
+              {group.shortLabel}
+            </span>
+            <span className="text-xs text-muted-foreground">
+              {group.label}
+            </span>
           </span>
         </span>
-        <span className="text-lg font-semibold tabular-nums">
-          {group.projects.length}
+        <span className="rounded-md border bg-background/80 px-2 py-1 text-sm font-semibold tabular-nums">
+          {activeCount}
+          <span className="ml-1 text-xs font-medium text-muted-foreground">
+            active
+          </span>
+        </span>
+      </span>
+      <span className="mt-4 block text-sm leading-6 text-muted-foreground">
+        {group.description}
+      </span>
+      <span className="mt-auto grid grid-cols-3 gap-2 pt-4 text-center text-xs">
+        <span className="rounded-md border bg-background/70 px-2 py-1.5">
+          <span className="block font-semibold tabular-nums">
+            {group.allProjects.length}
+          </span>
+          <span className="text-muted-foreground">Total</span>
+        </span>
+        <span className="rounded-md border bg-background/70 px-2 py-1.5">
+          <span className="block font-semibold tabular-nums">
+            {warrantyCount}
+          </span>
+          <span className="text-muted-foreground">Warranty</span>
+        </span>
+        <span className="rounded-md border bg-background/70 px-2 py-1.5">
+          <span className="block font-semibold tabular-nums">
+            {completeCount}
+          </span>
+          <span className="text-muted-foreground">Complete</span>
         </span>
       </span>
     </button>
+  )
+}
+
+function DepartmentToolButton({
+  tool,
+  onOpenProjectManager,
+}: {
+  readonly tool: DepartmentTool
+  readonly onOpenProjectManager: () => void
+}): React.ReactElement {
+  if (tool.kind === "project-manager") {
+    return (
+      <Button type="button" variant="outline" onClick={onOpenProjectManager}>
+        <IconSettingsAutomation className="size-4" />
+        {tool.label}
+      </Button>
+    )
+  }
+
+  if (!tool.href) {
+    return (
+      <Button type="button" variant="outline" disabled>
+        {tool.label}
+      </Button>
+    )
+  }
+
+  return (
+    <Button variant="outline" asChild>
+      <Link href={tool.href}>
+        <IconExternalLink className="size-4" />
+        {tool.label}
+      </Link>
+    </Button>
+  )
+}
+
+function DepartmentLanding({
+  group,
+  canUpdateStatus,
+  canOpenTools,
+  onOpenProjectManager,
+}: {
+  readonly group: DepartmentGroup
+  readonly canUpdateStatus: boolean
+  readonly canOpenTools: boolean
+  readonly onOpenProjectManager: () => void
+}): React.ReactElement {
+  const tools = toolsForDepartment(group.id)
+  const activeCount = countByStatusBucket(group.allProjects, "active")
+  const warrantyCount = countByStatusBucket(group.allProjects, "warranty")
+  const completeCount = countByStatusBucket(group.allProjects, "complete")
+  const needsStatusCleanupCount = countByStatusBucket(group.allProjects, "other")
+
+  return (
+    <section
+      className={cn(
+        "clarity-panel-strong overflow-hidden border-l-[8px]",
+        departmentBorderClassName(group.id),
+        departmentHeaderClassName(group.id)
+      )}
+    >
+      <div className="grid gap-4 border-b bg-background/70 p-4 lg:grid-cols-[minmax(0,1fr)_minmax(18rem,0.45fr)]">
+        <div className="min-w-0">
+          <div className="flex items-start gap-3">
+            <DepartmentMark department={group} />
+            <div>
+              <p className="text-xs font-medium uppercase tracking-normal text-muted-foreground">
+                Department hub
+              </p>
+              <h2 className="mt-1 text-xl font-semibold tracking-tight">
+                {group.label}
+              </h2>
+              <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
+                {group.description}
+              </p>
+            </div>
+          </div>
+        </div>
+        <div className="grid grid-cols-4 overflow-hidden rounded-md border bg-card text-center text-xs">
+          <div className="border-r px-2 py-2">
+            <p className="text-muted-foreground">Active</p>
+            <p className="mt-1 text-lg font-semibold tabular-nums">
+              {activeCount}
+            </p>
+          </div>
+          <div className="border-r px-2 py-2">
+            <p className="text-muted-foreground">Warranty</p>
+            <p className="mt-1 text-lg font-semibold tabular-nums">
+              {warrantyCount}
+            </p>
+          </div>
+          <div className="border-r px-2 py-2">
+            <p className="text-muted-foreground">Complete</p>
+            <p className="mt-1 text-lg font-semibold tabular-nums">
+              {completeCount}
+            </p>
+          </div>
+          <div className="px-2 py-2">
+            <p className="text-muted-foreground">Other</p>
+            <p className="mt-1 text-lg font-semibold tabular-nums">
+              {needsStatusCleanupCount}
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {canOpenTools && tools.length > 0 && (
+        <div className="border-b bg-muted/20 p-4">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h3 className="text-sm font-semibold">Quick tools</h3>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Department scripts and handoff utilities.
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {tools.map((tool) => (
+                <DepartmentToolButton
+                  key={tool.label}
+                  tool={tool}
+                  onOpenProjectManager={onOpenProjectManager}
+                />
+              ))}
+            </div>
+          </div>
+          <div className="mt-3 grid gap-2 md:grid-cols-2">
+            {tools.map((tool) => (
+              <div
+                key={`${tool.label}-detail`}
+                className="rounded-md border bg-background/75 px-3 py-2"
+              >
+                <p className="text-sm font-medium">{tool.label}</p>
+                <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                  {tool.description}
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div className="p-4">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h3 className="text-sm font-semibold">Projects</h3>
+          <p className="text-xs text-muted-foreground">
+            {group.projects.length} shown from {group.allProjects.length} total.
+          </p>
+        </div>
+        {group.projects.length > 0 ? (
+          <div className="mt-3 grid gap-3 xl:grid-cols-2">
+            {group.projects.map((project) => (
+              <ProjectCard
+                key={project.id}
+                project={project}
+                canUpdateStatus={canUpdateStatus}
+              />
+            ))}
+          </div>
+        ) : (
+          <div className="mt-3 rounded-md border border-dashed bg-background/70 p-6 text-center text-sm text-muted-foreground">
+            No projects match this department view.
+          </div>
+        )}
+      </div>
+    </section>
+  )
+}
+
+function ProjectManagerEmbedDialog({
+  open,
+  onOpenChange,
+  appUrl,
+  embedUrl,
+  urlInput,
+  onUrlInputChange,
+}: {
+  readonly open: boolean
+  readonly onOpenChange: (open: boolean) => void
+  readonly appUrl: string
+  readonly embedUrl: string | null
+  readonly urlInput: string
+  readonly onUrlInputChange: (value: string) => void
+}): React.ReactElement {
+  const handleOpenDetachedWindow = React.useCallback(() => {
+    openProjectManagerWorkWindow(appUrl)
+  }, [appUrl])
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="flex h-[min(92vh,900px)] max-w-[min(96vw,1180px)] flex-col gap-0 overflow-hidden p-0">
+        <DialogHeader className="border-b px-4 py-3 text-left">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+            <div>
+              <DialogTitle>HPS Project Manager</DialogTitle>
+              <DialogDescription>
+                Google project setup for numbering, Drive folders, and tracker
+                updates.
+              </DialogDescription>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button size="sm" onClick={handleOpenDetachedWindow}>
+                <IconExternalLink className="size-4" />
+                Open work window
+              </Button>
+              <Button size="sm" variant="outline" asChild>
+                <a href={appUrl} target="_blank" rel="noreferrer">
+                  <IconExternalLink className="size-4" />
+                  Open app tab
+                </a>
+              </Button>
+              <Button size="sm" variant="outline" asChild>
+                <a
+                  href={HPS_PROJECT_MANAGER_EDITOR_URL}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  <IconExternalLink className="size-4" />
+                  Script editor
+                </a>
+              </Button>
+            </div>
+          </div>
+        </DialogHeader>
+
+        <div className="border-b bg-muted/25 px-4 py-3">
+          <label className="text-xs font-medium text-muted-foreground">
+            Deployed web app URL
+          </label>
+          <Input
+            value={urlInput}
+            onChange={(event) => onUrlInputChange(event.target.value)}
+            placeholder={
+              HPS_PROJECT_MANAGER_WEB_APP_URL
+                ? HPS_PROJECT_MANAGER_WEB_APP_URL
+                : "Paste the Apps Script /macros/s/.../exec URL"
+            }
+            className="mt-1"
+          />
+          {!embedUrl && (
+            <p className="mt-2 text-xs text-muted-foreground">
+              The current HPS-domain deployment opens cleanly in a tab, but
+              Google blocks its sign-in redirect inside a Compass iframe. Paste
+              a new embed-capable /exec URL here to test it in this browser
+              session.
+            </p>
+          )}
+        </div>
+
+        {embedUrl ? (
+          <iframe
+            title="HPS Project Manager"
+            src={embedUrl}
+            className="min-h-0 flex-1 border-0 bg-background"
+            referrerPolicy="strict-origin-when-cross-origin"
+          />
+        ) : (
+          <div className="flex min-h-0 flex-1 items-center justify-center bg-background p-6">
+            <div className="w-full max-w-2xl overflow-hidden rounded-md border bg-card shadow-sm">
+              <div className="flex items-center justify-between border-b bg-muted/40 px-4 py-2">
+                <div className="flex items-center gap-2">
+                  <span className="size-2 rounded-full bg-[#d14b3a]" />
+                  <span className="size-2 rounded-full bg-[#d8a742]" />
+                  <span className="size-2 rounded-full bg-[#3f7d4d]" />
+                </div>
+                <span className="text-xs font-medium text-muted-foreground">
+                  Secure Google window
+                </span>
+              </div>
+              <div className="p-6">
+                <div className="flex items-start gap-4">
+                  <div className="flex size-11 shrink-0 items-center justify-center rounded-sm border bg-background text-[#3f7d4d]">
+                    <IconSettingsAutomation className="size-6" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <h3 className="text-base font-semibold">
+                      Project setup opens in a focused work window
+                    </h3>
+                    <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                      Google blocks this HPS-domain app from rendering directly
+                      inside Compass during sign-in. The work window keeps the
+                      flow beside Compass while we replace this with a native
+                      Compass project setup screen.
+                    </p>
+                    <div className="mt-5 flex flex-wrap gap-2">
+                      <Button onClick={handleOpenDetachedWindow}>
+                        <IconExternalLink className="size-4" />
+                        Open work window
+                      </Button>
+                      <Button variant="outline" asChild>
+                        <a href={appUrl} target="_blank" rel="noreferrer">
+                          Open in new tab
+                        </a>
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div className="border-t bg-muted/25 px-6 py-3 text-xs text-muted-foreground">
+                True in-Compass editing will need a Compass-native bridge to the
+                project registry and Drive folder script logic.
+              </div>
+            </div>
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
   )
 }
 
@@ -710,6 +1171,10 @@ export function ProjectsHub({
   const [registryMessage, setRegistryMessage] = React.useState<string | null>(
     null
   )
+  const [projectManagerOpen, setProjectManagerOpen] = React.useState(false)
+  const [projectManagerUrlInput, setProjectManagerUrlInput] =
+    React.useState("")
+  const [developerModeEnabled, setDeveloperModeEnabled] = React.useState(false)
   const [activeDepartment, setActiveDepartment] = React.useState<
     DepartmentId | "ALL"
   >("ALL")
@@ -729,6 +1194,8 @@ export function ProjectsHub({
       departmentParam === "UNASSIGNED"
     ) {
       setActiveDepartment(departmentParam)
+    } else {
+      setActiveDepartment("ALL")
     }
 
     if (statusParam === "all") {
@@ -754,8 +1221,29 @@ export function ProjectsHub({
     }
   }, [searchParams])
 
+  React.useEffect(() => {
+    setDeveloperModeEnabled(
+      storedDashboardDeveloperMode(canCreateOrUpdateProjects)
+    )
+  }, [canCreateOrUpdateProjects])
+
   function selectStatusFilter(status: ProjectStatusBucket): void {
     setActiveStatusFilters([status])
+  }
+
+  function selectDepartment(department: DepartmentId | "ALL"): void {
+    setActiveDepartment(department)
+    const params = new URLSearchParams(searchParams.toString())
+    if (department === "ALL") {
+      params.delete("department")
+    } else {
+      params.set("department", department)
+    }
+
+    const nextUrl = params.toString()
+      ? `/dashboard/projects?${params.toString()}`
+      : "/dashboard/projects"
+    router.replace(nextUrl, { scroll: false })
   }
 
   function createProjectFromForm(
@@ -815,6 +1303,14 @@ export function ProjectsHub({
 
   const normalizedQuery = normalizeSearchValue(query)
   const normalizedRegistryProjectQuery = normalizeSearchValue(registryProjectQuery)
+  const projectManagerAppUrl =
+    projectManagerUrlInput.trim() || HPS_PROJECT_MANAGER_WEB_APP_URL
+  const showProjectManagerDeveloperDialog =
+    canCreateOrUpdateProjects && developerModeEnabled
+  const projectManagerEmbedUrl =
+    projectManagerUrlInput.trim() ||
+    CONFIGURED_HPS_PROJECT_MANAGER_WEB_APP_URL.trim() ||
+    null
   const registryProjectMatches = normalizedRegistryProjectQuery
     ? projects
         .filter((project) =>
@@ -833,6 +1329,9 @@ export function ProjectsHub({
   )
   const groups: readonly DepartmentGroup[] = DEPARTMENTS.map((department) => ({
     ...department,
+    allProjects: projects.filter(
+      (project) => departmentIdForProject(project) === department.id
+    ),
     projects: searchedProjects.filter(
       (project) => departmentIdForProject(project) === department.id
     ),
@@ -858,9 +1357,31 @@ export function ProjectsHub({
   const linkedToDriveCount = projects.filter((project) =>
     Boolean(project.googleDriveFolderId)
   ).length
+  const selectedDepartmentGroup =
+    activeDepartment === "ALL"
+      ? null
+      : groups.find((group) => group.id === activeDepartment) ?? null
+
+  function openProjectManager(): void {
+    openProjectManagerWorkWindow(projectManagerAppUrl)
+  }
+
+  function openProjectManagerDetails(): void {
+    setProjectManagerOpen(true)
+  }
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto">
+      {showProjectManagerDeveloperDialog && (
+        <ProjectManagerEmbedDialog
+          open={projectManagerOpen}
+          onOpenChange={setProjectManagerOpen}
+          appUrl={projectManagerAppUrl}
+          embedUrl={projectManagerEmbedUrl}
+          urlInput={projectManagerUrlInput}
+          onUrlInputChange={setProjectManagerUrlInput}
+        />
+      )}
       <section className="border-b bg-background">
         <div className="mx-auto grid max-w-7xl gap-6 px-4 py-5 md:px-6 lg:grid-cols-[minmax(0,1fr)_22rem]">
           <div className="min-w-0">
@@ -914,7 +1435,11 @@ export function ProjectsHub({
             <Input
               value={query}
               onChange={(event) => setQuery(event.target.value)}
-              placeholder="Search by project number, client, address, or accounting job..."
+              placeholder={
+                selectedDepartmentGroup
+                  ? `Search ${selectedDepartmentGroup.shortLabel} projects...`
+                  : "Search by project number, client, address, or accounting job..."
+              }
               className="pl-9"
             />
           </div>
@@ -923,7 +1448,7 @@ export function ProjectsHub({
               type="button"
               variant={activeDepartment === "ALL" ? "default" : "outline"}
               size="sm"
-              onClick={() => setActiveDepartment("ALL")}
+              onClick={() => selectDepartment("ALL")}
             >
               All departments
             </Button>
@@ -1002,7 +1527,7 @@ export function ProjectsHub({
           </span>
         </div>
 
-        <div className="clarity-panel grid overflow-hidden md:grid-cols-2 xl:grid-cols-4">
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
           {groups
             .filter((group) => group.id !== "UNASSIGNED")
             .map((group) => (
@@ -1010,7 +1535,7 @@ export function ProjectsHub({
                 key={group.id}
                 group={group}
                 active={activeDepartment === group.id}
-                onClick={() => setActiveDepartment(group.id)}
+                onClick={() => selectDepartment(group.id)}
               />
             ))}
         </div>
@@ -1023,31 +1548,55 @@ export function ProjectsHub({
                   Create or Update an Existing Project
                 </h2>
                 <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                  Create a new Compass shell or open an existing job to update
-                  its Drive, Sage, Buildertrend, and registry links.
+                  Use the HPS Project Manager workflow for project numbering,
+                  Drive provisioning, and tracker updates. Compass stores the
+                  resulting links and accounting IDs after it runs.
                 </p>
               </div>
               <div className="flex flex-wrap gap-2">
-                <Button size="sm" variant="outline" asChild>
-                  <Link href="/dashboard/files">
-                    <IconBrandGoogleDrive className="size-4" />
-                    Drive files
-                  </Link>
-                </Button>
                 <Button
                   size="sm"
-                  variant="secondary"
+                  variant="default"
                   type="button"
-                  onClick={() => {
-                    setShowCreateProject((open) => !open)
-                    setNewProjectDepartment("O")
-                  }}
+                  onClick={openProjectManager}
                 >
-                  <IconPlus className="size-4" />
-                  Create project
+                  <IconSettingsAutomation className="size-4" />
+                  HPS Project Manager
                 </Button>
+                {showProjectManagerDeveloperDialog && (
+                  <>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      type="button"
+                      onClick={openProjectManagerDetails}
+                    >
+                      <IconExternalLink className="size-4" />
+                      Script details
+                    </Button>
+                    <Button size="sm" variant="outline" asChild>
+                      <Link href="/dashboard/files">
+                        <IconBrandGoogleDrive className="size-4" />
+                        Drive files
+                      </Link>
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      type="button"
+                      onClick={() => {
+                        setShowCreateProject((open) => !open)
+                        setNewProjectDepartment("O")
+                      }}
+                    >
+                      <IconPlus className="size-4" />
+                      Create project
+                    </Button>
+                  </>
+                )}
               </div>
             </div>
+            {showProjectManagerDeveloperDialog && (
             <div className="grid gap-4 p-4 lg:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
               {showCreateProject && (
                 <form
@@ -1057,8 +1606,9 @@ export function ProjectsHub({
                   <div>
                     <h3 className="text-sm font-semibold">Create new project</h3>
                     <p className="mt-1 text-xs text-muted-foreground">
-                      Choose the department. Compass will create the shell first;
-                      the project number can be assigned in the registry step.
+                      This only creates a Compass shell. Use HPS Project
+                      Manager when the job also needs official
+                      numbering, folders, and tracker rows.
                     </p>
                   </div>
                   <div className="mt-3 flex flex-wrap gap-2">
@@ -1113,9 +1663,12 @@ export function ProjectsHub({
 
               <div className="rounded-md border bg-card p-3">
                 <div>
-                  <h3 className="text-sm font-semibold">Update existing project</h3>
+                  <h3 className="text-sm font-semibold">
+                    Update Compass registry
+                  </h3>
                   <p className="mt-1 text-xs text-muted-foreground">
-                    Search by project number, client, address, or accounting job.
+                    Search for a Compass job, then paste or confirm the IDs
+                    produced by the HPS Project Manager workflow.
                   </p>
                 </div>
                 <div className="relative mt-3">
@@ -1178,20 +1731,32 @@ export function ProjectsHub({
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div>
                         <h4 className="text-sm font-semibold">
-                          Registry fields for {projectLabel(selectedRegistryProject)}
+                          Compass registry for {projectLabel(selectedRegistryProject)}
                         </h4>
                         <p className="mt-1 text-xs text-muted-foreground">
-                          Update the setup fields that feed the project creation
-                          and integration scripts.
+                          These fields record the project number, Drive folder,
+                          and handoff IDs created by the HPS Project Manager
+                          workflow or by Sage/Buildertrend.
                         </p>
                       </div>
-                      <Button size="sm" variant="outline" asChild>
-                        <Link
-                          href={`/dashboard/projects/${selectedRegistryProject.id}`}
+                      <div className="flex flex-wrap gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          type="button"
+                          onClick={openProjectManager}
                         >
-                          Open project
-                        </Link>
-                      </Button>
+                          <IconSettingsAutomation className="size-4" />
+                          Open Project Manager
+                        </Button>
+                        <Button size="sm" variant="outline" asChild>
+                          <Link
+                            href={`/dashboard/projects/${selectedRegistryProject.id}`}
+                          >
+                            Open project
+                          </Link>
+                        </Button>
+                      </div>
                     </div>
 
                     <div className="mt-4 grid gap-3 md:grid-cols-2">
@@ -1297,7 +1862,21 @@ export function ProjectsHub({
                 )}
               </div>
             </div>
+            )}
           </section>
+        )}
+
+        {selectedDepartmentGroup && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="w-fit"
+            onClick={() => selectDepartment("ALL")}
+          >
+            <IconArrowLeft className="size-4" />
+            Department overview
+          </Button>
         )}
 
         {projects.length === 0 ? (
@@ -1308,8 +1887,19 @@ export function ProjectsHub({
               No projects match this view yet.
             </p>
           </div>
-        ) : visibleGroups.length > 0 ? (
-          <div className="grid gap-4">
+        ) : selectedDepartmentGroup ? (
+          <DepartmentLanding
+            group={selectedDepartmentGroup}
+            canUpdateStatus={canCreateOrUpdateProjects}
+            canOpenTools={canCreateOrUpdateProjects}
+            onOpenProjectManager={openProjectManager}
+          />
+        ) : normalizedQuery && visibleGroups.length > 0 ? (
+          <section className="grid gap-4">
+            <div className="clarity-section-header flex items-center gap-2 px-4 py-3">
+              <IconSearch className="size-4 text-muted-foreground" />
+              <h2 className="text-sm font-semibold">Search results</h2>
+            </div>
             {visibleGroups.map((group) => (
               <DepartmentLane
                 key={group.id}
@@ -1318,6 +1908,14 @@ export function ProjectsHub({
                 canUpdateStatus={canCreateOrUpdateProjects}
               />
             ))}
+          </section>
+        ) : activeDepartment === "ALL" ? (
+          <div className="rounded-lg border border-dashed bg-muted/10 p-8 text-center">
+            <IconSparkles className="mx-auto mb-3 size-8 text-muted-foreground" />
+            <p className="font-medium">Choose a department to start.</p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              The logo cards above open the department work hubs.
+            </p>
           </div>
         ) : (
           <div className="rounded-lg border border-dashed p-10 text-center">

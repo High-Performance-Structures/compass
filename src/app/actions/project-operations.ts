@@ -70,6 +70,28 @@ export type ProjectPurchaseOrderItem = ProjectOperationItem & {
   readonly vendorEmail: string | null
 }
 
+export type ProjectRfqScopeLineItem = {
+  readonly lineNumber: number
+  readonly description: string
+  readonly phaseCode: string | null
+  readonly costCode: string | null
+  readonly notes: string | null
+}
+
+export type ProjectRfqDocumentLinkItem = {
+  readonly lineNumber: number
+  readonly label: string
+  readonly url: string
+  readonly notes: string | null
+}
+
+export type ProjectRfqItem = ProjectOperationItem & {
+  readonly vendorCategory: string | null
+  readonly recipientEmail: string | null
+  readonly scopeItems: readonly ProjectRfqScopeLineItem[]
+  readonly documentLinks: readonly ProjectRfqDocumentLinkItem[]
+}
+
 export type NextScheduleItem = {
   readonly id: string
   readonly title: string
@@ -89,6 +111,7 @@ export type ProjectOperationsSummary = {
 }
 
 export type ProjectSageSyncItemKind =
+  | "project_handoff"
   | "purchase_order"
   | "task"
   | "vendor_bill"
@@ -96,6 +119,7 @@ export type ProjectSageSyncItemKind =
   | "rfq"
   | "budget_application"
   | "budget_line"
+  | "google_handoff"
 
 export type ProjectSageSyncItem = {
   readonly id: string
@@ -159,6 +183,33 @@ export type CreatePurchaseOrderLineInput = {
   readonly amount: number | null
   readonly taxGroup: string | null
 }
+
+export type CreateRfqScopeLineInput = {
+  readonly description: string | null
+  readonly costCode: string | null
+  readonly phaseCode: string | null
+  readonly notes: string | null
+}
+
+export type CreateRfqDocumentLinkInput = {
+  readonly label: string | null
+  readonly url: string | null
+  readonly notes: string | null
+}
+
+export type CreateRfqRequestInput = {
+  readonly title: string
+  readonly vendorCategory: string | null
+  readonly requestedFrom: string | null
+  readonly recipientEmail: string | null
+  readonly responseDueDate: string | null
+  readonly priority: string
+  readonly scope: string | null
+  readonly scopeItems: readonly CreateRfqScopeLineInput[]
+  readonly documentLinks: readonly CreateRfqDocumentLinkInput[]
+}
+
+export type UpdateRfqRequestInput = CreateRfqRequestInput
 
 export type SendPurchaseOrderEmailInput = {
   readonly to: string
@@ -224,6 +275,21 @@ type NormalizedPurchaseOrderLine = {
   readonly unit: string | null
   readonly amount: number
   readonly taxGroup: string | null
+}
+
+type NormalizedRfqScopeLine = {
+  readonly lineNumber: number
+  readonly description: string
+  readonly costCode: string | null
+  readonly phaseCode: string | null
+  readonly notes: string | null
+}
+
+type NormalizedRfqDocumentLink = {
+  readonly lineNumber: number
+  readonly label: string
+  readonly url: string
+  readonly notes: string | null
 }
 
 async function verifyProjectAccess(
@@ -332,12 +398,45 @@ function parseEmailList(value: string | null): readonly string[] {
 }
 
 function purchaseOrderRequestNumberFor(
+  projectNumber: string | null,
   existingCount: number,
   id: string
 ): string {
   const sequence = String(existingCount + 1).padStart(3, "0")
+  const prefix = cleanText(projectNumber)
+  if (prefix) return `${prefix}-PO-${sequence}`
+
   const collisionSuffix = id.slice(0, 6).toUpperCase()
   return `PO-REQ-${sequence}-${collisionSuffix}`
+}
+
+function projectDocumentNumberFor(
+  projectNumber: string | null,
+  documentType: string,
+  existingCount: number
+): string {
+  const sequence = String(existingCount + 1).padStart(3, "0")
+  const prefix = cleanText(projectNumber)
+  return prefix
+    ? `${prefix}-${documentType}-${sequence}`
+    : `${documentType}-${sequence}`
+}
+
+function sageShortProjectDocumentNumberFor(
+  projectNumber: string | null,
+  documentType: string,
+  existingCount: number
+): string {
+  const sequence = String(existingCount + 1).padStart(3, "0")
+  const prefix = cleanText(projectNumber)
+  if (!prefix) return `${documentType}-${sequence}`
+
+  const [department, series] = prefix.split("-")
+  if (department && series) {
+    return `${department}-${series}-${documentType}-${sequence}`
+  }
+
+  return `${prefix}-${documentType}-${sequence}`
 }
 
 function projectTaskNumberFor(existingCount: number): string {
@@ -352,10 +451,19 @@ function normalizeTaskRecordType(value: ProjectTaskRecordType): ProjectTaskRecor
 }
 
 function operationSyncKind(recordType: string): ProjectSageSyncItemKind {
+  if (recordType === "sage_project_handoff") return "project_handoff"
+  if (recordType === "google_project_intake") return "project_handoff"
   if (recordType === "purchase_order") return "purchase_order"
+  if (recordType === "google_nutech_order") return "purchase_order"
   if (recordType === "vendor_bill") return "vendor_bill"
   if (recordType === "owner_pay_application") return "owner_pay_application"
   if (recordType === "rfq") return "rfq"
+  if (
+    recordType === "google_finish_schedule" ||
+    recordType === "google_script_handoff"
+  ) {
+    return "google_handoff"
+  }
   return "task"
 }
 
@@ -445,6 +553,71 @@ function normalizePurchaseOrderLines(
   ]
 }
 
+function normalizeRfqScopeLines(
+  lines: readonly CreateRfqScopeLineInput[],
+  fallbackDescription: string
+): readonly NormalizedRfqScopeLine[] {
+  const normalized = lines
+    .map((line, index) => {
+      const description = cleanText(line.description)
+      const costCode = cleanText(line.costCode)
+      const phaseCode = cleanText(line.phaseCode)
+      const notes = cleanText(line.notes)
+      const hasMeaningfulValue =
+        description !== null ||
+        costCode !== null ||
+        phaseCode !== null ||
+        notes !== null
+
+      if (!hasMeaningfulValue) return null
+
+      return {
+        lineNumber: index + 1,
+        description: description ?? fallbackDescription,
+        costCode,
+        phaseCode,
+        notes,
+      }
+    })
+    .filter((line) => line !== null)
+
+  if (normalized.length > 0) return normalized
+
+  return [
+    {
+      lineNumber: 1,
+      description: fallbackDescription,
+      costCode: null,
+      phaseCode: null,
+      notes: null,
+    },
+  ]
+}
+
+function normalizeRfqDocumentLinks(
+  links: readonly CreateRfqDocumentLinkInput[]
+): readonly NormalizedRfqDocumentLink[] {
+  return links
+    .map((link, index) => {
+      const label = cleanText(link.label)
+      const url = cleanText(link.url)
+      const notes = cleanText(link.notes)
+
+      if (label === null && url === null && notes === null) return null
+      if (url === null) {
+        throw new Error("Each RFQ document link needs a URL.")
+      }
+
+      return {
+        lineNumber: index + 1,
+        label: label ?? `Document ${index + 1}`,
+        url,
+        notes,
+      }
+    })
+    .filter((link) => link !== null)
+}
+
 function buildSagePurchaseOrderPayload(input: {
   readonly project: {
     readonly sageJobId: string | null
@@ -488,6 +661,87 @@ function buildSagePurchaseOrderPayload(input: {
   }
 }
 
+function stringValue(record: Record<string, unknown>, key: string): string | null {
+  const value = record[key]
+  return typeof value === "string" ? value : null
+}
+
+function numberValue(record: Record<string, unknown>, key: string): number | null {
+  const value = record[key]
+  return typeof value === "number" && Number.isFinite(value) ? value : null
+}
+
+function parseJsonRecord(value: string | null): Record<string, unknown> | null {
+  if (!value) return null
+
+  try {
+    const parsed: unknown = JSON.parse(value)
+    return isRecord(parsed) ? parsed : null
+  } catch {
+    return null
+  }
+}
+
+function parseRfqScopeItems(
+  payload: Record<string, unknown> | null,
+  fallbackDescription: string | null
+): readonly ProjectRfqScopeLineItem[] {
+  const rawLines = payload?.scopeItems
+  if (!Array.isArray(rawLines)) {
+    return fallbackDescription
+      ? [
+          {
+            lineNumber: 1,
+            description: fallbackDescription,
+            phaseCode: null,
+            costCode: null,
+            notes: null,
+          },
+        ]
+      : []
+  }
+
+  return rawLines
+    .map((line, index) => {
+      if (!isRecord(line)) return null
+
+      const description = stringValue(line, "description") ?? fallbackDescription
+      if (!description) return null
+
+      return {
+        lineNumber: numberValue(line, "lineNumber") ?? index + 1,
+        description,
+        phaseCode: stringValue(line, "phaseCode"),
+        costCode: stringValue(line, "costCode"),
+        notes: stringValue(line, "notes"),
+      }
+    })
+    .filter((line) => line !== null)
+}
+
+function parseRfqDocumentLinks(
+  payload: Record<string, unknown> | null
+): readonly ProjectRfqDocumentLinkItem[] {
+  const rawLinks = payload?.documentLinks
+  if (!Array.isArray(rawLinks)) return []
+
+  return rawLinks
+    .map((link, index) => {
+      if (!isRecord(link)) return null
+
+      const url = stringValue(link, "url")
+      if (url === null) return null
+
+      return {
+        lineNumber: numberValue(link, "lineNumber") ?? index + 1,
+        label: stringValue(link, "label") ?? `Document ${index + 1}`,
+        url,
+        notes: stringValue(link, "notes"),
+      }
+    })
+    .filter((link) => link !== null)
+}
+
 function toOperationItem(row: typeof projectOperations.$inferSelect): ProjectOperationItem {
   return {
     id: row.id,
@@ -518,6 +772,22 @@ function toOperationItem(row: typeof projectOperations.$inferSelect): ProjectOpe
     sageRequiredDate: row.sageRequiredDate,
     sageWriteStatus: row.sageWriteStatus,
     sagePayloadJson: row.sagePayloadJson,
+  }
+}
+
+function toRfqItem(
+  row: typeof projectOperations.$inferSelect,
+  recipientEmail: string | null
+): ProjectRfqItem {
+  const payload = parseJsonRecord(row.sagePayloadJson)
+
+  return {
+    ...toOperationItem(row),
+    vendorCategory: stringValue(payload ?? {}, "vendorCategory"),
+    recipientEmail:
+      stringValue(payload ?? {}, "recipientEmail") ?? recipientEmail,
+    scopeItems: parseRfqScopeItems(payload, row.description),
+    documentLinks: parseRfqDocumentLinks(payload),
   }
 }
 
@@ -1129,6 +1399,53 @@ export async function getProjectPurchaseOrders(
   }))
 }
 
+export async function getProjectRfqs(
+  projectId: string
+): Promise<readonly ProjectRfqItem[]> {
+  const user = await requireAuth()
+  const orgId = requireOrg(user)
+  const db = await verifyProjectAccess(projectId)
+  const rows = await db
+    .select()
+    .from(projectOperations)
+    .where(
+      and(
+        eq(projectOperations.projectId, projectId),
+        eq(projectOperations.sourceRecordType, "rfq")
+      )
+    )
+    .orderBy(asc(projectOperations.dueDate), asc(projectOperations.title))
+
+  if (rows.length === 0) return []
+
+  const [contactRows, vendorRows] = await Promise.all([
+    db
+      .select({
+        displayName: projectContacts.displayName,
+        companyName: projectContacts.companyName,
+        email: projectContacts.email,
+      })
+      .from(projectContacts)
+      .where(
+        and(eq(projectContacts.projectId, projectId), eq(projectContacts.active, true))
+      ),
+    db
+      .select({
+        name: vendors.name,
+        email: vendors.email,
+        netsuiteId: vendors.netsuiteId,
+        sourceRecordId: vendors.sourceRecordId,
+        sourceRecordNumber: vendors.sourceRecordNumber,
+      })
+      .from(vendors)
+      .where(eq(vendors.organizationId, orgId)),
+  ])
+
+  return rows.map((row) =>
+    toRfqItem(row, purchaseOrderVendorEmail(row, contactRows, vendorRows))
+  )
+}
+
 export async function createPurchaseOrderRequest(
   projectId: string,
   input: CreatePurchaseOrderRequestInput
@@ -1137,6 +1454,7 @@ export async function createPurchaseOrderRequest(
     const db = await verifyProjectUpdateAccess(projectId)
     const [project] = await db
       .select({
+        projectNumber: projects.projectNumber,
         sageJobId: projects.sageJobId,
         sageJobNumber: projects.sageJobNumber,
       })
@@ -1157,6 +1475,7 @@ export async function createPurchaseOrderRequest(
     const now = new Date().toISOString()
     const id = crypto.randomUUID()
     const sourceRecordNumber = purchaseOrderRequestNumberFor(
+      project?.projectNumber ?? null,
       purchaseOrders.length,
       id
     )
@@ -1259,6 +1578,356 @@ export async function createPurchaseOrderRequest(
   }
 }
 
+export async function createRfqRequest(
+  projectId: string,
+  input: CreateRfqRequestInput
+): Promise<ProjectOperationActionResult> {
+  try {
+    const db = await verifyProjectUpdateAccess(projectId)
+    const [project] = await db
+      .select({
+        projectNumber: projects.projectNumber,
+        sageJobId: projects.sageJobId,
+        sageJobNumber: projects.sageJobNumber,
+      })
+      .from(projects)
+      .where(eq(projects.id, projectId))
+      .limit(1)
+
+    const rfqs = await db
+      .select({ id: projectOperations.id })
+      .from(projectOperations)
+      .where(
+        and(
+          eq(projectOperations.projectId, projectId),
+          eq(projectOperations.sourceRecordType, "rfq")
+        )
+      )
+
+    const now = new Date().toISOString()
+    const id = crypto.randomUUID()
+    const title = requireText(input.title, "Title")
+    const description = cleanText(input.scope)
+    const requestedFrom = cleanText(input.requestedFrom)
+    const vendorCategory = cleanText(input.vendorCategory)
+    const recipientEmail = cleanText(input.recipientEmail)
+    const responseDueDate = cleanText(input.responseDueDate)
+    const scopeItems = normalizeRfqScopeLines(
+      input.scopeItems,
+      description ?? title
+    )
+    const documentLinks = normalizeRfqDocumentLinks(input.documentLinks)
+    const primaryLine = scopeItems[0] ?? null
+    const sourceRecordNumber = projectDocumentNumberFor(
+      project?.projectNumber ?? null,
+      "RFQ",
+      rfqs.length
+    )
+    const sageShortRecordNumber = sageShortProjectDocumentNumberFor(
+      project?.projectNumber ?? null,
+      "RFQ",
+      rfqs.length
+    )
+    const payload = {
+      source: "compass_rfq",
+      jobId: project?.sageJobId ?? null,
+      jobNumber: project?.sageJobNumber ?? null,
+      rfqNumber: sourceRecordNumber,
+      sageShortRfqNumber: sageShortRecordNumber,
+      title,
+      vendorCategory,
+      requestedFrom,
+      recipientEmail,
+      responseDueDate,
+      scope: description,
+      scopeItems,
+      documentLinks,
+      sageRfp: {
+        targetRecordType: "sage_rfp",
+        linkStrategy: "external_document_links",
+        suggestedRecordNumber: sageShortRecordNumber,
+        writeStatus: "not_ready",
+      },
+    }
+
+    await db.insert(projectOperations).values({
+      id,
+      projectId,
+      sourceSystem: "compass",
+      sourceRecordType: "rfq",
+      sourceRecordNumber,
+      title,
+      description,
+      status: "draft",
+      priority: cleanText(input.priority) ?? "normal",
+      assigneeType: "vendor",
+      assigneeName: requestedFrom,
+      companyName: requestedFrom ?? vendorCategory,
+      costCode: primaryLine?.costCode ?? null,
+      dueDate: responseDueDate,
+      sageJobId: project?.sageJobId ?? null,
+      sageJobNumber: project?.sageJobNumber ?? null,
+      sageVendorName: requestedFrom,
+      sagePhaseCode: primaryLine?.phaseCode ?? null,
+      sageCostCode: primaryLine?.costCode ?? null,
+      sageWriteStatus: "not_ready",
+      sagePayloadJson: JSON.stringify(payload),
+      syncDirection: "write",
+      syncStatus: "compass_only",
+      createdAt: now,
+      updatedAt: now,
+    })
+
+    revalidatePath(`/dashboard/projects/${projectId}`)
+    revalidatePath(`/dashboard/projects/${projectId}/rfqs`)
+    revalidatePath(`/dashboard/projects/${projectId}/financials`)
+    revalidatePath("/dashboard")
+
+    return { success: true, id }
+  } catch (error) {
+    return {
+      success: false,
+      error:
+        error instanceof Error
+          ? error.message
+          : "Failed to create request for quote",
+    }
+  }
+}
+
+export async function deletePurchaseOrderRequest(
+  projectId: string,
+  purchaseOrderId: string
+): Promise<ProjectOperationActionResult> {
+  try {
+    const db = await verifyProjectUpdateAccess(projectId)
+    const [existing] = await db
+      .select({ id: projectOperations.id })
+      .from(projectOperations)
+      .where(
+        and(
+          eq(projectOperations.id, purchaseOrderId),
+          eq(projectOperations.projectId, projectId),
+          eq(projectOperations.sourceRecordType, "purchase_order")
+        )
+      )
+      .limit(1)
+
+    if (!existing) {
+      return { success: false, error: "Purchase order not found." }
+    }
+
+    await db
+      .delete(projectPurchaseOrderLines)
+      .where(
+        and(
+          eq(projectPurchaseOrderLines.operationId, purchaseOrderId),
+          eq(projectPurchaseOrderLines.projectId, projectId)
+        )
+      )
+    await db
+      .delete(projectOperations)
+      .where(
+        and(
+          eq(projectOperations.id, purchaseOrderId),
+          eq(projectOperations.projectId, projectId),
+          eq(projectOperations.sourceRecordType, "purchase_order")
+        )
+      )
+
+    revalidatePath(`/dashboard/projects/${projectId}`)
+    revalidatePath(`/dashboard/projects/${projectId}/purchase-orders`)
+    revalidatePath(`/dashboard/projects/${projectId}/financials`)
+    revalidatePath("/dashboard")
+    revalidatePath("/dashboard/purchase-orders")
+    revalidatePath("/dashboard/financials")
+    revalidatePath("/dashboard/schedule")
+
+    return { success: true, id: purchaseOrderId }
+  } catch (error) {
+    return {
+      success: false,
+      error:
+        error instanceof Error
+          ? error.message
+          : "Failed to delete purchase order",
+    }
+  }
+}
+
+export async function updateRfqRequest(
+  projectId: string,
+  rfqId: string,
+  input: UpdateRfqRequestInput
+): Promise<ProjectOperationActionResult> {
+  try {
+    const db = await verifyProjectUpdateAccess(projectId)
+    const [project, existing] = await Promise.all([
+      db
+        .select({
+          projectNumber: projects.projectNumber,
+          sageJobId: projects.sageJobId,
+          sageJobNumber: projects.sageJobNumber,
+        })
+        .from(projects)
+        .where(eq(projects.id, projectId))
+        .limit(1),
+      db
+        .select()
+        .from(projectOperations)
+        .where(
+          and(
+            eq(projectOperations.id, rfqId),
+            eq(projectOperations.projectId, projectId),
+            eq(projectOperations.sourceRecordType, "rfq")
+          )
+        )
+        .limit(1),
+    ])
+
+    if (!existing[0]) {
+      return { success: false, error: "RFQ not found." }
+    }
+
+    const now = new Date().toISOString()
+    const title = requireText(input.title, "Title")
+    const description = cleanText(input.scope)
+    const requestedFrom = cleanText(input.requestedFrom)
+    const vendorCategory = cleanText(input.vendorCategory)
+    const recipientEmail = cleanText(input.recipientEmail)
+    const responseDueDate = cleanText(input.responseDueDate)
+    const scopeItems = normalizeRfqScopeLines(
+      input.scopeItems,
+      description ?? title
+    )
+    const documentLinks = normalizeRfqDocumentLinks(input.documentLinks)
+    const primaryLine = scopeItems[0] ?? null
+    const sourceRecordNumber =
+      existing[0].sourceRecordNumber ??
+      projectDocumentNumberFor(project[0]?.projectNumber ?? null, "RFQ", 0)
+    const sageShortRecordNumber = sageShortProjectDocumentNumberFor(
+      project[0]?.projectNumber ?? null,
+      "RFQ",
+      0
+    )
+    const payload = {
+      source: "compass_rfq",
+      jobId: project[0]?.sageJobId ?? null,
+      jobNumber: project[0]?.sageJobNumber ?? null,
+      rfqNumber: sourceRecordNumber,
+      sageShortRfqNumber: sageShortRecordNumber,
+      title,
+      vendorCategory,
+      requestedFrom,
+      recipientEmail,
+      responseDueDate,
+      scope: description,
+      scopeItems,
+      documentLinks,
+      sageRfp: {
+        targetRecordType: "sage_rfp",
+        linkStrategy: "external_document_links",
+        suggestedRecordNumber: sageShortRecordNumber,
+        writeStatus: "not_ready",
+      },
+    }
+
+    await db
+      .update(projectOperations)
+      .set({
+        title,
+        description,
+        priority: cleanText(input.priority) ?? "normal",
+        assigneeType: "vendor",
+        assigneeName: requestedFrom,
+        companyName: requestedFrom ?? vendorCategory,
+        costCode: primaryLine?.costCode ?? null,
+        dueDate: responseDueDate,
+        sageJobId: project[0]?.sageJobId ?? null,
+        sageJobNumber: project[0]?.sageJobNumber ?? null,
+        sageVendorName: requestedFrom,
+        sagePhaseCode: primaryLine?.phaseCode ?? null,
+        sageCostCode: primaryLine?.costCode ?? null,
+        sagePayloadJson: JSON.stringify(payload),
+        syncStatus:
+          existing[0].syncStatus === "pending_sage"
+            ? "pending_sage"
+            : "compass_only",
+        updatedAt: now,
+      })
+      .where(
+        and(
+          eq(projectOperations.id, rfqId),
+          eq(projectOperations.projectId, projectId)
+        )
+      )
+
+    revalidatePath(`/dashboard/projects/${projectId}`)
+    revalidatePath(`/dashboard/projects/${projectId}/rfqs`)
+    revalidatePath(`/dashboard/projects/${projectId}/financials`)
+    revalidatePath("/dashboard")
+
+    return { success: true, id: rfqId }
+  } catch (error) {
+    return {
+      success: false,
+      error:
+        error instanceof Error
+          ? error.message
+          : "Failed to update request for quote",
+    }
+  }
+}
+
+export async function deleteRfqRequest(
+  projectId: string,
+  rfqId: string
+): Promise<ProjectOperationActionResult> {
+  try {
+    const db = await verifyProjectUpdateAccess(projectId)
+    const [existing] = await db
+      .select({ id: projectOperations.id })
+      .from(projectOperations)
+      .where(
+        and(
+          eq(projectOperations.id, rfqId),
+          eq(projectOperations.projectId, projectId),
+          eq(projectOperations.sourceRecordType, "rfq")
+        )
+      )
+      .limit(1)
+
+    if (!existing) {
+      return { success: false, error: "RFQ not found." }
+    }
+
+    await db
+      .delete(projectOperations)
+      .where(
+        and(
+          eq(projectOperations.id, rfqId),
+          eq(projectOperations.projectId, projectId),
+          eq(projectOperations.sourceRecordType, "rfq")
+        )
+      )
+
+    revalidatePath(`/dashboard/projects/${projectId}`)
+    revalidatePath(`/dashboard/projects/${projectId}/rfqs`)
+    revalidatePath(`/dashboard/projects/${projectId}/financials`)
+    revalidatePath("/dashboard")
+
+    return { success: true, id: rfqId }
+  } catch (error) {
+    return {
+      success: false,
+      error:
+        error instanceof Error
+          ? error.message
+          : "Failed to delete request for quote",
+    }
+  }
+}
+
 export async function createProjectTask(
   projectId: string,
   input: CreateProjectTaskInput
@@ -1342,6 +2011,7 @@ export async function createProjectTask(
 
     revalidatePath(`/dashboard/projects/${projectId}`)
     revalidatePath(`/dashboard/projects/${projectId}/rfis`)
+    revalidatePath(`/dashboard/projects/${projectId}/rfqs`)
     revalidatePath(`/dashboard/projects/${projectId}/purchase-orders`)
     revalidatePath("/dashboard")
     revalidatePath("/dashboard/schedule")

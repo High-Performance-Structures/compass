@@ -8,6 +8,8 @@ import {
   IconDots,
   IconEye,
   IconFileDollar,
+  IconFolder,
+  IconPalette,
   IconUsers,
 } from "@tabler/icons-react"
 
@@ -15,14 +17,21 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 
 export function ProjectActionsMenu({
   projectId,
+  projectDriveFolderId,
 }: {
   readonly projectId: string
+  readonly projectDriveFolderId: string | null
 }): React.ReactElement {
+  const projectFilesHref = projectDriveFolderId
+    ? `/dashboard/files/folder/${projectDriveFolderId}`
+    : "/dashboard/files?view=projects"
+
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -35,6 +44,13 @@ export function ProjectActionsMenu({
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-48">
+        <DropdownMenuItem asChild>
+          <Link href={projectFilesHref}>
+            <IconFolder />
+            Project files
+          </Link>
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
         <DropdownMenuItem asChild>
           <Link href={`/dashboard/projects/${projectId}/schedule`}>
             <IconCalendarStats />
@@ -51,6 +67,12 @@ export function ProjectActionsMenu({
           <Link href={`/dashboard/projects/${projectId}/daily-logs`}>
             <IconClipboardText />
             Daily logs
+          </Link>
+        </DropdownMenuItem>
+        <DropdownMenuItem asChild>
+          <Link href={`/dashboard/projects/${projectId}/selections`}>
+            <IconPalette />
+            Selections
           </Link>
         </DropdownMenuItem>
         <DropdownMenuItem asChild>

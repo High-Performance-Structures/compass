@@ -1,6 +1,7 @@
 import { IconMessageQuestion } from "@tabler/icons-react"
 
 import { getProjects } from "@/app/actions/projects"
+import { ActiveProjectSectionRedirect } from "@/components/projects/active-project-section-redirect"
 import { ProjectContextWatermarkShell } from "@/components/projects/project-context-watermark-shell"
 import { ProjectQuickSwitcher } from "@/components/projects/project-quick-switcher"
 import { Badge } from "@/components/ui/badge"
@@ -31,6 +32,11 @@ export default async function RfiProjectPickerPage() {
           <Badge variant="secondary">Project lock</Badge>
         </div>
       </section>
+
+      <ActiveProjectSectionRedirect
+        targetSection="rfis"
+        label="Open RFIs"
+      />
 
       <section className="space-y-3">
         <div>

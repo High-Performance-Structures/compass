@@ -12,8 +12,10 @@ import {
   IconHome2,
   IconMailForward,
   IconMessageCircleQuestion,
+  IconPalette,
   IconPhoto,
   IconShoppingCart,
+  IconShoppingCartQuestion,
   IconUsers,
 } from "@tabler/icons-react"
 import Link from "next/link"
@@ -35,7 +37,9 @@ type ProjectSectionKey =
   | "owner-updates"
   | "daily-logs"
   | "photos"
+  | "selections"
   | "rfis"
+  | "rfqs"
   | "purchase-orders"
   | "budget"
   | "financials"
@@ -82,10 +86,22 @@ const PROJECT_SECTION_ITEMS: readonly ProjectSectionItem[] = [
     section: "photos",
   },
   {
+    title: "Selections",
+    hrefSuffix: "selections",
+    icon: IconPalette,
+    section: "selections",
+  },
+  {
     title: "RFIs",
     hrefSuffix: "rfis",
     icon: IconMessageCircleQuestion,
     section: "rfis",
+  },
+  {
+    title: "RFQs",
+    hrefSuffix: "rfqs",
+    icon: IconShoppingCartQuestion,
+    section: "rfqs",
   },
   {
     title: "Purchase Orders",
@@ -151,7 +167,9 @@ function activeProjectSection(pathname: string | null): ProjectSectionKey {
     case "financials":
     case "owner-updates":
     case "photos":
+    case "selections":
     case "purchase-orders":
+    case "rfqs":
     case "rfis":
     case "schedule":
       return section

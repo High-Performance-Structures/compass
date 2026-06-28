@@ -20,7 +20,7 @@ import {
   parseServiceAccountKey,
 } from "@/lib/google/config"
 import { requireOrg } from "@/lib/org-scope"
-import { requirePermission } from "@/lib/permissions"
+import { isDemoUser } from "@/lib/demo"
 
 const GOOGLE_FOLDER_MIME_TYPE = "application/vnd.google-apps.folder"
 const DEFAULT_PHOTO_FOLDER_NAME = "Pictures"
@@ -52,6 +52,18 @@ function formText(formData: FormData, name: string): string {
   return typeof value === "string" ? value.trim() : ""
 }
 
+function isInternalStaffRole(role: string): boolean {
+  switch (role) {
+    case "admin":
+    case "secondary_admin":
+    case "office":
+    case "field":
+      return true
+    default:
+      return false
+  }
+}
+
 function normalizedPhotoKind(value: string): string {
   switch (value) {
     case "progress":
@@ -74,7 +86,11 @@ function capturedAtFromDate(value: string): string {
 
 function safeFileName(value: string): string {
   const normalized = value.replace(/[/:\\]/g, "-").trim()
-  return normalized.length > 0 ? normalized : "compass-photo.jpg"
+  return normalized.length > 0 ? normalized : "compass-upload"
+}
+
+function isImageMimeType(value: string | null): boolean {
+  return value !== null && value.startsWith("image/")
 }
 
 function driveFolderIdFromUrl(value: string | null): string | null {
@@ -161,13 +177,51 @@ async function resolveUploadFolderId(
   )
 }
 
+async function resolveProjectDriveFolderId(
+  db: ReturnType<typeof getDb>,
+  projectId: string,
+  projectDriveFolderId: string | null
+): Promise<string | null> {
+  if (projectDriveFolderId) return projectDriveFolderId
+
+  const [driveLink] = await db
+    .select({
+      externalId: projectExternalLinks.externalId,
+      externalUrl: projectExternalLinks.externalUrl,
+    })
+    .from(projectExternalLinks)
+    .where(
+      and(
+        eq(projectExternalLinks.projectId, projectId),
+        eq(projectExternalLinks.system, "google_drive")
+      )
+    )
+    .limit(1)
+
+  return (
+    driveLink?.externalId ??
+    driveFolderIdFromUrl(driveLink?.externalUrl ?? null)
+  )
+}
+
 export async function POST(
   request: NextRequest,
   { params }: { readonly params: Promise<{ readonly id: string }> }
 ): Promise<NextResponse<UploadPhotoResult>> {
   try {
     const user = await requireAuth()
-    requirePermission(user, "project", "update")
+    if (isDemoUser(user.id)) {
+      return NextResponse.json(
+        { success: false, error: "Demo mode is read-only." },
+        { status: 403 }
+      )
+    }
+    if (!user.isActive || !isInternalStaffRole(user.role)) {
+      return NextResponse.json(
+        { success: false, error: "Staff access is required to upload files." },
+        { status: 403 }
+      )
+    }
     const organizationId = requireOrg(user)
     const googleEmail = user.googleEmail ?? user.email
     const { id: projectId } = await params
@@ -215,19 +269,17 @@ export async function POST(
     const files = formData.getAll("files").filter(isFile)
     if (files.length === 0) {
       return NextResponse.json(
-        { success: false, error: "Choose at least one image to upload." },
+        { success: false, error: "Choose at least one file to upload." },
         { status: 400 }
       )
     }
 
-    const invalidFile = files.find(
-      (file) => !file.type.startsWith("image/") || file.size > MAX_FILE_SIZE_BYTES
-    )
+    const invalidFile = files.find((file) => file.size > MAX_FILE_SIZE_BYTES)
     if (invalidFile) {
       return NextResponse.json(
         {
           success: false,
-          error: `${invalidFile.name} is not an image or is larger than 50 MB.`,
+          error: `${invalidFile.name} is larger than 50 MB.`,
         },
         { status: 400 }
       )
@@ -264,12 +316,18 @@ export async function POST(
       )
     }
 
+    const projectDriveFolderId = await resolveProjectDriveFolderId(
+      db,
+      projectId,
+      project.googleDriveFolderId
+    )
+
     const targetFolderId = await resolveUploadFolderId(
       client,
       googleEmail,
       db,
       projectId,
-      project.googleDriveFolderId,
+      projectDriveFolderId,
       auth.sharedDriveId
     )
 
@@ -294,7 +352,9 @@ export async function POST(
         mimeType: driveFile.mimeType,
         driveFileId: driveFile.id,
         driveUrl: driveFile.webViewLink ?? null,
-        thumbnailUrl: `/api/google/download/${driveFile.id}`,
+        thumbnailUrl: isImageMimeType(driveFile.mimeType ?? file.type)
+          ? `/api/google/download/${driveFile.id}`
+          : null,
         caption: caption.length > 0 ? caption : null,
         capturedAt,
         uploadStatus: "uploaded",
@@ -327,7 +387,7 @@ export async function POST(
       {
         success: false,
         error:
-          error instanceof Error ? error.message : "Unable to upload photos.",
+          error instanceof Error ? error.message : "Unable to upload files.",
       },
       { status: 500 }
     )

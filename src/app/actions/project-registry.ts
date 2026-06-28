@@ -113,6 +113,18 @@ function driveFolderUrl(folderId: string | null): string | null {
     : null
 }
 
+function driveFolderIdFromUrl(value: string | null): string | null {
+  if (!value) return null
+
+  const folderMatch = value.match(/\/folders\/([^/?#]+)/)
+  if (folderMatch) return folderMatch[1] ?? null
+
+  const idMatch = value.match(/[?&]id=([^&#]+)/)
+  if (idMatch) return idMatch[1] ?? null
+
+  return null
+}
+
 function sheetUrl(sheetId: string | null): string | null {
   return sheetId
     ? `https://docs.google.com/spreadsheets/d/${sheetId}`
@@ -252,7 +264,19 @@ export async function getProjectRegistry(
     .from(projectExternalLinks)
     .where(eq(projectExternalLinks.projectId, projectId))
 
-  return { project, links }
+  const googleDriveLink = links.find((link) => link.system === "google_drive")
+  const googleDriveFolderId =
+    project.googleDriveFolderId ??
+    googleDriveLink?.externalId ??
+    driveFolderIdFromUrl(googleDriveLink?.externalUrl ?? null)
+
+  return {
+    project: {
+      ...project,
+      googleDriveFolderId,
+    },
+    links,
+  }
 }
 
 export async function updateProjectRegistry(

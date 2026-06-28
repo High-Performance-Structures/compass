@@ -14,6 +14,7 @@ import {
 } from "@/app/actions/project-contacts"
 import { getProjects } from "@/app/actions/projects"
 import { ProjectRfiCreateForm } from "@/components/projects/project-rfi-create-form"
+import { ProjectRfiDeleteButton } from "@/components/projects/project-rfi-delete-button"
 import { ProjectTaskCreateButton } from "@/components/projects/project-task-create-button"
 import { ProjectQuickSwitcher } from "@/components/projects/project-quick-switcher"
 import { Badge } from "@/components/ui/badge"
@@ -217,6 +218,12 @@ export default async function ProjectRfisPage({
                     {rfi.priority === "high" && (
                       <Badge variant="destructive">High</Badge>
                     )}
+                    <ProjectRfiDeleteButton
+                      projectId={id}
+                      rfiId={rfi.id}
+                      rfiNumber={rfi.rfiNumber}
+                      subject={rfi.subject}
+                    />
                     <ProjectTaskCreateButton
                       projectId={id}
                       sourceLabel="RFI"

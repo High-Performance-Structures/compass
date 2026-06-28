@@ -154,6 +154,7 @@ async function nextRecordNumber(
 function revalidateFinancialPaths(projectId: string): void {
   revalidatePath(`/dashboard/projects/${projectId}`)
   revalidatePath(`/dashboard/projects/${projectId}/financials`)
+  revalidatePath(`/dashboard/projects/${projectId}/rfqs`)
   revalidatePath(`/dashboard/projects/${projectId}/budget`)
   revalidatePath("/dashboard/financials")
   revalidatePath("/dashboard")

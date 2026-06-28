@@ -419,6 +419,69 @@ export const projectPurchaseOrderLines = sqliteTable("project_purchase_order_lin
   updatedAt: text("updated_at").notNull(),
 })
 
+export const projectFinishSelections = sqliteTable("project_finish_selections", {
+  id: text("id").primaryKey(),
+  projectId: text("project_id")
+    .notNull()
+    .references(() => projects.id, { onDelete: "cascade" }),
+  sourceSystem: text("source_system").notNull().default("compass"),
+  sourceRecordId: text("source_record_id"),
+  sourceWorkbookId: text("source_workbook_id"),
+  sourceSheetName: text("source_sheet_name"),
+  roomName: text("room_name").notNull(),
+  roomType: text("room_type"),
+  category: text("category").notNull().default("Uncategorized"),
+  name: text("name").notNull(),
+  description: text("description"),
+  quantity: real("quantity"),
+  manufacturer: text("manufacturer"),
+  model: text("model"),
+  colorFinish: text("color_finish"),
+  supplierName: text("supplier_name"),
+  productUrl: text("product_url"),
+  costCode: text("cost_code"),
+  phaseCode: text("phase_code"),
+  status: text("status").notNull().default("needed"),
+  ownerVisible: integer("owner_visible", { mode: "boolean" })
+    .notNull()
+    .default(false),
+  ownerApproved: integer("owner_approved", { mode: "boolean" })
+    .notNull()
+    .default(false),
+  approvedBy: text("approved_by"),
+  approvedAt: text("approved_at"),
+  rfqOperationId: text("rfq_operation_id").references(() => projectOperations.id, {
+    onDelete: "set null",
+  }),
+  purchaseOrderOperationId: text("purchase_order_operation_id").references(
+    () => projectOperations.id,
+    { onDelete: "set null" }
+  ),
+  notes: text("notes"),
+  sortOrder: integer("sort_order").notNull().default(0),
+  syncStatus: text("sync_status").notNull().default("manual"),
+  lastSyncedAt: text("last_synced_at"),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+})
+
+export const projectFinishSelectionRooms = sqliteTable("project_finish_selection_rooms", {
+  id: text("id").primaryKey(),
+  projectId: text("project_id")
+    .notNull()
+    .references(() => projects.id, { onDelete: "cascade" }),
+  sourceSystem: text("source_system").notNull().default("compass"),
+  sourceWorkbookId: text("source_workbook_id"),
+  sourceSheetId: text("source_sheet_id"),
+  sourceSheetName: text("source_sheet_name"),
+  roomName: text("room_name").notNull(),
+  roomType: text("room_type"),
+  sortOrder: integer("sort_order").notNull().default(0),
+  active: integer("active", { mode: "boolean" }).notNull().default(true),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+})
+
 export const projectBudgetApplications = sqliteTable("project_budget_applications", {
   id: text("id").primaryKey(),
   projectId: text("project_id")
@@ -718,6 +781,24 @@ export const vendors = sqliteTable("vendors", {
   updatedAt: text("updated_at"),
 })
 
+export const sageCostCodes = sqliteTable("sage_cost_codes", {
+  id: text("id").primaryKey(),
+  sourceSystem: text("source_system").notNull().default("sage"),
+  sourceRecordId: text("source_record_id"),
+  sourceRecordNumber: text("source_record_number"),
+  code: text("code").notNull(),
+  description: text("description").notNull(),
+  displayLabel: text("display_label").notNull(),
+  divisionCode: text("division_code").notNull(),
+  divisionDescription: text("division_description").notNull(),
+  divisionDisplayLabel: text("division_display_label").notNull(),
+  active: integer("active", { mode: "boolean" }).notNull().default(true),
+  syncStatus: text("sync_status").notNull().default("synced"),
+  lastSyncedAt: text("last_synced_at"),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+})
+
 export type Project = typeof projects.$inferSelect
 export type ProjectExternalLink = typeof projectExternalLinks.$inferSelect
 export type NewProjectExternalLink = typeof projectExternalLinks.$inferInsert
@@ -735,6 +816,14 @@ export type ProjectPurchaseOrderLine =
   typeof projectPurchaseOrderLines.$inferSelect
 export type NewProjectPurchaseOrderLine =
   typeof projectPurchaseOrderLines.$inferInsert
+export type ProjectFinishSelection =
+  typeof projectFinishSelections.$inferSelect
+export type NewProjectFinishSelection =
+  typeof projectFinishSelections.$inferInsert
+export type ProjectFinishSelectionRoom =
+  typeof projectFinishSelectionRooms.$inferSelect
+export type NewProjectFinishSelectionRoom =
+  typeof projectFinishSelectionRooms.$inferInsert
 export type ProjectBudgetApplication =
   typeof projectBudgetApplications.$inferSelect
 export type NewProjectBudgetApplication =
@@ -761,6 +850,8 @@ export type ScheduleBaseline = typeof scheduleBaselines.$inferSelect
 export type NewScheduleBaseline = typeof scheduleBaselines.$inferInsert
 export type Customer = typeof customers.$inferSelect
 export type NewCustomer = typeof customers.$inferInsert
+export type SageCostCode = typeof sageCostCodes.$inferSelect
+export type NewSageCostCode = typeof sageCostCodes.$inferInsert
 export const feedback = sqliteTable("feedback", {
   id: text("id").primaryKey(),
   type: text("type").notNull(),

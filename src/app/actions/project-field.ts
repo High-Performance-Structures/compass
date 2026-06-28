@@ -75,7 +75,7 @@ type OwnerUpdateDailyLog = {
 type OwnerUpdatePhoto = {
   readonly id: string
   readonly fileName: string
-  readonly driveUrl: null
+  readonly driveUrl: string | null
   readonly thumbnailUrl: string | null
   readonly caption: string | null
   readonly capturedAt: string | null
@@ -91,9 +91,17 @@ type PhotoReviewFolder = {
   readonly photoCount: number | null
 }
 
+type CoordinatePair = {
+  readonly latitude: number
+  readonly longitude: number
+  readonly label: string | null
+  readonly query: string
+}
+
 export type ProjectDailyLogPhoto = {
   readonly id: string
   readonly fileName: string
+  readonly mimeType: string | null
   readonly driveUrl: string | null
   readonly thumbnailUrl: string | null
   readonly caption: string | null
@@ -119,6 +127,9 @@ export type ProjectDailyLogItem = {
   readonly sourceExternalId: string | null
   readonly logDate: string
   readonly weather: string | null
+  readonly weatherTempF: number | null
+  readonly weatherConditions: string | null
+  readonly weatherPrecipitation: string | null
   readonly workCompleted: string
   readonly issues: string | null
   readonly materialsUsed: string | null
@@ -160,12 +171,55 @@ type DailyLogReviewInput = {
   readonly isClientVisible: boolean
 }
 
+type CreateDailyLogInput = {
+  readonly logDate: string
+  readonly weatherTempF: number | null
+  readonly weatherConditions: string
+  readonly weatherPrecipitation: string
+  readonly workCompleted: string
+  readonly issues: string
+  readonly materialsUsed: string
+  readonly crewPresent: string
+  readonly hoursWorked: number | null
+  readonly safetyIncidents: string
+  readonly visitorLog: string
+  readonly notes: string
+}
+
+export type ProjectWeatherSnapshot = {
+  readonly tempF: number | null
+  readonly conditions: string
+  readonly precipitation: string | null
+  readonly station: string | null
+  readonly locationLabel: string | null
+  readonly source: string
+}
+
 type OwnerUpdateDraftInput = {
   readonly dailyLogIds: readonly string[]
 }
 
+export type OwnerUpdateDraftEditInput = {
+  readonly title: string
+  readonly updateDate: string
+  readonly summary: string
+  readonly selectedPhotoIds: readonly string[]
+}
+
 type DailyLogMutationResult =
   | { readonly success: true }
+  | { readonly success: false; readonly error: string }
+
+type CreateDailyLogResult =
+  | { readonly success: true; readonly dailyLogId: string }
+  | { readonly success: false; readonly error: string }
+
+type UpdateDailyLogInput = CreateDailyLogInput & {
+  readonly dailyLogId: string
+}
+
+type ProjectWeatherSnapshotResult =
+  | { readonly success: true; readonly weather: ProjectWeatherSnapshot }
   | { readonly success: false; readonly error: string }
 
 type OwnerUpdateDraftResult =
@@ -183,9 +237,11 @@ export type OwnerProjectUpdateDocument = {
     readonly channel: string
     readonly publishedAt: string | null
     readonly sentAt: string | null
+    readonly selectedPhotoIds: readonly string[]
   }
   readonly dailyLogs: readonly OwnerUpdateDailyLog[]
   readonly photos: readonly OwnerUpdatePhoto[]
+  readonly availablePhotos: readonly OwnerUpdatePhoto[]
   readonly photoFolder: OwnerUpdatePhotoFolder | null
   readonly nextScheduleItem: {
     readonly title: string
@@ -193,6 +249,12 @@ export type OwnerProjectUpdateDocument = {
     readonly endDate: string
     readonly assignedTo: string | null
   } | null
+  readonly lookAheadScheduleItems: readonly {
+    readonly title: string
+    readonly startDate: string
+    readonly endDate: string
+    readonly assignedTo: string | null
+  }[]
 }
 
 export type ProjectFieldSummary = {
@@ -228,6 +290,14 @@ function parseIdList(value: string | null): readonly string[] {
   }
 }
 
+function ownerFacingDailyLogNotes(value: string | null): string | null {
+  const trimmed = value?.trim() ?? ""
+  if (trimmed.length === 0) return null
+  if (trimmed.startsWith("Buildertrend title:")) return null
+  if (trimmed.includes("Buildertrend job ID:")) return null
+  return trimmed
+}
+
 function photoReviewPhotoCount(value: string | null): number | null {
   if (!value) return null
 
@@ -245,6 +315,41 @@ function photoReviewPhotoCount(value: string | null): number | null {
   } catch {
     return null
   }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null
+}
+
+function recordValue(
+  value: Record<string, unknown>,
+  key: string
+): Record<string, unknown> | null {
+  const child = value[key]
+  return isRecord(child) ? child : null
+}
+
+function arrayValue(value: Record<string, unknown>, key: string): readonly unknown[] {
+  const child = value[key]
+  return Array.isArray(child) ? child : []
+}
+
+function stringValue(
+  value: Record<string, unknown>,
+  key: string
+): string | null {
+  const child = value[key]
+  return typeof child === "string" && child.trim().length > 0
+    ? child.trim()
+    : null
+}
+
+function numberValue(
+  value: Record<string, unknown>,
+  key: string
+): number | null {
+  const child = value[key]
+  return typeof child === "number" && Number.isFinite(child) ? child : null
 }
 
 async function verifyProjectAccess(
@@ -299,6 +404,49 @@ async function verifyProjectMutationAccess(
   return { db, userId: user.id }
 }
 
+function isInternalStaffRole(role: string): boolean {
+  switch (role) {
+    case "admin":
+    case "secondary_admin":
+    case "office":
+    case "field":
+      return true
+    default:
+      return false
+  }
+}
+
+async function verifyDailyLogStaffMutationAccess(
+  projectId: string
+): Promise<{
+  readonly db: ReturnType<typeof getDb>
+  readonly userId: string
+}> {
+  const user = await requireAuth()
+  if (isDemoUser(user.id)) {
+    throw new Error("DEMO_READ_ONLY")
+  }
+  if (!user.isActive || !isInternalStaffRole(user.role)) {
+    throw new Error("Permission denied: staff access is required for daily logs")
+  }
+  const orgId = requireOrg(user)
+
+  const { env } = await getCloudflareContext()
+  const db = getDb(env.DB)
+
+  const existing = await db
+    .select({ id: projects.id })
+    .from(projects)
+    .where(and(eq(projects.id, projectId), eq(projects.organizationId, orgId)))
+    .limit(1)
+
+  if (!existing[0]) {
+    throw new Error("Project not found")
+  }
+
+  return { db, userId: user.id }
+}
+
 function displayName(row: {
   readonly displayName: string | null
   readonly firstName: string | null
@@ -324,6 +472,331 @@ function normalizedDailyLogReviewStatus(value: string): string {
     default:
       return "needs_review"
   }
+}
+
+function requiredText(value: string, label: string): string {
+  const trimmed = value.trim()
+  if (trimmed.length === 0) {
+    throw new Error(`${label} is required.`)
+  }
+  return trimmed
+}
+
+function optionalText(value: string): string | null {
+  const trimmed = value.trim()
+  return trimmed.length > 0 ? trimmed : null
+}
+
+function normalizedLogDate(value: string): string {
+  const trimmed = value.trim()
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return trimmed
+  throw new Error("Enter a valid daily log date.")
+}
+
+function addressLooksStateQualified(value: string): boolean {
+  return /\b[A-Z]{2}\b/.test(value) || /\bColorado\b/i.test(value)
+}
+
+function geocodeQueries(address: string): readonly string[] {
+  const trimmed = address.trim()
+  if (trimmed.length === 0) return []
+  if (addressLooksStateQualified(trimmed)) return [trimmed]
+  return [trimmed, `${trimmed}, Colorado`]
+}
+
+async function geocodeProjectAddress(
+  address: string
+): Promise<CoordinatePair | null> {
+  for (const query of geocodeQueries(address)) {
+    const coordinates = await geocodeWithCensus(query)
+    if (coordinates) return coordinates
+  }
+
+  for (const query of geocodeQueries(address)) {
+    const coordinates = await geocodeWithNominatim(query)
+    if (coordinates) return coordinates
+  }
+
+  return null
+}
+
+async function geocodeWithCensus(
+  address: string
+): Promise<CoordinatePair | null> {
+  const url = new URL(
+    "https://geocoding.geo.census.gov/geocoder/locations/onelineaddress"
+  )
+  url.searchParams.set("address", address)
+  url.searchParams.set("benchmark", "Public_AR_Current")
+  url.searchParams.set("format", "json")
+
+  const response = await fetch(url, {
+    headers: {
+      Accept: "application/json",
+      "User-Agent": "Compass project management weather lookup",
+    },
+  })
+  if (!response.ok) return null
+
+  const parsed: unknown = await response.json()
+  if (!isRecord(parsed)) return null
+
+  const result = recordValue(parsed, "result")
+  if (!result) return null
+
+  const matches = arrayValue(result, "addressMatches")
+  const firstMatch = matches.find(isRecord)
+  if (!firstMatch) return null
+
+  const coordinates = recordValue(firstMatch, "coordinates")
+  if (!coordinates) return null
+
+  const longitude = numberValue(coordinates, "x")
+  const latitude = numberValue(coordinates, "y")
+  if (latitude === null || longitude === null) return null
+
+  const label = stringValue(firstMatch, "matchedAddress")
+  return { latitude, longitude, label, query: address }
+}
+
+async function geocodeWithNominatim(
+  address: string
+): Promise<CoordinatePair | null> {
+  const url = new URL("https://nominatim.openstreetmap.org/search")
+  url.searchParams.set("q", address)
+  url.searchParams.set("format", "jsonv2")
+  url.searchParams.set("limit", "1")
+  url.searchParams.set("countrycodes", "us")
+
+  const response = await fetch(url, {
+    headers: {
+      Accept: "application/json",
+      "User-Agent": "Compass project management weather lookup",
+    },
+  })
+  if (!response.ok) return null
+
+  const parsed: unknown = await response.json()
+  if (!Array.isArray(parsed)) return null
+
+  const firstMatch = parsed.find(isRecord)
+  if (!firstMatch) return null
+
+  const latitudeText = stringValue(firstMatch, "lat")
+  const longitudeText = stringValue(firstMatch, "lon")
+  if (!latitudeText || !longitudeText) return null
+
+  const latitude = Number(latitudeText)
+  const longitude = Number(longitudeText)
+  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return null
+
+  return {
+    latitude,
+    longitude,
+    label: stringValue(firstMatch, "display_name"),
+    query: address,
+  }
+}
+
+function fahrenheitFromCelsius(value: number | null): number | null {
+  if (value === null) return null
+  return Math.round((value * 9) / 5 + 32)
+}
+
+function inchesFromMeters(value: number | null): string | null {
+  if (value === null || value <= 0) return null
+  const inches = value * 39.3701
+  return `${inches.toFixed(inches < 0.1 ? 2 : 1)} in last hour`
+}
+
+function weatherCodeLabel(value: number | null): string {
+  switch (value) {
+    case 0:
+      return "Clear"
+    case 1:
+    case 2:
+    case 3:
+      return "Partly cloudy"
+    case 45:
+    case 48:
+      return "Fog"
+    case 51:
+    case 53:
+    case 55:
+    case 56:
+    case 57:
+      return "Drizzle"
+    case 61:
+    case 63:
+    case 65:
+    case 66:
+    case 67:
+      return "Rain"
+    case 71:
+    case 73:
+    case 75:
+    case 77:
+      return "Snow"
+    case 80:
+    case 81:
+    case 82:
+      return "Rain showers"
+    case 85:
+    case 86:
+      return "Snow showers"
+    case 95:
+    case 96:
+    case 99:
+      return "Thunderstorm"
+    default:
+      return "Historical weather"
+  }
+}
+
+function inchesText(value: number | null, label: string): string | null {
+  if (value === null || value <= 0) return null
+  return `${value.toFixed(value < 0.1 ? 2 : 1)} in ${label}`
+}
+
+function firstNumber(value: Record<string, unknown>, key: string): number | null {
+  const child = value[key]
+  if (!Array.isArray(child)) return null
+  const first = child[0]
+  return typeof first === "number" && Number.isFinite(first) ? first : null
+}
+
+async function fetchProjectWeather(
+  coordinates: CoordinatePair
+): Promise<ProjectWeatherSnapshot | null> {
+  const pointUrl = `https://api.weather.gov/points/${coordinates.latitude.toFixed(
+    4
+  )},${coordinates.longitude.toFixed(4)}`
+  const headers = {
+    Accept: "application/geo+json",
+    "User-Agent": "Compass project management weather lookup",
+  }
+  const pointResponse = await fetch(pointUrl, { headers })
+  if (!pointResponse.ok) return null
+
+  const pointParsed: unknown = await pointResponse.json()
+  if (!isRecord(pointParsed)) return null
+
+  const pointProperties = recordValue(pointParsed, "properties")
+  const stationsUrl = pointProperties
+    ? stringValue(pointProperties, "observationStations")
+    : null
+  if (!stationsUrl) return null
+
+  const stationsResponse = await fetch(stationsUrl, { headers })
+  if (!stationsResponse.ok) return null
+
+  const stationsParsed: unknown = await stationsResponse.json()
+  if (!isRecord(stationsParsed)) return null
+
+  const stationFeature = arrayValue(stationsParsed, "features").find(isRecord)
+  const stationProperties = stationFeature
+    ? recordValue(stationFeature, "properties")
+    : null
+  const stationId = stationProperties
+    ? stringValue(stationProperties, "stationIdentifier")
+    : null
+  if (!stationId) return null
+
+  const observationResponse = await fetch(
+    `https://api.weather.gov/stations/${stationId}/observations/latest`,
+    { headers }
+  )
+  if (!observationResponse.ok) return null
+
+  const observationParsed: unknown = await observationResponse.json()
+  if (!isRecord(observationParsed)) return null
+
+  const observationProperties = recordValue(observationParsed, "properties")
+  if (!observationProperties) return null
+
+  const temperature = recordValue(observationProperties, "temperature")
+  const precipitation = recordValue(
+    observationProperties,
+    "precipitationLastHour"
+  )
+  const conditions = stringValue(observationProperties, "textDescription")
+
+  return {
+    tempF: fahrenheitFromCelsius(
+      temperature ? numberValue(temperature, "value") : null
+    ),
+    conditions: conditions ?? "Observed weather",
+    precipitation: inchesFromMeters(
+      precipitation ? numberValue(precipitation, "value") : null
+    ),
+    station: stationId,
+    locationLabel: coordinates.label ?? coordinates.query,
+    source: "National Weather Service",
+  }
+}
+
+async function fetchHistoricalProjectWeather(
+  coordinates: CoordinatePair,
+  logDate: string
+): Promise<ProjectWeatherSnapshot | null> {
+  const url = new URL("https://archive-api.open-meteo.com/v1/archive")
+  url.searchParams.set("latitude", coordinates.latitude.toFixed(4))
+  url.searchParams.set("longitude", coordinates.longitude.toFixed(4))
+  url.searchParams.set("start_date", logDate)
+  url.searchParams.set("end_date", logDate)
+  url.searchParams.set(
+    "daily",
+    [
+      "weather_code",
+      "temperature_2m_mean",
+      "precipitation_sum",
+      "rain_sum",
+      "snowfall_sum",
+    ].join(",")
+  )
+  url.searchParams.set("temperature_unit", "fahrenheit")
+  url.searchParams.set("precipitation_unit", "inch")
+  url.searchParams.set("timezone", "America/Denver")
+
+  const response = await fetch(url, {
+    headers: {
+      Accept: "application/json",
+      "User-Agent": "Compass project management weather lookup",
+    },
+  })
+  if (!response.ok) return null
+
+  const parsed: unknown = await response.json()
+  if (!isRecord(parsed)) return null
+
+  const daily = recordValue(parsed, "daily")
+  if (!daily) return null
+
+  const tempF = firstNumber(daily, "temperature_2m_mean")
+  const precipitation = firstNumber(daily, "precipitation_sum")
+  const rain = firstNumber(daily, "rain_sum")
+  const snow = firstNumber(daily, "snowfall_sum")
+  const weatherCode = firstNumber(daily, "weather_code")
+  const precipitationParts = [
+    inchesText(precipitation, "precipitation"),
+    inchesText(rain, "rain"),
+    inchesText(snow, "snow"),
+  ].filter((part): part is string => part !== null)
+
+  return {
+    tempF: tempF === null ? null : Math.round(tempF),
+    conditions: weatherCodeLabel(weatherCode),
+    precipitation:
+      precipitationParts.length > 0 ? precipitationParts.join(", ") : "None recorded",
+    station: null,
+    locationLabel: coordinates.label ?? coordinates.query,
+    source: "Open-Meteo historical archive",
+  }
+}
+
+function isTodayOrFuture(logDate: string): boolean {
+  const today = new Date().toISOString().slice(0, 10)
+  return logDate >= today
 }
 
 function weatherLabel(row: {
@@ -570,6 +1043,7 @@ export async function getProjectDailyLogWorkspace(
       id: dailyLogPhotos.id,
       dailyLogId: dailyLogPhotos.dailyLogId,
       fileName: dailyLogPhotos.fileName,
+      mimeType: dailyLogPhotos.mimeType,
       driveUrl: dailyLogPhotos.driveUrl,
       thumbnailUrl: dailyLogPhotos.thumbnailUrl,
       caption: dailyLogPhotos.caption,
@@ -613,6 +1087,7 @@ export async function getProjectDailyLogWorkspace(
     const photo = {
       id: row.id,
       fileName: row.fileName,
+      mimeType: row.mimeType,
       driveUrl: row.driveUrl,
       thumbnailUrl: row.thumbnailUrl,
       caption: row.caption,
@@ -660,6 +1135,9 @@ export async function getProjectDailyLogWorkspace(
         weatherTempF: row.weatherTempF,
         weatherPrecipitation: row.weatherPrecipitation,
       }),
+      weatherTempF: row.weatherTempF,
+      weatherConditions: row.weatherConditions,
+      weatherPrecipitation: row.weatherPrecipitation,
       workCompleted: row.workCompleted,
       issues: row.issues,
       materialsUsed: row.materialsUsed,
@@ -692,6 +1170,181 @@ export async function getProjectDailyLogWorkspace(
         (row) => row.reviewStatus === "needs_review"
       ).length,
     },
+  }
+}
+
+export async function createProjectDailyLog(
+  projectId: string,
+  input: CreateDailyLogInput
+): Promise<CreateDailyLogResult> {
+  try {
+    const { db, userId } = await verifyDailyLogStaffMutationAccess(projectId)
+    const dailyLogId = crypto.randomUUID()
+    const now = new Date().toISOString()
+    const logDate = normalizedLogDate(input.logDate)
+    const workCompleted = requiredText(input.workCompleted, "Work completed")
+
+    await db.insert(dailyLogs).values({
+      id: dailyLogId,
+      projectId,
+      authorId: userId,
+      sourceSystem: "compass",
+      sourceExternalId: null,
+      logDate,
+      weatherTempF: input.weatherTempF,
+      weatherConditions: optionalText(input.weatherConditions),
+      weatherPrecipitation: optionalText(input.weatherPrecipitation),
+      weatherSource: "manual",
+      workCompleted,
+      issues: optionalText(input.issues),
+      materialsUsed: optionalText(input.materialsUsed),
+      crewPresent: optionalText(input.crewPresent),
+      hoursWorked: input.hoursWorked,
+      safetyIncidents: optionalText(input.safetyIncidents),
+      visitorLog: optionalText(input.visitorLog),
+      notes: optionalText(input.notes),
+      isClientVisible: false,
+      reviewStatus: "needs_review",
+      tags: null,
+      syncStatus: "pending",
+      createdAt: now,
+      updatedAt: now,
+    })
+
+    revalidatePath(`/dashboard/projects/${projectId}`)
+    revalidatePath(`/dashboard/projects/${projectId}/daily-logs`)
+    revalidatePath(`/dashboard/projects/${projectId}/owner-updates`)
+
+    return { success: true, dailyLogId }
+  } catch (error) {
+    return {
+      success: false,
+      error:
+        error instanceof Error ? error.message : "Unable to create daily log.",
+    }
+  }
+}
+
+export async function updateProjectDailyLog(
+  projectId: string,
+  input: UpdateDailyLogInput
+): Promise<DailyLogMutationResult> {
+  try {
+    const { db } = await verifyDailyLogStaffMutationAccess(projectId)
+    const dailyLogId = input.dailyLogId.trim()
+
+    if (dailyLogId.length === 0) {
+      return { success: false, error: "Daily log is required." }
+    }
+
+    const [existing] = await db
+      .select({ id: dailyLogs.id })
+      .from(dailyLogs)
+      .where(and(eq(dailyLogs.id, dailyLogId), eq(dailyLogs.projectId, projectId)))
+      .limit(1)
+
+    if (!existing) {
+      return { success: false, error: "Daily log not found." }
+    }
+
+    const logDate = normalizedLogDate(input.logDate)
+    const workCompleted = requiredText(input.workCompleted, "Work completed")
+
+    await db
+      .update(dailyLogs)
+      .set({
+        logDate,
+        weatherTempF: input.weatherTempF,
+        weatherConditions: optionalText(input.weatherConditions),
+        weatherPrecipitation: optionalText(input.weatherPrecipitation),
+        weatherSource: "manual",
+        workCompleted,
+        issues: optionalText(input.issues),
+        materialsUsed: optionalText(input.materialsUsed),
+        crewPresent: optionalText(input.crewPresent),
+        hoursWorked: input.hoursWorked,
+        safetyIncidents: optionalText(input.safetyIncidents),
+        visitorLog: optionalText(input.visitorLog),
+        notes: optionalText(input.notes),
+        isClientVisible: false,
+        reviewStatus: "needs_review",
+        syncStatus: "pending",
+        updatedAt: new Date().toISOString(),
+      })
+      .where(and(eq(dailyLogs.id, dailyLogId), eq(dailyLogs.projectId, projectId)))
+
+    revalidatePath(`/dashboard/projects/${projectId}`)
+    revalidatePath(`/dashboard/projects/${projectId}/daily-logs`)
+    revalidatePath(`/dashboard/projects/${projectId}/owner-updates`)
+
+    return { success: true }
+  } catch (error) {
+    return {
+      success: false,
+      error:
+        error instanceof Error ? error.message : "Unable to update daily log.",
+    }
+  }
+}
+
+export async function getProjectWeatherSnapshot(
+  projectId: string,
+  input?: { readonly logDate?: string }
+): Promise<ProjectWeatherSnapshotResult> {
+  try {
+    const db = await verifyProjectAccess(projectId)
+    const [project] = await db
+      .select({
+        address: projects.address,
+        name: projects.name,
+      })
+      .from(projects)
+      .where(eq(projects.id, projectId))
+      .limit(1)
+
+    if (!project) {
+      return { success: false, error: "Project not found." }
+    }
+
+    const address = optionalText(project.address ?? "")
+    if (!address) {
+      return {
+        success: false,
+        error: "Add a project address before pulling automatic weather.",
+      }
+    }
+
+    const coordinates = await geocodeProjectAddress(address)
+    if (!coordinates) {
+      return {
+        success: false,
+        error: `Could not match the project address to weather coordinates. Address tried: ${address}.`,
+      }
+    }
+
+    const logDate =
+      input?.logDate && input.logDate.trim().length > 0
+        ? normalizedLogDate(input.logDate)
+        : new Date().toISOString().slice(0, 10)
+    const weather = isTodayOrFuture(logDate)
+      ? await fetchProjectWeather(coordinates)
+      : await fetchHistoricalProjectWeather(coordinates, logDate)
+    if (!weather) {
+      return {
+        success: false,
+        error: `Weather service did not return weather for ${logDate}. Location tried: ${
+          coordinates.label ?? coordinates.query
+        }.`,
+      }
+    }
+
+    return { success: true, weather }
+  } catch (error) {
+    return {
+      success: false,
+      error:
+        error instanceof Error ? error.message : "Unable to pull project weather.",
+    }
   }
 }
 
@@ -920,6 +1573,7 @@ export async function getOwnerProjectUpdateDocument(
     .select({
       id: dailyLogPhotos.id,
       fileName: dailyLogPhotos.fileName,
+      driveUrl: dailyLogPhotos.driveUrl,
       thumbnailUrl: dailyLogPhotos.thumbnailUrl,
       mimeType: dailyLogPhotos.mimeType,
       caption: dailyLogPhotos.caption,
@@ -944,7 +1598,7 @@ export async function getOwnerProjectUpdateDocument(
     )
     .limit(1)
 
-  const [nextTask] = await db
+  const lookAheadTasks = await db
     .select({
       title: scheduleTasks.title,
       startDate: scheduleTasks.startDate,
@@ -959,7 +1613,7 @@ export async function getOwnerProjectUpdateDocument(
       )
     )
     .orderBy(asc(scheduleTasks.startDate), asc(scheduleTasks.sortOrder))
-    .limit(1)
+    .limit(6)
 
   const dailyLogIds = new Set(selectedDailyLogIds)
   const photoIds = new Set(selectedPhotoIds)
@@ -978,7 +1632,7 @@ export async function getOwnerProjectUpdateDocument(
       manpower: row.crewPresent,
       safetyNotes: row.safetyIncidents,
       issues: row.issues,
-      nextSteps: row.notes,
+      nextSteps: ownerFacingDailyLogNotes(row.notes),
       authorName: displayName({
         displayName: row.authorDisplayName,
         firstName: row.authorFirstName,
@@ -999,7 +1653,23 @@ export async function getOwnerProjectUpdateDocument(
     .map((row) => ({
       id: row.id,
       fileName: row.fileName,
-      driveUrl: null,
+      driveUrl: row.driveUrl,
+      thumbnailUrl: row.thumbnailUrl,
+      caption: row.caption,
+      capturedAt: row.capturedAt,
+    }))
+
+  const availablePhotos = allPhotoRows
+    .filter((row) => {
+      const isImage =
+        row.thumbnailUrl !== null || row.mimeType?.startsWith("image/") === true
+      return isImage && row.ownerVisible && row.reviewStatus === "approved"
+    })
+    .slice(0, 80)
+    .map((row) => ({
+      id: row.id,
+      fileName: row.fileName,
+      driveUrl: row.driveUrl,
       thumbnailUrl: row.thumbnailUrl,
       caption: row.caption,
       capturedAt: row.capturedAt,
@@ -1016,16 +1686,117 @@ export async function getOwnerProjectUpdateDocument(
       channel: update.channel,
       publishedAt: update.publishedAt,
       sentAt: update.sentAt,
+      selectedPhotoIds,
     },
     dailyLogs: dailyLogsForUpdate,
     photos: photosForUpdate,
+    availablePhotos,
     photoFolder:
       photoFolder
         ? {
             label: photoFolder.label,
           }
         : null,
-    nextScheduleItem: nextTask ?? null,
+    nextScheduleItem: lookAheadTasks[0] ?? null,
+    lookAheadScheduleItems: lookAheadTasks,
+  }
+}
+
+export async function updateOwnerProjectUpdateDraft(
+  projectId: string,
+  updateId: string,
+  input: OwnerUpdateDraftEditInput
+): Promise<
+  | { readonly success: true }
+  | { readonly success: false; readonly error: string }
+> {
+  try {
+    const { db } = await verifyProjectMutationAccess(projectId)
+    const title = input.title.trim()
+    const updateDate = input.updateDate.trim()
+    const summary = input.summary.trim()
+    const selectedPhotoIds = [...new Set(input.selectedPhotoIds)]
+      .map((id) => id.trim())
+      .filter((id) => id.length > 0)
+
+    if (title.length === 0) {
+      return { success: false, error: "Title is required." }
+    }
+    if (updateDate.length === 0) {
+      return { success: false, error: "Update date is required." }
+    }
+    if (summary.length === 0) {
+      return { success: false, error: "Summary is required." }
+    }
+
+    const [update] = await db
+      .select({ id: ownerProjectUpdates.id, status: ownerProjectUpdates.status })
+      .from(ownerProjectUpdates)
+      .where(
+        and(
+          eq(ownerProjectUpdates.id, updateId),
+          eq(ownerProjectUpdates.projectId, projectId)
+        )
+      )
+      .limit(1)
+
+    if (!update) {
+      return { success: false, error: "Owner update not found." }
+    }
+    if (update.status === "published") {
+      return {
+        success: false,
+        error: "Published owner updates cannot be edited here.",
+      }
+    }
+
+    if (selectedPhotoIds.length > 0) {
+      const eligiblePhotos = await db
+        .select({ id: dailyLogPhotos.id })
+        .from(dailyLogPhotos)
+        .where(
+          and(
+            eq(dailyLogPhotos.projectId, projectId),
+            inArray(dailyLogPhotos.id, selectedPhotoIds),
+            eq(dailyLogPhotos.ownerVisible, true),
+            eq(dailyLogPhotos.reviewStatus, "approved")
+          )
+        )
+
+      if (eligiblePhotos.length !== selectedPhotoIds.length) {
+        return {
+          success: false,
+          error: "Only approved owner-visible photos can be selected.",
+        }
+      }
+    }
+
+    await db
+      .update(ownerProjectUpdates)
+      .set({
+        title,
+        updateDate,
+        summary,
+        selectedPhotoIds: JSON.stringify(selectedPhotoIds),
+        updatedAt: new Date().toISOString(),
+      })
+      .where(eq(ownerProjectUpdates.id, updateId))
+
+    revalidatePath(`/dashboard/projects/${projectId}`)
+    revalidatePath(`/dashboard/projects/${projectId}/owner-updates`)
+    revalidatePath(
+      `/dashboard/projects/${projectId}/owner-updates/${updateId}`
+    )
+
+    return { success: true }
+  } catch (error) {
+    return {
+      success: false,
+      error:
+        error instanceof Error
+          ? error.message
+          : "Unable to update owner draft.",
+    }
   }
 }
 
