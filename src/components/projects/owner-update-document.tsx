@@ -259,6 +259,7 @@ export function OwnerUpdateDocument({
                   <OwnerUpdatePhotoTile
                     key={photo.id}
                     fileName={photo.fileName}
+                    driveFileId={photo.driveFileId}
                     driveUrl={photo.driveUrl}
                     thumbnailUrl={photo.thumbnailUrl}
                     caption={photo.caption}

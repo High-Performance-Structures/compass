@@ -24,6 +24,7 @@ export type ProjectAudience = "owner" | "sub_vendor"
 export type AudiencePhoto = {
   readonly id: string
   readonly fileName: string
+  readonly driveFileId: string | null
   readonly thumbnailUrl: string | null
   readonly caption: string | null
   readonly capturedAt: string | null
@@ -385,6 +386,7 @@ export async function getProjectAudiencePreview(
     .select({
       id: dailyLogPhotos.id,
       fileName: dailyLogPhotos.fileName,
+      driveFileId: dailyLogPhotos.driveFileId,
       thumbnailUrl: dailyLogPhotos.thumbnailUrl,
       mimeType: dailyLogPhotos.mimeType,
       caption: dailyLogPhotos.caption,
@@ -608,6 +610,7 @@ export async function getProjectAudiencePreview(
       return {
         id: photo.id,
         fileName: photo.fileName,
+        driveFileId: photo.driveFileId,
         thumbnailUrl: photo.thumbnailUrl,
         caption: photo.caption,
         capturedAt: photo.capturedAt,

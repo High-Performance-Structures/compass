@@ -493,6 +493,7 @@ function OwnerProjectPreview({
           approvedPhotos={data.photos.map((photo) => ({
             id: photo.id,
             fileName: photo.fileName,
+            driveFileId: photo.driveFileId,
             thumbnailUrl: photo.thumbnailUrl,
             caption: photo.caption,
           }))}

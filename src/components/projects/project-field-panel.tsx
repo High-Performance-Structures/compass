@@ -1,4 +1,4 @@
-import type * as React from "react"
+import * as React from "react"
 import Image from "next/image"
 import Link from "next/link"
 import {
@@ -12,6 +12,10 @@ import {
 
 import type { ProjectFieldSummary } from "@/app/actions/project-field"
 import { Badge } from "@/components/ui/badge"
+import {
+  photoLinkHref,
+  resolvePhotoImageSource,
+} from "@/lib/photo-sources"
 
 function formatDate(value: string): string {
   return new Date(`${value}T00:00:00`).toLocaleDateString("en-US", {
@@ -45,13 +49,6 @@ function sourceLabel(value: string): string {
   }
 }
 
-function browserHref(value: string | null): string | null {
-  if (value === null) return null
-  if (value.startsWith("https://") || value.startsWith("http://")) return value
-  if (value.startsWith("/owner-update-photos/")) return value
-  return null
-}
-
 function SummaryMetric({
   icon,
   label,
@@ -68,6 +65,32 @@ function SummaryMetric({
         <span className="text-muted-foreground">{icon}</span>
       </div>
       <p className="mt-2 text-2xl font-semibold leading-none">{value}</p>
+    </div>
+  )
+}
+
+function LatestPhotoThumb({
+  photo,
+}: {
+  readonly photo: ProjectFieldSummary["latestPhotos"][number]
+}): React.ReactElement | null {
+  const [imageFailed, setImageFailed] = React.useState(false)
+  const resolvedImage = resolvePhotoImageSource(photo)
+  const imageSrc = imageFailed ? null : resolvedImage.src
+
+  if (imageSrc === null) return null
+
+  return (
+    <div className="relative h-16 w-20 shrink-0 overflow-hidden rounded-md bg-muted">
+      <Image
+        src={imageSrc}
+        alt={photo.caption ?? photo.fileName}
+        fill
+        sizes="80px"
+        unoptimized
+        className="object-cover"
+        onError={() => setImageFailed(true)}
+      />
     </div>
   )
 }
@@ -292,7 +315,9 @@ export function ProjectFieldPanel({
           </div>
           <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-2">
             {summary.latestPhotos.map((photo) => {
-              const href = browserHref(photo.driveUrl)
+              const href = photoLinkHref(photo.driveUrl, {
+                allowExternalSource: true,
+              })
 
               return (
                 <div
@@ -300,18 +325,7 @@ export function ProjectFieldPanel({
                   className="flex min-w-0 items-start justify-between gap-3 rounded-md border p-2"
                 >
                   <div className="flex min-w-0 gap-3">
-                    {photo.thumbnailUrl && (
-                      <div className="relative h-16 w-20 shrink-0 overflow-hidden rounded-md bg-muted">
-                        <Image
-                          src={photo.thumbnailUrl}
-                          alt={photo.caption ?? photo.fileName}
-                          fill
-                          sizes="80px"
-                          unoptimized
-                          className="object-cover"
-                        />
-                      </div>
-                    )}
+                    <LatestPhotoThumb photo={photo} />
                     <div className="min-w-0 space-y-1">
                       <p className="truncate text-sm font-medium">
                         {photo.caption ?? photo.fileName}

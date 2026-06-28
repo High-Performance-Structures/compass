@@ -4,18 +4,10 @@ import { useState } from "react"
 import Image from "next/image"
 import { IconExternalLink, IconPhoto } from "@tabler/icons-react"
 
-function browserHref(
-  value: string | null,
-  allowExternalSource: boolean
-): string | null {
-  if (value === null) return null
-  if (value.startsWith("https://") || value.startsWith("http://")) {
-    return allowExternalSource ? value : null
-  }
-  if (value.startsWith("/owner-update-photos/")) return value
-  if (value.startsWith("/project-photo-previews/")) return value
-  return null
-}
+import {
+  photoLinkHref,
+  resolvePhotoImageSource,
+} from "@/lib/photo-sources"
 
 function externalHref(value: string): boolean {
   return value.startsWith("https://") || value.startsWith("http://")
@@ -23,12 +15,14 @@ function externalHref(value: string): boolean {
 
 export function OwnerUpdatePhotoTile({
   fileName,
+  driveFileId,
   driveUrl,
   thumbnailUrl,
   caption,
   allowExternalSource = false,
 }: {
   readonly fileName: string
+  readonly driveFileId: string | null
   readonly driveUrl: string | null
   readonly thumbnailUrl: string | null
   readonly caption: string | null
@@ -36,16 +30,23 @@ export function OwnerUpdatePhotoTile({
 }): React.ReactElement {
   const [imageFailed, setImageFailed] = useState(false)
   const title = caption ?? fileName
-  const showImage = thumbnailUrl !== null && !imageFailed
-  const href = browserHref(driveUrl, allowExternalSource)
+  const resolvedImage = resolvePhotoImageSource({
+    driveFileId,
+    driveUrl,
+    thumbnailUrl,
+  })
+  const imageSrc = imageFailed ? null : resolvedImage.src
+  const href = photoLinkHref(driveUrl, {
+    allowExternalSource,
+  })
   const opensExternally = href !== null && externalHref(href)
 
   return (
     <div className="owner-update-photo-tile overflow-hidden rounded-md border bg-background print:break-inside-avoid print:rounded-none">
       <div className="owner-update-photo-frame flex aspect-[4/3] items-center justify-center bg-muted/50">
-        {showImage ? (
+        {imageSrc ? (
           <Image
-            src={thumbnailUrl}
+            src={imageSrc}
             alt={title}
             width={320}
             height={240}
@@ -57,7 +58,7 @@ export function OwnerUpdatePhotoTile({
           <div className="flex h-full w-full flex-col items-center justify-center gap-2 p-3 text-center">
             <IconPhoto className="size-8 text-muted-foreground" />
             <span className="line-clamp-2 text-xs text-muted-foreground">
-              Photo preview
+              {resolvedImage.label}
             </span>
           </div>
         )}

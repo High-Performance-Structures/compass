@@ -27,6 +27,7 @@ import {
   updateDailyLogReview,
   updateProjectDailyLog,
   type ProjectDailyLogItem,
+  type ProjectDailyLogPhoto,
   type ProjectDailyLogWorkspace as ProjectDailyLogWorkspaceData,
 } from "@/app/actions/project-field"
 import { Badge } from "@/components/ui/badge"
@@ -35,6 +36,10 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { ProjectContextSwitcher } from "@/components/projects/project-context-switcher"
+import {
+  photoLinkHref,
+  resolvePhotoImageSource,
+} from "@/lib/photo-sources"
 import { cn } from "@/lib/utils"
 
 type LogFilter = "all" | "needs_review" | "approved" | "owner_visible"
@@ -108,10 +113,6 @@ function formatBytes(value: number): string {
   return `${(value / (1024 * 1024)).toFixed(1)} MB`
 }
 
-function isImageFile(mimeType: string | null): boolean {
-  return mimeType !== null && mimeType.startsWith("image/")
-}
-
 function formatDate(value: string): string {
   return new Date(`${value}T00:00:00`).toLocaleDateString("en-US", {
     month: "short",
@@ -142,14 +143,6 @@ function sourceLabel(value: string): string {
     default:
       return "Compass"
   }
-}
-
-function browserHref(value: string | null): string | null {
-  if (value === null) return null
-  if (value.startsWith("https://") || value.startsWith("http://")) return value
-  if (value.startsWith("/owner-update-photos/")) return value
-  if (value.startsWith("/project-photo-previews/")) return value
-  return null
 }
 
 function readableJsonItem(value: unknown): string | null {
@@ -402,6 +395,41 @@ function DailyLogFields({
   )
 }
 
+function DailyLogPhotoThumb({
+  photo,
+}: {
+  readonly photo: ProjectDailyLogPhoto
+}): React.ReactElement {
+  const [imageFailed, setImageFailed] = React.useState(false)
+  const resolvedImage = resolvePhotoImageSource(photo)
+  const imageSrc = imageFailed ? null : resolvedImage.src
+
+  if (imageSrc !== null) {
+    return (
+      <Image
+        src={imageSrc}
+        alt={photo.caption ?? photo.fileName}
+        fill
+        sizes="160px"
+        unoptimized
+        className="object-cover transition-transform group-hover:scale-[1.03]"
+        onError={() => setImageFailed(true)}
+      />
+    )
+  }
+
+  return (
+    <div className="flex h-full flex-col items-center justify-center gap-2 p-3 text-center text-xs text-muted-foreground">
+      <IconFileText className="size-6" />
+      <span className="line-clamp-3 break-words">
+        {resolvedImage.reason === "missing"
+          ? photo.caption ?? photo.fileName
+          : resolvedImage.label}
+      </span>
+    </div>
+  )
+}
+
 function PhotoStrip({
   log,
 }: {
@@ -424,11 +452,9 @@ function PhotoStrip({
       </div>
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-6">
         {log.photos.slice(0, 6).map((photo) => {
-          const href = browserHref(photo.driveUrl)
-          const imageSrc =
-            photo.thumbnailUrl !== null && isImageFile(photo.mimeType)
-              ? photo.thumbnailUrl
-              : null
+          const href = photoLinkHref(photo.driveUrl, {
+            allowExternalSource: true,
+          })
           return (
             <a
               key={photo.id}
@@ -440,23 +466,7 @@ function PhotoStrip({
                 href ? "cursor-pointer" : "cursor-default"
               )}
             >
-              {imageSrc !== null ? (
-                <Image
-                  src={imageSrc}
-                  alt={photo.caption ?? photo.fileName}
-                  fill
-                  sizes="160px"
-                  unoptimized
-                  className="object-cover transition-transform group-hover:scale-[1.03]"
-                />
-              ) : (
-                <div className="flex h-full flex-col items-center justify-center gap-2 p-3 text-center text-xs text-muted-foreground">
-                  <IconFileText className="size-6" />
-                  <span className="line-clamp-3 break-words">
-                    {photo.caption ?? photo.fileName}
-                  </span>
-                </div>
-              )}
+              <DailyLogPhotoThumb photo={photo} />
               <div className="absolute inset-x-0 bottom-0 bg-background/85 px-2 py-1 text-[11px]">
                 {photo.ownerVisible ? "Owner visible" : statusLabel(photo.reviewStatus)}
               </div>
@@ -1323,20 +1333,7 @@ export function ProjectDailyLogWorkspace({
                   key={photo.id}
                   className="relative aspect-[4/3] overflow-hidden rounded-md border bg-muted"
                 >
-                  {photo.thumbnailUrl ? (
-                    <Image
-                      src={photo.thumbnailUrl}
-                      alt={photo.caption ?? photo.fileName}
-                      fill
-                      sizes="140px"
-                      unoptimized
-                      className="object-cover"
-                    />
-                  ) : (
-                    <div className="flex h-full items-center justify-center p-2 text-center text-xs text-muted-foreground">
-                      {photo.caption ?? photo.fileName}
-                    </div>
-                  )}
+                  <DailyLogPhotoThumb photo={photo} />
                 </div>
               ))}
             </div>

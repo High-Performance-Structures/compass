@@ -48,6 +48,10 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { ProjectContextSwitcher } from "@/components/projects/project-context-switcher"
+import {
+  photoLinkHref,
+  resolvePhotoImageSource,
+} from "@/lib/photo-sources"
 
 type VisibilityFilter =
   | "all"
@@ -116,14 +120,6 @@ function reviewStatusIcon(value: string): React.ReactElement {
 
 function projectLabel(library: ProjectPhotoLibrary): string {
   return library.project.projectNumber ?? library.project.name
-}
-
-function browserHref(value: string | null): string | null {
-  if (value === null) return null
-  if (value.startsWith("https://") || value.startsWith("http://")) return value
-  if (value.startsWith("/owner-update-photos/")) return value
-  if (value.startsWith("/project-photo-previews/")) return value
-  return null
 }
 
 function formatBytes(value: number): string {
@@ -275,6 +271,9 @@ export function ProjectPhotoReview({
   const [message, setMessage] = React.useState<string | null>(null)
   const [previewPhoto, setPreviewPhoto] =
     React.useState<ProjectPhotoLibraryItem | null>(null)
+  const [failedImageIds, setFailedImageIds] = React.useState<readonly string[]>(
+    []
+  )
   const [uploadOpen, setUploadOpen] = React.useState(false)
   const [uploadFiles, setUploadFiles] = React.useState<readonly File[]>([])
   const [uploadCaption, setUploadCaption] = React.useState("")
@@ -286,6 +285,10 @@ export function ProjectPhotoReview({
   const [isPending, startTransition] = React.useTransition()
 
   const selectedSet = React.useMemo(() => new Set(selectedIds), [selectedIds])
+  const failedImageSet = React.useMemo(
+    () => new Set(failedImageIds),
+    [failedImageIds]
+  )
   const filteredPhotos = React.useMemo(() => {
     const filtered = photos.filter(
       (photo) =>
@@ -340,6 +343,13 @@ export function ProjectPhotoReview({
 
   function openPreview(photo: ProjectPhotoLibraryItem): void {
     setPreviewPhoto(photo)
+  }
+
+  function markImageFailed(photoId: string): void {
+    setFailedImageIds((current) => {
+      if (current.includes(photoId)) return current
+      return [...current, photoId]
+    })
   }
 
   function resetUploadForm(): void {
@@ -826,8 +836,13 @@ export function ProjectPhotoReview({
           )}
           {filteredPhotos.map((photo) => {
             const selected = selectedSet.has(photo.id)
-            const href = browserHref(photo.driveUrl)
-            const imageSrc = photo.thumbnailUrl ?? photo.driveUrl
+            const href = photoLinkHref(photo.driveUrl, {
+              allowExternalSource: true,
+            })
+            const resolvedImage = resolvePhotoImageSource(photo)
+            const imageSrc = failedImageSet.has(photo.id)
+              ? null
+              : resolvedImage.src
             const sourceName = sourceLabel(photo.sourceSystem)
 
             return (
@@ -852,10 +867,14 @@ export function ProjectPhotoReview({
                         sizes="(min-width: 1280px) 20vw, (min-width: 768px) 33vw, 50vw"
                         unoptimized
                         className="object-cover"
+                        onError={() => markImageFailed(photo.id)}
                       />
                     ) : (
-                      <div className="flex h-full items-center justify-center">
+                      <div className="flex h-full flex-col items-center justify-center gap-2 p-3 text-center">
                         <IconPhoto className="size-8 text-muted-foreground" />
+                        <span className="text-xs font-medium text-muted-foreground">
+                          {resolvedImage.label}
+                        </span>
                       </div>
                     )}
                     <span className="absolute left-2 top-2 rounded bg-background/90 px-2 py-0.5 text-xs font-medium">
@@ -972,75 +991,87 @@ export function ProjectPhotoReview({
           }}
         >
           <DialogContent className="max-h-[92vh] overflow-hidden p-0 sm:max-w-5xl">
-            {previewPhoto && (
-              <div className="grid max-h-[92vh] grid-rows-[auto_minmax(0,1fr)]">
-                <DialogHeader className="border-b px-4 py-3">
-                <DialogTitle className="line-clamp-1 text-base">
-                  {previewPhoto.caption ?? previewPhoto.fileName}
-                </DialogTitle>
-                <DialogDescription>
-                  {previewPhoto.photoDate} · {previewPhoto.schedulePhase} ·{" "}
-                    {previewPhoto.schedulePhaseConfidence}% match ·{" "}
-                    {statusLabel(previewPhoto.reviewStatus)}
-                  </DialogDescription>
-                </DialogHeader>
-                <div className="flex min-h-0 flex-col bg-muted/40">
-                  <div className="relative min-h-[55vh] flex-1">
-                    {previewPhoto.thumbnailUrl ?? previewPhoto.driveUrl ? (
-                      <Image
-                        src={previewPhoto.thumbnailUrl ?? previewPhoto.driveUrl ?? ""}
-                        alt={previewPhoto.caption ?? previewPhoto.fileName}
-                        fill
-                        sizes="90vw"
-                        unoptimized
-                        className="object-contain"
-                      />
-                    ) : (
-                      <div className="flex h-full items-center justify-center">
-                        <IconPhoto className="size-12 text-muted-foreground" />
-                      </div>
-                    )}
-                  </div>
-                  <div className="flex flex-wrap items-center justify-between gap-2 border-t bg-background px-4 py-3">
-                    <div>
-                      <div className="flex flex-wrap gap-1">
-                        <Badge variant="outline">
-                          {sourceLabel(previewPhoto.sourceSystem)}
-                        </Badge>
-                        <Badge variant="outline">
-                          {kindLabel(previewPhoto.photoKind)}
-                        </Badge>
-                        <Badge variant="secondary">
-                          Phase suggestion: {previewPhoto.schedulePhase}
-                        </Badge>
-                        {isInternalOnly(previewPhoto) && (
-                          <Badge variant="secondary">Internal</Badge>
-                        )}
-                        {previewPhoto.ownerVisible && (
-                          <Badge variant="secondary">Owner</Badge>
-                        )}
-                        {previewPhoto.subVendorVisible && (
-                          <Badge variant="secondary">Subs/vendors</Badge>
-                        )}
-                        {previewPhoto.publicShareable && (
-                          <Badge variant="secondary">Public</Badge>
+            {previewPhoto &&
+              (() => {
+                const resolvedImage = resolvePhotoImageSource(previewPhoto)
+                const imageSrc = failedImageSet.has(previewPhoto.id)
+                  ? null
+                  : resolvedImage.src
+
+                return (
+                  <div className="grid max-h-[92vh] grid-rows-[auto_minmax(0,1fr)]">
+                    <DialogHeader className="border-b px-4 py-3">
+                      <DialogTitle className="line-clamp-1 text-base">
+                        {previewPhoto.caption ?? previewPhoto.fileName}
+                      </DialogTitle>
+                      <DialogDescription>
+                        {previewPhoto.photoDate} · {previewPhoto.schedulePhase} ·{" "}
+                        {previewPhoto.schedulePhaseConfidence}% match ·{" "}
+                        {statusLabel(previewPhoto.reviewStatus)}
+                      </DialogDescription>
+                    </DialogHeader>
+                    <div className="flex min-h-0 flex-col bg-muted/40">
+                      <div className="relative min-h-[55vh] flex-1">
+                        {imageSrc ? (
+                          <Image
+                            src={imageSrc}
+                            alt={previewPhoto.caption ?? previewPhoto.fileName}
+                            fill
+                            sizes="90vw"
+                            unoptimized
+                            className="object-contain"
+                            onError={() => markImageFailed(previewPhoto.id)}
+                          />
+                        ) : (
+                          <div className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center">
+                            <IconPhoto className="size-12 text-muted-foreground" />
+                            <p className="text-sm font-medium text-muted-foreground">
+                              {resolvedImage.label}
+                            </p>
+                          </div>
                         )}
                       </div>
-                      <p className="mt-2 max-w-2xl text-xs text-muted-foreground">
-                        {previewPhoto.schedulePhaseReason}
-                      </p>
+                      <div className="flex flex-wrap items-center justify-between gap-2 border-t bg-background px-4 py-3">
+                        <div>
+                          <div className="flex flex-wrap gap-1">
+                            <Badge variant="outline">
+                              {sourceLabel(previewPhoto.sourceSystem)}
+                            </Badge>
+                            <Badge variant="outline">
+                              {kindLabel(previewPhoto.photoKind)}
+                            </Badge>
+                            <Badge variant="secondary">
+                              Phase suggestion: {previewPhoto.schedulePhase}
+                            </Badge>
+                            {isInternalOnly(previewPhoto) && (
+                              <Badge variant="secondary">Internal</Badge>
+                            )}
+                            {previewPhoto.ownerVisible && (
+                              <Badge variant="secondary">Owner</Badge>
+                            )}
+                            {previewPhoto.subVendorVisible && (
+                              <Badge variant="secondary">Subs/vendors</Badge>
+                            )}
+                            {previewPhoto.publicShareable && (
+                              <Badge variant="secondary">Public</Badge>
+                            )}
+                          </div>
+                          <p className="mt-2 max-w-2xl text-xs text-muted-foreground">
+                            {previewPhoto.schedulePhaseReason}
+                          </p>
+                        </div>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => setPreviewPhoto(null)}
+                        >
+                          Close
+                        </Button>
+                      </div>
                     </div>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={() => setPreviewPhoto(null)}
-                    >
-                      Close
-                    </Button>
                   </div>
-                </div>
-              </div>
-            )}
+                )
+              })()}
           </DialogContent>
         </Dialog>
 
