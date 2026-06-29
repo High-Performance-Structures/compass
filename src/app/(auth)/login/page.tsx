@@ -1,6 +1,7 @@
 "use client"
 
 import { Suspense } from "react"
+import { useSearchParams } from "next/navigation"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { LoginForm } from "@/components/auth/login-form"
 import { PasswordlessForm } from "@/components/auth/passwordless-form"
@@ -8,6 +9,9 @@ import { SocialLoginButtons } from "@/components/auth/social-login-buttons"
 import { Separator } from "@/components/ui/separator"
 
 function LoginContent() {
+  const searchParams = useSearchParams()
+  const didLogOut = searchParams.get("logged_out") === "1"
+
   return (
     <div className="space-y-4">
       <div className="space-y-1">
@@ -18,6 +22,12 @@ function LoginContent() {
           Sign in to your account
         </p>
       </div>
+
+      {didLogOut && (
+        <div className="rounded-md border border-emerald-700/20 bg-emerald-50 px-3 py-2 text-sm text-emerald-900 dark:border-emerald-400/20 dark:bg-emerald-950/30 dark:text-emerald-100">
+          You have been signed out. Sign in again when you are ready.
+        </div>
+      )}
 
       <Suspense>
         <SocialLoginButtons />

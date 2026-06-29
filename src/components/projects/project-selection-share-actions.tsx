@@ -17,7 +17,7 @@ import {
   copyTextToClipboard,
   showManualCopyDialog,
 } from "@/lib/browser-copy"
-import { printNow } from "@/lib/browser-print"
+import { openPrintDocument, printNow } from "@/lib/browser-print"
 import {
   Select,
   SelectContent,
@@ -183,6 +183,288 @@ function packetHtml({
     </div>`.trim()
 }
 
+function selectionPrintStyles(): string {
+  return `
+    @page {
+      margin: 0.35in;
+      size: letter;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      background: #f4efe8;
+      color: #111111;
+      font-family: Arial, sans-serif;
+      margin: 0;
+      padding: 24px;
+    }
+
+    .print-help {
+      align-items: center;
+      display: flex;
+      justify-content: center;
+      margin: 0 0 16px;
+    }
+
+    .print-help button {
+      background: #3f7d4d;
+      border: 0;
+      border-radius: 6px;
+      color: #ffffff;
+      cursor: pointer;
+      font: 700 13px Arial, sans-serif;
+      padding: 10px 16px;
+    }
+
+    .selection-printable {
+      background: #ffffff;
+      color: #111111;
+      font-family: Arial, sans-serif;
+      margin: 0 auto;
+      max-width: 8.5in;
+      min-height: 10in;
+      padding: 0.35in;
+    }
+
+    .selection-print-header {
+      align-items: flex-start;
+      border-bottom: 2px solid #6f471f;
+      display: flex;
+      justify-content: space-between;
+      padding-bottom: 0.07in;
+    }
+
+    .selection-print-brand {
+      align-items: center;
+      display: flex;
+      gap: 0.09in;
+    }
+
+    .selection-print-brand img {
+      height: 0.34in;
+      object-fit: contain;
+      width: 0.34in;
+    }
+
+    .selection-print-brand p,
+    .selection-print-meta p {
+      color: #201105;
+      font-size: 11px;
+      font-weight: 700;
+      margin: 0;
+      text-transform: uppercase;
+    }
+
+    .selection-print-brand span,
+    .selection-print-meta span {
+      display: block;
+      font-size: 10px;
+      margin-top: 0.03in;
+    }
+
+    .selection-print-meta {
+      text-align: right;
+    }
+
+    .selection-print-intro {
+      align-items: end;
+      display: grid;
+      gap: 0.18in;
+      grid-template-columns: minmax(1.8in, 0.55fr) minmax(3.2in, 1fr);
+      padding: 0.08in 0 0.06in;
+    }
+
+    .selection-print-intro h1 {
+      font-size: 16px;
+      line-height: 1.1;
+      margin: 0;
+    }
+
+    .selection-print-intro p {
+      font-size: 10px;
+      line-height: 1.25;
+      margin: 0;
+      max-width: none;
+    }
+
+    .selection-print-open-link {
+      align-self: start;
+      color: #3f7d4d;
+      font-size: 9px;
+      font-weight: 700;
+      justify-self: end;
+      text-decoration: underline;
+      text-underline-offset: 2px;
+    }
+
+    .selection-print-rooms {
+      display: grid;
+      gap: 0.1in;
+    }
+
+    .selection-print-room {
+      border: 1px solid #6f471f;
+      break-inside: auto;
+      page-break-inside: auto;
+    }
+
+    .selection-print-room-sheet {
+      break-before: page;
+      page-break-before: always;
+    }
+
+    .selection-print-room-sheet:first-child {
+      break-before: auto;
+      page-break-before: auto;
+    }
+
+    .selection-print-room-page-header {
+      align-items: baseline;
+      background: #ffffff;
+      border-bottom: 2px solid #6f471f;
+      display: flex;
+      justify-content: space-between;
+      padding: 0.08in 0.1in;
+    }
+
+    .selection-print-room-page-header p {
+      color: #6f471f;
+      font-size: 9px;
+      font-weight: 800;
+      letter-spacing: 0.04em;
+      margin: 0 0 0.02in;
+      text-transform: uppercase;
+    }
+
+    .selection-print-room-page-header h2 {
+      color: #201105;
+      font-size: 15px;
+      font-weight: 800;
+      margin: 0;
+    }
+
+    .selection-print-room-page-header span {
+      font-size: 10px;
+    }
+
+    .selection-print-room-heading {
+      align-items: baseline;
+      background: #efe5d8;
+      border-bottom: 1px solid #6f471f;
+      display: flex;
+      gap: 0.1in;
+      justify-content: space-between;
+      padding: 0.08in 0.1in;
+    }
+
+    .selection-print-room-heading h2 {
+      color: #201105;
+      font-size: 13px;
+      font-weight: 800;
+      margin: 0;
+    }
+
+    .selection-print-room-heading span {
+      font-size: 10px;
+    }
+
+    .selection-print-item {
+      break-inside: avoid;
+      border-top: 1px solid #cccccc;
+      padding: 0.1in;
+      page-break-inside: avoid;
+    }
+
+    .selection-print-room .selection-print-item:first-of-type {
+      border-top: 0;
+    }
+
+    .selection-print-item-title {
+      align-items: baseline;
+      display: flex;
+      gap: 0.1in;
+      justify-content: space-between;
+    }
+
+    .selection-print-item-title h3 {
+      font-size: 12px;
+      margin: 0;
+    }
+
+    .selection-print-item-title span,
+    .selection-print-grid span,
+    .selection-print-notes span {
+      color: #444444;
+      font-size: 8px;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+
+    .selection-print-grid {
+      display: grid;
+      gap: 0.08in;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      margin-top: 0.08in;
+    }
+
+    .selection-print-grid div {
+      border-bottom: 1px solid #999999;
+      min-height: 0.24in;
+    }
+
+    .selection-print-grid p,
+    .selection-print-link {
+      font-size: 10px;
+      line-height: 1.25;
+      margin: 0.03in 0 0;
+    }
+
+    .selection-print-link {
+      word-break: break-all;
+    }
+
+    .selection-print-notes {
+      border: 1px solid #999999;
+      height: 0.46in;
+      margin-top: 0.1in;
+      padding: 0.04in;
+    }
+
+    .selection-print-blank-row {
+      min-height: 0.42in;
+      padding: 0.1in;
+    }
+
+    .selection-print-blank-row p {
+      color: #555555;
+      font-size: 10px;
+      margin: 0;
+    }
+
+    @media print {
+      body {
+        background: #ffffff;
+        padding: 0;
+      }
+
+      .print-help {
+        display: none;
+      }
+
+      .selection-printable {
+        box-shadow: none;
+        margin: 0;
+        max-width: none;
+        min-height: 0;
+        padding: 0;
+      }
+    }
+  `
+}
+
 export function ProjectSelectionShareActions({
   projectId,
   projectLabel,
@@ -206,6 +488,14 @@ export function ProjectSelectionShareActions({
     typeof window === "undefined"
       ? selectionLink(projectId)
       : new URL(selectionLink(projectId), window.location.origin).toString()
+  const printPacketHtml = packetHtml({
+    projectLabel,
+    clientName,
+    filterLabel,
+    mode: printMode,
+    selectionUrl: printSelectionUrl,
+    summary,
+  })
 
   function absoluteSelectionUrl(): string {
     return new URL(selectionLink(projectId), window.location.origin).toString()
@@ -363,6 +653,17 @@ export function ProjectSelectionShareActions({
   }
 
   function printPacket(): void {
+    const opened = openPrintDocument({
+      bodyHtml: printPacketHtml,
+      styles: selectionPrintStyles(),
+      title: `${projectLabel} Finish Selections`,
+    })
+
+    if (opened) {
+      toast.success("Print packet opened")
+      return
+    }
+
     document.body.classList.add("selection-printing-selected")
 
     printNow(() => {
@@ -376,14 +677,7 @@ export function ProjectSelectionShareActions({
         data-selection-print-root="true"
         className="selection-printable hidden bg-white text-black"
         dangerouslySetInnerHTML={{
-          __html: packetHtml({
-            projectLabel,
-            clientName,
-            filterLabel,
-            mode: printMode,
-            selectionUrl: printSelectionUrl,
-            summary,
-          }),
+          __html: printPacketHtml,
         }}
       />
       <div className="flex flex-wrap justify-end gap-2 print:hidden">

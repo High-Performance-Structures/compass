@@ -188,7 +188,7 @@ export default function Home(): React.JSX.Element {
 						GitHub
 					</a>
 					<Link
-						href="/dashboard"
+						href="/login"
 						className={
 							"text-[11px] uppercase " +
 							"tracking-[0.2em] " +

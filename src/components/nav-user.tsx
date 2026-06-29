@@ -15,8 +15,6 @@ import {
   IconChevronUp,
 } from "@tabler/icons-react"
 
-import { logout } from "@/app/actions/profile"
-
 import {
   Avatar,
   AvatarFallback,
@@ -83,8 +81,8 @@ export function NavUser({
 
   const initials = getInitials(user.name)
 
-  async function handleLogout(): Promise<void> {
-    await logout()
+  function handleLogout(): void {
+    window.location.href = "/api/auth/logout"
   }
 
   return (

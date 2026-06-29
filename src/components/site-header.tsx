@@ -12,8 +12,6 @@ import {
   IconUserCircle,
 } from "@tabler/icons-react"
 
-import { logout } from "@/app/actions/profile"
-
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import {
@@ -47,8 +45,8 @@ export function SiteHeader({
 
   const initials = user ? getInitials(user.name) : "?"
 
-  async function handleLogout() {
-    await logout()
+  function handleLogout(): void {
+    window.location.href = "/api/auth/logout"
   }
 
   return (
