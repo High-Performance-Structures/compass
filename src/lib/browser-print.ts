@@ -11,6 +11,11 @@ export function printAfterDomUpdate(cleanup: () => void, timeoutMs = 5000): void
   }
 
   window.addEventListener("afterprint", resetPrintState)
-  window.print()
-  window.setTimeout(resetPrintState, timeoutMs)
+  window.requestAnimationFrame(() => {
+    window.requestAnimationFrame(() => {
+      window.focus()
+      window.print()
+      window.setTimeout(resetPrintState, timeoutMs)
+    })
+  })
 }

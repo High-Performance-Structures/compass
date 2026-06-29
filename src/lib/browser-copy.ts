@@ -44,6 +44,10 @@ export async function copyHtmlToClipboard({
     }
   }
 
+  if (copyHtmlWithSelection(html)) {
+    return "rich"
+  }
+
   return (await copyTextToClipboard(plain)) ? "plain" : "failed"
 }
 
@@ -179,6 +183,55 @@ function copyTextWithSelection(text: string): boolean {
   }
 
   textArea.remove()
+  if (activeElement instanceof HTMLElement) {
+    activeElement.focus()
+  }
+
+  return copied
+}
+
+function copyHtmlWithSelection(html: string): boolean {
+  const activeElement = document.activeElement
+  const selection = document.getSelection()
+  const savedRanges: Range[] = []
+
+  if (selection) {
+    for (let index = 0; index < selection.rangeCount; index += 1) {
+      savedRanges.push(selection.getRangeAt(index).cloneRange())
+    }
+  }
+
+  const container = document.createElement("div")
+  container.setAttribute("contenteditable", "true")
+  container.style.position = "fixed"
+  container.style.left = "-10000px"
+  container.style.top = "0"
+  container.style.width = "720px"
+  container.style.background = "white"
+  container.style.color = "black"
+  container.innerHTML = html
+
+  document.body.appendChild(container)
+
+  const range = document.createRange()
+  range.selectNodeContents(container)
+  selection?.removeAllRanges()
+  selection?.addRange(range)
+  container.focus()
+
+  let copied = false
+  try {
+    copied = document.execCommand("copy")
+  } catch {
+    copied = false
+  }
+
+  container.remove()
+  selection?.removeAllRanges()
+  for (const savedRange of savedRanges) {
+    selection?.addRange(savedRange)
+  }
+
   if (activeElement instanceof HTMLElement) {
     activeElement.focus()
   }
