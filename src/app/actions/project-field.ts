@@ -301,6 +301,20 @@ function ownerFacingDailyLogNotes(value: string | null): string | null {
   return trimmed
 }
 
+function ownerFacingWorkCompleted(value: string): string {
+  const cleaned = value
+    .replace(/\s*Buildertrend photo update with \d+ referenced photos\.?/gi, "")
+    .replace(/\s*Buildertrend daily log import\.?/gi, "")
+    .replace(/\s*\.\s*\./g, ".")
+    .trim()
+
+  if (cleaned.length === 0 || cleaned.toLowerCase() === "updated photos.") {
+    return "Progress photos were added for this update."
+  }
+
+  return cleaned
+}
+
 function photoReviewPhotoCount(value: string | null): number | null {
   if (!value) return null
 
@@ -1626,11 +1640,11 @@ export async function getOwnerProjectUpdateDocument(
   const dailyLogIds = new Set(selectedDailyLogIds)
   const photoIds = new Set(selectedPhotoIds)
   const dailyLogsForUpdate = allLogRows
-    .filter((row) => dailyLogIds.size === 0 || dailyLogIds.has(row.id))
+    .filter((row) => dailyLogIds.has(row.id))
     .map((row) => ({
       id: row.id,
       logDate: row.logDate,
-      workCompleted: row.workCompleted,
+      workCompleted: ownerFacingWorkCompleted(row.workCompleted),
       weather: [
         row.weatherConditions,
         row.weatherTempF === null ? null : `${row.weatherTempF}F`,
