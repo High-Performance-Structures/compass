@@ -12,6 +12,7 @@ import {
 } from "@/app/actions/project-operations"
 import { getProjectTaskAssigneeOptions } from "@/app/actions/project-contacts"
 import { getProjects } from "@/app/actions/projects"
+import { ProjectListFilters } from "@/components/projects/project-list-filters"
 import { ProjectPurchaseOrderDeleteButton } from "@/components/projects/project-purchase-order-delete-button"
 import { ProjectPurchaseOrderEmailButton } from "@/components/projects/project-purchase-order-email-button"
 import { ProjectPurchaseOrderCreateForm } from "@/components/projects/project-purchase-order-create-form"
@@ -67,6 +68,79 @@ function purchaseOrderTaskDescription(order: ProjectPurchaseOrderItem): string {
   ]
     .filter((line) => line !== null)
     .join("\n")
+}
+
+function paramValue(value: string | readonly string[] | undefined): string {
+  if (typeof value === "string") return value
+  return value?.[0] ?? ""
+}
+
+function matchesText(
+  values: readonly (string | null | undefined)[],
+  query: string
+): boolean {
+  const normalized = query.trim().toLowerCase()
+  if (normalized.length === 0) return true
+
+  return values.some((value) =>
+    (value ?? "").toLowerCase().includes(normalized)
+  )
+}
+
+function matchesDateRange(value: string | null, from: string, to: string): boolean {
+  if (from.length === 0 && to.length === 0) return true
+  if (!value) return false
+  return (from.length === 0 || value >= from) && (to.length === 0 || value <= to)
+}
+
+function matchesPurchaseOrderFilters(
+  order: ProjectPurchaseOrderItem,
+  filters: {
+    readonly q: string
+    readonly status: string
+    readonly from: string
+    readonly to: string
+  }
+): boolean {
+  const statusMatches =
+    filters.status.length === 0 ||
+    filters.status === "all" ||
+    order.status === filters.status
+
+  return (
+    statusMatches &&
+    matchesDateRange(order.dueDate, filters.from, filters.to) &&
+    matchesText(
+      [
+        order.sourceRecordNumber,
+        order.title,
+        order.description,
+        order.companyName,
+        order.vendorEmail,
+        order.assigneeName,
+        order.costCode,
+        order.sageJobId,
+        order.sageJobNumber,
+        order.sageVendorId,
+        order.sageVendorName,
+        order.sagePhaseCode,
+        order.sageCostCode,
+        order.sageShipTo,
+        order.sageTaxGroup,
+        order.syncStatus,
+        order.sageWriteStatus,
+        ...order.lines.flatMap((line) => [
+          line.description,
+          line.costCode,
+          line.phaseCode,
+          line.unit,
+          line.taxGroup,
+          line.syncStatus,
+        ]),
+      ],
+      filters.q
+    )
+  )
 }
 
 function PurchaseOrderCard({
@@ -309,6 +383,10 @@ export default async function ProjectPurchaseOrdersPage({
   readonly params: Promise<{ readonly id: string }>
   readonly searchParams: Promise<{
     readonly created?: string | readonly string[]
+    readonly q?: string | readonly string[]
+    readonly status?: string | readonly string[]
+    readonly from?: string | readonly string[]
+    readonly to?: string | readonly string[]
   }>
 }) {
   const { id } = await params
@@ -316,6 +394,12 @@ export default async function ProjectPurchaseOrdersPage({
   const createdPurchaseOrderId = Array.isArray(query.created)
     ? query.created[0] ?? null
     : query.created ?? null
+  const filters = {
+    q: paramValue(query.q),
+    status: paramValue(query.status),
+    from: paramValue(query.from),
+    to: paramValue(query.to),
+  }
   const [projects, purchaseOrders, taskAssigneeOptions] = await Promise.all([
     getProjects(),
     getProjectPurchaseOrders(id),
@@ -332,6 +416,9 @@ export default async function ProjectPurchaseOrdersPage({
   const openTotal = openPurchaseOrders.reduce(
     (total, order) => total + (order.amount ?? 0),
     0
+  )
+  const filteredPurchaseOrders = purchaseOrders.filter((order) =>
+    matchesPurchaseOrderFilters(order, filters)
   )
 
   return (
@@ -391,8 +478,30 @@ export default async function ProjectPurchaseOrdersPage({
           </div>
         </div>
 
-        {purchaseOrders.length > 0 ? (
-          purchaseOrders.map((order) => (
+        <ProjectListFilters
+          baseHref={`/dashboard/projects/${id}/purchase-orders`}
+          q={filters.q}
+          status={filters.status}
+          from={filters.from}
+          to={filters.to}
+          statusOptions={[
+            { value: "all", label: "All statuses" },
+            { value: "draft", label: "Draft" },
+            { value: "sent", label: "Sent" },
+            { value: "approved", label: "Approved" },
+            { value: "ordered", label: "Ordered" },
+            { value: "complete", label: "Complete" },
+            { value: "closed", label: "Closed" },
+            { value: "void", label: "Void" },
+          ]}
+          searchPlaceholder="Search PO number, vendor, cost code, line item..."
+          resultLabel={`${filteredPurchaseOrders.length} of ${
+            purchaseOrders.length
+          } purchase order${purchaseOrders.length === 1 ? "" : "s"} shown`}
+        />
+
+        {filteredPurchaseOrders.length > 0 ? (
+          filteredPurchaseOrders.map((order) => (
             <PurchaseOrderCard
               key={order.id}
               order={order}
@@ -409,9 +518,9 @@ export default async function ProjectPurchaseOrdersPage({
         ) : (
           <div className="rounded-lg border bg-background p-8 text-center">
             <IconShoppingCart className="mx-auto size-6 text-muted-foreground" />
-            <h2 className="mt-3 text-sm font-semibold">No PO requests yet</h2>
+            <h2 className="mt-3 text-sm font-semibold">No P.O.s found</h2>
             <p className="mt-1 text-sm text-muted-foreground">
-              Create a PO when a vendor commitment is ready.
+              Clear the filters or create a PO when a vendor commitment is ready.
             </p>
           </div>
         )}

@@ -52,6 +52,19 @@ type LatestOwnerUpdate = {
   readonly summary: string
 }
 
+export type ProjectOwnerUpdateListItem = {
+  readonly id: string
+  readonly title: string
+  readonly updateDate: string
+  readonly status: string
+  readonly channel: string
+  readonly summary: string
+  readonly publishedAt: string | null
+  readonly sentAt: string | null
+  readonly createdAt: string
+  readonly updatedAt: string
+}
+
 type OwnerUpdateProject = {
   readonly id: string
   readonly name: string
@@ -1005,6 +1018,32 @@ export async function getProjectFieldSummary(
       : null,
     nextScheduleItem: nextTask ?? null,
   }
+}
+
+export async function getProjectOwnerUpdates(
+  projectId: string
+): Promise<readonly ProjectOwnerUpdateListItem[]> {
+  const db = await verifyProjectAccess(projectId)
+
+  return db
+    .select({
+      id: ownerProjectUpdates.id,
+      title: ownerProjectUpdates.title,
+      updateDate: ownerProjectUpdates.updateDate,
+      status: ownerProjectUpdates.status,
+      channel: ownerProjectUpdates.channel,
+      summary: ownerProjectUpdates.summary,
+      publishedAt: ownerProjectUpdates.publishedAt,
+      sentAt: ownerProjectUpdates.sentAt,
+      createdAt: ownerProjectUpdates.createdAt,
+      updatedAt: ownerProjectUpdates.updatedAt,
+    })
+    .from(ownerProjectUpdates)
+    .where(eq(ownerProjectUpdates.projectId, projectId))
+    .orderBy(
+      desc(ownerProjectUpdates.updateDate),
+      desc(ownerProjectUpdates.createdAt)
+    )
 }
 
 export async function getProjectDailyLogWorkspace(

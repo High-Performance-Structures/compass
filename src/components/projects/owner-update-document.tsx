@@ -68,9 +68,9 @@ export function OwnerUpdateDocument({
       <div className="mx-auto flex max-w-5xl flex-col gap-4 px-4 py-4 sm:px-6 lg:px-8 print:max-w-none print:px-0">
         <div className="flex flex-wrap items-center justify-between gap-3 print:hidden">
           <Button asChild variant="ghost" size="sm">
-            <Link href={`/dashboard/projects/${document.project.id}`}>
+            <Link href={`/dashboard/projects/${document.project.id}/owner-updates`}>
               <IconArrowLeft className="size-4" />
-              Project
+              Owner Updates
             </Link>
           </Button>
           <OwnerUpdateActions

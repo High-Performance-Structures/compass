@@ -13,16 +13,12 @@ import {
 import {
   getProjectDailyLogWorkspace,
   getProjectFieldSummary,
+  getProjectOwnerUpdates,
+  type ProjectOwnerUpdateListItem,
 } from "@/app/actions/project-field"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card"
+import { ProjectListFilters } from "@/components/projects/project-list-filters"
 import { ProjectContextSwitcher } from "@/components/projects/project-context-switcher"
 
 function hasDigest(error: unknown): error is { readonly digest: string } {
@@ -38,19 +34,75 @@ function formatDate(value: string | null): string {
   })
 }
 
+function paramValue(value: string | readonly string[] | undefined): string {
+  if (typeof value === "string") return value
+  return value?.[0] ?? ""
+}
+
+function matchesText(
+  values: readonly (string | null | undefined)[],
+  query: string
+): boolean {
+  const normalized = query.trim().toLowerCase()
+  if (normalized.length === 0) return true
+
+  return values.some((value) =>
+    (value ?? "").toLowerCase().includes(normalized)
+  )
+}
+
+function matchesDateRange(value: string | null, from: string, to: string): boolean {
+  if (from.length === 0 && to.length === 0) return true
+  if (!value) return false
+  return (from.length === 0 || value >= from) && (to.length === 0 || value <= to)
+}
+
+function matchesOwnerUpdateFilters(
+  update: ProjectOwnerUpdateListItem,
+  filters: {
+    readonly q: string
+    readonly status: string
+    readonly from: string
+    readonly to: string
+  }
+): boolean {
+  const statusMatches =
+    filters.status.length === 0 ||
+    filters.status === "all" ||
+    update.status === filters.status
+  return (
+    statusMatches &&
+    matchesDateRange(update.updateDate, filters.from, filters.to) &&
+    matchesText(
+      [update.title, update.summary, update.channel, update.status],
+      filters.q
+    )
+  )
+}
+
 export default async function ProjectOwnerUpdatesPage({
   params,
+  searchParams,
 }: {
   readonly params: Promise<{ readonly id: string }>
+  readonly searchParams: Promise<{
+    readonly q?: string | readonly string[]
+    readonly status?: string | readonly string[]
+    readonly from?: string | readonly string[]
+    readonly to?: string | readonly string[]
+  }>
 }): Promise<React.ReactElement> {
   const { id } = await params
+  const query = await searchParams
   let workspace: Awaited<ReturnType<typeof getProjectDailyLogWorkspace>>
   let summary: Awaited<ReturnType<typeof getProjectFieldSummary>>
+  let ownerUpdates: Awaited<ReturnType<typeof getProjectOwnerUpdates>>
 
   try {
-    ;[workspace, summary] = await Promise.all([
+    ;[workspace, summary, ownerUpdates] = await Promise.all([
       getProjectDailyLogWorkspace(id),
       getProjectFieldSummary(id),
+      getProjectOwnerUpdates(id),
     ])
   } catch (error) {
     if (hasDigest(error) && error.digest === "NEXT_NOT_FOUND") throw error
@@ -59,7 +111,16 @@ export default async function ProjectOwnerUpdatesPage({
 
   const projectLabel =
     workspace.project.projectNumber ?? workspace.project.name
-  const latestUpdate = summary.latestOwnerUpdate
+  const filters = {
+    q: paramValue(query.q),
+    status: paramValue(query.status),
+    from: paramValue(query.from),
+    to: paramValue(query.to),
+  }
+  const filteredOwnerUpdates = ownerUpdates.filter((update) =>
+    matchesOwnerUpdateFilters(update, filters)
+  )
+  const baseHref = `/dashboard/projects/${workspace.project.id}/owner-updates`
 
   return (
     <main className="mx-auto flex w-full max-w-6xl flex-col gap-4 p-3 sm:p-4 lg:p-6">
@@ -133,53 +194,76 @@ export default async function ProjectOwnerUpdatesPage({
         </div>
       </section>
 
-      <Card className="rounded-lg">
-        <CardHeader>
-          <div className="flex items-center gap-2">
-            <IconMailForward className="size-5 text-muted-foreground" />
-            <CardTitle>Latest Owner Update</CardTitle>
+      <section className="space-y-3">
+        <div className="flex flex-wrap items-end justify-between gap-3 border-y py-3">
+          <div>
+            <div className="flex items-center gap-2">
+              <IconMailForward className="size-5 text-muted-foreground" />
+              <h2 className="text-sm font-semibold">Owner update queue</h2>
+            </div>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Open any update, then return here without leaving this project area.
+            </p>
           </div>
-          <CardDescription>
-            Latest published or drafted update.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {latestUpdate ? (
+        </div>
+
+        <ProjectListFilters
+          baseHref={baseHref}
+          q={filters.q}
+          status={filters.status}
+          from={filters.from}
+          to={filters.to}
+          statusOptions={[
+            { value: "all", label: "All statuses" },
+            { value: "draft", label: "Draft" },
+            { value: "published", label: "Published" },
+            { value: "sent", label: "Sent" },
+          ]}
+          searchPlaceholder="Search updates, summaries, channel..."
+          resultLabel={`${filteredOwnerUpdates.length} of ${ownerUpdates.length} update${
+            ownerUpdates.length === 1 ? "" : "s"
+          } shown`}
+        />
+
+        {filteredOwnerUpdates.length > 0 ? (
+          filteredOwnerUpdates.map((update) => (
             <Link
-              href={
-                `/dashboard/projects/${workspace.project.id}` +
-                `/owner-updates/${latestUpdate.id}`
-              }
-              className="group block rounded-lg border p-4 transition-colors hover:bg-accent/40"
+              key={update.id}
+              href={`${baseHref}/${update.id}`}
+              className="group block border-l-2 border-y border-r border-l-[#3f7d4d] bg-background px-4 py-3 transition-colors hover:bg-accent/35"
             >
               <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                <div>
+                <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
-                    <Badge variant="secondary">
-                      {latestUpdate.status}
-                    </Badge>
+                    <Badge variant="secondary">{update.status}</Badge>
                     <span className="text-sm text-muted-foreground">
-                      {formatDate(latestUpdate.updateDate)}
+                      {formatDate(update.updateDate)}
                     </span>
+                    <Badge variant="outline">{update.channel}</Badge>
                   </div>
-                  <h2 className="mt-2 text-lg font-semibold">
-                    {latestUpdate.title}
+                  <h2 className="mt-2 text-base font-semibold">
+                    {update.title}
                   </h2>
                   <p className="mt-2 max-w-3xl text-sm text-muted-foreground">
-                    {latestUpdate.summary}
+                    {update.summary}
                   </p>
                 </div>
                 <IconArrowRight className="size-5 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
               </div>
             </Link>
-          ) : (
-            <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
-              No owner updates have been drafted yet. Start from Daily Logs
-              when field notes are ready.
-            </div>
-          )}
-        </CardContent>
-      </Card>
+          ))
+        ) : (
+          <div className="rounded-lg border bg-background p-8 text-center">
+            <IconMailForward className="mx-auto size-6 text-muted-foreground" />
+            <h2 className="mt-3 text-sm font-semibold">
+              No owner updates found
+            </h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Clear the filters or build a new update from Daily Logs.
+            </p>
+          </div>
+        )}
+      </section>
     </main>
   )
 }

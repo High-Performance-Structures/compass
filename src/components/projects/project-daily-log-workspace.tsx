@@ -204,6 +204,35 @@ function matchesFilter(log: ProjectDailyLogItem, filter: LogFilter): boolean {
   }
 }
 
+function matchesDateRange(value: string, from: string, to: string): boolean {
+  return (from.length === 0 || value >= from) && (to.length === 0 || value <= to)
+}
+
+function matchesDailyLogSearch(log: ProjectDailyLogItem, query: string): boolean {
+  const normalized = query.trim().toLowerCase()
+  if (normalized.length === 0) return true
+
+  const searchable = [
+    log.logDate,
+    log.sourceSystem,
+    log.workCompleted,
+    log.weather,
+    log.issues,
+    log.materialsUsed,
+    log.crewPresent,
+    log.safetyIncidents,
+    log.visitorLog,
+    log.notes,
+    log.authorName,
+    ...log.photos.map((photo) => photo.fileName),
+    ...log.tasks.map((task) => task.title),
+  ]
+
+  return searchable.some((value) =>
+    (value ?? "").toLowerCase().includes(normalized)
+  )
+}
+
 function selectedLogIds(
   logs: readonly ProjectDailyLogItem[],
   selectedIds: readonly string[]
@@ -487,6 +516,9 @@ export function ProjectDailyLogWorkspace({
   const [logs, setLogs] =
     React.useState<readonly ProjectDailyLogItem[]>(workspace.logs)
   const [filter, setFilter] = React.useState<LogFilter>("all")
+  const [searchText, setSearchText] = React.useState("")
+  const [fromDate, setFromDate] = React.useState("")
+  const [toDate, setToDate] = React.useState("")
   const [selectedIds, setSelectedIds] = React.useState<readonly string[]>([])
   const [showNewLog, setShowNewLog] = React.useState(false)
   const [draft, setDraft] = React.useState<DailyLogDraft>(emptyDailyLogDraft)
@@ -510,8 +542,14 @@ export function ProjectDailyLogWorkspace({
   }, [workspace.logs])
 
   const filteredLogs = React.useMemo(
-    () => logs.filter((log) => matchesFilter(log, filter)),
-    [filter, logs]
+    () =>
+      logs.filter(
+        (log) =>
+          matchesFilter(log, filter) &&
+          matchesDateRange(log.logDate, fromDate, toDate) &&
+          matchesDailyLogSearch(log, searchText)
+      ),
+    [filter, fromDate, logs, searchText, toDate]
   )
   const selectedIdsInView = selectedLogIds(filteredLogs, selectedIds)
   const projectLabel = workspace.project.projectNumber ?? workspace.project.name
@@ -960,6 +998,13 @@ export function ProjectDailyLogWorkspace({
         <section className="rounded-lg border p-3 sm:p-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex flex-wrap items-center gap-2">
+              <Input
+                value={searchText}
+                onChange={(event) => setSearchText(event.target.value)}
+                placeholder="Search daily logs..."
+                className="w-full sm:w-64"
+                aria-label="Search daily logs"
+              />
               <select
                 value={filter}
                 onChange={(event) => setFilter(filterValue(event.target.value))}
@@ -970,6 +1015,20 @@ export function ProjectDailyLogWorkspace({
                 <option value="approved">Approved</option>
                 <option value="owner_visible">Owner visible</option>
               </select>
+              <Input
+                type="date"
+                value={fromDate}
+                onChange={(event) => setFromDate(event.target.value)}
+                className="w-auto"
+                aria-label="From date"
+              />
+              <Input
+                type="date"
+                value={toDate}
+                onChange={(event) => setToDate(event.target.value)}
+                className="w-auto"
+                aria-label="To date"
+              />
               <Button variant="outline" size="sm" onClick={selectVisibleLogs}>
                 Select visible
               </Button>
@@ -990,7 +1049,11 @@ export function ProjectDailyLogWorkspace({
 
         <div className="grid grid-cols-1 gap-3">
           {filteredLogs.map((log) => (
-            <section key={log.id} className="rounded-lg border p-3 sm:p-4">
+            <section
+              key={log.id}
+              id={`daily-log-${log.id}`}
+              className="scroll-mt-24 rounded-lg border p-3 sm:p-4"
+            >
               {(() => {
                 const crewPresent = readableField(log.crewPresent)
                 const materialsUsed = readableField(log.materialsUsed)

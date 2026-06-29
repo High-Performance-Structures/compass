@@ -24,6 +24,7 @@ import { ProjectRfqCreateForm } from "@/components/projects/project-rfq-create-f
 import { ProjectRfqDeleteButton } from "@/components/projects/project-rfq-delete-button"
 import { ProjectRfqEditForm } from "@/components/projects/project-rfq-edit-form"
 import { ProjectRfqShareActions } from "@/components/projects/project-rfq-share-actions"
+import { ProjectListFilters } from "@/components/projects/project-list-filters"
 import { ProjectTaskCreateButton } from "@/components/projects/project-task-create-button"
 import { ProjectQuickSwitcher } from "@/components/projects/project-quick-switcher"
 import { Badge } from "@/components/ui/badge"
@@ -106,6 +107,74 @@ function rfqTaskDescription(rfq: ProjectRfqItem): string {
   ]
     .filter((value) => value !== null)
     .join("\n")
+}
+
+function paramValue(value: string | readonly string[] | undefined): string {
+  if (typeof value === "string") return value
+  return value?.[0] ?? ""
+}
+
+function matchesText(
+  values: readonly (string | null | undefined)[],
+  query: string
+): boolean {
+  const normalized = query.trim().toLowerCase()
+  if (normalized.length === 0) return true
+
+  return values.some((value) =>
+    (value ?? "").toLowerCase().includes(normalized)
+  )
+}
+
+function matchesDateRange(value: string | null, from: string, to: string): boolean {
+  if (from.length === 0 && to.length === 0) return true
+  if (!value) return false
+  return (from.length === 0 || value >= from) && (to.length === 0 || value <= to)
+}
+
+function matchesRfqFilters(
+  rfq: ProjectRfqItem,
+  filters: {
+    readonly q: string
+    readonly status: string
+    readonly from: string
+    readonly to: string
+  }
+): boolean {
+  const statusMatches =
+    filters.status.length === 0 ||
+    filters.status === "all" ||
+    rfq.status === filters.status
+
+  return (
+    statusMatches &&
+    matchesDateRange(rfq.dueDate, filters.from, filters.to) &&
+    matchesText(
+      [
+        rfq.sourceRecordNumber,
+        rfq.title,
+        rfq.description,
+        rfq.companyName,
+        rfq.vendorCategory,
+        rfq.recipientEmail,
+        rfq.assigneeName,
+        rfq.priority,
+        rfq.syncStatus,
+        ...rfq.scopeItems.flatMap((line) => [
+          line.description,
+          line.phaseCode,
+          line.costCode,
+          line.notes,
+        ]),
+        ...rfq.documentLinks.flatMap((link) => [
+          link.label,
+          link.url,
+          link.notes,
+        ]),
+      ],
+      filters.q
+    )
+  )
 }
 
 function RfqCard({
@@ -268,6 +337,10 @@ export default async function ProjectRfqsPage({
   readonly params: Promise<{ readonly id: string }>
   readonly searchParams: Promise<{
     readonly created?: string | readonly string[]
+    readonly q?: string | readonly string[]
+    readonly status?: string | readonly string[]
+    readonly from?: string | readonly string[]
+    readonly to?: string | readonly string[]
   }>
 }): Promise<React.ReactElement> {
   const { id } = await params
@@ -275,6 +348,12 @@ export default async function ProjectRfqsPage({
   const createdRfqId = Array.isArray(query.created)
     ? query.created[0] ?? null
     : query.created ?? null
+  const filters = {
+    q: paramValue(query.q),
+    status: paramValue(query.status),
+    from: paramValue(query.from),
+    to: paramValue(query.to),
+  }
   const [projects, rfqs, taskAssigneeOptions, selectionsSummary, selectionOptions] =
     await Promise.all([
     getProjects(),
@@ -293,6 +372,7 @@ export default async function ProjectRfqsPage({
     if (!rfq.dueDate) return false
     return rfq.dueDate < new Date().toISOString().slice(0, 10)
   }).length
+  const filteredRfqs = rfqs.filter((rfq) => matchesRfqFilters(rfq, filters))
   const projectLabel = projectDisplayLabel(project)
 
   return (
@@ -352,8 +432,29 @@ export default async function ProjectRfqsPage({
           />
         </div>
 
-        {rfqs.length > 0 ? (
-          rfqs.map((rfq) => (
+        <ProjectListFilters
+          baseHref={`/dashboard/projects/${id}/rfqs`}
+          q={filters.q}
+          status={filters.status}
+          from={filters.from}
+          to={filters.to}
+          statusOptions={[
+            { value: "all", label: "All statuses" },
+            { value: "draft", label: "Draft" },
+            { value: "sent", label: "Sent" },
+            { value: "quoted", label: "Quoted" },
+            { value: "awarded", label: "Awarded" },
+            { value: "closed", label: "Closed" },
+            { value: "void", label: "Void" },
+          ]}
+          searchPlaceholder="Search RFQ number, vendor, scope, documents..."
+          resultLabel={`${filteredRfqs.length} of ${rfqs.length} RFQ${
+            rfqs.length === 1 ? "" : "s"
+          } shown`}
+        />
+
+        {filteredRfqs.length > 0 ? (
+          filteredRfqs.map((rfq) => (
             <RfqCard
               key={rfq.id}
               rfq={rfq}
@@ -368,9 +469,9 @@ export default async function ProjectRfqsPage({
         ) : (
           <div className="rounded-lg border bg-background p-8 text-center">
             <IconClock className="mx-auto size-6 text-muted-foreground" />
-            <h2 className="mt-3 text-sm font-semibold">No RFQs yet</h2>
+            <h2 className="mt-3 text-sm font-semibold">No RFQs found</h2>
             <p className="mt-1 text-sm text-muted-foreground">
-              Create the first quote request for this project.
+              Clear the filters or create the first quote request for this project.
             </p>
           </div>
         )}

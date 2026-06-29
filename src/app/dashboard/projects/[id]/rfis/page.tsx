@@ -7,7 +7,11 @@ import {
   IconMessageQuestion,
 } from "@tabler/icons-react"
 
-import { getProjectRfis, updateProjectRfi } from "@/app/actions/project-rfis"
+import {
+  getProjectRfis,
+  updateProjectRfi,
+  type ProjectRfiItem,
+} from "@/app/actions/project-rfis"
 import {
   getProjectContactsSummary,
   getProjectTaskAssigneeOptions,
@@ -15,6 +19,7 @@ import {
 import { getProjects } from "@/app/actions/projects"
 import { ProjectRfiCreateForm } from "@/components/projects/project-rfi-create-form"
 import { ProjectRfiDeleteButton } from "@/components/projects/project-rfi-delete-button"
+import { ProjectListFilters } from "@/components/projects/project-list-filters"
 import { ProjectTaskCreateButton } from "@/components/projects/project-task-create-button"
 import { ProjectQuickSwitcher } from "@/components/projects/project-quick-switcher"
 import { Badge } from "@/components/ui/badge"
@@ -68,6 +73,64 @@ function rfiTaskTitle(subject: string): string {
   return `Follow up RFI: ${subject}`
 }
 
+function paramValue(value: string | readonly string[] | undefined): string {
+  if (typeof value === "string") return value
+  return value?.[0] ?? ""
+}
+
+function matchesText(
+  values: readonly (string | null | undefined)[],
+  query: string
+): boolean {
+  const normalized = query.trim().toLowerCase()
+  if (normalized.length === 0) return true
+
+  return values.some((value) =>
+    (value ?? "").toLowerCase().includes(normalized)
+  )
+}
+
+function matchesDateRange(value: string | null, from: string, to: string): boolean {
+  if (from.length === 0 && to.length === 0) return true
+  if (!value) return false
+  return (from.length === 0 || value >= from) && (to.length === 0 || value <= to)
+}
+
+function matchesRfiFilters(
+  rfi: ProjectRfiItem,
+  filters: {
+    readonly q: string
+    readonly status: string
+    readonly from: string
+    readonly to: string
+  }
+): boolean {
+  const statusMatches =
+    filters.status.length === 0 ||
+    filters.status === "all" ||
+    rfi.status === filters.status
+
+  return (
+    statusMatches &&
+    matchesDateRange(rfi.dueDate, filters.from, filters.to) &&
+    matchesText(
+      [
+        rfi.rfiNumber,
+        rfi.subject,
+        rfi.question,
+        rfi.answer,
+        rfi.requesterName,
+        rfi.assignedToName,
+        rfi.companyName,
+        rfi.priority,
+        rfi.audience,
+        ...rfi.attachments.map((attachment) => attachment.fileName),
+      ],
+      filters.q
+    )
+  )
+}
+
 export default async function ProjectRfisPage({
   params,
   searchParams,
@@ -75,6 +138,10 @@ export default async function ProjectRfisPage({
   readonly params: Promise<{ readonly id: string }>
   readonly searchParams: Promise<{
     readonly created?: string | readonly string[]
+    readonly q?: string | readonly string[]
+    readonly status?: string | readonly string[]
+    readonly from?: string | readonly string[]
+    readonly to?: string | readonly string[]
   }>
 }) {
   const { id } = await params
@@ -82,6 +149,12 @@ export default async function ProjectRfisPage({
   const createdRfiId = Array.isArray(query.created)
     ? query.created[0] ?? null
     : query.created ?? null
+  const filters = {
+    q: paramValue(query.q),
+    status: paramValue(query.status),
+    from: paramValue(query.from),
+    to: paramValue(query.to),
+  }
   const [projects, rfis, contactsSummary, taskAssigneeOptions] =
     await Promise.all([
       getProjects(),
@@ -95,6 +168,7 @@ export default async function ProjectRfisPage({
     ...taskAssigneeOptions.directoryContacts,
   ]
   const openCount = rfis.filter((rfi) => isActiveRfiStatus(rfi.status)).length
+  const filteredRfis = rfis.filter((rfi) => matchesRfiFilters(rfi, filters))
   const contacts = contactsSummary.allContacts
   const companyOrTradeOptions = unique(
     contacts.flatMap((contact) => [
@@ -181,8 +255,28 @@ export default async function ProjectRfisPage({
           />
         </div>
 
-        {rfis.length > 0 ? (
-          rfis.map((rfi) => {
+        <ProjectListFilters
+          baseHref={`/dashboard/projects/${id}/rfis`}
+          q={filters.q}
+          status={filters.status}
+          from={filters.from}
+          to={filters.to}
+          statusOptions={[
+            { value: "all", label: "All statuses" },
+            { value: "new", label: "New" },
+            { value: "in_progress", label: "In progress" },
+            { value: "info_needed", label: "Info needed" },
+            { value: "complete", label: "Complete" },
+            { value: "void", label: "Void" },
+          ]}
+          searchPlaceholder="Search RFI number, subject, company, response..."
+          resultLabel={`${filteredRfis.length} of ${rfis.length} RFI${
+            rfis.length === 1 ? "" : "s"
+          } shown`}
+        />
+
+        {filteredRfis.length > 0 ? (
+          filteredRfis.map((rfi) => {
             const isCreated = rfi.id === createdRfiId
             return (
               <article
@@ -326,9 +420,9 @@ export default async function ProjectRfisPage({
         ) : (
           <div className="rounded-lg border bg-background p-8 text-center">
             <IconClock className="mx-auto size-6 text-muted-foreground" />
-            <h2 className="mt-3 text-sm font-semibold">No RFIs yet</h2>
+            <h2 className="mt-3 text-sm font-semibold">No RFIs found</h2>
             <p className="mt-1 text-sm text-muted-foreground">
-              Create the first clarification for this project.
+              Clear the filters or create the first clarification for this project.
             </p>
           </div>
         )}
