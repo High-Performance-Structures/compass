@@ -11,7 +11,13 @@ import {
 
 import type { ProjectRfqItem } from "@/app/actions/project-operations"
 import { Button } from "@/components/ui/button"
+import {
+  copyHtmlToClipboard,
+  copyTextToClipboard,
+  showManualCopyDialog,
+} from "@/lib/browser-copy"
 import { printAfterDomUpdate } from "@/lib/browser-print"
+import { toast } from "sonner"
 
 type CopiedState = "link" | "email" | "html" | null
 
@@ -194,30 +200,41 @@ export function ProjectRfqShareActions({
   }
 
   async function copyLink(): Promise<void> {
-    await navigator.clipboard.writeText(absoluteUrl())
-    setCopied("link")
+    if (await copyTextToClipboard(absoluteUrl())) {
+      setCopied("link")
+      toast.success("RFQ link copied")
+      return
+    }
+    showManualCopyDialog({ title: "Copy RFQ link", text: absoluteUrl() })
+    toast.error("Your browser blocked automatic copying.")
   }
 
   async function copyEmail(): Promise<void> {
-    await navigator.clipboard.writeText(plainEmail())
-    setCopied("email")
+    if (await copyTextToClipboard(plainEmail())) {
+      setCopied("email")
+      toast.success("RFQ email copied")
+      return
+    }
+    showManualCopyDialog({ title: "Copy RFQ email", text: plainEmail() })
+    toast.error("Your browser blocked automatic copying.")
   }
 
   async function copyHtmlEmail(): Promise<void> {
     const html = htmlEmail()
     const plain = plainEmail()
-    if ("ClipboardItem" in window) {
-      await navigator.clipboard.write([
-        new ClipboardItem({
-          "text/html": new Blob([html], { type: "text/html" }),
-          "text/plain": new Blob([plain], { type: "text/plain" }),
-        }),
-      ])
+    const result = await copyHtmlToClipboard({ html, plain })
+    if (result === "rich") {
       setCopied("html")
+      toast.success("RFQ HTML email copied")
       return
     }
-    await navigator.clipboard.writeText(plain)
-    setCopied("email")
+    if (result === "plain") {
+      setCopied("email")
+      toast.success("RFQ email copied as plain text")
+      return
+    }
+    showManualCopyDialog({ title: "Copy RFQ email", text: plain })
+    toast.error("Your browser blocked automatic copying.")
   }
 
   function printRfq(): void {

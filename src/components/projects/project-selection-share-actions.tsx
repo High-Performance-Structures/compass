@@ -12,6 +12,11 @@ import {
 
 import type { ProjectSelectionsSummary } from "@/app/actions/project-selections"
 import { Button } from "@/components/ui/button"
+import {
+  copyHtmlToClipboard,
+  copyTextToClipboard,
+  showManualCopyDialog,
+} from "@/lib/browser-copy"
 import { printAfterDomUpdate } from "@/lib/browser-print"
 import {
   Select,
@@ -20,6 +25,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { toast } from "sonner"
 
 type CopiedState = "link" | "email" | "html" | "sheet" | null
 type PrintMode = "packet" | "room_sheets"
@@ -297,39 +303,59 @@ export function ProjectSelectionShareActions({
   }
 
   async function copyLink(): Promise<void> {
-    await navigator.clipboard.writeText(absoluteSelectionUrl())
-    setCopied("link")
+    if (await copyTextToClipboard(absoluteSelectionUrl())) {
+      setCopied("link")
+      toast.success("Selection link copied")
+      return
+    }
+    showManualCopyDialog({
+      title: "Copy selection link",
+      text: absoluteSelectionUrl(),
+    })
+    toast.error("Your browser blocked automatic copying.")
   }
 
   async function copyEmail(): Promise<void> {
-    await navigator.clipboard.writeText(
+    if (await copyTextToClipboard(
       `Subject: ${emailSubject}\n\n${plainEmailBody()}`
-    )
-    setCopied("email")
+    )) {
+      setCopied("email")
+      toast.success("Selection email copied")
+      return
+    }
+    showManualCopyDialog({
+      title: "Copy selection email",
+      text: `Subject: ${emailSubject}\n\n${plainEmailBody()}`,
+    })
+    toast.error("Your browser blocked automatic copying.")
   }
 
   async function copyHtmlEmail(): Promise<void> {
     const html = htmlEmailBody()
     const plain = `Subject: ${emailSubject}\n\n${plainEmailBody()}`
-
-    if ("ClipboardItem" in window) {
-      await navigator.clipboard.write([
-        new ClipboardItem({
-          "text/html": new Blob([html], { type: "text/html" }),
-          "text/plain": new Blob([plain], { type: "text/plain" }),
-        }),
-      ])
+    const result = await copyHtmlToClipboard({ html, plain })
+    if (result === "rich") {
       setCopied("html")
+      toast.success("Selection HTML email copied")
       return
     }
-
-    await navigator.clipboard.writeText(plain)
-    setCopied("email")
+    if (result === "plain") {
+      setCopied("email")
+      toast.success("Selection email copied as plain text")
+      return
+    }
+    showManualCopyDialog({ title: "Copy selection email", text: plain })
+    toast.error("Your browser blocked automatic copying.")
   }
 
   async function copySheet(): Promise<void> {
-    await navigator.clipboard.writeText(sheetText())
-    setCopied("sheet")
+    if (await copyTextToClipboard(sheetText())) {
+      setCopied("sheet")
+      toast.success("Selection sheet copied")
+      return
+    }
+    showManualCopyDialog({ title: "Copy selection sheet", text: sheetText() })
+    toast.error("Your browser blocked automatic copying.")
   }
 
   function printPacket(): void {

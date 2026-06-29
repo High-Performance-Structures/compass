@@ -12,7 +12,13 @@ import {
 
 import { publishOwnerProjectUpdate } from "@/app/actions/project-field"
 import { Button } from "@/components/ui/button"
+import {
+  copyHtmlToClipboard,
+  copyTextToClipboard,
+  showManualCopyDialog,
+} from "@/lib/browser-copy"
 import { printAfterDomUpdate } from "@/lib/browser-print"
+import { toast } from "sonner"
 
 export function OwnerUpdateActions({
   projectId,
@@ -67,34 +73,46 @@ export function OwnerUpdateActions({
   }
 
   async function copyLink(): Promise<void> {
-    await navigator.clipboard.writeText(absoluteUpdateUrl())
-    setCopied("link")
+    if (await copyTextToClipboard(absoluteUpdateUrl())) {
+      setCopied("link")
+      toast.success("Link copied")
+      return
+    }
+    showManualCopyDialog({ title: "Copy update link", text: absoluteUpdateUrl() })
+    toast.error("Your browser blocked automatic copying.")
   }
 
   async function copyEmail(): Promise<void> {
-    await navigator.clipboard.writeText(
+    if (await copyTextToClipboard(
       `Subject: ${emailSubject}\n\n${plainEmailBody()}`
-    )
-    setCopied("email")
+    )) {
+      setCopied("email")
+      toast.success("Email draft copied")
+      return
+    }
+    showManualCopyDialog({
+      title: "Copy email draft",
+      text: `Subject: ${emailSubject}\n\n${plainEmailBody()}`,
+    })
+    toast.error("Your browser blocked automatic copying.")
   }
 
   async function copyHtmlEmail(): Promise<void> {
     const html = htmlEmailBody()
     const plain = `Subject: ${emailSubject}\n\n${plainEmailBody()}`
-
-    if ("ClipboardItem" in window) {
-      await navigator.clipboard.write([
-        new ClipboardItem({
-          "text/html": new Blob([html], { type: "text/html" }),
-          "text/plain": new Blob([plain], { type: "text/plain" }),
-        }),
-      ])
+    const result = await copyHtmlToClipboard({ html, plain })
+    if (result === "rich") {
       setCopied("html")
+      toast.success("HTML email copied")
       return
     }
-
-    await navigator.clipboard.writeText(plain)
-    setCopied("email")
+    if (result === "plain") {
+      setCopied("email")
+      toast.success("Email draft copied as plain text")
+      return
+    }
+    showManualCopyDialog({ title: "Copy email draft", text: plain })
+    toast.error("Your browser blocked automatic copying.")
   }
 
   function printOwnerUpdate(): void {
