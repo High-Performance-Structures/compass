@@ -113,7 +113,7 @@ export function PersonalDeskPhoto({
     )
   }, [user])
 
-  if (!user || photoUrl === null) {
+  if (!user) {
     return null
   }
 
@@ -151,8 +151,11 @@ export function PersonalDeskPhoto({
     if (!user) return
 
     setPhotoUrl(null)
-    saveStoredPhoto(user, HIDDEN_DESK_PHOTO)
+    saveStoredPhoto(user, null)
+    setMessage("Desk photo removed.")
   }
+
+  const hasPhoto = photoUrl !== null
 
   return (
     <div className="group-data-[collapsible=icon]:hidden px-2 pb-2">
@@ -161,19 +164,26 @@ export function PersonalDeskPhoto({
           <button
             type="button"
             className="group/photo block w-full rounded-md border border-sidebar-border bg-sidebar-accent/30 p-1.5 text-left shadow-sm transition hover:-translate-y-0.5 hover:bg-sidebar-accent hover:shadow-md"
-            aria-label="Edit desk photo"
+            aria-label={hasPhoto ? "Edit desk photo" : "Add desk photo"}
           >
             <div className="relative aspect-[16/10] overflow-hidden rounded-sm bg-sidebar-accent">
-              <Image
-                src={photoUrl}
-                alt={`${user.name}'s desk photo`}
-                fill
-                sizes="240px"
-                unoptimized
-                className="object-cover"
-              />
+              {hasPhoto ? (
+                <Image
+                  src={photoUrl}
+                  alt={`${user.name}'s desk photo`}
+                  fill
+                  sizes="240px"
+                  unoptimized
+                  className="object-cover"
+                />
+              ) : (
+                <div className="flex h-full flex-col items-center justify-center gap-1 text-sidebar-foreground/70">
+                  <IconPhotoEdit className="size-5" />
+                  <span className="text-[11px] font-medium">Add desk photo</span>
+                </div>
+              )}
               <div className="absolute inset-x-0 bottom-0 flex items-center justify-between bg-black/45 px-2 py-1 text-[11px] font-medium text-white opacity-0 transition group-hover/photo:opacity-100">
-                <span>Desk photo</span>
+                <span>{hasPhoto ? "Desk photo" : "Add photo"}</span>
                 <IconPhotoEdit className="size-3.5" />
               </div>
             </div>
@@ -187,16 +197,23 @@ export function PersonalDeskPhoto({
                 A small personal photo for your Compass sidebar.
               </p>
             </div>
-            <div className="relative aspect-[16/10] overflow-hidden rounded-md border bg-muted">
-              <Image
-                src={photoUrl}
-                alt={`${user.name}'s desk photo preview`}
-                fill
-                sizes="288px"
-                unoptimized
-                className="object-cover"
-              />
-            </div>
+            {hasPhoto ? (
+              <div className="relative aspect-[16/10] overflow-hidden rounded-md border bg-muted">
+                <Image
+                  src={photoUrl}
+                  alt={`${user.name}'s desk photo preview`}
+                  fill
+                  sizes="288px"
+                  unoptimized
+                  className="object-cover"
+                />
+              </div>
+            ) : (
+              <div className="flex aspect-[16/10] flex-col items-center justify-center gap-2 rounded-md border border-dashed bg-muted/40 text-muted-foreground">
+                <IconPhotoEdit className="size-6" />
+                <p className="text-xs font-medium">No desk photo yet</p>
+              </div>
+            )}
             <label className="block">
               <span className="mb-2 flex items-center gap-2 text-xs font-medium text-muted-foreground">
                 <IconUpload className="size-3.5" />
@@ -213,9 +230,14 @@ export function PersonalDeskPhoto({
               <Button variant="outline" size="sm" onClick={handleReset}>
                 Reset
               </Button>
-              <Button variant="ghost" size="sm" onClick={handleRemove}>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleRemove}
+                disabled={!hasPhoto}
+              >
                 <IconX className="size-4" />
-                Hide
+                Remove
               </Button>
             </div>
           </div>
