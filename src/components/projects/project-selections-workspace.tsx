@@ -632,6 +632,11 @@ export function ProjectSelectionsWorkspace({
         <ProjectSelectionShareActions
           clientName={clientName}
           filterLabel={activeFilterLabel}
+          printFilters={{
+            costCode: filters.costCode === ALL ? null : filters.costCode,
+            division: filters.division === ALL ? null : filters.division,
+            roomName: filters.roomName === ALL ? null : filters.roomName,
+          }}
           projectId={projectId}
           projectLabel={projectLabel}
           summary={filteredSummary}
