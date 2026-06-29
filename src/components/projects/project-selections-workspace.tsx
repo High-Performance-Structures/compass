@@ -56,6 +56,9 @@ function formatQuantity(value: number | null): string {
 function sourceLabel(selection: ProjectSelectionItem): string {
   if (selection.sourceSystem === "google_sheets") return "Sheet"
   if (selection.sourceSystem === "compass") return "Compass"
+  if (selection.sourceSystem === "buildertrend_finish_schedule_workbook") {
+    return "Imported workbook"
+  }
   return selection.sourceSystem
 }
 
