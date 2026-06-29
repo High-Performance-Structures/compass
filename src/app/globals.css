@@ -515,8 +515,13 @@ em-emoji-picker {
     width: 100% !important;
   }
 
-  body.selection-printing-selected > :not([data-selection-print-root="true"]) {
-    display: none !important;
+  body.selection-printing-selected * {
+    visibility: hidden;
+  }
+
+  body.selection-printing-selected [data-selection-print-root="true"],
+  body.selection-printing-selected [data-selection-print-root="true"] * {
+    visibility: visible;
   }
 
   body.selection-printing-selected [data-selection-print-root="true"] {

@@ -17,7 +17,7 @@ import {
   copyTextToClipboard,
   showManualCopyDialog,
 } from "@/lib/browser-copy"
-import { printAfterDomUpdate } from "@/lib/browser-print"
+import { printNow } from "@/lib/browser-print"
 import {
   Select,
   SelectContent,
@@ -202,6 +202,10 @@ export function ProjectSelectionShareActions({
   const emailSubject = `${projectLabel} - Finish selections${
     filterLabel ? ` - ${filterLabel}` : ""
   }`
+  const printSelectionUrl =
+    typeof window === "undefined"
+      ? selectionLink(projectId)
+      : new URL(selectionLink(projectId), window.location.origin).toString()
 
   function absoluteSelectionUrl(): string {
     return new URL(selectionLink(projectId), window.location.origin).toString()
@@ -359,81 +363,83 @@ export function ProjectSelectionShareActions({
   }
 
   function printPacket(): void {
-    const printRoot = document.createElement("article")
-    printRoot.setAttribute("data-selection-print-root", "true")
-    printRoot.className = "selection-printable bg-white text-black"
-    printRoot.innerHTML = packetHtml({
-      projectLabel,
-      clientName,
-      filterLabel,
-      mode: printMode,
-      selectionUrl: absoluteSelectionUrl(),
-      summary,
-    })
-
     document.body.classList.add("selection-printing-selected")
-    document.body.appendChild(printRoot)
 
-    printAfterDomUpdate(() => {
-      printRoot.remove()
+    printNow(() => {
       document.body.classList.remove("selection-printing-selected")
     })
   }
 
   return (
-    <div className="flex flex-wrap justify-end gap-2 print:hidden">
-      <Select
-        value={printMode}
-        onValueChange={(value) => {
-          if (value === "packet" || value === "room_sheets") {
-            setPrintMode(value)
-          }
+    <>
+      <article
+        data-selection-print-root="true"
+        className="selection-printable hidden bg-white text-black"
+        dangerouslySetInnerHTML={{
+          __html: packetHtml({
+            projectLabel,
+            clientName,
+            filterLabel,
+            mode: printMode,
+            selectionUrl: printSelectionUrl,
+            summary,
+          }),
         }}
-      >
-        <SelectTrigger size="sm" className="w-[170px]">
-          <SelectValue placeholder="Print style" />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="packet">Packet</SelectItem>
-          <SelectItem value="room_sheets">Room sheets</SelectItem>
-        </SelectContent>
-      </Select>
-      <Button type="button" size="sm" onClick={printPacket}>
-        <IconPrinter className="size-4" />
-        Save PDF
-      </Button>
-      <Button type="button" size="sm" variant="outline" onClick={copyLink}>
-        {copied === "link" ? (
-          <IconCheck className="size-4" />
-        ) : (
-          <IconCopy className="size-4" />
-        )}
-        {copied === "link" ? "Copied" : "Copy link"}
-      </Button>
-      <Button type="button" size="sm" variant="outline" onClick={copyEmail}>
-        {copied === "email" ? (
-          <IconCheck className="size-4" />
-        ) : (
-          <IconMail className="size-4" />
-        )}
-        {copied === "email" ? "Copied" : "Copy email draft"}
-      </Button>
-      <Button type="button" size="sm" variant="outline" onClick={copyHtmlEmail}>
-        {copied === "html" ? (
-          <IconCheck className="size-4" />
-        ) : (
-          <IconSparkles className="size-4" />
-        )}
-        {copied === "html" ? "Copied" : "Copy HTML email"}
-      </Button>
-      <Button type="button" size="sm" variant="outline" onClick={copySheet}>
-        {copied === "sheet" ? (
-          <IconCheck className="size-4" />
-        ) : (
-          <IconFileSpreadsheet className="size-4" />
-        )}
-        {copied === "sheet" ? "Copied" : "Copy sheet"}
-      </Button>
-    </div>
+      />
+      <div className="flex flex-wrap justify-end gap-2 print:hidden">
+        <Select
+          value={printMode}
+          onValueChange={(value) => {
+            if (value === "packet" || value === "room_sheets") {
+              setPrintMode(value)
+            }
+          }}
+        >
+          <SelectTrigger size="sm" className="w-[170px]">
+            <SelectValue placeholder="Print style" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="packet">Packet</SelectItem>
+            <SelectItem value="room_sheets">Room sheets</SelectItem>
+          </SelectContent>
+        </Select>
+        <Button type="button" size="sm" onClick={printPacket}>
+          <IconPrinter className="size-4" />
+          Save PDF
+        </Button>
+        <Button type="button" size="sm" variant="outline" onClick={copyLink}>
+          {copied === "link" ? (
+            <IconCheck className="size-4" />
+          ) : (
+            <IconCopy className="size-4" />
+          )}
+          {copied === "link" ? "Copied" : "Copy link"}
+        </Button>
+        <Button type="button" size="sm" variant="outline" onClick={copyEmail}>
+          {copied === "email" ? (
+            <IconCheck className="size-4" />
+          ) : (
+            <IconMail className="size-4" />
+          )}
+          {copied === "email" ? "Copied" : "Copy email draft"}
+        </Button>
+        <Button type="button" size="sm" variant="outline" onClick={copyHtmlEmail}>
+          {copied === "html" ? (
+            <IconCheck className="size-4" />
+          ) : (
+            <IconSparkles className="size-4" />
+          )}
+          {copied === "html" ? "Copied" : "Copy HTML email"}
+        </Button>
+        <Button type="button" size="sm" variant="outline" onClick={copySheet}>
+          {copied === "sheet" ? (
+            <IconCheck className="size-4" />
+          ) : (
+            <IconFileSpreadsheet className="size-4" />
+          )}
+          {copied === "sheet" ? "Copied" : "Copy sheet"}
+        </Button>
+      </div>
+    </>
   )
 }
