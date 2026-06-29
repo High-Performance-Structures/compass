@@ -3,13 +3,26 @@ import { getCloudflareContext } from "@/lib/db"
 import { getDb } from "@/db"
 import { users, organizations, organizationMembers } from "@/db/schema"
 import type { User } from "@/db/schema"
-import { eq } from "drizzle-orm"
+import { and, eq } from "drizzle-orm"
 import { cookies } from "next/headers"
 import { DEMO_USER } from "@/lib/demo"
 import {
   isDevAuthFallbackAllowed,
   isWorkOSConfigured,
 } from "@/lib/auth-config"
+
+const INTERNAL_ORG_SLUG = "open-range"
+const INTERNAL_STAFF_EMAIL_DOMAINS: readonly string[] = [
+  "hps-colorado.com",
+  "openrangeconstruction.ltd",
+]
+
+type OrganizationMembershipRecord = {
+  readonly orgId: string
+  readonly orgName: string
+  readonly orgType: string
+  readonly memberRole: string
+}
 
 export type AuthUser = {
   readonly id: string
@@ -52,6 +65,93 @@ export function toSidebarUser(user: AuthUser): SidebarUser {
     avatar: user.avatarUrl,
     firstName: user.firstName,
     lastName: user.lastName,
+  }
+}
+
+function isInternalStaffEmail(email: string): boolean {
+  const domain = email.toLowerCase().split("@")[1] ?? ""
+  return INTERNAL_STAFF_EMAIL_DOMAINS.includes(domain)
+}
+
+async function setActiveOrgCookie(orgId: string): Promise<void> {
+  try {
+    const cookieStore = await cookies()
+    cookieStore.set("compass-active-org", orgId, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      path: "/",
+      maxAge: 60 * 60 * 24 * 365,
+    })
+  } catch {
+    // cookies() may not be writable from every server context
+  }
+}
+
+async function ensureInternalOrganizationMembership(
+  db: ReturnType<typeof getDb>,
+  userId: string,
+  email: string,
+  now: string
+): Promise<OrganizationMembershipRecord | null> {
+  if (!isInternalStaffEmail(email)) return null
+
+  const existingInternalMembership = await db
+    .select({
+      orgId: organizations.id,
+      orgName: organizations.name,
+      orgType: organizations.type,
+      memberRole: organizationMembers.role,
+    })
+    .from(organizationMembers)
+    .innerJoin(
+      organizations,
+      eq(organizations.id, organizationMembers.organizationId)
+    )
+    .where(
+      and(
+        eq(organizationMembers.userId, userId),
+        eq(organizations.type, "internal")
+      )
+    )
+    .get()
+
+  if (existingInternalMembership) return existingInternalMembership
+
+  const internalOrg = await db
+    .select({
+      id: organizations.id,
+      name: organizations.name,
+      type: organizations.type,
+    })
+    .from(organizations)
+    .where(
+      and(
+        eq(organizations.slug, INTERNAL_ORG_SLUG),
+        eq(organizations.type, "internal"),
+        eq(organizations.isActive, true)
+      )
+    )
+    .get()
+
+  if (!internalOrg) return null
+
+  await db
+    .insert(organizationMembers)
+    .values({
+      id: crypto.randomUUID(),
+      organizationId: internalOrg.id,
+      userId,
+      role: "office",
+      joinedAt: now,
+    })
+    .run()
+
+  return {
+    orgId: internalOrg.id,
+    orgName: internalOrg.name,
+    orgType: internalOrg.type,
+    memberRole: "office",
   }
 }
 
@@ -137,7 +237,7 @@ export async function getCurrentUser(): Promise<AuthUser | null> {
       .run()
 
     // query org memberships
-    const orgMemberships = await db
+    let orgMemberships = await db
       .select({
         orgId: organizations.id,
         orgName: organizations.name,
@@ -151,12 +251,21 @@ export async function getCurrentUser(): Promise<AuthUser | null> {
       )
       .where(eq(organizationMembers.userId, dbUser.id))
 
-    let activeOrg: {
-      readonly orgId: string
-      readonly orgName: string
-      readonly orgType: string
-      readonly memberRole: string
-    } | null = null
+    const internalMembership = await ensureInternalOrganizationMembership(
+      db,
+      dbUser.id,
+      dbUser.email,
+      now
+    )
+
+    if (
+      internalMembership &&
+      !orgMemberships.some((membership) => membership.orgId === internalMembership.orgId)
+    ) {
+      orgMemberships = [internalMembership, ...orgMemberships]
+    }
+
+    let activeOrg: OrganizationMembershipRecord | null = null
 
     if (orgMemberships.length > 0) {
       // check for cookie preference
@@ -164,9 +273,22 @@ export async function getCurrentUser(): Promise<AuthUser | null> {
         const cookieStore = await cookies()
         const preferredOrg = cookieStore.get("compass-active-org")?.value
         const match = orgMemberships.find((m) => m.orgId === preferredOrg)
-        activeOrg = match ?? orgMemberships[0]
+        const internalOrg = orgMemberships.find(
+          (membership) => membership.orgType === "internal"
+        )
+        activeOrg =
+          internalOrg && isInternalStaffEmail(dbUser.email)
+            ? match?.orgType === "internal"
+              ? match
+              : internalOrg
+            : match ?? orgMemberships[0]
       } catch {
-        activeOrg = orgMemberships[0]
+        activeOrg =
+          orgMemberships.find(
+            (membership) =>
+              membership.orgType === "internal" &&
+              isInternalStaffEmail(dbUser.email)
+          ) ?? orgMemberships[0]
       }
     }
 
@@ -237,6 +359,18 @@ export async function ensureUserExists(workosUser: {
 
   await db.insert(users).values(newUser).run()
 
+  const internalMembership = await ensureInternalOrganizationMembership(
+    db,
+    workosUser.id,
+    workosUser.email,
+    now
+  )
+
+  if (internalMembership) {
+    await setActiveOrgCookie(internalMembership.orgId)
+    return newUser as User
+  }
+
   // create personal org
   const personalOrgId = crypto.randomUUID()
   const personalSlug = `${workosUser.id.slice(0, 8)}-personal`
@@ -267,19 +401,7 @@ export async function ensureUserExists(workosUser: {
     })
     .run()
 
-  // set active org cookie
-  try {
-    const cookieStore = await cookies()
-    cookieStore.set("compass-active-org", personalOrgId, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
-      path: "/",
-      maxAge: 60 * 60 * 24 * 365, // 1 year
-    })
-  } catch {
-    // may not be in request context
-  }
+  await setActiveOrgCookie(personalOrgId)
 
   return newUser as User
 }
