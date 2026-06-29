@@ -16,8 +16,8 @@ import {
 import { channels } from "@/db/schema-conversations"
 import { requireAuth } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
-import { requireOrg } from "@/lib/org-scope"
 import { requirePermission } from "@/lib/permissions"
+import { assertProjectAccess } from "@/lib/project-access"
 
 export type ProjectAudience = "owner" | "sub_vendor"
 
@@ -139,22 +139,16 @@ async function verifyProjectAccess(
 }> {
   const user = await requireAuth()
   requirePermission(user, "project", "read")
-  const orgId = requireOrg(user)
 
   const { env } = await getCloudflareContext()
   const db = getDb(env.DB)
 
-  const existing = await db
-    .select({ id: projects.id })
-    .from(projects)
-    .where(and(eq(projects.id, projectId), eq(projects.organizationId, orgId)))
-    .limit(1)
-
-  if (!existing[0]) {
-    throw new Error("Project not found")
+  const project = await assertProjectAccess(db, user, projectId)
+  if (!project.organizationId) {
+    throw new Error("Project organization is missing")
   }
 
-  return { db, organizationId: orgId }
+  return { db, organizationId: project.organizationId }
 }
 
 function isActiveStatus(value: string): boolean {

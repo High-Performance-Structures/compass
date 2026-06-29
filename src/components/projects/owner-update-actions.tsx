@@ -12,6 +12,7 @@ import {
 
 import { publishOwnerProjectUpdate } from "@/app/actions/project-field"
 import { Button } from "@/components/ui/button"
+import { printAfterDomUpdate } from "@/lib/browser-print"
 
 export function OwnerUpdateActions({
   projectId,
@@ -109,16 +110,11 @@ export function OwnerUpdateActions({
     selected.setAttribute("data-owner-update-print-root", "true")
     selected.setAttribute("data-print-selected", "true")
 
-    const resetPrintState = (): void => {
+    printAfterDomUpdate(() => {
       selected.removeAttribute("data-owner-update-print-root")
       selected.removeAttribute("data-print-selected")
       document.body.classList.remove("owner-update-printing-selected")
-      window.removeEventListener("afterprint", resetPrintState)
-    }
-
-    window.addEventListener("afterprint", resetPrintState)
-    window.print()
-    window.setTimeout(resetPrintState, 5000)
+    })
   }
 
   async function publish(): Promise<void> {
@@ -133,16 +129,16 @@ export function OwnerUpdateActions({
   return (
     <div className="flex flex-wrap items-center gap-2 print:hidden">
       {status !== "published" && (
-        <Button size="sm" onClick={publish} disabled={isPublishing}>
+        <Button type="button" size="sm" onClick={publish} disabled={isPublishing}>
           <IconSend className="size-4" />
           {isPublishing ? "Publishing..." : "Publish"}
         </Button>
       )}
-      <Button size="sm" onClick={printOwnerUpdate}>
+      <Button type="button" size="sm" onClick={printOwnerUpdate}>
         <IconPrinter className="size-4" />
         Save PDF
       </Button>
-      <Button size="sm" variant="outline" onClick={copyLink}>
+      <Button type="button" size="sm" variant="outline" onClick={copyLink}>
         {copied === "link" ? (
           <IconCheck className="size-4" />
         ) : (
@@ -150,7 +146,7 @@ export function OwnerUpdateActions({
         )}
         {copied === "link" ? "Copied" : "Copy link"}
       </Button>
-      <Button size="sm" variant="outline" onClick={copyEmail}>
+      <Button type="button" size="sm" variant="outline" onClick={copyEmail}>
         {copied === "email" ? (
           <IconCheck className="size-4" />
         ) : (
@@ -158,7 +154,7 @@ export function OwnerUpdateActions({
         )}
         {copied === "email" ? "Copied" : "Copy email draft"}
       </Button>
-      <Button size="sm" variant="outline" onClick={copyHtmlEmail}>
+      <Button type="button" size="sm" variant="outline" onClick={copyHtmlEmail}>
         {copied === "html" ? (
           <IconCheck className="size-4" />
         ) : (

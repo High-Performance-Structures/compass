@@ -17,6 +17,7 @@ import { propagateDates } from "@/lib/schedule/propagate-dates"
 import { requireAuth } from "@/lib/auth"
 import { requireOrg } from "@/lib/org-scope"
 import { isDemoUser } from "@/lib/demo"
+import { assertProjectAccess } from "@/lib/project-access"
 import type {
   TaskStatus,
   DependencyType,
@@ -46,21 +47,11 @@ export async function getSchedule(
   projectId: string
 ): Promise<ScheduleData> {
   const user = await requireAuth()
-  const orgId = requireOrg(user)
 
   const { env } = await getCloudflareContext()
   const db = getDb(env.DB)
 
-  // verify project belongs to user's org
-  const [project] = await db
-    .select()
-    .from(projects)
-    .where(and(eq(projects.id, projectId), eq(projects.organizationId, orgId)))
-    .limit(1)
-
-  if (!project) {
-    throw new Error("Project not found or access denied")
-  }
+  await assertProjectAccess(db, user, projectId)
 
   const tasks = await db
     .select()

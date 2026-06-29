@@ -1,9 +1,15 @@
 import { withAuth, signOut } from "@workos-inc/authkit-nextjs"
 import { getCloudflareContext } from "@/lib/db"
 import { getDb } from "@/db"
-import { users, organizations, organizationMembers } from "@/db/schema"
+import {
+  users,
+  organizations,
+  organizationMembers,
+  projectContacts,
+  projectMembers,
+} from "@/db/schema"
 import type { User } from "@/db/schema"
-import { and, eq } from "drizzle-orm"
+import { and, eq, sql } from "drizzle-orm"
 import { cookies } from "next/headers"
 import { DEMO_USER } from "@/lib/demo"
 import {
@@ -155,6 +161,64 @@ async function ensureInternalOrganizationMembership(
   }
 }
 
+function projectRoleForContactType(contactType: string): string {
+  if (contactType === "owner") return "owner"
+  if (contactType === "subcontractor") return "subcontractor"
+  if (contactType === "supplier") return "supplier"
+  return "guest"
+}
+
+async function ensureProjectMembershipsFromContacts(
+  db: ReturnType<typeof getDb>,
+  userId: string,
+  email: string,
+  now: string
+): Promise<void> {
+  if (isInternalStaffEmail(email)) return
+
+  const normalizedEmail = email.trim().toLowerCase()
+  if (!normalizedEmail) return
+
+  const matchingContacts = await db
+    .select({
+      projectId: projectContacts.projectId,
+      contactType: projectContacts.contactType,
+    })
+    .from(projectContacts)
+    .where(
+      and(
+        eq(projectContacts.active, true),
+        sql`lower(trim(${projectContacts.email})) = ${normalizedEmail}`
+      )
+    )
+
+  for (const contact of matchingContacts) {
+    const existing = await db
+      .select({ id: projectMembers.id })
+      .from(projectMembers)
+      .where(
+        and(
+          eq(projectMembers.userId, userId),
+          eq(projectMembers.projectId, contact.projectId)
+        )
+      )
+      .get()
+
+    if (existing) continue
+
+    await db
+      .insert(projectMembers)
+      .values({
+        id: crypto.randomUUID(),
+        projectId: contact.projectId,
+        userId,
+        role: projectRoleForContactType(contact.contactType),
+        assignedAt: now,
+      })
+      .run()
+  }
+}
+
 export async function getCurrentUser(): Promise<AuthUser | null> {
   try {
     if (!isWorkOSConfigured()) {
@@ -258,6 +322,13 @@ export async function getCurrentUser(): Promise<AuthUser | null> {
       now
     )
 
+    await ensureProjectMembershipsFromContacts(
+      db,
+      dbUser.id,
+      dbUser.email,
+      now
+    )
+
     if (
       internalMembership &&
       !orgMemberships.some((membership) => membership.orgId === internalMembership.orgId)
@@ -350,7 +421,7 @@ export async function ensureUserExists(workosUser: {
         ? `${workosUser.firstName} ${workosUser.lastName}`
         : workosUser.email.split("@")[0],
     avatarUrl: workosUser.profilePictureUrl ?? null,
-    role: "office", // default role
+    role: isInternalStaffEmail(workosUser.email) ? "office" : "client",
     isActive: true,
     lastLoginAt: now,
     createdAt: now,
@@ -370,6 +441,13 @@ export async function ensureUserExists(workosUser: {
     await setActiveOrgCookie(internalMembership.orgId)
     return newUser as User
   }
+
+  await ensureProjectMembershipsFromContacts(
+    db,
+    workosUser.id,
+    workosUser.email,
+    now
+  )
 
   // create personal org
   const personalOrgId = crypto.randomUUID()

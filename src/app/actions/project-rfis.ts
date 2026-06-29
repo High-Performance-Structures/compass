@@ -11,6 +11,7 @@ import type { AuthUser } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
 import { requireOrg } from "@/lib/org-scope"
 import { requirePermission } from "@/lib/permissions"
+import { assertProjectAccess } from "@/lib/project-access"
 
 export type ProjectRfiAttachmentItem = {
   readonly id: string
@@ -93,21 +94,11 @@ async function verifyProjectAccess(
 ): Promise<ReturnType<typeof getDb>> {
   const user = await requireAuth()
   requirePermission(user, "project", "read")
-  const orgId = requireOrg(user)
 
   const { env } = await getCloudflareContext()
   const db = getDb(env.DB)
 
-  const existing = await db
-    .select({ id: projects.id, projectNumber: projects.projectNumber })
-    .from(projects)
-    .where(and(eq(projects.id, projectId), eq(projects.organizationId, orgId)))
-    .limit(1)
-
-  if (!existing[0]) {
-    throw new Error("Project not found")
-  }
-
+  await assertProjectAccess(db, user, projectId)
   return db
 }
 

@@ -12,6 +12,7 @@ import {
 
 import type { ProjectSelectionsSummary } from "@/app/actions/project-selections"
 import { Button } from "@/components/ui/button"
+import { printAfterDomUpdate } from "@/lib/browser-print"
 import {
   Select,
   SelectContent,
@@ -347,15 +348,10 @@ export function ProjectSelectionShareActions({
     document.body.classList.add("selection-printing-selected")
     document.body.appendChild(printRoot)
 
-    const resetPrintState = (): void => {
+    printAfterDomUpdate(() => {
       printRoot.remove()
       document.body.classList.remove("selection-printing-selected")
-      window.removeEventListener("afterprint", resetPrintState)
-    }
-
-    window.addEventListener("afterprint", resetPrintState)
-    window.print()
-    window.setTimeout(resetPrintState, 5000)
+    })
   }
 
   return (
@@ -376,11 +372,11 @@ export function ProjectSelectionShareActions({
           <SelectItem value="room_sheets">Room sheets</SelectItem>
         </SelectContent>
       </Select>
-      <Button size="sm" onClick={printPacket}>
+      <Button type="button" size="sm" onClick={printPacket}>
         <IconPrinter className="size-4" />
         Save PDF
       </Button>
-      <Button size="sm" variant="outline" onClick={copyLink}>
+      <Button type="button" size="sm" variant="outline" onClick={copyLink}>
         {copied === "link" ? (
           <IconCheck className="size-4" />
         ) : (
@@ -388,7 +384,7 @@ export function ProjectSelectionShareActions({
         )}
         {copied === "link" ? "Copied" : "Copy link"}
       </Button>
-      <Button size="sm" variant="outline" onClick={copyEmail}>
+      <Button type="button" size="sm" variant="outline" onClick={copyEmail}>
         {copied === "email" ? (
           <IconCheck className="size-4" />
         ) : (
@@ -396,7 +392,7 @@ export function ProjectSelectionShareActions({
         )}
         {copied === "email" ? "Copied" : "Copy email draft"}
       </Button>
-      <Button size="sm" variant="outline" onClick={copyHtmlEmail}>
+      <Button type="button" size="sm" variant="outline" onClick={copyHtmlEmail}>
         {copied === "html" ? (
           <IconCheck className="size-4" />
         ) : (
@@ -404,7 +400,7 @@ export function ProjectSelectionShareActions({
         )}
         {copied === "html" ? "Copied" : "Copy HTML email"}
       </Button>
-      <Button size="sm" variant="outline" onClick={copySheet}>
+      <Button type="button" size="sm" variant="outline" onClick={copySheet}>
         {copied === "sheet" ? (
           <IconCheck className="size-4" />
         ) : (

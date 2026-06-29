@@ -3,6 +3,7 @@
 import { IconPrinter } from "@tabler/icons-react"
 
 import { Button } from "@/components/ui/button"
+import { printAfterDomUpdate } from "@/lib/browser-print"
 
 export function ProjectPurchaseOrderPrintButton({
   purchaseOrderId,
@@ -21,15 +22,10 @@ export function ProjectPurchaseOrderPrintButton({
     document.body.classList.add("po-printing-selected")
     selected.setAttribute("data-print-selected", "true")
 
-    const resetPrintState = (): void => {
+    printAfterDomUpdate(() => {
       selected.removeAttribute("data-print-selected")
       document.body.classList.remove("po-printing-selected")
-      window.removeEventListener("afterprint", resetPrintState)
-    }
-
-    window.addEventListener("afterprint", resetPrintState)
-    window.print()
-    window.setTimeout(resetPrintState, 1000)
+    }, 1000)
   }
 
   return (

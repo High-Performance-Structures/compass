@@ -2,7 +2,7 @@
 
 import { getCloudflareContext } from "@/lib/db"
 import { getDb } from "@/db"
-import { projectExternalLinks, projects } from "@/db/schema"
+import { projectExternalLinks, projectMembers, projects } from "@/db/schema"
 import { and, asc, eq } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { requireAuth } from "@/lib/auth"
@@ -89,13 +89,30 @@ function isProjectStatusValue(value: string): value is ProjectStatusValue {
 export async function getProjects(): Promise<ProjectListItem[]> {
   try {
     const user = await requireAuth()
-    const orgId = requireOrg(user)
 
     const { env } = await getCloudflareContext()
     if (!env?.DB) return []
 
     const db = getDb(env.DB)
-    const allProjects = await db
+
+    if (user.organizationId && user.organizationType === "internal") {
+      const allProjects = await db
+        .select({
+          id: projects.id,
+          name: projects.name,
+          projectNumber: projects.projectNumber,
+          clientName: projects.clientName,
+          googleDriveFolderId: projects.googleDriveFolderId,
+          createdAt: projects.createdAt,
+        })
+        .from(projects)
+        .where(eq(projects.organizationId, user.organizationId))
+        .orderBy(asc(projects.projectNumber), asc(projects.name))
+
+      return allProjects
+    }
+
+    return await db
       .select({
         id: projects.id,
         name: projects.name,
@@ -104,11 +121,10 @@ export async function getProjects(): Promise<ProjectListItem[]> {
         googleDriveFolderId: projects.googleDriveFolderId,
         createdAt: projects.createdAt,
       })
-      .from(projects)
-      .where(eq(projects.organizationId, orgId))
+      .from(projectMembers)
+      .innerJoin(projects, eq(projects.id, projectMembers.projectId))
+      .where(eq(projectMembers.userId, user.id))
       .orderBy(asc(projects.projectNumber), asc(projects.name))
-
-    return allProjects
   } catch {
     return []
   }

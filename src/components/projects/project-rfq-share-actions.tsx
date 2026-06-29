@@ -11,6 +11,7 @@ import {
 
 import type { ProjectRfqItem } from "@/app/actions/project-operations"
 import { Button } from "@/components/ui/button"
+import { printAfterDomUpdate } from "@/lib/browser-print"
 
 type CopiedState = "link" | "email" | "html" | null
 
@@ -230,15 +231,10 @@ export function ProjectRfqShareActions({
     document.body.classList.add("rfq-printing-selected")
     document.body.appendChild(printRoot)
 
-    const resetPrintState = (): void => {
+    printAfterDomUpdate(() => {
       printRoot.remove()
       document.body.classList.remove("rfq-printing-selected")
-      window.removeEventListener("afterprint", resetPrintState)
-    }
-
-    window.addEventListener("afterprint", resetPrintState)
-    window.print()
-    window.setTimeout(resetPrintState, 5000)
+    })
   }
 
   return (

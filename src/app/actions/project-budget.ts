@@ -6,12 +6,11 @@ import { getDb } from "@/db"
 import {
   projectBudgetApplications,
   projectBudgetLines,
-  projects,
 } from "@/db/schema"
 import { requireAuth } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
-import { requireOrg } from "@/lib/org-scope"
 import { requirePermission } from "@/lib/permissions"
+import { assertProjectAccess } from "@/lib/project-access"
 
 export type ProjectBudgetAudience = "internal" | "owner"
 export type ProjectBudgetDetailMode = "cost_code" | "category"
@@ -102,21 +101,11 @@ type ProjectAccess = {
 async function verifyProjectAccess(projectId: string): Promise<ProjectAccess> {
   const user = await requireAuth()
   requirePermission(user, "budget", "read")
-  const orgId = requireOrg(user)
 
   const { env } = await getCloudflareContext()
   const db = getDb(env.DB)
 
-  const existing = await db
-    .select({ id: projects.id, projectNumber: projects.projectNumber })
-    .from(projects)
-    .where(and(eq(projects.id, projectId), eq(projects.organizationId, orgId)))
-    .limit(1)
-
-  const project = existing[0]
-  if (!project) {
-    throw new Error("Project not found")
-  }
+  const project = await assertProjectAccess(db, user, projectId)
 
   return { db, projectNumber: project.projectNumber }
 }
