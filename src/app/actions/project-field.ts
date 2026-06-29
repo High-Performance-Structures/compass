@@ -1649,14 +1649,20 @@ export async function getOwnerProjectUpdateDocument(
       }),
     }))
 
-  const photosForUpdate = allPhotoRows
-    .filter((row) => {
-      const isImage =
-        row.thumbnailUrl !== null || row.mimeType?.startsWith("image/") === true
-      if (!isImage) return false
-      if (photoIds.size > 0 && photoIds.has(row.id)) return true
-      return row.ownerVisible && row.reviewStatus === "approved"
-    })
+  const imagePhotoRows = allPhotoRows.filter((row) => {
+    return row.thumbnailUrl !== null || row.mimeType?.startsWith("image/") === true
+  })
+  const photoRowsById = new Map(imagePhotoRows.map((row) => [row.id, row]))
+  const photosForUpdateRows =
+    photoIds.size > 0
+      ? selectedPhotoIds
+          .map((id) => photoRowsById.get(id) ?? null)
+          .filter((row) => row !== null)
+      : imagePhotoRows.filter(
+          (row) => row.ownerVisible && row.reviewStatus === "approved"
+        )
+
+  const photosForUpdate = photosForUpdateRows
     .slice(0, 18)
     .map((row) => ({
       id: row.id,
