@@ -64,9 +64,11 @@ export function OwnerUpdatePhotoTile({
         )}
       </div>
       <div className="p-2">
-        <p className="line-clamp-2 min-h-10 text-xs font-medium">
-          {title}
-        </p>
+        {caption && (
+          <p className="line-clamp-2 text-xs font-medium">
+            {caption}
+          </p>
+        )}
         {href && (
           <a
             href={href}
