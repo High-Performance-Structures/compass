@@ -105,21 +105,13 @@ export function OwnerUpdateActions({
       return
     }
 
-    const printRoot = selected.cloneNode(true)
-    if (!(printRoot instanceof HTMLElement)) {
-      window.print()
-      return
-    }
-
-    printRoot.setAttribute("data-owner-update-print-root", "true")
-    printRoot.setAttribute("data-print-selected", "true")
-    printRoot.classList.add("owner-update-print-root")
-
     document.body.classList.add("owner-update-printing-selected")
-    document.body.appendChild(printRoot)
+    selected.setAttribute("data-owner-update-print-root", "true")
+    selected.setAttribute("data-print-selected", "true")
 
     const resetPrintState = (): void => {
-      printRoot.remove()
+      selected.removeAttribute("data-owner-update-print-root")
+      selected.removeAttribute("data-print-selected")
       document.body.classList.remove("owner-update-printing-selected")
       window.removeEventListener("afterprint", resetPrintState)
     }
