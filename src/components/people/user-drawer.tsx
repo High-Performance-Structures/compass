@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { IconMail, IconUser } from "@tabler/icons-react"
+import { IconMail, IconPlus, IconTrash, IconUser } from "@tabler/icons-react"
 import { toast } from "sonner"
 
 import type { ProjectListItem } from "@/app/actions/projects"
@@ -41,6 +41,25 @@ interface UserDrawerProps {
   projects?: readonly ProjectListItem[]
 }
 
+type ProjectAssignmentDraft = {
+  readonly draftId: string
+  readonly projectId: string
+  readonly role: string
+}
+
+type ProjectAssignmentPatch = {
+  readonly projectId?: string
+  readonly role?: string
+}
+
+function createProjectAssignmentDraft(role: string): ProjectAssignmentDraft {
+  return {
+    draftId: crypto.randomUUID(),
+    projectId: "",
+    role,
+  }
+}
+
 export function UserDrawer({
   user,
   open,
@@ -52,15 +71,14 @@ export function UserDrawer({
   const [saving, setSaving] = React.useState(false)
   const [savingProjectAccess, setSavingProjectAccess] = React.useState(false)
   const [selectedRole, setSelectedRole] = React.useState<string>("office")
-  const [selectedProjectId, setSelectedProjectId] = React.useState("")
-  const [selectedProjectRole, setSelectedProjectRole] =
-    React.useState<string>("office")
+  const [projectAssignments, setProjectAssignments] = React.useState<
+    ProjectAssignmentDraft[]
+  >(() => [createProjectAssignmentDraft("office")])
 
   React.useEffect(() => {
     if (user) {
       setSelectedRole(user.role)
-      setSelectedProjectRole(user.role)
-      setSelectedProjectId("")
+      setProjectAssignments([createProjectAssignmentDraft(user.role)])
     }
   }, [user])
 
@@ -101,26 +119,78 @@ export function UserDrawer({
     }
   }
 
-  const handleAssignProject = async () => {
-    if (!selectedProjectId) {
-      toast.error("Choose a project first")
+  const availableProjectsForDraft = (
+    draft: ProjectAssignmentDraft
+  ): readonly ProjectListItem[] => {
+    const selectedProjectIds = new Set(
+      projectAssignments
+        .filter((item) => item.draftId !== draft.draftId)
+        .map((item) => item.projectId)
+        .filter(Boolean)
+    )
+
+    return availableProjects.filter(
+      (project) =>
+        project.id === draft.projectId || !selectedProjectIds.has(project.id)
+    )
+  }
+
+  const updateProjectAssignment = (
+    draftId: string,
+    patch: ProjectAssignmentPatch
+  ) => {
+    setProjectAssignments((current) =>
+      current.map((draft) =>
+        draft.draftId === draftId ? { ...draft, ...patch } : draft
+      )
+    )
+  }
+
+  const addProjectAssignment = () => {
+    setProjectAssignments((current) => [
+      ...current,
+      createProjectAssignmentDraft(selectedRole),
+    ])
+  }
+
+  const removeProjectAssignment = (draftId: string) => {
+    setProjectAssignments((current) => {
+      const next = current.filter((draft) => draft.draftId !== draftId)
+      return next.length > 0 ? next : [createProjectAssignmentDraft(selectedRole)]
+    })
+  }
+
+  const handleAssignProjects = async () => {
+    const assignmentsToSave = projectAssignments.filter(
+      (assignment) => assignment.projectId
+    )
+
+    if (assignmentsToSave.length === 0) {
+      toast.error("Choose at least one project first")
       return
     }
 
     setSavingProjectAccess(true)
     try {
-      const result = await assignUserToProject(
-        user.id,
-        selectedProjectId,
-        selectedProjectRole
-      )
-      if (result.success) {
-        toast.success("Project access assigned")
-        setSelectedProjectId("")
-        onUserUpdated?.()
-      } else {
-        toast.error(result.error || "Failed to assign project access")
+      for (const assignment of assignmentsToSave) {
+        const result = await assignUserToProject(
+          user.id,
+          assignment.projectId,
+          assignment.role
+        )
+        if (!result.success) {
+          toast.error(result.error || "Failed to assign project access")
+          return
+        }
       }
+
+      toast.success(
+        assignmentsToSave.length === 1
+          ? "Project access assigned"
+          : "Project access assigned"
+      )
+      setProjectAssignments([createProjectAssignmentDraft(selectedRole)])
+      onUserUpdated?.()
     } catch (error) {
       toast.error("Failed to assign project access")
     } finally {
@@ -293,54 +363,104 @@ export function UserDrawer({
 
               {canManageUsers && (
                 <div className="space-y-2 rounded-md border bg-muted/20 p-3">
-                  <Label htmlFor="projectAccess">Assign project access</Label>
-                  <Select
-                    value={selectedProjectId}
-                    onValueChange={setSelectedProjectId}
-                  >
-                    <SelectTrigger id="projectAccess">
-                      <SelectValue placeholder="Choose project" />
-                    </SelectTrigger>
-                    <SelectContent className="max-h-80">
-                      {availableProjects.length > 0 ? (
-                        availableProjects.map((project) => (
-                          <SelectItem key={project.id} value={project.id}>
-                            {formatProjectLabel(project)}
-                          </SelectItem>
-                        ))
-                      ) : (
-                        <SelectItem value="none" disabled>
-                          No unassigned projects
-                        </SelectItem>
-                      )}
-                    </SelectContent>
-                  </Select>
+                  <div className="flex items-center justify-between gap-2">
+                    <Label>Assign project access</Label>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={addProjectAssignment}
+                      disabled={availableProjects.length === 0}
+                    >
+                      <IconPlus className="mr-1 size-3.5" />
+                      Add Project
+                    </Button>
+                  </div>
 
-                  <Label htmlFor="projectAccessRole">Project role</Label>
-                  <Select
-                    value={selectedProjectRole}
-                    onValueChange={setSelectedProjectRole}
-                  >
-                    <SelectTrigger id="projectAccessRole">
-                      <SelectValue placeholder="Choose role" />
-                    </SelectTrigger>
-                    <SelectContent className="max-h-80">
-                      {USER_ROLE_OPTIONS.map((option) => (
-                        <SelectItem key={option.value} value={option.value}>
-                          {option.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <div className="space-y-3">
+                    {projectAssignments.map((draft, index) => {
+                      const draftProjects = availableProjectsForDraft(draft)
+                      return (
+                        <div
+                          key={draft.draftId}
+                          className="space-y-2 rounded-md border bg-background p-2"
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <p className="text-xs font-medium text-muted-foreground">
+                              Project {index + 1}
+                            </p>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              className="size-7"
+                              onClick={() => removeProjectAssignment(draft.draftId)}
+                              disabled={projectAssignments.length === 1}
+                            >
+                              <span className="sr-only">Remove project</span>
+                              <IconTrash className="size-3.5" />
+                            </Button>
+                          </div>
+
+                          <Select
+                            value={draft.projectId}
+                            onValueChange={(projectId) =>
+                              updateProjectAssignment(draft.draftId, {
+                                projectId,
+                              })
+                            }
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder="Choose project" />
+                            </SelectTrigger>
+                            <SelectContent className="max-h-80">
+                              {draftProjects.length > 0 ? (
+                                draftProjects.map((project) => (
+                                  <SelectItem key={project.id} value={project.id}>
+                                    {formatProjectLabel(project)}
+                                  </SelectItem>
+                                ))
+                              ) : (
+                                <SelectItem value="none" disabled>
+                                  No unassigned projects
+                                </SelectItem>
+                              )}
+                            </SelectContent>
+                          </Select>
+
+                          <Select
+                            value={draft.role}
+                            onValueChange={(role) =>
+                              updateProjectAssignment(draft.draftId, { role })
+                            }
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder="Choose role" />
+                            </SelectTrigger>
+                            <SelectContent className="max-h-80">
+                              {USER_ROLE_OPTIONS.map((option) => (
+                                <SelectItem key={option.value} value={option.value}>
+                                  {option.label}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      )
+                    })}
+                  </div>
 
                   <Button
                     type="button"
-                    onClick={handleAssignProject}
-                    disabled={savingProjectAccess || !selectedProjectId}
+                    onClick={handleAssignProjects}
+                    disabled={
+                      savingProjectAccess ||
+                      !projectAssignments.some((assignment) => assignment.projectId)
+                    }
                     size="sm"
                     className="w-full"
                   >
-                    {savingProjectAccess ? "Assigning..." : "Assign Project"}
+                    {savingProjectAccess ? "Assigning..." : "Assign Projects"}
                   </Button>
                 </div>
               )}
