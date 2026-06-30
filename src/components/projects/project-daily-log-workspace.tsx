@@ -263,6 +263,32 @@ function LogMetric({
   )
 }
 
+function DailyLogDetail({
+  label,
+  children,
+  wide = false,
+}: {
+  readonly label: string
+  readonly children: React.ReactNode
+  readonly wide?: boolean
+}): React.ReactElement {
+  return (
+    <div
+      className={cn(
+        "min-w-0 border-l-2 border-border bg-muted/15 py-2 pl-3 pr-4",
+        wide && "md:col-span-2 xl:col-span-3"
+      )}
+    >
+      <dt className="text-[0.68rem] font-semibold uppercase tracking-wide text-muted-foreground">
+        {label}
+      </dt>
+      <dd className="mt-1 whitespace-pre-wrap text-sm leading-6 text-foreground">
+        {children}
+      </dd>
+    </div>
+  )
+}
+
 function DailyLogFields({
   draft,
   idPrefix,
@@ -417,6 +443,7 @@ function DailyLogFields({
               updateDraft("notes", event.currentTarget.value)
             }
             placeholder="Follow-ups and next steps."
+            rows={5}
           />
         </div>
       </div>
@@ -1203,46 +1230,31 @@ export function ProjectDailyLogWorkspace({
                     log.safetyIncidents ||
                     log.visitorLog ||
                     log.notes) && (
-                    <dl className="mt-3 grid gap-3 text-sm md:grid-cols-2 xl:grid-cols-5">
+                    <dl className="mt-4 grid gap-x-5 gap-y-3 border-y py-3 md:grid-cols-2 xl:grid-cols-5">
                       {log.issues && (
-                        <div className="rounded-md border bg-muted/20 p-3">
-                          <dt className="text-xs font-medium uppercase text-muted-foreground">
-                            Issues
-                          </dt>
-                          <dd className="mt-1">{log.issues}</dd>
-                        </div>
+                        <DailyLogDetail label="Issues">
+                          {log.issues}
+                        </DailyLogDetail>
                       )}
                       {materialsUsed && (
-                        <div className="rounded-md border bg-muted/20 p-3">
-                          <dt className="text-xs font-medium uppercase text-muted-foreground">
-                            Materials
-                          </dt>
-                          <dd className="mt-1">{materialsUsed}</dd>
-                        </div>
+                        <DailyLogDetail label="Materials">
+                          {materialsUsed}
+                        </DailyLogDetail>
                       )}
                       {log.safetyIncidents && (
-                        <div className="rounded-md border bg-muted/20 p-3">
-                          <dt className="text-xs font-medium uppercase text-muted-foreground">
-                            Safety
-                          </dt>
-                          <dd className="mt-1">{log.safetyIncidents}</dd>
-                        </div>
+                        <DailyLogDetail label="Safety">
+                          {log.safetyIncidents}
+                        </DailyLogDetail>
                       )}
                       {log.visitorLog && (
-                        <div className="rounded-md border bg-muted/20 p-3">
-                          <dt className="text-xs font-medium uppercase text-muted-foreground">
-                            Visitors
-                          </dt>
-                          <dd className="mt-1">{log.visitorLog}</dd>
-                        </div>
+                        <DailyLogDetail label="Visitors">
+                          {log.visitorLog}
+                        </DailyLogDetail>
                       )}
                       {log.notes && (
-                        <div className="rounded-md border bg-muted/20 p-3">
-                          <dt className="text-xs font-medium uppercase text-muted-foreground">
-                            Notes / Next
-                          </dt>
-                          <dd className="mt-1">{log.notes}</dd>
-                        </div>
+                        <DailyLogDetail label="Notes / Next" wide>
+                          {log.notes}
+                        </DailyLogDetail>
                       )}
                     </dl>
                   )}
