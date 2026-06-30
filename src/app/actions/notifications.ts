@@ -14,9 +14,16 @@ import { getCloudflareContext } from "@/lib/db"
 import { isMissingNotificationTableError } from "@/lib/notifications/events"
 
 export type NotificationPreferenceState = {
+  readonly timezone: string
   readonly inAppEnabled: boolean
   readonly emailEnabled: boolean
+  readonly smsEnabled: boolean
+  readonly smsPhoneNumber: string | null
   readonly pushEnabled: boolean
+  readonly mentionEmailEnabled: boolean
+  readonly mentionSmsEnabled: boolean
+  readonly announcementEmailEnabled: boolean
+  readonly announcementSmsEnabled: boolean
   readonly weeklyDigestEnabled: boolean
   readonly rfiEnabled: boolean
   readonly ownerUpdateEnabled: boolean
@@ -56,9 +63,16 @@ type NotificationCenterResult =
   | { readonly success: false; readonly error: string }
 
 const DEFAULT_PREFERENCES: NotificationPreferenceState = {
+  timezone: "America/Denver",
   inAppEnabled: true,
   emailEnabled: true,
+  smsEnabled: false,
+  smsPhoneNumber: null,
   pushEnabled: true,
+  mentionEmailEnabled: true,
+  mentionSmsEnabled: false,
+  announcementEmailEnabled: true,
+  announcementSmsEnabled: false,
   weeklyDigestEnabled: false,
   rfiEnabled: true,
   ownerUpdateEnabled: true,
@@ -83,9 +97,16 @@ function preferenceFromRow(
 ): NotificationPreferenceState {
   if (!row) return DEFAULT_PREFERENCES
   return {
+    timezone: row.timezone,
     inAppEnabled: row.inAppEnabled,
     emailEnabled: row.emailEnabled,
+    smsEnabled: row.smsEnabled,
+    smsPhoneNumber: row.smsPhoneNumber,
     pushEnabled: row.pushEnabled,
+    mentionEmailEnabled: row.mentionEmailEnabled,
+    mentionSmsEnabled: row.mentionSmsEnabled,
+    announcementEmailEnabled: row.announcementEmailEnabled,
+    announcementSmsEnabled: row.announcementSmsEnabled,
     weeklyDigestEnabled: row.weeklyDigestEnabled,
     rfiEnabled: row.rfiEnabled,
     ownerUpdateEnabled: row.ownerUpdateEnabled,

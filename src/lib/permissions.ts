@@ -24,38 +24,52 @@ type RolePermissions = {
   }
 }
 
+type RolePermissionSet = RolePermissions[string]
+
+const ADMIN_PERMISSIONS: RolePermissionSet = {
+  project: ["create", "read", "update", "delete", "approve"],
+  schedule: ["create", "read", "update", "delete", "approve"],
+  budget: ["create", "read", "update", "delete", "approve"],
+  changeorder: ["create", "read", "update", "delete", "approve"],
+  document: ["create", "read", "update", "delete", "approve"],
+  user: ["create", "read", "update", "delete"],
+  organization: ["create", "read", "update", "delete"],
+  team: ["create", "read", "update", "delete"],
+  group: ["create", "read", "update", "delete"],
+  customer: ["create", "read", "update", "delete"],
+  vendor: ["create", "read", "update", "delete"],
+  finance: ["create", "read", "update", "delete", "approve"],
+  agent: ["create", "read", "update", "delete"],
+  channels: ["create", "read", "update", "delete", "moderate"],
+}
+
+const OFFICE_PERMISSIONS: RolePermissionSet = {
+  project: ["create", "read", "update"],
+  schedule: ["create", "read", "update"],
+  budget: ["create", "read", "update"],
+  changeorder: ["create", "read", "update"],
+  document: ["create", "read", "update"],
+  user: ["read"],
+  organization: ["read"],
+  team: ["read"],
+  group: ["read"],
+  customer: ["create", "read", "update"],
+  vendor: ["create", "read", "update"],
+  finance: ["create", "read", "update"],
+  agent: ["read"],
+  channels: ["create", "read", "update"],
+}
+
 const PERMISSIONS: RolePermissions = {
-  admin: {
-    project: ["create", "read", "update", "delete", "approve"],
-    schedule: ["create", "read", "update", "delete", "approve"],
-    budget: ["create", "read", "update", "delete", "approve"],
-    changeorder: ["create", "read", "update", "delete", "approve"],
-    document: ["create", "read", "update", "delete", "approve"],
-    user: ["create", "read", "update", "delete"],
-    organization: ["create", "read", "update", "delete"],
-    team: ["create", "read", "update", "delete"],
-    group: ["create", "read", "update", "delete"],
-    customer: ["create", "read", "update", "delete"],
-    vendor: ["create", "read", "update", "delete"],
-    finance: ["create", "read", "update", "delete", "approve"],
-    agent: ["create", "read", "update", "delete"],
-    channels: ["create", "read", "update", "delete", "moderate"],
-  },
-  office: {
-    project: ["create", "read", "update"],
-    schedule: ["create", "read", "update"],
-    budget: ["create", "read", "update"],
-    changeorder: ["create", "read", "update"],
-    document: ["create", "read", "update"],
-    user: ["read"],
-    organization: ["read"],
-    team: ["read"],
-    group: ["read"],
-    customer: ["create", "read", "update"],
-    vendor: ["create", "read", "update"],
-    finance: ["create", "read", "update"],
-    agent: ["read"],
-    channels: ["create", "read", "update"],
+  admin: ADMIN_PERMISSIONS,
+  secondary_admin: ADMIN_PERMISSIONS,
+  executive: ADMIN_PERMISSIONS,
+  office: OFFICE_PERMISSIONS,
+  project_manager: OFFICE_PERMISSIONS,
+  coordinator: OFFICE_PERMISSIONS,
+  accounting: {
+    ...OFFICE_PERMISSIONS,
+    finance: ["create", "read", "update", "approve"],
   },
   field: {
     project: ["read"],

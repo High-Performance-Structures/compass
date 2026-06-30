@@ -429,6 +429,10 @@ function isInternalStaffRole(role: string): boolean {
   switch (role) {
     case "admin":
     case "secondary_admin":
+    case "executive":
+    case "accounting":
+    case "project_manager":
+    case "coordinator":
     case "office":
     case "field":
       return true

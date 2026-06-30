@@ -18,9 +18,16 @@ import { getCloudflareContext } from "@/lib/db"
 import { requireOrg } from "@/lib/org-scope"
 
 type NotificationPreferenceState = {
+  readonly timezone: string
   readonly inAppEnabled: boolean
   readonly emailEnabled: boolean
+  readonly smsEnabled: boolean
+  readonly smsPhoneNumber: string | null
   readonly pushEnabled: boolean
+  readonly mentionEmailEnabled: boolean
+  readonly mentionSmsEnabled: boolean
+  readonly announcementEmailEnabled: boolean
+  readonly announcementSmsEnabled: boolean
   readonly weeklyDigestEnabled: boolean
   readonly rfiEnabled: boolean
   readonly ownerUpdateEnabled: boolean
@@ -59,9 +66,16 @@ type RfiNotificationInput = {
 }
 
 const DEFAULT_PREFERENCES: NotificationPreferenceState = {
+  timezone: "America/Denver",
   inAppEnabled: true,
   emailEnabled: true,
+  smsEnabled: false,
+  smsPhoneNumber: null,
   pushEnabled: true,
+  mentionEmailEnabled: true,
+  mentionSmsEnabled: false,
+  announcementEmailEnabled: true,
+  announcementSmsEnabled: false,
   weeklyDigestEnabled: false,
   rfiEnabled: true,
   ownerUpdateEnabled: true,
@@ -95,9 +109,16 @@ function preferenceFromRow(
 ): NotificationPreferenceState {
   if (!row) return DEFAULT_PREFERENCES
   return {
+    timezone: row.timezone,
     inAppEnabled: row.inAppEnabled,
     emailEnabled: row.emailEnabled,
+    smsEnabled: row.smsEnabled,
+    smsPhoneNumber: row.smsPhoneNumber,
     pushEnabled: row.pushEnabled,
+    mentionEmailEnabled: row.mentionEmailEnabled,
+    mentionSmsEnabled: row.mentionSmsEnabled,
+    announcementEmailEnabled: row.announcementEmailEnabled,
+    announcementSmsEnabled: row.announcementSmsEnabled,
     weeklyDigestEnabled: row.weeklyDigestEnabled,
     rfiEnabled: row.rfiEnabled,
     ownerUpdateEnabled: row.ownerUpdateEnabled,
@@ -110,11 +131,47 @@ function notificationCategoryEnabled(
   preferences: NotificationPreferenceState,
   eventType: string
 ): boolean {
+  if (eventType === "message.mention") {
+    return preferences.mentionEmailEnabled ||
+      (preferences.smsEnabled && preferences.mentionSmsEnabled) ||
+      preferences.inAppEnabled ||
+      preferences.pushEnabled
+  }
+  if (eventType === "announcement.message") {
+    return preferences.announcementEmailEnabled ||
+      (preferences.smsEnabled && preferences.announcementSmsEnabled) ||
+      preferences.inAppEnabled ||
+      preferences.pushEnabled
+  }
   if (eventType.startsWith("rfi.")) return preferences.rfiEnabled
   if (eventType.startsWith("owner_update.")) return preferences.ownerUpdateEnabled
   if (eventType.startsWith("schedule.")) return preferences.scheduleEnabled
   if (eventType.startsWith("po.")) return preferences.poEnabled
   return true
+}
+
+function notificationEmailEnabled(
+  preferences: NotificationPreferenceState,
+  eventType: string
+): boolean {
+  if (!preferences.emailEnabled) return false
+  if (eventType === "message.mention") return preferences.mentionEmailEnabled
+  if (eventType === "announcement.message") {
+    return preferences.announcementEmailEnabled
+  }
+  return true
+}
+
+function notificationSmsEnabled(
+  preferences: NotificationPreferenceState,
+  eventType: string
+): boolean {
+  if (!preferences.smsEnabled || !preferences.smsPhoneNumber) return false
+  if (eventType === "message.mention") return preferences.mentionSmsEnabled
+  if (eventType === "announcement.message") {
+    return preferences.announcementSmsEnabled
+  }
+  return false
 }
 
 function normalizeName(value: string | null): string {
@@ -185,6 +242,43 @@ async function sendResendEmail(
   return {
     status: response.ok ? "sent" : "failed",
     providerMessageId,
+    error: response.ok ? null : responseText.slice(0, 500),
+  }
+}
+
+async function queueSmsDelivery(
+  env: unknown,
+  toPhoneNumber: string,
+  title: string,
+  body: string
+): Promise<{
+  readonly status: string
+  readonly providerMessageId: string | null
+  readonly error: string | null
+}> {
+  const webhookUrl = envString(env, "COMPASS_SMS_WEBHOOK_URL")
+  if (!webhookUrl) {
+    return {
+      status: "pending_provider",
+      providerMessageId: null,
+      error: "COMPASS_SMS_WEBHOOK_URL is not configured",
+    }
+  }
+
+  const response = await fetch(webhookUrl, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      to: toPhoneNumber,
+      title,
+      body,
+    }),
+  })
+
+  const responseText = await response.text()
+  return {
+    status: response.ok ? "sent" : "failed",
+    providerMessageId: null,
     error: response.ok ? null : responseText.slice(0, 500),
   }
 }
@@ -267,7 +361,11 @@ export async function createNotificationEvent(
       if (!notificationCategoryEnabled(preferences, input.eventType)) continue
 
       const recipientId = crypto.randomUUID()
-      const emailEnabled = preferences.emailEnabled
+      const emailEnabled = notificationEmailEnabled(
+        preferences,
+        input.eventType
+      )
+      const smsEnabled = notificationSmsEnabled(preferences, input.eventType)
       const inAppEnabled = preferences.inAppEnabled
 
       await db.insert(notificationRecipients).values({
@@ -276,6 +374,7 @@ export async function createNotificationEvent(
         userId: recipient.userId,
         inApp: inAppEnabled,
         email: emailEnabled,
+        sms: smsEnabled,
         push: preferences.pushEnabled,
         readAt: null,
         dismissedAt: null,
@@ -289,6 +388,7 @@ export async function createNotificationEvent(
           input.title,
           notificationEmailBody(input)
         )
+        const toAddress = recipient.googleEmail ?? recipient.email
         await db.insert(notificationDeliveries).values({
           id: crypto.randomUUID(),
           eventId,
@@ -296,8 +396,31 @@ export async function createNotificationEvent(
           userId: recipient.userId,
           channel: "email",
           status: delivery.status,
-          toAddress: recipient.email,
+          toAddress,
           provider: "resend",
+          providerMessageId: delivery.providerMessageId,
+          error: delivery.error,
+          attemptedAt: new Date().toISOString(),
+          createdAt: now,
+        })
+      }
+
+      if (smsEnabled && preferences.smsPhoneNumber) {
+        const delivery = await queueSmsDelivery(
+          env,
+          preferences.smsPhoneNumber,
+          input.title,
+          input.body
+        )
+        await db.insert(notificationDeliveries).values({
+          id: crypto.randomUUID(),
+          eventId,
+          recipientId,
+          userId: recipient.userId,
+          channel: "sms",
+          status: delivery.status,
+          toAddress: preferences.smsPhoneNumber,
+          provider: "sms_webhook",
           providerMessageId: delivery.providerMessageId,
           error: delivery.error,
           attemptedAt: new Date().toISOString(),

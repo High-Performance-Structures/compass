@@ -334,6 +334,10 @@ function canSubmitCherishPulse(user: AuthUser): boolean {
     user.isActive &&
     (user.role === "admin" ||
       user.role === "secondary_admin" ||
+      user.role === "executive" ||
+      user.role === "accounting" ||
+      user.role === "project_manager" ||
+      user.role === "coordinator" ||
       user.role === "office" ||
       user.role === "field")
   )

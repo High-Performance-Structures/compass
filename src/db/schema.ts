@@ -74,15 +74,32 @@ export const notificationPreferences = sqliteTable("notification_preferences", {
   userId: text("user_id")
     .primaryKey()
     .references(() => users.id, { onDelete: "cascade" }),
+  timezone: text("timezone").notNull().default("America/Denver"),
   inAppEnabled: integer("in_app_enabled", { mode: "boolean" })
     .notNull()
     .default(true),
   emailEnabled: integer("email_enabled", { mode: "boolean" })
     .notNull()
     .default(true),
+  smsEnabled: integer("sms_enabled", { mode: "boolean" })
+    .notNull()
+    .default(false),
+  smsPhoneNumber: text("sms_phone_number"),
   pushEnabled: integer("push_enabled", { mode: "boolean" })
     .notNull()
     .default(true),
+  mentionEmailEnabled: integer("mention_email_enabled", { mode: "boolean" })
+    .notNull()
+    .default(true),
+  mentionSmsEnabled: integer("mention_sms_enabled", { mode: "boolean" })
+    .notNull()
+    .default(false),
+  announcementEmailEnabled: integer("announcement_email_enabled", { mode: "boolean" })
+    .notNull()
+    .default(true),
+  announcementSmsEnabled: integer("announcement_sms_enabled", { mode: "boolean" })
+    .notNull()
+    .default(false),
   weeklyDigestEnabled: integer("weekly_digest_enabled", { mode: "boolean" })
     .notNull()
     .default(false),
@@ -133,6 +150,7 @@ export const notificationRecipients = sqliteTable("notification_recipients", {
     .references(() => users.id, { onDelete: "cascade" }),
   inApp: integer("in_app", { mode: "boolean" }).notNull().default(true),
   email: integer("email", { mode: "boolean" }).notNull().default(false),
+  sms: integer("sms", { mode: "boolean" }).notNull().default(false),
   push: integer("push", { mode: "boolean" }).notNull().default(false),
   readAt: text("read_at"),
   dismissedAt: text("dismissed_at"),

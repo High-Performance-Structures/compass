@@ -24,11 +24,14 @@ export const optionalString = z
 
 export const userRoles = [
   "admin",
+  "secondary_admin",
   "executive",
   "accounting",
   "project_manager",
   "coordinator",
   "office",
+  "field",
+  "client",
 ] as const
 
 export type UserRole = (typeof userRoles)[number]

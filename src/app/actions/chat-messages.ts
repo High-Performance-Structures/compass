@@ -11,11 +11,13 @@ import {
   channelMembers,
   channelReadState,
   messageMentions,
+  userPresence,
   type NewMessage,
   type NewMessageReaction,
   type NewMessageMention,
 } from "@/db/schema-conversations"
 import { users, organizationMembers } from "@/db/schema"
+import { createNotificationEvent } from "@/lib/notifications/events"
 import { getCurrentUser } from "@/lib/auth"
 import type { AuthUser } from "@/lib/auth"
 import { can, requirePermission } from "@/lib/permissions"
@@ -212,6 +214,96 @@ type MentionInput = {
   targetId: string | null
 }
 
+type ConversationNotificationRecipient = {
+  readonly userId: string
+  readonly email: string
+  readonly notifyLevel: string
+}
+
+async function getChannelNotificationMembers(
+  db: Db,
+  channelId: string,
+  senderId: string
+): Promise<readonly ConversationNotificationRecipient[]> {
+  return db
+    .select({
+      userId: users.id,
+      email: users.email,
+      notifyLevel: channelMembers.notifyLevel,
+    })
+    .from(channelMembers)
+    .innerJoin(users, eq(users.id, channelMembers.userId))
+    .where(
+      and(
+        eq(channelMembers.channelId, channelId),
+        eq(users.isActive, true)
+      )
+    )
+    .then((rows) =>
+      rows.filter(
+        (row) => row.userId !== senderId && row.notifyLevel !== "none"
+      )
+    )
+}
+
+async function resolveMentionNotificationRecipients(
+  db: Db,
+  channelId: string,
+  senderId: string,
+  mentions: readonly MentionInput[]
+): Promise<readonly { readonly userId: string; readonly email: string }[]> {
+  const members = await getChannelNotificationMembers(db, channelId, senderId)
+  const onlineRows = mentions.some((mention) => mention.mentionType === "here")
+    ? await db
+        .select({ userId: userPresence.userId })
+        .from(userPresence)
+        .where(eq(userPresence.status, "online"))
+    : []
+  const onlineUserIds = new Set(onlineRows.map((row) => row.userId))
+  const recipients = new Map<string, { readonly userId: string; readonly email: string }>()
+
+  for (const mention of mentions) {
+    if (mention.mentionType === "user" && mention.targetId) {
+      const member = members.find((row) => row.userId === mention.targetId)
+      if (member) {
+        recipients.set(member.userId, {
+          userId: member.userId,
+          email: member.email,
+        })
+      }
+      continue
+    }
+
+    if (mention.mentionType === "channel") {
+      for (const member of members) {
+        recipients.set(member.userId, {
+          userId: member.userId,
+          email: member.email,
+        })
+      }
+      continue
+    }
+
+    if (mention.mentionType === "here") {
+      for (const member of members) {
+        if (!onlineUserIds.has(member.userId)) continue
+        recipients.set(member.userId, {
+          userId: member.userId,
+          email: member.email,
+        })
+      }
+    }
+  }
+
+  return Array.from(recipients.values())
+}
+
+function messagePreview(content: string): string {
+  const normalized = content.replace(/\s+/g, " ").trim()
+  if (normalized.length <= 180) return normalized
+  return `${normalized.slice(0, 177)}...`
+}
+
 export async function sendMessage(data: {
   channelId: string
   content: string
@@ -237,6 +329,23 @@ export async function sendMessage(data: {
 
     const membership = await ensureChannelMembership(db, user, data.channelId)
     if (!membership.success) return membership
+
+    const channel = await db
+      .select({
+        id: channels.id,
+        name: channels.name,
+        type: channels.type,
+        organizationId: channels.organizationId,
+        projectId: channels.projectId,
+      })
+      .from(channels)
+      .where(eq(channels.id, data.channelId))
+      .limit(1)
+      .then((rows) => rows[0] ?? null)
+
+    if (!channel) {
+      return { success: false, error: "Channel not found" }
+    }
 
     const now = new Date().toISOString()
     const messageId = crypto.randomUUID()
@@ -292,6 +401,57 @@ export async function sendMessage(data: {
             )
           )
           .catch(console.error)
+      }
+
+      try {
+        const recipients = await resolveMentionNotificationRecipients(
+          db,
+          data.channelId,
+          user.id,
+          data.mentions
+        )
+        await createNotificationEvent({
+          organizationId: channel.organizationId,
+          projectId: channel.projectId,
+          eventType: "message.mention",
+          sourceType: "message",
+          sourceId: messageId,
+          title: `${user.displayName ?? user.email} mentioned you`,
+          body: messagePreview(data.content),
+          href: `/dashboard/conversations/${data.channelId}`,
+          priority: "normal",
+          audience: "mention",
+          createdBy: user.id,
+          recipients,
+        })
+      } catch (notificationError) {
+        console.error("[chat-messages] mention notification error", notificationError)
+      }
+    }
+
+    if (channel.type === "announcement" && !data.threadId) {
+      try {
+        const recipients = await getChannelNotificationMembers(
+          db,
+          data.channelId,
+          user.id
+        )
+        await createNotificationEvent({
+          organizationId: channel.organizationId,
+          projectId: channel.projectId,
+          eventType: "announcement.message",
+          sourceType: "message",
+          sourceId: messageId,
+          title: `Announcement in #${channel.name}`,
+          body: messagePreview(data.content),
+          href: `/dashboard/conversations/${data.channelId}`,
+          priority: "high",
+          audience: "announcement",
+          createdBy: user.id,
+          recipients,
+        })
+      } catch (notificationError) {
+        console.error("[chat-messages] announcement notification error", notificationError)
       }
     }
 

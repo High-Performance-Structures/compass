@@ -124,7 +124,10 @@ export function PeopleTable({
       header: "Role",
       cell: ({ row }) => {
         const role = row.getValue("role") as string
-        const roleLabel = role.charAt(0).toUpperCase() + role.slice(1)
+        const roleLabel = role
+          .split("_")
+          .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+          .join(" ")
         return (
           <Badge
             variant={

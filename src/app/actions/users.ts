@@ -108,6 +108,9 @@ export async function updateUserRole(
   try {
     const currentUser = await getCurrentUser()
     requirePermission(currentUser, "user", "update")
+    if (!currentUser?.organizationId) {
+      return { success: false, error: "No active organization selected" }
+    }
 
     const { env } = await getCloudflareContext()
     if (!env?.DB) {
@@ -123,6 +126,18 @@ export async function updateUserRole(
       .where(eq(users.id, parseResult.data.userId))
       .run()
 
+    await db
+      .update(organizationMembers)
+      .set({ role: parseResult.data.role })
+      .where(
+        and(
+          eq(organizationMembers.userId, parseResult.data.userId),
+          eq(organizationMembers.organizationId, currentUser.organizationId)
+        )
+      )
+      .run()
+
+    revalidatePath("/dashboard/settings")
     revalidatePath("/dashboard/people")
     return { success: true }
   } catch (error) {

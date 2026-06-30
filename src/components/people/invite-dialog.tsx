@@ -129,6 +129,11 @@ export function InviteDialog({
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="admin">Admin</SelectItem>
+                <SelectItem value="secondary_admin">Secondary Admin</SelectItem>
+                <SelectItem value="executive">Executive</SelectItem>
+                <SelectItem value="project_manager">Project Manager</SelectItem>
+                <SelectItem value="coordinator">Coordinator</SelectItem>
+                <SelectItem value="accounting">Accounting</SelectItem>
                 <SelectItem value="office">Office</SelectItem>
                 <SelectItem value="field">Field</SelectItem>
                 <SelectItem value="client">Client</SelectItem>
@@ -137,6 +142,16 @@ export function InviteDialog({
             <p className="text-xs text-muted-foreground">
               {role === "admin" &&
                 "Full access to all features and settings"}
+              {role === "secondary_admin" &&
+                "Admin access for trusted secondary administrators"}
+              {role === "executive" &&
+                "Broad leadership access across projects and reporting"}
+              {role === "project_manager" &&
+                "Can coordinate project operations, schedules, and communication"}
+              {role === "coordinator" &&
+                "Can support project workflow, schedules, and documents"}
+              {role === "accounting" &&
+                "Can support financial workflows and project administration"}
               {role === "office" &&
                 "Can manage projects, schedules, and documents"}
               {role === "field" &&

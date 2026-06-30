@@ -156,6 +156,11 @@ export function UserDrawer({
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="admin">Admin</SelectItem>
+                  <SelectItem value="secondary_admin">Secondary Admin</SelectItem>
+                  <SelectItem value="executive">Executive</SelectItem>
+                  <SelectItem value="project_manager">Project Manager</SelectItem>
+                  <SelectItem value="coordinator">Coordinator</SelectItem>
+                  <SelectItem value="accounting">Accounting</SelectItem>
                   <SelectItem value="office">Office</SelectItem>
                   <SelectItem value="field">Field</SelectItem>
                   <SelectItem value="client">Client</SelectItem>

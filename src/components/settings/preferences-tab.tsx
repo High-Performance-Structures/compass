@@ -8,6 +8,7 @@ import {
   type NotificationPreferenceState,
 } from "@/app/actions/notifications"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Separator } from "@/components/ui/separator"
 import { Switch } from "@/components/ui/switch"
@@ -24,9 +25,16 @@ import { useBiometricAuth } from "@/hooks/use-biometric-auth"
 export function PreferencesTab() {
   const [preferences, setPreferences] =
     React.useState<NotificationPreferenceState>({
+      timezone: "America/Denver",
       inAppEnabled: true,
       emailEnabled: true,
+      smsEnabled: false,
+      smsPhoneNumber: null,
       pushEnabled: true,
+      mentionEmailEnabled: true,
+      mentionSmsEnabled: false,
+      announcementEmailEnabled: true,
+      announcementSmsEnabled: false,
       weeklyDigestEnabled: false,
       rfiEnabled: true,
       ownerUpdateEnabled: true,
@@ -35,7 +43,6 @@ export function PreferencesTab() {
     })
   const [saving, setSaving] = React.useState(false)
   const [message, setMessage] = React.useState<string | null>(null)
-  const [timezone, setTimezone] = React.useState("America/New_York")
   const native = useNative()
   const biometric = useBiometricAuth()
 
@@ -81,7 +88,12 @@ export function PreferencesTab() {
             <Label htmlFor="timezone" className="text-xs">
               Timezone
             </Label>
-            <Select value={timezone} onValueChange={setTimezone}>
+            <Select
+              value={preferences.timezone}
+              onValueChange={(value) =>
+                updatePreference("timezone", value)
+              }
+            >
               <SelectTrigger id="timezone" className="h-9 w-full max-w-xs">
                 <SelectValue />
               </SelectTrigger>
@@ -179,6 +191,102 @@ export function PreferencesTab() {
               }
               className="shrink-0"
             />
+          </div>
+
+          <div className="space-y-3 border-y py-3">
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <Label className="text-xs">Text notifications</Label>
+                <p className="text-muted-foreground text-xs">
+                  Texts are best for direct mentions and announcements.
+                </p>
+              </div>
+              <Switch
+                checked={preferences.smsEnabled}
+                onCheckedChange={(checked) =>
+                  updatePreference("smsEnabled", checked)
+                }
+                className="shrink-0"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="smsPhoneNumber" className="text-xs">
+                Text phone number
+              </Label>
+              <Input
+                id="smsPhoneNumber"
+                value={preferences.smsPhoneNumber ?? ""}
+                onChange={(event) =>
+                  updatePreference(
+                    "smsPhoneNumber",
+                    event.currentTarget.value.trim().length > 0
+                      ? event.currentTarget.value
+                      : null
+                  )
+                }
+                placeholder="(719) 555-0123"
+                disabled={!preferences.smsEnabled}
+                className="h-9 max-w-xs"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 gap-3 border-y py-3 sm:grid-cols-2">
+            <div className="space-y-3">
+              <div>
+                <Label className="text-xs">When I am mentioned</Label>
+                <p className="text-muted-foreground text-xs">
+                  Applies to @mentions, @channel, and @here.
+                </p>
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-xs text-muted-foreground">Email</span>
+                <Switch
+                  checked={preferences.mentionEmailEnabled}
+                  onCheckedChange={(checked) =>
+                    updatePreference("mentionEmailEnabled", checked)
+                  }
+                />
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-xs text-muted-foreground">Text</span>
+                <Switch
+                  checked={preferences.mentionSmsEnabled}
+                  disabled={!preferences.smsEnabled}
+                  onCheckedChange={(checked) =>
+                    updatePreference("mentionSmsEnabled", checked)
+                  }
+                />
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <div>
+                <Label className="text-xs">Announcements</Label>
+                <p className="text-muted-foreground text-xs">
+                  Staff, owner, client, or sub/vendor announcements.
+                </p>
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-xs text-muted-foreground">Email</span>
+                <Switch
+                  checked={preferences.announcementEmailEnabled}
+                  onCheckedChange={(checked) =>
+                    updatePreference("announcementEmailEnabled", checked)
+                  }
+                />
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-xs text-muted-foreground">Text</span>
+                <Switch
+                  checked={preferences.announcementSmsEnabled}
+                  disabled={!preferences.smsEnabled}
+                  onCheckedChange={(checked) =>
+                    updatePreference("announcementSmsEnabled", checked)
+                  }
+                />
+              </div>
+            </div>
           </div>
 
           <div className="grid grid-cols-1 gap-3 rounded-md border p-3 sm:grid-cols-2">

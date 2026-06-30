@@ -39,6 +39,10 @@ function isStaffRole(role: string): boolean {
   return (
     role === "admin" ||
     role === "secondary_admin" ||
+    role === "executive" ||
+    role === "accounting" ||
+    role === "project_manager" ||
+    role === "coordinator" ||
     role === "office" ||
     role === "field"
   )
