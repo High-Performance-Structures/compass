@@ -5,6 +5,7 @@ import { eq, and, desc, lt, sql, like, or } from "drizzle-orm"
 import { marked } from "marked"
 import { getDb } from "@/db"
 import {
+  channels,
   messages,
   messageReactions,
   channelMembers,
@@ -16,6 +17,7 @@ import {
 } from "@/db/schema-conversations"
 import { users, organizationMembers } from "@/db/schema"
 import { getCurrentUser } from "@/lib/auth"
+import type { AuthUser } from "@/lib/auth"
 import { requirePermission } from "@/lib/permissions"
 import { isDemoUser } from "@/lib/demo"
 import { requireOrg } from "@/lib/org-scope"
@@ -23,6 +25,67 @@ import { revalidatePath } from "next/cache"
 
 const MAX_MESSAGE_LENGTH = 4000
 const EMOJI_REGEX = /^[\p{Emoji}\u200d]+$/u
+
+type Db = ReturnType<typeof getDb>
+
+async function ensureChannelMembership(
+  db: Db,
+  user: AuthUser,
+  channelId: string
+): Promise<{ readonly success: true } | { readonly success: false; readonly error: string }> {
+  const membership = await db
+    .select()
+    .from(channelMembers)
+    .where(
+      and(
+        eq(channelMembers.channelId, channelId),
+        eq(channelMembers.userId, user.id)
+      )
+    )
+    .limit(1)
+    .then((rows) => rows[0] ?? null)
+
+  if (membership) return { success: true }
+
+  const channel = await db
+    .select({
+      id: channels.id,
+      organizationId: channels.organizationId,
+      isPrivate: channels.isPrivate,
+    })
+    .from(channels)
+    .where(eq(channels.id, channelId))
+    .limit(1)
+    .then((rows) => rows[0] ?? null)
+
+  if (!channel) return { success: false, error: "Channel not found" }
+  if (channel.organizationId !== requireOrg(user)) {
+    return { success: false, error: "Channel not found" }
+  }
+  if (channel.isPrivate) {
+    return { success: false, error: "Not a member of this channel" }
+  }
+
+  const now = new Date().toISOString()
+  await db.insert(channelMembers).values({
+    id: crypto.randomUUID(),
+    channelId,
+    userId: user.id,
+    role: "member",
+    notifyLevel: "all",
+    joinedAt: now,
+  })
+  await db.insert(channelReadState).values({
+    id: crypto.randomUUID(),
+    userId: user.id,
+    channelId,
+    lastReadMessageId: null,
+    lastReadAt: now,
+    unreadCount: 0,
+  })
+
+  return { success: true }
+}
 
 // Configure marked for safe rendering
 marked.setOptions({
@@ -172,22 +235,8 @@ export async function sendMessage(data: {
     const { env } = await getCloudflareContext()
     const db = getDb(env.DB)
 
-    // verify user is a member of the channel
-    const membership = await db
-      .select()
-      .from(channelMembers)
-      .where(
-        and(
-          eq(channelMembers.channelId, data.channelId),
-          eq(channelMembers.userId, user.id)
-        )
-      )
-      .limit(1)
-      .then((rows) => rows[0] ?? null)
-
-    if (!membership) {
-      return { success: false, error: "Not a member of this channel" }
-    }
+    const membership = await ensureChannelMembership(db, user, data.channelId)
+    if (!membership.success) return membership
 
     const now = new Date().toISOString()
     const messageId = crypto.randomUUID()
@@ -462,22 +511,8 @@ export async function getMessages(
     const { env } = await getCloudflareContext()
     const db = getDb(env.DB)
 
-    // verify user is a member
-    const membership = await db
-      .select()
-      .from(channelMembers)
-      .where(
-        and(
-          eq(channelMembers.channelId, channelId),
-          eq(channelMembers.userId, user.id)
-        )
-      )
-      .limit(1)
-      .then((rows) => rows[0] ?? null)
-
-    if (!membership) {
-      return { success: false, error: "Not a member of this channel" }
-    }
+    const membership = await ensureChannelMembership(db, user, channelId)
+    if (!membership.success) return membership
 
     const limit = options?.limit ?? 50
     const cursor = options?.cursor
@@ -557,22 +592,12 @@ export async function getThreadMessages(
       return { success: false, error: "Parent message not found" }
     }
 
-    // verify user is a member
-    const membership = await db
-      .select()
-      .from(channelMembers)
-      .where(
-        and(
-          eq(channelMembers.channelId, parentMessage.channelId),
-          eq(channelMembers.userId, user.id)
-        )
-      )
-      .limit(1)
-      .then((rows) => rows[0] ?? null)
-
-    if (!membership) {
-      return { success: false, error: "Not a member of this channel" }
-    }
+    const membership = await ensureChannelMembership(
+      db,
+      user,
+      parentMessage.channelId
+    )
+    if (!membership.success) return membership
 
     const limit = options?.limit ?? 50
     const cursor = options?.cursor
@@ -656,22 +681,8 @@ export async function addReaction(messageId: string, emoji: string) {
       return { success: false, error: "Message not found" }
     }
 
-    // verify user is a member of the channel
-    const membership = await db
-      .select()
-      .from(channelMembers)
-      .where(
-        and(
-          eq(channelMembers.channelId, message.channelId),
-          eq(channelMembers.userId, user.id)
-        )
-      )
-      .limit(1)
-      .then((rows) => rows[0] ?? null)
-
-    if (!membership) {
-      return { success: false, error: "Not a member of this channel" }
-    }
+    const membership = await ensureChannelMembership(db, user, message.channelId)
+    if (!membership.success) return membership
 
     // check if reaction already exists
     const existing = await db
@@ -743,22 +754,8 @@ export async function removeReaction(messageId: string, emoji: string) {
       return { success: false, error: "Message not found" }
     }
 
-    // verify user is a member of the channel
-    const membership = await db
-      .select()
-      .from(channelMembers)
-      .where(
-        and(
-          eq(channelMembers.channelId, message.channelId),
-          eq(channelMembers.userId, user.id)
-        )
-      )
-      .limit(1)
-      .then((rows) => rows[0] ?? null)
-
-    if (!membership) {
-      return { success: false, error: "Not a member of this channel" }
-    }
+    const membership = await ensureChannelMembership(db, user, message.channelId)
+    if (!membership.success) return membership
 
     await db
       .delete(messageReactions)

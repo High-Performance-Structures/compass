@@ -1,6 +1,6 @@
 "use server"
 
-import { and, eq } from "drizzle-orm"
+import { and, eq, sql } from "drizzle-orm"
 
 import { sendMessage } from "@/app/actions/chat-messages"
 import { createNotificationEvent } from "@/lib/notifications/events"
@@ -11,10 +11,17 @@ import {
   projects,
   users,
 } from "@/db/schema"
-import { channels } from "@/db/schema-conversations"
+import {
+  channelMembers,
+  channelReadState,
+  channels,
+  type NewChannel,
+} from "@/db/schema-conversations"
 import { requireAuth } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
 import { requireOrg } from "@/lib/org-scope"
+import { requirePermission } from "@/lib/permissions"
+import { assertProjectAccess } from "@/lib/project-access"
 
 export type ProjectMessageRecipient =
   | { readonly kind: "channel" }
@@ -50,6 +57,16 @@ type UserRecipient = {
   readonly email: string
 }
 
+export type ProjectConversationChannelResult =
+  | {
+      readonly success: true
+      readonly data: {
+        readonly channelId: string
+        readonly created: boolean
+      }
+    }
+  | { readonly success: false; readonly error: string }
+
 function normalizeEmail(value: string | null): string | null {
   const email = value?.trim().toLowerCase()
   return email && email.length > 0 ? email : null
@@ -75,6 +92,63 @@ function contactLabel(contact: ContactRecipient): string {
     return `${contact.displayName} at ${contact.companyName}`
   }
   return contact.displayName
+}
+
+function channelSlug(value: string): string {
+  const slug = value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 48)
+
+  return slug.length > 0 ? slug : "project"
+}
+
+function projectChannelName(project: {
+  readonly projectNumber: string | null
+  readonly name: string
+}): string {
+  const source = project.projectNumber ?? project.name
+  return `${channelSlug(source)}-team`
+}
+
+async function ensureProjectChannelMembership(
+  db: ReturnType<typeof getDb>,
+  channelId: string,
+  userId: string
+): Promise<void> {
+  const existing = await db
+    .select({ id: channelMembers.id })
+    .from(channelMembers)
+    .where(
+      and(
+        eq(channelMembers.channelId, channelId),
+        eq(channelMembers.userId, userId)
+      )
+    )
+    .limit(1)
+    .then((rows) => rows[0] ?? null)
+
+  if (existing) return
+
+  const now = new Date().toISOString()
+  await db.insert(channelMembers).values({
+    id: crypto.randomUUID(),
+    channelId,
+    userId,
+    role: "member",
+    notifyLevel: "all",
+    joinedAt: now,
+  })
+  await db.insert(channelReadState).values({
+    id: crypto.randomUUID(),
+    userId,
+    channelId,
+    lastReadMessageId: null,
+    lastReadAt: now,
+    unreadCount: 0,
+  })
 }
 
 function selectContacts(
@@ -211,12 +285,12 @@ export async function sendProjectMessage(input: {
       )
 
     const contacts = rawContacts.map((contact) => ({
-        id: contact.id,
-        contactType: contact.contactType,
-        displayName: contact.displayName,
-        companyName: contact.companyName,
-        email: contact.email,
-      }))
+      id: contact.id,
+      contactType: contact.contactType,
+      displayName: contact.displayName,
+      companyName: contact.companyName,
+      email: contact.email,
+    }))
     const selectedContacts = selectContacts(contacts, input.recipient)
     const matchedUsers = await matchUsersByContactEmail(
       organizationId,
@@ -278,6 +352,95 @@ export async function sendProjectMessage(input: {
         error instanceof Error
           ? error.message
           : "Failed to send project message",
+    }
+  }
+}
+
+export async function openProjectConversationChannel(
+  projectId: string
+): Promise<ProjectConversationChannelResult> {
+  try {
+    const user = await requireAuth()
+    requirePermission(user, "channels", "read")
+    const organizationId = requireOrg(user)
+    const { env } = await getCloudflareContext()
+    const db = getDb(env.DB)
+
+    await assertProjectAccess(db, user, projectId)
+
+    const project = await db
+      .select({
+        id: projects.id,
+        name: projects.name,
+        projectNumber: projects.projectNumber,
+        organizationId: projects.organizationId,
+      })
+      .from(projects)
+      .where(eq(projects.id, projectId))
+      .limit(1)
+      .then((rows) => rows[0] ?? null)
+
+    if (!project || project.organizationId !== organizationId) {
+      return { success: false, error: "Project not found" }
+    }
+
+    const existing = await db
+      .select({ id: channels.id })
+      .from(channels)
+      .where(
+        and(
+          eq(channels.organizationId, organizationId),
+          eq(channels.projectId, projectId),
+          eq(channels.type, "text"),
+          sql`${channels.archivedAt} IS NULL`
+        )
+      )
+      .orderBy(channels.createdAt)
+      .limit(1)
+      .then((rows) => rows[0] ?? null)
+
+    if (existing) {
+      await ensureProjectChannelMembership(db, existing.id, user.id)
+      return {
+        success: true,
+        data: { channelId: existing.id, created: false },
+      }
+    }
+
+    requirePermission(user, "channels", "create")
+
+    const now = new Date().toISOString()
+    const channelId = crypto.randomUUID()
+    const newChannel: NewChannel = {
+      id: channelId,
+      name: projectChannelName(project),
+      type: "text",
+      description: "Project staff conversation",
+      organizationId,
+      projectId,
+      categoryId: null,
+      isPrivate: false,
+      createdBy: user.id,
+      sortOrder: 0,
+      archivedAt: null,
+      createdAt: now,
+      updatedAt: now,
+    }
+
+    await db.insert(channels).values(newChannel)
+    await ensureProjectChannelMembership(db, channelId, user.id)
+
+    return {
+      success: true,
+      data: { channelId, created: true },
+    }
+  } catch (error) {
+    return {
+      success: false,
+      error:
+        error instanceof Error
+          ? error.message
+          : "Failed to open project conversation",
     }
   }
 }
