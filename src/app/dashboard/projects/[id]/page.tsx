@@ -42,7 +42,12 @@ import {
   getProjectRfiSummary,
   type ProjectRfiSummary,
 } from "@/app/actions/project-rfis"
+import {
+  getProjectRoleAssignmentSummary,
+  type ProjectRoleAssignmentSummary,
+} from "@/app/actions/project-role-assignments"
 import { ProjectActionsMenu } from "@/components/projects/project-actions-menu"
+import { ProjectRoleAssignmentsPanel } from "@/components/projects/project-role-assignments-panel"
 import { ProjectWorkspaceShell } from "@/components/projects/project-workspace-shell"
 import {
   allowedWorkflowRoleIds,
@@ -129,6 +134,7 @@ export default async function ProjectSummaryPage({
   let operationsSummary: ProjectOperationsSummary | null = null
   let sageSyncQueue: ProjectSageSyncQueue | null = null
   let rfiSummary: ProjectRfiSummary | null = null
+  let roleAssignmentsSummary: ProjectRoleAssignmentSummary | null = null
   let canEditRegistry = false
   let userRole: string | null = null
   let projectRole: string | null = null
@@ -259,6 +265,7 @@ export default async function ProjectSummaryPage({
     contactsSummary = await getProjectContactsSummary(id, "internal")
     operationsSummary = await getProjectOperationsSummary(id)
     rfiSummary = await getProjectRfiSummary(id)
+    roleAssignmentsSummary = await getProjectRoleAssignmentSummary(id)
   } catch (error) {
     if (hasDigest(error) && error.digest === "NEXT_NOT_FOUND") throw error
     console.warn("D1 unavailable in dev mode, using empty data")
@@ -401,6 +408,13 @@ export default async function ProjectSummaryPage({
             </p>
           </Link>
         </section>
+
+        {roleAssignmentsSummary && (
+          <ProjectRoleAssignmentsPanel
+            projectId={id}
+            summary={roleAssignmentsSummary}
+          />
+        )}
 
         <div className="mb-4 sm:mb-6">
           <ProjectWorkspaceShell

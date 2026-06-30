@@ -698,6 +698,25 @@ export const projectMembers = sqliteTable("project_members", {
   assignedAt: text("assigned_at").notNull(),
 })
 
+export const projectRoleAssignments = sqliteTable("project_role_assignments", {
+  id: text("id").primaryKey(),
+  projectId: text("project_id")
+    .notNull()
+    .references(() => projects.id, { onDelete: "cascade" }),
+  userId: text("user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  roleId: text("role_id").notNull(),
+  assignmentScope: text("assignment_scope").notNull().default("all"),
+  notes: text("notes"),
+  isActive: integer("is_active", { mode: "boolean" }).notNull().default(true),
+  assignedBy: text("assigned_by").references(() => users.id, {
+    onDelete: "set null",
+  }),
+  assignedAt: text("assigned_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+})
+
 export const scheduleTasks = sqliteTable("schedule_tasks", {
   id: text("id").primaryKey(),
   projectId: text("project_id")
@@ -929,6 +948,8 @@ export type GroupMember = typeof groupMembers.$inferSelect
 export type NewGroupMember = typeof groupMembers.$inferInsert
 export type ProjectMember = typeof projectMembers.$inferSelect
 export type NewProjectMember = typeof projectMembers.$inferInsert
+export type ProjectRoleAssignment = typeof projectRoleAssignments.$inferSelect
+export type NewProjectRoleAssignment = typeof projectRoleAssignments.$inferInsert
 
 // Agent memory tables for ElizaOS
 export const agentConversations = sqliteTable("agent_conversations", {
