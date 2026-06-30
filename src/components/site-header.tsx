@@ -108,6 +108,7 @@ export function SiteHeader({
             <IconSun className="size-4 hidden dark:block" />
             <IconMoon className="size-4 block dark:hidden" />
           </button>
+          <NotificationsPopover />
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button

@@ -50,9 +50,9 @@ export default async function ChannelPage({
     })) ?? []
 
   return (
-    <div className="flex h-full w-full min-w-0 overflow-hidden">
+    <div className="flex h-full w-full min-w-0 overflow-hidden pb-[calc(4rem+env(safe-area-inset-bottom))] md:pb-0">
       <div
-        className="grid min-w-0 flex-1 overflow-hidden"
+        className="grid min-h-0 min-w-0 flex-1 overflow-hidden"
         style={{ gridTemplateRows: "auto 1fr auto" }}
       >
         <ChannelHeader
