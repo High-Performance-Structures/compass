@@ -1,5 +1,5 @@
 import Link from "next/link"
-import { FolderOpen, Hash, MessageSquare } from "lucide-react"
+import { Archive, FolderOpen, Hash, MessageSquare } from "lucide-react"
 import { listChannels } from "@/app/actions/conversations"
 import { getProjects } from "@/app/actions/projects"
 import { CreateChannelButton } from "@/components/conversations/create-channel-button"
@@ -8,12 +8,17 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 
 export default async function ConversationsPage() {
-  const [result, projects] = await Promise.all([listChannels(), getProjects()])
+  const [result, projects] = await Promise.all([
+    listChannels({ includeArchived: true }),
+    getProjects(),
+  ])
   const channels = result.success && result.data ? result.data : []
-  const companyChannels = channels.filter(
+  const activeChannels = channels.filter((channel) => !channel.archivedAt)
+  const archivedChannels = channels.filter((channel) => channel.archivedAt)
+  const companyChannels = activeChannels.filter(
     (channel) => !channel.projectId && channel.type === "text"
   )
-  const projectChannels = channels.filter(
+  const projectChannels = activeChannels.filter(
     (channel) => channel.projectId && channel.type === "text"
   )
 
@@ -110,6 +115,32 @@ export default async function ConversationsPage() {
                         {channel.unreadCount}
                       </span>
                     ) : null}
+                  </Link>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {archivedChannels.length > 0 && (
+            <div className="space-y-2 border-t pt-4">
+              <div className="flex items-center justify-between gap-3">
+                <span className="flex items-center gap-2">
+                  <Archive className="size-4 text-muted-foreground" />
+                  <span className="text-xs font-medium uppercase text-muted-foreground">
+                    Archived
+                  </span>
+                </span>
+                <Badge variant="outline">{archivedChannels.length}</Badge>
+              </div>
+              <div className="max-h-56 divide-y overflow-y-auto border-y pr-1">
+                {archivedChannels.map((channel) => (
+                  <Link
+                    key={channel.id}
+                    href={`/dashboard/conversations/${channel.id}`}
+                    className="flex items-center justify-between gap-3 py-2.5 text-sm text-muted-foreground transition-colors hover:text-primary"
+                  >
+                    <span className="min-w-0 truncate">#{channel.name}</span>
+                    <span className="shrink-0 text-[11px]">Restore</span>
                   </Link>
                 ))}
               </div>

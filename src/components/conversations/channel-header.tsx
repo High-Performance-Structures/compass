@@ -11,8 +11,10 @@ import {
   IconUsers,
 } from "@tabler/icons-react"
 import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
 import { PinnedMessagesPanel } from "@/components/conversations/pinned-messages-panel"
 import { SearchDialog } from "@/components/conversations/search-dialog"
+import { ChannelManagementMenu } from "@/components/conversations/channel-management-menu"
 
 type ChannelHeaderProps = {
   readonly channelId: string
@@ -25,6 +27,9 @@ type ChannelHeaderProps = {
     readonly clientName: string | null
   } | null
   readonly memberCount: number
+  readonly archivedAt: string | null
+  readonly canUpdate: boolean
+  readonly canDelete: boolean
 }
 
 function projectLabel(project: NonNullable<ChannelHeaderProps["project"]>): string {
@@ -39,6 +44,9 @@ export function ChannelHeader({
   description,
   project = null,
   memberCount,
+  archivedAt,
+  canUpdate,
+  canDelete,
 }: ChannelHeaderProps) {
   const router = useRouter()
   const [searchOpen, setSearchOpen] = React.useState(false)
@@ -56,6 +64,11 @@ export function ChannelHeader({
           <div className="min-w-0 flex-1">
             <h1 className="truncate text-base font-semibold">{name}</h1>
             <div className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
+              {archivedAt ? (
+                <Badge variant="outline" className="h-5 shrink-0 px-1.5 text-[10px]">
+                  Archived
+                </Badge>
+              ) : null}
               {project ? (
                 <>
                   <IconFolder className="size-3.5 shrink-0" />
@@ -101,6 +114,13 @@ export function ChannelHeader({
           >
             <IconPin className="h-4 w-4" />
           </Button>
+          <ChannelManagementMenu
+            channelId={channelId}
+            channelName={name}
+            archivedAt={archivedAt}
+            canUpdate={canUpdate}
+            canDelete={canDelete}
+          />
         </div>
       </header>
       <SearchDialog

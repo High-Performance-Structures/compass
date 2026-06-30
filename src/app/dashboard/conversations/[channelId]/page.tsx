@@ -61,18 +61,28 @@ export default async function ChannelPage({
           description={channel.description ?? undefined}
           project={project}
           memberCount={channel.memberCount}
+          archivedAt={channel.archivedAt}
+          canUpdate={channel.canUpdate}
+          canDelete={channel.canDelete}
         />
         <MessageList
           channelId={channelId}
           initialMessages={messages}
         />
-        <MessageComposer
-          channelId={channelId}
-          channelName={channel.name}
-          organizationId={channel.organizationId}
-          isProjectChannel={Boolean(channel.projectId)}
-          projectRecipients={projectRecipients}
-        />
+        {channel.archivedAt ? (
+          <div className="border-t bg-muted/30 px-4 py-3 text-sm text-muted-foreground">
+            This conversation is archived. Restore it from the channel menu to
+            send new messages.
+          </div>
+        ) : (
+          <MessageComposer
+            channelId={channelId}
+            channelName={channel.name}
+            organizationId={channel.organizationId}
+            isProjectChannel={Boolean(channel.projectId)}
+            projectRecipients={projectRecipients}
+          />
+        )}
       </div>
       <ThreadPanel />
     </div>

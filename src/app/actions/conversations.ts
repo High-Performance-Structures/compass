@@ -1,24 +1,30 @@
 "use server"
 
 import { getCloudflareContext } from "@/lib/db"
-import { eq, and, sql } from "drizzle-orm"
+import { eq, and, sql, inArray } from "drizzle-orm"
 import { getDb } from "@/db"
 import {
   channels,
   channelMembers,
   channelReadState,
+  messageAttachments,
+  messageMentions,
+  messageReactions,
+  messages,
+  typingSessions,
   type NewChannel,
   type NewChannelMember,
   type NewChannelReadState,
 } from "@/db/schema-conversations"
-import { users, organizationMembers } from "@/db/schema"
 import { getCurrentUser } from "@/lib/auth"
-import { requirePermission } from "@/lib/permissions"
+import { can, requirePermission } from "@/lib/permissions"
 import { revalidatePath } from "next/cache"
 import { requireOrg } from "@/lib/org-scope"
 import { isDemoUser } from "@/lib/demo"
 
-export async function listChannels() {
+export async function listChannels(options?: {
+  readonly includeArchived?: boolean
+}) {
   try {
     const user = await getCurrentUser()
     if (!user) {
@@ -71,7 +77,7 @@ export async function listChannels() {
           // if private, must be a member
           sql`(${channels.isPrivate} = 0 OR ${channelMembers.userId} IS NOT NULL)`,
           // not archived
-          sql`${channels.archivedAt} IS NULL`
+          options?.includeArchived ? undefined : sql`${channels.archivedAt} IS NULL`
         )
       )
       .orderBy(channels.sortOrder, channels.createdAt)
@@ -143,12 +149,177 @@ export async function getChannel(channelId: string) {
       data: {
         ...channel,
         memberCount,
+        canUpdate: can(user, "channels", "update"),
+        canDelete: can(user, "channels", "delete"),
       },
     }
   } catch (err) {
     return {
       success: false,
       error: err instanceof Error ? err.message : "Failed to get channel",
+    }
+  }
+}
+
+export async function archiveChannel(channelId: string) {
+  try {
+    const user = await getCurrentUser()
+    if (!user) {
+      return { success: false, error: "Unauthorized" }
+    }
+
+    if (isDemoUser(user.id)) {
+      return { success: false, error: "DEMO_READ_ONLY" }
+    }
+
+    requirePermission(user, "channels", "update")
+    const orgId = requireOrg(user)
+
+    const { env } = await getCloudflareContext()
+    const db = getDb(env.DB)
+
+    const channel = await db
+      .select({
+        id: channels.id,
+        organizationId: channels.organizationId,
+      })
+      .from(channels)
+      .where(eq(channels.id, channelId))
+      .limit(1)
+      .then((rows) => rows[0] ?? null)
+
+    if (!channel || channel.organizationId !== orgId) {
+      return { success: false, error: "Channel not found" }
+    }
+
+    const now = new Date().toISOString()
+    await db
+      .update(channels)
+      .set({ archivedAt: now, updatedAt: now })
+      .where(eq(channels.id, channelId))
+
+    revalidatePath("/dashboard/conversations")
+    revalidatePath(`/dashboard/conversations/${channelId}`)
+    return { success: true }
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Failed to archive channel",
+    }
+  }
+}
+
+export async function restoreChannel(channelId: string) {
+  try {
+    const user = await getCurrentUser()
+    if (!user) {
+      return { success: false, error: "Unauthorized" }
+    }
+
+    if (isDemoUser(user.id)) {
+      return { success: false, error: "DEMO_READ_ONLY" }
+    }
+
+    requirePermission(user, "channels", "update")
+    const orgId = requireOrg(user)
+
+    const { env } = await getCloudflareContext()
+    const db = getDb(env.DB)
+
+    const channel = await db
+      .select({
+        id: channels.id,
+        organizationId: channels.organizationId,
+      })
+      .from(channels)
+      .where(eq(channels.id, channelId))
+      .limit(1)
+      .then((rows) => rows[0] ?? null)
+
+    if (!channel || channel.organizationId !== orgId) {
+      return { success: false, error: "Channel not found" }
+    }
+
+    const now = new Date().toISOString()
+    await db
+      .update(channels)
+      .set({ archivedAt: null, updatedAt: now })
+      .where(eq(channels.id, channelId))
+
+    revalidatePath("/dashboard/conversations")
+    revalidatePath(`/dashboard/conversations/${channelId}`)
+    return { success: true }
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Failed to restore channel",
+    }
+  }
+}
+
+export async function deleteChannel(channelId: string) {
+  try {
+    const user = await getCurrentUser()
+    if (!user) {
+      return { success: false, error: "Unauthorized" }
+    }
+
+    if (isDemoUser(user.id)) {
+      return { success: false, error: "DEMO_READ_ONLY" }
+    }
+
+    requirePermission(user, "channels", "delete")
+    const orgId = requireOrg(user)
+
+    const { env } = await getCloudflareContext()
+    const db = getDb(env.DB)
+
+    const channel = await db
+      .select({
+        id: channels.id,
+        organizationId: channels.organizationId,
+      })
+      .from(channels)
+      .where(eq(channels.id, channelId))
+      .limit(1)
+      .then((rows) => rows[0] ?? null)
+
+    if (!channel || channel.organizationId !== orgId) {
+      return { success: false, error: "Channel not found" }
+    }
+
+    const messageRows = await db
+      .select({ id: messages.id })
+      .from(messages)
+      .where(eq(messages.channelId, channelId))
+    const messageIds = messageRows.map((message) => message.id)
+
+    if (messageIds.length > 0) {
+      await db
+        .delete(messageMentions)
+        .where(inArray(messageMentions.messageId, messageIds))
+      await db
+        .delete(messageReactions)
+        .where(inArray(messageReactions.messageId, messageIds))
+      await db
+        .delete(messageAttachments)
+        .where(inArray(messageAttachments.messageId, messageIds))
+      await db.delete(messages).where(eq(messages.channelId, channelId))
+    }
+
+    await db.delete(typingSessions).where(eq(typingSessions.channelId, channelId))
+    await db
+      .delete(channelReadState)
+      .where(eq(channelReadState.channelId, channelId))
+    await db.delete(channelMembers).where(eq(channelMembers.channelId, channelId))
+    await db.delete(channels).where(eq(channels.id, channelId))
+
+    revalidatePath("/dashboard/conversations")
+    return { success: true }
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Failed to delete channel",
     }
   }
 }
