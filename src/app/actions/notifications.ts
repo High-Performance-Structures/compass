@@ -12,6 +12,10 @@ import {
 import { getCurrentUser, requireAuth } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
 import { isMissingNotificationTableError } from "@/lib/notifications/events"
+import {
+  SMS_OPT_IN_DISCLOSURE_URL,
+  SMS_OPT_IN_DISCLOSURE_VERSION,
+} from "@/lib/notifications/sms-consent"
 
 export type NotificationPreferenceState = {
   readonly timezone: string
@@ -19,6 +23,11 @@ export type NotificationPreferenceState = {
   readonly emailEnabled: boolean
   readonly smsEnabled: boolean
   readonly smsPhoneNumber: string | null
+  readonly smsConsentAccepted: boolean
+  readonly smsConsentAcceptedAt: string | null
+  readonly smsConsentDisclosureUrl: string | null
+  readonly smsConsentDisclosureVersion: string | null
+  readonly smsConsentPhoneNumber: string | null
   readonly pushEnabled: boolean
   readonly mentionEmailEnabled: boolean
   readonly mentionSmsEnabled: boolean
@@ -68,6 +77,11 @@ const DEFAULT_PREFERENCES: NotificationPreferenceState = {
   emailEnabled: true,
   smsEnabled: false,
   smsPhoneNumber: null,
+  smsConsentAccepted: false,
+  smsConsentAcceptedAt: null,
+  smsConsentDisclosureUrl: null,
+  smsConsentDisclosureVersion: null,
+  smsConsentPhoneNumber: null,
   pushEnabled: true,
   mentionEmailEnabled: true,
   mentionSmsEnabled: false,
@@ -102,6 +116,11 @@ function preferenceFromRow(
     emailEnabled: row.emailEnabled,
     smsEnabled: row.smsEnabled,
     smsPhoneNumber: row.smsPhoneNumber,
+    smsConsentAccepted: row.smsConsentAccepted,
+    smsConsentAcceptedAt: row.smsConsentAcceptedAt,
+    smsConsentDisclosureUrl: row.smsConsentDisclosureUrl,
+    smsConsentDisclosureVersion: row.smsConsentDisclosureVersion,
+    smsConsentPhoneNumber: row.smsConsentPhoneNumber,
     pushEnabled: row.pushEnabled,
     mentionEmailEnabled: row.mentionEmailEnabled,
     mentionSmsEnabled: row.mentionSmsEnabled,
@@ -158,18 +177,75 @@ export async function updateNotificationPreferences(
     const { env } = await getCloudflareContext()
     const db = getDb(env.DB)
     const now = new Date().toISOString()
+    const smsPhoneNumber = input.smsPhoneNumber?.trim() ?? null
+    const wantsSms =
+      input.smsEnabled ||
+      input.mentionSmsEnabled ||
+      input.announcementSmsEnabled
+
+    if (wantsSms && !smsPhoneNumber) {
+      return {
+        success: false,
+        error: "Add a text phone number before enabling SMS notifications.",
+      }
+    }
+
+    if (wantsSms && !input.smsConsentAccepted) {
+      return {
+        success: false,
+        error: "Accept the SMS opt-in disclosure before enabling texts.",
+      }
+    }
+
+    const existingRow = await db
+      .select()
+      .from(notificationPreferences)
+      .where(eq(notificationPreferences.userId, user.id))
+      .limit(1)
+      .then((rows) => rows[0] ?? null)
+
+    const consentNeedsRefresh =
+      input.smsConsentAccepted &&
+      (existingRow?.smsConsentAccepted !== true ||
+        existingRow.smsConsentPhoneNumber !== smsPhoneNumber ||
+        existingRow.smsConsentDisclosureVersion !==
+          SMS_OPT_IN_DISCLOSURE_VERSION)
+    const smsConsentAcceptedAt = consentNeedsRefresh
+      ? now
+      : existingRow?.smsConsentAcceptedAt ?? input.smsConsentAcceptedAt
+    const persistedInput: NotificationPreferenceState = {
+      ...input,
+      smsEnabled: input.smsEnabled,
+      smsPhoneNumber,
+      smsConsentAccepted: input.smsConsentAccepted,
+      smsConsentAcceptedAt,
+      smsConsentDisclosureUrl: input.smsConsentAccepted
+        ? SMS_OPT_IN_DISCLOSURE_URL
+        : existingRow?.smsConsentDisclosureUrl ?? input.smsConsentDisclosureUrl,
+      smsConsentDisclosureVersion: input.smsConsentAccepted
+        ? SMS_OPT_IN_DISCLOSURE_VERSION
+        : existingRow?.smsConsentDisclosureVersion ??
+          input.smsConsentDisclosureVersion,
+      smsConsentPhoneNumber: input.smsConsentAccepted
+        ? smsPhoneNumber
+        : existingRow?.smsConsentPhoneNumber ?? input.smsConsentPhoneNumber,
+      mentionSmsEnabled: input.smsEnabled ? input.mentionSmsEnabled : false,
+      announcementSmsEnabled: input.smsEnabled
+        ? input.announcementSmsEnabled
+        : false,
+    }
 
     await db
       .insert(notificationPreferences)
       .values({
         userId: user.id,
-        ...input,
+        ...persistedInput,
         updatedAt: now,
       })
       .onConflictDoUpdate({
         target: notificationPreferences.userId,
         set: {
-          ...input,
+          ...persistedInput,
           updatedAt: now,
         },
       })

@@ -85,6 +85,13 @@ export const notificationPreferences = sqliteTable("notification_preferences", {
     .notNull()
     .default(false),
   smsPhoneNumber: text("sms_phone_number"),
+  smsConsentAccepted: integer("sms_consent_accepted", { mode: "boolean" })
+    .notNull()
+    .default(false),
+  smsConsentAcceptedAt: text("sms_consent_accepted_at"),
+  smsConsentDisclosureUrl: text("sms_consent_disclosure_url"),
+  smsConsentDisclosureVersion: text("sms_consent_disclosure_version"),
+  smsConsentPhoneNumber: text("sms_consent_phone_number"),
   pushEnabled: integer("push_enabled", { mode: "boolean" })
     .notNull()
     .default(true),

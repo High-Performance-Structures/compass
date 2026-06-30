@@ -8,6 +8,15 @@ import {
   type NotificationPreferenceState,
 } from "@/app/actions/notifications"
 import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Separator } from "@/components/ui/separator"
@@ -21,6 +30,11 @@ import {
 } from "@/components/ui/select"
 import { useNative } from "@/hooks/use-native"
 import { useBiometricAuth } from "@/hooks/use-biometric-auth"
+import {
+  SMS_OPT_IN_CONSENT_LABEL,
+  SMS_OPT_IN_DISCLOSURE_URL,
+  SMS_OPT_IN_DISCLOSURE_VERSION,
+} from "@/lib/notifications/sms-consent"
 
 export function PreferencesTab() {
   const [preferences, setPreferences] =
@@ -30,6 +44,11 @@ export function PreferencesTab() {
       emailEnabled: true,
       smsEnabled: false,
       smsPhoneNumber: null,
+      smsConsentAccepted: false,
+      smsConsentAcceptedAt: null,
+      smsConsentDisclosureUrl: null,
+      smsConsentDisclosureVersion: null,
+      smsConsentPhoneNumber: null,
       pushEnabled: true,
       mentionEmailEnabled: true,
       mentionSmsEnabled: false,
@@ -43,8 +62,21 @@ export function PreferencesTab() {
     })
   const [saving, setSaving] = React.useState(false)
   const [message, setMessage] = React.useState<string | null>(null)
+  const [disclosureOpen, setDisclosureOpen] = React.useState(false)
   const native = useNative()
   const biometric = useBiometricAuth()
+  const smsPhoneNumber = preferences.smsPhoneNumber?.trim() ?? ""
+  const smsConsentMatchesPhone =
+    preferences.smsConsentPhoneNumber === smsPhoneNumber
+  const smsConsentMatchesVersion =
+    preferences.smsConsentDisclosureVersion === SMS_OPT_IN_DISCLOSURE_VERSION
+  const smsConsentIsCurrent =
+    preferences.smsConsentAccepted &&
+    smsConsentMatchesPhone &&
+    smsConsentMatchesVersion
+  const smsConsentReady =
+    !preferences.smsEnabled ||
+    (smsPhoneNumber.length > 0 && preferences.smsConsentAccepted)
 
   React.useEffect(() => {
     let cancelled = false
@@ -68,7 +100,70 @@ export function PreferencesTab() {
     setMessage(null)
   }
 
+  function updateSmsEnabled(checked: boolean): void {
+    setPreferences((current) => ({
+      ...current,
+      smsEnabled: checked,
+      mentionSmsEnabled: checked ? current.mentionSmsEnabled : false,
+      announcementSmsEnabled: checked
+        ? current.announcementSmsEnabled
+        : false,
+    }))
+    setMessage(null)
+  }
+
+  function updateSmsPhoneNumber(value: string): void {
+    const nextPhoneNumber = value.trim().length > 0 ? value : null
+    setPreferences((current) => {
+      const normalizedPhoneNumber = nextPhoneNumber?.trim() ?? ""
+      const consentStillApplies =
+        current.smsConsentAccepted &&
+        current.smsConsentPhoneNumber === normalizedPhoneNumber &&
+        current.smsConsentDisclosureVersion === SMS_OPT_IN_DISCLOSURE_VERSION
+      return {
+        ...current,
+        smsPhoneNumber: nextPhoneNumber,
+        smsConsentAccepted: consentStillApplies,
+        smsConsentAcceptedAt: consentStillApplies
+          ? current.smsConsentAcceptedAt
+          : null,
+        smsConsentDisclosureUrl: consentStillApplies
+          ? current.smsConsentDisclosureUrl
+          : null,
+        smsConsentDisclosureVersion: consentStillApplies
+          ? current.smsConsentDisclosureVersion
+          : null,
+        smsConsentPhoneNumber: consentStillApplies
+          ? current.smsConsentPhoneNumber
+          : null,
+      }
+    })
+    setMessage(null)
+  }
+
+  function updateSmsConsentAccepted(checked: boolean): void {
+    setPreferences((current) => ({
+      ...current,
+      smsConsentAccepted: checked,
+      smsConsentAcceptedAt: checked ? current.smsConsentAcceptedAt : null,
+      smsConsentDisclosureUrl: checked ? SMS_OPT_IN_DISCLOSURE_URL : null,
+      smsConsentDisclosureVersion: checked
+        ? SMS_OPT_IN_DISCLOSURE_VERSION
+        : null,
+      smsConsentPhoneNumber: checked
+        ? current.smsPhoneNumber?.trim() ?? null
+        : null,
+    }))
+    setMessage(null)
+  }
+
   async function savePreferences(): Promise<void> {
+    if (!smsConsentReady) {
+      setMessage(
+        "Add a text phone number and accept the SMS opt-in disclosure first."
+      )
+      return
+    }
     setSaving(true)
     const result = await updateNotificationPreferences(preferences)
     setSaving(false)
@@ -198,14 +293,12 @@ export function PreferencesTab() {
               <div>
                 <Label className="text-xs">Text notifications</Label>
                 <p className="text-muted-foreground text-xs">
-                  Texts are best for direct mentions and announcements.
+                  Direct mentions and announcements by text.
                 </p>
               </div>
               <Switch
                 checked={preferences.smsEnabled}
-                onCheckedChange={(checked) =>
-                  updatePreference("smsEnabled", checked)
-                }
+                onCheckedChange={updateSmsEnabled}
                 className="shrink-0"
               />
             </div>
@@ -217,17 +310,58 @@ export function PreferencesTab() {
                 id="smsPhoneNumber"
                 value={preferences.smsPhoneNumber ?? ""}
                 onChange={(event) =>
-                  updatePreference(
-                    "smsPhoneNumber",
-                    event.currentTarget.value.trim().length > 0
-                      ? event.currentTarget.value
-                      : null
-                  )
+                  updateSmsPhoneNumber(event.currentTarget.value)
                 }
                 placeholder="(719) 555-0123"
                 disabled={!preferences.smsEnabled}
                 className="h-9 max-w-xs"
               />
+            </div>
+            <div className="space-y-2 rounded-md border bg-muted/20 p-3">
+              <div className="flex items-start gap-2">
+                <Checkbox
+                  id="smsConsentAccepted"
+                  checked={preferences.smsConsentAccepted}
+                  disabled={!preferences.smsEnabled || smsPhoneNumber.length === 0}
+                  onCheckedChange={(checked) =>
+                    updateSmsConsentAccepted(checked === true)
+                  }
+                  className="mt-0.5"
+                />
+                <div className="space-y-1">
+                  <Label
+                    htmlFor="smsConsentAccepted"
+                    className="text-xs leading-5"
+                  >
+                    {SMS_OPT_IN_CONSENT_LABEL}
+                  </Label>
+                  <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                    <button
+                      type="button"
+                      className="font-medium text-primary underline-offset-4 hover:underline"
+                      onClick={() => setDisclosureOpen(true)}
+                    >
+                      View SMS Opt-In Disclosure
+                    </button>
+                    <span aria-hidden="true">·</span>
+                    <a
+                      href={SMS_OPT_IN_DISCLOSURE_URL}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="font-medium text-primary underline-offset-4 hover:underline"
+                    >
+                      Open public page
+                    </a>
+                  </div>
+                </div>
+              </div>
+              {preferences.smsEnabled && smsPhoneNumber.length > 0 && (
+                <p className="text-xs text-muted-foreground">
+                  {smsConsentIsCurrent
+                    ? `Opt-in recorded for ${preferences.smsConsentPhoneNumber}.`
+                    : "Accept the disclosure to turn on text notifications for this number."}
+                </p>
+              )}
             </div>
           </div>
 
@@ -252,7 +386,7 @@ export function PreferencesTab() {
                 <span className="text-xs text-muted-foreground">Text</span>
                 <Switch
                   checked={preferences.mentionSmsEnabled}
-                  disabled={!preferences.smsEnabled}
+                  disabled={!preferences.smsEnabled || !smsConsentReady}
                   onCheckedChange={(checked) =>
                     updatePreference("mentionSmsEnabled", checked)
                   }
@@ -280,7 +414,7 @@ export function PreferencesTab() {
                 <span className="text-xs text-muted-foreground">Text</span>
                 <Switch
                   checked={preferences.announcementSmsEnabled}
-                  disabled={!preferences.smsEnabled}
+                  disabled={!preferences.smsEnabled || !smsConsentReady}
                   onCheckedChange={(checked) =>
                     updatePreference("announcementSmsEnabled", checked)
                   }
@@ -345,7 +479,11 @@ export function PreferencesTab() {
             </div>
           )}
           <div className="flex flex-wrap items-center gap-3">
-            <Button size="sm" onClick={savePreferences} disabled={saving}>
+            <Button
+              size="sm"
+              onClick={savePreferences}
+              disabled={saving || !smsConsentReady}
+            >
               {saving ? "Saving..." : "Save notification preferences"}
             </Button>
             {message && (
@@ -354,6 +492,34 @@ export function PreferencesTab() {
           </div>
         </div>
       </div>
+      <Dialog open={disclosureOpen} onOpenChange={setDisclosureOpen}>
+        <DialogContent className="max-h-[min(90vh,680px)] overflow-y-auto sm:max-w-xl">
+          <DialogHeader>
+            <DialogTitle>SMS Opt-In Disclosure</DialogTitle>
+            <DialogDescription>
+              This is the disclosure Compass records when SMS
+              notifications are enabled.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 text-sm leading-6">
+            <p>{SMS_OPT_IN_CONSENT_LABEL}</p>
+            <p className="text-muted-foreground">
+              Disclosure version {SMS_OPT_IN_DISCLOSURE_VERSION}. The
+              public disclosure page is hosted by High Performance
+              Structures and can be used for GoTo/TCR review.
+            </p>
+            <a
+              href={SMS_OPT_IN_DISCLOSURE_URL}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex text-sm font-medium text-primary underline-offset-4 hover:underline"
+            >
+              Open full SMS Opt-In Disclosure
+            </a>
+          </div>
+          <DialogFooter showCloseButton />
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
