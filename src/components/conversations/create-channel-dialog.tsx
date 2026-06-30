@@ -181,7 +181,7 @@ export function CreateChannelDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[480px]">
+      <DialogContent className="max-h-[min(90vh,760px)] overflow-y-auto overscroll-contain sm:max-w-[480px]">
         <DialogHeader>
           <DialogTitle>Create Channel</DialogTitle>
         </DialogHeader>
