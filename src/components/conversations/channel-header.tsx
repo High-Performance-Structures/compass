@@ -31,6 +31,7 @@ type ChannelHeaderProps = {
   readonly archivedAt: string | null
   readonly canUpdate: boolean
   readonly canDelete: boolean
+  readonly canManageMembers: boolean
 }
 
 function projectLabel(project: NonNullable<ChannelHeaderProps["project"]>): string {
@@ -56,6 +57,7 @@ export function ChannelHeader({
   archivedAt,
   canUpdate,
   canDelete,
+  canManageMembers,
 }: ChannelHeaderProps) {
   const router = useRouter()
   const [searchOpen, setSearchOpen] = React.useState(false)
@@ -132,6 +134,7 @@ export function ChannelHeader({
             archivedAt={archivedAt}
             canUpdate={canUpdate}
             canDelete={canDelete}
+            canManageMembers={canManageMembers}
           />
         </div>
       </header>

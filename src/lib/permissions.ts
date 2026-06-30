@@ -71,7 +71,7 @@ const PERMISSIONS: RolePermissions = {
     vendor: ["read"],
     finance: ["read"],
     agent: ["read"],
-    channels: ["read"],
+    channels: ["create", "read"],
   },
   client: {
     project: ["read"],

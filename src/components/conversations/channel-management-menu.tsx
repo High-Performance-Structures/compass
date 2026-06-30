@@ -2,7 +2,7 @@
 
 import * as React from "react"
 import { useRouter } from "next/navigation"
-import { Archive, MoreHorizontal, RotateCcw, Trash2 } from "lucide-react"
+import { Archive, MoreHorizontal, RotateCcw, Trash2, Users } from "lucide-react"
 import {
   archiveChannel,
   deleteChannel,
@@ -26,6 +26,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import { ChannelMemberManager } from "@/components/conversations/channel-member-manager"
 
 type ChannelManagementMenuProps = {
   readonly channelId: string
@@ -33,6 +34,7 @@ type ChannelManagementMenuProps = {
   readonly archivedAt: string | null
   readonly canUpdate: boolean
   readonly canDelete: boolean
+  readonly canManageMembers: boolean
 }
 
 export function ChannelManagementMenu({
@@ -41,13 +43,15 @@ export function ChannelManagementMenu({
   archivedAt,
   canUpdate,
   canDelete,
+  canManageMembers,
 }: ChannelManagementMenuProps): React.ReactElement | null {
   const router = useRouter()
   const [deleteOpen, setDeleteOpen] = React.useState(false)
+  const [membersOpen, setMembersOpen] = React.useState(false)
   const [isPending, startTransition] = React.useTransition()
   const [error, setError] = React.useState<string | null>(null)
 
-  if (!canUpdate && !canDelete) {
+  if (!canUpdate && !canDelete && !canManageMembers) {
     return null
   }
 
@@ -109,6 +113,15 @@ export function ChannelManagementMenu({
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-48">
+            {canManageMembers ? (
+              <DropdownMenuItem onClick={() => setMembersOpen(true)}>
+                <Users className="size-4" />
+                Manage members
+              </DropdownMenuItem>
+            ) : null}
+            {canManageMembers && (canUpdate || canDelete) ? (
+              <DropdownMenuSeparator />
+            ) : null}
             {canUpdate && archivedAt ? (
               <DropdownMenuItem onClick={handleRestore}>
                 <RotateCcw className="size-4" />
@@ -136,6 +149,13 @@ export function ChannelManagementMenu({
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
+
+      <ChannelMemberManager
+        channelId={channelId}
+        channelName={channelName}
+        open={membersOpen}
+        onOpenChange={setMembersOpen}
+      />
 
       <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
         <AlertDialogContent>

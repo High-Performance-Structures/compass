@@ -65,6 +65,7 @@ export default async function ChannelPage({
           archivedAt={channel.archivedAt}
           canUpdate={channel.canUpdate}
           canDelete={channel.canDelete}
+          canManageMembers={channel.canManageMembers}
         />
         <MessageList
           channelId={channelId}

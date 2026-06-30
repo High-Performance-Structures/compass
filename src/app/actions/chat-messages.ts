@@ -18,7 +18,7 @@ import {
 import { users, organizationMembers } from "@/db/schema"
 import { getCurrentUser } from "@/lib/auth"
 import type { AuthUser } from "@/lib/auth"
-import { requirePermission } from "@/lib/permissions"
+import { can, requirePermission } from "@/lib/permissions"
 import { isDemoUser } from "@/lib/demo"
 import { requireOrg } from "@/lib/org-scope"
 import { revalidatePath } from "next/cache"
@@ -62,7 +62,7 @@ async function ensureChannelMembership(
   if (channel.organizationId !== requireOrg(user)) {
     return { success: false, error: "Channel not found" }
   }
-  if (channel.isPrivate) {
+  if (channel.isPrivate && !can(user, "channels", "moderate")) {
     return { success: false, error: "Not a member of this channel" }
   }
 
@@ -71,8 +71,8 @@ async function ensureChannelMembership(
     id: crypto.randomUUID(),
     channelId,
     userId: user.id,
-    role: "member",
-    notifyLevel: "all",
+    role: channel.isPrivate ? "moderator" : "member",
+    notifyLevel: channel.isPrivate ? "mentions" : "all",
     joinedAt: now,
   })
   await db.insert(channelReadState).values({
