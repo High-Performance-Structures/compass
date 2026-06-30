@@ -225,7 +225,10 @@ export default async function ProjectSelectionsPrintPage({
           __html: selectionPrintStyles(),
         }}
       />
-      <SelectionPrintPageControls backHref={`/dashboard/projects/${id}/selections`} />
+      <SelectionPrintPageControls
+        backHref={`/dashboard/projects/${id}/selections`}
+        documentTitle={`${label} Finish Selections`}
+      />
       <article
         className="selection-printable"
         dangerouslySetInnerHTML={{ __html: packetHtml }}

@@ -184,6 +184,17 @@ export function selectionPrintStyles(): string {
       margin: 0 0 16px;
     }
 
+    .print-fallback {
+      background: #fff8e8;
+      border: 1px solid #d4a947;
+      color: #4b3514;
+      font: 600 12px Arial, sans-serif;
+      line-height: 1.35;
+      margin: 0 auto 16px;
+      max-width: 8.5in;
+      padding: 10px 12px;
+    }
+
     .print-help a,
     .print-help button {
       background: #3f7d4d;
@@ -434,6 +445,10 @@ export function selectionPrintStyles(): string {
       }
 
       .print-help {
+        display: none;
+      }
+
+      .print-fallback {
         display: none;
       }
 
