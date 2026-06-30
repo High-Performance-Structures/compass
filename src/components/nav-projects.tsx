@@ -11,7 +11,6 @@ import {
   IconFolder,
   IconHome2,
   IconMailForward,
-  IconMessageCircle,
   IconMessageCircleQuestion,
   IconPalette,
   IconPhoto,
@@ -20,10 +19,8 @@ import {
   IconUsers,
 } from "@tabler/icons-react"
 import Link from "next/link"
-import { usePathname, useRouter } from "next/navigation"
-import { useState, useTransition } from "react"
+import { usePathname } from "next/navigation"
 
-import { openProjectConversationChannel } from "@/app/actions/project-messages"
 import {
   SidebarGroup,
   SidebarGroupContent,
@@ -190,31 +187,12 @@ export function NavProjects({
   projects: ReadonlyArray<ProjectListItem>
 }) {
   const pathname = usePathname()
-  const router = useRouter()
-  const [isOpeningMessages, startOpeningMessages] = useTransition()
-  const [messagesError, setMessagesError] = useState<string | null>(null)
   const activeId = pathname?.match(
     /^\/dashboard\/projects\/([^/]+)/
   )?.[1]
   const activeProject = projects.find((project) => project.id === activeId)
   const activeSection = activeProjectSection(pathname)
   const activeTargetSection = activeProjectTargetSection(pathname)
-
-  function handleOpenMessages(): void {
-    if (!activeId) return
-
-    setMessagesError(null)
-    startOpeningMessages(async () => {
-      const result = await openProjectConversationChannel(activeId)
-      if (!result.success) {
-        setMessagesError(result.error)
-        return
-      }
-
-      router.push(`/dashboard/conversations/${result.data.channelId}`)
-      router.refresh()
-    })
-  }
 
   return (
     <>
@@ -279,23 +257,6 @@ export function NavProjects({
                     </SidebarMenuButton>
                   </SidebarMenuItem>
                 ))}
-                <SidebarMenuItem>
-                  <SidebarMenuButton
-                    tooltip="Messages"
-                    disabled={isOpeningMessages}
-                    onClick={handleOpenMessages}
-                  >
-                    <IconMessageCircle />
-                    <span>{isOpeningMessages ? "Opening..." : "Messages"}</span>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-                {messagesError && (
-                  <SidebarMenuItem>
-                    <p className="px-2 text-xs text-destructive">
-                      {messagesError}
-                    </p>
-                  </SidebarMenuItem>
-                )}
               </>
             )}
           </SidebarMenu>
