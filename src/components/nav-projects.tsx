@@ -31,6 +31,7 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar"
+import { ProjectQuickSwitcher } from "@/components/projects/project-quick-switcher"
 import { cn } from "@/lib/utils"
 import type { ProjectListItem } from "@/app/actions/projects"
 
@@ -144,10 +145,6 @@ const PROJECT_SECTION_ITEMS: readonly ProjectSectionItem[] = [
   },
 ]
 
-function projectDisplay(project: ProjectListItem): string {
-  return project.projectNumber ?? project.name
-}
-
 function projectSectionHref(projectId: string, suffix: string): string {
   const baseHref = `/dashboard/projects/${projectId}`
   return suffix ? `${baseHref}/${suffix}` : baseHref
@@ -181,6 +178,12 @@ function activeProjectSection(pathname: string | null): ProjectSectionKey {
   }
 }
 
+function activeProjectTargetSection(pathname: string | null): string | undefined {
+  const suffix = pathname?.replace(/^\/dashboard\/projects\/[^/]+\/?/, "") ?? ""
+  const normalized = suffix.replace(/^\/+|\/+$/g, "")
+  return normalized.length > 0 ? normalized : undefined
+}
+
 export function NavProjects({
   projects,
 }: {
@@ -195,6 +198,7 @@ export function NavProjects({
   )?.[1]
   const activeProject = projects.find((project) => project.id === activeId)
   const activeSection = activeProjectSection(pathname)
+  const activeTargetSection = activeProjectTargetSection(pathname)
 
   function handleOpenMessages(): void {
     if (!activeId) return
@@ -230,20 +234,19 @@ export function NavProjects({
       </SidebarGroup>
 
       {activeProject && (
-        <div className="mx-2 mb-2 rounded-lg border border-sidebar-border/70 bg-sidebar-accent/35 px-3 py-2">
-          <div className="flex min-w-0 items-start gap-2">
-            <IconFolder className="mt-0.5 size-4 shrink-0 text-sidebar-foreground/70" />
-            <div className="min-w-0">
-              <p className="truncate text-sm font-semibold">
-                {projectDisplay(activeProject)}
-              </p>
-              {activeProject.projectNumber && (
-                <p className="truncate text-xs text-sidebar-foreground/60">
-                  {activeProject.name}
-                </p>
-              )}
-            </div>
-          </div>
+        <div className="mx-2 mb-2">
+          <ProjectQuickSwitcher
+            projects={projects}
+            currentProjectId={activeProject.id}
+            targetSection={activeTargetSection}
+            placeholder="Switch project..."
+            className="h-10 w-full border-sidebar-border/70 bg-sidebar-accent/35 px-2 text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+          />
+          {activeProject.projectNumber && (
+            <p className="mt-1 truncate px-2 text-xs text-sidebar-foreground/60">
+              {activeProject.name}
+            </p>
+          )}
         </div>
       )}
 
