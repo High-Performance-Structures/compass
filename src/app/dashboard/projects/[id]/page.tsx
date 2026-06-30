@@ -11,6 +11,7 @@ import {
 } from "@/db/schema"
 import { getCurrentUser } from "@/lib/auth"
 import { canManageProjectRegistry } from "@/lib/permissions"
+import { assertProjectAccess } from "@/lib/project-access"
 import { and, eq } from "drizzle-orm"
 import { notFound } from "next/navigation"
 import Link from "next/link"
@@ -149,6 +150,9 @@ export default async function ProjectSummaryPage({
       .limit(1)
 
     if (!found) notFound()
+    if (!currentUser) notFound()
+
+    await assertProjectAccess(db, currentUser, id)
 
     if (found.googleDriveFolderId) {
       project = found

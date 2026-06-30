@@ -248,6 +248,9 @@ export async function assignUserToProject(
   try {
     const currentUser = await getCurrentUser()
     requirePermission(currentUser, "project", "update")
+    if (!canManageUserAccess(currentUser)) {
+      return { success: false, error: "Only admins can assign project access" }
+    }
 
     const { env } = await getCloudflareContext()
     if (!env?.DB) {
@@ -323,6 +326,9 @@ export async function assignUserToTeam(
   try {
     const currentUser = await getCurrentUser()
     requirePermission(currentUser, "team", "update")
+    if (!canManageUserAccess(currentUser)) {
+      return { success: false, error: "Only admins can assign teams" }
+    }
 
     const { env } = await getCloudflareContext()
     if (!env?.DB) {
@@ -383,6 +389,9 @@ export async function assignUserToGroup(
   try {
     const currentUser = await getCurrentUser()
     requirePermission(currentUser, "group", "update")
+    if (!canManageUserAccess(currentUser)) {
+      return { success: false, error: "Only admins can assign groups" }
+    }
 
     const { env } = await getCloudflareContext()
     if (!env?.DB) {

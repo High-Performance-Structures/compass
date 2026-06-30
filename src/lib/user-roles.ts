@@ -14,6 +14,7 @@ export const USER_ROLES = [
   "drafter",
   "lead_estimator",
   "assistant_estimator",
+  "developer",
   "subcontractor",
   "supplier",
   "client",
@@ -28,7 +29,7 @@ export type UserRole = (typeof USER_ROLES)[number]
 export type UserRoleOption = {
   readonly value: UserRole
   readonly label: string
-  readonly group: "Administration" | "Internal Staff" | "External"
+  readonly group: "Administration" | "Internal Staff" | "Development" | "External"
   readonly description: string
 }
 
@@ -124,6 +125,13 @@ export const USER_ROLE_OPTIONS: readonly UserRoleOption[] = [
     description: "Takeoffs, estimate support, RFQs, and vendor pricing.",
   },
   {
+    value: "developer",
+    label: "Developer",
+    group: "Development",
+    description:
+      "Assigned-project testing access without broad company project visibility.",
+  },
+  {
     value: "subcontractor",
     label: "Subcontractor",
     group: "External",
@@ -180,6 +188,12 @@ export function userRoleDescription(role: string): string {
 
 export function canManageUserAccessRole(role: string | null | undefined): boolean {
   return role === "admin" || role === "secondary_admin"
+}
+
+export function canUseOrganizationProjectScopeRole(
+  role: string | null | undefined
+): boolean {
+  return role !== "developer"
 }
 
 export function isInternalStaffRole(role: string): boolean {

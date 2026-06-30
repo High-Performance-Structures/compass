@@ -8,6 +8,7 @@ import { revalidatePath } from "next/cache"
 import { requireAuth } from "@/lib/auth"
 import { requireOrg } from "@/lib/org-scope"
 import { requirePermission } from "@/lib/permissions"
+import { canUseOrganizationProjectScopeRole } from "@/lib/user-roles"
 
 export type ProjectStatusValue =
   | "OPEN"
@@ -95,7 +96,11 @@ export async function getProjects(): Promise<ProjectListItem[]> {
 
     const db = getDb(env.DB)
 
-    if (user.organizationId && user.organizationType === "internal") {
+    if (
+      user.organizationId &&
+      user.organizationType === "internal" &&
+      canUseOrganizationProjectScopeRole(user.role)
+    ) {
       const allProjects = await db
         .select({
           id: projects.id,

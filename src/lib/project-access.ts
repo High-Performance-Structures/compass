@@ -3,6 +3,7 @@ import { and, eq } from "drizzle-orm"
 import type { getDb } from "@/db"
 import { projectMembers, projects } from "@/db/schema"
 import type { AuthUser } from "@/lib/auth"
+import { canUseOrganizationProjectScopeRole } from "@/lib/user-roles"
 
 type Db = ReturnType<typeof getDb>
 
@@ -18,7 +19,8 @@ export function usesOrganizationProjectScope(
 ): boolean {
   return (
     user.organizationType === "internal" &&
-    user.organizationId === projectOrganizationId
+    user.organizationId === projectOrganizationId &&
+    canUseOrganizationProjectScopeRole(user.role)
   )
 }
 

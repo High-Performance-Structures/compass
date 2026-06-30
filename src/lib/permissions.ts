@@ -95,6 +95,23 @@ const EXTERNAL_PROJECT_PERMISSIONS: RolePermissionSet = {
   channels: ["read"],
 }
 
+const DEVELOPER_PERMISSIONS: RolePermissionSet = {
+  project: ["read", "update"],
+  schedule: ["create", "read", "update"],
+  budget: ["create", "read", "update"],
+  changeorder: ["create", "read", "update"],
+  document: ["create", "read", "update"],
+  user: ["read"],
+  organization: ["read"],
+  team: ["read"],
+  group: ["read"],
+  customer: ["read"],
+  vendor: ["read"],
+  finance: ["read"],
+  agent: ["read"],
+  channels: ["create", "read", "update"],
+}
+
 const PERMISSIONS: RolePermissions = {
   admin: ADMIN_PERMISSIONS,
   secondary_admin: ADMIN_PERMISSIONS,
@@ -113,6 +130,7 @@ const PERMISSIONS: RolePermissions = {
   drafter: INTERNAL_PROJECT_PERMISSIONS,
   lead_estimator: INTERNAL_PROJECT_PERMISSIONS,
   assistant_estimator: INTERNAL_PROJECT_PERMISSIONS,
+  developer: DEVELOPER_PERMISSIONS,
   coordinator: INTERNAL_PROJECT_PERMISSIONS,
   accounting: {
     ...INTERNAL_PROJECT_PERMISSIONS,
