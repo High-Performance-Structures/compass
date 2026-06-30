@@ -7,7 +7,6 @@ import {
   Smile,
   Edit2,
   Trash2,
-  MoreHorizontal,
 } from "lucide-react"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
@@ -16,7 +15,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { MarkdownRenderer } from "@/components/ui/markdown-renderer"
 import { cn } from "@/lib/utils"
 import { useConversations } from "@/contexts/conversations-context"
-import { editMessage, deleteMessage, addReaction } from "@/app/actions/chat-messages"
+import { editMessage, deleteMessage } from "@/app/actions/chat-messages"
 import { useRouter } from "next/navigation"
 
 type MessageData = {
@@ -58,10 +57,39 @@ function arePropsEqual(prev: MessageItemProps, next: MessageItemProps): boolean 
   return (
     prevMsg.id === nextMsg.id &&
     prevMsg.content === nextMsg.content &&
+    prevMsg.contentHtml === nextMsg.contentHtml &&
     prevMsg.editedAt === nextMsg.editedAt &&
     prevMsg.isPinned === nextMsg.isPinned &&
     prevMsg.replyCount === nextMsg.replyCount &&
     prevMsg.deletedAt === nextMsg.deletedAt
+  )
+}
+
+function MessageBody({
+  content,
+  contentHtml,
+}: {
+  readonly content: string
+  readonly contentHtml: string | null
+}): React.ReactElement {
+  if (contentHtml) {
+    return (
+      <div
+        className={cn(
+          "chat-rich-message mt-1 text-sm [&>p]:mb-2 [&>p:last-child]:mb-0",
+          "[&_.mention]:inline-flex [&_.mention]:items-center [&_.mention]:rounded-md",
+          "[&_.mention]:bg-primary/10 [&_.mention]:px-1.5 [&_.mention]:py-0.5",
+          "[&_.mention]:font-medium [&_.mention]:text-primary"
+        )}
+        dangerouslySetInnerHTML={{ __html: contentHtml }}
+      />
+    )
+  }
+
+  return (
+    <div className="chat-markdown mt-1 text-sm">
+      <MarkdownRenderer>{content}</MarkdownRenderer>
+    </div>
   )
 }
 
@@ -178,9 +206,10 @@ export const MessageItem = React.memo(function MessageItem({ message }: MessageI
             </div>
           </div>
         ) : (
-          <div className="chat-markdown mt-1 text-sm">
-            <MarkdownRenderer>{message.content}</MarkdownRenderer>
-          </div>
+          <MessageBody
+            content={message.content}
+            contentHtml={message.contentHtml}
+          />
         )}
 
         {message.replyCount > 0 && (
