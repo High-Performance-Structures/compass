@@ -1,13 +1,14 @@
 "use server"
 
 import { getCloudflareContext } from "@/lib/db"
-import { eq, and, or, like, sql, gte, lte, desc, inArray } from "drizzle-orm"
+import { eq, and, like, sql, gte, lte, desc, inArray } from "drizzle-orm"
 import type { SQL } from "drizzle-orm"
 import { getDb } from "@/db"
 import { messages, channels, channelMembers } from "@/db/schema-conversations"
 import { users } from "@/db/schema"
 import { getCurrentUser } from "@/lib/auth"
 import { requirePermission } from "@/lib/permissions"
+import { requireOrg } from "@/lib/org-scope"
 import { revalidatePath } from "next/cache"
 
 const MAX_QUERY_LENGTH = 100
@@ -18,6 +19,7 @@ function escapeLikeWildcards(str: string): string {
 
 type SearchFilters = {
   channelId?: string
+  scope?: "all" | "company" | "project"
   userId?: string
   startDate?: string
   endDate?: string
@@ -62,11 +64,32 @@ export async function searchMessages(
     const { env } = await getCloudflareContext()
     const db = getDb(env.DB)
 
-    // get all channels user has access to
+    const organizationId = requireOrg(user)
+
+    // Match channel visibility rules from listChannels:
+    // public org channels are staff-visible; private channels still require membership.
     const accessibleChannels = await db
-      .select({ channelId: channelMembers.channelId })
-      .from(channelMembers)
-      .where(eq(channelMembers.userId, user.id))
+      .select({
+        channelId: channels.id,
+        projectId: channels.projectId,
+        isPrivate: channels.isPrivate,
+        memberUserId: channelMembers.userId,
+      })
+      .from(channels)
+      .leftJoin(
+        channelMembers,
+        and(
+          eq(channelMembers.channelId, channels.id),
+          eq(channelMembers.userId, user.id)
+        )
+      )
+      .where(
+        and(
+          eq(channels.organizationId, organizationId),
+          sql`(${channels.isPrivate} = 0 OR ${channelMembers.userId} IS NOT NULL)`,
+          sql`${channels.archivedAt} IS NULL`
+        )
+      )
 
     if (accessibleChannels.length === 0) {
       return { success: true, data: [] }
@@ -87,6 +110,14 @@ export async function searchMessages(
         return { success: false, error: "No access to this channel" }
       }
       conditions.push(eq(messages.channelId, filters.channelId))
+    }
+
+    if (filters?.scope === "company") {
+      conditions.push(sql`${channels.projectId} IS NULL`)
+    }
+
+    if (filters?.scope === "project") {
+      conditions.push(sql`${channels.projectId} IS NOT NULL`)
     }
 
     if (filters?.userId) {

@@ -49,6 +49,7 @@ type User = {
   displayName: string | null
   email: string
   avatarUrl: string | null
+  role: string
 }
 
 type SearchDialogProps = {
@@ -72,6 +73,9 @@ export function SearchDialog({
   const [channels, setChannels] = React.useState<Channel[]>([])
   const [users, setUsers] = React.useState<User[]>([])
   const [selectedChannel, setSelectedChannel] = React.useState<string>("all")
+  const [selectedScope, setSelectedScope] = React.useState<
+    "all" | "company" | "project"
+  >("all")
   const [selectedUser, setSelectedUser] = React.useState<string>("all")
   const [startDate, setStartDate] = React.useState<Date | undefined>()
   const [endDate, setEndDate] = React.useState<Date | undefined>()
@@ -114,12 +118,14 @@ export function SearchDialog({
 
       const filters: {
         channelId?: string
+        scope?: "all" | "company" | "project"
         userId?: string
         startDate?: string
         endDate?: string
       } = {}
 
       if (selectedChannel !== "all") filters.channelId = selectedChannel
+      if (selectedScope !== "all") filters.scope = selectedScope
       if (selectedUser !== "all") filters.userId = selectedUser
       if (startDate) filters.startDate = startDate.toISOString()
       if (endDate) filters.endDate = endDate.toISOString()
@@ -139,7 +145,15 @@ export function SearchDialog({
     if (open) {
       performSearch()
     }
-  }, [debouncedQuery, selectedChannel, selectedUser, startDate, endDate, open])
+  }, [
+    debouncedQuery,
+    selectedChannel,
+    selectedScope,
+    selectedUser,
+    startDate,
+    endDate,
+    open,
+  ])
 
   // reset state when dialog closes
   React.useEffect(() => {
@@ -158,6 +172,7 @@ export function SearchDialog({
 
   const clearFilters = () => {
     setSelectedChannel("all")
+    setSelectedScope("all")
     setSelectedUser("all")
     setStartDate(undefined)
     setEndDate(undefined)
@@ -165,9 +180,11 @@ export function SearchDialog({
 
   const hasActiveFilters =
     selectedChannel !== "all" ||
+    selectedScope !== "all" ||
     selectedUser !== "all" ||
     startDate !== undefined ||
     endDate !== undefined
+  const staffUsers = users.filter((user) => user.role !== "client")
 
   return (
     <CommandDialog
@@ -191,6 +208,24 @@ export function SearchDialog({
       </div>
 
       <div className="flex items-center gap-2 border-b px-3 py-2">
+        <Select
+          value={selectedScope}
+          onValueChange={(value) => {
+            if (value === "all" || value === "company" || value === "project") {
+              setSelectedScope(value)
+            }
+          }}
+        >
+          <SelectTrigger size="sm" className="h-7 text-xs">
+            <SelectValue placeholder="Scope" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Conversations</SelectItem>
+            <SelectItem value="company">Company Only</SelectItem>
+            <SelectItem value="project">Project Only</SelectItem>
+          </SelectContent>
+        </Select>
+
         <Select value={selectedChannel} onValueChange={setSelectedChannel}>
           <SelectTrigger size="sm" className="h-7 text-xs">
             <IconHash className="mr-1 size-3" />
@@ -209,11 +244,11 @@ export function SearchDialog({
         <Select value={selectedUser} onValueChange={setSelectedUser}>
           <SelectTrigger size="sm" className="h-7 text-xs">
             <IconUser className="mr-1 size-3" />
-            <SelectValue placeholder="User" />
+            <SelectValue placeholder="Staff member" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">All Users</SelectItem>
-            {users.map((user) => (
+            <SelectItem value="all">All Staff</SelectItem>
+            {staffUsers.map((user) => (
               <SelectItem key={user.id} value={user.id}>
                 {user.displayName ?? user.email.split("@")[0]}
               </SelectItem>
