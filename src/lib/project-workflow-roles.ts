@@ -5,7 +5,8 @@ export type ProjectWorkflowRoleId =
   | "project-administrator"
   | "field-superintendent"
   | "field-crew"
-  | "design-estimating"
+  | "architectural-designer"
+  | "estimator"
   | "office-manager"
 
 export type ProjectWorkspaceMode = "worker" | "developer"
@@ -160,20 +161,40 @@ export const PROJECT_WORKFLOW_ROLE_LENSES: readonly RoleLens[] = [
     ],
   },
   {
-    id: "design-estimating",
-    label: "Design / estimating",
-    badge: "Scope",
-    detail: "Designer, drafter, lead estimator, and assistant estimator views.",
+    id: "architectural-designer",
+    label: "Architectural designer",
+    badge: "Design",
+    detail: "Architectural design, drafting, plan coordination, and selections.",
     focus:
-      "Surface design questions, scopes, takeoffs, budget detail, and cost-code alignment.",
+      "Surface design questions, plan references, selections, owner decisions, and drafting coordination.",
+    priority: [
+      "contacts",
+      "intake",
+      "schedule",
+      "budget",
+      "rfqs",
+      "field",
+      "purchase-orders",
+      "owner-update",
+      "bills-draws",
+      "context",
+    ],
+  },
+  {
+    id: "estimator",
+    label: "Estimator",
+    badge: "Estimate",
+    detail: "Estimate leadership, takeoffs, RFQs, cost codes, and pricing.",
+    focus:
+      "Surface RFQs, scope gaps, cost-code alignment, takeoffs, vendor pricing, and proposal readiness.",
     priority: [
       "rfqs",
       "budget",
       "contacts",
-      "schedule",
-      "field",
-      "purchase-orders",
       "intake",
+      "schedule",
+      "purchase-orders",
+      "field",
       "owner-update",
       "bills-draws",
       "context",
@@ -255,11 +276,12 @@ export function workflowRoleIdFromString(
     case "architectural-designer":
     case "designer":
     case "drafter":
+    case "design-estimating":
+      return "architectural-designer"
     case "lead-estimator":
     case "assistant-estimator":
     case "estimator":
-    case "design-estimating":
-      return "design-estimating"
+      return "estimator"
     case "office-manager":
     case "office":
       return "office-manager"
@@ -287,10 +309,12 @@ export function workflowRoleIdFromString(
       if (
         normalized.includes("architectural-designer") ||
         normalized.includes("design") ||
-        normalized.includes("drafter") ||
-        normalized.includes("estimator")
+        normalized.includes("drafter")
       ) {
-        return "design-estimating"
+        return "architectural-designer"
+      }
+      if (normalized.includes("estimator")) {
+        return "estimator"
       }
       if (
         normalized.includes("office-manager") ||
@@ -343,7 +367,10 @@ export function workflowRoleIdFromSageEmployee({
     return "project-administrator"
   }
   if (normalizedTitle.includes("design")) {
-    return "design-estimating"
+    return "architectural-designer"
+  }
+  if (normalizedTitle.includes("estimat")) {
+    return "estimator"
   }
   if (normalizedTitle.includes("business develo")) {
     return "office-manager"
@@ -386,7 +413,8 @@ const OFFICE_WORKFLOW_ROLE_IDS: readonly ProjectWorkflowRoleId[] = [
   "project-manager",
   "assistant-project-manager",
   "project-administrator",
-  "design-estimating",
+  "architectural-designer",
+  "estimator",
   "office-manager",
 ]
 
