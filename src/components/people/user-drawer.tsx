@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { IconMail, IconUser, IconX } from "@tabler/icons-react"
+import { IconMail, IconUser } from "@tabler/icons-react"
 import { toast } from "sonner"
 
 import type { UserWithRelations } from "@/app/actions/users"
@@ -112,7 +112,7 @@ export function UserDrawer({
           </SheetDescription>
         </SheetHeader>
 
-        <Tabs defaultValue="profile" className="mt-6">
+        <Tabs defaultValue={canManageUsers ? "access" : "profile"} className="mt-6">
           <TabsList className="grid w-full grid-cols-3">
             <TabsTrigger value="profile">Profile</TabsTrigger>
             <TabsTrigger value="access">Access</TabsTrigger>

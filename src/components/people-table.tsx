@@ -201,7 +201,7 @@ export function PeopleTable({
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               <DropdownMenuItem onClick={() => onEditUser?.(user)}>
-                {canManageUsers ? "Edit User" : "View User"}
+                {canManageUsers ? "Change Role / Access" : "View User"}
               </DropdownMenuItem>
               {canManageUsers && (
                 <>
@@ -319,7 +319,10 @@ export function PeopleTable({
                   actions={
                     canManageUsers
                       ? [
-                          { label: "Edit User", onClick: () => onEditUser?.(user) },
+                          {
+                            label: "Change Role / Access",
+                            onClick: () => onEditUser?.(user),
+                          },
                           { label: "Assign to Project", onClick: () => {} },
                           { label: "Assign to Team", onClick: () => {} },
                           {
