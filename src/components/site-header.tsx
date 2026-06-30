@@ -25,7 +25,10 @@ import {
 import { SidebarTrigger, useSidebar } from "@/components/ui/sidebar"
 import { NotificationsPopover } from "@/components/notifications-popover"
 import { useCommandMenu } from "@/components/command-menu-provider"
-import { useAgentOptional } from "@/components/agent/chat-provider"
+import {
+  useAgentOptional,
+  useChatStateOptional,
+} from "@/components/agent/chat-provider"
 import { AccountModal } from "@/components/account-modal"
 import { getInitials } from "@/lib/utils"
 import type { SidebarUser } from "@/lib/auth"
@@ -40,10 +43,29 @@ export function SiteHeader({
   const [headerQuery, setHeaderQuery] = React.useState("")
   const searchInputRef = React.useRef<HTMLInputElement>(null)
   const agentContext = useAgentOptional()
+  const chatContext = useChatStateOptional()
   const [accountOpen, setAccountOpen] = React.useState(false)
   const { toggleSidebar } = useSidebar()
 
   const initials = user ? getInitials(user.name) : "?"
+
+  function submitAssistantPrompt(): void {
+    const prompt = headerQuery.trim()
+    if (!prompt) {
+      openCommand()
+      return
+    }
+
+    if (!agentContext || !chatContext) {
+      openWithQuery(prompt)
+      return
+    }
+
+    agentContext.open()
+    chatContext.sendMessage({ text: prompt })
+    setHeaderQuery("")
+    searchInputRef.current?.blur()
+  }
 
   function handleLogout(): void {
     window.location.href = "/api/auth/logout"
@@ -139,17 +161,10 @@ export function SiteHeader({
             onKeyDown={(e) => {
               if (e.key === "Enter") {
                 e.preventDefault()
-                const q = headerQuery.trim()
-                if (q) {
-                  openWithQuery(q)
-                } else {
-                  openCommand()
-                }
-                setHeaderQuery("")
-                searchInputRef.current?.blur()
+                submitAssistantPrompt()
               }
             }}
-            placeholder="Search..."
+            placeholder="Ask Compass..."
             className="flex h-8 w-full items-center rounded-full border border-border/50 bg-muted/30 pl-9 pr-16 text-sm outline-none transition-colors placeholder:text-muted-foreground/60 hover:bg-muted/50 focus:bg-muted/50 focus:border-border"
           />
           <kbd

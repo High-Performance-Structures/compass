@@ -90,6 +90,22 @@ function resolveModelId(
   return model
 }
 
+function providerFromEnvironment(
+  envRecord: Record<string, string>
+): ProviderConfig {
+  if (envRecord.OPENROUTER_API_KEY) {
+    return {
+      type: "openrouter",
+      apiKey: envRecord.OPENROUTER_API_KEY,
+    }
+  }
+
+  return {
+    type: "anthropic",
+    apiKey: envRecord.ANTHROPIC_API_KEY,
+  }
+}
+
 export async function POST(
   request: Request
 ): Promise<Response> {
@@ -157,18 +173,18 @@ export async function POST(
     )
   }
 
-  let provider: ProviderConfig = providerConfig
-    ? {
-        type: mapProviderType(providerConfig.type),
-        apiKey: providerConfig.apiKey ?? undefined,
-        baseUrl: providerConfig.baseUrl ?? undefined,
-        modelOverrides:
-          providerConfig.modelOverrides ?? undefined,
-      }
-    : {
-        type: "anthropic",
-        apiKey: envRecord.ANTHROPIC_API_KEY,
-      }
+  let provider: ProviderConfig =
+    providerConfig &&
+    (providerConfig.apiKey ||
+      providerConfig.type === "anthropic-oauth")
+      ? {
+          type: mapProviderType(providerConfig.type),
+          apiKey: providerConfig.apiKey ?? undefined,
+          baseUrl: providerConfig.baseUrl ?? undefined,
+          modelOverrides:
+            providerConfig.modelOverrides ?? undefined,
+        }
+      : providerFromEnvironment(envRecord)
 
   // Log warning if no API key available (unless using OAuth which handles its own auth)
   if (
@@ -345,7 +361,7 @@ export async function POST(
   // Resolve short model names to full model IDs based on provider
   const resolvedModel = resolveModelId(
     model,
-    providerConfig?.type ?? "anthropic"
+    provider.type
   )
 
   const stream = runAgent({
