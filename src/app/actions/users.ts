@@ -10,6 +10,7 @@ import {
   groupMembers,
   teams,
   groups,
+  projects,
   type User,
   type NewUser,
 } from "@/db/schema"
@@ -29,6 +30,12 @@ import {
 export type UserWithRelations = User & {
   teams: { id: string; name: string }[]
   groups: { id: string; name: string; color: string | null }[]
+  assignedProjects: {
+    id: string
+    projectNumber: string | null
+    name: string
+    role: string
+  }[]
   projectCount: number
   organizationCount: number
 }
@@ -79,12 +86,17 @@ export async function getUsers(): Promise<UserWithRelations[]> {
           .innerJoin(groups, eq(groupMembers.groupId, groups.id))
           .where(eq(groupMembers.userId, user.id))
 
-        // get project count
-        const projectCount = await db
-          .select()
+        // get project assignments
+        const assignedProjects = await db
+          .select({
+            id: projects.id,
+            projectNumber: projects.projectNumber,
+            name: projects.name,
+            role: projectMembers.role,
+          })
           .from(projectMembers)
+          .innerJoin(projects, eq(projectMembers.projectId, projects.id))
           .where(eq(projectMembers.userId, user.id))
-          .then((r) => r.length)
 
         // get organization count
         const organizationCount = await db
@@ -97,7 +109,8 @@ export async function getUsers(): Promise<UserWithRelations[]> {
           ...user,
           teams: userTeams,
           groups: userGroups,
-          projectCount,
+          assignedProjects,
+          projectCount: assignedProjects.length,
           organizationCount,
         }
       })

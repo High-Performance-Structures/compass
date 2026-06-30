@@ -11,6 +11,7 @@ import {
   type UserManagementContext,
   type UserWithRelations,
 } from "@/app/actions/users"
+import { getProjects, type ProjectListItem } from "@/app/actions/projects"
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
 import { PeopleTable } from "@/components/people-table"
@@ -22,6 +23,7 @@ export function TeamTab() {
   const [users, setUsers] = React.useState<UserWithRelations[]>([])
   const [loading, setLoading] = React.useState(true)
   const [selectedUser, setSelectedUser] = React.useState<UserWithRelations | null>(null)
+  const [projects, setProjects] = React.useState<ProjectListItem[]>([])
   const [drawerOpen, setDrawerOpen] = React.useState(false)
   const [inviteDialogOpen, setInviteDialogOpen] = React.useState(false)
   const [context, setContext] = React.useState<UserManagementContext>({
@@ -41,8 +43,14 @@ export function TeamTab() {
         getUsers(),
         getUserManagementContext(),
       ])
+      const projectData = accessContext.canManageUsers ? await getProjects() : []
       setUsers(data)
+      setProjects(projectData)
       setContext(accessContext)
+      setSelectedUser((current) => {
+        if (!current) return current
+        return data.find((user) => user.id === current.id) ?? current
+      })
     } catch (error) {
       console.error("Failed to load users:", error)
       toast.error("Failed to load users")
@@ -142,6 +150,7 @@ export function TeamTab() {
         onOpenChange={setDrawerOpen}
         onUserUpdated={handleUserUpdated}
         canManageUsers={context.canManageUsers}
+        projects={projects}
       />
 
       <InviteDialog
