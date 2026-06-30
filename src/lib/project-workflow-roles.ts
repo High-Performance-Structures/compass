@@ -227,8 +227,9 @@ export function workflowRoleIdFromString(
     case "developer-admin":
     case "admin":
     case "secondary-admin":
-    case "executive":
       return "admin-owner"
+    case "executive":
+      return "project-manager"
     case "pm":
     case "project-manager":
     case "manager":
@@ -409,7 +410,11 @@ export function allowedWorkflowRoleIds({
   if (projectWorkflowRole) return [projectWorkflowRole]
 
   if (userRole === "field") return FIELD_WORKFLOW_ROLE_IDS
+  if (userRole === "field_superintendent" || userRole === "field_crew") {
+    return FIELD_WORKFLOW_ROLE_IDS
+  }
   if (userRole === "office") return OFFICE_WORKFLOW_ROLE_IDS
+  if (userRole === "executive") return OFFICE_WORKFLOW_ROLE_IDS
 
   const userWorkflowRole = workflowRoleIdFromString(userRole)
   if (userWorkflowRole && userWorkflowRole !== "admin-owner") {

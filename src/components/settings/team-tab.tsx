@@ -4,7 +4,13 @@ import * as React from "react"
 import { IconUserPlus } from "@tabler/icons-react"
 import { toast } from "sonner"
 
-import { getUsers, deactivateUser, type UserWithRelations } from "@/app/actions/users"
+import {
+  getUsers,
+  deactivateUser,
+  getUserManagementContext,
+  type UserManagementContext,
+  type UserWithRelations,
+} from "@/app/actions/users"
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
 import { PeopleTable } from "@/components/people-table"
@@ -18,15 +24,25 @@ export function TeamTab() {
   const [selectedUser, setSelectedUser] = React.useState<UserWithRelations | null>(null)
   const [drawerOpen, setDrawerOpen] = React.useState(false)
   const [inviteDialogOpen, setInviteDialogOpen] = React.useState(false)
+  const [context, setContext] = React.useState<UserManagementContext>({
+    currentUserId: null,
+    role: null,
+    canManageUsers: false,
+  })
 
   React.useEffect(() => {
-    loadUsers()
+    loadTeam()
   }, [])
 
-  const loadUsers = async () => {
+  const loadTeam = async () => {
+    setLoading(true)
     try {
-      const data = await getUsers()
+      const [data, accessContext] = await Promise.all([
+        getUsers(),
+        getUserManagementContext(),
+      ])
       setUsers(data)
+      setContext(accessContext)
     } catch (error) {
       console.error("Failed to load users:", error)
       toast.error("Failed to load users")
@@ -41,11 +57,16 @@ export function TeamTab() {
   }
 
   const handleDeactivateUser = async (userId: string) => {
+    if (!context.canManageUsers) {
+      toast.error("Only admins can deactivate users")
+      return
+    }
+
     try {
       const result = await deactivateUser(userId)
       if (result.success) {
         toast.success("User deactivated")
-        await loadUsers()
+        await loadTeam()
       } else {
         toast.error(result.error || "Failed to deactivate user")
       }
@@ -56,11 +77,11 @@ export function TeamTab() {
   }
 
   const handleUserUpdated = async () => {
-    await loadUsers()
+    await loadTeam()
   }
 
   const handleUserInvited = async () => {
-    await loadUsers()
+    await loadTeam()
   }
 
   if (loading) {
@@ -76,15 +97,19 @@ export function TeamTab() {
       <div className="space-y-3">
         <div className="flex items-center justify-between">
           <p className="text-sm text-muted-foreground">
-            Manage team members and client users
+            {context.canManageUsers
+              ? "Manage users, roles, and invite access"
+              : "Staff directory. Role changes and deactivation are admin-only."}
           </p>
-          <Button
-            onClick={() => setInviteDialogOpen(true)}
-            size="sm"
-          >
-            <IconUserPlus className="mr-2 size-4" />
-            Invite User
-          </Button>
+          {context.canManageUsers && (
+            <Button
+              onClick={() => setInviteDialogOpen(true)}
+              size="sm"
+            >
+              <IconUserPlus className="mr-2 size-4" />
+              Invite User
+            </Button>
+          )}
         </div>
 
         {users.length === 0 ? (
@@ -99,18 +124,24 @@ export function TeamTab() {
             users={users}
             onEditUser={handleEditUser}
             onDeactivateUser={handleDeactivateUser}
+            canManageUsers={context.canManageUsers}
           />
         )}
       </div>
 
-      <Separator className="my-6" />
-      <InviteLinksSection />
+      {context.canManageUsers && (
+        <>
+          <Separator className="my-6" />
+          <InviteLinksSection />
+        </>
+      )}
 
       <UserDrawer
         user={selectedUser}
         open={drawerOpen}
         onOpenChange={setDrawerOpen}
         onUserUpdated={handleUserUpdated}
+        canManageUsers={context.canManageUsers}
       />
 
       <InviteDialog

@@ -10,8 +10,9 @@ import {
   type NewOrganizationInvite,
 } from "@/db/schema"
 import { getCurrentUser } from "@/lib/auth"
-import { requirePermission } from "@/lib/permissions"
+import { canManageUserAccess, requirePermission } from "@/lib/permissions"
 import { isDemoUser } from "@/lib/demo"
+import { userRoleSchema } from "@/lib/validations/common"
 import { eq, and, desc } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { cookies } from "next/headers"
@@ -40,6 +41,14 @@ export async function createInvite(
     if (!currentUser) return { success: false, error: "Unauthorized" }
     if (isDemoUser(currentUser.id)) return { success: false, error: "DEMO_READ_ONLY" }
     requirePermission(currentUser, "organization", "create")
+    if (!canManageUserAccess(currentUser)) {
+      return { success: false, error: "Only admins can create invite links" }
+    }
+
+    const roleParseResult = userRoleSchema.safeParse(role)
+    if (!roleParseResult.success) {
+      return { success: false, error: "Please select a valid role" }
+    }
 
     if (!currentUser.organizationId) {
       return { success: false, error: "No active organization" }
@@ -65,7 +74,7 @@ export async function createInvite(
       id: crypto.randomUUID(),
       organizationId: currentUser.organizationId,
       code,
-      role,
+      role: roleParseResult.data,
       maxUses: maxUses ?? null,
       useCount: 0,
       expiresAt: expiresAt ?? null,
@@ -114,6 +123,9 @@ export async function getOrgInvites(): Promise<{
     const currentUser = await getCurrentUser()
     if (!currentUser) return { success: false, error: "Unauthorized" }
     requirePermission(currentUser, "organization", "read")
+    if (!canManageUserAccess(currentUser)) {
+      return { success: false, error: "Only admins can view invite links" }
+    }
 
     if (!currentUser.organizationId) {
       return { success: false, error: "No active organization" }
@@ -161,6 +173,9 @@ export async function revokeInvite(
     if (!currentUser) return { success: false, error: "Unauthorized" }
     if (isDemoUser(currentUser.id)) return { success: false, error: "DEMO_READ_ONLY" }
     requirePermission(currentUser, "organization", "update")
+    if (!canManageUserAccess(currentUser)) {
+      return { success: false, error: "Only admins can revoke invite links" }
+    }
 
     if (!currentUser.organizationId) {
       return { success: false, error: "No active organization" }

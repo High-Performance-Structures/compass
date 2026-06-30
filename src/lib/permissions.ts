@@ -1,4 +1,5 @@
 import type { AuthUser } from "./auth"
+import { canManageUserAccessRole } from "@/lib/user-roles"
 
 export type Resource =
   | "project"
@@ -43,7 +44,7 @@ const ADMIN_PERMISSIONS: RolePermissionSet = {
   channels: ["create", "read", "update", "delete", "moderate"],
 }
 
-const OFFICE_PERMISSIONS: RolePermissionSet = {
+const INTERNAL_PROJECT_PERMISSIONS: RolePermissionSet = {
   project: ["create", "read", "update"],
   schedule: ["create", "read", "update"],
   budget: ["create", "read", "update"],
@@ -60,49 +61,70 @@ const OFFICE_PERMISSIONS: RolePermissionSet = {
   channels: ["create", "read", "update"],
 }
 
+const FIELD_PERMISSIONS: RolePermissionSet = {
+  project: ["read"],
+  schedule: ["read", "update"],
+  budget: ["read"],
+  changeorder: ["create", "read"],
+  document: ["create", "read"],
+  user: ["read"],
+  organization: ["read"],
+  team: ["read"],
+  group: ["read"],
+  customer: ["read"],
+  vendor: ["read"],
+  finance: ["read"],
+  agent: ["read"],
+  channels: ["create", "read"],
+}
+
+const EXTERNAL_PROJECT_PERMISSIONS: RolePermissionSet = {
+  project: ["read"],
+  schedule: ["read"],
+  budget: ["read"],
+  changeorder: ["read"],
+  document: ["read"],
+  user: [],
+  organization: ["read"],
+  team: ["read"],
+  group: ["read"],
+  customer: ["read"],
+  vendor: ["read"],
+  finance: ["read"],
+  agent: [],
+  channels: ["read"],
+}
+
 const PERMISSIONS: RolePermissions = {
   admin: ADMIN_PERMISSIONS,
   secondary_admin: ADMIN_PERMISSIONS,
-  executive: ADMIN_PERMISSIONS,
-  office: OFFICE_PERMISSIONS,
-  project_manager: OFFICE_PERMISSIONS,
-  coordinator: OFFICE_PERMISSIONS,
+  executive: {
+    ...INTERNAL_PROJECT_PERMISSIONS,
+    finance: ["read", "approve"],
+    organization: ["read"],
+    user: ["read"],
+  },
+  office: INTERNAL_PROJECT_PERMISSIONS,
+  office_manager: INTERNAL_PROJECT_PERMISSIONS,
+  project_manager: INTERNAL_PROJECT_PERMISSIONS,
+  project_administrator: INTERNAL_PROJECT_PERMISSIONS,
+  assistant_project_manager: INTERNAL_PROJECT_PERMISSIONS,
+  architectural_designer: INTERNAL_PROJECT_PERMISSIONS,
+  drafter: INTERNAL_PROJECT_PERMISSIONS,
+  lead_estimator: INTERNAL_PROJECT_PERMISSIONS,
+  assistant_estimator: INTERNAL_PROJECT_PERMISSIONS,
+  coordinator: INTERNAL_PROJECT_PERMISSIONS,
   accounting: {
-    ...OFFICE_PERMISSIONS,
+    ...INTERNAL_PROJECT_PERMISSIONS,
     finance: ["create", "read", "update", "approve"],
   },
-  field: {
-    project: ["read"],
-    schedule: ["read", "update"],
-    budget: ["read"],
-    changeorder: ["create", "read"],
-    document: ["create", "read"],
-    user: ["read"],
-    organization: ["read"],
-    team: ["read"],
-    group: ["read"],
-    customer: ["read"],
-    vendor: ["read"],
-    finance: ["read"],
-    agent: ["read"],
-    channels: ["create", "read"],
-  },
-  client: {
-    project: ["read"],
-    schedule: ["read"],
-    budget: ["read"],
-    changeorder: ["read"],
-    document: ["read"],
-    user: ["read"],
-    organization: ["read"],
-    team: ["read"],
-    group: ["read"],
-    customer: ["read"],
-    vendor: ["read"],
-    finance: ["read"],
-    agent: [],
-    channels: ["read"],
-  },
+  field_superintendent: FIELD_PERMISSIONS,
+  field_crew: FIELD_PERMISSIONS,
+  field: FIELD_PERMISSIONS,
+  client: EXTERNAL_PROJECT_PERMISSIONS,
+  subcontractor: EXTERNAL_PROJECT_PERMISSIONS,
+  supplier: EXTERNAL_PROJECT_PERMISSIONS,
+  guest: EXTERNAL_PROJECT_PERMISSIONS,
 }
 
 export function can(
@@ -157,7 +179,11 @@ export function canManageProjectRegistry(user: AuthUser | null): boolean {
   if (!user || !user.isActive) return false
 
   return (
-    user.role === "secondary_admin" ||
+    canManageUserAccessRole(user.role) ||
     can(user, "organization", "update")
   )
+}
+
+export function canManageUserAccess(user: AuthUser | null): boolean {
+  return !!user && user.isActive && canManageUserAccessRole(user.role)
 }

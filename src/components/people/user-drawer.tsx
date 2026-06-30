@@ -6,6 +6,11 @@ import { toast } from "sonner"
 
 import type { UserWithRelations } from "@/app/actions/users"
 import { updateUserRole } from "@/app/actions/users"
+import {
+  USER_ROLE_OPTIONS,
+  userRoleDescription,
+  userRoleLabel,
+} from "@/lib/user-roles"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -31,6 +36,7 @@ interface UserDrawerProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   onUserUpdated?: () => void
+  canManageUsers?: boolean
 }
 
 export function UserDrawer({
@@ -38,6 +44,7 @@ export function UserDrawer({
   open,
   onOpenChange,
   onUserUpdated,
+  canManageUsers = false,
 }: UserDrawerProps) {
   const [saving, setSaving] = React.useState(false)
   const [selectedRole, setSelectedRole] = React.useState<string>("office")
@@ -99,7 +106,9 @@ export function UserDrawer({
             </div>
           </SheetTitle>
           <SheetDescription>
-            View and manage user details, roles, and permissions
+            {canManageUsers
+              ? "View and manage user details, roles, and permissions"
+              : "View user details and assigned access"}
           </SheetDescription>
         </SheetHeader>
 
@@ -150,23 +159,28 @@ export function UserDrawer({
           <TabsContent value="access" className="space-y-4 pt-4">
             <div className="space-y-2">
               <Label htmlFor="role">Primary Role</Label>
-              <Select value={selectedRole} onValueChange={setSelectedRole}>
-                <SelectTrigger id="role">
-                  <SelectValue placeholder="Select role" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="admin">Admin</SelectItem>
-                  <SelectItem value="secondary_admin">Secondary Admin</SelectItem>
-                  <SelectItem value="executive">Executive</SelectItem>
-                  <SelectItem value="project_manager">Project Manager</SelectItem>
-                  <SelectItem value="coordinator">Coordinator</SelectItem>
-                  <SelectItem value="accounting">Accounting</SelectItem>
-                  <SelectItem value="office">Office</SelectItem>
-                  <SelectItem value="field">Field</SelectItem>
-                  <SelectItem value="client">Client</SelectItem>
-                </SelectContent>
-              </Select>
-              {selectedRole !== user.role && (
+              {canManageUsers ? (
+                <Select value={selectedRole} onValueChange={setSelectedRole}>
+                  <SelectTrigger id="role">
+                    <SelectValue placeholder="Select role" />
+                  </SelectTrigger>
+                  <SelectContent className="max-h-80">
+                    {USER_ROLE_OPTIONS.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              ) : (
+                <Badge variant="secondary" className="w-fit">
+                  {userRoleLabel(user.role)}
+                </Badge>
+              )}
+              <p className="text-xs text-muted-foreground">
+                {userRoleDescription(selectedRole)}
+              </p>
+              {canManageUsers && selectedRole !== user.role && (
                 <Button
                   onClick={handleSaveRole}
                   disabled={saving}

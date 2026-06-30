@@ -19,6 +19,7 @@ import { isDemoUser } from "@/lib/demo"
 import { requireOrg } from "@/lib/org-scope"
 import { requirePermission } from "@/lib/permissions"
 import { assertProjectAccess } from "@/lib/project-access"
+import { isInternalStaffRole } from "@/lib/user-roles"
 import { revalidatePath } from "next/cache"
 
 type LatestDailyLog = {
@@ -423,22 +424,6 @@ async function verifyProjectMutationAccess(
   }
 
   return { db, userId: user.id }
-}
-
-function isInternalStaffRole(role: string): boolean {
-  switch (role) {
-    case "admin":
-    case "secondary_admin":
-    case "executive":
-    case "accounting":
-    case "project_manager":
-    case "coordinator":
-    case "office":
-    case "field":
-      return true
-    default:
-      return false
-  }
 }
 
 async function verifyDailyLogStaffMutationAccess(

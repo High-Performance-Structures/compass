@@ -108,6 +108,21 @@ decision reactivates NetSuite for a specific workflow.
 |----------|-------------|
 | `FCM_SERVER_KEY` | Firebase Cloud Messaging server key for sending push notifications to iOS/Android. |
 
+### SMS notifications (optional)
+
+Compass can deliver text-message notifications through GoTo. Secrets belong in
+Cloudflare, not in repo-tracked env files.
+
+| Variable | Description |
+|----------|-------------|
+| `GOTO_SMS_ACCESS_TOKEN` | GoTo Personal Access Token with messaging scopes. |
+| `GOTO_CLIENT_ID` | GoTo OAuth client ID used to exchange the PAT for an API access token. |
+| `GOTO_CLIENT_SECRET` | GoTo OAuth client secret. |
+| `GOTO_SMS_ORC_FROM_NUMBER` | Optional ORC/Design sender override. Defaults to `+17196308767`. |
+| `GOTO_SMS_NUTECH_FROM_NUMBER` | Optional Nu-Tech sender override. Defaults to `+17196860770`. |
+| `GOTO_SMS_HPS_FROM_NUMBER` | Optional HPS sender override. Defaults to `+17199008850`. |
+| `COMPASS_SMS_WEBHOOK_URL` | Legacy/fallback SMS webhook if GoTo credentials are not configured. |
+
 ### GitHub deployment (optional)
 
 | Variable | Description |

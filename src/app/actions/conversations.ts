@@ -22,6 +22,7 @@ import { can, requirePermission } from "@/lib/permissions"
 import { revalidatePath } from "next/cache"
 import { requireOrg } from "@/lib/org-scope"
 import { isDemoUser } from "@/lib/demo"
+import { isInternalStaffRole } from "@/lib/user-roles"
 
 type ChannelAudience = "organization" | "staff" | "clients" | "sub_vendors"
 export type ChannelMemberRole = "owner" | "moderator" | "member"
@@ -33,19 +34,6 @@ export type ChannelMemberManagementUser = {
   readonly avatarUrl: string | null
   readonly userRole: string
   readonly memberRole: ChannelMemberRole | null
-}
-
-function isStaffRole(role: string): boolean {
-  return (
-    role === "admin" ||
-    role === "secondary_admin" ||
-    role === "executive" ||
-    role === "accounting" ||
-    role === "project_manager" ||
-    role === "coordinator" ||
-    role === "office" ||
-    role === "field"
-  )
 }
 
 function normalizeChannelAudience(value: string | null): ChannelAudience {
@@ -96,7 +84,7 @@ async function canManageChannelMembers(
 }
 
 function audienceAccessSql(user: { readonly id: string; readonly role: string }) {
-  const canSeeStaff = isStaffRole(user.role)
+  const canSeeStaff = isInternalStaffRole(user.role)
   return sql`(
     ${channels.audience} = 'organization'
     OR (${channels.audience} = 'staff' AND ${canSeeStaff})
@@ -133,7 +121,7 @@ async function canAccessChannelAudience(
 ): Promise<boolean> {
   const audience = normalizeChannelAudience(channel.audience)
   if (audience === "organization") return true
-  if (audience === "staff") return isStaffRole(user.role)
+  if (audience === "staff") return isInternalStaffRole(user.role)
 
   const roleCondition =
     audience === "clients"

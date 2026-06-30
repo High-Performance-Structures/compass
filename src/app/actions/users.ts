@@ -14,7 +14,7 @@ import {
   type NewUser,
 } from "@/db/schema"
 import { getCurrentUser } from "@/lib/auth"
-import { requirePermission } from "@/lib/permissions"
+import { canManageUserAccess, requirePermission } from "@/lib/permissions"
 import { eq, and } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import {
@@ -31,6 +31,22 @@ export type UserWithRelations = User & {
   groups: { id: string; name: string; color: string | null }[]
   projectCount: number
   organizationCount: number
+}
+
+export type UserManagementContext = {
+  readonly currentUserId: string | null
+  readonly role: string | null
+  readonly canManageUsers: boolean
+}
+
+export async function getUserManagementContext(): Promise<UserManagementContext> {
+  const currentUser = await getCurrentUser()
+
+  return {
+    currentUserId: currentUser?.id ?? null,
+    role: currentUser?.role ?? null,
+    canManageUsers: canManageUserAccess(currentUser),
+  }
 }
 
 export async function getUsers(): Promise<UserWithRelations[]> {
@@ -108,6 +124,9 @@ export async function updateUserRole(
   try {
     const currentUser = await getCurrentUser()
     requirePermission(currentUser, "user", "update")
+    if (!canManageUserAccess(currentUser)) {
+      return { success: false, error: "Only admins can update user roles" }
+    }
     if (!currentUser?.organizationId) {
       return { success: false, error: "No active organization selected" }
     }
@@ -119,6 +138,15 @@ export async function updateUserRole(
 
     const db = getDb(env.DB)
     const now = new Date().toISOString()
+    const targetUser = await db
+      .select({ id: users.id, role: users.role })
+      .from(users)
+      .where(eq(users.id, parseResult.data.userId))
+      .get()
+
+    if (!targetUser) {
+      return { success: false, error: "User not found" }
+    }
 
     await db
       .update(users)
@@ -162,6 +190,12 @@ export async function deactivateUser(
   try {
     const currentUser = await getCurrentUser()
     requirePermission(currentUser, "user", "delete")
+    if (!canManageUserAccess(currentUser)) {
+      return { success: false, error: "Only admins can deactivate users" }
+    }
+    if (currentUser?.id === parseResult.data.userId) {
+      return { success: false, error: "You cannot deactivate your own account" }
+    }
 
     const { env } = await getCloudflareContext()
     if (!env?.DB) {
@@ -170,6 +204,15 @@ export async function deactivateUser(
 
     const db = getDb(env.DB)
     const now = new Date().toISOString()
+    const targetUser = await db
+      .select({ id: users.id })
+      .from(users)
+      .where(eq(users.id, parseResult.data.userId))
+      .get()
+
+    if (!targetUser) {
+      return { success: false, error: "User not found" }
+    }
 
     await db
       .update(users)
@@ -401,6 +444,9 @@ export async function inviteUser(
   try {
     const currentUser = await getCurrentUser()
     requirePermission(currentUser, "user", "create")
+    if (!canManageUserAccess(currentUser)) {
+      return { success: false, error: "Only admins can invite users" }
+    }
 
     const { env } = await getCloudflareContext()
     if (!env?.DB) {

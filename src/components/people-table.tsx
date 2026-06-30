@@ -21,6 +21,7 @@ import {
 
 import type { UserWithRelations } from "@/app/actions/users"
 import { useIsMobile } from "@/hooks/use-mobile"
+import { USER_ROLE_OPTIONS, userRoleLabel } from "@/lib/user-roles"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -55,6 +56,7 @@ interface PeopleTableProps {
   onDeactivateUser?: (userId: string) => void
   /** Hides select, teams, groups, and projects columns */
   compact?: boolean
+  canManageUsers?: boolean
 }
 
 export function PeopleTable({
@@ -62,6 +64,7 @@ export function PeopleTable({
   onEditUser,
   onDeactivateUser,
   compact = false,
+  canManageUsers = false,
 }: PeopleTableProps) {
   const isMobile = useIsMobile()
   const [sorting, setSorting] = React.useState<SortingState>([])
@@ -124,10 +127,6 @@ export function PeopleTable({
       header: "Role",
       cell: ({ row }) => {
         const role = row.getValue("role") as string
-        const roleLabel = role
-          .split("_")
-          .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-          .join(" ")
         return (
           <Badge
             variant={
@@ -138,7 +137,7 @@ export function PeopleTable({
                   : "outline"
             }
           >
-            {roleLabel}
+            {userRoleLabel(role)}
           </Badge>
         )
       },
@@ -202,17 +201,21 @@ export function PeopleTable({
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               <DropdownMenuItem onClick={() => onEditUser?.(user)}>
-                Edit User
+                {canManageUsers ? "Edit User" : "View User"}
               </DropdownMenuItem>
-              <DropdownMenuItem>Assign to Project</DropdownMenuItem>
-              <DropdownMenuItem>Assign to Team</DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem
-                className="text-destructive"
-                onClick={() => onDeactivateUser?.(user.id)}
-              >
-                Deactivate
-              </DropdownMenuItem>
+              {canManageUsers && (
+                <>
+                  <DropdownMenuItem>Assign to Project</DropdownMenuItem>
+                  <DropdownMenuItem>Assign to Team</DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    className="text-destructive"
+                    onClick={() => onDeactivateUser?.(user.id)}
+                  >
+                    Deactivate
+                  </DropdownMenuItem>
+                </>
+              )}
             </DropdownMenuContent>
           </DropdownMenu>
         )
@@ -220,9 +223,12 @@ export function PeopleTable({
     },
   ]
 
-  const columnVisibility: VisibilityState = compact
-    ? { select: false, teams: false, groups: false, projects: false }
-    : {}
+  const columnVisibility: VisibilityState = {
+    ...(compact
+      ? { teams: false, groups: false, projects: false }
+      : {}),
+    ...(!canManageUsers ? { select: false, actions: false } : {}),
+  }
 
   const table = useReactTable({
     data: users,
@@ -272,10 +278,11 @@ export function PeopleTable({
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Roles</SelectItem>
-              <SelectItem value="admin">Admin</SelectItem>
-              <SelectItem value="office">Office</SelectItem>
-              <SelectItem value="field">Field</SelectItem>
-              <SelectItem value="client">Client</SelectItem>
+              {USER_ROLE_OPTIONS.map((option) => (
+                <SelectItem key={option.value} value={option.value}>
+                  {option.label}
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
         </div>
@@ -286,7 +293,7 @@ export function PeopleTable({
           {table.getRowModel().rows?.length ? (
             table.getRowModel().rows.map((row) => {
               const user = row.original
-              const roleLabel = user.role.charAt(0).toUpperCase() + user.role.slice(1)
+              const roleLabel = userRoleLabel(user.role)
               const teamNames = user.teams.map((t) => t.name).join(", ")
               return (
                 <MobileListCard
@@ -309,16 +316,20 @@ export function PeopleTable({
                     ...(teamNames ? [teamNames] : []),
                     ...(user.projectCount > 0 ? [`${user.projectCount} projects`] : []),
                   ]}
-                  actions={[
-                    { label: "Edit User", onClick: () => onEditUser?.(user) },
-                    { label: "Assign to Project", onClick: () => {} },
-                    { label: "Assign to Team", onClick: () => {} },
-                    {
-                      label: "Deactivate",
-                      onClick: () => onDeactivateUser?.(user.id),
-                      destructive: true,
-                    },
-                  ]}
+                  actions={
+                    canManageUsers
+                      ? [
+                          { label: "Edit User", onClick: () => onEditUser?.(user) },
+                          { label: "Assign to Project", onClick: () => {} },
+                          { label: "Assign to Team", onClick: () => {} },
+                          {
+                            label: "Deactivate",
+                            onClick: () => onDeactivateUser?.(user.id),
+                            destructive: true,
+                          },
+                        ]
+                      : []
+                  }
                 />
               )
             })
