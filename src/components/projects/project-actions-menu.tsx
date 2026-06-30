@@ -1,8 +1,6 @@
 "use client"
 
-import { useState, useTransition } from "react"
 import Link from "next/link"
-import { useRouter } from "next/navigation"
 import {
   IconCamera,
   IconCalendarStats,
@@ -16,7 +14,6 @@ import {
   IconUsers,
 } from "@tabler/icons-react"
 
-import { openProjectConversationChannel } from "@/app/actions/project-messages"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -35,22 +32,6 @@ export function ProjectActionsMenu({
   const projectFilesHref = projectDriveFolderId
     ? `/dashboard/files/folder/${projectDriveFolderId}`
     : "/dashboard/files?view=projects"
-  const router = useRouter()
-  const [isPending, startTransition] = useTransition()
-  const [error, setError] = useState<string | null>(null)
-
-  function handleOpenMessages(): void {
-    setError(null)
-    startTransition(async () => {
-      const result = await openProjectConversationChannel(projectId)
-      if (!result.success) {
-        setError(result.error)
-        return
-      }
-      router.push(`/dashboard/conversations/${result.data.channelId}`)
-      router.refresh()
-    })
-  }
 
   return (
     <DropdownMenu>
@@ -64,11 +45,6 @@ export function ProjectActionsMenu({
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-48">
-        {error && (
-          <div className="px-2 py-1.5 text-xs text-destructive">
-            {error}
-          </div>
-        )}
         <DropdownMenuItem asChild>
           <Link href={projectFilesHref}>
             <IconFolder />
@@ -112,15 +88,11 @@ export function ProjectActionsMenu({
             Contacts
           </Link>
         </DropdownMenuItem>
-        <DropdownMenuItem
-          disabled={isPending}
-          onSelect={(event) => {
-            event.preventDefault()
-            handleOpenMessages()
-          }}
-        >
-          <IconMessageCircle />
-          {isPending ? "Opening..." : "Messages"}
+        <DropdownMenuItem asChild>
+          <Link href={`/dashboard/projects/${projectId}/messages`}>
+            <IconMessageCircle />
+            Messages
+          </Link>
         </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem asChild>
