@@ -27,6 +27,7 @@ type ChannelHeaderProps = {
     readonly clientName: string | null
   } | null
   readonly memberCount: number
+  readonly audience: string
   readonly archivedAt: string | null
   readonly canUpdate: boolean
   readonly canDelete: boolean
@@ -38,12 +39,20 @@ function projectLabel(project: NonNullable<ChannelHeaderProps["project"]>): stri
     : project.name
 }
 
+function audienceLabel(audience: string): string {
+  if (audience === "staff") return "Staff"
+  if (audience === "clients") return "Clients"
+  if (audience === "sub_vendors") return "Subs/Suppliers"
+  return "Everyone"
+}
+
 export function ChannelHeader({
   channelId,
   name,
   description,
   project = null,
   memberCount,
+  audience,
   archivedAt,
   canUpdate,
   canDelete,
@@ -69,6 +78,9 @@ export function ChannelHeader({
                   Archived
                 </Badge>
               ) : null}
+              <Badge variant="secondary" className="h-5 shrink-0 px-1.5 text-[10px]">
+                {audienceLabel(audience)}
+              </Badge>
               {project ? (
                 <>
                   <IconFolder className="size-3.5 shrink-0" />

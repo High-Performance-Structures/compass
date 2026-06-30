@@ -61,6 +61,7 @@ export default async function ChannelPage({
           description={channel.description ?? undefined}
           project={project}
           memberCount={channel.memberCount}
+          audience={channel.audience}
           archivedAt={channel.archivedAt}
           canUpdate={channel.canUpdate}
           canDelete={channel.canDelete}

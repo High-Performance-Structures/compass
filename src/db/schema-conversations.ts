@@ -23,6 +23,7 @@ export const channels = sqliteTable("channels", {
   isPrivate: integer("is_private", { mode: "boolean" })
     .notNull()
     .default(false),
+  audience: text("audience").notNull().default("organization"),
   createdBy: text("created_by")
     .notNull()
     .references(() => users.id),

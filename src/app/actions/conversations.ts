@@ -3,6 +3,7 @@
 import { getCloudflareContext } from "@/lib/db"
 import { eq, and, sql, inArray } from "drizzle-orm"
 import { getDb } from "@/db"
+import { projectMembers } from "@/db/schema"
 import {
   channels,
   channelMembers,
@@ -21,6 +22,87 @@ import { can, requirePermission } from "@/lib/permissions"
 import { revalidatePath } from "next/cache"
 import { requireOrg } from "@/lib/org-scope"
 import { isDemoUser } from "@/lib/demo"
+
+type ChannelAudience = "organization" | "staff" | "clients" | "sub_vendors"
+
+function isStaffRole(role: string): boolean {
+  return (
+    role === "admin" ||
+    role === "secondary_admin" ||
+    role === "office" ||
+    role === "field"
+  )
+}
+
+function normalizeChannelAudience(value: string | null): ChannelAudience {
+  if (value === "staff") return "staff"
+  if (value === "clients") return "clients"
+  if (value === "sub_vendors") return "sub_vendors"
+  return "organization"
+}
+
+function audienceAccessSql(user: { readonly id: string; readonly role: string }) {
+  const canSeeStaff = isStaffRole(user.role)
+  return sql`(
+    ${channels.audience} = 'organization'
+    OR (${channels.audience} = 'staff' AND ${canSeeStaff})
+    OR (
+      ${channels.audience} = 'clients'
+      AND EXISTS (
+        SELECT 1
+        FROM project_members
+        WHERE project_members.user_id = ${user.id}
+          AND project_members.role = 'owner'
+          AND (${channels.projectId} IS NULL OR project_members.project_id = ${channels.projectId})
+      )
+    )
+    OR (
+      ${channels.audience} = 'sub_vendors'
+      AND EXISTS (
+        SELECT 1
+        FROM project_members
+        WHERE project_members.user_id = ${user.id}
+          AND project_members.role IN ('supplier', 'subcontractor')
+          AND (${channels.projectId} IS NULL OR project_members.project_id = ${channels.projectId})
+      )
+    )
+  )`
+}
+
+async function canAccessChannelAudience(
+  db: ReturnType<typeof getDb>,
+  user: { readonly id: string; readonly role: string },
+  channel: {
+    readonly audience: string | null
+    readonly projectId: string | null
+  }
+): Promise<boolean> {
+  const audience = normalizeChannelAudience(channel.audience)
+  if (audience === "organization") return true
+  if (audience === "staff") return isStaffRole(user.role)
+
+  const roleCondition =
+    audience === "clients"
+      ? eq(projectMembers.role, "owner")
+      : inArray(projectMembers.role, ["supplier", "subcontractor"])
+
+  const matchingMembership = await db
+    .select({ id: projectMembers.id })
+    .from(projectMembers)
+    .where(
+      and(
+        eq(projectMembers.userId, user.id),
+        roleCondition,
+        channel.projectId
+          ? eq(projectMembers.projectId, channel.projectId)
+          : undefined
+      )
+    )
+    .limit(1)
+    .then((rows) => rows[0] ?? null)
+
+  return matchingMembership !== null
+}
 
 export async function listChannels(options?: {
   readonly includeArchived?: boolean
@@ -48,6 +130,7 @@ export async function listChannels(options?: {
         projectId: channels.projectId,
         categoryId: channels.categoryId,
         isPrivate: channels.isPrivate,
+        audience: channels.audience,
         sortOrder: channels.sortOrder,
         archivedAt: channels.archivedAt,
         createdAt: channels.createdAt,
@@ -74,8 +157,11 @@ export async function listChannels(options?: {
         and(
           // must be in user's org
           eq(channels.organizationId, orgId),
-          // if private, must be a member
-          sql`(${channels.isPrivate} = 0 OR ${channelMembers.userId} IS NOT NULL)`,
+          // private channels are member-only. public channels are audience-scoped.
+          sql`(
+            (${channels.isPrivate} = 1 AND ${channelMembers.userId} IS NOT NULL)
+            OR (${channels.isPrivate} = 0 AND ${audienceAccessSql(user)})
+          )`,
           // not archived
           options?.includeArchived ? undefined : sql`${channels.archivedAt} IS NULL`
         )
@@ -118,7 +204,7 @@ export async function getChannel(channelId: string) {
       return { success: false, error: "Channel not found" }
     }
 
-    // if private, check membership
+    // if private, check membership. otherwise enforce the channel audience.
     if (channel.isPrivate) {
       const membership = await db
         .select()
@@ -135,6 +221,8 @@ export async function getChannel(channelId: string) {
       if (!membership) {
         return { success: false, error: "Access denied" }
       }
+    } else if (!(await canAccessChannelAudience(db, user, channel))) {
+      return { success: false, error: "Access denied" }
     }
 
     // count members
@@ -331,6 +419,7 @@ export async function createChannel(data: {
   projectId?: string
   categoryId?: string | null
   isPrivate?: boolean
+  audience?: ChannelAudience
 }) {
   try {
     const user = await getCurrentUser()
@@ -361,6 +450,7 @@ export async function createChannel(data: {
       projectId: data.projectId ?? null,
       categoryId: data.categoryId ?? null,
       isPrivate: data.isPrivate ?? false,
+      audience: data.audience ?? "staff",
       createdBy: user.id,
       sortOrder: 0,
       archivedAt: null,

@@ -1,5 +1,5 @@
 import Link from "next/link"
-import { Archive, FolderOpen, Hash, MessageSquare } from "lucide-react"
+import { Archive, FolderOpen, Hash, Megaphone, MessageSquare } from "lucide-react"
 import { listChannels } from "@/app/actions/conversations"
 import { getProjects } from "@/app/actions/projects"
 import { CreateChannelButton } from "@/components/conversations/create-channel-button"
@@ -16,14 +16,25 @@ export default async function ConversationsPage() {
   const activeChannels = channels.filter((channel) => !channel.archivedAt)
   const archivedChannels = channels.filter((channel) => channel.archivedAt)
   const companyChannels = activeChannels.filter(
-    (channel) => !channel.projectId && channel.type === "text"
+    (channel) =>
+      !channel.projectId &&
+      (channel.type === "text" || channel.type === "announcement")
   )
   const projectChannels = activeChannels.filter(
-    (channel) => channel.projectId && channel.type === "text"
+    (channel) =>
+      channel.projectId &&
+      (channel.type === "text" || channel.type === "announcement")
   )
 
   const firstCompanyChannel = companyChannels[0] ?? null
   const recentProjectChannels = projectChannels.slice(0, 8)
+
+  function channelIcon(type: string) {
+    if (type === "announcement") {
+      return <Megaphone className="size-4 shrink-0 text-muted-foreground" />
+    }
+    return <Hash className="size-4 shrink-0 text-muted-foreground" />
+  }
 
   return (
     <div className="flex h-full flex-1 flex-col overflow-y-auto p-4 sm:p-6">
@@ -58,7 +69,7 @@ export default async function ConversationsPage() {
                   className="flex items-center justify-between gap-3 py-3 transition-colors hover:text-primary"
                 >
                   <span className="flex min-w-0 items-center gap-2">
-                    <Hash className="size-4 shrink-0 text-muted-foreground" />
+                    {channelIcon(channel.type)}
                     <span className="truncate font-medium">{channel.name}</span>
                   </span>
                   {channel.unreadCount && channel.unreadCount > 0 ? (
@@ -109,7 +120,10 @@ export default async function ConversationsPage() {
                     href={`/dashboard/conversations/${channel.id}`}
                     className="flex items-center justify-between gap-3 py-2.5 text-sm transition-colors hover:text-primary"
                   >
-                    <span className="min-w-0 truncate">#{channel.name}</span>
+                    <span className="flex min-w-0 items-center gap-2">
+                      {channelIcon(channel.type)}
+                      <span className="min-w-0 truncate">{channel.name}</span>
+                    </span>
                     {channel.unreadCount && channel.unreadCount > 0 ? (
                       <span className="rounded-full bg-primary px-2 py-0.5 text-[11px] font-semibold text-primary-foreground">
                         {channel.unreadCount}

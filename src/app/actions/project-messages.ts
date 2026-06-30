@@ -420,6 +420,7 @@ export async function openProjectConversationChannel(
       projectId,
       categoryId: null,
       isPrivate: false,
+      audience: "staff",
       createdBy: user.id,
       sortOrder: 0,
       archivedAt: null,

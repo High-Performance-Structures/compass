@@ -48,6 +48,7 @@ const channelSchema = z.object({
   type: z.enum(["text", "voice", "announcement"]),
   categoryId: z.string().nullable(),
   isPrivate: z.boolean(),
+  audience: z.enum(["staff", "clients", "sub_vendors", "organization"]),
 })
 
 type ChannelFormData = z.infer<typeof channelSchema>
@@ -71,8 +72,31 @@ const channelTypes = [
     value: "announcement",
     label: "Announcement",
     icon: Megaphone,
-    description: "Important updates that only admins can post",
+    description: "Important updates for a chosen audience",
     disabled: false,
+  },
+] as const
+
+const channelAudiences = [
+  {
+    value: "staff",
+    label: "All staff",
+    description: "Internal HPS, ORC, Nu-Tech, and Design users.",
+  },
+  {
+    value: "clients",
+    label: "All clients / owners",
+    description: "Owner users with project access.",
+  },
+  {
+    value: "sub_vendors",
+    label: "All subs / suppliers",
+    description: "Subcontractor and supplier users with project access.",
+  },
+  {
+    value: "organization",
+    label: "Everyone with Compass access",
+    description: "All active users in this Compass organization.",
   },
 ] as const
 
@@ -124,8 +148,11 @@ export function CreateChannelDialog({
       type: "text",
       categoryId: null,
       isPrivate: false,
+      audience: "staff",
     },
   })
+
+  const isPrivate = form.watch("isPrivate")
 
   const onSubmit = async (data: ChannelFormData) => {
     setIsSubmitting(true)
@@ -135,6 +162,7 @@ export function CreateChannelDialog({
       type: data.type,
       categoryId: data.categoryId,
       isPrivate: data.isPrivate,
+      audience: data.isPrivate ? "staff" : data.audience,
     })
 
     if (result.success && result.data) {
@@ -284,6 +312,52 @@ export function CreateChannelDialog({
                       </SelectContent>
                     </Select>
                   </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            {/* audience selector */}
+            <FormField
+              control={form.control}
+              name="audience"
+              render={({ field }) => (
+                <FormItem className="space-y-1.5">
+                  <FormLabel className="text-sm font-semibold">
+                    Audience
+                  </FormLabel>
+                  <FormControl>
+                    <Select
+                      value={field.value}
+                      onValueChange={field.onChange}
+                      disabled={isPrivate}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Choose who can see this channel" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {channelAudiences.map((audience) => (
+                          <SelectItem key={audience.value} value={audience.value}>
+                            <div className="space-y-0.5">
+                              <div>{audience.label}</div>
+                              <div className="text-xs text-muted-foreground">
+                                {audience.description}
+                              </div>
+                            </div>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </FormControl>
+                  {isPrivate ? (
+                    <p className="text-xs text-muted-foreground">
+                      Private channels are visible only to invited members.
+                    </p>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">
+                      Announcements and text channels use the same audience rules.
+                    </p>
+                  )}
                   <FormMessage />
                 </FormItem>
               )}
