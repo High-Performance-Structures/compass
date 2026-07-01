@@ -46,6 +46,7 @@
 		}
 	],
 	"vars": {
+		"COMPASS_EMAIL_FROM": "Compass <compass@hps-colorado.com>",
 		"WORKOS_REDIRECT_URI": "https://compass.openrangeconstruction.ltd/callback"
 	}
 }

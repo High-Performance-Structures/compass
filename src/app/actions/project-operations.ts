@@ -990,7 +990,7 @@ async function sendResendPurchaseOrderEmail(
 
   const fromAddress =
     envString(env, "COMPASS_EMAIL_FROM") ??
-    "Compass <notifications@compass.build>"
+    "Compass <compass@hps-colorado.com>"
   const requestBody: Record<string, unknown> = {
     from: fromAddress,
     to: input.to,

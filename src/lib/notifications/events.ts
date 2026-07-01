@@ -389,7 +389,7 @@ async function sendResendEmail(
 
   const fromAddress =
     envString(env, "COMPASS_EMAIL_FROM") ??
-    "Compass <notifications@compass.build>"
+    "Compass <compass@hps-colorado.com>"
 
   const response = await fetch("https://api.resend.com/emails", {
     method: "POST",
