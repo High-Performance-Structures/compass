@@ -344,7 +344,7 @@ export function NavConversations() {
         <Button
           variant="outline"
           size="sm"
-          className="flex-1 border-sidebar-border bg-sidebar-accent text-sidebar-accent-foreground shadow-none hover:bg-sidebar-accent/80 hover:text-sidebar-accent-foreground focus-visible:ring-sidebar-ring/60"
+          className="flex-1 border-sidebar-border bg-sidebar-accent text-sidebar-accent-foreground shadow-none hover:border-sidebar-ring/50 hover:bg-sidebar-accent/70 hover:text-sidebar-accent-foreground hover:shadow-sm focus-visible:ring-sidebar-ring/60"
           onClick={() => setCreateDialogOpen(true)}
         >
           <IconPlus className="h-4 w-4" />
