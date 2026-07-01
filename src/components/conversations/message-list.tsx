@@ -2,7 +2,15 @@
 
 import * as React from "react"
 import { format, parseISO } from "date-fns"
-import { AtSign, Mail, MessageSquareText, Pin } from "lucide-react"
+import {
+  AtSign,
+  BriefcaseBusiness,
+  HardHat,
+  Home,
+  Mail,
+  MessageSquareText,
+  Pin,
+} from "lucide-react"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Separator } from "@/components/ui/separator"
 import { MessageItem } from "./message-item"
@@ -28,6 +36,7 @@ type MessageData = {
     readonly id: string
     readonly displayName: string | null
     readonly email: string
+    readonly role: string
     readonly avatarUrl: string | null
   } | null
 }
@@ -37,7 +46,15 @@ type MessageListProps = {
   readonly initialMessages: readonly MessageData[]
 }
 
-type ConversationViewFilter = "all" | "chat" | "email" | "mentions" | "pinned"
+type ConversationViewFilter =
+  | "all"
+  | "chat"
+  | "email"
+  | "staff"
+  | "clients"
+  | "sub_vendors"
+  | "mentions"
+  | "pinned"
 
 const MAX_MESSAGES = 200
 
@@ -56,6 +73,38 @@ function messageHasMention(message: MessageData): boolean {
   )
 }
 
+function messageIsStaff(message: MessageData): boolean {
+  const role = message.user?.role
+  return (
+    role === "admin" ||
+    role === "secondary_admin" ||
+    role === "executive" ||
+    role === "project_manager" ||
+    role === "project_administrator" ||
+    role === "assistant_project_manager" ||
+    role === "accounting" ||
+    role === "office_manager" ||
+    role === "office" ||
+    role === "field_superintendent" ||
+    role === "field_crew" ||
+    role === "architectural_designer" ||
+    role === "drafter" ||
+    role === "lead_estimator" ||
+    role === "assistant_estimator" ||
+    role === "coordinator" ||
+    role === "field"
+  )
+}
+
+function messageIsClient(message: MessageData): boolean {
+  return message.user?.role === "client"
+}
+
+function messageIsSubVendor(message: MessageData): boolean {
+  const role = message.user?.role
+  return role === "subcontractor" || role === "supplier"
+}
+
 function messageMatchesFilter(
   message: MessageData,
   filter: ConversationViewFilter
@@ -65,6 +114,12 @@ function messageMatchesFilter(
       return !messageIsEmail(message)
     case "email":
       return messageIsEmail(message)
+    case "staff":
+      return !messageIsEmail(message) && messageIsStaff(message)
+    case "clients":
+      return !messageIsEmail(message) && messageIsClient(message)
+    case "sub_vendors":
+      return !messageIsEmail(message) && messageIsSubVendor(message)
     case "mentions":
       return messageHasMention(message)
     case "pinned":
@@ -82,6 +137,12 @@ function filterLabel(filter: ConversationViewFilter): string {
       return "Chat"
     case "email":
       return "Email"
+    case "staff":
+      return "Staff"
+    case "clients":
+      return "Clients"
+    case "sub_vendors":
+      return "Subs/Suppliers"
     case "mentions":
       return "Mentions"
     case "pinned":
@@ -95,6 +156,12 @@ function filterIcon(filter: ConversationViewFilter): React.ReactElement | null {
       return <MessageSquareText className="size-3.5" />
     case "email":
       return <Mail className="size-3.5" />
+    case "staff":
+      return <BriefcaseBusiness className="size-3.5" />
+    case "clients":
+      return <Home className="size-3.5" />
+    case "sub_vendors":
+      return <HardHat className="size-3.5" />
     case "mentions":
       return <AtSign className="size-3.5" />
     case "pinned":
@@ -211,6 +278,13 @@ export function MessageList({ channelId, initialMessages }: MessageListProps) {
       all: messages.length,
       chat: messages.filter((message) => messageMatchesFilter(message, "chat")).length,
       email: messages.filter((message) => messageMatchesFilter(message, "email")).length,
+      staff: messages.filter((message) => messageMatchesFilter(message, "staff")).length,
+      clients: messages.filter((message) =>
+        messageMatchesFilter(message, "clients")
+      ).length,
+      sub_vendors: messages.filter((message) =>
+        messageMatchesFilter(message, "sub_vendors")
+      ).length,
       mentions: messages.filter((message) =>
         messageMatchesFilter(message, "mentions")
       ).length,
@@ -265,8 +339,18 @@ export function MessageList({ channelId, initialMessages }: MessageListProps) {
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="border-b px-4 py-2">
         <div className="flex flex-wrap items-center gap-1.5">
-          {(["all", "chat", "email", "mentions", "pinned"] as const).map(
-            (filter) => (
+          {(
+            [
+              "all",
+              "chat",
+              "email",
+              "staff",
+              "clients",
+              "sub_vendors",
+              "mentions",
+              "pinned",
+            ] as const
+          ).map((filter) => (
               <button
                 key={filter}
                 type="button"
@@ -292,8 +376,7 @@ export function MessageList({ channelId, initialMessages }: MessageListProps) {
                   {filterCounts[filter]}
                 </span>
               </button>
-            )
-          )}
+            ))}
         </div>
       </div>
 

@@ -28,6 +28,7 @@ type MessageWithUser = {
     id: string
     displayName: string | null
     email: string
+    role: string
     avatarUrl: string | null
   } | null
 }
@@ -53,6 +54,7 @@ const messageSelectFields = {
     id: users.id,
     displayName: users.displayName,
     email: users.email,
+    role: users.role,
     avatarUrl: users.avatarUrl,
   },
 } as const

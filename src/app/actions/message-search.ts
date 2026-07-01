@@ -1,7 +1,7 @@
 "use server"
 
 import { getCloudflareContext } from "@/lib/db"
-import { eq, and, like, sql, gte, lte, desc, inArray } from "drizzle-orm"
+import { eq, and, like, sql, gte, lte, desc, inArray, or } from "drizzle-orm"
 import type { SQL } from "drizzle-orm"
 import { getDb } from "@/db"
 import { messages, channels, channelMembers } from "@/db/schema-conversations"
@@ -20,10 +20,31 @@ function escapeLikeWildcards(str: string): string {
 type SearchFilters = {
   channelId?: string
   scope?: "all" | "company" | "project"
+  senderType?: "all" | "staff" | "clients" | "sub_vendors" | "email"
   userId?: string
   startDate?: string
   endDate?: string
 }
+
+const STAFF_ROLES = [
+  "admin",
+  "secondary_admin",
+  "executive",
+  "project_manager",
+  "project_administrator",
+  "assistant_project_manager",
+  "accounting",
+  "office_manager",
+  "office",
+  "field_superintendent",
+  "field_crew",
+  "architectural_designer",
+  "drafter",
+  "lead_estimator",
+  "assistant_estimator",
+  "coordinator",
+  "field",
+]
 
 type SearchResultMessage = {
   id: string
@@ -118,6 +139,27 @@ export async function searchMessages(
 
     if (filters?.scope === "project") {
       conditions.push(sql`${channels.projectId} IS NOT NULL`)
+    }
+
+    if (filters?.senderType === "staff") {
+      conditions.push(inArray(users.role, STAFF_ROLES))
+    }
+
+    if (filters?.senderType === "clients") {
+      conditions.push(eq(users.role, "client"))
+    }
+
+    if (filters?.senderType === "sub_vendors") {
+      conditions.push(inArray(users.role, ["subcontractor", "supplier"]))
+    }
+
+    if (filters?.senderType === "email") {
+      conditions.push(
+        or(
+          like(messages.content, "Email reply from %"),
+          like(messages.contentHtml, "%compass-email-reply%")
+        )
+      )
     }
 
     if (filters?.userId) {

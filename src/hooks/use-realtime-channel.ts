@@ -24,6 +24,7 @@ type MessageData = {
     id: string
     displayName: string | null
     email: string
+    role: string
     avatarUrl: string | null
   } | null
 }

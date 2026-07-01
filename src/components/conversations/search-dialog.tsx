@@ -76,6 +76,9 @@ export function SearchDialog({
   const [selectedScope, setSelectedScope] = React.useState<
     "all" | "company" | "project"
   >("all")
+  const [selectedSenderType, setSelectedSenderType] = React.useState<
+    "all" | "staff" | "clients" | "sub_vendors" | "email"
+  >("all")
   const [selectedUser, setSelectedUser] = React.useState<string>("all")
   const [startDate, setStartDate] = React.useState<Date | undefined>()
   const [endDate, setEndDate] = React.useState<Date | undefined>()
@@ -119,6 +122,7 @@ export function SearchDialog({
       const filters: {
         channelId?: string
         scope?: "all" | "company" | "project"
+        senderType?: "all" | "staff" | "clients" | "sub_vendors" | "email"
         userId?: string
         startDate?: string
         endDate?: string
@@ -126,6 +130,7 @@ export function SearchDialog({
 
       if (selectedChannel !== "all") filters.channelId = selectedChannel
       if (selectedScope !== "all") filters.scope = selectedScope
+      if (selectedSenderType !== "all") filters.senderType = selectedSenderType
       if (selectedUser !== "all") filters.userId = selectedUser
       if (startDate) filters.startDate = startDate.toISOString()
       if (endDate) filters.endDate = endDate.toISOString()
@@ -149,6 +154,7 @@ export function SearchDialog({
     debouncedQuery,
     selectedChannel,
     selectedScope,
+    selectedSenderType,
     selectedUser,
     startDate,
     endDate,
@@ -173,6 +179,7 @@ export function SearchDialog({
   const clearFilters = () => {
     setSelectedChannel("all")
     setSelectedScope("all")
+    setSelectedSenderType("all")
     setSelectedUser("all")
     setStartDate(undefined)
     setEndDate(undefined)
@@ -181,10 +188,10 @@ export function SearchDialog({
   const hasActiveFilters =
     selectedChannel !== "all" ||
     selectedScope !== "all" ||
+    selectedSenderType !== "all" ||
     selectedUser !== "all" ||
     startDate !== undefined ||
     endDate !== undefined
-  const staffUsers = users.filter((user) => user.role !== "client")
 
   return (
     <CommandDialog
@@ -241,14 +248,41 @@ export function SearchDialog({
           </SelectContent>
         </Select>
 
+        <Select
+          value={selectedSenderType}
+          onValueChange={(value) => {
+            if (
+              value === "all" ||
+              value === "staff" ||
+              value === "clients" ||
+              value === "sub_vendors" ||
+              value === "email"
+            ) {
+              setSelectedSenderType(value)
+            }
+          }}
+        >
+          <SelectTrigger size="sm" className="h-7 text-xs">
+            <IconUser className="mr-1 size-3" />
+            <SelectValue placeholder="Sender" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Senders</SelectItem>
+            <SelectItem value="staff">Staff</SelectItem>
+            <SelectItem value="clients">Clients/Owners</SelectItem>
+            <SelectItem value="sub_vendors">Subs/Suppliers</SelectItem>
+            <SelectItem value="email">Email Replies</SelectItem>
+          </SelectContent>
+        </Select>
+
         <Select value={selectedUser} onValueChange={setSelectedUser}>
           <SelectTrigger size="sm" className="h-7 text-xs">
             <IconUser className="mr-1 size-3" />
-            <SelectValue placeholder="Staff member" />
+            <SelectValue placeholder="Person" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">All Staff</SelectItem>
-            {staffUsers.map((user) => (
+            <SelectItem value="all">All People</SelectItem>
+            {users.map((user) => (
               <SelectItem key={user.id} value={user.id}>
                 {user.displayName ?? user.email.split("@")[0]}
               </SelectItem>

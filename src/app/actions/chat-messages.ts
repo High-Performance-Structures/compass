@@ -498,6 +498,7 @@ export async function sendMessage(data: {
           id: users.id,
           displayName: users.displayName,
           email: users.email,
+          role: users.role,
           avatarUrl: users.avatarUrl,
         },
       })
@@ -694,6 +695,7 @@ export async function getMessages(
           id: users.id,
           displayName: users.displayName,
           email: users.email,
+          role: users.role,
           avatarUrl: users.avatarUrl,
         },
       })
@@ -779,6 +781,7 @@ export async function getThreadMessages(
           id: users.id,
           displayName: users.displayName,
           email: users.email,
+          role: users.role,
           avatarUrl: users.avatarUrl,
         },
       })
