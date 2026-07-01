@@ -1022,7 +1022,7 @@ export function ProjectDailyLogWorkspace({
           </section>
         )}
 
-        <section className="rounded-lg border p-3 sm:p-4">
+        <section className="border-y py-3">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex flex-wrap items-center gap-2">
               <Input
@@ -1068,18 +1068,18 @@ export function ProjectDailyLogWorkspace({
             </div>
           </div>
           {message && (
-            <p className="mt-3 rounded-md border bg-muted/30 px-3 py-2 text-sm">
+            <p className="mt-3 border-l-2 border-l-[#3f7d4d] bg-muted/20 px-3 py-2 text-sm">
               {message}
             </p>
           )}
         </section>
 
-        <div className="grid grid-cols-1 gap-3">
+        <div className="grid grid-cols-1 gap-2">
           {filteredLogs.map((log) => (
             <section
               key={log.id}
               id={`daily-log-${log.id}`}
-              className="scroll-mt-24 rounded-lg border p-3 sm:p-4"
+              className="scroll-mt-24 border-y border-r border-l-2 border-l-[#3f7d4d] bg-background px-3 py-3 sm:px-4"
             >
               {(() => {
                 const crewPresent = readableField(log.crewPresent)
@@ -1338,7 +1338,7 @@ export function ProjectDailyLogWorkspace({
                   </div>
 
                   {uploadMessage && (
-                    <p className="mt-3 rounded-md border bg-muted/30 px-3 py-2 text-sm">
+                    <p className="mt-3 border-l-2 border-l-[#3f7d4d] bg-muted/20 px-3 py-2 text-sm">
                       {uploadMessage}
                     </p>
                   )}
@@ -1346,14 +1346,17 @@ export function ProjectDailyLogWorkspace({
               )}
 
               {log.tasks.length > 0 && (
-                <div className="mt-3 rounded-md border bg-muted/20 p-3">
+                <div className="mt-3 border-y bg-muted/10 py-3">
                   <div className="mb-2 flex items-center gap-2 text-xs font-medium uppercase text-muted-foreground">
                     <IconCalendarStats className="size-3.5" />
                     Schedule links
                   </div>
                   <div className="grid gap-2 md:grid-cols-2">
                     {log.tasks.map((task) => (
-                      <div key={task.id} className="rounded-md bg-background p-2">
+                      <div
+                        key={task.id}
+                        className="border-l-2 border-l-[#2f5963] bg-background px-3 py-2"
+                      >
                         <p className="text-sm font-medium">{task.title}</p>
                         <p className="mt-1 text-xs text-muted-foreground">
                           {formatDate(task.startDate)} - {formatDate(task.endDate)}
@@ -1379,14 +1382,14 @@ export function ProjectDailyLogWorkspace({
           ))}
 
           {filteredLogs.length === 0 && (
-            <section className="rounded-lg border p-6 text-sm text-muted-foreground">
+            <section className="border border-dashed p-6 text-sm text-muted-foreground">
               No daily logs match this filter yet.
             </section>
           )}
         </div>
 
         {workspace.unattachedPhotos.length > 0 && (
-          <section className="rounded-lg border p-3 sm:p-4">
+          <section className="border-y py-3 sm:py-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <h2 className="text-sm font-semibold">Unattached Photos</h2>

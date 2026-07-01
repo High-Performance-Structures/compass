@@ -467,7 +467,7 @@ export default async function ProjectRfqsPage({
             />
           ))
         ) : (
-          <div className="rounded-lg border bg-background p-8 text-center">
+          <div className="border border-dashed bg-background p-8 text-center">
             <IconClock className="mx-auto size-6 text-muted-foreground" />
             <h2 className="mt-3 text-sm font-semibold">No RFQs found</h2>
             <p className="mt-1 text-sm text-muted-foreground">

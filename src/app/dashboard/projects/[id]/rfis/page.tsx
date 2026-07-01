@@ -350,7 +350,7 @@ export default async function ProjectRfisPage({
                   )}
                 </div>
                 {rfi.attachments.length > 0 && (
-                  <div className="mt-3 rounded-md border bg-muted/20 p-3">
+                  <div className="mt-3 border-y bg-muted/10 py-3">
                     <p className="text-xs font-medium text-muted-foreground">
                       Attachments
                     </p>
@@ -362,14 +362,14 @@ export default async function ProjectRfisPage({
                             href={attachment.storageUrl}
                             target="_blank"
                             rel="noreferrer"
-                            className="rounded-md border bg-background px-2.5 py-1 text-xs font-medium hover:bg-muted"
+                            className="border-l-2 border-l-[#9d832c] bg-background px-2.5 py-1 text-xs font-medium hover:bg-muted"
                           >
                             {attachment.fileName}
                           </a>
                         ) : (
                           <span
                             key={attachment.id}
-                            className="rounded-md border bg-background px-2.5 py-1 text-xs font-medium text-muted-foreground"
+                            className="border-l-2 border-l-muted bg-background px-2.5 py-1 text-xs font-medium text-muted-foreground"
                           >
                             {attachment.fileName}
                           </span>
@@ -418,7 +418,7 @@ export default async function ProjectRfisPage({
             )
           })
         ) : (
-          <div className="rounded-lg border bg-background p-8 text-center">
+          <div className="border border-dashed bg-background p-8 text-center">
             <IconClock className="mx-auto size-6 text-muted-foreground" />
             <h2 className="mt-3 text-sm font-semibold">No RFIs found</h2>
             <p className="mt-1 text-sm text-muted-foreground">

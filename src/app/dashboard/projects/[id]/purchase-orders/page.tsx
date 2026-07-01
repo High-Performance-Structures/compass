@@ -162,8 +162,8 @@ function PurchaseOrderCard({
     <article
       data-po-id={order.id}
       className={cn(
-        "po-printable rounded-lg border bg-background p-4 print:border-0 print:p-0",
-        isCreated && "border-[#3f7d4d] bg-card"
+        "po-printable border-y border-r border-l-2 border-l-[#6f471f] bg-background px-4 py-3 print:border-0 print:p-0",
+        isCreated && "border-l-[#3f7d4d] bg-card"
       )}
     >
       <div className="print:hidden">
@@ -226,7 +226,7 @@ function PurchaseOrderCard({
           <span>{formatDate(order.dueDate)}</span>
         </div>
         <p className="mt-3 text-sm font-medium">{money(order.amount)}</p>
-        <div className="mt-3 rounded-md border bg-muted/20 p-3">
+        <div className="mt-3 border-y bg-muted/10 py-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <p className="text-xs font-medium uppercase text-muted-foreground">
               Accounting sync
@@ -252,7 +252,7 @@ function PurchaseOrderCard({
             </span>
           </div>
           {order.lines.length > 0 && (
-            <div className="mt-3 overflow-hidden rounded-md border bg-background">
+            <div className="mt-3 overflow-hidden border bg-background">
               {order.lines.map((line) => (
                 <div
                   key={line.id}
@@ -516,7 +516,7 @@ export default async function ProjectPurchaseOrdersPage({
             />
           ))
         ) : (
-          <div className="rounded-lg border bg-background p-8 text-center">
+          <div className="border border-dashed bg-background p-8 text-center">
             <IconShoppingCart className="mx-auto size-6 text-muted-foreground" />
             <h2 className="mt-3 text-sm font-semibold">No P.O.s found</h2>
             <p className="mt-1 text-sm text-muted-foreground">
