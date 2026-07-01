@@ -2,7 +2,7 @@
 
 import * as React from "react"
 import { useRealtimeKitClient } from "@cloudflare/realtimekit-react"
-import { RtkMeeting } from "@cloudflare/realtimekit-react-ui"
+import { createDefaultConfig, RtkMeeting } from "@cloudflare/realtimekit-react-ui"
 import type { UIConfig } from "@cloudflare/realtimekit-react-ui"
 import { sendMessage } from "@/app/actions/chat-messages"
 import { joinRealtimeKitVoiceSession } from "@/app/actions/voice-sessions"
@@ -25,56 +25,71 @@ const MEETING_BACKGROUND_IMAGES = [
   "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1600 900'%3E%3Crect fill='%230f1a13' width='1600' height='900'/%3E%3Cpath d='M0 130 H1600' stroke='%233f7d4d' stroke-width='4' opacity='.35'/%3E%3Cpath d='M0 300 H1600M0 470 H1600M0 640 H1600' stroke='%23ffffff' stroke-width='2' opacity='.12'/%3E%3Cpath d='M280 0 V900M620 0 V900M960 0 V900M1300 0 V900' stroke='%23ffffff' stroke-width='2' opacity='.10'/%3E%3Ccircle cx='1250' cy='220' r='150' fill='%239c7426' opacity='.30'/%3E%3C/svg%3E",
 ]
 
-const COMPASS_MEETING_BASE_CONFIG: UIConfig = {
-  designTokens: {
-    theme: "dark",
-    borderRadius: "rounded",
-    colors: {
-      brand: {
-        300: "#9bd3a8",
-        400: "#63b878",
-        500: "#3f7d4d",
-        600: "#32663e",
-        700: "#244d2d",
+function createCompassMeetingConfig(): UIConfig {
+  const base = createDefaultConfig()
+  return {
+    ...base,
+    designTokens: {
+      ...base.designTokens,
+      theme: "dark",
+      borderRadius: "rounded",
+      colors: {
+        ...base.designTokens?.colors,
+        brand: {
+          ...base.designTokens?.colors?.brand,
+          300: "#9bd3a8",
+          400: "#63b878",
+          500: "#3f7d4d",
+          600: "#32663e",
+          700: "#244d2d",
+        },
+        background: {
+          ...base.designTokens?.colors?.background,
+          1000: "#08110b",
+          900: "#0e1a12",
+          800: "#142419",
+          700: "#203626",
+          600: "#2d4a34",
+        },
+        text: "#f8fafc",
+        "text-on-brand": "#ffffff",
+        danger: "#ef4444",
+        success: "#22c55e",
+        warning: "#f59e0b",
+        "video-bg": "#050805",
       },
-      background: {
-        1000: "#08110b",
-        900: "#0e1a12",
-        800: "#142419",
-        700: "#203626",
-        600: "#2d4a34",
+    },
+    config: {
+      ...base.config,
+      videoFit: "contain",
+      notification_sounds: {
+        ...base.config?.notification_sounds,
+        participant_joined: false,
+        participant_left: false,
       },
-      text: "#f8fafc",
-      "text-on-brand": "#ffffff",
-      danger: "#ef4444",
-      success: "#22c55e",
-      warning: "#f59e0b",
-      "video-bg": "#050805",
     },
-  },
-  config: {
-    videoFit: "contain",
-    notification_sounds: {
-      participant_joined: false,
-      participant_left: false,
+    styles: {
+      ...base.styles,
+      "rtk-controlbar": {
+        ...base.styles?.["rtk-controlbar"],
+        backgroundColor: "rgba(8, 17, 11, 0.92)",
+        border: "1px solid rgba(255, 255, 255, 0.18)",
+        boxShadow: "0 18px 50px rgba(0, 0, 0, 0.42)",
+      },
+      "rtk-controlbar-button": {
+        ...base.styles?.["rtk-controlbar-button"],
+        color: "#f8fafc",
+      },
+      "rtk-more-toggle": {
+        ...base.styles?.["rtk-more-toggle"],
+        color: "#f8fafc",
+      },
+      "rtk-settings-toggle": {
+        ...base.styles?.["rtk-settings-toggle"],
+        color: "#f8fafc",
+      },
     },
-  },
-  styles: {
-    "rtk-controlbar": {
-      backgroundColor: "rgba(8, 17, 11, 0.92)",
-      border: "1px solid rgba(255, 255, 255, 0.18)",
-      boxShadow: "0 18px 50px rgba(0, 0, 0, 0.42)",
-    },
-    "rtk-controlbar-button": {
-      color: "#f8fafc",
-    },
-    "rtk-more-toggle": {
-      color: "#f8fafc",
-    },
-    "rtk-settings-toggle": {
-      color: "#f8fafc",
-    },
-  },
+  }
 }
 
 function transcriptKey(entry: TranscriptEntry): string {
@@ -132,8 +147,8 @@ export function RealtimeKitMeetingWindow({
   const [loading, setLoading] = React.useState(true)
   const [error, setError] = React.useState<string | null>(null)
   const [meetingTitle, setMeetingTitle] = React.useState("Compass Talk")
-  const [meetingConfig, setMeetingConfig] = React.useState<UIConfig>(
-    COMPASS_MEETING_BASE_CONFIG
+  const [meetingConfig, setMeetingConfig] = React.useState<UIConfig>(() =>
+    createCompassMeetingConfig()
   )
   const [notes, setNotes] = React.useState("")
   const [notesStatus, setNotesStatus] = React.useState<string | null>(null)
@@ -225,7 +240,7 @@ export function RealtimeKitMeetingWindow({
         registerAddons(
           [backgroundAddon],
           meeting,
-          COMPASS_MEETING_BASE_CONFIG
+          createCompassMeetingConfig()
         )
       )
     })().catch(() => undefined)
@@ -235,7 +250,7 @@ export function RealtimeKitMeetingWindow({
       const addon = addonRef.current
       addonRef.current = null
       if (addon) void addon.unregister()
-      setMeetingConfig(COMPASS_MEETING_BASE_CONFIG)
+      setMeetingConfig(createCompassMeetingConfig())
     }
   }, [meeting])
 
@@ -246,7 +261,6 @@ export function RealtimeKitMeetingWindow({
     }
     meeting.ai.on("transcript", handleTranscript)
     setTranscripts([...meeting.ai.transcripts])
-    void meeting.ai.getActiveTranscript().catch(() => undefined)
     return () => {
       meeting.ai.off("transcript", handleTranscript)
     }
