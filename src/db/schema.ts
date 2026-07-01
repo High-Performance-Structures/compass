@@ -187,6 +187,84 @@ export const notificationDeliveries = sqliteTable("notification_deliveries", {
   createdAt: text("created_at").notNull(),
 })
 
+export const emailReplyThreads = sqliteTable(
+  "email_reply_threads",
+  {
+    id: text("id").primaryKey(),
+    token: text("token").notNull(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    projectId: text("project_id").references(() => projects.id, {
+      onDelete: "cascade",
+    }),
+    channelId: text("channel_id"),
+    sourceType: text("source_type").notNull(),
+    sourceId: text("source_id").notNull(),
+    sourceNumber: text("source_number"),
+    replyToAddress: text("reply_to_address").notNull(),
+    subject: text("subject").notNull(),
+    status: text("status").notNull().default("active"),
+    createdBy: text("created_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    lastInboundAt: text("last_inbound_at"),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("email_reply_threads_token_idx").on(table.token),
+    index("email_reply_threads_org_project_idx").on(
+      table.organizationId,
+      table.projectId
+    ),
+    index("email_reply_threads_source_idx").on(table.sourceType, table.sourceId),
+  ]
+)
+
+export const inboundEmails = sqliteTable(
+  "inbound_emails",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    projectId: text("project_id").references(() => projects.id, {
+      onDelete: "set null",
+    }),
+    replyThreadId: text("reply_thread_id").references(
+      () => emailReplyThreads.id,
+      { onDelete: "set null" }
+    ),
+    token: text("token"),
+    gmailMessageId: text("gmail_message_id").notNull(),
+    gmailThreadId: text("gmail_thread_id"),
+    messageIdHeader: text("message_id_header"),
+    inReplyToHeader: text("in_reply_to_header"),
+    referencesHeader: text("references_header"),
+    fromAddress: text("from_address").notNull(),
+    fromName: text("from_name"),
+    toAddress: text("to_address"),
+    subject: text("subject").notNull(),
+    textBody: text("text_body"),
+    htmlBody: text("html_body"),
+    snippet: text("snippet"),
+    matchedStatus: text("matched_status").notNull().default("needs_review"),
+    postedMessageId: text("posted_message_id"),
+    receivedAt: text("received_at").notNull(),
+    importedAt: text("imported_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("inbound_emails_gmail_message_id_idx").on(table.gmailMessageId),
+    index("inbound_emails_org_project_idx").on(
+      table.organizationId,
+      table.projectId
+    ),
+    index("inbound_emails_reply_thread_idx").on(table.replyThreadId),
+    index("inbound_emails_status_idx").on(table.matchedStatus),
+  ]
+)
+
 export const organizationInvites = sqliteTable("organization_invites", {
   id: text("id").primaryKey(),
   organizationId: text("organization_id")
@@ -1037,6 +1115,10 @@ export type NewNotificationRecipient =
 export type NotificationDelivery = typeof notificationDeliveries.$inferSelect
 export type NewNotificationDelivery =
   typeof notificationDeliveries.$inferInsert
+export type EmailReplyThread = typeof emailReplyThreads.$inferSelect
+export type NewEmailReplyThread = typeof emailReplyThreads.$inferInsert
+export type InboundEmail = typeof inboundEmails.$inferSelect
+export type NewInboundEmail = typeof inboundEmails.$inferInsert
 export type OrganizationInvite = typeof organizationInvites.$inferSelect
 export type NewOrganizationInvite = typeof organizationInvites.$inferInsert
 export type Team = typeof teams.$inferSelect

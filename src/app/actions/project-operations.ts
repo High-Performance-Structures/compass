@@ -17,6 +17,11 @@ import {
 import { requireAuth } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
 import { sendCompassEmail } from "@/lib/email/compass-email"
+import {
+  appendReplyTokenHtml,
+  appendReplyTokenText,
+  createEmailReplyThread,
+} from "@/lib/email/reply-tracking"
 import { requireOrg } from "@/lib/org-scope"
 import { requireFeaturePermission } from "@/lib/permission-enforcement"
 import { assertProjectAccess } from "@/lib/project-access"
@@ -2019,15 +2024,39 @@ export async function sendPurchaseOrderEmail(
       message,
       order,
     }
+    const replyThread = await createEmailReplyThread({
+      env,
+      db,
+      organizationId: orgId,
+      projectId,
+      sourceType: "purchase_order",
+      sourceId: purchaseOrderId,
+      sourceNumber: operation.sourceRecordNumber,
+      subject,
+      createdBy: user.id,
+    })
+    const text = appendReplyTokenText({
+      body: purchaseOrderEmailText(emailInput),
+      token: replyThread.token,
+    })
+    const html = appendReplyTokenHtml({
+      html: purchaseOrderEmailHtml(emailInput),
+      token: replyThread.token,
+    })
     const delivery = await sendCompassEmail({
       env,
       db,
       organizationId: orgId,
       to,
       cc,
+      replyTo: replyThread.replyToAddress,
+      headers: [
+        { name: "X-Compass-Reply-Token", value: replyThread.token },
+        { name: "X-Compass-Source", value: "purchase_order" },
+      ],
       subject,
-      text: purchaseOrderEmailText(emailInput),
-      html: purchaseOrderEmailHtml(emailInput),
+      text,
+      html,
     })
 
     if (delivery.status !== "sent") {
