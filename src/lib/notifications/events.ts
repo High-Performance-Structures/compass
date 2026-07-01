@@ -15,6 +15,7 @@ import {
 import type { AuthUser } from "@/lib/auth"
 import { requireAuth } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
+import { sendCompassEmail } from "@/lib/email/compass-email"
 import { requireOrg } from "@/lib/org-scope"
 
 type NotificationPreferenceState = {
@@ -368,61 +369,6 @@ async function sendGotoSms(
   }
 }
 
-async function sendResendEmail(
-  env: unknown,
-  toAddress: string,
-  subject: string,
-  body: string
-): Promise<{
-  readonly status: string
-  readonly providerMessageId: string | null
-  readonly error: string | null
-}> {
-  const apiKey = envString(env, "RESEND_API_KEY")
-  if (!apiKey) {
-    return {
-      status: "pending_provider",
-      providerMessageId: null,
-      error: "RESEND_API_KEY is not configured",
-    }
-  }
-
-  const fromAddress =
-    envString(env, "COMPASS_EMAIL_FROM") ??
-    "Compass <compass@hps-colorado.com>"
-
-  const response = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      from: fromAddress,
-      to: [toAddress],
-      subject,
-      text: body,
-    }),
-  })
-
-  const responseText = await response.text()
-  let providerMessageId: string | null = null
-  try {
-    const parsed = JSON.parse(responseText)
-    if (isRecord(parsed) && typeof parsed.id === "string") {
-      providerMessageId = parsed.id
-    }
-  } catch {
-    providerMessageId = null
-  }
-
-  return {
-    status: response.ok ? "sent" : "failed",
-    providerMessageId,
-    error: response.ok ? null : responseText.slice(0, 500),
-  }
-}
-
 async function queueSmsDelivery(
   env: unknown,
   toPhoneNumber: string,
@@ -577,12 +523,15 @@ export async function createNotificationEvent(
       })
 
       if (emailEnabled) {
-        const delivery = await sendResendEmail(
+        const body = notificationEmailBody(input)
+        const delivery = await sendCompassEmail({
           env,
-          recipient.googleEmail ?? recipient.email,
-          input.title,
-          notificationEmailBody(input)
-        )
+          db,
+          organizationId: input.organizationId,
+          to: [recipient.googleEmail ?? recipient.email],
+          subject: input.title,
+          text: body,
+        })
         const toAddress = recipient.googleEmail ?? recipient.email
         await db.insert(notificationDeliveries).values({
           id: crypto.randomUUID(),
@@ -592,7 +541,7 @@ export async function createNotificationEvent(
           channel: "email",
           status: delivery.status,
           toAddress,
-          provider: "resend",
+          provider: delivery.provider,
           providerMessageId: delivery.providerMessageId,
           error: delivery.error,
           attemptedAt: new Date().toISOString(),

@@ -16,6 +16,7 @@ import {
 } from "@/db/schema"
 import { requireAuth } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
+import { sendCompassEmail } from "@/lib/email/compass-email"
 import { requireOrg } from "@/lib/org-scope"
 import { requireFeaturePermission } from "@/lib/permission-enforcement"
 import { assertProjectAccess } from "@/lib/project-access"
@@ -346,14 +347,6 @@ function requireText(value: string, label: string): string {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null
-}
-
-function envString(env: unknown, key: string): string | null {
-  if (!isRecord(env)) return process.env[key] ?? null
-  const value = env[key]
-  return typeof value === "string" && value.trim().length > 0
-    ? value
-    : process.env[key] ?? null
 }
 
 function normalizeComparableName(value: string | null): string {
@@ -963,70 +956,6 @@ function purchaseOrderEmailHtml(input: {
         Sent through Compass by ${escapeHtml(input.senderName)}.
       </p>
     </div>`
-}
-
-async function sendResendPurchaseOrderEmail(
-  env: unknown,
-  input: {
-    readonly to: readonly string[]
-    readonly cc: readonly string[]
-    readonly subject: string
-    readonly text: string
-    readonly html: string
-  }
-): Promise<{
-  readonly status: string
-  readonly providerMessageId: string | null
-  readonly error: string | null
-}> {
-  const apiKey = envString(env, "RESEND_API_KEY")
-  if (!apiKey) {
-    return {
-      status: "pending_provider",
-      providerMessageId: null,
-      error: "RESEND_API_KEY is not configured",
-    }
-  }
-
-  const fromAddress =
-    envString(env, "COMPASS_EMAIL_FROM") ??
-    "Compass <compass@hps-colorado.com>"
-  const requestBody: Record<string, unknown> = {
-    from: fromAddress,
-    to: input.to,
-    subject: input.subject,
-    text: input.text,
-    html: input.html,
-  }
-  if (input.cc.length > 0) {
-    requestBody.cc = input.cc
-  }
-
-  const response = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(requestBody),
-  })
-
-  const responseText = await response.text()
-  let providerMessageId: string | null = null
-  try {
-    const parsed = JSON.parse(responseText)
-    if (isRecord(parsed) && typeof parsed.id === "string") {
-      providerMessageId = parsed.id
-    }
-  } catch {
-    providerMessageId = null
-  }
-
-  return {
-    status: response.ok ? "sent" : "failed",
-    providerMessageId,
-    error: response.ok ? null : responseText.slice(0, 500),
-  }
 }
 
 function operationToScheduleItem(
@@ -2090,7 +2019,10 @@ export async function sendPurchaseOrderEmail(
       message,
       order,
     }
-    const delivery = await sendResendPurchaseOrderEmail(env, {
+    const delivery = await sendCompassEmail({
+      env,
+      db,
+      organizationId: orgId,
       to,
       cc,
       subject,
@@ -2098,10 +2030,12 @@ export async function sendPurchaseOrderEmail(
       html: purchaseOrderEmailHtml(emailInput),
     })
 
-    if (delivery.status === "failed") {
+    if (delivery.status !== "sent") {
       return {
         success: false,
-        error: delivery.error ?? "Unable to send purchase order email.",
+        error:
+          delivery.error ??
+          "Email provider is not configured for purchase order delivery.",
       }
     }
 
