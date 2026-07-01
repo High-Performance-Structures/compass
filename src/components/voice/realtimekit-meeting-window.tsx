@@ -160,13 +160,21 @@ export function RealtimeKitMeetingWindow({
       }
 
       setMeetingTitle(result.data.meetingTitle)
-      await initMeeting({
+      const initializedMeeting = await initMeeting({
         authToken: result.data.authToken,
         defaults: {
           audio: true,
           video: true,
         },
       })
+      if (!initializedMeeting) {
+        setError("Cloudflare meeting did not initialize.")
+        setLoading(false)
+        return
+      }
+      if (!initializedMeeting.self.roomJoined) {
+        await initializedMeeting.join()
+      }
       if (isCurrent) setLoading(false)
     })().catch((cause: unknown) => {
       if (!isCurrent) return
@@ -348,6 +356,7 @@ export function RealtimeKitMeetingWindow({
             applyDesignSystem
             leaveOnUnmount
             loadConfigFromPreset={false}
+            showSetupScreen={false}
           />
         )}
         <aside className="min-h-0 border-t border-white/10 bg-[#08110b] xl:border-l xl:border-t-0">
