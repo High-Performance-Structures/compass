@@ -606,10 +606,16 @@ export function MessageComposer({
     if (!editor) return
 
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Enter" && !event.shiftKey) {
+      if (event.key !== "Enter") return
+
+      if (event.ctrlKey || event.metaKey) {
         event.preventDefault()
-        handleSend()
+        editor.chain().focus().setHardBreak().run()
+        return
       }
+
+      event.preventDefault()
+      handleSend()
     }
 
     const editorElement = editor.view.dom
@@ -950,6 +956,9 @@ export function MessageComposer({
       {deliveryNote && !error && (
         <p className="mt-1.5 text-xs text-muted-foreground">{deliveryNote}</p>
       )}
+      <p className="mt-1.5 text-xs text-muted-foreground">
+        Enter to send · Ctrl/Cmd+Enter for a new line
+      </p>
     </div>
   )
 }

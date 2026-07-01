@@ -299,6 +299,34 @@ export const MessageItem = React.memo(function MessageItem({
     }
   }
 
+  const insertEditLineBreak = (
+    event: React.KeyboardEvent<HTMLTextAreaElement>
+  ) => {
+    const textarea = event.currentTarget
+    const start = textarea.selectionStart
+    const end = textarea.selectionEnd
+    const nextContent = `${editContent.slice(0, start)}\n${editContent.slice(end)}`
+    setEditContent(nextContent)
+    requestAnimationFrame(() => {
+      textarea.selectionStart = start + 1
+      textarea.selectionEnd = start + 1
+    })
+  }
+
+  const handleEditKeyDown = (
+    event: React.KeyboardEvent<HTMLTextAreaElement>
+  ) => {
+    if (event.key !== "Enter") return
+
+    event.preventDefault()
+    if (event.ctrlKey || event.metaKey) {
+      insertEditLineBreak(event)
+      return
+    }
+
+    handleEdit()
+  }
+
   const handleDelete = async () => {
     if (!confirm("Delete this message?")) return
     const result = await deleteMessage(message.id)
@@ -374,6 +402,7 @@ export const MessageItem = React.memo(function MessageItem({
             <Textarea
               value={editContent}
               onChange={(e) => setEditContent(e.target.value)}
+              onKeyDown={handleEditKeyDown}
               className="min-h-[80px]"
               autoFocus
             />
@@ -392,6 +421,9 @@ export const MessageItem = React.memo(function MessageItem({
                 Cancel
               </Button>
             </div>
+            <p className="text-xs text-muted-foreground">
+              Enter to save · Ctrl/Cmd+Enter for a new line
+            </p>
           </div>
         ) : (
           <MessageBody
