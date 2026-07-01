@@ -13,7 +13,7 @@ import { requireAuth } from "@/lib/auth"
 import { requirePermission } from "@/lib/permissions"
 import { revalidatePath } from "next/cache"
 import { requireOrg } from "@/lib/org-scope"
-import { isDemoUser } from "@/lib/demo"
+import { isDemoOrg, isDemoUser } from "@/lib/demo"
 
 export type InternalDirectoryContact = {
   readonly id: string
@@ -166,6 +166,10 @@ export async function getVendors() {
   const user = await requireAuth()
   requirePermission(user, "vendor", "read")
   const orgId = requireOrg(user)
+
+  if (isDemoUser(user.id) || isDemoOrg(orgId)) {
+    return []
+  }
 
   const { env } = await getCloudflareContext()
   const db = getDb(env.DB)
