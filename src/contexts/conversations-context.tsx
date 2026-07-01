@@ -31,6 +31,11 @@ export type ThreadMessage = {
     readonly downloadUrl: string | null
     readonly uploadedAt: string
   }[]
+  readonly reactions: readonly {
+    readonly emoji: string
+    readonly count: number
+    readonly reactedByCurrentUser: boolean
+  }[]
 }
 
 type ConversationsContextType = {

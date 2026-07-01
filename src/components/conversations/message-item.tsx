@@ -14,11 +14,21 @@ import {
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover"
 import { Textarea } from "@/components/ui/textarea"
 import { MarkdownRenderer } from "@/components/ui/markdown-renderer"
 import { cn } from "@/lib/utils"
 import { useConversations } from "@/contexts/conversations-context"
-import { editMessage, deleteMessage } from "@/app/actions/chat-messages"
+import {
+  addReaction,
+  deleteMessage,
+  editMessage,
+  removeReaction,
+} from "@/app/actions/chat-messages"
 import { useRouter } from "next/navigation"
 
 type MessageData = {
@@ -40,10 +50,13 @@ type MessageData = {
     readonly avatarUrl: string | null
   } | null
   readonly attachments: readonly MessageAttachmentData[]
+  readonly reactions: readonly MessageReactionData[]
 }
 
 type MessageItemProps = {
   readonly message: MessageData
+  readonly currentUserId: string
+  readonly canModerateMessages: boolean
 }
 
 type MessageAttachmentData = {
@@ -57,6 +70,14 @@ type MessageAttachmentData = {
   readonly downloadUrl: string | null
   readonly uploadedAt: string
 }
+
+type MessageReactionData = {
+  readonly emoji: string
+  readonly count: number
+  readonly reactedByCurrentUser: boolean
+}
+
+const QUICK_REACTIONS: readonly string[] = ["👍", "✅", "👀", "🙌", "❤️", "😂"]
 
 function getRoleBadge(email: string) {
   if (email.includes("admin")) return { label: "Admin", variant: "destructive" as const }
@@ -78,8 +99,24 @@ function arePropsEqual(prev: MessageItemProps, next: MessageItemProps): boolean 
     prevMsg.isPinned === nextMsg.isPinned &&
     prevMsg.replyCount === nextMsg.replyCount &&
     prevMsg.deletedAt === nextMsg.deletedAt &&
-    prevMsg.attachments.length === nextMsg.attachments.length
+    prevMsg.attachments.length === nextMsg.attachments.length &&
+    reactionSignature(prevMsg.reactions) ===
+      reactionSignature(nextMsg.reactions) &&
+    prev.currentUserId === next.currentUserId &&
+    prev.canModerateMessages === next.canModerateMessages
   )
+}
+
+function reactionSignature(reactions: readonly MessageReactionData[]): string {
+  return reactions
+    .map((reaction) =>
+      [
+        reaction.emoji,
+        reaction.count,
+        reaction.reactedByCurrentUser ? "1" : "0",
+      ].join(":")
+    )
+    .join("|")
 }
 
 function formatFileSize(bytes: number): string {
@@ -224,11 +261,16 @@ function MessageBody({
   )
 }
 
-export const MessageItem = React.memo(function MessageItem({ message }: MessageItemProps) {
+export const MessageItem = React.memo(function MessageItem({
+  message,
+  currentUserId,
+  canModerateMessages,
+}: MessageItemProps) {
   const [isEditing, setIsEditing] = React.useState(false)
   const [editContent, setEditContent] = React.useState(message.content)
   const [isHovered, setIsHovered] = React.useState(false)
   const [isFocused, setIsFocused] = React.useState(false)
+  const [reactionOpen, setReactionOpen] = React.useState(false)
   const { openThread } = useConversations()
   const router = useRouter()
 
@@ -236,6 +278,7 @@ export const MessageItem = React.memo(function MessageItem({ message }: MessageI
   const displayName = user?.displayName ?? user?.email.split("@")[0] ?? "Unknown"
   const avatarFallback = displayName.substring(0, 2).toUpperCase()
   const roleBadge = user ? getRoleBadge(user.email) : null
+  const canModifyMessage = user?.id === currentUserId || canModerateMessages
 
   const timestamp = parseISO(message.createdAt)
   const isRecent = Date.now() - timestamp.getTime() < 24 * 60 * 60 * 1000
@@ -266,6 +309,20 @@ export const MessageItem = React.memo(function MessageItem({ message }: MessageI
 
   const handleReply = () => {
     openThread(message.id, message)
+  }
+
+  const handleToggleReaction = async (emoji: string) => {
+    const existingReaction = message.reactions.find(
+      (reaction) => reaction.emoji === emoji
+    )
+    const result = existingReaction?.reactedByCurrentUser
+      ? await removeReaction(message.id, emoji)
+      : await addReaction(message.id, emoji)
+
+    if (result.success) {
+      setReactionOpen(false)
+      router.refresh()
+    }
   }
 
   if (message.deletedAt) {
@@ -351,6 +408,30 @@ export const MessageItem = React.memo(function MessageItem({ message }: MessageI
           </div>
         )}
 
+        {message.reactions.length > 0 && (
+          <div className="mt-2 flex flex-wrap items-center gap-1.5">
+            {message.reactions.map((reaction) => (
+              <button
+                key={reaction.emoji}
+                type="button"
+                onClick={() => handleToggleReaction(reaction.emoji)}
+                className={cn(
+                  "inline-flex h-7 items-center gap-1 rounded-md border px-2 text-xs transition-colors",
+                  reaction.reactedByCurrentUser
+                    ? "border-primary/40 bg-primary/10 text-primary"
+                    : "border-border bg-background text-muted-foreground hover:border-primary/40 hover:text-foreground"
+                )}
+                aria-label={`${reaction.count} reaction${
+                  reaction.count === 1 ? "" : "s"
+                } with ${reaction.emoji}`}
+              >
+                <span>{reaction.emoji}</span>
+                <span>{reaction.count}</span>
+              </button>
+            ))}
+          </div>
+        )}
+
         {message.replyCount > 0 && (
           <button
             className="mt-2 flex items-center gap-1 text-xs text-primary hover:underline"
@@ -378,33 +459,55 @@ export const MessageItem = React.memo(function MessageItem({ message }: MessageI
           >
             <MessageSquare className="h-3.5 w-3.5" />
           </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-7 w-7"
-            disabled
-            aria-label="Add reaction"
-          >
-            <Smile className="h-3.5 w-3.5" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-7 w-7"
-            onClick={() => setIsEditing(true)}
-            aria-label="Edit message"
-          >
-            <Edit2 className="h-3.5 w-3.5" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-7 w-7"
-            onClick={handleDelete}
-            aria-label="Delete message"
-          >
-            <Trash2 className="h-3.5 w-3.5" />
-          </Button>
+          <Popover open={reactionOpen} onOpenChange={setReactionOpen}>
+            <PopoverTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7"
+                aria-label="Add reaction"
+              >
+                <Smile className="h-3.5 w-3.5" />
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-auto p-1" align="end">
+              <div className="grid grid-cols-6 gap-1">
+                {QUICK_REACTIONS.map((emoji) => (
+                  <button
+                    key={emoji}
+                    type="button"
+                    onClick={() => handleToggleReaction(emoji)}
+                    className="flex size-8 items-center justify-center rounded-md text-lg hover:bg-accent"
+                    aria-label={`React with ${emoji}`}
+                  >
+                    {emoji}
+                  </button>
+                ))}
+              </div>
+            </PopoverContent>
+          </Popover>
+          {canModifyMessage && (
+            <>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7"
+                onClick={() => setIsEditing(true)}
+                aria-label="Edit message"
+              >
+                <Edit2 className="h-3.5 w-3.5" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7"
+                onClick={handleDelete}
+                aria-label="Delete message"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </Button>
+            </>
+          )}
         </div>
       )}
     </div>

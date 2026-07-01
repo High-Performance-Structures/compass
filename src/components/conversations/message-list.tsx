@@ -50,11 +50,18 @@ type MessageData = {
     readonly downloadUrl: string | null
     readonly uploadedAt: string
   }[]
+  readonly reactions: readonly {
+    readonly emoji: string
+    readonly count: number
+    readonly reactedByCurrentUser: boolean
+  }[]
 }
 
 type MessageListProps = {
   readonly channelId: string
   readonly initialMessages: readonly MessageData[]
+  readonly currentUserId: string
+  readonly canModerateMessages: boolean
 }
 
 type ConversationViewFilter =
@@ -182,7 +189,12 @@ function filterIcon(filter: ConversationViewFilter): React.ReactElement | null {
   }
 }
 
-export function MessageList({ channelId, initialMessages }: MessageListProps) {
+export function MessageList({
+  channelId,
+  initialMessages,
+  currentUserId,
+  canModerateMessages,
+}: MessageListProps) {
   // server returns DESC order; reverse for chronological display
   const [messages, setMessages] = React.useState<readonly MessageData[]>(
     [...initialMessages].reverse()
@@ -423,7 +435,12 @@ export function MessageList({ channelId, initialMessages }: MessageListProps) {
                 </div>
               </div>
               {group.messages.map((message) => (
-                <MessageItem key={message.id} message={message} />
+                <MessageItem
+                  key={message.id}
+                  message={message}
+                  currentUserId={currentUserId}
+                  canModerateMessages={canModerateMessages}
+                />
               ))}
             </div>
           ))

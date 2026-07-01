@@ -237,6 +237,12 @@ type MessageAttachmentData = {
   readonly uploadedAt: string
 }
 
+type MessageReactionData = {
+  readonly emoji: string
+  readonly count: number
+  readonly reactedByCurrentUser: boolean
+}
+
 type ConversationNotificationRecipient = {
   readonly userId: string
   readonly email: string
@@ -361,13 +367,64 @@ async function attachmentsByMessageId(
       storageProvider: row.storageProvider,
       driveFileId: row.driveFileId,
       driveUrl: row.driveUrl,
-      downloadUrl: row.downloadUrl,
+      downloadUrl: `/api/conversations/attachments/${row.id}`,
       uploadedAt: row.uploadedAt,
     })
     grouped.set(row.messageId, existing)
   }
 
   return grouped
+}
+
+async function reactionsByMessageId(
+  db: Db,
+  messageIds: readonly string[],
+  currentUserId: string
+): Promise<Map<string, readonly MessageReactionData[]>> {
+  const ids = Array.from(new Set(messageIds))
+  if (ids.length === 0) return new Map()
+
+  const rows = await db
+    .select({
+      messageId: messageReactions.messageId,
+      emoji: messageReactions.emoji,
+      userId: messageReactions.userId,
+    })
+    .from(messageReactions)
+    .where(inArray(messageReactions.messageId, ids))
+
+  const grouped = new Map<
+    string,
+    Map<string, { count: number; reactedByCurrentUser: boolean }>
+  >()
+
+  for (const row of rows) {
+    const reactionsForMessage = grouped.get(row.messageId) ?? new Map()
+    const current = reactionsForMessage.get(row.emoji) ?? {
+      count: 0,
+      reactedByCurrentUser: false,
+    }
+    reactionsForMessage.set(row.emoji, {
+      count: current.count + 1,
+      reactedByCurrentUser:
+        current.reactedByCurrentUser || row.userId === currentUserId,
+    })
+    grouped.set(row.messageId, reactionsForMessage)
+  }
+
+  const result = new Map<string, readonly MessageReactionData[]>()
+  for (const [messageId, reactionMap] of grouped.entries()) {
+    result.set(
+      messageId,
+      Array.from(reactionMap.entries()).map(([emoji, summary]) => ({
+        emoji,
+        count: summary.count,
+        reactedByCurrentUser: summary.reactedByCurrentUser,
+      }))
+    )
+  }
+
+  return result
 }
 
 export async function sendMessage(data: {
@@ -598,10 +655,14 @@ export async function sendMessage(data: {
     const attachmentMap = messageWithUser
       ? await attachmentsByMessageId(db, [messageWithUser.id])
       : new Map<string, readonly MessageAttachmentData[]>()
+    const reactionMap = messageWithUser
+      ? await reactionsByMessageId(db, [messageWithUser.id], user.id)
+      : new Map<string, readonly MessageReactionData[]>()
     const messageWithAttachments = messageWithUser
       ? {
           ...messageWithUser,
           attachments: attachmentMap.get(messageWithUser.id) ?? [],
+          reactions: reactionMap.get(messageWithUser.id) ?? [],
         }
       : null
 
@@ -813,6 +874,11 @@ export async function getMessages(
       db,
       results.map((message) => message.id)
     )
+    const reactionMap = await reactionsByMessageId(
+      db,
+      results.map((message) => message.id),
+      user.id
+    )
 
     // replace deleted content with placeholder
     const sanitized = results.map((msg) => ({
@@ -820,6 +886,7 @@ export async function getMessages(
       content: msg.deletedAt ? "[Message deleted]" : msg.content,
       contentHtml: msg.deletedAt ? null : msg.contentHtml,
       attachments: msg.deletedAt ? [] : attachmentMap.get(msg.id) ?? [],
+      reactions: msg.deletedAt ? [] : reactionMap.get(msg.id) ?? [],
     }))
 
     return { success: true, data: sanitized }
@@ -903,6 +970,11 @@ export async function getThreadMessages(
       db,
       results.map((message) => message.id)
     )
+    const reactionMap = await reactionsByMessageId(
+      db,
+      results.map((message) => message.id),
+      user.id
+    )
 
     // replace deleted content with placeholder
     const sanitized = results.map((msg) => ({
@@ -910,6 +982,7 @@ export async function getThreadMessages(
       content: msg.deletedAt ? "[Message deleted]" : msg.content,
       contentHtml: msg.deletedAt ? null : msg.contentHtml,
       attachments: msg.deletedAt ? [] : attachmentMap.get(msg.id) ?? [],
+      reactions: msg.deletedAt ? [] : reactionMap.get(msg.id) ?? [],
     }))
 
     return { success: true, data: sanitized }

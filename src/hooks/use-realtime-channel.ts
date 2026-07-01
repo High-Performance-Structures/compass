@@ -38,6 +38,11 @@ type MessageData = {
     readonly downloadUrl: string | null
     readonly uploadedAt: string
   }[]
+  reactions: readonly {
+    readonly emoji: string
+    readonly count: number
+    readonly reactedByCurrentUser: boolean
+  }[]
 }
 
 type RealtimeUpdate = {

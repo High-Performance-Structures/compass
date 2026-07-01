@@ -8,6 +8,7 @@ import {
   typingSessions,
   channelMembers,
   messageAttachments,
+  messageReactions,
 } from "@/db/schema-conversations"
 import { users } from "@/db/schema"
 import { getCurrentUser } from "@/lib/auth"
@@ -37,6 +38,7 @@ type MessageWithUser = {
     avatarUrl: string | null
   } | null
   attachments: readonly MessageAttachmentData[]
+  reactions: readonly MessageReactionData[]
 }
 
 type MessageAttachmentData = {
@@ -49,6 +51,12 @@ type MessageAttachmentData = {
   readonly driveUrl: string | null
   readonly downloadUrl: string | null
   readonly uploadedAt: string
+}
+
+type MessageReactionData = {
+  readonly emoji: string
+  readonly count: number
+  readonly reactedByCurrentUser: boolean
 }
 
 type ChannelUpdatesResult = {
@@ -111,13 +119,64 @@ async function attachmentsByMessageId(
       storageProvider: row.storageProvider,
       driveFileId: row.driveFileId,
       driveUrl: row.driveUrl,
-      downloadUrl: row.downloadUrl,
+      downloadUrl: `/api/conversations/attachments/${row.id}`,
       uploadedAt: row.uploadedAt,
     })
     grouped.set(row.messageId, existing)
   }
 
   return grouped
+}
+
+async function reactionsByMessageId(
+  db: ReturnType<typeof getDb>,
+  messageIds: readonly string[],
+  currentUserId: string
+): Promise<Map<string, readonly MessageReactionData[]>> {
+  const ids = Array.from(new Set(messageIds))
+  if (ids.length === 0) return new Map()
+
+  const rows = await db
+    .select({
+      messageId: messageReactions.messageId,
+      emoji: messageReactions.emoji,
+      userId: messageReactions.userId,
+    })
+    .from(messageReactions)
+    .where(inArray(messageReactions.messageId, ids))
+
+  const grouped = new Map<
+    string,
+    Map<string, { count: number; reactedByCurrentUser: boolean }>
+  >()
+
+  for (const row of rows) {
+    const reactionsForMessage = grouped.get(row.messageId) ?? new Map()
+    const current = reactionsForMessage.get(row.emoji) ?? {
+      count: 0,
+      reactedByCurrentUser: false,
+    }
+    reactionsForMessage.set(row.emoji, {
+      count: current.count + 1,
+      reactedByCurrentUser:
+        current.reactedByCurrentUser || row.userId === currentUserId,
+    })
+    grouped.set(row.messageId, reactionsForMessage)
+  }
+
+  const result = new Map<string, readonly MessageReactionData[]>()
+  for (const [messageId, reactionMap] of grouped.entries()) {
+    result.set(
+      messageId,
+      Array.from(reactionMap.entries()).map(([emoji, summary]) => ({
+        emoji,
+        count: summary.count,
+        reactedByCurrentUser: summary.reactedByCurrentUser,
+      }))
+    )
+  }
+
+  return result
 }
 
 export async function getChannelUpdates(
@@ -194,6 +253,11 @@ export async function getChannelUpdates(
       db,
       fetchedMessages.map((message) => message.id)
     )
+    const reactionMap = await reactionsByMessageId(
+      db,
+      fetchedMessages.map((message) => message.id),
+      user.id
+    )
 
     // replace deleted content with placeholder
     const sanitizedMessages: MessageWithUser[] = fetchedMessages.map((msg) => ({
@@ -201,6 +265,7 @@ export async function getChannelUpdates(
       content: msg.deletedAt ? "[Message deleted]" : msg.content,
       contentHtml: msg.deletedAt ? null : msg.contentHtml,
       attachments: msg.deletedAt ? [] : attachmentMap.get(msg.id) ?? [],
+      reactions: msg.deletedAt ? [] : reactionMap.get(msg.id) ?? [],
     }))
 
     // fetch currently typing users (excluding current user)

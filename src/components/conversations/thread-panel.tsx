@@ -13,7 +13,15 @@ import { MessageItem } from "./message-item"
 import { MessageComposer } from "./message-composer"
 import { useIsMobile } from "@/hooks/use-mobile"
 
-export function ThreadPanel() {
+type ThreadPanelProps = {
+  readonly currentUserId: string
+  readonly canModerateMessages: boolean
+}
+
+export function ThreadPanel({
+  currentUserId,
+  canModerateMessages,
+}: ThreadPanelProps) {
   const { threadOpen, threadMessageId, threadParentMessage, closeThread } = useConversations()
   const isMobile = useIsMobile()
   const [replies, setReplies] = React.useState<readonly ThreadMessage[]>([])
@@ -150,7 +158,11 @@ export function ThreadPanel() {
                       Original message
                     </div>
                     <div className="rounded-lg border bg-muted/50 p-2">
-                      <MessageItem message={threadParentMessage} />
+                      <MessageItem
+                        message={threadParentMessage}
+                        currentUserId={currentUserId}
+                        canModerateMessages={canModerateMessages}
+                      />
                     </div>
                     <Separator className="my-4" />
                     <div className="mb-2 text-xs font-medium text-muted-foreground">
@@ -166,7 +178,12 @@ export function ThreadPanel() {
                 ) : (
                   <div className="space-y-2">
                     {replies.map((reply) => (
-                      <MessageItem key={reply.id} message={reply} />
+                      <MessageItem
+                        key={reply.id}
+                        message={reply}
+                        currentUserId={currentUserId}
+                        canModerateMessages={canModerateMessages}
+                      />
                     ))}
                   </div>
                 )}
