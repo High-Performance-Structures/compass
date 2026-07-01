@@ -3,9 +3,12 @@
 import * as React from "react"
 import { formatDistanceToNow, format, parseISO } from "date-fns"
 import {
+  Download,
+  ExternalLink,
+  FileText,
   MessageSquare,
-  Smile,
   Edit2,
+  Smile,
   Trash2,
 } from "lucide-react"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
@@ -36,10 +39,23 @@ type MessageData = {
     readonly email: string
     readonly avatarUrl: string | null
   } | null
+  readonly attachments: readonly MessageAttachmentData[]
 }
 
 type MessageItemProps = {
   readonly message: MessageData
+}
+
+type MessageAttachmentData = {
+  readonly id: string
+  readonly fileName: string
+  readonly mimeType: string
+  readonly fileSize: number
+  readonly storageProvider: string
+  readonly driveFileId: string | null
+  readonly driveUrl: string | null
+  readonly downloadUrl: string | null
+  readonly uploadedAt: string
 }
 
 function getRoleBadge(email: string) {
@@ -61,8 +77,17 @@ function arePropsEqual(prev: MessageItemProps, next: MessageItemProps): boolean 
     prevMsg.editedAt === nextMsg.editedAt &&
     prevMsg.isPinned === nextMsg.isPinned &&
     prevMsg.replyCount === nextMsg.replyCount &&
-    prevMsg.deletedAt === nextMsg.deletedAt
+    prevMsg.deletedAt === nextMsg.deletedAt &&
+    prevMsg.attachments.length === nextMsg.attachments.length
   )
+}
+
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`
+  const kilobytes = bytes / 1024
+  if (kilobytes < 1024) return `${kilobytes.toFixed(1)} KB`
+  const megabytes = kilobytes / 1024
+  return `${megabytes.toFixed(1)} MB`
 }
 
 function MessageBody({
@@ -210,6 +235,62 @@ export const MessageItem = React.memo(function MessageItem({ message }: MessageI
             content={message.content}
             contentHtml={message.contentHtml}
           />
+        )}
+
+        {message.attachments.length > 0 && (
+          <div className="mt-2 grid gap-1.5 sm:max-w-xl">
+            {message.attachments.map((attachment) => (
+              <div
+                key={attachment.id}
+                className="flex items-center gap-2 rounded-md border bg-background px-2.5 py-2 text-xs"
+              >
+                <FileText className="size-4 shrink-0 text-muted-foreground" />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate font-medium text-foreground">
+                    {attachment.fileName}
+                  </p>
+                  <p className="text-muted-foreground">
+                    {formatFileSize(attachment.fileSize)}
+                  </p>
+                </div>
+                {attachment.driveUrl && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="size-7"
+                    asChild
+                  >
+                    <a
+                      href={attachment.driveUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      aria-label={`Open ${attachment.fileName} in Google Drive`}
+                    >
+                      <ExternalLink className="size-3.5" />
+                    </a>
+                  </Button>
+                )}
+                {attachment.downloadUrl && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="size-7"
+                    asChild
+                  >
+                    <a
+                      href={attachment.downloadUrl}
+                      download={attachment.fileName}
+                      aria-label={`Download ${attachment.fileName}`}
+                    >
+                      <Download className="size-3.5" />
+                    </a>
+                  </Button>
+                )}
+              </div>
+            ))}
+          </div>
         )}
 
         {message.replyCount > 0 && (

@@ -1,18 +1,20 @@
 "use server"
 
 import { getCloudflareContext } from "@/lib/db"
-import { eq, and, desc, lt, sql, like, or } from "drizzle-orm"
+import { eq, and, desc, lt, sql, like, or, inArray } from "drizzle-orm"
 import { marked } from "marked"
 import { getDb } from "@/db"
 import {
   channels,
   messages,
+  messageAttachments,
   messageReactions,
   channelMembers,
   channelReadState,
   messageMentions,
   userPresence,
   type NewMessage,
+  type NewMessageAttachment,
   type NewMessageReaction,
   type NewMessageMention,
 } from "@/db/schema-conversations"
@@ -214,6 +216,27 @@ type MentionInput = {
   targetId: string | null
 }
 
+type MessageAttachmentInput = {
+  readonly fileName: string
+  readonly mimeType: string
+  readonly fileSize: number
+  readonly driveFileId: string
+  readonly driveUrl: string | null
+  readonly downloadUrl: string
+}
+
+type MessageAttachmentData = {
+  readonly id: string
+  readonly fileName: string
+  readonly mimeType: string
+  readonly fileSize: number
+  readonly storageProvider: string
+  readonly driveFileId: string | null
+  readonly driveUrl: string | null
+  readonly downloadUrl: string | null
+  readonly uploadedAt: string
+}
+
 type ConversationNotificationRecipient = {
   readonly userId: string
   readonly email: string
@@ -304,12 +327,56 @@ function messagePreview(content: string): string {
   return `${normalized.slice(0, 177)}...`
 }
 
+async function attachmentsByMessageId(
+  db: Db,
+  messageIds: readonly string[]
+): Promise<Map<string, readonly MessageAttachmentData[]>> {
+  const ids = Array.from(new Set(messageIds))
+  if (ids.length === 0) return new Map()
+
+  const rows = await db
+    .select({
+      id: messageAttachments.id,
+      messageId: messageAttachments.messageId,
+      fileName: messageAttachments.fileName,
+      mimeType: messageAttachments.mimeType,
+      fileSize: messageAttachments.fileSize,
+      storageProvider: messageAttachments.storageProvider,
+      driveFileId: messageAttachments.driveFileId,
+      driveUrl: messageAttachments.driveUrl,
+      downloadUrl: messageAttachments.downloadUrl,
+      uploadedAt: messageAttachments.uploadedAt,
+    })
+    .from(messageAttachments)
+    .where(inArray(messageAttachments.messageId, ids))
+
+  const grouped = new Map<string, MessageAttachmentData[]>()
+  for (const row of rows) {
+    const existing = grouped.get(row.messageId) ?? []
+    existing.push({
+      id: row.id,
+      fileName: row.fileName,
+      mimeType: row.mimeType,
+      fileSize: row.fileSize,
+      storageProvider: row.storageProvider,
+      driveFileId: row.driveFileId,
+      driveUrl: row.driveUrl,
+      downloadUrl: row.downloadUrl,
+      uploadedAt: row.uploadedAt,
+    })
+    grouped.set(row.messageId, existing)
+  }
+
+  return grouped
+}
+
 export async function sendMessage(data: {
   channelId: string
   content: string
   threadId?: string
   mentions?: Array<MentionInput>
   contentHtml?: string
+  attachments?: readonly MessageAttachmentInput[]
 }) {
   try {
     const user = await getCurrentUser()
@@ -372,6 +439,27 @@ export async function sendMessage(data: {
     }
 
     await db.insert(messages).values(newMessage)
+
+    if (data.attachments && data.attachments.length > 0) {
+      const attachmentRows: NewMessageAttachment[] = data.attachments.map(
+        (attachment) => ({
+          id: crypto.randomUUID(),
+          messageId,
+          fileName: attachment.fileName,
+          mimeType: attachment.mimeType,
+          fileSize: attachment.fileSize,
+          r2Path: `google-drive:${attachment.driveFileId}`,
+          storageProvider: "google_drive",
+          driveFileId: attachment.driveFileId,
+          driveUrl: attachment.driveUrl,
+          downloadUrl: attachment.downloadUrl,
+          width: null,
+          height: null,
+          uploadedAt: now,
+        })
+      )
+      await db.insert(messageAttachments).values(attachmentRows)
+    }
 
     // insert mentions if provided
     if (data.mentions && data.mentions.length > 0) {
@@ -507,9 +595,18 @@ export async function sendMessage(data: {
       .where(eq(messages.id, messageId))
       .limit(1)
       .then((rows) => rows[0] ?? null)
+    const attachmentMap = messageWithUser
+      ? await attachmentsByMessageId(db, [messageWithUser.id])
+      : new Map<string, readonly MessageAttachmentData[]>()
+    const messageWithAttachments = messageWithUser
+      ? {
+          ...messageWithUser,
+          attachments: attachmentMap.get(messageWithUser.id) ?? [],
+        }
+      : null
 
     revalidatePath("/dashboard")
-    return { success: true, data: messageWithUser }
+    return { success: true, data: messageWithAttachments }
   } catch (err) {
     return {
       success: false,
@@ -712,12 +809,17 @@ export async function getMessages(
       .limit(limit)
 
     const results = await query
+    const attachmentMap = await attachmentsByMessageId(
+      db,
+      results.map((message) => message.id)
+    )
 
     // replace deleted content with placeholder
     const sanitized = results.map((msg) => ({
       ...msg,
       content: msg.deletedAt ? "[Message deleted]" : msg.content,
       contentHtml: msg.deletedAt ? null : msg.contentHtml,
+      attachments: msg.deletedAt ? [] : attachmentMap.get(msg.id) ?? [],
     }))
 
     return { success: true, data: sanitized }
@@ -797,12 +899,17 @@ export async function getThreadMessages(
       .limit(limit)
 
     const results = await query
+    const attachmentMap = await attachmentsByMessageId(
+      db,
+      results.map((message) => message.id)
+    )
 
     // replace deleted content with placeholder
     const sanitized = results.map((msg) => ({
       ...msg,
       content: msg.deletedAt ? "[Message deleted]" : msg.content,
       contentHtml: msg.deletedAt ? null : msg.contentHtml,
+      attachments: msg.deletedAt ? [] : attachmentMap.get(msg.id) ?? [],
     }))
 
     return { success: true, data: sanitized }

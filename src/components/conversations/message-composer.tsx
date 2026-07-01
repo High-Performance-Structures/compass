@@ -15,12 +15,13 @@ import {
   ListOrdered,
   Plus,
   Smile,
-  Sticker,
-  Gift,
+  FileText,
+  Paperclip,
   SendToBack,
   Bell,
   Check,
   ChevronsUpDown,
+  X,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -57,6 +58,25 @@ const EmojiPicker = React.lazy(() =>
 type EmojiData = {
   readonly native: string
 }
+
+type DraftAttachment = {
+  readonly fileName: string
+  readonly mimeType: string
+  readonly fileSize: number
+  readonly driveFileId: string
+  readonly driveUrl: string | null
+  readonly downloadUrl: string
+}
+
+type AttachmentUploadResponse =
+  | {
+      readonly success: true
+      readonly attachments: readonly DraftAttachment[]
+    }
+  | {
+      readonly success: false
+      readonly error: string
+    }
 
 /** read a CSS custom property and resolve it to an "R, G, B" string */
 function cssVarToRgb(varName: string): string | null {
@@ -307,6 +327,22 @@ function buildRecipientOptions(
   return [...groupOptions, ...contactOptions]
 }
 
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`
+  const kilobytes = bytes / 1024
+  if (kilobytes < 1024) return `${kilobytes.toFixed(1)} KB`
+  const megabytes = kilobytes / 1024
+  return `${megabytes.toFixed(1)} MB`
+}
+
+function isAttachmentUploadResponse(
+  value: unknown
+): value is AttachmentUploadResponse {
+  if (typeof value !== "object" || value === null) return false
+  if (!("success" in value)) return false
+  return true
+}
+
 export function MessageComposer({
   channelId,
   channelName,
@@ -328,9 +364,11 @@ export function MessageComposer({
   const [recipientOpen, setRecipientOpen] = React.useState(false)
   const [recipientValue, setRecipientValue] = React.useState("channel")
   const [importantDelivery, setImportantDelivery] = React.useState(false)
+  const [selectedFiles, setSelectedFiles] = React.useState<readonly File[]>([])
   const hasProjectDelivery = isProjectChannel && !threadId
 
   const lastTypingSentRef = React.useRef<number>(0)
+  const fileInputRef = React.useRef<HTMLInputElement>(null)
   const TYPING_DEBOUNCE_MS = 3000
 
   const sendTypingIndicator = React.useCallback(() => {
@@ -427,11 +465,54 @@ export function MessageComposer({
     [editor],
   )
 
+  const handleFileSelection = React.useCallback(
+    (event: React.ChangeEvent<HTMLInputElement>) => {
+      const files = Array.from(event.currentTarget.files ?? [])
+      if (files.length > 0) {
+        setSelectedFiles((current) => [...current, ...files])
+        setError(null)
+      }
+      event.currentTarget.value = ""
+    },
+    []
+  )
+
+  const removeSelectedFile = React.useCallback((index: number) => {
+    setSelectedFiles((current) => current.filter((_, itemIndex) => itemIndex !== index))
+  }, [])
+
+  const uploadSelectedFiles = React.useCallback(async (): Promise<
+    readonly DraftAttachment[]
+  > => {
+    if (selectedFiles.length === 0) return []
+
+    const formData = new FormData()
+    for (const file of selectedFiles) {
+      formData.append("files", file)
+    }
+
+    const response = await fetch(
+      `/api/conversations/${channelId}/attachments/upload`,
+      {
+        method: "POST",
+        body: formData,
+      }
+    )
+    const payload: unknown = await response.json()
+    if (!isAttachmentUploadResponse(payload)) {
+      throw new Error("Attachment upload returned an unexpected response.")
+    }
+    if (!payload.success) {
+      throw new Error(payload.error)
+    }
+    return payload.attachments
+  }, [channelId, selectedFiles])
+
   const handleSend = React.useCallback(async () => {
     if (!editor || isSending) return
 
     const plainText = editor.getText().trim()
-    if (!plainText) return
+    if (!plainText && selectedFiles.length === 0) return
 
     setIsSending(true)
     setError(null)
@@ -446,7 +527,13 @@ export function MessageComposer({
         string,
         { getMarkdown?: () => string } | undefined
       >
-      const markdown = storage.markdown?.getMarkdown?.() ?? plainText
+      const markdown =
+        plainText.length > 0
+          ? storage.markdown?.getMarkdown?.() ?? plainText
+          : selectedFiles.length === 1
+            ? `Attached ${selectedFiles[0]?.name ?? "a file"}.`
+            : `Attached ${selectedFiles.length} files.`
+      const attachments = await uploadSelectedFiles()
 
       const result =
         recipientValue === "channel" || threadId
@@ -455,6 +542,7 @@ export function MessageComposer({
               content: markdown,
               threadId,
               mentions: mentions.length > 0 ? mentions : undefined,
+              attachments,
             })
           : await sendProjectMessage({
               channelId,
@@ -462,10 +550,12 @@ export function MessageComposer({
               recipient: recipientFromValue(recipientValue),
               priority: importantDelivery ? "high" : "normal",
               mentions: mentions.length > 0 ? mentions : undefined,
+              attachments,
             })
 
       if (result.success) {
         editor.commands.clearContent()
+        setSelectedFiles([])
         setImportantDelivery(false)
         if ("data" in result && result.data && "recipientLabel" in result.data) {
           const noteParts = [`Sent to ${result.data.recipientLabel}`]
@@ -508,6 +598,8 @@ export function MessageComposer({
     isSending,
     recipientValue,
     importantDelivery,
+    selectedFiles,
+    uploadSelectedFiles,
   ])
 
   React.useEffect(() => {
@@ -720,6 +812,36 @@ export function MessageComposer({
       )}
 
       {/* main composer bar */}
+      {selectedFiles.length > 0 && (
+        <div className="mb-2 grid gap-1.5 pl-0 sm:pl-0">
+          {selectedFiles.map((file, index) => (
+            <div
+              key={`${file.name}-${file.size}-${index}`}
+              className="flex items-center gap-2 rounded-md border bg-background px-2.5 py-2 text-xs"
+            >
+              <FileText className="size-4 shrink-0 text-muted-foreground" />
+              <div className="min-w-0 flex-1">
+                <p className="truncate font-medium">{file.name}</p>
+                <p className="text-muted-foreground">
+                  {formatFileSize(file.size)}
+                </p>
+              </div>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="size-7"
+                disabled={isSending}
+                onClick={() => removeSelectedFile(index)}
+                aria-label={`Remove ${file.name}`}
+              >
+                <X className="size-3.5" />
+              </Button>
+            </div>
+          ))}
+        </div>
+      )}
+
       <div
         className={cn(
           "relative flex items-end rounded-lg",
@@ -755,27 +877,25 @@ export function MessageComposer({
 
         {/* right-side action icons */}
         <div className="flex h-[44px] shrink-0 items-center gap-0 pr-1 sm:pr-1.5">
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            className="hidden"
+            onChange={handleFileSelection}
+          />
           <button
             type="button"
             className={cn(
-              "hidden sm:flex",
+              "flex",
               "h-8 w-8 items-center justify-center rounded-md",
               "text-muted-foreground hover:text-foreground transition-colors",
             )}
-            aria-label="Stickers"
+            disabled={isSending}
+            onClick={() => fileInputRef.current?.click()}
+            aria-label="Attach files"
           >
-            <Sticker className="h-[18px] w-[18px]" />
-          </button>
-          <button
-            type="button"
-            className={cn(
-              "hidden sm:flex",
-              "h-8 w-8 items-center justify-center rounded-md",
-              "text-muted-foreground hover:text-foreground transition-colors",
-            )}
-            aria-label="GIF"
-          >
-            <Gift className="h-[18px] w-[18px]" />
+            <Paperclip className="h-[18px] w-[18px]" />
           </button>
 
           {/* emoji picker */}

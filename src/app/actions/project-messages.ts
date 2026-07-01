@@ -226,6 +226,14 @@ export async function sendProjectMessage(input: {
     readonly mentionType: "user" | "channel" | "here" | "agent"
     readonly targetId: string | null
   }[]
+  readonly attachments?: readonly {
+    readonly fileName: string
+    readonly mimeType: string
+    readonly fileSize: number
+    readonly driveFileId: string
+    readonly driveUrl: string | null
+    readonly downloadUrl: string
+  }[]
 }): Promise<ProjectMessageResult> {
   try {
     const user = await requireAuth()
@@ -259,6 +267,7 @@ export async function sendProjectMessage(input: {
         input.mentions && input.mentions.length > 0
           ? Array.from(input.mentions)
           : undefined,
+      attachments: input.attachments,
     })
 
     if (!sent.success) {

@@ -39,6 +39,17 @@ type MessageData = {
     readonly role: string
     readonly avatarUrl: string | null
   } | null
+  readonly attachments: readonly {
+    readonly id: string
+    readonly fileName: string
+    readonly mimeType: string
+    readonly fileSize: number
+    readonly storageProvider: string
+    readonly driveFileId: string | null
+    readonly driveUrl: string | null
+    readonly downloadUrl: string | null
+    readonly uploadedAt: string
+  }[]
 }
 
 type MessageListProps = {

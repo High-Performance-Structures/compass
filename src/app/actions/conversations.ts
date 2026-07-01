@@ -36,6 +36,14 @@ export type ChannelMemberManagementUser = {
   readonly memberRole: ChannelMemberRole | null
 }
 
+export type ConversationUserOption = {
+  readonly userId: string
+  readonly displayName: string | null
+  readonly email: string
+  readonly avatarUrl: string | null
+  readonly role: string
+}
+
 function normalizeChannelAudience(value: string | null): ChannelAudience {
   if (value === "staff") return "staff"
   if (value === "clients") return "clients"
@@ -51,6 +59,15 @@ function normalizeChannelMemberRole(value: string): ChannelMemberRole {
 
 function canModerateAnyChannel(user: AuthUser): boolean {
   return can(user, "channels", "moderate")
+}
+
+function directChannelName(
+  currentUser: Pick<AuthUser, "displayName" | "email">,
+  targetUser: Pick<ConversationUserOption, "displayName" | "email">
+): string {
+  const currentName = currentUser.displayName ?? currentUser.email.split("@")[0]
+  const targetName = targetUser.displayName ?? targetUser.email.split("@")[0]
+  return `${currentName} + ${targetName}`
 }
 
 async function getChannelMembershipRole(
@@ -144,6 +161,212 @@ async function canAccessChannelAudience(
     .then((rows) => rows[0] ?? null)
 
   return matchingMembership !== null
+}
+
+export async function listConversationUsers(): Promise<
+  | { readonly success: true; readonly data: readonly ConversationUserOption[] }
+  | { readonly success: false; readonly error: string }
+> {
+  try {
+    const user = await getCurrentUser()
+    if (!user) {
+      return { success: false, error: "Unauthorized" }
+    }
+    const orgId = requireOrg(user)
+
+    const { env } = await getCloudflareContext()
+    const db = getDb(env.DB)
+
+    const rows = await db
+      .select({
+        userId: users.id,
+        displayName: users.displayName,
+        email: users.email,
+        avatarUrl: users.avatarUrl,
+        role: users.role,
+      })
+      .from(users)
+      .innerJoin(
+        organizationMembers,
+        eq(organizationMembers.userId, users.id)
+      )
+      .where(
+        and(
+          eq(users.isActive, true),
+          eq(organizationMembers.organizationId, orgId)
+        )
+      )
+      .orderBy(users.displayName, users.email)
+
+    return {
+      success: true,
+      data: rows.filter((row) => row.userId !== user.id),
+    }
+  } catch (err) {
+    return {
+      success: false,
+      error:
+        err instanceof Error
+          ? err.message
+          : "Failed to load conversation users",
+    }
+  }
+}
+
+export async function openDirectConversation(
+  targetUserId: string
+): Promise<
+  | { readonly success: true; readonly data: { readonly channelId: string } }
+  | { readonly success: false; readonly error: string }
+> {
+  try {
+    const user = await getCurrentUser()
+    if (!user) {
+      return { success: false, error: "Unauthorized" }
+    }
+
+    if (isDemoUser(user.id)) {
+      return { success: false, error: "DEMO_READ_ONLY" }
+    }
+
+    if (targetUserId === user.id) {
+      return { success: false, error: "Choose another user to message." }
+    }
+
+    requirePermission(user, "channels", "create")
+    const orgId = requireOrg(user)
+
+    const { env } = await getCloudflareContext()
+    const db = getDb(env.DB)
+
+    const targetUser = await db
+      .select({
+        userId: users.id,
+        displayName: users.displayName,
+        email: users.email,
+        avatarUrl: users.avatarUrl,
+        role: users.role,
+      })
+      .from(users)
+      .innerJoin(
+        organizationMembers,
+        eq(organizationMembers.userId, users.id)
+      )
+      .where(
+        and(
+          eq(users.id, targetUserId),
+          eq(users.isActive, true),
+          eq(organizationMembers.organizationId, orgId)
+        )
+      )
+      .limit(1)
+      .then((rows) => rows[0] ?? null)
+
+    if (!targetUser) {
+      return { success: false, error: "User not found in this organization." }
+    }
+
+    const currentUserPrivateChannels = await db
+      .select({ channelId: channels.id })
+      .from(channels)
+      .innerJoin(
+        channelMembers,
+        eq(channelMembers.channelId, channels.id)
+      )
+      .where(
+        and(
+          eq(channels.organizationId, orgId),
+          eq(channels.type, "text"),
+          eq(channels.isPrivate, true),
+          sql`${channels.projectId} IS NULL`,
+          sql`${channels.archivedAt} IS NULL`,
+          eq(channelMembers.userId, user.id)
+        )
+      )
+
+    for (const candidate of currentUserPrivateChannels) {
+      const members = await db
+        .select({ userId: channelMembers.userId })
+        .from(channelMembers)
+        .where(eq(channelMembers.channelId, candidate.channelId))
+      const memberIds = members.map((member) => member.userId)
+      if (
+        memberIds.length === 2 &&
+        memberIds.includes(user.id) &&
+        memberIds.includes(targetUserId)
+      ) {
+        return { success: true, data: { channelId: candidate.channelId } }
+      }
+    }
+
+    const now = new Date().toISOString()
+    const channelId = crypto.randomUUID()
+    const newChannel: NewChannel = {
+      id: channelId,
+      name: directChannelName(user, targetUser),
+      type: "text",
+      description: "Direct conversation",
+      organizationId: orgId,
+      projectId: null,
+      categoryId: null,
+      isPrivate: true,
+      audience: "staff",
+      createdBy: user.id,
+      sortOrder: 0,
+      archivedAt: null,
+      createdAt: now,
+      updatedAt: now,
+    }
+
+    await db.insert(channels).values(newChannel)
+    await db.insert(channelMembers).values([
+      {
+        id: crypto.randomUUID(),
+        channelId,
+        userId: user.id,
+        role: "owner",
+        notifyLevel: "all",
+        joinedAt: now,
+      },
+      {
+        id: crypto.randomUUID(),
+        channelId,
+        userId: targetUserId,
+        role: "member",
+        notifyLevel: "all",
+        joinedAt: now,
+      },
+    ])
+    await db.insert(channelReadState).values([
+      {
+        id: crypto.randomUUID(),
+        userId: user.id,
+        channelId,
+        lastReadMessageId: null,
+        lastReadAt: now,
+        unreadCount: 0,
+      },
+      {
+        id: crypto.randomUUID(),
+        userId: targetUserId,
+        channelId,
+        lastReadMessageId: null,
+        lastReadAt: now,
+        unreadCount: 0,
+      },
+    ])
+
+    revalidatePath("/dashboard/conversations")
+    return { success: true, data: { channelId } }
+  } catch (err) {
+    return {
+      success: false,
+      error:
+        err instanceof Error
+          ? err.message
+          : "Failed to open direct conversation",
+    }
+  }
 }
 
 export async function listChannels(options?: {

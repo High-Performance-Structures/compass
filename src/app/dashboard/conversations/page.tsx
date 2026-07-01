@@ -3,6 +3,7 @@ import { Archive, FolderOpen, Hash, Megaphone, MessageSquare } from "lucide-reac
 import { listChannels } from "@/app/actions/conversations"
 import { getProjects } from "@/app/actions/projects"
 import { CreateChannelButton } from "@/components/conversations/create-channel-button"
+import { DirectConversationLauncher } from "@/components/conversations/direct-conversation-launcher"
 import { ProjectConversationLauncher } from "@/components/conversations/project-conversation-launcher"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -52,6 +53,8 @@ export default async function ConversationsPage() {
 
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(280px,360px)]">
         <section className="space-y-3 border-y py-4">
+          <DirectConversationLauncher />
+
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-2">
               <MessageSquare className="size-5 text-muted-foreground" />

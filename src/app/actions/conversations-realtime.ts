@@ -1,9 +1,14 @@
 "use server"
 
 import { getCloudflareContext } from "@/lib/db"
-import { eq, and, gt, desc, sql } from "drizzle-orm"
+import { eq, and, gt, desc, sql, inArray } from "drizzle-orm"
 import { getDb } from "@/db"
-import { messages, typingSessions, channelMembers } from "@/db/schema-conversations"
+import {
+  messages,
+  typingSessions,
+  channelMembers,
+  messageAttachments,
+} from "@/db/schema-conversations"
 import { users } from "@/db/schema"
 import { getCurrentUser } from "@/lib/auth"
 
@@ -31,6 +36,19 @@ type MessageWithUser = {
     role: string
     avatarUrl: string | null
   } | null
+  attachments: readonly MessageAttachmentData[]
+}
+
+type MessageAttachmentData = {
+  readonly id: string
+  readonly fileName: string
+  readonly mimeType: string
+  readonly fileSize: number
+  readonly storageProvider: string
+  readonly driveFileId: string | null
+  readonly driveUrl: string | null
+  readonly downloadUrl: string | null
+  readonly uploadedAt: string
 }
 
 type ChannelUpdatesResult = {
@@ -58,6 +76,49 @@ const messageSelectFields = {
     avatarUrl: users.avatarUrl,
   },
 } as const
+
+async function attachmentsByMessageId(
+  db: ReturnType<typeof getDb>,
+  messageIds: readonly string[]
+): Promise<Map<string, readonly MessageAttachmentData[]>> {
+  const ids = Array.from(new Set(messageIds))
+  if (ids.length === 0) return new Map()
+
+  const rows = await db
+    .select({
+      id: messageAttachments.id,
+      messageId: messageAttachments.messageId,
+      fileName: messageAttachments.fileName,
+      mimeType: messageAttachments.mimeType,
+      fileSize: messageAttachments.fileSize,
+      storageProvider: messageAttachments.storageProvider,
+      driveFileId: messageAttachments.driveFileId,
+      driveUrl: messageAttachments.driveUrl,
+      downloadUrl: messageAttachments.downloadUrl,
+      uploadedAt: messageAttachments.uploadedAt,
+    })
+    .from(messageAttachments)
+    .where(inArray(messageAttachments.messageId, ids))
+
+  const grouped = new Map<string, MessageAttachmentData[]>()
+  for (const row of rows) {
+    const existing = grouped.get(row.messageId) ?? []
+    existing.push({
+      id: row.id,
+      fileName: row.fileName,
+      mimeType: row.mimeType,
+      fileSize: row.fileSize,
+      storageProvider: row.storageProvider,
+      driveFileId: row.driveFileId,
+      driveUrl: row.driveUrl,
+      downloadUrl: row.downloadUrl,
+      uploadedAt: row.uploadedAt,
+    })
+    grouped.set(row.messageId, existing)
+  }
+
+  return grouped
+}
 
 export async function getChannelUpdates(
   channelId: string,
@@ -129,12 +190,17 @@ export async function getChannelUpdates(
     }
 
     const fetchedMessages = await messagesQuery.limit(lastMessageId ? 100 : 20)
+    const attachmentMap = await attachmentsByMessageId(
+      db,
+      fetchedMessages.map((message) => message.id)
+    )
 
     // replace deleted content with placeholder
     const sanitizedMessages: MessageWithUser[] = fetchedMessages.map((msg) => ({
       ...msg,
       content: msg.deletedAt ? "[Message deleted]" : msg.content,
       contentHtml: msg.deletedAt ? null : msg.contentHtml,
+      attachments: msg.deletedAt ? [] : attachmentMap.get(msg.id) ?? [],
     }))
 
     // fetch currently typing users (excluding current user)

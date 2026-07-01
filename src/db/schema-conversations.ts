@@ -65,6 +65,10 @@ export const messageAttachments = sqliteTable("message_attachments", {
   mimeType: text("mime_type").notNull(),
   fileSize: integer("file_size").notNull(),
   r2Path: text("r2_path").notNull(), // placeholder for now
+  storageProvider: text("storage_provider").notNull().default("google_drive"),
+  driveFileId: text("drive_file_id"),
+  driveUrl: text("drive_url"),
+  downloadUrl: text("download_url"),
   width: integer("width"),
   height: integer("height"),
   uploadedAt: text("uploaded_at").notNull(),

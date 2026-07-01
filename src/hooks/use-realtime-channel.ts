@@ -27,6 +27,17 @@ type MessageData = {
     role: string
     avatarUrl: string | null
   } | null
+  attachments: readonly {
+    readonly id: string
+    readonly fileName: string
+    readonly mimeType: string
+    readonly fileSize: number
+    readonly storageProvider: string
+    readonly driveFileId: string | null
+    readonly driveUrl: string | null
+    readonly downloadUrl: string | null
+    readonly uploadedAt: string
+  }[]
 }
 
 type RealtimeUpdate = {
