@@ -4,12 +4,12 @@ import * as React from "react"
 import {
   IconAntenna,
   IconPhoneOff,
-  IconScreenShare,
   IconScreenShareOff,
-  IconVideo,
   IconVideoOff,
   IconWaveSine,
   IconSparkles,
+  IconMicrophoneOff,
+  IconHeadphonesOff,
 } from "@tabler/icons-react"
 import {
   Tooltip,
@@ -19,30 +19,64 @@ import {
 import { useVoiceState } from "@/hooks/use-voice-state"
 import { cn } from "@/lib/utils"
 
+function RemoteVoiceAudio({
+  stream,
+}: {
+  readonly stream: MediaStream
+}): React.ReactElement {
+  const audioRef = React.useRef<HTMLAudioElement | null>(null)
+
+  React.useEffect(() => {
+    const audio = audioRef.current
+    if (!audio) return
+    audio.srcObject = stream
+    void audio.play().catch(() => {
+      // The browser may wait for a user gesture; the element stays ready.
+    })
+    return () => {
+      audio.srcObject = null
+    }
+  }, [stream])
+
+  return <audio ref={audioRef} autoPlay playsInline />
+}
+
 export function VoicePanel(): React.ReactElement {
   const {
     channelName,
-    isScreenSharing,
-    isCameraOn,
     isNoiseSuppression,
-    toggleScreenShare,
-    toggleCamera,
+    connectionStatus,
+    connectionError,
+    participants,
+    remoteStreams,
     toggleNoiseSuppression,
     leaveChannel,
   } = useVoiceState()
+  const participantCount = participants.length
+  const statusLabel =
+    connectionStatus === "connecting"
+      ? "Connecting Voice"
+      : connectionStatus === "error"
+        ? "Voice Needs Attention"
+        : "Voice Connected"
+  const statusColor =
+    connectionStatus === "error" ? "text-destructive" : "text-emerald-500"
 
   return (
     <div className="group-data-[collapsible=icon]:hidden border-t border-sidebar-border">
       {/* Connection status and disconnect */}
       <div className="p-2">
-        <div className="mb-1 flex items-center gap-1.5 text-xs text-emerald-500">
+        {remoteStreams.map((remote) => (
+          <RemoteVoiceAudio key={remote.userId} stream={remote.stream} />
+        ))}
+        <div className={cn("mb-1 flex items-center gap-1.5 text-xs", statusColor)}>
           <IconAntenna className="size-3.5" />
-          <span className="font-medium">Voice Connected</span>
+          <span className="font-medium">{statusLabel}</span>
         </div>
         <div className="mb-2 flex items-center justify-between">
           <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
             <span className="truncate">#{channelName}</span>
-            <span>2👤</span>
+            <span>{participantCount} user{participantCount === 1 ? "" : "s"}</span>
           </div>
           <Tooltip>
             <TooltipTrigger asChild>
@@ -58,6 +92,29 @@ export function VoicePanel(): React.ReactElement {
             <TooltipContent>Disconnect</TooltipContent>
           </Tooltip>
         </div>
+        {connectionError && (
+          <div className="mb-2 rounded-md border border-destructive/20 bg-destructive/10 px-2 py-1.5 text-xs text-destructive">
+            {connectionError}
+          </div>
+        )}
+        {participants.length > 0 && (
+          <div className="mb-2 space-y-1">
+            {participants.map((participant) => (
+              <div
+                key={participant.userId}
+                className="flex items-center justify-between gap-2 rounded-sm px-1.5 py-1 text-xs text-sidebar-foreground/85"
+              >
+                <span className="truncate">
+                  {participant.displayName ?? "Compass user"}
+                </span>
+                <span className="flex items-center gap-1 text-sidebar-foreground/50">
+                  {participant.isMuted && <IconMicrophoneOff className="size-3" />}
+                  {participant.isDeafened && <IconHeadphonesOff className="size-3" />}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
 
         {/* Toggle controls row */}
         <div className="flex items-center gap-1">
@@ -65,42 +122,28 @@ export function VoicePanel(): React.ReactElement {
             <TooltipTrigger asChild>
               <button
                 type="button"
-                onClick={toggleScreenShare}
-                className={cn(
-                  "flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-foreground",
-                  isScreenSharing && "bg-sidebar-accent text-foreground"
-                )}
-                aria-label="Toggle screen share"
+                disabled
+                className="flex size-7 items-center justify-center rounded-md text-muted-foreground opacity-50"
+                aria-label="Screen share coming soon"
               >
-                {isScreenSharing ? (
-                  <IconScreenShare className="size-4" />
-                ) : (
-                  <IconScreenShareOff className="size-4" />
-                )}
+                <IconScreenShareOff className="size-4" />
               </button>
             </TooltipTrigger>
-            <TooltipContent>Screen Share</TooltipContent>
+            <TooltipContent>Screen Share (coming soon)</TooltipContent>
           </Tooltip>
 
           <Tooltip>
             <TooltipTrigger asChild>
               <button
                 type="button"
-                onClick={toggleCamera}
-                className={cn(
-                  "flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-foreground",
-                  isCameraOn && "bg-sidebar-accent text-foreground"
-                )}
-                aria-label="Toggle camera"
+                disabled
+                className="flex size-7 items-center justify-center rounded-md text-muted-foreground opacity-50"
+                aria-label="Camera coming soon"
               >
-                {isCameraOn ? (
-                  <IconVideo className="size-4" />
-                ) : (
-                  <IconVideoOff className="size-4" />
-                )}
+                <IconVideoOff className="size-4" />
               </button>
             </TooltipTrigger>
-            <TooltipContent>Camera</TooltipContent>
+            <TooltipContent>Camera (coming soon)</TooltipContent>
           </Tooltip>
 
           <Tooltip>

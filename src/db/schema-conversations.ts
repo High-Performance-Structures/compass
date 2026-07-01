@@ -2,6 +2,7 @@ import {
   sqliteTable,
   text,
   integer,
+  index,
 } from "drizzle-orm/sqlite-core"
 import { organizations, projects, users } from "./schema"
 
@@ -163,6 +164,56 @@ export const channelReadState = sqliteTable("channel_read_state", {
   unreadCount: integer("unread_count").notNull().default(0),
 })
 
+// voice_participants - active users in voice rooms
+export const voiceParticipants = sqliteTable(
+  "voice_participants",
+  {
+    id: text("id").primaryKey(),
+    channelId: text("channel_id")
+      .notNull()
+      .references(() => channels.id, { onDelete: "cascade" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    displayName: text("display_name"),
+    isMuted: integer("is_muted", { mode: "boolean" }).notNull().default(false),
+    isDeafened: integer("is_deafened", { mode: "boolean" })
+      .notNull()
+      .default(false),
+    joinedAt: text("joined_at").notNull(),
+    lastSeenAt: text("last_seen_at").notNull(),
+  },
+  (table) => [
+    index("voice_participants_channel_idx").on(table.channelId),
+    index("voice_participants_user_idx").on(table.userId),
+    index("voice_participants_seen_idx").on(table.channelId, table.lastSeenAt),
+  ]
+)
+
+// voice_signals - WebRTC offers, answers, and ICE candidates
+export const voiceSignals = sqliteTable(
+  "voice_signals",
+  {
+    id: text("id").primaryKey(),
+    channelId: text("channel_id")
+      .notNull()
+      .references(() => channels.id, { onDelete: "cascade" }),
+    senderUserId: text("sender_user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    targetUserId: text("target_user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    signalType: text("signal_type").notNull(),
+    payloadJson: text("payload_json").notNull(),
+    createdAt: text("created_at").notNull(),
+  },
+  (table) => [
+    index("voice_signals_target_idx").on(table.channelId, table.targetUserId),
+    index("voice_signals_created_idx").on(table.channelId, table.createdAt),
+  ]
+)
+
 // type exports
 export type Channel = typeof channels.$inferSelect
 export type NewChannel = typeof channels.$inferInsert
@@ -184,3 +235,7 @@ export type UserPresence = typeof userPresence.$inferSelect
 export type NewUserPresence = typeof userPresence.$inferInsert
 export type ChannelCategory = typeof channelCategories.$inferSelect
 export type NewChannelCategory = typeof channelCategories.$inferInsert
+export type VoiceParticipant = typeof voiceParticipants.$inferSelect
+export type NewVoiceParticipant = typeof voiceParticipants.$inferInsert
+export type VoiceSignal = typeof voiceSignals.$inferSelect
+export type NewVoiceSignal = typeof voiceSignals.$inferInsert
