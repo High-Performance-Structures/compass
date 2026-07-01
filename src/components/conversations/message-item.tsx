@@ -90,6 +90,112 @@ function formatFileSize(bytes: number): string {
   return `${megabytes.toFixed(1)} MB`
 }
 
+function isImageAttachment(attachment: MessageAttachmentData): boolean {
+  return attachment.mimeType.toLowerCase().startsWith("image/")
+}
+
+function AttachmentActions({
+  attachment,
+}: {
+  readonly attachment: MessageAttachmentData
+}): React.ReactElement {
+  return (
+    <>
+      {attachment.driveUrl && (
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="size-7"
+          asChild
+        >
+          <a
+            href={attachment.driveUrl}
+            target="_blank"
+            rel="noreferrer"
+            aria-label={`Open ${attachment.fileName} in Google Drive`}
+          >
+            <ExternalLink className="size-3.5" />
+          </a>
+        </Button>
+      )}
+      {attachment.downloadUrl && (
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="size-7"
+          asChild
+        >
+          <a
+            href={attachment.downloadUrl}
+            download={attachment.fileName}
+            aria-label={`Download ${attachment.fileName}`}
+          >
+            <Download className="size-3.5" />
+          </a>
+        </Button>
+      )}
+    </>
+  )
+}
+
+function MessageAttachment({
+  attachment,
+}: {
+  readonly attachment: MessageAttachmentData
+}): React.ReactElement {
+  const isImage = isImageAttachment(attachment)
+
+  if (isImage && attachment.downloadUrl) {
+    return (
+      <div className="overflow-hidden rounded-md border bg-background text-xs sm:max-w-lg">
+        <a
+          href={attachment.downloadUrl}
+          target="_blank"
+          rel="noreferrer"
+          className="block bg-muted/30"
+          aria-label={`Open preview of ${attachment.fileName}`}
+        >
+          {/* Authenticated Drive proxy URL; next/image cannot optimize it reliably. */}
+          <img
+            src={attachment.downloadUrl}
+            alt={attachment.fileName}
+            className="max-h-64 w-full object-contain"
+            loading="lazy"
+          />
+        </a>
+        <div className="flex items-center gap-2 px-2.5 py-2">
+          <div className="min-w-0 flex-1">
+            <p className="truncate font-medium text-foreground">
+              {attachment.fileName}
+            </p>
+            <p className="text-muted-foreground">
+              {formatFileSize(attachment.fileSize)}
+            </p>
+          </div>
+          <AttachmentActions attachment={attachment} />
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="flex items-center gap-2 rounded-md border bg-background px-2.5 py-2 text-xs">
+      <FileText className="size-4 shrink-0 text-muted-foreground" />
+      <div className="min-w-0 flex-1">
+        <p className="truncate font-medium text-foreground">
+          {attachment.fileName}
+        </p>
+        <p className="text-muted-foreground">
+          {formatFileSize(attachment.fileSize)}
+        </p>
+      </div>
+      <AttachmentActions attachment={attachment} />
+    </div>
+  )
+}
+
 function MessageBody({
   content,
   contentHtml,
@@ -240,55 +346,7 @@ export const MessageItem = React.memo(function MessageItem({ message }: MessageI
         {message.attachments.length > 0 && (
           <div className="mt-2 grid gap-1.5 sm:max-w-xl">
             {message.attachments.map((attachment) => (
-              <div
-                key={attachment.id}
-                className="flex items-center gap-2 rounded-md border bg-background px-2.5 py-2 text-xs"
-              >
-                <FileText className="size-4 shrink-0 text-muted-foreground" />
-                <div className="min-w-0 flex-1">
-                  <p className="truncate font-medium text-foreground">
-                    {attachment.fileName}
-                  </p>
-                  <p className="text-muted-foreground">
-                    {formatFileSize(attachment.fileSize)}
-                  </p>
-                </div>
-                {attachment.driveUrl && (
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    className="size-7"
-                    asChild
-                  >
-                    <a
-                      href={attachment.driveUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      aria-label={`Open ${attachment.fileName} in Google Drive`}
-                    >
-                      <ExternalLink className="size-3.5" />
-                    </a>
-                  </Button>
-                )}
-                {attachment.downloadUrl && (
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    className="size-7"
-                    asChild
-                  >
-                    <a
-                      href={attachment.downloadUrl}
-                      download={attachment.fileName}
-                      aria-label={`Download ${attachment.fileName}`}
-                    >
-                      <Download className="size-3.5" />
-                    </a>
-                  </Button>
-                )}
-              </div>
+              <MessageAttachment key={attachment.id} attachment={attachment} />
             ))}
           </div>
         )}

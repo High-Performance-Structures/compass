@@ -21,6 +21,7 @@ const GOOGLE_FOLDER_MIME_TYPE = "application/vnd.google-apps.folder"
 const MESSAGE_ATTACHMENT_FOLDER_NAME = "Compass Message Attachments"
 const MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024
 const DEFAULT_COMPASS_GOOGLE_UPLOAD_USER = "compass@hps-colorado.com"
+const GOOGLE_MY_DRIVE_ROOT = "root"
 
 type AttachmentUploadItem = {
   readonly fileName: string
@@ -142,6 +143,45 @@ async function resolveProjectDriveFolderId(input: {
   )
 }
 
+async function resolveAttachmentParentFolderId(input: {
+  readonly db: ReturnType<typeof getDb>
+  readonly env: Record<string, string>
+  readonly channelProjectId: string | null
+  readonly organizationId: string
+  readonly sharedDriveId: string | null
+}): Promise<string> {
+  if (input.channelProjectId) {
+    const [project] = await input.db
+      .select({
+        id: projects.id,
+        googleDriveFolderId: projects.googleDriveFolderId,
+      })
+      .from(projects)
+      .where(
+        and(
+          eq(projects.id, input.channelProjectId),
+          eq(projects.organizationId, input.organizationId)
+        )
+      )
+      .limit(1)
+
+    if (project) {
+      const projectFolderId = await resolveProjectDriveFolderId({
+        db: input.db,
+        projectId: project.id,
+        projectDriveFolderId: project.googleDriveFolderId,
+      })
+      if (projectFolderId) return projectFolderId
+    }
+  }
+
+  return (
+    envString(input.env, "COMPASS_MESSAGE_ATTACHMENTS_FOLDER_ID") ??
+    input.sharedDriveId ??
+    GOOGLE_MY_DRIVE_ROOT
+  )
+}
+
 export async function POST(
   request: NextRequest,
   { params }: { readonly params: Promise<{ readonly channelId: string }> }
@@ -238,41 +278,13 @@ export async function POST(
       serviceAccountKey: parseServiceAccountKey(keyJson),
     })
 
-    let parentFolderId = auth.sharedDriveId
-    if (channel.projectId) {
-      const [project] = await db
-        .select({
-          id: projects.id,
-          googleDriveFolderId: projects.googleDriveFolderId,
-        })
-        .from(projects)
-        .where(
-          and(
-            eq(projects.id, channel.projectId),
-            eq(projects.organizationId, organizationId)
-          )
-        )
-        .limit(1)
-      parentFolderId =
-        project
-          ? await resolveProjectDriveFolderId({
-              db,
-              projectId: project.id,
-              projectDriveFolderId: project.googleDriveFolderId,
-            })
-          : parentFolderId
-    }
-
-    if (!parentFolderId) {
-      return NextResponse.json(
-        {
-          success: false,
-          error:
-            "Map this project or organization to Google Drive before attaching files.",
-        },
-        { status: 400 }
-      )
-    }
+    const parentFolderId = await resolveAttachmentParentFolderId({
+      db,
+      env: envRecord,
+      channelProjectId: channel.projectId,
+      organizationId,
+      sharedDriveId: auth.sharedDriveId,
+    })
 
     const targetFolderId = await findOrCreateAttachmentFolder({
       client,
