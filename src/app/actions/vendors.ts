@@ -4,8 +4,8 @@ import { getCloudflareContext } from "@/lib/db"
 import { eq, and } from "drizzle-orm"
 import { getDb } from "@/db"
 import {
-  projectContacts,
-  projects,
+  organizationMembers,
+  users,
   vendors,
   type NewVendor,
 } from "@/db/schema"
@@ -14,6 +14,7 @@ import { requirePermission } from "@/lib/permissions"
 import { revalidatePath } from "next/cache"
 import { requireOrg } from "@/lib/org-scope"
 import { isDemoOrg, isDemoUser } from "@/lib/demo"
+import { USER_ROLE_OPTIONS, userRoleLabel } from "@/lib/user-roles"
 
 export type InternalDirectoryContact = {
   readonly id: string
@@ -25,7 +26,7 @@ export type InternalDirectoryContact = {
   readonly sourceLabel: string
 }
 
-const DEFAULT_INTERNAL_DIRECTORY_CONTACTS: readonly InternalDirectoryContact[] = [
+const DEFAULT_INTERNAL_DEPARTMENT_CONTACTS: readonly InternalDirectoryContact[] = [
   {
     id: "internal-department-hps",
     name: "High Performance Structures Inc.",
@@ -53,87 +54,6 @@ const DEFAULT_INTERNAL_DIRECTORY_CONTACTS: readonly InternalDirectoryContact[] =
     phone: null,
     sourceLabel: "Compass seed",
   },
-  {
-    id: "internal-employee-martine-vogel",
-    name: "Martine Vogel",
-    company: "High Performance Structures",
-    role: "Admin-owner",
-    email: null,
-    phone: null,
-    sourceLabel: "Sage roster",
-  },
-  {
-    id: "internal-employee-daniel-vogel",
-    name: "Daniel Vogel",
-    company: "High Performance Structures",
-    role: "Project Manager / Field production",
-    email: null,
-    phone: null,
-    sourceLabel: "Sage roster",
-  },
-  {
-    id: "internal-employee-sarah-cowman",
-    name: "Sarah Cowman",
-    company: "High Performance Structures",
-    role: "Senior Field Crew",
-    email: null,
-    phone: null,
-    sourceLabel: "Sage roster",
-  },
-  {
-    id: "internal-employee-stanley-platt",
-    name: "Stanley Platt",
-    company: "High Performance Structures",
-    role: "Field Superintendent",
-    email: null,
-    phone: null,
-    sourceLabel: "Sage roster",
-  },
-  {
-    id: "internal-employee-sylvi-vogel",
-    name: "Sylvi Vogel",
-    company: "High Performance Structures",
-    role: "Architectural Designer / Design & Print",
-    email: null,
-    phone: null,
-    sourceLabel: "Sage roster",
-  },
-  {
-    id: "internal-employee-cassandra-rodriguez-v",
-    name: "Cassandra Rodriguez-V",
-    company: "High Performance Structures",
-    role: "Project Administrator / Accounting Coordinator",
-    email: null,
-    phone: null,
-    sourceLabel: "Sage roster",
-  },
-  {
-    id: "internal-employee-wesley-jones",
-    name: "Wesley Jones",
-    company: "High Performance Structures",
-    role: "Assistant Project Manager",
-    email: null,
-    phone: null,
-    sourceLabel: "Sage roster",
-  },
-  {
-    id: "internal-employee-rebekah-jones",
-    name: "Rebekah Jones",
-    company: "High Performance Structures",
-    role: "Office Manager / Business Development",
-    email: null,
-    phone: null,
-    sourceLabel: "Sage roster",
-  },
-  {
-    id: "internal-employee-isabel-araguz",
-    name: "Isabel Araguz",
-    company: "High Performance Structures",
-    role: "Field Crew",
-    email: null,
-    phone: null,
-    sourceLabel: "Sage roster",
-  },
 ]
 
 function normalizeInternalContactKey(value: string): string {
@@ -146,20 +66,25 @@ function normalizeInternalContactKey(value: string): string {
     .trim()
 }
 
-function internalSourceLabel(sourceSystem: string): string {
-  if (sourceSystem.includes("sage")) return "Sage"
-  if (sourceSystem === "buildertrend") return "Buildertrend"
-  return "Compass"
+function shouldShowInInternalDirectory(role: string): boolean {
+  const option = USER_ROLE_OPTIONS.find((item) => item.value === role)
+  if (!option) return false
+  return option.group !== "External"
 }
 
-function isSeededInternalDepartmentName(value: string): boolean {
-  const normalized = normalizeInternalContactKey(value)
-  return (
-    normalized === "hps subcontractor" ||
-    normalized.includes("high performance structures") ||
-    normalized.includes("open range construction") ||
-    normalized.includes("nu tech")
+function userDisplayName(input: {
+  readonly displayName: string | null
+  readonly firstName: string | null
+  readonly lastName: string | null
+  readonly email: string
+}): string {
+  if (input.displayName) return input.displayName
+
+  const nameParts = [input.firstName, input.lastName].filter(
+    (part): part is string => part !== null && part.trim() !== ""
   )
+  const name = nameParts.join(" ").trim()
+  return name || input.email
 }
 
 export async function getVendors() {
@@ -196,86 +121,50 @@ export async function getInternalDirectoryContacts(): Promise<
   const { env } = await getCloudflareContext()
   const db = getDb(env.DB)
 
-  const internalVendors = await db
+  const organizationUsers = await db
     .select({
-      id: vendors.id,
-      name: vendors.name,
-      category: vendors.category,
-      email: vendors.email,
-      phone: vendors.phone,
-      sourceSystem: vendors.sourceSystem,
+      id: users.id,
+      email: users.email,
+      firstName: users.firstName,
+      lastName: users.lastName,
+      displayName: users.displayName,
+      role: organizationMembers.role,
     })
-    .from(vendors)
+    .from(users)
+    .innerJoin(organizationMembers, eq(organizationMembers.userId, users.id))
     .where(
       and(
-        eq(vendors.organizationId, orgId),
-        eq(vendors.directoryStatus, "active"),
-        eq(vendors.category, "Internal")
-      )
-    )
-
-  const internalProjectContacts = await db
-    .select({
-      id: projectContacts.id,
-      name: projectContacts.displayName,
-      company: projectContacts.companyName,
-      role: projectContacts.role,
-      email: projectContacts.email,
-      phone: projectContacts.phone,
-      sourceSystem: projectContacts.sourceSystem,
-    })
-    .from(projectContacts)
-    .innerJoin(projects, eq(projects.id, projectContacts.projectId))
-    .where(
-      and(
-        eq(projects.organizationId, orgId),
-        eq(projectContacts.contactType, "internal"),
-        eq(projectContacts.active, true)
+        eq(users.isActive, true),
+        eq(organizationMembers.organizationId, orgId)
       )
     )
 
   const contacts = new Map<string, InternalDirectoryContact>()
 
-  for (const contact of DEFAULT_INTERNAL_DIRECTORY_CONTACTS) {
+  for (const contact of DEFAULT_INTERNAL_DEPARTMENT_CONTACTS) {
     const key = normalizeInternalContactKey(
       [contact.name, contact.company ?? "", contact.email ?? ""].join("|")
     )
     contacts.set(key, contact)
   }
 
-  for (const vendor of internalVendors) {
-    if (isSeededInternalDepartmentName(vendor.name)) continue
+  for (const user of organizationUsers) {
+    if (!shouldShowInInternalDirectory(user.role)) continue
 
+    const name = userDisplayName(user)
     const key = normalizeInternalContactKey(
-      [vendor.name, vendor.email ?? ""].join("|")
-    )
-    contacts.set(key, {
-      id: `vendor-${vendor.id}`,
-      name: vendor.name,
-      company: vendor.name,
-      role: vendor.category,
-      email: vendor.email,
-      phone: vendor.phone,
-      sourceLabel: internalSourceLabel(vendor.sourceSystem),
-    })
-  }
-
-  for (const contact of internalProjectContacts) {
-    if (isSeededInternalDepartmentName(contact.name)) continue
-
-    const key = normalizeInternalContactKey(
-      [contact.name, contact.company ?? "", contact.email ?? ""].join("|")
+      [name, user.email].join("|")
     )
     if (contacts.has(key)) continue
 
     contacts.set(key, {
-      id: `project-contact-${contact.id}`,
-      name: contact.name,
-      company: contact.company,
-      role: contact.role,
-      email: contact.email,
-      phone: contact.phone,
-      sourceLabel: internalSourceLabel(contact.sourceSystem),
+      id: `user-${user.id}`,
+      name,
+      company: "High Performance Structures",
+      role: userRoleLabel(user.role),
+      email: user.email,
+      phone: null,
+      sourceLabel: "Compass role",
     })
   }
 
