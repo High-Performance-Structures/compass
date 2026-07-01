@@ -391,11 +391,11 @@ export function ScheduleGanttView({
       {isMobile ? (
         <div className="flex flex-col flex-1 min-h-0">
           {mobileView === "tasks" ? (
-            <div className="border rounded-md flex-1 min-h-0 overflow-auto">
+            <div className="flex-1 min-h-0 overflow-auto border">
               {taskTable}
             </div>
           ) : (
-            <div className="border rounded-md flex-1 min-h-0 overflow-hidden p-2">
+            <div className="min-w-0 flex-1 min-h-0 overflow-hidden border p-2">
               <GanttChart
                 tasks={frappeTasks}
                 viewMode={viewMode}
@@ -410,10 +410,10 @@ export function ScheduleGanttView({
       ) : (
         <ResizablePanelGroup
           orientation="horizontal"
-          className="border rounded-md flex-1 min-h-[300px]"
+          className="min-w-0 flex-1 min-h-[300px] overflow-hidden border"
         >
           <ResizablePanel defaultSize={30} minSize={20}>
-            <div className="h-full overflow-auto">
+            <div className="h-full min-w-0 overflow-auto">
               {taskTable}
             </div>
           </ResizablePanel>
@@ -421,7 +421,7 @@ export function ScheduleGanttView({
           <ResizableHandle withHandle />
 
           <ResizablePanel defaultSize={70} minSize={40}>
-            <div className="h-full overflow-hidden p-2">
+            <div className="h-full min-w-0 overflow-hidden p-2">
               <GanttChart
                 tasks={frappeTasks}
                 viewMode={viewMode}

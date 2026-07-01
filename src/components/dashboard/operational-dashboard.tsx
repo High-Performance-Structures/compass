@@ -314,8 +314,7 @@ function PriorityRailItem({
     <Link
       href={signal.href}
       className={cn(
-        "group relative block min-w-0 overflow-hidden rounded-lg border p-2 shadow-sm transition-colors duration-200 ease-out",
-        "hover:shadow-md",
+        "group relative block min-w-0 overflow-hidden border bg-card p-2 transition-colors duration-200 ease-out",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
         signalClasses(signal.tone),
         signalHoverClasses(signal.tone)
@@ -328,7 +327,7 @@ function PriorityRailItem({
         )}
       />
       <div className="relative z-10 flex items-center gap-2 pl-1">
-        <span className="rounded-md bg-background/70 p-1.5 shadow-sm">
+        <span className="border bg-background/70 p-1.5">
           {signal.icon}
         </span>
         <div className="min-w-0 flex-1">
@@ -359,15 +358,14 @@ function DashboardFieldCard({
     <Link
       href={field.href}
       className={cn(
-        "group relative block overflow-hidden rounded-lg border p-2.5 shadow-sm transition-colors duration-200 ease-out",
-        "hover:shadow-md",
+        "group relative block overflow-hidden border bg-card p-2.5 transition-colors duration-200 ease-out",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
         signalClasses(field.tone),
         signalHoverClasses(field.tone)
       )}
     >
       <div className="relative z-10 flex items-start justify-between gap-3">
-        <span className="rounded-md bg-background/70 p-1.5 shadow-sm">
+        <span className="border bg-background/70 p-1.5">
           {field.icon}
         </span>
         <IconArrowRight className="size-4 opacity-40 transition-transform group-hover:translate-x-0.5" />
@@ -518,9 +516,9 @@ function DashboardCommandCenter({
       </div>
 
       <div className="grid gap-3">
-        <Card className="overflow-hidden rounded-lg border-primary/20">
-          <CardContent className="grid gap-2 p-0 lg:grid-cols-[minmax(0,1fr)_12rem]">
-            <div className="p-3">
+        <div className="overflow-hidden border bg-background">
+          <div className="grid gap-2 p-0 lg:grid-cols-[minmax(0,1fr)_12rem]">
+            <div className="border-l-4 border-[#2f5963] p-3">
               <div className="flex flex-wrap items-center gap-2">
                 <Badge variant="secondary">Next Schedule Item</Badge>
                 {nextTask?.assignedTo && (
@@ -556,7 +554,7 @@ function DashboardCommandCenter({
                 </Button>
               </div>
             </div>
-            <div className="border-t bg-muted/35 p-3 lg:border-l lg:border-t-0">
+            <div className="border-t bg-muted/20 p-3 lg:border-l lg:border-t-0">
               <p className="text-xs font-semibold uppercase tracking-normal text-muted-foreground">
                 Project Pulse
               </p>
@@ -574,13 +572,13 @@ function DashboardCommandCenter({
                   <Progress value={nextProject?.progress ?? 0} className="mt-1.5 h-1" />
                 </div>
                 <div className="grid grid-cols-2 gap-2">
-                  <div className="rounded-md border bg-background p-1.5">
+                  <div className="border bg-background p-1.5">
                     <p className="text-xs text-muted-foreground">RFIs</p>
                     <p className="text-sm font-semibold tabular-nums">
                       {nextProject?.openRfiCount ?? overview.metrics.openRfis}
                     </p>
                   </div>
-                  <div className="rounded-md border bg-background p-1.5">
+                  <div className="border bg-background p-1.5">
                     <p className="text-xs text-muted-foreground">Photos</p>
                     <p className="text-sm font-semibold tabular-nums">
                       {nextProject?.photosToReview ?? overview.metrics.photosToReview}
@@ -589,8 +587,8 @@ function DashboardCommandCenter({
                 </div>
               </div>
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
 
         <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
           {dashboardFields.map((field) => (
@@ -683,26 +681,26 @@ function ProjectPulse({
   readonly overview: DashboardOverview
 }): React.ReactElement {
   return (
-    <Card className="overflow-hidden rounded-lg">
-      <CardHeader className="pb-3">
+    <section className="border-y bg-background py-3">
+      <div className="px-3 pb-3">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
           <div>
-            <CardTitle>Project Pulse</CardTitle>
-            <CardDescription>
+            <h2 className="text-base font-semibold">Project Pulse</h2>
+            <p className="text-sm text-muted-foreground">
               Field photos and team notes
-            </CardDescription>
+            </p>
           </div>
           <Badge variant="secondary">This week</Badge>
         </div>
-      </CardHeader>
-      <CardContent className="grid gap-4 pt-0 2xl:grid-cols-[minmax(0,1fr)_22rem]">
+      </div>
+      <div className="grid gap-4 px-3 2xl:grid-cols-[minmax(0,1fr)_22rem]">
         <div className="space-y-4">
           <FieldPulse photos={overview.fieldPhotos} />
           <DashboardCommandCenter overview={overview} />
         </div>
         <CherishPulse />
-      </CardContent>
-    </Card>
+      </div>
+    </section>
   )
 }
 
@@ -727,12 +725,12 @@ function FieldPulse({
   if (photos.length === 0) {
     return (
       <div className="grid min-w-0 gap-3 lg:grid-cols-[minmax(18rem,22rem)_minmax(0,1fr)]">
-        <div className="flex aspect-[4/3] items-center justify-center rounded-lg border bg-muted/40">
+        <div className="flex aspect-[4/3] items-center justify-center border bg-muted/40">
           <IconPhoto className="size-10 text-muted-foreground" />
         </div>
         <div className="flex min-w-0 flex-col justify-center">
           <div className="flex items-center gap-2">
-            <span className="rounded-md border bg-background p-1.5 text-muted-foreground">
+            <span className="border bg-background p-1.5 text-muted-foreground">
               <IconPhoto className="size-4" />
             </span>
             <div>
@@ -753,7 +751,7 @@ function FieldPulse({
   const activePhoto = photos[activeIndex] ?? photos[0]
   if (!activePhoto) {
     return (
-      <div className="flex min-h-48 items-center justify-center rounded-lg border bg-muted/40">
+      <div className="flex min-h-48 items-center justify-center border bg-muted/40">
         <IconPhoto className="size-10 text-muted-foreground" />
       </div>
     )
@@ -761,7 +759,7 @@ function FieldPulse({
 
   return (
     <div className="grid min-w-0 gap-3 lg:grid-cols-[minmax(18rem,22rem)_minmax(0,1fr)]">
-      <div className="relative aspect-[4/3] overflow-hidden rounded-lg border bg-muted">
+      <div className="relative aspect-[4/3] overflow-hidden border bg-muted">
         {photos.map((photo, index) => {
           const imageFailed = failedPhotoIds.includes(photo.id)
 
@@ -814,7 +812,7 @@ function FieldPulse({
       <div className="flex min-w-0 flex-col justify-between gap-3">
         <div>
           <div className="flex items-center gap-2">
-            <span className="rounded-md border bg-background p-1.5 text-muted-foreground">
+            <span className="border bg-background p-1.5 text-muted-foreground">
               <IconPhoto className="size-4" />
             </span>
             <div>
@@ -955,10 +953,10 @@ function CherishPulse(): React.ReactElement {
   }
 
   return (
-    <div className="min-w-0 rounded-lg border bg-background p-3">
+    <div className="min-w-0 border bg-background p-3">
       <div>
           <div className="flex flex-wrap items-center gap-2">
-            <span className="rounded-md border bg-background p-1.5 text-emerald-800">
+            <span className="border bg-background p-1.5 text-emerald-800">
               <IconUserHeart className="size-4" />
             </span>
             <p className="text-sm font-semibold">Thursday Pulse</p>
@@ -966,7 +964,7 @@ function CherishPulse(): React.ReactElement {
             <Badge variant="outline">Field friendly</Badge>
           </div>
 
-          <div className="mt-3 rounded-md border bg-card p-3">
+          <div className="mt-3 border-l-4 border-emerald-700 bg-muted/20 p-3">
             <div className="flex flex-wrap items-center gap-2">
               <p className="text-xs font-semibold uppercase tracking-normal text-muted-foreground">
                 This week
@@ -984,7 +982,7 @@ function CherishPulse(): React.ReactElement {
                 <span
                   key={value}
                   className={cn(
-                    "rounded-full border px-2 py-0.5 text-[11px] font-medium",
+                    "border px-2 py-0.5 text-[11px] font-medium",
                     value === "Reliability"
                       ? "border-emerald-700 bg-emerald-700 text-white"
                       : "bg-muted/40 text-muted-foreground"
@@ -1061,7 +1059,7 @@ function CherishPulse(): React.ReactElement {
           <Collapsible
             open={responseDoorsOpen}
             onOpenChange={setResponseDoorsOpen}
-            className="mt-3 rounded-md border bg-muted/20"
+            className="mt-3 border bg-muted/20"
           >
             <CollapsibleTrigger asChild>
               <button
@@ -1092,7 +1090,7 @@ function CherishPulse(): React.ReactElement {
                   ["ExakTime", "Review time-clock comments."],
                   ["Admin entry", "Log a phone call or text on someone’s behalf."],
                 ].map(([label, detail]) => (
-                  <div key={label} className="rounded-md border bg-background p-2">
+                  <div key={label} className="border bg-background p-2">
                     <p className="text-xs font-semibold">{label}</p>
                     <p className="mt-1 text-xs text-muted-foreground">{detail}</p>
                   </div>
@@ -1112,7 +1110,7 @@ function CherishPulse(): React.ReactElement {
             </div>
             <div className="mt-2 space-y-2">
               {!reviewQueueAvailable && (
-                <div className="rounded-md border bg-muted/20 p-2.5">
+                <div className="border bg-muted/20 p-2.5">
                   <p className="text-xs text-muted-foreground">
                     Responses are stored in Compass. Private concerns stay with
                     admins and are handled through the review controls.
@@ -1120,7 +1118,7 @@ function CherishPulse(): React.ReactElement {
                 </div>
               )}
               {reviewQueueAvailable && responses.length === 0 && (
-                <div className="rounded-md border bg-muted/20 p-2.5">
+                <div className="border bg-muted/20 p-2.5">
                   <p className="text-xs text-muted-foreground">
                     Nothing is waiting for review yet.
                   </p>
@@ -1130,7 +1128,7 @@ function CherishPulse(): React.ReactElement {
                 <div
                   key={response.id}
                   className={cn(
-                    "rounded-md border p-2.5",
+                    "border p-2.5",
                     response.visibility === "private" && "border-[#9d832c] bg-card"
                   )}
                 >
@@ -1239,10 +1237,10 @@ function CompassNodeCard({
     <Link
       href={node.href}
       className={cn(
-        "group relative z-0 block overflow-hidden rounded-lg border bg-background/95 p-3 shadow-sm transition-all duration-200 ease-out",
-        "after:absolute after:inset-0 after:bg-muted/70 after:opacity-0 after:transition-opacity after:duration-200 after:content-['']",
-        "hover:z-[100] hover:-translate-y-5 hover:scale-[1.07] hover:border-primary hover:shadow-2xl hover:after:opacity-100",
-        "focus-visible:z-[100] focus-visible:-translate-y-5 focus-visible:scale-[1.07] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:after:opacity-100",
+        "group relative z-0 block overflow-hidden border bg-background/95 p-3 transition-colors duration-200 ease-out",
+        "after:absolute after:inset-0 after:bg-muted/50 after:opacity-0 after:transition-opacity after:duration-200 after:content-['']",
+        "hover:z-[20] hover:border-primary hover:after:opacity-100",
+        "focus-visible:z-[20] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:after:opacity-100",
         align === "left" && "text-left",
         align === "center" && "text-center",
         align === "right" && "text-right"
@@ -1652,14 +1650,14 @@ export function OperationalDashboard({
       <ProjectPulse overview={overview} />
 
       <div className="grid grid-cols-1 gap-4">
-        <Card className="rounded-lg">
-          <CardHeader>
+        <section className="border-y bg-background">
+          <div className="p-3">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <div>
-                <CardTitle>Work Calendar</CardTitle>
-                <CardDescription>
+                <h2 className="text-base font-semibold">Work Calendar</h2>
+                <p className="text-sm text-muted-foreground">
                   A two-week glance at the next project commitments.
-                </CardDescription>
+                </p>
               </div>
               <Button asChild variant="outline" size="sm">
                 <Link href="/dashboard/schedule">
@@ -1668,10 +1666,10 @@ export function OperationalDashboard({
                 </Link>
               </Button>
             </div>
-          </CardHeader>
-          <CardContent className="space-y-4">
+          </div>
+          <div className="space-y-4 px-3 pb-3">
             {(overview.openRfis.length > 0 || overview.operations.length > 0) && (
-              <div className="grid gap-2 rounded-md border border-[#9d832c] bg-card px-3 py-2 lg:grid-cols-[auto_minmax(0,1fr)] lg:items-center">
+              <div className="grid gap-2 border-l-4 border-[#9d832c] bg-muted/20 px-3 py-2 lg:grid-cols-[auto_minmax(0,1fr)] lg:items-center">
                 <div className="flex min-w-0 items-center gap-2 text-sm font-semibold">
                   <IconAlertCircle className="size-4 shrink-0 text-[#715d1c]" />
                   <span className="truncate">Critical Attention</span>
@@ -1685,7 +1683,7 @@ export function OperationalDashboard({
                     <Link
                       key={rfi.id}
                       href={`/dashboard/projects/${rfi.projectId}/rfis`}
-                      className="flex min-w-0 items-center rounded-md border bg-background/80 px-2.5 py-1.5 text-xs transition-colors hover:bg-background"
+                      className="flex min-w-0 items-center border bg-background/80 px-2.5 py-1.5 text-xs transition-colors hover:bg-background"
                     >
                       <span className="shrink-0 font-medium">RFI</span>
                       <span className="mx-1 shrink-0 text-muted-foreground">·</span>
@@ -1696,7 +1694,7 @@ export function OperationalDashboard({
                     <Link
                       key={operation.id}
                       href={operationHref(operation.projectId, operation.type)}
-                      className="flex min-w-0 items-center rounded-md border bg-background/80 px-2.5 py-1.5 text-xs transition-colors hover:bg-background"
+                      className="flex min-w-0 items-center border bg-background/80 px-2.5 py-1.5 text-xs transition-colors hover:bg-background"
                     >
                       <span className="shrink-0 font-medium">
                         {labelize(operation.type)}
@@ -1708,7 +1706,7 @@ export function OperationalDashboard({
                   {overview.openRfis.length + overview.operations.length > 2 && (
                     <Link
                       href="/dashboard/schedule"
-                      className="flex shrink-0 items-center justify-center rounded-md border bg-background/70 px-2.5 py-1.5 text-xs font-medium transition-colors hover:bg-background"
+                      className="flex shrink-0 items-center justify-center border bg-background/70 px-2.5 py-1.5 text-xs font-medium transition-colors hover:bg-background"
                     >
                       +
                       {overview.openRfis.length + overview.operations.length - 2}
@@ -1727,7 +1725,7 @@ export function OperationalDashboard({
                 return (
                   <div
                     key={day}
-                    className="min-h-32 rounded-lg border bg-background p-2"
+                    className="min-h-32 border bg-background p-2"
                   >
                     <div className="flex items-start justify-between gap-2">
                       <div>
@@ -1745,7 +1743,7 @@ export function OperationalDashboard({
                         <Link
                           key={`${day}-${task.id}`}
                           href={`/dashboard/projects/${task.projectId}/schedule`}
-                          className="block rounded-md border border-[#2f5963] bg-card p-2 text-xs transition-colors hover:bg-muted"
+                          className="block border-l-4 border-[#2f5963] bg-card p-2 text-xs transition-colors hover:bg-muted"
                         >
                           <span className="line-clamp-2 font-medium">
                             {task.title}
@@ -1772,7 +1770,7 @@ export function OperationalDashboard({
                   <Link
                     key={project.id}
                     href={`/dashboard/projects/${project.id}`}
-                    className="rounded-lg border bg-muted/20 p-3 transition-colors hover:bg-accent/40"
+                    className="border-l-4 border-border bg-muted/20 p-3 transition-colors hover:border-[#9d832c] hover:bg-accent/40"
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
@@ -1804,16 +1802,16 @@ export function OperationalDashboard({
                 ))}
               </div>
             )}
-          </CardContent>
-        </Card>
+          </div>
+        </section>
 
       </div>
 
       {developerModeEnabled && (
-        <Card className="rounded-lg">
+        <Card className="border-y">
           <CardContent className="grid gap-3 p-3 md:grid-cols-[minmax(0,1fr)_auto_auto_auto] md:items-center">
             <div className="flex min-w-0 items-center gap-2">
-              <span className="rounded-md border bg-background p-1.5 text-muted-foreground">
+              <span className="border bg-background p-1.5 text-muted-foreground">
                 <IconDatabaseImport className="size-4" />
               </span>
               <div className="min-w-0">
