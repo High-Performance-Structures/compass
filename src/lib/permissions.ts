@@ -266,6 +266,35 @@ export const PERMISSION_FEATURES: readonly PermissionFeature[] = [
   },
 ]
 
+export function getPermissionFeature(
+  featureId: string
+): PermissionFeature | null {
+  return PERMISSION_FEATURES.find((feature) => feature.id === featureId) ?? null
+}
+
+export function isPermissionAccessLevel(
+  value: string
+): value is PermissionAccessLevel {
+  return PERMISSION_ACCESS_LEVELS.some((level) => level.value === value)
+}
+
+export function accessLevelToActions(
+  level: PermissionAccessLevel
+): readonly Action[] {
+  switch (level) {
+    case "approve":
+      return ["create", "read", "update", "delete", "approve", "moderate"]
+    case "delete":
+      return ["create", "read", "update", "delete"]
+    case "edit":
+      return ["create", "read", "update"]
+    case "view":
+      return ["read"]
+    case "none":
+      return []
+  }
+}
+
 type RolePermissions = {
   [key: string]: {
     [key in Resource]?: Action[]

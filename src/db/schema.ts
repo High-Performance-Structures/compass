@@ -3,6 +3,8 @@ import {
   text,
   integer,
   real,
+  index,
+  uniqueIndex,
 } from "drizzle-orm/sqlite-core"
 
 // Auth and user management tables
@@ -222,6 +224,105 @@ export const teamMembers = sqliteTable("team_members", {
     .references(() => users.id, { onDelete: "cascade" }),
   joinedAt: text("joined_at").notNull(),
 })
+
+export const rolePermissionOverrides = sqliteTable(
+  "role_permission_overrides",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    role: text("role").notNull(),
+    featureId: text("feature_id").notNull(),
+    accessLevel: text("access_level").notNull(),
+    createdBy: text("created_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    updatedBy: text("updated_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("role_permission_overrides_unique").on(
+      table.organizationId,
+      table.role,
+      table.featureId
+    ),
+    index("role_permission_overrides_org_idx").on(table.organizationId),
+  ]
+)
+
+export const teamPermissionOverrides = sqliteTable(
+  "team_permission_overrides",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    teamId: text("team_id")
+      .notNull()
+      .references(() => teams.id, { onDelete: "cascade" }),
+    featureId: text("feature_id").notNull(),
+    accessLevel: text("access_level").notNull(),
+    createdBy: text("created_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    updatedBy: text("updated_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("team_permission_overrides_unique").on(
+      table.organizationId,
+      table.teamId,
+      table.featureId
+    ),
+    index("team_permission_overrides_org_idx").on(table.organizationId),
+  ]
+)
+
+export const permissionAuditEvents = sqliteTable(
+  "permission_audit_events",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    scope: text("scope").notNull(),
+    role: text("role"),
+    teamId: text("team_id").references(() => teams.id, {
+      onDelete: "set null",
+    }),
+    featureId: text("feature_id").notNull(),
+    previousAccessLevel: text("previous_access_level"),
+    nextAccessLevel: text("next_access_level"),
+    changedBy: text("changed_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    createdAt: text("created_at").notNull(),
+  },
+  (table) => [
+    index("permission_audit_events_org_idx").on(
+      table.organizationId,
+      table.createdAt
+    ),
+  ]
+)
+
+export type RolePermissionOverride =
+  typeof rolePermissionOverrides.$inferSelect
+export type NewRolePermissionOverride =
+  typeof rolePermissionOverrides.$inferInsert
+export type TeamPermissionOverride =
+  typeof teamPermissionOverrides.$inferSelect
+export type NewTeamPermissionOverride =
+  typeof teamPermissionOverrides.$inferInsert
+export type PermissionAuditEvent = typeof permissionAuditEvents.$inferSelect
+export type NewPermissionAuditEvent = typeof permissionAuditEvents.$inferInsert
 
 export const groups = sqliteTable("groups", {
   id: text("id").primaryKey(),

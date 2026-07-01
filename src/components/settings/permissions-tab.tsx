@@ -3,10 +3,17 @@
 import * as React from "react"
 import { IconLockCog, IconUsersGroup } from "@tabler/icons-react"
 
-import { getSettingsContext } from "@/app/actions/settings"
 import {
+  getPermissionOverrideContext,
+  updateRolePermissionOverride,
+  updateTeamPermissionOverride,
+  type PermissionOverrideChoice,
+  type PermissionTeamOption,
+  type TeamPermissionOverrideChoice,
+} from "@/app/actions/permission-overrides"
+import {
+  accessLevelToActions,
   getPermissionAccessLevel,
-  getPermissions,
   PERMISSION_ACCESS_LEVELS,
   PERMISSION_FEATURES,
   type PermissionAccessLevel,
@@ -31,11 +38,25 @@ import {
 } from "@/components/ui/table"
 import { cn } from "@/lib/utils"
 
-const TEAM_OVERRIDE_CHOICES: readonly {
-  readonly value: "inherit" | PermissionAccessLevel
+const ROLE_BASELINE = "baseline"
+const TEAM_INHERIT = "inherit"
+
+const ROLE_CHOICE_OPTIONS: readonly {
+  readonly value: typeof ROLE_BASELINE | PermissionAccessLevel
   readonly label: string
 }[] = [
-  { value: "inherit", label: "Inherit role" },
+  { value: ROLE_BASELINE, label: "Use baseline" },
+  ...PERMISSION_ACCESS_LEVELS.map((level) => ({
+    value: level.value,
+    label: level.label,
+  })),
+]
+
+const TEAM_OVERRIDE_CHOICES: readonly {
+  readonly value: typeof TEAM_INHERIT | PermissionAccessLevel
+  readonly label: string
+}[] = [
+  { value: TEAM_INHERIT, label: "Inherit role" },
   ...PERMISSION_ACCESS_LEVELS.map((level) => ({
     value: level.value,
     label: level.label,
@@ -88,19 +109,23 @@ function groupedFeatures(): readonly {
 function PermissionChoiceSelect({
   value,
   disabled,
+  onChange,
 }: {
-  readonly value: PermissionAccessLevel
-  readonly disabled?: boolean
+  readonly value: typeof ROLE_BASELINE | PermissionAccessLevel
+  readonly disabled: boolean
+  readonly onChange: (
+    value: typeof ROLE_BASELINE | PermissionAccessLevel
+  ) => void
 }): React.ReactElement {
   return (
-    <Select value={value} disabled={disabled}>
+    <Select value={value} disabled={disabled} onValueChange={onChange}>
       <SelectTrigger className="h-8 w-[150px]">
         <SelectValue />
       </SelectTrigger>
       <SelectContent>
-        {PERMISSION_ACCESS_LEVELS.map((level) => (
-          <SelectItem key={level.value} value={level.value}>
-            {level.label}
+        {ROLE_CHOICE_OPTIONS.map((option) => (
+          <SelectItem key={option.value} value={option.value}>
+            {option.label}
           </SelectItem>
         ))}
       </SelectContent>
@@ -108,9 +133,19 @@ function PermissionChoiceSelect({
   )
 }
 
-function TeamOverrideSelect(): React.ReactElement {
+function TeamOverrideSelect({
+  value,
+  disabled,
+  onChange,
+}: {
+  readonly value: typeof TEAM_INHERIT | PermissionAccessLevel
+  readonly disabled: boolean
+  readonly onChange: (
+    value: typeof TEAM_INHERIT | PermissionAccessLevel
+  ) => void
+}): React.ReactElement {
   return (
-    <Select value="inherit" disabled>
+    <Select value={value} disabled={disabled} onValueChange={onChange}>
       <SelectTrigger className="h-8 w-[150px]">
         <SelectValue />
       </SelectTrigger>
@@ -126,13 +161,11 @@ function TeamOverrideSelect(): React.ReactElement {
 }
 
 function ActionsList({
-  role,
-  feature,
+  accessLevel,
 }: {
-  readonly role: string
-  readonly feature: PermissionFeature
+  readonly accessLevel: PermissionAccessLevel
 }): React.ReactElement {
-  const actions = getPermissions(role, feature.resource)
+  const actions = accessLevelToActions(accessLevel)
 
   if (actions.length === 0) {
     return <span className="text-xs text-muted-foreground">none</span>
@@ -141,7 +174,11 @@ function ActionsList({
   return (
     <div className="flex flex-wrap gap-1">
       {actions.map((action) => (
-        <Badge key={action} variant="outline" className="rounded-[4px] text-[11px]">
+        <Badge
+          key={action}
+          variant="outline"
+          className="rounded-[4px] text-[11px]"
+        >
           {action}
         </Badge>
       ))}
@@ -152,11 +189,34 @@ function ActionsList({
 function FeatureRow({
   feature,
   selectedRole,
+  roleOverride,
+  teamOverride,
+  selectedTeamId,
+  canManage,
+  onRoleChange,
+  onTeamChange,
 }: {
   readonly feature: PermissionFeature
   readonly selectedRole: string
+  readonly roleOverride: PermissionOverrideChoice | null
+  readonly teamOverride: TeamPermissionOverrideChoice | null
+  readonly selectedTeamId: string
+  readonly canManage: boolean
+  readonly onRoleChange: (
+    feature: PermissionFeature,
+    value: typeof ROLE_BASELINE | PermissionAccessLevel
+  ) => void
+  readonly onTeamChange: (
+    feature: PermissionFeature,
+    value: typeof TEAM_INHERIT | PermissionAccessLevel
+  ) => void
 }): React.ReactElement {
-  const accessLevel = getPermissionAccessLevel(selectedRole, feature.resource)
+  const baselineLevel = getPermissionAccessLevel(selectedRole, feature.resource)
+  const accessLevel = roleOverride?.accessLevel ?? baselineLevel
+  const roleChoice = roleOverride?.accessLevel ?? ROLE_BASELINE
+  const teamChoice = teamOverride?.accessLevel ?? TEAM_INHERIT
+  const hasRoleOverride = roleOverride !== null
+  const hasTeamOverride = teamOverride !== null
 
   return (
     <TableRow>
@@ -178,15 +238,33 @@ function FeatureRow({
         >
           {accessLevelLabel(accessLevel)}
         </Badge>
+        {hasRoleOverride && (
+          <p className="mt-1 text-[11px] text-muted-foreground">
+            role override
+          </p>
+        )}
       </TableCell>
       <TableCell>
-        <PermissionChoiceSelect value={accessLevel} disabled />
+        <PermissionChoiceSelect
+          value={roleChoice}
+          disabled={!canManage}
+          onChange={(value) => onRoleChange(feature, value)}
+        />
       </TableCell>
       <TableCell>
-        <ActionsList role={selectedRole} feature={feature} />
+        <ActionsList accessLevel={accessLevel} />
       </TableCell>
       <TableCell>
-        <TeamOverrideSelect />
+        <TeamOverrideSelect
+          value={teamChoice}
+          disabled={!canManage || selectedTeamId.length === 0}
+          onChange={(value) => onTeamChange(feature, value)}
+        />
+        {hasTeamOverride && (
+          <p className="mt-1 text-[11px] text-muted-foreground">
+            team override
+          </p>
+        )}
       </TableCell>
     </TableRow>
   )
@@ -195,27 +273,117 @@ function FeatureRow({
 export function PermissionsTab(): React.ReactElement {
   const [selectedRole, setSelectedRole] = React.useState("admin")
   const [demoMode, setDemoMode] = React.useState(false)
+  const [canManagePermissions, setCanManagePermissions] = React.useState(false)
+  const [roleOverrides, setRoleOverrides] = React.useState<
+    readonly PermissionOverrideChoice[]
+  >([])
+  const [teamOverrides, setTeamOverrides] = React.useState<
+    readonly TeamPermissionOverrideChoice[]
+  >([])
+  const [teams, setTeams] = React.useState<readonly PermissionTeamOption[]>([])
+  const [selectedTeamId, setSelectedTeamId] = React.useState("")
+  const [pendingKey, setPendingKey] = React.useState<string | null>(null)
+  const [statusMessage, setStatusMessage] = React.useState<string | null>(null)
   const featureGroups = React.useMemo(() => groupedFeatures(), [])
+  const canEditMatrix = canManagePermissions && !demoMode
 
-  React.useEffect(() => {
-    let mounted = true
-
-    getSettingsContext()
+  const refreshOverrides = React.useCallback(() => {
+    getPermissionOverrideContext()
       .then((context) => {
-        if (mounted) {
-          setDemoMode(context.demoMode)
-        }
+        setDemoMode(context.demoMode)
+        setCanManagePermissions(context.canManagePermissions)
+        setRoleOverrides(context.roleOverrides)
+        setTeamOverrides(context.teamOverrides)
+        setTeams(context.teams)
+        setSelectedTeamId((currentTeamId) => {
+          if (
+            currentTeamId.length > 0 &&
+            context.teams.some((team) => team.id === currentTeamId)
+          ) {
+            return currentTeamId
+          }
+
+          return context.teams[0]?.id ?? ""
+        })
       })
       .catch(() => {
-        if (mounted) {
-          setDemoMode(false)
-        }
+        setStatusMessage("Unable to load saved permission overrides.")
       })
-
-    return () => {
-      mounted = false
-    }
   }, [])
+
+  React.useEffect(() => {
+    refreshOverrides()
+  }, [refreshOverrides])
+
+  const roleOverrideMap = React.useMemo(() => {
+    const map = new Map<string, PermissionOverrideChoice>()
+    for (const override of roleOverrides) {
+      map.set(override.featureId, override)
+    }
+    return map
+  }, [roleOverrides])
+
+  const teamOverrideMap = React.useMemo(() => {
+    const map = new Map<string, TeamPermissionOverrideChoice>()
+    for (const override of teamOverrides) {
+      if (override.teamId === selectedTeamId) {
+        map.set(override.featureId, override)
+      }
+    }
+    return map
+  }, [selectedTeamId, teamOverrides])
+
+  async function handleRoleChange(
+    feature: PermissionFeature,
+    value: typeof ROLE_BASELINE | PermissionAccessLevel
+  ): Promise<void> {
+    if (!canEditMatrix) return
+
+    const key = `role:${selectedRole}:${feature.id}`
+    setPendingKey(key)
+    setStatusMessage(null)
+
+    const result = await updateRolePermissionOverride({
+      role: selectedRole,
+      featureId: feature.id,
+      accessLevel: value,
+    })
+
+    if (result.success) {
+      setStatusMessage(`${feature.label} role permission saved.`)
+      refreshOverrides()
+    } else {
+      setStatusMessage(result.error)
+    }
+
+    setPendingKey(null)
+  }
+
+  async function handleTeamChange(
+    feature: PermissionFeature,
+    value: typeof TEAM_INHERIT | PermissionAccessLevel
+  ): Promise<void> {
+    if (!canEditMatrix || selectedTeamId.length === 0) return
+
+    const key = `team:${selectedTeamId}:${feature.id}`
+    setPendingKey(key)
+    setStatusMessage(null)
+
+    const result = await updateTeamPermissionOverride({
+      teamId: selectedTeamId,
+      featureId: feature.id,
+      accessLevel: value,
+    })
+
+    if (result.success) {
+      setStatusMessage(`${feature.label} team permission saved.`)
+      refreshOverrides()
+    } else {
+      setStatusMessage(result.error)
+    }
+
+    setPendingKey(null)
+  }
 
   return (
     <div className="space-y-4">
@@ -231,13 +399,19 @@ export function PermissionsTab(): React.ReactElement {
             )}
           </div>
           <p className="max-w-3xl text-sm text-muted-foreground">
-            Baseline Compass feature access by role. Team overrides are shown as
-            the next configuration layer and currently inherit role access.
+            Baseline Compass feature access by role, with saved role and team
+            overrides layered on top. New features appear here when they are
+            added to Compass&apos;s permission registry.
           </p>
           {demoMode && (
             <p className="max-w-3xl text-sm font-medium text-amber-800 dark:text-amber-200">
               Demo mode cannot save permission changes or modify role/team
               access. This matrix is only a preview of the permission model.
+            </p>
+          )}
+          {statusMessage && (
+            <p className="rounded-md border bg-muted/35 px-3 py-2 text-sm text-muted-foreground">
+              {statusMessage}
             </p>
           )}
         </div>
@@ -268,7 +442,9 @@ export function PermissionsTab(): React.ReactElement {
               {userRoleLabel(selectedRole)} baseline
             </p>
             <p className="text-xs text-muted-foreground">
-              Choices are read-only until permission overrides are persisted.
+              {canEditMatrix
+                ? "Choose a saved override or reset a feature to its baseline."
+                : "Choices are read-only for this workspace or account."}
             </p>
           </div>
           <div className="max-h-[68vh] overflow-auto">
@@ -299,6 +475,16 @@ export function PermissionsTab(): React.ReactElement {
                         key={feature.id}
                         feature={feature}
                         selectedRole={selectedRole}
+                        roleOverride={roleOverrideMap.get(feature.id) ?? null}
+                        teamOverride={teamOverrideMap.get(feature.id) ?? null}
+                        selectedTeamId={selectedTeamId}
+                        canManage={
+                          canEditMatrix &&
+                          pendingKey !== `role:${selectedRole}:${feature.id}` &&
+                          pendingKey !== `team:${selectedTeamId}:${feature.id}`
+                        }
+                        onRoleChange={handleRoleChange}
+                        onTeamChange={handleTeamChange}
                       />
                     ))}
                   </React.Fragment>
@@ -314,10 +500,31 @@ export function PermissionsTab(): React.ReactElement {
             <h3 className="text-sm font-semibold">Team Overrides</h3>
           </div>
           <p className="text-sm text-muted-foreground">
-            Team-based permissions should sit on top of role access. The safest
+            Team-based permissions sit on top of role access. The safest
             default is “inherit role,” then explicit overrides for a team where
             the work requires it.
           </p>
+          <div className="space-y-1.5">
+            <span className="text-xs font-medium text-muted-foreground">
+              Review team
+            </span>
+            <Select
+              value={selectedTeamId}
+              onValueChange={setSelectedTeamId}
+              disabled={teams.length === 0}
+            >
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="No teams yet" />
+              </SelectTrigger>
+              <SelectContent className="max-h-[320px]">
+                {teams.map((team) => (
+                  <SelectItem key={team.id} value={team.id}>
+                    {team.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
           <div className="space-y-2 text-sm">
             {TEAM_OVERRIDE_CHOICES.map((choice) => (
               <div
@@ -333,8 +540,8 @@ export function PermissionsTab(): React.ReactElement {
           </div>
           <p className="text-xs text-muted-foreground">
             {demoMode
-              ? "Demo mode keeps this page read-only. Saved role and team overrides will only be editable outside the demo workspace."
-              : "Next build step: add saved role and team override records so these selectors become editable admin controls."}
+              ? "Demo mode keeps this page read-only. Saved role and team overrides are only editable outside the demo workspace."
+              : "Role overrides apply to everyone with that role. Team overrides can narrow or expand access for people in a specific team."}
           </p>
         </aside>
       </div>
