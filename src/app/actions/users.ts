@@ -2,6 +2,7 @@
 
 import { getCloudflareContext } from "@/lib/db"
 import { getDb } from "@/db"
+import { isDemoOrg, isDemoUser } from "@/lib/demo"
 import {
   users,
   organizationMembers,
@@ -16,7 +17,7 @@ import {
 } from "@/db/schema"
 import { getCurrentUser } from "@/lib/auth"
 import { canManageUserAccess, requirePermission } from "@/lib/permissions"
-import { eq, and } from "drizzle-orm"
+import { eq, and, getTableColumns } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import {
   updateUserRoleSchema,
@@ -60,14 +61,31 @@ export async function getUsers(): Promise<UserWithRelations[]> {
   try {
     const currentUser = await getCurrentUser()
     requirePermission(currentUser, "user", "read")
+    if (!currentUser?.organizationId) return []
+    if (
+      isDemoUser(currentUser.id) ||
+      isDemoOrg(currentUser.organizationId)
+    ) {
+      return []
+    }
 
     const { env } = await getCloudflareContext()
     if (!env?.DB) return []
 
     const db = getDb(env.DB)
+    const orgId = currentUser.organizationId
 
-    // get all active users
-    const allUsers = await db.select().from(users).where(eq(users.isActive, true))
+    // get active users in the current organization only
+    const allUsers = await db
+      .select(getTableColumns(users))
+      .from(users)
+      .innerJoin(organizationMembers, eq(organizationMembers.userId, users.id))
+      .where(
+        and(
+          eq(users.isActive, true),
+          eq(organizationMembers.organizationId, orgId)
+        )
+      )
 
     // for each user, fetch their teams, groups, and counts
     const usersWithRelations = await Promise.all(
@@ -77,14 +95,24 @@ export async function getUsers(): Promise<UserWithRelations[]> {
           .select({ id: teams.id, name: teams.name })
           .from(teamMembers)
           .innerJoin(teams, eq(teamMembers.teamId, teams.id))
-          .where(eq(teamMembers.userId, user.id))
+          .where(
+            and(
+              eq(teamMembers.userId, user.id),
+              eq(teams.organizationId, orgId)
+            )
+          )
 
         // get groups
         const userGroups = await db
           .select({ id: groups.id, name: groups.name, color: groups.color })
           .from(groupMembers)
           .innerJoin(groups, eq(groupMembers.groupId, groups.id))
-          .where(eq(groupMembers.userId, user.id))
+          .where(
+            and(
+              eq(groupMembers.userId, user.id),
+              eq(groups.organizationId, orgId)
+            )
+          )
 
         // get project assignments
         const assignedProjects = await db
@@ -96,13 +124,23 @@ export async function getUsers(): Promise<UserWithRelations[]> {
           })
           .from(projectMembers)
           .innerJoin(projects, eq(projectMembers.projectId, projects.id))
-          .where(eq(projectMembers.userId, user.id))
+          .where(
+            and(
+              eq(projectMembers.userId, user.id),
+              eq(projects.organizationId, orgId)
+            )
+          )
 
         // get organization count
         const organizationCount = await db
           .select()
           .from(organizationMembers)
-          .where(eq(organizationMembers.userId, user.id))
+          .where(
+            and(
+              eq(organizationMembers.userId, user.id),
+              eq(organizationMembers.organizationId, orgId)
+            )
+          )
           .then((r) => r.length)
 
         return {

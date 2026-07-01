@@ -12,12 +12,31 @@ import { CustomerMapper } from "@/lib/netsuite/mappers/customer-mapper"
 import { VendorMapper } from "@/lib/netsuite/mappers/vendor-mapper"
 import { getCurrentUser } from "@/lib/auth"
 import { requirePermission } from "@/lib/permissions"
+import { isDemoOrg, isDemoUser } from "@/lib/demo"
 import { revalidatePath } from "next/cache"
+
+function isDemoSessionUser(
+  user: Awaited<ReturnType<typeof getCurrentUser>>
+): boolean {
+  if (!user) return false
+  return (
+    isDemoUser(user.id) ||
+    (user.organizationId !== null && isDemoOrg(user.organizationId))
+  )
+}
 
 export async function getNetSuiteConnectionStatus() {
   try {
     const user = await getCurrentUser()
     requirePermission(user, "finance", "read")
+    if (isDemoSessionUser(user)) {
+      return {
+        configured: false,
+        connected: false,
+        accountId: null,
+        demoMode: true,
+      }
+    }
     const { env } = await getCloudflareContext()
     const envRecord = env as unknown as Record<string, string>
     const config = getNetSuiteConfig(envRecord)
@@ -29,9 +48,15 @@ export async function getNetSuiteConnectionStatus() {
       configured: true,
       connected,
       accountId: config.accountId,
+      demoMode: false,
     }
   } catch {
-    return { configured: false, connected: false, accountId: null }
+    return {
+      configured: false,
+      connected: false,
+      accountId: null,
+      demoMode: false,
+    }
   }
 }
 
@@ -39,6 +64,9 @@ export async function initiateNetSuiteOAuth() {
   try {
     const user = await getCurrentUser()
     requirePermission(user, "organization", "update")
+    if (isDemoSessionUser(user)) {
+      return { success: false, error: "Integrations are disabled in demo mode." }
+    }
     const { env } = await getCloudflareContext()
     const envRecord = env as unknown as Record<string, string>
     const config = getNetSuiteConfig(envRecord)
@@ -59,6 +87,9 @@ export async function disconnectNetSuite() {
   try {
     const user = await getCurrentUser()
     requirePermission(user, "organization", "update")
+    if (isDemoSessionUser(user)) {
+      return { success: false, error: "Integrations are disabled in demo mode." }
+    }
     const { env } = await getCloudflareContext()
     const envRecord = env as unknown as Record<string, string>
     const config = getNetSuiteConfig(envRecord)
@@ -80,6 +111,9 @@ export async function syncCustomers() {
   try {
     const user = await getCurrentUser()
     requirePermission(user, "customer", "update")
+    if (isDemoSessionUser(user)) {
+      return { success: false, error: "Integrations are disabled in demo mode." }
+    }
     const { env } = await getCloudflareContext()
     const envRecord = env as unknown as Record<string, string>
     const db = getDb(env.DB)
@@ -130,6 +164,9 @@ export async function syncVendors() {
   try {
     const user = await getCurrentUser()
     requirePermission(user, "vendor", "update")
+    if (isDemoSessionUser(user)) {
+      return { success: false, error: "Integrations are disabled in demo mode." }
+    }
     const { env } = await getCloudflareContext()
     const envRecord = env as unknown as Record<string, string>
     const db = getDb(env.DB)
@@ -182,6 +219,9 @@ export async function getSyncHistory() {
   try {
     const user = await getCurrentUser()
     requirePermission(user, "finance", "read")
+    if (isDemoSessionUser(user)) {
+      return { success: true, history: [] }
+    }
     const { env } = await getCloudflareContext()
     const envRecord = env as unknown as Record<string, string>
     const db = getDb(env.DB)
@@ -200,6 +240,9 @@ export async function getConflicts() {
   try {
     const user = await getCurrentUser()
     requirePermission(user, "finance", "read")
+    if (isDemoSessionUser(user)) {
+      return { success: true, conflicts: [] }
+    }
     const { env } = await getCloudflareContext()
     const envRecord = env as unknown as Record<string, string>
     const db = getDb(env.DB)
@@ -221,6 +264,9 @@ export async function resolveConflict(
   try {
     const user = await getCurrentUser()
     requirePermission(user, "finance", "update")
+    if (isDemoSessionUser(user)) {
+      return { success: false, error: "Integrations are disabled in demo mode." }
+    }
     const { env } = await getCloudflareContext()
     const envRecord = env as unknown as Record<string, string>
     const db = getDb(env.DB)

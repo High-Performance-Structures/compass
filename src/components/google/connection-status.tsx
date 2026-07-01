@@ -23,6 +23,7 @@ export function GoogleDriveConnectionStatus() {
     connected: boolean
     workspaceDomain: string | null
     sharedDriveName: string | null
+    demoMode: boolean
   } | null>(null)
   const [loading, setLoading] = useState(true)
   const [connectOpen, setConnectOpen] = useState(false)
@@ -95,16 +96,21 @@ export function GoogleDriveConnectionStatus() {
           </div>
         </div>
 
-        {status?.connected && (
+        {status?.demoMode ? (
+          <p className="text-xs text-muted-foreground">
+            Google Drive integrations are disabled in the demo workspace.
+          </p>
+        ) : status?.connected ? (
           <div className="space-y-1 text-xs text-muted-foreground">
             <p>Domain: {status.workspaceDomain}</p>
             {status.sharedDriveName && (
               <p>Shared drive: {status.sharedDriveName}</p>
             )}
           </div>
-        )}
+        ) : null}
 
-        <div className="flex gap-2">
+        {!status?.demoMode && (
+          <div className="flex gap-2">
           {status?.connected ? (
             <>
               <Button
@@ -133,7 +139,8 @@ export function GoogleDriveConnectionStatus() {
               Connect Google Drive
             </Button>
           )}
-        </div>
+          </div>
+        )}
       </div>
 
       <GoogleConnectDialog

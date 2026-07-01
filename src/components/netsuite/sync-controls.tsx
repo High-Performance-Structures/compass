@@ -4,6 +4,7 @@ import * as React from "react"
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
 import {
+  getNetSuiteConnectionStatus,
   syncCustomers,
   syncVendors,
 } from "@/app/actions/netsuite-sync"
@@ -11,6 +12,13 @@ import { toast } from "sonner"
 
 export function SyncControls() {
   const [syncing, setSyncing] = React.useState<string | null>(null)
+  const [demoMode, setDemoMode] = React.useState(false)
+
+  React.useEffect(() => {
+    getNetSuiteConnectionStatus().then((status) => {
+      setDemoMode(status.demoMode)
+    })
+  }, [])
 
   const handleSync = async (
     type: string,
@@ -34,6 +42,8 @@ export function SyncControls() {
     }
     setSyncing(null)
   }
+
+  if (demoMode) return null
 
   return (
     <div className="space-y-3">

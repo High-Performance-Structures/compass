@@ -9,6 +9,7 @@ import { googleAuth, googleStarredFiles } from "@/db/schema-google"
 import { getCurrentUser, requireAuth } from "@/lib/auth"
 import type { AuthUser } from "@/lib/auth"
 import { requirePermission } from "@/lib/permissions"
+import { isDemoOrg, isDemoUser } from "@/lib/demo"
 import { encrypt, decrypt } from "@/lib/crypto"
 import {
   getGoogleConfig,
@@ -29,6 +30,14 @@ import {
 } from "@/lib/project-files"
 
 // helpers
+
+function isDemoAuthUser(user: AuthUser | null): boolean {
+  if (!user) return false
+  return (
+    isDemoUser(user.id) ||
+    (user.organizationId !== null && isDemoOrg(user.organizationId))
+  )
+}
 
 function resolveGoogleEmail(user: AuthUser): string {
   return user.googleEmail ?? user.email
@@ -200,10 +209,19 @@ export async function getGoogleDriveConnectionStatus(): Promise<{
   connected: boolean
   workspaceDomain: string | null
   sharedDriveName: string | null
+  demoMode: boolean
 }> {
   try {
     const user = await getCurrentUser() // keep nullable - graceful fallback
     requirePermission(user, "document", "read")
+    if (isDemoAuthUser(user)) {
+      return {
+        connected: false,
+        workspaceDomain: null,
+        sharedDriveName: null,
+        demoMode: true,
+      }
+    }
     const { env } = await getCloudflareContext()
     const db = getDb(env.DB)
     const auth = await getOrgGoogleAuth(db)
@@ -213,6 +231,7 @@ export async function getGoogleDriveConnectionStatus(): Promise<{
         connected: false,
         workspaceDomain: null,
         sharedDriveName: null,
+        demoMode: false,
       }
     }
 
@@ -220,12 +239,14 @@ export async function getGoogleDriveConnectionStatus(): Promise<{
       connected: true,
       workspaceDomain: auth.workspaceDomain,
       sharedDriveName: auth.sharedDriveName,
+      demoMode: false,
     }
   } catch {
     return {
       connected: false,
       workspaceDomain: null,
       sharedDriveName: null,
+      demoMode: false,
     }
   }
 }
@@ -237,6 +258,9 @@ export async function connectGoogleDrive(
   try {
     const user = await requireAuth()
     requirePermission(user, "organization", "update")
+    if (isDemoAuthUser(user)) {
+      return { success: false, error: "Google Drive is disabled in demo mode." }
+    }
 
     const parsed = parseServiceAccountKey(serviceAccountKeyJson)
 
@@ -296,6 +320,9 @@ export async function disconnectGoogleDrive(): Promise<
   try {
     const user = await requireAuth()
     requirePermission(user, "organization", "delete")
+    if (isDemoAuthUser(user)) {
+      return { success: false, error: "Google Drive is disabled in demo mode." }
+    }
     const { env } = await getCloudflareContext()
     const db = getDb(env.DB)
     await db.delete(googleAuth).run()
@@ -321,6 +348,9 @@ export async function listAvailableSharedDrives(): Promise<
   try {
     const user = await requireAuth()
     requirePermission(user, "organization", "update")
+    if (isDemoAuthUser(user)) {
+      return { success: false, error: "Google Drive is disabled in demo mode." }
+    }
 
     const { env } = await getCloudflareContext()
     const envRecord = env as unknown as Record<string, string>
@@ -364,6 +394,9 @@ export async function selectSharedDrive(
   try {
     const user = await requireAuth()
     requirePermission(user, "organization", "update")
+    if (isDemoAuthUser(user)) {
+      return { success: false, error: "Google Drive is disabled in demo mode." }
+    }
 
     const { env } = await getCloudflareContext()
     const db = getDb(env.DB)
@@ -408,6 +441,9 @@ export async function listDriveFiles(
   try {
     const user = await requireAuth()
     requirePermission(user, "document", "read")
+    if (isDemoAuthUser(user)) {
+      return { success: true, files: [], nextPageToken: null }
+    }
 
     const googleEmail = resolveGoogleEmail(user)
     if (!googleEmail) {
@@ -480,6 +516,9 @@ export async function listDriveFilesForView(
   try {
     const user = await requireAuth()
     requirePermission(user, "document", "read")
+    if (isDemoAuthUser(user)) {
+      return { success: true, files: [], nextPageToken: null }
+    }
 
     const googleEmail = resolveGoogleEmail(user)
     if (!googleEmail) {
@@ -610,6 +649,9 @@ export async function searchDriveFiles(
   try {
     const user = await requireAuth()
     requirePermission(user, "document", "read")
+    if (isDemoAuthUser(user)) {
+      return { success: true, files: [] }
+    }
 
     const googleEmail = resolveGoogleEmail(user)
     if (!googleEmail) {
@@ -663,6 +705,9 @@ export async function createDriveFolder(
   try {
     const user = await requireAuth()
     requirePermission(user, "document", "create")
+    if (isDemoAuthUser(user)) {
+      return { success: false, error: "Google Drive is disabled in demo mode." }
+    }
 
     const googleEmail = resolveGoogleEmail(user)
     if (!googleEmail) {
@@ -715,6 +760,9 @@ export async function renameDriveFile(
   try {
     const user = await requireAuth()
     requirePermission(user, "document", "update")
+    if (isDemoAuthUser(user)) {
+      return { success: false, error: "Google Drive is disabled in demo mode." }
+    }
 
     const googleEmail = resolveGoogleEmail(user)
     if (!googleEmail) {
@@ -756,6 +804,9 @@ export async function moveDriveFile(
   try {
     const user = await requireAuth()
     requirePermission(user, "document", "update")
+    if (isDemoAuthUser(user)) {
+      return { success: false, error: "Google Drive is disabled in demo mode." }
+    }
 
     const googleEmail = resolveGoogleEmail(user)
     if (!googleEmail) {
@@ -800,6 +851,9 @@ export async function trashDriveFile(
   try {
     const user = await requireAuth()
     requirePermission(user, "document", "delete")
+    if (isDemoAuthUser(user)) {
+      return { success: false, error: "Google Drive is disabled in demo mode." }
+    }
 
     const googleEmail = resolveGoogleEmail(user)
     if (!googleEmail) {
@@ -839,6 +893,9 @@ export async function restoreDriveFile(
   try {
     const user = await requireAuth()
     requirePermission(user, "document", "update")
+    if (isDemoAuthUser(user)) {
+      return { success: false, error: "Google Drive is disabled in demo mode." }
+    }
 
     const googleEmail = resolveGoogleEmail(user)
     if (!googleEmail) {
@@ -879,6 +936,9 @@ export async function getDriveStorageQuota(): Promise<
   try {
     const user = await requireAuth()
     requirePermission(user, "document", "read")
+    if (isDemoAuthUser(user)) {
+      return { success: true, used: 0, total: 0 }
+    }
 
     const googleEmail = resolveGoogleEmail(user)
     if (!googleEmail) {
@@ -928,6 +988,9 @@ export async function getUploadSessionUrl(
   try {
     const user = await requireAuth()
     requirePermission(user, "document", "create")
+    if (isDemoAuthUser(user)) {
+      return { success: false, error: "Google Drive is disabled in demo mode." }
+    }
 
     const googleEmail = resolveGoogleEmail(user)
     if (!googleEmail) {
@@ -978,6 +1041,9 @@ export async function toggleStarFile(
   try {
     const user = await requireAuth()
     requirePermission(user, "document", "read")
+    if (isDemoAuthUser(user)) {
+      return { success: false, error: "Google Drive is disabled in demo mode." }
+    }
 
     const { env } = await getCloudflareContext()
     const db = getDb(env.DB)
@@ -1028,6 +1094,9 @@ export async function getStarredFileIds(): Promise<
   try {
     const user = await requireAuth()
     requirePermission(user, "document", "read")
+    if (isDemoAuthUser(user)) {
+      return { success: true, fileIds: [] }
+    }
 
     const { env } = await getCloudflareContext()
     const db = getDb(env.DB)
@@ -1058,6 +1127,9 @@ export async function updateUserGoogleEmail(
   try {
     const user = await requireAuth()
     requirePermission(user, "user", "update")
+    if (isDemoAuthUser(user)) {
+      return { success: false, error: "Google Drive is disabled in demo mode." }
+    }
 
     const { env } = await getCloudflareContext()
     const db = getDb(env.DB)
@@ -1091,6 +1163,9 @@ export async function getDriveFileInfo(
   try {
     const user = await requireAuth()
     requirePermission(user, "document", "read")
+    if (isDemoAuthUser(user)) {
+      return { success: false, error: "Google Drive is disabled in demo mode." }
+    }
 
     const googleEmail = resolveGoogleEmail(user)
     if (!googleEmail) {
@@ -1142,6 +1217,9 @@ export async function listDriveFolders(
   try {
     const user = await requireAuth()
     requirePermission(user, "document", "read")
+    if (isDemoAuthUser(user)) {
+      return { success: true, folders: [] }
+    }
 
     const googleEmail = resolveGoogleEmail(user)
     if (!googleEmail) {

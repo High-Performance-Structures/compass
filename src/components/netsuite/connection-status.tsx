@@ -15,6 +15,7 @@ export function NetSuiteConnectionStatus() {
     configured: boolean
     connected: boolean
     accountId: string | null
+    demoMode: boolean
   } | null>(null)
   const [loading, setLoading] = React.useState(true)
   const [actionLoading, setActionLoading] = React.useState(false)
@@ -51,6 +52,20 @@ export function NetSuiteConnectionStatus() {
       <div className="space-y-3">
         <div className="bg-muted h-4 w-48 animate-pulse rounded" />
         <div className="bg-muted h-4 w-32 animate-pulse rounded" />
+      </div>
+    )
+  }
+
+  if (status?.demoMode) {
+    return (
+      <div className="space-y-2">
+        <div className="flex items-center gap-2">
+          <span className="text-sm font-medium">NetSuite</span>
+          <Badge variant="outline">Demo disabled</Badge>
+        </div>
+        <p className="text-muted-foreground text-sm">
+          Accounting integrations are disabled in the demo workspace.
+        </p>
       </div>
     )
   }

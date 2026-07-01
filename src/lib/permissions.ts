@@ -210,5 +210,13 @@ export function canManageProjectRegistry(user: AuthUser | null): boolean {
 }
 
 export function canManageUserAccess(user: AuthUser | null): boolean {
-  return !!user && user.isActive && canManageUserAccessRole(user.role)
+  if (!user || !user.isActive) return false
+  if (
+    isDemoUser(user.id) ||
+    (user.organizationId !== null && isDemoOrg(user.organizationId))
+  ) {
+    return false
+  }
+
+  return canManageUserAccessRole(user.role)
 }
