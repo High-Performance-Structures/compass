@@ -2,7 +2,7 @@
 /**
  * Idempotent seed script for demo organization data.
  *
- * Creates "Meridian Group" (demo org) with:
+ * Creates "High Performance Structures, Inc." (demo org) with:
  * - 3 projects, 5 customers, 5 vendors
  * - 23 schedule tasks per project (69 total)
  * - 3 channels with 25 messages
@@ -63,7 +63,7 @@ function seed(dbPath: string) {
     db.prepare(
       `INSERT INTO organizations (id, name, slug, type, is_active, created_at, updated_at)
        VALUES (?, ?, ?, ?, 1, ?, ?)`
-    ).run(DEMO_ORG_ID, "Meridian Group", "meridian-demo", "demo", now, now)
+    ).run(DEMO_ORG_ID, "High Performance Structures, Inc.", "hps-demo", "demo", now, now)
     console.log("1. Created demo organization")
 
     // 2. demo user

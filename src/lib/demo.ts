@@ -15,7 +15,7 @@ export const DEMO_USER: AuthUser = {
   isActive: true,
   lastLoginAt: new Date().toISOString(),
   organizationId: DEMO_ORG_ID,
-  organizationName: "Meridian Group",
+  organizationName: "High Performance Structures, Inc.",
   organizationType: "demo",
   createdAt: new Date().toISOString(),
   updatedAt: new Date().toISOString(),

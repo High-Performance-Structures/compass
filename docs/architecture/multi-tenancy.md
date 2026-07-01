@@ -165,7 +165,7 @@ Demo mode gives unauthenticated visitors a read-only experience
 of the application. When a user visits `/demo`, they get a
 session cookie (`compass-demo`) that identifies them as a
 synthetic demo user. This user has an admin role in a demo org
-called "Meridian Group", so they can see the full UI, but they
+called "High Performance Structures, Inc.", so they can see the full UI, but they
 should never be able to modify persistent state.
 
 The demo user is defined in `src/lib/demo.ts`:
