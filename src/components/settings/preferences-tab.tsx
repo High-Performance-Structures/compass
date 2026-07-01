@@ -62,6 +62,7 @@ export function PreferencesTab() {
     })
   const [saving, setSaving] = React.useState(false)
   const [message, setMessage] = React.useState<string | null>(null)
+  const [hasUnsavedChanges, setHasUnsavedChanges] = React.useState(false)
   const [disclosureOpen, setDisclosureOpen] = React.useState(false)
   const native = useNative()
   const biometric = useBiometricAuth()
@@ -84,6 +85,7 @@ export function PreferencesTab() {
       const result = await getNotificationPreferences()
       if (!cancelled && result.success) {
         setPreferences(result.data)
+        setHasUnsavedChanges(false)
       }
     }
     loadPreferences()
@@ -97,7 +99,8 @@ export function PreferencesTab() {
     value: NotificationPreferenceState[K]
   ): void {
     setPreferences((current) => ({ ...current, [key]: value }))
-    setMessage(null)
+    setHasUnsavedChanges(true)
+    setMessage("Unsaved changes.")
   }
 
   function updateSmsEnabled(checked: boolean): void {
@@ -109,7 +112,8 @@ export function PreferencesTab() {
         ? current.announcementSmsEnabled
         : false,
     }))
-    setMessage(null)
+    setHasUnsavedChanges(true)
+    setMessage("Unsaved changes.")
   }
 
   function updateSmsPhoneNumber(value: string): void {
@@ -138,7 +142,8 @@ export function PreferencesTab() {
           : null,
       }
     })
-    setMessage(null)
+    setHasUnsavedChanges(true)
+    setMessage("Unsaved changes.")
   }
 
   function updateSmsConsentAccepted(checked: boolean): void {
@@ -154,7 +159,8 @@ export function PreferencesTab() {
         ? current.smsPhoneNumber?.trim() ?? null
         : null,
     }))
-    setMessage(null)
+    setHasUnsavedChanges(true)
+    setMessage("Unsaved changes.")
   }
 
   async function savePreferences(): Promise<void> {
@@ -167,6 +173,9 @@ export function PreferencesTab() {
     setSaving(true)
     const result = await updateNotificationPreferences(preferences)
     setSaving(false)
+    if (result.success) {
+      setHasUnsavedChanges(false)
+    }
     setMessage(
       result.success
         ? "Notification preferences saved."
@@ -372,6 +381,9 @@ export function PreferencesTab() {
                 <p className="text-muted-foreground text-xs">
                   Applies to @mentions, @channel, and @here.
                 </p>
+                <p className="text-muted-foreground text-xs">
+                  Compass does not send alerts for messages you send yourself.
+                </p>
               </div>
               <div className="flex items-center justify-between gap-3">
                 <span className="text-xs text-muted-foreground">Email</span>
@@ -483,6 +495,7 @@ export function PreferencesTab() {
               size="sm"
               onClick={savePreferences}
               disabled={saving || !smsConsentReady}
+              variant={hasUnsavedChanges ? "default" : "outline"}
             >
               {saving ? "Saving..." : "Save notification preferences"}
             </Button>
