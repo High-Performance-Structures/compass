@@ -127,34 +127,84 @@ function extractApiError(payload: unknown, fallback: string): string {
     : fallback
 }
 
-function extractResultRecord(payload: unknown): Readonly<Record<string, unknown>> | null {
-  if (!isRecord(payload)) return null
-  const result = recordValue(payload, "result")
-  return isRecord(result) ? result : null
+function nestedRecord(
+  record: Readonly<Record<string, unknown>>,
+  key: string
+): Readonly<Record<string, unknown>> | null {
+  const value = recordValue(record, key)
+  return isRecord(value) ? value : null
+}
+
+function responseRecords(payload: unknown): readonly Readonly<Record<string, unknown>>[] {
+  if (!isRecord(payload)) return []
+
+  const records: Readonly<Record<string, unknown>>[] = [payload]
+  const topLevelKeys = ["data", "result", "meeting", "participant"]
+  for (const key of topLevelKeys) {
+    const child = nestedRecord(payload, key)
+    if (child) records.push(child)
+  }
+
+  const data = nestedRecord(payload, "data")
+  if (data) {
+    const nestedKeys = ["meeting", "participant"]
+    for (const key of nestedKeys) {
+      const child = nestedRecord(data, key)
+      if (child) records.push(child)
+    }
+  }
+
+  const result = nestedRecord(payload, "result")
+  if (result) {
+    const nestedKeys = ["data", "meeting", "participant"]
+    for (const key of nestedKeys) {
+      const child = nestedRecord(result, key)
+      if (child) records.push(child)
+    }
+  }
+
+  return records
+}
+
+function firstStringValue(
+  records: readonly Readonly<Record<string, unknown>>[],
+  keys: readonly string[]
+): string | null {
+  for (const record of records) {
+    for (const key of keys) {
+      const value = recordValue(record, key)
+      if (typeof value === "string" && value.trim().length > 0) {
+        return value.trim()
+      }
+    }
+  }
+  return null
 }
 
 function extractMeeting(payload: unknown, title: string): RealtimeKitMeeting | null {
-  const result = extractResultRecord(payload)
-  if (!result) return null
-  const id = recordValue(result, "id")
-  if (typeof id !== "string" || id.length === 0) return null
-  const responseTitle = recordValue(result, "title")
+  const records = responseRecords(payload)
+  const id = firstStringValue(records, ["id", "meeting_id", "meetingId"])
+  if (!id) return null
+  const responseTitle = firstStringValue(records, [
+    "title",
+    "name",
+    "meeting_title",
+    "meetingTitle",
+  ])
   return {
     id,
-    title:
-      typeof responseTitle === "string" && responseTitle.length > 0
-        ? responseTitle
-        : title,
+    title: responseTitle ?? title,
   }
 }
 
 function extractAuthToken(payload: unknown): string | null {
-  const result = extractResultRecord(payload)
-  if (!result) return null
-  const direct = recordValue(result, "authToken")
-  if (typeof direct === "string" && direct.length > 0) return direct
-  const snake = recordValue(result, "auth_token")
-  return typeof snake === "string" && snake.length > 0 ? snake : null
+  return firstStringValue(responseRecords(payload), [
+    "token",
+    "authToken",
+    "auth_token",
+    "participantToken",
+    "participant_token",
+  ])
 }
 
 async function realtimeKitRequest(
