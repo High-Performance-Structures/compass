@@ -39,6 +39,7 @@ type VoiceState = {
   isScreenSharing: boolean
   isCameraOn: boolean
   isNoiseSuppression: boolean
+  isRealtimeMeetingActive: boolean
   // Device selection
   inputDeviceId: string | undefined
   outputDeviceId: string | undefined
@@ -55,6 +56,8 @@ type VoiceActions = {
   toggleNoiseSuppression: () => void
   setInputDevice: (deviceId: string) => void
   setOutputDevice: (deviceId: string) => void
+  setRealtimeMeetingActive: (active: boolean) => void
+  suspendChannelAudio: () => void
   joinChannel: (id: string, name: string) => void
   leaveChannel: () => void
 }
@@ -143,6 +146,8 @@ export function useVoiceStateLogic(): VoiceContextValue {
   const [isScreenSharing, setIsScreenSharing] = useState<boolean>(false)
   const [isCameraOn, setIsCameraOn] = useState<boolean>(false)
   const [isNoiseSuppression, setIsNoiseSuppression] = useState<boolean>(true)
+  const [isRealtimeMeetingActive, setIsRealtimeMeetingActive] =
+    useState<boolean>(false)
 
   // Device state
   const [inputDeviceId, setInputDeviceId] = useState<string | undefined>(undefined)
@@ -154,6 +159,8 @@ export function useVoiceStateLogic(): VoiceContextValue {
   const channelIdRef = useRef<string | null>(null)
   const channelNameRef = useRef("")
   const selfUserIdRef = useRef<string | null>(null)
+  const isMutedRef = useRef(false)
+  const isDeafenedRef = useRef(false)
   const localStreamRef = useRef<MediaStream | null>(null)
   const peerConnectionsRef = useRef<Map<string, RTCPeerConnection>>(new Map())
   const pendingIceRef = useRef<Map<string, RTCIceCandidateInit[]>>(new Map())
@@ -219,11 +226,19 @@ export function useVoiceStateLogic(): VoiceContextValue {
   }, [channelName])
 
   useEffect(() => {
+    isMutedRef.current = isMuted
+  }, [isMuted])
+
+  useEffect(() => {
+    isDeafenedRef.current = isDeafened
+  }, [isDeafened])
+
+  useEffect(() => {
     if (!localStream) return
     for (const track of localStream.getAudioTracks()) {
-      track.enabled = !isMuted && !isDeafened
+      track.enabled = !isMuted && !isDeafened && !isRealtimeMeetingActive
     }
-  }, [isMuted, isDeafened, localStream])
+  }, [isMuted, isDeafened, isRealtimeMeetingActive, localStream])
 
   useEffect(() => {
     if (!channelId) return
@@ -489,6 +504,26 @@ export function useVoiceStateLogic(): VoiceContextValue {
     setIsNoiseSuppression((prev) => !prev)
   }, [])
 
+  const setRealtimeMeetingActive = useCallback((active: boolean): void => {
+    setIsRealtimeMeetingActive(active)
+    const stream = localStreamRef.current
+    if (!stream) return
+    for (const track of stream.getAudioTracks()) {
+      track.enabled = !active && !isMutedRef.current && !isDeafenedRef.current
+    }
+  }, [])
+
+  const suspendChannelAudio = useCallback((): void => {
+    const currentChannelId = channelIdRef.current
+    if (currentChannelId) {
+      void leaveVoiceSession(currentChannelId)
+    }
+    cleanupVoice()
+    setIsRealtimeMeetingActive(true)
+    setConnectionStatus("idle")
+    setConnectionError(null)
+  }, [cleanupVoice])
+
   // Device setters
   const setInputDevice = useCallback((deviceId: string): void => {
     setInputDeviceId(deviceId)
@@ -528,7 +563,7 @@ export function useVoiceStateLogic(): VoiceContextValue {
             video: false,
           })
           for (const track of stream.getAudioTracks()) {
-            track.enabled = !isMuted && !isDeafened
+            track.enabled = !isMuted && !isDeafened && !isRealtimeMeetingActive
           }
           localStreamRef.current = stream
           setLocalStream(stream)
@@ -565,6 +600,7 @@ export function useVoiceStateLogic(): VoiceContextValue {
       isDeafened,
       isMuted,
       isNoiseSuppression,
+      isRealtimeMeetingActive,
       pollVoice,
       syncParticipants,
     ]
@@ -605,6 +641,7 @@ export function useVoiceStateLogic(): VoiceContextValue {
     isScreenSharing,
     isCameraOn,
     isNoiseSuppression,
+    isRealtimeMeetingActive,
     inputDeviceId,
     outputDeviceId,
     inputDevices,
@@ -617,6 +654,8 @@ export function useVoiceStateLogic(): VoiceContextValue {
     toggleNoiseSuppression,
     setInputDevice,
     setOutputDevice,
+    setRealtimeMeetingActive,
+    suspendChannelAudio,
     joinChannel,
     leaveChannel,
   }

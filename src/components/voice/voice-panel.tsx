@@ -16,7 +16,6 @@ import {
   TooltipTrigger,
   TooltipContent,
 } from "@/components/ui/tooltip"
-import { RealtimeKitMeetingDialog } from "@/components/voice/realtimekit-meeting-dialog"
 import { useVoiceState } from "@/hooks/use-voice-state"
 import { cn } from "@/lib/utils"
 
@@ -51,33 +50,89 @@ export function VoicePanel(): React.ReactElement {
     connectionError,
     participants,
     remoteStreams,
+    isRealtimeMeetingActive,
     toggleNoiseSuppression,
     leaveChannel,
+    setRealtimeMeetingActive,
+    suspendChannelAudio,
   } = useVoiceState()
-  const [meetingOpen, setMeetingOpen] = React.useState(false)
+  const meetingWindowRef = React.useRef<Window | null>(null)
+  const meetingWindowPollRef = React.useRef<ReturnType<typeof setInterval> | null>(
+    null
+  )
   const participantCount = participants.length
   const statusLabel =
-    connectionStatus === "connecting"
+    isRealtimeMeetingActive
+      ? "Video Meeting Open"
+      : connectionStatus === "connecting"
       ? "Connecting Voice"
       : connectionStatus === "error"
         ? "Voice Needs Attention"
-        : "Voice Connected"
+        : connectionStatus === "connected"
+          ? "Voice Connected"
+          : "Voice Paused"
   const statusColor =
     connectionStatus === "error" ? "text-destructive" : "text-emerald-500"
 
+  const clearMeetingWindowPoll = React.useCallback((): void => {
+    if (meetingWindowPollRef.current) {
+      clearInterval(meetingWindowPollRef.current)
+      meetingWindowPollRef.current = null
+    }
+  }, [])
+
+  const openMeetingWindow = React.useCallback((): void => {
+    if (!channelId) return
+    const existing = meetingWindowRef.current
+    if (existing && !existing.closed) {
+      existing.focus()
+      return
+    }
+
+    const url = `/dashboard/conversations/${channelId}/meeting`
+    const meetingWindow = window.open(
+      url,
+      `compass-meeting-${channelId}`,
+      "popup=yes,width=1180,height=760,noopener=no,noreferrer=no"
+    )
+
+    if (!meetingWindow) {
+      window.open(url, "_blank", "noopener=no,noreferrer=no")
+      return
+    }
+
+    meetingWindowRef.current = meetingWindow
+    suspendChannelAudio()
+    clearMeetingWindowPoll()
+    meetingWindowPollRef.current = setInterval(() => {
+      if (!meetingWindow.closed) return
+      clearMeetingWindowPoll()
+      meetingWindowRef.current = null
+      setRealtimeMeetingActive(false)
+    }, 1000)
+    meetingWindow.focus()
+  }, [
+    channelId,
+    clearMeetingWindowPoll,
+    setRealtimeMeetingActive,
+    suspendChannelAudio,
+  ])
+
+  React.useEffect(() => {
+    return () => {
+      clearMeetingWindowPoll()
+      setRealtimeMeetingActive(false)
+    }
+  }, [clearMeetingWindowPoll, setRealtimeMeetingActive])
+
   return (
     <div className="group-data-[collapsible=icon]:hidden border-t border-sidebar-border">
-      <RealtimeKitMeetingDialog
-        channelId={channelId}
-        channelName={channelName}
-        open={meetingOpen}
-        onOpenChange={setMeetingOpen}
-      />
       {/* Connection status and disconnect */}
       <div className="p-2">
-        {remoteStreams.map((remote) => (
-          <RemoteVoiceAudio key={remote.userId} stream={remote.stream} />
-        ))}
+        {!isRealtimeMeetingActive &&
+          remoteStreams.map((remote) => (
+            <RemoteVoiceAudio key={remote.userId} stream={remote.stream} />
+          ))}
         <div className={cn("mb-1 flex items-center gap-1.5 text-xs", statusColor)}>
           <IconAntenna className="size-3.5" />
           <span className="font-medium">{statusLabel}</span>
@@ -145,7 +200,7 @@ export function VoicePanel(): React.ReactElement {
             <TooltipTrigger asChild>
               <button
                 type="button"
-                onClick={() => setMeetingOpen(true)}
+                onClick={openMeetingWindow}
                 className="flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-foreground"
                 aria-label="Open video meeting"
               >
