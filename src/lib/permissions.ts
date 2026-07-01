@@ -1,4 +1,5 @@
 import type { AuthUser } from "./auth"
+import { isDemoOrg, isDemoUser } from "@/lib/demo"
 import { canManageUserAccessRole } from "@/lib/user-roles"
 
 export type Resource =
@@ -195,6 +196,12 @@ export function hasAnyPermission(
 
 export function canManageProjectRegistry(user: AuthUser | null): boolean {
   if (!user || !user.isActive) return false
+  if (
+    isDemoUser(user.id) ||
+    (user.organizationId !== null && isDemoOrg(user.organizationId))
+  ) {
+    return false
+  }
 
   return (
     canManageUserAccessRole(user.role) ||
