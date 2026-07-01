@@ -24,14 +24,20 @@ import { canManageUserAccess } from "@/lib/permissions"
 
 export type PermissionOverrideChoice = {
   readonly id: string
+  readonly role: string
   readonly featureId: string
   readonly accessLevel: PermissionAccessLevel
   readonly updatedAt: string
   readonly updatedBy: string | null
 }
 
-export type TeamPermissionOverrideChoice = PermissionOverrideChoice & {
+export type TeamPermissionOverrideChoice = {
+  readonly id: string
   readonly teamId: string
+  readonly featureId: string
+  readonly accessLevel: PermissionAccessLevel
+  readonly updatedAt: string
+  readonly updatedBy: string | null
 }
 
 export type PermissionTeamOption = {
@@ -85,6 +91,7 @@ function validateAccessLevel(
 
 function toRoleOverrideChoice(row: {
   readonly id: string
+  readonly role: string
   readonly featureId: string
   readonly accessLevel: string
   readonly updatedAt: string
@@ -96,6 +103,7 @@ function toRoleOverrideChoice(row: {
 
   return {
     id: row.id,
+    role: row.role,
     featureId: row.featureId,
     accessLevel: row.accessLevel,
     updatedAt: row.updatedAt,
@@ -128,6 +136,7 @@ function toTeamOverrideChoice(row: {
 function compactRoleOverrides(
   rows: readonly {
     readonly id: string
+    readonly role: string
     readonly featureId: string
     readonly accessLevel: string
     readonly updatedAt: string
@@ -225,6 +234,7 @@ export async function getPermissionOverrideContext(): Promise<PermissionOverride
     db
       .select({
         id: rolePermissionOverrides.id,
+        role: rolePermissionOverrides.role,
         featureId: rolePermissionOverrides.featureId,
         accessLevel: rolePermissionOverrides.accessLevel,
         updatedAt: rolePermissionOverrides.updatedAt,

@@ -318,10 +318,12 @@ export function PermissionsTab(): React.ReactElement {
   const roleOverrideMap = React.useMemo(() => {
     const map = new Map<string, PermissionOverrideChoice>()
     for (const override of roleOverrides) {
-      map.set(override.featureId, override)
+      if (override.role === selectedRole) {
+        map.set(override.featureId, override)
+      }
     }
     return map
-  }, [roleOverrides])
+  }, [roleOverrides, selectedRole])
 
   const teamOverrideMap = React.useMemo(() => {
     const map = new Map<string, TeamPermissionOverrideChoice>()
