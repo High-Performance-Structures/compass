@@ -117,13 +117,32 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function extractApiError(payload: unknown, fallback: string): string {
   if (!isRecord(payload)) return fallback
+  const topLevelMessage = recordValue(payload, "message")
+  if (typeof topLevelMessage === "string" && topLevelMessage.trim().length > 0) {
+    return topLevelMessage.trim()
+  }
+
   const errors = recordValue(payload, "errors")
-  if (!Array.isArray(errors)) return fallback
+  if (!Array.isArray(errors)) {
+    const messages = recordValue(payload, "messages")
+    if (!Array.isArray(messages)) return fallback
+    const firstMessage = messages.find(
+      (message): message is string =>
+        typeof message === "string" && message.trim().length > 0
+    )
+    return firstMessage ? firstMessage.trim() : fallback
+  }
+
   const first = errors.find(isRecord)
   if (!first) return fallback
   const message = recordValue(first, "message")
-  return typeof message === "string" && message.trim().length > 0
-    ? message
+  if (typeof message === "string" && message.trim().length > 0) {
+    return message.trim()
+  }
+
+  const errorCode = recordValue(first, "code")
+  return typeof errorCode === "number"
+    ? `${fallback}: Cloudflare error ${errorCode}`
     : fallback
 }
 
@@ -286,6 +305,7 @@ async function createRealtimeKitParticipantToken(
   config: RealtimeKitConfig,
   meetingId: string,
   participantName: string,
+  participantId: string,
   presetNames: readonly string[]
 ): Promise<VoiceActionResult<string>> {
   let lastError = "Failed to create RealtimeKit participant"
@@ -294,6 +314,7 @@ async function createRealtimeKitParticipantToken(
       config,
       `/meetings/${meetingId}/participants`,
       {
+        custom_participant_id: participantId,
         name: participantName,
         preset_name: presetName,
       }
@@ -535,6 +556,7 @@ export async function joinRealtimeKitVoiceSession(
       config,
       meeting.data.id,
       participantName,
+      `${user.id}-${crypto.randomUUID()}`,
       presetNames
     )
     if (!authToken.success) return { success: false, error: authToken.error }
