@@ -189,6 +189,10 @@ export async function getInternalDirectoryContacts(): Promise<
   requirePermission(user, "vendor", "read")
   const orgId = requireOrg(user)
 
+  if (isDemoUser(user.id) || isDemoOrg(orgId)) {
+    return []
+  }
+
   const { env } = await getCloudflareContext()
   const db = getDb(env.DB)
 
