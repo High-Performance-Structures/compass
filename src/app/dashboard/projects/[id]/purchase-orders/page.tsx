@@ -21,6 +21,7 @@ import { ProjectTaskCreateButton } from "@/components/projects/project-task-crea
 import { ProjectQuickSwitcher } from "@/components/projects/project-quick-switcher"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { redirectIfFeaturePermissionDenied } from "@/lib/permission-redirect"
 import { cn } from "@/lib/utils"
 
 function money(value: number | null): string {
@@ -404,7 +405,10 @@ export default async function ProjectPurchaseOrdersPage({
     getProjects(),
     getProjectPurchaseOrders(id),
     getProjectTaskAssigneeOptions(id),
-  ])
+  ]).catch((error: unknown) => {
+    redirectIfFeaturePermissionDenied(error)
+    throw error
+  })
   const project = projects.find((item) => item.id === id)
   const taskAssignees = [
     ...taskAssigneeOptions.projectContacts,

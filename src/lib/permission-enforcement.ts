@@ -20,6 +20,34 @@ import {
   type PermissionAccessLevel,
 } from "@/lib/permissions"
 
+export class FeaturePermissionDeniedError extends Error {
+  readonly featureId: string
+  readonly action: Action
+  readonly role: string
+
+  constructor({
+    featureId,
+    action,
+    role,
+  }: {
+    readonly featureId: string
+    readonly action: Action
+    readonly role: string
+  }) {
+    super(`Permission denied: ${role} cannot ${action} ${featureId}`)
+    this.name = "FeaturePermissionDeniedError"
+    this.featureId = featureId
+    this.action = action
+    this.role = role
+  }
+}
+
+export function isFeaturePermissionDeniedError(
+  error: unknown
+): error is FeaturePermissionDeniedError {
+  return error instanceof FeaturePermissionDeniedError
+}
+
 const ACCESS_LEVEL_RANK: { readonly [key in PermissionAccessLevel]: number } = {
   none: 0,
   view: 1,
@@ -127,8 +155,10 @@ export async function requireFeaturePermission(
   action: Action
 ): Promise<void> {
   if (!(await canFeature(user, featureId, action))) {
-    throw new Error(
-      `Permission denied: ${user?.role ?? "unknown"} cannot ${action} ${featureId}`
-    )
+    throw new FeaturePermissionDeniedError({
+      featureId,
+      action,
+      role: user?.role ?? "unknown",
+    })
   }
 }

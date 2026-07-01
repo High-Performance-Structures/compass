@@ -20,6 +20,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { ProjectListFilters } from "@/components/projects/project-list-filters"
 import { ProjectContextSwitcher } from "@/components/projects/project-context-switcher"
+import { redirectIfFeaturePermissionDenied } from "@/lib/permission-redirect"
 
 function hasDigest(error: unknown): error is { readonly digest: string } {
   return typeof error === "object" && error !== null && "digest" in error
@@ -106,6 +107,7 @@ export default async function ProjectOwnerUpdatesPage({
     ])
   } catch (error) {
     if (hasDigest(error) && error.digest === "NEXT_NOT_FOUND") throw error
+    redirectIfFeaturePermissionDenied(error)
     notFound()
   }
 

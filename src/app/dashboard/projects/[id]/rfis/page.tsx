@@ -25,6 +25,7 @@ import { ProjectQuickSwitcher } from "@/components/projects/project-quick-switch
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
+import { redirectIfFeaturePermissionDenied } from "@/lib/permission-redirect"
 import { cn } from "@/lib/utils"
 
 function readFormText(formData: FormData, name: string): string {
@@ -161,7 +162,10 @@ export default async function ProjectRfisPage({
       getProjectRfis(id),
       getProjectContactsSummary(id, "internal"),
       getProjectTaskAssigneeOptions(id),
-    ])
+    ]).catch((error: unknown) => {
+      redirectIfFeaturePermissionDenied(error)
+      throw error
+    })
   const project = projects.find((item) => item.id === id)
   const taskAssignees = [
     ...taskAssigneeOptions.projectContacts,

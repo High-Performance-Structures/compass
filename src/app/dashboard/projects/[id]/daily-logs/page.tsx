@@ -5,6 +5,7 @@ import { notFound } from "next/navigation"
 
 import { getProjectDailyLogWorkspace } from "@/app/actions/project-field"
 import { ProjectDailyLogWorkspace } from "@/components/projects/project-daily-log-workspace"
+import { redirectIfFeaturePermissionDenied } from "@/lib/permission-redirect"
 
 function hasDigest(error: unknown): error is { readonly digest: string } {
   return typeof error === "object" && error !== null && "digest" in error
@@ -22,6 +23,7 @@ export default async function ProjectDailyLogsPage({
     workspace = await getProjectDailyLogWorkspace(id)
   } catch (error) {
     if (hasDigest(error) && error.digest === "NEXT_NOT_FOUND") throw error
+    redirectIfFeaturePermissionDenied(error)
     notFound()
   }
 

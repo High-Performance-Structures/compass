@@ -29,6 +29,7 @@ import { ProjectTaskCreateButton } from "@/components/projects/project-task-crea
 import { ProjectQuickSwitcher } from "@/components/projects/project-quick-switcher"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { redirectIfFeaturePermissionDenied } from "@/lib/permission-redirect"
 import { cn } from "@/lib/utils"
 
 export const dynamic = "force-dynamic"
@@ -356,12 +357,15 @@ export default async function ProjectRfqsPage({
   }
   const [projects, rfqs, taskAssigneeOptions, selectionsSummary, selectionOptions] =
     await Promise.all([
-    getProjects(),
-    getProjectRfqs(id),
-    getProjectTaskAssigneeOptions(id),
-    getProjectSelections(id),
-    getProjectSelectionOptions(id),
-  ])
+      getProjects(),
+      getProjectRfqs(id),
+      getProjectTaskAssigneeOptions(id),
+      getProjectSelections(id),
+      getProjectSelectionOptions(id),
+    ]).catch((error: unknown) => {
+      redirectIfFeaturePermissionDenied(error)
+      throw error
+    })
   const project = projects.find((item) => item.id === id)
   const taskAssignees = [
     ...taskAssigneeOptions.projectContacts,
