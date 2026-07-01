@@ -3,6 +3,7 @@
 import * as React from "react"
 import { IconLockCog, IconUsersGroup } from "@tabler/icons-react"
 
+import { getSettingsContext } from "@/app/actions/settings"
 import {
   getPermissionAccessLevel,
   getPermissions,
@@ -193,7 +194,28 @@ function FeatureRow({
 
 export function PermissionsTab(): React.ReactElement {
   const [selectedRole, setSelectedRole] = React.useState("admin")
+  const [demoMode, setDemoMode] = React.useState(false)
   const featureGroups = React.useMemo(() => groupedFeatures(), [])
+
+  React.useEffect(() => {
+    let mounted = true
+
+    getSettingsContext()
+      .then((context) => {
+        if (mounted) {
+          setDemoMode(context.demoMode)
+        }
+      })
+      .catch(() => {
+        if (mounted) {
+          setDemoMode(false)
+        }
+      })
+
+    return () => {
+      mounted = false
+    }
+  }, [])
 
   return (
     <div className="space-y-4">
@@ -202,11 +224,22 @@ export function PermissionsTab(): React.ReactElement {
           <div className="flex items-center gap-2">
             <IconLockCog className="size-5 text-primary" stroke={1.5} />
             <h2 className="text-lg font-semibold">Permission Matrix</h2>
+            {demoMode && (
+              <Badge variant="outline" className="rounded-[4px]">
+                Demo review only
+              </Badge>
+            )}
           </div>
           <p className="max-w-3xl text-sm text-muted-foreground">
             Baseline Compass feature access by role. Team overrides are shown as
             the next configuration layer and currently inherit role access.
           </p>
+          {demoMode && (
+            <p className="max-w-3xl text-sm font-medium text-amber-800 dark:text-amber-200">
+              Demo mode cannot save permission changes or modify role/team
+              access. This matrix is only a preview of the permission model.
+            </p>
+          )}
         </div>
 
         <div className="flex flex-col gap-1.5">
@@ -299,8 +332,9 @@ export function PermissionsTab(): React.ReactElement {
             ))}
           </div>
           <p className="text-xs text-muted-foreground">
-            Next build step: add saved role and team override records so these
-            selectors become editable admin controls.
+            {demoMode
+              ? "Demo mode keeps this page read-only. Saved role and team overrides will only be editable outside the demo workspace."
+              : "Next build step: add saved role and team override records so these selectors become editable admin controls."}
           </p>
         </aside>
       </div>
