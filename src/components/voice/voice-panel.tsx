@@ -5,7 +5,7 @@ import {
   IconAntenna,
   IconPhoneOff,
   IconScreenShareOff,
-  IconVideoOff,
+  IconVideo,
   IconWaveSine,
   IconSparkles,
   IconMicrophoneOff,
@@ -16,6 +16,7 @@ import {
   TooltipTrigger,
   TooltipContent,
 } from "@/components/ui/tooltip"
+import { RealtimeKitMeetingDialog } from "@/components/voice/realtimekit-meeting-dialog"
 import { useVoiceState } from "@/hooks/use-voice-state"
 import { cn } from "@/lib/utils"
 
@@ -43,6 +44,7 @@ function RemoteVoiceAudio({
 
 export function VoicePanel(): React.ReactElement {
   const {
+    channelId,
     channelName,
     isNoiseSuppression,
     connectionStatus,
@@ -52,6 +54,7 @@ export function VoicePanel(): React.ReactElement {
     toggleNoiseSuppression,
     leaveChannel,
   } = useVoiceState()
+  const [meetingOpen, setMeetingOpen] = React.useState(false)
   const participantCount = participants.length
   const statusLabel =
     connectionStatus === "connecting"
@@ -64,6 +67,12 @@ export function VoicePanel(): React.ReactElement {
 
   return (
     <div className="group-data-[collapsible=icon]:hidden border-t border-sidebar-border">
+      <RealtimeKitMeetingDialog
+        channelId={channelId}
+        channelName={channelName}
+        open={meetingOpen}
+        onOpenChange={setMeetingOpen}
+      />
       {/* Connection status and disconnect */}
       <div className="p-2">
         {remoteStreams.map((remote) => (
@@ -136,14 +145,14 @@ export function VoicePanel(): React.ReactElement {
             <TooltipTrigger asChild>
               <button
                 type="button"
-                disabled
-                className="flex size-7 items-center justify-center rounded-md text-muted-foreground opacity-50"
-                aria-label="Camera coming soon"
+                onClick={() => setMeetingOpen(true)}
+                className="flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-foreground"
+                aria-label="Open video meeting"
               >
-                <IconVideoOff className="size-4" />
+                <IconVideo className="size-4" />
               </button>
             </TooltipTrigger>
-            <TooltipContent>Camera (coming soon)</TooltipContent>
+            <TooltipContent>Video Meeting</TooltipContent>
           </Tooltip>
 
           <Tooltip>

@@ -6,6 +6,7 @@ import { projectMembers, users } from "@/db/schema"
 import {
   channelMembers,
   channels,
+  voiceRealtimeKitMeetings,
   voiceParticipants,
   voiceSignals,
 } from "@/db/schema-conversations"
@@ -40,6 +41,7 @@ export type VoiceSignalData = {
 
 type VoiceChannelAccess = {
   readonly id: string
+  readonly name: string
   readonly organizationId: string
   readonly projectId: string | null
   readonly isPrivate: boolean
@@ -49,6 +51,24 @@ type VoiceChannelAccess = {
 type VoiceActionResult<T> =
   | { readonly success: true; readonly data: T }
   | { readonly success: false; readonly error: string }
+
+type RealtimeKitConfig = {
+  readonly accountId: string
+  readonly appId: string
+  readonly apiToken: string
+}
+
+type RealtimeKitMeeting = {
+  readonly id: string
+  readonly title: string
+}
+
+export type RealtimeKitJoinData = {
+  readonly authToken: string
+  readonly meetingId: string
+  readonly meetingTitle: string
+  readonly participantName: string
+}
 
 function activeAfterIso(now = Date.now()): string {
   return new Date(now - ACTIVE_PARTICIPANT_WINDOW_MS).toISOString()
@@ -69,6 +89,176 @@ function displayNameForUser(user: Pick<AuthUser, "displayName" | "email">): stri
   return user.displayName ?? user.email.split("@")[0] ?? "Compass user"
 }
 
+function readEnvString(env: CloudflareEnv, key: string): string | null {
+  const value: unknown = Reflect.get(env, key)
+  if (typeof value !== "string") return null
+  const trimmed = value.trim()
+  return trimmed.length > 0 ? trimmed : null
+}
+
+function realtimeKitConfigFromEnv(env: CloudflareEnv): RealtimeKitConfig | null {
+  const accountId = readEnvString(env, "CLOUDFLARE_ACCOUNT_ID")
+  const appId = readEnvString(env, "REALTIMEKIT_APP_ID")
+  const apiToken = readEnvString(env, "CLOUDFLARE_API_TOKEN")
+  if (!accountId || !appId || !apiToken) return null
+  return { accountId, appId, apiToken }
+}
+
+function recordValue(
+  record: Readonly<Record<string, unknown>>,
+  key: string
+): unknown {
+  return record[key]
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value)
+}
+
+function extractApiError(payload: unknown, fallback: string): string {
+  if (!isRecord(payload)) return fallback
+  const errors = recordValue(payload, "errors")
+  if (!Array.isArray(errors)) return fallback
+  const first = errors.find(isRecord)
+  if (!first) return fallback
+  const message = recordValue(first, "message")
+  return typeof message === "string" && message.trim().length > 0
+    ? message
+    : fallback
+}
+
+function extractResultRecord(payload: unknown): Readonly<Record<string, unknown>> | null {
+  if (!isRecord(payload)) return null
+  const result = recordValue(payload, "result")
+  return isRecord(result) ? result : null
+}
+
+function extractMeeting(payload: unknown, title: string): RealtimeKitMeeting | null {
+  const result = extractResultRecord(payload)
+  if (!result) return null
+  const id = recordValue(result, "id")
+  if (typeof id !== "string" || id.length === 0) return null
+  const responseTitle = recordValue(result, "title")
+  return {
+    id,
+    title:
+      typeof responseTitle === "string" && responseTitle.length > 0
+        ? responseTitle
+        : title,
+  }
+}
+
+function extractAuthToken(payload: unknown): string | null {
+  const result = extractResultRecord(payload)
+  if (!result) return null
+  const direct = recordValue(result, "authToken")
+  if (typeof direct === "string" && direct.length > 0) return direct
+  const snake = recordValue(result, "auth_token")
+  return typeof snake === "string" && snake.length > 0 ? snake : null
+}
+
+async function realtimeKitRequest(
+  config: RealtimeKitConfig,
+  path: string,
+  body: Readonly<Record<string, unknown>>
+): Promise<VoiceActionResult<unknown>> {
+  const response = await fetch(
+    `https://api.cloudflare.com/client/v4/accounts/${config.accountId}/realtime/kit/${config.appId}${path}`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${config.apiToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
+    }
+  )
+  const payload: unknown = await response.json().catch(() => null)
+  if (!response.ok) {
+    return {
+      success: false,
+      error: extractApiError(
+        payload,
+        `Cloudflare RealtimeKit request failed (${response.status})`
+      ),
+    }
+  }
+  return { success: true, data: payload }
+}
+
+async function ensureRealtimeKitMeeting(
+  db: ReturnType<typeof getDb>,
+  config: RealtimeKitConfig,
+  channel: VoiceChannelAccess,
+  user: AuthUser
+): Promise<VoiceActionResult<RealtimeKitMeeting>> {
+  const existing = await db
+    .select({
+      meetingId: voiceRealtimeKitMeetings.meetingId,
+      meetingTitle: voiceRealtimeKitMeetings.meetingTitle,
+    })
+    .from(voiceRealtimeKitMeetings)
+    .where(eq(voiceRealtimeKitMeetings.channelId, channel.id))
+    .limit(1)
+    .then((rows) => rows[0] ?? null)
+
+  if (existing) {
+    return {
+      success: true,
+      data: { id: existing.meetingId, title: existing.meetingTitle },
+    }
+  }
+
+  const title = `Compass Talk - ${channel.name}`
+  const created = await realtimeKitRequest(config, "/meetings", { title })
+  if (!created.success) return created
+
+  const meeting = extractMeeting(created.data, title)
+  if (!meeting) {
+    return { success: false, error: "Cloudflare did not return a meeting ID" }
+  }
+
+  const now = new Date().toISOString()
+  await db.insert(voiceRealtimeKitMeetings).values({
+    id: crypto.randomUUID(),
+    channelId: channel.id,
+    meetingId: meeting.id,
+    meetingTitle: meeting.title,
+    createdBy: user.id,
+    createdAt: now,
+    updatedAt: now,
+  })
+
+  return { success: true, data: meeting }
+}
+
+async function createRealtimeKitParticipantToken(
+  config: RealtimeKitConfig,
+  meetingId: string,
+  participantName: string,
+  presetNames: readonly string[]
+): Promise<VoiceActionResult<string>> {
+  let lastError = "Failed to create RealtimeKit participant"
+  for (const presetName of presetNames) {
+    const created = await realtimeKitRequest(
+      config,
+      `/meetings/${meetingId}/participants`,
+      {
+        name: participantName,
+        preset_name: presetName,
+      }
+    )
+    if (!created.success) {
+      lastError = created.error
+      continue
+    }
+    const authToken = extractAuthToken(created.data)
+    if (authToken) return { success: true, data: authToken }
+    lastError = "Cloudflare did not return a participant token"
+  }
+  return { success: false, error: lastError }
+}
+
 async function verifyVoiceChannelAccess(
   db: ReturnType<typeof getDb>,
   user: AuthUser,
@@ -78,6 +268,7 @@ async function verifyVoiceChannelAccess(
   const channel = await db
     .select({
       id: channels.id,
+      name: channels.name,
       organizationId: channels.organizationId,
       projectId: channels.projectId,
       type: channels.type,
@@ -258,6 +449,62 @@ export async function joinVoiceSession(
         error instanceof Error
           ? error.message
           : "Failed to join voice channel",
+    }
+  }
+}
+
+export async function joinRealtimeKitVoiceSession(
+  channelId: string
+): Promise<VoiceActionResult<RealtimeKitJoinData>> {
+  try {
+    const user = await getCurrentUser()
+    if (!user) return { success: false, error: "Unauthorized" }
+    if (isDemoUser(user.id)) return { success: false, error: "DEMO_READ_ONLY" }
+
+    const { env } = await getCloudflareContext()
+    const config = realtimeKitConfigFromEnv(env)
+    if (!config) {
+      return {
+        success: false,
+        error: "Cloudflare RealtimeKit is not configured yet",
+      }
+    }
+
+    const db = getDb(env.DB)
+    const channel = await verifyVoiceChannelAccess(db, user, channelId)
+    if (!channel) return { success: false, error: "Voice channel not found" }
+
+    const meeting = await ensureRealtimeKitMeeting(db, config, channel, user)
+    if (!meeting.success) return { success: false, error: meeting.error }
+
+    const participantName = displayNameForUser(user)
+    const presetNames = can(user, "channels", "moderate")
+      ? ["host", "group_call_host", "participant", "group_call_participant"]
+      : ["participant", "group_call_participant", "host", "group_call_host"]
+    const authToken = await createRealtimeKitParticipantToken(
+      config,
+      meeting.data.id,
+      participantName,
+      presetNames
+    )
+    if (!authToken.success) return { success: false, error: authToken.error }
+
+    return {
+      success: true,
+      data: {
+        authToken: authToken.data,
+        meetingId: meeting.data.id,
+        meetingTitle: meeting.data.title,
+        participantName,
+      },
+    }
+  } catch (error) {
+    return {
+      success: false,
+      error:
+        error instanceof Error
+          ? error.message
+          : "Failed to join Cloudflare meeting",
     }
   }
 }

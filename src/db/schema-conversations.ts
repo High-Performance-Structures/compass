@@ -3,6 +3,7 @@ import {
   text,
   integer,
   index,
+  uniqueIndex,
 } from "drizzle-orm/sqlite-core"
 import { organizations, projects, users } from "./schema"
 
@@ -214,6 +215,28 @@ export const voiceSignals = sqliteTable(
   ]
 )
 
+// voice_realtimekit_meetings - Cloudflare RealtimeKit meeting per voice room
+export const voiceRealtimeKitMeetings = sqliteTable(
+  "voice_realtimekit_meetings",
+  {
+    id: text("id").primaryKey(),
+    channelId: text("channel_id")
+      .notNull()
+      .references(() => channels.id, { onDelete: "cascade" }),
+    meetingId: text("meeting_id").notNull(),
+    meetingTitle: text("meeting_title").notNull(),
+    createdBy: text("created_by")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("voice_realtimekit_meetings_channel_idx").on(table.channelId),
+    uniqueIndex("voice_realtimekit_meetings_meeting_idx").on(table.meetingId),
+  ]
+)
+
 // type exports
 export type Channel = typeof channels.$inferSelect
 export type NewChannel = typeof channels.$inferInsert
@@ -239,3 +262,6 @@ export type VoiceParticipant = typeof voiceParticipants.$inferSelect
 export type NewVoiceParticipant = typeof voiceParticipants.$inferInsert
 export type VoiceSignal = typeof voiceSignals.$inferSelect
 export type NewVoiceSignal = typeof voiceSignals.$inferInsert
+export type VoiceRealtimeKitMeeting = typeof voiceRealtimeKitMeetings.$inferSelect
+export type NewVoiceRealtimeKitMeeting =
+  typeof voiceRealtimeKitMeetings.$inferInsert
