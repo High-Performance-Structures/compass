@@ -35,6 +35,7 @@ export type GmailInboundSyncSummary = {
   readonly scanned: number
   readonly imported: number
   readonly posted: number
+  readonly ignoredOutbound: number
   readonly skippedDuplicates: number
   readonly needsReview: number
   readonly errors: readonly string[]
@@ -247,12 +248,65 @@ function messageHtml(candidate: InboundCandidate): string {
 </div>`
 }
 
+function configuredSenderEmails(env: unknown): readonly string[] {
+  const configuredFrom = envString(env, "COMPASS_EMAIL_FROM")
+  const emails = new Set(["compass@hps-colorado.com", "jarvis@hps-colorado.com"])
+  const match = configuredFrom?.match(/<([^<>]+)>/)
+  const parsed = match?.[1] ?? configuredFrom
+  if (parsed) emails.add(parsed.trim().toLowerCase())
+  return Array.from(emails)
+}
+
+function isCompassOutboundCandidate(input: {
+  readonly env: unknown
+  readonly candidate: InboundCandidate
+}): boolean {
+  return configuredSenderEmails(input.env).includes(
+    input.candidate.fromAddress.toLowerCase()
+  )
+}
+
+async function insertInboundAudit(input: {
+  readonly db: Db
+  readonly organizationId: string
+  readonly projectId: string | null
+  readonly replyThreadId: string | null
+  readonly candidate: InboundCandidate
+  readonly matchedStatus: string
+  readonly postedMessageId: string | null
+  readonly importedAt: string
+}): Promise<void> {
+  await input.db.insert(inboundEmails).values({
+    id: crypto.randomUUID(),
+    organizationId: input.organizationId,
+    projectId: input.projectId,
+    replyThreadId: input.replyThreadId,
+    token: input.candidate.token,
+    gmailMessageId: input.candidate.gmailMessageId,
+    gmailThreadId: input.candidate.gmailThreadId,
+    messageIdHeader: input.candidate.messageIdHeader,
+    inReplyToHeader: input.candidate.inReplyToHeader,
+    referencesHeader: input.candidate.referencesHeader,
+    fromAddress: input.candidate.fromAddress,
+    fromName: input.candidate.fromName,
+    toAddress: input.candidate.toAddress,
+    subject: input.candidate.subject,
+    textBody: input.candidate.textBody,
+    htmlBody: input.candidate.htmlBody,
+    snippet: input.candidate.snippet,
+    matchedStatus: input.matchedStatus,
+    postedMessageId: input.postedMessageId,
+    receivedAt: input.candidate.receivedAt,
+    importedAt: input.importedAt,
+  })
+}
+
 async function importCandidate(input: {
   readonly env: unknown
   readonly db: Db
   readonly organizationId: string
   readonly candidate: InboundCandidate
-}): Promise<"duplicate" | "needs_review" | "posted"> {
+}): Promise<"duplicate" | "ignored_outbound" | "needs_review" | "posted"> {
   const [duplicate] = await input.db
     .select({ id: inboundEmails.id })
     .from(inboundEmails)
@@ -270,32 +324,33 @@ async function importCandidate(input: {
     : null
   const now = new Date().toISOString()
 
+  if (isCompassOutboundCandidate(input)) {
+    await insertInboundAudit({
+      db: input.db,
+      organizationId: input.organizationId,
+      projectId: replyThread?.projectId ?? null,
+      replyThreadId: replyThread?.id ?? null,
+      candidate: input.candidate,
+      matchedStatus: "ignored_outbound",
+      postedMessageId: null,
+      importedAt: now,
+    })
+    return "ignored_outbound"
+  }
+
   if (
     !replyThread ||
     replyThread.organizationId !== input.organizationId ||
     !replyThread.projectId
   ) {
-    await input.db.insert(inboundEmails).values({
-      id: crypto.randomUUID(),
+    await insertInboundAudit({
+      db: input.db,
       organizationId: input.organizationId,
       projectId: replyThread?.projectId ?? null,
       replyThreadId: replyThread?.id ?? null,
-      token: input.candidate.token,
-      gmailMessageId: input.candidate.gmailMessageId,
-      gmailThreadId: input.candidate.gmailThreadId,
-      messageIdHeader: input.candidate.messageIdHeader,
-      inReplyToHeader: input.candidate.inReplyToHeader,
-      referencesHeader: input.candidate.referencesHeader,
-      fromAddress: input.candidate.fromAddress,
-      fromName: input.candidate.fromName,
-      toAddress: input.candidate.toAddress,
-      subject: input.candidate.subject,
-      textBody: input.candidate.textBody,
-      htmlBody: input.candidate.htmlBody,
-      snippet: input.candidate.snippet,
+      candidate: input.candidate,
       matchedStatus: "needs_review",
       postedMessageId: null,
-      receivedAt: input.candidate.receivedAt,
       importedAt: now,
     })
     return "needs_review"
@@ -307,27 +362,14 @@ async function importCandidate(input: {
     organizationId: input.organizationId,
   })
   if (!systemUserId) {
-    await input.db.insert(inboundEmails).values({
-      id: crypto.randomUUID(),
+    await insertInboundAudit({
+      db: input.db,
       organizationId: input.organizationId,
       projectId: replyThread.projectId,
       replyThreadId: replyThread.id,
-      token: input.candidate.token,
-      gmailMessageId: input.candidate.gmailMessageId,
-      gmailThreadId: input.candidate.gmailThreadId,
-      messageIdHeader: input.candidate.messageIdHeader,
-      inReplyToHeader: input.candidate.inReplyToHeader,
-      referencesHeader: input.candidate.referencesHeader,
-      fromAddress: input.candidate.fromAddress,
-      fromName: input.candidate.fromName,
-      toAddress: input.candidate.toAddress,
-      subject: input.candidate.subject,
-      textBody: input.candidate.textBody,
-      htmlBody: input.candidate.htmlBody,
-      snippet: input.candidate.snippet,
+      candidate: input.candidate,
       matchedStatus: "needs_review",
       postedMessageId: null,
-      receivedAt: input.candidate.receivedAt,
       importedAt: now,
     })
     return "needs_review"
@@ -343,27 +385,14 @@ async function importCandidate(input: {
     }))
 
   if (!channelId) {
-    await input.db.insert(inboundEmails).values({
-      id: crypto.randomUUID(),
+    await insertInboundAudit({
+      db: input.db,
       organizationId: input.organizationId,
       projectId: replyThread.projectId,
       replyThreadId: replyThread.id,
-      token: input.candidate.token,
-      gmailMessageId: input.candidate.gmailMessageId,
-      gmailThreadId: input.candidate.gmailThreadId,
-      messageIdHeader: input.candidate.messageIdHeader,
-      inReplyToHeader: input.candidate.inReplyToHeader,
-      referencesHeader: input.candidate.referencesHeader,
-      fromAddress: input.candidate.fromAddress,
-      fromName: input.candidate.fromName,
-      toAddress: input.candidate.toAddress,
-      subject: input.candidate.subject,
-      textBody: input.candidate.textBody,
-      htmlBody: input.candidate.htmlBody,
-      snippet: input.candidate.snippet,
+      candidate: input.candidate,
       matchedStatus: "needs_review",
       postedMessageId: null,
-      receivedAt: input.candidate.receivedAt,
       importedAt: now,
     })
     return "needs_review"
@@ -409,27 +438,14 @@ async function importCandidate(input: {
       updatedAt: now,
     })
     .where(eq(emailReplyThreads.id, replyThread.id))
-  await input.db.insert(inboundEmails).values({
-    id: crypto.randomUUID(),
+  await insertInboundAudit({
+    db: input.db,
     organizationId: input.organizationId,
     projectId: replyThread.projectId,
     replyThreadId: replyThread.id,
-    token: input.candidate.token,
-    gmailMessageId: input.candidate.gmailMessageId,
-    gmailThreadId: input.candidate.gmailThreadId,
-    messageIdHeader: input.candidate.messageIdHeader,
-    inReplyToHeader: input.candidate.inReplyToHeader,
-    referencesHeader: input.candidate.referencesHeader,
-    fromAddress: input.candidate.fromAddress,
-    fromName: input.candidate.fromName,
-    toAddress: input.candidate.toAddress,
-    subject: input.candidate.subject,
-    textBody: input.candidate.textBody,
-    htmlBody: input.candidate.htmlBody,
-    snippet: input.candidate.snippet,
+    candidate: input.candidate,
     matchedStatus: "posted",
     postedMessageId: messageId,
-    receivedAt: input.candidate.receivedAt,
     importedAt: now,
   })
 
@@ -469,6 +485,7 @@ export async function syncGmailInboundReplies(input: {
       scanned: 0,
       imported: 0,
       posted: 0,
+      ignoredOutbound: 0,
       skippedDuplicates: 0,
       needsReview: 0,
       errors: [access.error],
@@ -491,6 +508,7 @@ export async function syncGmailInboundReplies(input: {
   let scanned = 0
   let imported = 0
   let posted = 0
+  let ignoredOutbound = 0
   let skippedDuplicates = 0
   let needsReview = 0
 
@@ -534,6 +552,7 @@ export async function syncGmailInboundReplies(input: {
         } else {
           imported += 1
           if (result === "posted") posted += 1
+          if (result === "ignored_outbound") ignoredOutbound += 1
           if (result === "needs_review") needsReview += 1
         }
       } catch (error) {
@@ -548,6 +567,7 @@ export async function syncGmailInboundReplies(input: {
     scanned,
     imported,
     posted,
+    ignoredOutbound,
     skippedDuplicates,
     needsReview,
     errors,

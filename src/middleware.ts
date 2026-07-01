@@ -20,10 +20,15 @@ const bridgePaths = [
   "/api/bridge/context",
 ]
 
+const machineAuthPaths = [
+  "/api/email/gmail-sync",
+]
+
 function isPublicPath(pathname: string): boolean {
   return (
     publicPaths.includes(pathname) ||
     bridgePaths.includes(pathname) ||
+    machineAuthPaths.includes(pathname) ||
     pathname.startsWith("/api/auth/") ||
     pathname.startsWith("/api/netsuite/") ||
     pathname.startsWith("/api/google/")
