@@ -9,7 +9,7 @@ import { requireAuth } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
 import { isDemoUser } from "@/lib/demo"
 import { requireOrg } from "@/lib/org-scope"
-import { requirePermission } from "@/lib/permissions"
+import { requireFeaturePermission } from "@/lib/permission-enforcement"
 import { assertProjectAccess } from "@/lib/project-access"
 
 export type ProjectPhotoLibraryItem = {
@@ -80,7 +80,7 @@ async function verifyProjectAccess(
   action: "read" | "update"
 ): Promise<ReturnType<typeof getDb>> {
   const user = await requireAuth()
-  requirePermission(user, "project", action)
+  await requireFeaturePermission(user, "project-photos", action)
 
   const { env } = await getCloudflareContext()
   const db = getDb(env.DB)
@@ -421,7 +421,7 @@ export async function updateProjectPhotoPhase(
     if (isDemoUser(user.id)) {
       return { success: false, error: "DEMO_READ_ONLY" }
     }
-    requirePermission(user, "project", "update")
+    await requireFeaturePermission(user, "project-photos", "update")
     const orgId = requireOrg(user)
 
     const { env } = await getCloudflareContext()
@@ -478,7 +478,7 @@ export async function updateProjectPhotoPermissions(
     if (isDemoUser(user.id)) {
       return { success: false, error: "DEMO_READ_ONLY" }
     }
-    requirePermission(user, "project", "update")
+    await requireFeaturePermission(user, "project-photos", "update")
     const orgId = requireOrg(user)
 
     const { env } = await getCloudflareContext()

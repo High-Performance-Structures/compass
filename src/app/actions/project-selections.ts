@@ -15,7 +15,7 @@ import {
 } from "@/db/schema"
 import { requireAuth } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
-import { requirePermission } from "@/lib/permissions"
+import { requireFeaturePermission } from "@/lib/permission-enforcement"
 import { assertProjectAccess } from "@/lib/project-access"
 
 export type ProjectSelectionStatus =
@@ -207,7 +207,7 @@ async function verifyProjectAccess(
   permission: "read" | "update"
 ): Promise<ReturnType<typeof getDb>> {
   const user = await requireAuth()
-  requirePermission(user, "project", permission)
+  await requireFeaturePermission(user, "finish-selections", permission)
   const { env } = await getCloudflareContext()
   const db = getDb(env.DB)
 

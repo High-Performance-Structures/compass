@@ -17,7 +17,7 @@ import {
 import { requireAuth } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
 import { requireOrg } from "@/lib/org-scope"
-import { requirePermission } from "@/lib/permissions"
+import { requireFeaturePermission } from "@/lib/permission-enforcement"
 import { assertProjectAccess } from "@/lib/project-access"
 
 export type ProjectOperationItem = {
@@ -294,10 +294,11 @@ type NormalizedRfqDocumentLink = {
 }
 
 async function verifyProjectAccess(
-  projectId: string
+  projectId: string,
+  featureId: string = "project-hub"
 ): Promise<ReturnType<typeof getDb>> {
   const user = await requireAuth()
-  requirePermission(user, "project", "read")
+  await requireFeaturePermission(user, featureId, "read")
 
   const { env } = await getCloudflareContext()
   const db = getDb(env.DB)
@@ -307,10 +308,11 @@ async function verifyProjectAccess(
 }
 
 async function verifyProjectUpdateAccess(
-  projectId: string
+  projectId: string,
+  featureId: string = "project-hub"
 ): Promise<ReturnType<typeof getDb>> {
   const user = await requireAuth()
-  requirePermission(user, "project", "update")
+  await requireFeaturePermission(user, featureId, "update")
   const orgId = requireOrg(user)
 
   const { env } = await getCloudflareContext()
@@ -1119,7 +1121,7 @@ export async function getProjectOperationsSummary(
 export async function getProjectSageSyncQueue(
   projectId: string
 ): Promise<ProjectSageSyncQueue> {
-  const db = await verifyProjectAccess(projectId)
+  const db = await verifyProjectAccess(projectId, "sage-sync")
 
   const operationRows = await db
     .select()
@@ -1228,7 +1230,7 @@ export async function queueProjectOperationForSageSync(
   operationId: string
 ): Promise<ProjectSyncActionResult> {
   try {
-    const db = await verifyProjectUpdateAccess(projectId)
+    const db = await verifyProjectUpdateAccess(projectId, "sage-sync")
     const [operation] = await db
       .select()
       .from(projectOperations)
@@ -1280,7 +1282,7 @@ export async function queueProjectOperationsForSageSync(
   projectId: string
 ): Promise<ProjectSyncActionResult> {
   try {
-    const db = await verifyProjectUpdateAccess(projectId)
+    const db = await verifyProjectUpdateAccess(projectId, "sage-sync")
     const operations = await db
       .select()
       .from(projectOperations)
@@ -1327,7 +1329,7 @@ export async function getProjectPurchaseOrders(
 ): Promise<readonly ProjectPurchaseOrderItem[]> {
   const user = await requireAuth()
   const orgId = requireOrg(user)
-  const db = await verifyProjectAccess(projectId)
+  const db = await verifyProjectAccess(projectId, "purchase-orders")
   const rows = await db
     .select()
     .from(projectOperations)
@@ -1395,7 +1397,7 @@ export async function getProjectRfqs(
 ): Promise<readonly ProjectRfqItem[]> {
   const user = await requireAuth()
   const orgId = requireOrg(user)
-  const db = await verifyProjectAccess(projectId)
+  const db = await verifyProjectAccess(projectId, "rfqs")
   const rows = await db
     .select()
     .from(projectOperations)
@@ -1442,7 +1444,7 @@ export async function createPurchaseOrderRequest(
   input: CreatePurchaseOrderRequestInput
 ): Promise<ProjectOperationActionResult> {
   try {
-    const db = await verifyProjectUpdateAccess(projectId)
+    const db = await verifyProjectUpdateAccess(projectId, "purchase-orders")
     const [project] = await db
       .select({
         projectNumber: projects.projectNumber,
@@ -1574,7 +1576,7 @@ export async function createRfqRequest(
   input: CreateRfqRequestInput
 ): Promise<ProjectOperationActionResult> {
   try {
-    const db = await verifyProjectUpdateAccess(projectId)
+    const db = await verifyProjectUpdateAccess(projectId, "rfqs")
     const [project] = await db
       .select({
         projectNumber: projects.projectNumber,
@@ -1691,7 +1693,7 @@ export async function deletePurchaseOrderRequest(
   purchaseOrderId: string
 ): Promise<ProjectOperationActionResult> {
   try {
-    const db = await verifyProjectUpdateAccess(projectId)
+    const db = await verifyProjectUpdateAccess(projectId, "purchase-orders")
     const [existing] = await db
       .select({ id: projectOperations.id })
       .from(projectOperations)
@@ -1752,7 +1754,7 @@ export async function updateRfqRequest(
   input: UpdateRfqRequestInput
 ): Promise<ProjectOperationActionResult> {
   try {
-    const db = await verifyProjectUpdateAccess(projectId)
+    const db = await verifyProjectUpdateAccess(projectId, "rfqs")
     const [project, existing] = await Promise.all([
       db
         .select({
@@ -1875,7 +1877,7 @@ export async function deleteRfqRequest(
   rfqId: string
 ): Promise<ProjectOperationActionResult> {
   try {
-    const db = await verifyProjectUpdateAccess(projectId)
+    const db = await verifyProjectUpdateAccess(projectId, "rfqs")
     const [existing] = await db
       .select({ id: projectOperations.id })
       .from(projectOperations)
@@ -1924,7 +1926,7 @@ export async function createProjectTask(
   input: CreateProjectTaskInput
 ): Promise<ProjectOperationActionResult> {
   try {
-    const db = await verifyProjectUpdateAccess(projectId)
+    const db = await verifyProjectUpdateAccess(projectId, "tasks")
     const [project] = await db
       .select({
         sageJobId: projects.sageJobId,
@@ -2026,7 +2028,7 @@ export async function sendPurchaseOrderEmail(
 ): Promise<ProjectOperationEmailActionResult> {
   try {
     const user = await requireAuth()
-    requirePermission(user, "project", "update")
+    await requireFeaturePermission(user, "purchase-orders", "update")
     const orgId = requireOrg(user)
     const { env } = await getCloudflareContext()
     const db = getDb(env.DB)
