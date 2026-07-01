@@ -15,7 +15,6 @@ import type {
   WorkCalendarEntryKind,
   WorkCalendarData,
 } from "@/app/actions/work-calendar"
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
@@ -108,13 +107,26 @@ function kindLabel(kind: WorkCalendarEntryKind): string {
 function kindTone(kind: WorkCalendarEntryKind): string {
   switch (kind) {
     case "schedule":
-      return "border-[#2f5963] bg-card text-[#2f5963]"
+      return "border-l-[#2f5963]"
     case "task":
-      return "border-[#3f7d4d] bg-card text-[#3f7d4d]"
+      return "border-l-[#3f7d4d]"
     case "rfi":
-      return "border-[#9d832c] bg-card text-[#715d1c]"
+      return "border-l-[#9d832c]"
     case "purchase_order":
-      return "border-[#6f471f] bg-card text-[#6f471f]"
+      return "border-l-[#6f471f]"
+  }
+}
+
+function kindTextTone(kind: WorkCalendarEntryKind): string {
+  switch (kind) {
+    case "schedule":
+      return "text-[#2f5963]"
+    case "task":
+      return "text-[#3f7d4d]"
+    case "rfi":
+      return "text-[#715d1c]"
+    case "purchase_order":
+      return "text-[#6f471f]"
   }
 }
 
@@ -153,7 +165,8 @@ function WorkItem({
     <Link
       href={entry.href}
       className={cn(
-        "block rounded-lg border bg-background p-3 transition-all duration-200 hover:-translate-y-0.5 hover:bg-muted/60 hover:shadow-md",
+        "block border-y border-r border-l-2 bg-background px-3 py-2 transition-colors hover:bg-muted/55",
+        kindTone(entry.kind),
         compact && "p-2"
       )}
     >
@@ -166,12 +179,14 @@ function WorkItem({
             {entry.projectLabel} · {entry.sourceLabel}
           </p>
         </div>
-        <Badge
-          variant="outline"
-          className={cn("shrink-0 border", kindTone(entry.kind))}
+        <span
+          className={cn(
+            "shrink-0 text-[0.65rem] font-semibold uppercase tracking-wide",
+            kindTextTone(entry.kind)
+          )}
         >
           {kindLabel(entry.kind)}
-        </Badge>
+        </span>
       </div>
       {!compact && (
         <div className="mt-3 flex flex-wrap gap-1.5 text-xs text-muted-foreground">
@@ -246,20 +261,20 @@ export function WorkCalendar({
             </p>
           </div>
 
-          <div className="grid grid-cols-4 gap-2 rounded-lg border bg-muted/30 p-3">
-            <div>
+          <div className="grid grid-cols-4 border-y bg-background">
+            <div className="border-r px-3 py-2 last:border-r-0">
               <p className="text-xs text-muted-foreground">Today</p>
               <p className="mt-1 text-2xl font-semibold">{todayEntries.length}</p>
             </div>
-            <div>
+            <div className="border-r px-3 py-2 last:border-r-0">
               <p className="text-xs text-muted-foreground">Tasks</p>
               <p className="mt-1 text-2xl font-semibold">{taskCount}</p>
             </div>
-            <div>
+            <div className="border-r px-3 py-2 last:border-r-0">
               <p className="text-xs text-muted-foreground">RFIs</p>
               <p className="mt-1 text-2xl font-semibold">{rfiCount}</p>
             </div>
-            <div>
+            <div className="px-3 py-2">
               <p className="text-xs text-muted-foreground">Past due</p>
               <p className="mt-1 text-2xl font-semibold">{overdueEntries.length}</p>
             </div>
@@ -294,7 +309,7 @@ export function WorkCalendar({
           </div>
         </div>
 
-        <section className="rounded-lg border bg-card p-4">
+        <section className="border-y py-4">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div>
               <h2 className="text-sm font-semibold">Next 14 days</h2>
@@ -303,25 +318,29 @@ export function WorkCalendar({
                 schedules, RFIs, Sage operations, and Compass tasks.
               </p>
             </div>
-            <Badge variant="secondary">{formatShortDate(data.today)} onward</Badge>
+            <span className="text-xs font-medium text-muted-foreground">
+              {formatShortDate(data.today)} onward
+            </span>
           </div>
 
-          <div className="mt-4 grid gap-3 lg:grid-cols-7">
+          <div className="mt-4 grid gap-px border bg-border lg:grid-cols-7">
             {days.map((day) => {
               const dayEntries = filteredEntries.filter((entry) =>
                 entryOnDay(entry, day)
               )
 
               return (
-                <div key={day} className="min-h-40 rounded-lg border bg-muted/20 p-2">
-                  <div className="flex items-center justify-between gap-2">
+                <div key={day} className="min-h-40 bg-background p-2">
+                  <div className="flex items-start justify-between gap-2 border-b pb-2">
                     <div>
                       <p className="text-xs font-semibold">{formatWeekday(day)}</p>
                       <p className="text-xs text-muted-foreground">
                         {formatShortDate(day)}
                       </p>
                     </div>
-                    <Badge variant="outline">{dayEntries.length}</Badge>
+                    <span className="text-xs tabular-nums text-muted-foreground">
+                      {dayEntries.length}
+                    </span>
                   </div>
                   <div className="mt-2 space-y-2">
                     {dayEntries.slice(0, 3).map((entry) => (
@@ -340,48 +359,50 @@ export function WorkCalendar({
         </section>
 
         <section className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_24rem]">
-          <div className="rounded-lg border bg-card p-4">
+          <div>
             <div className="flex items-center justify-between gap-3">
               <h2 className="text-sm font-semibold">Work Queue</h2>
-              <Badge variant="outline">{filteredEntries.length} items</Badge>
+              <span className="text-xs text-muted-foreground">
+                {filteredEntries.length} items
+              </span>
             </div>
-            <div className="mt-4 grid gap-3">
+            <div className="mt-3 grid gap-2">
               {filteredEntries.length > 0 ? (
                 filteredEntries.slice(0, 50).map((entry) => (
                   <WorkItem key={`${entry.kind}-${entry.id}`} entry={entry} />
                 ))
               ) : (
-                <div className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
+                <div className="border border-dashed p-4 text-sm text-muted-foreground">
                   No work items match this view.
                 </div>
               )}
             </div>
           </div>
 
-          <aside className="rounded-lg border bg-card p-4">
+          <aside className="border-l pl-4">
             <h2 className="text-sm font-semibold">Task Sources</h2>
             <div className="mt-3 grid gap-2">
               <Link
                 href="/dashboard/projects/select?target=daily-logs"
-                className="rounded-md border bg-background p-3 text-sm font-medium transition-colors hover:bg-muted/60"
+                className="border-l-2 border-l-[#3f7d4d] bg-background px-3 py-2 text-sm font-medium transition-colors hover:bg-muted/60"
               >
                 Daily logs
               </Link>
               <Link
                 href="/dashboard/projects/select?target=schedule"
-                className="rounded-md border bg-background p-3 text-sm font-medium transition-colors hover:bg-muted/60"
+                className="border-l-2 border-l-[#2f5963] bg-background px-3 py-2 text-sm font-medium transition-colors hover:bg-muted/60"
               >
                 Project schedules
               </Link>
               <Link
                 href="/dashboard/rfis"
-                className="rounded-md border bg-background p-3 text-sm font-medium transition-colors hover:bg-muted/60"
+                className="border-l-2 border-l-[#9d832c] bg-background px-3 py-2 text-sm font-medium transition-colors hover:bg-muted/60"
               >
                 RFIs
               </Link>
               <Link
                 href="/dashboard/purchase-orders"
-                className="rounded-md border bg-background p-3 text-sm font-medium transition-colors hover:bg-muted/60"
+                className="border-l-2 border-l-[#6f471f] bg-background px-3 py-2 text-sm font-medium transition-colors hover:bg-muted/60"
               >
                 Purchase orders
               </Link>

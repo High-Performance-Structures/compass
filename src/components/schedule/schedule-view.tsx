@@ -316,18 +316,15 @@ export function ScheduleView({
           />
 
           {/* View switcher */}
-          <div className={cn(
-            "flex items-center rounded-lg border bg-muted/40 p-0.5",
-            isMobile ? "gap-0" : "gap-0",
-          )}>
+          <div className="flex items-center border bg-background">
             {VIEW_OPTIONS.map(({ value, icon: Icon, label }) => (
               <button
                 key={value}
                 onClick={() => setView(value)}
                 className={cn(
-                  "flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium transition-all",
+                  "flex items-center gap-1.5 border-r px-2.5 py-1.5 text-xs font-medium transition-colors last:border-r-0",
                   view === value
-                    ? "bg-background text-foreground shadow-sm"
+                    ? "bg-muted/70 text-foreground"
                     : "text-muted-foreground hover:text-foreground"
                 )}
               >
@@ -366,7 +363,7 @@ export function ScheduleView({
               {activeFilterCount > 0 && (
                 <Badge
                   variant="secondary"
-                  className="ml-1.5 h-4 min-w-4 px-1 text-[10px] rounded-full"
+                  className="ml-1.5 h-4 min-w-4 px-1 text-[10px]"
                 >
                   {activeFilterCount}
                 </Badge>

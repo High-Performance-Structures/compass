@@ -51,11 +51,11 @@ function isExceptionDay(
 }
 
 function getTaskColor(task: ScheduleTaskData): string {
-  if (task.status === "COMPLETE") return "bg-green-600/90 dark:bg-green-600/80"
-  if (task.status === "IN_PROGRESS") return "bg-blue-600/90 dark:bg-blue-500/80"
-  if (task.status === "BLOCKED") return "bg-red-600/90 dark:bg-red-500/80"
-  if (task.isCriticalPath) return "bg-orange-600/90 dark:bg-orange-500/80"
-  return "bg-muted-foreground/70"
+  if (task.status === "COMPLETE") return "bg-[#3f7d4d] dark:bg-[#3f7d4d]"
+  if (task.status === "IN_PROGRESS") return "bg-[#2f5963] dark:bg-[#2f5963]"
+  if (task.status === "BLOCKED") return "bg-destructive"
+  if (task.isCriticalPath) return "bg-[#9d832c]"
+  return "bg-muted-foreground/75"
 }
 
 interface WeekTask {
@@ -235,9 +235,9 @@ export function ScheduleCalendarView({
       </div>
 
       {/* Calendar grid */}
-      <div className="border rounded-md overflow-hidden flex flex-col flex-1 min-h-0">
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden border">
         {/* Weekday headers */}
-        <div className="grid grid-cols-7 border-b bg-muted/30">
+        <div className="grid grid-cols-7 border-b bg-muted/20">
           {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day) => (
             <div
               key={day}
@@ -273,16 +273,16 @@ export function ScheduleCalendarView({
                       <div
                         key={format(day, "yyyy-MM-dd")}
                         className={cn(
-                          "border-r last:border-r-0 p-1",
-                          !inMonth && "bg-muted/20",
-                          isNonWork && inMonth && "bg-muted/40",
+                          "border-r p-1 last:border-r-0",
+                          !inMonth && "bg-muted/15",
+                          isNonWork && inMonth && "bg-muted/30",
                         )}
                       >
                         <span
                           className={cn(
                             "text-[11px] leading-none",
                             isToday(day)
-                              ? "bg-primary text-primary-foreground rounded-full size-5 inline-flex items-center justify-center font-bold"
+                              ? "inline-flex size-5 items-center justify-center rounded-sm bg-primary text-primary-foreground font-bold"
                               : inMonth
                                 ? "text-foreground/80"
                                 : "text-muted-foreground/50",
@@ -304,9 +304,9 @@ export function ScheduleCalendarView({
                       className={cn(
                         "absolute text-[10px] text-white font-medium truncate px-1.5 leading-[20px] cursor-default",
                         getTaskColor(wt.task),
-                        wt.isStart && wt.isEnd && "rounded",
-                        wt.isStart && !wt.isEnd && "rounded-l",
-                        !wt.isStart && wt.isEnd && "rounded-r",
+                        wt.isStart && wt.isEnd && "rounded-[2px]",
+                        wt.isStart && !wt.isEnd && "rounded-l-[2px]",
+                        !wt.isStart && wt.isEnd && "rounded-r-[2px]",
                         !wt.isStart && !wt.isEnd && "rounded-none",
                       )}
                       style={{
