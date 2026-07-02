@@ -260,7 +260,6 @@ export function RealtimeKitMeetingWindow({
       })
       const initializedMeeting = await initMeeting({
         authToken: result.data.authToken,
-        baseURI: "realtime.cloudflare.com",
         cachedUserDetails: result.data.cachedUserDetails,
         onError: (clientError) => {
           recordRealtimeKitDiagnostic(

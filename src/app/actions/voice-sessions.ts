@@ -24,7 +24,7 @@ import { isInternalStaffRole } from "@/lib/user-roles"
 const ACTIVE_PARTICIPANT_WINDOW_MS = 30_000
 const STALE_SIGNAL_WINDOW_MS = 5 * 60_000
 const REALTIMEKIT_MEETING_CACHE_WINDOW_MS = 2 * 60 * 60_000
-const REALTIMEKIT_RETRYABLE_STATUS_CODES = new Set([502, 503, 504])
+const REALTIMEKIT_RETRYABLE_STATUS_CODES = new Set([500, 502, 503, 504])
 
 type VoiceSignalType = "offer" | "answer" | "ice"
 
