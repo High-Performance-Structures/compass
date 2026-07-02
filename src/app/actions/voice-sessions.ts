@@ -19,6 +19,7 @@ import { isInternalStaffRole } from "@/lib/user-roles"
 
 const ACTIVE_PARTICIPANT_WINDOW_MS = 30_000
 const STALE_SIGNAL_WINDOW_MS = 5 * 60_000
+const REALTIMEKIT_RETRYABLE_STATUS_CODES = new Set([502, 503, 504])
 
 type VoiceSignalType = "offer" | "answer" | "ice"
 
@@ -94,6 +95,12 @@ function readEnvString(env: CloudflareEnv, key: string): string | null {
   if (typeof value !== "string") return null
   const trimmed = value.trim()
   return trimmed.length > 0 ? trimmed : null
+}
+
+function wait(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms)
+  })
 }
 
 function realtimeKitConfigFromEnv(env: CloudflareEnv): RealtimeKitConfig | null {
@@ -229,138 +236,42 @@ function extractAuthToken(payload: unknown): string | null {
 async function realtimeKitRequest(
   config: RealtimeKitConfig,
   path: string,
-  body: Readonly<Record<string, unknown>>
+  body: Readonly<Record<string, unknown>>,
+  options?: { readonly retryOnGatewayError?: boolean }
 ): Promise<VoiceActionResult<unknown>> {
-  const response = await fetch(
-    `https://api.cloudflare.com/client/v4/accounts/${config.accountId}/realtime/kit/${config.appId}${path}`,
-    {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${config.apiToken}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(body),
-    }
-  )
-  const payload: unknown = await response.json().catch(() => null)
-  if (!response.ok) {
-    return {
-      success: false,
-      error: extractApiError(
-        payload,
-        `Cloudflare RealtimeKit request failed (${response.status})`
-      ),
-    }
-  }
-  return { success: true, data: payload }
-}
-
-async function realtimeKitGet(
-  config: RealtimeKitConfig,
-  path: string
-): Promise<VoiceActionResult<unknown>> {
-  const response = await fetch(
-    `https://api.cloudflare.com/client/v4/accounts/${config.accountId}/realtime/kit/${config.appId}${path}`,
-    {
-      method: "GET",
-      headers: {
-        Authorization: `Bearer ${config.apiToken}`,
-      },
-    }
-  )
-  const payload: unknown = await response.json().catch(() => null)
-  if (!response.ok) {
-    return {
-      success: false,
-      error: extractApiError(
-        payload,
-        `Cloudflare RealtimeKit request failed (${response.status})`
-      ),
-    }
-  }
-  return { success: true, data: payload }
-}
-
-async function realtimeKitPatch(
-  config: RealtimeKitConfig,
-  path: string,
-  body: Readonly<Record<string, unknown>>
-): Promise<VoiceActionResult<unknown>> {
-  const response = await fetch(
-    `https://api.cloudflare.com/client/v4/accounts/${config.accountId}/realtime/kit/${config.appId}${path}`,
-    {
-      method: "PATCH",
-      headers: {
-        Authorization: `Bearer ${config.apiToken}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(body),
-    }
-  )
-  const payload: unknown = await response.json().catch(() => null)
-  if (!response.ok) {
-    return {
-      success: false,
-      error: extractApiError(
-        payload,
-        `Cloudflare RealtimeKit request failed (${response.status})`
-      ),
-    }
-  }
-  return { success: true, data: payload }
-}
-
-function collectRecords(
-  value: unknown,
-  records: Readonly<Record<string, unknown>>[] = []
-): readonly Readonly<Record<string, unknown>>[] {
-  if (Array.isArray(value)) {
-    for (const item of value) collectRecords(item, records)
-    return records
-  }
-  if (!isRecord(value)) return records
-
-  records.push(value)
-  for (const child of Object.values(value)) collectRecords(child, records)
-  return records
-}
-
-function presetRefsFromPayload(
-  payload: unknown,
-  names: readonly string[]
-): readonly { readonly id: string; readonly name: string }[] {
-  const wanted = new Set(names)
-  const refs: { readonly id: string; readonly name: string }[] = []
-
-  for (const record of collectRecords(payload)) {
-    const name = firstStringValue([record], ["name", "preset_name", "presetName"])
-    if (!name || !wanted.has(name)) continue
-    const id = firstStringValue([record], ["id", "preset_id", "presetId"])
-    if (!id) continue
-    if (refs.some((ref) => ref.id === id)) continue
-    refs.push({ id, name })
-  }
-
-  return refs
-}
-
-async function ensureRealtimeKitTranscriptionPresets(
-  config: RealtimeKitConfig,
-  presetNames: readonly string[]
-): Promise<void> {
-  const listed = await realtimeKitGet(config, "/presets")
-  if (!listed.success) return
-
-  const refs = presetRefsFromPayload(listed.data, presetNames)
-  await Promise.all(
-    refs.map((ref) =>
-      realtimeKitPatch(config, `/presets/${encodeURIComponent(ref.id)}`, {
-        permissions: {
-          transcription_enabled: true,
+  const attempts = options?.retryOnGatewayError ? 2 : 1
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    const response = await fetch(
+      `https://api.cloudflare.com/client/v4/accounts/${config.accountId}/realtime/kit/${config.appId}${path}`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${config.apiToken}`,
+          "Content-Type": "application/json",
         },
-      })
+        body: JSON.stringify(body),
+      }
     )
-  ).catch(() => undefined)
+    const payload: unknown = await response.json().catch(() => null)
+    if (!response.ok) {
+      if (
+        attempt + 1 < attempts &&
+        REALTIMEKIT_RETRYABLE_STATUS_CODES.has(response.status)
+      ) {
+        await wait(700)
+        continue
+      }
+      return {
+        success: false,
+        error: extractApiError(
+          payload,
+          `Cloudflare RealtimeKit request failed (${response.status})`
+        ),
+      }
+    }
+    return { success: true, data: payload }
+  }
+  return { success: false, error: "Cloudflare RealtimeKit request failed" }
 }
 
 async function ensureRealtimeKitMeeting(
@@ -387,29 +298,7 @@ async function ensureRealtimeKitMeeting(
   }
 
   const title = `Compass Talk - ${channel.name}`
-  const created = await realtimeKitRequest(config, "/meetings", {
-    title,
-    transcribe_on_end: true,
-    summarize_on_end: true,
-    ai_config: {
-      transcription: {
-        language: "en-US",
-        keywords: [
-          "Compass",
-          "Open Range",
-          "High Performance Structures",
-          "HPS",
-          "Nu-Tech",
-          "Sage",
-          "Loeffler",
-          "Loomis",
-        ],
-      },
-    },
-  })
-  const meetingCreated = created.success
-    ? created
-    : await realtimeKitRequest(config, "/meetings", { title })
+  const meetingCreated = await realtimeKitRequest(config, "/meetings", { title })
   if (!meetingCreated.success) return meetingCreated
 
   const meeting = extractMeeting(meetingCreated.data, title)
@@ -447,7 +336,8 @@ async function createRealtimeKitParticipantToken(
         custom_participant_id: participantId,
         name: participantName,
         preset_name: presetName,
-      }
+      },
+      { retryOnGatewayError: true }
     )
     if (!created.success) {
       lastError = created.error
@@ -682,7 +572,6 @@ export async function joinRealtimeKitVoiceSession(
     const presetNames = can(user, "channels", "moderate")
       ? ["host", "group_call_host", "participant", "group_call_participant"]
       : ["participant", "group_call_participant", "host", "group_call_host"]
-    await ensureRealtimeKitTranscriptionPresets(config, presetNames)
     const authToken = await createRealtimeKitParticipantToken(
       config,
       meeting.data.id,
