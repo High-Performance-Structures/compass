@@ -19,6 +19,7 @@ import { isInternalStaffRole } from "@/lib/user-roles"
 
 const ACTIVE_PARTICIPANT_WINDOW_MS = 30_000
 const STALE_SIGNAL_WINDOW_MS = 5 * 60_000
+const REALTIMEKIT_MEETING_CACHE_WINDOW_MS = 2 * 60 * 60_000
 const REALTIMEKIT_RETRYABLE_STATUS_CODES = new Set([502, 503, 504])
 
 type VoiceSignalType = "offer" | "answer" | "ice"
@@ -81,6 +82,10 @@ function activeAfterIso(now = Date.now()): string {
 
 function staleSignalBeforeIso(now = Date.now()): string {
   return new Date(now - STALE_SIGNAL_WINDOW_MS).toISOString()
+}
+
+function staleRealtimeKitMeetingBeforeIso(now = Date.now()): string {
+  return new Date(now - REALTIMEKIT_MEETING_CACHE_WINDOW_MS).toISOString()
 }
 
 function normalizeSignalType(value: string): VoiceSignalType | null {
@@ -229,11 +234,11 @@ function extractMeeting(payload: unknown, title: string): RealtimeKitMeeting | n
 
 function extractAuthToken(payload: unknown): string | null {
   return firstStringValue(responseRecords(payload), [
-    "token",
     "authToken",
     "auth_token",
     "participantToken",
     "participant_token",
+    "token",
   ])
 }
 
@@ -288,6 +293,7 @@ async function ensureRealtimeKitMeeting(
     .select({
       meetingId: voiceRealtimeKitMeetings.meetingId,
       meetingTitle: voiceRealtimeKitMeetings.meetingTitle,
+      createdAt: voiceRealtimeKitMeetings.createdAt,
     })
     .from(voiceRealtimeKitMeetings)
     .where(eq(voiceRealtimeKitMeetings.channelId, channel.id))
@@ -295,9 +301,15 @@ async function ensureRealtimeKitMeeting(
     .then((rows) => rows[0] ?? null)
 
   if (existing) {
-    return {
-      success: true,
-      data: { id: existing.meetingId, title: existing.meetingTitle },
+    if (existing.createdAt < staleRealtimeKitMeetingBeforeIso()) {
+      await db
+        .delete(voiceRealtimeKitMeetings)
+        .where(eq(voiceRealtimeKitMeetings.channelId, channel.id))
+    } else {
+      return {
+        success: true,
+        data: { id: existing.meetingId, title: existing.meetingTitle },
+      }
     }
   }
 
