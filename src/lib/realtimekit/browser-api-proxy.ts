@@ -10,7 +10,12 @@ function recordProxyEvent(event: Readonly<Record<string, unknown>>): void {
   if (typeof document === "undefined") return
   const attribute = "data-compass-realtimekit-proxy-diagnostics"
   const existing = document.documentElement.getAttribute(attribute)
-  const parsed: unknown = existing ? JSON.parse(existing) : []
+  let parsed: unknown = []
+  try {
+    parsed = existing ? JSON.parse(existing) : []
+  } catch {
+    parsed = []
+  }
   const current = Array.isArray(parsed) ? parsed : []
   const next = [...current, event].slice(-20)
   document.documentElement.setAttribute(attribute, JSON.stringify(next))

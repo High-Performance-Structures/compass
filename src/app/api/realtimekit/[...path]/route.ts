@@ -37,6 +37,29 @@ function responseHeaders(response: Response): Headers {
   return headers
 }
 
+function isOptionalActiveTranscriptRequest(
+  method: string,
+  path: readonly string[]
+): boolean {
+  return (
+    method === "GET" &&
+    path.length === 4 &&
+    path[0] === "v2" &&
+    path[1] === "meetings" &&
+    path[3] === "active-transcript"
+  )
+}
+
+function emptyActiveTranscriptResponse(): Response {
+  return Response.json({
+    success: true,
+    data: {
+      transcript: [],
+      transcriptions: [],
+    },
+  })
+}
+
 async function realtimeKitProxy(
   request: Request,
   context: RouteContext
@@ -61,6 +84,10 @@ async function realtimeKitProxy(
     headers: requestHeaders(request),
     body,
   })
+
+  if (!upstream.ok && isOptionalActiveTranscriptRequest(method, path)) {
+    return emptyActiveTranscriptResponse()
+  }
 
   return new Response(upstream.body, {
     status: upstream.status,
