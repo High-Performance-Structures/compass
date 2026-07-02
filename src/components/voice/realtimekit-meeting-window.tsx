@@ -160,15 +160,33 @@ function realtimeKitErrorDetails(cause: unknown): Readonly<Record<string, unknow
     }
   }
   if (cause !== null && typeof cause === "object") {
+    const ownProperties: Record<string, unknown> = {}
+    for (const key of Object.getOwnPropertyNames(cause)) {
+      ownProperties[key] = Reflect.get(cause, key)
+    }
     return {
+      type: Object.prototype.toString.call(cause),
       name: Reflect.get(cause, "name"),
       message: Reflect.get(cause, "message"),
       code: Reflect.get(cause, "code"),
       stack: Reflect.get(cause, "stack"),
       cause: Reflect.get(cause, "cause"),
+      ownProperties,
+      stringValue: String(cause),
     }
   }
   return { cause }
+}
+
+function safeDiagnosticJson(value: unknown): string {
+  const seen = new WeakSet<object>()
+  return JSON.stringify(value, (_key: string, item: unknown): unknown => {
+    if (item !== null && typeof item === "object") {
+      if (seen.has(item)) return "[Circular]"
+      seen.add(item)
+    }
+    return item
+  })
 }
 
 function recordRealtimeKitDiagnostic(
@@ -178,10 +196,17 @@ function recordRealtimeKitDiagnostic(
   if (typeof window !== "undefined") {
     const existing = Reflect.get(window, "__compassRealtimeKitDiagnostics")
     const diagnostics = Array.isArray(existing) ? existing : []
-    Reflect.set(window, "__compassRealtimeKitDiagnostics", [
+    const nextDiagnostics = [
       ...diagnostics,
       { event, payload },
-    ])
+    ]
+    Reflect.set(window, "__compassRealtimeKitDiagnostics", nextDiagnostics)
+    if (typeof document !== "undefined") {
+      document.documentElement.setAttribute(
+        "data-compass-realtimekit-diagnostics",
+        safeDiagnosticJson(nextDiagnostics)
+      )
+    }
   }
   console.info(`RealtimeKit diagnostic: ${event}`, payload)
 }
