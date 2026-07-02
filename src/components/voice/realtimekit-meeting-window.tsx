@@ -346,9 +346,21 @@ export function RealtimeKitMeetingWindow({
             --rtk-colors-text: 248 250 252;
             --rtk-colors-text-1000: 248 250 252;
             --rtk-colors-text-900: 226 232 240;
+            --rtk-colors-text-800: 203 213 225;
+            --rtk-colors-text-700: 148 163 184;
+            --rtk-colors-text-600: 100 116 139;
+            --rtk-colors-brand-300: 155 211 168;
+            --rtk-colors-brand-400: 99 184 120;
             --rtk-colors-brand-500: 63 125 77;
+            --rtk-colors-brand-600: 50 102 62;
+            --rtk-colors-danger: 224 72 59;
+            --rtk-colors-warning: 217 119 6;
             --rtk-colors-background-1000: 8 17 11;
             --rtk-colors-background-900: 14 26 18;
+            --rtk-colors-background-800: 32 54 38;
+            --rtk-colors-background-700: 45 74 52;
+            --rtk-controlbar-button-background-color: rgba(248, 250, 252, 0.08);
+            --rtk-controlbar-button-icon-size: 24px;
           }
           [data-compass-meeting] rtk-controlbar-button,
           [data-compass-meeting] rtk-mic-toggle,
@@ -361,6 +373,46 @@ export function RealtimeKitMeetingWindow({
           [data-compass-meeting] rtk-polls-toggle,
           [data-compass-meeting] rtk-ai-toggle {
             color: #f8fafc;
+          }
+          [data-compass-meeting] rtk-controlbar-button {
+            border-radius: 10px;
+            filter: drop-shadow(0 6px 16px rgba(0, 0, 0, 0.22));
+          }
+          [data-compass-meeting] rtk-controlbar-button::part(button) {
+            border-color: rgba(155, 211, 168, 0.26);
+            background: rgba(248, 250, 252, 0.08);
+            color: #f8fafc;
+          }
+          [data-compass-meeting] rtk-controlbar-button::part(icon),
+          [data-compass-meeting] rtk-controlbar-button::part(label) {
+            color: #f8fafc;
+          }
+          [data-compass-meeting] rtk-controlbar-button:hover::part(button) {
+            border-color: rgba(155, 211, 168, 0.62);
+            background: rgba(63, 125, 77, 0.30);
+            color: #ffffff;
+          }
+          [data-compass-meeting] rtk-controlbar-button.active::part(button),
+          [data-compass-meeting] rtk-controlbar-button[brand-icon]::part(button) {
+            border-color: #63b878;
+            background: rgba(63, 125, 77, 0.38);
+            color: #ffffff;
+          }
+          [data-compass-meeting] rtk-controlbar-button.red-icon::part(icon),
+          [data-compass-meeting] rtk-controlbar-button.red-icon::part(label) {
+            color: #ffd6d1;
+          }
+          [data-compass-meeting] rtk-leave-button rtk-controlbar-button::part(button),
+          [data-compass-meeting] rtk-controlbar-button.leave::part(button) {
+            border-color: rgba(224, 72, 59, 0.62);
+            background: rgba(224, 72, 59, 0.18);
+            color: #fff5f3;
+          }
+          [data-compass-meeting] rtk-leave-button rtk-controlbar-button:hover::part(button),
+          [data-compass-meeting] rtk-controlbar-button.leave:hover::part(button) {
+            border-color: #f87171;
+            background: rgba(224, 72, 59, 0.36);
+            color: #ffffff;
           }
         `}
       </style>
