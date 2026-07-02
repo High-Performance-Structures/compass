@@ -28,6 +28,8 @@ type ScreenShareStatus =
   | "blocked"
   | "error"
 
+type MediaButtonStatus = "idle" | "starting" | "stopping" | "error"
+
 const MEETING_BACKGROUND_IMAGES = [
   "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1600 900'%3E%3Cdefs%3E%3ClinearGradient id='a' x1='0' x2='1' y1='0' y2='1'%3E%3Cstop stop-color='%2320170f'/%3E%3Cstop offset='.46' stop-color='%234f2f13'/%3E%3Cstop offset='1' stop-color='%233f7d4d'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect fill='url(%23a)' width='1600' height='900'/%3E%3Ccircle cx='1320' cy='160' r='260' fill='%23ffffff' opacity='.12'/%3E%3Cpath d='M0 760 C360 620 580 820 900 680 C1170 562 1320 620 1600 470 L1600 900 L0 900 Z' fill='%230b120d' opacity='.45'/%3E%3C/svg%3E",
   "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1600 900'%3E%3Cdefs%3E%3ClinearGradient id='b' x1='0' x2='1'%3E%3Cstop stop-color='%230f172a'/%3E%3Cstop offset='.52' stop-color='%233f7d4d'/%3E%3Cstop offset='1' stop-color='%239c7426'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect fill='url(%23b)' width='1600' height='900'/%3E%3Cpath d='M160 710 L520 350 L840 700 L1050 480 L1450 720 Z' fill='%23ffffff' opacity='.15'/%3E%3Cpath d='M0 720 H1600 V900 H0 Z' fill='%23050505' opacity='.38'/%3E%3C/svg%3E",
@@ -280,6 +282,12 @@ export function RealtimeKitMeetingWindow({
   const [screenShareMessage, setScreenShareMessage] = React.useState<string | null>(
     null
   )
+  const [audioEnabled, setAudioEnabled] = React.useState(false)
+  const [videoEnabled, setVideoEnabled] = React.useState(false)
+  const [audioStatus, setAudioStatus] =
+    React.useState<MediaButtonStatus>("idle")
+  const [videoStatus, setVideoStatus] =
+    React.useState<MediaButtonStatus>("idle")
   const [backgroundStatus, setBackgroundStatus] = React.useState<string | null>(
     null
   )
@@ -436,6 +444,26 @@ export function RealtimeKitMeetingWindow({
   React.useEffect(() => {
     if (!meeting) return
 
+    const handleAudioUpdate = (payload: {
+      readonly audioEnabled: boolean
+    }): void => {
+      setAudioEnabled(payload.audioEnabled)
+      setAudioStatus("idle")
+      recordRealtimeKitDiagnostic("audio-update", {
+        enabled: payload.audioEnabled,
+      })
+    }
+
+    const handleVideoUpdate = (payload: {
+      readonly videoEnabled: boolean
+    }): void => {
+      setVideoEnabled(payload.videoEnabled)
+      setVideoStatus("idle")
+      recordRealtimeKitDiagnostic("video-update", {
+        enabled: payload.videoEnabled,
+      })
+    }
+
     const handleScreenShareUpdate = (payload: {
       readonly screenShareEnabled: boolean
     }): void => {
@@ -450,6 +478,10 @@ export function RealtimeKitMeetingWindow({
 
     const handleMediaPermissionError = (payload: unknown): void => {
       recordRealtimeKitDiagnostic("media-permission-error", { payload })
+      setAudioEnabled(meeting.self.audioEnabled)
+      setVideoEnabled(meeting.self.videoEnabled)
+      setAudioStatus("idle")
+      setVideoStatus("idle")
       if (isRecord(payload) && recordValue(payload, "kind") === "screenshare") {
         setScreenShareStatus("blocked")
         setScreenShareMessage(
@@ -458,13 +490,19 @@ export function RealtimeKitMeetingWindow({
       }
     }
 
+    meeting.self.on("audioUpdate", handleAudioUpdate)
+    meeting.self.on("videoUpdate", handleVideoUpdate)
     meeting.self.on("screenShareUpdate", handleScreenShareUpdate)
     meeting.self.on("mediaPermissionError", handleMediaPermissionError)
+    setAudioEnabled(meeting.self.audioEnabled)
+    setVideoEnabled(meeting.self.videoEnabled)
     setScreenShareStatus(
       meeting.self.screenShareEnabled ? "sharing" : "idle"
     )
 
     return () => {
+      meeting.self.off("audioUpdate", handleAudioUpdate)
+      meeting.self.off("videoUpdate", handleVideoUpdate)
       meeting.self.off("screenShareUpdate", handleScreenShareUpdate)
       meeting.self.off("mediaPermissionError", handleMediaPermissionError)
     }
@@ -557,6 +595,72 @@ export function RealtimeKitMeetingWindow({
       setScreenShareMessage(errorMessageForCause(cause))
     }
   }, [meeting])
+
+  const toggleAudio = React.useCallback(async (): Promise<void> => {
+    if (!meeting) return
+
+    setScreenShareMessage(null)
+    try {
+      if (meeting.self.audioEnabled) {
+        setAudioStatus("stopping")
+        await meeting.self.disableAudio()
+      } else {
+        setAudioStatus("starting")
+        await meeting.self.enableAudio()
+      }
+      setAudioEnabled(meeting.self.audioEnabled)
+      setAudioStatus("idle")
+    } catch (cause: unknown) {
+      recordRealtimeKitDiagnostic("audio-toggle-failed", {
+        error: realtimeKitErrorDetails(cause),
+      })
+      setAudioEnabled(meeting.self.audioEnabled)
+      setAudioStatus("error")
+      setScreenShareMessage(errorMessageForCause(cause))
+    }
+  }, [meeting])
+
+  const toggleVideo = React.useCallback(async (): Promise<void> => {
+    if (!meeting) return
+
+    setScreenShareMessage(null)
+    try {
+      if (meeting.self.videoEnabled) {
+        setVideoStatus("stopping")
+        await meeting.self.disableVideo()
+      } else {
+        setVideoStatus("starting")
+        await meeting.self.enableVideo()
+      }
+      setVideoEnabled(meeting.self.videoEnabled)
+      setVideoStatus("idle")
+    } catch (cause: unknown) {
+      recordRealtimeKitDiagnostic("video-toggle-failed", {
+        error: realtimeKitErrorDetails(cause),
+      })
+      setVideoEnabled(meeting.self.videoEnabled)
+      setVideoStatus("error")
+      setScreenShareMessage(errorMessageForCause(cause))
+    }
+  }, [meeting])
+
+  const micButtonLabel =
+    audioStatus === "starting"
+      ? "Mic..."
+      : audioStatus === "stopping"
+        ? "Muting..."
+        : audioEnabled
+          ? "Mute"
+          : "Mic"
+
+  const videoButtonLabel =
+    videoStatus === "starting"
+      ? "Camera..."
+      : videoStatus === "stopping"
+        ? "Camera..."
+        : videoEnabled
+          ? "Stop Video"
+          : "Video"
 
   const screenShareButtonLabel =
     screenShareStatus === "sharing"
@@ -706,6 +810,38 @@ export function RealtimeKitMeetingWindow({
           <div className="relative min-h-0 bg-black">
             {showMeetingControls ? (
               <div className="pointer-events-none absolute left-4 top-4 z-20 flex max-w-[calc(100%-2rem)] flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => void toggleAudio()}
+                  disabled={
+                    !meeting ||
+                    audioStatus === "starting" ||
+                    audioStatus === "stopping"
+                  }
+                  className={`pointer-events-auto rounded-md border px-3 py-2 text-xs font-semibold shadow-[0_10px_28px_rgba(0,0,0,0.36)] backdrop-blur transition-colors disabled:cursor-wait disabled:opacity-70 ${
+                    audioEnabled
+                      ? "border-[#9bd3a8]/70 bg-[#3f7d4d]/75 text-white hover:border-[#c1e5c9] hover:bg-[#4f9860]/85"
+                      : "border-white/25 bg-slate-900/78 text-white hover:border-[#9bd3a8]/70 hover:bg-[#203626]/88"
+                  }`}
+                >
+                  {micButtonLabel}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void toggleVideo()}
+                  disabled={
+                    !meeting ||
+                    videoStatus === "starting" ||
+                    videoStatus === "stopping"
+                  }
+                  className={`pointer-events-auto rounded-md border px-3 py-2 text-xs font-semibold shadow-[0_10px_28px_rgba(0,0,0,0.36)] backdrop-blur transition-colors disabled:cursor-wait disabled:opacity-70 ${
+                    videoEnabled
+                      ? "border-[#9bd3a8]/70 bg-[#3f7d4d]/75 text-white hover:border-[#c1e5c9] hover:bg-[#4f9860]/85"
+                      : "border-white/25 bg-slate-900/78 text-white hover:border-[#9bd3a8]/70 hover:bg-[#203626]/88"
+                  }`}
+                >
+                  {videoButtonLabel}
+                </button>
                 <button
                   type="button"
                   onClick={() => void toggleScreenShare()}
