@@ -71,6 +71,10 @@ export type RealtimeKitJoinData = {
   readonly participantName: string
 }
 
+type RealtimeKitJoinOptions = {
+  readonly resetMeeting?: boolean
+}
+
 function activeAfterIso(now = Date.now()): string {
   return new Date(now - ACTIVE_PARTICIPANT_WINDOW_MS).toISOString()
 }
@@ -545,7 +549,8 @@ export async function joinVoiceSession(
 }
 
 export async function joinRealtimeKitVoiceSession(
-  channelId: string
+  channelId: string,
+  options?: RealtimeKitJoinOptions
 ): Promise<VoiceActionResult<RealtimeKitJoinData>> {
   try {
     const user = await getCurrentUser()
@@ -564,6 +569,12 @@ export async function joinRealtimeKitVoiceSession(
     const db = getDb(env.DB)
     const channel = await verifyVoiceChannelAccess(db, user, channelId)
     if (!channel) return { success: false, error: "Voice channel not found" }
+
+    if (options?.resetMeeting) {
+      await db
+        .delete(voiceRealtimeKitMeetings)
+        .where(eq(voiceRealtimeKitMeetings.channelId, channelId))
+    }
 
     const meeting = await ensureRealtimeKitMeeting(db, config, channel, user)
     if (!meeting.success) return { success: false, error: meeting.error }

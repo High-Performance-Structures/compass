@@ -138,6 +138,19 @@ function linesToHtml(value: string): string {
     .join("<br>")
 }
 
+function errorMessageForCause(cause: unknown): string {
+  if (cause instanceof Error && cause.message.trim().length > 0) {
+    return cause.message
+  }
+  if (cause !== null && typeof cause === "object") {
+    const message = Reflect.get(cause, "message")
+    if (typeof message === "string" && message.trim().length > 0) {
+      return message
+    }
+  }
+  return "Failed to open the Cloudflare meeting"
+}
+
 export function RealtimeKitMeetingWindow({
   channelId,
 }: {
@@ -165,13 +178,15 @@ export function RealtimeKitMeetingWindow({
     setLoading(true)
     setError(null)
 
-    void (async () => {
-      const result = await joinRealtimeKitVoiceSession(channelId)
+    const openMeeting = async (
+      resetMeeting: boolean
+    ): Promise<void> => {
+      const result = await joinRealtimeKitVoiceSession(channelId, {
+        resetMeeting,
+      })
       if (!isCurrent) return
       if (!result.success) {
-        setError(result.error)
-        setLoading(false)
-        return
+        throw new Error(result.error)
       }
 
       setMeetingTitle(result.data.meetingTitle)
@@ -183,21 +198,31 @@ export function RealtimeKitMeetingWindow({
         },
       })
       if (!initializedMeeting) {
-        setError("Cloudflare meeting did not initialize.")
-        setLoading(false)
-        return
+        throw new Error("Cloudflare meeting did not initialize.")
       }
       if (!initializedMeeting.self.roomJoined) {
         await initializedMeeting.join()
       }
+    }
+
+    void (async () => {
+      try {
+        await openMeeting(false)
+      } catch (firstCause: unknown) {
+        if (!isCurrent) return
+        try {
+          await openMeeting(true)
+        } catch (secondCause: unknown) {
+          if (!isCurrent) return
+          setError(errorMessageForCause(secondCause ?? firstCause))
+          setLoading(false)
+          return
+        }
+      }
       if (isCurrent) setLoading(false)
     })().catch((cause: unknown) => {
       if (!isCurrent) return
-      setError(
-        cause instanceof Error
-          ? cause.message
-          : "Failed to open the Cloudflare meeting"
-      )
+      setError(errorMessageForCause(cause))
       setLoading(false)
     })
 
