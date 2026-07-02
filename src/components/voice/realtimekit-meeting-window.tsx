@@ -6,6 +6,7 @@ import { createDefaultConfig, RtkMeeting } from "@cloudflare/realtimekit-react-u
 import type { UIConfig } from "@cloudflare/realtimekit-react-ui"
 import { sendMessage } from "@/app/actions/chat-messages"
 import { joinRealtimeKitVoiceSession } from "@/app/actions/voice-sessions"
+import { installRealtimeKitBrowserApiProxy } from "@/lib/realtimekit/browser-api-proxy"
 
 type TranscriptEntry = {
   readonly id: string
@@ -235,6 +236,7 @@ export function RealtimeKitMeetingWindow({
 
   React.useEffect(() => {
     let isCurrent = true
+    const uninstallApiProxy = installRealtimeKitBrowserApiProxy()
     setLoading(true)
     setError(null)
 
@@ -307,6 +309,7 @@ export function RealtimeKitMeetingWindow({
 
     return () => {
       isCurrent = false
+      uninstallApiProxy()
     }
   }, [channelId, initMeeting])
 

@@ -4,6 +4,7 @@ import * as React from "react"
 import { useRealtimeKitClient } from "@cloudflare/realtimekit-react"
 import { RtkMeeting } from "@cloudflare/realtimekit-react-ui"
 import { joinRealtimeKitVoiceSession } from "@/app/actions/voice-sessions"
+import { installRealtimeKitBrowserApiProxy } from "@/lib/realtimekit/browser-api-proxy"
 import {
   Dialog,
   DialogContent,
@@ -33,6 +34,7 @@ export function RealtimeKitMeetingDialog({
     if (!open || !channelId) return
 
     let isCurrent = true
+    const uninstallApiProxy = installRealtimeKitBrowserApiProxy()
     setLoading(true)
     setError(null)
     void (async () => {
@@ -65,6 +67,7 @@ export function RealtimeKitMeetingDialog({
 
     return () => {
       isCurrent = false
+      uninstallApiProxy()
     }
   }, [channelId, initMeeting, open])
 
