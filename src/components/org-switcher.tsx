@@ -41,15 +41,17 @@ const LEGAL_COMPANY_NAME = "High Performance Structures Inc."
 const INTERNAL_COMPANY_ALIASES: readonly string[] = [
   "hps",
   "high performance structures",
-  "high performance structures inc.",
-  "high performance structures, inc.",
+  "high performance structures inc",
   "open range construction",
   "open range construction ltd",
-  "open range construction, ltd",
 ]
 
 function normalizeCompanyLabel(value: string): string {
-  return value.trim().toLowerCase().replace(/\s+/g, " ")
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[.,]/g, "")
+    .replace(/\s+/g, " ")
 }
 
 function organizationDisplayName(org: {
