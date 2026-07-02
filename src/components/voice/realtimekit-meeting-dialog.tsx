@@ -46,6 +46,7 @@ export function RealtimeKitMeetingDialog({
       setMeetingTitle(result.data.meetingTitle)
       await initMeeting({
         authToken: result.data.authToken,
+        baseURI: "realtime.cloudflare.com",
         defaults: {
           audio: true,
           video: true,

@@ -192,6 +192,7 @@ export function RealtimeKitMeetingWindow({
       setMeetingTitle(result.data.meetingTitle)
       const initializedMeeting = await initMeeting({
         authToken: result.data.authToken,
+        baseURI: "realtime.cloudflare.com",
         defaults: {
           audio: true,
           video: true,
