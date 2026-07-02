@@ -20,6 +20,14 @@ type VideoBackgroundAddonHandle = {
   readonly unregister: () => void | Promise<void>
 }
 
+type ScreenShareStatus =
+  | "idle"
+  | "starting"
+  | "sharing"
+  | "stopping"
+  | "blocked"
+  | "error"
+
 const MEETING_BACKGROUND_IMAGES = [
   "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1600 900'%3E%3Cdefs%3E%3ClinearGradient id='a' x1='0' x2='1' y1='0' y2='1'%3E%3Cstop stop-color='%2320170f'/%3E%3Cstop offset='.46' stop-color='%234f2f13'/%3E%3Cstop offset='1' stop-color='%233f7d4d'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect fill='url(%23a)' width='1600' height='900'/%3E%3Ccircle cx='1320' cy='160' r='260' fill='%23ffffff' opacity='.12'/%3E%3Cpath d='M0 760 C360 620 580 820 900 680 C1170 562 1320 620 1600 470 L1600 900 L0 900 Z' fill='%230b120d' opacity='.45'/%3E%3C/svg%3E",
   "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1600 900'%3E%3Cdefs%3E%3ClinearGradient id='b' x1='0' x2='1'%3E%3Cstop stop-color='%230f172a'/%3E%3Cstop offset='.52' stop-color='%233f7d4d'/%3E%3Cstop offset='1' stop-color='%239c7426'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect fill='url(%23b)' width='1600' height='900'/%3E%3Cpath d='M160 710 L520 350 L840 700 L1050 480 L1450 720 Z' fill='%23ffffff' opacity='.15'/%3E%3Cpath d='M0 720 H1600 V900 H0 Z' fill='%23050505' opacity='.38'/%3E%3C/svg%3E",
@@ -152,6 +160,17 @@ function errorMessageForCause(cause: unknown): string {
   return "Failed to open the Cloudflare meeting"
 }
 
+function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
+  return value !== null && typeof value === "object" && !Array.isArray(value)
+}
+
+function recordValue(
+  record: Readonly<Record<string, unknown>>,
+  key: string
+): unknown {
+  return record[key]
+}
+
 function realtimeKitErrorDetails(cause: unknown): Readonly<Record<string, unknown>> {
   if (cause instanceof Error) {
     return {
@@ -212,6 +231,30 @@ function recordRealtimeKitDiagnostic(
   console.info(`RealtimeKit diagnostic: ${event}`, payload)
 }
 
+async function runtimeAssetAvailable(path: string): Promise<boolean> {
+  const controller = new AbortController()
+  const timeout = window.setTimeout(() => controller.abort(), 5000)
+  try {
+    const response = await fetch(path, {
+      method: "GET",
+      signal: controller.signal,
+    })
+    return response.ok
+  } catch {
+    return false
+  } finally {
+    window.clearTimeout(timeout)
+  }
+}
+
+async function videoBackgroundRuntimeAvailable(): Promise<boolean> {
+  const [tflite, tfliteSimd] = await Promise.all([
+    runtimeAssetAvailable("/tflite.wasm"),
+    runtimeAssetAvailable("/tflite-simd.wasm"),
+  ])
+  return tflite && tfliteSimd
+}
+
 export function RealtimeKitMeetingWindow({
   channelId,
 }: {
@@ -231,6 +274,14 @@ export function RealtimeKitMeetingWindow({
   )
   const [transcripts, setTranscripts] = React.useState<readonly TranscriptEntry[]>(
     []
+  )
+  const [screenShareStatus, setScreenShareStatus] =
+    React.useState<ScreenShareStatus>("idle")
+  const [screenShareMessage, setScreenShareMessage] = React.useState<string | null>(
+    null
+  )
+  const [backgroundStatus, setBackgroundStatus] = React.useState<string | null>(
+    null
   )
   const addonRef = React.useRef<VideoBackgroundAddonHandle | null>(null)
 
@@ -322,6 +373,19 @@ export function RealtimeKitMeetingWindow({
 
     let isCurrent = true
     void (async () => {
+      const runtimeAvailable = await videoBackgroundRuntimeAvailable()
+      if (!runtimeAvailable) {
+        recordRealtimeKitDiagnostic("background-runtime-unavailable", {
+          requiredAssets: ["/tflite.wasm", "/tflite-simd.wasm"],
+        })
+        if (isCurrent) {
+          setBackgroundStatus(
+            "Background effects are paused while the video ML runtime is added."
+          )
+        }
+        return
+      }
+
       const [{ default: VideoBackgroundAddon }, { registerAddons }] =
         await Promise.all([
           import("@cloudflare/realtimekit-ui-addons/video-background"),
@@ -343,6 +407,7 @@ export function RealtimeKitMeetingWindow({
       }
 
       addonRef.current = backgroundAddon
+      setBackgroundStatus(null)
       setMeetingConfig(
         registerAddons(
           [backgroundAddon],
@@ -350,7 +415,14 @@ export function RealtimeKitMeetingWindow({
           createCompassMeetingConfig()
         )
       )
-    })().catch(() => undefined)
+    })().catch((cause: unknown) => {
+      recordRealtimeKitDiagnostic("background-addon-failed", {
+        error: realtimeKitErrorDetails(cause),
+      })
+      if (isCurrent) {
+        setBackgroundStatus("Background effects could not start in this browser.")
+      }
+    })
 
     return () => {
       isCurrent = false
@@ -358,6 +430,43 @@ export function RealtimeKitMeetingWindow({
       addonRef.current = null
       if (addon) void addon.unregister()
       setMeetingConfig(createCompassMeetingConfig())
+    }
+  }, [meeting])
+
+  React.useEffect(() => {
+    if (!meeting) return
+
+    const handleScreenShareUpdate = (payload: {
+      readonly screenShareEnabled: boolean
+    }): void => {
+      setScreenShareStatus(payload.screenShareEnabled ? "sharing" : "idle")
+      setScreenShareMessage(
+        payload.screenShareEnabled ? "Screen sharing is active." : null
+      )
+      recordRealtimeKitDiagnostic("screen-share-update", {
+        enabled: payload.screenShareEnabled,
+      })
+    }
+
+    const handleMediaPermissionError = (payload: unknown): void => {
+      recordRealtimeKitDiagnostic("media-permission-error", { payload })
+      if (isRecord(payload) && recordValue(payload, "kind") === "screenshare") {
+        setScreenShareStatus("blocked")
+        setScreenShareMessage(
+          "Screen sharing was blocked or canceled by the browser."
+        )
+      }
+    }
+
+    meeting.self.on("screenShareUpdate", handleScreenShareUpdate)
+    meeting.self.on("mediaPermissionError", handleMediaPermissionError)
+    setScreenShareStatus(
+      meeting.self.screenShareEnabled ? "sharing" : "idle"
+    )
+
+    return () => {
+      meeting.self.off("screenShareUpdate", handleScreenShareUpdate)
+      meeting.self.off("mediaPermissionError", handleMediaPermissionError)
     }
   }, [meeting])
 
@@ -416,6 +525,47 @@ export function RealtimeKitMeetingWindow({
         : result.error ?? "Failed to save transcript."
     )
   }, [channelId, savedTranscriptText])
+
+  const toggleScreenShare = React.useCallback(async (): Promise<void> => {
+    if (!meeting) return
+
+    setScreenShareMessage(null)
+    try {
+      if (meeting.self.screenShareEnabled) {
+        setScreenShareStatus("stopping")
+        await meeting.self.disableScreenShare()
+        setScreenShareStatus("idle")
+        setScreenShareMessage(null)
+        return
+      }
+
+      setScreenShareStatus("starting")
+      await meeting.self.enableScreenShare()
+      setScreenShareStatus(
+        meeting.self.screenShareEnabled ? "sharing" : "idle"
+      )
+      setScreenShareMessage(
+        meeting.self.screenShareEnabled
+          ? "Screen sharing is active."
+          : "Screen sharing did not start."
+      )
+    } catch (cause: unknown) {
+      recordRealtimeKitDiagnostic("screen-share-failed", {
+        error: realtimeKitErrorDetails(cause),
+      })
+      setScreenShareStatus("error")
+      setScreenShareMessage(errorMessageForCause(cause))
+    }
+  }, [meeting])
+
+  const screenShareButtonLabel =
+    screenShareStatus === "sharing"
+      ? "Stop Sharing"
+      : screenShareStatus === "starting"
+        ? "Starting..."
+        : screenShareStatus === "stopping"
+          ? "Stopping..."
+          : "Share Screen"
 
   return (
     <main
@@ -505,14 +655,39 @@ export function RealtimeKitMeetingWindow({
             Compass meeting with notes, transcript, and background effects
           </p>
         </div>
-        <button
-          type="button"
-          onClick={() => window.close()}
-          className="rounded-md border border-white/15 px-3 py-1.5 text-xs font-medium text-white/80 transition-colors hover:border-white/30 hover:bg-white/10 hover:text-white"
-        >
-          Close Window
-        </button>
+        <div className="flex shrink-0 items-center gap-2">
+          {meeting && !loading && !error ? (
+            <button
+              type="button"
+              onClick={() => void toggleScreenShare()}
+              disabled={
+                screenShareStatus === "starting" ||
+                screenShareStatus === "stopping"
+              }
+              className={`rounded-md border px-3 py-1.5 text-xs font-semibold transition-colors disabled:cursor-wait disabled:opacity-70 ${
+                screenShareStatus === "sharing"
+                  ? "border-red-300/70 bg-red-500/25 text-red-50 hover:bg-red-500/35"
+                  : "border-[#9bd3a8]/50 bg-[#3f7d4d]/35 text-white hover:border-[#9bd3a8] hover:bg-[#3f7d4d]/55"
+              }`}
+            >
+              {screenShareButtonLabel}
+            </button>
+          ) : null}
+          <button
+            type="button"
+            onClick={() => window.close()}
+            className="rounded-md border border-white/15 px-3 py-1.5 text-xs font-medium text-white/80 transition-colors hover:border-white/30 hover:bg-white/10 hover:text-white"
+          >
+            Close Window
+          </button>
+        </div>
       </header>
+      {screenShareMessage || backgroundStatus ? (
+        <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-white/10 bg-white/[0.03] px-4 py-2 text-xs text-white/70">
+          {screenShareMessage ? <span>{screenShareMessage}</span> : null}
+          {backgroundStatus ? <span>{backgroundStatus}</span> : null}
+        </div>
+      ) : null}
       <section className="grid min-h-0 flex-1 grid-cols-1 xl:grid-cols-[minmax(0,1fr)_20rem]">
         {loading ? (
           <div className="flex h-full items-center justify-center text-sm text-white/70">
