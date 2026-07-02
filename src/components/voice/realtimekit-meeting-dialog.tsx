@@ -49,8 +49,8 @@ export function RealtimeKitMeetingDialog({
         baseURI: "realtime.cloudflare.com",
         cachedUserDetails: result.data.cachedUserDetails,
         defaults: {
-          audio: true,
-          video: true,
+          audio: false,
+          video: false,
         },
       })
       if (isCurrent) setLoading(false)

@@ -269,8 +269,8 @@ export function RealtimeKitMeetingWindow({
           )
         },
         defaults: {
-          audio: true,
-          video: true,
+          audio: false,
+          video: false,
         },
       })
       if (!initializedMeeting) {
