@@ -1,7 +1,10 @@
 "use server"
 
 import { and, eq, gt, inArray, sql } from "drizzle-orm"
-import type { CachedUserDetails } from "@cloudflare/realtimekit"
+import type {
+  CachedUserDetails,
+  UserDetailsResponseV2,
+} from "@cloudflare/realtimekit"
 import { getDb } from "@/db"
 import { projectMembers, users } from "@/db/schema"
 import {
@@ -78,6 +81,8 @@ type RealtimeKitParticipantToken = {
   readonly authToken: string
   readonly cachedUserDetails: CachedUserDetails
 }
+
+type RealtimeKitIceServer = CachedUserDetails["iceServers"][number]
 
 type RealtimeKitJoinOptions = {
   readonly resetMeeting?: boolean
@@ -274,10 +279,97 @@ function isCachedUserDetails(value: unknown): value is CachedUserDetails {
   )
 }
 
+function isRealtimeKitUserDetails(value: unknown): value is UserDetailsResponseV2 {
+  if (!isRecord(value)) return false
+  const participant = recordValue(value, "participant")
+  const preset = recordValue(value, "preset")
+  const meeting = recordValue(value, "meeting")
+  const socket = recordValue(value, "socket")
+  return (
+    isRecord(participant) &&
+    isRecord(preset) &&
+    isRecord(meeting) &&
+    isRecord(socket) &&
+    typeof recordValue(meeting, "title") === "string" &&
+    typeof recordValue(socket, "baseUri") === "string"
+  )
+}
+
+function iceServerFromRecord(
+  record: Readonly<Record<string, unknown>>
+): RealtimeKitIceServer | null {
+  const urls = recordValue(record, "urls")
+  const url = recordValue(record, "url")
+  if (typeof urls !== "string" || typeof url !== "string") return null
+
+  const username = recordValue(record, "username")
+  const credential = recordValue(record, "credential")
+  return {
+    urls,
+    url,
+    ...(typeof username === "string" ? { username } : {}),
+    ...(typeof credential === "string" ? { credential } : {}),
+  }
+}
+
+function extractIceServers(payload: unknown): readonly RealtimeKitIceServer[] | null {
+  const camelized = camelizeRealtimeKitPayload(payload)
+  const records = responseRecords(camelized)
+  for (const record of records) {
+    const value = recordValue(record, "iceServers")
+    if (!Array.isArray(value)) continue
+    const iceServers = value.map((item) =>
+      isRecord(item) ? iceServerFromRecord(item) : null
+    )
+    if (iceServers.every((item): item is RealtimeKitIceServer => item !== null)) {
+      return iceServers
+    }
+  }
+  return null
+}
+
 function extractCachedUserDetails(payload: unknown): CachedUserDetails | null {
-  const details = isRecord(payload) ? recordValue(payload, "data") : null
-  const camelizedDetails = camelizeRealtimeKitPayload(details)
-  return isCachedUserDetails(camelizedDetails) ? camelizedDetails : null
+  for (const record of responseRecords(payload)) {
+    const camelizedDetails = camelizeRealtimeKitPayload(record)
+    if (isCachedUserDetails(camelizedDetails)) return camelizedDetails
+  }
+  return null
+}
+
+function extractRealtimeKitUserDetails(
+  payload: unknown
+): UserDetailsResponseV2 | null {
+  for (const record of responseRecords(payload)) {
+    const camelizedDetails = camelizeRealtimeKitPayload(record)
+    if (isRealtimeKitUserDetails(camelizedDetails)) return camelizedDetails
+  }
+  return null
+}
+
+async function getRealtimeKitIceServers(
+  authToken: string
+): Promise<VoiceActionResult<readonly RealtimeKitIceServer[]>> {
+  const response = await fetch("https://api.realtime.cloudflare.com/iceservers", {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${authToken}`,
+    },
+  })
+  const payload: unknown = await response.json().catch(() => null)
+  if (!response.ok) {
+    return {
+      success: false,
+      error: extractApiError(
+        payload,
+        `Cloudflare ICE server lookup failed (${response.status})`
+      ),
+    }
+  }
+
+  const iceServers = extractIceServers(payload)
+  return iceServers
+    ? { success: true, data: iceServers }
+    : { success: false, error: "Cloudflare did not return ICE servers" }
 }
 
 function extractMeeting(payload: unknown, title: string): RealtimeKitMeeting | null {
@@ -321,12 +413,32 @@ async function validateRealtimeKitParticipantToken(
   const payload: unknown = await response.json().catch(() => null)
   if (response.ok) {
     const cachedUserDetails = extractCachedUserDetails(payload)
-    return cachedUserDetails
-      ? { success: true, data: { authToken, cachedUserDetails } }
-      : {
-          success: false,
-          error: "Cloudflare participant details were incomplete",
-        }
+    if (cachedUserDetails) {
+      return { success: true, data: { authToken, cachedUserDetails } }
+    }
+
+    const userDetails = extractRealtimeKitUserDetails(payload)
+    if (!userDetails) {
+      return {
+        success: false,
+        error: "Cloudflare participant details were incomplete",
+      }
+    }
+
+    const iceServers = await getRealtimeKitIceServers(authToken)
+    if (!iceServers.success) return iceServers
+
+    return {
+      success: true,
+      data: {
+        authToken,
+        cachedUserDetails: {
+          userDetails,
+          roomDetails: { meetingTitle: userDetails.meeting.title },
+          iceServers: [...iceServers.data],
+        },
+      },
+    }
   }
 
   return {
