@@ -216,6 +216,25 @@ function firstStringValue(
   return null
 }
 
+function stringValuesForKeys(
+  records: readonly Readonly<Record<string, unknown>>[],
+  keys: readonly string[]
+): readonly string[] {
+  const values: string[] = []
+  const seen = new Set<string>()
+  for (const record of records) {
+    for (const key of keys) {
+      const value = recordValue(record, key)
+      if (typeof value !== "string") continue
+      const trimmed = value.trim()
+      if (trimmed.length === 0 || seen.has(trimmed)) continue
+      seen.add(trimmed)
+      values.push(trimmed)
+    }
+  }
+  return values
+}
+
 function extractMeeting(payload: unknown, title: string): RealtimeKitMeeting | null {
   const records = responseRecords(payload)
   const id = firstStringValue(records, ["id", "meeting_id", "meetingId"])
@@ -232,14 +251,38 @@ function extractMeeting(payload: unknown, title: string): RealtimeKitMeeting | n
   }
 }
 
-function extractAuthToken(payload: unknown): string | null {
-  return firstStringValue(responseRecords(payload), [
+function extractAuthTokenCandidates(payload: unknown): readonly string[] {
+  return stringValuesForKeys(responseRecords(payload), [
     "authToken",
     "auth_token",
     "participantToken",
     "participant_token",
     "token",
   ])
+}
+
+async function validateRealtimeKitParticipantToken(
+  authToken: string
+): Promise<VoiceActionResult<string>> {
+  const response = await fetch(
+    "https://api.realtime.cloudflare.com/v2/internals/participant-details",
+    {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${authToken}`,
+      },
+    }
+  )
+  if (response.ok) return { success: true, data: authToken }
+
+  const payload: unknown = await response.json().catch(() => null)
+  return {
+    success: false,
+    error: extractApiError(
+      payload,
+      `RealtimeKit participant token validation failed (${response.status})`
+    ),
+  }
 }
 
 async function realtimeKitRequest(
@@ -359,9 +402,15 @@ async function createRealtimeKitParticipantToken(
       lastError = created.error
       continue
     }
-    const authToken = extractAuthToken(created.data)
-    if (authToken) return { success: true, data: authToken }
-    lastError = "Cloudflare did not return a participant token"
+    const authTokens = extractAuthTokenCandidates(created.data)
+    for (const authToken of authTokens) {
+      const validated = await validateRealtimeKitParticipantToken(authToken)
+      if (validated.success) return validated
+      lastError = validated.error
+    }
+    if (authTokens.length === 0) {
+      lastError = "Cloudflare did not return a participant token"
+    }
   }
   return { success: false, error: lastError }
 }
