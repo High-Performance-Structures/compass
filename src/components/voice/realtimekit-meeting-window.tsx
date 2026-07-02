@@ -171,6 +171,21 @@ function realtimeKitErrorDetails(cause: unknown): Readonly<Record<string, unknow
   return { cause }
 }
 
+function recordRealtimeKitDiagnostic(
+  event: string,
+  payload: Readonly<Record<string, unknown>>
+): void {
+  if (typeof window !== "undefined") {
+    const existing = Reflect.get(window, "__compassRealtimeKitDiagnostics")
+    const diagnostics = Array.isArray(existing) ? existing : []
+    Reflect.set(window, "__compassRealtimeKitDiagnostics", [
+      ...diagnostics,
+      { event, payload },
+    ])
+  }
+  console.info(`RealtimeKit diagnostic: ${event}`, payload)
+}
+
 export function RealtimeKitMeetingWindow({
   channelId,
 }: {
@@ -210,7 +225,7 @@ export function RealtimeKitMeetingWindow({
       }
 
       setMeetingTitle(result.data.meetingTitle)
-      console.info("RealtimeKit join payload", {
+      recordRealtimeKitDiagnostic("join-payload", {
         meetingId: result.data.meetingId,
         meetingTitle: result.data.meetingTitle,
         presetName: result.data.cachedUserDetails.userDetails.preset.name,
@@ -223,7 +238,10 @@ export function RealtimeKitMeetingWindow({
         baseURI: "realtime.cloudflare.com",
         cachedUserDetails: result.data.cachedUserDetails,
         onError: (clientError) => {
-          console.error("RealtimeKit client error", realtimeKitErrorDetails(clientError))
+          recordRealtimeKitDiagnostic(
+            "client-error",
+            realtimeKitErrorDetails(clientError)
+          )
         },
         defaults: {
           audio: true,
@@ -247,7 +265,7 @@ export function RealtimeKitMeetingWindow({
           await openMeeting(true)
         } catch (secondCause: unknown) {
           if (!isCurrent) return
-          console.error("RealtimeKit meeting open failed", {
+          recordRealtimeKitDiagnostic("open-failed", {
             first: realtimeKitErrorDetails(firstCause),
             second: realtimeKitErrorDetails(secondCause),
           })
