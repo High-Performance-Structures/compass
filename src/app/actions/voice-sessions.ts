@@ -1,6 +1,7 @@
 "use server"
 
 import { and, eq, gt, inArray, sql } from "drizzle-orm"
+import type { CachedUserDetails } from "@cloudflare/realtimekit"
 import { getDb } from "@/db"
 import { projectMembers, users } from "@/db/schema"
 import {
@@ -67,9 +68,15 @@ type RealtimeKitMeeting = {
 
 export type RealtimeKitJoinData = {
   readonly authToken: string
+  readonly cachedUserDetails: CachedUserDetails
   readonly meetingId: string
   readonly meetingTitle: string
   readonly participantName: string
+}
+
+type RealtimeKitParticipantToken = {
+  readonly authToken: string
+  readonly cachedUserDetails: CachedUserDetails
 }
 
 type RealtimeKitJoinOptions = {
@@ -235,6 +242,44 @@ function stringValuesForKeys(
   return values
 }
 
+function camelCaseKey(value: string): string {
+  return value.replace(/([-_]\w)/g, (match) => match[1]?.toUpperCase() ?? "")
+}
+
+function camelizeRealtimeKitPayload(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map(camelizeRealtimeKitPayload)
+  }
+  if (!isRecord(value)) return value
+
+  const next: Record<string, unknown> = {}
+  for (const [key, childValue] of Object.entries(value)) {
+    next[camelCaseKey(key)] = camelizeRealtimeKitPayload(childValue)
+  }
+  return next
+}
+
+function isCachedUserDetails(value: unknown): value is CachedUserDetails {
+  if (!isRecord(value)) return false
+  const userDetails = recordValue(value, "userDetails")
+  const roomDetails = recordValue(value, "roomDetails")
+  const iceServers = recordValue(value, "iceServers")
+  const peerId = recordValue(value, "peerId")
+  return (
+    isRecord(userDetails) &&
+    isRecord(roomDetails) &&
+    Array.isArray(iceServers) &&
+    iceServers.every(isRecord) &&
+    (peerId === undefined || typeof peerId === "string")
+  )
+}
+
+function extractCachedUserDetails(payload: unknown): CachedUserDetails | null {
+  const details = isRecord(payload) ? recordValue(payload, "data") : null
+  const camelizedDetails = camelizeRealtimeKitPayload(details)
+  return isCachedUserDetails(camelizedDetails) ? camelizedDetails : null
+}
+
 function extractMeeting(payload: unknown, title: string): RealtimeKitMeeting | null {
   const records = responseRecords(payload)
   const id = firstStringValue(records, ["id", "meeting_id", "meetingId"])
@@ -263,7 +308,7 @@ function extractAuthTokenCandidates(payload: unknown): readonly string[] {
 
 async function validateRealtimeKitParticipantToken(
   authToken: string
-): Promise<VoiceActionResult<string>> {
+): Promise<VoiceActionResult<RealtimeKitParticipantToken>> {
   const response = await fetch(
     "https://api.realtime.cloudflare.com/v2/internals/participant-details",
     {
@@ -273,9 +318,17 @@ async function validateRealtimeKitParticipantToken(
       },
     }
   )
-  if (response.ok) return { success: true, data: authToken }
-
   const payload: unknown = await response.json().catch(() => null)
+  if (response.ok) {
+    const cachedUserDetails = extractCachedUserDetails(payload)
+    return cachedUserDetails
+      ? { success: true, data: { authToken, cachedUserDetails } }
+      : {
+          success: false,
+          error: "Cloudflare participant details were incomplete",
+        }
+  }
+
   return {
     success: false,
     error: extractApiError(
@@ -385,7 +438,7 @@ async function createRealtimeKitParticipantToken(
   participantName: string,
   participantId: string,
   presetNames: readonly string[]
-): Promise<VoiceActionResult<string>> {
+): Promise<VoiceActionResult<RealtimeKitParticipantToken>> {
   let lastError = "Failed to create RealtimeKit participant"
   for (const presetName of presetNames) {
     const created = await realtimeKitRequest(
@@ -656,7 +709,8 @@ export async function joinRealtimeKitVoiceSession(
     return {
       success: true,
       data: {
-        authToken: authToken.data,
+        authToken: authToken.data.authToken,
+        cachedUserDetails: authToken.data.cachedUserDetails,
         meetingId: meeting.data.id,
         meetingTitle: meeting.data.title,
         participantName,
