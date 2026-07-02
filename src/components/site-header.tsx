@@ -6,6 +6,7 @@ import {
   IconLogout,
   IconMenu2,
   IconMoon,
+  IconHeadphones,
   IconSearch,
   IconSparkles,
   IconSun,
@@ -32,6 +33,9 @@ import {
 import { AccountModal } from "@/components/account-modal"
 import { getInitials } from "@/lib/utils"
 import type { SidebarUser } from "@/lib/auth"
+
+const OFFICE_TALK_MEETING_HREF =
+  "/dashboard/conversations/voice-office-talk-0a72accb-1cd1-4d2d-86d7-88b0e26a8899/meeting"
 
 export function SiteHeader({
   user,
@@ -109,6 +113,22 @@ export function SiteHeader({
             <IconMoon className="size-4 block dark:hidden" />
           </button>
           <NotificationsPopover />
+          <Button
+            asChild
+            variant="ghost"
+            size="icon"
+            className="size-9 rounded-full text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+          >
+            <a
+              href={OFFICE_TALK_MEETING_HREF}
+              target="_blank"
+              rel="noreferrer"
+              aria-label="Open Office Talk"
+              title="Office Talk"
+            >
+              <IconHeadphones className="size-4" />
+            </a>
+          </Button>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button
@@ -177,6 +197,22 @@ export function SiteHeader({
 
         <div className="flex shrink-0 items-center justify-end gap-0.5">
           <NotificationsPopover />
+          <Button
+            asChild
+            variant="ghost"
+            size="icon"
+            className="size-7 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+          >
+            <a
+              href={OFFICE_TALK_MEETING_HREF}
+              target="_blank"
+              rel="noreferrer"
+              aria-label="Open Office Talk"
+              title="Office Talk"
+            >
+              <IconHeadphones className="size-4" />
+            </a>
+          </Button>
           <Button
             variant="ghost"
             size="icon"

@@ -566,6 +566,11 @@ export function RealtimeKitMeetingWindow({
         : screenShareStatus === "stopping"
           ? "Stopping..."
           : "Share Screen"
+  const backgroundButtonLabel = backgroundStatus
+    ? "Background Paused"
+    : "Background"
+
+  const showMeetingControls = !error
 
   return (
     <main
@@ -698,14 +703,48 @@ export function RealtimeKitMeetingWindow({
             {error}
           </div>
         ) : (
-          <RtkMeeting
-            meeting={meeting}
-            config={meetingConfig}
-            applyDesignSystem
-            leaveOnUnmount
-            loadConfigFromPreset={false}
-            showSetupScreen={false}
-          />
+          <div className="relative min-h-0 bg-black">
+            {showMeetingControls ? (
+              <div className="pointer-events-none absolute left-4 top-4 z-20 flex max-w-[calc(100%-2rem)] flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => void toggleScreenShare()}
+                  disabled={
+                    !meeting ||
+                    screenShareStatus === "starting" ||
+                    screenShareStatus === "stopping"
+                  }
+                  className={`pointer-events-auto rounded-md border px-3 py-2 text-xs font-semibold shadow-[0_10px_28px_rgba(0,0,0,0.36)] backdrop-blur transition-colors disabled:cursor-wait disabled:opacity-70 ${
+                    screenShareStatus === "sharing"
+                      ? "border-red-300/70 bg-red-500/35 text-red-50 hover:bg-red-500/45"
+                      : "border-[#9bd3a8]/70 bg-[#3f7d4d]/75 text-white hover:border-[#c1e5c9] hover:bg-[#4f9860]/85"
+                  }`}
+                >
+                  {screenShareButtonLabel}
+                </button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setBackgroundStatus(
+                      backgroundStatus ??
+                        "Background effects are paused while the video ML runtime is added."
+                    )
+                  }
+                  className="pointer-events-auto rounded-md border border-white/25 bg-slate-900/78 px-3 py-2 text-xs font-semibold text-white shadow-[0_10px_28px_rgba(0,0,0,0.36)] backdrop-blur transition-colors hover:border-[#9bd3a8]/70 hover:bg-[#203626]/88"
+                >
+                  {backgroundButtonLabel}
+                </button>
+              </div>
+            ) : null}
+            <RtkMeeting
+              meeting={meeting}
+              config={meetingConfig}
+              applyDesignSystem
+              leaveOnUnmount
+              loadConfigFromPreset={false}
+              showSetupScreen={false}
+            />
+          </div>
         )}
         <aside className="min-h-0 border-t border-white/10 bg-[#08110b] xl:border-l xl:border-t-0">
           <div className="flex h-full min-h-0 flex-col">
