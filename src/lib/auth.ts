@@ -247,7 +247,7 @@ export async function getCurrentUser(): Promise<AuthUser | null> {
         isActive: true,
         lastLoginAt: new Date().toISOString(),
         organizationId: "hps-org-001",
-        organizationName: "HPS",
+        organizationName: "High Performance Structures Inc.",
         organizationType: "internal",
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),

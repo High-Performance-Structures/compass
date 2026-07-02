@@ -16,7 +16,7 @@ import { randomUUID } from "crypto"
 import { existsSync, readdirSync } from "fs"
 
 const HPS_ORG_ID = "hps-org-001"
-const HPS_ORG_NAME = "HPS"
+const HPS_ORG_NAME = "High Performance Structures Inc."
 const HPS_ORG_SLUG = "hps"
 const HPS_ORG_TYPE = "internal"
 

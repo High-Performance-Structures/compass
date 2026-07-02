@@ -37,6 +37,37 @@ type OrgInfo = {
   readonly role: string
 }
 
+const LEGAL_COMPANY_NAME = "High Performance Structures Inc."
+const INTERNAL_COMPANY_ALIASES: readonly string[] = [
+  "hps",
+  "high performance structures",
+  "high performance structures inc.",
+  "high performance structures, inc.",
+  "open range construction",
+  "open range construction ltd",
+  "open range construction, ltd",
+]
+
+function normalizeCompanyLabel(value: string): string {
+  return value.trim().toLowerCase().replace(/\s+/g, " ")
+}
+
+function organizationDisplayName(org: {
+  readonly name: string | null
+  readonly slug?: string
+  readonly type?: string
+}): string {
+  const name = org.name ?? "Compass"
+  const normalizedName = normalizeCompanyLabel(name)
+  const normalizedSlug = normalizeCompanyLabel(org.slug ?? "")
+  const isInternalCompany =
+    org.type === "internal" ||
+    INTERNAL_COMPANY_ALIASES.includes(normalizedName) ||
+    INTERNAL_COMPANY_ALIASES.includes(normalizedSlug)
+
+  return isInternalCompany ? LEGAL_COMPANY_NAME : name
+}
+
 export function OrgSwitcher({
   activeOrgId,
   activeOrgName,
@@ -71,7 +102,12 @@ export function OrgSwitcher({
     }
   }
 
-  const displayName = activeOrgName ?? "Compass"
+  const activeOrg = orgs.find((org) => org.id === activeOrgId)
+  const displayName = organizationDisplayName({
+    name: activeOrgName,
+    slug: activeOrg?.slug,
+    type: activeOrg?.type,
+  })
   const hasOrgs = orgs.length > 1
 
   return (
@@ -145,7 +181,7 @@ export function OrgSwitcher({
                     >
                       <OrgIcon className="size-4 shrink-0 opacity-60" />
                       <span className="truncate font-medium">
-                        {org.name}
+                        {organizationDisplayName(org)}
                       </span>
                       {isActive && (
                         <IconCheck

@@ -10,7 +10,7 @@ VALUES
 -- seed organizations
 INSERT INTO organizations (id, name, slug, type, logo_url, is_active, created_at, updated_at)
 VALUES
-  ('org-1', 'Open Range Construction', 'open-range', 'internal', NULL, 1, '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z'),
+  ('org-1', 'High Performance Structures Inc.', 'open-range', 'internal', NULL, 1, '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z'),
   ('org-2', 'Example Corp', 'example-corp', 'client', NULL, 1, '2026-02-01T00:00:00Z', '2026-02-01T00:00:00Z');
 
 -- seed organization members
