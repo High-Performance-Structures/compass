@@ -151,6 +151,26 @@ function errorMessageForCause(cause: unknown): string {
   return "Failed to open the Cloudflare meeting"
 }
 
+function realtimeKitErrorDetails(cause: unknown): Readonly<Record<string, unknown>> {
+  if (cause instanceof Error) {
+    return {
+      name: cause.name,
+      message: cause.message,
+      stack: cause.stack,
+    }
+  }
+  if (cause !== null && typeof cause === "object") {
+    return {
+      name: Reflect.get(cause, "name"),
+      message: Reflect.get(cause, "message"),
+      code: Reflect.get(cause, "code"),
+      stack: Reflect.get(cause, "stack"),
+      cause: Reflect.get(cause, "cause"),
+    }
+  }
+  return { cause }
+}
+
 export function RealtimeKitMeetingWindow({
   channelId,
 }: {
@@ -190,10 +210,21 @@ export function RealtimeKitMeetingWindow({
       }
 
       setMeetingTitle(result.data.meetingTitle)
+      console.info("RealtimeKit join payload", {
+        meetingId: result.data.meetingId,
+        meetingTitle: result.data.meetingTitle,
+        presetName: result.data.cachedUserDetails.userDetails.preset.name,
+        socketBaseUri:
+          result.data.cachedUserDetails.userDetails.socket.baseUri,
+        iceServerCount: result.data.cachedUserDetails.iceServers.length,
+      })
       const initializedMeeting = await initMeeting({
         authToken: result.data.authToken,
         baseURI: "realtime.cloudflare.com",
         cachedUserDetails: result.data.cachedUserDetails,
+        onError: (clientError) => {
+          console.error("RealtimeKit client error", realtimeKitErrorDetails(clientError))
+        },
         defaults: {
           audio: true,
           video: true,
@@ -216,6 +247,10 @@ export function RealtimeKitMeetingWindow({
           await openMeeting(true)
         } catch (secondCause: unknown) {
           if (!isCurrent) return
+          console.error("RealtimeKit meeting open failed", {
+            first: realtimeKitErrorDetails(firstCause),
+            second: realtimeKitErrorDetails(secondCause),
+          })
           setError(errorMessageForCause(secondCause ?? firstCause))
           setLoading(false)
           return
