@@ -294,7 +294,6 @@ export function RealtimeKitMeetingWindow({
   )
   const [canScreenShare, setCanScreenShare] = React.useState(false)
   const addonRef = React.useRef<VideoBackgroundAddonHandle | null>(null)
-  const sidePanelRef = React.useRef<HTMLElement | null>(null)
 
   React.useEffect(() => {
     setCanScreenShare(
@@ -696,25 +695,12 @@ export function RealtimeKitMeetingWindow({
     ? "Background Paused"
     : "Background"
 
-  const openSidePanel = React.useCallback(
-    (panel: "notes" | "transcript"): void => {
-      setActivePanel(panel)
-      window.requestAnimationFrame(() => {
-        sidePanelRef.current?.scrollIntoView({
-          behavior: "smooth",
-          block: "start",
-        })
-      })
-    },
-    []
-  )
-
   const showMeetingControls = !error
 
   return (
     <main
       data-compass-meeting
-      className="flex h-dvh min-h-dvh flex-col bg-slate-950 text-white"
+      className="fixed inset-0 z-[100] flex h-dvh min-h-dvh flex-col bg-slate-950 text-white"
     >
       <style>
         {`
@@ -809,32 +795,6 @@ export function RealtimeKitMeetingWindow({
           </button>
         </div>
       </header>
-      {showMeetingControls ? (
-        <div className="flex shrink-0 items-center gap-2 border-b border-white/10 bg-[#08110b] px-3 py-2 xl:hidden">
-          <button
-            type="button"
-            onClick={() => openSidePanel("notes")}
-            className={`flex-1 rounded-sm border px-3 py-2 text-xs font-semibold transition-colors ${
-              activePanel === "notes"
-                ? "border-[#9bd3a8]/70 bg-[#3f7d4d] text-white"
-                : "border-white/20 bg-white/[0.04] text-white hover:border-[#9bd3a8]/70 hover:bg-[#203626]"
-            }`}
-          >
-            Notes
-          </button>
-          <button
-            type="button"
-            onClick={() => openSidePanel("transcript")}
-            className={`flex-1 rounded-sm border px-3 py-2 text-xs font-semibold transition-colors ${
-              activePanel === "transcript"
-                ? "border-[#9bd3a8]/70 bg-[#3f7d4d] text-white"
-                : "border-white/20 bg-white/[0.04] text-white hover:border-[#9bd3a8]/70 hover:bg-[#203626]"
-            }`}
-          >
-            Transcript
-          </button>
-        </div>
-      ) : null}
       {screenShareMessage || backgroundStatus ? (
         <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-white/10 bg-white/[0.03] px-4 py-2 text-xs text-white/70">
           {screenShareMessage ? <span>{screenShareMessage}</span> : null}
@@ -843,11 +803,11 @@ export function RealtimeKitMeetingWindow({
       ) : null}
       <section className="grid min-h-0 flex-1 grid-cols-1 overflow-y-auto pb-28 xl:grid-cols-[minmax(0,1fr)_20rem] xl:overflow-hidden xl:pb-0">
         {loading ? (
-          <div className="flex h-full items-center justify-center text-sm text-white/70">
+          <div className="flex h-full items-center justify-center text-sm text-white/70 xl:col-span-2">
             Opening secure meeting...
           </div>
         ) : error ? (
-          <div className="flex h-full items-center justify-center px-6 text-center text-sm text-red-200">
+          <div className="flex h-full items-center justify-center px-6 text-center text-sm text-red-200 xl:col-span-2">
             {error}
           </div>
         ) : (
@@ -930,124 +890,123 @@ export function RealtimeKitMeetingWindow({
             ) : null}
           </div>
         )}
-        <aside
-          ref={sidePanelRef}
-          className="min-h-0 border-t border-white/10 bg-[#08110b] xl:border-l xl:border-t-0"
-        >
-          <div className="flex h-full min-h-0 flex-col">
-            <div className="flex shrink-0 border-b border-white/10 p-2">
-              <button
-                type="button"
-                onClick={() => setActivePanel("notes")}
-                className={`flex-1 rounded-sm px-3 py-2 text-sm font-medium transition-colors ${
-                  activePanel === "notes"
-                    ? "bg-[#3f7d4d] text-white"
-                    : "text-white/70 hover:bg-white/10 hover:text-white"
-                }`}
-              >
-                Notes
-              </button>
-              <button
-                type="button"
-                onClick={() => setActivePanel("transcript")}
-                className={`flex-1 rounded-sm px-3 py-2 text-sm font-medium transition-colors ${
-                  activePanel === "transcript"
-                    ? "bg-[#3f7d4d] text-white"
-                    : "text-white/70 hover:bg-white/10 hover:text-white"
-                }`}
-              >
-                Transcript
-              </button>
-            </div>
-            {activePanel === "notes" ? (
-              <div className="flex min-h-0 flex-1 flex-col gap-3 p-3">
-                <textarea
-                  value={notes}
-                  onChange={(event) => setNotes(event.currentTarget.value)}
-                  placeholder="Meeting notes..."
-                  className="min-h-0 flex-1 resize-none rounded-sm border border-white/15 bg-white/5 p-3 text-sm text-white outline-none transition-colors placeholder:text-white/35 focus:border-[#63b878]"
-                />
+        {!loading && !error ? (
+          <aside className="min-h-0 border-t border-white/10 bg-[#08110b] xl:border-l xl:border-t-0">
+            <div className="flex h-full min-h-0 flex-col">
+              <div className="flex shrink-0 border-b border-white/10 p-2">
                 <button
                   type="button"
-                  onClick={() => void saveMeetingNotes()}
-                  className="rounded-sm bg-[#3f7d4d] px-3 py-2 text-sm font-semibold text-white transition-colors hover:bg-[#4f9860]"
+                  onClick={() => setActivePanel("notes")}
+                  className={`flex-1 rounded-sm px-3 py-2 text-sm font-medium transition-colors ${
+                    activePanel === "notes"
+                      ? "bg-[#3f7d4d] text-white"
+                      : "text-white/70 hover:bg-white/10 hover:text-white"
+                  }`}
                 >
-                  Save Notes to Conversation
+                  Notes
                 </button>
-                {notesStatus ? (
-                  <p className="text-xs text-white/55">{notesStatus}</p>
-                ) : null}
+                <button
+                  type="button"
+                  onClick={() => setActivePanel("transcript")}
+                  className={`flex-1 rounded-sm px-3 py-2 text-sm font-medium transition-colors ${
+                    activePanel === "transcript"
+                      ? "bg-[#3f7d4d] text-white"
+                      : "text-white/70 hover:bg-white/10 hover:text-white"
+                  }`}
+                >
+                  Transcript
+                </button>
               </div>
-            ) : (
-              <div className="flex min-h-0 flex-1 flex-col">
-                <div className="min-h-0 flex-1 space-y-2 overflow-y-auto p-3">
-                  {!transcriptEnabled ? (
-                    <div className="rounded-sm border border-white/10 bg-white/5 p-3 text-sm text-white/65">
-                      <p className="font-semibold text-white">
-                        Transcript capture is off.
-                      </p>
-                      <p className="mt-1">
-                        Start it only after everyone knows the meeting is being
-                        transcribed.
-                      </p>
-                    </div>
+              {activePanel === "notes" ? (
+                <div className="flex min-h-0 flex-1 flex-col gap-3 p-3">
+                  <textarea
+                    value={notes}
+                    onChange={(event) => setNotes(event.currentTarget.value)}
+                    placeholder="Meeting notes..."
+                    className="min-h-0 flex-1 resize-none rounded-sm border border-white/15 bg-white/5 p-3 text-sm text-white outline-none transition-colors placeholder:text-white/35 focus:border-[#63b878]"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => void saveMeetingNotes()}
+                    className="rounded-sm bg-[#3f7d4d] px-3 py-2 text-sm font-semibold text-white transition-colors hover:bg-[#4f9860]"
+                  >
+                    Save Notes to Conversation
+                  </button>
+                  {notesStatus ? (
+                    <p className="text-xs text-white/55">{notesStatus}</p>
                   ) : null}
-                  {transcripts.length === 0 ? (
-                    <p className="rounded-sm border border-white/10 bg-white/5 p-3 text-sm text-white/60">
-                      {transcriptEnabled
-                        ? "No transcript lines yet."
-                        : "No transcript has been captured for this meeting."}
-                    </p>
-                  ) : null}
-                  {transcripts.length > 0
-                    ? transcripts.map((entry) => (
-                      <div
-                        key={transcriptKey(entry)}
-                        className={`rounded-sm border p-2 text-sm ${
-                          entry.isPartialTranscript
-                            ? "border-white/10 bg-white/5 text-white/55"
-                            : "border-[#3f7d4d]/50 bg-[#3f7d4d]/10 text-white"
-                        }`}
-                      >
-                        <div className="mb-1 flex items-center justify-between gap-2 text-xs text-white/45">
-                          <span className="truncate font-medium">{entry.name}</span>
-                          <span>
-                            {entry.date.toLocaleTimeString([], {
-                              hour: "numeric",
-                              minute: "2-digit",
-                            })}
-                          </span>
-                        </div>
-                        <p>{entry.transcript}</p>
+                </div>
+              ) : (
+                <div className="flex min-h-0 flex-1 flex-col">
+                  <div className="min-h-0 flex-1 space-y-2 overflow-y-auto p-3">
+                    {!transcriptEnabled ? (
+                      <div className="rounded-sm border border-white/10 bg-white/5 p-3 text-sm text-white/65">
+                        <p className="font-semibold text-white">
+                          Transcript capture is off.
+                        </p>
+                        <p className="mt-1">
+                          Start it only after everyone knows the meeting is being
+                          transcribed.
+                        </p>
                       </div>
-                    ))
-                    : null}
+                    ) : null}
+                    {transcripts.length === 0 ? (
+                      <p className="rounded-sm border border-white/10 bg-white/5 p-3 text-sm text-white/60">
+                        {transcriptEnabled
+                          ? "No transcript lines yet."
+                          : "No transcript has been captured for this meeting."}
+                      </p>
+                    ) : null}
+                    {transcripts.length > 0
+                      ? transcripts.map((entry) => (
+                          <div
+                            key={transcriptKey(entry)}
+                            className={`rounded-sm border p-2 text-sm ${
+                              entry.isPartialTranscript
+                                ? "border-white/10 bg-white/5 text-white/55"
+                                : "border-[#3f7d4d]/50 bg-[#3f7d4d]/10 text-white"
+                            }`}
+                          >
+                            <div className="mb-1 flex items-center justify-between gap-2 text-xs text-white/45">
+                              <span className="truncate font-medium">{entry.name}</span>
+                              <span>
+                                {entry.date.toLocaleTimeString([], {
+                                  hour: "numeric",
+                                  minute: "2-digit",
+                                })}
+                              </span>
+                            </div>
+                            <p>{entry.transcript}</p>
+                          </div>
+                        ))
+                      : null}
+                  </div>
+                  <div className="grid shrink-0 gap-2 border-t border-white/10 p-3 sm:grid-cols-2">
+                    <button
+                      type="button"
+                      onClick={toggleTranscriptCapture}
+                      className={`rounded-sm px-3 py-2 text-sm font-semibold text-white transition-colors ${
+                        transcriptEnabled
+                          ? "border border-white/20 bg-white/10 hover:bg-white/15"
+                          : "bg-[#3f7d4d] hover:bg-[#4f9860]"
+                      }`}
+                    >
+                      {transcriptEnabled ? "Pause Transcript" : "Start Transcript"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void saveTranscript()}
+                      disabled={savedTranscriptText.length === 0}
+                      className="rounded-sm bg-[#3f7d4d] px-3 py-2 text-sm font-semibold text-white transition-colors hover:bg-[#4f9860] disabled:cursor-not-allowed disabled:bg-white/10 disabled:text-white/40"
+                    >
+                      Save Transcript to Conversation
+                    </button>
+                  </div>
                 </div>
-                <div className="grid shrink-0 gap-2 border-t border-white/10 p-3 sm:grid-cols-2">
-                  <button
-                    type="button"
-                    onClick={toggleTranscriptCapture}
-                    className={`rounded-sm px-3 py-2 text-sm font-semibold text-white transition-colors ${
-                      transcriptEnabled
-                        ? "border border-white/20 bg-white/10 hover:bg-white/15"
-                        : "bg-[#3f7d4d] hover:bg-[#4f9860]"
-                    }`}
-                  >
-                    {transcriptEnabled ? "Pause Transcript" : "Start Transcript"}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => void saveTranscript()}
-                    disabled={savedTranscriptText.length === 0}
-                    className="rounded-sm bg-[#3f7d4d] px-3 py-2 text-sm font-semibold text-white transition-colors hover:bg-[#4f9860] disabled:cursor-not-allowed disabled:bg-white/10 disabled:text-white/40"
-                  >
-                    Save Transcript to Conversation
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-        </aside>
+              )}
+            </div>
+          </aside>
+        ) : null}
       </section>
     </main>
   )

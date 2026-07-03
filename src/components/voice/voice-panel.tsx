@@ -72,7 +72,7 @@ export function VoicePanel(): React.ReactElement {
           ? "Voice Connected"
           : "Voice Paused"
   const statusColor =
-    connectionStatus === "error" ? "text-destructive" : "text-emerald-500"
+    connectionStatus === "error" ? "text-destructive" : "text-emerald-400"
 
   const clearMeetingWindowPoll = React.useCallback((): void => {
     if (meetingWindowPollRef.current) {
@@ -138,9 +138,11 @@ export function VoicePanel(): React.ReactElement {
           <span className="font-medium">{statusLabel}</span>
         </div>
         <div className="mb-2 flex items-center justify-between">
-          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+          <div className="flex min-w-0 items-center gap-1.5 text-xs text-sidebar-foreground/85">
             <span className="truncate">#{channelName}</span>
-            <span>{participantCount} user{participantCount === 1 ? "" : "s"}</span>
+            <span className="shrink-0 text-sidebar-foreground/75">
+              {participantCount} user{participantCount === 1 ? "" : "s"}
+            </span>
           </div>
           <Tooltip>
             <TooltipTrigger asChild>
