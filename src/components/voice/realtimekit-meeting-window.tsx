@@ -780,7 +780,7 @@ export function RealtimeKitMeetingWindow({
           {backgroundStatus ? <span>{backgroundStatus}</span> : null}
         </div>
       ) : null}
-      <section className="grid min-h-0 flex-1 grid-cols-1 overflow-y-auto xl:grid-cols-[minmax(0,1fr)_20rem] xl:overflow-hidden">
+      <section className="grid min-h-0 flex-1 grid-cols-1 overflow-y-auto pb-28 xl:grid-cols-[minmax(0,1fr)_20rem] xl:overflow-hidden xl:pb-0">
         {loading ? (
           <div className="flex h-full items-center justify-center text-sm text-white/70">
             Opening secure meeting...
@@ -791,7 +791,7 @@ export function RealtimeKitMeetingWindow({
           </div>
         ) : (
           <div className="flex min-h-0 flex-col bg-black">
-            <div className="relative h-[58dvh] min-h-72 shrink-0 xl:h-auto xl:min-h-0 xl:flex-1">
+            <div className="relative min-h-0 flex-1">
               <RtkMeeting
                 meeting={meeting}
                 config={meetingConfig}
@@ -802,7 +802,7 @@ export function RealtimeKitMeetingWindow({
               />
             </div>
             {showMeetingControls ? (
-              <div className="flex shrink-0 flex-wrap items-center justify-center gap-2 border-t border-white/10 bg-[#070b08] px-3 py-3">
+              <div className="fixed inset-x-0 bottom-0 z-50 flex shrink-0 flex-wrap items-center justify-center gap-2 border-t border-white/10 bg-[#070b08]/95 px-3 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] pt-3 shadow-[0_-16px_40px_rgba(0,0,0,0.38)] backdrop-blur xl:static xl:bg-[#070b08] xl:pb-3 xl:shadow-none xl:backdrop-blur-none">
                 <button
                   type="button"
                   onClick={() => void toggleAudio()}
