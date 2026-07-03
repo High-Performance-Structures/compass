@@ -780,7 +780,7 @@ export function RealtimeKitMeetingWindow({
           {backgroundStatus ? <span>{backgroundStatus}</span> : null}
         </div>
       ) : null}
-      <section className="grid min-h-0 flex-1 grid-cols-1 xl:grid-cols-[minmax(0,1fr)_20rem]">
+      <section className="grid min-h-0 flex-1 grid-cols-1 overflow-y-auto xl:grid-cols-[minmax(0,1fr)_20rem] xl:overflow-hidden">
         {loading ? (
           <div className="flex h-full items-center justify-center text-sm text-white/70">
             Opening secure meeting...
@@ -791,7 +791,7 @@ export function RealtimeKitMeetingWindow({
           </div>
         ) : (
           <div className="flex min-h-0 flex-col bg-black">
-            <div className="relative min-h-0 flex-1">
+            <div className="relative h-[58dvh] min-h-72 shrink-0 xl:h-auto xl:min-h-0 xl:flex-1">
               <RtkMeeting
                 meeting={meeting}
                 config={meetingConfig}
