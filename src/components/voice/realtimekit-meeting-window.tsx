@@ -292,6 +292,7 @@ export function RealtimeKitMeetingWindow({
     null
   )
   const addonRef = React.useRef<VideoBackgroundAddonHandle | null>(null)
+  const sidePanelRef = React.useRef<HTMLElement | null>(null)
 
   React.useEffect(() => {
     let isCurrent = true
@@ -674,6 +675,19 @@ export function RealtimeKitMeetingWindow({
     ? "Background Paused"
     : "Background"
 
+  const openSidePanel = React.useCallback(
+    (panel: "notes" | "transcript"): void => {
+      setActivePanel(panel)
+      window.requestAnimationFrame(() => {
+        sidePanelRef.current?.scrollIntoView({
+          behavior: "smooth",
+          block: "start",
+        })
+      })
+    },
+    []
+  )
+
   const showMeetingControls = !error
 
   return (
@@ -802,7 +816,7 @@ export function RealtimeKitMeetingWindow({
               />
             </div>
             {showMeetingControls ? (
-              <div className="fixed inset-x-0 bottom-0 z-50 flex shrink-0 flex-wrap items-center justify-center gap-2 border-t border-white/10 bg-[#070b08]/95 px-3 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] pt-3 shadow-[0_-16px_40px_rgba(0,0,0,0.38)] backdrop-blur xl:static xl:bg-[#070b08] xl:pb-3 xl:shadow-none xl:backdrop-blur-none">
+              <div className="fixed inset-x-0 bottom-0 z-50 flex shrink-0 items-center justify-start gap-2 overflow-x-auto border-t border-white/10 bg-[#070b08]/95 px-3 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] pt-3 shadow-[0_-16px_40px_rgba(0,0,0,0.38)] backdrop-blur xl:static xl:justify-center xl:overflow-visible xl:bg-[#070b08] xl:pb-3 xl:shadow-none xl:backdrop-blur-none">
                 <button
                   type="button"
                   onClick={() => void toggleAudio()}
@@ -863,11 +877,36 @@ export function RealtimeKitMeetingWindow({
                 >
                   {backgroundButtonLabel}
                 </button>
+                <button
+                  type="button"
+                  onClick={() => openSidePanel("notes")}
+                  className={`min-w-20 rounded-sm border px-3 py-2 text-xs font-semibold transition-colors ${
+                    activePanel === "notes"
+                      ? "border-[#9bd3a8]/70 bg-[#3f7d4d] text-white hover:border-[#c1e5c9] hover:bg-[#4f9860]"
+                      : "border-white/20 bg-white/[0.04] text-white hover:border-[#9bd3a8]/70 hover:bg-[#203626]"
+                  }`}
+                >
+                  Notes
+                </button>
+                <button
+                  type="button"
+                  onClick={() => openSidePanel("transcript")}
+                  className={`min-w-24 rounded-sm border px-3 py-2 text-xs font-semibold transition-colors ${
+                    activePanel === "transcript"
+                      ? "border-[#9bd3a8]/70 bg-[#3f7d4d] text-white hover:border-[#c1e5c9] hover:bg-[#4f9860]"
+                      : "border-white/20 bg-white/[0.04] text-white hover:border-[#9bd3a8]/70 hover:bg-[#203626]"
+                  }`}
+                >
+                  Transcript
+                </button>
               </div>
             ) : null}
           </div>
         )}
-        <aside className="min-h-0 border-t border-white/10 bg-[#08110b] xl:border-l xl:border-t-0">
+        <aside
+          ref={sidePanelRef}
+          className="min-h-0 border-t border-white/10 bg-[#08110b] xl:border-l xl:border-t-0"
+        >
           <div className="flex h-full min-h-0 flex-col">
             <div className="flex shrink-0 border-b border-white/10 p-2">
               <button
