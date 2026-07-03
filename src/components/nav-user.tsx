@@ -258,8 +258,8 @@ function DeviceButtonGroup({
         className={cn(
           "flex size-5 items-center justify-center rounded-sm transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground",
           dimmed
-            ? "text-sidebar-foreground/40"
-            : "text-sidebar-foreground/60",
+            ? "text-sidebar-foreground/55"
+            : "text-sidebar-foreground/85",
         )}
       >
         <Icon className="size-3" />
@@ -271,7 +271,7 @@ function DeviceButtonGroup({
             onClick={stopEvent}
             onPointerDown={stopEvent}
             aria-label={`Select ${deviceLabel.toLowerCase()}`}
-            className="flex h-5 w-3 items-center justify-center rounded-sm text-sidebar-foreground/40 transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground"
+            className="flex h-5 w-3 items-center justify-center rounded-sm text-sidebar-foreground/65 transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground"
           >
             <IconChevronUp className="size-2.5" />
           </button>

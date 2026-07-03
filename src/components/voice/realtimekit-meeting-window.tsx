@@ -277,6 +277,7 @@ export function RealtimeKitMeetingWindow({
   const [transcripts, setTranscripts] = React.useState<readonly TranscriptEntry[]>(
     []
   )
+  const [transcriptEnabled, setTranscriptEnabled] = React.useState(false)
   const [screenShareStatus, setScreenShareStatus] =
     React.useState<ScreenShareStatus>("idle")
   const [screenShareMessage, setScreenShareMessage] = React.useState<string | null>(
@@ -291,8 +292,16 @@ export function RealtimeKitMeetingWindow({
   const [backgroundStatus, setBackgroundStatus] = React.useState<string | null>(
     null
   )
+  const [canScreenShare, setCanScreenShare] = React.useState(false)
   const addonRef = React.useRef<VideoBackgroundAddonHandle | null>(null)
   const sidePanelRef = React.useRef<HTMLElement | null>(null)
+
+  React.useEffect(() => {
+    setCanScreenShare(
+      typeof navigator !== "undefined" &&
+        typeof navigator.mediaDevices?.getDisplayMedia === "function"
+    )
+  }, [])
 
   React.useEffect(() => {
     let isCurrent = true
@@ -510,7 +519,7 @@ export function RealtimeKitMeetingWindow({
   }, [meeting])
 
   React.useEffect(() => {
-    if (!meeting) return
+    if (!meeting || !transcriptEnabled) return
     const handleTranscript = (entry: TranscriptEntry): void => {
       setTranscripts((current) => mergeTranscript(current, entry))
     }
@@ -519,7 +528,7 @@ export function RealtimeKitMeetingWindow({
     return () => {
       meeting.ai.off("transcript", handleTranscript)
     }
-  }, [meeting])
+  }, [meeting, transcriptEnabled])
 
   const savedTranscriptText = React.useMemo(
     () => transcriptText(transcripts),
@@ -564,6 +573,18 @@ export function RealtimeKitMeetingWindow({
         : result.error ?? "Failed to save transcript."
     )
   }, [channelId, savedTranscriptText])
+
+  const toggleTranscriptCapture = React.useCallback((): void => {
+    setTranscriptEnabled((enabled) => {
+      const nextEnabled = !enabled
+      setNotesStatus(
+        nextEnabled
+          ? "Transcript capture started for this meeting."
+          : "Transcript capture paused."
+      )
+      return nextEnabled
+    })
+  }, [])
 
   const toggleScreenShare = React.useCallback(async (): Promise<void> => {
     if (!meeting) return
@@ -875,22 +896,24 @@ export function RealtimeKitMeetingWindow({
                 >
                   {videoButtonLabel}
                 </button>
-                <button
-                  type="button"
-                  onClick={() => void toggleScreenShare()}
-                  disabled={
-                    !meeting ||
-                    screenShareStatus === "starting" ||
-                    screenShareStatus === "stopping"
-                  }
-                  className={`min-w-28 rounded-sm border px-3 py-2 text-xs font-semibold transition-colors disabled:cursor-wait disabled:opacity-70 ${
-                    screenShareStatus === "sharing"
-                      ? "border-red-300/70 bg-red-500/35 text-red-50 hover:bg-red-500/45"
-                      : "border-[#9bd3a8]/70 bg-[#3f7d4d] text-white hover:border-[#c1e5c9] hover:bg-[#4f9860]"
-                  }`}
-                >
-                  {screenShareButtonLabel}
-                </button>
+                {canScreenShare ? (
+                  <button
+                    type="button"
+                    onClick={() => void toggleScreenShare()}
+                    disabled={
+                      !meeting ||
+                      screenShareStatus === "starting" ||
+                      screenShareStatus === "stopping"
+                    }
+                    className={`min-w-28 rounded-sm border px-3 py-2 text-xs font-semibold transition-colors disabled:cursor-wait disabled:opacity-70 ${
+                      screenShareStatus === "sharing"
+                        ? "border-red-300/70 bg-red-500/35 text-red-50 hover:bg-red-500/45"
+                        : "border-[#9bd3a8]/70 bg-[#3f7d4d] text-white hover:border-[#c1e5c9] hover:bg-[#4f9860]"
+                    }`}
+                  >
+                    {screenShareButtonLabel}
+                  </button>
+                ) : null}
                 <button
                   type="button"
                   onClick={() =>
@@ -958,14 +981,26 @@ export function RealtimeKitMeetingWindow({
             ) : (
               <div className="flex min-h-0 flex-1 flex-col">
                 <div className="min-h-0 flex-1 space-y-2 overflow-y-auto p-3">
+                  {!transcriptEnabled ? (
+                    <div className="rounded-sm border border-white/10 bg-white/5 p-3 text-sm text-white/65">
+                      <p className="font-semibold text-white">
+                        Transcript capture is off.
+                      </p>
+                      <p className="mt-1">
+                        Start it only after everyone knows the meeting is being
+                        transcribed.
+                      </p>
+                    </div>
+                  ) : null}
                   {transcripts.length === 0 ? (
                     <p className="rounded-sm border border-white/10 bg-white/5 p-3 text-sm text-white/60">
-                      No transcript lines yet. If this stays empty during a
-                      live call, the RealtimeKit preset may still need
-                      transcription enabled in Cloudflare.
+                      {transcriptEnabled
+                        ? "No transcript lines yet."
+                        : "No transcript has been captured for this meeting."}
                     </p>
-                  ) : (
-                    transcripts.map((entry) => (
+                  ) : null}
+                  {transcripts.length > 0
+                    ? transcripts.map((entry) => (
                       <div
                         key={transcriptKey(entry)}
                         className={`rounded-sm border p-2 text-sm ${
@@ -986,13 +1021,25 @@ export function RealtimeKitMeetingWindow({
                         <p>{entry.transcript}</p>
                       </div>
                     ))
-                  )}
+                    : null}
                 </div>
-                <div className="shrink-0 border-t border-white/10 p-3">
+                <div className="grid shrink-0 gap-2 border-t border-white/10 p-3 sm:grid-cols-2">
+                  <button
+                    type="button"
+                    onClick={toggleTranscriptCapture}
+                    className={`rounded-sm px-3 py-2 text-sm font-semibold text-white transition-colors ${
+                      transcriptEnabled
+                        ? "border border-white/20 bg-white/10 hover:bg-white/15"
+                        : "bg-[#3f7d4d] hover:bg-[#4f9860]"
+                    }`}
+                  >
+                    {transcriptEnabled ? "Pause Transcript" : "Start Transcript"}
+                  </button>
                   <button
                     type="button"
                     onClick={() => void saveTranscript()}
-                    className="w-full rounded-sm bg-[#3f7d4d] px-3 py-2 text-sm font-semibold text-white transition-colors hover:bg-[#4f9860]"
+                    disabled={savedTranscriptText.length === 0}
+                    className="rounded-sm bg-[#3f7d4d] px-3 py-2 text-sm font-semibold text-white transition-colors hover:bg-[#4f9860] disabled:cursor-not-allowed disabled:bg-white/10 disabled:text-white/40"
                   >
                     Save Transcript to Conversation
                   </button>

@@ -187,7 +187,7 @@ export function VoicePanel(): React.ReactElement {
               <button
                 type="button"
                 disabled
-                className="flex size-7 items-center justify-center rounded-md text-muted-foreground opacity-50"
+                className="flex size-7 items-center justify-center rounded-md border border-sidebar-border bg-sidebar-accent/70 text-sidebar-foreground/75 opacity-70"
                 aria-label="Screen share coming soon"
               >
                 <IconScreenShareOff className="size-4" />
@@ -201,7 +201,7 @@ export function VoicePanel(): React.ReactElement {
               <button
                 type="button"
                 onClick={openMeetingWindow}
-                className="flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-foreground"
+                className="flex size-7 items-center justify-center rounded-md border border-[#9bd3a8]/45 bg-[#3f7d4d] text-white shadow-sm transition-colors hover:border-[#c1e5c9] hover:bg-[#4f9860]"
                 aria-label="Open video meeting"
               >
                 <IconVideo className="size-4" />
@@ -216,8 +216,8 @@ export function VoicePanel(): React.ReactElement {
                 type="button"
                 onClick={toggleNoiseSuppression}
                 className={cn(
-                  "flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-foreground",
-                  isNoiseSuppression && "bg-sidebar-accent text-foreground"
+                  "flex size-7 items-center justify-center rounded-md border border-sidebar-border bg-sidebar-accent/70 text-sidebar-foreground transition-colors hover:border-[#9bd3a8]/60 hover:bg-[#203626] hover:text-white",
+                  isNoiseSuppression && "border-[#9bd3a8]/60 bg-[#203626] text-white"
                 )}
                 aria-label="Toggle noise suppression"
               >
@@ -232,7 +232,7 @@ export function VoicePanel(): React.ReactElement {
               <button
                 type="button"
                 disabled
-                className="flex size-7 items-center justify-center rounded-md text-muted-foreground opacity-50"
+                className="flex size-7 items-center justify-center rounded-md border border-sidebar-border bg-sidebar-accent/70 text-sidebar-foreground/75 opacity-70"
                 aria-label="Activities (coming soon)"
               >
                 <IconSparkles className="size-4" />

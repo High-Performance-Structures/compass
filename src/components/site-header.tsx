@@ -6,11 +6,11 @@ import {
   IconLogout,
   IconMenu2,
   IconMoon,
-  IconHeadphones,
   IconSearch,
   IconSparkles,
   IconSun,
   IconUserCircle,
+  IconVideo,
 } from "@tabler/icons-react"
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
@@ -129,7 +129,7 @@ export function SiteHeader({
                 aria-label="Open Office Talk"
                 title="Office Talk"
               >
-                <IconHeadphones className="size-4" />
+                <IconVideo className="size-4" />
               </a>
             </Button>
           ) : null}
@@ -215,7 +215,7 @@ export function SiteHeader({
                 aria-label="Open Office Talk"
                 title="Office Talk"
               >
-                <IconHeadphones className="size-4" />
+                <IconVideo className="size-4" />
               </a>
             </Button>
           ) : null}
