@@ -29,6 +29,10 @@ type ScreenShareStatus =
   | "error"
 
 type MediaButtonStatus = "idle" | "starting" | "stopping" | "error"
+type MeetingToolSelector =
+  | "rtk-chat-toggle"
+  | "rtk-participants-toggle"
+  | "rtk-settings-toggle"
 
 const MEETING_BACKGROUND_IMAGES = [
   "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1600 900'%3E%3Cdefs%3E%3ClinearGradient id='a' x1='0' x2='1' y1='0' y2='1'%3E%3Cstop stop-color='%2320170f'/%3E%3Cstop offset='.46' stop-color='%234f2f13'/%3E%3Cstop offset='1' stop-color='%233f7d4d'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect fill='url(%23a)' width='1600' height='900'/%3E%3Ccircle cx='1320' cy='160' r='260' fill='%23ffffff' opacity='.12'/%3E%3Cpath d='M0 760 C360 620 580 820 900 680 C1170 562 1320 620 1600 470 L1600 900 L0 900 Z' fill='%230b120d' opacity='.45'/%3E%3C/svg%3E",
@@ -79,6 +83,69 @@ function createCompassMeetingConfig(): UIConfig {
         participant_left: false,
       },
     },
+    root: {
+      ...base.root,
+      "rtk-stage": {
+        states: ["activeSidebar"],
+        children: ["rtk-grid", "rtk-notifications"],
+      },
+      "div#controlbar-left": ["rtk-settings-toggle", "rtk-screen-share-toggle"],
+      "div#controlbar-center": [
+        "rtk-mic-toggle",
+        "rtk-camera-toggle",
+        "rtk-more-toggle",
+        "rtk-leave-button",
+      ],
+      "div#controlbar-right": [
+        "rtk-chat-toggle",
+        "rtk-participants-toggle",
+        "rtk-plugins-toggle",
+      ],
+      "rtk-more-toggle.activeMoreMenu": [
+        ["rtk-fullscreen-toggle", { variant: "horizontal", slot: "more-elements" }],
+        ["rtk-pip-toggle", { variant: "horizontal", slot: "more-elements" }],
+        ["rtk-mute-all-button", { variant: "horizontal", slot: "more-elements" }],
+        [
+          "rtk-breakout-rooms-toggle",
+          { variant: "horizontal", slot: "more-elements" },
+        ],
+        ["rtk-recording-toggle", { variant: "horizontal", slot: "more-elements" }],
+        ["rtk-debugger-toggle", { variant: "horizontal" }],
+      ],
+      "rtk-more-toggle.activeMoreMenu.md": [
+        ["rtk-chat-toggle", { variant: "horizontal", slot: "more-elements" }],
+        [
+          "rtk-participants-toggle",
+          { variant: "horizontal", slot: "more-elements" },
+        ],
+        ["rtk-settings-toggle", { variant: "horizontal", slot: "more-elements" }],
+        ["rtk-plugins-toggle", { variant: "horizontal", slot: "more-elements" }],
+        ["rtk-fullscreen-toggle", { variant: "horizontal", slot: "more-elements" }],
+        ["rtk-pip-toggle", { variant: "horizontal", slot: "more-elements" }],
+        ["rtk-mute-all-button", { variant: "horizontal", slot: "more-elements" }],
+        [
+          "rtk-breakout-rooms-toggle",
+          { variant: "horizontal", slot: "more-elements" },
+        ],
+      ],
+      "rtk-more-toggle.activeMoreMenu.sm": [
+        ["rtk-chat-toggle", { variant: "horizontal", slot: "more-elements" }],
+        [
+          "rtk-participants-toggle",
+          { variant: "horizontal", slot: "more-elements" },
+        ],
+        ["rtk-settings-toggle", { variant: "horizontal", slot: "more-elements" }],
+        ["rtk-plugins-toggle", { variant: "horizontal", slot: "more-elements" }],
+        ["rtk-fullscreen-toggle", { variant: "horizontal", slot: "more-elements" }],
+        ["rtk-pip-toggle", { variant: "horizontal", slot: "more-elements" }],
+      ],
+      "div#controlbar-mobile": [
+        "rtk-mic-toggle",
+        "rtk-camera-toggle",
+        "rtk-leave-button",
+        "rtk-more-toggle",
+      ],
+    },
     styles: {
       ...base.styles,
       "rtk-controlbar": {
@@ -97,6 +164,14 @@ function createCompassMeetingConfig(): UIConfig {
       },
       "rtk-settings-toggle": {
         ...base.styles?.["rtk-settings-toggle"],
+        color: "#f8fafc",
+      },
+      "rtk-chat-toggle": {
+        ...base.styles?.["rtk-chat-toggle"],
+        color: "#f8fafc",
+      },
+      "rtk-participants-toggle": {
+        ...base.styles?.["rtk-participants-toggle"],
         color: "#f8fafc",
       },
     },
@@ -585,6 +660,21 @@ export function RealtimeKitMeetingWindow({
     })
   }, [])
 
+  const openMeetingTool = React.useCallback(
+    (selector: MeetingToolSelector, label: string): void => {
+      const control = document.querySelector(
+        `[data-compass-meeting] ${selector}`
+      )
+      if (control instanceof HTMLElement) {
+        control.click()
+        setScreenShareMessage(null)
+        return
+      }
+      setScreenShareMessage(`${label} is not available in this meeting.`)
+    },
+    []
+  )
+
   const toggleScreenShare = React.useCallback(async (): Promise<void> => {
     if (!meeting) return
 
@@ -736,6 +826,13 @@ export function RealtimeKitMeetingWindow({
           [data-compass-meeting] rtk-ai-toggle {
             color: #f8fafc;
           }
+          [data-compass-meeting] rtk-ai-toggle,
+          [data-compass-meeting] rtk-ai,
+          [data-compass-meeting] rtk-ai-transcriptions,
+          [data-compass-meeting] rtk-caption-toggle,
+          [data-compass-meeting] rtk-transcripts {
+            display: none !important;
+          }
           [data-compass-meeting] rtk-controlbar-button {
             border-radius: 10px;
             filter: drop-shadow(0 6px 16px rgba(0, 0, 0, 0.22));
@@ -885,6 +982,32 @@ export function RealtimeKitMeetingWindow({
                   className="min-w-28 rounded-sm border border-white/20 bg-white/[0.04] px-3 py-2 text-xs font-semibold text-white transition-colors hover:border-[#9bd3a8]/70 hover:bg-[#203626]"
                 >
                   {backgroundButtonLabel}
+                </button>
+                <div className="mx-1 hidden h-8 w-px bg-white/15 sm:block" />
+                <button
+                  type="button"
+                  onClick={() => openMeetingTool("rtk-chat-toggle", "Chat")}
+                  className="min-w-16 rounded-sm border border-white/20 bg-white/[0.04] px-3 py-2 text-xs font-semibold text-white transition-colors hover:border-[#9bd3a8]/70 hover:bg-[#203626]"
+                >
+                  Chat
+                </button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    openMeetingTool("rtk-participants-toggle", "People")
+                  }
+                  className="min-w-16 rounded-sm border border-white/20 bg-white/[0.04] px-3 py-2 text-xs font-semibold text-white transition-colors hover:border-[#9bd3a8]/70 hover:bg-[#203626]"
+                >
+                  People
+                </button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    openMeetingTool("rtk-settings-toggle", "Settings")
+                  }
+                  className="min-w-20 rounded-sm border border-white/20 bg-white/[0.04] px-3 py-2 text-xs font-semibold text-white transition-colors hover:border-[#9bd3a8]/70 hover:bg-[#203626]"
+                >
+                  Settings
                 </button>
               </div>
             ) : null}
