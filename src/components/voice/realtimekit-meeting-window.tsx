@@ -788,6 +788,32 @@ export function RealtimeKitMeetingWindow({
           </button>
         </div>
       </header>
+      {showMeetingControls ? (
+        <div className="flex shrink-0 items-center gap-2 border-b border-white/10 bg-[#08110b] px-3 py-2 xl:hidden">
+          <button
+            type="button"
+            onClick={() => openSidePanel("notes")}
+            className={`flex-1 rounded-sm border px-3 py-2 text-xs font-semibold transition-colors ${
+              activePanel === "notes"
+                ? "border-[#9bd3a8]/70 bg-[#3f7d4d] text-white"
+                : "border-white/20 bg-white/[0.04] text-white hover:border-[#9bd3a8]/70 hover:bg-[#203626]"
+            }`}
+          >
+            Notes
+          </button>
+          <button
+            type="button"
+            onClick={() => openSidePanel("transcript")}
+            className={`flex-1 rounded-sm border px-3 py-2 text-xs font-semibold transition-colors ${
+              activePanel === "transcript"
+                ? "border-[#9bd3a8]/70 bg-[#3f7d4d] text-white"
+                : "border-white/20 bg-white/[0.04] text-white hover:border-[#9bd3a8]/70 hover:bg-[#203626]"
+            }`}
+          >
+            Transcript
+          </button>
+        </div>
+      ) : null}
       {screenShareMessage || backgroundStatus ? (
         <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-white/10 bg-white/[0.03] px-4 py-2 text-xs text-white/70">
           {screenShareMessage ? <span>{screenShareMessage}</span> : null}
@@ -816,7 +842,7 @@ export function RealtimeKitMeetingWindow({
               />
             </div>
             {showMeetingControls ? (
-              <div className="fixed inset-x-0 bottom-0 z-50 flex shrink-0 items-center justify-start gap-2 overflow-x-auto border-t border-white/10 bg-[#070b08]/95 px-3 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] pt-3 shadow-[0_-16px_40px_rgba(0,0,0,0.38)] backdrop-blur xl:static xl:justify-center xl:overflow-visible xl:bg-[#070b08] xl:pb-3 xl:shadow-none xl:backdrop-blur-none">
+              <div className="fixed inset-x-0 bottom-0 z-50 flex shrink-0 flex-wrap items-center justify-center gap-2 border-t border-white/10 bg-[#070b08]/95 px-3 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] pt-3 shadow-[0_-16px_40px_rgba(0,0,0,0.38)] backdrop-blur xl:static xl:bg-[#070b08] xl:pb-3 xl:shadow-none xl:backdrop-blur-none">
                 <button
                   type="button"
                   onClick={() => void toggleAudio()}
@@ -876,28 +902,6 @@ export function RealtimeKitMeetingWindow({
                   className="min-w-28 rounded-sm border border-white/20 bg-white/[0.04] px-3 py-2 text-xs font-semibold text-white transition-colors hover:border-[#9bd3a8]/70 hover:bg-[#203626]"
                 >
                   {backgroundButtonLabel}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => openSidePanel("notes")}
-                  className={`min-w-20 rounded-sm border px-3 py-2 text-xs font-semibold transition-colors ${
-                    activePanel === "notes"
-                      ? "border-[#9bd3a8]/70 bg-[#3f7d4d] text-white hover:border-[#c1e5c9] hover:bg-[#4f9860]"
-                      : "border-white/20 bg-white/[0.04] text-white hover:border-[#9bd3a8]/70 hover:bg-[#203626]"
-                  }`}
-                >
-                  Notes
-                </button>
-                <button
-                  type="button"
-                  onClick={() => openSidePanel("transcript")}
-                  className={`min-w-24 rounded-sm border px-3 py-2 text-xs font-semibold transition-colors ${
-                    activePanel === "transcript"
-                      ? "border-[#9bd3a8]/70 bg-[#3f7d4d] text-white hover:border-[#c1e5c9] hover:bg-[#4f9860]"
-                      : "border-white/20 bg-white/[0.04] text-white hover:border-[#9bd3a8]/70 hover:bg-[#203626]"
-                  }`}
-                >
-                  Transcript
                 </button>
               </div>
             ) : null}
