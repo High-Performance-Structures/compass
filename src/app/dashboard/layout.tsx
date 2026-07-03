@@ -84,7 +84,7 @@ export default async function DashboardLayout({
           <DesktopOfflineBanner />
           <OfflineBanner />
           <DemoBanner isDemo={isDemo} />
-          <SiteHeader user={user} />
+          <SiteHeader user={user} isDemo={isDemo} />
           <div className="flex min-h-0 flex-1 overflow-hidden">
             <MainContent>
               {children}
