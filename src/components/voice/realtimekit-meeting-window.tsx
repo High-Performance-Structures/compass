@@ -364,10 +364,16 @@ export function RealtimeKitMeetingWindow({
     React.useState<MediaButtonStatus>("idle")
   const [videoStatus, setVideoStatus] =
     React.useState<MediaButtonStatus>("idle")
+  const [pipStatus, setPipStatus] =
+    React.useState<MediaButtonStatus>("idle")
   const [backgroundStatus, setBackgroundStatus] = React.useState<string | null>(
     null
   )
   const [canScreenShare, setCanScreenShare] = React.useState(false)
+  const [canUsePictureInPicture, setCanUsePictureInPicture] =
+    React.useState(false)
+  const [pictureInPictureActive, setPictureInPictureActive] =
+    React.useState(false)
   const addonRef = React.useRef<VideoBackgroundAddonHandle | null>(null)
 
   React.useEffect(() => {
@@ -375,6 +381,30 @@ export function RealtimeKitMeetingWindow({
       typeof navigator !== "undefined" &&
         typeof navigator.mediaDevices?.getDisplayMedia === "function"
     )
+    setCanUsePictureInPicture(
+      typeof document !== "undefined" && document.pictureInPictureEnabled
+    )
+  }, [])
+
+  React.useEffect(() => {
+    const updatePictureInPictureState = (): void => {
+      setPictureInPictureActive(Boolean(document.pictureInPictureElement))
+    }
+
+    document.addEventListener("enterpictureinpicture", updatePictureInPictureState)
+    document.addEventListener("leavepictureinpicture", updatePictureInPictureState)
+    updatePictureInPictureState()
+
+    return () => {
+      document.removeEventListener(
+        "enterpictureinpicture",
+        updatePictureInPictureState
+      )
+      document.removeEventListener(
+        "leavepictureinpicture",
+        updatePictureInPictureState
+      )
+    }
   }, [])
 
   React.useEffect(() => {
@@ -660,6 +690,74 @@ export function RealtimeKitMeetingWindow({
     })
   }, [])
 
+  const leaveMeeting = React.useCallback(async (): Promise<void> => {
+    try {
+      if (meeting?.self.screenShareEnabled) {
+        await meeting.self.disableScreenShare()
+      }
+      if (document.pictureInPictureElement) {
+        await document.exitPictureInPicture()
+      }
+      if (meeting?.self.roomJoined) {
+        await meeting.leave()
+      }
+    } catch (cause: unknown) {
+      recordRealtimeKitDiagnostic("leave-meeting-failed", {
+        error: realtimeKitErrorDetails(cause),
+      })
+    } finally {
+      window.close()
+      window.setTimeout(() => {
+        window.location.assign(`/dashboard/conversations/${channelId}`)
+      }, 150)
+    }
+  }, [channelId, meeting])
+
+  const togglePictureInPicture = React.useCallback(async (): Promise<void> => {
+    if (!canUsePictureInPicture) {
+      setScreenShareMessage("Picture-in-picture is not available in this browser.")
+      return
+    }
+
+    setScreenShareMessage(null)
+    try {
+      if (document.pictureInPictureElement) {
+        setPipStatus("stopping")
+        await document.exitPictureInPicture()
+        setPictureInPictureActive(false)
+        setPipStatus("idle")
+        return
+      }
+
+      const videos = Array.from(document.querySelectorAll("video"))
+      const activeVideo =
+        videos.find(
+          (video) =>
+            !video.disablePictureInPicture &&
+            video.videoWidth > 0 &&
+            video.videoHeight > 0
+        ) ??
+        videos.find((video) => !video.disablePictureInPicture) ??
+        null
+
+      if (!activeVideo) {
+        setScreenShareMessage("Turn video on before starting picture-in-picture.")
+        return
+      }
+
+      setPipStatus("starting")
+      await activeVideo.requestPictureInPicture()
+      setPictureInPictureActive(true)
+      setPipStatus("idle")
+    } catch (cause: unknown) {
+      recordRealtimeKitDiagnostic("picture-in-picture-failed", {
+        error: realtimeKitErrorDetails(cause),
+      })
+      setPipStatus("error")
+      setScreenShareMessage(errorMessageForCause(cause))
+    }
+  }, [canUsePictureInPicture])
+
   const toggleScreenShare = React.useCallback(async (): Promise<void> => {
     if (!meeting) return
 
@@ -767,6 +865,15 @@ export function RealtimeKitMeetingWindow({
           ? "Stopping..."
           : "Share Screen"
 
+  const pipButtonLabel =
+    pipStatus === "starting"
+      ? "PiP..."
+      : pipStatus === "stopping"
+        ? "Closing..."
+        : pictureInPictureActive
+          ? "Exit PiP"
+          : "PiP"
+
   const showMeetingControls = !error
 
   return (
@@ -857,21 +964,12 @@ export function RealtimeKitMeetingWindow({
           }
         `}
       </style>
-      <header className="flex h-12 shrink-0 items-center justify-between border-b border-white/10 px-4">
+      <header className="flex h-12 shrink-0 items-center justify-center border-b border-white/10 px-4 text-center">
         <div className="min-w-0">
           <h1 className="truncate text-sm font-semibold">{meetingTitle}</h1>
           <p className="text-xs text-white/55">
             Compass meeting with notes, transcript, and background effects
           </p>
-        </div>
-        <div className="flex shrink-0 items-center gap-2">
-          <button
-            type="button"
-            onClick={() => window.close()}
-            className="rounded-md border border-white/15 px-3 py-1.5 text-xs font-medium text-white/80 transition-colors hover:border-white/30 hover:bg-white/10 hover:text-white"
-          >
-            Close Window
-          </button>
         </div>
       </header>
       {screenShareMessage || backgroundStatus ? (
@@ -880,17 +978,17 @@ export function RealtimeKitMeetingWindow({
           {backgroundStatus ? <span>{backgroundStatus}</span> : null}
         </div>
       ) : null}
-      <section className="grid min-h-0 flex-1 grid-cols-1 overflow-y-auto pb-28 xl:grid-cols-[minmax(0,1fr)_20rem] xl:overflow-hidden xl:pb-0">
+      <section className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_5rem] overflow-hidden xl:grid-cols-[minmax(0,1fr)_5.75rem_20rem]">
         {loading ? (
-          <div className="flex h-full items-center justify-center text-sm text-white/70 xl:col-span-2">
+          <div className="col-span-2 flex h-full items-center justify-center text-sm text-white/70 xl:col-span-3">
             Opening secure meeting...
           </div>
         ) : error ? (
-          <div className="flex h-full items-center justify-center px-6 text-center text-sm text-red-200 xl:col-span-2">
+          <div className="col-span-2 flex h-full items-center justify-center px-6 text-center text-sm text-red-200 xl:col-span-3">
             {error}
           </div>
         ) : (
-          <div className="flex min-h-0 flex-col bg-black">
+          <div className="min-w-0 bg-black">
             <div className="relative min-h-0 flex-1">
               <RtkMeeting
                 meeting={meeting}
@@ -901,69 +999,105 @@ export function RealtimeKitMeetingWindow({
                 showSetupScreen={false}
               />
             </div>
-            {showMeetingControls ? (
-              <div className="fixed inset-x-0 bottom-0 z-50 flex shrink-0 flex-wrap items-center justify-center gap-2 border-t border-white/10 bg-[#070b08]/95 px-3 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] pt-3 shadow-[0_-16px_40px_rgba(0,0,0,0.38)] backdrop-blur xl:static xl:bg-[#070b08] xl:pb-3 xl:shadow-none xl:backdrop-blur-none">
-                <button
-                  type="button"
-                  onClick={() => void toggleAudio()}
-                  disabled={
-                    !meeting ||
-                    audioStatus === "starting" ||
-                    audioStatus === "stopping"
-                  }
-                  className={`min-w-20 rounded-sm border px-3 py-2 text-xs font-semibold transition-colors disabled:cursor-wait disabled:opacity-70 ${
-                    audioEnabled
-                      ? "border-[#9bd3a8]/70 bg-[#3f7d4d] text-white hover:border-[#c1e5c9] hover:bg-[#4f9860]"
-                      : "border-white/20 bg-white/[0.04] text-white hover:border-[#9bd3a8]/70 hover:bg-[#203626]"
-                  }`}
-                >
-                  {micButtonLabel}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => void toggleVideo()}
-                  disabled={
-                    !meeting ||
-                    videoStatus === "starting" ||
-                    videoStatus === "stopping"
-                  }
-                  className={`min-w-20 rounded-sm border px-3 py-2 text-xs font-semibold transition-colors disabled:cursor-wait disabled:opacity-70 ${
-                    videoEnabled
-                      ? "border-[#9bd3a8]/70 bg-[#3f7d4d] text-white hover:border-[#c1e5c9] hover:bg-[#4f9860]"
-                      : "border-white/20 bg-white/[0.04] text-white hover:border-[#9bd3a8]/70 hover:bg-[#203626]"
-                  }`}
-                >
-                  {videoButtonLabel}
-                </button>
-                {canScreenShare ? (
-                  <button
-                    type="button"
-                    onClick={() => void toggleScreenShare()}
-                    disabled={
-                      !meeting ||
-                      screenShareStatus === "starting" ||
-                      screenShareStatus === "stopping"
-                    }
-                    className={`min-w-28 rounded-sm border px-3 py-2 text-xs font-semibold transition-colors disabled:cursor-wait disabled:opacity-70 ${
-                      screenShareStatus === "sharing"
-                        ? "border-red-300/70 bg-red-500/35 text-red-50 hover:bg-red-500/45"
-                        : "border-[#9bd3a8]/70 bg-[#3f7d4d] text-white hover:border-[#c1e5c9] hover:bg-[#4f9860]"
-                    }`}
-                  >
-                    {screenShareButtonLabel}
-                  </button>
-                ) : null}
-                {backgroundStatus ? (
-                  <span className="min-w-28 rounded-sm border border-white/10 bg-white/[0.03] px-3 py-2 text-center text-xs font-semibold text-white/55">
-                    Background Paused
-                  </span>
-                ) : null}
-              </div>
-            ) : null}
           </div>
         )}
+        {!loading && showMeetingControls ? (
+          <aside className="flex min-h-0 flex-col border-l border-white/10 bg-[#070b08]">
+            <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-2 py-3">
+              <button
+                type="button"
+                onClick={() => void toggleAudio()}
+                disabled={
+                  !meeting ||
+                  audioStatus === "starting" ||
+                  audioStatus === "stopping"
+                }
+                className={`rounded-sm border px-2 py-2 text-xs font-semibold leading-tight transition-colors disabled:cursor-wait disabled:opacity-70 ${
+                  audioEnabled
+                    ? "border-[#9bd3a8]/70 bg-[#3f7d4d] text-white hover:border-[#c1e5c9] hover:bg-[#4f9860]"
+                    : "border-white/20 bg-white/[0.04] text-white hover:border-[#9bd3a8]/70 hover:bg-[#203626]"
+                }`}
+              >
+                {micButtonLabel}
+              </button>
+              <button
+                type="button"
+                onClick={() => void toggleVideo()}
+                disabled={
+                  !meeting ||
+                  videoStatus === "starting" ||
+                  videoStatus === "stopping"
+                }
+                className={`rounded-sm border px-2 py-2 text-xs font-semibold leading-tight transition-colors disabled:cursor-wait disabled:opacity-70 ${
+                  videoEnabled
+                    ? "border-[#9bd3a8]/70 bg-[#3f7d4d] text-white hover:border-[#c1e5c9] hover:bg-[#4f9860]"
+                    : "border-white/20 bg-white/[0.04] text-white hover:border-[#9bd3a8]/70 hover:bg-[#203626]"
+                }`}
+              >
+                {videoButtonLabel}
+              </button>
+              {canScreenShare ? (
+                <button
+                  type="button"
+                  onClick={() => void toggleScreenShare()}
+                  disabled={
+                    !meeting ||
+                    screenShareStatus === "starting" ||
+                    screenShareStatus === "stopping"
+                  }
+                  className={`rounded-sm border px-2 py-2 text-xs font-semibold leading-tight transition-colors disabled:cursor-wait disabled:opacity-70 ${
+                    screenShareStatus === "sharing"
+                      ? "border-red-300/70 bg-red-500/35 text-red-50 hover:bg-red-500/45"
+                      : "border-[#9bd3a8]/70 bg-[#3f7d4d] text-white hover:border-[#c1e5c9] hover:bg-[#4f9860]"
+                  }`}
+                >
+                  {screenShareButtonLabel}
+                </button>
+              ) : null}
+              <button
+                type="button"
+                onClick={() => void togglePictureInPicture()}
+                disabled={
+                  !meeting ||
+                  !canUsePictureInPicture ||
+                  pipStatus === "starting" ||
+                  pipStatus === "stopping"
+                }
+                className="rounded-sm border border-white/20 bg-white/[0.04] px-2 py-2 text-xs font-semibold leading-tight text-white transition-colors hover:border-[#9bd3a8]/70 hover:bg-[#203626] disabled:cursor-not-allowed disabled:opacity-45"
+              >
+                {pipButtonLabel}
+              </button>
+              <button
+                type="button"
+                onClick={toggleTranscriptCapture}
+                disabled={!meeting}
+                className={`rounded-sm border px-2 py-2 text-xs font-semibold leading-tight transition-colors disabled:cursor-not-allowed disabled:opacity-45 ${
+                  transcriptEnabled
+                    ? "border-[#9bd3a8]/70 bg-[#3f7d4d] text-white hover:border-[#c1e5c9] hover:bg-[#4f9860]"
+                    : "border-white/20 bg-white/[0.04] text-white hover:border-[#9bd3a8]/70 hover:bg-[#203626]"
+                }`}
+              >
+                {transcriptEnabled ? "Transcript On" : "Transcript Off"}
+              </button>
+              {backgroundStatus ? (
+                <span className="rounded-sm border border-white/10 bg-white/[0.03] px-2 py-2 text-center text-xs font-semibold leading-tight text-white/55">
+                  Background Paused
+                </span>
+              ) : null}
+              <div className="min-h-3 flex-1" />
+              <button
+                type="button"
+                onClick={() => void leaveMeeting()}
+                disabled={!meeting}
+                className="rounded-sm border border-red-300/65 bg-red-500/25 px-2 py-2 text-xs font-semibold leading-tight text-red-50 transition-colors hover:border-red-200 hover:bg-red-500/40 hover:text-white disabled:cursor-not-allowed disabled:opacity-45"
+              >
+                Leave
+              </button>
+            </div>
+          </aside>
+        ) : null}
         {!loading && !error ? (
-          <aside className="min-h-0 border-t border-white/10 bg-[#08110b] xl:border-l xl:border-t-0">
+          <aside className="col-span-2 min-h-0 max-h-[42dvh] border-t border-white/10 bg-[#08110b] xl:col-span-1 xl:max-h-none xl:border-l xl:border-t-0">
             <div className="flex h-full min-h-0 flex-col">
               <div className="flex shrink-0 border-b border-white/10 p-2">
                 <button
