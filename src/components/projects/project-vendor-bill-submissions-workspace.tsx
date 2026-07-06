@@ -2,6 +2,7 @@
 
 import * as React from "react"
 import {
+  IconFileCheck,
   IconFileInvoice,
   IconPaperclip,
   IconPlus,
@@ -12,6 +13,7 @@ import {
 import { useRouter } from "next/navigation"
 
 import {
+  finalizeVendorBillSubmission,
   updateVendorBillSubmissionCoding,
   type ProjectVendorBillSubmissionContext,
   type VendorBillCostCodeOption,
@@ -88,6 +90,31 @@ function statusBadgeClass(value: string): string {
   if (value === "rejected") return "border-red-700/30 bg-red-700/10 text-red-800"
   if (value === "needs_coding") return "border-amber-700/30 bg-amber-700/10 text-amber-800"
   return "border-primary/30 bg-primary/10 text-primary"
+}
+
+function duplicateStatusLabel(value: string): string {
+  switch (value) {
+    case "possible_duplicate":
+      return "Possible duplicate"
+    case "sage_check_pending":
+      return "Sage check pending"
+    case "not_found":
+      return "No duplicate found"
+    case "not_checked":
+      return "Not checked"
+    default:
+      return value
+  }
+}
+
+function duplicateStatusClass(value: string): string {
+  if (value === "possible_duplicate") {
+    return "border-red-700/30 bg-red-700/10 text-red-800"
+  }
+  if (value === "sage_check_pending") {
+    return "border-amber-700/30 bg-amber-700/10 text-amber-800"
+  }
+  return "border-muted-foreground/20 bg-muted text-muted-foreground"
 }
 
 function cleanAmount(value: string): number {
@@ -356,6 +383,17 @@ function SubmissionReviewDrawer({
     })
   }
 
+  function createFinalCopy(): void {
+    setMessage(null)
+    startTransition(async () => {
+      const result = await finalizeVendorBillSubmission(projectId, submission.id)
+      setMessage(result.success ? result.message : result.error)
+      if (result.success) {
+        router.refresh()
+      }
+    })
+  }
+
   return (
     <Sheet open={open} onOpenChange={setOpen}>
       <SheetTrigger asChild>
@@ -427,6 +465,53 @@ function SubmissionReviewDrawer({
               </div>
             </div>
           )}
+
+          <div className="space-y-3 border-l-2 border-primary/40 pl-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <h3 className="text-sm font-semibold">Final Submittal Copy</h3>
+                <p className="text-xs text-muted-foreground">
+                  Saves a coded packet to the project draw folder in Google Drive.
+                </p>
+              </div>
+              {submission.stampedFileUrl && (
+                <a
+                  href={submission.stampedFileUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-xs font-medium text-primary underline-offset-4 hover:underline"
+                >
+                  Open final copy
+                </a>
+              )}
+            </div>
+            {submission.duplicateStatus !== "not_checked" && (
+              <div className="flex flex-wrap items-start gap-2 text-xs">
+                <Badge
+                  variant="outline"
+                  className={duplicateStatusClass(submission.duplicateStatus)}
+                >
+                  {duplicateStatusLabel(submission.duplicateStatus)}
+                </Badge>
+                {submission.duplicateMessage && (
+                  <p className="min-w-0 flex-1 text-muted-foreground">
+                    {submission.duplicateMessage}
+                  </p>
+                )}
+              </div>
+            )}
+            {canReview && (
+              <Button
+                type="button"
+                variant="outline"
+                disabled={isPending || submission.reviewStatus !== "ready_for_sage"}
+                onClick={createFinalCopy}
+              >
+                <IconFileCheck className="size-4" />
+                {submission.stampedFileUrl ? "Recreate final copy" : "Create final copy"}
+              </Button>
+            )}
+          </div>
 
           <Separator />
 
@@ -637,6 +722,14 @@ function SubmissionRow({
           >
             {reviewStatusLabel(submission.reviewStatus)}
           </Badge>
+          {submission.duplicateStatus === "possible_duplicate" && (
+            <Badge
+              variant="outline"
+              className={duplicateStatusClass(submission.duplicateStatus)}
+            >
+              Possible duplicate
+            </Badge>
+          )}
         </div>
         <p className="mt-1 truncate text-sm text-muted-foreground">
           {submission.billNumber ?? "No bill number"} ·{" "}

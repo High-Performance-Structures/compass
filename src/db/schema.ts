@@ -636,6 +636,10 @@ export const projectVendorBillSubmissions = sqliteTable(
     stampedFileId: text("stamped_file_id"),
     stampedFileUrl: text("stamped_file_url"),
     stampedAt: text("stamped_at"),
+    duplicateStatus: text("duplicate_status").notNull().default("not_checked"),
+    duplicateSource: text("duplicate_source"),
+    duplicateMessage: text("duplicate_message"),
+    duplicateCheckedAt: text("duplicate_checked_at"),
     convertedOperationId: text("converted_operation_id").references(
       () => projectOperations.id,
       { onDelete: "set null" }
@@ -652,6 +656,10 @@ export const projectVendorBillSubmissions = sqliteTable(
       table.reviewStatus
     ),
     index("idx_project_vendor_bill_submissions_submitter").on(table.submittedBy),
+    index("idx_project_vendor_bill_submissions_duplicate").on(
+      table.projectId,
+      table.duplicateStatus
+    ),
   ]
 )
 

@@ -1,21 +1,36 @@
 "use server"
 
-import { and, asc, eq, inArray, notInArray, sql } from "drizzle-orm"
+import { and, asc, eq, inArray, like, ne, notInArray, or, sql } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
 import { getDb } from "@/db"
 import {
+  projectExternalLinks,
+  projectOperations,
   projectContacts,
   projectVendorBillSubmissionAttachments,
   projectVendorBillSubmissionLines,
   projectVendorBillSubmissions,
+  projects,
   sageCostCodes,
 } from "@/db/schema"
+import { googleAuth } from "@/db/schema-google"
 import { requireAuth } from "@/lib/auth"
+import { decrypt } from "@/lib/crypto"
 import { getCloudflareContext } from "@/lib/db"
+import { DriveClient } from "@/lib/google/client/drive-client"
+import {
+  getGoogleConfig,
+  getGoogleCryptoSalt,
+  parseServiceAccountKey,
+} from "@/lib/google/config"
 import { canFeature, requireFeaturePermission } from "@/lib/permission-enforcement"
 import { assertProjectAccess } from "@/lib/project-access"
 import { isInternalStaffRole } from "@/lib/user-roles"
+import {
+  buildVendorBillFinalPacketPdf,
+  type VendorBillDuplicateReview,
+} from "@/lib/vendor-bills/final-packet"
 
 type Db = ReturnType<typeof getDb>
 
@@ -72,6 +87,10 @@ export type VendorBillSubmissionItem = {
   readonly changeOrderNumber: string | null
   readonly stampedFileUrl: string | null
   readonly stampedAt: string | null
+  readonly duplicateStatus: string
+  readonly duplicateSource: string | null
+  readonly duplicateMessage: string | null
+  readonly duplicateCheckedAt: string | null
   readonly sageWriteStatus: string
   readonly syncStatus: string
   readonly createdAt: string
@@ -110,7 +129,166 @@ type ActionResult =
   | { readonly success: true }
   | { readonly success: false; readonly error: string }
 
+type FinalizeVendorBillSubmissionResult =
+  | {
+      readonly success: true
+      readonly stampedFileUrl: string | null
+      readonly duplicateStatus: string
+      readonly message: string
+    }
+  | { readonly success: false; readonly error: string }
+
 const EXTERNAL_CONTACT_TYPES = ["subcontractor", "supplier"] as const
+const GOOGLE_FOLDER_MIME_TYPE = "application/vnd.google-apps.folder"
+const PAY_REQUESTS_FOLDER_NAME = "03_PayRequests"
+const VENDOR_BILL_FOLDER_NAME = "Compass Bill Submissions"
+const DEFAULT_COMPASS_GOOGLE_UPLOAD_USER = "compass@hps-colorado.com"
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null
+}
+
+function envString(env: unknown, key: string): string | null {
+  if (!isRecord(env)) return process.env[key] ?? null
+  const value = env[key]
+  return typeof value === "string" && value.trim().length > 0
+    ? value
+    : process.env[key] ?? null
+}
+
+function googleConfigEnv(env: unknown): Record<string, string | undefined> {
+  const values: Record<string, string | undefined> = {}
+  if (!isRecord(env)) return values
+
+  for (const [key, value] of Object.entries(env)) {
+    if (typeof value === "string") values[key] = value
+  }
+
+  return values
+}
+
+function resolveGoogleUploadEmail(input: {
+  readonly userEmail: string
+  readonly googleEmail: string | null
+  readonly env: unknown
+}): string {
+  const configuredEmail = envString(input.env, "COMPASS_GOOGLE_UPLOAD_USER")
+  if (configuredEmail) return configuredEmail
+  if (input.googleEmail) return input.googleEmail
+  if (input.userEmail.endsWith("@hps-colorado.com")) return input.userEmail
+  return DEFAULT_COMPASS_GOOGLE_UPLOAD_USER
+}
+
+function driveFolderIdFromUrl(value: string | null): string | null {
+  if (!value) return null
+
+  const folderMatch = value.match(/\/folders\/([^/?#]+)/)
+  if (folderMatch) return folderMatch[1] ?? null
+
+  const idMatch = value.match(/[?&]id=([^&#]+)/)
+  if (idMatch) return idMatch[1] ?? null
+
+  return null
+}
+
+function escapeDriveQueryValue(value: string): string {
+  return value.replace(/\\/g, "\\\\").replace(/'/g, "\\'")
+}
+
+function safeFileName(value: string): string {
+  const normalized = value.replace(/[/:\\]/g, "-").replace(/\s+/g, " ").trim()
+  return normalized.length > 0 ? normalized : "vendor-bill-final-packet.pdf"
+}
+
+function drawFolderName(value: string | null): string {
+  const cleaned = cleanText(value)
+  if (!cleaned) return "Ready for Sage"
+  const numeric = cleaned.match(/^\d+$/)
+  return numeric ? `Draw ${cleaned.padStart(2, "0")}` : `Draw ${cleaned}`
+}
+
+async function resolveProjectDriveFolderId(input: {
+  readonly db: Db
+  readonly projectId: string
+  readonly projectDriveFolderId: string | null
+}): Promise<string | null> {
+  if (input.projectDriveFolderId) return input.projectDriveFolderId
+
+  const [driveLink] = await input.db
+    .select({
+      externalId: projectExternalLinks.externalId,
+      externalUrl: projectExternalLinks.externalUrl,
+    })
+    .from(projectExternalLinks)
+    .where(
+      and(
+        eq(projectExternalLinks.projectId, input.projectId),
+        eq(projectExternalLinks.system, "google_drive")
+      )
+    )
+    .limit(1)
+
+  return (
+    driveLink?.externalId ??
+    driveFolderIdFromUrl(driveLink?.externalUrl ?? null)
+  )
+}
+
+async function findOrCreateFolder(input: {
+  readonly client: DriveClient
+  readonly googleEmail: string
+  readonly parentFolderId: string
+  readonly driveId: string | null
+  readonly folderName: string
+}): Promise<string> {
+  const result = await input.client.listFiles(input.googleEmail, {
+    folderId: input.parentFolderId,
+    driveId: input.driveId ?? undefined,
+    pageSize: 10,
+    query:
+      `mimeType = '${GOOGLE_FOLDER_MIME_TYPE}' and ` +
+      `name = '${escapeDriveQueryValue(input.folderName)}'`,
+  })
+  const existingFolder = result.files[0]
+  if (existingFolder) return existingFolder.id
+
+  const folder = await input.client.createFolder(input.googleEmail, {
+    name: input.folderName,
+    parentId: input.parentFolderId,
+    driveId: input.driveId ?? undefined,
+  })
+  return folder.id
+}
+
+async function findOrCreateFinalBillFolder(input: {
+  readonly client: DriveClient
+  readonly googleEmail: string
+  readonly projectFolderId: string
+  readonly driveId: string | null
+  readonly payRequestNumber: string | null
+}): Promise<string> {
+  const payRequestsFolderId = await findOrCreateFolder({
+    client: input.client,
+    googleEmail: input.googleEmail,
+    parentFolderId: input.projectFolderId,
+    driveId: input.driveId,
+    folderName: PAY_REQUESTS_FOLDER_NAME,
+  })
+  const drawFolderId = await findOrCreateFolder({
+    client: input.client,
+    googleEmail: input.googleEmail,
+    parentFolderId: payRequestsFolderId,
+    driveId: input.driveId,
+    folderName: drawFolderName(input.payRequestNumber),
+  })
+  return findOrCreateFolder({
+    client: input.client,
+    googleEmail: input.googleEmail,
+    parentFolderId: drawFolderId,
+    driveId: input.driveId,
+    folderName: VENDOR_BILL_FOLDER_NAME,
+  })
+}
 
 async function getBillSubmissionAccess(projectId: string): Promise<{
   readonly db: Db
@@ -213,6 +391,120 @@ async function getCostCodeOptions(db: Db): Promise<readonly VendorBillCostCodeOp
     divisionCode: row.divisionCode,
     divisionLabel: row.divisionDisplayLabel,
   }))
+}
+
+async function detectVendorBillDuplicate(input: {
+  readonly db: Db
+  readonly projectId: string
+  readonly submissionId: string
+  readonly vendorName: string
+  readonly billNumber: string | null
+}): Promise<VendorBillDuplicateReview> {
+  const normalizedBillNumber = cleanText(input.billNumber)
+  if (!normalizedBillNumber) {
+    return {
+      status: "not_checked",
+      source: "compass",
+      message: "No invoice number was provided, so duplicate detection is limited.",
+    }
+  }
+
+  const normalizedVendor = input.vendorName.trim().toLowerCase()
+  const [compassDuplicate] = await input.db
+    .select({
+      id: projectVendorBillSubmissions.id,
+      vendorName: projectVendorBillSubmissions.vendorName,
+      billNumber: projectVendorBillSubmissions.billNumber,
+      stampedFileUrl: projectVendorBillSubmissions.stampedFileUrl,
+    })
+    .from(projectVendorBillSubmissions)
+    .where(
+      and(
+        eq(projectVendorBillSubmissions.projectId, input.projectId),
+        ne(projectVendorBillSubmissions.id, input.submissionId),
+        eq(projectVendorBillSubmissions.billNumber, normalizedBillNumber),
+        sql`lower(trim(${projectVendorBillSubmissions.vendorName})) = ${normalizedVendor}`
+      )
+    )
+    .limit(1)
+
+  if (compassDuplicate) {
+    return {
+      status: "possible_duplicate",
+      source: "compass",
+      message: `Possible duplicate: ${compassDuplicate.vendorName} invoice ${compassDuplicate.billNumber} already exists in Compass.`,
+    }
+  }
+
+  const invoiceSearch = `%${normalizedBillNumber}%`
+  const [sageReadModelDuplicate] = await input.db
+    .select({
+      id: projectOperations.id,
+      sourceSystem: projectOperations.sourceSystem,
+      sourceRecordType: projectOperations.sourceRecordType,
+      sourceRecordNumber: projectOperations.sourceRecordNumber,
+      title: projectOperations.title,
+      companyName: projectOperations.companyName,
+      sageVendorName: projectOperations.sageVendorName,
+    })
+    .from(projectOperations)
+    .where(
+      and(
+        eq(projectOperations.projectId, input.projectId),
+        inArray(projectOperations.sourceRecordType, [
+          "vendor_bill",
+          "sage_vendor_bill",
+          "accounts_payable_invoice",
+        ]),
+        or(
+          eq(projectOperations.sourceRecordNumber, normalizedBillNumber),
+          like(projectOperations.title, invoiceSearch),
+          like(projectOperations.description, invoiceSearch),
+          like(projectOperations.sagePayloadJson, invoiceSearch)
+        )
+      )
+    )
+    .limit(1)
+
+  if (sageReadModelDuplicate) {
+    const vendor =
+      sageReadModelDuplicate.sageVendorName ??
+      sageReadModelDuplicate.companyName ??
+      "Sage vendor"
+    return {
+      status: "possible_duplicate",
+      source: "sage_read_model",
+      message: `Possible duplicate: ${vendor} invoice ${normalizedBillNumber} appears in ${sageReadModelDuplicate.sourceSystem} ${sageReadModelDuplicate.sourceRecordType}.`,
+    }
+  }
+
+  return {
+    status: "sage_check_pending",
+    source: "compass",
+    message:
+      "No duplicate found in Compass staging. Sage A/P direct lookup is still required before posting.",
+  }
+}
+
+async function firstOriginalInvoicePdf(input: {
+  readonly client: DriveClient
+  readonly googleEmail: string
+  readonly attachments: readonly {
+    readonly mimeType: string | null
+    readonly storageId: string | null
+  }[]
+}): Promise<ArrayBuffer | null> {
+  const attachment = input.attachments.find(
+    (item) => item.storageId && item.mimeType === "application/pdf"
+  )
+  if (!attachment?.storageId) return null
+
+  const response = await input.client.downloadFile(
+    input.googleEmail,
+    attachment.storageId
+  )
+  if (!response.ok) return null
+  return response.arrayBuffer()
 }
 
 function submissionVisibilityCondition(input: {
@@ -331,6 +623,10 @@ export async function getProjectVendorBillSubmissionContext(
       changeOrderNumber: row.changeOrderNumber,
       stampedFileUrl: row.stampedFileUrl,
       stampedAt: row.stampedAt,
+      duplicateStatus: row.duplicateStatus,
+      duplicateSource: row.duplicateSource,
+      duplicateMessage: row.duplicateMessage,
+      duplicateCheckedAt: row.duplicateCheckedAt,
       sageWriteStatus: row.sageWriteStatus,
       syncStatus: row.syncStatus,
       createdAt: row.createdAt,
@@ -471,6 +767,232 @@ export async function updateVendorBillSubmissionCoding(
     return {
       success: false,
       error: error instanceof Error ? error.message : "Unable to update submission.",
+    }
+  }
+}
+
+export async function finalizeVendorBillSubmission(
+  projectId: string,
+  submissionId: string
+): Promise<FinalizeVendorBillSubmissionResult> {
+  try {
+    const user = await requireAuth()
+    await requireFeaturePermission(user, "bill-submissions", "approve")
+    if (!isInternalStaffRole(user.role)) {
+      return { success: false, error: "Staff access is required." }
+    }
+
+    const { env } = await getCloudflareContext()
+    const db = getDb(env.DB)
+    await assertProjectAccess(db, user, projectId)
+
+    const [project] = await db
+      .select({
+        id: projects.id,
+        name: projects.name,
+        projectNumber: projects.projectNumber,
+        sageJobNumber: projects.sageJobNumber,
+        googleDriveFolderId: projects.googleDriveFolderId,
+      })
+      .from(projects)
+      .where(eq(projects.id, projectId))
+      .limit(1)
+
+    const [submission] = await db
+      .select()
+      .from(projectVendorBillSubmissions)
+      .where(
+        and(
+          eq(projectVendorBillSubmissions.id, submissionId),
+          eq(projectVendorBillSubmissions.projectId, projectId)
+        )
+      )
+      .limit(1)
+
+    if (!project || !submission) {
+      return { success: false, error: "Submission not found." }
+    }
+    if (submission.reviewStatus !== "ready_for_sage") {
+      return {
+        success: false,
+        error: "Mark this bill ready for Sage before creating the final copy.",
+      }
+    }
+
+    const [lineRows, attachmentRows] = await Promise.all([
+      db
+        .select()
+        .from(projectVendorBillSubmissionLines)
+        .where(
+          and(
+            eq(projectVendorBillSubmissionLines.submissionId, submissionId),
+            eq(projectVendorBillSubmissionLines.projectId, projectId)
+          )
+        )
+        .orderBy(asc(projectVendorBillSubmissionLines.lineNumber)),
+      db
+        .select()
+        .from(projectVendorBillSubmissionAttachments)
+        .where(
+          and(
+            eq(projectVendorBillSubmissionAttachments.submissionId, submissionId),
+            eq(projectVendorBillSubmissionAttachments.projectId, projectId)
+          )
+        )
+        .orderBy(asc(projectVendorBillSubmissionAttachments.createdAt)),
+    ])
+
+    if (lineRows.length === 0) {
+      return { success: false, error: "Add at least one coding line first." }
+    }
+    if (lineRows.some((line) => !cleanText(line.costCode))) {
+      return { success: false, error: "Every coding line needs a cost code." }
+    }
+
+    const duplicateReview = await detectVendorBillDuplicate({
+      db,
+      projectId,
+      submissionId,
+      vendorName: submission.vendorName,
+      billNumber: submission.billNumber,
+    })
+
+    const [auth] = await db.select().from(googleAuth).limit(1)
+    if (!auth) {
+      return { success: false, error: "Google Drive is not connected." }
+    }
+
+    const projectFolderId = await resolveProjectDriveFolderId({
+      db,
+      projectId,
+      projectDriveFolderId: project.googleDriveFolderId,
+    })
+    if (!projectFolderId) {
+      return {
+        success: false,
+        error: "Map this project to Google Drive before saving the final copy.",
+      }
+    }
+
+    const config = getGoogleConfig(googleConfigEnv(env))
+    const keyJson = await decrypt(
+      auth.serviceAccountKeyEncrypted,
+      config.encryptionKey,
+      getGoogleCryptoSalt()
+    )
+    const client = new DriveClient({
+      serviceAccountKey: parseServiceAccountKey(keyJson),
+    })
+    const googleEmail = resolveGoogleUploadEmail({
+      userEmail: user.email,
+      googleEmail: user.googleEmail,
+      env,
+    })
+    const originalInvoicePdf = await firstOriginalInvoicePdf({
+      client,
+      googleEmail,
+      attachments: attachmentRows,
+    })
+
+    const now = new Date().toISOString()
+    const packetBytes = await buildVendorBillFinalPacketPdf({
+      generatedAt: now,
+      generatedBy: user.displayName ?? user.email,
+      project: {
+        projectNumber: project.projectNumber,
+        name: project.name,
+        sageJobNumber: project.sageJobNumber,
+      },
+      submission: {
+        vendorName: submission.vendorName,
+        vendorEmail: submission.vendorEmail,
+        billNumber: submission.billNumber,
+        billDate: submission.billDate,
+        dueDate: submission.dueDate,
+        description: submission.description,
+        totalAmount: submission.totalAmount,
+        payRequestNumber: submission.payRequestNumber,
+        payRequestDate: submission.payRequestDate,
+        isChangeOrder: submission.isChangeOrder,
+        changeOrderNumber: submission.changeOrderNumber,
+        reviewNotes: submission.reviewNotes,
+      },
+      lines: lineRows.map((line) => ({
+        lineNumber: line.lineNumber,
+        phaseCode: line.phaseCode,
+        costCode: line.costCode,
+        description: line.description,
+        amount: line.amount,
+      })),
+      attachments: attachmentRows.map((attachment) => ({
+        fileName: attachment.fileName,
+        storageUrl: attachment.storageUrl,
+      })),
+      duplicateReview,
+      originalInvoicePdf,
+    })
+
+    const folderId = await findOrCreateFinalBillFolder({
+      client,
+      googleEmail,
+      projectFolderId,
+      driveId: auth.sharedDriveId,
+      payRequestNumber: submission.payRequestNumber,
+    })
+    const projectPrefix = project.projectNumber ?? project.name
+    const billPart = submission.billNumber ?? submission.id.slice(0, 8)
+    const fileName = safeFileName(
+      `${projectPrefix} ${submission.vendorName} ${billPart} ${drawFolderName(
+        submission.payRequestNumber
+      )} final packet.pdf`
+    )
+    const packetBuffer = new ArrayBuffer(packetBytes.byteLength)
+    new Uint8Array(packetBuffer).set(packetBytes)
+    const driveFile = await client.uploadFile(googleEmail, {
+      name: fileName,
+      mimeType: "application/pdf",
+      parentId: folderId,
+      driveId: auth.sharedDriveId ?? undefined,
+      data: new Blob([packetBuffer], { type: "application/pdf" }),
+    })
+
+    const duplicateBlocksSage = duplicateReview.status === "possible_duplicate"
+    await db
+      .update(projectVendorBillSubmissions)
+      .set({
+        stampedFileId: driveFile.id,
+        stampedFileUrl: driveFile.webViewLink ?? null,
+        stampedAt: now,
+        duplicateStatus: duplicateReview.status,
+        duplicateSource: duplicateReview.source,
+        duplicateMessage: duplicateReview.message,
+        duplicateCheckedAt: now,
+        sageWriteStatus: duplicateBlocksSage ? "duplicate_review" : "ready",
+        syncStatus: duplicateBlocksSage ? "duplicate_review" : "pending_sage",
+        updatedAt: now,
+      })
+      .where(eq(projectVendorBillSubmissions.id, submissionId))
+
+    revalidatePath(`/dashboard/projects/${projectId}`)
+    revalidatePath(`/dashboard/projects/${projectId}/bill-submissions`)
+    revalidatePath(`/dashboard/projects/${projectId}/financials`)
+
+    return {
+      success: true,
+      stampedFileUrl: driveFile.webViewLink ?? null,
+      duplicateStatus: duplicateReview.status,
+      message:
+        duplicateReview.status === "possible_duplicate"
+          ? "Final copy saved, but this bill needs duplicate review before Sage posting."
+          : "Final copy saved and queued for Sage review.",
+    }
+  } catch (error) {
+    return {
+      success: false,
+      error:
+        error instanceof Error
+          ? error.message
+          : "Unable to create final bill copy.",
     }
   }
 }
