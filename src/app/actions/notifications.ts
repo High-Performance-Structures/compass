@@ -5,17 +5,22 @@ import { revalidatePath } from "next/cache"
 
 import { getDb } from "@/db"
 import {
+  notificationDeliveries,
   notificationEvents,
   notificationPreferences,
   notificationRecipients,
 } from "@/db/schema"
 import { getCurrentUser, requireAuth } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
-import { isMissingNotificationTableError } from "@/lib/notifications/events"
+import {
+  isMissingNotificationTableError,
+  queueSmsDelivery,
+} from "@/lib/notifications/events"
 import {
   SMS_OPT_IN_DISCLOSURE_URL,
   SMS_OPT_IN_DISCLOSURE_VERSION,
 } from "@/lib/notifications/sms-consent"
+import { requireOrg } from "@/lib/org-scope"
 
 export type NotificationPreferenceState = {
   readonly timezone: string
@@ -67,6 +72,17 @@ type NotificationCenterResult =
       readonly data: {
         readonly unreadCount: number
         readonly items: readonly NotificationCenterItem[]
+      }
+    }
+  | { readonly success: false; readonly error: string }
+
+type NotificationSmsTestResult =
+  | {
+      readonly success: true
+      readonly data: {
+        readonly status: string
+        readonly provider: string
+        readonly providerMessageId: string | null
       }
     }
   | { readonly success: false; readonly error: string }
@@ -376,6 +392,121 @@ export async function markAllNotificationsRead(): Promise<NotificationActionResu
         error instanceof Error
           ? error.message
           : "Failed to mark notifications read",
+    }
+  }
+}
+
+export async function sendTestSmsNotification(): Promise<NotificationSmsTestResult> {
+  try {
+    const user = await requireAuth()
+    const organizationId = requireOrg(user)
+    const { env } = await getCloudflareContext()
+    const db = getDb(env.DB)
+    const now = new Date().toISOString()
+
+    const preferences = await db
+      .select()
+      .from(notificationPreferences)
+      .where(eq(notificationPreferences.userId, user.id))
+      .limit(1)
+      .then((rows) => rows[0] ?? null)
+
+    if (!preferences?.smsEnabled || !preferences.smsPhoneNumber) {
+      return {
+        success: false,
+        error: "Save an SMS phone number before sending a test text.",
+      }
+    }
+
+    if (
+      !preferences.smsConsentAccepted ||
+      preferences.smsConsentPhoneNumber !== preferences.smsPhoneNumber ||
+      preferences.smsConsentDisclosureVersion !== SMS_OPT_IN_DISCLOSURE_VERSION
+    ) {
+      return {
+        success: false,
+        error: "Accept the current SMS opt-in disclosure before testing texts.",
+      }
+    }
+
+    const eventId = crypto.randomUUID()
+    const recipientId = crypto.randomUUID()
+    const title = "Compass SMS test"
+    const body =
+      "Your Compass text notifications are connected. Reply STOP to opt out or HELP for help."
+
+    await db.insert(notificationEvents).values({
+      id: eventId,
+      organizationId,
+      projectId: null,
+      eventType: "sms.test",
+      sourceType: "notification_test",
+      sourceId: user.id,
+      title,
+      body,
+      href: "/dashboard/settings",
+      priority: "normal",
+      audience: "current_user",
+      createdBy: user.id,
+      createdAt: now,
+    })
+
+    await db.insert(notificationRecipients).values({
+      id: recipientId,
+      eventId,
+      userId: user.id,
+      inApp: false,
+      email: false,
+      sms: true,
+      push: false,
+      readAt: null,
+      dismissedAt: null,
+      createdAt: now,
+    })
+
+    const delivery = await queueSmsDelivery(
+      env,
+      preferences.smsPhoneNumber,
+      title,
+      body,
+      null
+    )
+
+    await db.insert(notificationDeliveries).values({
+      id: crypto.randomUUID(),
+      eventId,
+      recipientId,
+      userId: user.id,
+      channel: "sms",
+      status: delivery.status,
+      toAddress: preferences.smsPhoneNumber,
+      provider: delivery.provider,
+      providerMessageId: delivery.providerMessageId,
+      error: delivery.error,
+      attemptedAt: new Date().toISOString(),
+      createdAt: now,
+    })
+
+    if (delivery.status !== "sent") {
+      return {
+        success: false,
+        error: delivery.error ?? "GoTo did not accept the test text.",
+      }
+    }
+
+    return {
+      success: true,
+      data: {
+        status: delivery.status,
+        provider: delivery.provider,
+        providerMessageId: delivery.providerMessageId,
+      },
+    }
+  } catch (error) {
+    return {
+      success: false,
+      error:
+        error instanceof Error ? error.message : "Failed to send test text.",
     }
   }
 }

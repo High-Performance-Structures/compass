@@ -4,6 +4,7 @@ import * as React from "react"
 
 import {
   getNotificationPreferences,
+  sendTestSmsNotification,
   updateNotificationPreferences,
   type NotificationPreferenceState,
 } from "@/app/actions/notifications"
@@ -64,6 +65,7 @@ export function PreferencesTab() {
   const [message, setMessage] = React.useState<string | null>(null)
   const [hasUnsavedChanges, setHasUnsavedChanges] = React.useState(false)
   const [disclosureOpen, setDisclosureOpen] = React.useState(false)
+  const [testingSms, setTestingSms] = React.useState(false)
   const native = useNative()
   const biometric = useBiometricAuth()
   const smsPhoneNumber = preferences.smsPhoneNumber?.trim() ?? ""
@@ -180,6 +182,22 @@ export function PreferencesTab() {
       result.success
         ? "Notification preferences saved."
         : result.error
+    )
+  }
+
+  async function sendTestText(): Promise<void> {
+    if (hasUnsavedChanges) {
+      setMessage("Save notification preferences before sending a test text.")
+      return
+    }
+
+    setTestingSms(true)
+    const result = await sendTestSmsNotification()
+    setTestingSms(false)
+    setMessage(
+      result.success
+        ? "Test text sent."
+        : `Test text failed: ${result.error}`
     )
   }
 
@@ -369,6 +387,25 @@ export function PreferencesTab() {
                   {smsConsentIsCurrent
                     ? `Opt-in recorded for ${preferences.smsConsentPhoneNumber}.`
                     : "Accept the disclosure to turn on text notifications for this number."}
+                </p>
+              )}
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={sendTestText}
+                disabled={
+                  testingSms ||
+                  hasUnsavedChanges ||
+                  !preferences.smsEnabled ||
+                  !smsConsentIsCurrent
+                }
+              >
+                {testingSms ? "Sending test..." : "Send test text"}
+              </Button>
+              {hasUnsavedChanges && preferences.smsEnabled && (
+                <p className="text-xs text-muted-foreground">
+                  Save changes before sending a test text.
                 </p>
               )}
             </div>

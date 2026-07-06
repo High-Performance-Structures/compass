@@ -369,7 +369,7 @@ async function sendGotoSms(
   }
 }
 
-async function queueSmsDelivery(
+export async function queueSmsDelivery(
   env: unknown,
   toPhoneNumber: string,
   title: string,
