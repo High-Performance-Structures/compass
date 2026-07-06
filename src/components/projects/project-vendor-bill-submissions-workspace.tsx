@@ -142,6 +142,50 @@ function costCodeOptions(
   }))
 }
 
+function FinalCopyButton({
+  projectId,
+  submission,
+  className,
+}: {
+  readonly projectId: string
+  readonly submission: VendorBillSubmissionItem
+  readonly className?: string
+}): React.ReactElement {
+  const router = useRouter()
+  const [isPending, startTransition] = React.useTransition()
+  const [message, setMessage] = React.useState<string | null>(null)
+
+  function createFinalCopy(): void {
+    setMessage(null)
+    startTransition(async () => {
+      const result = await finalizeVendorBillSubmission(projectId, submission.id)
+      setMessage(result.success ? result.message : result.error)
+      if (result.success) {
+        router.refresh()
+      }
+    })
+  }
+
+  return (
+    <div className={cn("space-y-2", className)}>
+      <Button
+        type="button"
+        variant="outline"
+        disabled={isPending || submission.reviewStatus !== "ready_for_sage"}
+        onClick={createFinalCopy}
+      >
+        <IconFileCheck className="size-4" />
+        {isPending
+          ? "Creating..."
+          : submission.stampedFileUrl
+            ? "Recreate final copy"
+            : "Create final copy"}
+      </Button>
+      {message && <p className="text-xs text-muted-foreground">{message}</p>}
+    </div>
+  )
+}
+
 function SubmitBillDrawer({
   projectId,
   context,
@@ -308,11 +352,13 @@ function SubmissionReviewDrawer({
   submission,
   costCodes,
   canReview,
+  canFinalize,
 }: {
   readonly projectId: string
   readonly submission: VendorBillSubmissionItem
   readonly costCodes: readonly VendorBillCostCodeOption[]
   readonly canReview: boolean
+  readonly canFinalize: boolean
 }): React.ReactElement {
   const router = useRouter()
   const [open, setOpen] = React.useState(false)
@@ -378,17 +424,6 @@ function SubmissionReviewDrawer({
       setMessage(result.success ? "Review saved." : result.error)
       if (result.success) {
         setOpen(false)
-        router.refresh()
-      }
-    })
-  }
-
-  function createFinalCopy(): void {
-    setMessage(null)
-    startTransition(async () => {
-      const result = await finalizeVendorBillSubmission(projectId, submission.id)
-      setMessage(result.success ? result.message : result.error)
-      if (result.success) {
         router.refresh()
       }
     })
@@ -500,16 +535,13 @@ function SubmissionReviewDrawer({
                 )}
               </div>
             )}
-            {canReview && (
-              <Button
-                type="button"
-                variant="outline"
-                disabled={isPending || submission.reviewStatus !== "ready_for_sage"}
-                onClick={createFinalCopy}
-              >
-                <IconFileCheck className="size-4" />
-                {submission.stampedFileUrl ? "Recreate final copy" : "Create final copy"}
-              </Button>
+            {canFinalize && (
+              <FinalCopyButton projectId={projectId} submission={submission} />
+            )}
+            {!canFinalize && (
+              <p className="text-xs text-muted-foreground">
+                Approval permission is required to create the final copy.
+              </p>
             )}
           </div>
 
@@ -705,14 +737,16 @@ function SubmissionRow({
   submission,
   costCodes,
   canReview,
+  canFinalize,
 }: {
   readonly projectId: string
   readonly submission: VendorBillSubmissionItem
   readonly costCodes: readonly VendorBillCostCodeOption[]
   readonly canReview: boolean
+  readonly canFinalize: boolean
 }): React.ReactElement {
   return (
-    <div className="grid gap-3 border-b py-4 last:border-b-0 lg:grid-cols-[minmax(0,1.1fr)_120px_130px_130px_110px] lg:items-center">
+    <div className="grid gap-3 border-b py-4 last:border-b-0 lg:grid-cols-[minmax(0,1.1fr)_120px_130px_130px_190px] lg:items-center">
       <div className="min-w-0">
         <div className="flex flex-wrap items-center gap-2">
           <h3 className="truncate text-sm font-semibold">{submission.vendorName}</h3>
@@ -767,12 +801,22 @@ function SubmissionRow({
       <div className="text-sm text-muted-foreground">
         Due {dateText(submission.dueDate)}
       </div>
-      <SubmissionReviewDrawer
-        projectId={projectId}
-        submission={submission}
-        costCodes={costCodes}
-        canReview={canReview}
-      />
+      <div className="flex flex-wrap items-center gap-2 lg:justify-end">
+        {canFinalize && submission.reviewStatus === "ready_for_sage" && (
+          <FinalCopyButton
+            projectId={projectId}
+            submission={submission}
+            className="lg:max-w-[180px]"
+          />
+        )}
+        <SubmissionReviewDrawer
+          projectId={projectId}
+          submission={submission}
+          costCodes={costCodes}
+          canReview={canReview}
+          canFinalize={canFinalize}
+        />
+      </div>
     </div>
   )
 }
@@ -846,6 +890,7 @@ export function ProjectVendorBillSubmissionsWorkspace({
                 submission={submission}
                 costCodes={context.costCodes}
                 canReview={context.canReview}
+                canFinalize={context.canFinalize}
               />
             ))
           ) : (

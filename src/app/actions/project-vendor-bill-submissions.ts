@@ -102,6 +102,7 @@ export type VendorBillSubmissionItem = {
 export type ProjectVendorBillSubmissionContext = {
   readonly isInternal: boolean
   readonly canReview: boolean
+  readonly canFinalize: boolean
   readonly matchingContact: VendorBillSubmitterContact | null
   readonly costCodes: readonly VendorBillCostCodeOption[]
   readonly submissions: readonly VendorBillSubmissionItem[]
@@ -599,10 +600,13 @@ export async function getProjectVendorBillSubmissionContext(
     isInternal &&
     ((await canFeature(user, "bill-submissions", "update")) ||
       (await canFeature(user, "bill-submissions", "approve")))
+  const canFinalize =
+    isInternal && (await canFeature(user, "bill-submissions", "approve"))
 
   return {
     isInternal,
     canReview,
+    canFinalize,
     matchingContact,
     costCodes,
     submissions: submissionRows.map((row) => ({
