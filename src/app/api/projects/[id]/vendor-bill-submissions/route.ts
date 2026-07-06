@@ -4,19 +4,30 @@ import { NextRequest, NextResponse } from "next/server"
 
 import { getDb } from "@/db"
 import {
+  organizationMembers,
   projectContacts,
   projectExternalLinks,
+  projectRoleAssignments,
   projects,
   projectVendorBillSubmissionAttachments,
   projectVendorBillSubmissionLines,
   projectVendorBillSubmissions,
+  users,
 } from "@/db/schema"
 import { googleAuth } from "@/db/schema-google"
+import {
+  channelMembers,
+  channelReadState,
+  channels,
+  messageMentions,
+  messages,
+} from "@/db/schema-conversations"
 import { requireAuth } from "@/lib/auth"
 import { decrypt } from "@/lib/crypto"
 import { getCloudflareContext } from "@/lib/db"
 import { isDemoUser } from "@/lib/demo"
 import { DriveClient } from "@/lib/google/client/drive-client"
+import { createNotificationEvent } from "@/lib/notifications/events"
 import {
   getGoogleConfig,
   getGoogleCryptoSalt,
@@ -32,6 +43,7 @@ const VENDOR_BILL_FOLDER_NAME = "Compass Bill Submissions"
 const UNCODED_BILL_FOLDER_NAME = "Uncoded"
 const MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024
 const DEFAULT_COMPASS_GOOGLE_UPLOAD_USER = "compass@hps-colorado.com"
+const PROJECT_ADMINISTRATOR_ROLE_ID = "project-administrator"
 
 type SubmitVendorBillResult =
   | { readonly success: true; readonly id: string }
@@ -118,6 +130,43 @@ function driveFolderIdFromUrl(value: string | null): string | null {
 
 function escapeDriveQueryValue(value: string): string {
   return value.replace(/\\/g, "\\\\").replace(/'/g, "\\'")
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;")
+}
+
+function channelSlug(value: string): string {
+  const slug = value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 48)
+
+  return slug.length > 0 ? slug : "project"
+}
+
+function projectChannelName(project: {
+  readonly projectNumber: string | null
+  readonly name: string
+}): string {
+  const source = project.projectNumber ?? project.name
+  return `${channelSlug(source)}-team`
+}
+
+function projectLabel(project: {
+  readonly projectNumber: string | null
+  readonly name: string
+}): string {
+  return project.projectNumber
+    ? `${project.projectNumber} - ${project.name}`
+    : project.name
 }
 
 function envString(env: Record<string, string>, key: string): string | null {
@@ -219,6 +268,273 @@ async function findOrCreateUncodedBillFolder(input: {
   })
 }
 
+async function ensureChannelMembership(input: {
+  readonly db: ReturnType<typeof getDb>
+  readonly channelId: string
+  readonly userId: string
+  readonly role: "owner" | "moderator" | "member"
+}): Promise<void> {
+  const existing = await input.db
+    .select({ id: channelMembers.id })
+    .from(channelMembers)
+    .where(
+      and(
+        eq(channelMembers.channelId, input.channelId),
+        eq(channelMembers.userId, input.userId)
+      )
+    )
+    .limit(1)
+    .then((rows) => rows[0] ?? null)
+
+  if (existing) return
+
+  const now = new Date().toISOString()
+  await input.db.insert(channelMembers).values({
+    id: crypto.randomUUID(),
+    channelId: input.channelId,
+    userId: input.userId,
+    role: input.role,
+    notifyLevel: "all",
+    joinedAt: now,
+  })
+  await input.db.insert(channelReadState).values({
+    id: crypto.randomUUID(),
+    userId: input.userId,
+    channelId: input.channelId,
+    lastReadMessageId: null,
+    lastReadAt: now,
+    unreadCount: 0,
+  })
+}
+
+async function ensureProjectStaffChannel(input: {
+  readonly db: ReturnType<typeof getDb>
+  readonly project: {
+    readonly id: string
+    readonly name: string
+    readonly projectNumber: string | null
+    readonly organizationId: string
+  }
+  readonly createdByUserId: string
+}): Promise<string> {
+  const existing = await input.db
+    .select({ id: channels.id })
+    .from(channels)
+    .where(
+      and(
+        eq(channels.organizationId, input.project.organizationId),
+        eq(channels.projectId, input.project.id),
+        eq(channels.type, "text"),
+        eq(channels.audience, "staff"),
+        sql`${channels.archivedAt} IS NULL`
+      )
+    )
+    .orderBy(channels.createdAt)
+    .limit(1)
+    .then((rows) => rows[0] ?? null)
+
+  if (existing) return existing.id
+
+  const now = new Date().toISOString()
+  const channelId = crypto.randomUUID()
+  await input.db.insert(channels).values({
+    id: channelId,
+    name: projectChannelName(input.project),
+    type: "text",
+    description: "Project staff conversation",
+    organizationId: input.project.organizationId,
+    projectId: input.project.id,
+    categoryId: null,
+    isPrivate: false,
+    audience: "staff",
+    createdBy: input.createdByUserId,
+    sortOrder: 0,
+    archivedAt: null,
+    createdAt: now,
+    updatedAt: now,
+  })
+
+  return channelId
+}
+
+async function getProjectAdministratorRecipients(input: {
+  readonly db: ReturnType<typeof getDb>
+  readonly projectId: string
+  readonly organizationId: string
+}): Promise<readonly {
+  readonly userId: string
+  readonly email: string
+  readonly displayName: string
+}[]> {
+  const assignedRows = await input.db
+    .select({
+      userId: users.id,
+      email: users.email,
+      displayName: users.displayName,
+    })
+    .from(projectRoleAssignments)
+    .innerJoin(users, eq(users.id, projectRoleAssignments.userId))
+    .innerJoin(organizationMembers, eq(organizationMembers.userId, users.id))
+    .where(
+      and(
+        eq(projectRoleAssignments.projectId, input.projectId),
+        eq(projectRoleAssignments.roleId, PROJECT_ADMINISTRATOR_ROLE_ID),
+        eq(projectRoleAssignments.isActive, true),
+        eq(organizationMembers.organizationId, input.organizationId),
+        eq(users.isActive, true)
+      )
+    )
+
+  const rows =
+    assignedRows.length > 0
+      ? assignedRows
+      : await input.db
+          .select({
+            userId: users.id,
+            email: users.email,
+            displayName: users.displayName,
+          })
+          .from(users)
+          .innerJoin(organizationMembers, eq(organizationMembers.userId, users.id))
+          .where(
+            and(
+              eq(organizationMembers.organizationId, input.organizationId),
+              eq(users.role, "project_administrator"),
+              eq(users.isActive, true)
+            )
+          )
+
+  const recipients = new Map<
+    string,
+    { readonly userId: string; readonly email: string; readonly displayName: string }
+  >()
+  for (const row of rows) {
+    recipients.set(row.userId, {
+      userId: row.userId,
+      email: row.email,
+      displayName: row.displayName ?? row.email,
+    })
+  }
+
+  return Array.from(recipients.values())
+}
+
+async function notifyProjectAdministratorOfBill(input: {
+  readonly db: ReturnType<typeof getDb>
+  readonly project: {
+    readonly id: string
+    readonly name: string
+    readonly projectNumber: string | null
+    readonly organizationId: string
+  }
+  readonly submissionId: string
+  readonly submittedByUserId: string
+  readonly submittedByName: string
+  readonly vendorName: string
+  readonly billNumber: string | null
+  readonly totalAmount: number
+}): Promise<void> {
+  const recipients = await getProjectAdministratorRecipients({
+    db: input.db,
+    projectId: input.project.id,
+    organizationId: input.project.organizationId,
+  })
+
+  const channelId = await ensureProjectStaffChannel({
+    db: input.db,
+    project: input.project,
+    createdByUserId: input.submittedByUserId,
+  })
+  for (const recipient of recipients) {
+    await ensureChannelMembership({
+      db: input.db,
+      channelId,
+      userId: recipient.userId,
+      role: "member",
+    })
+  }
+
+  const now = new Date().toISOString()
+  const messageId = crypto.randomUUID()
+  const reviewHref = `/dashboard/projects/${input.project.id}/bill-submissions`
+  const recipientMentions =
+    recipients.length > 0
+      ? recipients
+          .map(
+            (recipient) =>
+              `<span class="mention" data-type="mention" data-id="${escapeHtml(
+                recipient.userId
+              )}" data-label="${escapeHtml(recipient.displayName)}">@${escapeHtml(
+                recipient.displayName
+              )}</span>`
+          )
+          .join(" ")
+      : "<strong>Project administrator needed</strong>"
+  const billLabel = input.billNumber
+    ? `Invoice ${input.billNumber}`
+    : "A vendor bill"
+  const amount = new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+  }).format(input.totalAmount)
+  const contentHtml = [
+    `<p>${recipientMentions}</p>`,
+    `<p>${escapeHtml(billLabel)} from <strong>${escapeHtml(
+      input.vendorName
+    )}</strong> was submitted for ${escapeHtml(projectLabel(input.project))}.</p>`,
+    `<p><strong>Amount:</strong> ${escapeHtml(amount)}<br /><strong>Submitted by:</strong> ${escapeHtml(
+      input.submittedByName
+    )}</p>`,
+    `<p><a href="${escapeHtml(reviewHref)}">Review bill submission</a></p>`,
+  ].join("")
+  const content = `${billLabel} from ${input.vendorName} was submitted for ${projectLabel(
+    input.project
+  )}. Amount: ${amount}. Review: ${reviewHref}`
+
+  await input.db.insert(messages).values({
+    id: messageId,
+    channelId,
+    threadId: null,
+    userId: input.submittedByUserId,
+    content,
+    contentHtml,
+    editedAt: null,
+    deletedAt: null,
+    deletedBy: null,
+    isPinned: false,
+    replyCount: 0,
+    lastReplyAt: null,
+    createdAt: now,
+  })
+
+  if (recipients.length > 0) {
+    await input.db.insert(messageMentions).values(
+      recipients.map((recipient) => ({
+        id: crypto.randomUUID(),
+        messageId,
+        mentionType: "user",
+        targetId: recipient.userId,
+        createdAt: now,
+      }))
+    )
+
+    await createNotificationEvent({
+      organizationId: input.project.organizationId,
+      projectId: input.project.id,
+      eventType: "message.mention",
+      sourceType: "vendor_bill_submission",
+      sourceId: input.submissionId,
+      title: `Bill submitted for ${projectLabel(input.project)}`,
+      body: `${input.vendorName} submitted ${billLabel.toLowerCase()} for ${amount}.`,
+      href: reviewHref,
+      priority: "normal",
+      audience: "project_administrator",
+      createdBy: input.submittedByUserId,
+      recipients,
+    })
+  }
+}
+
 async function getMatchingExternalContact(input: {
   readonly db: ReturnType<typeof getDb>
   readonly projectId: string
@@ -287,6 +603,9 @@ export async function POST(
     const [project] = await db
       .select({
         id: projects.id,
+        name: projects.name,
+        projectNumber: projects.projectNumber,
+        organizationId: projects.organizationId,
         googleDriveFolderId: projects.googleDriveFolderId,
       })
       .from(projects)
@@ -298,6 +617,18 @@ export async function POST(
         { success: false, error: "Project not found." },
         { status: 404 }
       )
+    }
+    if (!project.organizationId) {
+      return NextResponse.json(
+        { success: false, error: "Project is not linked to an organization." },
+        { status: 400 }
+      )
+    }
+    const scopedProject = {
+      id: project.id,
+      name: project.name,
+      projectNumber: project.projectNumber,
+      organizationId: project.organizationId,
     }
 
     const formData = await request.formData()
@@ -468,6 +799,24 @@ export async function POST(
           createdAt: now,
           updatedAt: now,
         }))
+      )
+    }
+
+    try {
+      await notifyProjectAdministratorOfBill({
+        db,
+        project: scopedProject,
+        submissionId,
+        submittedByUserId: user.id,
+        submittedByName: user.displayName ?? user.email,
+        vendorName,
+        billNumber,
+        totalAmount,
+      })
+    } catch (notificationError) {
+      console.error(
+        "[vendor-bill-submissions] failed to notify project administrator",
+        notificationError
       )
     }
 
