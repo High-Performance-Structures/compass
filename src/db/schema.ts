@@ -627,6 +627,15 @@ export const projectVendorBillSubmissions = sqliteTable(
     }),
     reviewedAt: text("reviewed_at"),
     reviewNotes: text("review_notes"),
+    payRequestNumber: text("pay_request_number"),
+    payRequestDate: text("pay_request_date"),
+    isChangeOrder: integer("is_change_order", {
+      mode: "boolean",
+    }).notNull().default(false),
+    changeOrderNumber: text("change_order_number"),
+    stampedFileId: text("stamped_file_id"),
+    stampedFileUrl: text("stamped_file_url"),
+    stampedAt: text("stamped_at"),
     convertedOperationId: text("converted_operation_id").references(
       () => projectOperations.id,
       { onDelete: "set null" }

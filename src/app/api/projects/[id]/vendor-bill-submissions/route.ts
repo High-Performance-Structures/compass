@@ -27,7 +27,9 @@ import { assertProjectAccess } from "@/lib/project-access"
 import { isInternalStaffRole } from "@/lib/user-roles"
 
 const GOOGLE_FOLDER_MIME_TYPE = "application/vnd.google-apps.folder"
-const VENDOR_BILL_FOLDER_NAME = "Vendor Bill Submissions"
+const PAY_REQUESTS_FOLDER_NAME = "03_PayRequests"
+const VENDOR_BILL_FOLDER_NAME = "Compass Bill Submissions"
+const UNCODED_BILL_FOLDER_NAME = "Uncoded"
 const MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024
 const DEFAULT_COMPASS_GOOGLE_UPLOAD_USER = "compass@hps-colorado.com"
 
@@ -162,11 +164,12 @@ async function resolveProjectDriveFolderId(input: {
   )
 }
 
-async function findOrCreateVendorBillFolder(input: {
+async function findOrCreateFolder(input: {
   readonly client: DriveClient
   readonly googleEmail: string
   readonly parentFolderId: string
   readonly driveId: string | null
+  readonly folderName: string
 }): Promise<string> {
   const result = await input.client.listFiles(input.googleEmail, {
     folderId: input.parentFolderId,
@@ -174,17 +177,46 @@ async function findOrCreateVendorBillFolder(input: {
     pageSize: 10,
     query:
       `mimeType = '${GOOGLE_FOLDER_MIME_TYPE}' and ` +
-      `name = '${escapeDriveQueryValue(VENDOR_BILL_FOLDER_NAME)}'`,
+      `name = '${escapeDriveQueryValue(input.folderName)}'`,
   })
   const existingFolder = result.files[0]
   if (existingFolder) return existingFolder.id
 
   const folder = await input.client.createFolder(input.googleEmail, {
-    name: VENDOR_BILL_FOLDER_NAME,
+    name: input.folderName,
     parentId: input.parentFolderId,
     driveId: input.driveId ?? undefined,
   })
   return folder.id
+}
+
+async function findOrCreateUncodedBillFolder(input: {
+  readonly client: DriveClient
+  readonly googleEmail: string
+  readonly projectFolderId: string
+  readonly driveId: string | null
+}): Promise<string> {
+  const payRequestsFolderId = await findOrCreateFolder({
+    client: input.client,
+    googleEmail: input.googleEmail,
+    parentFolderId: input.projectFolderId,
+    driveId: input.driveId,
+    folderName: PAY_REQUESTS_FOLDER_NAME,
+  })
+  const compassBillFolderId = await findOrCreateFolder({
+    client: input.client,
+    googleEmail: input.googleEmail,
+    parentFolderId: payRequestsFolderId,
+    driveId: input.driveId,
+    folderName: VENDOR_BILL_FOLDER_NAME,
+  })
+  return findOrCreateFolder({
+    client: input.client,
+    googleEmail: input.googleEmail,
+    parentFolderId: compassBillFolderId,
+    driveId: input.driveId,
+    folderName: UNCODED_BILL_FOLDER_NAME,
+  })
 }
 
 async function getMatchingExternalContact(input: {
@@ -344,10 +376,10 @@ export async function POST(
               googleEmail: user.googleEmail,
               env: envRecord,
             })
-            const folderId = await findOrCreateVendorBillFolder({
+            const folderId = await findOrCreateUncodedBillFolder({
               client,
               googleEmail,
-              parentFolderId: projectFolderId,
+              projectFolderId,
               driveId: auth.sharedDriveId,
             })
 
@@ -396,6 +428,7 @@ export async function POST(
       totalAmount,
       status: "submitted",
       reviewStatus: "needs_review",
+      isChangeOrder: false,
       sageWriteStatus: "not_ready",
       syncStatus: "compass_intake",
       createdAt: now,

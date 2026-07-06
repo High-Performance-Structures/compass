@@ -1,6 +1,6 @@
 "use server"
 
-import { and, asc, eq, inArray, sql } from "drizzle-orm"
+import { and, asc, eq, inArray, notInArray, sql } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
 import { getDb } from "@/db"
@@ -66,6 +66,12 @@ export type VendorBillSubmissionItem = {
   readonly status: string
   readonly reviewStatus: string
   readonly reviewNotes: string | null
+  readonly payRequestNumber: string | null
+  readonly payRequestDate: string | null
+  readonly isChangeOrder: boolean
+  readonly changeOrderNumber: string | null
+  readonly stampedFileUrl: string | null
+  readonly stampedAt: string | null
   readonly sageWriteStatus: string
   readonly syncStatus: string
   readonly createdAt: string
@@ -93,6 +99,10 @@ export type VendorBillSubmissionCodingLineInput = {
 export type UpdateVendorBillSubmissionCodingInput = {
   readonly reviewStatus: string
   readonly reviewNotes: string | null
+  readonly payRequestNumber: string | null
+  readonly payRequestDate: string | null
+  readonly isChangeOrder: boolean
+  readonly changeOrderNumber: string | null
   readonly lines: readonly VendorBillSubmissionCodingLineInput[]
 }
 
@@ -315,6 +325,12 @@ export async function getProjectVendorBillSubmissionContext(
       status: row.status,
       reviewStatus: row.reviewStatus,
       reviewNotes: row.reviewNotes,
+      payRequestNumber: row.payRequestNumber,
+      payRequestDate: row.payRequestDate,
+      isChangeOrder: row.isChangeOrder,
+      changeOrderNumber: row.changeOrderNumber,
+      stampedFileUrl: row.stampedFileUrl,
+      stampedAt: row.stampedAt,
       sageWriteStatus: row.sageWriteStatus,
       syncStatus: row.syncStatus,
       createdAt: row.createdAt,
@@ -353,29 +369,76 @@ export async function updateVendorBillSubmissionCoding(
       .limit(1)
 
     if (!submission) return { success: false, error: "Submission not found." }
+    if (input.lines.length === 0) {
+      return { success: false, error: "At least one coding line is required." }
+    }
 
     const now = new Date().toISOString()
     let totalAmount = 0
-    for (const line of input.lines) {
-      const amount = finiteAmount(line.amount)
-      totalAmount += amount
+    const retainedLineIds = input.lines
+      .map((line) => line.id)
+      .filter((id) => !id.startsWith("new-"))
+
+    if (retainedLineIds.length > 0) {
       await db
-        .update(projectVendorBillSubmissionLines)
-        .set({
-          description: cleanText(line.description),
-          amount,
-          costCode: cleanText(line.costCode),
-          phaseCode: cleanText(line.phaseCode),
-          reviewStatus: cleanText(line.costCode) ? "coded" : "needs_coding",
-          updatedAt: now,
-        })
+        .delete(projectVendorBillSubmissionLines)
         .where(
           and(
-            eq(projectVendorBillSubmissionLines.id, line.id),
+            eq(projectVendorBillSubmissionLines.submissionId, submissionId),
+            eq(projectVendorBillSubmissionLines.projectId, projectId),
+            notInArray(projectVendorBillSubmissionLines.id, retainedLineIds)
+          )
+        )
+    }
+
+    if (retainedLineIds.length === 0) {
+      await db
+        .delete(projectVendorBillSubmissionLines)
+        .where(
+          and(
             eq(projectVendorBillSubmissionLines.submissionId, submissionId),
             eq(projectVendorBillSubmissionLines.projectId, projectId)
           )
         )
+    }
+
+    for (const line of input.lines) {
+      const amount = finiteAmount(line.amount)
+      totalAmount += amount
+      const values = {
+        description: cleanText(line.description),
+        amount,
+        costCode: cleanText(line.costCode),
+        phaseCode: cleanText(line.phaseCode),
+        reviewStatus: cleanText(line.costCode) ? "coded" : "needs_coding",
+        updatedAt: now,
+      }
+
+      if (line.id.startsWith("new-")) {
+        await db.insert(projectVendorBillSubmissionLines).values({
+          id: crypto.randomUUID(),
+          submissionId,
+          projectId,
+          lineNumber: input.lines.indexOf(line) + 1,
+          targetProjectId: null,
+          createdAt: now,
+          ...values,
+        })
+      } else {
+        await db
+          .update(projectVendorBillSubmissionLines)
+          .set({
+            ...values,
+            lineNumber: input.lines.indexOf(line) + 1,
+          })
+          .where(
+            and(
+              eq(projectVendorBillSubmissionLines.id, line.id),
+              eq(projectVendorBillSubmissionLines.submissionId, submissionId),
+              eq(projectVendorBillSubmissionLines.projectId, projectId)
+            )
+          )
+      }
     }
 
     const reviewStatus = normalizedReviewStatus(input.reviewStatus)
@@ -385,6 +448,12 @@ export async function updateVendorBillSubmissionCoding(
         totalAmount,
         reviewStatus,
         reviewNotes: cleanText(input.reviewNotes),
+        payRequestNumber: cleanText(input.payRequestNumber),
+        payRequestDate: cleanText(input.payRequestDate),
+        isChangeOrder: input.isChangeOrder,
+        changeOrderNumber: input.isChangeOrder
+          ? cleanText(input.changeOrderNumber)
+          : null,
         reviewedBy: user.id,
         reviewedAt: now,
         sageWriteStatus: reviewStatus === "ready_for_sage" ? "ready" : "not_ready",

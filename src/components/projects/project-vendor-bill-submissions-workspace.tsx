@@ -20,6 +20,7 @@ import {
 import { ProjectSelectionComboboxInput } from "@/components/projects/project-selection-combobox-input"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import {
@@ -40,14 +41,6 @@ import {
 } from "@/components/ui/sheet"
 import { Textarea } from "@/components/ui/textarea"
 import { cn } from "@/lib/utils"
-
-type DraftLine = {
-  readonly id: string
-  readonly description: string
-  readonly amount: string
-  readonly costCode: string
-  readonly phaseCode: string
-}
 
 type EditableLine = {
   readonly id: string
@@ -102,9 +95,9 @@ function cleanAmount(value: string): number {
   return Number.isFinite(amount) ? amount : 0
 }
 
-function newLine(): DraftLine {
+function newEditableLine(): EditableLine {
   return {
-    id: crypto.randomUUID(),
+    id: `new-${crypto.randomUUID()}`,
     description: "",
     amount: "",
     costCode: "",
@@ -131,21 +124,9 @@ function SubmitBillDrawer({
 }): React.ReactElement {
   const router = useRouter()
   const [open, setOpen] = React.useState(false)
-  const [lines, setLines] = React.useState<readonly DraftLine[]>([newLine()])
   const [message, setMessage] = React.useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = React.useState(false)
-  const options = React.useMemo(() => costCodeOptions(context.costCodes), [context.costCodes])
   const contact = context.matchingContact
-
-  function updateLine(id: string, patch: Partial<DraftLine>): void {
-    setLines((current) =>
-      current.map((line) => (line.id === id ? { ...line, ...patch } : line))
-    )
-  }
-
-  function removeLine(id: string): void {
-    setLines((current) => (current.length > 1 ? current.filter((line) => line.id !== id) : current))
-  }
 
   async function submit(event: React.FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault()
@@ -157,12 +138,14 @@ function SubmitBillDrawer({
       formData.set(
         "linesJson",
         JSON.stringify(
-          lines.map((line) => ({
-            description: line.description,
-            amount: cleanAmount(line.amount),
-            costCode: line.costCode,
-            phaseCode: line.phaseCode,
-          }))
+          [
+            {
+              description: String(formData.get("description") ?? ""),
+              amount: cleanAmount(String(formData.get("amount") ?? "")),
+              costCode: null,
+              phaseCode: null,
+            },
+          ]
         )
       )
 
@@ -182,7 +165,6 @@ function SubmitBillDrawer({
       ) {
         setMessage("Bill submitted for review.")
         form.reset()
-        setLines([newLine()])
         setOpen(false)
         router.refresh()
         return
@@ -213,7 +195,8 @@ function SubmitBillDrawer({
         <SheetHeader>
           <SheetTitle>Submit Bill</SheetTitle>
           <SheetDescription>
-            Upload the bill and split the amount by cost code if needed.
+            Upload the invoice and enter the basic bill information. Compass
+            staff will code it during review.
           </SheetDescription>
         </SheetHeader>
 
@@ -241,6 +224,16 @@ function SubmitBillDrawer({
               <Label htmlFor="billNumber">Bill / Invoice Number</Label>
               <Input id="billNumber" name="billNumber" />
             </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="amount">Amount</Label>
+              <Input
+                id="amount"
+                name="amount"
+                inputMode="decimal"
+                placeholder="0.00"
+                required
+              />
+            </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label htmlFor="billDate">Bill Date</Label>
@@ -263,101 +256,12 @@ function SubmitBillDrawer({
             />
           </div>
 
-          <div className="space-y-3">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <h3 className="text-sm font-semibold">Bill Lines</h3>
-                <p className="text-xs text-muted-foreground">
-                  Use multiple lines when the invoice needs to be split.
-                </p>
-              </div>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => setLines((current) => [...current, newLine()])}
-              >
-                <IconPlus className="size-4" />
-                Add line
-              </Button>
-            </div>
-
-            <div className="space-y-3">
-              {lines.map((line, index) => (
-                <div
-                  key={line.id}
-                  className="grid gap-3 border-l-2 border-primary/40 pl-3 md:grid-cols-[minmax(0,1.4fr)_120px_minmax(0,1fr)_110px_40px]"
-                >
-                  <div className="space-y-1.5">
-                    <Label htmlFor={`line-description-${line.id}`}>
-                      Description
-                    </Label>
-                    <Input
-                      id={`line-description-${line.id}`}
-                      value={line.description}
-                      placeholder={`Line ${index + 1}`}
-                      onChange={(event) =>
-                        updateLine(line.id, { description: event.target.value })
-                      }
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label htmlFor={`line-amount-${line.id}`}>Amount</Label>
-                    <Input
-                      id={`line-amount-${line.id}`}
-                      value={line.amount}
-                      inputMode="decimal"
-                      placeholder="0.00"
-                      onChange={(event) =>
-                        updateLine(line.id, { amount: event.target.value })
-                      }
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label htmlFor={`line-cost-code-${line.id}`}>Cost Code</Label>
-                    <ProjectSelectionComboboxInput
-                      id={`line-cost-code-${line.id}`}
-                      name={`line-cost-code-${line.id}`}
-                      options={options}
-                      placeholder="Search cost codes..."
-                      value={line.costCode}
-                      onValueChange={(value) =>
-                        updateLine(line.id, { costCode: value })
-                      }
-                      manualInputLabel="Use typed cost code"
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label htmlFor={`line-phase-${line.id}`}>Phase</Label>
-                    <Input
-                      id={`line-phase-${line.id}`}
-                      value={line.phaseCode}
-                      onChange={(event) =>
-                        updateLine(line.id, { phaseCode: event.target.value })
-                      }
-                    />
-                  </div>
-                  <div className="flex items-end">
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      aria-label="Remove line"
-                      onClick={() => removeLine(line.id)}
-                    >
-                      <IconTrash className="size-4" />
-                    </Button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-
           <div className="space-y-1.5">
             <Label htmlFor="files">Attachment</Label>
             <Input id="files" name="files" type="file" multiple />
             <p className="text-xs text-muted-foreground">
-              Invoices and backup are stored in the project Google Drive folder.
+              Invoices and backup are stored under 03_PayRequests / Compass
+              Bill Submissions / Uncoded.
             </p>
           </div>
 
@@ -389,14 +293,28 @@ function SubmissionReviewDrawer({
   const [message, setMessage] = React.useState<string | null>(null)
   const [reviewStatus, setReviewStatus] = React.useState(submission.reviewStatus)
   const [reviewNotes, setReviewNotes] = React.useState(submission.reviewNotes ?? "")
+  const [payRequestNumber, setPayRequestNumber] = React.useState(
+    submission.payRequestNumber ?? ""
+  )
+  const [payRequestDate, setPayRequestDate] = React.useState(
+    submission.payRequestDate ?? ""
+  )
+  const [isChangeOrder, setIsChangeOrder] = React.useState(
+    submission.isChangeOrder
+  )
+  const [changeOrderNumber, setChangeOrderNumber] = React.useState(
+    submission.changeOrderNumber ?? ""
+  )
   const [lines, setLines] = React.useState<readonly EditableLine[]>(
-    submission.lines.map((line) => ({
-      id: line.id,
-      description: line.description ?? "",
-      amount: String(line.amount),
-      costCode: line.costCode ?? "",
-      phaseCode: line.phaseCode ?? "",
-    }))
+    submission.lines.length > 0
+      ? submission.lines.map((line) => ({
+          id: line.id,
+          description: line.description ?? "",
+          amount: String(line.amount),
+          costCode: line.costCode ?? "",
+          phaseCode: line.phaseCode ?? "",
+        }))
+      : [newEditableLine()]
   )
   const options = React.useMemo(() => costCodeOptions(costCodes), [costCodes])
 
@@ -406,12 +324,22 @@ function SubmissionReviewDrawer({
     )
   }
 
+  function removeLine(id: string): void {
+    setLines((current) =>
+      current.length > 1 ? current.filter((line) => line.id !== id) : current
+    )
+  }
+
   function save(): void {
     setMessage(null)
     startTransition(async () => {
       const result = await updateVendorBillSubmissionCoding(projectId, submission.id, {
         reviewStatus,
         reviewNotes,
+        payRequestNumber,
+        payRequestDate,
+        isChangeOrder,
+        changeOrderNumber,
         lines: lines.map((line) => ({
           id: line.id,
           description: line.description,
@@ -467,7 +395,19 @@ function SubmissionReviewDrawer({
 
           {submission.attachments.length > 0 && (
             <div className="space-y-2">
-              <h3 className="text-sm font-semibold">Attachments</h3>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h3 className="text-sm font-semibold">Attachments</h3>
+                {submission.stampedFileUrl && (
+                  <a
+                    href={submission.stampedFileUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-xs font-medium text-primary underline-offset-4 hover:underline"
+                  >
+                    Open stamped copy
+                  </a>
+                )}
+              </div>
               <div className="grid gap-2">
                 {submission.attachments.map((attachment) => (
                   <a
@@ -491,11 +431,80 @@ function SubmissionReviewDrawer({
           <Separator />
 
           <div className="space-y-3">
-            <h3 className="text-sm font-semibold">Coding Review</h3>
+            <h3 className="text-sm font-semibold">Draw / Pay Request</h3>
+            <div className="grid gap-3 md:grid-cols-2">
+              <div className="space-y-1.5">
+                <Label htmlFor={`pay-request-number-${submission.id}`}>
+                  Draw / Pay Request Number
+                </Label>
+                <Input
+                  id={`pay-request-number-${submission.id}`}
+                  value={payRequestNumber}
+                  disabled={!canReview}
+                  placeholder="Draw 03"
+                  onChange={(event) => setPayRequestNumber(event.target.value)}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor={`pay-request-date-${submission.id}`}>
+                  Draw / Pay Request Date
+                </Label>
+                <Input
+                  id={`pay-request-date-${submission.id}`}
+                  value={payRequestDate}
+                  disabled={!canReview}
+                  type="date"
+                  onChange={(event) => setPayRequestDate(event.target.value)}
+                />
+              </div>
+            </div>
+            <div className="flex flex-col gap-3 border-l-2 border-primary/40 pl-3 sm:flex-row sm:items-center">
+              <label className="flex items-center gap-2 text-sm font-medium">
+                <Checkbox
+                  checked={isChangeOrder}
+                  disabled={!canReview}
+                  onCheckedChange={(checked) =>
+                    setIsChangeOrder(checked === true)
+                  }
+                />
+                Change order item
+              </label>
+              <Input
+                value={changeOrderNumber}
+                disabled={!canReview || !isChangeOrder}
+                placeholder="Change order number"
+                className="sm:max-w-xs"
+                onChange={(event) => setChangeOrderNumber(event.target.value)}
+              />
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <h3 className="text-sm font-semibold">Coding Review</h3>
+                <p className="text-xs text-muted-foreground">
+                  Split this bill across cost codes as needed before Sage sync.
+                </p>
+              </div>
+              {canReview && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() =>
+                    setLines((current) => [...current, newEditableLine()])
+                  }
+                >
+                  <IconPlus className="size-4" />
+                  Add split
+                </Button>
+              )}
+            </div>
             {lines.map((line, index) => (
               <div
                 key={line.id}
-                className="grid gap-3 border-l-2 border-primary/40 pl-3 md:grid-cols-[minmax(0,1.4fr)_120px_minmax(0,1fr)_110px]"
+                className="grid gap-3 border-l-2 border-primary/40 pl-3 md:grid-cols-[minmax(0,1.4fr)_120px_minmax(0,1fr)_110px_40px]"
               >
                 <div className="space-y-1.5">
                   <Label htmlFor={`review-description-${line.id}`}>
@@ -547,6 +556,18 @@ function SubmissionReviewDrawer({
                       updateLine(line.id, { phaseCode: event.target.value })
                     }
                   />
+                </div>
+                <div className="flex items-end">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    aria-label="Remove split line"
+                    disabled={!canReview || lines.length === 1}
+                    onClick={() => removeLine(line.id)}
+                  >
+                    <IconTrash className="size-4" />
+                  </Button>
                 </div>
               </div>
             ))}
@@ -621,13 +642,30 @@ function SubmissionRow({
           {submission.billNumber ?? "No bill number"} ·{" "}
           {submission.description ?? "No description"}
         </p>
-        {submission.attachments.length > 0 && (
-          <p className="mt-1 inline-flex items-center gap-1 text-xs text-muted-foreground">
-            <IconPaperclip className="size-3.5" />
-            {submission.attachments.length} attachment
-            {submission.attachments.length === 1 ? "" : "s"}
-          </p>
-        )}
+        <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+          {submission.attachments.length > 0 && (
+            <span className="inline-flex items-center gap-1">
+              <IconPaperclip className="size-3.5" />
+              {submission.attachments.length} attachment
+              {submission.attachments.length === 1 ? "" : "s"}
+            </span>
+          )}
+          {submission.payRequestNumber && (
+            <span>Draw {submission.payRequestNumber}</span>
+          )}
+          {submission.payRequestDate && (
+            <span>Pay request {dateText(submission.payRequestDate)}</span>
+          )}
+          {submission.isChangeOrder && (
+            <span>
+              Change order
+              {submission.changeOrderNumber
+                ? ` ${submission.changeOrderNumber}`
+                : ""}
+            </span>
+          )}
+          {submission.stampedAt && <span>Stamped {dateText(submission.stampedAt)}</span>}
+        </div>
       </div>
       <div className="text-sm">{money(submission.totalAmount)}</div>
       <div className="text-sm text-muted-foreground">
