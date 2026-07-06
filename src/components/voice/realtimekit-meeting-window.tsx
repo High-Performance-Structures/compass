@@ -461,7 +461,7 @@ export function RealtimeKitMeetingWindow({
       } catch (firstCause: unknown) {
         if (!isCurrent) return
         try {
-          await openMeeting(true)
+          await openMeeting(false)
         } catch (secondCause: unknown) {
           if (!isCurrent) return
           recordRealtimeKitDiagnostic("open-failed", {

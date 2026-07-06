@@ -797,6 +797,17 @@ export async function joinRealtimeKitVoiceSession(
     if (!channel) return { success: false, error: "Voice channel not found" }
 
     if (options?.resetMeeting) {
+      const activeParticipants = await listActiveParticipants(db, channelId)
+      const otherActiveParticipants = activeParticipants.filter(
+        (participant) => participant.userId !== user.id
+      )
+      if (otherActiveParticipants.length > 0) {
+        return {
+          success: false,
+          error:
+            "Cannot reset this meeting while other participants are still connected.",
+        }
+      }
       await db
         .delete(voiceRealtimeKitMeetings)
         .where(eq(voiceRealtimeKitMeetings.channelId, channelId))
