@@ -328,7 +328,23 @@ async function resolveMentionNotificationRecipients(
 }
 
 function messagePreview(content: string): string {
-  const normalized = content.replace(/\s+/g, " ").trim()
+  const withMentionLabels = content.replace(
+    /<span\b[^>]*data-type=["']mention["'][^>]*data-label=["']([^"']+)["'][^>]*>.*?<\/span>/gi,
+    (_match, label: string) => `@${label}`
+  )
+  const withoutTags = withMentionLabels
+    .replace(/<br\s*\/?>/gi, " ")
+    .replace(/<\/p>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+  const normalized = withoutTags
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&quot;/gi, "\"")
+    .replace(/&#39;/gi, "'")
+    .replace(/\s+/g, " ")
+    .trim()
   if (normalized.length <= 180) return normalized
   return `${normalized.slice(0, 177)}...`
 }

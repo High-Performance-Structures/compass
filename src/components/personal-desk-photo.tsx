@@ -28,7 +28,14 @@ function defaultDeskPhoto(user: SidebarUser): string | null {
 
 function readStoredPhoto(user: SidebarUser): string | null | typeof HIDDEN_DESK_PHOTO {
   try {
-    return window.localStorage.getItem(storageKey(user))
+    const storedPhoto = window.localStorage.getItem(storageKey(user))
+
+    if (storedPhoto === null || storedPhoto === HIDDEN_DESK_PHOTO) {
+      return storedPhoto
+    }
+
+    const trimmedPhoto = storedPhoto.trim()
+    return trimmedPhoto.length > 0 ? trimmedPhoto : null
   } catch {
     return null
   }
@@ -151,8 +158,22 @@ export function PersonalDeskPhoto({
     if (!user) return
 
     setPhotoUrl(null)
-    saveStoredPhoto(user, null)
+    saveStoredPhoto(user, HIDDEN_DESK_PHOTO)
     setMessage("Desk photo removed.")
+  }
+
+  function handlePhotoError(): void {
+    if (!user) return
+
+    const fallback = defaultDeskPhoto(user)
+    if (fallback !== null && photoUrl !== fallback) {
+      setPhotoUrl(fallback)
+      saveStoredPhoto(user, null)
+      setMessage("Desk photo reset after the saved image could not load.")
+      return
+    }
+
+    setPhotoUrl(null)
   }
 
   const hasPhoto = photoUrl !== null
@@ -174,6 +195,7 @@ export function PersonalDeskPhoto({
                   fill
                   sizes="240px"
                   unoptimized
+                  onError={handlePhotoError}
                   className="object-cover"
                 />
               ) : (
@@ -205,6 +227,7 @@ export function PersonalDeskPhoto({
                   fill
                   sizes="288px"
                   unoptimized
+                  onError={handlePhotoError}
                   className="object-cover"
                 />
               </div>
