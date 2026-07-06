@@ -1100,9 +1100,8 @@ export async function getProjectDailyLogWorkspace(
     .where(eq(dailyLogPhotos.projectId, projectId))
     .orderBy(asc(dailyLogPhotos.sortOrder), desc(dailyLogPhotos.createdAt))
 
-  const logIds = logRows.map((row) => row.id)
   const taskRows =
-    logIds.length === 0
+    logRows.length === 0
       ? []
       : await db
           .select({
@@ -1115,11 +1114,12 @@ export async function getProjectDailyLogWorkspace(
             notes: dailyLogTaskLinks.notes,
           })
           .from(dailyLogTaskLinks)
+          .innerJoin(dailyLogs, eq(dailyLogTaskLinks.dailyLogId, dailyLogs.id))
           .innerJoin(
             scheduleTasks,
             eq(dailyLogTaskLinks.scheduleTaskId, scheduleTasks.id)
           )
-          .where(inArray(dailyLogTaskLinks.dailyLogId, logIds))
+          .where(eq(dailyLogs.projectId, projectId))
           .orderBy(asc(scheduleTasks.startDate), asc(scheduleTasks.sortOrder))
 
   const photosByLogId = new Map<string, ProjectDailyLogPhoto[]>()
