@@ -14,6 +14,7 @@ import {
   IconMessageCircleQuestion,
   IconPalette,
   IconPhoto,
+  IconReceipt,
   IconShoppingCart,
   IconShoppingCartQuestion,
   IconUsers,
@@ -42,6 +43,7 @@ type ProjectSectionKey =
   | "rfis"
   | "rfqs"
   | "purchase-orders"
+  | "bill-submissions"
   | "budget"
   | "financials"
   | "contacts"
@@ -111,6 +113,12 @@ const PROJECT_SECTION_ITEMS: readonly ProjectSectionItem[] = [
     section: "purchase-orders",
   },
   {
+    title: "Bill Submissions",
+    hrefSuffix: "bill-submissions",
+    icon: IconReceipt,
+    section: "bill-submissions",
+  },
+  {
     title: "Budget / G703",
     hrefSuffix: "budget",
     icon: IconFileDollar,
@@ -166,6 +174,7 @@ function activeProjectSection(pathname: string | null): ProjectSectionKey {
     case "photos":
     case "selections":
     case "purchase-orders":
+    case "bill-submissions":
     case "rfqs":
     case "rfis":
     case "schedule":

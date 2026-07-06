@@ -33,6 +33,8 @@ export function ProjectSelectionComboboxInput({
   options,
   placeholder,
   defaultValue = "",
+  value,
+  onValueChange,
   emptyMessage = "No matching options.",
   manualInputLabel = "Use typed value",
   allowManualInput = true,
@@ -42,14 +44,17 @@ export function ProjectSelectionComboboxInput({
   readonly options: readonly SelectionComboboxOption[]
   readonly placeholder: string
   readonly defaultValue?: string
+  readonly value?: string
+  readonly onValueChange?: (value: string) => void
   readonly emptyMessage?: string
   readonly manualInputLabel?: string
   readonly allowManualInput?: boolean
 }): React.ReactElement {
   const [open, setOpen] = React.useState(false)
-  const [inputValue, setInputValue] = React.useState(defaultValue)
+  const [internalInputValue, setInternalInputValue] = React.useState(defaultValue)
   const [searchValue, setSearchValue] = React.useState("")
   const [selectedValue, setSelectedValue] = React.useState<string | null>(null)
+  const inputValue = value ?? internalInputValue
   const selectedOption =
     selectedValue === null
       ? null
@@ -70,7 +75,8 @@ export function ProjectSelectionComboboxInput({
           value={inputValue}
           placeholder={placeholder}
           onChange={(event) => {
-            setInputValue(event.target.value)
+            setInternalInputValue(event.target.value)
+            onValueChange?.(event.target.value)
             setSelectedValue(null)
           }}
         />
@@ -102,7 +108,8 @@ export function ProjectSelectionComboboxInput({
                       value={`${option.label} ${option.value} ${option.description ?? ""}`}
                       onSelect={() => {
                         setSelectedValue(option.value)
-                        setInputValue(option.label)
+                        setInternalInputValue(option.label)
+                        onValueChange?.(option.value)
                         setOpen(false)
                       }}
                     >
@@ -141,7 +148,8 @@ export function ProjectSelectionComboboxInput({
                     disabled={!canUseSearchValue}
                     onClick={() => {
                       if (!canUseSearchValue) return
-                      setInputValue(manualSearchValue)
+                      setInternalInputValue(manualSearchValue)
+                      onValueChange?.(manualSearchValue)
                       setSelectedValue(null)
                       setOpen(false)
                     }}

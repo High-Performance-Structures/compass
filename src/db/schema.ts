@@ -597,6 +597,121 @@ export const projectOperations = sqliteTable("project_operations", {
   updatedAt: text("updated_at").notNull(),
 })
 
+export const projectVendorBillSubmissions = sqliteTable(
+  "project_vendor_bill_submissions",
+  {
+    id: text("id").primaryKey(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    submittedBy: text("submitted_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    projectContactId: text("project_contact_id").references(
+      () => projectContacts.id,
+      { onDelete: "set null" }
+    ),
+    sourceSystem: text("source_system").notNull().default("compass"),
+    sourceRecordId: text("source_record_id"),
+    vendorName: text("vendor_name").notNull(),
+    vendorEmail: text("vendor_email"),
+    billNumber: text("bill_number"),
+    billDate: text("bill_date"),
+    dueDate: text("due_date"),
+    description: text("description"),
+    totalAmount: real("total_amount").notNull().default(0),
+    status: text("status").notNull().default("submitted"),
+    reviewStatus: text("review_status").notNull().default("needs_review"),
+    reviewedBy: text("reviewed_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    reviewedAt: text("reviewed_at"),
+    reviewNotes: text("review_notes"),
+    convertedOperationId: text("converted_operation_id").references(
+      () => projectOperations.id,
+      { onDelete: "set null" }
+    ),
+    sageWriteStatus: text("sage_write_status").notNull().default("not_ready"),
+    syncStatus: text("sync_status").notNull().default("compass_intake"),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => [
+    index("idx_project_vendor_bill_submissions_project").on(table.projectId),
+    index("idx_project_vendor_bill_submissions_status").on(
+      table.projectId,
+      table.reviewStatus
+    ),
+    index("idx_project_vendor_bill_submissions_submitter").on(table.submittedBy),
+  ]
+)
+
+export const projectVendorBillSubmissionLines = sqliteTable(
+  "project_vendor_bill_submission_lines",
+  {
+    id: text("id").primaryKey(),
+    submissionId: text("submission_id")
+      .notNull()
+      .references(() => projectVendorBillSubmissions.id, {
+        onDelete: "cascade",
+      }),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    lineNumber: integer("line_number").notNull().default(1),
+    targetProjectId: text("target_project_id").references(() => projects.id, {
+      onDelete: "set null",
+    }),
+    phaseCode: text("phase_code"),
+    costCode: text("cost_code"),
+    description: text("description"),
+    amount: real("amount").notNull().default(0),
+    reviewStatus: text("review_status").notNull().default("needs_coding"),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => [
+    index("idx_project_vendor_bill_submission_lines_submission").on(
+      table.submissionId
+    ),
+    index("idx_project_vendor_bill_submission_lines_project").on(
+      table.projectId
+    ),
+  ]
+)
+
+export const projectVendorBillSubmissionAttachments = sqliteTable(
+  "project_vendor_bill_submission_attachments",
+  {
+    id: text("id").primaryKey(),
+    submissionId: text("submission_id")
+      .notNull()
+      .references(() => projectVendorBillSubmissions.id, {
+        onDelete: "cascade",
+      }),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    fileName: text("file_name").notNull(),
+    mimeType: text("mime_type"),
+    fileSize: integer("file_size").notNull().default(0),
+    storageProvider: text("storage_provider").notNull().default("google_drive"),
+    storageId: text("storage_id"),
+    storageUrl: text("storage_url"),
+    storageStatus: text("storage_status").notNull().default("uploaded"),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => [
+    index("idx_project_vendor_bill_submission_attachments_submission").on(
+      table.submissionId
+    ),
+    index("idx_project_vendor_bill_submission_attachments_project").on(
+      table.projectId
+    ),
+  ]
+)
+
 export const projectPurchaseOrderLines = sqliteTable("project_purchase_order_lines", {
   id: text("id").primaryKey(),
   operationId: text("operation_id")
@@ -1035,6 +1150,18 @@ export type OwnerProjectUpdate = typeof ownerProjectUpdates.$inferSelect
 export type NewOwnerProjectUpdate = typeof ownerProjectUpdates.$inferInsert
 export type ProjectOperation = typeof projectOperations.$inferSelect
 export type NewProjectOperation = typeof projectOperations.$inferInsert
+export type ProjectVendorBillSubmission =
+  typeof projectVendorBillSubmissions.$inferSelect
+export type NewProjectVendorBillSubmission =
+  typeof projectVendorBillSubmissions.$inferInsert
+export type ProjectVendorBillSubmissionLine =
+  typeof projectVendorBillSubmissionLines.$inferSelect
+export type NewProjectVendorBillSubmissionLine =
+  typeof projectVendorBillSubmissionLines.$inferInsert
+export type ProjectVendorBillSubmissionAttachment =
+  typeof projectVendorBillSubmissionAttachments.$inferSelect
+export type NewProjectVendorBillSubmissionAttachment =
+  typeof projectVendorBillSubmissionAttachments.$inferInsert
 export type ProjectPurchaseOrderLine =
   typeof projectPurchaseOrderLines.$inferSelect
 export type NewProjectPurchaseOrderLine =

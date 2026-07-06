@@ -1,35 +1,30 @@
 export const dynamic = "force-dynamic"
 
 import Link from "next/link"
-import { redirect } from "next/navigation"
-import { IconArrowLeft, IconFileDollar } from "@tabler/icons-react"
+import { IconArrowLeft, IconReceipt } from "@tabler/icons-react"
 
 import {
-  getProjectFinancialWorkflowItems,
-  type ProjectFinancialWorkflowItem,
-} from "@/app/actions/project-financial-workflows"
+  getProjectVendorBillSubmissionContext,
+  type ProjectVendorBillSubmissionContext,
+} from "@/app/actions/project-vendor-bill-submissions"
 import { ProjectContextSwitcher } from "@/components/projects/project-context-switcher"
 import { ProjectContextWatermarkShell } from "@/components/projects/project-context-watermark-shell"
-import { ProjectFinancialWorkspace } from "@/components/projects/project-financial-workspace"
+import { ProjectVendorBillSubmissionsWorkspace } from "@/components/projects/project-vendor-bill-submissions-workspace"
+import { redirectIfFeaturePermissionDenied } from "@/lib/permission-redirect"
 
-export default async function ProjectFinancialsPage({
+export default async function ProjectBillSubmissionsPage({
   params,
 }: {
-  readonly params: Promise<{ id: string }>
+  readonly params: Promise<{ readonly id: string }>
 }): Promise<React.ReactElement> {
   const { id } = await params
-  let items: readonly ProjectFinancialWorkflowItem[] = []
+  let context: ProjectVendorBillSubmissionContext
 
   try {
-    items = await getProjectFinancialWorkflowItems(id)
+    context = await getProjectVendorBillSubmissionContext(id)
   } catch (error) {
-    if (
-      error instanceof Error &&
-      error.message.includes("cannot read finance")
-    ) {
-      redirect("/dashboard/access-restricted?feature=financials&action=read")
-    }
-    console.warn("Project financial workflow unavailable", error)
+    redirectIfFeaturePermissionDenied(error)
+    throw error
   }
 
   return (
@@ -45,24 +40,25 @@ export default async function ProjectFinancialsPage({
               Project
             </Link>
             <div className="mt-3 flex items-center gap-2">
-              <IconFileDollar className="size-5 text-primary" />
+              <IconReceipt className="size-5 text-primary" />
               <h1 className="text-2xl font-semibold tracking-tight">
-                Project Financials
+                Bill Submissions
               </h1>
             </div>
             <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
-              Vendor bills, owner pay applications, and quote requests.
+              Intake for subcontractor and supplier bills before internal review
+              and Sage sync.
             </p>
           </div>
           <ProjectContextSwitcher
             currentProjectId={id}
-            targetSection="financials"
-            placeholder="Switch financial project..."
+            targetSection="bill-submissions"
+            placeholder="Switch bill project..."
             className="w-full sm:w-[280px]"
           />
         </div>
 
-        <ProjectFinancialWorkspace projectId={id} items={items} />
+        <ProjectVendorBillSubmissionsWorkspace projectId={id} context={context} />
       </div>
     </ProjectContextWatermarkShell>
   )

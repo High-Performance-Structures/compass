@@ -68,6 +68,7 @@ async function verifyProjectUpdateAccess(projectId: string): Promise<{
 }> {
   const user = await requireAuth()
   requirePermission(user, "project", "update")
+  requirePermission(user, "finance", "update")
   const orgId = requireOrg(user)
   const { env } = await getCloudflareContext()
   const db = getDb(env.DB)
@@ -92,6 +93,7 @@ async function verifyProjectReadAccess(projectId: string): Promise<{
 }> {
   const user = await requireAuth()
   requirePermission(user, "project", "read")
+  requirePermission(user, "finance", "read")
   const orgId = requireOrg(user)
   const { env } = await getCloudflareContext()
   const db = getDb(env.DB)

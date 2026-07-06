@@ -15,6 +15,7 @@ export type Resource =
   | "customer"
   | "vendor"
   | "finance"
+  | "bill_submission"
   | "agent"
   | "channels"
 
@@ -188,6 +189,13 @@ export const PERMISSION_FEATURES: readonly PermissionFeature[] = [
     resource: "finance",
   },
   {
+    id: "bill-submissions",
+    group: "Financial",
+    label: "Bill Submissions",
+    description: "Sub/vendor bill intake, attachments, coding review, and admin approval.",
+    resource: "bill_submission",
+  },
+  {
     id: "sage-sync",
     group: "Financial",
     label: "Sage Sync Queue",
@@ -316,6 +324,7 @@ const ADMIN_PERMISSIONS: RolePermissionSet = {
   customer: ["create", "read", "update", "delete"],
   vendor: ["create", "read", "update", "delete"],
   finance: ["create", "read", "update", "delete", "approve"],
+  bill_submission: ["create", "read", "update", "delete", "approve"],
   agent: ["create", "read", "update", "delete"],
   channels: ["create", "read", "update", "delete", "moderate"],
 }
@@ -333,6 +342,7 @@ const INTERNAL_PROJECT_PERMISSIONS: RolePermissionSet = {
   customer: ["create", "read", "update"],
   vendor: ["create", "read", "update"],
   finance: ["create", "read", "update"],
+  bill_submission: ["create", "read", "update"],
   agent: ["read"],
   channels: ["create", "read", "update"],
 }
@@ -350,6 +360,7 @@ const FIELD_PERMISSIONS: RolePermissionSet = {
   customer: ["read"],
   vendor: ["read"],
   finance: ["read"],
+  bill_submission: ["create", "read"],
   agent: ["read"],
   channels: ["create", "read"],
 }
@@ -366,7 +377,8 @@ const EXTERNAL_PROJECT_PERMISSIONS: RolePermissionSet = {
   group: ["read"],
   customer: ["read"],
   vendor: ["read"],
-  finance: ["read"],
+  finance: [],
+  bill_submission: ["create", "read"],
   agent: [],
   channels: ["read"],
 }
@@ -384,6 +396,7 @@ const DEVELOPER_PERMISSIONS: RolePermissionSet = {
   customer: ["read"],
   vendor: ["read"],
   finance: ["read"],
+  bill_submission: ["create", "read", "update"],
   agent: ["read"],
   channels: ["create", "read", "update"],
 }

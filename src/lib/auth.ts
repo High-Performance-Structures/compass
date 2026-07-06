@@ -363,6 +363,11 @@ export async function getCurrentUser(): Promise<AuthUser | null> {
       }
     }
 
+    const resolvedRole =
+      activeOrg?.orgType === "personal"
+        ? dbUser.role
+        : activeOrg?.memberRole ?? dbUser.role
+
     return {
       id: dbUser.id,
       email: dbUser.email,
@@ -370,7 +375,7 @@ export async function getCurrentUser(): Promise<AuthUser | null> {
       lastName: dbUser.lastName,
       displayName: dbUser.displayName,
       avatarUrl: dbUser.avatarUrl,
-      role: activeOrg?.memberRole ?? dbUser.role,
+      role: resolvedRole,
       googleEmail: dbUser.googleEmail ?? null,
       isActive: dbUser.isActive,
       lastLoginAt: now,
