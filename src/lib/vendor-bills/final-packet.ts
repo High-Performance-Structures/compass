@@ -217,7 +217,7 @@ function drawCodingTable(input: {
   readonly lines: readonly VendorBillPacketLine[]
 }): number {
   const tableLeft = MARGIN
-  const columnWidths = [78, 46, 92, 106, 234]
+  const columnWidths = [72, 42, 78, 98, 230]
   const headers = ["Project", "C/O", "Amount", "Cost Code", "Description"]
   const totalWidth = columnWidths.reduce((sum, width) => sum + width, 0)
   const headerHeight = 24
