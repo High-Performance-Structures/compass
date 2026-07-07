@@ -6,6 +6,11 @@ const DEFAULT_INPUT =
 const DEFAULT_OUTPUT =
   ".codex-snapshots/buildertrend-visible-jobs-staging-import.sql"
 
+function buildertrendJobIdFromHref(href) {
+  const match = text(href).match(/JobPage\/(\d+)/)
+  return match ? match[1] : null
+}
+
 function sqlString(value) {
   if (value === null || value === undefined || value === "") return "NULL"
   return `'${String(value).replaceAll("'", "''")}'`
@@ -50,19 +55,41 @@ function hasCombinedOwnerName(name) {
 }
 
 function normalizeJobRow(row) {
-  const jobId = text(row.buildertrendJobId)
-  const name = text(row.name)
-  const contacts = Array.isArray(row.contacts) ? row.contacts : []
+  const cells = Array.isArray(row.cells) ? row.cells.map(text) : []
+  const href = text(row.href || row.jobHref)
+  const jobId = text(row.buildertrendJobId) || buildertrendJobIdFromHref(href)
+  const name = text(row.name || row.jobName || cells[2])
+  const contacts = Array.isArray(row.contacts)
+    ? row.contacts
+    : Array.isArray(row.contactLinks)
+      ? row.contactLinks
+      : []
   const projectNumber = projectNumberFromName(name)
+  const rowText = text(row.rowText) || cells.filter(Boolean).join(" | ")
+  const sourceStatus = text(row.buildertrendStatus || row.jobStatus)
+  const sourceContext = text(row.sourceContext || row.pageSummary)
   return {
     jobId,
     name,
     projectNumber,
     departmentCode: departmentCodeFromName(name),
     projectId: projectIdForJob({ jobId, name, projectNumber }),
-    href: text(row.href) || `/app/JobPage/${jobId}/1`,
-    sourceUrl: `https://buildertrend.net${text(row.href) || `/app/JobPage/${jobId}/1`}`,
-    rowText: text(row.rowText),
+    href: href || `/app/JobPage/${jobId}/1`,
+    sourceUrl: `https://buildertrend.net${href || `/app/JobPage/${jobId}/1`}`,
+    rowText,
+    sourceStatus,
+    sourceContext,
+    address: text(row.address || cells[3]),
+    city: text(row.city || cells[4]),
+    state: text(row.state || cells[5]),
+    zipCode: text(row.zipCode || cells[6]),
+    projectManager: text(row.projectManager || cells[7]),
+    clientPhone: text(row.clientPhone || cells[9]),
+    clientEmail: text(row.clientEmail || cells[10]),
+    clientAddress: [cells[11], cells[12], cells[13], cells[14]]
+      .filter(Boolean)
+      .join(", "),
+    scheduleStatus: text(row.scheduleStatus || cells[15]),
     clientName: contacts.map((contact) => text(contact.text)).filter(Boolean).join("; "),
     contacts: contacts
       .map((contact) => ({
@@ -84,7 +111,25 @@ function projectIdForJob({ jobId, name, projectNumber }) {
   return `proj-bt-${slug(name) || jobId}`.slice(0, 110)
 }
 
-function projectShellSql({ job, now }) {
+function projectLookupWhere(job) {
+  return [
+    `buildertrend_project_id = ${sqlString(job.jobId)}`,
+    job.projectNumber ? `project_number = ${sqlString(job.projectNumber)}` : null,
+    `name = ${sqlString(job.name)}`,
+  ]
+    .filter(Boolean)
+    .join(" OR ")
+}
+
+function projectIdSubquery(job) {
+  return `(SELECT id FROM projects WHERE ${projectLookupWhere(job)} LIMIT 1)`
+}
+
+function organizationIdSubquery(job) {
+  return `(SELECT organization_id FROM projects WHERE ${projectLookupWhere(job)} LIMIT 1)`
+}
+
+function projectShellSql({ job, now, insertedStatus }) {
   return `UPDATE projects
 SET buildertrend_project_id = ${sqlString(job.jobId)},
     updated_at = ${sqlString(now)}
@@ -101,7 +146,7 @@ INSERT INTO projects (
 )
 SELECT
   ${sqlString(job.projectId)}, ${sqlString(job.projectNumber)}, ${sqlString(job.name)},
-  'OPEN', ${sqlString(job.clientName || null)}, 'org-1',
+  ${sqlString(insertedStatus)}, ${sqlString(job.clientName || null)}, 'org-1',
   ${sqlString(job.jobId)}, 1, 'compass', 'weekly',
   ${sqlString(now)}, ${sqlString(now)}
 WHERE NOT EXISTS (
@@ -119,10 +164,10 @@ function projectExternalLinkSql({ job, now }) {
   sync_direction, sync_status, metadata, last_synced_at, created_at, updated_at
 ) VALUES (
   ${sqlString(id)},
-  (SELECT id FROM projects WHERE buildertrend_project_id = ${sqlString(job.jobId)} LIMIT 1),
+  ${projectIdSubquery(job)},
   'buildertrend', 'Buildertrend Job', ${sqlString(job.jobId)}, ${sqlString(job.jobId)},
   ${sqlString(job.sourceUrl)}, 'read', 'imported',
-  ${sqlString(JSON.stringify({ source: "buildertrend_jobs_list", projectNumber: job.projectNumber }))},
+  ${sqlString(JSON.stringify({ source: "buildertrend_jobs_list", projectNumber: job.projectNumber, sourceContext: job.sourceContext }))},
   ${sqlString(now)}, ${sqlString(now)}, ${sqlString(now)}
 )
 ON CONFLICT(id) DO UPDATE SET
@@ -145,10 +190,10 @@ function sourceRecordSql({ importRunId, job, now }) {
   sage_reconciliation_status, notes, created_at, updated_at
 ) VALUES (
   ${sqlString(recordId)}, ${sqlString(importRunId)},
-  (SELECT organization_id FROM projects WHERE buildertrend_project_id = ${sqlString(job.jobId)} LIMIT 1),
-  (SELECT id FROM projects WHERE buildertrend_project_id = ${sqlString(job.jobId)} LIMIT 1),
+  ${organizationIdSubquery(job)},
+  ${projectIdSubquery(job)},
   'job', 'job', ${sqlString(job.jobId)}, ${sqlString(job.sourceUrl)},
-  ${sqlString(job.name)}, NULL, ${sqlString(job.departmentCode)},
+  ${sqlString(job.name)}, ${sqlString(job.sourceStatus || job.sourceContext || null)}, ${sqlString(job.departmentCode)},
   ${sqlString(job.clientName)}, ${sqlString(job.rowText)},
   ${sqlString(`Buildertrend job inventory row for ${job.name}.`)},
   ${sqlString(rawPayload)}, 'needs_review', 'archive_only', 'not_reviewed',
@@ -184,8 +229,8 @@ function accessCandidateSql({ importRunId, job, contact, now }) {
   portal_access_status, review_status, notes, created_at, updated_at
 ) VALUES (
   ${sqlString(candidateId)}, ${sqlString(importRunId)}, ${sqlString(sourceRecordId)},
-  (SELECT organization_id FROM projects WHERE buildertrend_project_id = ${sqlString(job.jobId)} LIMIT 1),
-  (SELECT id FROM projects WHERE buildertrend_project_id = ${sqlString(job.jobId)} LIMIT 1),
+  ${organizationIdSubquery(job)},
+  ${projectIdSubquery(job)},
   ${sqlString(job.jobId)}, ${sqlString(contact.buildertrendContactId)}, 'client',
   ${sqlString(contact.name)}, 'customer', 'unmatched', 0,
   'not_granted', 'needs_review', ${sqlString(notes)},
@@ -210,6 +255,10 @@ async function main() {
   const snapshot = JSON.parse(raw)
   const rows = Array.isArray(snapshot.rows) ? snapshot.rows : []
   const jobs = rows.map(normalizeJobRow).filter((job) => job.jobId && job.name)
+  const isAllStatusArchive = text(snapshot.summary)
+    .toLowerCase()
+    .includes("all buildertrend job statuses")
+  const insertedStatus = isAllStatusArchive ? "OTHER" : "OPEN"
   const now = new Date().toISOString()
   const importRunId = `bt-import-${slug(path.basename(input, path.extname(input)))}`
   const statements = [
@@ -224,7 +273,7 @@ async function main() {
   ${sqlString(path.basename(input))}, 'completed', ${sqlString(now)},
   ${sqlString(now)},
   'Visible Buildertrend Jobs List inventory imported into staging.',
-  ${sqlString(JSON.stringify({ jobs: jobs.length, source: input }))},
+  ${sqlString(JSON.stringify({ jobs: jobs.length, source: input, insertedStatus }))},
   ${sqlString(now)}, ${sqlString(now)}
 )
 ON CONFLICT(id) DO UPDATE SET
@@ -233,7 +282,7 @@ ON CONFLICT(id) DO UPDATE SET
   notes = excluded.notes,
   summary_json = excluded.summary_json,
   updated_at = excluded.updated_at;`,
-    ...jobs.map((job) => projectShellSql({ job, now })),
+    ...jobs.map((job) => projectShellSql({ job, now, insertedStatus })),
     ...jobs.map((job) => projectExternalLinkSql({ job, now })),
     ...jobs.map((job) => sourceRecordSql({ importRunId, job, now })),
     ...jobs.flatMap((job) =>
@@ -252,6 +301,7 @@ ON CONFLICT(id) DO UPDATE SET
         input,
         output,
         jobs: jobs.length,
+        insertedStatus,
         accessCandidates: jobs.reduce(
           (total, job) => total + job.contacts.length,
           0

@@ -201,6 +201,54 @@ while still letting Compass search and reconcile the full Buildertrend record.
 10. Expose archive/search views for completed and archived projects once the
     source capture is trustworthy.
 
+## Current Cloud Staging Status
+
+As of July 7, 2026, the first Buildertrend browser-capture pass has been
+imported into the remote Compass D1 staging tables.
+
+Captured and staged:
+
+- 128 linked Buildertrend job records from the Jobs list after selecting all
+  visible Buildertrend statuses: Presale, Open, Warranty, and Closed.
+- 1 deleted Buildertrend job row was preserved in the raw local snapshot but
+  not linked to a Compass project shell because Buildertrend did not expose a
+  job link in the grid row.
+- 91 visible Buildertrend lead opportunities.
+- 50 visible Buildertrend lead proposals.
+- 433 visible Buildertrend client contacts.
+- 8 Buildertrend report snapshots:
+  - Daily log creation by job
+  - Schedule percent complete by job
+  - Invoicing
+  - Work in progress
+  - Budgeted vs projected
+  - Lead activities by salesperson
+  - Lead count by salesperson
+  - Lead status by source
+
+Guardrails verified:
+
+- Buildertrend client/sub/vendor/customer access candidates remain staged as
+  `not_granted` and `needs_review`.
+- The all-status job import stages newly discovered project shells as `OTHER`
+  rather than marking historical jobs as active. Active/warranty/complete
+  classification still needs review or a richer Buildertrend export with
+  per-row status.
+- Raw browser snapshots and generated import SQL live in `.codex-snapshots/`
+  and are intentionally gitignored.
+
+Still required:
+
+- Per-project captures for daily logs, photos, messages, RFIs, POs, tasks,
+  schedules, owner updates, finish selections, files, estimates, invoices, and
+  payments.
+- Google Drive archive folder creation or verification for each imported
+  project/lead.
+- A project archive/search UI for staged historical records that should not be
+  promoted into active Compass workflows.
+- A review queue for classifying `OTHER` imported projects into active,
+  warranty, complete, inactive, archive, or ignored.
+
 ## Display Model In Compass
 
 Active and preconstruction work should appear in the normal project hub and
