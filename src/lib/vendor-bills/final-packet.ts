@@ -404,7 +404,7 @@ export async function buildVendorBillFinalPacketPdf(
   const boldFont = await pdf.embedFont(StandardFonts.HelveticaBold)
   const page = pdf.addPage([PAGE_WIDTH, PAGE_HEIGHT])
 
-  page.drawText("Vendor Bill Submittal Packet", {
+  page.drawText("Vendor Bill Submittal", {
     x: MARGIN,
     y: PAGE_HEIGHT - MARGIN,
     size: 18,
@@ -613,35 +613,10 @@ export async function buildVendorBillFinalPacketPdf(
     lines: input.lines,
   })
 
-  const duplicateY = nextY
-  page.drawText("Duplicate / Sage Check", {
-    x: MARGIN,
-    y: duplicateY,
-    size: 10,
-    font: boldFont,
-    color: TEXT_COLOR,
-  })
-  drawTextLines({
-    page,
-    text:
-      input.duplicateReview.message ??
-      "No duplicate warning recorded. Sage direct duplicate check is still required before posting.",
-    x: MARGIN,
-    y: duplicateY - 18,
-    size: 9,
-    maxChars: 100,
-    maxLines: 3,
-    font: regularFont,
-    color:
-      input.duplicateReview.status === "possible_duplicate"
-        ? rgb(0.58, 0.16, 0.12)
-        : MUTED_COLOR,
-  })
-
   if (input.submission.reviewNotes) {
     page.drawText("Review Notes", {
       x: MARGIN,
-      y: duplicateY - 70,
+      y: nextY,
       size: 10,
       font: boldFont,
       color: TEXT_COLOR,
@@ -650,7 +625,7 @@ export async function buildVendorBillFinalPacketPdf(
       page,
       text: input.submission.reviewNotes,
       x: MARGIN,
-      y: duplicateY - 88,
+      y: nextY - 18,
       size: 9,
       maxChars: 100,
       maxLines: 3,
@@ -659,7 +634,7 @@ export async function buildVendorBillFinalPacketPdf(
     })
   }
 
-  page.drawText("Original invoice and backup follow this Compass submittal sheet.", {
+  page.drawText("Vendor invoice included with this submittal sheet.", {
     x: MARGIN,
     y: 32,
     size: 9,
