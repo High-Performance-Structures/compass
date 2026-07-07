@@ -16,6 +16,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { ContactProjectAccessForm } from "@/components/projects/contact-project-access-form"
 import type { Vendor } from "@/db/schema"
 
 interface VendorDialogProps {
@@ -156,6 +157,13 @@ export function VendorDialog({
               onChange={(e) => setAddress(e.target.value)}
             />
           </div>
+          {initialData ? (
+            <ContactProjectAccessForm
+              sourceEntityType="vendor"
+              sourceEntityId={initialData.id}
+              enabled={open}
+            />
+          ) : null}
         </ResponsiveDialogBody>
 
         <ResponsiveDialogFooter>

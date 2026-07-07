@@ -5,8 +5,10 @@ import { revalidatePath } from "next/cache"
 
 import { getDb } from "@/db"
 import {
+  customers,
   projectContacts,
   projectContactSourceLinks,
+  projects,
   vendors,
 } from "@/db/schema"
 import { requireAuth } from "@/lib/auth"
@@ -151,6 +153,25 @@ export type AddTaskAssigneeContactResult =
   | { readonly success: true; readonly contact: ProjectTaskAssigneeOption }
   | { readonly success: false; readonly error: string }
 
+export type DirectoryContactKind = "customer" | "vendor"
+
+export type DirectoryContactProjectAccessItem = {
+  readonly projectId: string
+  readonly projectNumber: string | null
+  readonly projectName: string
+  readonly assigned: boolean
+  readonly ownerPortalVisible: boolean
+  readonly subVendorPortalVisible: boolean
+  readonly internalVisible: boolean
+}
+
+export type DirectoryContactProjectAccessResult =
+  | {
+      readonly success: true
+      readonly items: readonly DirectoryContactProjectAccessItem[]
+    }
+  | { readonly success: false; readonly error: string }
+
 const CONTACT_TYPES: readonly ProjectContactType[] = [
   "owner",
   "supplier",
@@ -192,6 +213,38 @@ function vendorCategoryToContactType(category: string): ProjectContactType {
     return "supplier"
   }
   return "subcontractor"
+}
+
+function isDirectoryContactKind(value: string): value is DirectoryContactKind {
+  return value === "customer" || value === "vendor"
+}
+
+function defaultVisibilityForContactType(contactType: ProjectContactType): {
+  readonly ownerPortalVisible: boolean
+  readonly subVendorPortalVisible: boolean
+  readonly internalVisible: boolean
+} {
+  if (contactType === "owner") {
+    return {
+      ownerPortalVisible: true,
+      subVendorPortalVisible: false,
+      internalVisible: true,
+    }
+  }
+
+  if (contactType === "supplier" || contactType === "subcontractor") {
+    return {
+      ownerPortalVisible: false,
+      subVendorPortalVisible: false,
+      internalVisible: true,
+    }
+  }
+
+  return {
+    ownerPortalVisible: false,
+    subVendorPortalVisible: false,
+    internalVisible: true,
+  }
 }
 
 function isDirectoryAssignable(category: string): boolean {
@@ -548,6 +601,314 @@ export async function getProjectTaskAssigneeOptions(
   return {
     projectContacts: projectContactItems.map(projectContactToTaskAssigneeOption),
     directoryContacts,
+  }
+}
+
+export async function updateProjectContactVisibility(
+  formData: FormData
+): Promise<ContactMatchResult> {
+  try {
+    const user = await requireAuth()
+    if (isDemoUser(user.id)) return { success: false, error: "DEMO_READ_ONLY" }
+
+    const projectId = requireStringField(formData, "projectId")
+    const contactId = requireStringField(formData, "contactId")
+    const db = await verifyProjectAccess(projectId, "update")
+    const now = new Date().toISOString()
+
+    const [contact] = await db
+      .select({ id: projectContacts.id })
+      .from(projectContacts)
+      .where(
+        and(
+          eq(projectContacts.id, contactId),
+          eq(projectContacts.projectId, projectId),
+          eq(projectContacts.active, true)
+        )
+      )
+      .limit(1)
+
+    if (!contact) return { success: false, error: "Project contact not found" }
+
+    await db
+      .update(projectContacts)
+      .set({
+        ownerPortalVisible: formData.get("ownerPortalVisible") === "on",
+        subVendorPortalVisible:
+          formData.get("subVendorPortalVisible") === "on",
+        internalVisible: formData.get("internalVisible") === "on",
+        updatedAt: now,
+      })
+      .where(
+        and(
+          eq(projectContacts.id, contactId),
+          eq(projectContacts.projectId, projectId)
+        )
+      )
+
+    revalidateContactPaths(projectId)
+    return { success: true }
+  } catch (error) {
+    console.error("Failed to update project contact visibility", error)
+    return { success: false, error: "Failed to update project contact visibility" }
+  }
+}
+
+export async function updateProjectContactVisibilityForm(
+  formData: FormData
+): Promise<void> {
+  await updateProjectContactVisibility(formData)
+}
+
+export async function getDirectoryContactProjectAccess(
+  sourceEntityType: DirectoryContactKind,
+  sourceEntityId: string
+): Promise<DirectoryContactProjectAccessResult> {
+  try {
+    const user = await requireAuth()
+    requirePermission(user, "project", "read")
+    const orgId = requireOrg(user)
+
+    const { env } = await getCloudflareContext()
+    const db = getDb(env.DB)
+
+    const projectRows = await db
+      .select({
+        id: projects.id,
+        name: projects.name,
+        projectNumber: projects.projectNumber,
+      })
+      .from(projects)
+      .where(eq(projects.organizationId, orgId))
+      .orderBy(asc(projects.projectNumber), asc(projects.name))
+
+    const contactRows = await db
+      .select({
+        projectId: projectContacts.projectId,
+        ownerPortalVisible: projectContacts.ownerPortalVisible,
+        subVendorPortalVisible: projectContacts.subVendorPortalVisible,
+        internalVisible: projectContacts.internalVisible,
+        active: projectContacts.active,
+      })
+      .from(projectContacts)
+      .where(
+        and(
+          eq(projectContacts.sourceEntityType, sourceEntityType),
+          eq(projectContacts.sourceEntityId, sourceEntityId)
+        )
+      )
+
+    const contactsByProject = new Map(
+      contactRows.map((contact) => [contact.projectId, contact])
+    )
+
+    return {
+      success: true,
+      items: projectRows.map((project) => {
+        const contact = contactsByProject.get(project.id)
+        return {
+          projectId: project.id,
+          projectNumber: project.projectNumber,
+          projectName: project.name,
+          assigned: contact?.active ?? false,
+          ownerPortalVisible: contact?.ownerPortalVisible ?? false,
+          subVendorPortalVisible: contact?.subVendorPortalVisible ?? false,
+          internalVisible: contact?.internalVisible ?? false,
+        }
+      }),
+    }
+  } catch (error) {
+    console.error("Failed to load directory contact project access", error)
+    return { success: false, error: "Failed to load project access" }
+  }
+}
+
+export async function updateDirectoryContactProjectAccess(
+  formData: FormData
+): Promise<ContactMatchResult> {
+  try {
+    const user = await requireAuth()
+    if (isDemoUser(user.id)) return { success: false, error: "DEMO_READ_ONLY" }
+    requirePermission(user, "project", "update")
+    const orgId = requireOrg(user)
+
+    const sourceEntityType = requireStringField(formData, "sourceEntityType")
+    if (!isDirectoryContactKind(sourceEntityType)) {
+      return { success: false, error: "Unsupported contact type" }
+    }
+
+    const sourceEntityId = requireStringField(formData, "sourceEntityId")
+    const selectedProjectIds = new Set(
+      formData
+        .getAll("projectId")
+        .filter((value): value is string => typeof value === "string")
+        .map((value) => value.trim())
+        .filter((value) => value.length > 0)
+    )
+
+    const { env } = await getCloudflareContext()
+    const db = getDb(env.DB)
+
+    const projectRows = await db
+      .select({
+        id: projects.id,
+      })
+      .from(projects)
+      .where(eq(projects.organizationId, orgId))
+
+    const allowedProjectIds = new Set(projectRows.map((project) => project.id))
+    for (const projectId of selectedProjectIds) {
+      if (!allowedProjectIds.has(projectId)) {
+        return { success: false, error: "Project not available" }
+      }
+    }
+
+    const now = new Date().toISOString()
+    const existingRows = await db
+      .select()
+      .from(projectContacts)
+      .where(
+        and(
+          eq(projectContacts.sourceEntityType, sourceEntityType),
+          eq(projectContacts.sourceEntityId, sourceEntityId)
+        )
+      )
+
+    const existingByProject = new Map(
+      existingRows.map((contact) => [contact.projectId, contact])
+    )
+
+    if (sourceEntityType === "customer") {
+      const [customer] = await db
+        .select()
+        .from(customers)
+        .where(
+          and(eq(customers.id, sourceEntityId), eq(customers.organizationId, orgId))
+        )
+        .limit(1)
+
+      if (!customer) return { success: false, error: "Customer not found" }
+
+      for (const projectId of selectedProjectIds) {
+        const existing = existingByProject.get(projectId)
+        const defaults = defaultVisibilityForContactType("owner")
+
+        if (existing) {
+          await db
+            .update(projectContacts)
+            .set({ active: true, ...defaults, updatedAt: now })
+            .where(eq(projectContacts.id, existing.id))
+        } else {
+          await db.insert(projectContacts).values({
+            id: `project-contact-${sourceIdPart(projectId)}-owner-${sourceIdPart(customer.id)}`,
+            projectId,
+            contactType: "owner",
+            sourceSystem: customer.sourceSystem,
+            sourceRecordId: customer.sourceRecordId ?? customer.id,
+            sourceEntityType: "customer",
+            sourceEntityId: customer.id,
+            displayName: customer.name,
+            companyName: customer.company,
+            role: "Owner / Client",
+            trade: null,
+            csiDivision: null,
+            csiDivisionName: null,
+            primaryCostCode: null,
+            email: customer.email,
+            phone: customer.phone,
+            notes: "Assigned from the customer profile in Compass.",
+            ...defaults,
+            primaryContact: false,
+            active: true,
+            sortOrder: 20,
+            syncStatus: customer.syncStatus,
+            lastSyncedAt: customer.lastSyncedAt,
+            createdAt: now,
+            updatedAt: now,
+          })
+        }
+      }
+    } else {
+      const [vendor] = await db
+        .select()
+        .from(vendors)
+        .where(and(eq(vendors.id, sourceEntityId), eq(vendors.organizationId, orgId)))
+        .limit(1)
+
+      if (!vendor) return { success: false, error: "Vendor not found" }
+
+      const contactType = vendorCategoryToContactType(vendor.category)
+      const role =
+        contactType === "supplier"
+          ? "Supplier"
+          : contactType === "internal"
+            ? "Internal"
+            : "Subcontractor"
+
+      for (const projectId of selectedProjectIds) {
+        const existing = existingByProject.get(projectId)
+        const defaults = defaultVisibilityForContactType(contactType)
+
+        if (existing) {
+          await db
+            .update(projectContacts)
+            .set({ active: true, ...defaults, updatedAt: now })
+            .where(eq(projectContacts.id, existing.id))
+        } else {
+          await db.insert(projectContacts).values({
+            id: `project-contact-${sourceIdPart(projectId)}-${sourceIdPart(contactType)}-${sourceIdPart(vendor.id)}`,
+            projectId,
+            contactType,
+            sourceSystem: vendor.sourceSystem,
+            sourceRecordId: vendor.sourceRecordId ?? vendor.id,
+            sourceEntityType: "vendor",
+            sourceEntityId: vendor.id,
+            displayName: vendor.name,
+            companyName: vendor.name,
+            role,
+            trade: null,
+            csiDivision: null,
+            csiDivisionName: null,
+            primaryCostCode: null,
+            email: vendor.email,
+            phone: vendor.phone,
+            notes:
+              "Assigned from the vendor profile in Compass. Portal visibility should be reviewed per project.",
+            ...defaults,
+            primaryContact: false,
+            active: true,
+            sortOrder: 850,
+            syncStatus: vendor.syncStatus,
+            lastSyncedAt: vendor.lastSyncedAt,
+            createdAt: now,
+            updatedAt: now,
+          })
+        }
+      }
+    }
+
+    const deselectedContacts = existingRows.filter(
+      (contact) =>
+        allowedProjectIds.has(contact.projectId) &&
+        !selectedProjectIds.has(contact.projectId) &&
+        contact.active
+    )
+
+    for (const contact of deselectedContacts) {
+      await db
+        .update(projectContacts)
+        .set({ active: false, updatedAt: now })
+        .where(eq(projectContacts.id, contact.id))
+    }
+
+    for (const projectId of allowedProjectIds) {
+      revalidateContactPaths(projectId)
+    }
+    revalidatePath("/dashboard/contacts")
+    return { success: true }
+  } catch (error) {
+    console.error("Failed to update directory contact project access", error)
+    return { success: false, error: "Failed to update project access" }
   }
 }
 

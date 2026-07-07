@@ -15,6 +15,7 @@ import type {
   ProjectContactItem,
   ProjectContactsSummary,
 } from "@/app/actions/project-contacts"
+import { updateProjectContactVisibilityForm } from "@/app/actions/project-contacts"
 import { Badge } from "@/components/ui/badge"
 
 type ProjectContactDisplayGroupId = "customers" | "vendors" | "internal"
@@ -84,21 +85,52 @@ function csiLabel(contact: ProjectContactItem): string | null {
   return `${contact.csiDivision} ${contact.csiDivisionName}`
 }
 
+function contactProfileHref(contact: ProjectContactItem): string | null {
+  if (!contact.sourceEntityId) return null
+
+  if (contact.sourceEntityType === "customer") {
+    return `/dashboard/contacts?tab=customers&contactId=${encodeURIComponent(
+      contact.sourceEntityId
+    )}`
+  }
+
+  if (contact.sourceEntityType === "vendor") {
+    return `/dashboard/contacts?tab=vendors&contactId=${encodeURIComponent(
+      contact.sourceEntityId
+    )}`
+  }
+
+  return null
+}
+
 function ContactCard({
   contact,
+  projectId,
   compact = false,
 }: {
   readonly contact: ProjectContactItem
+  readonly projectId: string
   readonly compact?: boolean
 }): React.ReactElement {
+  const profileHref = contactProfileHref(contact)
+
   return (
     <article className="rounded-md border bg-background p-3">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
-            <p className="line-clamp-1 text-sm font-medium">
-              {contact.displayName}
-            </p>
+            {profileHref ? (
+              <Link
+                href={profileHref}
+                className="line-clamp-1 text-sm font-medium underline-offset-4 hover:text-primary hover:underline"
+              >
+                {contact.displayName}
+              </Link>
+            ) : (
+              <p className="line-clamp-1 text-sm font-medium">
+                {contact.displayName}
+              </p>
+            )}
             {contact.primaryContact && <Badge variant="secondary">Primary</Badge>}
             {csiLabel(contact) && (
               <Badge variant="outline">{csiLabel(contact)}</Badge>
@@ -134,6 +166,54 @@ function ContactCard({
         <p className="mt-2 line-clamp-2 text-xs text-muted-foreground">
           {contact.notes}
         </p>
+      )}
+
+      {!compact && (
+        <form
+          action={updateProjectContactVisibilityForm}
+          className="mt-3 border-t pt-3"
+        >
+          <input type="hidden" name="projectId" value={projectId} />
+          <input type="hidden" name="contactId" value={contact.id} />
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+            <span className="text-xs font-medium text-muted-foreground">
+              Project visibility
+            </span>
+            <label className="inline-flex items-center gap-1.5 text-xs">
+              <input
+                type="checkbox"
+                name="ownerPortalVisible"
+                defaultChecked={contact.ownerPortalVisible}
+                className="size-3.5"
+              />
+              Owner
+            </label>
+            <label className="inline-flex items-center gap-1.5 text-xs">
+              <input
+                type="checkbox"
+                name="subVendorPortalVisible"
+                defaultChecked={contact.subVendorPortalVisible}
+                className="size-3.5"
+              />
+              Sub/vendor
+            </label>
+            <label className="inline-flex items-center gap-1.5 text-xs">
+              <input
+                type="checkbox"
+                name="internalVisible"
+                defaultChecked={contact.internalVisible}
+                className="size-3.5"
+              />
+              Internal
+            </label>
+            <button
+              type="submit"
+              className="ml-auto inline-flex h-7 items-center rounded-md border bg-background px-2.5 text-xs font-medium transition-colors hover:bg-accent hover:text-accent-foreground"
+            >
+              Save
+            </button>
+          </div>
+        </form>
       )}
     </article>
   )
@@ -250,7 +330,12 @@ export function ProjectContactsPanel({
       {previewContacts.length > 0 ? (
         <div className="mt-4 grid grid-cols-1 gap-3 lg:grid-cols-2">
           {previewContacts.map((contact) => (
-            <ContactCard key={contact.id} contact={contact} compact />
+            <ContactCard
+              key={contact.id}
+              contact={contact}
+              projectId={projectId}
+              compact
+            />
           ))}
         </div>
       ) : (
@@ -262,8 +347,9 @@ export function ProjectContactsPanel({
       <div className="mt-4 flex items-start gap-2 border-t pt-3 text-xs text-muted-foreground">
         <IconUsers className="mt-0.5 size-4 shrink-0" />
         <p>
-          This layer will reconcile Buildertrend contacts, Sage vendors, Sage
-          job assignments, and Compass users before granting portal access.
+          Directory contacts stay as the address book. Project access is granted
+          only through project assignments, portal visibility, and Compass user
+          permissions.
         </p>
       </div>
     </section>
@@ -271,8 +357,10 @@ export function ProjectContactsPanel({
 }
 
 export function ProjectContactsDirectory({
+  projectId,
   summary,
 }: {
+  readonly projectId: string
   readonly summary: ProjectContactsSummary
 }): React.ReactElement {
   const displayGroups = buildDisplayGroups(summary.allContacts)
@@ -291,7 +379,11 @@ export function ProjectContactsDirectory({
           {group.contacts.length > 0 ? (
             <div className="mt-4 grid gap-3 lg:grid-cols-2">
               {group.contacts.map((contact) => (
-                <ContactCard key={contact.id} contact={contact} />
+                <ContactCard
+                  key={contact.id}
+                  contact={contact}
+                  projectId={projectId}
+                />
               ))}
             </div>
           ) : (

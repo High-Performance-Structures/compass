@@ -148,9 +148,13 @@ function ContactsContent() {
   const searchParams = useSearchParams()
   const router = useRouter()
   const initialTab = toContactsTab(searchParams.get("tab"))
+  const contactId = searchParams.get("contactId")
 
   const [tab, setTab] = React.useState<Tab>(initialTab)
   const [loading, setLoading] = React.useState(true)
+  const [openedContactId, setOpenedContactId] = React.useState<string | null>(
+    null
+  )
 
   const [customersList, setCustomersList] = React.useState<Customer[]>([])
   const [vendorsList, setVendorsList] = React.useState<Vendor[]>([])
@@ -186,6 +190,41 @@ function ContactsContent() {
   React.useEffect(() => {
     loadAll()
   }, [])
+
+  React.useEffect(() => {
+    const nextTab = toContactsTab(searchParams.get("tab"))
+    setTab(nextTab)
+  }, [searchParams])
+
+  React.useEffect(() => {
+    if (loading || !contactId || openedContactId === contactId) return
+
+    if (tab === "customers") {
+      const customer = customersList.find((item) => item.id === contactId)
+      if (!customer) return
+
+      setEditingCustomer(customer)
+      setCustomerDialogOpen(true)
+      setOpenedContactId(contactId)
+      return
+    }
+
+    if (tab === "vendors") {
+      const vendor = vendorsList.find((item) => item.id === contactId)
+      if (!vendor) return
+
+      setEditingVendor(vendor)
+      setVendorDialogOpen(true)
+      setOpenedContactId(contactId)
+    }
+  }, [
+    contactId,
+    customersList,
+    loading,
+    openedContactId,
+    tab,
+    vendorsList,
+  ])
 
   const openCustomer = React.useCallback(() => {
     setEditingCustomer(null)
@@ -233,6 +272,7 @@ function ContactsContent() {
   const handleTabChange = (value: string) => {
     const nextTab = toContactsTab(value)
     setTab(nextTab)
+    setOpenedContactId(null)
     router.replace(`/dashboard/contacts?tab=${nextTab}`, { scroll: false })
   }
 

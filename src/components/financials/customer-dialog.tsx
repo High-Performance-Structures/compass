@@ -10,6 +10,7 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
+import { ContactProjectAccessForm } from "@/components/projects/contact-project-access-form"
 import type { Customer } from "@/db/schema"
 
 interface CustomerDialogProps {
@@ -156,6 +157,13 @@ export function CustomerDialog({
               className="text-sm resize-none"
             />
           </div>
+          {initialData ? (
+            <ContactProjectAccessForm
+              sourceEntityType="customer"
+              sourceEntityId={initialData.id}
+              enabled={open}
+            />
+          ) : null}
         </ResponsiveDialogBody>
 
         <ResponsiveDialogFooter>

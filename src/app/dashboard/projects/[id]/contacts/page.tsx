@@ -83,7 +83,9 @@ export default async function ProjectContactsPage({
         />
       </div>
 
-      {contacts && <ProjectContactsDirectory summary={contacts} />}
+      {contacts && (
+        <ProjectContactsDirectory projectId={id} summary={contacts} />
+      )}
     </div>
   )
 }
