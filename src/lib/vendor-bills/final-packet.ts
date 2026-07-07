@@ -30,6 +30,7 @@ export type VendorBillPacketLine = {
   readonly lineNumber: number
   readonly phaseCode: string | null
   readonly costCode: string | null
+  readonly costCodeDescription: string | null
   readonly description: string | null
   readonly amount: number
 }
@@ -207,6 +208,13 @@ function drawSectionTitle(input: {
   })
 }
 
+function costCodeDescription(line: VendorBillPacketLine): string {
+  if (line.costCodeDescription) return line.costCodeDescription
+  if (line.costCode) return "Cost code name pending"
+  if (line.description) return line.description
+  return "Uncoded"
+}
+
 function drawCodingTable(input: {
   readonly page: PDFPage
   readonly y: number
@@ -311,7 +319,7 @@ function drawCodingTable(input: {
     })
     drawTextLines({
       page: input.page,
-      text: line.description ?? "No description",
+      text: costCodeDescription(line),
       x:
         tableLeft +
         columnWidths[0] +

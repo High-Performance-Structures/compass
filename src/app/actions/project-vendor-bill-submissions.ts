@@ -917,6 +917,12 @@ export async function finalizeVendorBillSubmission(
       googleEmail,
       attachments: attachmentRows,
     })
+    const costCodeNameByCode = new Map(
+      (await getCostCodeOptions(db)).map((option) => [
+        option.value,
+        option.description,
+      ])
+    )
 
     const now = new Date().toISOString()
     const packetBytes = await buildVendorBillFinalPacketPdf({
@@ -950,6 +956,9 @@ export async function finalizeVendorBillSubmission(
         lineNumber: line.lineNumber,
         phaseCode: line.phaseCode,
         costCode: line.costCode,
+        costCodeDescription: line.costCode
+          ? costCodeNameByCode.get(line.costCode) ?? null
+          : line.description,
         description: line.description,
         amount: line.amount,
       })),
