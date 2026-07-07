@@ -18,6 +18,11 @@ export type VendorBillPacketSubmission = {
   readonly payRequestDate: string | null
   readonly isChangeOrder: boolean
   readonly changeOrderNumber: string | null
+  readonly arCheckNumber: string | null
+  readonly paymentReference: string | null
+  readonly holdPayment: boolean
+  readonly reimbursementOwed: string | null
+  readonly mailedDate: string | null
   readonly reviewNotes: string | null
 }
 
@@ -54,9 +59,6 @@ export type VendorBillPacketInput = {
 const PAGE_WIDTH = 612
 const PAGE_HEIGHT = 792
 const MARGIN = 46
-const TABLE_LEFT = 46
-const TABLE_TOP = 486
-const ROW_HEIGHT = 38
 const HEADER_FILL = rgb(0.92, 0.92, 0.9)
 const LINE_COLOR = rgb(0.2, 0.2, 0.2)
 const TEXT_COLOR = rgb(0.13, 0.13, 0.13)
@@ -184,41 +186,67 @@ function drawLabelValue(input: {
   })
 }
 
-function drawOfficeUseTable(input: {
+function drawSectionTitle(input: {
   readonly page: PDFPage
+  readonly title: string
+  readonly y: number
+  readonly boldFont: PDFFont
+}): void {
+  input.page.drawText(input.title, {
+    x: MARGIN,
+    y: input.y,
+    size: 11,
+    font: input.boldFont,
+    color: TEXT_COLOR,
+  })
+  input.page.drawLine({
+    start: { x: MARGIN, y: input.y - 8 },
+    end: { x: PAGE_WIDTH - MARGIN, y: input.y - 8 },
+    thickness: 0.75,
+    color: LINE_COLOR,
+  })
+}
+
+function drawCodingTable(input: {
+  readonly page: PDFPage
+  readonly y: number
   readonly boldFont: PDFFont
   readonly regularFont: PDFFont
   readonly project: VendorBillPacketProject
   readonly submission: VendorBillPacketSubmission
   readonly lines: readonly VendorBillPacketLine[]
-}): void {
-  const columnWidths = [84, 54, 96, 286]
-  const headers = ["Project", "C/O", "$ / Split", "Account / Item"]
+}): number {
+  const tableLeft = MARGIN
+  const columnWidths = [78, 46, 92, 106, 234]
+  const headers = ["Project", "C/O", "Amount", "Cost Code", "Description"]
   const totalWidth = columnWidths.reduce((sum, width) => sum + width, 0)
+  const headerHeight = 24
+  const rowHeight = 34
+  const rows = input.lines.length > 0 ? input.lines.slice(0, 5) : []
 
   input.page.drawRectangle({
-    x: TABLE_LEFT,
-    y: TABLE_TOP,
+    x: tableLeft,
+    y: input.y,
     width: totalWidth,
-    height: 26,
+    height: headerHeight,
     color: HEADER_FILL,
     borderColor: LINE_COLOR,
     borderWidth: 1,
   })
 
-  let x = TABLE_LEFT
+  let x = tableLeft
   headers.forEach((header, index) => {
     input.page.drawText(header.toUpperCase(), {
       x: x + 5,
-      y: TABLE_TOP + 9,
+      y: input.y + 8,
       size: 7,
       font: input.boldFont,
       color: TEXT_COLOR,
     })
     if (index > 0) {
       input.page.drawLine({
-        start: { x, y: TABLE_TOP },
-        end: { x, y: TABLE_TOP + 26 - ROW_HEIGHT * 0 + 1 },
+        start: { x, y: input.y },
+        end: { x, y: input.y + headerHeight },
         thickness: 1,
         color: LINE_COLOR,
       })
@@ -226,50 +254,46 @@ function drawOfficeUseTable(input: {
     x += columnWidths[index] ?? 0
   })
 
-  const rows = input.lines.length > 0 ? input.lines.slice(0, 5) : []
-  for (let rowIndex = 0; rowIndex < 5; rowIndex += 1) {
-    const y = TABLE_TOP - ROW_HEIGHT * (rowIndex + 1)
+  rows.forEach((line, rowIndex) => {
+    const y = input.y - rowHeight * (rowIndex + 1)
     input.page.drawRectangle({
-      x: TABLE_LEFT,
+      x: tableLeft,
       y,
       width: totalWidth,
-      height: ROW_HEIGHT,
+      height: rowHeight,
       borderColor: LINE_COLOR,
       borderWidth: 1,
     })
 
-    let columnX = TABLE_LEFT
+    let columnX = tableLeft
     for (const width of columnWidths.slice(0, -1)) {
       columnX += width
       input.page.drawLine({
         start: { x: columnX, y },
-        end: { x: columnX, y: y + ROW_HEIGHT },
+        end: { x: columnX, y: y + rowHeight },
         thickness: 1,
         color: LINE_COLOR,
       })
     }
 
-    const line = rows[rowIndex]
-    if (!line) continue
-
     const projectValue = input.project.sageJobNumber ?? input.project.projectNumber ?? "-"
     input.page.drawText(projectValue, {
-      x: TABLE_LEFT + 5,
-      y: y + 22,
+      x: tableLeft + 5,
+      y: y + 20,
       size: 9,
       font: input.regularFont,
       color: TEXT_COLOR,
     })
     input.page.drawText(input.submission.isChangeOrder ? "Yes" : "No", {
-      x: TABLE_LEFT + columnWidths[0] + 5,
-      y: y + 22,
+      x: tableLeft + columnWidths[0] + 5,
+      y: y + 20,
       size: 9,
       font: input.regularFont,
       color: TEXT_COLOR,
     })
     input.page.drawText(money(line.amount), {
-      x: TABLE_LEFT + columnWidths[0] + columnWidths[1] + 5,
-      y: y + 22,
+      x: tableLeft + columnWidths[0] + columnWidths[1] + 5,
+      y: y + 20,
       size: 9,
       font: input.regularFont,
       color: TEXT_COLOR,
@@ -277,32 +301,52 @@ function drawOfficeUseTable(input: {
     const code = [line.phaseCode, line.costCode].filter(Boolean).join(" / ")
     drawTextLines({
       page: input.page,
-      text: `${code || "Uncoded"} - ${line.description ?? "No description"}`,
-      x: TABLE_LEFT + columnWidths[0] + columnWidths[1] + columnWidths[2] + 5,
-      y: y + 22,
+      text: code || "Uncoded",
+      x: tableLeft + columnWidths[0] + columnWidths[1] + columnWidths[2] + 5,
+      y: y + 20,
       size: 8,
-      maxChars: 54,
+      maxChars: 22,
       maxLines: 2,
       font: input.regularFont,
     })
+    drawTextLines({
+      page: input.page,
+      text: line.description ?? "No description",
+      x:
+        tableLeft +
+        columnWidths[0] +
+        columnWidths[1] +
+        columnWidths[2] +
+        columnWidths[3] +
+        5,
+      y: y + 20,
+      size: 8,
+      maxChars: 42,
+      maxLines: 2,
+      font: input.regularFont,
+    })
+  })
+
+  const footerY = input.y - rowHeight * rows.length - 18
+  if (input.lines.length > rows.length) {
+    input.page.drawText(
+      `${input.lines.length - rows.length} additional split line(s) continue in Compass review.`,
+      {
+        x: tableLeft,
+        y: footerY + 2,
+        size: 8,
+        font: input.regularFont,
+        color: MUTED_COLOR,
+      }
+    )
+    return footerY - 12
   }
 
-  const footerY = TABLE_TOP - ROW_HEIGHT * 5 - 30
-  const footerItems = [
-    `SCAN: AP`,
-    `AP INV: ${input.submission.billNumber ?? "-"}`,
-    `CHECK:`,
-    `HOLD:`,
-    `REIMB:`,
-    `MAILED:`,
-  ]
-  input.page.drawText(footerItems.join("     "), {
-    x: TABLE_LEFT,
-    y: footerY,
-    size: 8,
-    font: input.boldFont,
-    color: TEXT_COLOR,
-  })
+  return footerY
+}
+
+function fieldValue(value: string | null): string {
+  return value?.trim() ? value : "-"
 }
 
 async function appendOriginalInvoice(input: {
@@ -360,14 +404,14 @@ export async function buildVendorBillFinalPacketPdf(
   const boldFont = await pdf.embedFont(StandardFonts.HelveticaBold)
   const page = pdf.addPage([PAGE_WIDTH, PAGE_HEIGHT])
 
-  page.drawText("HPS / ORC Office Use", {
+  page.drawText("Vendor Bill Submittal Packet", {
     x: MARGIN,
     y: PAGE_HEIGHT - MARGIN,
     size: 18,
     font: boldFont,
     color: TEXT_COLOR,
   })
-  page.drawText("Vendor Bill Final Submittal", {
+  page.drawText("Compass accounting review cover sheet", {
     x: MARGIN,
     y: PAGE_HEIGHT - MARGIN - 22,
     size: 11,
@@ -383,12 +427,18 @@ export async function buildVendorBillFinalPacketPdf(
   })
   drawRule(page, PAGE_HEIGHT - MARGIN - 42)
 
+  drawSectionTitle({
+    page,
+    title: "Bill Summary",
+    y: PAGE_HEIGHT - MARGIN - 66,
+    boldFont,
+  })
   drawLabelValue({
     page,
     label: "Project",
     value: projectLabel(input.project),
     x: MARGIN,
-    y: PAGE_HEIGHT - MARGIN - 72,
+    y: PAGE_HEIGHT - MARGIN - 90,
     labelFont: boldFont,
     valueFont: regularFont,
     maxChars: 48,
@@ -400,7 +450,7 @@ export async function buildVendorBillFinalPacketPdf(
       ? `${input.submission.vendorName} (${input.submission.vendorEmail})`
       : input.submission.vendorName,
     x: 326,
-    y: PAGE_HEIGHT - MARGIN - 72,
+    y: PAGE_HEIGHT - MARGIN - 90,
     labelFont: boldFont,
     valueFont: regularFont,
     maxChars: 38,
@@ -411,7 +461,7 @@ export async function buildVendorBillFinalPacketPdf(
     label: "Invoice",
     value: input.submission.billNumber ?? "-",
     x: MARGIN,
-    y: PAGE_HEIGHT - MARGIN - 130,
+    y: PAGE_HEIGHT - MARGIN - 146,
     labelFont: boldFont,
     valueFont: regularFont,
   })
@@ -420,7 +470,7 @@ export async function buildVendorBillFinalPacketPdf(
     label: "Bill Date",
     value: dateText(input.submission.billDate),
     x: 180,
-    y: PAGE_HEIGHT - MARGIN - 130,
+    y: PAGE_HEIGHT - MARGIN - 146,
     labelFont: boldFont,
     valueFont: regularFont,
   })
@@ -429,7 +479,7 @@ export async function buildVendorBillFinalPacketPdf(
     label: "Due Date",
     value: dateText(input.submission.dueDate),
     x: 306,
-    y: PAGE_HEIGHT - MARGIN - 130,
+    y: PAGE_HEIGHT - MARGIN - 146,
     labelFont: boldFont,
     valueFont: regularFont,
   })
@@ -438,17 +488,23 @@ export async function buildVendorBillFinalPacketPdf(
     label: "Total",
     value: money(input.submission.totalAmount),
     x: 432,
-    y: PAGE_HEIGHT - MARGIN - 130,
+    y: PAGE_HEIGHT - MARGIN - 146,
     labelFont: boldFont,
     valueFont: regularFont,
   })
 
+  drawSectionTitle({
+    page,
+    title: "Draw / Payment Tracking",
+    y: PAGE_HEIGHT - MARGIN - 204,
+    boldFont,
+  })
   drawLabelValue({
     page,
     label: "Draw / Pay Request",
     value: `${drawLabel(input.submission)} - ${dateText(input.submission.payRequestDate)}`,
     x: MARGIN,
-    y: PAGE_HEIGHT - MARGIN - 184,
+    y: PAGE_HEIGHT - MARGIN - 228,
     labelFont: boldFont,
     valueFont: regularFont,
     maxChars: 40,
@@ -459,28 +515,90 @@ export async function buildVendorBillFinalPacketPdf(
     value: input.submission.isChangeOrder
       ? input.submission.changeOrderNumber ?? "Yes"
       : "No",
-    x: 306,
-    y: PAGE_HEIGHT - MARGIN - 184,
+    x: 224,
+    y: PAGE_HEIGHT - MARGIN - 228,
+    labelFont: boldFont,
+    valueFont: regularFont,
+  })
+  drawLabelValue({
+    page,
+    label: "Hold Payment",
+    value: input.submission.holdPayment ? "Yes" : "No",
+    x: 432,
+    y: PAGE_HEIGHT - MARGIN - 228,
     labelFont: boldFont,
     valueFont: regularFont,
   })
 
+  drawLabelValue({
+    page,
+    label: "A/R Check Number",
+    value: fieldValue(input.submission.arCheckNumber),
+    x: MARGIN,
+    y: PAGE_HEIGHT - MARGIN - 282,
+    labelFont: boldFont,
+    valueFont: regularFont,
+  })
+  drawLabelValue({
+    page,
+    label: "Check # / Paid By",
+    value: fieldValue(input.submission.paymentReference),
+    x: 180,
+    y: PAGE_HEIGHT - MARGIN - 282,
+    labelFont: boldFont,
+    valueFont: regularFont,
+    maxChars: 32,
+  })
+  drawLabelValue({
+    page,
+    label: "Reimbursement Owed",
+    value: fieldValue(input.submission.reimbursementOwed),
+    x: 336,
+    y: PAGE_HEIGHT - MARGIN - 282,
+    labelFont: boldFont,
+    valueFont: regularFont,
+    maxChars: 32,
+  })
+  drawLabelValue({
+    page,
+    label: "Mailed",
+    value: dateText(input.submission.mailedDate),
+    x: 478,
+    y: PAGE_HEIGHT - MARGIN - 282,
+    labelFont: boldFont,
+    valueFont: regularFont,
+    maxChars: 16,
+  })
+
   if (input.submission.description) {
+    drawSectionTitle({
+      page,
+      title: "Submitted Description",
+      y: PAGE_HEIGHT - MARGIN - 340,
+      boldFont,
+    })
     drawTextLines({
       page,
       text: input.submission.description,
       x: MARGIN,
-      y: PAGE_HEIGHT - MARGIN - 238,
+      y: PAGE_HEIGHT - MARGIN - 362,
       size: 9,
       maxChars: 100,
-      maxLines: 3,
+      maxLines: 2,
       font: regularFont,
       color: MUTED_COLOR,
     })
   }
 
-  drawOfficeUseTable({
+  drawSectionTitle({
     page,
+    title: "Cost Code Splits",
+    y: 374,
+    boldFont,
+  })
+  const nextY = drawCodingTable({
+    page,
+    y: 338,
     boldFont,
     regularFont,
     project: input.project,
@@ -488,7 +606,7 @@ export async function buildVendorBillFinalPacketPdf(
     lines: input.lines,
   })
 
-  const duplicateY = 190
+  const duplicateY = Math.max(142, nextY)
   page.drawText("Duplicate / Sage Check", {
     x: MARGIN,
     y: duplicateY,
@@ -516,7 +634,7 @@ export async function buildVendorBillFinalPacketPdf(
   if (input.submission.reviewNotes) {
     page.drawText("Review Notes", {
       x: MARGIN,
-      y: 126,
+      y: duplicateY - 70,
       size: 10,
       font: boldFont,
       color: TEXT_COLOR,
@@ -525,7 +643,7 @@ export async function buildVendorBillFinalPacketPdf(
       page,
       text: input.submission.reviewNotes,
       x: MARGIN,
-      y: 108,
+      y: duplicateY - 88,
       size: 9,
       maxChars: 100,
       maxLines: 3,
@@ -534,7 +652,7 @@ export async function buildVendorBillFinalPacketPdf(
     })
   }
 
-  page.drawText("Original invoice and backup follow this coding cover sheet.", {
+  page.drawText("Original invoice and backup follow this Compass submittal sheet.", {
     x: MARGIN,
     y: 54,
     size: 9,

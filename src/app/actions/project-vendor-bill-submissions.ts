@@ -85,6 +85,11 @@ export type VendorBillSubmissionItem = {
   readonly payRequestDate: string | null
   readonly isChangeOrder: boolean
   readonly changeOrderNumber: string | null
+  readonly arCheckNumber: string | null
+  readonly paymentReference: string | null
+  readonly holdPayment: boolean
+  readonly reimbursementOwed: string | null
+  readonly mailedDate: string | null
   readonly stampedFileUrl: string | null
   readonly stampedAt: string | null
   readonly duplicateStatus: string
@@ -123,6 +128,11 @@ export type UpdateVendorBillSubmissionCodingInput = {
   readonly payRequestDate: string | null
   readonly isChangeOrder: boolean
   readonly changeOrderNumber: string | null
+  readonly arCheckNumber: string | null
+  readonly paymentReference: string | null
+  readonly holdPayment: boolean
+  readonly reimbursementOwed: string | null
+  readonly mailedDate: string | null
   readonly lines: readonly VendorBillSubmissionCodingLineInput[]
 }
 
@@ -625,6 +635,11 @@ export async function getProjectVendorBillSubmissionContext(
       payRequestDate: row.payRequestDate,
       isChangeOrder: row.isChangeOrder,
       changeOrderNumber: row.changeOrderNumber,
+      arCheckNumber: row.arCheckNumber,
+      paymentReference: row.paymentReference,
+      holdPayment: row.holdPayment,
+      reimbursementOwed: row.reimbursementOwed,
+      mailedDate: row.mailedDate,
       stampedFileUrl: row.stampedFileUrl,
       stampedAt: row.stampedAt,
       duplicateStatus: row.duplicateStatus,
@@ -754,6 +769,11 @@ export async function updateVendorBillSubmissionCoding(
         changeOrderNumber: input.isChangeOrder
           ? cleanText(input.changeOrderNumber)
           : null,
+        arCheckNumber: cleanText(input.arCheckNumber),
+        paymentReference: cleanText(input.paymentReference),
+        holdPayment: input.holdPayment,
+        reimbursementOwed: cleanText(input.reimbursementOwed),
+        mailedDate: cleanText(input.mailedDate),
         reviewedBy: user.id,
         reviewedAt: now,
         sageWriteStatus: reviewStatus === "ready_for_sage" ? "ready" : "not_ready",
@@ -919,6 +939,11 @@ export async function finalizeVendorBillSubmission(
         payRequestDate: submission.payRequestDate,
         isChangeOrder: submission.isChangeOrder,
         changeOrderNumber: submission.changeOrderNumber,
+        arCheckNumber: submission.arCheckNumber,
+        paymentReference: submission.paymentReference,
+        holdPayment: submission.holdPayment,
+        reimbursementOwed: submission.reimbursementOwed,
+        mailedDate: submission.mailedDate,
         reviewNotes: submission.reviewNotes,
       },
       lines: lineRows.map((line) => ({

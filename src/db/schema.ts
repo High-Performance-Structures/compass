@@ -633,6 +633,13 @@ export const projectVendorBillSubmissions = sqliteTable(
       mode: "boolean",
     }).notNull().default(false),
     changeOrderNumber: text("change_order_number"),
+    arCheckNumber: text("ar_check_number"),
+    paymentReference: text("payment_reference"),
+    holdPayment: integer("hold_payment", {
+      mode: "boolean",
+    }).notNull().default(false),
+    reimbursementOwed: text("reimbursement_owed"),
+    mailedDate: text("mailed_date"),
     stampedFileId: text("stamped_file_id"),
     stampedFileUrl: text("stamped_file_url"),
     stampedAt: text("stamped_at"),

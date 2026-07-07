@@ -378,6 +378,17 @@ function SubmissionReviewDrawer({
   const [changeOrderNumber, setChangeOrderNumber] = React.useState(
     submission.changeOrderNumber ?? ""
   )
+  const [arCheckNumber, setArCheckNumber] = React.useState(
+    submission.arCheckNumber ?? ""
+  )
+  const [paymentReference, setPaymentReference] = React.useState(
+    submission.paymentReference ?? ""
+  )
+  const [holdPayment, setHoldPayment] = React.useState(submission.holdPayment)
+  const [reimbursementOwed, setReimbursementOwed] = React.useState(
+    submission.reimbursementOwed ?? ""
+  )
+  const [mailedDate, setMailedDate] = React.useState(submission.mailedDate ?? "")
   const [lines, setLines] = React.useState<readonly EditableLine[]>(
     submission.lines.length > 0
       ? submission.lines.map((line) => ({
@@ -413,6 +424,11 @@ function SubmissionReviewDrawer({
         payRequestDate,
         isChangeOrder,
         changeOrderNumber,
+        arCheckNumber,
+        paymentReference,
+        holdPayment,
+        reimbursementOwed,
+        mailedDate,
         lines: lines.map((line) => ({
           id: line.id,
           description: line.description,
@@ -477,7 +493,7 @@ function SubmissionReviewDrawer({
                     rel="noreferrer"
                     className="text-xs font-medium text-primary underline-offset-4 hover:underline"
                   >
-                    Open stamped copy
+                    Open final copy
                   </a>
                 )}
               </div>
@@ -594,6 +610,65 @@ function SubmissionReviewDrawer({
                 onChange={(event) => setChangeOrderNumber(event.target.value)}
               />
             </div>
+          </div>
+
+          <div className="space-y-3">
+            <h3 className="text-sm font-semibold">Office / Payment Tracking</h3>
+            <div className="grid gap-3 md:grid-cols-2">
+              <div className="space-y-1.5">
+                <Label htmlFor={`ar-check-number-${submission.id}`}>
+                  A/R Check Number
+                </Label>
+                <Input
+                  id={`ar-check-number-${submission.id}`}
+                  value={arCheckNumber}
+                  disabled={!canReview}
+                  onChange={(event) => setArCheckNumber(event.target.value)}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor={`payment-reference-${submission.id}`}>
+                  Check # / Paid By
+                </Label>
+                <Input
+                  id={`payment-reference-${submission.id}`}
+                  value={paymentReference}
+                  disabled={!canReview}
+                  placeholder="Check number, card, staff member, or company"
+                  onChange={(event) => setPaymentReference(event.target.value)}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor={`reimbursement-owed-${submission.id}`}>
+                  Reimbursement Owed
+                </Label>
+                <Input
+                  id={`reimbursement-owed-${submission.id}`}
+                  value={reimbursementOwed}
+                  disabled={!canReview}
+                  placeholder="Name / amount, if applicable"
+                  onChange={(event) => setReimbursementOwed(event.target.value)}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor={`mailed-date-${submission.id}`}>Mailed</Label>
+                <Input
+                  id={`mailed-date-${submission.id}`}
+                  value={mailedDate}
+                  disabled={!canReview}
+                  type="date"
+                  onChange={(event) => setMailedDate(event.target.value)}
+                />
+              </div>
+            </div>
+            <label className="flex items-center gap-2 text-sm font-medium">
+              <Checkbox
+                checked={holdPayment}
+                disabled={!canReview}
+                onCheckedChange={(checked) => setHoldPayment(checked === true)}
+              />
+              Hold payment until issue is resolved
+            </label>
           </div>
 
           <div className="space-y-3">
@@ -791,7 +866,9 @@ function SubmissionRow({
                 : ""}
             </span>
           )}
-          {submission.stampedAt && <span>Stamped {dateText(submission.stampedAt)}</span>}
+          {submission.stampedAt && (
+            <span>Final copy {dateText(submission.stampedAt)}</span>
+          )}
         </div>
       </div>
       <div className="text-sm">{money(submission.totalAmount)}</div>
