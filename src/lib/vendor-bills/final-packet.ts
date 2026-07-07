@@ -222,7 +222,7 @@ function drawCodingTable(input: {
   const totalWidth = columnWidths.reduce((sum, width) => sum + width, 0)
   const headerHeight = 24
   const rowHeight = 34
-  const rows = input.lines.length > 0 ? input.lines.slice(0, 5) : []
+  const rows = input.lines.length > 0 ? input.lines.slice(0, 4) : []
 
   input.page.drawRectangle({
     x: tableLeft,
@@ -570,6 +570,9 @@ export async function buildVendorBillFinalPacketPdf(
     maxChars: 16,
   })
 
+  const descriptionLines = input.submission.description
+    ? wrapText(input.submission.description, 100, 2)
+    : []
   if (input.submission.description) {
     drawSectionTitle({
       page,
@@ -577,28 +580,32 @@ export async function buildVendorBillFinalPacketPdf(
       y: PAGE_HEIGHT - MARGIN - 340,
       boldFont,
     })
-    drawTextLines({
-      page,
-      text: input.submission.description,
-      x: MARGIN,
-      y: PAGE_HEIGHT - MARGIN - 362,
-      size: 9,
-      maxChars: 100,
-      maxLines: 2,
-      font: regularFont,
-      color: MUTED_COLOR,
+    descriptionLines.forEach((line, index) => {
+      page.drawText(line, {
+        x: MARGIN,
+        y: PAGE_HEIGHT - MARGIN - 362 - index * 13,
+        size: 9,
+        font: regularFont,
+        color: MUTED_COLOR,
+      })
     })
   }
+
+  const costCodeTitleY =
+    descriptionLines.length > 0
+      ? PAGE_HEIGHT - MARGIN - 362 - (descriptionLines.length - 1) * 13 - 32
+      : PAGE_HEIGHT - MARGIN - 340
+  const costCodeTableY = costCodeTitleY - 36
 
   drawSectionTitle({
     page,
     title: "Cost Code Splits",
-    y: 374,
+    y: costCodeTitleY,
     boldFont,
   })
   const nextY = drawCodingTable({
     page,
-    y: 338,
+    y: costCodeTableY,
     boldFont,
     regularFont,
     project: input.project,
@@ -606,7 +613,7 @@ export async function buildVendorBillFinalPacketPdf(
     lines: input.lines,
   })
 
-  const duplicateY = Math.max(142, nextY)
+  const duplicateY = nextY
   page.drawText("Duplicate / Sage Check", {
     x: MARGIN,
     y: duplicateY,
@@ -654,7 +661,7 @@ export async function buildVendorBillFinalPacketPdf(
 
   page.drawText("Original invoice and backup follow this Compass submittal sheet.", {
     x: MARGIN,
-    y: 54,
+    y: 32,
     size: 9,
     font: regularFont,
     color: MUTED_COLOR,
