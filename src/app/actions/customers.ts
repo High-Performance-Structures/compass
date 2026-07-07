@@ -18,7 +18,15 @@ export async function getCustomers() {
   const { env } = await getCloudflareContext()
   const db = getDb(env.DB)
 
-  return db.select().from(customers).where(eq(customers.organizationId, orgId))
+  return db
+    .select()
+    .from(customers)
+    .where(
+      and(
+        eq(customers.organizationId, orgId),
+        eq(customers.directoryStatus, "active")
+      )
+    )
 }
 
 export async function getCustomer(id: string) {
