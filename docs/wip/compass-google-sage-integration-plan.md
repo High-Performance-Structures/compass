@@ -231,6 +231,11 @@ Initial implementation started:
   - The 50 unzipped Loomis Buildertrend photos were also copied to `Pictures/May 2026/Buildertrend Review Photos` and mapped in Compass as the `Buildertrend photo review` connected source.
   - Local Compass demo data has Buildertrend project IDs mapped for both jobs, plus imported Buildertrend daily-log/photo records marked `needs_review` and not owner-visible.
   - Four Loomis Buildertrend preview candidates now render from Compass-local thumbnail files in the field panel, while their source ZIP archives remain internal review material.
+- Full Buildertrend migration scope expanded on 2026-07-06:
+  - Include active, preconstruction, warranty, completed, inactive, and archived projects.
+  - Include leads, lead estimates, project estimates, customer AR invoices, payments, daily logs, photos, files, messages, schedules, RFIs, POs, RFQs/RFPs, owner updates, finish selections, and project access records wherever Buildertrend export/browser access allows.
+  - Preserve the full source record first, then promote only reviewed records into editable Compass workflows.
+  - See [Buildertrend Migration Plan](buildertrend-migration-plan-2026-07-06.md).
 
 ### Phase 2: Google Workspace Connection
 

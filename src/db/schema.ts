@@ -468,6 +468,197 @@ export const projectExternalLinks = sqliteTable("project_external_links", {
   updatedAt: text("updated_at").notNull(),
 })
 
+export const buildertrendImportRuns = sqliteTable(
+  "buildertrend_import_runs",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id").references(() => organizations.id, {
+      onDelete: "set null",
+    }),
+    sourceMethod: text("source_method").notNull(),
+    sourceLabel: text("source_label").notNull(),
+    status: text("status").notNull().default("draft"),
+    startedBy: text("started_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    startedAt: text("started_at").notNull(),
+    completedAt: text("completed_at"),
+    rawArtifactDriveFileId: text("raw_artifact_drive_file_id"),
+    rawArtifactDriveUrl: text("raw_artifact_drive_url"),
+    notes: text("notes"),
+    summaryJson: text("summary_json"),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => [
+    index("idx_buildertrend_import_runs_org").on(table.organizationId),
+    index("idx_buildertrend_import_runs_status").on(table.status),
+  ]
+)
+
+export const buildertrendSourceRecords = sqliteTable(
+  "buildertrend_source_records",
+  {
+    id: text("id").primaryKey(),
+    importRunId: text("import_run_id")
+      .notNull()
+      .references(() => buildertrendImportRuns.id, { onDelete: "cascade" }),
+    organizationId: text("organization_id").references(() => organizations.id, {
+      onDelete: "set null",
+    }),
+    projectId: text("project_id").references(() => projects.id, {
+      onDelete: "set null",
+    }),
+    sourceScope: text("source_scope").notNull().default("job"),
+    sourceRecordType: text("source_record_type").notNull(),
+    buildertrendJobId: text("buildertrend_job_id"),
+    buildertrendLeadId: text("buildertrend_lead_id"),
+    buildertrendRecordId: text("buildertrend_record_id"),
+    buildertrendRecordNumber: text("buildertrend_record_number"),
+    buildertrendUrl: text("buildertrend_url"),
+    title: text("title").notNull(),
+    recordDate: text("record_date"),
+    recordStatus: text("record_status"),
+    sourceStatus: text("source_status"),
+    departmentCode: text("department_code"),
+    clientName: text("client_name"),
+    contactName: text("contact_name"),
+    contactEmail: text("contact_email"),
+    amount: real("amount"),
+    searchableText: text("searchable_text"),
+    normalizedSummary: text("normalized_summary"),
+    rawPayloadJson: text("raw_payload_json"),
+    archiveDriveFolderId: text("archive_drive_folder_id"),
+    archiveDriveFileId: text("archive_drive_file_id"),
+    archiveDriveUrl: text("archive_drive_url"),
+    reviewStatus: text("review_status").notNull().default("needs_review"),
+    promotionStatus: text("promotion_status").notNull().default("archive_only"),
+    promotedRecordType: text("promoted_record_type"),
+    promotedRecordId: text("promoted_record_id"),
+    sageReconciliationStatus: text("sage_reconciliation_status")
+      .notNull()
+      .default("not_reviewed"),
+    notes: text("notes"),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => [
+    index("idx_buildertrend_source_records_run").on(table.importRunId),
+    index("idx_buildertrend_source_records_project").on(table.projectId),
+    index("idx_buildertrend_source_records_job").on(table.buildertrendJobId),
+    index("idx_buildertrend_source_records_lead").on(table.buildertrendLeadId),
+    index("idx_buildertrend_source_records_type").on(table.sourceRecordType),
+    index("idx_buildertrend_source_records_review").on(table.reviewStatus),
+    index("idx_buildertrend_source_records_promotion").on(table.promotionStatus),
+  ]
+)
+
+export const buildertrendArchiveFiles = sqliteTable(
+  "buildertrend_archive_files",
+  {
+    id: text("id").primaryKey(),
+    importRunId: text("import_run_id")
+      .notNull()
+      .references(() => buildertrendImportRuns.id, { onDelete: "cascade" }),
+    sourceRecordId: text("source_record_id").references(
+      () => buildertrendSourceRecords.id,
+      { onDelete: "set null" }
+    ),
+    organizationId: text("organization_id").references(() => organizations.id, {
+      onDelete: "set null",
+    }),
+    projectId: text("project_id").references(() => projects.id, {
+      onDelete: "set null",
+    }),
+    sourceScope: text("source_scope").notNull().default("job"),
+    sourceRecordType: text("source_record_type").notNull(),
+    buildertrendJobId: text("buildertrend_job_id"),
+    buildertrendLeadId: text("buildertrend_lead_id"),
+    buildertrendFileId: text("buildertrend_file_id"),
+    buildertrendUrl: text("buildertrend_url"),
+    fileName: text("file_name").notNull(),
+    mimeType: text("mime_type"),
+    fileSize: integer("file_size"),
+    driveFolderId: text("drive_folder_id"),
+    driveFileId: text("drive_file_id"),
+    driveUrl: text("drive_url"),
+    thumbnailDriveFileId: text("thumbnail_drive_file_id"),
+    thumbnailUrl: text("thumbnail_url"),
+    checksum: text("checksum"),
+    capturedAt: text("captured_at"),
+    visibility: text("visibility").notNull().default("internal"),
+    reviewStatus: text("review_status").notNull().default("needs_review"),
+    metadataJson: text("metadata_json"),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => [
+    index("idx_buildertrend_archive_files_run").on(table.importRunId),
+    index("idx_buildertrend_archive_files_source").on(table.sourceRecordId),
+    index("idx_buildertrend_archive_files_project").on(table.projectId),
+    index("idx_buildertrend_archive_files_job").on(table.buildertrendJobId),
+    index("idx_buildertrend_archive_files_lead").on(table.buildertrendLeadId),
+    index("idx_buildertrend_archive_files_review").on(table.reviewStatus),
+  ]
+)
+
+export const buildertrendAccessCandidates = sqliteTable(
+  "buildertrend_access_candidates",
+  {
+    id: text("id").primaryKey(),
+    importRunId: text("import_run_id")
+      .notNull()
+      .references(() => buildertrendImportRuns.id, { onDelete: "cascade" }),
+    sourceRecordId: text("source_record_id").references(
+      () => buildertrendSourceRecords.id,
+      { onDelete: "set null" }
+    ),
+    organizationId: text("organization_id").references(() => organizations.id, {
+      onDelete: "set null",
+    }),
+    projectId: text("project_id").references(() => projects.id, {
+      onDelete: "set null",
+    }),
+    buildertrendJobId: text("buildertrend_job_id"),
+    buildertrendLeadId: text("buildertrend_lead_id"),
+    buildertrendContactId: text("buildertrend_contact_id"),
+    buildertrendAccessRole: text("buildertrend_access_role"),
+    contactName: text("contact_name").notNull(),
+    companyName: text("company_name"),
+    email: text("email"),
+    phone: text("phone"),
+    proposedContactType: text("proposed_contact_type").notNull().default("vendor"),
+    proposedProjectRole: text("proposed_project_role"),
+    matchedUserId: text("matched_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    matchedCustomerId: text("matched_customer_id").references(() => customers.id, {
+      onDelete: "set null",
+    }),
+    matchedVendorId: text("matched_vendor_id").references(() => vendors.id, {
+      onDelete: "set null",
+    }),
+    matchStatus: text("match_status").notNull().default("unmatched"),
+    matchConfidence: real("match_confidence").notNull().default(0),
+    portalAccessStatus: text("portal_access_status").notNull().default("not_granted"),
+    reviewStatus: text("review_status").notNull().default("needs_review"),
+    notes: text("notes"),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => [
+    index("idx_buildertrend_access_candidates_run").on(table.importRunId),
+    index("idx_buildertrend_access_candidates_project").on(table.projectId),
+    index("idx_buildertrend_access_candidates_contact").on(
+      table.buildertrendContactId
+    ),
+    index("idx_buildertrend_access_candidates_review").on(table.reviewStatus),
+    index("idx_buildertrend_access_candidates_portal").on(
+      table.portalAccessStatus
+    ),
+  ]
+)
+
 export const dailyLogs = sqliteTable("daily_logs", {
   id: text("id").primaryKey(),
   projectId: text("project_id")
@@ -1171,6 +1362,19 @@ export const sageCostCodes = sqliteTable("sage_cost_codes", {
 export type Project = typeof projects.$inferSelect
 export type ProjectExternalLink = typeof projectExternalLinks.$inferSelect
 export type NewProjectExternalLink = typeof projectExternalLinks.$inferInsert
+export type BuildertrendImportRun = typeof buildertrendImportRuns.$inferSelect
+export type NewBuildertrendImportRun = typeof buildertrendImportRuns.$inferInsert
+export type BuildertrendSourceRecord =
+  typeof buildertrendSourceRecords.$inferSelect
+export type NewBuildertrendSourceRecord =
+  typeof buildertrendSourceRecords.$inferInsert
+export type BuildertrendArchiveFile = typeof buildertrendArchiveFiles.$inferSelect
+export type NewBuildertrendArchiveFile =
+  typeof buildertrendArchiveFiles.$inferInsert
+export type BuildertrendAccessCandidate =
+  typeof buildertrendAccessCandidates.$inferSelect
+export type NewBuildertrendAccessCandidate =
+  typeof buildertrendAccessCandidates.$inferInsert
 export type DailyLog = typeof dailyLogs.$inferSelect
 export type NewDailyLog = typeof dailyLogs.$inferInsert
 export type DailyLogPhoto = typeof dailyLogPhotos.$inferSelect
