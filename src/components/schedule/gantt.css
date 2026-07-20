@@ -74,23 +74,23 @@
   ry: 4;
 }
 
-.gantt .bar-wrapper.display-color-blue .bar { fill: oklch(0.62 0.15 250); stroke: oklch(0.52 0.15 250); }
-.gantt .bar-wrapper.display-color-green .bar { fill: oklch(0.65 0.14 150); stroke: oklch(0.55 0.14 150); }
-.gantt .bar-wrapper.display-color-orange .bar { fill: oklch(0.7 0.15 55); stroke: oklch(0.6 0.15 55); }
-.gantt .bar-wrapper.display-color-purple .bar { fill: oklch(0.62 0.16 300); stroke: oklch(0.52 0.16 300); }
-.gantt .bar-wrapper.display-color-red .bar { fill: oklch(0.62 0.2 25); stroke: oklch(0.52 0.2 25); }
-.gantt .bar-wrapper.display-color-yellow .bar { fill: oklch(0.78 0.15 95); stroke: oklch(0.66 0.15 95); }
-.gantt .bar-wrapper.display-color-teal .bar { fill: oklch(0.65 0.12 190); stroke: oklch(0.55 0.12 190); }
-.gantt .bar-wrapper.display-color-gray .bar { fill: oklch(0.62 0.02 260); stroke: oklch(0.5 0.02 260); }
+.gantt .bar-wrapper.display-color-blue .bar { fill: var(--schedule-display-blue, #3b82f6); stroke: color-mix(in srgb, var(--schedule-display-blue, #3b82f6) 78%, black); }
+.gantt .bar-wrapper.display-color-green .bar { fill: var(--schedule-display-green, #22c55e); stroke: color-mix(in srgb, var(--schedule-display-green, #22c55e) 78%, black); }
+.gantt .bar-wrapper.display-color-orange .bar { fill: var(--schedule-display-orange, #f97316); stroke: color-mix(in srgb, var(--schedule-display-orange, #f97316) 78%, black); }
+.gantt .bar-wrapper.display-color-purple .bar { fill: var(--schedule-display-purple, #a855f7); stroke: color-mix(in srgb, var(--schedule-display-purple, #a855f7) 78%, black); }
+.gantt .bar-wrapper.display-color-red .bar { fill: var(--schedule-display-red, #ef4444); stroke: color-mix(in srgb, var(--schedule-display-red, #ef4444) 78%, black); }
+.gantt .bar-wrapper.display-color-yellow .bar { fill: var(--schedule-display-yellow, #eab308); stroke: color-mix(in srgb, var(--schedule-display-yellow, #eab308) 78%, black); }
+.gantt .bar-wrapper.display-color-teal .bar { fill: var(--schedule-display-teal, #14b8a6); stroke: color-mix(in srgb, var(--schedule-display-teal, #14b8a6) 78%, black); }
+.gantt .bar-wrapper.display-color-gray .bar { fill: var(--schedule-display-gray, #6b7280); stroke: color-mix(in srgb, var(--schedule-display-gray, #6b7280) 78%, black); }
 
-.gantt .bar-wrapper.display-color-blue .bar-progress { fill: oklch(0.5 0.15 250); }
-.gantt .bar-wrapper.display-color-green .bar-progress { fill: oklch(0.53 0.14 150); }
-.gantt .bar-wrapper.display-color-orange .bar-progress { fill: oklch(0.58 0.15 55); }
-.gantt .bar-wrapper.display-color-purple .bar-progress { fill: oklch(0.5 0.16 300); }
-.gantt .bar-wrapper.display-color-red .bar-progress { fill: oklch(0.5 0.2 25); }
-.gantt .bar-wrapper.display-color-yellow .bar-progress { fill: oklch(0.63 0.15 95); }
-.gantt .bar-wrapper.display-color-teal .bar-progress { fill: oklch(0.53 0.12 190); }
-.gantt .bar-wrapper.display-color-gray .bar-progress { fill: oklch(0.46 0.02 260); }
+.gantt .bar-wrapper.display-color-blue .bar-progress { fill: color-mix(in srgb, var(--schedule-display-blue, #3b82f6) 68%, black); }
+.gantt .bar-wrapper.display-color-green .bar-progress { fill: color-mix(in srgb, var(--schedule-display-green, #22c55e) 68%, black); }
+.gantt .bar-wrapper.display-color-orange .bar-progress { fill: color-mix(in srgb, var(--schedule-display-orange, #f97316) 68%, black); }
+.gantt .bar-wrapper.display-color-purple .bar-progress { fill: color-mix(in srgb, var(--schedule-display-purple, #a855f7) 68%, black); }
+.gantt .bar-wrapper.display-color-red .bar-progress { fill: color-mix(in srgb, var(--schedule-display-red, #ef4444) 68%, black); }
+.gantt .bar-wrapper.display-color-yellow .bar-progress { fill: color-mix(in srgb, var(--schedule-display-yellow, #eab308) 68%, black); }
+.gantt .bar-wrapper.display-color-teal .bar-progress { fill: color-mix(in srgb, var(--schedule-display-teal, #14b8a6) 68%, black); }
+.gantt .bar-wrapper.display-color-gray .bar-progress { fill: color-mix(in srgb, var(--schedule-display-gray, #6b7280) 68%, black); }
 
 /* Buildertrend's Critical Path view: blue time-sensitive work, grey float. */
 .gantt-wrapper.critical-path-mode .gantt .bar-wrapper:not([data-id^="phase-"]) .bar {

@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest"
 import {
   DEFAULT_DISPLAY_COLOR,
+  DEFAULT_DISPLAY_COLOR_PALETTE,
   DISPLAY_COLOR_OPTIONS,
+  normalizeDisplayColorPalette,
   getScheduleItemClasses,
   normalizeDisplayColor,
 } from "../appearance"
@@ -19,6 +21,16 @@ describe("normalizeDisplayColor", () => {
 
   it("retains a supported per-item display color", () => {
     expect(normalizeDisplayColor("green")).toBe("green")
+  })
+})
+
+describe("display-color palette", () => {
+  it("uses default colors and only accepts valid personal hex overrides", () => {
+    expect(normalizeDisplayColorPalette({ blue: "#123456", red: "oops" })).toMatchObject({
+      blue: "#123456",
+      red: DEFAULT_DISPLAY_COLOR_PALETTE.red,
+      green: DEFAULT_DISPLAY_COLOR_PALETTE.green,
+    })
   })
 })
 
