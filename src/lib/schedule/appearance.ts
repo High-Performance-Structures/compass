@@ -42,6 +42,21 @@ export function schedulePaletteStorageKey(projectId: string): string {
   return `compass:schedule-display-palette:${projectId}`
 }
 
+export const DEFAULT_DISPLAY_COLOR_LABELS: Record<DisplayColor, string> = {
+  blue: "Standard work",
+  green: "Field work",
+  orange: "Review / inspection",
+  purple: "Coordination",
+  red: "At-risk / blocker",
+  yellow: "Owner decision",
+  teal: "External dependency",
+  gray: "Deferred / noncritical",
+}
+
+export function schedulePaletteLabelStorageKey(projectId: string): string {
+  return `compass:schedule-display-labels:${projectId}`
+}
+
 export const DEFAULT_DISPLAY_COLOR: DisplayColor = "blue"
 
 export const DISPLAY_COLOR_OPTIONS: readonly {

@@ -7,6 +7,7 @@ import {
   ResizablePanelGroup,
 } from "@/components/ui/resizable"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
 import {
   Popover,
   PopoverContent,
@@ -54,8 +55,10 @@ import type { DisplayItem, FrappeTask } from "@/lib/schedule/gantt-transform"
 import { updateTask } from "@/app/actions/schedule"
 import { countBusinessDays } from "@/lib/schedule/business-days"
 import {
+  DEFAULT_DISPLAY_COLOR_LABELS,
   DEFAULT_DISPLAY_COLOR_PALETTE,
   DISPLAY_COLOR_OPTIONS,
+  schedulePaletteLabelStorageKey,
   normalizeDisplayColorPalette,
   schedulePaletteStorageKey,
   type DisplayColor,
@@ -100,6 +103,9 @@ export function ScheduleGanttView({
   const [displayColorPalette, setDisplayColorPalette] = useState<DisplayColorPalette>(
     DEFAULT_DISPLAY_COLOR_PALETTE
   )
+  const [displayColorLabels, setDisplayColorLabels] = useState<Record<DisplayColor, string>>(
+    DEFAULT_DISPLAY_COLOR_LABELS
+  )
   const [taskFormOpen, setTaskFormOpen] = useState(false)
   const [editingTask, setEditingTask] = useState<ScheduleTaskData | null>(
     null
@@ -111,9 +117,19 @@ export function ScheduleGanttView({
 
   useEffect(() => {
     try {
-      const stored = window.localStorage.getItem(schedulePaletteStorageKey(projectId))
-      if (stored) {
-        setDisplayColorPalette(normalizeDisplayColorPalette(JSON.parse(stored)))
+      const storedPalette = window.localStorage.getItem(schedulePaletteStorageKey(projectId))
+      const storedLabels = window.localStorage.getItem(schedulePaletteLabelStorageKey(projectId))
+      if (storedPalette) {
+        setDisplayColorPalette(normalizeDisplayColorPalette(JSON.parse(storedPalette)))
+      }
+      if (storedLabels) {
+        const candidate = JSON.parse(storedLabels) as Partial<Record<DisplayColor, string>>
+        setDisplayColorLabels({
+          ...DEFAULT_DISPLAY_COLOR_LABELS,
+          ...Object.fromEntries(
+            Object.entries(candidate).filter(([, value]) => typeof value === "string" && value.trim())
+          ),
+        })
       }
     } catch {
       // A malformed or unavailable local preference falls back to the default palette.
@@ -128,10 +144,18 @@ export function ScheduleGanttView({
       schedulePaletteStorageKey(projectId),
       JSON.stringify(displayColorPalette)
     )
-  }, [displayColorPalette, hasLoadedPalette, projectId])
+    window.localStorage.setItem(
+      schedulePaletteLabelStorageKey(projectId),
+      JSON.stringify(displayColorLabels)
+    )
+  }, [displayColorLabels, displayColorPalette, hasLoadedPalette, projectId])
 
   const updatePaletteColor = (color: DisplayColor, value: string) => {
     setDisplayColorPalette((palette) => ({ ...palette, [color]: value }))
+  }
+
+  const updatePaletteLabel = (color: DisplayColor, value: string) => {
+    setDisplayColorLabels((labels) => ({ ...labels, [color]: value }))
   }
 
   const defaultWidths: Record<ViewMode, number> = {
@@ -326,7 +350,7 @@ export function ScheduleGanttView({
   const scheduleKey = (
     <div className="absolute bottom-3 right-3 z-20 flex flex-col items-end gap-2">
       {showScheduleKey && (
-        <div className="w-56 rounded-md border bg-background/95 p-3 shadow-lg backdrop-blur">
+        <div className="w-72 rounded-md border bg-background/95 p-3 shadow-lg backdrop-blur">
           <div className="mb-2 flex items-center justify-between gap-3">
             <p className="text-xs font-medium">Schedule key</p>
             <Button
@@ -381,7 +405,16 @@ export function ScheduleGanttView({
                     style={{ backgroundColor: displayColorPalette[color.value] }}
                   />
                 )}
-                {color.label}
+                {editingScheduleKey ? (
+                  <Input
+                    aria-label={`${color.label} schedule meaning`}
+                    value={displayColorLabels[color.value]}
+                    onChange={(event) => updatePaletteLabel(color.value, event.target.value)}
+                    className="h-6 min-w-0 px-1 text-[10px]"
+                  />
+                ) : (
+                  <span>{displayColorLabels[color.value]}</span>
+                )}
               </label>
             ))}
           </div>
@@ -391,7 +424,10 @@ export function ScheduleGanttView({
               variant="ghost"
               size="sm"
               className="mt-2 h-6 px-1.5 text-[10px]"
-              onClick={() => setDisplayColorPalette(DEFAULT_DISPLAY_COLOR_PALETTE)}
+              onClick={() => {
+                setDisplayColorPalette(DEFAULT_DISPLAY_COLOR_PALETTE)
+                setDisplayColorLabels(DEFAULT_DISPLAY_COLOR_LABELS)
+              }}
             >
               Reset personal colors
             </Button>
