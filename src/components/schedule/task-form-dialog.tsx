@@ -63,6 +63,10 @@ import type {
   DependencyType,
 } from "@/lib/schedule/types"
 import { PHASE_ORDER, PHASE_LABELS, getPhaseColor } from "@/lib/schedule/phase-colors"
+import {
+  DEFAULT_DISPLAY_COLOR,
+  DISPLAY_COLOR_OPTIONS,
+} from "@/lib/schedule/appearance"
 import { STATUS_OPTIONS } from "@/lib/schedule/types"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
@@ -85,7 +89,8 @@ const taskSchema = z.object({
   startDate: z.string().min(1, "Start date is required"),
   workdays: z.number().min(1, "Must be at least 1 day"),
   phase: z.string().min(1, "Phase is required"),
-  status: z.string(),
+  displayColor: z.string(),
+  status: z.enum(["PENDING", "IN_PROGRESS", "COMPLETE", "BLOCKED"]),
   isMilestone: z.boolean(),
   percentComplete: z.number().min(0).max(100),
   assignedTo: z.string(),
@@ -140,6 +145,7 @@ export function TaskFormDialog({
       startDate: new Date().toISOString().split("T")[0],
       workdays: 5,
       phase: "preconstruction",
+      displayColor: DEFAULT_DISPLAY_COLOR,
       status: "PENDING",
       isMilestone: false,
       percentComplete: 0,
@@ -155,6 +161,7 @@ export function TaskFormDialog({
         startDate: editingTask.startDate,
         workdays: editingTask.workdays,
         phase: editingTask.phase,
+        displayColor: editingTask.displayColor ?? DEFAULT_DISPLAY_COLOR,
         status: editingTask.status,
         isMilestone: editingTask.isMilestone,
         percentComplete: editingTask.percentComplete,
@@ -169,6 +176,7 @@ export function TaskFormDialog({
         startDate: new Date().toISOString().split("T")[0],
         workdays: 5,
         phase: "preconstruction",
+        displayColor: DEFAULT_DISPLAY_COLOR,
         status: "PENDING",
         isMilestone: false,
         percentComplete: 0,
@@ -183,6 +191,7 @@ export function TaskFormDialog({
   const watchedStart = form.watch("startDate")
   const watchedWorkdays = form.watch("workdays")
   const watchedPhase = form.watch("phase")
+  const watchedDisplayColor = form.watch("displayColor")
   const watchedPercent = form.watch("percentComplete")
 
   const calculatedEnd = useMemo(() => {
@@ -191,16 +200,18 @@ export function TaskFormDialog({
   }, [watchedStart, watchedWorkdays])
 
   async function onSubmit(values: TaskFormValues) {
+    const { notes, ...taskValues } = values
+    void notes
     let result
     if (isEditing) {
       result = await updateTask(editingTask.id, {
-        ...values,
-        assignedTo: values.assignedTo || null,
+        ...taskValues,
+        assignedTo: taskValues.assignedTo || null,
       })
     } else {
       result = await createTask(projectId, {
-        ...values,
-        assignedTo: values.assignedTo || undefined,
+        ...taskValues,
+        assignedTo: taskValues.assignedTo || undefined,
       })
     }
 
@@ -313,6 +324,34 @@ export function TaskFormDialog({
                     </button>
                   )
                 })}
+              </div>
+
+              <div className="flex items-center gap-2">
+                <span className="text-[11px] text-muted-foreground font-medium">
+                  Display color
+                </span>
+                <div className="flex items-center gap-1.5" aria-label="Display color">
+                  {DISPLAY_COLOR_OPTIONS.map((color) => {
+                    const selected = watchedDisplayColor === color.value
+                    return (
+                      <button
+                        key={color.value}
+                        type="button"
+                        title={color.label}
+                        aria-label={color.label}
+                        aria-pressed={selected}
+                        className={cn(
+                          "size-5 rounded-full border-2 transition-transform",
+                          color.buttonClassName,
+                          selected
+                            ? "border-foreground scale-110"
+                            : "border-transparent hover:scale-110"
+                        )}
+                        onClick={() => form.setValue("displayColor", color.value)}
+                      />
+                    )
+                  })}
+                </div>
               </div>
 
               {/* Date row: Start | Duration | End */}

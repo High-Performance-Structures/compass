@@ -48,6 +48,7 @@ import {
 import type { DisplayItem, FrappeTask } from "@/lib/schedule/gantt-transform"
 import { updateTask } from "@/app/actions/schedule"
 import { countBusinessDays } from "@/lib/schedule/business-days"
+import { DISPLAY_COLOR_OPTIONS } from "@/lib/schedule/appearance"
 import type {
   ScheduleTaskData,
   TaskDependencyData,
@@ -72,11 +73,12 @@ export function ScheduleGanttView({
   const router = useRouter()
   const isMobile = useIsMobile()
   const [viewMode, setViewMode] = useState<ViewMode>("Week")
-  const [phaseGrouping, setPhaseGrouping] = useState(true)
+  const [phaseGrouping, setPhaseGrouping] = useState(false)
   const [collapsedPhases, setCollapsedPhases] = useState<Set<string>>(
     new Set()
   )
   const [showCriticalPath, setShowCriticalPath] = useState(false)
+  const [showScheduleKey, setShowScheduleKey] = useState(false)
   const [taskFormOpen, setTaskFormOpen] = useState(false)
   const [editingTask, setEditingTask] = useState<ScheduleTaskData | null>(
     null
@@ -101,9 +103,7 @@ export function ScheduleGanttView({
     setColumnWidth(defaultWidths[mode])
   }
 
-  const filteredTasks = showCriticalPath
-    ? tasks.filter((t) => t.isCriticalPath)
-    : tasks
+  const filteredTasks = tasks
 
   const { frappeTasks, displayItems } = phaseGrouping
     ? transformWithPhaseGroups(
@@ -275,6 +275,47 @@ export function ScheduleGanttView({
     </Table>
   )
 
+  const scheduleKey = (
+    <div className="absolute bottom-3 right-3 z-20 flex flex-col items-end gap-2">
+      {showScheduleKey && (
+        <div className="w-56 rounded-md border bg-background/95 p-3 shadow-lg backdrop-blur">
+          <p className="mb-2 text-xs font-medium">Schedule key</p>
+          <div className="grid grid-cols-2 gap-x-3 gap-y-1.5">
+            {DISPLAY_COLOR_OPTIONS.map((color) => (
+              <div
+                key={color.value}
+                className="flex items-center gap-1.5 text-[11px] text-foreground"
+              >
+                <span
+                  aria-hidden="true"
+                  className={cn("size-2.5 rounded-full", color.buttonClassName)}
+                />
+                {color.label}
+              </div>
+            ))}
+          </div>
+          <div className="mt-3 border-t pt-2 text-[10px] leading-snug text-muted-foreground">
+            <p>Task bars use their chosen display color; phase is grouping only.</p>
+            <p className="mt-1">Critical Path View: blue is critical work; gray has float.</p>
+          </div>
+        </div>
+      )}
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        className="h-7 gap-1.5 bg-background/95 px-2.5 text-xs shadow-sm backdrop-blur"
+        aria-expanded={showScheduleKey}
+        onClick={() => setShowScheduleKey((open) => !open)}
+      >
+        Schedule key
+        <IconChevronDown
+          className={cn("size-3 transition-transform", showScheduleKey && "rotate-180")}
+        />
+      </Button>
+    </div>
+  )
+
   return (
     <div className="flex flex-col flex-1 min-h-0">
       {/* Compact controls row */}
@@ -362,7 +403,7 @@ export function ScheduleGanttView({
                   />
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-xs">Critical Path</span>
+                  <span className="text-xs">Critical Path View</span>
                   <Switch
                     checked={showCriticalPath}
                     onCheckedChange={setShowCriticalPath}
@@ -395,15 +436,17 @@ export function ScheduleGanttView({
               {taskTable}
             </div>
           ) : (
-            <div className="border rounded-md flex-1 min-h-0 overflow-hidden p-2">
+            <div className="relative border rounded-md flex-1 min-h-0 overflow-hidden p-2">
               <GanttChart
                 tasks={frappeTasks}
                 viewMode={viewMode}
                 columnWidth={columnWidth}
                 panMode={panMode}
                 onDateChange={handleDateChange}
+                criticalPathMode={showCriticalPath}
                 onZoom={handleZoom}
               />
+              {scheduleKey}
             </div>
           )}
         </div>
@@ -421,15 +464,17 @@ export function ScheduleGanttView({
           <ResizableHandle withHandle />
 
           <ResizablePanel defaultSize={70} minSize={40}>
-            <div className="h-full overflow-hidden p-2">
+            <div className="relative h-full overflow-hidden p-2">
               <GanttChart
                 tasks={frappeTasks}
                 viewMode={viewMode}
                 columnWidth={columnWidth}
                 panMode={panMode}
                 onDateChange={handleDateChange}
+                criticalPathMode={showCriticalPath}
                 onZoom={handleZoom}
               />
+              {scheduleKey}
             </div>
           </ResizablePanel>
         </ResizablePanelGroup>

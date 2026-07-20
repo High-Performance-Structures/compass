@@ -683,6 +683,7 @@ export const scheduleTasks = sqliteTable("schedule_tasks", {
   workdays: integer("workdays").notNull(),
   endDateCalculated: text("end_date_calculated").notNull(),
   phase: text("phase").notNull(),
+  displayColor: text("display_color").notNull().default("blue"),
   status: text("status").notNull().default("PENDING"),
   isCriticalPath: integer("is_critical_path", { mode: "boolean" })
     .notNull()

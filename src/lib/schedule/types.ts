@@ -34,6 +34,7 @@ export interface ScheduleTaskData {
   workdays: number
   endDateCalculated: string
   phase: string
+  displayColor: string | null
   status: TaskStatus
   isCriticalPath: boolean
   isMilestone: boolean
