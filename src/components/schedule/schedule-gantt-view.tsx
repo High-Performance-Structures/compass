@@ -7,7 +7,11 @@ import {
   ResizablePanelGroup,
 } from "@/components/ui/resizable"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover"
 import { Switch } from "@/components/ui/switch"
 import {
   DropdownMenu,
@@ -66,6 +70,11 @@ import { toast } from "sonner"
 import { format } from "date-fns"
 
 type ViewMode = "Day" | "Week" | "Month"
+
+const COLOR_PICKER_SWATCHES = [
+  "#ef4444", "#f97316", "#eab308", "#22c55e", "#14b8a6", "#06b6d4",
+  "#3b82f6", "#6366f1", "#a855f7", "#ec4899", "#6b7280", "#111827",
+] as const
 
 interface ScheduleGanttViewProps {
   readonly projectId: string
@@ -337,13 +346,34 @@ export function ScheduleGanttView({
                 className="flex items-center gap-1.5 text-[11px] text-foreground"
               >
                 {editingScheduleKey ? (
-                  <Input
-                    aria-label={`${color.label} schedule color`}
-                    type="color"
-                    value={displayColorPalette[color.value]}
-                    onChange={(event) => updatePaletteColor(color.value, event.target.value)}
-                    className="size-5 cursor-pointer border-0 bg-transparent p-0"
-                  />
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <button
+                        type="button"
+                        aria-label={`Choose ${color.label} schedule color`}
+                        className="size-5 rounded border border-border shadow-sm"
+                        style={{ backgroundColor: displayColorPalette[color.value] }}
+                      />
+                    </PopoverTrigger>
+                    <PopoverContent side="top" align="start" className="w-44 p-2">
+                      <p className="mb-2 text-xs font-medium">Choose {color.label}</p>
+                      <div className="grid grid-cols-6 gap-1.5">
+                        {COLOR_PICKER_SWATCHES.map((swatch) => (
+                          <button
+                            key={swatch}
+                            type="button"
+                            aria-label={`Set ${color.label} to ${swatch}`}
+                            className={cn(
+                              "size-5 rounded border border-border shadow-sm transition-transform hover:scale-110",
+                              displayColorPalette[color.value] === swatch && "ring-2 ring-ring ring-offset-1"
+                            )}
+                            style={{ backgroundColor: swatch }}
+                            onClick={() => updatePaletteColor(color.value, swatch)}
+                          />
+                        ))}
+                      </div>
+                    </PopoverContent>
+                  </Popover>
                 ) : (
                   <span
                     aria-hidden="true"
