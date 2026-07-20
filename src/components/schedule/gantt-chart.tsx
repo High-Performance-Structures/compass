@@ -1,7 +1,8 @@
 "use client"
 
-import { useRef, useEffect, useState, useCallback } from "react"
+import { useRef, useEffect, useState, useCallback, type CSSProperties } from "react"
 import type { FrappeTask } from "@/lib/schedule/gantt-transform"
+import type { DisplayColorPalette } from "@/lib/schedule/appearance"
 import { getScheduleItemClasses } from "@/lib/schedule/appearance"
 import "./gantt.css"
 
@@ -13,6 +14,7 @@ interface GanttChartProps {
   columnWidth?: number
   panMode?: boolean
   criticalPathMode?: boolean
+  displayColorPalette?: DisplayColorPalette
   onDateChange?: (
     task: FrappeTask,
     start: Date,
@@ -28,6 +30,7 @@ export function GanttChart({
   columnWidth,
   panMode = false,
   criticalPathMode = false,
+  displayColorPalette,
   onDateChange,
   onProgressChange,
   onZoom,
@@ -178,7 +181,17 @@ export function GanttChart({
       className={`gantt-wrapper relative overflow-hidden h-full${
         criticalPathMode ? " critical-path-mode" : ""
       }`}
-      style={{ cursor: panMode ? "grab" : undefined }}
+      style={{
+        cursor: panMode ? "grab" : undefined,
+        ...(displayColorPalette
+          ? Object.fromEntries(
+              Object.entries(displayColorPalette).map(([color, value]) => [
+                `--schedule-display-${color}`,
+                value,
+              ])
+            )
+          : {}),
+      } as CSSProperties}
       onMouseDown={handleMouseDown}
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}

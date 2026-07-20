@@ -1,12 +1,13 @@
 "use client"
 
-import { useState, useCallback } from "react"
+import { useState, useCallback, useEffect } from "react"
 import {
   ResizableHandle,
   ResizablePanel,
   ResizablePanelGroup,
 } from "@/components/ui/resizable"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
 import { Switch } from "@/components/ui/switch"
 import {
   DropdownMenu,
@@ -48,7 +49,14 @@ import {
 import type { DisplayItem, FrappeTask } from "@/lib/schedule/gantt-transform"
 import { updateTask } from "@/app/actions/schedule"
 import { countBusinessDays } from "@/lib/schedule/business-days"
-import { DISPLAY_COLOR_OPTIONS } from "@/lib/schedule/appearance"
+import {
+  DEFAULT_DISPLAY_COLOR_PALETTE,
+  DISPLAY_COLOR_OPTIONS,
+  normalizeDisplayColorPalette,
+  schedulePaletteStorageKey,
+  type DisplayColor,
+  type DisplayColorPalette,
+} from "@/lib/schedule/appearance"
 import type {
   ScheduleTaskData,
   TaskDependencyData,
@@ -79,12 +87,43 @@ export function ScheduleGanttView({
   )
   const [showCriticalPath, setShowCriticalPath] = useState(false)
   const [showScheduleKey, setShowScheduleKey] = useState(false)
+  const [editingScheduleKey, setEditingScheduleKey] = useState(false)
+  const [displayColorPalette, setDisplayColorPalette] = useState<DisplayColorPalette>(
+    DEFAULT_DISPLAY_COLOR_PALETTE
+  )
   const [taskFormOpen, setTaskFormOpen] = useState(false)
   const [editingTask, setEditingTask] = useState<ScheduleTaskData | null>(
     null
   )
   const [mobileView, setMobileView] = useState<"tasks" | "chart">("chart")
   const [panMode] = useState(false)
+
+  const [hasLoadedPalette, setHasLoadedPalette] = useState(false)
+
+  useEffect(() => {
+    try {
+      const stored = window.localStorage.getItem(schedulePaletteStorageKey(projectId))
+      if (stored) {
+        setDisplayColorPalette(normalizeDisplayColorPalette(JSON.parse(stored)))
+      }
+    } catch {
+      // A malformed or unavailable local preference falls back to the default palette.
+    } finally {
+      setHasLoadedPalette(true)
+    }
+  }, [projectId])
+
+  useEffect(() => {
+    if (!hasLoadedPalette) return
+    window.localStorage.setItem(
+      schedulePaletteStorageKey(projectId),
+      JSON.stringify(displayColorPalette)
+    )
+  }, [displayColorPalette, hasLoadedPalette, projectId])
+
+  const updatePaletteColor = (color: DisplayColor, value: string) => {
+    setDisplayColorPalette((palette) => ({ ...palette, [color]: value }))
+  }
 
   const defaultWidths: Record<ViewMode, number> = {
     Day: 38, Week: 140, Month: 120,
@@ -279,21 +318,54 @@ export function ScheduleGanttView({
     <div className="absolute bottom-3 right-3 z-20 flex flex-col items-end gap-2">
       {showScheduleKey && (
         <div className="w-56 rounded-md border bg-background/95 p-3 shadow-lg backdrop-blur">
-          <p className="mb-2 text-xs font-medium">Schedule key</p>
+          <div className="mb-2 flex items-center justify-between gap-3">
+            <p className="text-xs font-medium">Schedule key</p>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-6 px-1.5 text-[11px]"
+              onClick={() => setEditingScheduleKey((editing) => !editing)}
+            >
+              {editingScheduleKey ? "Done" : "Edit"}
+            </Button>
+          </div>
           <div className="grid grid-cols-2 gap-x-3 gap-y-1.5">
             {DISPLAY_COLOR_OPTIONS.map((color) => (
-              <div
+              <label
                 key={color.value}
                 className="flex items-center gap-1.5 text-[11px] text-foreground"
               >
-                <span
-                  aria-hidden="true"
-                  className={cn("size-2.5 rounded-full", color.buttonClassName)}
-                />
+                {editingScheduleKey ? (
+                  <Input
+                    aria-label={`${color.label} schedule color`}
+                    type="color"
+                    value={displayColorPalette[color.value]}
+                    onChange={(event) => updatePaletteColor(color.value, event.target.value)}
+                    className="size-5 cursor-pointer border-0 bg-transparent p-0"
+                  />
+                ) : (
+                  <span
+                    aria-hidden="true"
+                    className="size-2.5 rounded-full"
+                    style={{ backgroundColor: displayColorPalette[color.value] }}
+                  />
+                )}
                 {color.label}
-              </div>
+              </label>
             ))}
           </div>
+          {editingScheduleKey && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="mt-2 h-6 px-1.5 text-[10px]"
+              onClick={() => setDisplayColorPalette(DEFAULT_DISPLAY_COLOR_PALETTE)}
+            >
+              Reset personal colors
+            </Button>
+          )}
           <div className="mt-3 border-t pt-2 text-[10px] leading-snug text-muted-foreground">
             <p>Task bars use their chosen display color; phase is grouping only.</p>
             <p className="mt-1">Critical Path View: blue is critical work; gray has float.</p>
@@ -444,6 +516,7 @@ export function ScheduleGanttView({
                 panMode={panMode}
                 onDateChange={handleDateChange}
                 criticalPathMode={showCriticalPath}
+                displayColorPalette={displayColorPalette}
                 onZoom={handleZoom}
               />
               {scheduleKey}
@@ -472,6 +545,7 @@ export function ScheduleGanttView({
                 panMode={panMode}
                 onDateChange={handleDateChange}
                 criticalPathMode={showCriticalPath}
+                displayColorPalette={displayColorPalette}
                 onZoom={handleZoom}
               />
               {scheduleKey}

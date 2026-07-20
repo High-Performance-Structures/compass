@@ -10,6 +10,37 @@ export const DISPLAY_COLORS = [
 ] as const
 
 export type DisplayColor = (typeof DISPLAY_COLORS)[number]
+export type DisplayColorPalette = Record<DisplayColor, string>
+
+export const DEFAULT_DISPLAY_COLOR_PALETTE: DisplayColorPalette = {
+  blue: "#3b82f6",
+  green: "#22c55e",
+  orange: "#f97316",
+  purple: "#a855f7",
+  red: "#ef4444",
+  yellow: "#eab308",
+  teal: "#14b8a6",
+  gray: "#6b7280",
+}
+
+const HEX_COLOR = /^#[0-9a-f]{6}$/i
+
+export function normalizeDisplayColorPalette(
+  palette: Partial<Record<DisplayColor, string>> | null | undefined
+): DisplayColorPalette {
+  return Object.fromEntries(
+    DISPLAY_COLORS.map((color) => [
+      color,
+      palette?.[color] && HEX_COLOR.test(palette[color])
+        ? palette[color].toLowerCase()
+        : DEFAULT_DISPLAY_COLOR_PALETTE[color],
+    ])
+  ) as DisplayColorPalette
+}
+
+export function schedulePaletteStorageKey(projectId: string): string {
+  return `compass:schedule-display-palette:${projectId}`
+}
 
 export const DEFAULT_DISPLAY_COLOR: DisplayColor = "blue"
 
