@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest"
 import {
   DEFAULT_DISPLAY_COLOR,
+  DISPLAY_COLOR_OPTIONS,
   getScheduleItemClasses,
   normalizeDisplayColor,
 } from "../appearance"
@@ -18,6 +19,22 @@ describe("normalizeDisplayColor", () => {
 
   it("retains a supported per-item display color", () => {
     expect(normalizeDisplayColor("green")).toBe("green")
+  })
+})
+
+describe("display-color key", () => {
+  it("offers a labeled legend entry for every supported display color", () => {
+    expect(DISPLAY_COLOR_OPTIONS.map((option) => option.value)).toEqual([
+      "blue",
+      "green",
+      "orange",
+      "purple",
+      "red",
+      "yellow",
+      "teal",
+      "gray",
+    ])
+    expect(DISPLAY_COLOR_OPTIONS.every((option) => option.label.length > 0)).toBe(true)
   })
 })
 

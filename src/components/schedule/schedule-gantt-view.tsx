@@ -48,6 +48,7 @@ import {
 import type { DisplayItem, FrappeTask } from "@/lib/schedule/gantt-transform"
 import { updateTask } from "@/app/actions/schedule"
 import { countBusinessDays } from "@/lib/schedule/business-days"
+import { DISPLAY_COLOR_OPTIONS } from "@/lib/schedule/appearance"
 import type {
   ScheduleTaskData,
   TaskDependencyData,
@@ -379,6 +380,28 @@ export function ScheduleGanttView({
                 >
                   Client View
                 </Button>
+                <div className="border-t pt-2 mt-2">
+                  <p className="text-[11px] font-medium text-muted-foreground mb-1.5">
+                    Schedule key
+                  </p>
+                  <div className="grid grid-cols-2 gap-x-2 gap-y-1">
+                    {DISPLAY_COLOR_OPTIONS.map((color) => (
+                      <div
+                        key={color.value}
+                        className="flex items-center gap-1.5 text-[11px] text-foreground"
+                      >
+                        <span
+                          aria-hidden="true"
+                          className={cn("size-2.5 rounded-full", color.buttonClassName)}
+                        />
+                        {color.label}
+                      </div>
+                    ))}
+                  </div>
+                  <p className="mt-2 text-[10px] leading-snug text-muted-foreground">
+                    Task bars use their chosen display color; phase is grouping only. Critical Path View: blue is critical work; gray has float.
+                  </p>
+                </div>
               </div>
             </DropdownMenuContent>
           </DropdownMenu>
