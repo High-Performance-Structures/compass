@@ -377,7 +377,7 @@ export function ScheduleGanttView({
                 ) : (
                   <span
                     aria-hidden="true"
-                    className="size-2.5 rounded-full"
+                    className="size-5 rounded-full"
                     style={{ backgroundColor: displayColorPalette[color.value] }}
                   />
                 )}
