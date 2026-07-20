@@ -7,7 +7,6 @@ import {
   ResizablePanelGroup,
 } from "@/components/ui/resizable"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
 import {
   Popover,
   PopoverContent,
@@ -365,7 +364,7 @@ export function ScheduleGanttView({
           </div>
           <div className="grid grid-cols-2 gap-x-3 gap-y-1.5">
             {DISPLAY_COLOR_OPTIONS.map((color) => (
-              <label
+              <div
                 key={color.value}
                 className="flex items-center gap-1.5 text-[11px] text-foreground"
               >
@@ -375,7 +374,7 @@ export function ScheduleGanttView({
                       <button
                         type="button"
                         aria-label={`Choose ${color.label} schedule color`}
-                        className="size-5 rounded border border-border shadow-sm"
+                        className="size-5 shrink-0 rounded-full"
                         style={{ backgroundColor: displayColorPalette[color.value] }}
                       />
                     </PopoverTrigger>
@@ -406,32 +405,41 @@ export function ScheduleGanttView({
                   />
                 )}
                 {editingScheduleKey ? (
-                  <Input
+                  <span
+                    contentEditable
+                    suppressContentEditableWarning
+                    role="textbox"
+                    tabIndex={0}
                     aria-label={`${color.label} schedule meaning`}
-                    value={displayColorLabels[color.value]}
-                    onChange={(event) => updatePaletteLabel(color.value, event.target.value)}
-                    className="h-6 min-w-0 px-1 text-[10px]"
-                  />
+                    className="min-w-0 outline-none"
+                    onBlur={(event) => {
+                      const meaning = event.currentTarget.textContent?.trim()
+                      updatePaletteLabel(color.value, meaning || DEFAULT_DISPLAY_COLOR_LABELS[color.value])
+                    }}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") event.currentTarget.blur()
+                    }}
+                  >
+                    {displayColorLabels[color.value]}
+                  </span>
                 ) : (
                   <span>{displayColorLabels[color.value]}</span>
                 )}
-              </label>
+              </div>
             ))}
           </div>
-          {editingScheduleKey && (
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              className="mt-2 h-6 px-1.5 text-[10px]"
-              onClick={() => {
-                setDisplayColorPalette(DEFAULT_DISPLAY_COLOR_PALETTE)
-                setDisplayColorLabels(DEFAULT_DISPLAY_COLOR_LABELS)
-              }}
-            >
-              Reset personal colors
-            </Button>
-          )}
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="mt-2 h-6 px-1.5 text-[10px]"
+            onClick={() => {
+              setDisplayColorPalette(DEFAULT_DISPLAY_COLOR_PALETTE)
+              setDisplayColorLabels(DEFAULT_DISPLAY_COLOR_LABELS)
+            }}
+          >
+            Reset personal colors
+          </Button>
           <div className="mt-3 border-t pt-2 text-[10px] leading-snug text-muted-foreground">
             <p>Task bars use their chosen display color; phase is grouping only.</p>
             <p className="mt-1">Critical Path View: blue is critical work; gray has float.</p>
