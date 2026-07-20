@@ -101,9 +101,7 @@ export function ScheduleGanttView({
     setColumnWidth(defaultWidths[mode])
   }
 
-  const filteredTasks = showCriticalPath
-    ? tasks.filter((t) => t.isCriticalPath)
-    : tasks
+  const filteredTasks = tasks
 
   const { frappeTasks, displayItems } = phaseGrouping
     ? transformWithPhaseGroups(
@@ -362,7 +360,7 @@ export function ScheduleGanttView({
                   />
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-xs">Critical Path</span>
+                  <span className="text-xs">Critical Path View</span>
                   <Switch
                     checked={showCriticalPath}
                     onCheckedChange={setShowCriticalPath}
@@ -402,6 +400,7 @@ export function ScheduleGanttView({
                 columnWidth={columnWidth}
                 panMode={panMode}
                 onDateChange={handleDateChange}
+                criticalPathMode={showCriticalPath}
                 onZoom={handleZoom}
               />
             </div>
@@ -428,6 +427,7 @@ export function ScheduleGanttView({
                 columnWidth={columnWidth}
                 panMode={panMode}
                 onDateChange={handleDateChange}
+                criticalPathMode={showCriticalPath}
                 onZoom={handleZoom}
               />
             </div>

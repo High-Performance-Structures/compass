@@ -97,6 +97,8 @@ export async function createTask(
     startDate: string
     workdays: number
     phase: string
+    displayColor?: string
+    status?: TaskStatus
     isMilestone?: boolean
     percentComplete?: number
     assignedTo?: string
@@ -148,7 +150,8 @@ export async function createTask(
       workdays: data.workdays,
       endDateCalculated: endDate,
       phase: data.phase,
-      status: "PENDING",
+      displayColor: data.displayColor ?? "blue",
+      status: data.status ?? "PENDING",
       isCriticalPath: false,
       isMilestone: data.isMilestone ?? false,
       percentComplete: data.percentComplete ?? 0,
@@ -174,6 +177,8 @@ export async function updateTask(
     startDate?: string
     workdays?: number
     phase?: string
+    displayColor?: string
+    status?: TaskStatus
     isMilestone?: boolean
     percentComplete?: number
     assignedTo?: string | null
@@ -221,6 +226,8 @@ export async function updateTask(
         workdays,
         endDateCalculated: endDate,
         ...(data.phase && { phase: data.phase }),
+        ...(data.displayColor && { displayColor: data.displayColor }),
+        ...(data.status && { status: data.status }),
         ...(data.isMilestone !== undefined && {
           isMilestone: data.isMilestone,
         }),

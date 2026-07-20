@@ -4,6 +4,7 @@ import type {
   ConstructionPhase,
 } from "./types"
 import { PHASE_ORDER, PHASE_LABELS } from "./phase-colors"
+import { normalizeDisplayColor } from "./appearance"
 
 export interface FrappeTask {
   id: string
@@ -13,6 +14,9 @@ export interface FrappeTask {
   progress: number
   dependencies: string
   custom_class: string
+  displayColor: string | null
+  isCriticalPath: boolean
+  isMilestone: boolean
 }
 
 function ganttSafeToken(value: string): string {
@@ -56,9 +60,7 @@ export function transformToFrappeTasks(
 
     // frappe-gantt uses classList.add() which throws on spaces,
     // so we can only pass a single class name
-    let customClass = phaseClassName(task.phase)
-    if (task.isCriticalPath) customClass = "critical-path"
-    if (task.isMilestone) customClass = "milestone"
+    const customClass = `display-color-${normalizeDisplayColor(task.displayColor)}`
 
     return {
       id: task.id,
@@ -68,6 +70,9 @@ export function transformToFrappeTasks(
       progress,
       dependencies: depString,
       custom_class: customClass,
+      displayColor: task.displayColor,
+      isCriticalPath: task.isCriticalPath,
+      isMilestone: task.isMilestone,
     }
   })
 }
@@ -199,6 +204,9 @@ export function transformWithPhaseGroups(
         progress: group.progress,
         dependencies: phaseDeps.join(", "),
         custom_class: phaseClassName(group.phase),
+        displayColor: null,
+        isCriticalPath: false,
+        isMilestone: false,
       })
     } else {
       for (const task of group.tasks) {
@@ -220,9 +228,7 @@ export function transformWithPhaseGroups(
         if (task.status === "COMPLETE") progress = 100
         else if (task.status === "IN_PROGRESS") progress = 50
 
-        let customClass = phaseClassName(task.phase)
-        if (task.isCriticalPath) customClass = "critical-path"
-        if (task.isMilestone) customClass = "milestone"
+        const customClass = `display-color-${normalizeDisplayColor(task.displayColor)}`
 
         frappeTasks.push({
           id: task.id,
@@ -232,6 +238,9 @@ export function transformWithPhaseGroups(
           progress,
           dependencies: depString,
           custom_class: customClass,
+          displayColor: task.displayColor,
+          isCriticalPath: task.isCriticalPath,
+          isMilestone: task.isMilestone,
         })
       }
     }

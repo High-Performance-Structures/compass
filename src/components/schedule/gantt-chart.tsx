@@ -2,6 +2,7 @@
 
 import { useRef, useEffect, useState, useCallback } from "react"
 import type { FrappeTask } from "@/lib/schedule/gantt-transform"
+import { getScheduleItemClasses } from "@/lib/schedule/appearance"
 import "./gantt.css"
 
 type ViewMode = "Day" | "Week" | "Month"
@@ -11,6 +12,7 @@ interface GanttChartProps {
   viewMode: ViewMode
   columnWidth?: number
   panMode?: boolean
+  criticalPathMode?: boolean
   onDateChange?: (
     task: FrappeTask,
     start: Date,
@@ -25,6 +27,7 @@ export function GanttChart({
   viewMode,
   columnWidth,
   panMode = false,
+  criticalPathMode = false,
   onDateChange,
   onProgressChange,
   onZoom,
@@ -129,6 +132,15 @@ export function GanttChart({
         },
       })
 
+      const tasksById = new Map(tasks.map((task) => [task.id, task]))
+      for (const wrapper of containerRef.current.querySelectorAll<HTMLElement>(
+        ".bar-wrapper"
+      )) {
+        const task = tasksById.get(wrapper.dataset.id ?? "")
+        if (!task || task.id.startsWith("phase-")) continue
+        wrapper.classList.add(...getScheduleItemClasses(task))
+      }
+
       // constrain gantt-container to wrapper height so content overflows
       // this enables scroll-based panning while keeping the header sticky
       const ganttContainer = containerRef.current.querySelector(
@@ -163,7 +175,9 @@ export function GanttChart({
   return (
     <div
       ref={wrapperRef}
-      className="gantt-wrapper relative overflow-hidden h-full"
+      className={`gantt-wrapper relative overflow-hidden h-full${
+        criticalPathMode ? " critical-path-mode" : ""
+      }`}
       style={{ cursor: panMode ? "grab" : undefined }}
       onMouseDown={handleMouseDown}
       onMouseMove={handleMouseMove}
