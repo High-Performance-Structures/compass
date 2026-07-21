@@ -9,6 +9,21 @@ import {
 export async function GET(request: NextRequest) {
   const code = request.nextUrl.searchParams.get("code")
   const state = request.nextUrl.searchParams.get("state")
+  const authError = request.nextUrl.searchParams.get("error")
+
+  if (state?.startsWith("mobile.")) {
+    const callbackUrl = new URL("compass://auth/callback")
+    callbackUrl.searchParams.set("state", state.slice("mobile.".length))
+    if (code) callbackUrl.searchParams.set("code", code)
+    if (authError || !code) callbackUrl.searchParams.set("error", authError ?? "missing_code")
+    return new Response(null, {
+      status: 302,
+      headers: {
+        "Cache-Control": "no-store",
+        Location: callbackUrl.toString(),
+      },
+    })
+  }
 
   if (!code) {
     return NextResponse.redirect(

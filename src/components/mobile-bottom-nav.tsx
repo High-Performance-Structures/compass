@@ -11,6 +11,7 @@ import {
   IconSettingsFilled,
   IconFile,
   IconFileFilled,
+  IconHelmet,
 } from "@tabler/icons-react"
 import { cn } from "@/lib/utils"
 
@@ -68,6 +69,8 @@ function NavItem({
 export function MobileBottomNav() {
   const pathname = usePathname()
 
+  if (pathname.startsWith("/dashboard/field")) return null
+
   const isActive = (path: string) => {
     if (path === "/dashboard") return pathname === "/dashboard"
     return pathname.startsWith(path)
@@ -80,7 +83,7 @@ export function MobileBottomNav() {
         "border-t bg-background"
       )}
     >
-      <div className="grid h-14 grid-cols-4 items-center pb-[env(safe-area-inset-bottom)]">
+      <div className="grid h-14 grid-cols-5 items-center pb-[env(safe-area-inset-bottom)]">
         <NavItem
           href="/dashboard"
           icon={<IconHome className="size-[22px]" />}
@@ -96,6 +99,13 @@ export function MobileBottomNav() {
           }
           label="Projects"
           isActive={isActive("/dashboard/projects")}
+        />
+        <NavItem
+          href="/dashboard/field"
+          icon={<IconHelmet className="size-[22px]" />}
+          activeIcon={<IconHelmet className="size-[22px] fill-current" />}
+          label="Field"
+          isActive={isActive("/dashboard/field")}
         />
         <NavItem
           href="/dashboard/settings"

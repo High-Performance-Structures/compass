@@ -24,11 +24,16 @@ const machineAuthPaths = [
   "/api/email/gmail-sync",
 ]
 
+const mobilePublicPaths = [
+  "/api/mobile/health",
+]
+
 function isPublicPath(pathname: string): boolean {
   return (
     publicPaths.includes(pathname) ||
     bridgePaths.includes(pathname) ||
     machineAuthPaths.includes(pathname) ||
+    mobilePublicPaths.includes(pathname) ||
     pathname.startsWith("/api/auth/") ||
     pathname.startsWith("/api/netsuite/") ||
     pathname.startsWith("/api/google/")

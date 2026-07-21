@@ -25,6 +25,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover"
 import { cn } from "@/lib/utils"
+import { isInternalStaffRole } from "@/lib/user-roles"
 
 function displayName(user: ConversationUserOption): string {
   return user.displayName ?? user.email.split("@")[0] ?? user.email
@@ -45,7 +46,11 @@ function userSearchValue(user: ConversationUserOption): string {
     .join(" ")
 }
 
-export function DirectConversationLauncher(): React.ReactElement {
+export function DirectConversationLauncher({
+  staffOnly = false,
+}: {
+  readonly staffOnly?: boolean
+}): React.ReactElement {
   const router = useRouter()
   const [open, setOpen] = React.useState(false)
   const [loading, setLoading] = React.useState(false)
@@ -87,6 +92,10 @@ export function DirectConversationLauncher(): React.ReactElement {
     [router]
   )
 
+  const visibleUsers = staffOnly
+    ? users.filter((user) => isInternalStaffRole(user.role))
+    : users
+
   return (
     <div className="space-y-2">
       <Popover open={open} onOpenChange={setOpen}>
@@ -100,7 +109,9 @@ export function DirectConversationLauncher(): React.ReactElement {
           >
             <span className="flex min-w-0 items-center gap-2">
               <MessageSquarePlus className="size-4 shrink-0 text-muted-foreground" />
-              <span className="truncate">Start a direct message</span>
+              <span className="truncate">
+                {staffOnly ? "Message office or field staff" : "Start a direct message"}
+              </span>
             </span>
             <ChevronsUpDown className="ml-2 size-4 shrink-0 opacity-50" />
           </Button>
@@ -116,7 +127,7 @@ export function DirectConversationLauncher(): React.ReactElement {
                 {loading ? "Loading users..." : "No matching users."}
               </CommandEmpty>
               <CommandGroup heading="Compass users">
-                {users.map((user) => {
+                {visibleUsers.map((user) => {
                   const name = displayName(user)
                   const starting = startingUserId === user.userId
                   return (

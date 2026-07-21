@@ -97,9 +97,9 @@ server: {
 }
 ```
 
-The default release profile uses `server.url` to load the deployed Compass application. Run `bun cap:sync` for normal TestFlight and Play builds. This is the compatibility profile and must remain the default until the Field Mode backend ships with the web deployment.
+The default release profile is the bundled offline Field Mode. Run `bun cap:sync` for normal TestFlight and Play builds. The Field Mode backend and native shell must be deployed and released as one compatible contract.
 
-Setting `COMPASS_MOBILE_SHELL=field` selects `webDir: "mobile-shell"`, which points Capacitor at the output of `bun run mobile:build`. `bun run cap:sync:field` performs both steps. Omitting `server.url` is intentional in that profile: Capacitor opens the bundled `index.html` even when the device has no service. The shell checks `/api/mobile/health` and navigates to `/dashboard/field` when Compass is available.
+The default `webDir: "mobile-shell"` points Capacitor at the output of `bun run mobile:build`; `bun cap:sync` performs both steps. Omitting `server.url` is intentional: Capacitor opens the bundled `index.html` even when the device has no service. The shell checks `/api/mobile/health` and uses `/dashboard/field` when Compass is available. `COMPASS_MOBILE_MODE=live bun cap:sync` is a developer-only escape hatch for wrapping the full live deployment, not a field release profile.
 
 The live and bundled surfaces share a versioned storage contract. Preferences stores active-project packets and queued daily logs/chat messages. Filesystem stores saved construction documents and photo payloads. Stored documents include source file IDs and MIME types; local copies are disposable and Google Drive remains the source of truth.
 

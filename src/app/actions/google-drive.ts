@@ -4,7 +4,7 @@ import { getCloudflareContext } from "@/lib/db"
 import { eq, and } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { getDb } from "@/db"
-import { users } from "@/db/schema"
+import { projects, users } from "@/db/schema"
 import { googleAuth, googleStarredFiles } from "@/db/schema-google"
 import { getCurrentUser, requireAuth } from "@/lib/auth"
 import type { AuthUser } from "@/lib/auth"
@@ -19,7 +19,9 @@ import {
 } from "@/lib/google/config"
 import { DriveClient } from "@/lib/google/client/drive-client"
 import { mapDriveFileToFileItem } from "@/lib/google/mapper"
+import { isDriveItemWithinProjectFolder } from "@/lib/google/project-folder-boundary"
 import type { FileItem } from "@/lib/files-data"
+import { assertProjectAccess } from "@/lib/project-access"
 import {
   PROJECT_FILE_SOURCES,
   getProjectFolderMatch,
@@ -498,6 +500,180 @@ export async function listDriveFiles(
     return {
       success: false,
       error: err instanceof Error ? err.message : "Failed to list files",
+    }
+  }
+}
+
+export async function listProjectDriveFilesForField(
+  projectId: string
+): Promise<
+  | {
+      success: true
+      files: FileItem[]
+      nextPageToken: string | null
+    }
+  | { success: false; error: string }
+> {
+  try {
+    const user = await requireAuth()
+    requirePermission(user, "document", "read")
+    if (isDemoAuthUser(user)) {
+      return { success: true, files: [], nextPageToken: null }
+    }
+
+    const { env } = await getCloudflareContext()
+    const envRecord = env as unknown as Record<string, string>
+    const config = getGoogleConfig(envRecord)
+    const db = getDb(env.DB)
+    await assertProjectAccess(db, user, projectId)
+
+    const project = await db
+      .select({ folderId: projects.googleDriveFolderId })
+      .from(projects)
+      .where(eq(projects.id, projectId))
+      .limit(1)
+      .then((rows) => rows[0] ?? null)
+    if (!project?.folderId) {
+      return { success: false, error: "Project folder is not mapped" }
+    }
+
+    const auth = await getOrgGoogleAuth(db)
+    if (!auth) {
+      return { success: false, error: "Google Drive not connected" }
+    }
+    const connectedBy = await db
+      .select({ email: users.email, googleEmail: users.googleEmail })
+      .from(users)
+      .where(eq(users.id, auth.connectedBy))
+      .limit(1)
+      .then((rows) => rows[0] ?? null)
+    if (!connectedBy) {
+      return { success: false, error: "Google Drive connection owner not found" }
+    }
+
+    const client = await buildDriveClient(
+      auth.serviceAccountKeyEncrypted,
+      config.encryptionKey
+    )
+    const starredIds = await getStarredIds(db, user.id)
+    const result = await client.listFiles(
+      connectedBy.googleEmail ?? connectedBy.email,
+      {
+        folderId: project.folderId,
+        driveId: auth.sharedDriveId ?? undefined,
+        orderBy: "folder,name",
+      }
+    )
+
+    return {
+      success: true,
+      files: result.files.map((file) =>
+        withProjectCategoryMetadata(
+          mapDriveFileToFileItem(file, starredIds, project.folderId)
+        )
+      ),
+      nextPageToken: result.nextPageToken ?? null,
+    }
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Failed to list project files",
+    }
+  }
+}
+
+export async function listProjectDriveFolderForField(
+  projectId: string,
+  folderId: string
+): Promise<
+  | {
+      success: true
+      folderName: string
+      files: FileItem[]
+      nextPageToken: string | null
+    }
+  | { success: false; error: string }
+> {
+  try {
+    const user = await requireAuth()
+    requirePermission(user, "document", "read")
+    if (isDemoAuthUser(user)) {
+      return { success: true, folderName: "Documents", files: [], nextPageToken: null }
+    }
+
+    const { env } = await getCloudflareContext()
+    const envRecord = env as unknown as Record<string, string>
+    const config = getGoogleConfig(envRecord)
+    const db = getDb(env.DB)
+    await assertProjectAccess(db, user, projectId)
+
+    const project = await db
+      .select({ folderId: projects.googleDriveFolderId })
+      .from(projects)
+      .where(eq(projects.id, projectId))
+      .limit(1)
+      .then((rows) => rows[0] ?? null)
+    if (!project?.folderId) {
+      return { success: false, error: "Project folder is not mapped" }
+    }
+
+    const auth = await getOrgGoogleAuth(db)
+    if (!auth) {
+      return { success: false, error: "Google Drive not connected" }
+    }
+    const connectedBy = await db
+      .select({ email: users.email, googleEmail: users.googleEmail })
+      .from(users)
+      .where(eq(users.id, auth.connectedBy))
+      .limit(1)
+      .then((rows) => rows[0] ?? null)
+    if (!connectedBy) {
+      return { success: false, error: "Google Drive connection owner not found" }
+    }
+
+    const googleEmail = connectedBy.googleEmail ?? connectedBy.email
+    const client = await buildDriveClient(
+      auth.serviceAccountKeyEncrypted,
+      config.encryptionKey
+    )
+    const withinProject = await isDriveItemWithinProjectFolder({
+      client,
+      googleEmail,
+      itemId: folderId,
+      projectFolderId: project.folderId,
+    })
+    if (!withinProject) {
+      return { success: false, error: "Folder is outside the selected project" }
+    }
+
+    const [folder, starredIds, result] = await Promise.all([
+      client.getFile(googleEmail, folderId),
+      getStarredIds(db, user.id),
+      client.listFiles(googleEmail, {
+        folderId,
+        driveId: auth.sharedDriveId ?? undefined,
+        orderBy: "folder,name",
+      }),
+    ])
+
+    if (folder.mimeType !== "application/vnd.google-apps.folder") {
+      return { success: false, error: "The selected item is not a folder" }
+    }
+
+    return {
+      success: true,
+      folderName: folder.name,
+      files: result.files.map((file) =>
+        withProjectCategoryMetadata(
+          mapDriveFileToFileItem(file, starredIds, folderId)
+        )
+      ),
+      nextPageToken: result.nextPageToken ?? null,
+    }
+  } catch (err) {
+    return {
+      success: false,
+      error: err instanceof Error ? err.message : "Failed to list project folder",
     }
   }
 }

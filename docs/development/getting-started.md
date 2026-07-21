@@ -175,11 +175,12 @@ Migrations live in `drizzle/` and are applied in order. Never modify an existing
 
 ### Mobile (Capacitor)
 
-The mobile app is a webview wrapper that loads the live Cloudflare deployment. It's not a static export.
+The mobile app defaults to a purpose-built offline Field Mode shell. It is not a static export of the full Next.js application. The shell caches active project packets locally and syncs through the deployed Field Mode backend when connectivity is available.
 
 | Command | What it does |
 |---------|-------------|
-| `bun cap:sync` | Syncs web assets and Capacitor plugins to native projects. Run after adding new Capacitor plugins. |
+| `bun cap:sync` | Builds the offline Field Mode shell and syncs it plus Capacitor plugins to the native projects. |
+| `bun run cap:sync:live` | Developer-only fallback that wraps the full live web application; do not use for field releases. |
 | `bun cap:ios` | Opens the Xcode project for iOS development. |
 | `bun cap:android` | Opens the Android Studio project. |
 

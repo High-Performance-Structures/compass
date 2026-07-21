@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, useRef, useCallback } from "react"
+import { usePathname } from "next/navigation"
 import { MessageSquare, PanelRightClose } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
@@ -11,6 +12,7 @@ import { ChatView } from "./chat-view"
 import { isNative } from "@/lib/native/platform"
 
 export function ChatPanelShell() {
+  const pathname = usePathname()
   const { isOpen, close, toggle } = useChatPanel()
 
   // resize state (panel mode only)
@@ -110,6 +112,11 @@ export function ChatPanelShell() {
       ? { paddingBottom: keyboardHeight }
       : undefined
 
+  // Field Mode has its own company and project messaging interface. Keeping
+  // the AI panel out of this route prevents the two communication tools from
+  // appearing to be the same feature in the native app.
+  if (pathname.startsWith("/dashboard/field")) return null
+
   return (
     <>
       <div
@@ -164,7 +171,8 @@ export function ChatPanelShell() {
           size="icon"
           className="fixed bottom-4 right-4 z-50 h-12 w-12 rounded-full shadow-lg md:hidden"
           onClick={toggle}
-          aria-label="Open chat"
+          aria-label="Open assistant"
+          title="Compass assistant"
         >
           <MessageSquare className="h-5 w-5" />
         </Button>

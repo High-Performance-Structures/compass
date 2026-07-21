@@ -220,6 +220,9 @@ export function AppSidebar({
 }) {
   const { isMobile } = useSidebar()
   const { channelId } = useVoiceState()
+  const pathname = usePathname()
+
+  if (pathname.startsWith("/dashboard/field")) return null
 
   return (
     <Sidebar collapsible="icon" {...props}>

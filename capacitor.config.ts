@@ -1,16 +1,16 @@
 import type { CapacitorConfig } from "@capacitor/cli"
 import { KeyboardResize, KeyboardStyle } from "@capacitor/keyboard"
 
-const usesFieldShell = process.env.COMPASS_MOBILE_SHELL === "field"
+const usesLiveWrapper = process.env.COMPASS_MOBILE_MODE === "live"
 
 const config: CapacitorConfig = {
   appId: "com.hpscolorado.compass",
   appName: "Compass",
-  webDir: usesFieldShell ? "mobile-shell" : "public",
+  webDir: usesLiveWrapper ? "public" : "mobile-shell",
   server: {
-    ...(usesFieldShell
-      ? {}
-      : { url: "https://compass.openrangeconstruction.ltd" }),
+    ...(usesLiveWrapper
+      ? { url: "https://compass.openrangeconstruction.ltd" }
+      : {}),
     cleartext: false,
     allowNavigation: [
       "compass.openrangeconstruction.ltd",
@@ -29,7 +29,7 @@ const config: CapacitorConfig = {
       showSpinner: false,
     },
     Keyboard: {
-      resize: usesFieldShell ? KeyboardResize.Native : KeyboardResize.Body,
+      resize: usesLiveWrapper ? KeyboardResize.Body : KeyboardResize.Native,
       style: KeyboardStyle.Dark,
     },
     PushNotifications: {
