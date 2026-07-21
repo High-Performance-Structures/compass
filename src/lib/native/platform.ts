@@ -2,8 +2,8 @@
 // All exports are safe to call in browser (return false / no-op).
 
 type CapacitorGlobal = {
-  readonly isNative: boolean
-  getPlatform: () => string
+  readonly isNativePlatform: () => boolean
+  readonly getPlatform: () => string
 }
 
 function getCapacitor(): CapacitorGlobal | undefined {
@@ -18,7 +18,7 @@ function getDesktopBridge(): Window["compassDesktop"] {
 }
 
 export function isNative(): boolean {
-  return getCapacitor()?.isNative ?? false
+  return getCapacitor()?.isNativePlatform() ?? false
 }
 
 export function isIOS(): boolean {
@@ -57,7 +57,7 @@ export function getPlatform(): Platform {
   }
   // Then check Capacitor mobile
   const cap = getCapacitor()
-  if (cap?.isNative) {
+  if (cap?.isNativePlatform()) {
     const p = cap.getPlatform()
     if (p === "ios") return "ios"
     if (p === "android") return "android"
@@ -68,7 +68,7 @@ export function getPlatform(): Platform {
 // Legacy function for backward compatibility
 export function getMobilePlatform(): "ios" | "android" | "web" {
   const cap = getCapacitor()
-  if (!cap?.isNative) return "web"
+  if (!cap?.isNativePlatform()) return "web"
   const p = cap.getPlatform()
   if (p === "ios") return "ios"
   if (p === "android") return "android"

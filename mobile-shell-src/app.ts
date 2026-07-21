@@ -1,0 +1,987 @@
+import { App } from "@capacitor/app"
+import { Browser } from "@capacitor/browser"
+import { Capacitor, CapacitorHttp } from "@capacitor/core"
+import { FileViewer } from "@capacitor/file-viewer"
+import { Directory, Filesystem } from "@capacitor/filesystem"
+import { Keyboard, KeyboardResize } from "@capacitor/keyboard"
+import { Network } from "@capacitor/network"
+import { Preferences } from "@capacitor/preferences"
+import { z } from "zod/v4"
+
+import {
+  fieldOutboxSchema,
+  fieldProjectPacketSchema,
+  fieldProjectSchema,
+  fieldUserProfileSchema,
+  type FieldOutboxItem,
+  type FieldProject,
+  type FieldProjectPacket,
+  type FieldQueuedAttachment,
+  type FieldUserProfile,
+} from "../src/lib/field/types"
+
+const LIVE_URL = "https://compass.openrangeconstruction.ltd"
+const PROJECTS_KEY = "compass_field_projects_v1"
+const ACTIVE_PROJECT_KEY = "compass_field_active_project_v1"
+const OUTBOX_KEY = "compass_field_outbox_v1"
+const PACKET_PREFIX = "compass_field_packet_v1"
+const DOCUMENTS_KEY = "compass_field_documents_v1"
+const AUTH_STATE_KEY = "compass_native_auth_state_v1"
+const AUTH_VERIFIER_KEY = "compass_native_auth_verifier_v1"
+const PROFILE_KEY = "compass_field_profile_v1"
+const FIELD_ATTACHMENT_DIRECTORY = "compass-field-attachments"
+const MAX_ATTACHMENT_BYTES = 50 * 1024 * 1024
+const isIos = Capacitor.getPlatform() === "ios"
+
+type Project = FieldProject
+type Packet = FieldProjectPacket
+type QueuedItem = FieldOutboxItem
+type SavedDocument = {
+  readonly projectId: string
+  readonly fileId: string
+  readonly name: string
+  readonly mimeType: string
+  readonly path: string
+  readonly savedAt: string
+}
+type Tab = "projects" | "today" | "log" | "documents" | "chat" | "notifications" | "settings"
+type AuthMode = "choice" | "password" | "email" | "code"
+
+const savedDocumentSchema = z.object({
+  projectId: z.string(),
+  fileId: z.string(),
+  name: z.string(),
+  mimeType: z.string(),
+  path: z.string(),
+  savedAt: z.string(),
+})
+const savedDocumentsSchema = z.array(savedDocumentSchema)
+const projectsSchema = z.array(fieldProjectSchema)
+const nativeAuthResponseSchema = z.object({
+  success: z.boolean(),
+  error: z.string().optional(),
+  redirectUrl: z.string().optional(),
+})
+
+const app = document.querySelector<HTMLDivElement>("#app")
+let projects: Project[] = []
+let packet: Packet | null = null
+let profile: FieldUserProfile | null = null
+let outbox: QueuedItem[] = []
+let documents: SavedDocument[] = []
+let activeTab: Tab = "today"
+let online = false
+let authError = ""
+let signingIn = false
+let authMode: AuthMode = "choice"
+let authEmail = ""
+let draftAttachments: FieldQueuedAttachment[] = []
+let attachmentError = ""
+let projectError = ""
+let syncing = false
+let messageActionError = ""
+let directMessageStatus = ""
+let startingConversation = false
+let refreshingProject = false
+let directRecipientId = ""
+let directMessageDraft = ""
+
+function bellIcon(): string {
+  return `<svg class="header-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.268 21a2 2 0 0 0 3.464 0"></path><path d="M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326"></path></svg>`
+}
+
+function syncIcon(): string {
+  return `<svg class="header-icon ${syncing ? "spin" : ""}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 0 1 15-6.7L21 8"></path><path d="M21 3v5h-5"></path><path d="M21 12a9 9 0 0 1-15 6.7L3 16"></path><path d="M8 16H3v5"></path></svg>`
+}
+
+function escapeHtml(value: string): string {
+  return value.replace(/[&<>'"]/g, (character) => {
+    const entities: Record<string, string> = { "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" }
+    return entities[character] ?? character
+  })
+}
+
+function shortDate(value: string): string {
+  if (!value) return ""
+  const date = new Date(`${value.slice(0, 10)}T12:00:00`)
+  return Number.isNaN(date.getTime()) ? value : new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" }).format(date)
+}
+
+function packetKey(projectId: string): string { return `${PACKET_PREFIX}.${projectId}` }
+
+async function readJson(key: string): Promise<unknown> {
+  const result = await Preferences.get({ key })
+  if (!result.value) return null
+  try { return JSON.parse(result.value) } catch { return null }
+}
+
+async function writeJson(key: string, value: unknown): Promise<void> {
+  await Preferences.set({ key, value: JSON.stringify(value) })
+}
+
+function projectLabel(project: Project): string {
+  return project.projectNumber ? `${project.projectNumber} - ${project.name}` : project.name
+}
+
+function sectionHead(title: string, note = ""): string {
+  return `<div class="section-head"><h2>${escapeHtml(title)}</h2>${note ? `<p>${escapeHtml(note)}</p>` : ""}</div>`
+}
+
+function empty(text: string): string { return `<div class="empty">${escapeHtml(text)}</div>` }
+
+function projectsView(): string {
+  if (projects.length === 0) {
+    if (authMode === "password") {
+      return sectionHead("Sign in to Field Mode", "Use the email address and password connected to your Compass account.") + `<form id="native-password-form" class="form auth-form"><label class="field">Email address<input name="email" type="email" autocomplete="email" inputmode="email" value="${escapeHtml(authEmail)}" required /></label><label class="field">Password<input name="password" type="password" autocomplete="current-password" required /></label>${authError ? `<p class="auth-error" role="alert">${escapeHtml(authError)}</p>` : ""}<button class="primary" type="submit" ${signingIn ? "disabled" : ""}>${signingIn ? "Signing in" : "Sign in"}</button><button class="text-button" id="native-reset-password" type="button" ${online && !signingIn ? "" : "disabled"}>Forgot or need a password?</button><button class="text-button" data-auth-choice type="button" ${signingIn ? "disabled" : ""}>Back to sign-in choices</button></form>`
+    }
+    if (authMode === "email") {
+      return sectionHead("Sign in to Field Mode", "Use the email address connected to your Compass account.") + `<form id="native-email-form" class="form auth-form"><label class="field">Email address<input name="email" type="email" autocomplete="email" inputmode="email" value="${escapeHtml(authEmail)}" required /></label>${authError ? `<p class="auth-error" role="alert">${escapeHtml(authError)}</p>` : ""}<button class="primary" type="submit" ${signingIn ? "disabled" : ""}>${signingIn ? "Sending code" : "Send verification code"}</button><button class="text-button" data-auth-choice type="button" ${signingIn ? "disabled" : ""}>Back to sign-in choices</button></form>`
+    }
+    if (authMode === "code") {
+      return sectionHead("Enter your verification code", `We sent a six-digit code to ${authEmail}.`) + `<form id="native-code-form" class="form auth-form"><label class="field">Verification code<input name="code" type="text" autocomplete="one-time-code" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" required /></label>${authError ? `<p class="auth-error" role="alert">${escapeHtml(authError)}</p>` : ""}<button class="primary" type="submit" ${signingIn ? "disabled" : ""}>${signingIn ? "Verifying" : "Verify and open Compass"}</button><button class="text-button" data-auth-email type="button" ${signingIn ? "disabled" : ""}>Use a different email</button></form>`
+    }
+    const message = authError
+      ? `<p class="auth-error" role="alert">${escapeHtml(authError)}</p>`
+      : `<p>Sign in once while connected to download your assigned projects.</p>`
+    const googleSignIn = isIos
+      ? `<p class="auth-note">Google sign-in is temporarily unavailable in the iPhone app. Use your Compass email and password.</p>`
+      : `<button id="native-sign-in" class="secondary auth-button" type="button" ${online && !signingIn ? "" : "disabled"}>${signingIn ? "Opening secure sign in" : "Sign in with Google"}</button>`
+    return sectionHead("Active projects") + `<div class="empty auth-empty">${message}<div class="auth-actions"><button id="password-sign-in" class="primary auth-button" type="button" ${online && !signingIn ? "" : "disabled"}>Sign in with email and password</button>${googleSignIn}</div></div>`
+  }
+  return sectionHead("Active projects", "Choose the job you are working on.") + `${projectError ? `<p class="auth-error" role="alert">${escapeHtml(projectError)}</p>` : ""}<div class="rows">${projects.map((project) => `
+    <button class="row project-row" data-project-id="${escapeHtml(project.id)}">
+      <div class="row-main"><p class="row-title">${escapeHtml(projectLabel(project))}</p><p class="row-note">${escapeHtml(project.address ?? "")}</p></div>
+      <strong>${packet?.project.id === project.id ? "Selected" : "Open"}</strong>
+    </button>`).join("")}</div>`
+}
+
+function todayView(): string {
+  if (!packet) return empty("Select a project to begin.")
+  const today = new Date().toISOString().slice(0, 10)
+  const open = packet.tasks.filter((task) => !["COMPLETE", "complete", "closed", "cancelled"].includes(task.status))
+  const assigned = open.filter((task) => task.kind === "task").slice(0, 12)
+  const schedule = open.filter((task) => task.kind === "schedule" && task.endDate >= today).sort((left, right) => left.startDate.localeCompare(right.startDate)).slice(0, 14)
+  const assignedRows = assigned.length ? `<div class="rows">${assigned.map((task) => `<div class="row"><div class="row-main"><p class="row-title">${escapeHtml(task.title)}</p><p class="row-note">${escapeHtml(task.assignedTo ?? task.description ?? "Assigned task")}</p></div><span class="row-date">${escapeHtml(shortDate(task.endDate))}</span></div>`).join("")}</div>` : empty("No open tasks for this project.")
+  const scheduleRows = schedule.length ? `<div class="rows">${schedule.map((task) => `<div class="row"><span class="row-date">${escapeHtml(shortDate(task.startDate))}</span><div class="row-main"><p class="row-title">${escapeHtml(task.title)}</p><p class="row-note">${escapeHtml(task.phase)} - ${task.percentComplete}%</p></div></div>`).join("")}</div>` : empty("No upcoming schedule items.")
+  return sectionHead("My tasks", "Assigned work for this job.") + assignedRows + `<div class="block">${sectionHead("Project schedule")}${scheduleRows}</div>`
+}
+
+function logView(): string {
+  if (!packet) return empty("Select a project to add a daily log.")
+  const today = new Date().toISOString().slice(0, 10)
+  const recent = packet.logs.slice(0, 6).map((log) => `<div class="row"><span class="row-date">${escapeHtml(shortDate(log.logDate))}</span><div class="row-main"><p class="row-title">${escapeHtml(log.workCompleted)}</p><p class="row-note">${escapeHtml(log.authorName ?? "Compass")}</p></div></div>`).join("")
+  const attachmentRows = draftAttachments.map((attachment) => `<div class="attachment-row"><div><strong>${escapeHtml(attachment.fileName)}</strong><span>${escapeHtml(formatBytes(attachment.fileSize))}</span></div><button type="button" data-remove-attachment="${escapeHtml(attachment.id)}" aria-label="Remove ${escapeHtml(attachment.fileName)}">Remove</button></div>`).join("")
+  return sectionHead("Add daily log", "Saved securely on this device until Compass can sync.") + `
+    <form id="daily-log-form" class="form">
+      <label class="field">Date<input name="logDate" type="date" value="${today}" required /></label>
+      <label class="field">What did we complete?<textarea name="workCompleted" required placeholder="Describe today's work"></textarea></label>
+      <label class="field">Who was on site?<input name="crewPresent" placeholder="Crew, subs, suppliers" /></label>
+      <label class="field">Issues or delays<textarea name="issues" placeholder="Leave blank if none"></textarea></label>
+      <label class="field">Notes<textarea name="notes"></textarea></label>
+      <label class="file-picker" for="daily-log-attachments"><strong>Add photos, videos, or files</strong><span>Choose from the camera, photo library, or Files app</span></label>
+      <input id="daily-log-attachments" class="native-file-input" type="file" multiple accept="image/*,video/*,.pdf,.doc,.docx,.xls,.xlsx,.csv,.txt" />
+      ${attachmentError ? `<p class="attachment-error" role="alert">${escapeHtml(attachmentError)}</p>` : ""}
+      ${attachmentRows ? `<div class="attachment-list">${attachmentRows}</div>` : ""}
+      <button class="primary" type="submit">Save for sync</button>
+    </form>
+    <div class="block">${sectionHead("Recent logs")}${recent ? `<div class="rows">${recent}</div>` : empty("No cached daily logs.")}</div>`
+}
+
+function documentsView(): string {
+  if (!packet) return empty("Select a project to view documents.")
+  const projectDocuments = documents.filter((item) => item.projectId === packet?.project.id)
+  const savedIds = new Set(projectDocuments.map((item) => item.fileId))
+  const rootIds = new Set(packet.documents.map((document) => document.id))
+  const rows = packet.documents.map((document) => {
+    const saved = savedIds.has(document.id)
+    const canOpen = saved || online
+    const note = saved
+      ? "Available offline"
+      : document.type === "folder"
+        ? online ? "Browse the files in this folder" : "Folder requires a connection"
+        : online ? "Tap to download for offline use" : "Not downloaded"
+    const action = saved ? "Open" : online ? document.type === "folder" ? "Browse" : "Download" : ""
+    return `<button class="row document-row" data-file-id="${escapeHtml(document.id)}" ${canOpen ? "" : "disabled"}><div class="row-main"><p class="row-title">${escapeHtml(document.name)}</p><p class="row-note">${escapeHtml(note)}</p></div><strong>${action}</strong></button>`
+  }).join("")
+  const nestedRows = projectDocuments
+    .filter((document) => !rootIds.has(document.fileId))
+    .map((document) => `<button class="row document-row" data-file-id="${escapeHtml(document.fileId)}"><div class="row-main"><p class="row-title">${escapeHtml(document.name)}</p><p class="row-note">Available offline</p></div><strong>Open</strong></button>`)
+    .join("")
+  const savedFromFolders = nestedRows
+    ? `<div class="block">${sectionHead("Saved from folders", "Downloaded files available without service.")}<div class="rows">${nestedRows}</div></div>`
+    : ""
+  return sectionHead("Construction documents", "Only files marked available offline can open without service.") + (rows ? `<div class="rows">${rows}</div>` : empty("No cached project documents.")) + savedFromFolders
+}
+
+function directMessageView(): string {
+  if (!packet) return ""
+  const options = packet.contacts
+    .map(
+      (contact) =>
+        `<option value="${escapeHtml(contact.id)}" ${contact.id === directRecipientId ? "selected" : ""}>${escapeHtml(contact.name)} - ${escapeHtml(contact.role)}</option>`
+    )
+    .join("")
+
+  const conversations = packet.directConversations
+    .map((conversation, index) => {
+      const messageRows = conversation.messages
+        .slice(-6)
+        .map(
+          (message) =>
+            `<div class="message"><div class="message-meta"><span class="message-author">${escapeHtml(message.userName)}</span><span class="message-time">${escapeHtml(shortDate(message.createdAt))}</span></div><p class="message-body">${escapeHtml(message.content)}</p></div>`
+        )
+        .join("")
+      return `<details class="direct-thread" ${index === 0 ? "open" : ""}>
+        <summary><span>${escapeHtml(conversation.name)}</span>${conversation.unreadCount > 0 ? `<strong>${conversation.unreadCount} new</strong>` : ""}</summary>
+        <div class="direct-thread-messages">${messageRows || empty("No messages in this conversation.")}</div>
+      </details>`
+    })
+    .join("")
+  const history = conversations
+    ? `<div class="direct-history"><h2>Direct conversations</h2>${conversations}</div>`
+    : ""
+
+  return `${history}<details class="message-tools" ${packet.channel ? "" : "open"}>
+    <summary>New direct message</summary>
+    <form id="direct-message-form" class="direct-message-form">
+      ${packet.contacts.length > 0
+        ? `<label class="field">To<select name="targetUserId" required><option value="">Choose office or field staff</option>${options}</select></label>
+          <label class="field">Message<textarea name="content" required placeholder="Write a direct message">${escapeHtml(directMessageDraft)}</textarea></label>
+          <div class="keyboard-toolbar"><span>Direct message</span><button data-keyboard-done type="button">Done</button></div>
+          <button class="secondary" type="submit" ${online && !startingConversation ? "" : "disabled"}>${startingConversation ? "Sending..." : "Send direct message"}</button>`
+        : `<p class="message-help">${online ? "The staff directory has not loaded yet." : "Connect to load the staff directory."}</p>
+          <button id="refresh-project-messages" class="secondary" type="button" ${online && !refreshingProject ? "" : "disabled"}>${refreshingProject ? "Loading staff..." : "Load staff directory"}</button>`}
+      ${!online ? `<p class="message-help">Connect to start a new direct conversation.</p>` : ""}
+      ${directMessageStatus ? `<p class="message-success" role="status">${escapeHtml(directMessageStatus)}</p>` : ""}
+      ${messageActionError ? `<p class="attachment-error" role="alert">${escapeHtml(messageActionError)}</p>` : ""}
+    </form>
+  </details>`
+}
+
+function messagesView(): string {
+  if (!packet) return empty("Select a project to view messages.")
+  const directMessage = directMessageView()
+  if (!packet.channel) {
+    return `${sectionHead("Project messages", "Start a team channel for this job or message a staff member directly.")}
+      <div class="message-start">
+        <button id="start-project-channel" class="primary" type="button" ${online && !startingConversation ? "" : "disabled"}>${startingConversation ? "Starting channel..." : "Start project channel"}</button>
+        ${!online ? `<p class="message-help">Connect once to create the channel. Existing cached conversations remain available offline.</p>` : ""}
+        ${messageActionError ? `<p class="attachment-error" role="alert">${escapeHtml(messageActionError)}</p>` : ""}
+      </div>${directMessage}`
+  }
+  const messages = packet.messages.map((message) => `<div class="message"><div class="message-meta"><span class="message-author">${escapeHtml(message.userName)}</span><span class="message-time">${escapeHtml(shortDate(message.createdAt))}</span></div><p class="message-body">${escapeHtml(message.content)}</p></div>`).join("")
+  return directMessage + sectionHead(packet.channel.name, "Project messages") + `<div class="chat-list">${messages || empty("No cached messages.")}</div><form id="chat-form" class="chat-compose"><div class="keyboard-toolbar"><span>New message</span><button data-keyboard-done type="button">Done</button></div><textarea name="content" required placeholder="Message the project team"></textarea><button class="primary" type="submit">Save message for sync</button></form>`
+}
+
+function notificationsView(): string {
+  if (!packet) return empty("Open a project online once to load notifications.")
+  const rows = packet.notifications.map((notification) => `
+    <button class="row notification-row" data-notification-id="${escapeHtml(notification.id)}" data-notification-project-id="${escapeHtml(notification.projectId ?? "")}">
+      <div class="row-main">
+        <p class="row-title">${escapeHtml(notification.title)}</p>
+        <p class="row-note">${escapeHtml(notification.body)}</p>
+      </div>
+      <span class="notification-state">${notification.readAt ? "Open" : "New"}</span>
+    </button>`).join("")
+  return sectionHead("Notifications", "Messages and project activity needing your attention.") + (rows ? `<div class="rows">${rows}</div>` : empty("No notifications."))
+}
+
+function settingsView(): string {
+  const profileRows = profile
+    ? `<dl class="profile-list"><div><dt>Name</dt><dd>${escapeHtml(profile.name)}</dd></div><div><dt>Email</dt><dd>${escapeHtml(profile.email)}</dd></div><div><dt>Role</dt><dd>${escapeHtml(profile.role)}</dd></div><div><dt>Project</dt><dd>${escapeHtml(packet?.project.name ?? "None selected")}</dd></div><div><dt>Sync</dt><dd>${online ? "Online" : "Offline"} - ${outbox.length === 0 ? "Up to date" : `${outbox.length} waiting`}</dd></div></dl>`
+    : `<p class="notice">Open Compass once while connected to cache your profile.</p>`
+  return `${sectionHead("Field settings", "Profile and offline readiness")}${profileRows}<div class="block">${sectionHead("Before working offline")}<ol class="guide-list"><li>While connected, open every project you expect to use.</li><li>Refresh each project so tasks, schedule items, logs, and messages are current.</li><li>Save the plans and files you need from Documents.</li><li>Confirm the header shows no items waiting to sync.</li></ol></div><div class="block">${sectionHead("How offline sync works")}<div class="guide-copy"><p>Daily logs, attachments, and project messages stay securely on this device while offline.</p><p>After service returns, keep Compass open until the waiting count reaches zero.</p><p>If a file fails partway through, Compass retries the remaining files without creating a second daily log.</p></div></div>`
+}
+
+function view(): string {
+  if (activeTab === "projects") return projectsView()
+  if (activeTab === "today") return todayView()
+  if (activeTab === "log") return logView()
+  if (activeTab === "documents") return documentsView()
+  if (activeTab === "notifications") return notificationsView()
+  if (activeTab === "settings") return settingsView()
+  return messagesView()
+}
+
+function render(): void {
+  if (!app) return
+  const title = packet ? projectLabel(packet.project) : "Compass"
+  const queued = outbox.length > 0 ? ` - ${outbox.length} waiting to sync` : ""
+  const unreadNotifications = packet?.notifications.filter((notification) => notification.readAt === null).length ?? 0
+  const tabs: { value: Tab; symbol: string; label: string }[] = [
+    { value: "projects", symbol: "P", label: "Projects" },
+    { value: "today", symbol: "T", label: "Today" },
+    { value: "log", symbol: "L", label: "Log" },
+    { value: "documents", symbol: "D", label: "Documents" },
+    { value: "chat", symbol: "M", label: "Messages" },
+  ]
+  const liveLabel = projects.length === 0 ? "Sign in" : "Full Compass"
+  app.innerHTML = `<div class="shell"><header class="shell-header"><div class="header-row"><div><p class="eyebrow">Field mode</p><h1 class="project-title">${escapeHtml(title)}</h1></div><div class="header-actions">${outbox.length > 0 && online ? `<button id="sync-now" class="icon-button" type="button" aria-label="Sync waiting work">${syncIcon()}</button>` : ""}<button id="field-notifications" class="notification-button" type="button" aria-label="Notifications">${bellIcon()}${unreadNotifications > 0 ? `<span>${unreadNotifications > 9 ? "9+" : unreadNotifications}</span>` : ""}</button><button id="field-settings" class="settings-button" type="button" aria-label="Field settings">Settings</button><button id="open-live" class="live-button" ${online && !signingIn ? "" : "disabled"}>${liveLabel}</button></div></div><div class="sync-line"><span class="status-dot ${online ? "online" : ""}"></span>${syncing ? "Opening secure sync" : online ? "Connection available" : "Offline"}${escapeHtml(queued)}</div></header><main class="content">${view()}</main><nav class="tabbar">${tabs.map((tab) => `<button class="tab ${activeTab === tab.value ? "active" : ""}" data-tab="${tab.value}"><span class="tab-symbol">${tab.symbol}</span>${tab.label}</button>`).join("")}</nav></div>`
+  bindEvents()
+}
+
+function isTab(value: string | undefined): value is Tab {
+  return value === "projects" || value === "today" || value === "log" || value === "documents" || value === "chat" || value === "notifications" || value === "settings"
+}
+
+function bindEvents(): void {
+  document.querySelectorAll<HTMLButtonElement>("[data-tab]").forEach((button) => button.addEventListener("click", () => {
+    if (isTab(button.dataset.tab)) activeTab = button.dataset.tab
+    render()
+    if (activeTab === "chat" && online) void refreshProjectPacket()
+  }))
+  document.querySelectorAll<HTMLButtonElement>("[data-project-id]").forEach((button) => button.addEventListener("click", () => void selectProject(button.dataset.projectId ?? "")))
+  document.querySelectorAll<HTMLButtonElement>("[data-file-id]").forEach((button) => button.addEventListener("click", () => void openDocument(button.dataset.fileId ?? "")))
+  document.querySelector<HTMLButtonElement>("#open-live")?.addEventListener("click", openFullCompass)
+  document.querySelector<HTMLButtonElement>("#sync-now")?.addEventListener("click", resumePendingSync)
+  document.querySelector<HTMLButtonElement>("#field-notifications")?.addEventListener("click", () => {
+    activeTab = "notifications"
+    render()
+  })
+  document.querySelector<HTMLButtonElement>("#field-settings")?.addEventListener("click", () => {
+    activeTab = "settings"
+    render()
+  })
+  document.querySelector<HTMLButtonElement>("#native-sign-in")?.addEventListener("click", () => void beginNativeSignIn())
+  document.querySelector<HTMLButtonElement>("#password-sign-in")?.addEventListener("click", beginPasswordSignIn)
+  document.querySelector<HTMLButtonElement>("#email-code-sign-in")?.addEventListener("click", beginEmailCodeSignIn)
+  document.querySelector<HTMLFormElement>("#native-password-form")?.addEventListener("submit", (event) => void signInWithPassword(event))
+  document.querySelector<HTMLButtonElement>("#native-reset-password")?.addEventListener("click", () => void openPasswordReset())
+  document.querySelector<HTMLFormElement>("#native-email-form")?.addEventListener("submit", (event) => void sendNativeEmailCode(event))
+  document.querySelector<HTMLFormElement>("#native-code-form")?.addEventListener("submit", (event) => void verifyNativeEmailCode(event))
+  document.querySelector<HTMLButtonElement>("[data-auth-choice]")?.addEventListener("click", showAuthChoices)
+  document.querySelector<HTMLButtonElement>("[data-auth-email]")?.addEventListener("click", beginEmailCodeSignIn)
+  document.querySelectorAll<HTMLButtonElement>("[data-notification-id]").forEach((button) => button.addEventListener("click", () => void openNotification(button)))
+  document.querySelector<HTMLFormElement>("#daily-log-form")?.addEventListener("submit", (event) => void queueDailyLog(event))
+  const messageInputs = document.querySelectorAll<HTMLTextAreaElement>("#chat-form textarea, #direct-message-form textarea")
+  messageInputs.forEach((input) => input.addEventListener("focus", () => {
+    document.body.classList.add("keyboard-open")
+  }))
+  document.querySelectorAll<HTMLButtonElement>("[data-keyboard-done]").forEach((button) => button.addEventListener("click", () => {
+    messageInputs.forEach((input) => input.blur())
+    void Keyboard.hide()
+  }))
+  document.querySelector<HTMLInputElement>("#daily-log-attachments")?.addEventListener("change", (event) => {
+    const input = event.target
+    if (!(input instanceof HTMLInputElement)) return
+    void chooseDailyLogAttachments(input.files)
+  })
+  document.querySelectorAll<HTMLButtonElement>("[data-remove-attachment]").forEach((button) => button.addEventListener("click", () => void removeDraftAttachment(button.dataset.removeAttachment ?? "")))
+  document.querySelector<HTMLFormElement>("#chat-form")?.addEventListener("submit", (event) => void queueChat(event))
+  document.querySelector<HTMLButtonElement>("#start-project-channel")?.addEventListener("click", () => void startProjectChannel())
+  document.querySelector<HTMLButtonElement>("#refresh-project-messages")?.addEventListener("click", () => void refreshProjectPacket())
+  document.querySelector<HTMLFormElement>("#direct-message-form")?.addEventListener("submit", (event) => void sendDirectMessage(event))
+  const directRecipientSelect = document.querySelector("#direct-message-form select[name='targetUserId']")
+  if (directRecipientSelect instanceof HTMLSelectElement) {
+    directRecipientSelect.addEventListener("change", (event) => {
+      if (event.currentTarget instanceof HTMLSelectElement) {
+        directRecipientId = event.currentTarget.value
+      }
+    })
+  }
+  document.querySelector<HTMLTextAreaElement>("#direct-message-form textarea[name='content']")?.addEventListener("input", (event) => {
+    if (event.currentTarget instanceof HTMLTextAreaElement) directMessageDraft = event.currentTarget.value
+  })
+}
+
+async function refreshProjectPacket(): Promise<void> {
+  if (!packet || !online || refreshingProject) return
+  const projectId = packet.project.id
+  refreshingProject = true
+  messageActionError = ""
+  render()
+  try {
+    const response = await CapacitorHttp.get({
+      url: `${LIVE_URL}/api/field/projects/${encodeURIComponent(projectId)}`,
+      responseType: "json",
+    })
+    const result = z.object({
+      success: z.boolean(),
+      error: z.string().optional(),
+      packet: fieldProjectPacketSchema.optional(),
+    }).safeParse(responseData(response.data))
+    if (!result.success || !result.data.success || !result.data.packet) {
+      throw new Error(
+        result.success
+          ? result.data.error ?? "Unable to refresh project messages."
+          : "Unable to refresh project messages."
+      )
+    }
+    packet = result.data.packet
+    await writeJson(packetKey(projectId), packet)
+  } catch (error) {
+    messageActionError =
+      error instanceof Error ? error.message : "Unable to refresh project messages."
+  } finally {
+    refreshingProject = false
+    render()
+  }
+}
+
+async function openNotification(button: HTMLButtonElement): Promise<void> {
+  const notificationId = button.dataset.notificationId
+  if (!notificationId) return
+  if (online) {
+    window.location.assign(`${LIVE_URL}/api/field/notifications/${encodeURIComponent(notificationId)}/open`)
+    return
+  }
+
+  const projectId = button.dataset.notificationProjectId
+  if (!projectId) return
+  const result = fieldProjectPacketSchema.safeParse(await readJson(packetKey(projectId)))
+  if (!result.success || !result.data.channel) return
+  packet = result.data
+  await writeJson(ACTIVE_PROJECT_KEY, projectId)
+  activeTab = "chat"
+  render()
+}
+
+async function selectProject(projectId: string): Promise<void> {
+  if (!projectId) return
+  const result = fieldProjectPacketSchema.safeParse(await readJson(packetKey(projectId)))
+  await writeJson(ACTIVE_PROJECT_KEY, projectId)
+  if (!result.success) {
+    if (online) {
+      window.location.assign(`${LIVE_URL}/dashboard/field?projectId=${encodeURIComponent(projectId)}`)
+      return
+    }
+    projectError = "Open this project once while connected before using it offline."
+    activeTab = "projects"
+    render()
+    return
+  }
+  projectError = ""
+  packet = result.data
+  activeTab = "today"
+  render()
+  if (online) void refreshProjectPacket()
+}
+
+async function queueDailyLog(event: SubmitEvent): Promise<void> {
+  event.preventDefault()
+  if (!packet || !(event.currentTarget instanceof HTMLFormElement)) return
+  const formElement = event.currentTarget
+  const form = new FormData(formElement)
+  const workCompleted = String(form.get("workCompleted") ?? "").trim()
+  if (!workCompleted) return
+  outbox.push({ id: crypto.randomUUID(), kind: "daily_log", projectId: packet.project.id, createdAt: new Date().toISOString(), payload: { logDate: String(form.get("logDate") ?? ""), workCompleted, issues: String(form.get("issues") ?? ""), crewPresent: String(form.get("crewPresent") ?? ""), notes: String(form.get("notes") ?? "") }, remoteDailyLogId: null, attachments: draftAttachments })
+  await writeJson(OUTBOX_KEY, outbox)
+  draftAttachments = []
+  attachmentError = ""
+  formElement.reset()
+  render()
+}
+
+function formatBytes(value: number): string {
+  if (value < 1024 * 1024) return `${Math.max(1, Math.round(value / 1024))} KB`
+  return `${(value / (1024 * 1024)).toFixed(1)} MB`
+}
+
+function attachmentFileName(name: string): string {
+  const cleaned = name.replace(/[^a-zA-Z0-9._-]+/g, "-").replace(/^-+|-+$/g, "")
+  return cleaned.length > 0 ? cleaned : "field-attachment"
+}
+
+async function fileBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onerror = () => reject(new Error(`Unable to read ${file.name}.`))
+    reader.onload = () => {
+      const value = typeof reader.result === "string" ? reader.result : ""
+      const base64 = value.split(",")[1] ?? ""
+      if (base64.length === 0) reject(new Error(`${file.name} was empty.`))
+      else resolve(base64)
+    }
+    reader.readAsDataURL(file)
+  })
+}
+
+async function chooseDailyLogAttachments(fileList: FileList | null): Promise<void> {
+  if (!packet || fileList === null || fileList.length === 0) return
+  attachmentError = ""
+  try {
+    for (const file of Array.from(fileList)) {
+      if (file.size > MAX_ATTACHMENT_BYTES) throw new Error(`${file.name} is larger than 50 MB.`)
+      const id = crypto.randomUUID()
+      const localPath = `${FIELD_ATTACHMENT_DIRECTORY}/${packet.project.id}/${id}-${attachmentFileName(file.name)}`
+      await Filesystem.writeFile({ path: localPath, data: await fileBase64(file), directory: Directory.Data, recursive: true })
+      draftAttachments.push({ id, localPath, fileName: file.name, mimeType: file.type || "application/octet-stream", fileSize: file.size, capturedAt: new Date().toISOString() })
+    }
+  } catch (error) {
+    attachmentError = error instanceof Error ? error.message : "Unable to save the selected files."
+  }
+  render()
+}
+
+async function removeDraftAttachment(attachmentId: string): Promise<void> {
+  const attachment = draftAttachments.find((item) => item.id === attachmentId)
+  if (!attachment) return
+  await Filesystem.deleteFile({ path: attachment.localPath, directory: Directory.Data }).catch(() => undefined)
+  draftAttachments = draftAttachments.filter((item) => item.id !== attachmentId)
+  render()
+}
+
+async function queueChat(event: SubmitEvent): Promise<void> {
+  event.preventDefault()
+  if (!packet?.channel || !(event.currentTarget instanceof HTMLFormElement)) return
+  const formElement = event.currentTarget
+  const form = new FormData(formElement)
+  const content = String(form.get("content") ?? "").trim()
+  if (!content) return
+  outbox.push({ id: crypto.randomUUID(), kind: "chat_message", projectId: packet.project.id, createdAt: new Date().toISOString(), payload: { channelId: packet.channel.id, content } })
+  await writeJson(OUTBOX_KEY, outbox)
+  formElement.reset()
+  render()
+}
+
+function responseData(value: unknown): unknown {
+  if (typeof value !== "string") return value
+  try {
+    return JSON.parse(value)
+  } catch {
+    return null
+  }
+}
+
+async function startProjectChannel(): Promise<void> {
+  if (!packet || !online || startingConversation) return
+  startingConversation = true
+  messageActionError = ""
+  render()
+  try {
+    const response = await CapacitorHttp.post({
+      url: `${LIVE_URL}/api/field/conversations/project`,
+      headers: { "Content-Type": "application/json" },
+      data: { projectId: packet.project.id },
+      responseType: "json",
+    })
+    const result = z.object({
+      success: z.boolean(),
+      error: z.string().optional(),
+      channel: z.object({ id: z.string(), name: z.string() }).nullable().optional(),
+      messages: fieldProjectPacketSchema.shape.messages.optional(),
+    }).safeParse(responseData(response.data))
+    if (!result.success || !result.data.success || !result.data.channel) {
+      throw new Error(result.success ? result.data.error ?? "Unable to start the project channel." : "Unable to start the project channel.")
+    }
+    packet = {
+      ...packet,
+      channel: result.data.channel,
+      messages: result.data.messages ?? [],
+      syncedAt: new Date().toISOString(),
+    }
+    await writeJson(packetKey(packet.project.id), packet)
+  } catch (error) {
+    messageActionError = error instanceof Error ? error.message : "Unable to start the project channel."
+  } finally {
+    startingConversation = false
+    render()
+  }
+}
+
+async function sendDirectMessage(event: SubmitEvent): Promise<void> {
+  event.preventDefault()
+  if (!packet || !online || startingConversation || !(event.currentTarget instanceof HTMLFormElement)) return
+  const formElement = event.currentTarget
+  const form = new FormData(formElement)
+  const targetUserId = String(form.get("targetUserId") ?? "")
+  const content = String(form.get("content") ?? "").trim()
+  if (!targetUserId || !content) return
+
+  startingConversation = true
+  directMessageStatus = ""
+  messageActionError = ""
+  render()
+  try {
+    const response = await CapacitorHttp.post({
+      url: `${LIVE_URL}/api/field/conversations/direct`,
+      headers: { "Content-Type": "application/json" },
+      data: { targetUserId, content },
+      responseType: "json",
+    })
+    const result = z.object({
+      success: z.boolean(),
+      error: z.string().optional(),
+      channelId: z.string().optional(),
+    }).safeParse(responseData(response.data))
+    if (!result.success || !result.data.success) {
+      throw new Error(result.success ? result.data.error ?? "Unable to send the direct message." : "Unable to send the direct message.")
+    }
+    const recipient = packet.contacts.find((contact) => contact.id === targetUserId)
+    directMessageStatus = `Message sent${recipient ? ` to ${recipient.name}` : ""}.`
+    directRecipientId = ""
+    directMessageDraft = ""
+    await refreshProjectPacket()
+  } catch (error) {
+    messageActionError = error instanceof Error ? error.message : "Unable to send the direct message."
+  } finally {
+    startingConversation = false
+    render()
+  }
+}
+
+async function openDocument(fileId: string): Promise<void> {
+  if (!packet) return
+  const saved = documents.find((document) => document.projectId === packet?.project.id && document.fileId === fileId)
+  if (saved) {
+    const result = await Filesystem.getUri({ path: saved.path, directory: Directory.Data })
+    await FileViewer.openDocumentFromLocalPath({ path: result.uri })
+    return
+  }
+  if (!online) return
+
+  const document = packet.documents.find((item) => item.id === fileId)
+  if (!document) return
+  const params = new URLSearchParams({
+    projectId: packet.project.id,
+    view: "documents",
+  })
+  if (document.type !== "folder") params.set("downloadFileId", document.id)
+  if (document.type === "folder") params.set("folderId", document.id)
+  window.location.assign(`${LIVE_URL}/dashboard/field?${params.toString()}`)
+}
+
+function openFullCompass(): void {
+  if (!online) return
+  if (projects.length === 0) {
+    activeTab = "projects"
+    render()
+    return
+  }
+  const path = packet
+    ? `/dashboard/projects/${encodeURIComponent(packet.project.id)}`
+    : "/dashboard/projects"
+  window.location.assign(`${LIVE_URL}${path}`)
+}
+
+function resumePendingSync(): void {
+  const focusedElement = document.activeElement
+  const composing = focusedElement instanceof HTMLInputElement
+    || focusedElement instanceof HTMLTextAreaElement
+    || focusedElement?.getAttribute("contenteditable") === "true"
+  if (syncing || composing || !online || projects.length === 0 || outbox.length === 0) return
+  syncing = true
+  render()
+  const params = new URLSearchParams()
+  if (packet) params.set("projectId", packet.project.id)
+  const query = params.toString()
+  window.setTimeout(() => {
+    if (!syncing) return
+    syncing = false
+    render()
+  }, 10_000)
+  window.location.assign(`${LIVE_URL}/dashboard/field${query ? `?${query}` : ""}`)
+}
+
+function base64Url(bytes: Uint8Array): string {
+  let binary = ""
+  for (const byte of bytes) binary += String.fromCharCode(byte)
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "")
+}
+
+async function createPkce(): Promise<{ readonly state: string; readonly verifier: string; readonly challenge: string }> {
+  const verifier = base64Url(crypto.getRandomValues(new Uint8Array(64)))
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier))
+  return {
+    state: base64Url(crypto.getRandomValues(new Uint8Array(32))),
+    verifier,
+    challenge: base64Url(new Uint8Array(digest)),
+  }
+}
+
+async function beginNativeSignIn(): Promise<void> {
+  if (!online || signingIn) return
+  signingIn = true
+  authError = ""
+  render()
+  try {
+    const pkce = await createPkce()
+    await Preferences.set({ key: AUTH_STATE_KEY, value: pkce.state })
+    await Preferences.set({ key: AUTH_VERIFIER_KEY, value: pkce.verifier })
+    const params = new URLSearchParams({
+      provider: "GoogleOAuth",
+      mobile: "1",
+      code_challenge: pkce.challenge,
+      state: pkce.state,
+    })
+    await Browser.open({ url: `${LIVE_URL}/api/auth/sso?${params.toString()}` })
+  } catch {
+    signingIn = false
+    authError = "Secure sign in could not be opened. Please try again."
+    render()
+  }
+}
+
+function beginEmailCodeSignIn(): void {
+  if (!online || signingIn) return
+  authMode = "email"
+  authError = ""
+  render()
+}
+
+function beginPasswordSignIn(): void {
+  if (!online || signingIn) return
+  authMode = "password"
+  authError = ""
+  render()
+}
+
+function showAuthChoices(): void {
+  if (signingIn) return
+  authMode = "choice"
+  authError = ""
+  render()
+}
+
+function nativeAuthData(value: unknown): z.infer<typeof nativeAuthResponseSchema> | null {
+  if (typeof value === "string") {
+    try {
+      return nativeAuthResponseSchema.safeParse(JSON.parse(value)).data ?? null
+    } catch {
+      return null
+    }
+  }
+  return nativeAuthResponseSchema.safeParse(value).data ?? null
+}
+
+async function openPasswordReset(): Promise<void> {
+  if (!online || signingIn) return
+  await Browser.open({ url: `${LIVE_URL}/reset-password` })
+}
+
+async function signInWithPassword(event: SubmitEvent): Promise<void> {
+  event.preventDefault()
+  if (!online || signingIn || !(event.currentTarget instanceof HTMLFormElement)) return
+  const form = new FormData(event.currentTarget)
+  const email = String(form.get("email") ?? "").trim().toLowerCase()
+  const password = String(form.get("password") ?? "")
+  if (!email || !email.includes("@") || !password) {
+    authError = "Enter your email address and password."
+    render()
+    return
+  }
+
+  signingIn = true
+  authError = ""
+  authEmail = email
+  render()
+  try {
+    const response = await CapacitorHttp.post({
+      url: `${LIVE_URL}/api/auth/login`,
+      headers: { "Content-Type": "application/json" },
+      data: { type: "password", email, password },
+      responseType: "json",
+    })
+    const result = nativeAuthData(response.data)
+    if (!result?.success) {
+      authError = result?.error ?? "Compass could not sign you in. Please try again."
+      signingIn = false
+      render()
+      return
+    }
+    window.location.assign(`${LIVE_URL}/dashboard/field`)
+  } catch {
+    authError = "Compass could not sign you in. Check your connection and try again."
+    signingIn = false
+    render()
+  }
+}
+
+async function sendNativeEmailCode(event: SubmitEvent): Promise<void> {
+  event.preventDefault()
+  if (!online || signingIn || !(event.currentTarget instanceof HTMLFormElement)) return
+  const email = String(new FormData(event.currentTarget).get("email") ?? "").trim().toLowerCase()
+  if (!email || !email.includes("@")) {
+    authError = "Enter a valid email address."
+    render()
+    return
+  }
+
+  signingIn = true
+  authError = ""
+  authEmail = email
+  render()
+  try {
+    const response = await CapacitorHttp.post({
+      url: `${LIVE_URL}/api/auth/login`,
+      headers: { "Content-Type": "application/json" },
+      data: { type: "passwordless_send", email },
+      responseType: "json",
+    })
+    const result = nativeAuthData(response.data)
+    if (!result?.success) {
+      authError = result?.error ?? "Compass could not send the code. Please try again."
+      return
+    }
+    authMode = "code"
+  } catch {
+    authError = "Compass could not send the code. Check your connection and try again."
+  } finally {
+    signingIn = false
+    render()
+  }
+}
+
+async function verifyNativeEmailCode(event: SubmitEvent): Promise<void> {
+  event.preventDefault()
+  if (!online || signingIn || !(event.currentTarget instanceof HTMLFormElement)) return
+  const code = String(new FormData(event.currentTarget).get("code") ?? "").trim()
+  if (!/^\d{6}$/.test(code)) {
+    authError = "Enter the six-digit code from your email."
+    render()
+    return
+  }
+
+  signingIn = true
+  authError = ""
+  render()
+  try {
+    const response = await CapacitorHttp.post({
+      url: `${LIVE_URL}/api/auth/login`,
+      headers: { "Content-Type": "application/json" },
+      data: { type: "passwordless_verify", email: authEmail, code },
+      responseType: "json",
+    })
+    const result = nativeAuthData(response.data)
+    if (!result?.success) {
+      authError = result?.error ?? "The code could not be verified. Please try again."
+      signingIn = false
+      render()
+      return
+    }
+    window.location.assign(`${LIVE_URL}/dashboard/field`)
+  } catch {
+    authError = "The code could not be verified. Check your connection and try again."
+    signingIn = false
+    render()
+  }
+}
+
+function resetAbandonedSignIn(): void {
+  if (!signingIn) return
+  signingIn = false
+  render()
+}
+
+async function handleAuthCallback(callbackUrl: string): Promise<void> {
+  const url = new URL(callbackUrl)
+  if (url.protocol !== "compass:" || url.hostname !== "auth" || url.pathname !== "/callback") return
+
+  await Browser.close().catch(() => undefined)
+  signingIn = false
+  const error = url.searchParams.get("error")
+  if (error) {
+    authError = "Sign in was not completed. Please try again."
+    render()
+    return
+  }
+
+  const code = url.searchParams.get("code")
+  const returnedState = url.searchParams.get("state")
+  const [stateResult, verifierResult] = await Promise.all([
+    Preferences.get({ key: AUTH_STATE_KEY }),
+    Preferences.get({ key: AUTH_VERIFIER_KEY }),
+  ])
+  if (!code || !returnedState || returnedState !== stateResult.value || !verifierResult.value) {
+    authError = "Secure sign in could not be verified. Please try again."
+    render()
+    return
+  }
+
+  await Promise.all([
+    Preferences.remove({ key: AUTH_STATE_KEY }),
+    Preferences.remove({ key: AUTH_VERIFIER_KEY }),
+  ])
+
+  // A top-level form POST lets the live Compass origin set its HttpOnly session
+  // cookie before redirecting this webview into authenticated Field Mode.
+  const form = document.createElement("form")
+  form.method = "POST"
+  form.action = `${LIVE_URL}/api/auth/mobile/session`
+  for (const [name, value] of [["code", code], ["codeVerifier", verifierResult.value]]) {
+    const input = document.createElement("input")
+    input.type = "hidden"
+    input.name = name
+    input.value = value
+    form.appendChild(input)
+  }
+  document.body.appendChild(form)
+  form.submit()
+}
+
+async function initialize(): Promise<void> {
+  if (isIos) {
+    document.body.classList.add("platform-ios")
+    await Keyboard.setResizeMode({ mode: KeyboardResize.Native })
+    await Keyboard.setScroll({ isDisabled: false })
+  }
+  await Keyboard.addListener("keyboardWillShow", ({ keyboardHeight }) => {
+    document.documentElement.style.setProperty("--keyboard-height", `${keyboardHeight}px`)
+    document.body.classList.add("keyboard-open")
+    window.setTimeout(() => {
+      const focusedElement = document.activeElement
+      if (focusedElement instanceof HTMLElement) {
+        focusedElement.scrollIntoView({ block: "center", behavior: "smooth" })
+      }
+    }, 120)
+  })
+  await Keyboard.addListener("keyboardWillHide", () => {
+    document.body.classList.remove("keyboard-open")
+    document.documentElement.style.setProperty("--keyboard-height", "0px")
+  })
+  await App.addListener("appUrlOpen", ({ url }) => void handleAuthCallback(url))
+  await Browser.addListener("browserFinished", resetAbandonedSignIn)
+  await App.addListener("appStateChange", ({ isActive }) => {
+    if (!isActive) return
+    window.setTimeout(resetAbandonedSignIn, 1_000)
+    void refreshConnectivityAndSync()
+  })
+  const launchUrl = await App.getLaunchUrl()
+  if (launchUrl?.url) void handleAuthCallback(launchUrl.url)
+
+  const status = await Network.getStatus()
+  online = status.connected
+  const projectResult = projectsSchema.safeParse(await readJson(PROJECTS_KEY))
+  const outboxResult = fieldOutboxSchema.safeParse(await readJson(OUTBOX_KEY))
+  const documentResult = savedDocumentsSchema.safeParse(await readJson(DOCUMENTS_KEY))
+  const profileResult = fieldUserProfileSchema.safeParse(await readJson(PROFILE_KEY))
+  const activeProjectResult = z.string().nullable().safeParse(await readJson(ACTIVE_PROJECT_KEY))
+  projects = projectResult.success ? projectResult.data : []
+  outbox = outboxResult.success ? outboxResult.data : []
+  documents = documentResult.success ? documentResult.data : []
+  profile = profileResult.success ? profileResult.data : null
+  if (projects.length === 0) activeTab = "projects"
+  const activeProjectId = activeProjectResult.success ? activeProjectResult.data : null
+  const selectedId = activeProjectId ?? projects[0]?.id ?? null
+  const packetResult = selectedId
+    ? fieldProjectPacketSchema.safeParse(await readJson(packetKey(selectedId)))
+    : null
+  packet = packetResult?.success ? packetResult.data : null
+  render()
+  if (online && packet) void refreshProjectPacket()
+  resumePendingSync()
+
+  await Network.addListener("networkStatusChange", () => void refreshConnectivityAndSync())
+  window.addEventListener("online", () => void refreshConnectivityAndSync())
+  window.addEventListener("pageshow", () => void refreshConnectivityAndSync())
+  window.setInterval(() => void refreshConnectivityAndSync(), 5_000)
+}
+
+async function refreshConnectivityAndSync(): Promise<void> {
+  const previousOnline = online
+  const previousOutbox = JSON.stringify(outbox)
+  const [status, storedOutbox] = await Promise.all([
+    Network.getStatus(),
+    readJson(OUTBOX_KEY),
+  ])
+  const outboxResult = fieldOutboxSchema.safeParse(storedOutbox)
+  online = status.connected
+  if (outboxResult.success) outbox = outboxResult.data
+  if (previousOnline !== online || previousOutbox !== JSON.stringify(outbox)) render()
+  resumePendingSync()
+  if (!previousOnline && online && activeTab === "chat") {
+    void refreshProjectPacket()
+  }
+}
+
+void initialize()
