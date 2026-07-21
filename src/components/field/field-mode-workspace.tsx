@@ -962,6 +962,30 @@ function MessagesView({
   const [sending, setSending] = React.useState(false)
   const [startingChannel, setStartingChannel] = React.useState(false)
   const [composerFocused, setComposerFocused] = React.useState(false)
+  const [activeChannelId, setActiveChannelId] = React.useState<string | null>(
+    packet.channel?.id ?? packet.directConversations[0]?.id ?? null
+  )
+
+  const activeDirectConversation = packet.directConversations.find(
+    (conversation) => conversation.id === activeChannelId
+  ) ?? null
+  const projectChannelActive = packet.channel?.id === activeChannelId
+  const activeMessages = projectChannelActive
+    ? packet.messages
+    : activeDirectConversation?.messages ?? []
+  const activeChannelName = projectChannelActive
+    ? packet.channel?.name ?? "Project messages"
+    : activeDirectConversation?.name ?? null
+
+  React.useEffect(() => {
+    const channelStillExists =
+      packet.channel?.id === activeChannelId ||
+      packet.directConversations.some(
+        (conversation) => conversation.id === activeChannelId
+      )
+    if (channelStillExists) return
+    setActiveChannelId(packet.channel?.id ?? packet.directConversations[0]?.id ?? null)
+  }, [activeChannelId, packet.channel?.id, packet.directConversations])
 
   async function startProjectChannel(): Promise<void> {
     if (!online || startingChannel) return
@@ -969,6 +993,7 @@ function MessagesView({
     try {
       const result = await openProjectConversationChannel(packet.project.id)
       if (!result.success) throw new Error(result.error)
+      setActiveChannelId(result.data.channelId)
       await onSubmitted()
       toast.success(result.data.created ? "Project channel created" : "Project channel opened")
     } catch (error) {
@@ -980,11 +1005,11 @@ function MessagesView({
 
   async function send(): Promise<void> {
     const message = content.trim()
-    if (!packet.channel || !message) return
+    if (!activeChannelId || !message) return
     setSending(true)
     try {
       if (online) {
-        const result = await submitFieldChatMessage(packet.channel.id, message)
+        const result = await submitFieldChatMessage(activeChannelId, message)
         if (!result.success) throw new Error(result.error)
         setContent("")
         await onSubmitted()
@@ -996,7 +1021,7 @@ function MessagesView({
         kind: "chat_message",
         projectId: packet.project.id,
         createdAt: new Date().toISOString(),
-        payload: { channelId: packet.channel.id, content: message },
+        payload: { channelId: activeChannelId, content: message },
       }
       addFieldOutboxItem(outboxItem)
       await addNativeFieldOutboxItem(outboxItem)
@@ -1010,60 +1035,79 @@ function MessagesView({
     }
   }
 
-  if (!packet.channel) {
-    return (
-      <div className="space-y-6">
-        <div className="border-b pb-4">
-          <h2 className="text-lg font-semibold">Project messages</h2>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Start the project team channel or message a staff member directly.
-          </p>
-          <Button
-            type="button"
-            className="mt-4 w-full"
-            disabled={!online || startingChannel}
-            onClick={() => void startProjectChannel()}
-          >
-            {startingChannel ? <Loader2 className="animate-spin" /> : <MessageSquare />}
-            {startingChannel ? "Starting channel..." : "Start project channel"}
-          </Button>
-          {!online ? (
-            <p className="mt-2 text-xs text-muted-foreground">
-              Connect once to create the channel. Existing messages remain available offline.
-            </p>
-          ) : null}
-        </div>
-        {online ? (
-          <div>
-            <p className="mb-2 text-xs font-semibold uppercase text-muted-foreground">
-              Direct message
-            </p>
-            <DirectConversationLauncher staffOnly />
-          </div>
-        ) : null}
-      </div>
-    )
-  }
-
   return (
     <div className="flex min-h-[calc(100dvh-15rem)] flex-col">
-      {online ? (
-        <div className="border-b pb-4">
-          <p className="mb-2 text-xs font-semibold uppercase text-muted-foreground">
-            People
+      <div className="border-b pb-4">
+        <div className="flex gap-2 overflow-x-auto pb-2">
+          {packet.channel ? (
+            <Button
+              type="button"
+              variant={projectChannelActive ? "default" : "outline"}
+              size="sm"
+              className="shrink-0"
+              onClick={() => setActiveChannelId(packet.channel?.id ?? null)}
+            >
+              <MessageSquare />
+              Project team
+            </Button>
+          ) : (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="shrink-0"
+              disabled={!online || startingChannel}
+              onClick={() => void startProjectChannel()}
+            >
+              {startingChannel ? <Loader2 className="animate-spin" /> : <MessageSquare />}
+              {startingChannel ? "Starting..." : "Start project channel"}
+            </Button>
+          )}
+          {packet.directConversations.map((conversation) => (
+            <Button
+              key={conversation.id}
+              type="button"
+              variant={activeChannelId === conversation.id ? "default" : "outline"}
+              size="sm"
+              className="shrink-0"
+              onClick={() => setActiveChannelId(conversation.id)}
+            >
+              {conversation.name}
+              {conversation.unreadCount > 0 ? ` (${conversation.unreadCount})` : ""}
+            </Button>
+          ))}
+        </div>
+        {online ? (
+          <DirectConversationLauncher
+            staffOnly
+            onConversationOpened={async (channelId) => {
+              setActiveChannelId(channelId)
+              await onSubmitted()
+            }}
+          />
+        ) : (
+          <p className="text-xs text-muted-foreground">
+            Cached conversations can be opened and replied to while offline.
           </p>
-          <DirectConversationLauncher staffOnly />
+        )}
+      </div>
+
+      {activeChannelName ? (
+        <div className="border-b py-3">
+          <h2 className="text-lg font-semibold">{activeChannelName}</h2>
+          <p className="text-sm text-muted-foreground">
+            {projectChannelActive ? "Project messages" : "Direct conversation"}
+          </p>
         </div>
       ) : null}
-      <div className="border-b pb-3">
-        <h2 className="text-lg font-semibold">{packet.channel.name}</h2>
-        <p className="text-sm text-muted-foreground">Project messages</p>
-      </div>
+
       <div className="flex-1 divide-y py-2">
-        {packet.messages.length === 0 ? (
+        {!activeChannelName ? (
+          <EmptyState>Start a project channel or direct conversation.</EmptyState>
+        ) : activeMessages.length === 0 ? (
           <EmptyState>No messages yet.</EmptyState>
         ) : (
-          packet.messages.map((message) => (
+          activeMessages.map((message) => (
             <div key={message.id} className="py-4">
               <div className="flex items-center justify-between gap-3 text-sm">
                 <p className="font-semibold">{message.userName}</p>
@@ -1074,7 +1118,7 @@ function MessagesView({
           ))
         )}
       </div>
-      <div
+      {activeChannelId ? <div
         className={cn(
           "border-t bg-background py-3",
           composerFocused
@@ -1095,7 +1139,7 @@ function MessagesView({
               )
             }}
             onBlur={() => setComposerFocused(false)}
-            placeholder="Message the project team"
+            placeholder={projectChannelActive ? "Message the project team" : "Reply privately"}
             className="min-h-12 resize-none rounded-sm"
             onKeyDown={(event) => {
               if (event.key === "Enter" && !event.shiftKey) {
@@ -1109,7 +1153,7 @@ function MessagesView({
           </Button>
         </div>
         <p className="mt-1 text-xs text-muted-foreground">Shift + Enter for a new line</p>
-      </div>
+      </div> : null}
     </div>
   )
 }

@@ -48,8 +48,10 @@ function userSearchValue(user: ConversationUserOption): string {
 
 export function DirectConversationLauncher({
   staffOnly = false,
+  onConversationOpened,
 }: {
   readonly staffOnly?: boolean
+  readonly onConversationOpened?: (channelId: string) => void | Promise<void>
 }): React.ReactElement {
   const router = useRouter()
   const [open, setOpen] = React.useState(false)
@@ -74,22 +76,29 @@ export function DirectConversationLauncher({
   }, [loading, open, users.length])
 
   const handleSelect = React.useCallback(
-    (userId: string) => {
+    async (userId: string): Promise<void> => {
       setStartingUserId(userId)
       setError(null)
-      openDirectConversation(userId)
-        .then((result) => {
-          if (result.success) {
-            setOpen(false)
-            router.push(`/dashboard/conversations/${result.data.channelId}`)
-            router.refresh()
-          } else {
-            setError(result.error)
-          }
-        })
-        .finally(() => setStartingUserId(null))
+      try {
+        const result = await openDirectConversation(userId)
+        if (!result.success) {
+          setError(result.error)
+          return
+        }
+
+        setOpen(false)
+        if (onConversationOpened) {
+          await onConversationOpened(result.data.channelId)
+          return
+        }
+
+        router.push(`/dashboard/conversations/${result.data.channelId}`)
+        router.refresh()
+      } finally {
+        setStartingUserId(null)
+      }
     },
-    [router]
+    [onConversationOpened, router]
   )
 
   const visibleUsers = staffOnly
@@ -135,7 +144,7 @@ export function DirectConversationLauncher({
                       key={user.userId}
                       value={userSearchValue(user)}
                       disabled={startingUserId !== null}
-                      onSelect={() => handleSelect(user.userId)}
+                      onSelect={() => void handleSelect(user.userId)}
                       className="items-center gap-2 py-2"
                     >
                       <Avatar className="size-7">
