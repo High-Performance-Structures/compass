@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import { usePathname } from "next/navigation"
 import { useTheme } from "@/components/theme-provider"
 import {
   IconLogout,
@@ -89,6 +90,9 @@ export function SiteHeader({
   const [accountOpen, setAccountOpen] = React.useState(false)
   const [isLoggingOut, startLogoutTransition] = React.useTransition()
   const { toggleSidebar } = useSidebar()
+  const pathname = usePathname()
+
+  if (pathname.startsWith("/dashboard/field")) return null
 
   const initials = user ? getInitials(user.name) : "?"
 

@@ -10,6 +10,7 @@ const publicPaths = [
   "/privacy",
   "/terms",
   "/manifest.json",
+  "/api/mobile/health",
 ]
 
 const bridgePaths = [

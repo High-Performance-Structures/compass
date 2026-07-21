@@ -3,7 +3,9 @@ import { getCloudflareContext } from "@/lib/db"
 import { getCurrentUser } from "@/lib/auth"
 import { can } from "@/lib/permissions"
 import { getDb } from "@/db"
+import { projects, users } from "@/db/schema"
 import { googleAuth } from "@/db/schema-google"
+import { eq } from "drizzle-orm"
 import { decrypt } from "@/lib/crypto"
 import {
   getGoogleConfig,
@@ -17,9 +19,11 @@ import {
   getExportExtension,
 } from "@/lib/google/mapper"
 import { isInternalStaffRole } from "@/lib/user-roles"
+import { assertProjectAccess } from "@/lib/project-access"
+import { isDriveItemWithinProjectFolder } from "@/lib/google/project-folder-boundary"
 
 export async function GET(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ fileId: string }> }
 ): Promise<Response> {
   try {
@@ -36,7 +40,9 @@ export async function GET(
       return new Response("File not found", { status: 404 })
     }
 
-    const googleEmail = user.googleEmail ?? user.email
+    let googleEmail = user.googleEmail ?? user.email
+    const projectId = request.nextUrl.searchParams.get("projectId")
+    let allowedParentId: string | null = null
 
     const { env } = await getCloudflareContext()
     const envRecord = env as unknown as Record<string, string>
@@ -54,6 +60,33 @@ export async function GET(
       })
     }
 
+    if (projectId) {
+      await assertProjectAccess(db, user, projectId)
+      const project = await db
+        .select({ folderId: projects.googleDriveFolderId })
+        .from(projects)
+        .where(eq(projects.id, projectId))
+        .limit(1)
+        .then((rows) => rows[0] ?? null)
+      if (!project?.folderId) {
+        return new Response("Project folder is not mapped", { status: 404 })
+      }
+
+      const connectedBy = await db
+        .select({ email: users.email, googleEmail: users.googleEmail })
+        .from(users)
+        .where(eq(users.id, auth.connectedBy))
+        .limit(1)
+        .then((rows) => rows[0] ?? null)
+      if (!connectedBy) {
+        return new Response("Google Drive connection owner not found", {
+          status: 503,
+        })
+      }
+      googleEmail = connectedBy.googleEmail ?? connectedBy.email
+      allowedParentId = project.folderId
+    }
+
     const keyJson = await decrypt(
       auth.serviceAccountKeyEncrypted,
       config.encryptionKey,
@@ -69,6 +102,19 @@ export async function GET(
       googleEmail,
       fileId
     )
+    if (allowedParentId) {
+      const withinProject = await isDriveItemWithinProjectFolder({
+        client,
+        googleEmail,
+        itemId: fileId,
+        projectFolderId: allowedParentId,
+      })
+      if (!withinProject) {
+        return new Response("Document is outside the selected project", {
+          status: 403,
+        })
+      }
+    }
 
     let response: Response
     let fileName = fileMeta.name
