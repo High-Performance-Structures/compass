@@ -23,6 +23,16 @@ export const users = sqliteTable("users", {
   updatedAt: text("updated_at").notNull(),
 })
 
+export const userDeskPhotos = sqliteTable("user_desk_photos", {
+  userId: text("user_id")
+    .primaryKey()
+    .references(() => users.id, { onDelete: "cascade" }),
+  mimeType: text("mime_type"),
+  imageDataBase64: text("image_data_base64"),
+  hidden: integer("hidden", { mode: "boolean" }).notNull().default(false),
+  updatedAt: text("updated_at").notNull(),
+})
+
 export const organizations = sqliteTable("organizations", {
   id: text("id").primaryKey(), // workos org id
   name: text("name").notNull(),

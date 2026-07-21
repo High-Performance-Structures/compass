@@ -15,6 +15,12 @@ import type { SidebarUser } from "@/lib/auth"
 
 const MARTINE_DEFAULT_DESK_PHOTO = "/user-desk-photos/martine-desk-photo.jpeg"
 const HIDDEN_DESK_PHOTO = "__hidden__"
+const DESK_PHOTO_ENDPOINT = "/api/users/desk-photo"
+
+type DeskPhotoMetadata =
+  | { readonly state: "default" }
+  | { readonly state: "hidden"; readonly updatedAt: string }
+  | { readonly state: "custom"; readonly updatedAt: string }
 
 function storageKey(user: SidebarUser): string {
   return `compass-desk-photo:${user.email}`
@@ -101,23 +107,124 @@ function resizeImageDataUrl(dataUrl: string): Promise<string> {
   })
 }
 
+function parseDeskPhotoMetadata(value: unknown): DeskPhotoMetadata | null {
+  if (!value || typeof value !== "object" || !("state" in value)) return null
+  if (value.state === "default") return { state: "default" }
+
+  if (
+    (value.state === "hidden" || value.state === "custom") &&
+    "updatedAt" in value &&
+    typeof value.updatedAt === "string"
+  ) {
+    return { state: value.state, updatedAt: value.updatedAt }
+  }
+
+  return null
+}
+
+function durablePhotoUrl(updatedAt: string): string {
+  return `${DESK_PHOTO_ENDPOINT}?v=${encodeURIComponent(updatedAt)}`
+}
+
+async function readMetadata(response: Response): Promise<DeskPhotoMetadata> {
+  const payload: unknown = await response.json()
+  const metadata = parseDeskPhotoMetadata(payload)
+  if (!response.ok || metadata === null) {
+    throw new Error("Compass could not save this desk photo.")
+  }
+  return metadata
+}
+
+async function uploadDeskPhoto(dataUrl: string): Promise<DeskPhotoMetadata> {
+  const imageResponse = await fetch(dataUrl)
+  const imageBlob = await imageResponse.blob()
+  const formData = new FormData()
+  formData.append("photo", imageBlob, "desk-photo.jpg")
+
+  const response = await fetch(DESK_PHOTO_ENDPOINT, {
+    method: "POST",
+    body: formData,
+    credentials: "same-origin",
+  })
+  return readMetadata(response)
+}
+
+async function updateDeskPhotoVisibility(
+  mode: "hide" | "reset",
+): Promise<DeskPhotoMetadata> {
+  const response = await fetch(`${DESK_PHOTO_ENDPOINT}?mode=${mode}`, {
+    method: "DELETE",
+    credentials: "same-origin",
+  })
+  return readMetadata(response)
+}
+
 export function PersonalDeskPhoto({
   user,
 }: {
   readonly user: SidebarUser | null
 }): React.ReactElement | null {
-  const [photoUrl, setPhotoUrl] = React.useState<string | null>(null)
+  const [photoUrl, setPhotoUrl] = React.useState<string | null>(() =>
+    user ? defaultDeskPhoto(user) : null,
+  )
   const [message, setMessage] = React.useState<string | null>(null)
+  const [saving, setSaving] = React.useState(false)
 
   React.useEffect(() => {
     if (!user) return
+    const activeUser = user
+    let active = true
 
-    const storedPhoto = readStoredPhoto(user)
-    setPhotoUrl(
-      storedPhoto === HIDDEN_DESK_PHOTO
-        ? null
-        : storedPhoto ?? defaultDeskPhoto(user)
-    )
+    async function loadDeskPhoto(): Promise<void> {
+      const storedPhoto = readStoredPhoto(activeUser)
+
+      try {
+        const response = await fetch(`${DESK_PHOTO_ENDPOINT}?metadata=1`, {
+          credentials: "same-origin",
+          cache: "no-store",
+        })
+        const metadata = await readMetadata(response)
+        if (!active) return
+
+        if (metadata.state === "custom") {
+          setPhotoUrl(durablePhotoUrl(metadata.updatedAt))
+          return
+        }
+        if (metadata.state === "hidden") {
+          setPhotoUrl(null)
+          saveStoredPhoto(activeUser, HIDDEN_DESK_PHOTO)
+          return
+        }
+
+        // One-time migration from the former browser-only preference.
+        if (storedPhoto === HIDDEN_DESK_PHOTO) {
+          await updateDeskPhotoVisibility("hide")
+          if (active) setPhotoUrl(null)
+          return
+        }
+        if (storedPhoto?.startsWith("data:image/")) {
+          const migrated = await uploadDeskPhoto(storedPhoto)
+          if (active && migrated.state === "custom") {
+            setPhotoUrl(durablePhotoUrl(migrated.updatedAt))
+          }
+          return
+        }
+
+        setPhotoUrl(storedPhoto ?? defaultDeskPhoto(activeUser))
+      } catch {
+        if (!active) return
+        setPhotoUrl(
+          storedPhoto === HIDDEN_DESK_PHOTO
+            ? null
+            : storedPhoto ?? defaultDeskPhoto(activeUser),
+        )
+      }
+    }
+
+    void loadDeskPhoto()
+    return () => {
+      active = false
+    }
   }, [user])
 
   if (!user) {
@@ -129,7 +236,8 @@ export function PersonalDeskPhoto({
   ): Promise<void> {
     if (!user) return
 
-    const file = event.currentTarget.files?.[0]
+    const input = event.currentTarget
+    const file = input.files?.[0]
     if (!file) return
 
     if (!file.type.startsWith("image/")) {
@@ -137,39 +245,76 @@ export function PersonalDeskPhoto({
       return
     }
 
-    const dataUrl = await readFileAsDataUrl(file)
-    const resizedDataUrl = await resizeImageDataUrl(dataUrl)
-    setPhotoUrl(resizedDataUrl)
-    saveStoredPhoto(user, resizedDataUrl)
-    setMessage("Desk photo updated.")
-    event.currentTarget.value = ""
+    setSaving(true)
+    setMessage(null)
+    try {
+      const dataUrl = await readFileAsDataUrl(file)
+      const resizedDataUrl = await resizeImageDataUrl(dataUrl)
+      const metadata = await uploadDeskPhoto(resizedDataUrl)
+      if (metadata.state !== "custom") {
+        throw new Error("Compass did not return the saved desk photo.")
+      }
+
+      saveStoredPhoto(user, resizedDataUrl)
+      setPhotoUrl(durablePhotoUrl(metadata.updatedAt))
+      setMessage("Desk photo saved to Compass.")
+    } catch (error: unknown) {
+      setMessage(
+        error instanceof Error ? error.message : "Desk photo could not be saved.",
+      )
+    } finally {
+      setSaving(false)
+      input.value = ""
+    }
   }
 
-  function handleReset(): void {
+  async function handleReset(): Promise<void> {
     if (!user) return
 
-    const fallback = defaultDeskPhoto(user)
-    setPhotoUrl(fallback)
-    saveStoredPhoto(user, null)
-    setMessage(fallback ? "Desk photo reset." : null)
+    setSaving(true)
+    setMessage(null)
+    try {
+      await updateDeskPhotoVisibility("reset")
+      const fallback = defaultDeskPhoto(user)
+      setPhotoUrl(fallback)
+      saveStoredPhoto(user, null)
+      setMessage(fallback ? "Desk photo reset." : "Desk photo cleared.")
+    } catch (error: unknown) {
+      setMessage(error instanceof Error ? error.message : "Desk photo could not be reset.")
+    } finally {
+      setSaving(false)
+    }
   }
 
-  function handleRemove(): void {
+  async function handleRemove(): Promise<void> {
     if (!user) return
 
-    setPhotoUrl(null)
-    saveStoredPhoto(user, HIDDEN_DESK_PHOTO)
-    setMessage("Desk photo removed.")
+    setSaving(true)
+    setMessage(null)
+    try {
+      await updateDeskPhotoVisibility("hide")
+      setPhotoUrl(null)
+      saveStoredPhoto(user, HIDDEN_DESK_PHOTO)
+      setMessage("Desk photo removed.")
+    } catch (error: unknown) {
+      setMessage(error instanceof Error ? error.message : "Desk photo could not be removed.")
+    } finally {
+      setSaving(false)
+    }
   }
 
   function handlePhotoError(): void {
     if (!user) return
 
-    const fallback = defaultDeskPhoto(user)
+    const storedPhoto = readStoredPhoto(user)
+    const cachedPhoto =
+      storedPhoto && storedPhoto !== HIDDEN_DESK_PHOTO
+        ? storedPhoto
+        : null
+    const fallback = cachedPhoto ?? defaultDeskPhoto(user)
     if (fallback !== null && photoUrl !== fallback) {
       setPhotoUrl(fallback)
-      saveStoredPhoto(user, null)
-      setMessage("Desk photo reset after the saved image could not load.")
+      setMessage("Showing the cached desk photo while Compass reconnects.")
       return
     }
 
@@ -242,7 +387,12 @@ export function PersonalDeskPhoto({
                 <IconUpload className="size-3.5" />
                 Change photo
               </span>
-              <Input type="file" accept="image/*" onChange={handleUpload} />
+              <Input
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                onChange={handleUpload}
+                disabled={saving}
+              />
             </label>
             {message && (
               <p className="rounded-md border bg-muted/30 p-2 text-xs text-muted-foreground">
@@ -250,14 +400,19 @@ export function PersonalDeskPhoto({
               </p>
             )}
             <div className="flex justify-between gap-2">
-              <Button variant="outline" size="sm" onClick={handleReset}>
-                Reset
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleReset}
+                disabled={saving}
+              >
+                {saving ? "Saving..." : "Reset"}
               </Button>
               <Button
                 variant="ghost"
                 size="sm"
                 onClick={handleRemove}
-                disabled={!hasPhoto}
+                disabled={!hasPhoto || saving}
               >
                 <IconX className="size-4" />
                 Remove
