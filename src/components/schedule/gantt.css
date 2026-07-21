@@ -101,6 +101,14 @@
   fill: oklch(0.55 0.12 170);
 }
 
+.gantt .baseline-overlay {
+  fill: oklch(0.36 0.03 95 / 0.12);
+  stroke: oklch(0.36 0.03 95 / 0.82);
+  stroke-width: 1.5;
+  stroke-dasharray: 5 3;
+  pointer-events: none;
+}
+
 .gantt .bar-wrapper.critical-path .bar {
   fill: var(--gantt-critical-color);
   stroke: oklch(0.55 0.2 25);

@@ -40,11 +40,13 @@ import type {
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import { format, parseISO } from "date-fns"
+import type { ProjectTaskAssigneeOption } from "@/app/actions/project-contacts"
 
 interface ScheduleListViewProps {
   projectId: string
   tasks: ScheduleTaskData[]
   dependencies: TaskDependencyData[]
+  taskAssigneeOptions?: readonly ProjectTaskAssigneeOption[]
 }
 
 function StatusDot({ task }: { task: ScheduleTaskData }) {
@@ -132,6 +134,7 @@ export function ScheduleListView({
   projectId,
   tasks,
   dependencies,
+  taskAssigneeOptions = [],
 }: ScheduleListViewProps) {
   const router = useRouter()
   const [taskFormOpen, setTaskFormOpen] = useState(false)
@@ -421,6 +424,7 @@ export function ScheduleListView({
         editingTask={editingTask}
         allTasks={localTasks}
         dependencies={dependencies}
+        assigneeOptions={taskAssigneeOptions}
       />
 
       <DependencyDialog

@@ -23,8 +23,15 @@ export type ExceptionCategory =
   | "vacation_day"
   | "company_holiday"
   | "weather_day"
+  | "extra_workday"
 
 export type ExceptionRecurrence = "one_time" | "yearly"
+export type WorkdayExceptionType = "holiday" | "non_working" | "working"
+
+export function normalizeWorkdayExceptionType(value: string): WorkdayExceptionType {
+  if (value === "working" || value === "holiday") return value
+  return "non_working"
+}
 
 export interface ScheduleTaskData {
   id: string
@@ -58,7 +65,7 @@ export interface WorkdayExceptionData {
   title: string
   startDate: string
   endDate: string
-  type: string
+  type: WorkdayExceptionType
   category: ExceptionCategory
   recurrence: ExceptionRecurrence
   notes: string | null

@@ -35,6 +35,7 @@ import type {
   WorkdayExceptionData,
   ExceptionCategory,
   ExceptionRecurrence,
+  WorkdayExceptionType,
 } from "@/lib/schedule/types"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
@@ -45,6 +46,13 @@ const categories: { value: ExceptionCategory; label: string }[] = [
   { value: "vacation_day", label: "Vacation Day" },
   { value: "company_holiday", label: "Company Holiday" },
   { value: "weather_day", label: "Weather Day" },
+  { value: "extra_workday", label: "Extra Workday" },
+]
+
+const impacts: { value: WorkdayExceptionType; label: string }[] = [
+  { value: "non_working", label: "Non-working day" },
+  { value: "holiday", label: "Holiday / non-working day" },
+  { value: "working", label: "Extra working day" },
 ]
 
 const recurrences: { value: ExceptionRecurrence; label: string }[] = [
@@ -56,7 +64,7 @@ const exceptionSchema = z.object({
   title: z.string().min(1, "Title is required"),
   startDate: z.string().min(1, "Start date is required"),
   endDate: z.string().min(1, "End date is required"),
-  type: z.string().min(1),
+  type: z.enum(["holiday", "non_working", "working"]),
   category: z.string().min(1),
   recurrence: z.string().min(1),
   notes: z.string(),
@@ -166,7 +174,31 @@ export function WorkdayExceptionFormDialog({
               )}
             />
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+              <FormField
+                control={form.control}
+                name="type"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-xs">Schedule Impact</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <FormControl>
+                        <SelectTrigger className="h-9">
+                          <SelectValue />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {impacts.map((impact) => (
+                          <SelectItem key={impact.value} value={impact.value}>
+                            {impact.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
               <FormField
                 control={form.control}
                 name="startDate"

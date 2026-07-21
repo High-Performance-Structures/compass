@@ -8,6 +8,7 @@ import { findCriticalPath } from "@/lib/schedule/critical-path"
 import { wouldCreateCycle } from "@/lib/schedule/dependency-validation"
 import { propagateDates } from "@/lib/schedule/propagate-dates"
 import { revalidatePath } from "next/cache"
+import { normalizeWorkdayExceptionType } from "@/lib/schedule/types"
 import type {
   TaskStatus,
   DependencyType,
@@ -36,6 +37,7 @@ async function fetchProjectExceptions(
     .where(eq(workdayExceptions.projectId, projectId))
   return rows.map((r) => ({
     ...r,
+    type: normalizeWorkdayExceptionType(r.type),
     category: r.category as ExceptionCategory,
     recurrence: r.recurrence as ExceptionRecurrence,
   }))

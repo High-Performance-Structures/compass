@@ -57,6 +57,7 @@ type ProjectTaskCreateButtonProps = {
   readonly defaultPriority: string
   readonly defaultTaskType?: ProjectTaskRecordType
   readonly assigneeOptions?: readonly ProjectTaskAssigneeOption[]
+  readonly triggerLabel?: string
 }
 
 function cleanValue(value: string): string | null {
@@ -122,6 +123,7 @@ export function ProjectTaskCreateButton({
   defaultPriority,
   defaultTaskType = "staff_task",
   assigneeOptions = [],
+  triggerLabel = "Task",
 }: ProjectTaskCreateButtonProps): React.ReactElement {
   const router = useRouter()
   const [open, setOpen] = React.useState(false)
@@ -269,7 +271,7 @@ export function ProjectTaskCreateButton({
       <DialogTrigger asChild>
         <Button type="button" variant="outline" size="sm">
           <IconListCheck className="size-4" />
-          Task
+          {triggerLabel}
         </Button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-2xl">

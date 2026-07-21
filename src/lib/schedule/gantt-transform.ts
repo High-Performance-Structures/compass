@@ -13,7 +13,13 @@ export interface FrappeTask {
   progress: number
   dependencies: string
   custom_class: string
+  color: string | null
+  isCriticalPath: boolean
+  isMilestone: boolean
 }
+
+type TaskColorResolver = (task: ScheduleTaskData) => string
+type PhaseColorResolver = (phase: string) => string
 
 function ganttSafeToken(value: string): string {
   const token = value
@@ -34,12 +40,13 @@ function phaseClassName(phase: string): string {
 
 export function transformToFrappeTasks(
   tasks: ScheduleTaskData[],
-  dependencies: TaskDependencyData[]
+  dependencies: TaskDependencyData[],
+  colorForTask?: TaskColorResolver
 ): FrappeTask[] {
-  // build dep lookup: successorId -> predecessorIds (FS only for visual lines)
+  // Frappe draws every relationship the same way; keeping all link types visible
+  // is still more useful than silently hiding SS, FF, and SF predecessors.
   const predMap = new Map<string, string[]>()
   for (const dep of dependencies) {
-    if (dep.type !== "FS") continue
     if (!predMap.has(dep.successorId)) {
       predMap.set(dep.successorId, [])
     }
@@ -50,9 +57,7 @@ export function transformToFrappeTasks(
     const preds = predMap.get(task.id) || []
     const depString = preds.join(", ")
 
-    let progress = 0
-    if (task.status === "COMPLETE") progress = 100
-    else if (task.status === "IN_PROGRESS") progress = 50
+    const progress = task.percentComplete
 
     // frappe-gantt uses classList.add() which throws on spaces,
     // so we can only pass a single class name
@@ -68,6 +73,9 @@ export function transformToFrappeTasks(
       progress,
       dependencies: depString,
       custom_class: customClass,
+      color: colorForTask?.(task) ?? null,
+      isCriticalPath: task.isCriticalPath,
+      isMilestone: task.isMilestone,
     }
   })
 }
@@ -142,7 +150,6 @@ function derivePhaseDeps(
   const predecessorPhases = new Set<string>()
 
   for (const dep of dependencies) {
-    if (dep.type !== "FS") continue
     if (!taskIds.has(dep.successorId)) continue
     if (taskIds.has(dep.predecessorId)) continue
 
@@ -165,7 +172,9 @@ export interface PhaseTransformResult {
 export function transformWithPhaseGroups(
   tasks: ScheduleTaskData[],
   dependencies: TaskDependencyData[],
-  collapsedPhases: Set<string>
+  collapsedPhases: Set<string>,
+  colorForTask?: TaskColorResolver,
+  colorForPhase?: PhaseColorResolver
 ): PhaseTransformResult {
   const groups = groupTasksByPhase(tasks)
   const frappeTasks: FrappeTask[] = []
@@ -173,7 +182,6 @@ export function transformWithPhaseGroups(
 
   const predMap = new Map<string, string[]>()
   for (const dep of dependencies) {
-    if (dep.type !== "FS") continue
     if (!predMap.has(dep.successorId)) predMap.set(dep.successorId, [])
     predMap.get(dep.successorId)!.push(dep.predecessorId)
   }
@@ -187,20 +195,23 @@ export function transformWithPhaseGroups(
       collapsed,
     })
 
-    if (collapsed) {
-      const phaseDeps = derivePhaseDeps(
-        group.phase, groups, dependencies, collapsedPhases
-      )
-      frappeTasks.push({
-        id: phaseTaskId(group.phase),
-        name: group.label,
-        start: group.startDate,
-        end: group.endDate,
-        progress: group.progress,
-        dependencies: phaseDeps.join(", "),
-        custom_class: phaseClassName(group.phase),
-      })
-    } else {
+    const phaseDeps = collapsed
+      ? derivePhaseDeps(group.phase, groups, dependencies, collapsedPhases)
+      : []
+    frappeTasks.push({
+      id: phaseTaskId(group.phase),
+      name: group.label,
+      start: group.startDate,
+      end: group.endDate,
+      progress: group.progress,
+      dependencies: phaseDeps.join(", "),
+      custom_class: phaseClassName(group.phase),
+      color: colorForPhase?.(group.phase) ?? null,
+      isCriticalPath: false,
+      isMilestone: false,
+    })
+
+    if (!collapsed) {
       for (const task of group.tasks) {
         displayItems.push({ type: "task", task })
 
@@ -216,9 +227,7 @@ export function transformWithPhaseGroups(
         })
         const depString = [...new Set(resolvedPreds)].join(", ")
 
-        let progress = 0
-        if (task.status === "COMPLETE") progress = 100
-        else if (task.status === "IN_PROGRESS") progress = 50
+        const progress = task.percentComplete
 
         let customClass = phaseClassName(task.phase)
         if (task.isCriticalPath) customClass = "critical-path"
@@ -232,6 +241,9 @@ export function transformWithPhaseGroups(
           progress,
           dependencies: depString,
           custom_class: customClass,
+          color: colorForTask?.(task) ?? null,
+          isCriticalPath: task.isCriticalPath,
+          isMilestone: task.isMilestone,
         })
       }
     }

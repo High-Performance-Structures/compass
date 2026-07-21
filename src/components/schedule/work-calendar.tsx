@@ -8,18 +8,32 @@ import {
   IconMessageQuestion,
   IconReceipt,
   IconSearch,
+  IconAlertTriangle,
+  IconTimeline,
 } from "@tabler/icons-react"
 
 import type {
   WorkCalendarEntry,
   WorkCalendarEntryKind,
   WorkCalendarData,
+  WorkCalendarProject,
 } from "@/app/actions/work-calendar"
+import type { ScheduleProjectOption } from "@/app/actions/schedule"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import { ProjectQuickSwitcher } from "@/components/projects/project-quick-switcher"
 import { cn } from "@/lib/utils"
 
 type KindFilter = WorkCalendarEntryKind | "all"
+type CalendarMode = "calendar" | "master"
+type ProjectScope = "active" | "active_warranty" | "leads" | "all"
 
 type KindConfig = {
   readonly id: KindFilter
@@ -154,6 +168,128 @@ function entryOnDay(entry: WorkCalendarEntry, date: string): boolean {
   return entry.startDate <= date && entry.endDate >= date
 }
 
+function projectIncluded(project: WorkCalendarProject, scope: ProjectScope): boolean {
+  if (scope === "all") return true
+  if (scope === "leads") return project.status === "LEAD"
+  if (scope === "active_warranty") {
+    return project.status === "OPEN" || project.status === "WARRANTY"
+  }
+  return project.status === "OPEN"
+}
+
+function normalizedAssignee(entry: WorkCalendarEntry): string {
+  return normalize(entry.assignedTo ?? entry.companyName ?? "")
+}
+
+function hasAssignmentConflict(
+  entry: WorkCalendarEntry,
+  entries: readonly WorkCalendarEntry[]
+): boolean {
+  const assignee = normalizedAssignee(entry)
+  if (!assignee) return false
+  return entries.some(
+    (candidate) =>
+      candidate.id !== entry.id &&
+      candidate.projectId !== entry.projectId &&
+      normalizedAssignee(candidate) === assignee &&
+      candidate.startDate <= entry.endDate &&
+      candidate.endDate >= entry.startDate
+  )
+}
+
+function MasterSchedule({
+  data,
+  query,
+}: {
+  readonly data: WorkCalendarData
+  readonly query: string
+}): React.ReactElement {
+  const [scope, setScope] = React.useState<ProjectScope>("active")
+  const visibleProjectIds = new Set(
+    data.projects.filter((project) => projectIncluded(project, scope)).map((project) => project.id)
+  )
+  const entries = data.masterScheduleEntries.filter(
+    (entry) => visibleProjectIds.has(entry.projectId) && entryMatches(entry, query)
+  )
+  const conflictCount = entries.filter((entry) => hasAssignmentConflict(entry, entries)).length
+
+  return (
+    <section className="border-y py-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h2 className="text-sm font-semibold">Master Project Schedule</h2>
+          <p className="mt-1 text-xs text-muted-foreground">
+            {entries.length} schedule items across {visibleProjectIds.size} projects
+            {conflictCount > 0 ? ` · ${conflictCount} assignment conflicts` : ""}
+          </p>
+        </div>
+        <Select value={scope} onValueChange={(value) => {
+          if (value === "active" || value === "active_warranty" || value === "leads" || value === "all") {
+            setScope(value)
+          }
+        }}>
+          <SelectTrigger className="w-[180px]" aria-label="Filter master schedule projects">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="active">Active projects</SelectItem>
+            <SelectItem value="active_warranty">Active + warranty</SelectItem>
+            <SelectItem value="leads">Leads</SelectItem>
+            <SelectItem value="all">All projects</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+
+      <div className="mt-4 overflow-x-auto border">
+        <table className="w-full min-w-[840px] text-sm">
+          <thead className="border-b bg-muted/35 text-left text-xs text-muted-foreground">
+            <tr>
+              <th className="px-3 py-2 font-medium">Project</th>
+              <th className="px-3 py-2 font-medium">Schedule Item</th>
+              <th className="px-3 py-2 font-medium">Phase</th>
+              <th className="px-3 py-2 font-medium">Dates</th>
+              <th className="px-3 py-2 font-medium">Assigned To</th>
+              <th className="w-24 px-3 py-2 font-medium">Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {entries.length > 0 ? entries.map((entry) => {
+              const conflict = hasAssignmentConflict(entry, entries)
+              return (
+                <tr key={entry.id} className="border-b last:border-b-0 hover:bg-muted/30">
+                  <td className="px-3 py-2 font-medium">{entry.projectLabel}</td>
+                  <td className="px-3 py-2">
+                    <Link href={entry.href} className="hover:text-primary hover:underline">
+                      {entry.title}
+                    </Link>
+                  </td>
+                  <td className="px-3 py-2 text-muted-foreground">{entry.sourceLabel}</td>
+                  <td className="px-3 py-2 whitespace-nowrap text-muted-foreground">
+                    {formatShortDate(entry.startDate)} - {formatShortDate(entry.endDate)}
+                  </td>
+                  <td className="px-3 py-2">
+                    <span className="inline-flex items-center gap-1.5">
+                      {conflict && <IconAlertTriangle className="size-4 text-amber-700" aria-label="Overlapping assignment" />}
+                      {entry.assignedTo ?? entry.companyName ?? "Unassigned"}
+                    </span>
+                  </td>
+                  <td className="px-3 py-2 text-xs text-muted-foreground">{entry.status}</td>
+                </tr>
+              )
+            }) : (
+              <tr>
+                <td colSpan={6} className="px-3 py-10 text-center text-muted-foreground">
+                  No schedule items match this view.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  )
+}
+
 function WorkItem({
   entry,
   compact = false,
@@ -191,10 +327,13 @@ function WorkItem({
       {!compact && (
         <div className="mt-3 flex flex-wrap gap-1.5 text-xs text-muted-foreground">
           <span>
-            {formatShortDate(entry.startDate)}
-            {entry.endDate !== entry.startDate
-              ? ` - ${formatShortDate(entry.endDate)}`
-              : ""}
+            {entry.isUndated
+              ? "No due date"
+              : `${formatShortDate(entry.startDate)}${
+                  entry.endDate !== entry.startDate
+                    ? ` - ${formatShortDate(entry.endDate)}`
+                    : ""
+                }`}
           </span>
           <span>·</span>
           <span>{entry.status}</span>
@@ -212,18 +351,24 @@ function WorkItem({
 
 export function WorkCalendar({
   data,
+  projects,
+  initialKind = "all",
 }: {
   readonly data: WorkCalendarData
+  readonly projects: readonly ScheduleProjectOption[]
+  readonly initialKind?: KindFilter
 }): React.ReactElement {
   const [query, setQuery] = React.useState("")
-  const [activeKind, setActiveKind] = React.useState<KindFilter>("all")
+  const [activeKind, setActiveKind] = React.useState<KindFilter>(initialKind)
+  const [mode, setMode] = React.useState<CalendarMode>("calendar")
   const today = React.useMemo(() => parseDateKey(data.today), [data.today])
   const days = React.useMemo(
     () => Array.from({ length: 14 }, (_, index) => toDateKey(addDays(today, index))),
     [today]
   )
   const normalizedQuery = normalize(query)
-  const filteredEntries = data.entries.filter(
+  const entrySource = activeKind === "task" ? data.taskEntries : data.entries
+  const filteredEntries = entrySource.filter(
     (entry) =>
       (activeKind === "all" || entry.kind === activeKind) &&
       entryMatches(entry, normalizedQuery)
@@ -283,6 +428,31 @@ export function WorkCalendar({
       </section>
 
       <div className="mx-auto grid max-w-7xl gap-5 px-4 py-5 md:px-6">
+        <div className="flex flex-col gap-3 border-b pb-4 md:flex-row md:items-center md:justify-between">
+          <div className="flex items-center border bg-background">
+            <button
+              type="button"
+              onClick={() => setMode("calendar")}
+              className={cn("flex items-center gap-2 border-r px-3 py-2 text-sm", mode === "calendar" ? "bg-muted/70 font-medium" : "text-muted-foreground hover:text-foreground")}
+            >
+              <IconCalendarEvent className="size-4" /> Work Calendar
+            </button>
+            <button
+              type="button"
+              onClick={() => setMode("master")}
+              className={cn("flex items-center gap-2 px-3 py-2 text-sm", mode === "master" ? "bg-muted/70 font-medium" : "text-muted-foreground hover:text-foreground")}
+            >
+              <IconTimeline className="size-4" /> Master Schedule
+            </button>
+          </div>
+          <ProjectQuickSwitcher
+            projects={projects.filter((project) => project.status === "OPEN" || project.status === "WARRANTY")}
+            targetSection="schedule"
+            placeholder="Open a project schedule..."
+            className="w-full md:w-[340px]"
+          />
+        </div>
+
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div className="relative w-full lg:max-w-xl">
             <IconSearch className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
@@ -309,6 +479,7 @@ export function WorkCalendar({
           </div>
         </div>
 
+        {mode === "calendar" ? <>
         <section className="border-y py-4">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div>
@@ -409,6 +580,9 @@ export function WorkCalendar({
             </div>
           </aside>
         </section>
+        </> : (
+          <MasterSchedule data={data} query={normalizedQuery} />
+        )}
       </div>
     </div>
   )

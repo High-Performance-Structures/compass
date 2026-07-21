@@ -8,10 +8,12 @@ import { revalidatePath } from "next/cache"
 import { requireAuth } from "@/lib/auth"
 import { requireOrg } from "@/lib/org-scope"
 import { isDemoUser } from "@/lib/demo"
+import { normalizeWorkdayExceptionType } from "@/lib/schedule/types"
 import type {
   WorkdayExceptionData,
   ExceptionCategory,
   ExceptionRecurrence,
+  WorkdayExceptionType,
 } from "@/lib/schedule/types"
 
 export async function getWorkdayExceptions(
@@ -41,6 +43,7 @@ export async function getWorkdayExceptions(
 
   return rows.map((r) => ({
     ...r,
+    type: normalizeWorkdayExceptionType(r.type),
     category: r.category as ExceptionCategory,
     recurrence: r.recurrence as ExceptionRecurrence,
   }))
@@ -52,7 +55,7 @@ export async function createWorkdayException(
     title: string
     startDate: string
     endDate: string
-    type: string
+    type: WorkdayExceptionType
     category: ExceptionCategory
     recurrence: ExceptionRecurrence
     notes?: string
@@ -109,7 +112,7 @@ export async function updateWorkdayException(
     title?: string
     startDate?: string
     endDate?: string
-    type?: string
+    type?: WorkdayExceptionType
     category?: ExceptionCategory
     recurrence?: ExceptionRecurrence
     notes?: string | null

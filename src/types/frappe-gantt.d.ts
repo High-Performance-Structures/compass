@@ -11,6 +11,12 @@ declare module "frappe-gantt" {
 
   interface GanttOptions {
     view_mode?: string
+    column_width?: number
+    infinite_padding?: boolean
+    bar_height?: number
+    padding?: number
+    today_button?: boolean
+    scroll_to?: string
     on_date_change?: (
       task: { id: string },
       start: Date,
@@ -20,13 +26,21 @@ declare module "frappe-gantt" {
       task: { id: string },
       progress: number
     ) => void
+    on_click?: (task: { id: string }) => void
   }
 
   export default class Gantt {
+    gantt_start: Date
+    config: {
+      unit: string
+      step: number
+      column_width: number
+    }
     constructor(
       element: HTMLElement,
       tasks: GanttTask[],
       options?: GanttOptions
     )
+    scroll_current(): void
   }
 }

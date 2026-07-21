@@ -108,7 +108,7 @@ export function ProjectQuickSwitcher({
       >
         <Command>
           <CommandInput placeholder="Search number, name, or client..." />
-          <CommandList>
+          <CommandList className="max-h-[360px] overflow-y-auto">
             <CommandEmpty>No matching projects.</CommandEmpty>
             <CommandGroup>
               {projects.map((project) => {

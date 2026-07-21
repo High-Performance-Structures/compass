@@ -1,6 +1,7 @@
 "use client"
 
-import { useRef, useEffect, useState, useCallback } from "react"
+import { useRef, useEffect, useCallback, useMemo } from "react"
+import type FrappeGantt from "frappe-gantt"
 import type { FrappeTask } from "@/lib/schedule/gantt-transform"
 import "./gantt.css"
 
@@ -18,6 +19,143 @@ interface GanttChartProps {
   ) => void
   onProgressChange?: (task: FrappeTask, progress: number) => void
   onZoom?: (direction: "in" | "out") => void
+  onTaskClick?: (task: FrappeTask) => void
+  onContainerReady?: (container: HTMLElement | null) => void
+  onScrollPositionChange?: (position: GanttScrollPosition) => void
+  onTodayScrollReady?: (handler: (() => void) | null) => void
+  onDateScrollReady?: (handler: ((date: string) => void) | null) => void
+  baselineTasks?: readonly GanttBaselineTask[]
+}
+
+export interface GanttScrollPosition {
+  readonly left: number
+  readonly top: number
+  readonly anchorDate?: string
+}
+
+export interface GanttBaselineTask {
+  readonly id: string
+  readonly start: string
+  readonly end: string
+}
+
+function differenceInUnits(date: Date, start: Date, unit: string): number {
+  if (unit === "month") {
+    const yearDifference = date.getFullYear() - start.getFullYear()
+    let monthDifference = date.getMonth() - start.getMonth()
+    monthDifference += date.getDate() / 31
+    if (date.getDate() < start.getDate()) monthDifference -= 1
+    return yearDifference * 12 + monthDifference
+  }
+
+  const timezoneOffset = start.getTimezoneOffset() - date.getTimezoneOffset()
+  const milliseconds = date.getTime() - start.getTime() + timezoneOffset * 60_000
+  if (unit === "hour") return milliseconds / 3_600_000
+  if (unit === "year") return milliseconds / 31_536_000_000
+  return milliseconds / 86_400_000
+}
+
+function addUnits(start: Date, amount: number, unit: string): Date {
+  const date = new Date(start)
+  if (unit === "hour") {
+    date.setTime(date.getTime() + amount * 3_600_000)
+    return date
+  }
+  if (unit === "month") {
+    const wholeMonths = Math.trunc(amount)
+    date.setMonth(date.getMonth() + wholeMonths)
+    date.setTime(date.getTime() + (amount - wholeMonths) * 30 * 86_400_000)
+    return date
+  }
+  if (unit === "year") {
+    const wholeYears = Math.trunc(amount)
+    date.setFullYear(date.getFullYear() + wholeYears)
+    date.setTime(date.getTime() + (amount - wholeYears) * 365 * 86_400_000)
+    return date
+  }
+  date.setTime(date.getTime() + amount * 86_400_000)
+  return date
+}
+
+function dateKey(date: Date): string {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, "0")
+  const day = String(date.getDate()).padStart(2, "0")
+  return `${year}-${month}-${day}`
+}
+
+function baselineWidth(
+  start: Date,
+  end: Date,
+  unit: string,
+  step: number,
+  columnWidth: number
+): number {
+  const endOfFinalDay = new Date(end)
+  endOfFinalDay.setDate(endOfFinalDay.getDate() + 1)
+  const days = differenceInUnits(endOfFinalDay, start, "day")
+  const durationInUnit = unit === "month" ? days / 30 : unit === "year" ? days / 365 : days
+  return Math.max(3, (durationInUnit / step) * columnWidth)
+}
+
+function renderBaselineOverlays(
+  gantt: FrappeGantt,
+  baselineTasks: readonly GanttBaselineTask[],
+  root: HTMLElement
+): void {
+  const svgNamespace = "http://www.w3.org/2000/svg"
+  for (const baselineTask of baselineTasks) {
+    const wrapper = root.querySelector<SVGGElement>(
+      `.gantt .bar-wrapper[data-id="${CSS.escape(baselineTask.id)}"]`
+    )
+    const currentBar = wrapper?.querySelector<SVGRectElement>(".bar")
+    const barGroup = wrapper?.querySelector<SVGGElement>(".bar-group")
+    if (!currentBar || !barGroup) continue
+
+    const start = new Date(`${baselineTask.start}T00:00:00`)
+    const end = new Date(`${baselineTask.end}T00:00:00`)
+    const x =
+      (differenceInUnits(start, gantt.gantt_start, gantt.config.unit) /
+        gantt.config.step) *
+      gantt.config.column_width
+    const width = baselineWidth(
+      start,
+      end,
+      gantt.config.unit,
+      gantt.config.step,
+      gantt.config.column_width
+    )
+    const y = Number(currentBar.getAttribute("y") ?? 0)
+    const height = Number(currentBar.getAttribute("height") ?? 30)
+    const overlay = document.createElementNS(svgNamespace, "rect")
+    overlay.setAttribute("class", "baseline-overlay")
+    overlay.setAttribute("x", String(x))
+    overlay.setAttribute("y", String(y + height + 3))
+    overlay.setAttribute("width", String(width))
+    overlay.setAttribute("height", "5")
+    overlay.setAttribute("rx", "2")
+    overlay.setAttribute("ry", "2")
+    barGroup.appendChild(overlay)
+  }
+}
+
+function renderTaskColors(tasks: readonly FrappeTask[], root: HTMLElement): void {
+  for (const task of tasks) {
+    const wrapper = root.querySelector<SVGGElement>(
+      `.gantt .bar-wrapper[data-id="${CSS.escape(task.id)}"]`
+    )
+    const bar = wrapper?.querySelector<SVGRectElement>(".bar")
+    const progress = wrapper?.querySelector<SVGPathElement>(".bar-progress")
+    if (!wrapper || !bar || !task.color) continue
+
+    bar.style.fill = task.color
+    bar.style.stroke = task.isCriticalPath ? "#b42318" : task.color
+    bar.style.strokeWidth = task.isCriticalPath ? "3" : "1"
+    if (progress) {
+      progress.style.fill = `color-mix(in srgb, ${task.color} 72%, black)`
+    }
+    if (task.isMilestone) bar.style.strokeWidth = "3"
+  }
 }
 
 export function GanttChart({
@@ -28,12 +166,62 @@ export function GanttChart({
   onDateChange,
   onProgressChange,
   onZoom,
+  onTaskClick,
+  onContainerReady,
+  onScrollPositionChange,
+  onTodayScrollReady,
+  onDateScrollReady,
+  baselineTasks = [],
 }: GanttChartProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const wrapperRef = useRef<HTMLDivElement>(null)
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const ganttRef = useRef<any>(null)
-  const [loaded, setLoaded] = useState(false)
+  const ganttRef = useRef<FrappeGantt | null>(null)
+  const latestTasksRef = useRef(tasks)
+  latestTasksRef.current = tasks
+  const latestBaselineTasksRef = useRef(baselineTasks)
+  latestBaselineTasksRef.current = baselineTasks
+  const ganttInputKey = useMemo(
+    () =>
+      tasks
+        .map((task) =>
+          [
+            task.id,
+            task.name,
+            task.start,
+            task.end,
+            task.progress,
+            task.dependencies,
+            task.custom_class,
+          ].join("\u001f")
+        )
+        .join("\u001e"),
+    [tasks]
+  )
+  const baselineInputKey = useMemo(
+    () =>
+      baselineTasks
+        .map((task) => [task.id, task.start, task.end].join("\u001f"))
+        .join("\u001e"),
+    [baselineTasks]
+  )
+  const callbackRefs = useRef({
+    onDateChange,
+    onProgressChange,
+    onTaskClick,
+    onContainerReady,
+    onScrollPositionChange,
+    onTodayScrollReady,
+    onDateScrollReady,
+  })
+  callbackRefs.current = {
+    onDateChange,
+    onProgressChange,
+    onTaskClick,
+    onContainerReady,
+    onScrollPositionChange,
+    onTodayScrollReady,
+    onDateScrollReady,
+  }
 
   // pan state - scrolls the .gantt-container directly
   const isPanning = useRef(false)
@@ -89,9 +277,27 @@ export function GanttChart({
   }, [onZoom])
 
   useEffect(() => {
-    if (!containerRef.current || tasks.length === 0) return
+    if (!containerRef.current || latestTasksRef.current.length === 0) return
 
     let cancelled = false
+    let activeContainer: HTMLElement | null = null
+    const handleScroll = () => {
+      const onScroll = callbackRefs.current.onScrollPositionChange
+      if (!activeContainer || !onScroll) return
+      const gantt = ganttRef.current
+      const centerUnits = gantt
+        ? ((activeContainer.scrollLeft + activeContainer.clientWidth / 2) /
+            gantt.config.column_width) *
+          gantt.config.step
+        : 0
+      onScroll({
+        left: activeContainer.scrollLeft,
+        top: activeContainer.scrollTop,
+        ...(gantt
+          ? { anchorDate: dateKey(addUnits(gantt.gantt_start, centerUnits, gantt.config.unit)) }
+          : {}),
+      })
+    }
 
     async function initGantt() {
       const { default: Gantt } = await import("frappe-gantt")
@@ -102,7 +308,8 @@ export function GanttChart({
         containerRef.current.removeChild(containerRef.current.firstChild)
       }
 
-      const ganttTasks = tasks.map((t) => ({
+      const currentTasks = latestTasksRef.current
+      const ganttTasks = currentTasks.map((t) => ({
         id: t.id,
         name: t.name,
         start: t.start,
@@ -112,22 +319,73 @@ export function GanttChart({
         custom_class: t.custom_class,
       }))
 
-      ganttRef.current = new Gantt(containerRef.current, ganttTasks, {
+      const gantt = new Gantt(containerRef.current, ganttTasks, {
         view_mode: viewMode,
         ...(columnWidth ? { column_width: columnWidth } : {}),
+        infinite_padding: false,
+        bar_height: 28,
+        padding: 20,
+        today_button: false,
+        scroll_to: "start",
         on_date_change: (task: { id: string }, start: Date, end: Date) => {
-          if (onDateChange) {
-            const original = tasks.find((t) => t.id === task.id)
-            if (original) onDateChange(original, start, end)
+          const dateChange = callbackRefs.current.onDateChange
+          if (dateChange) {
+            const original = latestTasksRef.current.find((t) => t.id === task.id)
+            if (original) dateChange(original, start, end)
           }
         },
         on_progress_change: (task: { id: string }, progress: number) => {
-          if (onProgressChange) {
-            const original = tasks.find((t) => t.id === task.id)
-            if (original) onProgressChange(original, progress)
+          const progressChange = callbackRefs.current.onProgressChange
+          if (progressChange) {
+            const original = latestTasksRef.current.find((t) => t.id === task.id)
+            if (original) progressChange(original, progress)
           }
         },
+        on_click: (task: { id: string }) => {
+          const taskClick = callbackRefs.current.onTaskClick
+          if (!taskClick || task.id.startsWith("phase-")) return
+          const original = latestTasksRef.current.find((item) => item.id === task.id)
+          if (original) taskClick(original)
+        },
       })
+      ganttRef.current = gantt
+      callbackRefs.current.onTodayScrollReady?.(() => {
+        const container = ganttContainerRef.current
+        if (!container) return
+        const today = new Date()
+        today.setHours(0, 0, 0, 0)
+        const units = differenceInUnits(today, gantt.gantt_start, gantt.config.unit)
+        const left =
+          (units / gantt.config.step) * gantt.config.column_width -
+          container.clientWidth / 2
+        container.scrollTo({
+          left: Math.max(0, Math.min(left, container.scrollWidth - container.clientWidth)),
+          behavior: "smooth",
+        })
+      })
+      callbackRefs.current.onDateScrollReady?.((date) => {
+        const container = ganttContainerRef.current
+        if (!container) return
+        const anchor = new Date(`${date}T00:00:00`)
+        const units = differenceInUnits(
+          anchor,
+          gantt.gantt_start,
+          gantt.config.unit
+        )
+        const left =
+          (units / gantt.config.step) * gantt.config.column_width -
+          container.clientWidth / 2
+        container.scrollLeft = Math.max(
+          0,
+          Math.min(left, container.scrollWidth - container.clientWidth)
+        )
+      })
+      renderBaselineOverlays(
+        gantt,
+        latestBaselineTasksRef.current,
+        containerRef.current
+      )
+      renderTaskColors(currentTasks, containerRef.current)
 
       // constrain gantt-container to wrapper height so content overflows
       // this enables scroll-based panning while keeping the header sticky
@@ -137,20 +395,33 @@ export function GanttChart({
       if (ganttContainer) {
         ganttContainer.style.height = "100%"
         ganttContainerRef.current = ganttContainer
+        activeContainer = ganttContainer
+        activeContainer.addEventListener("scroll", handleScroll, {
+          passive: true,
+        })
+        callbackRefs.current.onContainerReady?.(activeContainer)
       }
-
-      setLoaded(true)
     }
 
     initGantt()
-    return () => { cancelled = true }
-  }, [tasks, viewMode, columnWidth, onDateChange, onProgressChange])
+    return () => {
+      cancelled = true
+      activeContainer?.removeEventListener("scroll", handleScroll)
+      callbackRefs.current.onContainerReady?.(null)
+      callbackRefs.current.onTodayScrollReady?.(null)
+      callbackRefs.current.onDateScrollReady?.(null)
+    }
+  }, [
+    ganttInputKey,
+    viewMode,
+    columnWidth,
+    baselineInputKey,
+  ])
 
   useEffect(() => {
-    if (ganttRef.current && loaded) {
-      ganttRef.current.change_view_mode(viewMode)
-    }
-  }, [viewMode, loaded])
+    if (!containerRef.current || !ganttRef.current) return
+    renderTaskColors(tasks, containerRef.current)
+  }, [tasks])
 
   if (tasks.length === 0) {
     return (

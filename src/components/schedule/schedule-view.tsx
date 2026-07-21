@@ -10,6 +10,13 @@ import { Badge } from "@/components/ui/badge"
 import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import {
   Popover,
   PopoverContent,
   PopoverTrigger,
@@ -55,13 +62,15 @@ import {
 import { toast } from "sonner"
 import { ScheduleListView } from "./schedule-list-view"
 import { ScheduleGanttView } from "./schedule-gantt-view"
+import type { GanttBaselineTask } from "./gantt-chart"
 import { ScheduleCalendarView } from "./schedule-calendar-view"
 import { ScheduleMobileView } from "./schedule-mobile-view"
 import { WorkdayExceptionsView } from "./workday-exceptions-view"
 import { ScheduleBaselineView } from "./schedule-baseline-view"
 import { TaskFormDialog } from "./task-form-dialog"
 import { ProjectQuickSwitcher } from "@/components/projects/project-quick-switcher"
-import type { ProjectListItem } from "@/app/actions/projects"
+import type { ScheduleProjectOption } from "@/app/actions/schedule"
+import type { ProjectTaskAssigneeOption } from "@/app/actions/project-contacts"
 import type {
   ScheduleData,
   ScheduleBaselineData,
@@ -74,6 +83,11 @@ import {
 } from "@/lib/schedule/types"
 
 type View = "calendar" | "list" | "gantt"
+type ProjectScope = "active" | "active_warranty" | "leads" | "all"
+
+function isProjectScope(value: string): value is ProjectScope {
+  return value === "active" || value === "active_warranty" || value === "leads" || value === "all"
+}
 
 const VIEW_OPTIONS = [
   { value: "calendar" as const, icon: IconCalendar, label: "Calendar" },
@@ -86,7 +100,9 @@ interface ScheduleViewProps {
   readonly projectName: string
   readonly initialData: ScheduleData
   readonly baselines: ScheduleBaselineData[]
-  readonly allProjects?: readonly ProjectListItem[]
+  readonly allProjects?: readonly ScheduleProjectOption[]
+  readonly taskAssigneeOptions?: readonly ProjectTaskAssigneeOption[]
+  readonly linkedScheduleTaskId?: string | null
 }
 
 export function ScheduleView({
@@ -95,15 +111,23 @@ export function ScheduleView({
   initialData,
   baselines,
   allProjects = [],
+  taskAssigneeOptions = [],
+  linkedScheduleTaskId = null,
 }: ScheduleViewProps) {
   const isMobile = useIsMobile()
   const [view, setView] = useState<View>("gantt")
-  const [taskFormOpen, setTaskFormOpen] = useState(false)
+  const linkedScheduleTask = initialData.tasks.find(
+    (task) => task.id === linkedScheduleTaskId
+  ) ?? null
+  const [taskFormOpen, setTaskFormOpen] = useState(linkedScheduleTask !== null)
+  const [headerEditingTask, setHeaderEditingTask] = useState(linkedScheduleTask)
   const [filters, setFilters] = useState<TaskFilters>(EMPTY_FILTERS)
   const [baselinesOpen, setBaselinesOpen] = useState(false)
   const [exceptionsOpen, setExceptionsOpen] = useState(false)
   const [importDialogOpen, setImportDialogOpen] = useState(false)
   const [isImporting, setIsImporting] = useState(false)
+  const [projectScope, setProjectScope] = useState<ProjectScope>("active")
+  const [selectedBaselineId, setSelectedBaselineId] = useState("none")
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const phaseOptions = useMemo(() => {
@@ -117,6 +141,53 @@ export function ScheduleView({
       })
       .map((phase) => ({ value: phase, label: phase }))
   }, [initialData.tasks])
+
+  const scheduleProjects = useMemo(() => {
+    return allProjects.filter((project) => {
+      if (project.id === projectId) return true
+      if (projectScope === "all") return true
+      if (projectScope === "leads") return project.status === "LEAD"
+      if (projectScope === "active_warranty") {
+        return project.status === "OPEN" || project.status === "WARRANTY"
+      }
+      return project.status === "OPEN"
+    })
+  }, [allProjects, projectId, projectScope])
+
+  const selectedBaseline = useMemo(
+    () => baselines.find((baseline) => baseline.id === selectedBaselineId) ?? null,
+    [baselines, selectedBaselineId]
+  )
+
+  const baselineTasks = useMemo((): readonly GanttBaselineTask[] => {
+    if (!selectedBaseline) return []
+    try {
+      const parsed: unknown = JSON.parse(selectedBaseline.snapshotData)
+      if (!parsed || typeof parsed !== "object" || !("tasks" in parsed)) return []
+      if (!Array.isArray(parsed.tasks)) return []
+      const ranges: GanttBaselineTask[] = []
+      for (const task of parsed.tasks) {
+        if (!task || typeof task !== "object") continue
+        if (!("id" in task) || !("startDate" in task) || !("endDateCalculated" in task)) {
+          continue
+        }
+        if (
+          typeof task.id === "string" &&
+          typeof task.startDate === "string" &&
+          typeof task.endDateCalculated === "string"
+        ) {
+          ranges.push({
+            id: task.id,
+            start: task.startDate,
+            end: task.endDateCalculated,
+          })
+        }
+      }
+      return ranges
+    } catch {
+      return []
+    }
+  }, [selectedBaseline])
 
   const filteredTasks = useMemo(() => {
     let tasks = initialData.tasks
@@ -307,8 +378,24 @@ export function ScheduleView({
         </nav>
 
         <div className="flex flex-wrap items-center gap-2 lg:ml-auto lg:justify-end">
+          <Select
+            value={projectScope}
+            onValueChange={(value) => {
+              if (isProjectScope(value)) setProjectScope(value)
+            }}
+          >
+            <SelectTrigger className="h-10 w-[170px]" aria-label="Filter schedule projects">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="active">Active projects</SelectItem>
+              <SelectItem value="active_warranty">Active + warranty</SelectItem>
+              <SelectItem value="leads">Leads</SelectItem>
+              <SelectItem value="all">All projects</SelectItem>
+            </SelectContent>
+          </Select>
           <ProjectQuickSwitcher
-            projects={allProjects}
+            projects={scheduleProjects}
             currentProjectId={projectId}
             targetSection="schedule"
             placeholder="Switch schedule project..."
@@ -334,9 +421,16 @@ export function ScheduleView({
             ))}
           </div>
 
-          <Button size="sm" onClick={() => setTaskFormOpen(true)} className="h-8">
+          <Button
+            size="sm"
+            onClick={() => {
+              setHeaderEditingTask(null)
+              setTaskFormOpen(true)
+            }}
+            className="h-8"
+          >
             <IconPlus className="size-3.5" />
-            <span className="hidden sm:inline ml-1.5">New Task</span>
+            <span className="hidden sm:inline ml-1.5">New Schedule Item</span>
           </Button>
         </div>
       </div>
@@ -479,6 +573,31 @@ export function ScheduleView({
             {filteredTasks.length} task{filteredTasks.length !== 1 ? "s" : ""}
           </span>
 
+          {baselines.length > 0 && (
+            <Select value={selectedBaselineId} onValueChange={setSelectedBaselineId}>
+              <SelectTrigger className="hidden h-8 w-[165px] md:flex" aria-label="Baseline overlay">
+                <SelectValue placeholder="Baseline overlay" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">No baseline overlay</SelectItem>
+                {baselines.map((baseline) => (
+                  <SelectItem key={baseline.id} value={baseline.id}>
+                    {baseline.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+
+          <Button variant="outline" size="sm" className="hidden h-8 lg:inline-flex" onClick={() => setBaselinesOpen(true)}>
+            <IconHistory className="size-3.5" />
+            <span className="ml-1.5">Baselines</span>
+          </Button>
+          <Button variant="outline" size="sm" className="hidden h-8 lg:inline-flex" onClick={() => setExceptionsOpen(true)}>
+            <IconCalendarOff className="size-3.5" />
+            <span className="ml-1.5">Workdays</span>
+          </Button>
+
           {/* Overflow menu */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -534,6 +653,7 @@ export function ScheduleView({
             projectId={projectId}
             tasks={filteredTasks}
             dependencies={initialData.dependencies}
+            taskAssigneeOptions={taskAssigneeOptions}
           />
         )}
         {view === "gantt" && (
@@ -541,6 +661,10 @@ export function ScheduleView({
             projectId={projectId}
             tasks={filteredTasks}
             dependencies={initialData.dependencies}
+            exceptions={initialData.exceptions}
+            baselineTasks={baselineTasks}
+            baselineName={selectedBaseline?.name ?? null}
+            taskAssigneeOptions={taskAssigneeOptions}
           />
         )}
       </div>
@@ -550,9 +674,10 @@ export function ScheduleView({
         open={taskFormOpen}
         onOpenChange={setTaskFormOpen}
         projectId={projectId}
-        editingTask={null}
+        editingTask={headerEditingTask}
         allTasks={initialData.tasks}
         dependencies={initialData.dependencies}
+        assigneeOptions={taskAssigneeOptions}
       />
 
       {/* Import dialog */}
@@ -622,7 +747,7 @@ export function ScheduleView({
           <SheetHeader>
             <SheetTitle>Workday Exceptions</SheetTitle>
             <SheetDescription>
-              Holidays, vacation days, and other non-working days.
+              Add non-working days or authorize extra working days.
             </SheetDescription>
           </SheetHeader>
           <div className="mt-4">

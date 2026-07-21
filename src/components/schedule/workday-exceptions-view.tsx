@@ -46,6 +46,13 @@ const categoryLabels: Record<string, string> = {
   vacation_day: "Vacation Day",
   company_holiday: "Company Holiday",
   weather_day: "Weather Day",
+  extra_workday: "Extra Workday",
+}
+
+const impactLabels: Record<string, string> = {
+  holiday: "Non-working holiday",
+  non_working: "Non-working",
+  working: "Extra working day",
 }
 
 export function WorkdayExceptionsView({
@@ -96,6 +103,7 @@ export function WorkdayExceptionsView({
                 <TableHead className="hidden sm:table-cell">Start</TableHead>
                 <TableHead className="hidden sm:table-cell">End</TableHead>
                 <TableHead className="hidden md:table-cell">Duration</TableHead>
+                <TableHead className="hidden md:table-cell">Impact</TableHead>
                 <TableHead className="hidden lg:table-cell">Category</TableHead>
                 <TableHead className="hidden lg:table-cell">Recurrence</TableHead>
                 <TableHead className="hidden lg:table-cell">Notes</TableHead>
@@ -106,7 +114,7 @@ export function WorkdayExceptionsView({
               {exceptions.length === 0 ? (
                 <TableRow>
                   <TableCell
-                    colSpan={8}
+                    colSpan={9}
                     className="text-center py-8 text-muted-foreground min-w-0"
                   >
                     <span className="block">No workday exceptions</span>
@@ -126,6 +134,9 @@ export function WorkdayExceptionsView({
                   </TableCell>
                   <TableCell className="hidden md:table-cell text-xs">
                     {calcDuration(ex.startDate, ex.endDate)} days
+                  </TableCell>
+                  <TableCell className="hidden md:table-cell text-xs">
+                    {impactLabels[ex.type] ?? ex.type}
                   </TableCell>
                   <TableCell className="hidden lg:table-cell text-xs">
                     {categoryLabels[ex.category] ?? ex.category}

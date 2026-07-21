@@ -50,12 +50,7 @@ import {
 } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
 import { Button } from "@/components/ui/button"
-import {
-  createTask,
-  updateTask,
-  createDependency,
-  deleteDependency,
-} from "@/app/actions/schedule"
+import { saveScheduleTask } from "@/app/actions/schedule"
 import { calculateEndDate } from "@/lib/schedule/business-days"
 import type {
   ScheduleTaskData,
@@ -67,6 +62,8 @@ import { STATUS_OPTIONS } from "@/lib/schedule/types"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
+import { ProjectTaskCreateButton } from "@/components/projects/project-task-create-button"
+import type { ProjectTaskAssigneeOption } from "@/app/actions/project-contacts"
 
 const phases = PHASE_ORDER.map((value) => ({
   value,
@@ -85,7 +82,7 @@ const taskSchema = z.object({
   startDate: z.string().min(1, "Start date is required"),
   workdays: z.number().min(1, "Must be at least 1 day"),
   phase: z.string().min(1, "Phase is required"),
-  status: z.string(),
+  status: z.enum(["PENDING", "IN_PROGRESS", "COMPLETE", "BLOCKED"]),
   isMilestone: z.boolean(),
   percentComplete: z.number().min(0).max(100),
   assignedTo: z.string(),
@@ -101,6 +98,7 @@ interface TaskFormDialogProps {
   editingTask: ScheduleTaskData | null
   allTasks?: readonly ScheduleTaskData[]
   dependencies?: readonly TaskDependencyData[]
+  assigneeOptions?: readonly ProjectTaskAssigneeOption[]
 }
 
 interface PendingPredecessor {
@@ -116,6 +114,7 @@ export function TaskFormDialog({
   editingTask,
   allTasks = [],
   dependencies = [],
+  assigneeOptions = [],
 }: TaskFormDialogProps) {
   const router = useRouter()
   const isEditing = !!editingTask
@@ -177,8 +176,14 @@ export function TaskFormDialog({
       })
       setDetailsOpen(false)
     }
-    setPendingPredecessors([])
-  }, [editingTask, form])
+    setPendingPredecessors(
+      existingPredecessors.map((dependency) => ({
+        taskId: dependency.predecessorId,
+        type: dependency.type,
+        lagDays: dependency.lagDays,
+      }))
+    )
+  }, [editingTask, existingPredecessors, form])
 
   const watchedStart = form.watch("startDate")
   const watchedWorkdays = form.watch("workdays")
@@ -191,31 +196,31 @@ export function TaskFormDialog({
   }, [watchedStart, watchedWorkdays])
 
   async function onSubmit(values: TaskFormValues) {
-    let result
-    if (isEditing) {
-      result = await updateTask(editingTask.id, {
-        ...values,
-        assignedTo: values.assignedTo || null,
-      })
-    } else {
-      result = await createTask(projectId, {
-        ...values,
-        assignedTo: values.assignedTo || undefined,
-      })
+    const incompletePredecessor = pendingPredecessors.some(
+      (predecessor) => !predecessor.taskId
+    )
+    if (incompletePredecessor) {
+      toast.error("Choose a schedule item for each predecessor")
+      return
     }
 
+    const result = await saveScheduleTask(projectId, {
+      taskId: editingTask?.id ?? null,
+      title: values.title,
+      startDate: values.startDate,
+      workdays: values.workdays,
+      phase: values.phase,
+      status: values.status,
+      isMilestone: values.isMilestone,
+      percentComplete: values.percentComplete,
+      assignedTo: values.assignedTo || null,
+      predecessors: pendingPredecessors.map((predecessor) => ({
+        predecessorId: predecessor.taskId,
+        type: predecessor.type,
+        lagDays: predecessor.lagDays,
+      })),
+    })
     if (result.success) {
-      for (const pred of pendingPredecessors) {
-        if (pred.taskId) {
-          await createDependency({
-            predecessorId: pred.taskId,
-            successorId: editingTask?.id ?? "",
-            type: pred.type,
-            lagDays: pred.lagDays,
-            projectId,
-          })
-        }
-      }
       onOpenChange(false)
       router.refresh()
     } else {
@@ -244,24 +249,14 @@ export function TaskFormDialog({
     )
   }
 
-  const handleDeleteExistingDep = async (depId: string) => {
-    const result = await deleteDependency(depId, projectId)
-    if (result.success) {
-      router.refresh()
-    } else {
-      toast.error(result.error)
-    }
-  }
-
-  const hasPredecessors =
-    existingPredecessors.length > 0 || pendingPredecessors.length > 0
+  const hasPredecessors = pendingPredecessors.length > 0
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-xl max-h-[85vh] flex flex-col overflow-hidden p-0 gap-0">
         <DialogHeader className="px-5 pt-4 pb-3 shrink-0">
           <DialogTitle className="text-base font-semibold">
-            {isEditing ? "Edit Task" : "New Task"}
+            {isEditing ? "Edit Schedule Item" : "New Schedule Item"}
           </DialogTitle>
         </DialogHeader>
 
@@ -527,39 +522,6 @@ export function TaskFormDialog({
                       Predecessors
                     </span>
 
-                    {existingPredecessors.map((dep) => {
-                      const predTask = allTasks.find(
-                        (t) => t.id === dep.predecessorId
-                      )
-                      return (
-                        <div
-                          key={dep.id}
-                          className="flex items-center gap-2 text-sm"
-                        >
-                          <div className="flex-1 truncate px-2 py-1.5 rounded bg-muted/40 text-xs">
-                            {predTask?.title ?? "Unknown"}
-                          </div>
-                          <span className="text-[10px] text-muted-foreground shrink-0 w-8 text-center">
-                            {dep.type}
-                          </span>
-                          {dep.lagDays > 0 && (
-                            <span className="text-[10px] text-muted-foreground shrink-0">
-                              +{dep.lagDays}d
-                            </span>
-                          )}
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon"
-                            className="size-7 shrink-0 text-muted-foreground hover:text-destructive"
-                            onClick={() => handleDeleteExistingDep(dep.id)}
-                          >
-                            <IconTrash className="size-3" />
-                          </Button>
-                        </div>
-                      )
-                    })}
-
                     {pendingPredecessors.map((pred, idx) => (
                       <div
                         key={idx}
@@ -601,8 +563,8 @@ export function TaskFormDialog({
                         </Select>
                         <Input
                           type="number"
-                          min={0}
-                          placeholder="Lag"
+                          placeholder="Lag / lead"
+                          aria-label="Lag or lead days"
                           className="h-8 text-xs text-center"
                           value={pred.lagDays || ""}
                           onChange={(e) =>
@@ -638,8 +600,14 @@ export function TaskFormDialog({
                       </Button>
                     )}
 
+                    {pendingPredecessors.length > 0 && (
+                      <p className="text-[11px] text-muted-foreground">
+                        Positive days add lag; negative days create lead time.
+                      </p>
+                    )}
+
                     {availableTasks.length === 0 &&
-                      existingPredecessors.length === 0 && (
+                      pendingPredecessors.length === 0 && (
                         <p className="text-[11px] text-muted-foreground/60">
                           No other tasks to link as predecessors.
                         </p>
@@ -670,7 +638,27 @@ export function TaskFormDialog({
             </div>
 
             {/* Footer */}
-            <div className="flex justify-end gap-2 px-5 py-3 border-t shrink-0">
+            <div className="flex items-center justify-end gap-2 px-5 py-3 border-t shrink-0">
+              {editingTask && (
+                <div className="mr-auto">
+                  <ProjectTaskCreateButton
+                    projectId={projectId}
+                    sourceLabel="Schedule item"
+                    sourceRecordId={editingTask.id}
+                    sourceRecordNumber={null}
+                    sourceHref={`/dashboard/projects/${projectId}/schedule?task=${encodeURIComponent(editingTask.id)}`}
+                    defaultTitle={`Follow up: ${editingTask.title}`}
+                    defaultDescription={`${editingTask.phase} · ${editingTask.startDate} to ${editingTask.endDateCalculated}`}
+                    defaultAssigneeName={editingTask.assignedTo}
+                    defaultCompanyName={null}
+                    defaultDueDate={editingTask.endDateCalculated}
+                    defaultPriority={editingTask.isCriticalPath ? "high" : "normal"}
+                    defaultTaskType="schedule_task"
+                    assigneeOptions={assigneeOptions}
+                    triggerLabel="Create To-Do"
+                  />
+                </div>
+              )}
               <Button
                 type="button"
                 variant="ghost"
@@ -679,8 +667,16 @@ export function TaskFormDialog({
               >
                 Cancel
               </Button>
-              <Button type="submit" size="sm">
-                {isEditing ? "Save" : "Create"}
+              <Button
+                type="submit"
+                size="sm"
+                disabled={form.formState.isSubmitting}
+              >
+                {form.formState.isSubmitting
+                  ? "Saving..."
+                  : isEditing
+                    ? "Save"
+                    : "Create Schedule Item"}
               </Button>
             </div>
           </form>

@@ -1,11 +1,11 @@
 import { addDays, isWeekend, parseISO, format, isWithinInterval } from "date-fns"
 import type { WorkdayExceptionData } from "./types"
 
-function isExceptionDay(
+function matchingExceptions(
   date: Date,
   exceptions: WorkdayExceptionData[]
-): boolean {
-  return exceptions.some((ex) => {
+): WorkdayExceptionData[] {
+  return exceptions.filter((ex) => {
     const start = parseISO(ex.startDate)
     const end = parseISO(ex.endDate)
     return isWithinInterval(date, { start, end })
@@ -16,7 +16,10 @@ function isNonWorkday(
   date: Date,
   exceptions: WorkdayExceptionData[] = []
 ): boolean {
-  return isWeekend(date) || isExceptionDay(date, exceptions)
+  const matches = matchingExceptions(date, exceptions)
+  if (matches.some((exception) => exception.type === "working")) return false
+  if (matches.some((exception) => exception.type !== "working")) return true
+  return isWeekend(date)
 }
 
 export function calculateEndDate(
@@ -35,6 +38,30 @@ export function calculateEndDate(
 
   while (remaining > 0) {
     current = addDays(current, 1)
+    if (!isNonWorkday(current, exceptions)) {
+      remaining--
+    }
+  }
+
+  return format(current, "yyyy-MM-dd")
+}
+
+export function calculateStartDate(
+  endDate: string,
+  workdays: number,
+  exceptions: WorkdayExceptionData[] = []
+): string {
+  if (workdays <= 0) return endDate
+
+  let current = parseISO(endDate)
+  let remaining = workdays
+
+  if (!isNonWorkday(current, exceptions)) {
+    remaining--
+  }
+
+  while (remaining > 0) {
+    current = addDays(current, -1)
     if (!isNonWorkday(current, exceptions)) {
       remaining--
     }
