@@ -13,7 +13,6 @@ import {
 } from "@/components/ui/popover"
 import type { SidebarUser } from "@/lib/auth"
 
-const MARTINE_DEFAULT_DESK_PHOTO = "/user-desk-photos/martine-desk-photo.jpeg"
 const HIDDEN_DESK_PHOTO = "__hidden__"
 const DESK_PHOTO_ENDPOINT = "/api/users/desk-photo"
 
@@ -24,12 +23,6 @@ type DeskPhotoMetadata =
 
 function storageKey(user: SidebarUser): string {
   return `compass-desk-photo:${user.email}`
-}
-
-function defaultDeskPhoto(user: SidebarUser): string | null {
-  const identity = `${user.name} ${user.email}`.toLowerCase()
-
-  return identity.includes("martine") ? MARTINE_DEFAULT_DESK_PHOTO : null
 }
 
 function readStoredPhoto(user: SidebarUser): string | null | typeof HIDDEN_DESK_PHOTO {
@@ -164,9 +157,7 @@ export function PersonalDeskPhoto({
 }: {
   readonly user: SidebarUser | null
 }): React.ReactElement | null {
-  const [photoUrl, setPhotoUrl] = React.useState<string | null>(() =>
-    user ? defaultDeskPhoto(user) : null,
-  )
+  const [photoUrl, setPhotoUrl] = React.useState<string | null>(null)
   const [message, setMessage] = React.useState<string | null>(null)
   const [saving, setSaving] = React.useState(false)
 
@@ -210,13 +201,13 @@ export function PersonalDeskPhoto({
           return
         }
 
-        setPhotoUrl(storedPhoto ?? defaultDeskPhoto(activeUser))
+        setPhotoUrl(storedPhoto)
       } catch {
         if (!active) return
         setPhotoUrl(
           storedPhoto === HIDDEN_DESK_PHOTO
             ? null
-            : storedPhoto ?? defaultDeskPhoto(activeUser),
+            : storedPhoto,
         )
       }
     }
@@ -275,10 +266,9 @@ export function PersonalDeskPhoto({
     setMessage(null)
     try {
       await updateDeskPhotoVisibility("reset")
-      const fallback = defaultDeskPhoto(user)
-      setPhotoUrl(fallback)
+      setPhotoUrl(null)
       saveStoredPhoto(user, null)
-      setMessage(fallback ? "Desk photo reset." : "Desk photo cleared.")
+      setMessage("Desk photo cleared.")
     } catch (error: unknown) {
       setMessage(error instanceof Error ? error.message : "Desk photo could not be reset.")
     } finally {
@@ -311,9 +301,8 @@ export function PersonalDeskPhoto({
       storedPhoto && storedPhoto !== HIDDEN_DESK_PHOTO
         ? storedPhoto
         : null
-    const fallback = cachedPhoto ?? defaultDeskPhoto(user)
-    if (fallback !== null && photoUrl !== fallback) {
-      setPhotoUrl(fallback)
+    if (cachedPhoto !== null && photoUrl !== cachedPhoto) {
+      setPhotoUrl(cachedPhoto)
       setMessage("Showing the cached desk photo while Compass reconnects.")
       return
     }
