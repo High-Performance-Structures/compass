@@ -7,7 +7,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>en</string>
 	<key>CFBundleDisplayName</key>
-        <string>Compass</string>
+	<string>HPS Compass</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -15,15 +15,38 @@
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
-	<string>$(PRODUCT_NAME)</string>
+	<string>HPS Compass</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>com.hpscolorado.compass</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>compass</string>
+			</array>
+		</dict>
+	</array>
 	<key>CFBundleShortVersionString</key>
 	<string>$(MARKETING_VERSION)</string>
 	<key>CFBundleVersion</key>
 	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
+	<key>NSCameraUsageDescription</key>
+	<string>Compass uses the camera to capture project progress photos and attach them to daily logs.</string>
+	<key>NSFaceIDUsageDescription</key>
+	<string>Compass uses Face ID to protect access to project information.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Compass uses the microphone for Compass Talk meetings and voice messages.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Compass saves project photos captured in the app to your photo library.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Compass lets you select project photos and documents from your photo library for daily logs, messages, and project records.</string>
 	<key>UILaunchStoryboardName</key>
 	<string>LaunchScreen</string>
 	<key>UIMainStoryboardFile</key>

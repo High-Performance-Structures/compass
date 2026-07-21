@@ -7,9 +7,9 @@ Developer documentation for the Compass iOS and Android implementations.
 
 Compass is deeply server-rendered. Server actions, middleware auth, D1 database access via `getCloudflareContext()` -- the entire data layer assumes it's running on Cloudflare Workers. Frameworks like NextNative require `output: "export"` (static HTML), which would mean rewriting every action, every database call, every auth check. That's not a refactor; it's a rewrite.
 
-Capacitor takes a different approach. The native app is a thin shell -- a WKWebView on iOS, an Android WebView on Android -- that loads the live deployment at `compass.openrangeconstruction.ltd`. The web app doesn't know or care that it's running inside a native container. Auth works because it's the same origin, same cookies, same middleware. When you run `bun deploy`, the native app gets the update immediately, no app store submission required.
+Capacitor takes a hybrid approach. The native app bundles a small offline Field Mode -- a WKWebView on iOS and an Android WebView on Android -- then navigates to the live deployment at `compass.openrangeconstruction.ltd` when the service is reachable. The bundled shell is not a static export of Next.js. It is a purpose-built recovery surface for active projects, tasks, schedule items, daily logs, construction documents, and project chat.
 
-The tradeoff is real: you don't get truly native UI, and you're dependent on network connectivity for most features. But for a construction management tool where the primary interface is already responsive and touch-optimized, the tradeoff is worth it. The native shell exists to provide the things a WebView genuinely can't: push notifications, biometric auth, camera access with GPS metadata, and offline photo queuing. These are also the features that satisfy Apple's Guideline 4.2 (which rejects apps that are "merely a web site bundled as an app").
+The live application remains the complete experience and receives normal Cloudflare deployments immediately. The bundled shell supplies a dependable cold start and durable offline outbox; it also hosts the native capabilities a browser cannot provide reliably, including push notifications, biometric auth, camera access with GPS metadata, offline files, and photo queuing.
 
 
 ## Architecture
@@ -18,9 +18,9 @@ The native layer follows one principle: **the web app must never break because o
 
 ```
 ┌─────────────────────────────────────────────────┐
-│                 Native Shell                     │
+│             Bundled Offline Field Shell           │
+│  Active work + native outbox + saved documents   │
 │  iOS: WKWebView    Android: Android WebView      │
-│  Capacitor Core + 12 plugins                     │
 ├─────────────────────────────────────────────────┤
 │              Bridge Layer (TypeScript)            │
 │  platform.ts → isNative() / isIOS() / isAndroid() │
@@ -35,7 +35,7 @@ The native layer follows one principle: **the web app must never break because o
 │  BiometricGuard  OfflineBanner  NativeShell       │
 │  UploadQueueIndicator  PushNotificationRegistrar  │
 ├─────────────────────────────────────────────────┤
-│              Compass Web App                      │
+│              Live Compass Web App                 │
 │  Next.js 15 + Cloudflare Workers + D1             │
 │  (completely unchanged)                           │
 └─────────────────────────────────────────────────┘
@@ -87,7 +87,6 @@ If you add a new Capacitor plugin, follow this pattern. A static `import { Camer
 
 ```typescript
 server: {
-  url: "https://compass.openrangeconstruction.ltd",
   allowNavigation: [
     "compass.openrangeconstruction.ltd",
     "api.workos.com",
@@ -98,9 +97,13 @@ server: {
 }
 ```
 
-The `server.url` tells Capacitor to load this URL instead of bundled HTML. The `webDir: "public"` field is required by the schema but unused since we're loading remote content.
+The default release profile uses `server.url` to load the deployed Compass application. Run `bun cap:sync` for normal TestFlight and Play builds. This is the compatibility profile and must remain the default until the Field Mode backend ships with the web deployment.
 
-`allowNavigation` is the list of domains the WebView is permitted to navigate to. This matters because WorkOS SSO redirects the user through `authkit.workos.com` and potentially through Google or Microsoft login pages. If a domain isn't in this list, the WebView will block the navigation and auth will fail silently. If you add a new SSO provider, add its domain here.
+Setting `COMPASS_MOBILE_SHELL=field` selects `webDir: "mobile-shell"`, which points Capacitor at the output of `bun run mobile:build`. `bun run cap:sync:field` performs both steps. Omitting `server.url` is intentional in that profile: Capacitor opens the bundled `index.html` even when the device has no service. The shell checks `/api/mobile/health` and navigates to `/dashboard/field` when Compass is available.
+
+The live and bundled surfaces share a versioned storage contract. Preferences stores active-project packets and queued daily logs/chat messages. Filesystem stores saved construction documents and photo payloads. Stored documents include source file IDs and MIME types; local copies are disposable and Google Drive remains the source of truth.
+
+`allowNavigation` is the list of domains the WebView is permitted to navigate to after leaving the bundled shell. This matters because Compass and WorkOS SSO redirect through the listed domains. If a new SSO provider is added, add its domain here.
 
 
 ## iOS specifics
@@ -176,7 +179,7 @@ For TestFlight / App Store distribution:
 {
   "applinks": {
     "details": [{
-      "appID": "ABC123DEF.ltd.openrangeconstruction.compass",
+      "appID": "78SM7S793Z.com.hpscolorado.compass",
       "paths": ["/dashboard/*"]
     }]
   }
@@ -228,7 +231,7 @@ Unlike iOS, Android permissions are declared in the manifest *and* requested at 
 Android push notifications go through Firebase Cloud Messaging, even if they originate from APNs on the backend.
 
 1. Create a Firebase project at console.firebase.google.com
-2. Add an Android app with package name `ltd.openrangeconstruction.compass`
+2. Add an Android app with package name `com.hpscolorado.compass`
 3. Download `google-services.json` and place it at `android/app/google-services.json`
 4. The `classpath 'com.google.gms:google-services'` line needs to be added to `android/build.gradle`
 5. Add `apply plugin: 'com.google.gms.google-services'` at the bottom of `android/app/build.gradle`
@@ -401,7 +404,7 @@ This distinction matters for release planning. Web changes can ship immediately.
 
 **Account setup:**
 - Enroll at developer.apple.com ($99/year)
-- Create an App ID: `ltd.openrangeconstruction.compass`
+- Create an App ID: `com.hpscolorado.compass`
 - Create provisioning profiles for development and distribution
 - Create an APNs authentication key
 

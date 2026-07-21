@@ -1,4 +1,4 @@
-package ltd.openrangeconstruction.compass;
+package com.hpscolorado.compass;
 
 import com.getcapacitor.BridgeActivity;
 
