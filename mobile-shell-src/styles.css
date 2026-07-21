@@ -173,6 +173,8 @@ button { cursor: pointer; }
 .direct-thread > summary { display: flex; min-height: 48px; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 0; cursor: pointer; font-weight: 800; }
 .direct-thread > summary strong { color: var(--green); font-size: 12px; }
 .direct-thread-messages { padding: 4px 0 12px; border-top: 1px solid var(--line); }
+.direct-reply-form { display: grid; gap: 10px; padding: 0 0 16px; }
+.direct-reply-form textarea { width: 100%; min-height: 76px; border: 1px solid #aeb8b1; border-radius: 3px; padding: 10px; }
 .message { padding: 14px 0; border-bottom: 1px solid var(--line); }
 .message-meta { display: flex; justify-content: space-between; gap: 12px; font-size: 12px; }
 .message-author { font-weight: 800; }

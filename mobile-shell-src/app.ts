@@ -234,6 +234,11 @@ function directMessageView(): string {
       return `<details class="direct-thread" ${index === 0 ? "open" : ""}>
         <summary><span>${escapeHtml(conversation.name)}</span>${conversation.unreadCount > 0 ? `<strong>${conversation.unreadCount} new</strong>` : ""}</summary>
         <div class="direct-thread-messages">${messageRows || empty("No messages in this conversation.")}</div>
+        <form class="direct-reply-form" data-direct-channel-id="${escapeHtml(conversation.id)}">
+          <div class="keyboard-toolbar"><span>Private reply</span><button data-keyboard-done type="button">Done</button></div>
+          <textarea name="content" required placeholder="Reply privately"></textarea>
+          <button class="primary" type="submit">Save reply for sync</button>
+        </form>
       </details>`
     })
     .join("")
@@ -353,7 +358,7 @@ function bindEvents(): void {
   document.querySelector<HTMLButtonElement>("[data-auth-email]")?.addEventListener("click", beginEmailCodeSignIn)
   document.querySelectorAll<HTMLButtonElement>("[data-notification-id]").forEach((button) => button.addEventListener("click", () => void openNotification(button)))
   document.querySelector<HTMLFormElement>("#daily-log-form")?.addEventListener("submit", (event) => void queueDailyLog(event))
-  const messageInputs = document.querySelectorAll<HTMLTextAreaElement>("#chat-form textarea, #direct-message-form textarea")
+  const messageInputs = document.querySelectorAll<HTMLTextAreaElement>("#chat-form textarea, #direct-message-form textarea, .direct-reply-form textarea")
   messageInputs.forEach((input) => input.addEventListener("focus", () => {
     document.body.classList.add("keyboard-open")
   }))
@@ -368,6 +373,7 @@ function bindEvents(): void {
   })
   document.querySelectorAll<HTMLButtonElement>("[data-remove-attachment]").forEach((button) => button.addEventListener("click", () => void removeDraftAttachment(button.dataset.removeAttachment ?? "")))
   document.querySelector<HTMLFormElement>("#chat-form")?.addEventListener("submit", (event) => void queueChat(event))
+  document.querySelectorAll<HTMLFormElement>(".direct-reply-form").forEach((form) => form.addEventListener("submit", (event) => void queueDirectReply(event)))
   document.querySelector<HTMLButtonElement>("#start-project-channel")?.addEventListener("click", () => void startProjectChannel())
   document.querySelector<HTMLButtonElement>("#refresh-project-messages")?.addEventListener("click", () => void refreshProjectPacket())
   document.querySelector<HTMLFormElement>("#direct-message-form")?.addEventListener("submit", (event) => void sendDirectMessage(event))
@@ -532,6 +538,26 @@ async function queueChat(event: SubmitEvent): Promise<void> {
   await writeJson(OUTBOX_KEY, outbox)
   formElement.reset()
   render()
+}
+
+async function queueDirectReply(event: SubmitEvent): Promise<void> {
+  event.preventDefault()
+  if (!packet || !(event.currentTarget instanceof HTMLFormElement)) return
+  const formElement = event.currentTarget
+  const channelId = formElement.dataset.directChannelId ?? ""
+  const content = String(new FormData(formElement).get("content") ?? "").trim()
+  if (!channelId || !content) return
+  outbox.push({
+    id: crypto.randomUUID(),
+    kind: "chat_message",
+    projectId: packet.project.id,
+    createdAt: new Date().toISOString(),
+    payload: { channelId, content },
+  })
+  await writeJson(OUTBOX_KEY, outbox)
+  formElement.reset()
+  render()
+  resumePendingSync()
 }
 
 function responseData(value: unknown): unknown {
