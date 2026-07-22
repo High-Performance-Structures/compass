@@ -17,6 +17,22 @@ declare module "frappe-gantt" {
     padding?: number
     today_button?: boolean
     scroll_to?: string
+    view_modes?: Array<{
+      name: string
+      padding: string
+      step: string
+      date_format: string
+      column_width?: number
+      lower_text:
+        | string
+        | ((date: Date, lastDate: Date | null, language: string) => string)
+      upper_text:
+        | string
+        | ((date: Date, lastDate: Date | null, language: string) => string)
+      upper_text_frequency?: number
+      thick_line?: (date: Date) => boolean
+      snap_at?: string
+    }>
     on_date_change?: (
       task: { id: string },
       start: Date,

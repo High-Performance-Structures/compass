@@ -17,6 +17,10 @@ import {
   getProjectTaskAssigneeOptions,
   type ProjectTaskAssigneeOption,
 } from "@/app/actions/project-contacts";
+import {
+  getScheduleAssigneeOptions,
+  type ScheduleAssigneeOption,
+} from "@/app/actions/schedule-assignees";
 import { ScheduleView } from "@/components/schedule/schedule-view";
 import type { ScheduleData, ScheduleBaselineData } from "@/lib/schedule/types";
 import { IconArchive, IconExternalLink } from "@tabler/icons-react";
@@ -43,6 +47,7 @@ export default async function SchedulePage({
   let allProjects: readonly ScheduleProjectOption[] = [];
   let archivedSchedule: readonly ProjectScheduleArchiveItem[] = [];
   let taskAssigneeOptions: readonly ProjectTaskAssigneeOption[] = [];
+  let scheduleAssigneeOptions: readonly ScheduleAssigneeOption[] = [];
 
   try {
     const { env } = await getCloudflareContext();
@@ -64,12 +69,14 @@ export default async function SchedulePage({
       projectResult,
       archiveResult,
       assigneeResult,
+      scheduleAssigneeResult,
     ] = await Promise.allSettled([
       getSchedule(id),
       getBaselines(id),
       getScheduleProjectOptions(),
       getProjectScheduleArchive(id),
       getProjectTaskAssigneeOptions(id),
+      getScheduleAssigneeOptions(id),
     ]);
 
     if (scheduleResult.status === "fulfilled") {
@@ -99,6 +106,14 @@ export default async function SchedulePage({
       ];
     } else {
       console.error("Failed to load schedule assignees", assigneeResult.reason);
+    }
+    if (scheduleAssigneeResult.status === "fulfilled") {
+      scheduleAssigneeOptions = scheduleAssigneeResult.value;
+    } else {
+      console.error(
+        "Failed to load the schedule contact directory",
+        scheduleAssigneeResult.reason,
+      );
     }
   } catch (e: unknown) {
     if (
@@ -158,6 +173,7 @@ export default async function SchedulePage({
         baselines={baselines}
         allProjects={allProjects}
         taskAssigneeOptions={taskAssigneeOptions}
+        scheduleAssigneeOptions={scheduleAssigneeOptions}
         linkedScheduleTaskId={linkedScheduleTaskId ?? null}
       />
     </div>

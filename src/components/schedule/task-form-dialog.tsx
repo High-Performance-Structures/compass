@@ -64,6 +64,8 @@ import { toast } from "sonner"
 import { cn } from "@/lib/utils"
 import { ProjectTaskCreateButton } from "@/components/projects/project-task-create-button"
 import type { ProjectTaskAssigneeOption } from "@/app/actions/project-contacts"
+import type { ScheduleAssigneeOption } from "@/app/actions/schedule-assignees"
+import { ScheduleAssigneeCombobox } from "./schedule-assignee-combobox"
 
 const phases = PHASE_ORDER.map((value) => ({
   value,
@@ -99,6 +101,7 @@ interface TaskFormDialogProps {
   allTasks?: readonly ScheduleTaskData[]
   dependencies?: readonly TaskDependencyData[]
   assigneeOptions?: readonly ProjectTaskAssigneeOption[]
+  scheduleAssigneeOptions?: readonly ScheduleAssigneeOption[]
 }
 
 interface PendingPredecessor {
@@ -115,6 +118,7 @@ export function TaskFormDialog({
   allTasks = [],
   dependencies = [],
   assigneeOptions = [],
+  scheduleAssigneeOptions = [],
 }: TaskFormDialogProps) {
   const router = useRouter()
   const isEditing = !!editingTask
@@ -122,6 +126,9 @@ export function TaskFormDialog({
   const [pendingPredecessors, setPendingPredecessors] = useState<
     PendingPredecessor[]
   >([])
+  const [selectedAssigneeId, setSelectedAssigneeId] = useState<string | null>(
+    null
+  )
 
   const existingPredecessors = useMemo(() => {
     if (!editingTask) return []
@@ -148,6 +155,14 @@ export function TaskFormDialog({
   })
 
   useEffect(() => {
+    const assignedName = editingTask?.assignedTo?.trim().toLowerCase() ?? ""
+    const matchingAssignee = assignedName
+      ? scheduleAssigneeOptions.find(
+          (option) => option.name.trim().toLowerCase() === assignedName
+        ) ?? null
+      : null
+    setSelectedAssigneeId(matchingAssignee?.id ?? null)
+
     if (editingTask) {
       form.reset({
         title: editingTask.title,
@@ -183,7 +198,7 @@ export function TaskFormDialog({
         lagDays: dependency.lagDays,
       }))
     )
-  }, [editingTask, existingPredecessors, form])
+  }, [editingTask, existingPredecessors, form, scheduleAssigneeOptions])
 
   const watchedStart = form.watch("startDate")
   const watchedWorkdays = form.watch("workdays")
@@ -204,6 +219,11 @@ export function TaskFormDialog({
       return
     }
 
+    const selectedAssignee = selectedAssigneeId
+      ? scheduleAssigneeOptions.find(
+          (option) => option.id === selectedAssigneeId
+        ) ?? null
+      : null
     const result = await saveScheduleTask(projectId, {
       taskId: editingTask?.id ?? null,
       title: values.title,
@@ -214,6 +234,12 @@ export function TaskFormDialog({
       isMilestone: values.isMilestone,
       percentComplete: values.percentComplete,
       assignedTo: values.assignedTo || null,
+      assigneeReference: selectedAssignee
+        ? {
+            source: selectedAssignee.source,
+            sourceId: selectedAssignee.sourceId,
+          }
+        : null,
       predecessors: pendingPredecessors.map((predecessor) => ({
         predecessorId: predecessor.taskId,
         type: predecessor.type,
@@ -459,10 +485,14 @@ export function TaskFormDialog({
                             Assignee
                           </FormLabel>
                           <FormControl>
-                            <Input
-                              placeholder="Name or team"
-                              className="h-9"
-                              {...field}
+                            <ScheduleAssigneeCombobox
+                              value={field.value}
+                              selectedOptionId={selectedAssigneeId}
+                              options={scheduleAssigneeOptions}
+                              onChange={(name, optionId) => {
+                                field.onChange(name)
+                                setSelectedAssigneeId(optionId)
+                              }}
                             />
                           </FormControl>
                         </FormItem>

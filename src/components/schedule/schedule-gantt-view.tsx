@@ -15,6 +15,14 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuLabel,
+  ContextMenuSeparator,
+  ContextMenuTrigger,
+} from "@/components/ui/context-menu"
+import {
   Table,
   TableBody,
   TableCell,
@@ -61,6 +69,7 @@ import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import { format } from "date-fns"
 import type { ProjectTaskAssigneeOption } from "@/app/actions/project-contacts"
+import type { ScheduleAssigneeOption } from "@/app/actions/schedule-assignees"
 import {
   DEFAULT_SCHEDULE_COLOR_PREFERENCES,
   SCHEDULE_COLOR_PALETTES,
@@ -84,6 +93,7 @@ interface ScheduleGanttViewProps {
   readonly baselineTasks?: readonly GanttBaselineTask[]
   readonly baselineName?: string | null
   readonly taskAssigneeOptions?: readonly ProjectTaskAssigneeOption[]
+  readonly scheduleAssigneeOptions?: readonly ScheduleAssigneeOption[]
 }
 
 export function ScheduleGanttView({
@@ -94,6 +104,7 @@ export function ScheduleGanttView({
   baselineTasks = [],
   baselineName = null,
   taskAssigneeOptions = [],
+  scheduleAssigneeOptions = [],
 }: ScheduleGanttViewProps) {
   const router = useRouter()
   const isMobile = useIsMobile()
@@ -107,6 +118,8 @@ export function ScheduleGanttView({
   const [editingTask, setEditingTask] = useState<ScheduleTaskData | null>(
     null
   )
+  const [contextTask, setContextTask] = useState<ScheduleTaskData | null>(null)
+  const [focusedTaskId, setFocusedTaskId] = useState<string | null>(null)
   const [mobileView, setMobileView] = useState<"tasks" | "chart">("chart")
   const [panMode] = useState(false)
   const taskListRef = useRef<HTMLDivElement>(null)
@@ -286,7 +299,7 @@ export function ScheduleGanttView({
     [rememberScrollPosition]
   )
 
-  const handleTaskClick = useCallback(
+  const openTaskEditor = useCallback(
     (task: FrappeTask) => {
       const scheduleTask = tasks.find((item) => item.id === task.id)
       if (!scheduleTask) return
@@ -295,6 +308,42 @@ export function ScheduleGanttView({
     },
     [tasks]
   )
+
+  const handleTaskContextMenu = useCallback(
+    (task: FrappeTask) => {
+      const scheduleTask = tasks.find((item) => item.id === task.id)
+      setContextTask(scheduleTask ?? null)
+    },
+    [tasks]
+  )
+
+  const focusTaskOnTimeline = useCallback((task: ScheduleTaskData) => {
+    const container = ganttContainerRef.current
+    if (!container) return
+    const wrapper = container.querySelector<SVGGElement>(
+      `.bar-wrapper[data-id="${CSS.escape(task.id)}"]`
+    )
+    const bar = wrapper?.querySelector<SVGRectElement>(".bar")
+    if (!wrapper || !bar) return
+
+    container
+      .querySelectorAll(".bar-wrapper.schedule-focused")
+      .forEach((element) => element.classList.remove("schedule-focused"))
+    wrapper.classList.add("schedule-focused")
+
+    const x = Number(bar.getAttribute("x") ?? 0)
+    const width = Number(bar.getAttribute("width") ?? 0)
+    const y = Number(bar.getAttribute("y") ?? 0)
+    const height = Number(bar.getAttribute("height") ?? 0)
+    const left = x + width / 2 - container.clientWidth / 2
+    const top = y + height / 2 - container.clientHeight / 2
+    container.scrollTo({
+      left: Math.max(0, Math.min(left, container.scrollWidth - container.clientWidth)),
+      top: Math.max(0, Math.min(top, container.scrollHeight - container.clientHeight)),
+      behavior: "smooth",
+    })
+    setFocusedTaskId(task.id)
+  }, [])
 
   const filteredTasks = useMemo(
     () => (showCriticalPath ? tasks.filter((task) => task.isCriticalPath) : tasks),
@@ -443,7 +492,16 @@ export function ScheduleGanttView({
 
           const { task } = item
           return (
-            <TableRow key={task.id} className="h-[48px] max-h-[48px]">
+            <TableRow
+              key={task.id}
+              data-schedule-task-id={task.id}
+              className={cn(
+                "h-[48px] max-h-[48px] cursor-pointer",
+                focusedTaskId === task.id && "bg-accent"
+              )}
+              onClick={() => focusTaskOnTimeline(task)}
+              title="Show this item on the timeline"
+            >
               <TableCell className="h-[48px] py-0 text-xs truncate max-w-[140px]">
                 <span className={phaseGrouping ? "pl-4" : ""}>
                   {task.title}
@@ -460,7 +518,9 @@ export function ScheduleGanttView({
                   variant="ghost"
                   size="icon"
                   className="size-6"
-                  onClick={() => {
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    setFocusedTaskId(task.id)
                     setEditingTask(task)
                     setTaskFormOpen(true)
                   }}
@@ -678,22 +738,45 @@ export function ScheduleGanttView({
               {taskTable}
             </div>
           ) : (
-            <div className="min-w-0 flex-1 min-h-0 overflow-hidden border">
-              <GanttChart
-                tasks={frappeTasks}
-                viewMode={viewMode}
-                columnWidth={columnWidth}
-                panMode={panMode}
-                onDateChange={handleDateChange}
-                onZoom={handleZoom}
-                onTaskClick={handleTaskClick}
-                onContainerReady={restoreScrollPosition}
-                onScrollPositionChange={handleGanttScroll}
-                onTodayScrollReady={handleTodayScrollReady}
-                onDateScrollReady={handleDateScrollReady}
-                baselineTasks={baselineTasks}
-              />
-            </div>
+            <ContextMenu>
+              <ContextMenuTrigger asChild>
+                <div className="min-w-0 flex-1 min-h-0 overflow-hidden border">
+                  <GanttChart
+                    tasks={frappeTasks}
+                    viewMode={viewMode}
+                    columnWidth={columnWidth}
+                    panMode={panMode}
+                    onDateChange={handleDateChange}
+                    onZoom={handleZoom}
+                    onTaskClick={openTaskEditor}
+                    onTaskDoubleClick={openTaskEditor}
+                    onTaskContextMenu={handleTaskContextMenu}
+                    onContainerReady={restoreScrollPosition}
+                    onScrollPositionChange={handleGanttScroll}
+                    onTodayScrollReady={handleTodayScrollReady}
+                    onDateScrollReady={handleDateScrollReady}
+                    baselineTasks={baselineTasks}
+                  />
+                </div>
+              </ContextMenuTrigger>
+              <ContextMenuContent>
+                <ContextMenuLabel className="max-w-64 truncate">
+                  {contextTask?.title ?? "Schedule item"}
+                </ContextMenuLabel>
+                <ContextMenuSeparator />
+                <ContextMenuItem
+                  disabled={!contextTask}
+                  onSelect={() => {
+                    if (!contextTask) return
+                    setEditingTask(contextTask)
+                    setTaskFormOpen(true)
+                  }}
+                >
+                  <IconPencil className="size-4" />
+                  Edit schedule item
+                </ContextMenuItem>
+              </ContextMenuContent>
+            </ContextMenu>
           )}
         </div>
       ) : (
@@ -714,22 +797,45 @@ export function ScheduleGanttView({
           <ResizableHandle withHandle />
 
           <ResizablePanel defaultSize={70} minSize={40}>
-            <div className="h-full min-w-0 overflow-hidden">
-              <GanttChart
-                tasks={frappeTasks}
-                viewMode={viewMode}
-                columnWidth={columnWidth}
-                panMode={panMode}
-                onDateChange={handleDateChange}
-                onZoom={handleZoom}
-                onTaskClick={handleTaskClick}
-                onContainerReady={restoreScrollPosition}
-                onScrollPositionChange={handleGanttScroll}
-                onTodayScrollReady={handleTodayScrollReady}
-                onDateScrollReady={handleDateScrollReady}
-                baselineTasks={baselineTasks}
-              />
-            </div>
+            <ContextMenu>
+              <ContextMenuTrigger asChild>
+                <div className="h-full min-w-0 overflow-hidden">
+                  <GanttChart
+                    tasks={frappeTasks}
+                    viewMode={viewMode}
+                    columnWidth={columnWidth}
+                    panMode={panMode}
+                    onDateChange={handleDateChange}
+                    onZoom={handleZoom}
+                    onTaskClick={openTaskEditor}
+                    onTaskDoubleClick={openTaskEditor}
+                    onTaskContextMenu={handleTaskContextMenu}
+                    onContainerReady={restoreScrollPosition}
+                    onScrollPositionChange={handleGanttScroll}
+                    onTodayScrollReady={handleTodayScrollReady}
+                    onDateScrollReady={handleDateScrollReady}
+                    baselineTasks={baselineTasks}
+                  />
+                </div>
+              </ContextMenuTrigger>
+              <ContextMenuContent>
+                <ContextMenuLabel className="max-w-64 truncate">
+                  {contextTask?.title ?? "Schedule item"}
+                </ContextMenuLabel>
+                <ContextMenuSeparator />
+                <ContextMenuItem
+                  disabled={!contextTask}
+                  onSelect={() => {
+                    if (!contextTask) return
+                    setEditingTask(contextTask)
+                    setTaskFormOpen(true)
+                  }}
+                >
+                  <IconPencil className="size-4" />
+                  Edit schedule item
+                </ContextMenuItem>
+              </ContextMenuContent>
+            </ContextMenu>
           </ResizablePanel>
         </ResizablePanelGroup>
       )}
@@ -742,6 +848,7 @@ export function ScheduleGanttView({
         allTasks={tasks}
         dependencies={dependencies}
         assigneeOptions={taskAssigneeOptions}
+        scheduleAssigneeOptions={scheduleAssigneeOptions}
       />
     </div>
   )

@@ -71,6 +71,7 @@ import { TaskFormDialog } from "./task-form-dialog"
 import { ProjectQuickSwitcher } from "@/components/projects/project-quick-switcher"
 import type { ScheduleProjectOption } from "@/app/actions/schedule"
 import type { ProjectTaskAssigneeOption } from "@/app/actions/project-contacts"
+import type { ScheduleAssigneeOption } from "@/app/actions/schedule-assignees"
 import type {
   ScheduleData,
   ScheduleBaselineData,
@@ -102,6 +103,7 @@ interface ScheduleViewProps {
   readonly baselines: ScheduleBaselineData[]
   readonly allProjects?: readonly ScheduleProjectOption[]
   readonly taskAssigneeOptions?: readonly ProjectTaskAssigneeOption[]
+  readonly scheduleAssigneeOptions?: readonly ScheduleAssigneeOption[]
   readonly linkedScheduleTaskId?: string | null
 }
 
@@ -112,6 +114,7 @@ export function ScheduleView({
   baselines,
   allProjects = [],
   taskAssigneeOptions = [],
+  scheduleAssigneeOptions = [],
   linkedScheduleTaskId = null,
 }: ScheduleViewProps) {
   const isMobile = useIsMobile()
@@ -654,6 +657,7 @@ export function ScheduleView({
             tasks={filteredTasks}
             dependencies={initialData.dependencies}
             taskAssigneeOptions={taskAssigneeOptions}
+            scheduleAssigneeOptions={scheduleAssigneeOptions}
           />
         )}
         {view === "gantt" && (
@@ -665,6 +669,7 @@ export function ScheduleView({
             baselineTasks={baselineTasks}
             baselineName={selectedBaseline?.name ?? null}
             taskAssigneeOptions={taskAssigneeOptions}
+            scheduleAssigneeOptions={scheduleAssigneeOptions}
           />
         )}
       </div>
@@ -678,6 +683,7 @@ export function ScheduleView({
         allTasks={initialData.tasks}
         dependencies={initialData.dependencies}
         assigneeOptions={taskAssigneeOptions}
+        scheduleAssigneeOptions={scheduleAssigneeOptions}
       />
 
       {/* Import dialog */}

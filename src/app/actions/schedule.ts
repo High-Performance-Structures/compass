@@ -25,6 +25,10 @@ import { isDemoUser } from "@/lib/demo";
 import { assertProjectAccess } from "@/lib/project-access";
 import { canUseOrganizationProjectScopeRole } from "@/lib/user-roles";
 import { normalizeWorkdayExceptionType } from "@/lib/schedule/types";
+import {
+  grantScheduleAssigneeProjectAccess,
+  type ScheduleAssigneeReference,
+} from "@/app/actions/schedule-assignees";
 import type {
   TaskStatus,
   DependencyType,
@@ -212,7 +216,8 @@ async function persistDateUpdates(
 ): Promise<void> {
   if (updates.size === 0) return;
   const updatedAt = new Date().toISOString();
-  await database.batch(
+  await executePreparedInBatches(
+    database,
     Array.from(updates, ([id, dates]) =>
       database
         .prepare(
@@ -221,6 +226,17 @@ async function persistDateUpdates(
         .bind(dates.startDate, dates.endDateCalculated, updatedAt, id),
     ),
   );
+}
+
+const D1_BATCH_SIZE = 80;
+
+async function executePreparedInBatches(
+  database: D1Database,
+  statements: readonly ReturnType<D1Database["prepare"]>[],
+): Promise<void> {
+  for (let index = 0; index < statements.length; index += D1_BATCH_SIZE) {
+    await database.batch(statements.slice(index, index + D1_BATCH_SIZE));
+  }
 }
 
 export type ScheduleTaskPredecessorInput = {
@@ -239,6 +255,7 @@ export type SaveScheduleTaskInput = {
   readonly isMilestone: boolean;
   readonly percentComplete: number;
   readonly assignedTo: string | null;
+  readonly assigneeReference: ScheduleAssigneeReference | null;
   readonly predecessors: readonly ScheduleTaskPredecessorInput[];
 };
 
@@ -258,6 +275,16 @@ export async function saveScheduleTask(
     const { env } = await getCloudflareContext();
     const db = getDb(env.DB);
     await assertProjectAccess(db, user, projectId);
+
+    if (input.assigneeReference) {
+      const accessResult = await grantScheduleAssigneeProjectAccess({
+        db,
+        projectId,
+        organizationId: requireOrg(user),
+        reference: input.assigneeReference,
+      });
+      if (!accessResult.success) return accessResult;
+    }
 
     const schedule = await fetchScheduleData(db, projectId);
     const now = new Date().toISOString();
@@ -435,7 +462,7 @@ export async function saveScheduleTask(
       );
     }
 
-    await env.DB.batch(statements);
+    await executePreparedInBatches(env.DB, statements);
     await recalcCriticalPath(db, env.DB, projectId);
     revalidatePath(`/dashboard/projects/${projectId}/schedule`);
     return { success: true, taskId };
@@ -925,13 +952,16 @@ async function recalcCriticalPath(
     .where(eq(scheduleTasks.projectId, projectId));
 
   const taskIds = tasks.map((task) => task.id);
-  const deps =
-    taskIds.length > 0
-      ? await db
-          .select()
-          .from(taskDependencies)
-          .where(inArray(taskDependencies.predecessorId, taskIds))
-      : [];
+  const deps: (typeof taskDependencies.$inferSelect)[] = [];
+  for (let index = 0; index < taskIds.length; index += D1_BATCH_SIZE) {
+    const predecessorIds = taskIds.slice(index, index + D1_BATCH_SIZE);
+    deps.push(
+      ...(await db
+        .select()
+        .from(taskDependencies)
+        .where(inArray(taskDependencies.predecessorId, predecessorIds))),
+    );
+  }
   const taskIdSet = new Set(taskIds);
   const projectDeps = deps.filter(
     (dependency) => taskIdSet.has(dependency.successorId),
@@ -946,7 +976,8 @@ async function recalcCriticalPath(
     (task) => task.isCriticalPath !== criticalSet.has(task.id),
   );
   if (changedTasks.length === 0) return;
-  await database.batch(
+  await executePreparedInBatches(
+    database,
     changedTasks.map((task) =>
       database
         .prepare(

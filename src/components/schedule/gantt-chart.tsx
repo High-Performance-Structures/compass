@@ -20,6 +20,8 @@ interface GanttChartProps {
   onProgressChange?: (task: FrappeTask, progress: number) => void
   onZoom?: (direction: "in" | "out") => void
   onTaskClick?: (task: FrappeTask) => void
+  onTaskDoubleClick?: (task: FrappeTask) => void
+  onTaskContextMenu?: (task: FrappeTask) => void
   onContainerReady?: (container: HTMLElement | null) => void
   onScrollPositionChange?: (position: GanttScrollPosition) => void
   onTodayScrollReady?: (handler: (() => void) | null) => void
@@ -83,6 +85,80 @@ function dateKey(date: Date): string {
   const day = String(date.getDate()).padStart(2, "0")
   return `${year}-${month}-${day}`
 }
+
+function monthYear(date: Date): string {
+  return new Intl.DateTimeFormat("en-US", {
+    month: "long",
+    year: "numeric",
+  }).format(date)
+}
+
+function shortMonthYear(date: Date): string {
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    year: "numeric",
+  }).format(date)
+}
+
+function weekRange(date: Date): string {
+  const end = new Date(date)
+  end.setDate(end.getDate() + 6)
+  const startText = new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+  }).format(date)
+  const endText = new Intl.DateTimeFormat("en-US", {
+    month: end.getMonth() === date.getMonth() ? undefined : "short",
+    day: "numeric",
+  }).format(end)
+  return `${startText} - ${endText}`
+}
+
+const COMPASS_GANTT_VIEW_MODES = [
+  {
+    name: "Day",
+    padding: "7d",
+    step: "1d",
+    date_format: "YYYY-MM-DD",
+    lower_text: (date: Date): string => String(date.getDate()),
+    upper_text: (date: Date, lastDate: Date | null): string =>
+      !lastDate ||
+      date.getMonth() !== lastDate.getMonth() ||
+      date.getFullYear() !== lastDate.getFullYear()
+        ? monthYear(date)
+        : "",
+    thick_line: (date: Date): boolean => date.getDay() === 1,
+  },
+  {
+    name: "Week",
+    padding: "1m",
+    step: "7d",
+    date_format: "YYYY-MM-DD",
+    column_width: 140,
+    lower_text: (date: Date): string => weekRange(date),
+    upper_text: (date: Date, lastDate: Date | null): string =>
+      !lastDate ||
+      date.getMonth() !== lastDate.getMonth() ||
+      date.getFullYear() !== lastDate.getFullYear()
+        ? monthYear(date)
+        : "",
+    thick_line: (date: Date): boolean => date.getDate() >= 1 && date.getDate() <= 7,
+    upper_text_frequency: 4,
+  },
+  {
+    name: "Month",
+    padding: "2m",
+    step: "1m",
+    column_width: 120,
+    date_format: "YYYY-MM",
+    lower_text: (date: Date): string => shortMonthYear(date),
+    upper_text: "",
+    thick_line: (date: Date): boolean => date.getMonth() % 3 === 0,
+    snap_at: "7d",
+  },
+] satisfies NonNullable<
+  ConstructorParameters<typeof FrappeGantt>[2]
+>["view_modes"]
 
 function baselineWidth(
   start: Date,
@@ -167,6 +243,8 @@ export function GanttChart({
   onProgressChange,
   onZoom,
   onTaskClick,
+  onTaskDoubleClick,
+  onTaskContextMenu,
   onContainerReady,
   onScrollPositionChange,
   onTodayScrollReady,
@@ -208,6 +286,8 @@ export function GanttChart({
     onDateChange,
     onProgressChange,
     onTaskClick,
+    onTaskDoubleClick,
+    onTaskContextMenu,
     onContainerReady,
     onScrollPositionChange,
     onTodayScrollReady,
@@ -217,11 +297,37 @@ export function GanttChart({
     onDateChange,
     onProgressChange,
     onTaskClick,
+    onTaskDoubleClick,
+    onTaskContextMenu,
     onContainerReady,
     onScrollPositionChange,
     onTodayScrollReady,
     onDateScrollReady,
   }
+
+  const taskForEventTarget = useCallback((target: EventTarget): FrappeTask | null => {
+    if (!(target instanceof Element)) return null
+    const barWrapper = target.closest<SVGGElement>(".bar-wrapper[data-id]")
+    const taskId = barWrapper?.dataset.id
+    if (!taskId || taskId.startsWith("phase-")) return null
+    return latestTasksRef.current.find((task) => task.id === taskId) ?? null
+  }, [])
+
+  const handleDoubleClick = useCallback(
+    (event: React.MouseEvent<HTMLDivElement>) => {
+      const task = taskForEventTarget(event.target)
+      if (task) callbackRefs.current.onTaskDoubleClick?.(task)
+    },
+    [taskForEventTarget]
+  )
+
+  const handleContextMenu = useCallback(
+    (event: React.MouseEvent<HTMLDivElement>) => {
+      const task = taskForEventTarget(event.target)
+      if (task) callbackRefs.current.onTaskContextMenu?.(task)
+    },
+    [taskForEventTarget]
+  )
 
   // pan state - scrolls the .gantt-container directly
   const isPanning = useRef(false)
@@ -321,6 +427,7 @@ export function GanttChart({
 
       const gantt = new Gantt(containerRef.current, ganttTasks, {
         view_mode: viewMode,
+        view_modes: COMPASS_GANTT_VIEW_MODES,
         ...(columnWidth ? { column_width: columnWidth } : {}),
         infinite_padding: false,
         bar_height: 28,
@@ -440,6 +547,8 @@ export function GanttChart({
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}
       onMouseLeave={handleMouseUp}
+      onDoubleClick={handleDoubleClick}
+      onContextMenu={handleContextMenu}
     >
       <div ref={containerRef} className="h-full" />
     </div>
