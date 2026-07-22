@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest"
 import {
   enforceDependencyDates,
   enforceDependencyDatesFrom,
+  lagDaysForStartDate,
 } from "@/lib/schedule/propagate-dates"
 import type {
   DependencyType,
@@ -88,6 +89,54 @@ describe("schedule dependency enforcement", () => {
     )
 
     expect(result.updatedTasks.get("successor")?.startDate).toBe("2026-07-23")
+  })
+
+  it("derives finish-to-start lag from a manually entered start date", () => {
+    const predecessor = task(
+      "predecessor",
+      "2026-07-27",
+      "2026-07-29",
+      3
+    )
+    const successor = task("successor", "2026-08-10", "2026-08-14")
+
+    const lagDays = lagDaysForStartDate(
+      predecessor,
+      successor,
+      "FS",
+      successor.startDate
+    )
+    const result = enforceDependencyDates(
+      [predecessor, successor],
+      [dependency("link", predecessor.id, successor.id, "FS", lagDays)]
+    )
+
+    expect(lagDays).toBe(7)
+    expect(result.updatedTasks.has(successor.id)).toBe(false)
+  })
+
+  it("derives finish-to-finish lag while preserving the chosen duration", () => {
+    const predecessor = task(
+      "predecessor",
+      "2026-07-27",
+      "2026-07-31",
+      5
+    )
+    const successor = task("successor", "2026-08-10", "2026-08-12", 3)
+
+    const lagDays = lagDaysForStartDate(
+      predecessor,
+      successor,
+      "FF",
+      successor.startDate
+    )
+    const result = enforceDependencyDates(
+      [predecessor, successor],
+      [dependency("link", predecessor.id, successor.id, "FF", lagDays)]
+    )
+
+    expect(lagDays).toBe(8)
+    expect(result.updatedTasks.has(successor.id)).toBe(false)
   })
 
   it("chooses the controlling date across mixed dependency types", () => {

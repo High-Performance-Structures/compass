@@ -5,6 +5,7 @@ import type {
 } from "./types"
 import {
   addBusinessDays,
+  businessDayOffset,
   calculateEndDate,
   calculateStartDate,
 } from "./business-days"
@@ -50,6 +51,44 @@ function requiredStartDate(
     predecessor.endDateCalculated,
     1 + dependency.lagDays,
     exceptions
+  )
+}
+
+export function lagDaysForStartDate(
+  predecessor: ScheduleTaskData,
+  successor: ScheduleTaskData,
+  dependencyType: TaskDependencyData["type"],
+  startDate: string,
+  exceptions: WorkdayExceptionData[] = []
+): number {
+  if (dependencyType === "SS") {
+    return businessDayOffset(predecessor.startDate, startDate, exceptions)
+  }
+
+  const successorEnd = calculateEndDate(
+    startDate,
+    successor.workdays,
+    exceptions
+  )
+
+  if (dependencyType === "FF") {
+    return businessDayOffset(
+      predecessor.endDateCalculated,
+      successorEnd,
+      exceptions
+    )
+  }
+
+  if (dependencyType === "SF") {
+    return businessDayOffset(predecessor.startDate, successorEnd, exceptions)
+  }
+
+  return (
+    businessDayOffset(
+      predecessor.endDateCalculated,
+      startDate,
+      exceptions
+    ) - 1
   )
 }
 

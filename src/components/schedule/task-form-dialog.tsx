@@ -21,19 +21,12 @@ import {
 } from "@/components/ui/form"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
-import { Calendar } from "@/components/ui/calendar"
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover"
 import {
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible"
 import {
-  IconCalendar,
   IconPlus,
   IconTrash,
   IconChevronDown,
@@ -236,6 +229,7 @@ export function TaskFormDialog({
             sourceId: selectedAssignee.sourceId,
           }
         : null,
+      preserveStartDate: true,
       predecessors: pendingPredecessors.map((predecessor) => ({
         predecessorId: predecessor.taskId,
         type: predecessor.type,
@@ -339,34 +333,13 @@ export function TaskFormDialog({
                       <FormLabel className="text-[11px] text-muted-foreground font-medium">
                         Start
                       </FormLabel>
-                      <Popover>
-                        <PopoverTrigger asChild>
-                          <FormControl>
-                            <Button
-                              variant="outline"
-                              className="w-full h-9 justify-start text-left font-normal text-sm"
-                            >
-                              <IconCalendar className="size-3.5 mr-1.5 text-muted-foreground shrink-0" />
-                              {field.value
-                                ? format(parseISO(field.value), "MMM d, yyyy")
-                                : "Pick date"}
-                            </Button>
-                          </FormControl>
-                        </PopoverTrigger>
-                        <PopoverContent className="w-auto p-0" align="start">
-                          <Calendar
-                            mode="single"
-                            selected={
-                              field.value ? parseISO(field.value) : undefined
-                            }
-                            onSelect={(date) => {
-                              if (date) {
-                                field.onChange(format(date, "yyyy-MM-dd"))
-                              }
-                            }}
-                          />
-                        </PopoverContent>
-                      </Popover>
+                      <FormControl>
+                        <Input
+                          type="date"
+                          className="h-9 text-sm"
+                          {...field}
+                        />
+                      </FormControl>
                       <FormMessage />
                     </FormItem>
                   )}
@@ -625,7 +598,8 @@ export function TaskFormDialog({
 
                     {pendingPredecessors.length > 0 && (
                       <p className="text-[11px] text-muted-foreground">
-                        Positive days add lag; negative days create lead time.
+                        The entered start date is retained. Compass adjusts lag
+                        or lead time to preserve it.
                       </p>
                     )}
 

@@ -107,3 +107,25 @@ export function addBusinessDays(
 
   return format(current, "yyyy-MM-dd")
 }
+
+export function businessDayOffset(
+  fromDate: string,
+  toDate: string,
+  exceptions: WorkdayExceptionData[] = []
+): number {
+  if (fromDate === toDate) return 0
+
+  let current = parseISO(fromDate)
+  const target = parseISO(toDate)
+  const direction = target > current ? 1 : -1
+  let offset = 0
+
+  while (direction > 0 ? current < target : current > target) {
+    current = addDays(current, direction)
+    if (!isNonWorkday(current, exceptions)) {
+      offset += direction
+    }
+  }
+
+  return offset
+}

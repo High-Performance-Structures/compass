@@ -17,6 +17,7 @@ import { findCriticalPath } from "@/lib/schedule/critical-path";
 import { wouldCreateCycle } from "@/lib/schedule/dependency-validation";
 import {
   enforceDependencyDatesFrom,
+  lagDaysForStartDate,
   propagateDates,
 } from "@/lib/schedule/propagate-dates";
 import { requireAuth } from "@/lib/auth";
@@ -256,6 +257,7 @@ export type SaveScheduleTaskInput = {
   readonly percentComplete: number;
   readonly assignedTo: string | null;
   readonly assigneeReference: ScheduleAssigneeReference | null;
+  readonly preserveStartDate: boolean;
   readonly predecessors: readonly ScheduleTaskPredecessorInput[];
 };
 
@@ -322,8 +324,10 @@ export async function saveScheduleTask(
     const dependenciesWithoutIncoming = schedule.dependencies.filter(
       (dependency) => dependency.successorId !== taskId,
     );
-    const nextDependencies: TaskDependencyData[] = [...dependenciesWithoutIncoming];
-    const dependencyRows = input.predecessors.map((predecessor) => ({
+    const dependenciesForCycleCheck: TaskDependencyData[] = [
+      ...dependenciesWithoutIncoming,
+    ];
+    const requestedDependencyRows = input.predecessors.map((predecessor) => ({
       id: crypto.randomUUID(),
       predecessorId: predecessor.predecessorId,
       successorId: taskId,
@@ -331,10 +335,10 @@ export async function saveScheduleTask(
       lagDays: Math.trunc(predecessor.lagDays),
     }));
 
-    for (const dependency of dependencyRows) {
+    for (const dependency of requestedDependencyRows) {
       if (
         wouldCreateCycle(
-          nextDependencies,
+          dependenciesForCycleCheck,
           dependency.predecessorId,
           dependency.successorId,
         )
@@ -344,7 +348,7 @@ export async function saveScheduleTask(
           error: "These predecessors would create a circular schedule",
         };
       }
-      nextDependencies.push(dependency);
+      dependenciesForCycleCheck.push(dependency);
     }
 
     const existingLastTask = schedule.tasks.at(-1);
@@ -370,6 +374,27 @@ export async function saveScheduleTask(
       createdAt: currentTask?.createdAt ?? now,
       updatedAt: now,
     };
+    const taskById = new Map(schedule.tasks.map((task) => [task.id, task]));
+    const dependencyRows = input.preserveStartDate
+      ? requestedDependencyRows.map((dependency) => {
+          const predecessor = taskById.get(dependency.predecessorId);
+          if (!predecessor) return dependency;
+          return {
+            ...dependency,
+            lagDays: lagDaysForStartDate(
+              predecessor,
+              savedTask,
+              dependency.type,
+              savedTask.startDate,
+              schedule.exceptions,
+            ),
+          };
+        })
+      : requestedDependencyRows;
+    const nextDependencies: TaskDependencyData[] = [
+      ...dependenciesWithoutIncoming,
+      ...dependencyRows,
+    ];
     const nextTasks = currentTask
       ? schedule.tasks.map((task) => (task.id === taskId ? savedTask : task))
       : [...schedule.tasks, savedTask];
