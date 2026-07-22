@@ -53,24 +53,19 @@ import { Button } from "@/components/ui/button"
 import { saveScheduleTask } from "@/app/actions/schedule"
 import { calculateEndDate } from "@/lib/schedule/business-days"
 import type {
+  SchedulePhaseOption,
   ScheduleTaskData,
   TaskDependencyData,
   DependencyType,
 } from "@/lib/schedule/types"
-import { PHASE_ORDER, PHASE_LABELS, getPhaseColor } from "@/lib/schedule/phase-colors"
 import { STATUS_OPTIONS } from "@/lib/schedule/types"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
-import { cn } from "@/lib/utils"
 import { ProjectTaskCreateButton } from "@/components/projects/project-task-create-button"
 import type { ProjectTaskAssigneeOption } from "@/app/actions/project-contacts"
 import type { ScheduleAssigneeOption } from "@/app/actions/schedule-assignees"
 import { ScheduleAssigneeCombobox } from "./schedule-assignee-combobox"
-
-const phases = PHASE_ORDER.map((value) => ({
-  value,
-  label: PHASE_LABELS[value],
-}))
+import { SchedulePhaseCombobox } from "./schedule-phase-combobox"
 
 const DEPENDENCY_TYPES: readonly { value: DependencyType; label: string }[] = [
   { value: "FS", label: "Finish-to-Start" },
@@ -100,6 +95,7 @@ interface TaskFormDialogProps {
   editingTask: ScheduleTaskData | null
   allTasks?: readonly ScheduleTaskData[]
   dependencies?: readonly TaskDependencyData[]
+  phaseOptions: readonly SchedulePhaseOption[]
   assigneeOptions?: readonly ProjectTaskAssigneeOption[]
   scheduleAssigneeOptions?: readonly ScheduleAssigneeOption[]
 }
@@ -117,6 +113,7 @@ export function TaskFormDialog({
   editingTask,
   allTasks = [],
   dependencies = [],
+  phaseOptions,
   assigneeOptions = [],
   scheduleAssigneeOptions = [],
 }: TaskFormDialogProps) {
@@ -202,7 +199,6 @@ export function TaskFormDialog({
 
   const watchedStart = form.watch("startDate")
   const watchedWorkdays = form.watch("workdays")
-  const watchedPhase = form.watch("phase")
   const watchedPercent = form.watch("percentComplete")
 
   const calculatedEnd = useMemo(() => {
@@ -313,28 +309,25 @@ export function TaskFormDialog({
                 )}
               />
 
-              {/* Phase pills */}
-              <div className="flex flex-wrap gap-1.5">
-                {phases.map((p) => {
-                  const colors = getPhaseColor(p.value)
-                  const isSelected = watchedPhase === p.value
-                  return (
-                    <button
-                      key={p.value}
-                      type="button"
-                      className={cn(
-                        "px-2.5 py-1 rounded-md text-xs font-medium transition-all",
-                        isSelected
-                          ? `${colors.badge} ring-1 ring-current/20`
-                          : "bg-muted/50 text-muted-foreground hover:bg-muted"
-                      )}
-                      onClick={() => form.setValue("phase", p.value)}
-                    >
-                      {p.label}
-                    </button>
-                  )
-                })}
-              </div>
+              <FormField
+                control={form.control}
+                name="phase"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-[11px] font-medium text-muted-foreground">
+                      Phase / category
+                    </FormLabel>
+                    <FormControl>
+                      <SchedulePhaseCombobox
+                        value={field.value}
+                        options={phaseOptions}
+                        onChange={field.onChange}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
 
               {/* Date row: Start | Duration | End */}
               <div className="grid grid-cols-[1fr_100px_1fr] gap-2 items-end">

@@ -78,6 +78,7 @@ import type {
   TaskFilters,
   TaskStatus,
 } from "@/lib/schedule/types"
+import { buildSchedulePhaseOptions } from "@/lib/schedule/phase-options"
 import {
   EMPTY_FILTERS,
   STATUS_OPTIONS,
@@ -133,17 +134,10 @@ export function ScheduleView({
   const [selectedBaselineId, setSelectedBaselineId] = useState("none")
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  const phaseOptions = useMemo(() => {
-    const seen = new Set<string>()
-    return initialData.tasks
-      .map((task) => task.phase)
-      .filter((phase) => {
-        if (!phase || seen.has(phase)) return false
-        seen.add(phase)
-        return true
-      })
-      .map((phase) => ({ value: phase, label: phase }))
-  }, [initialData.tasks])
+  const phaseOptions = useMemo(
+    () => buildSchedulePhaseOptions(initialData.tasks),
+    [initialData.tasks]
+  )
 
   const scheduleProjects = useMemo(() => {
     return allProjects.filter((project) => {
@@ -656,6 +650,7 @@ export function ScheduleView({
             projectId={projectId}
             tasks={filteredTasks}
             dependencies={initialData.dependencies}
+            phaseOptions={phaseOptions}
             taskAssigneeOptions={taskAssigneeOptions}
             scheduleAssigneeOptions={scheduleAssigneeOptions}
           />
@@ -668,6 +663,7 @@ export function ScheduleView({
             exceptions={initialData.exceptions}
             baselineTasks={baselineTasks}
             baselineName={selectedBaseline?.name ?? null}
+            phaseOptions={phaseOptions}
             taskAssigneeOptions={taskAssigneeOptions}
             scheduleAssigneeOptions={scheduleAssigneeOptions}
           />
@@ -682,6 +678,7 @@ export function ScheduleView({
         editingTask={headerEditingTask}
         allTasks={initialData.tasks}
         dependencies={initialData.dependencies}
+        phaseOptions={phaseOptions}
         assigneeOptions={taskAssigneeOptions}
         scheduleAssigneeOptions={scheduleAssigneeOptions}
       />

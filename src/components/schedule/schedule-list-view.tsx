@@ -34,6 +34,7 @@ import { TaskFormDialog } from "./task-form-dialog"
 import { DependencyDialog } from "./dependency-dialog"
 import { deleteTask } from "@/app/actions/schedule"
 import type {
+  SchedulePhaseOption,
   ScheduleTaskData,
   TaskDependencyData,
 } from "@/lib/schedule/types"
@@ -47,6 +48,7 @@ interface ScheduleListViewProps {
   projectId: string
   tasks: ScheduleTaskData[]
   dependencies: TaskDependencyData[]
+  phaseOptions: readonly SchedulePhaseOption[]
   taskAssigneeOptions?: readonly ProjectTaskAssigneeOption[]
   scheduleAssigneeOptions?: readonly ScheduleAssigneeOption[]
 }
@@ -136,6 +138,7 @@ export function ScheduleListView({
   projectId,
   tasks,
   dependencies,
+  phaseOptions,
   taskAssigneeOptions = [],
   scheduleAssigneeOptions = [],
 }: ScheduleListViewProps) {
@@ -427,6 +430,7 @@ export function ScheduleListView({
         editingTask={editingTask}
         allTasks={localTasks}
         dependencies={dependencies}
+        phaseOptions={phaseOptions}
         assigneeOptions={taskAssigneeOptions}
         scheduleAssigneeOptions={scheduleAssigneeOptions}
       />

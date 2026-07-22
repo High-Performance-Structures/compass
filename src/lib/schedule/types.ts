@@ -51,6 +51,13 @@ export interface ScheduleTaskData {
   updatedAt: string
 }
 
+export interface SchedulePhaseOption {
+  readonly value: string
+  readonly label: string
+  readonly taskCount: number
+  readonly projectPhase: boolean
+}
+
 export interface TaskDependencyData {
   id: string
   predecessorId: string

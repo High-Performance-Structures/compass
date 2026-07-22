@@ -35,7 +35,6 @@ import {
   IconPlus,
   IconChevronRight,
   IconChevronDown,
-  IconSettings,
   IconZoomIn,
   IconZoomOut,
   IconPalette,
@@ -61,6 +60,7 @@ import type { DisplayItem, FrappeTask } from "@/lib/schedule/gantt-transform"
 import { updateTask } from "@/app/actions/schedule"
 import { countBusinessDays } from "@/lib/schedule/business-days"
 import type {
+  SchedulePhaseOption,
   ScheduleTaskData,
   TaskDependencyData,
   WorkdayExceptionData,
@@ -92,6 +92,7 @@ interface ScheduleGanttViewProps {
   readonly exceptions: readonly WorkdayExceptionData[]
   readonly baselineTasks?: readonly GanttBaselineTask[]
   readonly baselineName?: string | null
+  readonly phaseOptions: readonly SchedulePhaseOption[]
   readonly taskAssigneeOptions?: readonly ProjectTaskAssigneeOption[]
   readonly scheduleAssigneeOptions?: readonly ScheduleAssigneeOption[]
 }
@@ -103,6 +104,7 @@ export function ScheduleGanttView({
   exceptions,
   baselineTasks = [],
   baselineName = null,
+  phaseOptions,
   taskAssigneeOptions = [],
   scheduleAssigneeOptions = [],
 }: ScheduleGanttViewProps) {
@@ -629,8 +631,14 @@ export function ScheduleGanttView({
 
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" className="size-7">
-                <IconSettings className="size-3.5" />
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 gap-1.5 px-2"
+                title="Schedule colors and display"
+              >
+                <IconPalette className="size-3.5" />
+                <span className="hidden text-xs sm:inline">Colors</span>
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-64">
@@ -847,6 +855,7 @@ export function ScheduleGanttView({
         editingTask={editingTask}
         allTasks={tasks}
         dependencies={dependencies}
+        phaseOptions={phaseOptions}
         assigneeOptions={taskAssigneeOptions}
         scheduleAssigneeOptions={scheduleAssigneeOptions}
       />
