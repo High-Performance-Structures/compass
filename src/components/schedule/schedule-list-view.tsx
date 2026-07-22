@@ -148,6 +148,7 @@ export function ScheduleListView({
   const [depDialogOpen, setDepDialogOpen] = useState(false)
   const [localTasks, setLocalTasks] = useState(tasks)
   const [rowSelection, setRowSelection] = useState<Record<string, boolean>>({})
+  const [todayTargetId, setTodayTargetId] = useState<string | null>(null)
 
   useEffect(() => {
     setLocalTasks(tasks)
@@ -307,9 +308,54 @@ export function ScheduleListView({
     initialState: { pagination: { pageSize: 25 } },
   })
 
+  const pageIndex = table.getState().pagination.pageIndex
+
+  useEffect(() => {
+    if (!todayTargetId) return
+    const row = document.getElementById(`schedule-task-${todayTargetId}`)
+    if (!row) return
+
+    row.scrollIntoView({ behavior: "smooth", block: "center" })
+    row.focus({ preventScroll: true })
+  }, [pageIndex, todayTargetId])
+
+  function goToToday(): void {
+    if (localTasks.length === 0) return
+
+    const today = format(new Date(), "yyyy-MM-dd")
+    const currentTaskIndex = localTasks.findIndex(
+      (task) =>
+        task.status !== "COMPLETE" &&
+        task.startDate <= today &&
+        task.endDateCalculated >= today
+    )
+    const anyCurrentTaskIndex = localTasks.findIndex(
+      (task) => task.startDate <= today && task.endDateCalculated >= today
+    )
+    const nextTaskIndex = localTasks.findIndex(
+      (task) => task.status !== "COMPLETE" && task.startDate >= today
+    )
+    const targetIndex =
+      currentTaskIndex >= 0
+        ? currentTaskIndex
+        : anyCurrentTaskIndex >= 0
+          ? anyCurrentTaskIndex
+          : nextTaskIndex >= 0
+            ? nextTaskIndex
+            : localTasks.length - 1
+    const target = localTasks[targetIndex]
+    const pageSize = table.getState().pagination.pageSize
+
+    table.setPageIndex(Math.floor(targetIndex / pageSize))
+    setTodayTargetId(target.id)
+  }
+
   return (
     <div className="flex flex-col flex-1 min-h-0">
       <div className="flex gap-2 mb-2">
+        <Button size="sm" variant="outline" onClick={goToToday}>
+          Today
+        </Button>
         <Button
           size="sm"
           variant="outline"
@@ -355,7 +401,16 @@ export function ScheduleListView({
                 </TableRow>
               ) : (
                 table.getRowModel().rows.map((row) => (
-                  <TableRow key={row.id}>
+                  <TableRow
+                    key={row.id}
+                    id={`schedule-task-${row.original.id}`}
+                    tabIndex={-1}
+                    className={
+                      todayTargetId === row.original.id
+                        ? "bg-accent/70 outline-none ring-1 ring-inset ring-primary/35"
+                        : undefined
+                    }
+                  >
                     {row.getVisibleCells().map((cell) => {
                       const meta = cell.column.columnDef.meta as { className?: string } | undefined
                       return (

@@ -110,7 +110,7 @@ export function ScheduleGanttView({
 }: ScheduleGanttViewProps) {
   const router = useRouter()
   const isMobile = useIsMobile()
-  const [viewMode, setViewMode] = useState<ViewMode>("Week")
+  const viewMode: ViewMode = "Week"
   const [phaseGrouping, setPhaseGrouping] = useState(true)
   const [collapsedPhases, setCollapsedPhases] = useState<Set<string>>(
     new Set()
@@ -137,10 +137,7 @@ export function ScheduleGanttView({
     useState<ScheduleColorPreferences>(DEFAULT_SCHEDULE_COLOR_PREFERENCES)
   const colorPreferencesLoadedKeyRef = useRef<string | null>(null)
 
-  const defaultWidths: Record<ViewMode, number> = {
-    Day: 38, Week: 140, Month: 120,
-  }
-  const [columnWidth, setColumnWidth] = useState(defaultWidths[viewMode])
+  const [columnWidth, setColumnWidth] = useState(140)
 
   const handleZoom = useCallback((direction: "in" | "out") => {
     setColumnWidth((prev) => {
@@ -148,11 +145,6 @@ export function ScheduleGanttView({
       return Math.round(Math.min(300, Math.max(20, next)))
     })
   }, [])
-
-  const handleViewModeChange = (mode: ViewMode) => {
-    setViewMode(mode)
-    setColumnWidth(defaultWidths[mode])
-  }
 
   const rememberScrollPosition = useCallback(
     (position: GanttScrollPosition) => {
@@ -574,24 +566,6 @@ export function ScheduleGanttView({
               </SelectContent>
             </Select>
           )}
-
-          {/* Day / Week / Month */}
-          <div className="flex items-center rounded-md border bg-muted/40 p-0.5">
-            {(["Day", "Week", "Month"] as const).map((mode) => (
-              <button
-                key={mode}
-                onClick={() => handleViewModeChange(mode)}
-                className={cn(
-                  "px-2 py-1 text-xs font-medium rounded-sm transition-all",
-                  viewMode === mode
-                    ? "bg-background text-foreground shadow-sm"
-                    : "text-muted-foreground hover:text-foreground"
-                )}
-              >
-                {mode}
-              </button>
-            ))}
-          </div>
 
           <Button
             variant="outline"
