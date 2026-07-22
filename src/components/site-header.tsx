@@ -37,6 +37,38 @@ import type { SidebarUser } from "@/lib/auth"
 
 const OFFICE_TALK_MEETING_HREF =
   "/dashboard/conversations/voice-office-talk-0a72accb-1cd1-4d2d-86d7-88b0e26a8899/meeting"
+const OFFICE_TALK_WINDOW_NAME = "compass-office-talk"
+
+function openOfficeTalkWindow(): void {
+  const availableWidth = window.screen.availWidth
+  const availableHeight = window.screen.availHeight
+  const width = Math.min(1180, Math.max(720, availableWidth - 80))
+  const height = Math.min(760, Math.max(600, availableHeight - 80))
+  const left = Math.max(0, Math.round((availableWidth - width) / 2))
+  const top = Math.max(0, Math.round((availableHeight - height) / 2))
+  const features = [
+    "popup=yes",
+    `width=${width}`,
+    `height=${height}`,
+    `left=${left}`,
+    `top=${top}`,
+    "resizable=yes",
+    "scrollbars=yes",
+  ].join(",")
+
+  const meetingWindow = window.open(
+    OFFICE_TALK_MEETING_HREF,
+    OFFICE_TALK_WINDOW_NAME,
+    features
+  )
+
+  if (meetingWindow) {
+    meetingWindow.focus()
+    return
+  }
+
+  window.open(OFFICE_TALK_MEETING_HREF, "_blank", "noopener,noreferrer")
+}
 
 export function SiteHeader({
   isDemo,
@@ -121,20 +153,14 @@ export function SiteHeader({
           <NotificationsPopover />
           {!isDemo ? (
             <Button
-              asChild
               variant="ghost"
               size="icon"
               className="size-9 rounded-full text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+              onClick={openOfficeTalkWindow}
+              aria-label="Open Office Talk"
+              title="Office Talk"
             >
-              <a
-                href={OFFICE_TALK_MEETING_HREF}
-                target="_blank"
-                rel="noreferrer"
-                aria-label="Open Office Talk"
-                title="Office Talk"
-              >
-                <IconVideo className="size-4" />
-              </a>
+              <IconVideo className="size-4" />
             </Button>
           ) : null}
           <DropdownMenu>
@@ -207,20 +233,14 @@ export function SiteHeader({
           <NotificationsPopover />
           {!isDemo ? (
             <Button
-              asChild
               variant="ghost"
               size="icon"
               className="size-7 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+              onClick={openOfficeTalkWindow}
+              aria-label="Open Office Talk"
+              title="Office Talk"
             >
-              <a
-                href={OFFICE_TALK_MEETING_HREF}
-                target="_blank"
-                rel="noreferrer"
-                aria-label="Open Office Talk"
-                title="Office Talk"
-              >
-                <IconVideo className="size-4" />
-              </a>
+              <IconVideo className="size-4" />
             </Button>
           ) : null}
           <Button
