@@ -38,6 +38,7 @@ import {
   IconZoomIn,
   IconZoomOut,
   IconPalette,
+  IconRestore,
 } from "@tabler/icons-react"
 import {
   Select,
@@ -75,7 +76,9 @@ import {
   SCHEDULE_COLOR_PALETTES,
   isScheduleColorMode,
   isScheduleColorPalette,
+  isScheduleHexColor,
   schedulePhaseColor,
+  schedulePhaseKey,
   scheduleTaskColor,
 } from "@/lib/schedule/schedule-colors"
 import type {
@@ -189,7 +192,24 @@ export function ScheduleGanttView({
           isScheduleColorMode(parsed.mode) &&
           isScheduleColorPalette(parsed.palette)
         ) {
-          setColorPreferences({ mode: parsed.mode, palette: parsed.palette })
+          const phaseColors: Record<string, string> = {}
+          if (
+            "phaseColors" in parsed &&
+            parsed.phaseColors &&
+            typeof parsed.phaseColors === "object" &&
+            !Array.isArray(parsed.phaseColors)
+          ) {
+            for (const [phase, color] of Object.entries(parsed.phaseColors)) {
+              if (typeof color === "string" && isScheduleHexColor(color)) {
+                phaseColors[schedulePhaseKey(phase)] = color
+              }
+            }
+          }
+          setColorPreferences({
+            mode: parsed.mode,
+            palette: parsed.palette,
+            phaseColors,
+          })
         }
       }
     } catch {
@@ -344,6 +364,30 @@ export function ScheduleGanttView({
     [showCriticalPath, tasks]
   )
 
+  const activePhases = useMemo(
+    () => phaseOptions.filter((phase) => phase.projectPhase),
+    [phaseOptions]
+  )
+
+  const setPhaseColor = useCallback((phase: string, color: string) => {
+    if (!isScheduleHexColor(color)) return
+    const key = schedulePhaseKey(phase)
+    setColorPreferences((current) => ({
+      ...current,
+      mode: "phase",
+      phaseColors: { ...current.phaseColors, [key]: color },
+    }))
+  }, [])
+
+  const resetPhaseColor = useCallback((phase: string) => {
+    const key = schedulePhaseKey(phase)
+    setColorPreferences((current) => {
+      const phaseColors = { ...current.phaseColors }
+      delete phaseColors[key]
+      return { ...current, phaseColors }
+    })
+  }, [])
+
   const { frappeTasks, displayItems } = useMemo(
     () =>
       phaseGrouping
@@ -352,7 +396,12 @@ export function ScheduleGanttView({
             [...dependencies],
             collapsedPhases,
             (task) => scheduleTaskColor(task, colorPreferences),
-            (phase) => schedulePhaseColor(phase, colorPreferences.palette)
+            (phase) =>
+              schedulePhaseColor(
+                phase,
+                colorPreferences.palette,
+                colorPreferences.phaseColors
+              )
           )
         : {
             frappeTasks: transformToFrappeTasks(
@@ -677,6 +726,71 @@ export function ScheduleGanttView({
                     ))}
                   </div>
                 </div>
+                {colorPreferences.mode === "phase" && activePhases.length > 0 && (
+                  <div className="border-t pt-2">
+                    <div className="mb-1 flex items-center justify-between gap-2">
+                      <span className="text-[11px] text-muted-foreground">
+                        Phase swatches
+                      </span>
+                      {Object.keys(colorPreferences.phaseColors).length > 0 && (
+                        <button
+                          type="button"
+                          className="text-[11px] font-medium text-primary hover:underline"
+                          onClick={() =>
+                            setColorPreferences((current) => ({
+                              ...current,
+                              phaseColors: {},
+                            }))
+                          }
+                        >
+                          Reset all
+                        </button>
+                      )}
+                    </div>
+                    <div className="max-h-48 overflow-y-auto border-y">
+                      {activePhases.map((phase) => {
+                        const phaseKey = schedulePhaseKey(phase.value)
+                        const customColor = colorPreferences.phaseColors[phaseKey]
+                        const color = schedulePhaseColor(
+                          phase.value,
+                          colorPreferences.palette,
+                          colorPreferences.phaseColors
+                        )
+                        return (
+                          <div
+                            key={phaseKey}
+                            className="flex min-h-9 items-center gap-2 border-b px-1.5 last:border-b-0"
+                          >
+                            <input
+                              type="color"
+                              value={color}
+                              aria-label={`Choose color for ${phase.label}`}
+                              title={`Choose color for ${phase.label}`}
+                              className="size-7 shrink-0 cursor-pointer border-0 bg-transparent p-0"
+                              onChange={(event) =>
+                                setPhaseColor(phase.value, event.currentTarget.value)
+                              }
+                            />
+                            <span className="min-w-0 flex-1 truncate text-xs">
+                              {phase.label}
+                            </span>
+                            {customColor && (
+                              <button
+                                type="button"
+                                className="grid size-7 shrink-0 place-items-center text-muted-foreground hover:bg-accent hover:text-foreground"
+                                aria-label={`Reset ${phase.label} color`}
+                                title={`Reset ${phase.label} to palette color`}
+                                onClick={() => resetPhaseColor(phase.value)}
+                              >
+                                <IconRestore className="size-3.5" />
+                              </button>
+                            )}
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
                 <div className="border-t pt-2" />
                 <div className="flex items-center justify-between">
                   <span className="text-xs">Group by Phase</span>

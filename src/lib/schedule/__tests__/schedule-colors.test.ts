@@ -32,10 +32,38 @@ describe("schedule colors", () => {
   })
 
   it("can switch from phase colors to status colors", () => {
-    const phaseColor = scheduleTaskColor(task, { mode: "phase", palette: "hps" })
-    const statusColor = scheduleTaskColor(task, { mode: "status", palette: "hps" })
+    const phaseColor = scheduleTaskColor(task, {
+      mode: "phase",
+      palette: "hps",
+      phaseColors: {},
+    })
+    const statusColor = scheduleTaskColor(task, {
+      mode: "status",
+      palette: "hps",
+      phaseColors: {},
+    })
 
     expect(statusColor).toBe("#1769aa")
     expect(statusColor).not.toBe(phaseColor)
+  })
+
+  it("uses a custom swatch for a matching phase", () => {
+    expect(
+      scheduleTaskColor(task, {
+        mode: "phase",
+        palette: "hps",
+        phaseColors: { "rough mep": "#123456" },
+      })
+    ).toBe("#123456")
+  })
+
+  it("keeps status colors standardized when phase swatches exist", () => {
+    expect(
+      scheduleTaskColor(task, {
+        mode: "status",
+        palette: "hps",
+        phaseColors: { "rough mep": "#123456" },
+      })
+    ).toBe("#1769aa")
   })
 })

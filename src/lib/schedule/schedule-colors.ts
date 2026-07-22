@@ -6,11 +6,13 @@ export type ScheduleColorPalette = "hps" | "jobsite" | "high_contrast"
 export interface ScheduleColorPreferences {
   readonly mode: ScheduleColorMode
   readonly palette: ScheduleColorPalette
+  readonly phaseColors: Readonly<Record<string, string>>
 }
 
 export const DEFAULT_SCHEDULE_COLOR_PREFERENCES: ScheduleColorPreferences = {
   mode: "phase",
   palette: "hps",
+  phaseColors: {},
 }
 
 export const SCHEDULE_COLOR_PALETTES: Readonly<
@@ -63,12 +65,24 @@ function stableColorIndex(value: string, colorCount: number): number {
   return hash % colorCount
 }
 
+export function schedulePhaseKey(phase: string): string {
+  return phase.trim().toLowerCase().replace(/\s+/g, " ")
+}
+
+export function isScheduleHexColor(value: string): boolean {
+  return /^#[0-9a-f]{6}$/i.test(value)
+}
+
 export function schedulePhaseColor(
   phase: string,
-  palette: ScheduleColorPalette
+  palette: ScheduleColorPalette,
+  phaseColors: Readonly<Record<string, string>> = {}
 ): string {
+  const customColor = phaseColors[schedulePhaseKey(phase)]
+  if (customColor && isScheduleHexColor(customColor)) return customColor
+
   const colors = SCHEDULE_COLOR_PALETTES[palette]
-  return colors[stableColorIndex(phase.trim().toLowerCase(), colors.length)]
+  return colors[stableColorIndex(schedulePhaseKey(phase), colors.length)]
 }
 
 export function scheduleTaskColor(
@@ -76,7 +90,11 @@ export function scheduleTaskColor(
   preferences: ScheduleColorPreferences
 ): string {
   if (preferences.mode === "status") return STATUS_COLORS[task.status]
-  return schedulePhaseColor(task.phase || "uncategorized", preferences.palette)
+  return schedulePhaseColor(
+    task.phase || "uncategorized",
+    preferences.palette,
+    preferences.phaseColors
+  )
 }
 
 export function isScheduleColorMode(value: string): value is ScheduleColorMode {
