@@ -23,7 +23,6 @@ import { isInternalStaffRole } from "@/lib/user-roles"
 
 const ACTIVE_PARTICIPANT_WINDOW_MS = 30_000
 const STALE_SIGNAL_WINDOW_MS = 5 * 60_000
-const REALTIMEKIT_MEETING_CACHE_WINDOW_MS = 2 * 60 * 60_000
 const REALTIMEKIT_RETRYABLE_STATUS_CODES = new Set([500, 502, 503, 504])
 
 type VoiceSignalType = "offer" | "answer" | "ice"
@@ -94,10 +93,6 @@ function activeAfterIso(now = Date.now()): string {
 
 function staleSignalBeforeIso(now = Date.now()): string {
   return new Date(now - STALE_SIGNAL_WINDOW_MS).toISOString()
-}
-
-function staleRealtimeKitMeetingBeforeIso(now = Date.now()): string {
-  return new Date(now - REALTIMEKIT_MEETING_CACHE_WINDOW_MS).toISOString()
 }
 
 function normalizeSignalType(value: string): VoiceSignalType | null {
@@ -497,28 +492,9 @@ async function ensureRealtimeKitMeeting(
   channel: VoiceChannelAccess,
   user: AuthUser
 ): Promise<VoiceActionResult<RealtimeKitMeeting>> {
-  const existing = await db
-    .select({
-      meetingId: voiceRealtimeKitMeetings.meetingId,
-      meetingTitle: voiceRealtimeKitMeetings.meetingTitle,
-      createdAt: voiceRealtimeKitMeetings.createdAt,
-    })
-    .from(voiceRealtimeKitMeetings)
-    .where(eq(voiceRealtimeKitMeetings.channelId, channel.id))
-    .limit(1)
-    .then((rows) => rows[0] ?? null)
-
+  const existing = await readRealtimeKitMeetingForChannel(db, channel.id)
   if (existing) {
-    if (existing.createdAt < staleRealtimeKitMeetingBeforeIso()) {
-      await db
-        .delete(voiceRealtimeKitMeetings)
-        .where(eq(voiceRealtimeKitMeetings.channelId, channel.id))
-    } else {
-      return {
-        success: true,
-        data: { id: existing.meetingId, title: existing.meetingTitle },
-      }
-    }
+    return { success: true, data: existing }
   }
 
   const title = `Compass Talk - ${channel.name}`
@@ -531,17 +507,50 @@ async function ensureRealtimeKitMeeting(
   }
 
   const now = new Date().toISOString()
-  await db.insert(voiceRealtimeKitMeetings).values({
-    id: crypto.randomUUID(),
-    channelId: channel.id,
-    meetingId: meeting.id,
-    meetingTitle: meeting.title,
-    createdBy: user.id,
-    createdAt: now,
-    updatedAt: now,
-  })
+  try {
+    await db.insert(voiceRealtimeKitMeetings).values({
+      id: crypto.randomUUID(),
+      channelId: channel.id,
+      meetingId: meeting.id,
+      meetingTitle: meeting.title,
+      createdBy: user.id,
+      createdAt: now,
+      updatedAt: now,
+    })
+  } catch (error: unknown) {
+    const racedMeeting = await readRealtimeKitMeetingForChannel(db, channel.id)
+    if (racedMeeting) {
+      return { success: true, data: racedMeeting }
+    }
+    return {
+      success: false,
+      error:
+        error instanceof Error
+          ? error.message
+          : "Failed to save Cloudflare meeting",
+    }
+  }
 
   return { success: true, data: meeting }
+}
+
+async function readRealtimeKitMeetingForChannel(
+  db: ReturnType<typeof getDb>,
+  channelId: string
+): Promise<RealtimeKitMeeting | null> {
+  const existing = await db
+    .select({
+      meetingId: voiceRealtimeKitMeetings.meetingId,
+      meetingTitle: voiceRealtimeKitMeetings.meetingTitle,
+    })
+    .from(voiceRealtimeKitMeetings)
+    .where(eq(voiceRealtimeKitMeetings.channelId, channelId))
+    .limit(1)
+    .then((rows) => rows[0] ?? null)
+
+  return existing
+    ? { id: existing.meetingId, title: existing.meetingTitle }
+    : null
 }
 
 async function createRealtimeKitParticipantToken(
