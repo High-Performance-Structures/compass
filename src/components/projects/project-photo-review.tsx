@@ -65,6 +65,11 @@ type VisibilityFilter =
 type PhotoSort = "newest" | "oldest" | "phase_newest" | "phase_oldest"
 
 const MAX_UPLOAD_FILE_BYTES = 50 * 1024 * 1024
+const NO_PHASE_VALUE = "unassigned"
+
+function phaseLabel(value: string): string {
+  return value.length > 0 ? value : "No phase"
+}
 
 function statusLabel(value: string): string {
   return value
@@ -279,7 +284,7 @@ export function ProjectPhotoReview({
   const [uploadCaption, setUploadCaption] = React.useState("")
   const [uploadCapturedDate, setUploadCapturedDate] = React.useState("")
   const [uploadPhotoKind, setUploadPhotoKind] = React.useState("progress")
-  const [uploadPhase, setUploadPhase] = React.useState("all")
+  const [uploadPhase, setUploadPhase] = React.useState(NO_PHASE_VALUE)
   const [uploadMessage, setUploadMessage] = React.useState<string | null>(null)
   const [uploading, setUploading] = React.useState(false)
   const [isPending, startTransition] = React.useTransition()
@@ -293,7 +298,10 @@ export function ProjectPhotoReview({
     const filtered = photos.filter(
       (photo) =>
         (dateFilter.length === 0 || photo.photoDate === dateFilter) &&
-        (phaseFilter === "all" || photo.schedulePhase === phaseFilter) &&
+        (phaseFilter === "all" ||
+          (phaseFilter === NO_PHASE_VALUE
+            ? photo.schedulePhase.length === 0
+            : photo.schedulePhase === phaseFilter)) &&
         matchesVisibility(photo, visibilityFilter)
     )
 
@@ -357,7 +365,7 @@ export function ProjectPhotoReview({
     setUploadCaption("")
     setUploadCapturedDate(currentDateInputValue())
     setUploadPhotoKind("progress")
-    setUploadPhase("all")
+    setUploadPhase(NO_PHASE_VALUE)
   }
 
   function openUploadSheet(): void {
@@ -465,14 +473,21 @@ export function ProjectPhotoReview({
               ? {
                   ...photo,
                   schedulePhase: result.phase,
-                  schedulePhaseConfidence: 100,
+                  schedulePhaseConfidence:
+                    result.phase.length > 0 ? 100 : 0,
                   schedulePhaseReason:
-                    "Phase was manually assigned during photo review.",
+                    result.phase.length > 0
+                      ? "Phase was selected during upload or review."
+                      : "No phase assigned.",
                 }
               : photo
           )
         )
-        setMessage(`Updated phase to ${result.phase}.`)
+        setMessage(
+          result.phase.length > 0
+            ? `Updated phase to ${result.phase}.`
+            : "Cleared the phase."
+        )
       } else {
         setMessage(result.error)
       }
@@ -671,17 +686,18 @@ export function ProjectPhotoReview({
               </label>
               <label className="w-full space-y-1 text-sm sm:w-60">
                 <span className="text-xs font-medium uppercase text-muted-foreground">
-                  Suggested phase
+                  Phase
                 </span>
                 <Select
                   value={phaseFilter}
                   onValueChange={setPhaseFilter}
                 >
-                  <SelectTrigger aria-label="Suggested phase" className="w-full">
+                  <SelectTrigger aria-label="Phase" className="w-full">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">All phases</SelectItem>
+                    <SelectItem value={NO_PHASE_VALUE}>No phase</SelectItem>
                     {library.phases.map((phase) => (
                       <SelectItem key={phase.value} value={phase.value}>
                         {phase.label} ({phase.count})
@@ -881,7 +897,7 @@ export function ProjectPhotoReview({
                       {photo.photoDate}
                     </span>
                     <span className="absolute bottom-2 left-2 max-w-[calc(100%-1rem)] rounded bg-background/90 px-2 py-0.5 text-xs font-medium">
-                      {photo.schedulePhase} · {photo.schedulePhaseConfidence}%
+                      {phaseLabel(photo.schedulePhase)}
                     </span>
                   </div>
                   <div className="space-y-2 p-2">
@@ -934,7 +950,7 @@ export function ProjectPhotoReview({
                   <label className="flex min-w-0 items-center justify-between gap-2 text-xs text-muted-foreground">
                     <span className="shrink-0">Phase</span>
                     <Select
-                      value={photo.schedulePhase}
+                      value={photo.schedulePhase || NO_PHASE_VALUE}
                       onValueChange={(value) => changePhotoPhase(photo.id, value)}
                       disabled={isPending}
                     >
@@ -946,6 +962,7 @@ export function ProjectPhotoReview({
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
+                        <SelectItem value={NO_PHASE_VALUE}>No phase</SelectItem>
                         {library.phases.map((phase) => (
                           <SelectItem key={phase.value} value={phase.value}>
                             {phase.label}
@@ -1005,8 +1022,7 @@ export function ProjectPhotoReview({
                         {previewPhoto.caption ?? previewPhoto.fileName}
                       </DialogTitle>
                       <DialogDescription>
-                        {previewPhoto.photoDate} · {previewPhoto.schedulePhase} ·{" "}
-                        {previewPhoto.schedulePhaseConfidence}% match ·{" "}
+                        {previewPhoto.photoDate} · {phaseLabel(previewPhoto.schedulePhase)} ·{" "}
                         {statusLabel(previewPhoto.reviewStatus)}
                       </DialogDescription>
                     </DialogHeader>
@@ -1041,7 +1057,7 @@ export function ProjectPhotoReview({
                               {kindLabel(previewPhoto.photoKind)}
                             </Badge>
                             <Badge variant="secondary">
-                              Phase suggestion: {previewPhoto.schedulePhase}
+                              Phase: {phaseLabel(previewPhoto.schedulePhase)}
                             </Badge>
                             {isInternalOnly(previewPhoto) && (
                               <Badge variant="secondary">Internal</Badge>
@@ -1056,9 +1072,11 @@ export function ProjectPhotoReview({
                               <Badge variant="secondary">Public</Badge>
                             )}
                           </div>
-                          <p className="mt-2 max-w-2xl text-xs text-muted-foreground">
-                            {previewPhoto.schedulePhaseReason}
-                          </p>
+                          {previewPhoto.schedulePhase.length > 0 && (
+                            <p className="mt-2 max-w-2xl text-xs text-muted-foreground">
+                              {previewPhoto.schedulePhaseReason}
+                            </p>
+                          )}
                         </div>
                         <Button
                           type="button"
@@ -1183,7 +1201,7 @@ export function ProjectPhotoReview({
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="all">Suggest phase</SelectItem>
+                    <SelectItem value={NO_PHASE_VALUE}>No phase</SelectItem>
                     {library.phases.map((phase) => (
                       <SelectItem key={phase.value} value={phase.value}>
                         {phase.label}

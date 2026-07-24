@@ -25,6 +25,8 @@ import { isDemoUser } from "@/lib/demo"
 const GOOGLE_FOLDER_MIME_TYPE = "application/vnd.google-apps.folder"
 const DEFAULT_PHOTO_FOLDER_NAME = "Pictures"
 const MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024
+const DEFAULT_COMPASS_GOOGLE_UPLOAD_USER = "compass@hps-colorado.com"
+const NO_PHASE_VALUE = "unassigned"
 
 type UploadPhotoResult =
   | {
@@ -50,6 +52,30 @@ function isFile(value: FormDataEntryValue): value is File {
 function formText(formData: FormData, name: string): string {
   const value = formData.get(name)
   return typeof value === "string" ? value.trim() : ""
+}
+
+function envString(env: Record<string, string>, key: string): string | null {
+  const value = env[key]?.trim()
+  return value && value.length > 0 ? value : null
+}
+
+function resolveGoogleUploadEmail(input: {
+  readonly userEmail: string
+  readonly googleEmail: string | null
+  readonly env: Record<string, string>
+}): string {
+  const configuredEmail = envString(input.env, "COMPASS_GOOGLE_UPLOAD_USER")
+  if (configuredEmail) return configuredEmail
+  if (input.googleEmail) return input.googleEmail
+  if (input.userEmail.endsWith("@hps-colorado.com")) return input.userEmail
+  return DEFAULT_COMPASS_GOOGLE_UPLOAD_USER
+}
+
+function normalizedSchedulePhase(value: string): string | null {
+  if (value.length === 0 || value === "all" || value === NO_PHASE_VALUE) {
+    return null
+  }
+  return value
 }
 
 function isInternalStaffRole(role: string): boolean {
@@ -223,11 +249,15 @@ export async function POST(
       )
     }
     const organizationId = requireOrg(user)
-    const googleEmail = user.googleEmail ?? user.email
     const { id: projectId } = await params
 
     const { env } = await getCloudflareContext()
     const envRecord = env as unknown as Record<string, string>
+    const googleEmail = resolveGoogleUploadEmail({
+      userEmail: user.email,
+      googleEmail: user.googleEmail,
+      env: envRecord,
+    })
     const config = getGoogleConfig(envRecord)
     const db = getDb(env.DB)
 
@@ -332,9 +362,10 @@ export async function POST(
     )
 
     for (const file of files) {
+      const mimeType = file.type || "application/octet-stream"
       const driveFile = await client.uploadFile(googleEmail, {
         name: safeFileName(file.name),
-        mimeType: file.type,
+        mimeType,
         parentId: targetFolderId,
         driveId: auth.sharedDriveId ?? undefined,
         data: file,
@@ -352,7 +383,7 @@ export async function POST(
         mimeType: driveFile.mimeType,
         driveFileId: driveFile.id,
         driveUrl: driveFile.webViewLink ?? null,
-        thumbnailUrl: isImageMimeType(driveFile.mimeType ?? file.type)
+        thumbnailUrl: isImageMimeType(driveFile.mimeType ?? mimeType)
           ? `/api/google/download/${driveFile.id}`
           : null,
         caption: caption.length > 0 ? caption : null,
@@ -363,10 +394,7 @@ export async function POST(
         subVendorVisible: false,
         publicShareable: false,
         photoKind,
-        schedulePhaseOverride:
-          schedulePhase.length > 0 && schedulePhase !== "all"
-            ? schedulePhase
-            : null,
+        schedulePhaseOverride: normalizedSchedulePhase(schedulePhase),
         sortOrder: 0,
         createdAt: now,
         updatedAt: now,
