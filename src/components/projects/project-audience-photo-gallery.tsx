@@ -24,6 +24,11 @@ import {
 import { resolvePhotoImageSource } from "@/lib/photo-sources"
 
 type AudiencePhotoSort = "newest" | "oldest" | "phase_newest" | "phase_oldest"
+const NO_PHASE_VALUE = "unassigned"
+
+function phaseLabel(value: string): string {
+  return value.length > 0 ? value : "No phase"
+}
 
 function formatDate(value: string | null): string {
   if (!value) return "Unscheduled"
@@ -74,15 +79,12 @@ function phaseOptions(
   const counts = new Map<string, number>()
 
   for (const photo of photos) {
-    counts.set(photo.schedulePhase, (counts.get(photo.schedulePhase) ?? 0) + 1)
+    const value = photo.schedulePhase.length > 0 ? photo.schedulePhase : NO_PHASE_VALUE
+    counts.set(value, (counts.get(value) ?? 0) + 1)
   }
 
   return [...counts.entries()]
-    .sort(([left], [right]) => {
-      if (left === "Unassigned phase") return 1
-      if (right === "Unassigned phase") return -1
-      return left.localeCompare(right)
-    })
+    .sort(([left], [right]) => left.localeCompare(right))
     .map(([value, count]) => ({ value, count }))
 }
 
@@ -122,7 +124,10 @@ export function ProjectAudiencePhotoGallery({
     const filtered = photos.filter(
       (photo) =>
         (dateFilter.length === 0 || photo.photoDate === dateFilter) &&
-        (phaseFilter === "all" || photo.schedulePhase === phaseFilter)
+        (phaseFilter === "all" ||
+          (phaseFilter === NO_PHASE_VALUE
+            ? photo.schedulePhase.length === 0
+            : photo.schedulePhase === phaseFilter))
     )
 
     return [...filtered].sort((left, right) => {
@@ -188,7 +193,9 @@ export function ProjectAudiencePhotoGallery({
                   <SelectItem value="all">All phases</SelectItem>
                   {phases.map((phase) => (
                     <SelectItem key={phase.value} value={phase.value}>
-                      {phase.value} ({phase.count})
+                      {phaseLabel(
+                        phase.value === NO_PHASE_VALUE ? "" : phase.value
+                      )} ({phase.count})
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -278,18 +285,13 @@ export function ProjectAudiencePhotoGallery({
                         {photo.photoDate}
                       </span>
                       <span className="absolute bottom-2 left-2 max-w-[calc(100%-1rem)] rounded bg-background/90 px-2 py-0.5 text-xs font-medium">
-                        {photo.schedulePhase}
+                        {phaseLabel(photo.schedulePhase)}
                       </span>
                     </div>
                     <div className="space-y-2 p-2">
                       <p className="line-clamp-2 min-h-10 text-xs font-medium">
                         {photo.caption ?? photo.fileName}
                       </p>
-                      <div className="flex flex-wrap items-center gap-1">
-                        <Badge variant="outline">
-                          {photo.schedulePhaseConfidence}% match
-                        </Badge>
-                      </div>
                     </div>
                   </button>
                 )
@@ -332,8 +334,7 @@ export function ProjectAudiencePhotoGallery({
                 </DialogTitle>
                 <DialogDescription>
                   {formatDate(previewPhoto.photoDate)} ·{" "}
-                  {previewPhoto.schedulePhase} ·{" "}
-                  {previewPhoto.schedulePhaseConfidence}% match
+                  {phaseLabel(previewPhoto.schedulePhase)}
                 </DialogDescription>
               </DialogHeader>
               <div className="flex min-h-0 flex-col bg-muted/40">
@@ -361,15 +362,14 @@ export function ProjectAudiencePhotoGallery({
                   <div>
                     <div className="flex flex-wrap gap-1">
                       <Badge variant="secondary">
-                        Phase: {previewPhoto.schedulePhase}
-                      </Badge>
-                      <Badge variant="outline">
-                        {previewPhoto.schedulePhaseConfidence}% match
+                        Phase: {phaseLabel(previewPhoto.schedulePhase)}
                       </Badge>
                     </div>
-                    <p className="mt-2 max-w-2xl text-xs text-muted-foreground">
-                      {previewPhoto.schedulePhaseReason}
-                    </p>
+                    {previewPhoto.schedulePhase.length > 0 && (
+                      <p className="mt-2 max-w-2xl text-xs text-muted-foreground">
+                        {previewPhoto.schedulePhaseReason}
+                      </p>
+                    )}
                   </div>
                   <Button
                     type="button"

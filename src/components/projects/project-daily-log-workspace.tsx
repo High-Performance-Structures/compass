@@ -34,6 +34,13 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import { ProjectContextSwitcher } from "@/components/projects/project-context-switcher"
 import {
@@ -45,6 +52,7 @@ import { cn } from "@/lib/utils"
 type LogFilter = "all" | "needs_review" | "approved" | "owner_visible"
 
 const MAX_DAILY_LOG_UPLOAD_BYTES = 50 * 1024 * 1024
+const NO_PHASE_VALUE = "unassigned"
 
 type DailyLogDraft = {
   readonly logDate: string
@@ -496,6 +504,7 @@ export function ProjectDailyLogWorkspace({
   const [uploadingLogId, setUploadingLogId] = React.useState<string | null>(null)
   const [uploadFiles, setUploadFiles] = React.useState<readonly File[]>([])
   const [uploadCaption, setUploadCaption] = React.useState("")
+  const [uploadPhase, setUploadPhase] = React.useState(NO_PHASE_VALUE)
   const [uploadMessage, setUploadMessage] = React.useState<string | null>(null)
   const [isUploading, setUploading] = React.useState(false)
   const [message, setMessage] = React.useState<string | null>(null)
@@ -564,12 +573,14 @@ export function ProjectDailyLogWorkspace({
     setUploadingLogId(log.id)
     setUploadFiles([])
     setUploadCaption("")
+    setUploadPhase(NO_PHASE_VALUE)
   }
 
   function cancelUploadingFiles(): void {
     setUploadingLogId(null)
     setUploadFiles([])
     setUploadCaption("")
+    setUploadPhase(NO_PHASE_VALUE)
     setUploadMessage(null)
   }
 
@@ -607,6 +618,7 @@ export function ProjectDailyLogWorkspace({
       formData.set("caption", uploadCaption)
       formData.set("capturedDate", log.logDate)
       formData.set("photoKind", "progress")
+      formData.set("schedulePhase", uploadPhase)
 
       const response = await fetch(
         `/api/projects/${workspace.project.id}/photos/upload`,
@@ -634,6 +646,7 @@ export function ProjectDailyLogWorkspace({
         )
         setUploadFiles([])
         setUploadCaption("")
+        setUploadPhase(NO_PHASE_VALUE)
         router.refresh()
         return
       }
@@ -1208,7 +1221,7 @@ export function ProjectDailyLogWorkspace({
                     </Button>
                   </div>
 
-                  <div className="mt-3 grid gap-3 lg:grid-cols-[1fr_1fr_auto]">
+                  <div className="mt-3 grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,0.9fr)_minmax(0,0.7fr)_auto]">
                     <div className="grid gap-1.5">
                       <Label htmlFor={`daily-log-files-${log.id}`}>
                         Photos / documents
@@ -1247,6 +1260,24 @@ export function ProjectDailyLogWorkspace({
                         }
                         placeholder="Optional shared note for selected files"
                       />
+                    </div>
+                    <div className="grid gap-1.5">
+                      <Label htmlFor={`daily-log-file-phase-${log.id}`}>
+                        Phase for this batch
+                      </Label>
+                      <Select value={uploadPhase} onValueChange={setUploadPhase}>
+                        <SelectTrigger id={`daily-log-file-phase-${log.id}`}>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value={NO_PHASE_VALUE}>No phase</SelectItem>
+                          {workspace.schedulePhases.map((phase) => (
+                            <SelectItem key={phase} value={phase}>
+                              {phase}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                     </div>
                     <div className="flex items-end">
                       <Button

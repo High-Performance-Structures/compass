@@ -158,6 +158,7 @@ export type ProjectDailyLogWorkspace = {
   }
   readonly logs: readonly ProjectDailyLogItem[]
   readonly unattachedPhotos: readonly ProjectDailyLogPhoto[]
+  readonly schedulePhases: readonly string[]
   readonly counts: {
     readonly totalLogs: number
     readonly approvedLogs: number
@@ -1064,6 +1065,20 @@ export async function getProjectDailyLogWorkspace(
     .where(eq(dailyLogPhotos.projectId, projectId))
     .orderBy(asc(dailyLogPhotos.sortOrder), desc(dailyLogPhotos.createdAt))
 
+  const phaseRows = await db
+    .select({ phase: scheduleTasks.phase })
+    .from(scheduleTasks)
+    .where(eq(scheduleTasks.projectId, projectId))
+    .orderBy(asc(scheduleTasks.sortOrder), asc(scheduleTasks.startDate))
+
+  const schedulePhases = [
+    ...new Set(
+      phaseRows
+        .map((row) => row.phase.trim())
+        .filter((phase) => phase.length > 0)
+    ),
+  ]
+
   const logIds = logRows.map((row) => row.id)
   const taskRows =
     logIds.length === 0
@@ -1166,6 +1181,7 @@ export async function getProjectDailyLogWorkspace(
       tasks: tasksByLogId.get(row.id) ?? [],
     })),
     unattachedPhotos,
+    schedulePhases,
     counts: {
       totalLogs: logRows.length,
       approvedLogs: logRows.filter((row) => row.reviewStatus === "approved")
