@@ -19,10 +19,9 @@ export function ActiveProjectSectionRedirect({
   readonly label: string
 }): React.ReactElement | null {
   const router = useRouter()
-  const { activeProjectId, activeProject, activeProjectReady } =
-    useActiveProject()
-  const href = activeProjectId
-    ? sectionHref(activeProjectId, targetSection)
+  const { activeProject, activeProjectReady } = useActiveProject()
+  const href = activeProject
+    ? sectionHref(activeProject.id, targetSection)
     : null
 
   React.useEffect(() => {

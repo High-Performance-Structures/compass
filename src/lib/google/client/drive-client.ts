@@ -284,7 +284,6 @@ export class DriveClient {
       method: "PUT",
       headers: {
         "Content-Type": options.mimeType,
-        "Content-Length": String(options.data.size),
       },
       body: options.data,
     })

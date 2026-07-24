@@ -64,6 +64,7 @@ export function NavUser({
 }): React.ReactElement | null {
   const { isMobile } = useSidebar()
   const [accountOpen, setAccountOpen] = React.useState(false)
+  const [isLoggingOut, startLogoutTransition] = React.useTransition()
   const {
     isMuted,
     isDeafened,
@@ -83,8 +84,10 @@ export function NavUser({
 
   const initials = getInitials(user.name)
 
-  async function handleLogout(): Promise<void> {
-    await logout()
+  function handleLogout(): void {
+    startLogoutTransition(async () => {
+      await logout()
+    })
   }
 
   return (
@@ -204,7 +207,7 @@ export function NavUser({
               </DropdownMenuItem>
             </DropdownMenuGroup>
             <DropdownMenuSeparator />
-            <DropdownMenuItem onSelect={handleLogout}>
+            <DropdownMenuItem disabled={isLoggingOut} onSelect={handleLogout}>
               <IconLogout />
               Log out
             </DropdownMenuItem>
