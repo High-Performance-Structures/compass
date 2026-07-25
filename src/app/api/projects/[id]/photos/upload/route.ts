@@ -119,6 +119,20 @@ function isImageMimeType(value: string | null): boolean {
   return value !== null && value.startsWith("image/")
 }
 
+function uploadErrorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message
+  if (typeof error === "string" && error.trim().length > 0) return error
+
+  try {
+    const serialized = JSON.stringify(error)
+    return serialized === undefined || serialized === "{}"
+      ? "Unable to upload files."
+      : serialized
+  } catch {
+    return "Unable to upload files."
+  }
+}
+
 function driveFolderIdFromUrl(value: string | null): string | null {
   if (!value) return null
 
@@ -411,11 +425,11 @@ export async function POST(
       uploadedCount: files.length,
     })
   } catch (error) {
+    console.error("Daily-log file upload failed", error)
     return NextResponse.json(
       {
         success: false,
-        error:
-          error instanceof Error ? error.message : "Unable to upload files.",
+        error: uploadErrorMessage(error),
       },
       { status: 500 }
     )

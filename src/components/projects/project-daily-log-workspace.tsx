@@ -627,7 +627,13 @@ export function ProjectDailyLogWorkspace({
           body: formData,
         }
       )
-      const result: unknown = await response.json()
+      const responseText = await response.text()
+      let result: unknown = null
+      try {
+        result = JSON.parse(responseText)
+      } catch {
+        // A platform-level upload rejection can return a non-JSON response.
+      }
 
       if (
         typeof result === "object" &&
@@ -657,7 +663,9 @@ export function ProjectDailyLogWorkspace({
         "error" in result &&
         typeof result.error === "string"
           ? result.error
-          : "Unable to upload files."
+          : responseText.trim().length > 0
+            ? `Upload failed (${response.status}): ${responseText.trim()}`
+            : `Upload failed (${response.status}).`
       setUploadMessage(error)
     } catch {
       setUploadMessage("Unable to upload files.")

@@ -43,12 +43,15 @@ export function SiteHeader({
   const searchInputRef = React.useRef<HTMLInputElement>(null)
   const agentContext = useAgentOptional()
   const [accountOpen, setAccountOpen] = React.useState(false)
+  const [isLoggingOut, startLogoutTransition] = React.useTransition()
   const { toggleSidebar } = useSidebar()
 
   const initials = user ? getInitials(user.name) : "?"
 
-  async function handleLogout() {
-    await logout()
+  function handleLogout(): void {
+    startLogoutTransition(async () => {
+      await logout()
+    })
   }
 
   return (
@@ -116,7 +119,7 @@ export function SiteHeader({
                 <span>Toggle theme</span>
               </DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuItem onSelect={handleLogout}>
+              <DropdownMenuItem disabled={isLoggingOut} onSelect={handleLogout}>
                 <IconLogout />
                 Log out
               </DropdownMenuItem>
@@ -202,7 +205,7 @@ export function SiteHeader({
                 Account
               </DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuItem onSelect={handleLogout}>
+              <DropdownMenuItem disabled={isLoggingOut} onSelect={handleLogout}>
                 <IconLogout />
                 Log out
               </DropdownMenuItem>
