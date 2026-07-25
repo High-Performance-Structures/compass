@@ -21,10 +21,14 @@ import {
 } from "@/lib/google/config"
 import { requireOrg } from "@/lib/org-scope"
 import { isDemoUser } from "@/lib/demo"
+import {
+  MAX_PHOTO_UPLOAD_BATCH_BYTES,
+  MAX_PHOTO_UPLOAD_FILE_BYTES,
+  PHOTO_UPLOAD_LIMIT_LABEL,
+} from "@/lib/photos/upload-limits"
 
 const GOOGLE_FOLDER_MIME_TYPE = "application/vnd.google-apps.folder"
 const DEFAULT_PHOTO_FOLDER_NAME = "Pictures"
-const MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024
 const DEFAULT_COMPASS_GOOGLE_UPLOAD_USER = "compass@hps-colorado.com"
 const NO_PHASE_VALUE = "unassigned"
 
@@ -318,12 +322,25 @@ export async function POST(
       )
     }
 
-    const invalidFile = files.find((file) => file.size > MAX_FILE_SIZE_BYTES)
+    const invalidFile = files.find(
+      (file) => file.size > MAX_PHOTO_UPLOAD_FILE_BYTES
+    )
     if (invalidFile) {
       return NextResponse.json(
         {
           success: false,
-          error: `${invalidFile.name} is larger than 50 MB.`,
+          error: `${invalidFile.name} is larger than 50 MB. ${PHOTO_UPLOAD_LIMIT_LABEL}`,
+        },
+        { status: 400 }
+      )
+    }
+
+    const totalUploadBytes = files.reduce((total, file) => total + file.size, 0)
+    if (totalUploadBytes > MAX_PHOTO_UPLOAD_BATCH_BYTES) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: `The selected files exceed the 90 MB batch limit. ${PHOTO_UPLOAD_LIMIT_LABEL}`,
         },
         { status: 400 }
       )

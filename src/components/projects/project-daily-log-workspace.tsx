@@ -47,11 +47,15 @@ import {
   photoLinkHref,
   resolvePhotoImageSource,
 } from "@/lib/photo-sources"
+import {
+  MAX_PHOTO_UPLOAD_BATCH_BYTES,
+  MAX_PHOTO_UPLOAD_FILE_BYTES,
+  PHOTO_UPLOAD_LIMIT_LABEL,
+} from "@/lib/photos/upload-limits"
 import { cn } from "@/lib/utils"
 
 type LogFilter = "all" | "needs_review" | "approved" | "owner_visible"
 
-const MAX_DAILY_LOG_UPLOAD_BYTES = 50 * 1024 * 1024
 const NO_PHASE_VALUE = "unassigned"
 
 type DailyLogDraft = {
@@ -585,7 +589,30 @@ export function ProjectDailyLogWorkspace({
   }
 
   function chooseUploadFiles(fileList: FileList | null): void {
-    setUploadFiles(fileList === null ? [] : Array.from(fileList))
+    const files = fileList === null ? [] : Array.from(fileList)
+    setUploadFiles(files)
+
+    const oversizedFile = files.find(
+      (file) => file.size > MAX_PHOTO_UPLOAD_FILE_BYTES
+    )
+    if (oversizedFile) {
+      setUploadMessage(
+        `${oversizedFile.name} is ${formatBytes(
+          oversizedFile.size
+        )}. ${PHOTO_UPLOAD_LIMIT_LABEL}`
+      )
+      return
+    }
+
+    const totalBytes = files.reduce((total, file) => total + file.size, 0)
+    if (totalBytes > MAX_PHOTO_UPLOAD_BATCH_BYTES) {
+      setUploadMessage(
+        `${formatBytes(totalBytes)} selected. ${PHOTO_UPLOAD_LIMIT_LABEL}`
+      )
+      return
+    }
+
+    setUploadMessage(null)
   }
 
   async function uploadDailyLogFiles(log: ProjectDailyLogItem): Promise<void> {
@@ -595,13 +622,24 @@ export function ProjectDailyLogWorkspace({
     }
 
     const oversizedFile = uploadFiles.find(
-      (file) => file.size > MAX_DAILY_LOG_UPLOAD_BYTES
+      (file) => file.size > MAX_PHOTO_UPLOAD_FILE_BYTES
     )
     if (oversizedFile) {
       setUploadMessage(
         `${oversizedFile.name} is ${formatBytes(
           oversizedFile.size
-        )}. Upload files under 50 MB each.`
+        )}. ${PHOTO_UPLOAD_LIMIT_LABEL}`
+      )
+      return
+    }
+
+    const totalUploadBytes = uploadFiles.reduce(
+      (total, file) => total + file.size,
+      0
+    )
+    if (totalUploadBytes > MAX_PHOTO_UPLOAD_BATCH_BYTES) {
+      setUploadMessage(
+        `${formatBytes(totalUploadBytes)} selected. ${PHOTO_UPLOAD_LIMIT_LABEL}`
       )
       return
     }
@@ -658,17 +696,21 @@ export function ProjectDailyLogWorkspace({
       }
 
       const error =
-        typeof result === "object" &&
-        result !== null &&
-        "error" in result &&
-        typeof result.error === "string"
-          ? result.error
-          : responseText.trim().length > 0
-            ? `Upload failed (${response.status}): ${responseText.trim()}`
-            : `Upload failed (${response.status}).`
+        response.status === 413
+          ? `The upload is too large. ${PHOTO_UPLOAD_LIMIT_LABEL}`
+          : typeof result === "object" &&
+              result !== null &&
+              "error" in result &&
+              typeof result.error === "string"
+            ? result.error
+            : responseText.trim().length > 0
+              ? `Upload failed (${response.status}): ${responseText.trim()}`
+              : `Upload failed (${response.status}).`
       setUploadMessage(error)
     } catch {
-      setUploadMessage("Unable to upload files.")
+      setUploadMessage(
+        `Upload did not reach Compass. Check your connection and try fewer or smaller files. ${PHOTO_UPLOAD_LIMIT_LABEL}`
+      )
     } finally {
       setUploading(false)
     }
@@ -1244,6 +1286,9 @@ export function ProjectDailyLogWorkspace({
                           chooseUploadFiles(event.currentTarget.files)
                         }
                       />
+                      <p className="text-xs text-muted-foreground">
+                        {PHOTO_UPLOAD_LIMIT_LABEL}
+                      </p>
                       {uploadFiles.length > 0 && (
                         <p className="text-xs text-muted-foreground">
                           {uploadFiles.length} selected ·{" "}
