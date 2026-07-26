@@ -17,6 +17,9 @@ const queryDataSchema = z.object({
     "vendor_bills",
     "schedule_tasks",
     "project_operations",
+    "daily_logs",
+    "owner_updates",
+    "rfis",
     "project_detail",
     "customer_detail",
     "vendor_detail",
@@ -38,7 +41,9 @@ export function dataTools(dataSource: DataSource): ToolDef[] {
       name: "queryData",
       description:
         "Query the application database. Describe what data " +
-        "you need in natural language and provide a query type.",
+        "you need in natural language and provide a query type. " +
+        "Daily Logs, Owner Updates, RFIs, and projects include " +
+        "live Compass links; include relevant links in your answer.",
       input_schema: zodToJsonSchema(queryDataSchema),
       run: async (input: unknown): Promise<string> => {
         const args = queryDataSchema.parse(input)

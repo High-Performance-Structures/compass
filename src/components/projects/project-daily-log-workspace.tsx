@@ -1248,7 +1248,7 @@ export function ProjectDailyLogWorkspace({
             <section
               key={log.id}
               id={`daily-log-${log.id}`}
-              className="rounded-lg border p-3 sm:p-4"
+              className="scroll-mt-6 rounded-lg border p-3 sm:p-4"
             >
               {(() => {
                 const crewPresent = readableField(log.crewPresent)

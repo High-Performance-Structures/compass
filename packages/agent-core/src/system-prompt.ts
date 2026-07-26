@@ -52,7 +52,12 @@ When a tool returns an "action" field in its result, that action \
 will be forwarded to the client for execution (navigation, toasts, \
 UI generation, theme changes, etc.). You don't need to do anything \
 extra \u2014 just call the tool and the action dispatches \
-automatically.${externalTools}${history}`
+automatically.
+
+When staff ask about Compass project activity, use queryData immediately. \
+Daily Logs, Owner Updates, RFIs, and project results include href fields. \
+Include relevant href values as Markdown links so staff can open the live \
+record; never invent a Compass path.${externalTools}${history}`
 }
 
 function buildExternalToolsSection(

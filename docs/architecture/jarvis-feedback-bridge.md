@@ -208,6 +208,20 @@ For `agent.prompt`, a successful acknowledgement stores:
 Compass waits up to 90 seconds for this result. A browser retry reuses the
 same idempotent event when its session and message history are unchanged.
 
+### Search Compass for an Ask Jarvis event
+
+```text
+GET /api/integrations/jarvis/events/<event-id>/search
+```
+
+The signed, read-only route derives the organization, user role, current
+project, and latest question from the stored `agent.prompt`; callers cannot
+override that scope. It rejects guest and client roles, returns bounded Daily
+Log, Owner Update, RFI, and project summaries, and includes canonical live
+Compass URLs. The private poller injects these results as untrusted reference
+data before calling Hermes. Search failure does not prevent basic chat from
+answering.
+
 ### Send Telegram, email, or Ask Jarvis intake
 
 ```text

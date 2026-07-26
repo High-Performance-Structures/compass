@@ -10,6 +10,11 @@ const VALID_ROUTES: ReadonlyArray<RegExp> = [
   /^\/dashboard\/projects$/,
   /^\/dashboard\/projects\/[^/]+$/,
   /^\/dashboard\/projects\/[^/]+\/schedule$/,
+  /^\/dashboard\/projects\/[^/]+\/daily-logs$/,
+  /^\/dashboard\/projects\/[^/]+\/owner-updates$/,
+  /^\/dashboard\/projects\/[^/]+\/owner-updates\/[^/]+$/,
+  /^\/dashboard\/projects\/[^/]+\/rfis$/,
+  /^\/dashboard\/projects\/[^/]+\/photos$/,
   /^\/dashboard\/financials$/,
   /^\/dashboard\/people$/,
   /^\/dashboard\/files$/,
@@ -80,6 +85,9 @@ export function uiTools(): ToolDef[] {
         "/dashboard \u2014 e.g. pass 'projects' or " +
         "'/dashboard/projects'. Valid pages: projects, " +
         "projects/{id}, projects/{id}/schedule, contacts, " +
+        "projects/{id}/daily-logs, projects/{id}/owner-updates, " +
+        "projects/{id}/owner-updates/{updateId}, projects/{id}/rfis, " +
+        "projects/{id}/photos, " +
         "customers, vendors, financials, people, files, " +
         "files/{path}, boards/{id}, conversations, settings.",
       input_schema: zodToJsonSchema(navigateSchema),

@@ -235,8 +235,9 @@ export default async function ProjectRfisPage({
             return (
               <article
                 key={rfi.id}
+                id={`rfi-${rfi.id}`}
                 className={cn(
-                  "border-l-2 border-y border-r bg-background px-4 py-3",
+                  "scroll-mt-6 border-l-2 border-y border-r bg-background px-4 py-3",
                   isCreated
                     ? "border-l-[#3f7d4d] bg-card"
                     : "border-l-[#9d832c]"
