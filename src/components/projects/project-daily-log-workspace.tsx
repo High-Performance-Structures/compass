@@ -1090,6 +1090,12 @@ export function ProjectDailyLogWorkspace({
               {(() => {
                 const crewPresent = readableField(log.crewPresent)
                 const materialsUsed = readableField(log.materialsUsed)
+                const hasSupplementalDetails = Boolean(
+                  log.issues ||
+                    materialsUsed ||
+                    log.safetyIncidents ||
+                    log.visitorLog
+                )
 
                 return (
                   <>
@@ -1252,52 +1258,69 @@ export function ProjectDailyLogWorkspace({
                 </form>
               ) : (
                 <>
-                  <p className="mt-3 text-sm leading-6">{log.workCompleted}</p>
+                  <p className="mt-3 whitespace-pre-wrap break-words text-sm leading-6">
+                    {log.workCompleted}
+                  </p>
 
                   {(log.issues ||
                     materialsUsed ||
                     log.safetyIncidents ||
                     log.visitorLog ||
                     log.notes) && (
-                    <dl className="mt-3 grid gap-3 text-sm md:grid-cols-2 xl:grid-cols-4">
+                    <dl className="mt-4 grid min-w-0 gap-x-6 gap-y-4 border-t pt-4 text-sm md:grid-cols-2 xl:grid-cols-4">
                       {log.issues && (
-                        <div className="rounded-md border bg-muted/20 p-3">
+                        <div className="min-w-0">
                           <dt className="text-xs font-medium uppercase text-muted-foreground">
                             Issues
                           </dt>
-                          <dd className="mt-1">{log.issues}</dd>
+                          <dd className="mt-1 whitespace-pre-wrap break-words leading-6">
+                            {log.issues}
+                          </dd>
                         </div>
                       )}
                       {materialsUsed && (
-                        <div className="rounded-md border bg-muted/20 p-3">
+                        <div className="min-w-0">
                           <dt className="text-xs font-medium uppercase text-muted-foreground">
                             Materials
                           </dt>
-                          <dd className="mt-1">{materialsUsed}</dd>
+                          <dd className="mt-1 whitespace-pre-wrap break-words leading-6">
+                            {materialsUsed}
+                          </dd>
                         </div>
                       )}
                       {log.safetyIncidents && (
-                        <div className="rounded-md border bg-muted/20 p-3">
+                        <div className="min-w-0">
                           <dt className="text-xs font-medium uppercase text-muted-foreground">
                             Safety
                           </dt>
-                          <dd className="mt-1">{log.safetyIncidents}</dd>
+                          <dd className="mt-1 whitespace-pre-wrap break-words leading-6">
+                            {log.safetyIncidents}
+                          </dd>
                         </div>
                       )}
                       {log.visitorLog && (
-                        <div className="rounded-md border bg-muted/20 p-3">
+                        <div className="min-w-0">
                           <dt className="text-xs font-medium uppercase text-muted-foreground">
                             Visitors
                           </dt>
-                          <dd className="mt-1">{log.visitorLog}</dd>
+                          <dd className="mt-1 whitespace-pre-wrap break-words leading-6">
+                            {log.visitorLog}
+                          </dd>
                         </div>
                       )}
                       {log.notes && (
-                        <div className="rounded-md border bg-muted/20 p-3 md:col-span-2 xl:col-span-4">
+                        <div
+                          className={cn(
+                            "min-w-0 md:col-span-2 xl:col-span-4",
+                            hasSupplementalDetails && "border-t pt-4"
+                          )}
+                        >
                           <dt className="text-xs font-medium uppercase text-muted-foreground">
                             Notes / Next
                           </dt>
-                          <dd className="mt-1">{log.notes}</dd>
+                          <dd className="mt-1 whitespace-pre-wrap break-words leading-6">
+                            {log.notes}
+                          </dd>
                         </div>
                       )}
                     </dl>

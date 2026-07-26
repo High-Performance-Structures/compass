@@ -16,6 +16,7 @@ import {
 } from "@/db/schema"
 import { requireAuth } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
+import { normalizeDailyLogNotes } from "@/lib/daily-logs/notes"
 import { isDemoUser } from "@/lib/demo"
 import { requireOrg } from "@/lib/org-scope"
 import {
@@ -1346,7 +1347,7 @@ export async function getProjectDailyLogWorkspace(
       hoursWorked: row.hoursWorked,
       safetyIncidents: row.safetyIncidents,
       visitorLog: row.visitorLog,
-      notes: row.notes,
+      notes: normalizeDailyLogNotes(row.workCompleted, row.notes),
       isClientVisible: row.isClientVisible,
       reviewStatus: row.reviewStatus,
       syncStatus: row.syncStatus,
@@ -1405,7 +1406,7 @@ export async function createProjectDailyLog(
       hoursWorked: input.hoursWorked,
       safetyIncidents: optionalText(input.safetyIncidents),
       visitorLog: optionalText(input.visitorLog),
-      notes: optionalText(input.notes),
+      notes: normalizeDailyLogNotes(workCompleted, input.notes),
       isClientVisible: false,
       reviewStatus: "needs_review",
       tags: null,
@@ -1468,7 +1469,7 @@ export async function updateProjectDailyLog(
         hoursWorked: input.hoursWorked,
         safetyIncidents: optionalText(input.safetyIncidents),
         visitorLog: optionalText(input.visitorLog),
-        notes: optionalText(input.notes),
+        notes: normalizeDailyLogNotes(workCompleted, input.notes),
         isClientVisible: false,
         reviewStatus: "needs_review",
         syncStatus: "pending",
@@ -1861,7 +1862,9 @@ export async function getOwnerProjectUpdateDocument(
       manpower: row.crewPresent,
       safetyNotes: row.safetyIncidents,
       issues: row.issues,
-      nextSteps: ownerFacingDailyLogNotes(row.notes),
+      nextSteps: ownerFacingDailyLogNotes(
+        normalizeDailyLogNotes(row.workCompleted, row.notes)
+      ),
       authorName: displayName({
         displayName: row.authorDisplayName,
         firstName: row.authorFirstName,
