@@ -210,6 +210,21 @@ Built on `@tanstack/react-table`. The pattern uses a `DataTable` component that 
 
 React Hook Form with Zod resolvers. The validation schemas from `src/lib/validations/` plug directly into form configuration.
 
+### Information density and responsive text
+
+Keep Compass clean, crisp, professional, and easy to scan. Rounded cards,
+badges, pills, and other bordered "bubbles" should normally account for no
+more than roughly 20% of an informational layout. Prefer typography,
+whitespace, and subtle rules or dividers for grouping. Reserve a bounded
+container for a meaningful section or interaction instead of wrapping every
+individual value.
+
+Text must remain readable when a window narrows. Content containers need
+`min-w-0`, and user-entered prose should use `break-words` with
+`whitespace-pre-wrap` when line breaks are meaningful. Do not place prose in
+fixed-size bubbles. Use truncation only when the complete value remains
+available through an intentional detail view or accessible affordance.
+
 
 File organization
 ---
