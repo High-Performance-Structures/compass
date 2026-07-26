@@ -1,8 +1,8 @@
 import Database from "better-sqlite3"
-import { readFileSync, readdirSync } from "fs"
-import { join } from "path"
+import { mkdirSync, readFileSync, readdirSync } from "fs"
+import { dirname, join, resolve } from "path"
 
-const DB_PATH = process.env.LOCAL_DB_PATH || "local.db"
+const DB_PATH = resolve(process.env.LOCAL_DB_PATH || "local.db")
 const MIGRATIONS_DIR = join(process.cwd(), "drizzle")
 const MIGRATIONS_TABLE = "__compass_local_migrations"
 
@@ -78,6 +78,7 @@ function markMigrationsApplied(db, migrations) {
 }
 
 function main() {
+    mkdirSync(dirname(DB_PATH), { recursive: true })
     const db = new Database(DB_PATH)
     const migrations = readdirSync(MIGRATIONS_DIR)
         .filter((f) => f.endsWith(".sql") && !f.includes("seed"))

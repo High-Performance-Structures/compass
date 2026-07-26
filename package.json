@@ -2,6 +2,9 @@
 	"name": "compass",
 	"version": "0.1.0",
 	"private": true,
+	"trustedDependencies": [
+		"better-sqlite3"
+	],
 	"scripts": {
 		"dev": "next dev --turbopack",
 		"build": "next build",
@@ -30,6 +33,8 @@
 		"test:coverage": "vitest run --coverage",
 		"test:integration": "vitest run __tests__/integration",
 		"test:e2e": "playwright test",
+		"test:e2e:prepare": "bun run db:init-local && node scripts/seed-e2e-local.mjs",
+		"test:e2e:web": "bun run test:e2e:prepare && playwright test e2e/web",
 		"test:e2e:ui": "playwright test --ui",
 		"test:e2e:desktop": "bun run desktop:compile && bun scripts/run-desktop-e2e.mjs",
 		"db:init-local": "node scripts/init-local-db.mjs"

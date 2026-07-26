@@ -29,6 +29,8 @@ release/
 # dev tools
 .playwright-mcp
 .codex-snapshots/
+playwright-report/
+test-results/
 outputs/
 mobile-ui-references/
 .fuse_*
@@ -56,3 +58,4 @@ scripts/init-local-db.ts
 local.db
 local.db-wal
 local.db-shm
+.e2e/

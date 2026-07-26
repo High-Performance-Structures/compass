@@ -48,8 +48,15 @@ jobs:
       - name: Build application
         run: bun run build
 
+      - name: Prepare deterministic E2E database
+        run: bun run test:e2e:prepare
+        env:
+          LOCAL_DB_PATH: .e2e/compass.db
+
       - name: Run E2E tests
         run: bunx playwright test --project=${{ matrix.browser }}
+        env:
+          LOCAL_DB_PATH: .e2e/compass.db
 
       - uses: actions/upload-artifact@v4
         if: always()

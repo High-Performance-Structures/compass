@@ -5,6 +5,9 @@ const isElectron = () => {
   return process.env.ELECTRON === "true" || process.env.ELECTRON_TEST === "true"
 }
 
+const externalBaseUrl = process.env.PLAYWRIGHT_BASE_URL
+const baseURL = externalBaseUrl ?? "http://127.0.0.1:3000"
+
 // Web-specific projects
 const webProjects = [
   {
@@ -18,6 +21,14 @@ const webProjects = [
   {
     name: "webkit",
     use: { ...devices["Desktop Safari"] },
+  },
+  {
+    name: "mobile-chrome",
+    use: { ...devices["Pixel 7"] },
+  },
+  {
+    name: "mobile-safari",
+    use: { ...devices["iPhone 13"] },
   },
 ]
 
@@ -44,6 +55,7 @@ export default defineConfig({
   reporter: [["html"], ["list"]],
   testDir: "./e2e",
   use: {
+    baseURL,
     actionTimeout: 30000,
     navigationTimeout: 30000,
     trace: "on-first-retry",
@@ -53,10 +65,12 @@ export default defineConfig({
   outputDir: "test-results",
   preserveOutput: "always",
   projects: isElectron() ? desktopProjects : webProjects,
-  webServer: {
-    command: "bun dev",
-    port: 3000,
-    timeout: 120000,
-    reuseExistingServer: !process.env.CI,
-  },
+  webServer: externalBaseUrl
+    ? undefined
+    : {
+        command: "bun dev",
+        url: baseURL,
+        timeout: 120000,
+        reuseExistingServer: !process.env.CI,
+      },
 })
