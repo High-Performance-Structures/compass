@@ -23,7 +23,6 @@ import {
 import { usePathname } from "next/navigation"
 
 import { NavMain } from "@/components/nav-main"
-import { NavDashboards } from "@/components/nav-dashboards"
 import { NavFiles } from "@/components/nav-files"
 import { NavProjects } from "@/components/nav-projects"
 import { NavConversations } from "@/components/nav-conversations"
@@ -153,13 +152,8 @@ const NAV_MAIN = [
 
 function SidebarNav({
   projects,
-  dashboards = [],
 }: {
   projects: ReadonlyArray<ProjectListItem>
-  dashboards?: ReadonlyArray<{
-    readonly id: string
-    readonly name: string
-  }>
 }) {
   const pathname = usePathname()
   const { state } = useSidebar()
@@ -211,10 +205,7 @@ function SidebarNav({
       )}
       {mode === "projects" && <NavProjects projects={projects} />}
       {mode === "main" && (
-        <>
-          <NavMain items={navMain} />
-          <NavDashboards dashboards={dashboards} />
-        </>
+        <NavMain items={navMain} />
       )}
     </div>
   )
@@ -222,14 +213,12 @@ function SidebarNav({
 
 export function AppSidebar({
   projects = [],
-  dashboards = [],
   user,
   activeOrgId = null,
   activeOrgName = null,
   ...props
 }: React.ComponentProps<typeof Sidebar> & {
   readonly projects?: ReadonlyArray<ProjectListItem>
-  readonly dashboards?: ReadonlyArray<{ readonly id: string; readonly name: string }>
   readonly user: SidebarUser | null
   readonly activeOrgId?: string | null
   readonly activeOrgName?: string | null
@@ -243,10 +232,7 @@ export function AppSidebar({
         <OrgSwitcher activeOrgId={activeOrgId} activeOrgName={activeOrgName} />
       </SidebarHeader>
       <SidebarContent className="compass-sidebar-scroll">
-        <SidebarNav
-          projects={projects}
-          dashboards={dashboards}
-        />
+        <SidebarNav projects={projects} />
       </SidebarContent>
       <SidebarFooter className="border-t border-sidebar-border/60">
         {isMobile && (
