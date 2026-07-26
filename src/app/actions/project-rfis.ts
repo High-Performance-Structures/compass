@@ -14,6 +14,11 @@ import type { AuthUser } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
 import { requireOrg } from "@/lib/org-scope"
 import { requirePermission } from "@/lib/permissions"
+import {
+  validRfiAudience,
+  validRfiPriority,
+  validRfiStatus,
+} from "@/lib/rfis/status"
 
 export type ProjectRfiAttachmentItem = {
   readonly id: string
@@ -314,6 +319,14 @@ export async function createProjectRfi(
 
     const now = new Date().toISOString()
     const id = crypto.randomUUID()
+    const priority = validRfiPriority(input.priority)
+    const audience = validRfiAudience(input.audience)
+    if (!priority) {
+      return { success: false, error: "Please choose a valid RFI priority." }
+    }
+    if (!audience) {
+      return { success: false, error: "Please choose a valid RFI audience." }
+    }
     const inserted: typeof projectRfis.$inferInsert = {
       id,
       projectId,
@@ -321,8 +334,8 @@ export async function createProjectRfi(
       subject: requireText(input.subject, "Subject"),
       question: requireText(input.question, "Question"),
       status: "new",
-      priority: input.priority,
-      audience: input.audience,
+      priority,
+      audience,
       requesterName: cleanText(input.requesterName),
       assignedToName: cleanText(input.assignedToName),
       companyName: cleanText(input.companyName),
@@ -416,13 +429,22 @@ export async function updateProjectRfi(
 
     const now = new Date().toISOString()
     const answer = cleanText(input.answer)
-    const status = answer && input.status === "new" ? "in_progress" : input.status
+    const requestedStatus = validRfiStatus(input.status)
+    const audience = validRfiAudience(input.audience)
+    if (!requestedStatus) {
+      return { success: false, error: "Please choose a valid RFI status." }
+    }
+    if (!audience) {
+      return { success: false, error: "Please choose a valid RFI audience." }
+    }
+    const status =
+      answer && requestedStatus === "new" ? "in_progress" : requestedStatus
     await db
       .update(projectRfis)
       .set({
         answer,
         status,
-        audience: input.audience,
+        audience,
         answeredAt: status === "complete" ? now : null,
         updatedAt: now,
       })
