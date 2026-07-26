@@ -137,6 +137,7 @@ def request_json(
     timestamp = str(int(time.time()))
     headers = {
         "Accept": "application/json",
+        "User-Agent": "Compass-Jarvis-Bridge/1.0",
         "X-Compass-Timestamp": timestamp,
         "X-Compass-Signature": signature(
             secret,
@@ -157,13 +158,22 @@ def request_json(
     )
     try:
         with urllib.request.urlopen(request, timeout=30) as response:
+            response_status = response.status
+            response_type = response.headers.get("Content-Type", "unknown")
             response_body = response.read(MAX_BODY_BYTES)
     except urllib.error.HTTPError as error:
         error_body = error.read(2048).decode("utf-8", errors="replace")
         raise RuntimeError(
             f"Compass returned HTTP {error.code}: {error_body}"
         ) from error
-    return json.loads(response_body)
+    try:
+        return json.loads(response_body)
+    except json.JSONDecodeError as error:
+        raise RuntimeError(
+            "Compass returned non-JSON "
+            f"HTTP {response_status} ({response_type}, "
+            f"{len(response_body)} bytes)"
+        ) from error
 
 
 def build_parser() -> argparse.ArgumentParser:
