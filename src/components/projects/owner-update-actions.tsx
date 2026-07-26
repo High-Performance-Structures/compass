@@ -14,6 +14,7 @@ import { publishOwnerProjectUpdate } from "@/app/actions/project-field"
 import { Button } from "@/components/ui/button"
 
 export function OwnerUpdateActions({
+  canManage,
   projectId,
   updateId,
   status,
@@ -23,6 +24,7 @@ export function OwnerUpdateActions({
   projectLabel,
   updateTitle,
 }: {
+  readonly canManage: boolean
   readonly projectId: string
   readonly updateId: string
   readonly status: string
@@ -149,7 +151,7 @@ export function OwnerUpdateActions({
 
   return (
     <div className="flex flex-wrap items-center gap-2 print:hidden">
-      {status !== "published" && (
+      {canManage && status !== "published" && (
         <Button size="sm" onClick={publish} disabled={isPublishing}>
           <IconSend className="size-4" />
           {isPublishing ? "Publishing..." : "Publish"}

@@ -74,6 +74,7 @@ export function OwnerUpdateDocument({
             </Link>
           </Button>
           <OwnerUpdateActions
+            canManage={document.canManage}
             projectId={document.project.id}
             updateId={document.update.id}
             status={document.update.status}
@@ -85,7 +86,7 @@ export function OwnerUpdateDocument({
           />
         </div>
 
-        {document.update.status !== "published" && (
+        {document.canManage && document.update.status !== "published" && (
           <OwnerUpdateDraftEditor document={document} />
         )}
 
