@@ -17,6 +17,7 @@ import { propagateDates } from "@/lib/schedule/propagate-dates"
 import { requireAuth } from "@/lib/auth"
 import { requireOrg } from "@/lib/org-scope"
 import { isDemoUser } from "@/lib/demo"
+import { notifyProjectAssignment } from "@/lib/notifications/events"
 import type {
   TaskStatus,
   DependencyType,
@@ -161,6 +162,23 @@ export async function createTask(
       updatedAt: now,
     })
 
+    try {
+      await notifyProjectAssignment({
+        organizationId: orgId,
+        projectId,
+        itemId: id,
+        title: data.title,
+        assignedToName: data.assignedTo ?? null,
+        createdBy: user,
+        kind: "schedule",
+      })
+    } catch (notificationError) {
+      console.error(
+        "Schedule assignment notification failed:",
+        notificationError
+      )
+    }
+
     await recalcCriticalPath(db, projectId)
     revalidatePath(`/dashboard/projects/${projectId}/schedule`)
     return { success: true }
@@ -240,6 +258,29 @@ export async function updateTask(
         updatedAt: new Date().toISOString(),
       })
       .where(eq(scheduleTasks.id, taskId))
+
+    if (
+      data.assignedTo !== undefined &&
+      data.assignedTo !== null &&
+      data.assignedTo !== task.assignedTo
+    ) {
+      try {
+        await notifyProjectAssignment({
+          organizationId: orgId,
+          projectId: task.projectId,
+          itemId: taskId,
+          title: data.title ?? task.title,
+          assignedToName: data.assignedTo,
+          createdBy: user,
+          kind: "schedule",
+        })
+      } catch (notificationError) {
+        console.error(
+          "Schedule reassignment notification failed:",
+          notificationError
+        )
+      }
+    }
 
     // propagate date changes to downstream tasks
     const schedule = await getSchedule(task.projectId)

@@ -1,52 +1,29 @@
-import { and, eq, inArray, or } from "drizzle-orm"
-import { revalidatePath } from "next/cache"
+import { and, eq } from "drizzle-orm"
 
 import { getDb } from "@/db"
 import {
-  notificationDeliveries,
-  notificationEvents,
-  notificationPreferences,
-  notificationRecipients,
   organizationMembers,
   projectContacts,
   projects,
   users,
 } from "@/db/schema"
+import { channelMembers } from "@/db/schema-conversations"
 import type { AuthUser } from "@/lib/auth"
-import { requireAuth } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
-import { requireOrg } from "@/lib/org-scope"
+import {
+  createNotificationEvent,
+  type NotificationRecipientInput,
+} from "@/lib/notifications/create-event"
+import {
+  channelNotificationRecipients,
+  type ChannelMessageMention,
+} from "@/lib/notifications/audience"
 
-type NotificationPreferenceState = {
-  readonly inAppEnabled: boolean
-  readonly emailEnabled: boolean
-  readonly pushEnabled: boolean
-  readonly weeklyDigestEnabled: boolean
-  readonly rfiEnabled: boolean
-  readonly ownerUpdateEnabled: boolean
-  readonly scheduleEnabled: boolean
-  readonly poEnabled: boolean
-}
-
-type NotificationRecipientInput = {
-  readonly userId: string
-  readonly email: string
-}
-
-type CreateNotificationInput = {
-  readonly organizationId: string
-  readonly projectId: string | null
-  readonly eventType: string
-  readonly sourceType: string
-  readonly sourceId: string | null
-  readonly title: string
-  readonly body: string
-  readonly href: string
-  readonly priority: string
-  readonly audience: string
-  readonly createdBy: string | null
-  readonly recipients: readonly NotificationRecipientInput[]
-}
+export {
+  createNotificationEvent,
+  createSystemNotificationEvent,
+  isMissingNotificationTableError,
+} from "@/lib/notifications/create-event"
 
 type RfiNotificationInput = {
   readonly organizationId: string
@@ -58,63 +35,38 @@ type RfiNotificationInput = {
   readonly createdBy: AuthUser
 }
 
-const DEFAULT_PREFERENCES: NotificationPreferenceState = {
-  inAppEnabled: true,
-  emailEnabled: true,
-  pushEnabled: true,
-  weeklyDigestEnabled: false,
-  rfiEnabled: true,
-  ownerUpdateEnabled: true,
-  scheduleEnabled: true,
-  poEnabled: true,
+type RfiUpdatedNotificationInput = {
+  readonly organizationId: string
+  readonly projectId: string
+  readonly rfiId: string
+  readonly rfiNumber: string
+  readonly subject: string
+  readonly status: string
+  readonly requesterName: string | null
+  readonly assignedToName: string | null
+  readonly updatedBy: AuthUser
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null
+type ProjectAssignmentNotificationInput = {
+  readonly organizationId: string
+  readonly projectId: string
+  readonly itemId: string
+  readonly title: string
+  readonly assignedToName: string | null
+  readonly createdBy: AuthUser
+  readonly kind: "task" | "schedule"
 }
 
-function envString(env: unknown, key: string): string | null {
-  if (!isRecord(env)) return process.env[key] ?? null
-  const value = env[key]
-  return typeof value === "string" && value.trim().length > 0
-    ? value
-    : process.env[key] ?? null
-}
-
-export function isMissingNotificationTableError(error: unknown): boolean {
-  if (!(error instanceof Error)) return false
-  const message = error.message.toLowerCase()
-  return (
-    message.includes("notification_") &&
-    (message.includes("no such table") || message.includes("failed query"))
-  )
-}
-
-function preferenceFromRow(
-  row: typeof notificationPreferences.$inferSelect | null
-): NotificationPreferenceState {
-  if (!row) return DEFAULT_PREFERENCES
-  return {
-    inAppEnabled: row.inAppEnabled,
-    emailEnabled: row.emailEnabled,
-    pushEnabled: row.pushEnabled,
-    weeklyDigestEnabled: row.weeklyDigestEnabled,
-    rfiEnabled: row.rfiEnabled,
-    ownerUpdateEnabled: row.ownerUpdateEnabled,
-    scheduleEnabled: row.scheduleEnabled,
-    poEnabled: row.poEnabled,
-  }
-}
-
-function notificationCategoryEnabled(
-  preferences: NotificationPreferenceState,
-  eventType: string
-): boolean {
-  if (eventType.startsWith("rfi.")) return preferences.rfiEnabled
-  if (eventType.startsWith("owner_update.")) return preferences.ownerUpdateEnabled
-  if (eventType.startsWith("schedule.")) return preferences.scheduleEnabled
-  if (eventType.startsWith("po.")) return preferences.poEnabled
-  return true
+type ChannelMessageNotificationInput = {
+  readonly organizationId: string
+  readonly projectId: string | null
+  readonly channelId: string
+  readonly channelName: string
+  readonly messageId: string
+  readonly threadId: string | null
+  readonly content: string
+  readonly sender: AuthUser
+  readonly mentions: readonly ChannelMessageMention[]
 }
 
 function normalizeName(value: string | null): string {
@@ -124,194 +76,147 @@ function normalizeName(value: string | null): string {
     .trim()
 }
 
-function notificationEmailBody(input: CreateNotificationInput): string {
-  return [
-    input.title,
-    "",
-    input.body,
-    "",
-    `Open in Compass: ${input.href}`,
-  ].join("\n")
-}
-
-async function sendResendEmail(
-  env: unknown,
-  toAddress: string,
-  subject: string,
-  body: string
-): Promise<{
-  readonly status: string
-  readonly providerMessageId: string | null
-  readonly error: string | null
-}> {
-  const apiKey = envString(env, "RESEND_API_KEY")
-  if (!apiKey) {
-    return {
-      status: "pending_provider",
-      providerMessageId: null,
-      error: "RESEND_API_KEY is not configured",
-    }
-  }
-
-  const fromAddress =
-    envString(env, "COMPASS_EMAIL_FROM") ??
-    "Compass <notifications@compass.build>"
-
-  const response = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      from: fromAddress,
-      to: [toAddress],
-      subject,
-      text: body,
-    }),
-  })
-
-  const responseText = await response.text()
-  let providerMessageId: string | null = null
-  try {
-    const parsed = JSON.parse(responseText)
-    if (isRecord(parsed) && typeof parsed.id === "string") {
-      providerMessageId = parsed.id
-    }
-  } catch {
-    providerMessageId = null
-  }
-
-  return {
-    status: response.ok ? "sent" : "failed",
-    providerMessageId,
-    error: response.ok ? null : responseText.slice(0, 500),
-  }
-}
-
-async function getPreferenceForUser(
+async function projectAssignmentRecipients(
   db: ReturnType<typeof getDb>,
-  userId: string
-): Promise<NotificationPreferenceState> {
-  const row = await db
-    .select()
-    .from(notificationPreferences)
-    .where(eq(notificationPreferences.userId, userId))
-    .limit(1)
-    .then((rows) => rows[0] ?? null)
-
-  return preferenceFromRow(row)
-}
-
-export async function createNotificationEvent(
-  input: CreateNotificationInput
-): Promise<void> {
-  const user = await requireAuth()
-  const orgId = requireOrg(user)
-
-  if (orgId !== input.organizationId) {
-    throw new Error("Cannot create notifications outside the active organization")
-  }
-
-  if (input.createdBy !== user.id) {
-    throw new Error("Cannot create notifications on behalf of another user")
-  }
-
-  const requestedRecipientIds = Array.from(
-    new Set(input.recipients.map((recipient) => recipient.userId))
+  organizationId: string,
+  projectId: string,
+  names: readonly (string | null)[]
+): Promise<readonly NotificationRecipientInput[]> {
+  const normalizedNames = new Set(
+    names.map(normalizeName).filter((name) => name.length > 0)
   )
-  if (requestedRecipientIds.length === 0) return
+  if (normalizedNames.size === 0) return []
 
-  const { env } = await getCloudflareContext()
-  const db = getDb(env.DB)
-  const now = new Date().toISOString()
-  const eventId = crypto.randomUUID()
-
-  const recipients = await db
+  const contacts = await db
     .select({
-      userId: users.id,
+      displayName: projectContacts.displayName,
+      companyName: projectContacts.companyName,
+      email: projectContacts.email,
+    })
+    .from(projectContacts)
+    .where(eq(projectContacts.projectId, projectId))
+  const matchingEmails = new Set(
+    contacts
+      .filter((contact) => {
+        const candidates = [
+          contact.displayName,
+          contact.companyName,
+          contact.companyName
+            ? `${contact.displayName} - ${contact.companyName}`
+            : null,
+        ].map(normalizeName)
+        return candidates.some((candidate) =>
+          normalizedNames.has(candidate)
+        )
+      })
+      .map((contact) => contact.email?.trim().toLowerCase() ?? "")
+      .filter((email) => email.length > 0)
+  )
+
+  const orgUsers = await db
+    .select({
+      id: users.id,
       email: users.email,
       googleEmail: users.googleEmail,
+      displayName: users.displayName,
+      firstName: users.firstName,
+      lastName: users.lastName,
     })
-    .from(organizationMembers)
-    .innerJoin(users, eq(users.id, organizationMembers.userId))
+    .from(users)
+    .innerJoin(
+      organizationMembers,
+      eq(organizationMembers.userId, users.id)
+    )
     .where(
       and(
-        eq(organizationMembers.organizationId, orgId),
-        eq(users.isActive, true),
-        inArray(organizationMembers.userId, requestedRecipientIds)
+        eq(organizationMembers.organizationId, organizationId),
+        eq(users.isActive, true)
       )
     )
 
-  if (recipients.length === 0) return
-
-  try {
-    await db.insert(notificationEvents).values({
-      id: eventId,
-      organizationId: input.organizationId,
-      projectId: input.projectId,
-      eventType: input.eventType,
-      sourceType: input.sourceType,
-      sourceId: input.sourceId,
-      title: input.title,
-      body: input.body,
-      href: input.href,
-      priority: input.priority,
-      audience: input.audience,
-      createdBy: input.createdBy,
-      createdAt: now,
-    })
-
-    for (const recipient of recipients) {
-      const preferences = await getPreferenceForUser(db, recipient.userId)
-      if (!notificationCategoryEnabled(preferences, input.eventType)) continue
-
-      const recipientId = crypto.randomUUID()
-      const emailEnabled = preferences.emailEnabled
-      const inAppEnabled = preferences.inAppEnabled
-
-      await db.insert(notificationRecipients).values({
-        id: recipientId,
-        eventId,
-        userId: recipient.userId,
-        inApp: inAppEnabled,
-        email: emailEnabled,
-        push: preferences.pushEnabled,
-        readAt: null,
-        dismissedAt: null,
-        createdAt: now,
+  const recipients = new Map<string, NotificationRecipientInput>()
+  for (const orgUser of orgUsers) {
+    const primaryEmail = orgUser.email.trim().toLowerCase()
+    const googleEmail =
+      orgUser.googleEmail?.trim().toLowerCase() ?? null
+    const candidates = [
+      orgUser.displayName,
+      [orgUser.firstName, orgUser.lastName]
+        .filter((part) => part !== null)
+        .join(" "),
+      primaryEmail.split("@")[0] ?? "",
+    ].map(normalizeName)
+    const matchesName = candidates.some((candidate) =>
+      normalizedNames.has(candidate)
+    )
+    const matchesEmail =
+      matchingEmails.has(primaryEmail) ||
+      (googleEmail !== null && matchingEmails.has(googleEmail))
+    if (matchesName || matchesEmail) {
+      recipients.set(orgUser.id, {
+        userId: orgUser.id,
+        email: googleEmail ?? primaryEmail,
       })
-
-      if (emailEnabled) {
-        const delivery = await sendResendEmail(
-          env,
-          recipient.googleEmail ?? recipient.email,
-          input.title,
-          notificationEmailBody(input)
-        )
-        await db.insert(notificationDeliveries).values({
-          id: crypto.randomUUID(),
-          eventId,
-          recipientId,
-          userId: recipient.userId,
-          channel: "email",
-          status: delivery.status,
-          toAddress: recipient.email,
-          provider: "resend",
-          providerMessageId: delivery.providerMessageId,
-          error: delivery.error,
-          attemptedAt: new Date().toISOString(),
-          createdAt: now,
-        })
-      }
-    }
-
-    revalidatePath("/", "layout")
-  } catch (error) {
-    if (!isMissingNotificationTableError(error)) {
-      throw error
     }
   }
+
+  return Array.from(recipients.values())
+}
+
+function notificationPreview(content: string): string {
+  const compact = content.replace(/\s+/g, " ").trim()
+  if (compact.length <= 240) return compact
+  return `${compact.slice(0, 237)}...`
+}
+
+export async function notifyChannelMessage(
+  input: ChannelMessageNotificationInput
+): Promise<void> {
+  const { env } = await getCloudflareContext()
+  const db = getDb(env.DB)
+  const members = await db
+    .select({
+      userId: channelMembers.userId,
+      notifyLevel: channelMembers.notifyLevel,
+      email: users.email,
+    })
+    .from(channelMembers)
+    .innerJoin(users, eq(users.id, channelMembers.userId))
+    .where(eq(channelMembers.channelId, input.channelId))
+
+  const recipients = channelNotificationRecipients(
+    members,
+    input.sender.id,
+    input.mentions
+  )
+
+  if (recipients.length === 0) return
+
+  const senderName =
+    input.sender.displayName ?? input.sender.email
+  await createNotificationEvent({
+    organizationId: input.organizationId,
+    projectId: input.projectId,
+    eventType: input.threadId
+      ? "message.thread_reply"
+      : "message.channel",
+    sourceType: "message",
+    sourceId: input.messageId,
+    title: input.threadId
+      ? `${senderName} replied in #${input.channelName}`
+      : `${senderName} in #${input.channelName}`,
+    body: notificationPreview(input.content),
+    href: `/dashboard/conversations/${input.channelId}`,
+    priority: "normal",
+    audience: "channel",
+    createdBy: input.sender.id,
+    recipients,
+    delivery: {
+      inApp: true,
+      email: false,
+      push: false,
+    },
+  })
 }
 
 export async function notifyRfiCreated(
@@ -337,60 +242,14 @@ export async function notifyRfiCreated(
     email: input.createdBy.email,
   })
 
-  const assigned = normalizeName(input.assignedToName)
-  if (assigned.length > 0) {
-    const contacts = await db
-      .select({
-        displayName: projectContacts.displayName,
-        companyName: projectContacts.companyName,
-        email: projectContacts.email,
-      })
-      .from(projectContacts)
-      .where(eq(projectContacts.projectId, input.projectId))
-
-    const emails = contacts
-      .filter((contact) => {
-        const candidates = [
-          contact.displayName,
-          contact.companyName,
-          contact.companyName
-            ? `${contact.displayName} - ${contact.companyName}`
-            : null,
-        ].map(normalizeName)
-        return candidates.includes(assigned)
-      })
-      .map((contact) => contact.email?.trim().toLowerCase() ?? "")
-      .filter((email) => email.length > 0)
-
-    if (emails.length > 0) {
-      const matchedUsers = await db
-        .select({
-          id: users.id,
-          email: users.email,
-          googleEmail: users.googleEmail,
-        })
-        .from(users)
-        .innerJoin(
-          organizationMembers,
-          eq(organizationMembers.userId, users.id)
-        )
-        .where(
-          and(
-            eq(organizationMembers.organizationId, input.organizationId),
-            or(
-              inArray(users.email, emails),
-              inArray(users.googleEmail, emails)
-            )
-          )
-        )
-
-      for (const matchedUser of matchedUsers) {
-        recipients.set(matchedUser.id, {
-          userId: matchedUser.id,
-          email: matchedUser.googleEmail ?? matchedUser.email,
-        })
-      }
-    }
+  const assignedRecipients = await projectAssignmentRecipients(
+    db,
+    input.organizationId,
+    input.projectId,
+    [input.assignedToName]
+  )
+  for (const recipient of assignedRecipients) {
+    recipients.set(recipient.userId, recipient)
   }
 
   const projectLabel = project?.projectNumber
@@ -412,5 +271,87 @@ export async function notifyRfiCreated(
     audience: "internal",
     createdBy: input.createdBy.id,
     recipients: Array.from(recipients.values()),
+    delivery: {
+      inApp: true,
+      email: true,
+      push: true,
+    },
+  })
+}
+
+export async function notifyRfiUpdated(
+  input: RfiUpdatedNotificationInput
+): Promise<void> {
+  const { env } = await getCloudflareContext()
+  const db = getDb(env.DB)
+  const recipients = (
+    await projectAssignmentRecipients(
+      db,
+      input.organizationId,
+      input.projectId,
+      [input.requesterName, input.assignedToName]
+    )
+  ).filter((recipient) => recipient.userId !== input.updatedBy.id)
+  if (recipients.length === 0) return
+
+  await createNotificationEvent({
+    organizationId: input.organizationId,
+    projectId: input.projectId,
+    eventType: "rfi.updated",
+    sourceType: "rfi",
+    sourceId: input.rfiId,
+    title: `${input.rfiNumber}: ${input.subject}`,
+    body: `${input.updatedBy.displayName ?? input.updatedBy.email} updated this RFI to ${input.status.replace(/_/g, " ")}.`,
+    href: `/dashboard/projects/${input.projectId}/rfis`,
+    priority: "normal",
+    audience: "participants",
+    createdBy: input.updatedBy.id,
+    recipients,
+    delivery: {
+      inApp: true,
+      email: true,
+      push: true,
+    },
+  })
+}
+
+export async function notifyProjectAssignment(
+  input: ProjectAssignmentNotificationInput
+): Promise<void> {
+  const { env } = await getCloudflareContext()
+  const db = getDb(env.DB)
+  const recipients = (
+    await projectAssignmentRecipients(
+      db,
+      input.organizationId,
+      input.projectId,
+      [input.assignedToName]
+    )
+  ).filter((recipient) => recipient.userId !== input.createdBy.id)
+  if (recipients.length === 0) return
+
+  const isSchedule = input.kind === "schedule"
+  await createNotificationEvent({
+    organizationId: input.organizationId,
+    projectId: input.projectId,
+    eventType: isSchedule ? "schedule.assigned" : "task.assigned",
+    sourceType: isSchedule ? "schedule_item" : "task",
+    sourceId: input.itemId,
+    title: isSchedule
+      ? `Schedule item assigned: ${input.title}`
+      : `To-do assigned: ${input.title}`,
+    body: `${input.createdBy.displayName ?? input.createdBy.email} assigned this to you.`,
+    href: isSchedule
+      ? `/dashboard/projects/${input.projectId}/schedule`
+      : `/dashboard/projects/${input.projectId}`,
+    priority: "normal",
+    audience: "assignee",
+    createdBy: input.createdBy.id,
+    recipients,
+    delivery: {
+      inApp: true,
+      email: true,
+      push: true,
+    },
   })
 }

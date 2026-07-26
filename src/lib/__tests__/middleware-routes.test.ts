@@ -10,6 +10,11 @@ describe("middleware public routes", () => {
       ),
     ).toBe(true)
     expect(isPublicPath("/api/integrations/jarvis/replies")).toBe(true)
+    expect(
+      isPublicPath(
+        "/api/integrations/jarvis/feedback/request-123/status"
+      )
+    ).toBe(true)
   })
 
   it("does not make unrelated integration routes public", () => {

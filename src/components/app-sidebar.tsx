@@ -12,6 +12,7 @@ import {
   IconMailForward,
   IconMessageCircle,
   IconMessageCircleQuestion,
+  IconMessageReport,
   IconPalette,
   IconPhoto,
   IconReceipt,
@@ -113,6 +114,11 @@ const NAV_MAIN = [
     title: "Conversations",
     url: "/dashboard/conversations",
     icon: IconMessageCircle,
+  },
+  {
+    title: "My Requests",
+    url: "/dashboard/requests",
+    icon: IconMessageReport,
   },
   {
     title: "Files",

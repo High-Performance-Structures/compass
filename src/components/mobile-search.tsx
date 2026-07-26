@@ -407,7 +407,7 @@ export function MobileSearch({
           type="text"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search..."
+          placeholder="Ask Jarvis or search Compass..."
           className={cn(
             "flex-1 h-10 bg-transparent text-base",
             "text-foreground placeholder:text-muted-foreground",

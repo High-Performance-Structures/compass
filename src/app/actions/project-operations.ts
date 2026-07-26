@@ -18,6 +18,7 @@ import { requireAuth } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
 import { requireOrg } from "@/lib/org-scope"
 import { requirePermission } from "@/lib/permissions"
+import { notifyProjectAssignment } from "@/lib/notifications/events"
 
 export type ProjectOperationItem = {
   readonly id: string
@@ -1935,6 +1936,8 @@ export async function createProjectTask(
   input: CreateProjectTaskInput
 ): Promise<ProjectOperationActionResult> {
   try {
+    const user = await requireAuth()
+    const organizationId = requireOrg(user)
     const db = await verifyProjectUpdateAccess(projectId)
     const [project] = await db
       .select({
@@ -2010,6 +2013,23 @@ export async function createProjectTask(
       createdAt: now,
       updatedAt: now,
     })
+
+    try {
+      await notifyProjectAssignment({
+        organizationId,
+        projectId,
+        itemId: id,
+        title,
+        assignedToName: cleanText(input.assigneeName),
+        createdBy: user,
+        kind: "task",
+      })
+    } catch (notificationError) {
+      console.error(
+        "Project task assignment notification failed:",
+        notificationError
+      )
+    }
 
     revalidatePath(`/dashboard/projects/${projectId}`)
     revalidatePath(`/dashboard/projects/${projectId}/rfis`)

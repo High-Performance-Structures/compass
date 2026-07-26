@@ -1,7 +1,16 @@
 "use server"
 
 import { getCloudflareContext } from "@/lib/db"
-import { eq, and, desc, lt, sql, like, or } from "drizzle-orm"
+import {
+  eq,
+  and,
+  desc,
+  lt,
+  sql,
+  like,
+  ne,
+  or,
+} from "drizzle-orm"
 import { marked } from "marked"
 import { getDb } from "@/db"
 import {
@@ -25,6 +34,7 @@ import { isDemoUser } from "@/lib/demo"
 import { requireOrg } from "@/lib/org-scope"
 import { revalidatePath } from "next/cache"
 import { enqueueFeedbackDeskItem } from "@/lib/jarvis/feedback-desk"
+import { notifyChannelMessage } from "@/lib/notifications/events"
 
 const MAX_MESSAGE_LENGTH = 4000
 const EMOJI_REGEX = /^[\p{Emoji}\u200d]+$/u
@@ -266,6 +276,7 @@ export async function sendMessage(data: {
       .select({
         name: channels.name,
         organizationId: channels.organizationId,
+        projectId: channels.projectId,
       })
       .from(channels)
       .where(eq(channels.id, data.channelId))
@@ -301,6 +312,43 @@ export async function sendMessage(data: {
         })
       } catch (error) {
         console.error("conversation_feedback_enqueue_failed", {
+          messageId,
+          channelId: data.channelId,
+          error:
+            error instanceof Error
+              ? error.message
+              : "Unknown error",
+        })
+      }
+    }
+
+    await db
+      .update(channelReadState)
+      .set({
+        unreadCount: sql`${channelReadState.unreadCount} + 1`,
+      })
+      .where(
+        and(
+          eq(channelReadState.channelId, data.channelId),
+          ne(channelReadState.userId, user.id)
+        )
+      )
+
+    if (channel) {
+      try {
+        await notifyChannelMessage({
+          organizationId: channel.organizationId,
+          projectId: channel.projectId,
+          channelId: data.channelId,
+          channelName: channel.name,
+          messageId,
+          threadId: data.threadId ?? null,
+          content: data.content,
+          sender: user,
+          mentions: data.mentions ?? [],
+        })
+      } catch (error) {
+        console.error("channel_message_notification_failed", {
           messageId,
           channelId: data.channelId,
           error:

@@ -90,7 +90,7 @@ export function CommandMenu({
   return (
     <CommandDialog open={open} onOpenChange={setOpen}>
       <CommandInput
-        placeholder="Type a command or search..."
+        placeholder="Ask Jarvis or search Compass..."
         value={query}
         onValueChange={setQuery}
       />

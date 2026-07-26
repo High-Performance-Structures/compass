@@ -11,10 +11,14 @@ import {
   projects,
   users,
 } from "@/db/schema"
-import { channels } from "@/db/schema-conversations"
+import {
+  channelMembers,
+  channels,
+} from "@/db/schema-conversations"
 import { requireAuth } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
 import { requireOrg } from "@/lib/org-scope"
+import { channelNotificationRecipients } from "@/lib/notifications/audience"
 
 export type ProjectMessageRecipient =
   | { readonly kind: "channel" }
@@ -222,6 +226,25 @@ export async function sendProjectMessage(input: {
       organizationId,
       selectedContacts
     )
+    const memberRows = await db
+      .select({
+        userId: channelMembers.userId,
+        notifyLevel: channelMembers.notifyLevel,
+        email: users.email,
+      })
+      .from(channelMembers)
+      .innerJoin(users, eq(users.id, channelMembers.userId))
+      .where(eq(channelMembers.channelId, input.channelId))
+    const channelBellUserIds = new Set(
+      channelNotificationRecipients(
+        memberRows,
+        user.id,
+        input.mentions ?? []
+      ).map((recipient) => recipient.userId)
+    )
+    const additionalBellRecipients = matchedUsers.filter(
+      (recipient) => !channelBellUserIds.has(recipient.userId)
+    )
 
     const project = await db
       .select({
@@ -257,6 +280,30 @@ export async function sendProjectMessage(input: {
       audience: input.recipient.kind,
       createdBy: user.id,
       recipients: matchedUsers,
+      delivery: {
+        inApp: false,
+        email: true,
+        push: true,
+      },
+    })
+    await createNotificationEvent({
+      organizationId,
+      projectId: channel.projectId,
+      eventType: "message.project_audience",
+      sourceType: "message",
+      sourceId: sent.data.id,
+      title: `${importantPrefix}New Compass message for ${projectLabel}`,
+      body: `${importantPrefix}${user.displayName ?? user.email} sent a project message to ${label}.`,
+      href: `/dashboard/conversations/${input.channelId}`,
+      priority,
+      audience: input.recipient.kind,
+      createdBy: user.id,
+      recipients: additionalBellRecipients,
+      delivery: {
+        inApp: true,
+        email: false,
+        push: false,
+      },
     })
 
     return {

@@ -5,7 +5,10 @@ import { revalidatePath } from "next/cache"
 
 import { getDb } from "@/db"
 import { projectRfiAttachments, projectRfis, projects } from "@/db/schema"
-import { notifyRfiCreated } from "@/lib/notifications/events"
+import {
+  notifyRfiCreated,
+  notifyRfiUpdated,
+} from "@/lib/notifications/events"
 import { requireAuth } from "@/lib/auth"
 import type { AuthUser } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
@@ -389,7 +392,28 @@ export async function updateProjectRfi(
   input: UpdateProjectRfiInput
 ): Promise<ProjectRfiActionResult> {
   try {
-    const db = await verifyProjectUpdateAccess(projectId)
+    const { db, user, orgId } =
+      await getProjectUpdateContext(projectId)
+    const existing = await db
+      .select({
+        rfiNumber: projectRfis.rfiNumber,
+        subject: projectRfis.subject,
+        requesterName: projectRfis.requesterName,
+        assignedToName: projectRfis.assignedToName,
+      })
+      .from(projectRfis)
+      .where(
+        and(
+          eq(projectRfis.id, rfiId),
+          eq(projectRfis.projectId, projectId)
+        )
+      )
+      .limit(1)
+      .then((rows) => rows[0] ?? null)
+    if (!existing) {
+      return { success: false, error: "RFI not found" }
+    }
+
     const now = new Date().toISOString()
     const answer = cleanText(input.answer)
     const status = answer && input.status === "new" ? "in_progress" : input.status
@@ -408,6 +432,22 @@ export async function updateProjectRfi(
     revalidatePath(`/dashboard/projects/${projectId}/rfis`)
     revalidatePath(`/dashboard/projects/${projectId}/preview/owner`)
     revalidatePath(`/dashboard/projects/${projectId}/preview/sub-vendor`)
+
+    try {
+      await notifyRfiUpdated({
+        organizationId: orgId,
+        projectId,
+        rfiId,
+        rfiNumber: existing.rfiNumber,
+        subject: existing.subject,
+        status,
+        requesterName: existing.requesterName,
+        assignedToName: existing.assignedToName,
+        updatedBy: user,
+      })
+    } catch (notificationError) {
+      console.error("[project-rfis] update notification error", notificationError)
+    }
 
     return { success: true, id: rfiId }
   } catch (error) {
