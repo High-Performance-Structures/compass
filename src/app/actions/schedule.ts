@@ -166,7 +166,7 @@ export async function createTask(
     return { success: true }
   } catch (error) {
     console.error("Failed to create task:", error)
-    return { success: false, error: "Failed to create task" }
+    return { success: false, error: "Failed to create schedule item" }
   }
 }
 
@@ -200,7 +200,7 @@ export async function updateTask(
       .where(eq(scheduleTasks.id, taskId))
       .limit(1)
 
-    if (!task) return { success: false, error: "Task not found" }
+    if (!task) return { success: false, error: "Schedule item not found" }
 
     // verify project belongs to user's org
     const [project] = await db
@@ -273,7 +273,7 @@ export async function updateTask(
     return { success: true }
   } catch (error) {
     console.error("Failed to update task:", error)
-    return { success: false, error: "Failed to update task" }
+    return { success: false, error: "Failed to update schedule item" }
   }
 }
 
@@ -296,7 +296,7 @@ export async function deleteTask(
       .where(eq(scheduleTasks.id, taskId))
       .limit(1)
 
-    if (!task) return { success: false, error: "Task not found" }
+    if (!task) return { success: false, error: "Schedule item not found" }
 
     // verify project belongs to user's org
     const [project] = await db
@@ -315,7 +315,7 @@ export async function deleteTask(
     return { success: true }
   } catch (error) {
     console.error("Failed to delete task:", error)
-    return { success: false, error: "Failed to delete task" }
+    return { success: false, error: "Failed to delete schedule item" }
   }
 }
 
@@ -355,7 +355,7 @@ export async function reorderTasks(
     return { success: true }
   } catch (error) {
     console.error("Failed to reorder tasks:", error)
-    return { success: false, error: "Failed to reorder tasks" }
+    return { success: false, error: "Failed to reorder schedule items" }
   }
 }
 
@@ -486,7 +486,7 @@ export async function updateTaskStatus(
       .where(eq(scheduleTasks.id, taskId))
       .limit(1)
 
-    if (!task) return { success: false, error: "Task not found" }
+    if (!task) return { success: false, error: "Schedule item not found" }
 
     // verify project belongs to user's org
     const [project] = await db

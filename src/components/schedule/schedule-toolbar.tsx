@@ -122,7 +122,7 @@ export function ScheduleToolbar({
   }
 
   const handleExportCSV = () => {
-    const headers = ["Title", "Phase", "Status", "Start Date", "End Date", "Duration (days)", "% Complete", "Assigned To", "Critical Path", "Milestone"]
+    const headers = ["Title", "Phase", "Status", "Start Date", "End Date", "Duration (days)", "% Complete", "Responsible Contact", "Critical Path", "Milestone"]
     const rows = tasks.map((task) => [
       task.title,
       task.phase,
@@ -202,12 +202,14 @@ export function ScheduleToolbar({
         const url = URL.createObjectURL(blob)
         const link = document.createElement("a")
         link.href = url
-        link.download = `imported-tasks-${Date.now()}.json`
+        link.download = `imported-schedule-items-${Date.now()}.json`
         link.click()
         URL.revokeObjectURL(url)
-        toast.success(`Parsed ${tasks.length} tasks from CSV for review.`)
+        toast.success(
+          `Parsed ${tasks.length} schedule items from CSV for review.`
+        )
       } else {
-        toast.error("No valid tasks found in the CSV file.")
+        toast.error("No valid schedule items found in the CSV file.")
       }
     } catch (error) {
       console.error("Import failed:", error)
@@ -235,7 +237,7 @@ export function ScheduleToolbar({
             <DropdownMenuSub>
               <DropdownMenuSubTrigger>
                 <IconFilter className="size-4 mr-2" />
-                Filter Tasks
+                Filter Schedule Items
                 {activeFiltersCount > 0 && (
                   <span className="ml-auto bg-primary text-primary-foreground text-xs px-1.5 py-0.5 rounded">
                     {activeFiltersCount}
@@ -307,11 +309,11 @@ export function ScheduleToolbar({
             </Button>
           )}
           <span className="text-xs text-muted-foreground hidden sm:inline">
-            {tasksCount} task{tasksCount !== 1 ? "s" : ""}
+            {tasksCount} schedule item{tasksCount !== 1 ? "s" : ""}
           </span>
           <Button size="sm" onClick={onNewItem} className="h-9">
             <IconPlus className="size-4 mr-2" />
-            New Task
+            New Schedule Item
           </Button>
         </div>
       </div>
@@ -319,9 +321,9 @@ export function ScheduleToolbar({
       <Dialog open={filterDialogOpen} onOpenChange={setFilterDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Filter Tasks</DialogTitle>
+            <DialogTitle>Filter Schedule Items</DialogTitle>
             <DialogDescription>
-              Narrow down tasks by status, phase, or assignee.
+              Narrow down schedule items by status, phase, or assignee.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
@@ -336,7 +338,7 @@ export function ScheduleToolbar({
               />
             </div>
             <div className="space-y-2">
-              <Label>Assigned To</Label>
+              <Label>Responsible Contact</Label>
               <Input
                 placeholder="Filter by assignee..."
                 value={filters.assignedTo}
@@ -355,7 +357,7 @@ export function ScheduleToolbar({
             <DialogTitle>Import Schedule</DialogTitle>
             <DialogDescription>
               Upload a CSV file with your schedule data. The file should have columns
-              for title, start date, duration, phase, and assigned to.
+              for title, start date, duration, phase, and responsible contact.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">

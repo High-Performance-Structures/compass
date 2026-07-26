@@ -45,7 +45,7 @@ import {
 import { cn } from "@/lib/utils"
 import { useIsMobile } from "@/hooks/use-mobile"
 import { GanttChart } from "./gantt-chart"
-import { TaskFormDialog } from "./task-form-dialog"
+import { ScheduleItemFormDialog } from "./schedule-item-form-dialog"
 import {
   transformToFrappeTasks,
   transformWithPhaseGroups,
@@ -67,6 +67,8 @@ import type {
   ScheduleTaskData,
   TaskDependencyData,
 } from "@/lib/schedule/types"
+import type { ProjectTaskAssigneeOption } from "@/app/actions/project-contacts"
+import { ProjectTaskCreateButton } from "@/components/projects/project-task-create-button"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import { format } from "date-fns"
@@ -82,12 +84,14 @@ interface ScheduleGanttViewProps {
   readonly projectId: string
   readonly tasks: readonly ScheduleTaskData[]
   readonly dependencies: readonly TaskDependencyData[]
+  readonly assigneeOptions: readonly ProjectTaskAssigneeOption[]
 }
 
 export function ScheduleGanttView({
   projectId,
   tasks,
   dependencies,
+  assigneeOptions,
 }: ScheduleGanttViewProps) {
   const router = useRouter()
   const isMobile = useIsMobile()
@@ -311,17 +315,35 @@ export function ScheduleGanttView({
                 {task.workdays}
               </TableCell>
               <TableCell className="py-1.5">
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="size-6"
-                  onClick={() => {
-                    setEditingTask(task)
-                    setTaskFormOpen(true)
-                  }}
-                >
-                  <IconPencil className="size-3" />
-                </Button>
+                <div className="flex items-center">
+                  <ProjectTaskCreateButton
+                    compact
+                    projectId={projectId}
+                    sourceLabel="Schedule item"
+                    sourceRecordId={task.id}
+                    sourceRecordNumber={null}
+                    sourceHref={`/dashboard/projects/${projectId}/schedule`}
+                    defaultTitle={`Follow up: ${task.title}`}
+                    defaultDescription={`${task.phase} schedule item.`}
+                    defaultAssigneeName={task.assignedTo}
+                    defaultCompanyName={null}
+                    defaultDueDate={task.endDateCalculated}
+                    defaultPriority={task.isCriticalPath ? "high" : "normal"}
+                    defaultTaskType="schedule_task"
+                    assigneeOptions={assigneeOptions}
+                  />
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="size-6"
+                    onClick={() => {
+                      setEditingTask(task)
+                      setTaskFormOpen(true)
+                    }}
+                  >
+                    <IconPencil className="size-3" />
+                  </Button>
+                </div>
               </TableCell>
             </TableRow>
           )
@@ -338,7 +360,7 @@ export function ScheduleGanttView({
               }}
             >
               <IconPlus className="size-3 mr-1" />
-              Add Task
+              Add Schedule Item
             </Button>
           </TableCell>
         </TableRow>
@@ -441,7 +463,7 @@ export function ScheduleGanttView({
             Reset personal colors
           </Button>
           <div className="mt-3 border-t pt-2 text-[10px] leading-snug text-muted-foreground">
-            <p>Task bars use their chosen display color; phase is grouping only.</p>
+            <p>Schedule item bars use their chosen display color; phase is grouping only.</p>
             <p className="mt-1">Critical Path View: blue is critical work; gray has float.</p>
           </div>
         </div>
@@ -479,7 +501,7 @@ export function ScheduleGanttView({
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="chart">Chart</SelectItem>
-                <SelectItem value="tasks">Tasks</SelectItem>
+                <SelectItem value="tasks">Schedule Items</SelectItem>
               </SelectContent>
             </Select>
           )}
@@ -628,13 +650,14 @@ export function ScheduleGanttView({
         </ResizablePanelGroup>
       )}
 
-      <TaskFormDialog
+      <ScheduleItemFormDialog
         open={taskFormOpen}
         onOpenChange={setTaskFormOpen}
         projectId={projectId}
         editingTask={editingTask}
         allTasks={tasks}
         dependencies={dependencies}
+        assigneeOptions={assigneeOptions}
       />
     </div>
   )

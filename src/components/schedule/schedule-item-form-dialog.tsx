@@ -71,6 +71,8 @@ import { STATUS_OPTIONS } from "@/lib/schedule/types"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
+import type { ProjectTaskAssigneeOption } from "@/app/actions/project-contacts"
+import { ProjectAssigneePicker } from "@/components/projects/project-assignee-picker"
 
 const phases = PHASE_ORDER.map((value) => ({
   value,
@@ -84,7 +86,7 @@ const DEPENDENCY_TYPES: readonly { value: DependencyType; label: string }[] = [
   { value: "SF", label: "Start-to-Finish" },
 ]
 
-const taskSchema = z.object({
+const scheduleItemSchema = z.object({
   title: z.string().min(1, "Title is required"),
   startDate: z.string().min(1, "Start date is required"),
   workdays: z.number().min(1, "Must be at least 1 day"),
@@ -97,15 +99,16 @@ const taskSchema = z.object({
   notes: z.string(),
 })
 
-type TaskFormValues = z.infer<typeof taskSchema>
+type ScheduleItemFormValues = z.infer<typeof scheduleItemSchema>
 
-interface TaskFormDialogProps {
+interface ScheduleItemFormDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   projectId: string
   editingTask: ScheduleTaskData | null
   allTasks?: readonly ScheduleTaskData[]
   dependencies?: readonly TaskDependencyData[]
+  assigneeOptions?: readonly ProjectTaskAssigneeOption[]
 }
 
 interface PendingPredecessor {
@@ -114,14 +117,15 @@ interface PendingPredecessor {
   lagDays: number
 }
 
-export function TaskFormDialog({
+export function ScheduleItemFormDialog({
   open,
   onOpenChange,
   projectId,
   editingTask,
   allTasks = [],
   dependencies = [],
-}: TaskFormDialogProps) {
+  assigneeOptions = [],
+}: ScheduleItemFormDialogProps) {
   const router = useRouter()
   const isEditing = !!editingTask
   const [detailsOpen, setDetailsOpen] = useState(false)
@@ -138,8 +142,8 @@ export function TaskFormDialog({
     return allTasks.filter((t) => t.id !== editingTask?.id)
   }, [allTasks, editingTask])
 
-  const form = useForm<TaskFormValues>({
-    resolver: zodResolver(taskSchema),
+  const form = useForm<ScheduleItemFormValues>({
+    resolver: zodResolver(scheduleItemSchema),
     defaultValues: {
       title: "",
       startDate: new Date().toISOString().split("T")[0],
@@ -199,7 +203,7 @@ export function TaskFormDialog({
     return calculateEndDate(watchedStart, watchedWorkdays)
   }, [watchedStart, watchedWorkdays])
 
-  async function onSubmit(values: TaskFormValues) {
+  async function onSubmit(values: ScheduleItemFormValues) {
     const { notes, ...taskValues } = values
     void notes
     let result
@@ -272,7 +276,7 @@ export function TaskFormDialog({
       <DialogContent className="sm:max-w-xl max-h-[85vh] flex flex-col overflow-hidden p-0 gap-0">
         <DialogHeader className="px-5 pt-4 pb-3 shrink-0">
           <DialogTitle className="text-base font-semibold">
-            {isEditing ? "Edit Task" : "New Task"}
+            {isEditing ? "Edit Schedule Item" : "New Schedule Item"}
           </DialogTitle>
         </DialogHeader>
 
@@ -292,7 +296,7 @@ export function TaskFormDialog({
                   <FormItem>
                     <FormControl>
                       <Input
-                        placeholder="Task name"
+                        placeholder="Schedule item name"
                         className="h-10 text-sm font-medium border-0 border-b rounded-none px-0 focus-visible:ring-0 focus-visible:border-primary"
                         autoFocus
                         {...field}
@@ -500,15 +504,14 @@ export function TaskFormDialog({
                       render={({ field }) => (
                         <FormItem>
                           <FormLabel className="text-[11px] text-muted-foreground font-medium">
-                            Assignee
+                            Responsible contact
                           </FormLabel>
-                          <FormControl>
-                            <Input
-                              placeholder="Name or team"
-                              className="h-9"
-                              {...field}
-                            />
-                          </FormControl>
+                          <ProjectAssigneePicker
+                            value={field.value}
+                            options={assigneeOptions}
+                            onValueChange={(value) => field.onChange(value)}
+                            placeholder="Choose contact or type a name..."
+                          />
                         </FormItem>
                       )}
                     />
@@ -611,7 +614,7 @@ export function TaskFormDialog({
                           }
                         >
                           <SelectTrigger className="h-8 text-xs">
-                            <SelectValue placeholder="Select task" />
+                            <SelectValue placeholder="Select schedule item" />
                           </SelectTrigger>
                           <SelectContent>
                             {availableTasks.map((t) => (
@@ -680,7 +683,7 @@ export function TaskFormDialog({
                     {availableTasks.length === 0 &&
                       existingPredecessors.length === 0 && (
                         <p className="text-[11px] text-muted-foreground/60">
-                          No other tasks to link as predecessors.
+                          No other schedule items to link as predecessors.
                         </p>
                       )}
                   </div>

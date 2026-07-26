@@ -79,6 +79,12 @@ function operationKind(recordType: string): WorkCalendarEntryKind {
 }
 
 function operationSourceLabel(recordType: string, recordNumber: string | null): string {
+  if (recordType === "schedule_task") {
+    return recordNumber
+      ? `Schedule item follow-up ${recordNumber}`
+      : "Schedule item follow-up"
+  }
+
   const label = recordType
     .split("_")
     .filter(Boolean)

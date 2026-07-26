@@ -4,6 +4,10 @@ import type * as React from "react"
 import { notFound } from "next/navigation"
 
 import { getProjectDailyLogWorkspace } from "@/app/actions/project-field"
+import {
+  getProjectTaskAssigneeOptions,
+  type ProjectTaskAssigneeOption,
+} from "@/app/actions/project-contacts"
 import { ProjectDailyLogWorkspace } from "@/components/projects/project-daily-log-workspace"
 
 function hasDigest(error: unknown): error is { readonly digest: string } {
@@ -17,6 +21,7 @@ export default async function ProjectDailyLogsPage({
 }): Promise<React.ReactElement> {
   const { id } = await params
   let workspace: Awaited<ReturnType<typeof getProjectDailyLogWorkspace>>
+  let assigneeOptions: ProjectTaskAssigneeOption[] = []
 
   try {
     workspace = await getProjectDailyLogWorkspace(id)
@@ -25,5 +30,20 @@ export default async function ProjectDailyLogsPage({
     notFound()
   }
 
-  return <ProjectDailyLogWorkspace workspace={workspace} />
+  try {
+    const assigneeData = await getProjectTaskAssigneeOptions(id)
+    assigneeOptions = [
+      ...assigneeData.projectContacts,
+      ...assigneeData.directoryContacts,
+    ]
+  } catch (error) {
+    console.warn("Unable to load daily-log assignee options", error)
+  }
+
+  return (
+    <ProjectDailyLogWorkspace
+      workspace={workspace}
+      assigneeOptions={assigneeOptions}
+    />
+  )
 }

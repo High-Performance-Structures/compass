@@ -1274,6 +1274,8 @@ export async function queueProjectOperationForSageSync(
 
     revalidatePath(`/dashboard/projects/${projectId}`)
     revalidatePath(`/dashboard/projects/${projectId}/purchase-orders`)
+    revalidatePath(`/dashboard/projects/${projectId}/daily-logs`)
+    revalidatePath(`/dashboard/projects/${projectId}/schedule`)
     revalidatePath("/dashboard")
     return { success: true, updatedCount: 1 }
   } catch (error) {

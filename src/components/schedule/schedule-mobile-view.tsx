@@ -17,8 +17,11 @@ import {
 } from "date-fns"
 import { cn } from "@/lib/utils"
 import type { ScheduleTaskData } from "@/lib/schedule/types"
+import { useScheduleDisplayPalette } from "@/hooks/use-schedule-display-palette"
+import { getScheduleItemDisplayColor } from "@/lib/schedule/appearance"
 
 interface ScheduleMobileViewProps {
+  projectId: string
   tasks: ScheduleTaskData[]
   exceptions?: unknown[]
   onTaskClick?: (task: ScheduleTaskData) => void
@@ -31,42 +34,26 @@ const MONTHS = [
 
 const WEEKDAYS = ["S", "M", "T", "W", "T", "F", "S"]
 
-function getTaskColor(task: ScheduleTaskData): string {
-  if (task.status === "COMPLETE") return "bg-green-500"
-  if (task.status === "IN_PROGRESS") return "bg-blue-500"
-  if (task.status === "BLOCKED") return "bg-red-500"
-  if (task.isCriticalPath) return "bg-orange-500"
-  return "bg-muted-foreground"
-}
-
-function getTaskBorderColor(task: ScheduleTaskData): string {
-  if (task.status === "COMPLETE") return "border-green-500"
-  if (task.status === "IN_PROGRESS") return "border-blue-500"
-  if (task.status === "BLOCKED") return "border-red-500"
-  if (task.isCriticalPath) return "border-orange-500"
-  return "border-muted-foreground"
-}
-
 export function ScheduleMobileView({
+  projectId,
   tasks,
-  exceptions,
   onTaskClick,
 }: ScheduleMobileViewProps) {
+  const displayColorPalette = useScheduleDisplayPalette(projectId)
   const [currentDate, setCurrentDate] = useState(new Date())
   const [selectedDate, setSelectedDate] = useState(new Date())
 
   const currentMonth = currentDate.getMonth()
   const currentYear = currentDate.getFullYear()
 
-  const monthStart = startOfMonth(currentDate)
-  const monthEnd = endOfMonth(currentDate)
-  const calendarStart = startOfWeek(monthStart)
-  const calendarEnd = endOfWeek(monthEnd)
-
-  const days = useMemo(
-    () => eachDayOfInterval({ start: calendarStart, end: calendarEnd }),
-    [calendarStart.getTime(), calendarEnd.getTime()]
-  )
+  const days = useMemo(() => {
+    const monthStart = startOfMonth(currentDate)
+    const monthEnd = endOfMonth(currentDate)
+    return eachDayOfInterval({
+      start: startOfWeek(monthStart),
+      end: endOfWeek(monthEnd),
+    })
+  }, [currentDate])
 
   const tasksByDate = useMemo(() => {
     const map = new Map<string, ScheduleTaskData[]>()
@@ -177,7 +164,13 @@ export function ScheduleMobileView({
                   {dayTasks.slice(0, 3).map((task, i) => (
                     <span
                       key={`${task.id}-${i}`}
-                      className={cn("size-1 rounded-full", getTaskColor(task))}
+                      className="size-1 rounded-full"
+                      style={{
+                        backgroundColor: getScheduleItemDisplayColor(
+                          task,
+                          displayColorPalette
+                        ),
+                      }}
                     />
                   ))}
                 </div>
@@ -193,16 +186,23 @@ export function ScheduleMobileView({
           {format(selectedDate, "EEE, MMM d")}
         </h3>
         {selectedDayTasks.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No tasks scheduled</p>
+          <p className="text-sm text-muted-foreground">
+            No schedule items planned
+          </p>
         ) : (
           <div className="space-y-2">
             {selectedDayTasks.map((task) => (
               <button
                 key={task.id}
                 className={cn(
-                  "flex w-full gap-3 border-l-2 pl-3 py-2 text-left active:bg-muted/50 rounded-r-md",
-                  getTaskBorderColor(task)
+                  "flex w-full gap-3 border-l-2 pl-3 py-2 text-left active:bg-muted/50 rounded-r-md"
                 )}
+                style={{
+                  borderLeftColor: getScheduleItemDisplayColor(
+                    task,
+                    displayColorPalette
+                  ),
+                }}
                 onClick={() => onTaskClick?.(task)}
               >
                 <div className="flex-1 min-w-0">

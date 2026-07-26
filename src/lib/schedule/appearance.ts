@@ -84,6 +84,13 @@ export function normalizeDisplayColor(
   return isDisplayColor(value) ? value : DEFAULT_DISPLAY_COLOR
 }
 
+export function getScheduleItemDisplayColor(
+  item: { readonly displayColor: string | null | undefined },
+  palette: DisplayColorPalette = DEFAULT_DISPLAY_COLOR_PALETTE
+): string {
+  return palette[normalizeDisplayColor(item.displayColor)]
+}
+
 export function getScheduleItemClasses(item: {
   readonly displayColor: string | null | undefined
   readonly isCriticalPath: boolean

@@ -27,6 +27,8 @@ import type {
   ScheduleTaskData,
   WorkdayExceptionData,
 } from "@/lib/schedule/types"
+import { useScheduleDisplayPalette } from "@/hooks/use-schedule-display-palette"
+import { getScheduleItemDisplayColor } from "@/lib/schedule/appearance"
 
 interface ScheduleCalendarViewProps {
   readonly projectId: string
@@ -48,14 +50,6 @@ function isExceptionDay(
     const end = parseISO(ex.endDate)
     return isWithinInterval(date, { start, end })
   })
-}
-
-function getTaskColor(task: ScheduleTaskData): string {
-  if (task.status === "COMPLETE") return "bg-green-600/90 dark:bg-green-600/80"
-  if (task.status === "IN_PROGRESS") return "bg-blue-600/90 dark:bg-blue-500/80"
-  if (task.status === "BLOCKED") return "bg-red-600/90 dark:bg-red-500/80"
-  if (task.isCriticalPath) return "bg-orange-600/90 dark:bg-orange-500/80"
-  return "bg-muted-foreground/70"
 }
 
 interface WeekTask {
@@ -179,20 +173,21 @@ function buildWeekRows(
 }
 
 export function ScheduleCalendarView({
+  projectId,
   tasks,
   exceptions,
 }: ScheduleCalendarViewProps) {
   const [currentDate, setCurrentDate] = useState(new Date())
+  const displayColorPalette = useScheduleDisplayPalette(projectId)
 
-  const monthStart = startOfMonth(currentDate)
-  const monthEnd = endOfMonth(currentDate)
-  const calendarStart = startOfWeek(monthStart)
-  const calendarEnd = endOfWeek(monthEnd)
-
-  const calendarDays = useMemo(
-    () => eachDayOfInterval({ start: calendarStart, end: calendarEnd }),
-    [calendarStart.getTime(), calendarEnd.getTime()]
-  )
+  const calendarDays = useMemo(() => {
+    const monthStart = startOfMonth(currentDate)
+    const monthEnd = endOfMonth(currentDate)
+    return eachDayOfInterval({
+      start: startOfWeek(monthStart),
+      end: endOfWeek(monthEnd),
+    })
+  }, [currentDate])
 
   const weekRows = useMemo(
     () => buildWeekRows(calendarDays, tasks),
@@ -303,13 +298,16 @@ export function ScheduleCalendarView({
                       key={`${wt.task.id}-${weekIdx}`}
                       className={cn(
                         "absolute text-[10px] text-white font-medium truncate px-1.5 leading-[20px] cursor-default",
-                        getTaskColor(wt.task),
                         wt.isStart && wt.isEnd && "rounded",
                         wt.isStart && !wt.isEnd && "rounded-l",
                         !wt.isStart && wt.isEnd && "rounded-r",
                         !wt.isStart && !wt.isEnd && "rounded-none",
                       )}
                       style={{
+                        backgroundColor: getScheduleItemDisplayColor(
+                          wt.task,
+                          displayColorPalette
+                        ),
                         top: `${DAY_HEADER_HEIGHT + wt.lane * LANE_HEIGHT}px`,
                         left: `${(wt.startCol / 7) * 100}%`,
                         width: `${(wt.span / 7) * 100}%`,

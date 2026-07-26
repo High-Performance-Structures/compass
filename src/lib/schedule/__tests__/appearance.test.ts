@@ -3,9 +3,10 @@ import {
   DEFAULT_DISPLAY_COLOR,
   DEFAULT_DISPLAY_COLOR_PALETTE,
   DISPLAY_COLOR_OPTIONS,
-  normalizeDisplayColorPalette,
+  getScheduleItemDisplayColor,
   getScheduleItemClasses,
   normalizeDisplayColor,
+  normalizeDisplayColorPalette,
 } from "../appearance"
 import { transformToFrappeTasks } from "../gantt-transform"
 import type { ScheduleTaskData } from "../types"
@@ -31,6 +32,15 @@ describe("display-color palette", () => {
       red: DEFAULT_DISPLAY_COLOR_PALETTE.red,
       green: DEFAULT_DISPLAY_COLOR_PALETTE.green,
     })
+  })
+
+  it("resolves a schedule item's selected color from the active palette", () => {
+    expect(
+      getScheduleItemDisplayColor(
+        { displayColor: "purple" },
+        { ...DEFAULT_DISPLAY_COLOR_PALETTE, purple: "#123456" }
+      )
+    ).toBe("#123456")
   })
 })
 

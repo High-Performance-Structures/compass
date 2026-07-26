@@ -36,12 +36,12 @@ const KIND_FILTERS: readonly KindConfig[] = [
   },
   {
     id: "schedule",
-    label: "Schedule",
+    label: "Schedule items",
     icon: <IconCalendarEvent className="size-4" />,
   },
   {
     id: "task",
-    label: "Tasks",
+    label: "To-dos",
     icon: <IconClipboardCheck className="size-4" />,
   },
   {
@@ -95,9 +95,9 @@ function normalize(value: string): string {
 function kindLabel(kind: WorkCalendarEntryKind): string {
   switch (kind) {
     case "schedule":
-      return "Schedule"
+      return "Schedule item"
     case "task":
-      return "Task"
+      return "To-do"
     case "rfi":
       return "RFI"
     case "purchase_order":
@@ -236,7 +236,7 @@ export function WorkCalendar({
                   Work calendar
                 </p>
                 <h1 className="text-2xl font-semibold tracking-tight">
-                  Tasks, due dates, and field follow-ups.
+                  To-dos, schedule items, and field follow-ups.
                 </h1>
               </div>
             </div>
@@ -252,7 +252,7 @@ export function WorkCalendar({
               <p className="mt-1 text-2xl font-semibold">{todayEntries.length}</p>
             </div>
             <div>
-              <p className="text-xs text-muted-foreground">Tasks</p>
+              <p className="text-xs text-muted-foreground">To-dos</p>
               <p className="mt-1 text-2xl font-semibold">{taskCount}</p>
             </div>
             <div>
@@ -274,7 +274,7 @@ export function WorkCalendar({
             <Input
               value={query}
               onChange={(event) => setQuery(event.target.value)}
-              placeholder="Search by task, project, assignee, RFI, PO..."
+              placeholder="Search by to-do, project, assignee, RFI, PO..."
               className="pl-9"
             />
           </div>
@@ -300,7 +300,7 @@ export function WorkCalendar({
               <h2 className="text-sm font-semibold">Next 14 days</h2>
               <p className="mt-1 text-xs text-muted-foreground">
                 {filteredEntries.length} visible work items across project
-                schedules, RFIs, Sage operations, and Compass tasks.
+                schedule items, RFIs, Sage operations, and Compass to-dos.
               </p>
             </div>
             <Badge variant="secondary">{formatShortDate(data.today)} onward</Badge>
@@ -359,7 +359,7 @@ export function WorkCalendar({
           </div>
 
           <aside className="rounded-lg border bg-card p-4">
-            <h2 className="text-sm font-semibold">Task Sources</h2>
+            <h2 className="text-sm font-semibold">To-do Sources</h2>
             <div className="mt-3 grid gap-2">
               <Link
                 href="/dashboard/projects/select?target=daily-logs"
