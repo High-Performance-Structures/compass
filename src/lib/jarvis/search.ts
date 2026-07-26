@@ -15,6 +15,10 @@ const SEARCHABLE_ROLES: readonly string[] = ["admin", "office", "field"]
 
 const GENERIC_SEARCH_WORDS: readonly string[] = [
   "about",
+  "anything",
+  "can",
+  "capabilities",
+  "changed",
   "compass",
   "could",
   "find",
@@ -22,12 +26,22 @@ const GENERIC_SEARCH_WORDS: readonly string[] = [
   "from",
   "give",
   "latest",
+  "link",
+  "links",
+  "location",
+  "locations",
+  "looked",
+  "now",
   "please",
   "project",
+  "provide",
   "search",
   "show",
+  "since",
+  "some",
   "tell",
   "that",
+  "think",
   "this",
   "update",
   "updates",
@@ -35,6 +49,8 @@ const GENERIC_SEARCH_WORDS: readonly string[] = [
   "when",
   "where",
   "with",
+  "you",
+  "your",
 ]
 
 function normalized(value: string): string {

@@ -2,12 +2,19 @@
 
 import type { FileUIPart, UIMessage } from "./types"
 import { ChevronLeftIcon, ChevronRightIcon, PaperclipIcon, XIcon } from "lucide-react"
-import type { ComponentProps, HTMLAttributes, ReactElement } from "react"
+import { useRouter } from "next/navigation"
+import type {
+  ComponentProps,
+  HTMLAttributes,
+  MouseEvent,
+  ReactElement,
+} from "react"
 import { createContext, memo, useContext, useEffect, useState } from "react"
-import { Streamdown } from "streamdown"
+import { Streamdown, type Components } from "streamdown"
 import { Button } from "@/components/ui/button"
 import { ButtonGroup, ButtonGroupText } from "@/components/ui/button-group"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
+import { sameOriginNavigationHref } from "@/lib/navigation/internal-link"
 import { cn } from "@/lib/utils"
 
 export type MessageProps = HTMLAttributes<HTMLDivElement> & {
@@ -262,10 +269,69 @@ export const MessageBranchPage = ({ className, ...props }: MessageBranchPageProp
 
 export type MessageResponseProps = ComponentProps<typeof Streamdown>
 
+type MessageLinkProps = ComponentProps<"a"> & {
+  readonly node?: unknown
+}
+
+function MessageLink({
+  download,
+  href,
+  node: _node,
+  onClick,
+  target,
+  ...props
+}: MessageLinkProps): ReactElement {
+  const router = useRouter()
+  void _node
+
+  function handleClick(event: MouseEvent<HTMLAnchorElement>): void {
+    onClick?.(event)
+    if (
+      event.defaultPrevented ||
+      event.button !== 0 ||
+      event.metaKey ||
+      event.ctrlKey ||
+      event.shiftKey ||
+      event.altKey ||
+      target === "_blank" ||
+      download !== undefined ||
+      href === undefined
+    ) {
+      return
+    }
+
+    const internalHref = sameOriginNavigationHref(
+      href,
+      window.location.origin
+    )
+    if (internalHref === null) {
+      return
+    }
+
+    event.preventDefault()
+    router.push(internalHref)
+  }
+
+  return (
+    <a
+      download={download}
+      href={href}
+      onClick={handleClick}
+      target={target}
+      {...props}
+    />
+  )
+}
+
+const MESSAGE_COMPONENTS: Components = {
+  a: MessageLink,
+}
+
 export const MessageResponse = memo(
   ({ className, ...props }: MessageResponseProps) => (
     <Streamdown
       className={cn("size-full [&>*:first-child]:mt-0 [&>*:last-child]:mb-0", className)}
+      components={MESSAGE_COMPONENTS}
       {...props}
     />
   ),
