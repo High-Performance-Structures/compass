@@ -1,34 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { authkit, handleAuthkitHeaders } from "@workos-inc/authkit-nextjs"
 import { isLocalDevelopment, isWorkOSConfigured } from "@/lib/auth-config"
-
-const publicPaths = [
-  "/",
-  "/login",
-  "/signup",
-  "/reset-password",
-  "/verify-email",
-  "/invite",
-  "/callback",
-  "/demo",
-  "/manifest.json",
-]
-
-const bridgePaths = [
-  "/api/bridge/register",
-  "/api/bridge/tools",
-  "/api/bridge/context",
-]
-
-function isPublicPath(pathname: string): boolean {
-  return (
-    publicPaths.includes(pathname) ||
-    bridgePaths.includes(pathname) ||
-    pathname.startsWith("/api/auth/") ||
-    pathname.startsWith("/api/netsuite/") ||
-    pathname.startsWith("/api/google/")
-  )
-}
+import { isPublicPath } from "@/lib/public-paths"
 
 export default async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
