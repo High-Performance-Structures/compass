@@ -98,10 +98,14 @@ export function FieldDesk({
     }
   }, [offlineScopeKey])
 
-  function queueCherishResponse(trimmedMessage: string): boolean {
+  function queueCherishResponse(
+    trimmedMessage: string,
+    submissionId: string,
+  ): boolean {
     return enqueueFieldOutboxItem(
       offlineScopeKey,
       createCherishPulseOutboxItem({
+        id: submissionId,
         cherishValue,
         responseType,
         message: trimmedMessage,
@@ -126,8 +130,9 @@ export function FieldDesk({
       return
     }
 
+    const submissionId = crypto.randomUUID()
     if (!navigator.onLine) {
-      if (queueCherishResponse(trimmedMessage)) {
+      if (queueCherishResponse(trimmedMessage, submissionId)) {
         resetForm()
         setFeedback(
           "Saved on this device. The response will sync when service returns.",
@@ -146,6 +151,7 @@ export function FieldDesk({
           responseType,
           message: trimmedMessage,
           source: "compass_mobile",
+          clientSubmissionId: submissionId,
         })
         if (!result.success) {
           setFeedback(result.error)
@@ -159,7 +165,7 @@ export function FieldDesk({
             : "Saved to the CHERISH review queue.",
         )
       } catch {
-        if (queueCherishResponse(trimmedMessage)) {
+        if (queueCherishResponse(trimmedMessage, submissionId)) {
           resetForm()
           setFeedback(
             "Connection was interrupted. The response is saved for automatic sync.",

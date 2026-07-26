@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest"
 
 import {
+  createCherishPulseOutboxItem,
   enqueueFieldOutboxItem,
   listFieldOutboxItems,
   removeFieldOutboxItem,
@@ -76,6 +77,18 @@ describe("field offline outbox", () => {
 
     removeFieldOutboxItem("org:user", item.id, storage)
     expect(listFieldOutboxItems("org:user", storage)).toEqual([])
+  })
+
+  it("preserves a client submission id across an online retry", () => {
+    const id = "51da9e0f-a85e-4ad3-81ef-3881062413bc"
+    const item = createCherishPulseOutboxItem({
+      id,
+      cherishValue: "Integrity",
+      responseType: "concern",
+      message: "Please review this privately.",
+    })
+
+    expect(item.id).toBe(id)
   })
 
   it("rejects malformed items and recovers from corrupt storage", () => {

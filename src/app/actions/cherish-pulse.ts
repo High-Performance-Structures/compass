@@ -51,6 +51,7 @@ export type SubmitCherishPulseInput = {
   readonly responseType: CherishPulseResponseType
   readonly message: string
   readonly source?: CherishPulseSource
+  readonly clientSubmissionId?: string
 }
 
 export type ReviewCherishPulseInput = {
@@ -126,10 +127,56 @@ export async function submitCherishPulseResponse(
       }
     }
 
+    const clientSubmissionId = input.clientSubmissionId?.trim()
+    if (
+      clientSubmissionId !== undefined &&
+      !isValidClientSubmissionId(clientSubmissionId)
+    ) {
+      return {
+        success: false,
+        error: "The offline submission identifier is invalid.",
+      }
+    }
+
+    const db = getDb(env.DB)
+    if (clientSubmissionId) {
+      const existing = await db
+        .select({
+          id: cherishPulseResponses.id,
+          cherishValue: cherishPulseResponses.cherishValue,
+          responseType: cherishPulseResponses.responseType,
+          message: cherishPulseResponses.message,
+          source: cherishPulseResponses.source,
+          visibility: cherishPulseResponses.visibility,
+          reviewStatus: cherishPulseResponses.reviewStatus,
+          submittedByName: cherishPulseResponses.submittedByName,
+          submittedByEmail: cherishPulseResponses.submittedByEmail,
+          weekStart: cherishPulseResponses.weekStart,
+          createdAt: cherishPulseResponses.createdAt,
+        })
+        .from(cherishPulseResponses)
+        .where(
+          and(
+            eq(cherishPulseResponses.id, clientSubmissionId),
+            eq(cherishPulseResponses.organizationId, organizationId),
+            eq(cherishPulseResponses.submittedBy, user.id)
+          )
+        )
+        .limit(1)
+
+      const existingItem = existing[0]
+      if (existingItem) {
+        return {
+          success: true,
+          data: rowToReviewItem(existingItem),
+        }
+      }
+    }
+
     const now = new Date().toISOString()
     const visibility = visibilityForType(input.responseType)
     const item: CherishPulseReviewItem = {
-      id: crypto.randomUUID(),
+      id: clientSubmissionId ?? crypto.randomUUID(),
       cherishValue: input.cherishValue,
       responseType: input.responseType,
       message,
@@ -142,7 +189,6 @@ export async function submitCherishPulseResponse(
       createdAt: now,
     }
 
-    const db = getDb(env.DB)
     await db
       .insert(cherishPulseResponses)
       .values({
@@ -336,6 +382,12 @@ function canSubmitCherishPulse(user: AuthUser): boolean {
       user.role === "secondary_admin" ||
       user.role === "office" ||
       user.role === "field")
+  )
+}
+
+function isValidClientSubmissionId(value: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+    value
   )
 }
 

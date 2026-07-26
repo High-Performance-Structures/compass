@@ -224,12 +224,13 @@ export function createJarvisPromptOutboxItem(
 }
 
 export function createCherishPulseOutboxItem(input: {
+  readonly id?: string
   readonly cherishValue: CherishValue
   readonly responseType: CherishPulseResponseType
   readonly message: string
 }): FieldOutboxCherishPulse {
   return {
-    id: crypto.randomUUID(),
+    id: input.id ?? crypto.randomUUID(),
     kind: "cherish_pulse",
     cherishValue: input.cherishValue,
     responseType: input.responseType,
