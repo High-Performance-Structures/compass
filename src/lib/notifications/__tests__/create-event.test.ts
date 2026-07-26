@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 
-import { resolveNotificationDelivery } from "@/lib/notifications/create-event"
+import { resolveNotificationDelivery } from "@/lib/notifications/delivery"
 
 describe("notification delivery", () => {
   it("keeps ordinary channel messages in the notification bell", () => {

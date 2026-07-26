@@ -12,6 +12,10 @@ import {
 } from "@/db/schema"
 import { requireAuth } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
+import {
+  resolveNotificationDelivery,
+  type NotificationDelivery,
+} from "@/lib/notifications/delivery"
 import { requireOrg } from "@/lib/org-scope"
 import { sendPushNotification } from "@/lib/push/send"
 
@@ -29,12 +33,6 @@ type NotificationPreferenceState = {
 export type NotificationRecipientInput = {
   readonly userId: string
   readonly email: string
-}
-
-export type NotificationDelivery = {
-  readonly inApp: boolean
-  readonly email: boolean
-  readonly push: boolean
 }
 
 export type CreateNotificationInput = {
@@ -119,20 +117,6 @@ function notificationCategoryEnabled(
   return true
 }
 
-export function resolveNotificationDelivery(
-  preferences: Pick<
-    NotificationPreferenceState,
-    "inAppEnabled" | "emailEnabled" | "pushEnabled"
-  >,
-  requested: NotificationDelivery
-): NotificationDelivery {
-  return {
-    inApp: requested.inApp && preferences.inAppEnabled,
-    email: requested.email && preferences.emailEnabled,
-    push: requested.push && preferences.pushEnabled,
-  }
-}
-
 function notificationEmailBody(
   input: Pick<CreateNotificationInput, "title" | "body" | "href">
 ): string {
@@ -144,6 +128,11 @@ function notificationEmailBody(
     `Open in Compass: ${input.href}`,
   ].join("\n")
 }
+
+export {
+  resolveNotificationDelivery,
+  type NotificationDelivery,
+} from "@/lib/notifications/delivery"
 
 async function sendResendEmail(
   env: unknown,
