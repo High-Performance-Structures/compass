@@ -20,10 +20,10 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
 
-type KindFilter = WorkCalendarEntryKind | "all"
+export type WorkCalendarKindFilter = WorkCalendarEntryKind | "all"
 
 type KindConfig = {
-  readonly id: KindFilter
+  readonly id: WorkCalendarKindFilter
   readonly label: string
   readonly icon: React.ReactNode
 }
@@ -197,11 +197,17 @@ function WorkItem({
 
 export function WorkCalendar({
   data,
+  initialKind = "all",
 }: {
   readonly data: WorkCalendarData
+  readonly initialKind?: WorkCalendarKindFilter
 }): React.ReactElement {
   const [query, setQuery] = React.useState("")
-  const [activeKind, setActiveKind] = React.useState<KindFilter>("all")
+  const [activeKind, setActiveKind] =
+    React.useState<WorkCalendarKindFilter>(initialKind)
+  React.useEffect(() => {
+    setActiveKind(initialKind)
+  }, [initialKind])
   const today = React.useMemo(() => parseDateKey(data.today), [data.today])
   const days = React.useMemo(
     () => Array.from({ length: 14 }, (_, index) => toDateKey(addDays(today, index))),

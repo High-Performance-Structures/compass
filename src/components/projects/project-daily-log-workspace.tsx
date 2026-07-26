@@ -373,8 +373,8 @@ function DailyLogFields({
         </div>
       </div>
 
-      <div className="grid gap-3 lg:grid-cols-4">
-        <div className="grid gap-1.5">
+      <div className="grid gap-3 lg:grid-cols-12">
+        <div className="grid gap-1.5 lg:col-span-4">
           <Label htmlFor={`${idPrefix}-issues`}>Issues</Label>
           <Textarea
             id={`${idPrefix}-issues`}
@@ -385,7 +385,7 @@ function DailyLogFields({
             placeholder="Delays, conflicts, blockers..."
           />
         </div>
-        <div className="grid gap-1.5">
+        <div className="grid gap-1.5 lg:col-span-4">
           <Label htmlFor={`${idPrefix}-safety`}>Safety</Label>
           <Textarea
             id={`${idPrefix}-safety`}
@@ -396,7 +396,7 @@ function DailyLogFields({
             placeholder="Incidents or no incidents."
           />
         </div>
-        <div className="grid gap-1.5">
+        <div className="grid gap-1.5 lg:col-span-4">
           <Label htmlFor={`${idPrefix}-visitors`}>Visitors</Label>
           <Textarea
             id={`${idPrefix}-visitors`}
@@ -407,7 +407,7 @@ function DailyLogFields({
             placeholder="Owners, inspectors, suppliers..."
           />
         </div>
-        <div className="grid gap-1.5">
+        <div className="grid gap-1.5 lg:col-span-12">
           <Label htmlFor={`${idPrefix}-notes`}>Notes / Next</Label>
           <Textarea
             id={`${idPrefix}-notes`}
@@ -1259,7 +1259,7 @@ export function ProjectDailyLogWorkspace({
                     log.safetyIncidents ||
                     log.visitorLog ||
                     log.notes) && (
-                    <dl className="mt-3 grid gap-3 text-sm md:grid-cols-2 xl:grid-cols-5">
+                    <dl className="mt-3 grid gap-3 text-sm md:grid-cols-2 xl:grid-cols-4">
                       {log.issues && (
                         <div className="rounded-md border bg-muted/20 p-3">
                           <dt className="text-xs font-medium uppercase text-muted-foreground">
@@ -1293,7 +1293,7 @@ export function ProjectDailyLogWorkspace({
                         </div>
                       )}
                       {log.notes && (
-                        <div className="rounded-md border bg-muted/20 p-3">
+                        <div className="rounded-md border bg-muted/20 p-3 md:col-span-2 xl:col-span-4">
                           <dt className="text-xs font-medium uppercase text-muted-foreground">
                             Notes / Next
                           </dt>
