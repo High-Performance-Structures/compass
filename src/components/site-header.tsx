@@ -174,7 +174,7 @@ export function SiteHeader({
               size="icon"
               className="size-7 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
               onClick={() => agentContext?.toggle()}
-              aria-label="Toggle assistant"
+              aria-label="Toggle Jarvis"
             >
               <IconSparkles className="size-4" />
             </Button>
