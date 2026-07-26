@@ -276,8 +276,8 @@ export function MobileSearch({
       ? [
           {
             icon: IconSparkles,
-            label: `Ask Compass: ${query.trim()}`,
-            sublabel: "Use the project agent to navigate or build a view",
+            label: `Ask Jarvis: ${query.trim()}`,
+            sublabel: "Use Jarvis to navigate or build a view",
             category: "action",
             action: "ask-agent",
           },

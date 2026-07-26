@@ -4,10 +4,7 @@ import { getCloudflareContext } from "@/lib/db"
 import { eq } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { getDb } from "@/db"
-import {
-  userProviderConfig,
-  agentConfig,
-} from "@/db/schema-ai-config"
+import { userProviderConfig } from "@/db/schema-ai-config"
 import { getCurrentUser } from "@/lib/auth"
 import { can } from "@/lib/permissions"
 import { encrypt, decrypt } from "@/lib/crypto"
@@ -44,6 +41,9 @@ export async function getUserProviderConfig(): Promise<
     const user = await getCurrentUser()
     if (!user) {
       return { success: false, error: "Unauthorized" }
+    }
+    if (!can(user, "agent", "update")) {
+      return { success: false, error: "Permission denied" }
     }
 
     const { env } = await getCloudflareContext()
@@ -104,7 +104,7 @@ export async function getProviderConfigForJwt(
       .where(eq(userProviderConfig.userId, userId))
       .get()
 
-    if (!config) {
+    if (!config || config.isActive !== 1) {
       return null
     }
 
@@ -165,6 +165,9 @@ export async function setUserProviderConfig(
     if (!user) {
       return { success: false, error: "Unauthorized" }
     }
+    if (!can(user, "agent", "update")) {
+      return { success: false, error: "Permission denied" }
+    }
 
     if (isDemoUser(user.id)) {
       return { success: false, error: "DEMO_READ_ONLY" }
@@ -172,25 +175,6 @@ export async function setUserProviderConfig(
 
     const { env } = await getCloudflareContext()
     const db = getDb(env.DB)
-
-    const config = await db
-      .select()
-      .from(agentConfig)
-      .where(eq(agentConfig.id, "global"))
-      .get()
-
-    const isAdmin = can(user, "agent", "update")
-
-    if (
-      !isAdmin &&
-      config &&
-      config.allowUserSelection !== 1
-    ) {
-      return {
-        success: false,
-        error: "User provider selection is disabled",
-      }
-    }
 
     let encryptedApiKey: string | null = null
     if (apiKey) {
@@ -262,6 +246,9 @@ export async function updateUserModelOverrides(
     if (!user) {
       return { success: false, error: "Unauthorized" }
     }
+    if (!can(user, "agent", "update")) {
+      return { success: false, error: "Permission denied" }
+    }
 
     if (isDemoUser(user.id)) {
       return { success: false, error: "DEMO_READ_ONLY" }
@@ -315,6 +302,9 @@ export async function clearUserProviderConfig(): Promise<{
     const user = await getCurrentUser()
     if (!user) {
       return { success: false, error: "Unauthorized" }
+    }
+    if (!can(user, "agent", "update")) {
+      return { success: false, error: "Permission denied" }
     }
 
     if (isDemoUser(user.id)) {

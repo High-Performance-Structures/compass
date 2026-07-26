@@ -137,17 +137,17 @@ export function CommandMenu({
         <CommandGroup heading="Actions">
           {canUseAskCompass && query.trim() && agent && chat && (
             <CommandItem
-              value={`ask compass ${query}`}
+              value={`ask jarvis ${query}`}
               onSelect={() => runCommand(askAgent)}
             >
               <IconSparkles />
-              Ask Compass: {query}
+              Ask Jarvis: {query}
             </CommandItem>
           )}
           {canUseAskCompass && agent && (
             <CommandItem onSelect={() => runCommand(() => agent.open())}>
               <IconMessageCircle />
-              Ask Assistant
+              Open Jarvis
             </CommandItem>
           )}
           <CommandItem onSelect={() => runCommand(() => setTheme(theme === "dark" ? "light" : "dark"))}>

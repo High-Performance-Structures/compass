@@ -57,6 +57,7 @@ const CACHE_TTL_MS = 5 * 60 * 1000
 
 export async function getActiveModel(): Promise<{
   success: true
+  isAdmin: boolean
   data: {
     modelId: string
     modelName: string
@@ -66,7 +67,6 @@ export async function getActiveModel(): Promise<{
     contextLength: number
     maxCostPerMillion: string | null
     allowUserSelection: boolean
-    isAdmin: boolean
   } | null
 } | {
   success: false
@@ -77,7 +77,6 @@ export async function getActiveModel(): Promise<{
     if (!user) {
       return { success: false, error: "Unauthorized" }
     }
-
     const isAdmin = can(user, "agent", "update")
     const { env } = await getCloudflareContext()
     const db = getDb(env.DB)
@@ -90,6 +89,7 @@ export async function getActiveModel(): Promise<{
 
     return {
       success: true,
+      isAdmin,
       data: config
         ? {
             modelId: config.modelId,
@@ -102,7 +102,6 @@ export async function getActiveModel(): Promise<{
               config.maxCostPerMillion ?? null,
             allowUserSelection:
               config.allowUserSelection === 1,
-            isAdmin,
           }
         : null,
     }
@@ -203,6 +202,12 @@ export async function getModelList(): Promise<{
     const user = await getCurrentUser()
     if (!user) {
       return { success: false, error: "Unauthorized" }
+    }
+    if (!can(user, "agent", "update")) {
+      return {
+        success: false,
+        error: "Permission denied",
+      }
     }
 
     if (

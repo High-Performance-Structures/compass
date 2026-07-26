@@ -60,7 +60,6 @@ import {
 } from "@/lib/anthropic-oauth-client"
 import { openExternalUrl } from "@/lib/native/platform"
 import { Slider } from "@/components/ui/slider"
-import { Switch } from "@/components/ui/switch"
 import { cn } from "@/lib/utils"
 import {
   ProviderIcon,
@@ -97,7 +96,6 @@ interface ActiveConfig {
   readonly contextLength: number
   readonly maxCostPerMillion: string | null
   readonly allowUserSelection: boolean
-  readonly isAdmin: boolean
 }
 
 interface UsageMetrics {
@@ -1118,31 +1116,19 @@ export function AIModelTab() {
   const [isAdmin, setIsAdmin] = React.useState(false)
   const [modelsError, setModelsError] =
     React.useState<string | null>(null)
-  const [allowUserSelection, setAllowUserSelection] =
-    React.useState(true)
   const [costCeiling, setCostCeiling] =
     React.useState<number | null>(null)
   const [policySaving, setPolicySaving] =
     React.useState(false)
-  const [userProviderType, setUserProviderType] =
-    React.useState<string | null>(null)
-
   const loadData = React.useCallback(async () => {
     setLoading(true)
 
-    const [configResult, providerResult] =
-      await Promise.all([
-        getActiveModel(),
-        getUserProviderConfig(),
-      ])
+    const configResult = await getActiveModel()
 
     if (configResult.success) {
+      setIsAdmin(configResult.isAdmin)
       setActiveConfig(configResult.data)
       if (configResult.data) {
-        setIsAdmin(configResult.data.isAdmin)
-        setAllowUserSelection(
-          configResult.data.allowUserSelection
-        )
         setCostCeiling(
           configResult.data.maxCostPerMillion
             ? parseFloat(
@@ -1154,15 +1140,11 @@ export function AIModelTab() {
     }
 
     if (
-      "success" in providerResult &&
-      providerResult.success &&
-      providerResult.data
+      !configResult.success ||
+      !configResult.isAdmin
     ) {
-      setUserProviderType(
-        providerResult.data.providerType
-      )
-    } else {
-      setUserProviderType(null)
+      setLoading(false)
+      return
     }
 
     const [modelsResult, metricsResult] =
@@ -1221,9 +1203,29 @@ export function AIModelTab() {
     )
   }
 
+  if (!isAdmin) {
+    return (
+      <div className="space-y-3">
+        <div className="space-y-1.5">
+          <Label className="text-xs">Jarvis</Label>
+          <p className="text-sm">
+            AI provider and model selection are managed by a
+            Compass administrator.
+          </p>
+          {activeConfig && (
+            <p className="text-xs text-muted-foreground">
+              Jarvis is online and using the organization&apos;s
+              managed AI configuration.
+            </p>
+          )}
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-3">
-      {/* Provider configuration — always visible */}
+      {/* Provider configuration is restricted to administrators. */}
       <ProviderConfigSection
         onProviderChanged={loadData}
       />
@@ -1251,37 +1253,6 @@ export function AIModelTab() {
         )}
       </div>
 
-      {/* Model picker for non-admin users with a custom provider */}
-      {!isAdmin &&
-        userProviderType !== null &&
-        userProviderType !== "anthropic-oauth" &&
-        userProviderType !== "anthropic-key" && (
-          <>
-            <Separator />
-            <div className="space-y-1.5">
-              <Label className="text-xs">
-                Choose Model
-              </Label>
-              <p className="text-muted-foreground text-xs">
-                Pick a model for your provider.
-              </p>
-              {modelsError ? (
-                <p className="text-destructive text-xs">
-                  {modelsError}
-                </p>
-              ) : (
-                <ModelPicker
-                  groups={groups}
-                  activeConfig={activeConfig}
-                  onSaved={loadData}
-                  maxCostPerMillion={costCeiling}
-                  saveAsOverride
-                />
-              )}
-            </div>
-          </>
-        )}
-
       {isAdmin && (
         <>
           <Separator />
@@ -1289,20 +1260,15 @@ export function AIModelTab() {
             <Label className="text-xs">
               Model Policy
             </Label>
-            <div className="flex items-center justify-between">
-              <div className="space-y-0.5">
-                <p className="text-sm font-medium">
-                  Allow user model selection
-                </p>
-                <p className="text-muted-foreground text-xs">
-                  When off, all users use the model
-                  set above.
-                </p>
-              </div>
-              <Switch
-                checked={allowUserSelection}
-                onCheckedChange={setAllowUserSelection}
-              />
+            <div className="space-y-0.5">
+              <p className="text-sm font-medium">
+                Organization-managed model
+              </p>
+              <p className="text-muted-foreground text-xs">
+                Staff interact with Jarvis. The underlying model
+                is selected here by administrators and is not
+                exposed in chat.
+              </p>
             </div>
             <div className="space-y-2">
               <div className="flex items-center justify-between">
@@ -1348,7 +1314,7 @@ export function AIModelTab() {
                     costCeiling !== null
                       ? costCeiling.toFixed(2)
                       : null,
-                    allowUserSelection
+                    false
                   )
                 setPolicySaving(false)
                 if (result.success) {
@@ -1375,11 +1341,7 @@ export function AIModelTab() {
               Change Model
             </Label>
             <p className="text-muted-foreground text-xs">
-              {userProviderType &&
-              userProviderType !== "anthropic-oauth" &&
-              userProviderType !== "anthropic-key"
-                ? "Pick a model for your provider."
-                : "Select a model from OpenRouter. Applies to all users."}
+              Select the internal model Jarvis uses for all staff.
             </p>
             {modelsError ? (
               <p className="text-destructive text-xs">
@@ -1391,11 +1353,7 @@ export function AIModelTab() {
                 activeConfig={activeConfig}
                 onSaved={loadData}
                 maxCostPerMillion={costCeiling}
-                saveAsOverride={
-                  userProviderType !== null &&
-                  userProviderType !== "anthropic-oauth" &&
-                  userProviderType !== "anthropic-key"
-                }
+                saveAsOverride={false}
               />
             )}
           </div>

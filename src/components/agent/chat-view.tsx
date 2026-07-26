@@ -62,7 +62,6 @@ import { useAudioRecorder } from "@/hooks/use-audio-recorder"
 import type { AudioRecorder } from "@/hooks/use-audio-recorder"
 import { AudioWaveform } from "@/components/ai/audio-waveform"
 import { useChatState } from "./chat-provider"
-import { ModelDropdown } from "./model-dropdown"
 import { getRepoStats } from "@/app/actions/github"
 
 type RepoStats = {
@@ -461,7 +460,6 @@ function ChatInput({
                 <SquarePenIcon className="size-4" />
               </PromptInputButton>
             )}
-            <ModelDropdown />
           </PromptInputTools>
           <div className="flex items-center gap-1">
             <PromptInputButton
@@ -667,7 +665,7 @@ export function ChatView({
             style={LOGO_MASK}
           />
           <h1 className="text-base sm:text-lg font-bold tracking-tight">
-            Compass
+            Jarvis
           </h1>
         </div>
 
@@ -690,17 +688,16 @@ export function ChatView({
                   style={LOGO_MASK}
                 />
                 <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">
-                  Compass
+                  Jarvis
                 </h1>
                 <p className="text-muted-foreground/60 mt-1.5 text-xs px-2">
-                  Development preview — features may be
-                  incomplete or change without notice.
+                  Your Compass project assistant
                 </p>
               </div>
               <ChatInput
                 textareaRef={textareaRef}
                 placeholder={
-                  animatedPlaceholder || "Ask anything..."
+                  animatedPlaceholder || "Ask Jarvis..."
                 }
                 recorder={recorder}
                 status={chat.status}
@@ -831,7 +828,7 @@ export function ChatView({
           <div className="mx-auto max-w-3xl">
             <ChatInput
               textareaRef={textareaRef}
-              placeholder="Ask follow-up..."
+              placeholder="Ask Jarvis a follow-up..."
               recorder={recorder}
               status={chat.status}
               isGenerating={chat.isGenerating}
@@ -934,7 +931,7 @@ export function ChatView({
       <div className="p-3">
             <ChatInput
               textareaRef={textareaRef}
-              placeholder={inputPlaceholder ?? "Ask anything..."}
+              placeholder={inputPlaceholder ?? "Ask Jarvis..."}
               recorder={recorder}
               status={chat.status}
               isGenerating={chat.isGenerating}

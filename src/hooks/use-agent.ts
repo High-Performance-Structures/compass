@@ -89,12 +89,12 @@ export function useAgent(options: UseAgentOptions = {}): UseAgentReturn {
           "x-session-id": sessionId,
           "x-current-page": currentPage,
           "x-timezone": timezone,
-          "x-model": getAgentModelId(),
         }
 
         // Standalone mode: JWT auth via server action
         // Cloud mode: WorkOS session cookie (same-origin, automatic)
         if (isStandalone) {
+          headers["x-model"] = getAgentModelId()
           const { getAgentToken } = await import("@/app/actions/agent-auth")
           const tokenResult = await getAgentToken()
           if ("error" in tokenResult) {
@@ -121,7 +121,17 @@ export function useAgent(options: UseAgentOptions = {}): UseAgentReturn {
         })
 
         if (!response.ok) {
-          throw new Error(`Agent server error: ${response.status}`)
+          const payload = await response
+            .json()
+            .catch(() => null)
+          const message =
+            payload &&
+            typeof payload === "object" &&
+            "error" in payload &&
+            typeof payload.error === "string"
+              ? payload.error
+              : `Agent server error: ${response.status}`
+          throw new Error(message)
         }
 
         if (!response.body) {

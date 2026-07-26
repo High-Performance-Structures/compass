@@ -11,8 +11,14 @@ import { generateAgentToken } from "@/lib/agent/api-auth"
 import { getCloudflareContext } from "@/lib/db"
 import { getDb } from "@/db"
 import { mcpServers } from "@/db/schema-mcp"
+import { agentConfig } from "@/db/schema-ai-config"
 import { eq } from "drizzle-orm"
-import { canUseAskCompass } from "@/lib/permissions"
+import { can, canUseAskCompass } from "@/lib/permissions"
+import {
+  resolveRuntimeModelId,
+  resolveRuntimeProvider,
+  selectRuntimeModel,
+} from "@/lib/agent/runtime-config"
 import {
   runAgent,
   buildSystemPrompt,
@@ -31,64 +37,6 @@ interface ChatRequest {
     readonly role: "user" | "assistant"
     readonly content: string
   }>
-}
-
-function mapProviderType(
-  type: string
-): ProviderConfig["type"] {
-  switch (type) {
-    case "anthropic-key":
-    case "anthropic-oauth":
-      return "anthropic"
-    case "openrouter":
-      return "openrouter"
-    case "ollama":
-      return "ollama"
-    default:
-      return "custom"
-  }
-}
-
-/**
- * Resolves short model names (sonnet, opus, haiku) to full model IDs
- * based on the provider type. Passes through full model IDs unchanged.
- */
-function resolveModelId(
-  model: string,
-  providerType: string
-): string {
-  // If already a full model ID, use as-is
-  if (model.includes("/") || model.startsWith("claude-")) {
-    return model
-  }
-
-  // Map short names to full IDs
-  const anthropicModels: Record<string, string> = {
-    sonnet: "claude-sonnet-4-20250514",
-    opus: "claude-opus-4-20250514",
-    haiku: "claude-3-5-haiku-20241022",
-  }
-
-  const openrouterModels: Record<string, string> = {
-    sonnet: "anthropic/claude-sonnet-4",
-    opus: "anthropic/claude-opus-4",
-    haiku: "anthropic/claude-3.5-haiku",
-  }
-
-  if (
-    providerType === "anthropic" ||
-    providerType === "anthropic-oauth" ||
-    providerType === "anthropic-key"
-  ) {
-    return anthropicModels[model] ?? model
-  }
-
-  if (providerType === "openrouter") {
-    return openrouterModels[model] ?? model
-  }
-
-  // Ollama and custom use the model as-is
-  return model
 }
 
 export async function POST(
@@ -140,8 +88,6 @@ export async function POST(
     )
   }
 
-  const model =
-    request.headers.get("x-model") ?? "sonnet"
   const currentPage =
     request.headers.get("x-current-page") ?? "/dashboard"
   const timezone =
@@ -154,40 +100,29 @@ export async function POST(
     string
   >
 
-  // Resolve provider config from DB
-  let providerConfig = await getProviderConfigForJwt(
-    user.id
-  )
+  const db = getDb(env.DB)
+  const activeAgentConfig = await db
+    .select({ modelId: agentConfig.modelId })
+    .from(agentConfig)
+    .where(eq(agentConfig.id, "global"))
+    .get()
+
+  // Staff use the shared organizational provider. Administrators may keep a
+  // personal provider for controlled testing from the settings screen.
+  let providerConfig = can(user, "agent", "update")
+    ? await getProviderConfigForJwt(user.id)
+    : null
   if (!providerConfig) {
     providerConfig = await getProviderConfigForJwt(
       "org_default"
     )
   }
 
-  let provider: ProviderConfig = providerConfig
-    ? {
-        type: mapProviderType(providerConfig.type),
-        apiKey: providerConfig.apiKey ?? undefined,
-        baseUrl: providerConfig.baseUrl ?? undefined,
-        modelOverrides:
-          providerConfig.modelOverrides ?? undefined,
-      }
-    : {
-        type: "anthropic",
-        apiKey: envRecord.ANTHROPIC_API_KEY,
-      }
+  let provider: ProviderConfig
+  let runtimeProviderType: string
 
-  // Log warning if no API key available (unless using OAuth which handles its own auth)
-  if (
-    !provider.apiKey &&
-    providerConfig?.type !== "anthropic-oauth"
-  ) {
-    console.warn(
-      "No API key configured for agent - requests may fail"
-    )
-  }
-
-  // Resolve OAuth access token if needed
+  // OAuth supplies its own token, so it must be resolved before checking
+  // deployment API-key fallbacks.
   if (providerConfig?.type === "anthropic-oauth") {
     const accessToken = await getOAuthAccessToken(user.id)
     if (!accessToken) {
@@ -205,6 +140,20 @@ export async function POST(
       type: "anthropic",
       apiKey: accessToken,
     }
+    runtimeProviderType = "anthropic-oauth"
+  } else {
+    const runtimeProvider = resolveRuntimeProvider(
+      providerConfig,
+      envRecord
+    )
+    if (!runtimeProvider.success) {
+      return Response.json(
+        { error: runtimeProvider.error },
+        { status: 503 }
+      )
+    }
+    provider = runtimeProvider.provider
+    runtimeProviderType = runtimeProvider.providerType
   }
 
   // Generate JWT for bridge route auth
@@ -277,7 +226,6 @@ export async function POST(
 
   if (user.organizationId) {
     try {
-      const db = getDb(env.DB)
       const rows = await db
         .select()
         .from(mcpServers)
@@ -349,10 +297,15 @@ export async function POST(
   const isOAuth =
     provider.apiKey?.startsWith("sk-ant-oat") ?? false
 
-  // Resolve short model names to full model IDs based on provider
-  const resolvedModel = resolveModelId(
-    model,
-    providerConfig?.type ?? "anthropic"
+  // The server-side active model is authoritative. The request header remains
+  // only as a compatibility fallback for deployments without agent_config.
+  const configuredModel = selectRuntimeModel(
+    activeAgentConfig?.modelId,
+    request.headers.get("x-model")
+  )
+  const resolvedModel = resolveRuntimeModelId(
+    configuredModel,
+    runtimeProviderType
   )
 
   const stream = runAgent({

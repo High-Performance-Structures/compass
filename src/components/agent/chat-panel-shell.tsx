@@ -142,8 +142,8 @@ export function ChatPanelShell() {
           size="icon-sm"
           className="absolute right-3 top-3 z-20 size-8 rounded-full bg-background/80 text-muted-foreground shadow-sm backdrop-blur hover:bg-accent hover:text-foreground"
           onClick={close}
-          aria-label="Collapse assistant"
-          title="Collapse assistant"
+          aria-label="Collapse Jarvis"
+          title="Collapse Jarvis"
         >
           <PanelRightClose className="size-4" />
         </Button>
@@ -164,7 +164,7 @@ export function ChatPanelShell() {
           size="icon"
           className="fixed bottom-4 right-4 z-50 h-12 w-12 rounded-full shadow-lg md:hidden"
           onClick={toggle}
-          aria-label="Open chat"
+            aria-label="Open Jarvis"
         >
           <MessageSquare className="h-5 w-5" />
         </Button>
