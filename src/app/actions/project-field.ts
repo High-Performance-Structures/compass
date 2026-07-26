@@ -18,6 +18,15 @@ import { requireAuth } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
 import { isDemoUser } from "@/lib/demo"
 import { requireOrg } from "@/lib/org-scope"
+import {
+  dateRangeFromDates,
+  isDateWithinOwnerUpdatePeriod,
+  isValidOwnerUpdatePeriod,
+  parseOwnerUpdateScheduleSnapshot,
+  selectRowsByIdOrder,
+  serializeOwnerUpdateScheduleSnapshot,
+  type OwnerUpdateScheduleItem,
+} from "@/lib/owner-updates/snapshot"
 import { requirePermission } from "@/lib/permissions"
 import { revalidatePath } from "next/cache"
 
@@ -218,6 +227,8 @@ type OwnerUpdateDraftInput = {
 export type OwnerUpdateDraftEditInput = {
   readonly title: string
   readonly updateDate: string
+  readonly periodStart: string
+  readonly periodEnd: string
   readonly summary: string
   readonly selectedPhotoIds: readonly string[]
 }
@@ -253,7 +264,10 @@ export type OwnerProjectUpdateDocument = {
     readonly channel: string
     readonly publishedAt: string | null
     readonly sentAt: string | null
+    readonly sourceDailyLogIds: readonly string[]
     readonly selectedPhotoIds: readonly string[]
+    readonly periodStart: string | null
+    readonly periodEnd: string | null
   }
   readonly dailyLogs: readonly OwnerUpdateDailyLog[]
   readonly photos: readonly OwnerUpdatePhoto[]
@@ -300,10 +314,63 @@ function parseIdList(value: string | null): readonly string[] {
   try {
     const parsed: unknown = JSON.parse(value)
     if (!Array.isArray(parsed)) return []
-    return parsed.filter((item): item is string => typeof item === "string")
+    return [
+      ...new Set(
+        parsed
+          .filter((item): item is string => typeof item === "string")
+          .map((item) => item.trim())
+          .filter((item) => item.length > 0)
+      ),
+    ]
   } catch {
     return []
   }
+}
+
+async function captureOwnerUpdateSchedule(
+  db: ReturnType<typeof getDb>,
+  projectId: string,
+  startingOn: string
+): Promise<readonly OwnerUpdateScheduleItem[]> {
+  return db
+    .select({
+      title: scheduleTasks.title,
+      startDate: scheduleTasks.startDate,
+      endDate: scheduleTasks.endDateCalculated,
+      assignedTo: scheduleTasks.assignedTo,
+    })
+    .from(scheduleTasks)
+    .where(
+      and(
+        eq(scheduleTasks.projectId, projectId),
+        gte(scheduleTasks.endDateCalculated, startingOn)
+      )
+    )
+    .orderBy(asc(scheduleTasks.startDate), asc(scheduleTasks.sortOrder))
+    .limit(8)
+}
+
+function isPhotoInOwnerUpdateScope(
+  photo: {
+    readonly dailyLogId: string | null
+    readonly capturedAt: string | null
+  },
+  sourceDailyLogIds: ReadonlySet<string>,
+  periodStart: string,
+  periodEnd: string
+): boolean {
+  if (
+    photo.dailyLogId !== null &&
+    sourceDailyLogIds.has(photo.dailyLogId)
+  ) {
+    return true
+  }
+
+  const capturedDate = photo.capturedAt?.slice(0, 10) ?? null
+  return (
+    capturedDate !== null &&
+    isDateWithinOwnerUpdatePeriod(capturedDate, periodStart, periodEnd)
+  )
 }
 
 function ownerFacingDailyLogNotes(value: string | null): string | null {
@@ -1517,13 +1584,19 @@ export async function draftOwnerUpdateFromDailyLogs(
       .where(
         and(
           eq(dailyLogs.projectId, projectId),
-          inArray(dailyLogs.id, dailyLogIds)
+          inArray(dailyLogs.id, dailyLogIds),
+          eq(dailyLogs.reviewStatus, "approved"),
+          eq(dailyLogs.isClientVisible, true)
         )
       )
       .orderBy(asc(dailyLogs.logDate), asc(dailyLogs.createdAt))
 
-    if (selectedLogs.length === 0) {
-      return { success: false, error: "Selected daily logs were not found." }
+    if (selectedLogs.length !== dailyLogIds.length) {
+      return {
+        success: false,
+        error:
+          "Every selected daily log must be approved and owner-visible before drafting.",
+      }
     }
 
     const ownerPhotos = await db
@@ -1541,6 +1614,9 @@ export async function draftOwnerUpdateFromDailyLogs(
 
     const firstLog = selectedLogs[0]
     const lastLog = selectedLogs[selectedLogs.length - 1]
+    if (firstLog === undefined || lastLog === undefined) {
+      return { success: false, error: "Selected daily logs were not found." }
+    }
     const label = project.projectNumber ?? project.name
     const title =
       firstLog.logDate === lastLog.logDate
@@ -1552,6 +1628,11 @@ export async function draftOwnerUpdateFromDailyLogs(
       .slice(0, 900)
     const updateId = crypto.randomUUID()
     const now = new Date().toISOString()
+    const scheduleSnapshot = await captureOwnerUpdateSchedule(
+      db,
+      projectId,
+      lastLog.logDate
+    )
 
     await db.insert(ownerProjectUpdates).values({
       id: updateId,
@@ -1564,6 +1645,10 @@ export async function draftOwnerUpdateFromDailyLogs(
       channel: "compass",
       sourceDailyLogIds: JSON.stringify(selectedLogs.map((log) => log.id)),
       selectedPhotoIds: JSON.stringify(ownerPhotos.map((photo) => photo.id)),
+      periodStart: firstLog.logDate,
+      periodEnd: lastLog.logDate,
+      scheduleSnapshot:
+        serializeOwnerUpdateScheduleSnapshot(scheduleSnapshot),
       createdAt: now,
       updatedAt: now,
     })
@@ -1589,7 +1674,6 @@ export async function getOwnerProjectUpdateDocument(
   updateId: string
 ): Promise<OwnerProjectUpdateDocument> {
   const db = await verifyProjectAccess(projectId)
-  const today = new Date().toISOString().slice(0, 10)
 
   const [project] = await db
     .select({
@@ -1615,6 +1699,9 @@ export async function getOwnerProjectUpdateDocument(
       channel: ownerProjectUpdates.channel,
       sourceDailyLogIds: ownerProjectUpdates.sourceDailyLogIds,
       selectedPhotoIds: ownerProjectUpdates.selectedPhotoIds,
+      periodStart: ownerProjectUpdates.periodStart,
+      periodEnd: ownerProjectUpdates.periodEnd,
+      scheduleSnapshot: ownerProjectUpdates.scheduleSnapshot,
       publishedAt: ownerProjectUpdates.publishedAt,
       sentAt: ownerProjectUpdates.sentAt,
     })
@@ -1652,12 +1739,19 @@ export async function getOwnerProjectUpdateDocument(
     })
     .from(dailyLogs)
     .leftJoin(users, eq(dailyLogs.authorId, users.id))
-    .where(eq(dailyLogs.projectId, projectId))
+    .where(
+      and(
+        eq(dailyLogs.projectId, projectId),
+        eq(dailyLogs.reviewStatus, "approved"),
+        eq(dailyLogs.isClientVisible, true)
+      )
+    )
     .orderBy(asc(dailyLogs.logDate), asc(dailyLogs.createdAt))
 
   const allPhotoRows = await db
     .select({
       id: dailyLogPhotos.id,
+      dailyLogId: dailyLogPhotos.dailyLogId,
       fileName: dailyLogPhotos.fileName,
       driveFileId: dailyLogPhotos.driveFileId,
       driveUrl: dailyLogPhotos.driveUrl,
@@ -1685,27 +1779,21 @@ export async function getOwnerProjectUpdateDocument(
     )
     .limit(1)
 
-  const lookAheadTasks = await db
-    .select({
-      title: scheduleTasks.title,
-      startDate: scheduleTasks.startDate,
-      endDate: scheduleTasks.endDateCalculated,
-      assignedTo: scheduleTasks.assignedTo,
-    })
-    .from(scheduleTasks)
-    .where(
-      and(
-        eq(scheduleTasks.projectId, projectId),
-        gte(scheduleTasks.endDateCalculated, today)
-      )
-    )
-    .orderBy(asc(scheduleTasks.startDate), asc(scheduleTasks.sortOrder))
-    .limit(6)
-
   const dailyLogIds = new Set(selectedDailyLogIds)
   const photoIds = new Set(selectedPhotoIds)
-  const dailyLogsForUpdate = allLogRows
-    .filter((row) => dailyLogIds.size === 0 || dailyLogIds.has(row.id))
+  const lookAheadTasks =
+    parseOwnerUpdateScheduleSnapshot(update.scheduleSnapshot)
+  const dailyLogsForUpdate = selectRowsByIdOrder(
+    allLogRows,
+    selectedDailyLogIds
+  )
+    .filter((row) =>
+      isDateWithinOwnerUpdatePeriod(
+        row.logDate,
+        update.periodStart,
+        update.periodEnd
+      )
+    )
     .map((row) => ({
       id: row.id,
       logDate: row.logDate,
@@ -1728,15 +1816,17 @@ export async function getOwnerProjectUpdateDocument(
       }),
     }))
 
-  const photosForUpdate = allPhotoRows
+  const eligiblePhotoRows = allPhotoRows
     .filter((row) => {
       const isImage =
         row.thumbnailUrl !== null || row.mimeType?.startsWith("image/") === true
-      if (!isImage) return false
-      if (photoIds.size > 0 && photoIds.has(row.id)) return true
-      return row.ownerVisible && row.reviewStatus === "approved"
+      return isImage && row.ownerVisible && row.reviewStatus === "approved"
     })
-    .slice(0, 18)
+
+  const photosForUpdate = selectRowsByIdOrder(
+    eligiblePhotoRows,
+    selectedPhotoIds
+  )
     .map((row) => ({
       id: row.id,
       fileName: row.fileName,
@@ -1747,12 +1837,26 @@ export async function getOwnerProjectUpdateDocument(
       capturedAt: row.capturedAt,
     }))
 
-  const availablePhotos = allPhotoRows
-    .filter((row) => {
-      const isImage =
-        row.thumbnailUrl !== null || row.mimeType?.startsWith("image/") === true
-      return isImage && row.ownerVisible && row.reviewStatus === "approved"
-    })
+  const selectedEligiblePhotoRows = selectRowsByIdOrder(
+    eligiblePhotoRows,
+    selectedPhotoIds
+  )
+  const scopedUnselectedPhotoRows = eligiblePhotoRows.filter(
+    (row) =>
+      !photoIds.has(row.id) &&
+      update.periodStart !== null &&
+      update.periodEnd !== null &&
+      isPhotoInOwnerUpdateScope(
+        row,
+        dailyLogIds,
+        update.periodStart,
+        update.periodEnd
+      )
+  )
+  const availablePhotos = [
+    ...selectedEligiblePhotoRows,
+    ...scopedUnselectedPhotoRows,
+  ]
     .slice(0, 80)
     .map((row) => ({
       id: row.id,
@@ -1775,7 +1879,10 @@ export async function getOwnerProjectUpdateDocument(
       channel: update.channel,
       publishedAt: update.publishedAt,
       sentAt: update.sentAt,
+      sourceDailyLogIds: selectedDailyLogIds,
       selectedPhotoIds,
+      periodStart: update.periodStart,
+      periodEnd: update.periodEnd,
     },
     dailyLogs: dailyLogsForUpdate,
     photos: photosForUpdate,
@@ -1803,6 +1910,8 @@ export async function updateOwnerProjectUpdateDraft(
     const { db } = await verifyProjectMutationAccess(projectId)
     const title = input.title.trim()
     const updateDate = input.updateDate.trim()
+    const periodStart = input.periodStart.trim()
+    const periodEnd = input.periodEnd.trim()
     const summary = input.summary.trim()
     const selectedPhotoIds = [...new Set(input.selectedPhotoIds)]
       .map((id) => id.trim())
@@ -1811,15 +1920,25 @@ export async function updateOwnerProjectUpdateDraft(
     if (title.length === 0) {
       return { success: false, error: "Title is required." }
     }
-    if (updateDate.length === 0) {
-      return { success: false, error: "Update date is required." }
+    if (!isValidOwnerUpdatePeriod(updateDate, updateDate)) {
+      return { success: false, error: "Enter a valid update date." }
+    }
+    if (!isValidOwnerUpdatePeriod(periodStart, periodEnd)) {
+      return {
+        success: false,
+        error: "The reporting period must have valid start and end dates.",
+      }
     }
     if (summary.length === 0) {
       return { success: false, error: "Summary is required." }
     }
 
     const [update] = await db
-      .select({ id: ownerProjectUpdates.id, status: ownerProjectUpdates.status })
+      .select({
+        id: ownerProjectUpdates.id,
+        status: ownerProjectUpdates.status,
+        sourceDailyLogIds: ownerProjectUpdates.sourceDailyLogIds,
+      })
       .from(ownerProjectUpdates)
       .where(
         and(
@@ -1839,9 +1958,55 @@ export async function updateOwnerProjectUpdateDraft(
       }
     }
 
+    const sourceDailyLogIds = parseIdList(update.sourceDailyLogIds)
+    if (sourceDailyLogIds.length > 0) {
+      const eligibleLogs = await db
+        .select({
+          id: dailyLogs.id,
+          logDate: dailyLogs.logDate,
+        })
+        .from(dailyLogs)
+        .where(
+          and(
+            eq(dailyLogs.projectId, projectId),
+            inArray(dailyLogs.id, sourceDailyLogIds),
+            eq(dailyLogs.reviewStatus, "approved"),
+            eq(dailyLogs.isClientVisible, true)
+          )
+        )
+
+      if (eligibleLogs.length !== sourceDailyLogIds.length) {
+        return {
+          success: false,
+          error:
+            "Every source daily log must remain approved and owner-visible.",
+        }
+      }
+
+      if (
+        eligibleLogs.some(
+          (log) =>
+            !isDateWithinOwnerUpdatePeriod(
+              log.logDate,
+              periodStart,
+              periodEnd
+            )
+        )
+      ) {
+        return {
+          success: false,
+          error: "The reporting period must include every source daily log.",
+        }
+      }
+    }
+
     if (selectedPhotoIds.length > 0) {
       const eligiblePhotos = await db
-        .select({ id: dailyLogPhotos.id })
+        .select({
+          id: dailyLogPhotos.id,
+          dailyLogId: dailyLogPhotos.dailyLogId,
+          capturedAt: dailyLogPhotos.capturedAt,
+        })
         .from(dailyLogPhotos)
         .where(
           and(
@@ -1858,15 +2023,44 @@ export async function updateOwnerProjectUpdateDraft(
           error: "Only approved owner-visible photos can be selected.",
         }
       }
+
+      const sourceDailyLogIdSet = new Set(sourceDailyLogIds)
+      if (
+        eligiblePhotos.some(
+          (photo) =>
+            !isPhotoInOwnerUpdateScope(
+              photo,
+              sourceDailyLogIdSet,
+              periodStart,
+              periodEnd
+            )
+        )
+      ) {
+        return {
+          success: false,
+          error:
+            "Selected photos must be tied to a source log or captured during the reporting period.",
+        }
+      }
     }
+
+    const scheduleSnapshot = await captureOwnerUpdateSchedule(
+      db,
+      projectId,
+      periodEnd
+    )
 
     await db
       .update(ownerProjectUpdates)
       .set({
         title,
         updateDate,
+        periodStart,
+        periodEnd,
         summary,
         selectedPhotoIds: JSON.stringify(selectedPhotoIds),
+        scheduleSnapshot:
+          serializeOwnerUpdateScheduleSnapshot(scheduleSnapshot),
         updatedAt: new Date().toISOString(),
       })
       .where(eq(ownerProjectUpdates.id, updateId))
@@ -1908,6 +2102,13 @@ export async function publishOwnerProjectUpdate(
       id: ownerProjectUpdates.id,
       projectId: ownerProjectUpdates.projectId,
       status: ownerProjectUpdates.status,
+      title: ownerProjectUpdates.title,
+      updateDate: ownerProjectUpdates.updateDate,
+      summary: ownerProjectUpdates.summary,
+      sourceDailyLogIds: ownerProjectUpdates.sourceDailyLogIds,
+      selectedPhotoIds: ownerProjectUpdates.selectedPhotoIds,
+      periodStart: ownerProjectUpdates.periodStart,
+      periodEnd: ownerProjectUpdates.periodEnd,
     })
     .from(ownerProjectUpdates)
     .innerJoin(projects, eq(ownerProjectUpdates.projectId, projects.id))
@@ -1928,12 +2129,138 @@ export async function publishOwnerProjectUpdate(
     return { success: true }
   }
 
+  if (
+    update.title.trim().length === 0 ||
+    update.summary.trim().length === 0 ||
+    !isValidOwnerUpdatePeriod(update.updateDate, update.updateDate)
+  ) {
+    return {
+      success: false,
+      error: "Complete the title, update date, and summary before publishing.",
+    }
+  }
+
+  const sourceDailyLogIds = parseIdList(update.sourceDailyLogIds)
+  const selectedPhotoIds = parseIdList(update.selectedPhotoIds)
+  const eligibleLogs =
+    sourceDailyLogIds.length === 0
+      ? []
+      : await db
+          .select({
+            id: dailyLogs.id,
+            logDate: dailyLogs.logDate,
+          })
+          .from(dailyLogs)
+          .where(
+            and(
+              eq(dailyLogs.projectId, projectId),
+              inArray(dailyLogs.id, sourceDailyLogIds),
+              eq(dailyLogs.reviewStatus, "approved"),
+              eq(dailyLogs.isClientVisible, true)
+            )
+          )
+
+  if (eligibleLogs.length !== sourceDailyLogIds.length) {
+    return {
+      success: false,
+      error:
+        "Every source daily log must be approved and owner-visible before publishing.",
+    }
+  }
+
+  const derivedPeriod = dateRangeFromDates(
+    eligibleLogs.map((log) => log.logDate)
+  )
+  const periodStart =
+    update.periodStart ?? derivedPeriod?.startDate ?? update.updateDate
+  const periodEnd =
+    update.periodEnd ?? derivedPeriod?.endDate ?? update.updateDate
+
+  if (!isValidOwnerUpdatePeriod(periodStart, periodEnd)) {
+    return {
+      success: false,
+      error: "Set a valid reporting period before publishing.",
+    }
+  }
+
+  if (
+    eligibleLogs.some(
+      (log) =>
+        !isDateWithinOwnerUpdatePeriod(
+          log.logDate,
+          periodStart,
+          periodEnd
+        )
+    )
+  ) {
+    return {
+      success: false,
+      error: "The reporting period must include every source daily log.",
+    }
+  }
+
+  if (selectedPhotoIds.length > 0) {
+    const eligiblePhotos = await db
+      .select({
+        id: dailyLogPhotos.id,
+        dailyLogId: dailyLogPhotos.dailyLogId,
+        capturedAt: dailyLogPhotos.capturedAt,
+      })
+      .from(dailyLogPhotos)
+      .where(
+        and(
+          eq(dailyLogPhotos.projectId, projectId),
+          inArray(dailyLogPhotos.id, selectedPhotoIds),
+          eq(dailyLogPhotos.ownerVisible, true),
+          eq(dailyLogPhotos.reviewStatus, "approved")
+        )
+      )
+
+    if (eligiblePhotos.length !== selectedPhotoIds.length) {
+      return {
+        success: false,
+        error:
+          "Every selected photo must remain approved and owner-visible before publishing.",
+      }
+    }
+
+    const sourceDailyLogIdSet = new Set(sourceDailyLogIds)
+    if (
+      eligiblePhotos.some(
+        (photo) =>
+          !isPhotoInOwnerUpdateScope(
+            photo,
+            sourceDailyLogIdSet,
+            periodStart,
+            periodEnd
+          )
+      )
+    ) {
+      return {
+        success: false,
+        error:
+          "Selected photos must be tied to a source log or captured during the reporting period.",
+      }
+    }
+  }
+
+  const scheduleSnapshot = await captureOwnerUpdateSchedule(
+    db,
+    projectId,
+    periodEnd
+  )
   const now = new Date().toISOString()
 
   await db
     .update(ownerProjectUpdates)
     .set({
       status: "published",
+      periodStart,
+      periodEnd,
+      sourceDailyLogIds: JSON.stringify(sourceDailyLogIds),
+      selectedPhotoIds: JSON.stringify(selectedPhotoIds),
+      scheduleSnapshot:
+        serializeOwnerUpdateScheduleSnapshot(scheduleSnapshot),
       publishedAt: now,
       updatedAt: now,
     })

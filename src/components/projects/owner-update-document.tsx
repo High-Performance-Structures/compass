@@ -137,6 +137,17 @@ export function OwnerUpdateDocument({
               <span>{label}</span>
               <span>&middot;</span>
               <span>{formatDate(document.update.updateDate)}</span>
+              {document.update.periodStart &&
+                document.update.periodEnd && (
+                  <>
+                    <span>&middot;</span>
+                    <span>
+                      Reporting period{" "}
+                      {formatDate(document.update.periodStart)} -{" "}
+                      {formatDate(document.update.periodEnd)}
+                    </span>
+                  </>
+                )}
               {document.project.clientName && (
                 <>
                   <span>&middot;</span>

@@ -122,6 +122,13 @@ these safeguards:
   to the audience preview component
 - owner update documents route "view all approved photos" back into Compass
   instead of carrying a Google photo-folder URL in the document payload
+- owner update documents render only the daily logs and photos explicitly saved
+  on that update; an empty selection remains empty
+- draft creation accepts only approved, owner-visible logs, constrains photo
+  choices to the reporting period, and validates those boundaries again at
+  publish time
+- Looking Ahead data is captured into the draft and refreshed before publish;
+  published updates never query the changing live schedule
 - sub/vendor preview project switching is scoped to the current project until a
   real external-user project assignment model exists
 - sub/vendor preview messages exclude private or archived internal channels

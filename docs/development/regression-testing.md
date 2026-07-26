@@ -78,7 +78,7 @@ areas have an obvious home.
 | Financials and budget | Global/project journeys | totals and Sage read-model fixtures |
 | Files | Page journey | folder navigation, upload limits, Drive errors |
 | Conversations | Page journey | channel/message/thread flows |
-| Owner updates and selections | Project journeys | draft, preview, publish in test tenant |
+| Owner updates and selections | Project journeys | exact log/photo selection, reporting period, frozen schedule preview, publish in test tenant |
 | Desktop | Electron launch/runtime | update, offline, deep-link, packaging |
 | Android and iOS | Sync, lint/tests, build | simulator/device field journeys |
 

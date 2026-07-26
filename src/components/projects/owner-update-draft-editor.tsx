@@ -29,6 +29,12 @@ export function OwnerUpdateDraftEditor({
   const router = useRouter()
   const [title, setTitle] = React.useState(document.update.title)
   const [updateDate, setUpdateDate] = React.useState(document.update.updateDate)
+  const [periodStart, setPeriodStart] = React.useState(
+    document.update.periodStart ?? document.update.updateDate
+  )
+  const [periodEnd, setPeriodEnd] = React.useState(
+    document.update.periodEnd ?? document.update.updateDate
+  )
   const [summary, setSummary] = React.useState(document.update.summary)
   const [selectedPhotoIds, setSelectedPhotoIds] = React.useState<readonly string[]>(
     document.update.selectedPhotoIds
@@ -68,24 +74,33 @@ export function OwnerUpdateDraftEditor({
     event.preventDefault()
     setStatus({ kind: "saving" })
 
-    const result = await updateOwnerProjectUpdateDraft(
-      document.project.id,
-      document.update.id,
-      {
-        title,
-        updateDate,
-        summary,
-        selectedPhotoIds,
+    try {
+      const result = await updateOwnerProjectUpdateDraft(
+        document.project.id,
+        document.update.id,
+        {
+          title,
+          updateDate,
+          periodStart,
+          periodEnd,
+          summary,
+          selectedPhotoIds,
+        }
+      )
+
+      if (!result.success) {
+        setStatus({ kind: "error", message: result.error })
+        return
       }
-    )
 
-    if (!result.success) {
-      setStatus({ kind: "error", message: result.error })
-      return
+      setStatus({ kind: "saved", message: "Draft updated." })
+      router.refresh()
+    } catch {
+      setStatus({
+        kind: "error",
+        message: "Unable to save this draft. Please try again.",
+      })
     }
-
-    setStatus({ kind: "saved", message: "Draft updated." })
-    router.refresh()
   }
 
   return (
@@ -129,6 +144,39 @@ export function OwnerUpdateDraftEditor({
             />
           </div>
         </div>
+
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div className="space-y-2">
+            <Label htmlFor="owner-update-period-start">
+              Reporting period starts
+            </Label>
+            <Input
+              id="owner-update-period-start"
+              type="date"
+              value={periodStart}
+              onChange={(event) => setPeriodStart(event.target.value)}
+              required
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="owner-update-period-end">
+              Reporting period ends
+            </Label>
+            <Input
+              id="owner-update-period-end"
+              type="date"
+              value={periodEnd}
+              onChange={(event) => setPeriodEnd(event.target.value)}
+              required
+            />
+          </div>
+        </div>
+        <p className="text-xs text-muted-foreground">
+          {document.update.sourceDailyLogIds.length} approved owner-visible daily
+          {document.update.sourceDailyLogIds.length === 1 ? " log is" : " logs are"}{" "}
+          included. Saving refreshes the Looking Ahead schedule for the end of
+          this period.
+        </p>
 
         <div className="space-y-2">
           <Label htmlFor="owner-update-summary">Summary</Label>

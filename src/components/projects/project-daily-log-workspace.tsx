@@ -230,8 +230,14 @@ function selectedLogIds(
   logs: readonly ProjectDailyLogItem[],
   selectedIds: readonly string[]
 ): readonly string[] {
-  const availableIds = new Set(logs.map((log) => log.id))
+  const availableIds = new Set(
+    logs.filter(isOwnerUpdateEligibleLog).map((log) => log.id)
+  )
   return selectedIds.filter((id) => availableIds.has(id))
+}
+
+function isOwnerUpdateEligibleLog(log: ProjectDailyLogItem): boolean {
+  return log.reviewStatus === "approved" && log.isClientVisible
 }
 
 function LogMetric({
@@ -550,7 +556,9 @@ export function ProjectDailyLogWorkspace({
   }
 
   function selectVisibleLogs(): void {
-    setSelectedIds(filteredLogs.map((log) => log.id))
+    setSelectedIds(
+      filteredLogs.filter(isOwnerUpdateEligibleLog).map((log) => log.id)
+    )
   }
 
   function clearSelection(): void {
@@ -861,6 +869,11 @@ export function ProjectDailyLogWorkspace({
               : item
           )
         )
+        if (reviewStatus !== "approved" || !isClientVisible) {
+          setSelectedIds((current) =>
+            current.filter((id) => id !== log.id)
+          )
+        }
         setMessage("Daily log review updated.")
       } else {
         setMessage(result.error)
@@ -1056,6 +1069,10 @@ export function ProjectDailyLogWorkspace({
               {selectedIdsInView.length} selected · {filteredLogs.length} shown
             </div>
           </div>
+          <p className="mt-2 text-xs text-muted-foreground">
+            Owner updates can include only logs that are both approved and
+            marked Owner visible.
+          </p>
           {message && (
             <p className="mt-3 rounded-md border bg-muted/30 px-3 py-2 text-sm">
               {message}
@@ -1082,8 +1099,13 @@ export function ProjectDailyLogWorkspace({
                     type="checkbox"
                     checked={selectedIds.includes(log.id)}
                     onChange={() => toggleLog(log.id)}
+                    disabled={!isOwnerUpdateEligibleLog(log)}
                     className="mt-1 size-4 rounded border"
-                    aria-label={`Select daily log for ${formatDate(log.logDate)}`}
+                    aria-label={
+                      isOwnerUpdateEligibleLog(log)
+                        ? `Select daily log for ${formatDate(log.logDate)}`
+                        : `Approve and mark the ${formatDate(log.logDate)} log owner visible before selecting it`
+                    }
                   />
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
