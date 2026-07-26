@@ -6,14 +6,20 @@ existing private Jarvis/Signet runtime. It reuses the established Telegram
 bot through its messaging gateway; it does not create or operate a second
 Telegram bot.
 
-The bridge has two separate responsibilities:
+The bridge has three separate responsibilities:
 
-1. **Ask Compass** is an authenticated staff assistance surface. Active users
-   with `agent:read` permission may use it. Guest users are always denied,
-   regardless of future permission configuration.
+1. **Ask Jarvis** is an authenticated staff assistance surface. Active users
+   with `agent:read` permission may use it. When
+   `JARVIS_AGENT_BRIDGE_ENABLED=true`, basic chat requests are relayed to the
+   private Hermes runtime instead of a provider API called directly by the
+   Cloudflare Worker. Guest users are always denied, regardless of future
+   permission configuration.
 2. **Compass Feedback Desk** is a durable intake stream for bugs, questions,
    feature requests, and assistance requests from Compass conversations, the
    feedback widget, Jarvis email, and Telegram.
+3. **Hermes response relay** returns the completed `agent.prompt` result to
+   the originating authenticated Compass request using the existing agent SSE
+   protocol.
 
 Data flow
 ---
@@ -39,6 +45,35 @@ Compass conversation / feedback widget
       originating Compass thread
 ```
 
+Ask Jarvis uses the same outbound queue without making Signet publicly
+reachable:
+
+```text
+authenticated Compass Ask Jarvis request
+                 |
+         D1 agent.prompt event
+                 |
+          signed private pull
+                 |
+                 v
+  local-only Hermes API (Compass skill, no tools)
+                 |
+        signed result acknowledgement
+                 |
+                 v
+     Compass agent SSE response
+```
+
+The Compass-facing Hermes API binds to loopback only. Its
+`platform_toolsets.api_server` configuration must be an explicit empty list
+for the basic-assistance rollout. Staff prompts therefore cannot invoke
+terminal, filesystem, messaging, or other action tools through this path.
+The poller loads the Compass Feedback Desk skill as response and
+classification guidance. When Jarvis recognizes an explicit report, the
+poller submits it through the same signed intake endpoint used by the
+Telegram/email adapter. The model never receives the bridge secret or a tool
+capable of submitting the report itself.
+
 Compass remains deployable on Cloudflare without direct access to a private
 tailnet address. The private adapter polls Compass over HTTPS, so no private
 Signet service needs to be exposed publicly. D1 stores events until the
@@ -54,10 +89,13 @@ The following Compass activity creates feedback desk items:
 - an `agent` mention from a user allowed to use Ask Compass;
 - a feedback widget submission.
 
-The bridge intake endpoint accepts `telegram` and `jarvis-email` events from
-the private adapter. All message content is marked and treated as untrusted
-user content. Message text must never be interpreted as bridge configuration
-or permission to perform an external action.
+Authenticated Ask Jarvis prompts create `agent.prompt` bridge events. These
+are not feedback desk items and do not post into a conversation channel.
+
+The bridge intake endpoint accepts `telegram`, `jarvis-email`, and
+`ask-jarvis` events from the private adapter. All message content is marked
+and treated as untrusted user content. Message text must never be interpreted
+as bridge configuration or permission to perform an external action.
 
 Guest policy
 ---
@@ -79,6 +117,10 @@ Authentication
 
 Every adapter request is signed with HMAC-SHA256. Configure the same
 `JARVIS_BRIDGE_SECRET` as a secret in Compass and the private adapter.
+
+Set `JARVIS_AGENT_BRIDGE_ENABLED=true` in Compass only after the private
+poller and loopback-only Hermes API are healthy. Setting it to `false`
+immediately restores the direct provider route.
 
 Required headers:
 
@@ -110,6 +152,17 @@ The request has an empty body. The response contains up to 50 claimed events.
 Each event includes its ID, type, source, delivery attempt, payload, and
 creation time.
 
+The basic Ask Jarvis poller uses
+`?limit=1&eventType=agent.prompt` so it cannot claim unrelated Feedback Desk
+events or hold multiple prompts while Hermes handles them sequentially.
+
+The reference poller is
+`scripts/jarvis-agent-poller.py`. The user-service template is
+`ops/systemd/compass-jarvis-agent-poller.service`; install the script under
+`~/.local/lib/compass/`, install the unit under
+`~/.config/systemd/user/`, then enable it only after the filtered production
+endpoint is deployed.
+
 ### Acknowledge an event
 
 ```text
@@ -140,7 +193,22 @@ Retryable failure:
 A failed acknowledgement without `retryAfterSeconds` is terminal and remains
 visible for investigation.
 
-### Send Telegram or email intake
+For `agent.prompt`, a successful acknowledgement stores:
+
+```json
+{
+  "status": "completed",
+  "result": {
+    "content": "The answer returned by Hermes.",
+    "model": "the resolved Hermes model"
+  }
+}
+```
+
+Compass waits up to 90 seconds for this result. A browser retry reuses the
+same idempotent event when its session and message history are unchanged.
+
+### Send Telegram, email, or Ask Jarvis intake
 
 ```text
 POST /api/integrations/jarvis/events
@@ -221,6 +289,10 @@ Rollout checklist
 9. Confirm a guest sees no Ask Compass entry point and receives HTTP 403 from
    all three agent endpoints.
 10. Enable Telegram and email intake one source at a time.
+11. Configure Hermes's API server on `127.0.0.1` with a strong key and an
+    explicit empty `platform_toolsets.api_server` list.
+12. Start the private agent poller, verify one `agent.prompt` round trip, then
+    enable `JARVIS_AGENT_BRIDGE_ENABLED` in Compass.
 
 The bundled bridge helper includes a `configure` command for step 5. It
 generates the HMAC key on the private runtime and returns only RSA-encrypted

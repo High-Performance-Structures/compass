@@ -13,12 +13,18 @@ import { getDb } from "@/db"
 import { mcpServers } from "@/db/schema-mcp"
 import { agentConfig } from "@/db/schema-ai-config"
 import { eq } from "drizzle-orm"
+import { z } from "zod/v4"
 import { can, canUseAskCompass } from "@/lib/permissions"
 import {
   resolveRuntimeModelId,
   resolveRuntimeProvider,
   selectRuntimeModel,
 } from "@/lib/agent/runtime-config"
+import {
+  createAgentRelayResponse,
+  isJarvisAgentBridgeEnabled,
+  relayAgentRequest,
+} from "@/lib/jarvis/agent-relay"
 import {
   runAgent,
   buildSystemPrompt,
@@ -32,12 +38,17 @@ import type {
   McpServerConfig,
 } from "agent-core"
 
-interface ChatRequest {
-  readonly messages: ReadonlyArray<{
-    readonly role: "user" | "assistant"
-    readonly content: string
-  }>
-}
+const chatRequestSchema = z.object({
+  messages: z
+    .array(
+      z.object({
+        role: z.enum(["user", "assistant"]),
+        content: z.string().max(20_000),
+      }),
+    )
+    .min(1)
+    .max(100),
+})
 
 export async function POST(
   request: Request
@@ -59,9 +70,9 @@ export async function POST(
     )
   }
 
-  let body: ChatRequest
+  let rawBody: unknown
   try {
-    body = await request.json()
+    rawBody = await request.json()
   } catch {
     return new Response(
       JSON.stringify({ error: "Invalid JSON body" }),
@@ -72,14 +83,11 @@ export async function POST(
     )
   }
 
-  if (
-    !Array.isArray(body.messages) ||
-    body.messages.length === 0
-  ) {
+  const parsedBody = chatRequestSchema.safeParse(rawBody)
+  if (!parsedBody.success) {
     return new Response(
       JSON.stringify({
-        error:
-          "messages array is required and cannot be empty",
+        error: "A valid messages array is required",
       }),
       {
         status: 400,
@@ -87,6 +95,7 @@ export async function POST(
       }
     )
   }
+  const body = parsedBody.data
 
   const currentPage =
     request.headers.get("x-current-page") ?? "/dashboard"
@@ -101,6 +110,43 @@ export async function POST(
   >
 
   const db = getDb(env.DB)
+
+  if (
+    isJarvisAgentBridgeEnabled(
+      envRecord.JARVIS_AGENT_BRIDGE_ENABLED,
+    )
+  ) {
+    if (!envRecord.JARVIS_BRIDGE_SECRET) {
+      return Response.json(
+        { error: "Jarvis relay is not configured" },
+        { status: 503 },
+      )
+    }
+
+    const relayResult = await relayAgentRequest({
+      db,
+      organizationId: user.organizationId,
+      user: {
+        id: user.id,
+        displayName: user.displayName,
+        email: user.email,
+        role: user.role,
+      },
+      sessionId:
+        request.headers.get("x-session-id") ?? crypto.randomUUID(),
+      currentPage,
+      timezone,
+      messages: body.messages,
+    })
+    if (!relayResult.success) {
+      return Response.json(
+        { error: relayResult.error },
+        { status: relayResult.timedOut ? 504 : 502 },
+      )
+    }
+    return createAgentRelayResponse(relayResult.content)
+  }
+
   const activeAgentConfig = await db
     .select({ modelId: agentConfig.modelId })
     .from(agentConfig)
@@ -273,10 +319,7 @@ export async function POST(
       name: t.name,
     }))
 
-  const msgs = body.messages as Array<{
-    role: "user" | "assistant"
-    content: string
-  }>
+  const msgs = body.messages
 
   const systemPrompt = buildSystemPrompt({
     context: {

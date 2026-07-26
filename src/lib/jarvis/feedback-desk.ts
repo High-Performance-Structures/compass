@@ -13,6 +13,7 @@ export type FeedbackDeskSource =
   | "feedback-widget"
   | "jarvis-email"
   | "telegram"
+  | "ask-jarvis"
 
 export type FeedbackDeskKind =
   | "assistance"

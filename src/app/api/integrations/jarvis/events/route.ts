@@ -16,7 +16,7 @@ const CLAIM_RETRY_MILLISECONDS = 5 * 60 * 1000
 const MAX_EVENT_BATCH = 50
 
 const inboundEventSchema = z.object({
-  source: z.enum(["telegram", "jarvis-email"]),
+  source: z.enum(["telegram", "jarvis-email", "ask-jarvis"]),
   sourceEventId: z.string().min(1).max(256),
   eventType: z.enum([
     "feedback.reported",
@@ -73,6 +73,20 @@ export async function GET(request: Request): Promise<Response> {
   const limit = Number.isInteger(requestedLimit)
     ? Math.min(MAX_EVENT_BATCH, Math.max(1, requestedLimit))
     : 20
+  const requestedEventType = url.searchParams.get("eventType")
+  if (
+    requestedEventType !== null &&
+    requestedEventType !== "agent.prompt"
+  ) {
+    return Response.json(
+      { error: "Unsupported event type filter" },
+      { status: 400 },
+    )
+  }
+  const eventTypeFilter =
+    requestedEventType === "agent.prompt"
+      ? eq(jarvisBridgeEvents.eventType, requestedEventType)
+      : undefined
   const now = new Date()
   const nowIso = now.toISOString()
   const staleClaimIso = new Date(
@@ -87,6 +101,7 @@ export async function GET(request: Request): Promise<Response> {
     .where(
       and(
         eq(jarvisBridgeEvents.direction, "outbound"),
+        eventTypeFilter,
         lte(jarvisBridgeEvents.availableAt, nowIso),
         or(
           eq(jarvisBridgeEvents.status, "pending"),
@@ -113,6 +128,7 @@ export async function GET(request: Request): Promise<Response> {
       .where(
         and(
           eq(jarvisBridgeEvents.id, candidate.id),
+          eventTypeFilter,
           or(
             eq(jarvisBridgeEvents.status, "pending"),
             and(
