@@ -58,11 +58,11 @@ export function DependencyDialog({
 
   function validate() {
     if (!predecessorId || !successorId) {
-      setError("Select both tasks")
+      setError("Select both schedule items")
       return false
     }
     if (predecessorId === successorId) {
-      setError("A task cannot depend on itself")
+      setError("A schedule item cannot depend on itself")
       return false
     }
     if (wouldCreateCycle(dependencies, predecessorId, successorId)) {
@@ -108,7 +108,7 @@ export function DependencyDialog({
             <Label>Predecessor (must finish first)</Label>
             <Select value={predecessorId} onValueChange={setPredecessorId}>
               <SelectTrigger className="mt-1">
-                <SelectValue placeholder="Select task" />
+                <SelectValue placeholder="Select schedule item" />
               </SelectTrigger>
               <SelectContent>
                 {tasks.map((t) => (
@@ -124,7 +124,7 @@ export function DependencyDialog({
             <Label>Successor (depends on predecessor)</Label>
             <Select value={successorId} onValueChange={setSuccessorId}>
               <SelectTrigger className="mt-1">
-                <SelectValue placeholder="Select task" />
+                <SelectValue placeholder="Select schedule item" />
               </SelectTrigger>
               <SelectContent>
                 {tasks

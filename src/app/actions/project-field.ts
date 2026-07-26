@@ -9,6 +9,7 @@ import {
   dailyLogTaskLinks,
   ownerProjectUpdates,
   projectExternalLinks,
+  projectOperations,
   scheduleTasks,
   projects,
   users,
@@ -115,13 +116,23 @@ export type ProjectDailyLogPhoto = {
   readonly publicShareable: boolean
 }
 
-export type ProjectDailyLogTask = {
+export type ProjectDailyLogScheduleItem = {
   readonly id: string
   readonly title: string
   readonly startDate: string
   readonly endDate: string
   readonly status: string
   readonly notes: string | null
+}
+
+export type ProjectDailyLogTodo = {
+  readonly id: string
+  readonly title: string
+  readonly status: string
+  readonly priority: string
+  readonly assigneeName: string | null
+  readonly companyName: string | null
+  readonly dueDate: string | null
 }
 
 export type ProjectDailyLogItem = {
@@ -146,7 +157,8 @@ export type ProjectDailyLogItem = {
   readonly syncStatus: string
   readonly authorName: string | null
   readonly photos: readonly ProjectDailyLogPhoto[]
-  readonly tasks: readonly ProjectDailyLogTask[]
+  readonly scheduleItems: readonly ProjectDailyLogScheduleItem[]
+  readonly todos: readonly ProjectDailyLogTodo[]
 }
 
 export type ProjectDailyLogWorkspace = {
@@ -1101,6 +1113,35 @@ export async function getProjectDailyLogWorkspace(
           .where(inArray(dailyLogTaskLinks.dailyLogId, logIds))
           .orderBy(asc(scheduleTasks.startDate), asc(scheduleTasks.sortOrder))
 
+  const todoRows =
+    logIds.length === 0
+      ? []
+      : await db
+          .select({
+            sourceRecordId: projectOperations.sourceRecordId,
+            id: projectOperations.id,
+            title: projectOperations.title,
+            status: projectOperations.status,
+            priority: projectOperations.priority,
+            assigneeName: projectOperations.assigneeName,
+            companyName: projectOperations.companyName,
+            dueDate: projectOperations.dueDate,
+          })
+          .from(projectOperations)
+          .where(
+            and(
+              eq(projectOperations.projectId, projectId),
+              inArray(projectOperations.sourceRecordId, logIds),
+              inArray(projectOperations.sourceRecordType, [
+                "staff_task",
+                "subcontractor_task",
+                "supplier_task",
+                "schedule_task",
+              ])
+            )
+          )
+          .orderBy(asc(projectOperations.dueDate), asc(projectOperations.title))
+
   const photosByLogId = new Map<string, ProjectDailyLogPhoto[]>()
   const unattachedPhotos: ProjectDailyLogPhoto[] = []
 
@@ -1130,10 +1171,13 @@ export async function getProjectDailyLogWorkspace(
     }
   }
 
-  const tasksByLogId = new Map<string, ProjectDailyLogTask[]>()
+  const scheduleItemsByLogId = new Map<
+    string,
+    ProjectDailyLogScheduleItem[]
+  >()
   for (const row of taskRows) {
-    tasksByLogId.set(row.dailyLogId, [
-      ...(tasksByLogId.get(row.dailyLogId) ?? []),
+    scheduleItemsByLogId.set(row.dailyLogId, [
+      ...(scheduleItemsByLogId.get(row.dailyLogId) ?? []),
       {
         id: row.id,
         title: row.title,
@@ -1141,6 +1185,24 @@ export async function getProjectDailyLogWorkspace(
         endDate: row.endDate,
         status: row.status,
         notes: row.notes,
+      },
+    ])
+  }
+
+  const todosByLogId = new Map<string, ProjectDailyLogTodo[]>()
+  for (const row of todoRows) {
+    if (!row.sourceRecordId) continue
+
+    todosByLogId.set(row.sourceRecordId, [
+      ...(todosByLogId.get(row.sourceRecordId) ?? []),
+      {
+        id: row.id,
+        title: row.title,
+        status: row.status,
+        priority: row.priority,
+        assigneeName: row.assigneeName,
+        companyName: row.companyName,
+        dueDate: row.dueDate,
       },
     ])
   }
@@ -1178,7 +1240,8 @@ export async function getProjectDailyLogWorkspace(
         email: row.authorEmail,
       }),
       photos: photosByLogId.get(row.id) ?? [],
-      tasks: tasksByLogId.get(row.id) ?? [],
+      scheduleItems: scheduleItemsByLogId.get(row.id) ?? [],
+      todos: todosByLogId.get(row.id) ?? [],
     })),
     unattachedPhotos,
     schedulePhases,

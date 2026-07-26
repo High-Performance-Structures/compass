@@ -218,7 +218,7 @@ export function ScheduleBaselineView({
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Task</TableHead>
+                  <TableHead>Schedule Item</TableHead>
                   <TableHead>Baseline Start</TableHead>
                   <TableHead>Baseline End</TableHead>
                   <TableHead>Current Start</TableHead>

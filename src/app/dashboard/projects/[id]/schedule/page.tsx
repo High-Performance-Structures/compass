@@ -8,6 +8,10 @@ import { notFound } from "next/navigation"
 import { getSchedule } from "@/app/actions/schedule"
 import { getBaselines } from "@/app/actions/baselines"
 import { getProjects, type ProjectListItem } from "@/app/actions/projects"
+import {
+  getProjectTaskAssigneeOptions,
+  type ProjectTaskAssigneeOption,
+} from "@/app/actions/project-contacts"
 import { ScheduleView } from "@/components/schedule/schedule-view"
 import type { ScheduleData, ScheduleBaselineData } from "@/lib/schedule/types"
 
@@ -28,6 +32,7 @@ export default async function SchedulePage({
   let schedule: ScheduleData = emptySchedule
   let baselines: ScheduleBaselineData[] = []
   let allProjects: ProjectListItem[] = []
+  let assigneeOptions: ProjectTaskAssigneeOption[] = []
 
   try {
     const { env } = await getCloudflareContext()
@@ -53,6 +58,16 @@ export default async function SchedulePage({
     console.warn("D1 unavailable in dev mode, using empty data")
   }
 
+  try {
+    const assigneeData = await getProjectTaskAssigneeOptions(id)
+    assigneeOptions = [
+      ...assigneeData.projectContacts,
+      ...assigneeData.directoryContacts,
+    ]
+  } catch (error) {
+    console.warn("Unable to load schedule assignee options", error)
+  }
+
   return (
     <div className="px-4 py-2 flex flex-col flex-1 min-h-0">
       <ScheduleView
@@ -61,6 +76,7 @@ export default async function SchedulePage({
         initialData={schedule}
         baselines={baselines}
         allProjects={allProjects}
+        assigneeOptions={assigneeOptions}
       />
     </div>
   )

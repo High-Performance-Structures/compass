@@ -30,30 +30,44 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { TaskFormDialog } from "./task-form-dialog"
+import { ScheduleItemFormDialog } from "./schedule-item-form-dialog"
 import { DependencyDialog } from "./dependency-dialog"
 import { deleteTask } from "@/app/actions/schedule"
 import type {
   ScheduleTaskData,
   TaskDependencyData,
 } from "@/lib/schedule/types"
+import type { ProjectTaskAssigneeOption } from "@/app/actions/project-contacts"
+import { ProjectTaskCreateButton } from "@/components/projects/project-task-create-button"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import { format, parseISO } from "date-fns"
+import { useScheduleDisplayPalette } from "@/hooks/use-schedule-display-palette"
+import {
+  getScheduleItemDisplayColor,
+  type DisplayColorPalette,
+} from "@/lib/schedule/appearance"
 
 interface ScheduleListViewProps {
-  projectId: string
-  tasks: ScheduleTaskData[]
-  dependencies: TaskDependencyData[]
+  readonly projectId: string
+  readonly tasks: ScheduleTaskData[]
+  readonly dependencies: TaskDependencyData[]
+  readonly assigneeOptions: readonly ProjectTaskAssigneeOption[]
 }
 
-function StatusDot({ task }: { task: ScheduleTaskData }) {
-  let color = "bg-gray-400"
-  if (task.status === "COMPLETE") color = "bg-green-500"
-  else if (task.status === "IN_PROGRESS") color = "bg-blue-500"
-  else if (task.status === "BLOCKED") color = "bg-red-500"
-  else if (task.isCriticalPath) color = "bg-orange-500"
-  return <span className={`inline-block size-2.5 rounded-full ${color}`} />
+function StatusDot({
+  task,
+  palette,
+}: {
+  task: ScheduleTaskData
+  palette: DisplayColorPalette
+}) {
+  return (
+    <span
+      className="inline-block size-2.5 rounded-full"
+      style={{ backgroundColor: getScheduleItemDisplayColor(task, palette) }}
+    />
+  )
 }
 
 function ProgressRing({
@@ -132,8 +146,10 @@ export function ScheduleListView({
   projectId,
   tasks,
   dependencies,
+  assigneeOptions,
 }: ScheduleListViewProps) {
   const router = useRouter()
+  const displayColorPalette = useScheduleDisplayPalette(projectId)
   const [taskFormOpen, setTaskFormOpen] = useState(false)
   const [editingTask, setEditingTask] = useState<ScheduleTaskData | null>(null)
   const [depDialogOpen, setDepDialogOpen] = useState(false)
@@ -191,7 +207,10 @@ export function ScheduleListView({
         header: "Title",
         cell: ({ row }) => (
           <div className="flex items-center gap-2">
-            <StatusDot task={row.original} />
+            <StatusDot
+              task={row.original}
+              palette={displayColorPalette}
+            />
             <span className="font-medium text-sm truncate max-w-[150px] sm:max-w-[200px]">
               {row.original.title}
             </span>
@@ -248,7 +267,7 @@ export function ScheduleListView({
       },
       {
         id: "assignedTo",
-        header: "Assigned To",
+        header: "Responsible",
         cell: ({ row }) =>
           row.original.assignedTo ? (
             <InitialsAvatar name={row.original.assignedTo} />
@@ -260,6 +279,24 @@ export function ScheduleListView({
         id: "actions",
         cell: ({ row }) => (
           <div className="flex items-center gap-1">
+            <ProjectTaskCreateButton
+              compact
+              projectId={projectId}
+              sourceLabel="Schedule item"
+              sourceRecordId={row.original.id}
+              sourceRecordNumber={null}
+              sourceHref={`/dashboard/projects/${projectId}/schedule`}
+              defaultTitle={`Follow up: ${row.original.title}`}
+              defaultDescription={`${row.original.phase} schedule item.`}
+              defaultAssigneeName={row.original.assignedTo}
+              defaultCompanyName={null}
+              defaultDueDate={row.original.endDateCalculated}
+              defaultPriority={
+                row.original.isCriticalPath ? "high" : "normal"
+              }
+              defaultTaskType="schedule_task"
+              assigneeOptions={assigneeOptions}
+            />
             <Button
               variant="ghost"
               size="icon"
@@ -281,10 +318,10 @@ export function ScheduleListView({
             </Button>
           </div>
         ),
-        size: 80,
+        size: 110,
       },
     ],
-    [handleDelete]
+    [assigneeOptions, displayColorPalette, handleDelete, projectId]
   )
 
   const table = useReactTable({
@@ -341,7 +378,8 @@ export function ScheduleListView({
                     colSpan={columns.length}
                     className="text-center py-8 text-muted-foreground"
                   >
-                    No tasks yet. Click &quot;New Schedule Item&quot; to get started.
+                    No schedule items yet. Click &quot;New Schedule Item&quot; to
+                    get started.
                   </TableCell>
                 </TableRow>
               ) : (
@@ -414,13 +452,14 @@ export function ScheduleListView({
         </div>
       </div>
 
-      <TaskFormDialog
+      <ScheduleItemFormDialog
         open={taskFormOpen}
         onOpenChange={setTaskFormOpen}
         projectId={projectId}
         editingTask={editingTask}
         allTasks={localTasks}
         dependencies={dependencies}
+        assigneeOptions={assigneeOptions}
       />
 
       <DependencyDialog

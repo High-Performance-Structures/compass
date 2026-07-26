@@ -59,9 +59,10 @@ import { ScheduleCalendarView } from "./schedule-calendar-view"
 import { ScheduleMobileView } from "./schedule-mobile-view"
 import { WorkdayExceptionsView } from "./workday-exceptions-view"
 import { ScheduleBaselineView } from "./schedule-baseline-view"
-import { TaskFormDialog } from "./task-form-dialog"
+import { ScheduleItemFormDialog } from "./schedule-item-form-dialog"
 import { ProjectQuickSwitcher } from "@/components/projects/project-quick-switcher"
 import type { ProjectListItem } from "@/app/actions/projects"
+import type { ProjectTaskAssigneeOption } from "@/app/actions/project-contacts"
 import type {
   ScheduleData,
   ScheduleBaselineData,
@@ -87,6 +88,7 @@ interface ScheduleViewProps {
   readonly initialData: ScheduleData
   readonly baselines: ScheduleBaselineData[]
   readonly allProjects?: readonly ProjectListItem[]
+  readonly assigneeOptions?: readonly ProjectTaskAssigneeOption[]
 }
 
 export function ScheduleView({
@@ -95,6 +97,7 @@ export function ScheduleView({
   initialData,
   baselines,
   allProjects = [],
+  assigneeOptions = [],
 }: ScheduleViewProps) {
   const isMobile = useIsMobile()
   const [view, setView] = useState<View>("gantt")
@@ -275,9 +278,11 @@ export function ScheduleView({
         link.download = `imported-tasks-${Date.now()}.json`
         link.click()
         URL.revokeObjectURL(url)
-        toast.success(`Parsed ${parsed.length} tasks from CSV for review.`)
+        toast.success(
+          `Parsed ${parsed.length} schedule items from CSV for review.`
+        )
       } else {
-        toast.error("No valid tasks found in the CSV file.")
+        toast.error("No valid schedule items found in the CSV file.")
       }
     } catch (error) {
       console.error("Import failed:", error)
@@ -339,7 +344,7 @@ export function ScheduleView({
 
           <Button size="sm" onClick={() => setTaskFormOpen(true)} className="h-8">
             <IconPlus className="size-3.5" />
-            <span className="hidden sm:inline ml-1.5">New Task</span>
+            <span className="hidden sm:inline ml-1.5">New Schedule Item</span>
           </Button>
         </div>
       </div>
@@ -350,7 +355,7 @@ export function ScheduleView({
         <div className="relative flex-1 sm:flex-none sm:w-52">
           <IconSearch className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground pointer-events-none" />
           <Input
-            placeholder="Search tasks..."
+            placeholder="Search schedule items..."
             value={filters.search}
             onChange={(e) => setFilters({ ...filters, search: e.target.value })}
             className="h-8 pl-8 text-sm"
@@ -415,7 +420,7 @@ export function ScheduleView({
               </div>
               <div>
                 <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                  Assigned To
+                  Responsible Contact
                 </Label>
                 <Input
                   placeholder="Filter by name..."
@@ -479,7 +484,8 @@ export function ScheduleView({
 
         <div className="ml-auto flex items-center gap-2 shrink-0">
           <span className="text-xs text-muted-foreground hidden sm:inline tabular-nums">
-            {filteredTasks.length} task{filteredTasks.length !== 1 ? "s" : ""}
+            {filteredTasks.length} schedule item
+            {filteredTasks.length !== 1 ? "s" : ""}
           </span>
 
           {/* Overflow menu */}
@@ -521,6 +527,7 @@ export function ScheduleView({
         {view === "calendar" && (
           isMobile ? (
             <ScheduleMobileView
+              projectId={projectId}
               tasks={filteredTasks}
               exceptions={initialData.exceptions}
             />
@@ -537,6 +544,7 @@ export function ScheduleView({
             projectId={projectId}
             tasks={filteredTasks}
             dependencies={initialData.dependencies}
+            assigneeOptions={assigneeOptions}
           />
         )}
         {view === "gantt" && (
@@ -544,18 +552,20 @@ export function ScheduleView({
             projectId={projectId}
             tasks={filteredTasks}
             dependencies={initialData.dependencies}
+            assigneeOptions={assigneeOptions}
           />
         )}
       </div>
 
-      {/* New task dialog */}
-      <TaskFormDialog
+      {/* New schedule item dialog */}
+      <ScheduleItemFormDialog
         open={taskFormOpen}
         onOpenChange={setTaskFormOpen}
         projectId={projectId}
         editingTask={null}
         allTasks={initialData.tasks}
         dependencies={initialData.dependencies}
+        assigneeOptions={assigneeOptions}
       />
 
       {/* Import dialog */}

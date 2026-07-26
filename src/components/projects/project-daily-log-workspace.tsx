@@ -30,6 +30,7 @@ import {
   type ProjectDailyLogPhoto,
   type ProjectDailyLogWorkspace as ProjectDailyLogWorkspaceData,
 } from "@/app/actions/project-field"
+import type { ProjectTaskAssigneeOption } from "@/app/actions/project-contacts"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -43,6 +44,7 @@ import {
 } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import { ProjectContextSwitcher } from "@/components/projects/project-context-switcher"
+import { ProjectTaskCreateButton } from "@/components/projects/project-task-create-button"
 import {
   photoLinkHref,
   resolvePhotoImageSource,
@@ -190,6 +192,14 @@ function readableField(value: string | null): string | null {
   } catch {
     return value
   }
+}
+
+function dailyLogTodoDescription(log: ProjectDailyLogItem): string {
+  return (
+    [log.issues, log.safetyIncidents, log.notes]
+      .filter((value): value is string => Boolean(value?.trim()))
+      .join("\n\n") || log.workCompleted
+  )
 }
 
 function filterValue(value: string): LogFilter {
@@ -492,8 +502,10 @@ function PhotoStrip({
 
 export function ProjectDailyLogWorkspace({
   workspace,
+  assigneeOptions,
 }: {
   readonly workspace: ProjectDailyLogWorkspaceData
+  readonly assigneeOptions: readonly ProjectTaskAssigneeOption[]
 }): React.ReactElement {
   const router = useRouter()
   const [logs, setLogs] =
@@ -1053,7 +1065,11 @@ export function ProjectDailyLogWorkspace({
 
         <div className="grid grid-cols-1 gap-3">
           {filteredLogs.map((log) => (
-            <section key={log.id} className="rounded-lg border p-3 sm:p-4">
+            <section
+              key={log.id}
+              id={`daily-log-${log.id}`}
+              className="rounded-lg border p-3 sm:p-4"
+            >
               {(() => {
                 const crewPresent = readableField(log.crewPresent)
                 const materialsUsed = readableField(log.materialsUsed)
@@ -1115,6 +1131,24 @@ export function ProjectDailyLogWorkspace({
                 </div>
 
                 <div className="flex flex-wrap gap-2">
+                  <ProjectTaskCreateButton
+                    projectId={workspace.project.id}
+                    sourceLabel="Daily log"
+                    sourceRecordId={log.id}
+                    sourceRecordNumber={
+                      log.sourceExternalId ?? formatDate(log.logDate)
+                    }
+                    sourceHref={`/dashboard/projects/${workspace.project.id}/daily-logs#daily-log-${log.id}`}
+                    defaultTitle={`Follow up from ${formatDate(log.logDate)}`}
+                    defaultDescription={dailyLogTodoDescription(log)}
+                    defaultAssigneeName={null}
+                    defaultCompanyName={null}
+                    defaultDueDate={null}
+                    defaultPriority={
+                      log.issues || log.safetyIncidents ? "high" : "normal"
+                    }
+                    assigneeOptions={assigneeOptions}
+                  />
                   <Button
                     variant={editingLogId === log.id ? "secondary" : "outline"}
                     size="sm"
@@ -1354,24 +1388,49 @@ export function ProjectDailyLogWorkspace({
                 </div>
               )}
 
-              {log.tasks.length > 0 && (
+              {log.todos.length > 0 && (
+                <div className="mt-3 rounded-md border bg-muted/20 p-3">
+                  <div className="mb-2 flex items-center gap-2 text-xs font-medium uppercase text-muted-foreground">
+                    <IconClipboardText className="size-3.5" />
+                    To-dos
+                  </div>
+                  <div className="grid gap-2 md:grid-cols-2">
+                    {log.todos.map((todo) => (
+                      <div key={todo.id} className="rounded-md bg-background p-2">
+                        <p className="text-sm font-medium">{todo.title}</p>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          {statusLabel(todo.status)}
+                          {todo.dueDate
+                            ? ` · Due ${formatDate(todo.dueDate)}`
+                            : ""}
+                          {todo.assigneeName || todo.companyName
+                            ? ` · ${todo.assigneeName ?? todo.companyName}`
+                            : ""}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {log.scheduleItems.length > 0 && (
                 <div className="mt-3 rounded-md border bg-muted/20 p-3">
                   <div className="mb-2 flex items-center gap-2 text-xs font-medium uppercase text-muted-foreground">
                     <IconCalendarStats className="size-3.5" />
                     Schedule links
                   </div>
                   <div className="grid gap-2 md:grid-cols-2">
-                    {log.tasks.map((task) => (
-                      <div key={task.id} className="rounded-md bg-background p-2">
-                        <p className="text-sm font-medium">{task.title}</p>
+                    {log.scheduleItems.map((item) => (
+                      <div key={item.id} className="rounded-md bg-background p-2">
+                        <p className="text-sm font-medium">{item.title}</p>
                         <p className="mt-1 text-xs text-muted-foreground">
-                          {formatDate(task.startDate)} - {formatDate(task.endDate)}
+                          {formatDate(item.startDate)} - {formatDate(item.endDate)}
                           {" · "}
-                          {statusLabel(task.status)}
+                          {statusLabel(item.status)}
                         </p>
-                        {task.notes && (
+                        {item.notes && (
                           <p className="mt-1 text-xs text-muted-foreground">
-                            {task.notes}
+                            {item.notes}
                           </p>
                         )}
                       </div>

@@ -57,6 +57,7 @@ type ProjectTaskCreateButtonProps = {
   readonly defaultPriority: string
   readonly defaultTaskType?: ProjectTaskRecordType
   readonly assigneeOptions?: readonly ProjectTaskAssigneeOption[]
+  readonly compact?: boolean
 }
 
 function cleanValue(value: string): string | null {
@@ -122,6 +123,7 @@ export function ProjectTaskCreateButton({
   defaultPriority,
   defaultTaskType = "staff_task",
   assigneeOptions = [],
+  compact = false,
 }: ProjectTaskCreateButtonProps): React.ReactElement {
   const router = useRouter()
   const [open, setOpen] = React.useState(false)
@@ -232,7 +234,7 @@ export function ProjectTaskCreateButton({
 
     setStatus({
       kind: "saved",
-      message: "Task created and added to the project work queue.",
+      message: "To-do created and added to the project work queue.",
     })
     router.refresh()
   }
@@ -267,23 +269,33 @@ export function ProjectTaskCreateButton({
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button type="button" variant="outline" size="sm">
+        <Button
+          type="button"
+          variant={compact ? "ghost" : "outline"}
+          size={compact ? "icon" : "sm"}
+          className={compact ? "size-7" : undefined}
+          title={compact ? "Create linked to-do" : undefined}
+        >
           <IconListCheck className="size-4" />
-          Task
+          {compact ? (
+            <span className="sr-only">Create linked to-do</span>
+          ) : (
+            "To-do"
+          )}
         </Button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-2xl">
         <form onSubmit={submitTask} className="space-y-5">
           <DialogHeader>
-            <DialogTitle>Create task</DialogTitle>
+            <DialogTitle>Create to-do</DialogTitle>
             <DialogDescription>
-              Add a to-do from this {sourceLabel.toLowerCase()}.
+              Add an assignable to-do from this {sourceLabel.toLowerCase()}.
             </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-2">
             <Label htmlFor={`task-title-${sourceRecordId ?? sourceLabel}`}>
-              Task
+              To-do
             </Label>
             <Input
               id={`task-title-${sourceRecordId ?? sourceLabel}`}
@@ -314,9 +326,9 @@ export function ProjectTaskCreateButton({
                 }}
                 className="h-10 w-full rounded-md border bg-background px-3 text-sm"
               >
-                <option value="staff_task">Internal staff task</option>
-                <option value="subcontractor_task">Subcontractor task</option>
-                <option value="supplier_task">Supplier task</option>
+                <option value="staff_task">Internal staff to-do</option>
+                <option value="subcontractor_task">Subcontractor to-do</option>
+                <option value="supplier_task">Supplier to-do</option>
                 <option value="schedule_task">Schedule follow-up</option>
               </select>
             </div>
@@ -505,7 +517,7 @@ export function ProjectTaskCreateButton({
                 project yet.
               </p>
               <p className="mt-1 text-amber-900">
-                You can create the task without changing project contacts, or
+                You can create the to-do without changing project contacts, or
                 add this contact to the project first. Portal visibility still
                 needs a separate review.
               </p>
@@ -515,7 +527,7 @@ export function ProjectTaskCreateButton({
             <div className="border-l-2 border-muted-foreground/40 bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
               <p>
                 This assignee is not matched to a contact yet. Compass can save
-                the task label, but notifications need a matched contact.
+                the to-do label, but notifications need a matched contact.
               </p>
             </div>
           )}
@@ -556,8 +568,8 @@ export function ProjectTaskCreateButton({
                 : status.kind === "saved"
                   ? "Created"
                   : directoryAssignee
-                    ? "Assign task only"
-                    : "Create task"}
+                    ? "Assign to-do only"
+                    : "Create to-do"}
             </Button>
           </DialogFooter>
         </form>
