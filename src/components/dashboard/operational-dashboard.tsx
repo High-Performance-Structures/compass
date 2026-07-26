@@ -21,7 +21,6 @@ import {
   IconMessageCircleQuestion,
   IconPhoto,
   IconRoute,
-  IconSparkles,
   IconTargetArrow,
   IconTools,
   IconTrendingUp,
@@ -38,10 +37,7 @@ import {
   type CherishPulseReviewItem,
   type CherishValue,
 } from "@/app/actions/cherish-pulse"
-import {
-  useChatPanel,
-  useRenderState,
-} from "@/components/agent/chat-provider"
+import { useRenderState } from "@/components/agent/chat-provider"
 import { RenderedView } from "@/components/agent/rendered-view"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -78,6 +74,7 @@ import {
   type ProjectWorkspaceMode,
 } from "@/lib/project-workflow-roles"
 import { cn } from "@/lib/utils"
+import { dashboardNavigation } from "@/lib/dashboard/navigation"
 
 type DashboardLayoutMode = "list" | "compass"
 type SignalTone = "green" | "amber" | "blue" | "red" | "neutral"
@@ -496,7 +493,7 @@ function DashboardCommandCenter({
         : "No open POs",
       progress: Math.min(100, overview.metrics.openPoAmount / 1000),
       tone: "green",
-      href: "/dashboard/financials",
+      href: dashboardNavigation.openPurchaseOrders,
       icon: <IconCurrencyDollar className="size-4" />,
     },
   ]
@@ -1508,7 +1505,6 @@ export function OperationalDashboard({
   readonly overview: DashboardOverview
 }) {
   const { spec, isRendering } = useRenderState()
-  const chatPanel = useChatPanel()
   const [layoutMode, setLayoutMode] =
     useState<DashboardLayoutMode>("list")
   const [activeRoleId, setActiveRoleId] = useState<ProjectWorkflowRoleId>(
@@ -1619,15 +1615,6 @@ export function OperationalDashboard({
               Compass
             </ToggleGroupItem>
           </ToggleGroup>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={chatPanel.open}
-          >
-            <IconSparkles className="size-4" />
-            Customize view
-          </Button>
           <Button asChild size="sm">
             <Link href="/dashboard/projects">
               <IconFolder className="size-4" />

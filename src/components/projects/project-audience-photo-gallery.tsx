@@ -2,7 +2,12 @@
 
 import * as React from "react"
 import Image from "next/image"
-import { IconPhoto, IconSearch } from "@tabler/icons-react"
+import {
+  IconChevronLeft,
+  IconChevronRight,
+  IconPhoto,
+  IconSearch,
+} from "@tabler/icons-react"
 
 import type { AudiencePhoto } from "@/app/actions/project-audience-preview"
 import { Badge } from "@/components/ui/badge"
@@ -22,6 +27,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { resolvePhotoImageSource } from "@/lib/photo-sources"
+import { adjacentPhoto } from "@/lib/photos/carousel"
 
 type AudiencePhotoSort = "newest" | "oldest" | "phase_newest" | "phase_oldest"
 const NO_PHASE_VALUE = "unassigned"
@@ -143,6 +149,33 @@ export function ProjectAudiencePhotoGallery({
       }
     })
   }, [dateFilter, phaseFilter, photoSort, photos])
+
+  const showAdjacentPreview = React.useCallback(
+    (direction: "previous" | "next"): void => {
+      if (!previewPhoto) return
+      const adjacent = adjacentPhoto(filteredPhotos, previewPhoto.id, direction)
+      if (adjacent) setPreviewPhoto(adjacent)
+    },
+    [filteredPhotos, previewPhoto]
+  )
+
+  React.useEffect(() => {
+    if (!previewPhoto || filteredPhotos.length < 2) return
+
+    function handlePreviewKeyDown(event: KeyboardEvent): void {
+      if (event.altKey || event.ctrlKey || event.metaKey) return
+      if (event.key === "ArrowLeft") {
+        event.preventDefault()
+        showAdjacentPreview("previous")
+      } else if (event.key === "ArrowRight") {
+        event.preventDefault()
+        showAdjacentPreview("next")
+      }
+    }
+
+    window.addEventListener("keydown", handlePreviewKeyDown)
+    return () => window.removeEventListener("keydown", handlePreviewKeyDown)
+  }, [filteredPhotos.length, previewPhoto, showAdjacentPreview])
 
   function markImageFailed(photoId: string): void {
     setFailedImageIds((current) => {
@@ -357,9 +390,39 @@ export function ProjectAudiencePhotoGallery({
                       </p>
                     </div>
                   )}
+                  {filteredPhotos.length > 1 && (
+                    <>
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="icon"
+                        onClick={() => showAdjacentPreview("previous")}
+                        aria-label="Show previous photo"
+                        className="absolute left-3 top-1/2 z-10 -translate-y-1/2 rounded-full bg-background/90 shadow-md"
+                      >
+                        <IconChevronLeft className="size-5" />
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="icon"
+                        onClick={() => showAdjacentPreview("next")}
+                        aria-label="Show next photo"
+                        className="absolute right-3 top-1/2 z-10 -translate-y-1/2 rounded-full bg-background/90 shadow-md"
+                      >
+                        <IconChevronRight className="size-5" />
+                      </Button>
+                    </>
+                  )}
                 </div>
                 <div className="flex flex-wrap items-center justify-between gap-2 border-t bg-background px-4 py-3">
                   <div>
+                    <p className="mb-2 text-xs text-muted-foreground">
+                      {filteredPhotos.findIndex(
+                        (photo) => photo.id === previewPhoto.id
+                      ) + 1}{" "}
+                      of {filteredPhotos.length}
+                    </p>
                     <div className="flex flex-wrap gap-1">
                       <Badge variant="secondary">
                         Phase: {phaseLabel(previewPhoto.schedulePhase)}

@@ -17,7 +17,6 @@ import {
   SidebarProvider,
 } from "@/components/ui/sidebar"
 import { getProjects } from "@/app/actions/projects"
-import { getCustomDashboards } from "@/app/actions/dashboards"
 import { ProjectListProvider } from "@/components/project-list-provider"
 import { getCurrentUser, toSidebarUser } from "@/lib/auth"
 import { cookies } from "next/headers"
@@ -37,20 +36,16 @@ export default async function DashboardLayout({
 }: {
   readonly children: React.ReactNode
 }) {
-  const [projectList, authUser, dashboardResult, cookieStore] =
+  const [projectList, authUser, cookieStore] =
     await Promise.all([
       getProjects(),
       getCurrentUser(),
-      getCustomDashboards(),
       cookies(),
     ])
   const sidebarOpen = cookieStore.get("sidebar_state")?.value !== "false"
   const user = authUser ? toSidebarUser(authUser) : null
   const activeOrgId = authUser?.organizationId ?? null
   const activeOrgName = authUser?.organizationName ?? null
-  const dashboardList = dashboardResult.success
-    ? dashboardResult.data
-    : []
   const isDemo = authUser ? isDemoUser(authUser.id) : false
   const canUseCompassAgent = canUseAskCompass(authUser)
 
@@ -77,7 +72,6 @@ export default async function DashboardLayout({
         <AppSidebar
           variant="inset"
           projects={projectList}
-          dashboards={dashboardList}
           user={user}
           activeOrgId={activeOrgId}
           activeOrgName={activeOrgName}
