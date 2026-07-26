@@ -26,6 +26,7 @@ import {
   MAX_PHOTO_UPLOAD_FILE_BYTES,
   PHOTO_UPLOAD_LIMIT_LABEL,
 } from "@/lib/photos/upload-limits"
+import { photoUploadVisibility } from "@/lib/photos/upload-visibility"
 
 const GOOGLE_FOLDER_MIME_TYPE = "application/vnd.google-apps.folder"
 const DEFAULT_PHOTO_FOLDER_NAME = "Pictures"
@@ -56,6 +57,10 @@ function isFile(value: FormDataEntryValue): value is File {
 function formText(formData: FormData, name: string): string {
   const value = formData.get(name)
   return typeof value === "string" ? value.trim() : ""
+}
+
+function formBoolean(formData: FormData, name: string): boolean {
+  return formText(formData, name) === "true"
 }
 
 function envString(env: Record<string, string>, key: string): string | null {
@@ -352,6 +357,10 @@ export async function POST(
     const photoKind = normalizedPhotoKind(formText(formData, "photoKind"))
     const schedulePhase = formText(formData, "schedulePhase")
     const dailyLogId = formText(formData, "dailyLogId")
+    const visibility = photoUploadVisibility(
+      formBoolean(formData, "ownerVisible"),
+      formBoolean(formData, "subVendorVisible")
+    )
     const validatedDailyLogId =
       dailyLogId.length > 0
         ? await db
@@ -420,9 +429,9 @@ export async function POST(
         caption: caption.length > 0 ? caption : null,
         capturedAt,
         uploadStatus: "uploaded",
-        reviewStatus: "needs_review",
-        ownerVisible: false,
-        subVendorVisible: false,
+        reviewStatus: visibility.reviewStatus,
+        ownerVisible: visibility.ownerVisible,
+        subVendorVisible: visibility.subVendorVisible,
         publicShareable: false,
         photoKind,
         schedulePhaseOverride: normalizedSchedulePhase(schedulePhase),

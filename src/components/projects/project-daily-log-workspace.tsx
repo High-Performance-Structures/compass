@@ -15,6 +15,7 @@ import {
   IconPencil,
   IconPhoto,
   IconPlus,
+  IconPrinter,
   IconShieldCheck,
   IconUpload,
   IconUsers,
@@ -43,8 +44,14 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
+import { DailyLogPrintDocument } from "@/components/projects/daily-log-print-document"
 import { ProjectContextSwitcher } from "@/components/projects/project-context-switcher"
 import { ProjectTaskCreateButton } from "@/components/projects/project-task-create-button"
+import {
+  ALL_DAILY_LOG_AUTHORS,
+  matchesDailyLogPrintFilters,
+  UNKNOWN_DAILY_LOG_AUTHOR,
+} from "@/lib/daily-logs/print-selection"
 import {
   photoLinkHref,
   resolvePhotoImageSource,
@@ -230,9 +237,7 @@ function selectedLogIds(
   logs: readonly ProjectDailyLogItem[],
   selectedIds: readonly string[]
 ): readonly string[] {
-  const availableIds = new Set(
-    logs.filter(isOwnerUpdateEligibleLog).map((log) => log.id)
-  )
+  const availableIds = new Set(logs.map((log) => log.id))
   return selectedIds.filter((id) => availableIds.has(id))
 }
 
@@ -527,8 +532,17 @@ export function ProjectDailyLogWorkspace({
   const [uploadFiles, setUploadFiles] = React.useState<readonly File[]>([])
   const [uploadCaption, setUploadCaption] = React.useState("")
   const [uploadPhase, setUploadPhase] = React.useState(NO_PHASE_VALUE)
+  const [uploadOwnerVisible, setUploadOwnerVisible] = React.useState(false)
+  const [uploadSubVendorVisible, setUploadSubVendorVisible] =
+    React.useState(false)
   const [uploadMessage, setUploadMessage] = React.useState<string | null>(null)
   const [isUploading, setUploading] = React.useState(false)
+  const [showPrintOptions, setShowPrintOptions] = React.useState(false)
+  const [printStartDate, setPrintStartDate] = React.useState("")
+  const [printEndDate, setPrintEndDate] = React.useState("")
+  const [printAuthor, setPrintAuthor] = React.useState(ALL_DAILY_LOG_AUTHORS)
+  const [printLogs, setPrintLogs] =
+    React.useState<readonly ProjectDailyLogItem[]>([])
   const [message, setMessage] = React.useState<string | null>(null)
   const [isPending, startTransition] = React.useTransition()
   const [isWeatherPending, startWeatherTransition] = React.useTransition()
@@ -540,11 +554,51 @@ export function ProjectDailyLogWorkspace({
     setUploadingLogId(null)
   }, [workspace.logs])
 
+  React.useEffect(() => {
+    function finishPrinting(): void {
+      document.body.classList.remove("daily-log-printing")
+      setPrintLogs([])
+    }
+
+    window.addEventListener("afterprint", finishPrinting)
+    return () => {
+      window.removeEventListener("afterprint", finishPrinting)
+      document.body.classList.remove("daily-log-printing")
+    }
+  }, [])
+
   const filteredLogs = React.useMemo(
     () => logs.filter((log) => matchesFilter(log, filter)),
     [filter, logs]
   )
   const selectedIdsInView = selectedLogIds(filteredLogs, selectedIds)
+  const selectedLogs = React.useMemo(
+    () => logs.filter((log) => selectedIds.includes(log.id)),
+    [logs, selectedIds]
+  )
+  const ownerUpdateSelectedIds = selectedLogs
+    .filter(isOwnerUpdateEligibleLog)
+    .map((log) => log.id)
+  const printAuthorOptions = React.useMemo(
+    () =>
+      [...new Set(logs.map((log) => log.authorName).filter(
+        (author): author is string => author !== null
+      ))].sort((left, right) => left.localeCompare(right)),
+    [logs]
+  )
+  const hasUnknownPrintAuthor = logs.some((log) => log.authorName === null)
+  const dateAuthorPrintLogs = React.useMemo(
+    () =>
+      logs.filter((log) =>
+        matchesDailyLogPrintFilters(
+          log,
+          printStartDate,
+          printEndDate,
+          printAuthor
+        )
+      ),
+    [logs, printAuthor, printEndDate, printStartDate]
+  )
   const projectLabel = workspace.project.projectNumber ?? workspace.project.name
 
   function toggleLog(logId: string): void {
@@ -556,9 +610,7 @@ export function ProjectDailyLogWorkspace({
   }
 
   function selectVisibleLogs(): void {
-    setSelectedIds(
-      filteredLogs.filter(isOwnerUpdateEligibleLog).map((log) => log.id)
-    )
+    setSelectedIds(filteredLogs.map((log) => log.id))
   }
 
   function clearSelection(): void {
@@ -598,6 +650,8 @@ export function ProjectDailyLogWorkspace({
     setUploadFiles([])
     setUploadCaption("")
     setUploadPhase(NO_PHASE_VALUE)
+    setUploadOwnerVisible(false)
+    setUploadSubVendorVisible(false)
   }
 
   function cancelUploadingFiles(): void {
@@ -605,7 +659,21 @@ export function ProjectDailyLogWorkspace({
     setUploadFiles([])
     setUploadCaption("")
     setUploadPhase(NO_PHASE_VALUE)
+    setUploadOwnerVisible(false)
+    setUploadSubVendorVisible(false)
     setUploadMessage(null)
+  }
+
+  function printDailyLogs(targetLogs: readonly ProjectDailyLogItem[]): void {
+    if (targetLogs.length === 0) {
+      setMessage("Choose at least one daily log to print.")
+      return
+    }
+
+    setMessage(null)
+    setPrintLogs(targetLogs)
+    document.body.classList.add("daily-log-printing")
+    window.setTimeout(() => window.print(), 50)
   }
 
   function chooseUploadFiles(fileList: FileList | null): void {
@@ -677,6 +745,8 @@ export function ProjectDailyLogWorkspace({
       formData.set("capturedDate", log.logDate)
       formData.set("photoKind", "progress")
       formData.set("schedulePhase", uploadPhase)
+      formData.set("ownerVisible", String(uploadOwnerVisible))
+      formData.set("subVendorVisible", String(uploadSubVendorVisible))
 
       const response = await fetch(
         `/api/projects/${workspace.project.id}/photos/upload`,
@@ -711,6 +781,8 @@ export function ProjectDailyLogWorkspace({
         setUploadFiles([])
         setUploadCaption("")
         setUploadPhase(NO_PHASE_VALUE)
+        setUploadOwnerVisible(false)
+        setUploadSubVendorVisible(false)
         router.refresh()
         return
       }
@@ -869,11 +941,6 @@ export function ProjectDailyLogWorkspace({
               : item
           )
         )
-        if (reviewStatus !== "approved" || !isClientVisible) {
-          setSelectedIds((current) =>
-            current.filter((id) => id !== log.id)
-          )
-        }
         setMessage("Daily log review updated.")
       } else {
         setMessage(result.error)
@@ -882,7 +949,7 @@ export function ProjectDailyLogWorkspace({
   }
 
   function draftOwnerUpdate(): void {
-    const dailyLogIds = selectedIdsInView
+    const dailyLogIds = ownerUpdateSelectedIds
     setMessage(null)
     startTransition(async () => {
       const result = await draftOwnerUpdateFromDailyLogs(workspace.project.id, {
@@ -900,6 +967,7 @@ export function ProjectDailyLogWorkspace({
   }
 
   return (
+    <>
     <main className="min-h-screen bg-background">
       <div className="mx-auto flex max-w-7xl flex-col gap-4 px-4 py-4 sm:px-6 lg:px-8">
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -945,9 +1013,18 @@ export function ProjectDailyLogWorkspace({
                 </Link>
               </Button>
               <Button
+                type="button"
+                variant={showPrintOptions ? "secondary" : "outline"}
+                size="sm"
+                onClick={() => setShowPrintOptions((current) => !current)}
+              >
+                <IconPrinter className="size-4" />
+                Print
+              </Button>
+              <Button
                 size="sm"
                 onClick={draftOwnerUpdate}
-                disabled={isPending || selectedIdsInView.length === 0}
+                disabled={isPending || ownerUpdateSelectedIds.length === 0}
               >
                 <IconMailForward className="size-4" />
                 Draft owner update
@@ -1045,6 +1122,87 @@ export function ProjectDailyLogWorkspace({
           </section>
         )}
 
+        {showPrintOptions && (
+          <section className="border-y py-4">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <h2 className="text-base font-semibold">Print Daily Logs</h2>
+                <p className="text-sm text-muted-foreground">
+                  Print checked logs, or choose a date range and author.
+                </p>
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={selectedLogs.length === 0}
+                onClick={() => printDailyLogs(selectedLogs)}
+              >
+                <IconPrinter className="size-4" />
+                Print selected ({selectedLogs.length})
+              </Button>
+            </div>
+
+            <div className="mt-4 grid min-w-0 gap-3 sm:grid-cols-2 lg:grid-cols-[minmax(0,0.8fr)_minmax(0,0.8fr)_minmax(0,1.2fr)_auto]">
+              <div className="grid min-w-0 gap-1.5">
+                <Label htmlFor="daily-log-print-start">From date</Label>
+                <Input
+                  id="daily-log-print-start"
+                  type="date"
+                  value={printStartDate}
+                  onChange={(event) =>
+                    setPrintStartDate(event.currentTarget.value)
+                  }
+                />
+              </div>
+              <div className="grid min-w-0 gap-1.5">
+                <Label htmlFor="daily-log-print-end">Through date</Label>
+                <Input
+                  id="daily-log-print-end"
+                  type="date"
+                  value={printEndDate}
+                  onChange={(event) =>
+                    setPrintEndDate(event.currentTarget.value)
+                  }
+                />
+              </div>
+              <div className="grid min-w-0 gap-1.5">
+                <Label htmlFor="daily-log-print-author">Author</Label>
+                <select
+                  id="daily-log-print-author"
+                  value={printAuthor}
+                  onChange={(event) =>
+                    setPrintAuthor(event.currentTarget.value)
+                  }
+                  className="h-9 min-w-0 rounded-md border bg-background px-3 text-sm"
+                >
+                  <option value={ALL_DAILY_LOG_AUTHORS}>All authors</option>
+                  {printAuthorOptions.map((author) => (
+                    <option key={author} value={author}>
+                      {author}
+                    </option>
+                  ))}
+                  {hasUnknownPrintAuthor && (
+                    <option value={UNKNOWN_DAILY_LOG_AUTHOR}>
+                      Imported / no author
+                    </option>
+                  )}
+                </select>
+              </div>
+              <div className="flex items-end">
+                <Button
+                  type="button"
+                  disabled={dateAuthorPrintLogs.length === 0}
+                  onClick={() => printDailyLogs(dateAuthorPrintLogs)}
+                >
+                  <IconPrinter className="size-4" />
+                  Print matches ({dateAuthorPrintLogs.length})
+                </Button>
+              </div>
+            </div>
+          </section>
+        )}
+
         <section className="rounded-lg border p-3 sm:p-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex flex-wrap items-center gap-2">
@@ -1059,19 +1217,24 @@ export function ProjectDailyLogWorkspace({
                 <option value="owner_visible">Owner visible</option>
               </select>
               <Button variant="outline" size="sm" onClick={selectVisibleLogs}>
-                Select visible
+                Select shown
               </Button>
               <Button variant="ghost" size="sm" onClick={clearSelection}>
                 Clear
               </Button>
             </div>
             <div className="text-sm text-muted-foreground">
-              {selectedIdsInView.length} selected · {filteredLogs.length} shown
+              {selectedLogs.length} selected
+              {selectedLogs.length !== selectedIdsInView.length
+                ? ` · ${selectedIdsInView.length} in view`
+                : ""}{" "}
+              · {filteredLogs.length} shown · {ownerUpdateSelectedIds.length}{" "}
+              owner-update ready
             </div>
           </div>
           <p className="mt-2 text-xs text-muted-foreground">
-            Owner updates can include only logs that are both approved and
-            marked Owner visible.
+            Any checked log can be printed. Owner updates include only checked
+            logs that are approved and marked Owner visible.
           </p>
           {message && (
             <p className="mt-3 rounded-md border bg-muted/30 px-3 py-2 text-sm">
@@ -1105,13 +1268,8 @@ export function ProjectDailyLogWorkspace({
                     type="checkbox"
                     checked={selectedIds.includes(log.id)}
                     onChange={() => toggleLog(log.id)}
-                    disabled={!isOwnerUpdateEligibleLog(log)}
                     className="mt-1 size-4 rounded border"
-                    aria-label={
-                      isOwnerUpdateEligibleLog(log)
-                        ? `Select daily log for ${formatDate(log.logDate)}`
-                        : `Approve and mark the ${formatDate(log.logDate)} log owner visible before selecting it`
-                    }
+                    aria-label={`Select daily log for ${formatDate(log.logDate)}`}
                   />
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
@@ -1350,7 +1508,7 @@ export function ProjectDailyLogWorkspace({
                     </Button>
                   </div>
 
-                  <div className="mt-3 grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,0.9fr)_minmax(0,0.7fr)_auto]">
+                  <div className="mt-3 grid min-w-0 gap-3 md:grid-cols-2 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)_minmax(0,0.7fr)_minmax(0,1fr)_auto]">
                     <div className="grid gap-1.5">
                       <Label htmlFor={`daily-log-files-${log.id}`}>
                         Photos / documents
@@ -1411,6 +1569,43 @@ export function ProjectDailyLogWorkspace({
                         </SelectContent>
                       </Select>
                     </div>
+                    <fieldset className="min-w-0">
+                      <legend className="text-sm font-medium">
+                        Visibility for this batch
+                      </legend>
+                      <div className="mt-2 flex flex-wrap gap-x-4 gap-y-2">
+                        <label className="flex items-center gap-2 text-sm">
+                          <input
+                            type="checkbox"
+                            checked={uploadOwnerVisible}
+                            onChange={(event) =>
+                              setUploadOwnerVisible(
+                                event.currentTarget.checked
+                              )
+                            }
+                            className="size-4 rounded border"
+                          />
+                          Owners
+                        </label>
+                        <label className="flex items-center gap-2 text-sm">
+                          <input
+                            type="checkbox"
+                            checked={uploadSubVendorVisible}
+                            onChange={(event) =>
+                              setUploadSubVendorVisible(
+                                event.currentTarget.checked
+                              )
+                            }
+                            className="size-4 rounded border"
+                          />
+                          Subcontractors
+                        </label>
+                      </div>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        Shared uploads are approved immediately. Leave both
+                        unchecked to keep them in staff review.
+                      </p>
+                    </fieldset>
                     <div className="flex items-end">
                       <Button
                         type="button"
@@ -1529,5 +1724,12 @@ export function ProjectDailyLogWorkspace({
         )}
       </div>
     </main>
+    <DailyLogPrintDocument
+      clientName={workspace.project.clientName}
+      logs={printLogs}
+      projectLabel={projectLabel}
+      projectName={workspace.project.name}
+    />
+    </>
   )
 }

@@ -469,6 +469,33 @@ em-emoji-picker {
     overflow: visible !important;
   }
 
+  body.daily-log-printing * {
+    visibility: hidden !important;
+  }
+
+  body.daily-log-printing [data-daily-log-print-root="true"],
+  body.daily-log-printing [data-daily-log-print-root="true"] * {
+    visibility: visible !important;
+  }
+
+  body.daily-log-printing [data-daily-log-print-root="true"] {
+    display: block !important;
+    position: absolute !important;
+    inset: 0 auto auto 0;
+    width: 100%;
+    max-width: none !important;
+    height: auto !important;
+    overflow: visible !important;
+  }
+
+  body.daily-log-printing,
+  body.daily-log-printing .daily-log-print-root {
+    background: #ffffff !important;
+    height: auto !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+  }
+
   .owner-update-printable {
     box-shadow: none !important;
   }
