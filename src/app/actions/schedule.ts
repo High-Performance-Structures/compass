@@ -14,6 +14,10 @@ import { calculateEndDate } from "@/lib/schedule/business-days"
 import { findCriticalPath } from "@/lib/schedule/critical-path"
 import { wouldCreateCycle } from "@/lib/schedule/dependency-validation"
 import { propagateDates } from "@/lib/schedule/propagate-dates"
+import {
+  effectivePercentComplete,
+  normalizeScheduleProgress,
+} from "@/lib/schedule/progress"
 import { requireAuth } from "@/lib/auth"
 import { requireOrg } from "@/lib/org-scope"
 import { isDemoUser } from "@/lib/demo"
@@ -25,6 +29,7 @@ import type {
   ExceptionRecurrence,
   ScheduleData,
   WorkdayExceptionData,
+  WorkdayExceptionType,
 } from "@/lib/schedule/types"
 
 async function fetchExceptions(
@@ -38,6 +43,7 @@ async function fetchExceptions(
 
   return rows.map((r) => ({
     ...r,
+    type: r.type as WorkdayExceptionType,
     category: r.category as ExceptionCategory,
     recurrence: r.recurrence as ExceptionRecurrence,
   }))
@@ -78,11 +84,15 @@ export async function getSchedule(
   )
 
   return {
-    tasks: tasks.map((t) => ({
-      ...t,
-      status: t.status as TaskStatus,
-      phase: t.phase,
-    })),
+    tasks: tasks.map((t) => {
+      const status = t.status as TaskStatus
+      return {
+        ...t,
+        status,
+        phase: t.phase,
+        percentComplete: effectivePercentComplete(status, t.percentComplete),
+      }
+    }),
     dependencies: projectDeps.map((d) => ({
       ...d,
       type: d.type as DependencyType,
@@ -104,7 +114,10 @@ export async function createTask(
     percentComplete?: number
     assignedTo?: string
   }
-): Promise<{ success: boolean; error?: string }> {
+): Promise<
+  | { readonly success: true; readonly taskId: string }
+  | { readonly success: false; readonly error: string }
+> {
   try {
     const user = await requireAuth()
     if (isDemoUser(user.id)) {
@@ -143,6 +156,10 @@ export async function createTask(
       : 0
 
     const id = crypto.randomUUID()
+    const progress = normalizeScheduleProgress(
+      data.status ?? "PENDING",
+      data.percentComplete ?? 0
+    )
     await db.insert(scheduleTasks).values({
       id,
       projectId,
@@ -152,10 +169,10 @@ export async function createTask(
       endDateCalculated: endDate,
       phase: data.phase,
       displayColor: data.displayColor ?? "blue",
-      status: data.status ?? "PENDING",
+      status: progress.status,
       isCriticalPath: false,
       isMilestone: data.isMilestone ?? false,
-      percentComplete: data.percentComplete ?? 0,
+      percentComplete: progress.percentComplete,
       assignedTo: data.assignedTo ?? null,
       sortOrder: nextOrder,
       createdAt: now,
@@ -181,7 +198,7 @@ export async function createTask(
 
     await recalcCriticalPath(db, projectId)
     revalidatePath(`/dashboard/projects/${projectId}/schedule`)
-    return { success: true }
+    return { success: true, taskId: id }
   } catch (error) {
     console.error("Failed to create task:", error)
     return { success: false, error: "Failed to create schedule item" }
@@ -235,6 +252,10 @@ export async function updateTask(
     const startDate = data.startDate ?? task.startDate
     const workdays = data.workdays ?? task.workdays
     const endDate = calculateEndDate(startDate, workdays, exceptions)
+    const progress = normalizeScheduleProgress(
+      (data.status ?? task.status) as TaskStatus,
+      data.percentComplete ?? task.percentComplete
+    )
 
     await db
       .update(scheduleTasks)
@@ -245,13 +266,11 @@ export async function updateTask(
         endDateCalculated: endDate,
         ...(data.phase && { phase: data.phase }),
         ...(data.displayColor && { displayColor: data.displayColor }),
-        ...(data.status && { status: data.status }),
+        status: progress.status,
         ...(data.isMilestone !== undefined && {
           isMilestone: data.isMilestone,
         }),
-        ...(data.percentComplete !== undefined && {
-          percentComplete: data.percentComplete,
-        }),
+        percentComplete: progress.percentComplete,
         ...(data.assignedTo !== undefined && {
           assignedTo: data.assignedTo,
         }),
@@ -286,7 +305,8 @@ export async function updateTask(
     const schedule = await getSchedule(task.projectId)
     const updatedTask = {
       ...task,
-      status: task.status as TaskStatus,
+      status: progress.status,
+      percentComplete: progress.percentComplete,
       startDate,
       workdays,
       endDateCalculated: endDate,
@@ -406,7 +426,10 @@ export async function createDependency(data: {
   type: DependencyType
   lagDays: number
   projectId: string
-}): Promise<{ success: boolean; error?: string }> {
+}): Promise<
+  | { readonly success: true }
+  | { readonly success: false; readonly error: string }
+> {
   try {
     const user = await requireAuth()
     if (isDemoUser(user.id)) {
@@ -426,6 +449,54 @@ export async function createDependency(data: {
 
     if (!project) {
       return { success: false, error: "Project not found or access denied" }
+    }
+
+    if (data.predecessorId === data.successorId) {
+      return {
+        success: false,
+        error: "A schedule item cannot depend on itself",
+      }
+    }
+
+    const [predecessor] = await db
+      .select({ projectId: scheduleTasks.projectId })
+      .from(scheduleTasks)
+      .where(eq(scheduleTasks.id, data.predecessorId))
+      .limit(1)
+    const [successor] = await db
+      .select({ projectId: scheduleTasks.projectId })
+      .from(scheduleTasks)
+      .where(eq(scheduleTasks.id, data.successorId))
+      .limit(1)
+
+    if (
+      !predecessor ||
+      !successor ||
+      predecessor.projectId !== data.projectId ||
+      successor.projectId !== data.projectId
+    ) {
+      return {
+        success: false,
+        error: "Both schedule items must belong to this project",
+      }
+    }
+
+    const [duplicate] = await db
+      .select({ id: taskDependencies.id })
+      .from(taskDependencies)
+      .where(
+        and(
+          eq(taskDependencies.predecessorId, data.predecessorId),
+          eq(taskDependencies.successorId, data.successorId)
+        )
+      )
+      .limit(1)
+
+    if (duplicate) {
+      return {
+        success: false,
+        error: "That dependency already exists",
+      }
     }
 
     // get existing deps for cycle check
@@ -497,6 +568,34 @@ export async function deleteDependency(
       return { success: false, error: "Project not found or access denied" }
     }
 
+    const [dependency] = await db
+      .select()
+      .from(taskDependencies)
+      .where(eq(taskDependencies.id, depId))
+      .limit(1)
+
+    if (!dependency) {
+      return { success: false, error: "Dependency not found" }
+    }
+
+    const taskIds = new Set(
+      (
+        await db
+          .select({ id: scheduleTasks.id })
+          .from(scheduleTasks)
+          .where(eq(scheduleTasks.projectId, projectId))
+      ).map((task) => task.id)
+    )
+    if (
+      !taskIds.has(dependency.predecessorId) ||
+      !taskIds.has(dependency.successorId)
+    ) {
+      return {
+        success: false,
+        error: "Dependency does not belong to this project",
+      }
+    }
+
     await db.delete(taskDependencies).where(eq(taskDependencies.id, depId))
     await recalcCriticalPath(db, projectId)
     revalidatePath(`/dashboard/projects/${projectId}/schedule`)
@@ -542,7 +641,11 @@ export async function updateTaskStatus(
 
     await db
       .update(scheduleTasks)
-      .set({ status, updatedAt: new Date().toISOString() })
+      .set({
+        status,
+        percentComplete: effectivePercentComplete(status, task.percentComplete),
+        updatedAt: new Date().toISOString(),
+      })
       .where(eq(scheduleTasks.id, taskId))
 
     revalidatePath(`/dashboard/projects/${task.projectId}/schedule`)

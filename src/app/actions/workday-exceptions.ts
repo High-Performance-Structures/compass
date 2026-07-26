@@ -2,17 +2,71 @@
 
 import { getCloudflareContext } from "@/lib/db"
 import { getDb } from "@/db"
-import { workdayExceptions, projects } from "@/db/schema"
+import {
+  workdayExceptions,
+  projects,
+  scheduleTasks,
+  taskDependencies,
+} from "@/db/schema"
 import { eq, and } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { requireAuth } from "@/lib/auth"
 import { requireOrg } from "@/lib/org-scope"
 import { isDemoUser } from "@/lib/demo"
+import { recalculateScheduleDates } from "@/lib/schedule/propagate-dates"
 import type {
+  DependencyType,
+  TaskStatus,
   WorkdayExceptionData,
   ExceptionCategory,
   ExceptionRecurrence,
+  WorkdayExceptionType,
 } from "@/lib/schedule/types"
+
+async function recalculateProjectDates(
+  db: ReturnType<typeof getDb>,
+  projectId: string
+): Promise<void> {
+  const tasks = await db
+    .select()
+    .from(scheduleTasks)
+    .where(eq(scheduleTasks.projectId, projectId))
+  const taskIds = new Set(tasks.map((task) => task.id))
+  const dependencies = (await db.select().from(taskDependencies)).filter(
+    (dependency) =>
+      taskIds.has(dependency.predecessorId) &&
+      taskIds.has(dependency.successorId)
+  )
+  const exceptions = await db
+    .select()
+    .from(workdayExceptions)
+    .where(eq(workdayExceptions.projectId, projectId))
+
+  const { updatedTasks } = recalculateScheduleDates(
+    tasks.map((task) => ({
+      ...task,
+      status: task.status as TaskStatus,
+    })),
+    dependencies.map((dependency) => ({
+      ...dependency,
+      type: dependency.type as DependencyType,
+    })),
+    exceptions.map((exception) => ({
+      ...exception,
+      type: exception.type as WorkdayExceptionType,
+      category: exception.category as ExceptionCategory,
+      recurrence: exception.recurrence as ExceptionRecurrence,
+    }))
+  )
+
+  const updatedAt = new Date().toISOString()
+  for (const [taskId, dates] of updatedTasks) {
+    await db
+      .update(scheduleTasks)
+      .set({ ...dates, updatedAt })
+      .where(eq(scheduleTasks.id, taskId))
+  }
+}
 
 export async function getWorkdayExceptions(
   projectId: string
@@ -41,6 +95,7 @@ export async function getWorkdayExceptions(
 
   return rows.map((r) => ({
     ...r,
+    type: r.type as WorkdayExceptionType,
     category: r.category as ExceptionCategory,
     recurrence: r.recurrence as ExceptionRecurrence,
   }))
@@ -52,7 +107,7 @@ export async function createWorkdayException(
     title: string
     startDate: string
     endDate: string
-    type: string
+    type: WorkdayExceptionType
     category: ExceptionCategory
     recurrence: ExceptionRecurrence
     notes?: string
@@ -95,6 +150,7 @@ export async function createWorkdayException(
       updatedAt: now,
     })
 
+    await recalculateProjectDates(db, projectId)
     revalidatePath(`/dashboard/projects/${projectId}/schedule`)
     return { success: true }
   } catch (error) {
@@ -109,7 +165,7 @@ export async function updateWorkdayException(
     title?: string
     startDate?: string
     endDate?: string
-    type?: string
+    type?: WorkdayExceptionType
     category?: ExceptionCategory
     recurrence?: ExceptionRecurrence
     notes?: string | null
@@ -158,6 +214,7 @@ export async function updateWorkdayException(
       })
       .where(eq(workdayExceptions.id, exceptionId))
 
+    await recalculateProjectDates(db, existing.projectId)
     revalidatePath(
       `/dashboard/projects/${existing.projectId}/schedule`
     )
@@ -204,6 +261,7 @@ export async function deleteWorkdayException(
       .delete(workdayExceptions)
       .where(eq(workdayExceptions.id, exceptionId))
 
+    await recalculateProjectDates(db, existing.projectId)
     revalidatePath(
       `/dashboard/projects/${existing.projectId}/schedule`
     )

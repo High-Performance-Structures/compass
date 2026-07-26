@@ -1,28 +1,57 @@
-import { addDays, isWeekend, parseISO, format, isWithinInterval } from "date-fns"
+import {
+  addDays,
+  isWeekend,
+  parseISO,
+  format,
+} from "date-fns"
 import type { WorkdayExceptionData } from "./types"
 
-function isExceptionDay(
+function isExceptionActive(
   date: Date,
-  exceptions: WorkdayExceptionData[]
+  exception: WorkdayExceptionData
 ): boolean {
-  return exceptions.some((ex) => {
-    const start = parseISO(ex.startDate)
-    const end = parseISO(ex.endDate)
-    return isWithinInterval(date, { start, end })
-  })
+  if (exception.recurrence === "yearly") {
+    const dateKey = format(date, "MM-dd")
+    const startKey = exception.startDate.slice(5)
+    const endKey = exception.endDate.slice(5)
+
+    if (startKey <= endKey) {
+      return dateKey >= startKey && dateKey <= endKey
+    }
+
+    // A yearly range such as Dec 24–Jan 2 crosses the year boundary.
+    return dateKey >= startKey || dateKey <= endKey
+  }
+
+  const dateKey = format(date, "yyyy-MM-dd")
+  return dateKey >= exception.startDate && dateKey <= exception.endDate
 }
 
-function isNonWorkday(
+export function isNonWorkday(
   date: Date,
-  exceptions: WorkdayExceptionData[] = []
+  exceptions: readonly WorkdayExceptionData[] = []
 ): boolean {
-  return isWeekend(date) || isExceptionDay(date, exceptions)
+  const activeExceptions = exceptions.filter((exception) =>
+    isExceptionActive(date, exception)
+  )
+
+  // An explicit working override wins so a weekend or a broader shutdown
+  // range can be opened for work without changing the base calendar.
+  if (activeExceptions.some((exception) => exception.type === "working")) {
+    return false
+  }
+
+  if (activeExceptions.some((exception) => exception.type === "non_working")) {
+    return true
+  }
+
+  return isWeekend(date)
 }
 
 export function calculateEndDate(
   startDate: string,
   workdays: number,
-  exceptions: WorkdayExceptionData[] = []
+  exceptions: readonly WorkdayExceptionData[] = []
 ): string {
   if (workdays <= 0) return startDate
 
@@ -46,7 +75,7 @@ export function calculateEndDate(
 export function countBusinessDays(
   startDate: string,
   endDate: string,
-  exceptions: WorkdayExceptionData[] = []
+  exceptions: readonly WorkdayExceptionData[] = []
 ): number {
   let current = parseISO(startDate)
   const end = parseISO(endDate)
@@ -65,7 +94,7 @@ export function countBusinessDays(
 export function addBusinessDays(
   date: string,
   days: number,
-  exceptions: WorkdayExceptionData[] = []
+  exceptions: readonly WorkdayExceptionData[] = []
 ): string {
   let current = parseISO(date)
   let remaining = Math.abs(days)
@@ -79,4 +108,13 @@ export function addBusinessDays(
   }
 
   return format(current, "yyyy-MM-dd")
+}
+
+export function calculateStartDate(
+  endDate: string,
+  workdays: number,
+  exceptions: readonly WorkdayExceptionData[] = []
+): string {
+  if (workdays <= 1) return endDate
+  return addBusinessDays(endDate, -(workdays - 1), exceptions)
 }

@@ -544,6 +544,7 @@ export function ScheduleView({
             projectId={projectId}
             tasks={filteredTasks}
             dependencies={initialData.dependencies}
+            exceptions={initialData.exceptions}
             assigneeOptions={assigneeOptions}
           />
         )}
@@ -552,6 +553,7 @@ export function ScheduleView({
             projectId={projectId}
             tasks={filteredTasks}
             dependencies={initialData.dependencies}
+            exceptions={initialData.exceptions}
             assigneeOptions={assigneeOptions}
           />
         )}
@@ -565,6 +567,7 @@ export function ScheduleView({
         editingTask={null}
         allTasks={initialData.tasks}
         dependencies={initialData.dependencies}
+        exceptions={initialData.exceptions}
         assigneeOptions={assigneeOptions}
       />
 
@@ -635,7 +638,7 @@ export function ScheduleView({
           <SheetHeader>
             <SheetTitle>Workday Exceptions</SheetTitle>
             <SheetDescription>
-              Holidays, vacation days, and other non-working days.
+              Holidays, shutdowns, and weekend working overrides.
             </SheetDescription>
           </SheetHeader>
           <div className="mt-4">

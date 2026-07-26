@@ -35,6 +35,7 @@ import type {
   WorkdayExceptionData,
   ExceptionCategory,
   ExceptionRecurrence,
+  WorkdayExceptionType,
 } from "@/lib/schedule/types"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
@@ -45,6 +46,7 @@ const categories: { value: ExceptionCategory; label: string }[] = [
   { value: "vacation_day", label: "Vacation Day" },
   { value: "company_holiday", label: "Company Holiday" },
   { value: "weather_day", label: "Weather Day" },
+  { value: "extra_workday", label: "Extra Workday" },
 ]
 
 const recurrences: { value: ExceptionRecurrence; label: string }[] = [
@@ -52,15 +54,35 @@ const recurrences: { value: ExceptionRecurrence; label: string }[] = [
   { value: "yearly", label: "Yearly" },
 ]
 
-const exceptionSchema = z.object({
-  title: z.string().min(1, "Title is required"),
-  startDate: z.string().min(1, "Start date is required"),
-  endDate: z.string().min(1, "End date is required"),
-  type: z.string().min(1),
-  category: z.string().min(1),
-  recurrence: z.string().min(1),
-  notes: z.string(),
-})
+const exceptionTypes: {
+  readonly value: WorkdayExceptionType
+  readonly label: string
+}[] = [
+  { value: "non_working", label: "Non-working time" },
+  { value: "working", label: "Working override" },
+]
+
+const exceptionSchema = z
+  .object({
+    title: z.string().min(1, "Title is required"),
+    startDate: z.string().min(1, "Start date is required"),
+    endDate: z.string().min(1, "End date is required"),
+    type: z.enum(["non_working", "working"]),
+    category: z.enum([
+      "national_holiday",
+      "state_holiday",
+      "vacation_day",
+      "company_holiday",
+      "weather_day",
+      "extra_workday",
+    ]),
+    recurrence: z.enum(["one_time", "yearly"]),
+    notes: z.string(),
+  })
+  .refine((values) => values.endDate >= values.startDate, {
+    message: "End date must be on or after the start date",
+    path: ["endDate"],
+  })
 
 type ExceptionFormValues = z.infer<typeof exceptionSchema>
 
@@ -122,15 +144,11 @@ export function WorkdayExceptionFormDialog({
     if (isEditing) {
       result = await updateWorkdayException(editingException.id, {
         ...values,
-        category: values.category as ExceptionCategory,
-        recurrence: values.recurrence as ExceptionRecurrence,
         notes: values.notes || null,
       })
     } else {
       result = await createWorkdayException(projectId, {
         ...values,
-        category: values.category as ExceptionCategory,
-        recurrence: values.recurrence as ExceptionRecurrence,
         notes: values.notes || undefined,
       })
     }
@@ -198,6 +216,38 @@ export function WorkdayExceptionFormDialog({
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
               <FormField
                 control={form.control}
+                name="type"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-xs">Calendar Effect</FormLabel>
+                    <Select
+                      onValueChange={(value) => {
+                        field.onChange(value)
+                        if (value === "working") {
+                          form.setValue("category", "extra_workday")
+                        }
+                      }}
+                      value={field.value}
+                    >
+                      <FormControl>
+                        <SelectTrigger className="h-9">
+                          <SelectValue />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {exceptionTypes.map((type) => (
+                          <SelectItem key={type.value} value={type.value}>
+                            {type.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
                 name="category"
                 render={({ field }) => (
                   <FormItem>
@@ -223,34 +273,32 @@ export function WorkdayExceptionFormDialog({
                   </FormItem>
                 )}
               />
-              <FormField
-                control={form.control}
-                name="recurrence"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel className="text-xs">Recurrence</FormLabel>
-                    <Select
-                      onValueChange={field.onChange}
-                      value={field.value}
-                    >
-                      <FormControl>
-                        <SelectTrigger className="h-9">
-                          <SelectValue />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        {recurrences.map((r) => (
-                          <SelectItem key={r.value} value={r.value}>
-                            {r.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
             </div>
+
+            <FormField
+              control={form.control}
+              name="recurrence"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel className="text-xs">Recurrence</FormLabel>
+                  <Select onValueChange={field.onChange} value={field.value}>
+                    <FormControl>
+                      <SelectTrigger className="h-9">
+                        <SelectValue />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      {recurrences.map((r) => (
+                        <SelectItem key={r.value} value={r.value}>
+                          {r.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
 
             <FormField
               control={form.control}

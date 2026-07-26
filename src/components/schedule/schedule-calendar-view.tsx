@@ -12,9 +12,7 @@ import {
   subMonths,
   isToday,
   isSameMonth,
-  isWeekend,
   parseISO,
-  isWithinInterval,
   differenceInCalendarDays,
 } from "date-fns"
 import { cn } from "@/lib/utils"
@@ -29,6 +27,8 @@ import type {
 } from "@/lib/schedule/types"
 import { useScheduleDisplayPalette } from "@/hooks/use-schedule-display-palette"
 import { getScheduleItemDisplayColor } from "@/lib/schedule/appearance"
+import { isNonWorkday } from "@/lib/schedule/business-days"
+import { effectivePercentComplete } from "@/lib/schedule/progress"
 
 interface ScheduleCalendarViewProps {
   readonly projectId: string
@@ -40,17 +40,6 @@ interface ScheduleCalendarViewProps {
 const MAX_LANES = 3
 const LANE_HEIGHT = 22
 const DAY_HEADER_HEIGHT = 24
-
-function isExceptionDay(
-  date: Date,
-  exceptions: readonly WorkdayExceptionData[]
-): boolean {
-  return exceptions.some((ex) => {
-    const start = parseISO(ex.startDate)
-    const end = parseISO(ex.endDate)
-    return isWithinInterval(date, { start, end })
-  })
-}
 
 interface WeekTask {
   readonly task: ScheduleTaskData
@@ -261,8 +250,7 @@ export function ScheduleCalendarView({
                 <div className="grid grid-cols-7 absolute inset-0">
                   {week.days.map((day) => {
                     const inMonth = isSameMonth(day, currentDate)
-                    const isNonWork =
-                      isWeekend(day) || isExceptionDay(day, exceptions)
+                    const nonWorkday = isNonWorkday(day, exceptions)
 
                     return (
                       <div
@@ -270,7 +258,7 @@ export function ScheduleCalendarView({
                         className={cn(
                           "border-r last:border-r-0 p-1",
                           !inMonth && "bg-muted/20",
-                          isNonWork && inMonth && "bg-muted/40",
+                          nonWorkday && inMonth && "bg-muted/40",
                         )}
                       >
                         <span
@@ -314,9 +302,17 @@ export function ScheduleCalendarView({
                         height: `${LANE_HEIGHT - 2}px`,
                         paddingLeft: wt.isStart ? "6px" : "2px",
                       }}
-                      title={`${wt.task.title} (${wt.task.startDate} - ${wt.task.endDateCalculated})`}
+                      title={`${wt.task.title} — ${effectivePercentComplete(
+                        wt.task.status,
+                        wt.task.percentComplete
+                      )}% complete (${wt.task.startDate} - ${wt.task.endDateCalculated})`}
                     >
-                      {wt.isStart ? wt.task.title : ""}
+                      {wt.isStart
+                        ? `${effectivePercentComplete(
+                            wt.task.status,
+                            wt.task.percentComplete
+                          )}% · ${wt.task.title}`
+                        : ""}
                     </div>
                   ))}
 
