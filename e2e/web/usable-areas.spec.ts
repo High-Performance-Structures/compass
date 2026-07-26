@@ -99,6 +99,11 @@ test.describe("usable Compass areas", () => {
   test("project workspaces render without application errors", async ({
     page,
   }) => {
+    // This test intentionally compiles and opens every project workspace in a
+    // single cold dev-server session. Keep the 30-second navigation limit for
+    // each route, but give the complete cross-browser sweep a realistic budget.
+    test.slow()
+
     const projectsResponse = await page.goto("/dashboard/projects")
     await expectHealthyNavigation(
       page,
