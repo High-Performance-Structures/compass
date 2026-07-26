@@ -34,8 +34,10 @@ import type { SidebarUser } from "@/lib/auth"
 
 export function SiteHeader({
   user,
+  canUseAskCompass,
 }: {
   readonly user: SidebarUser | null
+  readonly canUseAskCompass: boolean
 }) {
   const { theme, setTheme } = useTheme()
   const { open: openCommand, openWithQuery } = useCommandMenu()
@@ -166,15 +168,17 @@ export function SiteHeader({
 
         <div className="flex shrink-0 items-center justify-end gap-0.5">
           <NotificationsPopover />
-          <Button
-            variant="ghost"
-            size="icon"
-            className="size-7 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-            onClick={() => agentContext?.toggle()}
-            aria-label="Toggle assistant"
-          >
-            <IconSparkles className="size-4" />
-          </Button>
+          {canUseAskCompass && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="size-7 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+              onClick={() => agentContext?.toggle()}
+              aria-label="Toggle assistant"
+            >
+              <IconSparkles className="size-4" />
+            </Button>
+          )}
           <Button
             variant="ghost"
             size="icon"

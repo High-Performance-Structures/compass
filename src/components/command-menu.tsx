@@ -34,10 +34,12 @@ export function CommandMenu({
   open,
   setOpen,
   initialQuery = "",
+  canUseAskCompass,
 }: {
   readonly open: boolean
   readonly setOpen: (open: boolean) => void
   readonly initialQuery?: string
+  readonly canUseAskCompass: boolean
 }) {
   const router = useRouter()
   const pathname = usePathname()
@@ -69,6 +71,8 @@ export function CommandMenu({
   }
 
   function askAgent(): void {
+    if (!canUseAskCompass) return
+
     const prompt = query.trim()
     if (!prompt) return
 
@@ -131,7 +135,7 @@ export function CommandMenu({
           </CommandItem>
         </CommandGroup>
         <CommandGroup heading="Actions">
-          {query.trim() && agent && chat && (
+          {canUseAskCompass && query.trim() && agent && chat && (
             <CommandItem
               value={`ask compass ${query}`}
               onSelect={() => runCommand(askAgent)}
@@ -140,7 +144,7 @@ export function CommandMenu({
               Ask Compass: {query}
             </CommandItem>
           )}
-          {agent && (
+          {canUseAskCompass && agent && (
             <CommandItem onSelect={() => runCommand(() => agent.open())}>
               <IconMessageCircle />
               Ask Assistant

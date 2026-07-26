@@ -234,7 +234,7 @@ function createLocalEnv(DB: D1Database): CloudflareEnv {
         process.env.NEXT_PUBLIC_WORKOS_REDIRECT_URI ??
         "http://localhost:3000/callback"
 
-    return {
+    const localEnv = {
         WORKOS_REDIRECT_URI: localWorkOsRedirectUri,
         WORKOS_API_KEY: process.env.WORKOS_API_KEY ?? "placeholder",
         WORKOS_CLIENT_ID: process.env.WORKOS_CLIENT_ID ?? "placeholder",
@@ -276,6 +276,17 @@ function createLocalEnv(DB: D1Database): CloudflareEnv {
         } as unknown as ImagesBinding,
         ASSETS: createUnavailableFetcher("ASSETS"),
     }
+
+    for (const key of [
+        "JARVIS_BRIDGE_SECRET",
+        "JARVIS_BRIDGE_ORGANIZATION_ID",
+        "JARVIS_SERVICE_USER_ID",
+    ]) {
+        const value = process.env[key]
+        if (value) Reflect.set(localEnv, key, value)
+    }
+
+    return localEnv
 }
 
 export async function getCloudflareContext(): Promise<CompassCloudflareContext> {

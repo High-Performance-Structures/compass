@@ -1,0 +1,4 @@
+interface:
+  display_name: "Compass Feedback Desk"
+  short_description: "Route staff feedback into Compass safely"
+  default_prompt: "Use $compass-feedback-desk to route this staff report into the Compass feedback workflow."

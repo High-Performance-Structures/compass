@@ -184,6 +184,18 @@ function findGenerateUIOutput(
 
 export function ChatProvider({
   children,
+  enabled = true,
+}: {
+  readonly children: React.ReactNode
+  readonly enabled?: boolean
+}) {
+  if (!enabled) return <>{children}</>
+
+  return <EnabledChatProvider>{children}</EnabledChatProvider>
+}
+
+function EnabledChatProvider({
+  children,
 }: {
   readonly children: React.ReactNode
 }) {

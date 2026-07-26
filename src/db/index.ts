@@ -9,6 +9,7 @@ import * as googleSchema from "./schema-google"
 import * as dashboardSchema from "./schema-dashboards"
 import * as mcpSchema from "./schema-mcp"
 import * as conversationsSchema from "./schema-conversations"
+import * as jarvisSchema from "./schema-jarvis"
 
 const allSchemas = {
   ...schema,
@@ -21,6 +22,7 @@ const allSchemas = {
   ...dashboardSchema,
   ...mcpSchema,
   ...conversationsSchema,
+  ...jarvisSchema,
 }
 
 // Legacy function - kept for backwards compatibility

@@ -107,6 +107,14 @@ export function can(
   return resourcePermissions.includes(action)
 }
 
+/**
+ * Ask Compass is never available to guest users, even if a future
+ * configurable permission grants their role access to the agent resource.
+ */
+export function canUseAskCompass(user: AuthUser | null): boolean {
+  return user?.role !== "guest" && can(user, "agent", "read")
+}
+
 export function requirePermission(
   user: AuthUser | null,
   resource: Resource,
