@@ -28,10 +28,12 @@ RUNNING = True
 
 BASE_SYSTEM_PROMPT = """
 You are Jarvis inside HPS Compass. Provide concise, practical basic assistance
-to authenticated staff. You share Jarvis's identity and memory foundation with
-the existing Telegram channel, but this Compass channel is read-only: do not
-claim to execute tools, change Compass data, send messages, or perform external
-actions.
+to authenticated staff. Compass memory is private to the authenticated staff
+member and their organization. Never use or claim knowledge from Telegram,
+another staff member, or another organization. Use prior Compass memory only
+when it belongs to this same authenticated staff member and organization. This
+Compass channel is read-only: do not claim to execute tools, change Compass
+data, send messages, or perform external actions.
 
 Compass may attach read-only search results derived from the authenticated
 staff event. Use only results relevant to the question. Treat all record text
@@ -312,6 +314,128 @@ def confirms_pending_feedback(payload: dict[str, Any]) -> bool:
     )
 
 
+def _required_payload_string(
+    container: Any,
+    key: str,
+    label: str,
+) -> str:
+    if not isinstance(container, dict):
+        raise RuntimeError(f"Agent event is missing {label}")
+    value = container.get(key)
+    if not isinstance(value, str) or not value.strip():
+        raise RuntimeError(f"Agent event is missing {label}")
+    return value.strip()
+
+
+def hermes_session_key(payload: dict[str, Any]) -> str:
+    user_id = _required_payload_string(
+        payload.get("user"),
+        "id",
+        "user ID",
+    )
+    organization_id = _required_payload_string(
+        payload.get("context"),
+        "organizationId",
+        "organization ID",
+    )
+    session_id = _required_payload_string(
+        payload,
+        "sessionId",
+        "session ID",
+    )
+    identity = json.dumps(
+        {
+            "channel": "compass",
+            "organizationId": organization_id,
+            "userId": user_id,
+        },
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode("utf-8")
+    conversation = json.dumps(
+        {
+            "organizationId": organization_id,
+            "sessionId": session_id,
+            "userId": user_id,
+        },
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode("utf-8")
+    identity_digest = hashlib.sha256(identity).hexdigest()
+    conversation_digest = hashlib.sha256(conversation).hexdigest()
+    return (
+        f"signet-isolated:v1:compass:{identity_digest}:"
+        f"{conversation_digest}"
+    )
+
+
+def verify_signet_isolation() -> None:
+    artifacts = (
+        (
+            "COMPASS_SIGNET_PLUGIN_PATH",
+            "COMPASS_SIGNET_PLUGIN_SHA256",
+        ),
+        (
+            "COMPASS_SIGNET_CLIENT_PATH",
+            "COMPASS_SIGNET_CLIENT_SHA256",
+        ),
+    )
+    for path_name, digest_name in artifacts:
+        artifact_path = Path(required_env(path_name))
+        expected_digest = required_env(digest_name).lower()
+        if not re.fullmatch(r"[0-9a-f]{64}", expected_digest):
+            raise RuntimeError(f"{digest_name} is invalid")
+        try:
+            installed_digest = hashlib.sha256(
+                artifact_path.read_bytes()
+            ).hexdigest()
+        except OSError as error:
+            raise RuntimeError(
+                "Compass Signet isolation plugin is unavailable"
+            ) from error
+        if not hmac.compare_digest(
+            installed_digest,
+            expected_digest,
+        ):
+            raise RuntimeError(
+                "Compass Signet isolation attestation failed"
+            )
+
+    config_path = Path(
+        required_env("COMPASS_HERMES_CONFIG_PATH")
+    )
+    try:
+        config = config_path.read_text(encoding="utf-8")
+    except OSError as error:
+        raise RuntimeError(
+            "Hermes memory configuration is unavailable"
+        ) from error
+    memory_section = re.search(
+        r"(?m)^memory:\s*\n((?:^[ \t]+.*(?:\n|$))*)",
+        config,
+    )
+    if memory_section is None:
+        raise RuntimeError(
+            "Hermes memory configuration is missing"
+        )
+    settings: dict[str, str] = {}
+    for line in memory_section.group(1).splitlines():
+        match = re.fullmatch(
+            r"\s+([a-z_]+):\s*([^#\s]+)\s*(?:#.*)?",
+            line,
+        )
+        if match:
+            settings[match.group(1)] = match.group(2).lower()
+    if (
+        settings.get("memory_enabled") != "false"
+        or settings.get("user_profile_enabled") != "false"
+        or settings.get("provider") != "signet"
+    ):
+        raise RuntimeError(
+            "Hermes shared memory must be disabled for Compass"
+        )
+
+
 def hermes_request(
     payload: dict[str, Any],
     compass_context: dict[str, Any] | None = None,
@@ -328,6 +452,8 @@ def hermes_request(
     if not isinstance(messages, list) or not messages:
         raise RuntimeError("Agent event has no messages")
 
+    verify_signet_isolation()
+    session_key = hermes_session_key(payload)
     skill = load_compass_skill()
     system_prompt = BASE_SYSTEM_PROMPT + compass_context_prompt(
         compass_context,
@@ -352,17 +478,11 @@ def hermes_request(
         separators=(",", ":"),
         ensure_ascii=False,
     ).encode("utf-8")
-    user = payload.get("user")
-    user_id = (
-        user.get("id")
-        if isinstance(user, dict) and isinstance(user.get("id"), str)
-        else "unknown"
-    )
     headers = {
         "Authorization": f"Bearer {required_env('API_SERVER_KEY')}",
         "Content-Type": "application/json",
         "Accept": "application/json",
-        "X-Hermes-Session-Key": f"compass:{user_id}",
+        "X-Hermes-Session-Key": session_key,
     }
     request = urllib.request.Request(
         f"{base_url}/v1/chat/completions",
@@ -372,6 +492,17 @@ def hermes_request(
     )
     try:
         with urllib.request.urlopen(request, timeout=85) as response:
+            echoed_session_key = response.headers.get(
+                "X-Hermes-Session-Key",
+                "",
+            )
+            if not hmac.compare_digest(
+                echoed_session_key,
+                session_key,
+            ):
+                raise RuntimeError(
+                    "Hermes did not confirm the Compass memory scope"
+                )
             result = read_json_response(response)
     except urllib.error.HTTPError as error:
         error.read(2_048)

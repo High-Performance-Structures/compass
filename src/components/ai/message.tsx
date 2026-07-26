@@ -293,7 +293,6 @@ function MessageLink({
       event.ctrlKey ||
       event.shiftKey ||
       event.altKey ||
-      target === "_blank" ||
       download !== undefined ||
       href === undefined
     ) {

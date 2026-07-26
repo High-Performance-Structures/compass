@@ -1,6 +1,10 @@
 import importlib.util
+import hashlib
+import os
+import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 
 SCRIPT_PATH = Path(__file__).parent / "jarvis-agent-poller.py"
@@ -168,6 +172,178 @@ class CompassSearchContextTests(unittest.TestCase):
         }
 
         self.assertFalse(MODULE.confirms_pending_feedback(payload))
+
+
+class CompassMemoryScopeTests(unittest.TestCase):
+    @staticmethod
+    def payload(
+        *,
+        user_id: str = "user-1",
+        organization_id: str = "org-1",
+        session_id: str = "session-1",
+    ) -> dict[str, object]:
+        return {
+            "user": {"id": user_id},
+            "context": {"organizationId": organization_id},
+            "sessionId": session_id,
+        }
+
+    def test_scope_is_stable_and_contains_no_raw_identity(self) -> None:
+        payload = self.payload()
+
+        first = MODULE.hermes_session_key(payload)
+        second = MODULE.hermes_session_key(payload)
+
+        self.assertEqual(first, second)
+        self.assertRegex(
+            first,
+            (
+                r"^signet-isolated:v1:compass:"
+                r"[0-9a-f]{64}:[0-9a-f]{64}$"
+            ),
+        )
+        self.assertNotIn("user-1", first)
+        self.assertNotIn("org-1", first)
+        self.assertNotIn("session-1", first)
+
+    def test_user_and_organization_change_memory_identity(self) -> None:
+        baseline = MODULE.hermes_session_key(self.payload())
+        other_user = MODULE.hermes_session_key(
+            self.payload(user_id="user-2")
+        )
+        other_organization = MODULE.hermes_session_key(
+            self.payload(organization_id="org-2")
+        )
+
+        self.assertNotEqual(
+            baseline.split(":")[3],
+            other_user.split(":")[3],
+        )
+        self.assertNotEqual(
+            baseline.split(":")[3],
+            other_organization.split(":")[3],
+        )
+
+    def test_session_changes_only_conversation_scope(self) -> None:
+        first = MODULE.hermes_session_key(self.payload())
+        second = MODULE.hermes_session_key(
+            self.payload(session_id="session-2")
+        )
+        first_parts = first.split(":")
+        second_parts = second.split(":")
+
+        self.assertEqual(first_parts[3], second_parts[3])
+        self.assertNotEqual(first_parts[4], second_parts[4])
+
+    def test_missing_identity_fails_closed(self) -> None:
+        for payload in (
+            self.payload(user_id=""),
+            self.payload(organization_id=""),
+            self.payload(session_id=""),
+        ):
+            with self.subTest(payload=payload):
+                with self.assertRaises(RuntimeError):
+                    MODULE.hermes_session_key(payload)
+
+    def test_plugin_attestation_accepts_exact_digest(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            plugin = Path(directory) / "signet.py"
+            client = Path(directory) / "client.py"
+            config = Path(directory) / "config.yaml"
+            plugin.write_bytes(b"isolated plugin")
+            client.write_bytes(b"isolated client")
+            config.write_text(
+                "memory:\n"
+                "  memory_enabled: false\n"
+                "  user_profile_enabled: false\n"
+                "  provider: signet\n"
+                "other:\n"
+                "  enabled: true\n",
+                encoding="utf-8",
+            )
+            digest = hashlib.sha256(plugin.read_bytes()).hexdigest()
+            client_digest = hashlib.sha256(
+                client.read_bytes()
+            ).hexdigest()
+
+            with patch.dict(
+                os.environ,
+                {
+                    "COMPASS_SIGNET_PLUGIN_PATH": str(plugin),
+                    "COMPASS_SIGNET_PLUGIN_SHA256": digest,
+                    "COMPASS_SIGNET_CLIENT_PATH": str(client),
+                    "COMPASS_SIGNET_CLIENT_SHA256": client_digest,
+                    "COMPASS_HERMES_CONFIG_PATH": str(config),
+                },
+                clear=False,
+            ):
+                MODULE.verify_signet_isolation()
+
+    def test_plugin_attestation_rejects_changed_plugin(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            plugin = Path(directory) / "signet.py"
+            client = Path(directory) / "client.py"
+            config = Path(directory) / "config.yaml"
+            plugin.write_bytes(b"unexpected plugin")
+            client.write_bytes(b"isolated client")
+            config.write_text(
+                "memory:\n"
+                "  memory_enabled: false\n"
+                "  user_profile_enabled: false\n"
+                "  provider: signet\n",
+                encoding="utf-8",
+            )
+
+            with patch.dict(
+                os.environ,
+                {
+                    "COMPASS_SIGNET_PLUGIN_PATH": str(plugin),
+                    "COMPASS_SIGNET_PLUGIN_SHA256": "0" * 64,
+                    "COMPASS_SIGNET_CLIENT_PATH": str(client),
+                    "COMPASS_SIGNET_CLIENT_SHA256": (
+                        hashlib.sha256(
+                            client.read_bytes()
+                        ).hexdigest()
+                    ),
+                    "COMPASS_HERMES_CONFIG_PATH": str(config),
+                },
+                clear=False,
+            ):
+                with self.assertRaises(RuntimeError):
+                    MODULE.verify_signet_isolation()
+
+    def test_attestation_rejects_shared_hermes_memory(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            plugin = Path(directory) / "signet.py"
+            client = Path(directory) / "client.py"
+            config = Path(directory) / "config.yaml"
+            plugin.write_bytes(b"isolated plugin")
+            client.write_bytes(b"isolated client")
+            config.write_text(
+                "memory:\n"
+                "  memory_enabled: true\n"
+                "  user_profile_enabled: true\n"
+                "  provider: signet\n",
+                encoding="utf-8",
+            )
+            digest = hashlib.sha256(plugin.read_bytes()).hexdigest()
+            client_digest = hashlib.sha256(
+                client.read_bytes()
+            ).hexdigest()
+
+            with patch.dict(
+                os.environ,
+                {
+                    "COMPASS_SIGNET_PLUGIN_PATH": str(plugin),
+                    "COMPASS_SIGNET_PLUGIN_SHA256": digest,
+                    "COMPASS_SIGNET_CLIENT_PATH": str(client),
+                    "COMPASS_SIGNET_CLIENT_SHA256": client_digest,
+                    "COMPASS_HERMES_CONFIG_PATH": str(config),
+                },
+                clear=False,
+            ):
+                with self.assertRaises(RuntimeError):
+                    MODULE.verify_signet_isolation()
 
 
 if __name__ == "__main__":
