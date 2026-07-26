@@ -13,6 +13,8 @@ import {
 import {
   getProjectDailyLogWorkspace,
   getProjectFieldSummary,
+  getProjectOwnerUpdates,
+  type ProjectOwnerUpdateListItem,
 } from "@/app/actions/project-field"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -38,6 +40,40 @@ function formatDate(value: string | null): string {
   })
 }
 
+function OwnerUpdateLink({
+  baseHref,
+  update,
+}: {
+  readonly baseHref: string
+  readonly update: ProjectOwnerUpdateListItem
+}): React.ReactElement {
+  return (
+    <Link
+      href={`${baseHref}/${update.id}`}
+      className="group block rounded-lg border p-4 transition-colors hover:bg-accent/40"
+    >
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge variant={update.status === "draft" ? "secondary" : "outline"}>
+              {update.status}
+            </Badge>
+            <span className="text-sm text-muted-foreground">
+              {formatDate(update.updateDate)}
+            </span>
+            <Badge variant="outline">{update.channel}</Badge>
+          </div>
+          <h3 className="mt-2 text-base font-semibold">{update.title}</h3>
+          <p className="mt-2 max-w-3xl text-sm text-muted-foreground">
+            {update.summary}
+          </p>
+        </div>
+        <IconArrowRight className="size-5 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
+      </div>
+    </Link>
+  )
+}
+
 export default async function ProjectOwnerUpdatesPage({
   params,
 }: {
@@ -46,11 +82,13 @@ export default async function ProjectOwnerUpdatesPage({
   const { id } = await params
   let workspace: Awaited<ReturnType<typeof getProjectDailyLogWorkspace>>
   let summary: Awaited<ReturnType<typeof getProjectFieldSummary>>
+  let ownerUpdates: Awaited<ReturnType<typeof getProjectOwnerUpdates>>
 
   try {
-    ;[workspace, summary] = await Promise.all([
+    ;[workspace, summary, ownerUpdates] = await Promise.all([
       getProjectDailyLogWorkspace(id),
       getProjectFieldSummary(id),
+      getProjectOwnerUpdates(id),
     ])
   } catch (error) {
     if (hasDigest(error) && error.digest === "NEXT_NOT_FOUND") throw error
@@ -59,7 +97,13 @@ export default async function ProjectOwnerUpdatesPage({
 
   const projectLabel =
     workspace.project.projectNumber ?? workspace.project.name
-  const latestUpdate = summary.latestOwnerUpdate
+  const baseHref = `/dashboard/projects/${workspace.project.id}/owner-updates`
+  const draftUpdates = ownerUpdates.filter(
+    (update) => update.status === "draft"
+  )
+  const historicalUpdates = ownerUpdates.filter(
+    (update) => update.status !== "draft"
+  )
 
   return (
     <main className="mx-auto flex w-full max-w-6xl flex-col gap-4 p-3 sm:p-4 lg:p-6">
@@ -133,49 +177,52 @@ export default async function ProjectOwnerUpdatesPage({
         </div>
       </section>
 
+      {draftUpdates.length > 0 && (
+        <Card className="rounded-lg">
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <IconClipboardText className="size-5 text-muted-foreground" />
+              <CardTitle>Draft Updates</CardTitle>
+            </div>
+            <CardDescription>
+              Staff-only updates that can be opened, reviewed, and published.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {draftUpdates.map((update) => (
+              <OwnerUpdateLink
+                key={update.id}
+                baseHref={baseHref}
+                update={update}
+              />
+            ))}
+          </CardContent>
+        </Card>
+      )}
+
       <Card className="rounded-lg">
         <CardHeader>
           <div className="flex items-center gap-2">
             <IconMailForward className="size-5 text-muted-foreground" />
-            <CardTitle>Latest Owner Update</CardTitle>
+            <CardTitle>Update History</CardTitle>
           </div>
           <CardDescription>
-            Latest published or drafted update.
+            Published and sent updates remain available to staff and project
+            owners for historical progress reference.
           </CardDescription>
         </CardHeader>
-        <CardContent>
-          {latestUpdate ? (
-            <Link
-              href={
-                `/dashboard/projects/${workspace.project.id}` +
-                `/owner-updates/${latestUpdate.id}`
-              }
-              className="group block rounded-lg border p-4 transition-colors hover:bg-accent/40"
-            >
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                <div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <Badge variant="secondary">
-                      {latestUpdate.status}
-                    </Badge>
-                    <span className="text-sm text-muted-foreground">
-                      {formatDate(latestUpdate.updateDate)}
-                    </span>
-                  </div>
-                  <h2 className="mt-2 text-lg font-semibold">
-                    {latestUpdate.title}
-                  </h2>
-                  <p className="mt-2 max-w-3xl text-sm text-muted-foreground">
-                    {latestUpdate.summary}
-                  </p>
-                </div>
-                <IconArrowRight className="size-5 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
-              </div>
-            </Link>
+        <CardContent className="space-y-3">
+          {historicalUpdates.length > 0 ? (
+            historicalUpdates.map((update) => (
+              <OwnerUpdateLink
+                key={update.id}
+                baseHref={baseHref}
+                update={update}
+              />
+            ))
           ) : (
             <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
-              No owner updates have been drafted yet. Start from Daily Logs
-              when field notes are ready.
+              No published owner updates are available yet.
             </div>
           )}
         </CardContent>

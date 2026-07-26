@@ -27,7 +27,8 @@ import {
   serializeOwnerUpdateScheduleSnapshot,
   type OwnerUpdateScheduleItem,
 } from "@/lib/owner-updates/snapshot"
-import { requirePermission } from "@/lib/permissions"
+import { isOwnerUpdateVisibleToRole } from "@/lib/owner-updates/history"
+import { can, requirePermission } from "@/lib/permissions"
 import { revalidatePath } from "next/cache"
 
 type LatestDailyLog = {
@@ -60,6 +61,19 @@ type LatestOwnerUpdate = {
   readonly status: string
   readonly channel: string
   readonly summary: string
+}
+
+export type ProjectOwnerUpdateListItem = {
+  readonly id: string
+  readonly title: string
+  readonly updateDate: string
+  readonly status: string
+  readonly channel: string
+  readonly summary: string
+  readonly publishedAt: string | null
+  readonly sentAt: string | null
+  readonly createdAt: string
+  readonly updatedAt: string
 }
 
 type OwnerUpdateProject = {
@@ -254,6 +268,7 @@ type OwnerUpdateDraftResult =
   | { readonly success: false; readonly error: string }
 
 export type OwnerProjectUpdateDocument = {
+  readonly canManage: boolean
   readonly project: OwnerUpdateProject
   readonly update: {
     readonly id: string
@@ -899,6 +914,7 @@ function weatherLabel(row: {
 export async function getProjectFieldSummary(
   projectId: string
 ): Promise<ProjectFieldSummary> {
+  const viewer = await requireAuth()
   const db = await verifyProjectAccess(projectId)
   const today = new Date().toISOString().slice(0, 10)
 
@@ -987,7 +1003,10 @@ export async function getProjectFieldSummary(
     .limit(1)
 
   const latestLog = logRows[0]
-  const latestUpdate = updateRows[0]
+  const visibleUpdateRows = updateRows.filter((update) =>
+    isOwnerUpdateVisibleToRole(update.status, viewer.role)
+  )
+  const latestUpdate = visibleUpdateRows[0]
   const thumbnailPhotoRows = photoRows.filter(
     (photo) => photo.thumbnailUrl !== null
   )
@@ -1055,8 +1074,8 @@ export async function getProjectFieldSummary(
             photoCount: photoReviewPhotoCount(photoReviewFolder.metadata),
           }
         : null,
-    ownerUpdateCount: updateRows.length,
-    draftOwnerUpdateCount: updateRows.filter(
+    ownerUpdateCount: visibleUpdateRows.length,
+    draftOwnerUpdateCount: visibleUpdateRows.filter(
       (update) => update.status === "draft"
     ).length,
     latestOwnerUpdate: latestUpdate
@@ -1071,6 +1090,37 @@ export async function getProjectFieldSummary(
       : null,
     nextScheduleItem: nextTask ?? null,
   }
+}
+
+export async function getProjectOwnerUpdates(
+  projectId: string
+): Promise<readonly ProjectOwnerUpdateListItem[]> {
+  const viewer = await requireAuth()
+  const db = await verifyProjectAccess(projectId)
+
+  const updateRows = await db
+    .select({
+      id: ownerProjectUpdates.id,
+      title: ownerProjectUpdates.title,
+      updateDate: ownerProjectUpdates.updateDate,
+      status: ownerProjectUpdates.status,
+      channel: ownerProjectUpdates.channel,
+      summary: ownerProjectUpdates.summary,
+      publishedAt: ownerProjectUpdates.publishedAt,
+      sentAt: ownerProjectUpdates.sentAt,
+      createdAt: ownerProjectUpdates.createdAt,
+      updatedAt: ownerProjectUpdates.updatedAt,
+    })
+    .from(ownerProjectUpdates)
+    .where(eq(ownerProjectUpdates.projectId, projectId))
+    .orderBy(
+      desc(ownerProjectUpdates.updateDate),
+      desc(ownerProjectUpdates.createdAt)
+    )
+
+  return updateRows.filter((update) =>
+    isOwnerUpdateVisibleToRole(update.status, viewer.role)
+  )
 }
 
 export async function getProjectDailyLogWorkspace(
@@ -1673,6 +1723,7 @@ export async function getOwnerProjectUpdateDocument(
   projectId: string,
   updateId: string
 ): Promise<OwnerProjectUpdateDocument> {
+  const viewer = await requireAuth()
   const db = await verifyProjectAccess(projectId)
 
   const [project] = await db
@@ -1715,6 +1766,9 @@ export async function getOwnerProjectUpdateDocument(
     .limit(1)
 
   if (!project || !update) {
+    throw new Error("Owner update not found")
+  }
+  if (!isOwnerUpdateVisibleToRole(update.status, viewer.role)) {
     throw new Error("Owner update not found")
   }
 
@@ -1869,6 +1923,7 @@ export async function getOwnerProjectUpdateDocument(
     }))
 
   return {
+    canManage: can(viewer, "project", "update"),
     project,
     update: {
       id: update.id,
