@@ -1,7 +1,15 @@
 import { spawnSync } from "node:child_process"
 
-const command = process.platform === "win32" ? "bunx.cmd" : "bunx"
-const args = ["playwright", "test", "--project=desktop-chromium", ...process.argv.slice(2)]
+// Reuse the Bun executable that launched this script. Spawning `bunx.cmd`
+// directly is unreliable on Windows GitHub runners because it is a shell shim.
+const command = process.execPath
+const args = [
+	"x",
+	"playwright",
+	"test",
+	"--project=desktop-chromium",
+	...process.argv.slice(2),
+]
 
 const result = spawnSync(command, args, {
 	env: {

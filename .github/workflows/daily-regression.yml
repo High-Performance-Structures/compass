@@ -1,0 +1,222 @@
+name: Daily Regression
+
+on:
+  schedule:
+    # 13:15 UTC is early morning in the Mountain time zone.
+    - cron: "15 13 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: daily-regression
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  production-smoke:
+    name: Production Smoke (${{ matrix.project }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - project: chromium
+            browser: chromium
+          - project: mobile-chrome
+            browser: chromium
+          - project: mobile-safari
+            browser: webkit
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Install Playwright browser
+        run: bunx playwright install --with-deps ${{ matrix.browser }}
+
+      - name: Run read-only production journeys
+        run: bunx playwright test e2e/web --project=${{ matrix.project }}
+        env:
+          PLAYWRIGHT_BASE_URL: https://compass.openrangeconstruction.ltd
+          PLAYWRIGHT_REQUIRE_PROJECT: "false"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: daily-playwright-${{ matrix.project }}
+          path: |
+            playwright-report/
+            test-results/
+          if-no-files-found: ignore
+          retention-days: 14
+
+  android-build:
+    name: Android Build
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: gradle
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Synchronize Capacitor project
+        run: bunx cap sync android
+
+      - name: Run Android tests, lint, and debug build
+        working-directory: android
+        run: ./gradlew testDebugUnitTest lintDebug assembleDebug
+
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: daily-android-diagnostics
+          path: |
+            android/app/build/reports/
+            android/app/build/outputs/logs/
+          if-no-files-found: ignore
+          retention-days: 14
+
+  ios-build:
+    name: iOS Simulator Build
+    runs-on: macos-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Synchronize Capacitor project
+        run: bunx cap sync ios
+
+      - name: Build for the iOS simulator
+        run: >-
+          xcodebuild
+          -project ios/App/App.xcodeproj
+          -scheme App
+          -sdk iphonesimulator
+          -configuration Debug
+          CODE_SIGNING_ALLOWED=NO
+          build
+
+  report:
+    name: Report Regression Status
+    runs-on: ubuntu-latest
+    if: always()
+    needs:
+      - production-smoke
+      - android-build
+      - ios-build
+
+    steps:
+      - name: Create, update, or close the rolling regression issue
+        uses: actions/github-script@v7
+        env:
+          PRODUCTION_SMOKE_RESULT: ${{ needs.production-smoke.result }}
+          ANDROID_BUILD_RESULT: ${{ needs.android-build.result }}
+          IOS_BUILD_RESULT: ${{ needs.ios-build.result }}
+        with:
+          script: |
+            const title = "Daily regression checks are failing"
+            const results = {
+              "Production smoke": process.env.PRODUCTION_SMOKE_RESULT,
+              "Android build": process.env.ANDROID_BUILD_RESULT,
+              "iOS simulator build": process.env.IOS_BUILD_RESULT,
+            }
+            const failed = Object.entries(results)
+              .filter(([, result]) => result !== "success")
+              .map(([name, result]) => `${name}: ${result}`)
+            const failureBullets = failed
+              .map((failure) => `- ${failure}`)
+              .join(String.fromCharCode(10))
+            const runUrl =
+              `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}` +
+              `/actions/runs/${context.runId}`
+
+            try {
+              await github.rest.issues.createLabel({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                name: "regression",
+                color: "B60205",
+                description: "Automated regression check failure",
+              })
+            } catch (error) {
+              if (error.status !== 422) throw error
+            }
+
+            const openIssues = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: "open",
+              labels: "regression",
+              per_page: 100,
+            })
+            const existing = openIssues.data.find(
+              (issue) => issue.title === title && !issue.pull_request
+            )
+
+            if (failed.length > 0) {
+              const body = `The automated daily regression run found a problem.
+
+            Failing checks:
+            ${failureBullets}
+
+            [Open the workflow run](${runUrl}) for logs, screenshots, traces, and native build diagnostics.
+
+            This is a rolling issue. New failures are added as comments until all checks recover.`
+
+              if (existing) {
+                await github.rest.issues.createComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: existing.number,
+                  body,
+                })
+              } else {
+                await github.rest.issues.create({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  title,
+                  body,
+                  labels: ["regression"],
+                })
+              }
+              return
+            }
+
+            if (existing) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: existing.number,
+                body: `All daily regression checks recovered in [this workflow run](${runUrl}). Closing the rolling issue.`,
+              })
+              await github.rest.issues.update({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: existing.number,
+                state: "closed",
+                state_reason: "completed",
+              })
+            }
