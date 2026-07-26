@@ -3,7 +3,7 @@
 import { getCloudflareContext } from "@/lib/db"
 import { getDb } from "@/db"
 import { agentConversations, agentMemories } from "@/db/schema"
-import { eq, desc } from "drizzle-orm"
+import { and, eq, desc } from "drizzle-orm"
 import { getCurrentUser } from "@/lib/auth"
 import { isDemoUser } from "@/lib/demo"
 
@@ -33,7 +33,11 @@ export async function saveConversation(
     const now = new Date().toISOString()
 
     const existing = await db.query.agentConversations.findFirst({
-      where: (c, { eq: e }) => e(c.id, conversationId),
+      where: (c, { and: a, eq: e }) =>
+        a(
+          e(c.id, conversationId),
+          e(c.userId, user.id),
+        ),
     })
 
     if (existing) {
@@ -43,7 +47,12 @@ export async function saveConversation(
           lastMessageAt: now,
           ...(title ? { title } : {}),
         })
-        .where(eq(agentConversations.id, conversationId))
+        .where(
+          and(
+            eq(agentConversations.id, conversationId),
+            eq(agentConversations.userId, user.id),
+          ),
+        )
         .run()
     } else {
       await db
@@ -61,7 +70,12 @@ export async function saveConversation(
     // delete old memories for this conversation and re-insert
     await db
       .delete(agentMemories)
-      .where(eq(agentMemories.conversationId, conversationId))
+      .where(
+        and(
+          eq(agentMemories.conversationId, conversationId),
+          eq(agentMemories.userId, user.id),
+        ),
+      )
       .run()
 
     for (const msg of messages) {
@@ -86,10 +100,7 @@ export async function saveConversation(
     console.error("Failed to save conversation:", error)
     return {
       success: false,
-      error:
-        error instanceof Error
-          ? error.message
-          : "Unknown error",
+      error: "Failed to save conversation",
     }
   }
 }
@@ -129,10 +140,7 @@ export async function loadConversations(): Promise<{
     console.error("Failed to load conversations:", error)
     return {
       success: false,
-      error:
-        error instanceof Error
-          ? error.message
-          : "Unknown error",
+      error: "Failed to load conversations",
     }
   }
 }
@@ -151,10 +159,27 @@ export async function loadConversation(
     const { env } = await getCloudflareContext()
     const db = getDb(env.DB)
 
+    const conversation =
+      await db.query.agentConversations.findFirst({
+        where: (c, { and: a, eq: e }) =>
+          a(
+            e(c.id, conversationId),
+            e(c.userId, user.id),
+          ),
+      })
+    if (!conversation) {
+      return { success: true, data: [] }
+    }
+
     const rows = await db
       .select()
       .from(agentMemories)
-      .where(eq(agentMemories.conversationId, conversationId))
+      .where(
+        and(
+          eq(agentMemories.conversationId, conversationId),
+          eq(agentMemories.userId, user.id),
+        ),
+      )
       .orderBy(agentMemories.createdAt)
       .all()
 
@@ -171,10 +196,7 @@ export async function loadConversation(
     console.error("Failed to load conversation:", error)
     return {
       success: false,
-      error:
-        error instanceof Error
-          ? error.message
-          : "Unknown error",
+      error: "Failed to load conversation",
     }
   }
 }
@@ -196,7 +218,12 @@ export async function deleteConversation(
     // cascade delete handles memories
     await db
       .delete(agentConversations)
-      .where(eq(agentConversations.id, conversationId))
+      .where(
+        and(
+          eq(agentConversations.id, conversationId),
+          eq(agentConversations.userId, user.id),
+        ),
+      )
       .run()
 
     return { success: true }
@@ -204,10 +231,7 @@ export async function deleteConversation(
     console.error("Failed to delete conversation:", error)
     return {
       success: false,
-      error:
-        error instanceof Error
-          ? error.message
-          : "Unknown error",
+      error: "Failed to delete conversation",
     }
   }
 }
