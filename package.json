@@ -3,7 +3,8 @@
 	"version": "0.1.0",
 	"private": true,
 	"trustedDependencies": [
-		"better-sqlite3"
+		"better-sqlite3",
+		"electron"
 	],
 	"scripts": {
 		"dev": "next dev --turbopack",
