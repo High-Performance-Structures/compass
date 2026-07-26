@@ -46,6 +46,7 @@
 		}
 	],
 	"vars": {
-		"WORKOS_REDIRECT_URI": "https://compass.openrangeconstruction.ltd/callback"
+		"WORKOS_REDIRECT_URI": "https://compass.openrangeconstruction.ltd/callback",
+		"JARVIS_AGENT_BRIDGE_ENABLED": "true"
 	}
 }
