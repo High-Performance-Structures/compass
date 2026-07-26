@@ -13,6 +13,7 @@ function kindFilter(
 
   switch (selected) {
     case "schedule":
+    case "event":
     case "task":
     case "rfi":
     case "purchase_order":
@@ -27,10 +28,20 @@ export default async function SchedulePage({
 }: {
   readonly searchParams: Promise<{
     readonly kind?: string | readonly string[]
+    readonly item?: string | readonly string[]
   }>
 }): Promise<React.ReactElement> {
   const query = await searchParams
   const data = await getWorkCalendar()
 
-  return <WorkCalendar data={data} initialKind={kindFilter(query.kind)} />
+  const initialItemId =
+    typeof query.item === "string" ? query.item : query.item?.[0] ?? null
+
+  return (
+    <WorkCalendar
+      data={data}
+      initialKind={kindFilter(query.kind)}
+      initialItemId={initialItemId}
+    />
+  )
 }

@@ -5,7 +5,11 @@ import { Plus } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { CreateChannelDialog } from "./create-channel-dialog"
 
-export function CreateChannelButton() {
+export function CreateChannelButton({
+  projectId,
+}: {
+  readonly projectId?: string
+}) {
   const [open, setOpen] = React.useState(false)
 
   return (
@@ -14,7 +18,11 @@ export function CreateChannelButton() {
         <Plus className="mr-2 h-4 w-4" />
         Create Channel
       </Button>
-      <CreateChannelDialog open={open} onOpenChange={setOpen} />
+      <CreateChannelDialog
+        open={open}
+        onOpenChange={setOpen}
+        projectId={projectId}
+      />
     </>
   )
 }
