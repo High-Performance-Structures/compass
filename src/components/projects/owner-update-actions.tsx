@@ -33,6 +33,7 @@ export function OwnerUpdateActions({
   readonly updateTitle: string
 }): React.ReactElement {
   const [isPublishing, setIsPublishing] = useState(false)
+  const [publishError, setPublishError] = useState<string | null>(null)
   const [copied, setCopied] = useState<"link" | "email" | "html" | null>(null)
 
   function absoluteUpdateUrl(): string {
@@ -130,11 +131,19 @@ export function OwnerUpdateActions({
   }
 
   async function publish(): Promise<void> {
+    setPublishError(null)
     setIsPublishing(true)
-    const result = await publishOwnerProjectUpdate(projectId, updateId)
-    setIsPublishing(false)
-    if (result.success) {
-      window.location.reload()
+    try {
+      const result = await publishOwnerProjectUpdate(projectId, updateId)
+      if (result.success) {
+        window.location.reload()
+        return
+      }
+      setPublishError(result.error)
+    } catch {
+      setPublishError("Unable to publish this update. Please try again.")
+    } finally {
+      setIsPublishing(false)
     }
   }
 
@@ -174,6 +183,14 @@ export function OwnerUpdateActions({
         )}
         {copied === "html" ? "Copied" : "Copy HTML email"}
       </Button>
+      {publishError !== null && (
+        <p
+          className="basis-full border-l-2 border-l-destructive px-3 py-2 text-sm text-destructive"
+          role="alert"
+        >
+          {publishError}
+        </p>
+      )}
     </div>
   )
 }
