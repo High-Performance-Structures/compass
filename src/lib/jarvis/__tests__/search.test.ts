@@ -63,6 +63,11 @@ describe("Jarvis Compass search", () => {
       "o-202",
       "loeffler",
     ])
+    expect(
+      jarvisSearchTerms(
+        "I think you can now provide some links to locations in Compass now."
+      )
+    ).toEqual([])
   })
 
   it("narrows explicit record-type requests", () => {
