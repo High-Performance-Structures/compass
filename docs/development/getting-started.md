@@ -115,6 +115,17 @@ decision reactivates NetSuite for a specific workflow.
 | `GITHUB_TOKEN` | GitHub repo token for automatic deployments. |
 | `GITHUB_REPO` | Repository in `owner/repo` format. Default: `High-Performance-Structures/compass`. |
 
+### Jarvis / Signet feedback bridge (optional)
+
+| Variable | Description |
+|----------|-------------|
+| `JARVIS_BRIDGE_SECRET` | Shared HMAC-SHA256 secret used to authenticate bridge requests. Generate with `openssl rand -hex 32` and store it as a secret on both sides. |
+| `JARVIS_BRIDGE_ORGANIZATION_ID` | Compass organization that receives inbound Telegram and Jarvis mailbox feedback. |
+| `JARVIS_SERVICE_USER_ID` | Active Compass service user used for Jarvis replies. It must belong to the configured organization and each channel where it may reply. |
+
+See [Jarvis feedback bridge](../architecture/jarvis-feedback-bridge.md)
+for the event contract, permissions, and rollout checklist.
+
 ### Production-only
 
 The `wrangler.jsonc` config sets `WORKOS_REDIRECT_URI` as a Worker var pointing to the production domain. You don't need this locally since `NEXT_PUBLIC_WORKOS_REDIRECT_URI` covers it.

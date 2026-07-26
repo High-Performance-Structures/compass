@@ -350,23 +350,24 @@ export function AppearanceTab() {
             />
           ))}
 
-          {/* create with AI card */}
-          <button
-            type="button"
-            onClick={handleCreateWithAI}
-            className={cn(
-              "flex flex-col items-center justify-center gap-1.5",
-              "rounded-lg border border-dashed",
-              "py-4 text-muted-foreground",
-              "transition-colors duration-100",
-              "hover:border-primary/50 hover:text-foreground"
-            )}
-          >
-            <Sparkles className="size-4" />
-            <span className="text-xs font-medium">
-              Create with AI
-            </span>
-          </button>
+          {panel && (
+            <button
+              type="button"
+              onClick={handleCreateWithAI}
+              className={cn(
+                "flex flex-col items-center justify-center gap-1.5",
+                "rounded-lg border border-dashed",
+                "py-4 text-muted-foreground",
+                "transition-colors duration-100",
+                "hover:border-primary/50 hover:text-foreground"
+              )}
+            >
+              <Sparkles className="size-4" />
+              <span className="text-xs font-medium">
+                Create with AI
+              </span>
+            </button>
+          )}
         </div>
       </div>
     </div>

@@ -25,6 +25,7 @@ How the core platform works.
 - [server actions](architecture/server-actions.md) -- the data mutation pattern, auth checks, error handling, revalidation
 - [auth system](architecture/auth-system.md) -- WorkOS integration, middleware, session management, RBAC
 - [AI agent](architecture/ai-agent.md) -- OpenRouter provider, tool system, system prompt, unified chat architecture, usage tracking
+- [Jarvis feedback bridge](architecture/jarvis-feedback-bridge.md) -- signed Signet bridge, unified feedback desk, Telegram/email routing, and reply policy
 - [multi-tenancy](architecture/multi-tenancy.md) -- org isolation, demo mode guards, the requireOrg pattern, adding new server actions safely
 
 

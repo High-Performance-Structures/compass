@@ -10,16 +10,21 @@ import {
   channelMembers,
   channelReadState,
   messageMentions,
+  channels,
   type NewMessage,
   type NewMessageReaction,
   type NewMessageMention,
 } from "@/db/schema-conversations"
 import { users, organizationMembers } from "@/db/schema"
 import { getCurrentUser } from "@/lib/auth"
-import { requirePermission } from "@/lib/permissions"
+import {
+  canUseAskCompass,
+  requirePermission,
+} from "@/lib/permissions"
 import { isDemoUser } from "@/lib/demo"
 import { requireOrg } from "@/lib/org-scope"
 import { revalidatePath } from "next/cache"
+import { enqueueFeedbackDeskItem } from "@/lib/jarvis/feedback-desk"
 
 const MAX_MESSAGE_LENGTH = 4000
 const EMOJI_REGEX = /^[\p{Emoji}\u200d]+$/u
@@ -255,6 +260,55 @@ export async function sendMessage(data: {
           lastReplyAt: now,
         })
         .where(eq(messages.id, data.threadId))
+    }
+
+    const channel = await db
+      .select({
+        name: channels.name,
+        organizationId: channels.organizationId,
+      })
+      .from(channels)
+      .where(eq(channels.id, data.channelId))
+      .get()
+    const asksCompass =
+      canUseAskCompass(user) &&
+      (data.mentions?.some(
+        (mention) => mention.mentionType === "agent",
+      ) ?? false)
+    const isFeedbackChannel =
+      channel?.name.trim().toLowerCase() === "compass-feedback"
+
+    if (channel && (asksCompass || isFeedbackChannel)) {
+      try {
+        await enqueueFeedbackDeskItem(db, {
+          organizationId: channel.organizationId,
+          source: "compass-conversation",
+          sourceId: messageId,
+          kind: asksCompass ? "assistance" : "general",
+          title: asksCompass
+            ? `Assistance request from ${user.displayName ?? user.email}`
+            : `Compass feedback from ${user.displayName ?? user.email}`,
+          description: data.content,
+          reporterName: user.displayName,
+          reporterEmail: user.email,
+          channelId: data.channelId,
+          messageId,
+          threadId: data.threadId,
+          metadata: {
+            untrustedUserContent: true,
+            channelName: channel.name,
+          },
+        })
+      } catch (error) {
+        console.error("conversation_feedback_enqueue_failed", {
+          messageId,
+          channelId: data.channelId,
+          error:
+            error instanceof Error
+              ? error.message
+              : "Unknown error",
+        })
+      }
     }
 
     // update read state for sender (mark as read)

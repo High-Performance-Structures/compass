@@ -12,6 +12,7 @@ import { getCloudflareContext } from "@/lib/db"
 import { getDb } from "@/db"
 import { mcpServers } from "@/db/schema-mcp"
 import { eq } from "drizzle-orm"
+import { canUseAskCompass } from "@/lib/permissions"
 import {
   runAgent,
   buildSystemPrompt,
@@ -101,6 +102,12 @@ export async function POST(
         status: 401,
         headers: { "Content-Type": "application/json" },
       }
+    )
+  }
+  if (!canUseAskCompass(user)) {
+    return Response.json(
+      { error: "Ask Compass is not available for this account" },
+      { status: 403 }
     )
   }
 

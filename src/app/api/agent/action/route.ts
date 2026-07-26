@@ -3,6 +3,7 @@ import {
   actionRegistry,
   checkActionPermission,
 } from "@/lib/agent/render/action-registry"
+import { canUseAskCompass } from "@/lib/permissions"
 
 export async function POST(
   req: Request,
@@ -12,6 +13,15 @@ export async function POST(
     return Response.json(
       { success: false, error: "Unauthorized" },
       { status: 401 },
+    )
+  }
+  if (!canUseAskCompass(user)) {
+    return Response.json(
+      {
+        success: false,
+        error: "Ask Compass is not available for this account",
+      },
+      { status: 403 },
     )
   }
 

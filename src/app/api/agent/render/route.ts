@@ -4,6 +4,7 @@ import { compassCatalog } from "@/lib/agent/render/catalog"
 import { getDb } from "@/db"
 import { agentConfig } from "@/db/schema-ai-config"
 import { eq } from "drizzle-orm"
+import { canUseAskCompass } from "@/lib/permissions"
 
 const DEFAULT_MODEL_ID = "qwen/qwen3-coder-next"
 
@@ -88,6 +89,12 @@ export async function POST(
   const user = await getCurrentUser()
   if (!user) {
     return new Response("Unauthorized", { status: 401 })
+  }
+  if (!canUseAskCompass(user)) {
+    return Response.json(
+      { error: "Ask Compass is not available for this account" },
+      { status: 403 }
+    )
   }
 
   let body: {

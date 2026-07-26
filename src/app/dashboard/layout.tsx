@@ -30,6 +30,7 @@ import { DesktopOfflineBanner } from "@/components/desktop/offline-banner"
 import { VoiceProvider } from "@/components/voice/voice-provider"
 import { DemoBanner } from "@/components/demo/demo-banner"
 import { isDemoUser } from "@/lib/demo"
+import { canUseAskCompass } from "@/lib/permissions"
 
 export default async function DashboardLayout({
   children,
@@ -51,14 +52,15 @@ export default async function DashboardLayout({
     ? dashboardResult.data
     : []
   const isDemo = authUser ? isDemoUser(authUser.id) : false
+  const canUseCompassAgent = canUseAskCompass(authUser)
 
   return (
-    <ChatProvider>
+    <ChatProvider enabled={canUseCompassAgent}>
     <VoiceProvider>
     <SettingsProvider>
     <ProjectListProvider projects={projectList}>
     <PageActionsProvider>
-    <CommandMenuProvider>
+    <CommandMenuProvider canUseAskCompass={canUseCompassAgent}>
       <BiometricGuard userId={authUser?.id}>
       <DesktopShell>
       <FeedbackWidget>
@@ -84,12 +86,15 @@ export default async function DashboardLayout({
           <DesktopOfflineBanner />
           <OfflineBanner />
           <DemoBanner isDemo={isDemo} />
-          <SiteHeader user={user} />
+          <SiteHeader
+            user={user}
+            canUseAskCompass={canUseCompassAgent}
+          />
           <div className="flex min-h-0 flex-1 overflow-hidden">
             <MainContent>
               {children}
             </MainContent>
-            <ChatPanelShell />
+            {canUseCompassAgent && <ChatPanelShell />}
           </div>
         </SidebarInset>
         <MobileBottomNav />

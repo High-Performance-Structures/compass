@@ -34,8 +34,9 @@ import { getVendors } from "@/app/actions/vendors"
 import { getProjects } from "@/app/actions/projects"
 
 interface MobileSearchProps {
-  open: boolean
-  setOpen: (open: boolean) => void
+  readonly open: boolean
+  readonly setOpen: (open: boolean) => void
+  readonly canUseAskCompass: boolean
 }
 
 type ItemCategory =
@@ -141,6 +142,7 @@ function isWithinRange(
 export function MobileSearch({
   open,
   setOpen,
+  canUseAskCompass,
 }: MobileSearchProps) {
   const router = useRouter()
   const { theme, setTheme } = useTheme()
@@ -250,6 +252,11 @@ export function MobileSearch({
 
   function runAction(action: string) {
     if (action === "ask-agent") {
+      if (!canUseAskCompass) {
+        close()
+        return
+      }
+
       const prompt = query.trim()
       if (prompt) {
         agent?.open()
@@ -265,7 +272,7 @@ export function MobileSearch({
   }
 
   const agentItems: SearchItem[] =
-    query.trim() && agent && chat
+    canUseAskCompass && query.trim() && agent && chat
       ? [
           {
             icon: IconSparkles,
