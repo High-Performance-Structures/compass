@@ -53,6 +53,7 @@ import {
 import type { DisplayItem, FrappeTask } from "@/lib/schedule/gantt-transform"
 import { updateTask } from "@/app/actions/schedule"
 import { countBusinessDays } from "@/lib/schedule/business-days"
+import { effectivePercentComplete } from "@/lib/schedule/progress"
 import {
   DEFAULT_DISPLAY_COLOR_LABELS,
   DEFAULT_DISPLAY_COLOR_PALETTE,
@@ -66,6 +67,7 @@ import {
 import type {
   ScheduleTaskData,
   TaskDependencyData,
+  WorkdayExceptionData,
 } from "@/lib/schedule/types"
 import type { ProjectTaskAssigneeOption } from "@/app/actions/project-contacts"
 import { ProjectTaskCreateButton } from "@/components/projects/project-task-create-button"
@@ -84,6 +86,7 @@ interface ScheduleGanttViewProps {
   readonly projectId: string
   readonly tasks: readonly ScheduleTaskData[]
   readonly dependencies: readonly TaskDependencyData[]
+  readonly exceptions: readonly WorkdayExceptionData[]
   readonly assigneeOptions: readonly ProjectTaskAssigneeOption[]
 }
 
@@ -91,6 +94,7 @@ export function ScheduleGanttView({
   projectId,
   tasks,
   dependencies,
+  exceptions,
   assigneeOptions,
 }: ScheduleGanttViewProps) {
   const router = useRouter()
@@ -223,7 +227,7 @@ export function ScheduleGanttView({
       if (task.id.startsWith("phase-")) return
       const startDate = format(start, "yyyy-MM-dd")
       const endDate = format(end, "yyyy-MM-dd")
-      const workdays = countBusinessDays(startDate, endDate)
+      const workdays = countBusinessDays(startDate, endDate, exceptions)
 
       const result = await updateTask(task.id, {
         startDate,
@@ -236,7 +240,7 @@ export function ScheduleGanttView({
         toast.error(result.error)
       }
     },
-    [router]
+    [exceptions, router]
   )
 
   const scrollToToday = () => {
@@ -255,6 +259,7 @@ export function ScheduleGanttView({
           <TableHead className="text-xs">Title</TableHead>
           <TableHead className="text-xs w-[80px]">Start</TableHead>
           <TableHead className="text-xs w-[52px]">Days</TableHead>
+          <TableHead className="text-xs w-[52px]">Done</TableHead>
           <TableHead className="w-[40px]" />
         </TableRow>
       </TableHeader>
@@ -269,7 +274,7 @@ export function ScheduleGanttView({
                 onClick={() => togglePhase(phase)}
               >
                 <TableCell
-                  colSpan={collapsed ? 4 : 1}
+                  colSpan={collapsed ? 5 : 1}
                   className="text-xs py-1.5 font-medium"
                 >
                   <span className="flex items-center gap-1">
@@ -293,6 +298,7 @@ export function ScheduleGanttView({
                       {group.startDate.slice(5)}
                     </TableCell>
                     <TableCell className="text-xs py-1.5" />
+                    <TableCell className="text-xs py-1.5" />
                     <TableCell className="py-1.5" />
                   </>
                 )}
@@ -313,6 +319,9 @@ export function ScheduleGanttView({
               </TableCell>
               <TableCell className="text-xs py-1.5">
                 {task.workdays}
+              </TableCell>
+              <TableCell className="text-xs py-1.5 tabular-nums">
+                {effectivePercentComplete(task.status, task.percentComplete)}%
               </TableCell>
               <TableCell className="py-1.5">
                 <div className="flex items-center">
@@ -349,7 +358,7 @@ export function ScheduleGanttView({
           )
         })}
         <TableRow>
-          <TableCell colSpan={4} className="py-1">
+          <TableCell colSpan={5} className="py-1">
             <Button
               variant="ghost"
               size="sm"
@@ -657,6 +666,7 @@ export function ScheduleGanttView({
         editingTask={editingTask}
         allTasks={tasks}
         dependencies={dependencies}
+        exceptions={exceptions}
         assigneeOptions={assigneeOptions}
       />
     </div>

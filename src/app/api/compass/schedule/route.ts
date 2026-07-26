@@ -7,12 +7,17 @@ import { calculateEndDate } from "@/lib/schedule/business-days"
 import { findCriticalPath } from "@/lib/schedule/critical-path"
 import { wouldCreateCycle } from "@/lib/schedule/dependency-validation"
 import { propagateDates } from "@/lib/schedule/propagate-dates"
+import {
+  effectivePercentComplete,
+  normalizeScheduleProgress,
+} from "@/lib/schedule/progress"
 import { revalidatePath } from "next/cache"
 import type {
   TaskStatus,
   DependencyType,
   ExceptionCategory,
   ExceptionRecurrence,
+  WorkdayExceptionType,
   WorkdayExceptionData,
 } from "@/lib/schedule/types"
 
@@ -26,6 +31,19 @@ type ScheduleAction =
   | "addException"
   | "removeException"
 
+function isTaskStatus(value: unknown): value is TaskStatus {
+  return (
+    value === "PENDING" ||
+    value === "IN_PROGRESS" ||
+    value === "COMPLETE" ||
+    value === "BLOCKED"
+  )
+}
+
+function isDependencyType(value: unknown): value is DependencyType {
+  return value === "FS" || value === "SS" || value === "FF" || value === "SF"
+}
+
 async function fetchProjectExceptions(
   db: ReturnType<typeof getDb>,
   projectId: string,
@@ -36,6 +54,7 @@ async function fetchProjectExceptions(
     .where(eq(workdayExceptions.projectId, projectId))
   return rows.map((r) => ({
     ...r,
+    type: r.type as WorkdayExceptionType,
     category: r.category as ExceptionCategory,
     recurrence: r.recurrence as ExceptionRecurrence,
   }))
@@ -56,10 +75,14 @@ async function fetchProjectDeps(
       taskIdSet.has(d.predecessorId) && taskIdSet.has(d.successorId),
   )
   return {
-    tasks: tasks.map((t) => ({
-      ...t,
-      status: t.status as TaskStatus,
-    })),
+    tasks: tasks.map((t) => {
+      const status = t.status as TaskStatus
+      return {
+        ...t,
+        status,
+        percentComplete: effectivePercentComplete(status, t.percentComplete),
+      }
+    }),
     deps: deps.map((d) => ({
       ...d,
       type: d.type as DependencyType,
@@ -234,6 +257,9 @@ export async function POST(req: Request): Promise<Response> {
         const startDate = body.startDate as string
         const workdays = body.workdays as number
         const phase = body.phase as string
+        const requestedStatus = isTaskStatus(body.status)
+          ? body.status
+          : "PENDING"
         const isMilestone = (body.isMilestone as boolean) ?? false
         const percentComplete = (body.percentComplete as number) ?? 0
         const assignedTo = (body.assignedTo as string | undefined) ?? null
@@ -285,6 +311,10 @@ export async function POST(req: Request): Promise<Response> {
             : 0
 
         const id = crypto.randomUUID()
+        const progress = normalizeScheduleProgress(
+          requestedStatus,
+          percentComplete
+        )
         await db.insert(scheduleTasks).values({
           id,
           projectId,
@@ -293,10 +323,10 @@ export async function POST(req: Request): Promise<Response> {
           workdays,
           endDateCalculated: endDate,
           phase,
-          status: "PENDING",
+          status: progress.status,
           isCriticalPath: false,
           isMilestone,
-          percentComplete,
+          percentComplete: progress.percentComplete,
           assignedTo,
           sortOrder: nextOrder,
           createdAt: now,
@@ -355,8 +385,48 @@ export async function POST(req: Request): Promise<Response> {
           )
         }
 
-        const { action: _action, taskId: _taskId, status, ...fields } = body
+        const [project] = await db
+          .select({ id: projects.id })
+          .from(projects)
+          .where(
+            and(
+              eq(projects.id, task.projectId),
+              eq(projects.organizationId, auth.orgId)
+            )
+          )
+          .limit(1)
+        if (!project) {
+          return new Response(JSON.stringify({ error: "Task not found" }), {
+            status: 404,
+            headers: { "Content-Type": "application/json" },
+          })
+        }
+
+        const status = body.status
+        const fields: Record<string, unknown> = {}
+        for (const [key, value] of Object.entries(body)) {
+          if (key !== "action" && key !== "taskId" && key !== "status") {
+            fields[key] = value
+          }
+        }
         const hasFields = Object.keys(fields).length > 0
+        if (status !== undefined && !isTaskStatus(status)) {
+          return new Response(JSON.stringify({ error: "Invalid status" }), {
+            status: 400,
+            headers: { "Content-Type": "application/json" },
+          })
+        }
+        const requestedStatus = isTaskStatus(status)
+          ? status
+          : (task.status as TaskStatus)
+        const requestedPercent =
+          fields.percentComplete !== undefined
+            ? (fields.percentComplete as number)
+            : task.percentComplete
+        const progress = normalizeScheduleProgress(
+          requestedStatus,
+          requestedPercent
+        )
 
         if (hasFields) {
           const exceptions = await fetchProjectExceptions(db, task.projectId)
@@ -373,12 +443,11 @@ export async function POST(req: Request): Promise<Response> {
               workdays,
               endDateCalculated: endDate,
               ...(fields.phase ? { phase: fields.phase as string } : {}),
+              status: progress.status,
               ...(fields.isMilestone !== undefined
                 ? { isMilestone: fields.isMilestone as boolean }
                 : {}),
-              ...(fields.percentComplete !== undefined
-                ? { percentComplete: fields.percentComplete as number }
-                : {}),
+              percentComplete: progress.percentComplete,
               ...(fields.assignedTo !== undefined
                 ? { assignedTo: fields.assignedTo as string | null }
                 : {}),
@@ -406,7 +475,8 @@ export async function POST(req: Request): Promise<Response> {
 
           const updatedTask = {
             ...task,
-            status: task.status as TaskStatus,
+            status: progress.status,
+            percentComplete: progress.percentComplete,
             startDate,
             workdays,
             endDateCalculated: endDate,
@@ -439,7 +509,8 @@ export async function POST(req: Request): Promise<Response> {
           await db
             .update(scheduleTasks)
             .set({
-              status: status as TaskStatus,
+              status: progress.status,
+              percentComplete: progress.percentComplete,
               updatedAt: new Date().toISOString(),
             })
             .where(eq(scheduleTasks.id, taskId))
@@ -507,6 +578,23 @@ export async function POST(req: Request): Promise<Response> {
           )
         }
 
+        const [project] = await db
+          .select({ id: projects.id })
+          .from(projects)
+          .where(
+            and(
+              eq(projects.id, task.projectId),
+              eq(projects.organizationId, auth.orgId)
+            )
+          )
+          .limit(1)
+        if (!project) {
+          return new Response(JSON.stringify({ error: "Task not found" }), {
+            status: 404,
+            headers: { "Content-Type": "application/json" },
+          })
+        }
+
         await db
           .delete(scheduleTasks)
           .where(eq(scheduleTasks.id, taskId))
@@ -538,10 +626,15 @@ export async function POST(req: Request): Promise<Response> {
         const projectId = body.projectId as string
         const predecessorId = body.predecessorId as string
         const successorId = body.successorId as string
-        const type = body.type as DependencyType
+        const type = body.type
         const lagDays = (body.lagDays as number) ?? 0
 
-        if (!projectId || !predecessorId || !successorId || !type) {
+        if (
+          !projectId ||
+          !predecessorId ||
+          !successorId ||
+          !isDependencyType(type)
+        ) {
           return new Response(
             JSON.stringify({ error: "Missing required fields" }),
             {
@@ -551,7 +644,63 @@ export async function POST(req: Request): Promise<Response> {
           )
         }
 
-        const { deps: existingDeps } = await fetchProjectDeps(db, projectId)
+        const [project] = await db
+          .select({ id: projects.id })
+          .from(projects)
+          .where(
+            and(
+              eq(projects.id, projectId),
+              eq(projects.organizationId, auth.orgId)
+            )
+          )
+          .limit(1)
+        if (!project) {
+          return new Response(JSON.stringify({ error: "Project not found" }), {
+            status: 404,
+            headers: { "Content-Type": "application/json" },
+          })
+        }
+
+        const {
+          tasks: projectTasks,
+          deps: existingDeps,
+        } = await fetchProjectDeps(db, projectId)
+        const projectTaskIds = new Set(projectTasks.map((task) => task.id))
+
+        if (
+          predecessorId === successorId ||
+          !projectTaskIds.has(predecessorId) ||
+          !projectTaskIds.has(successorId)
+        ) {
+          return new Response(
+            JSON.stringify({
+              error:
+                predecessorId === successorId
+                  ? "A schedule item cannot depend on itself"
+                  : "Both schedule items must belong to this project",
+            }),
+            {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            }
+          )
+        }
+
+        if (
+          existingDeps.some(
+            (dependency) =>
+              dependency.predecessorId === predecessorId &&
+              dependency.successorId === successorId
+          )
+        ) {
+          return new Response(
+            JSON.stringify({ error: "That dependency already exists" }),
+            {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            }
+          )
+        }
 
         if (
           wouldCreateCycle(existingDeps, predecessorId, successorId)
@@ -640,6 +789,41 @@ export async function POST(req: Request): Promise<Response> {
             JSON.stringify({ error: "dependencyId and projectId required" }),
             {
               status: 400,
+              headers: { "Content-Type": "application/json" },
+            }
+          )
+        }
+
+        const [project] = await db
+          .select({ id: projects.id })
+          .from(projects)
+          .where(
+            and(
+              eq(projects.id, projectId),
+              eq(projects.organizationId, auth.orgId)
+            )
+          )
+          .limit(1)
+        if (!project) {
+          return new Response(JSON.stringify({ error: "Project not found" }), {
+            status: 404,
+            headers: { "Content-Type": "application/json" },
+          })
+        }
+
+        const { deps: projectDependencies } = await fetchProjectDeps(
+          db,
+          projectId
+        )
+        if (
+          !projectDependencies.some(
+            (dependency) => dependency.id === dependencyId
+          )
+        ) {
+          return new Response(
+            JSON.stringify({ error: "Dependency not found for this project" }),
+            {
+              status: 404,
               headers: { "Content-Type": "application/json" },
             }
           )

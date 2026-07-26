@@ -17,6 +17,7 @@ import {
 } from "date-fns"
 import { cn } from "@/lib/utils"
 import type { ScheduleTaskData } from "@/lib/schedule/types"
+import { effectivePercentComplete } from "@/lib/schedule/progress"
 import { useScheduleDisplayPalette } from "@/hooks/use-schedule-display-palette"
 import { getScheduleItemDisplayColor } from "@/lib/schedule/appearance"
 
@@ -210,7 +211,12 @@ export function ScheduleMobileView({
                   <div className="flex items-center gap-2 text-xs text-muted-foreground">
                     <span>{task.phase}</span>
                     <span>·</span>
-                    <span>{task.percentComplete}% complete</span>
+                    <span>
+                      {effectivePercentComplete(
+                        task.status,
+                        task.percentComplete
+                      )}% complete
+                    </span>
                   </div>
                 </div>
               </button>

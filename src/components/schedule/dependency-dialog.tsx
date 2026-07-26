@@ -159,10 +159,9 @@ export function DependencyDialog({
             </div>
 
             <div>
-              <Label>Lag (days)</Label>
+              <Label>Lag / lead (days)</Label>
               <Input
                 type="number"
-                min={0}
                 value={lagDays}
                 onChange={(e) => setLagDays(Number(e.target.value))}
                 className="mt-1"

@@ -32,10 +32,12 @@ import {
 } from "@/components/ui/select"
 import { ScheduleItemFormDialog } from "./schedule-item-form-dialog"
 import { DependencyDialog } from "./dependency-dialog"
+import { effectivePercentComplete } from "@/lib/schedule/progress"
 import { deleteTask } from "@/app/actions/schedule"
 import type {
   ScheduleTaskData,
   TaskDependencyData,
+  WorkdayExceptionData,
 } from "@/lib/schedule/types"
 import type { ProjectTaskAssigneeOption } from "@/app/actions/project-contacts"
 import { ProjectTaskCreateButton } from "@/components/projects/project-task-create-button"
@@ -52,6 +54,7 @@ interface ScheduleListViewProps {
   readonly projectId: string
   readonly tasks: ScheduleTaskData[]
   readonly dependencies: TaskDependencyData[]
+  readonly exceptions: readonly WorkdayExceptionData[]
   readonly assigneeOptions: readonly ProjectTaskAssigneeOption[]
 }
 
@@ -70,46 +73,16 @@ function StatusDot({
   )
 }
 
-function ProgressRing({
-  percent,
-  size = 28,
-}: {
-  percent: number
-  size?: number
-}) {
-  const stroke = 3
-  const radius = (size - stroke) / 2
-  const circumference = 2 * Math.PI * radius
-  const offset = circumference - (percent / 100) * circumference
-
+function ProgressValue({ percent }: { readonly percent: number }) {
   return (
-    <div className="relative inline-flex items-center justify-center">
-      <svg width={size} height={size} className="-rotate-90">
-        <circle
-          cx={size / 2}
-          cy={size / 2}
-          r={radius}
-          fill="none"
-          stroke="currentColor"
-          strokeWidth={stroke}
-          className="text-muted-foreground/20"
+    <div className="w-12">
+      <span className="block text-xs font-medium tabular-nums">{percent}%</span>
+      <div className="mt-1 h-1 overflow-hidden rounded-full bg-muted">
+        <div
+          className="h-full bg-primary"
+          style={{ width: `${percent}%` }}
         />
-        <circle
-          cx={size / 2}
-          cy={size / 2}
-          r={radius}
-          fill="none"
-          stroke="currentColor"
-          strokeWidth={stroke}
-          strokeDasharray={circumference}
-          strokeDashoffset={offset}
-          strokeLinecap="round"
-          className="text-primary"
-        />
-      </svg>
-      <span className="absolute text-[9px] font-medium">
-        {percent}%
-      </span>
+      </div>
     </div>
   )
 }
@@ -146,6 +119,7 @@ export function ScheduleListView({
   projectId,
   tasks,
   dependencies,
+  exceptions,
   assigneeOptions,
 }: ScheduleListViewProps) {
   const router = useRouter()
@@ -221,7 +195,12 @@ export function ScheduleListView({
         id: "complete",
         header: "Complete",
         cell: ({ row }) => (
-          <ProgressRing percent={row.original.percentComplete} />
+          <ProgressValue
+            percent={effectivePercentComplete(
+              row.original.status,
+              row.original.percentComplete
+            )}
+          />
         ),
         size: 70,
         meta: { className: "hidden sm:table-cell" },
@@ -459,6 +438,7 @@ export function ScheduleListView({
         editingTask={editingTask}
         allTasks={localTasks}
         dependencies={dependencies}
+        exceptions={exceptions}
         assigneeOptions={assigneeOptions}
       />
 

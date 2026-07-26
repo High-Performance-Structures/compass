@@ -5,6 +5,7 @@ import type {
 } from "./types"
 import { PHASE_ORDER, PHASE_LABELS } from "./phase-colors"
 import { normalizeDisplayColor } from "./appearance"
+import { effectivePercentComplete } from "./progress"
 
 export interface FrappeTask {
   id: string
@@ -40,10 +41,10 @@ export function transformToFrappeTasks(
   tasks: ScheduleTaskData[],
   dependencies: TaskDependencyData[]
 ): FrappeTask[] {
-  // build dep lookup: successorId -> predecessorIds (FS only for visual lines)
+  // Build a lookup for visual dependency lines. Frappe Gantt does not expose
+  // dependency types, but every stored relationship should still be visible.
   const predMap = new Map<string, string[]>()
   for (const dep of dependencies) {
-    if (dep.type !== "FS") continue
     if (!predMap.has(dep.successorId)) {
       predMap.set(dep.successorId, [])
     }
@@ -54,9 +55,10 @@ export function transformToFrappeTasks(
     const preds = predMap.get(task.id) || []
     const depString = preds.join(", ")
 
-    let progress = 0
-    if (task.status === "COMPLETE") progress = 100
-    else if (task.status === "IN_PROGRESS") progress = 50
+    const progress = effectivePercentComplete(
+      task.status,
+      task.percentComplete
+    )
 
     // frappe-gantt uses classList.add() which throws on spaces,
     // so we can only pass a single class name
@@ -116,7 +118,11 @@ export function groupTasksByPhase(
     const ends = phaseTasks.map((t) => t.endDateCalculated).sort()
 
     const avgProgress = Math.round(
-      phaseTasks.reduce((sum, t) => sum + t.percentComplete, 0) /
+      phaseTasks.reduce(
+        (sum, task) =>
+          sum + effectivePercentComplete(task.status, task.percentComplete),
+        0
+      ) /
         phaseTasks.length
     )
 
@@ -147,7 +153,6 @@ function derivePhaseDeps(
   const predecessorPhases = new Set<string>()
 
   for (const dep of dependencies) {
-    if (dep.type !== "FS") continue
     if (!taskIds.has(dep.successorId)) continue
     if (taskIds.has(dep.predecessorId)) continue
 
@@ -178,7 +183,6 @@ export function transformWithPhaseGroups(
 
   const predMap = new Map<string, string[]>()
   for (const dep of dependencies) {
-    if (dep.type !== "FS") continue
     if (!predMap.has(dep.successorId)) predMap.set(dep.successorId, [])
     predMap.get(dep.successorId)!.push(dep.predecessorId)
   }
@@ -224,9 +228,10 @@ export function transformWithPhaseGroups(
         })
         const depString = [...new Set(resolvedPreds)].join(", ")
 
-        let progress = 0
-        if (task.status === "COMPLETE") progress = 100
-        else if (task.status === "IN_PROGRESS") progress = 50
+        const progress = effectivePercentComplete(
+          task.status,
+          task.percentComplete
+        )
 
         const customClass = `display-color-${normalizeDisplayColor(task.displayColor)}`
 

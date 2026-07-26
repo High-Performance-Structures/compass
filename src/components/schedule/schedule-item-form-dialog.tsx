@@ -61,6 +61,7 @@ import type {
   ScheduleTaskData,
   TaskDependencyData,
   DependencyType,
+  WorkdayExceptionData,
 } from "@/lib/schedule/types"
 import { PHASE_ORDER, PHASE_LABELS, getPhaseColor } from "@/lib/schedule/phase-colors"
 import {
@@ -108,6 +109,7 @@ interface ScheduleItemFormDialogProps {
   editingTask: ScheduleTaskData | null
   allTasks?: readonly ScheduleTaskData[]
   dependencies?: readonly TaskDependencyData[]
+  exceptions?: readonly WorkdayExceptionData[]
   assigneeOptions?: readonly ProjectTaskAssigneeOption[]
 }
 
@@ -124,6 +126,7 @@ export function ScheduleItemFormDialog({
   editingTask,
   allTasks = [],
   dependencies = [],
+  exceptions = [],
   assigneeOptions = [],
 }: ScheduleItemFormDialogProps) {
   const router = useRouter()
@@ -196,45 +199,64 @@ export function ScheduleItemFormDialog({
   const watchedWorkdays = form.watch("workdays")
   const watchedPhase = form.watch("phase")
   const watchedDisplayColor = form.watch("displayColor")
+  const watchedStatus = form.watch("status")
   const watchedPercent = form.watch("percentComplete")
 
   const calculatedEnd = useMemo(() => {
     if (!watchedStart || !watchedWorkdays || watchedWorkdays < 1) return ""
-    return calculateEndDate(watchedStart, watchedWorkdays)
-  }, [watchedStart, watchedWorkdays])
+    return calculateEndDate(watchedStart, watchedWorkdays, exceptions)
+  }, [exceptions, watchedStart, watchedWorkdays])
 
   async function onSubmit(values: ScheduleItemFormValues) {
     const { notes, ...taskValues } = values
     void notes
-    let result
+    let savedTaskId: string
     if (isEditing) {
-      result = await updateTask(editingTask.id, {
+      const result = await updateTask(editingTask.id, {
         ...taskValues,
         assignedTo: taskValues.assignedTo || null,
       })
+      if (!result.success) {
+        toast.error(result.error)
+        return
+      }
+      savedTaskId = editingTask.id
     } else {
-      result = await createTask(projectId, {
+      const result = await createTask(projectId, {
         ...taskValues,
         assignedTo: taskValues.assignedTo || undefined,
       })
+      if (!result.success) {
+        toast.error(result.error)
+        return
+      }
+      savedTaskId = result.taskId
     }
 
-    if (result.success) {
-      for (const pred of pendingPredecessors) {
-        if (pred.taskId) {
-          await createDependency({
-            predecessorId: pred.taskId,
-            successorId: editingTask?.id ?? "",
-            type: pred.type,
-            lagDays: pred.lagDays,
-            projectId,
-          })
+    const dependencyErrors: string[] = []
+    for (const predecessor of pendingPredecessors) {
+      if (predecessor.taskId) {
+        const dependencyResult = await createDependency({
+          predecessorId: predecessor.taskId,
+          successorId: savedTaskId,
+          type: predecessor.type,
+          lagDays: predecessor.lagDays,
+          projectId,
+        })
+        if (!dependencyResult.success) {
+          dependencyErrors.push(dependencyResult.error)
         }
       }
-      onOpenChange(false)
-      router.refresh()
-    } else {
-      toast.error(result.error)
+    }
+
+    onOpenChange(false)
+    router.refresh()
+    if (dependencyErrors.length > 0) {
+      toast.warning(
+        `Schedule item saved, but ${dependencyErrors.length} dependency link${
+          dependencyErrors.length === 1 ? "" : "s"
+        } could not be added: ${dependencyErrors.join("; ")}`
+      )
     }
   }
 
@@ -468,7 +490,7 @@ export function ScheduleItemFormDialog({
 
                 <CollapsibleContent className="space-y-4 pt-3">
                   {/* Status + Assignee + Milestone row */}
-                  <div className="grid grid-cols-[140px_1fr_auto] gap-3 items-end">
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-[140px_1fr_auto] sm:items-end">
                     <FormField
                       control={form.control}
                       name="status"
@@ -478,7 +500,20 @@ export function ScheduleItemFormDialog({
                             Status
                           </FormLabel>
                           <Select
-                            onValueChange={field.onChange}
+                            onValueChange={(status) => {
+                              field.onChange(status)
+                              if (status === "COMPLETE") {
+                                form.setValue("percentComplete", 100, {
+                                  shouldDirty: true,
+                                })
+                              } else if (watchedPercent >= 100) {
+                                form.setValue(
+                                  "percentComplete",
+                                  status === "IN_PROGRESS" ? 50 : 0,
+                                  { shouldDirty: true }
+                                )
+                              }
+                            }}
                             value={field.value}
                           >
                             <FormControl>
@@ -551,7 +586,23 @@ export function ScheduleItemFormDialog({
                               max={100}
                               step={5}
                               value={[field.value]}
-                              onValueChange={([val]) => field.onChange(val)}
+                              onValueChange={([value]) => {
+                                field.onChange(value)
+                                if (value === 100 && watchedStatus !== "COMPLETE") {
+                                  form.setValue("status", "COMPLETE", {
+                                    shouldDirty: true,
+                                  })
+                                } else if (
+                                  value < 100 &&
+                                  watchedStatus === "COMPLETE"
+                                ) {
+                                  form.setValue(
+                                    "status",
+                                    value > 0 ? "IN_PROGRESS" : "PENDING",
+                                    { shouldDirty: true }
+                                  )
+                                }
+                              }}
                               className="flex-1"
                             />
                           </FormControl>
@@ -584,9 +635,10 @@ export function ScheduleItemFormDialog({
                           <span className="text-[10px] text-muted-foreground shrink-0 w-8 text-center">
                             {dep.type}
                           </span>
-                          {dep.lagDays > 0 && (
+                          {dep.lagDays !== 0 && (
                             <span className="text-[10px] text-muted-foreground shrink-0">
-                              +{dep.lagDays}d
+                              {dep.lagDays > 0 ? "+" : ""}
+                              {dep.lagDays}d
                             </span>
                           )}
                           <Button
@@ -605,7 +657,7 @@ export function ScheduleItemFormDialog({
                     {pendingPredecessors.map((pred, idx) => (
                       <div
                         key={idx}
-                        className="grid grid-cols-[1fr_90px_60px_28px] gap-1.5 items-center"
+                        className="grid grid-cols-[minmax(0,1fr)_72px_72px_28px] items-center gap-1.5 sm:grid-cols-[minmax(0,1fr)_90px_72px_28px]"
                       >
                         <Select
                           value={pred.taskId}
@@ -643,8 +695,7 @@ export function ScheduleItemFormDialog({
                         </Select>
                         <Input
                           type="number"
-                          min={0}
-                          placeholder="Lag"
+                          placeholder="Lag/lead"
                           className="h-8 text-xs text-center"
                           value={pred.lagDays || ""}
                           onChange={(e) =>
