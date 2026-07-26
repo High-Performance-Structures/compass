@@ -75,7 +75,7 @@ The tools break into categories:
 
 **Data access**
 
-- `queryData` -- queries the database for customers, vendors, projects, invoices, vendor bills, schedule tasks, Sage project operations, or record details. Takes a `queryType` enum, optional `search` string, optional `id` for detail/project-scoped queries, and optional `limit`. This is the agent's read interface to the application database.
+- `queryData` -- queries the database for customers, vendors, projects, invoices, vendor bills, schedule tasks, Sage project operations, Daily Logs, Owner Updates, RFIs, or record details. Takes a `queryType` enum, optional `search` string, optional `id` for detail/project-scoped queries, and optional `limit`. Project activity results include live Compass `href` values. This is the agent's read interface to the application database.
 
 **Navigation**
 

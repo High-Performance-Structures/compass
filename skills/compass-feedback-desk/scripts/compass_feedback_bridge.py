@@ -195,6 +195,9 @@ def build_parser() -> argparse.ArgumentParser:
     reply = commands.add_parser("reply")
     reply.add_argument("--payload-file", required=True)
 
+    search = commands.add_parser("search")
+    search.add_argument("--event-id", required=True)
+
     configure = commands.add_parser("configure")
     configure.add_argument("--base-url", required=True)
     configure.add_argument("--env-file", required=True)
@@ -245,6 +248,12 @@ def main() -> int:
             "POST",
             f"/api/integrations/jarvis/events/{event_id}/ack",
             load_payload(args.payload_file),
+        )
+    elif args.command == "search":
+        event_id = urllib.parse.quote(args.event_id, safe="")
+        result = request_json(
+            "GET",
+            f"/api/integrations/jarvis/events/{event_id}/search",
         )
     else:
         result = request_json(

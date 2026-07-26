@@ -1,9 +1,23 @@
 import { getCloudflareContext } from "@/lib/db"
 import { getDb } from "@/db"
 import { validateAgentAuth } from "@/lib/agent/api-auth"
-import { projectOperations, projects, scheduleTasks } from "@/db/schema"
+import {
+  dailyLogs,
+  ownerProjectUpdates,
+  projectOperations,
+  projectRfis,
+  projects,
+  scheduleTasks,
+} from "@/db/schema"
 import { invoices, vendorBills } from "@/db/schema-netsuite"
-import { eq, and, like, or } from "drizzle-orm"
+import { and, desc, eq, like, or } from "drizzle-orm"
+import {
+  canSearchCompassRole,
+  dailyLogHref,
+  ownerUpdateHref,
+  projectHref,
+  rfiHref,
+} from "@/lib/jarvis/search"
 
 export async function POST(req: Request): Promise<Response> {
   const { env } = await getCloudflareContext()
@@ -15,6 +29,12 @@ export async function POST(req: Request): Promise<Response> {
       status: 401,
       headers: { "Content-Type": "application/json" },
     })
+  }
+  if (!canSearchCompassRole(auth.role)) {
+    return Response.json(
+      { error: "Compass search is unavailable for this account" },
+      { status: 403 }
+    )
   }
 
   const db = getDb(env.DB)
@@ -35,7 +55,7 @@ export async function POST(req: Request): Promise<Response> {
   }
 
   const orgId = auth.orgId
-  const cap = body.limit ?? 20
+  const cap = Math.min(50, Math.max(1, body.limit ?? 20))
 
   try {
     switch (body.queryType) {
@@ -100,8 +120,12 @@ export async function POST(req: Request): Promise<Response> {
               : conditions[0]
           },
         })
+        const data = rows.map((row) => ({
+          ...row,
+          href: projectHref(row.id),
+        }))
         return new Response(
-          JSON.stringify({ data: rows, count: rows.length }),
+          JSON.stringify({ data, count: data.length }),
           {
             headers: { "Content-Type": "application/json" },
           }
@@ -269,6 +293,133 @@ export async function POST(req: Request): Promise<Response> {
         )
       }
 
+      case "daily_logs": {
+        const whereConditions = [eq(projects.organizationId, orgId)]
+        if (body.id) {
+          whereConditions.push(eq(dailyLogs.projectId, body.id))
+        }
+        if (body.search) {
+          const search = `%${body.search}%`
+          const searchCondition = or(
+            like(projects.name, search),
+            like(projects.projectNumber, search),
+            like(dailyLogs.workCompleted, search),
+            like(dailyLogs.issues, search),
+            like(dailyLogs.notes, search)
+          )
+          if (searchCondition) whereConditions.push(searchCondition)
+        }
+        const rows = await db
+          .select({
+            id: dailyLogs.id,
+            projectId: dailyLogs.projectId,
+            projectName: projects.name,
+            projectNumber: projects.projectNumber,
+            logDate: dailyLogs.logDate,
+            workCompleted: dailyLogs.workCompleted,
+            issues: dailyLogs.issues,
+            notes: dailyLogs.notes,
+            reviewStatus: dailyLogs.reviewStatus,
+            isClientVisible: dailyLogs.isClientVisible,
+          })
+          .from(dailyLogs)
+          .innerJoin(projects, eq(dailyLogs.projectId, projects.id))
+          .where(and(...whereConditions))
+          .orderBy(desc(dailyLogs.logDate), desc(dailyLogs.updatedAt))
+          .limit(cap)
+        const data = rows.map((row) => ({
+          ...row,
+          href: dailyLogHref(row.projectId, row.id),
+        }))
+        return Response.json({ data, count: data.length })
+      }
+
+      case "owner_updates": {
+        const whereConditions = [eq(projects.organizationId, orgId)]
+        if (body.id) {
+          whereConditions.push(eq(ownerProjectUpdates.projectId, body.id))
+        }
+        if (body.search) {
+          const search = `%${body.search}%`
+          const searchCondition = or(
+            like(projects.name, search),
+            like(projects.projectNumber, search),
+            like(ownerProjectUpdates.title, search),
+            like(ownerProjectUpdates.summary, search)
+          )
+          if (searchCondition) whereConditions.push(searchCondition)
+        }
+        const rows = await db
+          .select({
+            id: ownerProjectUpdates.id,
+            projectId: ownerProjectUpdates.projectId,
+            projectName: projects.name,
+            projectNumber: projects.projectNumber,
+            title: ownerProjectUpdates.title,
+            updateDate: ownerProjectUpdates.updateDate,
+            summary: ownerProjectUpdates.summary,
+            status: ownerProjectUpdates.status,
+            periodStart: ownerProjectUpdates.periodStart,
+            periodEnd: ownerProjectUpdates.periodEnd,
+          })
+          .from(ownerProjectUpdates)
+          .innerJoin(projects, eq(ownerProjectUpdates.projectId, projects.id))
+          .where(and(...whereConditions))
+          .orderBy(
+            desc(ownerProjectUpdates.updateDate),
+            desc(ownerProjectUpdates.updatedAt)
+          )
+          .limit(cap)
+        const data = rows.map((row) => ({
+          ...row,
+          href: ownerUpdateHref(row.projectId, row.id),
+        }))
+        return Response.json({ data, count: data.length })
+      }
+
+      case "rfis": {
+        const whereConditions = [eq(projects.organizationId, orgId)]
+        if (body.id) {
+          whereConditions.push(eq(projectRfis.projectId, body.id))
+        }
+        if (body.search) {
+          const search = `%${body.search}%`
+          const searchCondition = or(
+            like(projects.name, search),
+            like(projects.projectNumber, search),
+            like(projectRfis.rfiNumber, search),
+            like(projectRfis.subject, search),
+            like(projectRfis.question, search),
+            like(projectRfis.answer, search)
+          )
+          if (searchCondition) whereConditions.push(searchCondition)
+        }
+        const rows = await db
+          .select({
+            id: projectRfis.id,
+            projectId: projectRfis.projectId,
+            projectName: projects.name,
+            projectNumber: projects.projectNumber,
+            rfiNumber: projectRfis.rfiNumber,
+            subject: projectRfis.subject,
+            question: projectRfis.question,
+            answer: projectRfis.answer,
+            status: projectRfis.status,
+            dueDate: projectRfis.dueDate,
+            submittedAt: projectRfis.submittedAt,
+          })
+          .from(projectRfis)
+          .innerJoin(projects, eq(projectRfis.projectId, projects.id))
+          .where(and(...whereConditions))
+          .orderBy(desc(projectRfis.submittedAt), desc(projectRfis.updatedAt))
+          .limit(cap)
+        const data = rows.map((row) => ({
+          ...row,
+          href: rfiHref(row.projectId, row.id),
+        }))
+        return Response.json({ data, count: data.length })
+      }
+
       case "project_detail": {
         const queryId = body.id
         if (!queryId) {
@@ -290,9 +441,17 @@ export async function POST(req: Request): Promise<Response> {
             headers: { "Content-Type": "application/json" },
           })
         }
-        return new Response(JSON.stringify({ data: row }), {
-          headers: { "Content-Type": "application/json" },
-        })
+        return new Response(
+          JSON.stringify({
+            data: {
+              ...row,
+              href: projectHref(row.id),
+            },
+          }),
+          {
+            headers: { "Content-Type": "application/json" },
+          },
+        )
       }
 
       case "customer_detail": {
