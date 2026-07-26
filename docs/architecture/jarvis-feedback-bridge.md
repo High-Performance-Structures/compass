@@ -221,3 +221,8 @@ Rollout checklist
 9. Confirm a guest sees no Ask Compass entry point and receives HTTP 403 from
    all three agent endpoints.
 10. Enable Telegram and email intake one source at a time.
+
+The bundled bridge helper includes a `configure` command for step 5. It
+generates the HMAC key on the private runtime and returns only RSA-encrypted
+ciphertext for one-time transfer into Cloudflare. The raw shared key must not
+be printed, logged, or committed.
