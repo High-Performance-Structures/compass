@@ -1,4 +1,6 @@
 import importlib.util
+import subprocess
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -30,6 +32,103 @@ class SignatureTests(unittest.TestCase):
             "sha256=bc5d2a69489415e9bbbb469ffcc36b3036ab8f"
             "442e866dc0a48fbae587d4ba92",
         )
+
+    def test_update_env_file_preserves_unrelated_values(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            env_path = Path(directory) / ".env"
+            env_path.write_text(
+                "TELEGRAM_BOT_TOKEN=unchanged\n"
+                "JARVIS_BRIDGE_SECRET=old\n"
+                "JARVIS_BRIDGE_SECRET=duplicate\n",
+                encoding="utf-8",
+            )
+
+            MODULE.update_env_file(
+                env_path,
+                {
+                    "COMPASS_BASE_URL": "https://compass.example.com",
+                    "JARVIS_BRIDGE_SECRET": "new",
+                },
+            )
+
+            self.assertEqual(
+                env_path.read_text(encoding="utf-8"),
+                "TELEGRAM_BOT_TOKEN=unchanged\n"
+                "JARVIS_BRIDGE_SECRET=new\n"
+                "\n"
+                "COMPASS_BASE_URL=https://compass.example.com\n",
+            )
+            self.assertEqual(env_path.stat().st_mode & 0o777, 0o600)
+
+    def test_encrypt_for_transfer_round_trip(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            temporary = Path(directory)
+            private_key = temporary / "private.pem"
+            public_der = temporary / "public.der"
+            encrypted = temporary / "encrypted.bin"
+            decrypted = temporary / "decrypted.txt"
+            subprocess.run(
+                [
+                    "openssl",
+                    "genpkey",
+                    "-quiet",
+                    "-algorithm",
+                    "RSA",
+                    "-pkeyopt",
+                    "rsa_keygen_bits:2048",
+                    "-out",
+                    str(private_key),
+                ],
+                check=True,
+            )
+            subprocess.run(
+                [
+                    "openssl",
+                    "pkey",
+                    "-in",
+                    str(private_key),
+                    "-pubout",
+                    "-outform",
+                    "DER",
+                    "-out",
+                    str(public_der),
+                ],
+                check=True,
+            )
+            encoded_public_key = MODULE.base64.b64encode(
+                public_der.read_bytes()
+            ).decode("ascii")
+            encrypted.write_bytes(
+                MODULE.base64.b64decode(
+                    MODULE.encrypt_for_transfer(
+                        "shared-bridge-secret",
+                        encoded_public_key,
+                    )
+                )
+            )
+            subprocess.run(
+                [
+                    "openssl",
+                    "pkeyutl",
+                    "-decrypt",
+                    "-inkey",
+                    str(private_key),
+                    "-pkeyopt",
+                    "rsa_padding_mode:oaep",
+                    "-pkeyopt",
+                    "rsa_oaep_md:sha256",
+                    "-in",
+                    str(encrypted),
+                    "-out",
+                    str(decrypted),
+                ],
+                check=True,
+            )
+
+            self.assertEqual(
+                decrypted.read_text(encoding="utf-8"),
+                "shared-bridge-secret",
+            )
 
 
 if __name__ == "__main__":

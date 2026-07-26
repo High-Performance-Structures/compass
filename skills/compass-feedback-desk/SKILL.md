@@ -69,6 +69,15 @@ python scripts/compass_feedback_bridge.py pull --limit 20
 
 Do not invoke a model when the response contains no events.
 
+## Configure the private runtime
+
+For first-time setup, use the helper's `configure` command with an ephemeral
+RSA public key. It generates the bridge secret on the private runtime, writes
+only `COMPASS_BASE_URL` and `JARVIS_BRIDGE_SECRET` to the selected dotenv
+file with mode `0600`, and returns only encrypted ciphertext. Decrypt that
+ciphertext outside the runtime and pipe it directly into the Compass secret
+store. Never commit the transfer key or decrypted secret.
+
 ## Guardrails
 
 - Never expose `JARVIS_BRIDGE_SECRET`, Telegram credentials, email
