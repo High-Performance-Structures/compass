@@ -4,6 +4,7 @@ import * as React from "react"
 import {
   IconAddressBook,
   IconCalendarStats,
+  IconClipboardCheck,
   IconClipboardText,
   IconFiles,
   IconFileDollar,
@@ -47,12 +48,20 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar"
 
-const NAV_MAIN = [
+const PERSISTENT_NAV = [
   {
     title: "Dashboard",
     url: "/dashboard",
     icon: IconHome2,
   },
+  {
+    title: "To-Dos",
+    url: "/dashboard/schedule?kind=task",
+    icon: IconClipboardCheck,
+  },
+]
+
+const NAV_MAIN = [
   {
     title: "Projects",
     url: "/dashboard/projects",
@@ -189,6 +198,7 @@ function SidebarNav({
 
   return (
     <div key={mode} className="animate-in fade-in slide-in-from-left-1 flex flex-1 flex-col duration-150">
+      <NavMain items={PERSISTENT_NAV} />
       {mode === "files" && (
         <React.Suspense>
           <NavFiles />
