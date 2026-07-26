@@ -75,11 +75,11 @@ export function SiteHeader({
             type="button"
             className="flex h-9 flex-1 items-center gap-2 rounded-full px-2 hover:bg-background/60"
             onClick={openCommand}
-            aria-label="Search"
+            aria-label="Ask Jarvis or search Compass"
           >
             <IconSearch className="size-4 text-muted-foreground shrink-0" />
             <span className="text-muted-foreground text-sm">
-              Search...
+              Ask Jarvis or search...
             </span>
           </button>
           <button
@@ -156,7 +156,7 @@ export function SiteHeader({
                 searchInputRef.current?.blur()
               }
             }}
-            placeholder="Search..."
+            placeholder="Ask Jarvis or search Compass..."
             className="flex h-8 w-full items-center rounded-full border border-border/50 bg-muted/30 pl-9 pr-16 text-sm outline-none transition-colors placeholder:text-muted-foreground/60 hover:bg-muted/50 focus:bg-muted/50 focus:border-border"
           />
           <kbd

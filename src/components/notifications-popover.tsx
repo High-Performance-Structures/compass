@@ -1,6 +1,12 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react"
 import Link from "next/link"
 import {
   IconAlertCircle,
@@ -132,30 +138,64 @@ export function NotificationsPopover() {
   const [loading, setLoading] = useState(true)
   const [notifications, setNotifications] =
     useState<readonly NotificationCenterItem[]>([])
+  const mountedRef = useRef(true)
   const unreadCount = useMemo(
     () => notifications.filter((item) => item.readAt === null).length,
     [notifications]
   )
   const hasUnread = unreadCount > 0
 
-  useEffect(() => {
-    let cancelled = false
-    async function load(): Promise<void> {
-      setLoading(true)
-      const result = await getNotificationCenter()
-      if (!cancelled && result.success) {
-        setNotifications(result.data.items)
+  const loadNotifications = useCallback(
+    async (showLoading: boolean): Promise<void> => {
+      if (showLoading) setLoading(true)
+      try {
+        const result = await getNotificationCenter()
+        if (!mountedRef.current) return
+        if (result.success) {
+          setNotifications(result.data.items)
+        }
+      } catch {
+        // Keep the last known notifications during a transient refresh error.
+      } finally {
+        if (mountedRef.current) setLoading(false)
       }
-      if (!cancelled) {
-        setLoading(false)
-      }
-    }
+    },
+    []
+  )
 
-    load()
-    return () => {
-      cancelled = true
+  useEffect(() => {
+    mountedRef.current = true
+    void loadNotifications(true)
+    const intervalId = window.setInterval(() => {
+      void loadNotifications(false)
+    }, 15_000)
+    function refreshWhenVisible(): void {
+      if (document.visibilityState === "visible") {
+        void loadNotifications(false)
+      }
     }
-  }, [])
+    window.addEventListener("focus", refreshWhenVisible)
+    document.addEventListener(
+      "visibilitychange",
+      refreshWhenVisible
+    )
+    return () => {
+      mountedRef.current = false
+      window.clearInterval(intervalId)
+      window.removeEventListener("focus", refreshWhenVisible)
+      document.removeEventListener(
+        "visibilitychange",
+        refreshWhenVisible
+      )
+    }
+  }, [loadNotifications])
+
+  function changeOpen(nextOpen: boolean): void {
+    setOpen(nextOpen)
+    if (nextOpen) {
+      void loadNotifications(false)
+    }
+  }
 
   async function clearAll(): Promise<void> {
     const result = await markAllNotificationsRead()
@@ -197,7 +237,7 @@ export function NotificationsPopover() {
 
   if (isMobile) {
     return (
-      <Sheet open={open} onOpenChange={setOpen}>
+      <Sheet open={open} onOpenChange={changeOpen}>
         <SheetTrigger asChild>{trigger}</SheetTrigger>
         <SheetContent side="bottom" className="p-0" showClose={false}>
           <SheetHeader className="border-b px-4 py-3 text-left">
@@ -217,7 +257,7 @@ export function NotificationsPopover() {
   }
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover open={open} onOpenChange={changeOpen}>
       <PopoverTrigger asChild>{trigger}</PopoverTrigger>
       <PopoverContent align="end" className="w-80 p-0">
         <div className="border-b px-4 py-3">

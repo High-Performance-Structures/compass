@@ -235,6 +235,29 @@ POST /api/integrations/jarvis/events
 The adapter must not send a Telegram token or message-provider credential in
 the payload or metadata.
 
+### Update a Feedback Desk request
+
+```text
+POST /api/integrations/jarvis/feedback/<feedback-desk-item-id>/status
+```
+
+The signed lifecycle endpoint accepts an idempotency key, one of the visible
+request states (`new`, `triaged`, `needs_info`, `planned`, `in_progress`,
+`testing`, `deployed`, or `closed`), an optional staff-facing message,
+priority, and GitHub issue URL. Compass updates the durable Feedback Desk
+record and creates:
+
+- an in-app notification for the matching authenticated requester;
+- preference-aware email/push delivery for information-needed, testing, and
+  deployment milestones; and
+- a `feedback.status_changed` outbound bridge event so Telegram, email, and
+  originating Compass-thread adapters can reply through the source channel.
+
+The notification links to `/dashboard/requests`, where authenticated users
+see only requests matching their organization and account email. GitHub
+remains the developer record and is not required for staff to follow a
+request.
+
 ### Reply to a Compass assistance request
 
 ```text
@@ -274,6 +297,24 @@ Substantive answers should be drafts until the response policy has been
 validated with staff. Never automatically send commitments, personnel
 decisions, security or privacy disclosures, legal or financial guidance, or
 customer-sensitive statements.
+
+Compass notification behavior
+---
+
+The notification bell is the default awareness surface:
+
+- every ordinary conversation message creates a bell notification for other
+  channel members whose channel notification level allows it;
+- ordinary channel messages are bell-only so routine traffic does not create
+  an email flood;
+- direct mentions keep their existing push behavior;
+- RFI participants and mapped to-do or schedule assignees receive
+  preference-aware notifications; and
+- Feedback Desk milestones create requester notifications.
+
+The bell refreshes when opened, when the browser regains focus, and every 15
+seconds while Compass is open. Conversation unread counts are incremented for
+other channel members when a message is stored.
 
 Rollout checklist
 ---

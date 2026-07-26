@@ -198,7 +198,7 @@ export async function getNotificationCenter(): Promise<NotificationCenterResult>
         )
       )
       .orderBy(desc(notificationRecipients.createdAt))
-      .limit(20)
+      .limit(100)
 
     return {
       success: true,
