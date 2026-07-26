@@ -11,6 +11,7 @@ import {
   IconSettingsFilled,
   IconFile,
   IconFileFilled,
+  IconHeartHandshake,
 } from "@tabler/icons-react"
 import { cn } from "@/lib/utils"
 
@@ -65,7 +66,11 @@ function NavItem({
   )
 }
 
-export function MobileBottomNav() {
+export function MobileBottomNav({
+  canUseFieldDesk = false,
+}: {
+  readonly canUseFieldDesk?: boolean
+}) {
   const pathname = usePathname()
 
   const isActive = (path: string) => {
@@ -80,7 +85,12 @@ export function MobileBottomNav() {
         "border-t bg-background"
       )}
     >
-      <div className="grid h-14 grid-cols-4 items-center pb-[env(safe-area-inset-bottom)]">
+      <div
+        className={cn(
+          "grid h-14 items-center pb-[env(safe-area-inset-bottom)]",
+          canUseFieldDesk ? "grid-cols-5" : "grid-cols-4",
+        )}
+      >
         <NavItem
           href="/dashboard"
           icon={<IconHome className="size-[22px]" />}
@@ -97,6 +107,15 @@ export function MobileBottomNav() {
           label="Projects"
           isActive={isActive("/dashboard/projects")}
         />
+        {canUseFieldDesk && (
+          <NavItem
+            href="/dashboard/field"
+            icon={<IconHeartHandshake className="size-[22px]" />}
+            activeIcon={<IconHeartHandshake className="size-[22px]" />}
+            label="Field"
+            isActive={isActive("/dashboard/field")}
+          />
+        )}
         <NavItem
           href="/dashboard/settings"
           icon={<IconSettings className="size-[22px]" />}

@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest"
 import type { AuthUser } from "@/lib/auth"
-import { canUseAskCompass } from "@/lib/permissions"
+import {
+  canUseAskCompass,
+  canUseFieldDesk,
+} from "@/lib/permissions"
 
 function userWithRole(role: string): AuthUser {
   return {
@@ -42,5 +45,31 @@ describe("canUseAskCompass", () => {
     expect(canUseAskCompass(inactiveAdmin)).toBe(false)
     expect(canUseAskCompass(userWithRole("client"))).toBe(false)
     expect(canUseAskCompass(null)).toBe(false)
+  })
+})
+
+describe("canUseFieldDesk", () => {
+  it.each(["admin", "office", "field"])(
+    "allows active internal role %s",
+    (role) => {
+      expect(canUseFieldDesk(userWithRole(role))).toBe(true)
+    },
+  )
+
+  it.each(["secondary_admin", "client", "guest", "unknown"])(
+    "denies external or unknown role %s",
+    (role) => {
+      expect(canUseFieldDesk(userWithRole(role))).toBe(false)
+    },
+  )
+
+  it("denies inactive and unauthenticated users", () => {
+    expect(
+      canUseFieldDesk({
+        ...userWithRole("field"),
+        isActive: false,
+      }),
+    ).toBe(false)
+    expect(canUseFieldDesk(null)).toBe(false)
   })
 })

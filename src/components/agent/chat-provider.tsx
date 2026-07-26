@@ -20,6 +20,7 @@ import {
   setBridgeConnected as storeBridgeConnected,
   setBridgeEnabled as storeBridgeEnabled,
 } from "@/lib/agent/bridge-store"
+import { useFieldOutboxSync } from "@/hooks/use-field-outbox-sync"
 
 // --- Panel context (open/close sidebar) ---
 
@@ -52,7 +53,7 @@ interface ChatStateValue {
       | AgentMessage[]
       | ((prev: AgentMessage[]) => AgentMessage[])
   ) => void
-  sendMessage: (params: { text: string }) => void
+  sendMessage: (params: { text: string }) => Promise<boolean>
   regenerate: () => void
   stop: () => void
   readonly status: string
@@ -185,19 +186,34 @@ function findGenerateUIOutput(
 export function ChatProvider({
   children,
   enabled = true,
+  offlineScopeKey = null,
+  canSubmitCherish = false,
 }: {
   readonly children: React.ReactNode
   readonly enabled?: boolean
+  readonly offlineScopeKey?: string | null
+  readonly canSubmitCherish?: boolean
 }) {
   if (!enabled) return <>{children}</>
 
-  return <EnabledChatProvider>{children}</EnabledChatProvider>
+  return (
+    <EnabledChatProvider
+      offlineScopeKey={offlineScopeKey}
+      canSubmitCherish={canSubmitCherish}
+    >
+      {children}
+    </EnabledChatProvider>
+  )
 }
 
 function EnabledChatProvider({
   children,
+  offlineScopeKey,
+  canSubmitCherish,
 }: {
   readonly children: React.ReactNode
+  readonly offlineScopeKey: string | null
+  readonly canSubmitCherish: boolean
 }) {
   const [isOpen, setIsOpen] = React.useState(false)
   const [conversationId, setConversationId] =
@@ -265,6 +281,13 @@ function EnabledChatProvider({
 
       await saveConversation(conversationId, serialized)
     },
+  })
+  const fieldOutbox = useFieldOutboxSync({
+    scopeKey: offlineScopeKey,
+    canUseAskJarvis: true,
+    canSubmitCherish,
+    chatStatus: chat.status,
+    sendOnlineMessage: chat.sendMessage,
   })
 
   // UI stream for json-render — stabilize callbacks
@@ -499,61 +522,66 @@ function EnabledChatProvider({
     if (!isOpen || resumeLoaded) return
 
     const resume = async () => {
-      const result = await loadConversations()
-      if (
-        !result.success ||
-        !result.data ||
-        result.data.length === 0
-      ) {
-        setResumeLoaded(true)
-        return
-      }
+      try {
+        const result = await loadConversations()
+        if (
+          !result.success ||
+          !result.data ||
+          result.data.length === 0
+        ) {
+          setResumeLoaded(true)
+          return
+        }
 
-      const lastConv = result.data[0]
-      const msgResult = await loadConversation(lastConv.id)
-      if (
-        !msgResult.success ||
-        !msgResult.data ||
-        msgResult.data.length === 0
-      ) {
-        setResumeLoaded(true)
-        return
-      }
+        const lastConv = result.data[0]
+        const msgResult = await loadConversation(lastConv.id)
+        if (
+          !msgResult.success ||
+          !msgResult.data ||
+          msgResult.data.length === 0
+        ) {
+          setResumeLoaded(true)
+          return
+        }
 
-      setConversationId(lastConv.id)
+        setConversationId(lastConv.id)
 
-      const restored: AgentMessage[] = msgResult.data.map(
-        (m) => ({
-          id: m.id,
-          role: m.role as "user" | "assistant",
-          parts:
-            (m.parts as AgentMessage["parts"]) ?? [
-              { type: "text" as const, text: m.content },
-            ],
-          createdAt: m.createdAt ? new Date(m.createdAt) : new Date(),
-        })
-      )
-
-      // mark all generateUI tool calls from restored messages
-      // as already-dispatched so the watcher doesn't re-trigger
-      // renders or navigate to /dashboard on resume
-      for (const m of restored) {
-        if (m.role !== "assistant") continue
-        let result = findGenerateUIOutput(
-          m.parts,
-          renderDispatchedRef.current
+        const restored: AgentMessage[] = msgResult.data.map(
+          (m) => ({
+            id: m.id,
+            role: m.role as "user" | "assistant",
+            parts:
+              (m.parts as AgentMessage["parts"]) ?? [
+                { type: "text" as const, text: m.content },
+              ],
+            createdAt: m.createdAt ? new Date(m.createdAt) : new Date(),
+          })
         )
-        while (result) {
-          renderDispatchedRef.current.add(result.callId)
-          result = findGenerateUIOutput(
+
+        // mark all generateUI tool calls from restored messages
+        // as already-dispatched so the watcher doesn't re-trigger
+        // renders or navigate to /dashboard on resume
+        for (const m of restored) {
+          if (m.role !== "assistant") continue
+          let result = findGenerateUIOutput(
             m.parts,
             renderDispatchedRef.current
           )
+          while (result) {
+            renderDispatchedRef.current.add(result.callId)
+            result = findGenerateUIOutput(
+              m.parts,
+              renderDispatchedRef.current
+            )
+          }
         }
-      }
 
-      chat.setMessages(restored)
-      setResumeLoaded(true)
+        chat.setMessages(restored)
+        setResumeLoaded(true)
+      } catch {
+        // Offline field users can still open Jarvis and queue a message.
+        setResumeLoaded(true)
+      }
     }
 
     resume()
@@ -582,7 +610,7 @@ function EnabledChatProvider({
     () => ({
       messages: chat.messages,
       setMessages: chat.setMessages,
-      sendMessage: chat.sendMessage,
+      sendMessage: fieldOutbox.sendMessage,
       regenerate: chat.regenerate,
       stop: chat.stop,
       status: chat.status,
@@ -595,7 +623,7 @@ function EnabledChatProvider({
     [
       chat.messages,
       chat.setMessages,
-      chat.sendMessage,
+      fieldOutbox.sendMessage,
       chat.regenerate,
       chat.stop,
       chat.status,
