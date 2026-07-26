@@ -198,25 +198,30 @@ export function OwnerUpdateDraftEditor({
                 {selectedPhotoIds.length} selected
               </span>
             </div>
-            {document.availablePhotos.length > 0 && (
+            {(document.availablePhotos.length > 0 ||
+              selectedPhotoIds.length > 0) && (
               <div className="flex flex-wrap gap-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={selectAllPhotos}
-                >
-                  Select all
-                </Button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={clearPhotos}
-                >
-                  <IconX className="size-4" />
-                  Clear
-                </Button>
+                {document.availablePhotos.length > 0 && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={selectAllPhotos}
+                  >
+                    Select all
+                  </Button>
+                )}
+                {selectedPhotoIds.length > 0 && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={clearPhotos}
+                  >
+                    <IconX className="size-4" />
+                    Clear
+                  </Button>
+                )}
               </div>
             )}
           </div>
