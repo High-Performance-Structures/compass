@@ -20,6 +20,14 @@ import { ProjectQuickSwitcher } from "@/components/projects/project-quick-switch
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
+import {
+  canonicalRfiStatus,
+  compareRfisForQueue,
+  isClosedRfiStatus,
+  parseRfiStatusFilter,
+  rfiMatchesStatusFilter,
+  type RfiStatusFilter,
+} from "@/lib/rfis/status"
 import { cn } from "@/lib/utils"
 
 function readFormText(formData: FormData, name: string): string {
@@ -48,12 +56,6 @@ function label(value: string): string {
     .join(" ")
 }
 
-function isActiveRfiStatus(status: string): boolean {
-  return !["complete", "closed", "void", "cancelled"].includes(
-    status.toLowerCase()
-  )
-}
-
 function unique(values: readonly (string | null | undefined)[]): readonly string[] {
   return Array.from(
     new Set(
@@ -68,6 +70,19 @@ function rfiTaskTitle(subject: string): string {
   return `Follow up RFI: ${subject}`
 }
 
+const RFI_FILTERS: readonly {
+  readonly value: RfiStatusFilter
+  readonly label: string
+}[] = [
+  { value: "open", label: "Open" },
+  { value: "new", label: "New" },
+  { value: "in_progress", label: "In progress" },
+  { value: "info_needed", label: "Info needed" },
+  { value: "complete", label: "Complete" },
+  { value: "void", label: "Void" },
+  { value: "all", label: "All" },
+]
+
 export default async function ProjectRfisPage({
   params,
   searchParams,
@@ -75,6 +90,7 @@ export default async function ProjectRfisPage({
   readonly params: Promise<{ readonly id: string }>
   readonly searchParams: Promise<{
     readonly created?: string | readonly string[]
+    readonly status?: string | readonly string[]
   }>
 }) {
   const { id } = await params
@@ -82,6 +98,7 @@ export default async function ProjectRfisPage({
   const createdRfiId = Array.isArray(query.created)
     ? query.created[0] ?? null
     : query.created ?? null
+  const statusFilter = parseRfiStatusFilter(query.status)
   const [projects, rfis, contactsSummary, taskAssigneeOptions] =
     await Promise.all([
       getProjects(),
@@ -94,7 +111,12 @@ export default async function ProjectRfisPage({
     ...taskAssigneeOptions.projectContacts,
     ...taskAssigneeOptions.directoryContacts,
   ]
-  const openCount = rfis.filter((rfi) => isActiveRfiStatus(rfi.status)).length
+  const openCount = rfis.filter(
+    (rfi) => !isClosedRfiStatus(rfi.status)
+  ).length
+  const visibleRfis = [...rfis]
+    .filter((rfi) => rfiMatchesStatusFilter(rfi.status, statusFilter))
+    .sort(compareRfisForQueue)
   const contacts = contactsSummary.allContacts
   const companyOrTradeOptions = unique(
     contacts.flatMap((contact) => [
@@ -181,9 +203,35 @@ export default async function ProjectRfisPage({
           />
         </div>
 
-        {rfis.length > 0 ? (
-          rfis.map((rfi) => {
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <nav
+            aria-label="Filter RFIs by status"
+            className="flex flex-wrap gap-1"
+          >
+            {RFI_FILTERS.map((option) => (
+              <Button
+                key={option.value}
+                asChild
+                size="sm"
+                variant={statusFilter === option.value ? "secondary" : "ghost"}
+              >
+                <Link
+                  href={`/dashboard/projects/${id}/rfis?status=${option.value}`}
+                >
+                  {option.label}
+                </Link>
+              </Button>
+            ))}
+          </nav>
+          <p className="text-xs text-muted-foreground">
+            {visibleRfis.length} of {rfis.length} shown
+          </p>
+        </div>
+
+        {visibleRfis.length > 0 ? (
+          visibleRfis.map((rfi) => {
             const isCreated = rfi.id === createdRfiId
+            const canonicalStatus = canonicalRfiStatus(rfi.status)
             return (
               <article
                 key={rfi.id}
@@ -209,10 +257,10 @@ export default async function ProjectRfisPage({
                     )}
                     <Badge
                       variant={
-                        isActiveRfiStatus(rfi.status) ? "secondary" : "outline"
+                        !isClosedRfiStatus(rfi.status) ? "secondary" : "outline"
                       }
                     >
-                      {label(rfi.status)}
+                      {label(canonicalStatus)}
                     </Badge>
                     <Badge variant="outline">{label(rfi.audience)}</Badge>
                     {rfi.priority === "high" && (
@@ -295,7 +343,7 @@ export default async function ProjectRfisPage({
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_1fr_auto]">
                     <select
                       name="status"
-                      defaultValue={rfi.status}
+                      defaultValue={canonicalStatus}
                       className="h-9 rounded-md border bg-background px-3 text-sm"
                     >
                       <option value="new">New</option>
@@ -324,11 +372,15 @@ export default async function ProjectRfisPage({
             )
           })
         ) : (
-          <div className="rounded-lg border bg-background p-8 text-center">
+          <div className="border-y bg-background p-8 text-center">
             <IconClock className="mx-auto size-6 text-muted-foreground" />
-            <h2 className="mt-3 text-sm font-semibold">No RFIs yet</h2>
+            <h2 className="mt-3 text-sm font-semibold">
+              {rfis.length === 0 ? "No RFIs yet" : "No RFIs match this filter"}
+            </h2>
             <p className="mt-1 text-sm text-muted-foreground">
-              Create the first clarification for this project.
+              {rfis.length === 0
+                ? "Create the first clarification for this project."
+                : "Choose another status to see the rest of the RFI queue."}
             </p>
           </div>
         )}
