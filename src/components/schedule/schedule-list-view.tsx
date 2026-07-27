@@ -22,6 +22,8 @@ import {
   IconPencil,
   IconTrash,
   IconLink,
+  IconCircleCheck,
+  IconX,
 } from "@tabler/icons-react"
 import {
   Select,
@@ -33,7 +35,10 @@ import {
 import { ScheduleItemFormDialog } from "./schedule-item-form-dialog"
 import { DependencyDialog } from "./dependency-dialog"
 import { effectivePercentComplete } from "@/lib/schedule/progress"
-import { deleteTask } from "@/app/actions/schedule"
+import {
+  completeScheduleTasks,
+  deleteScheduleTasks,
+} from "@/app/actions/schedule"
 import type {
   ScheduleTaskData,
   TaskDependencyData,
@@ -50,6 +55,16 @@ import {
   getScheduleItemDisplayColor,
   type DisplayColorPalette,
 } from "@/lib/schedule/appearance"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 
 interface ScheduleListViewProps {
   readonly projectId: string
@@ -132,22 +147,19 @@ export function ScheduleListView({
   const [depDialogOpen, setDepDialogOpen] = useState(false)
   const [localTasks, setLocalTasks] = useState(tasks)
   const [rowSelection, setRowSelection] = useState<Record<string, boolean>>({})
+  const [pendingDeleteTasks, setPendingDeleteTasks] = useState<
+    readonly ScheduleTaskData[]
+  >([])
+  const [isWorking, setIsWorking] = useState(false)
 
   useEffect(() => {
     setLocalTasks(tasks)
   }, [tasks])
 
-  const handleDelete = useCallback(
-    async (taskId: string) => {
-      const result = await deleteTask(taskId)
-      if (result.success) {
-        router.refresh()
-      } else {
-        toast.error(result.error)
-      }
-    },
-    [router]
-  )
+  const handleEdit = useCallback((task: ScheduleTaskData) => {
+    setEditingTask(task)
+    setTaskFormOpen(true)
+  }, [])
 
   const columns: ColumnDef<ScheduleTaskData>[] = useMemo(
     () => [
@@ -159,12 +171,14 @@ export function ScheduleListView({
             onCheckedChange={(value) =>
               table.toggleAllRowsSelected(!!value)
             }
+            aria-label="Select all schedule items"
           />
         ),
         cell: ({ row }) => (
           <Checkbox
             checked={row.getIsSelected()}
             onCheckedChange={(value) => row.toggleSelected(!!value)}
+            aria-label={`Select ${row.original.title}`}
           />
         ),
         size: 32,
@@ -188,9 +202,15 @@ export function ScheduleListView({
               task={row.original}
               palette={displayColorPalette}
             />
-            <span className="font-medium text-sm truncate max-w-[150px] sm:max-w-[200px]">
+            <button
+              type="button"
+              className="max-w-[150px] truncate text-left text-sm font-medium hover:underline sm:max-w-[200px]"
+              onClick={() => handleEdit(row.original)}
+              aria-label={`Edit ${row.original.title}`}
+              title={`Edit ${row.original.title}`}
+            >
               {row.original.title}
-            </span>
+            </button>
           </div>
         ),
       },
@@ -283,10 +303,9 @@ export function ScheduleListView({
               variant="ghost"
               size="icon"
               className="size-7"
-              onClick={() => {
-                setEditingTask(row.original)
-                setTaskFormOpen(true)
-              }}
+              onClick={() => handleEdit(row.original)}
+              aria-label={`Edit ${row.original.title}`}
+              title="Edit schedule item"
             >
               <IconPencil className="size-3.5" />
             </Button>
@@ -294,7 +313,9 @@ export function ScheduleListView({
               variant="ghost"
               size="icon"
               className="size-7"
-              onClick={() => handleDelete(row.original.id)}
+              onClick={() => setPendingDeleteTasks([row.original])}
+              aria-label={`Delete ${row.original.title}`}
+              title="Delete schedule item"
             >
               <IconTrash className="size-3.5" />
             </Button>
@@ -303,7 +324,7 @@ export function ScheduleListView({
         size: 110,
       },
     ],
-    [assigneeOptions, displayColorPalette, handleDelete, projectId]
+    [assigneeOptions, displayColorPalette, handleEdit, projectId]
   )
 
   const table = useReactTable({
@@ -316,6 +337,63 @@ export function ScheduleListView({
     state: { rowSelection },
     initialState: { pagination: { pageSize: 25 } },
   })
+  const selectedTasks = table
+    .getSelectedRowModel()
+    .rows.map((row) => row.original)
+
+  const handleCompleteSelected = async (): Promise<void> => {
+    const selectedIds = selectedTasks.map((task) => task.id)
+    if (selectedIds.length === 0) return
+
+    setIsWorking(true)
+    const result = await completeScheduleTasks(projectId, selectedIds)
+    setIsWorking(false)
+
+    if (!result.success) {
+      toast.error(result.error)
+      return
+    }
+
+    const completedIds = new Set(selectedIds)
+    setLocalTasks((current) =>
+      current.map((task) =>
+        completedIds.has(task.id)
+          ? { ...task, status: "COMPLETE", percentComplete: 100 }
+          : task
+      )
+    )
+    setRowSelection({})
+    toast.success(
+      `${selectedIds.length} schedule item${selectedIds.length === 1 ? "" : "s"} marked complete.`
+    )
+    router.refresh()
+  }
+
+  const handleConfirmDelete = async (): Promise<void> => {
+    const deletingTasks = pendingDeleteTasks
+    const selectedIds = deletingTasks.map((task) => task.id)
+    if (selectedIds.length === 0) return
+
+    setIsWorking(true)
+    const result = await deleteScheduleTasks(projectId, selectedIds)
+    setIsWorking(false)
+
+    if (!result.success) {
+      toast.error(result.error)
+      return
+    }
+
+    const deletedIds = new Set(selectedIds)
+    setLocalTasks((current) =>
+      current.filter((task) => !deletedIds.has(task.id))
+    )
+    setRowSelection({})
+    setPendingDeleteTasks([])
+    toast.success(
+      `${selectedIds.length} schedule item${selectedIds.length === 1 ? "" : "s"} deleted.`
+    )
+    router.refresh()
+  }
 
   useEffect(() => {
     if (!focusTaskId) return
@@ -332,7 +410,7 @@ export function ScheduleListView({
 
   return (
     <div className="flex flex-col flex-1 min-h-0">
-      <div className="flex gap-2 mb-2">
+      <div className="mb-2 flex flex-wrap items-center gap-2 border-y py-2">
         <Button
           size="sm"
           variant="outline"
@@ -342,6 +420,59 @@ export function ScheduleListView({
           <IconLink className="size-4 mr-1" />
           Add Dependency
         </Button>
+        {selectedTasks.length > 0 && (
+          <>
+            <span
+              className="ml-auto text-sm font-medium"
+              aria-live="polite"
+            >
+              {selectedTasks.length} selected
+            </span>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              disabled={selectedTasks.length !== 1 || isWorking}
+              onClick={() => {
+                const task = selectedTasks[0]
+                if (task) handleEdit(task)
+              }}
+            >
+              <IconPencil className="size-4" />
+              Edit selected
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              disabled={isWorking}
+              onClick={handleCompleteSelected}
+            >
+              <IconCircleCheck className="size-4" />
+              Mark complete
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="destructive"
+              disabled={isWorking}
+              onClick={() => setPendingDeleteTasks(selectedTasks)}
+            >
+              <IconTrash className="size-4" />
+              Delete selected
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              disabled={isWorking}
+              onClick={() => setRowSelection({})}
+            >
+              <IconX className="size-4" />
+              Clear
+            </Button>
+          </>
+        )}
       </div>
 
       <div className="rounded-md border flex-1 overflow-x-auto -mx-2 sm:mx-0">
@@ -382,7 +513,9 @@ export function ScheduleListView({
                   <TableRow
                     id={`schedule-item-${row.original.id}`}
                     key={row.id}
+                    data-state={row.getIsSelected() ? "selected" : undefined}
                     className={cn(
+                      row.getIsSelected() && "bg-muted/60",
                       row.original.id === focusTaskId &&
                         "bg-primary/5 outline outline-2 outline-primary/30"
                     )}
@@ -472,6 +605,40 @@ export function ScheduleListView({
         tasks={localTasks}
         dependencies={dependencies}
       />
+
+      <AlertDialog
+        open={pendingDeleteTasks.length > 0}
+        onOpenChange={(open) => {
+          if (!open && !isWorking) setPendingDeleteTasks([])
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              Delete {pendingDeleteTasks.length === 1
+                ? "this schedule item"
+                : `${pendingDeleteTasks.length} schedule items`}
+              ?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              This also removes dependencies connected to the deleted
+              {pendingDeleteTasks.length === 1 ? " item" : " items"}. This
+              action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isWorking}>
+              Keep {pendingDeleteTasks.length === 1 ? "item" : "items"}
+            </AlertDialogCancel>
+            <AlertDialogAction
+              disabled={isWorking}
+              onClick={handleConfirmDelete}
+            >
+              {isWorking ? "Deleting..." : "Delete"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

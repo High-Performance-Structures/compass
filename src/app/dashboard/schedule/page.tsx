@@ -4,6 +4,7 @@ import { getWorkCalendar } from "@/app/actions/work-calendar"
 import {
   WorkCalendar,
   type WorkCalendarKindFilter,
+  type WorkCalendarView,
 } from "@/components/schedule/work-calendar"
 
 function kindFilter(
@@ -23,12 +24,29 @@ function kindFilter(
   }
 }
 
+function calendarView(
+  value: string | readonly string[] | undefined
+): WorkCalendarView {
+  const selected = typeof value === "string" ? value : value?.[0]
+
+  switch (selected) {
+    case "today":
+    case "week":
+    case "month":
+    case "list":
+      return selected
+    default:
+      return "week"
+  }
+}
+
 export default async function SchedulePage({
   searchParams,
 }: {
   readonly searchParams: Promise<{
     readonly kind?: string | readonly string[]
     readonly item?: string | readonly string[]
+    readonly view?: string | readonly string[]
   }>
 }): Promise<React.ReactElement> {
   const query = await searchParams
@@ -42,6 +60,7 @@ export default async function SchedulePage({
       data={data}
       initialKind={kindFilter(query.kind)}
       initialItemId={initialItemId}
+      initialView={calendarView(query.view)}
     />
   )
 }

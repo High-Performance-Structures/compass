@@ -8,7 +8,7 @@ import {
   workdayExceptions,
   projects,
 } from "@/db/schema"
-import { eq, asc, and } from "drizzle-orm"
+import { eq, asc, and, inArray } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { calculateEndDate } from "@/lib/schedule/business-days"
 import { findCriticalPath } from "@/lib/schedule/critical-path"
@@ -31,6 +31,11 @@ import type {
   WorkdayExceptionData,
   WorkdayExceptionType,
 } from "@/lib/schedule/types"
+
+function revalidateSchedulePaths(projectId: string): void {
+  revalidatePath(`/dashboard/projects/${projectId}/schedule`)
+  revalidatePath("/dashboard/schedule")
+}
 
 async function fetchExceptions(
   db: ReturnType<typeof getDb>,
@@ -197,7 +202,7 @@ export async function createTask(
     }
 
     await recalcCriticalPath(db, projectId)
-    revalidatePath(`/dashboard/projects/${projectId}/schedule`)
+    revalidateSchedulePaths(projectId)
     return { success: true, taskId: id }
   } catch (error) {
     console.error("Failed to create task:", error)
@@ -330,7 +335,7 @@ export async function updateTask(
     }
 
     await recalcCriticalPath(db, task.projectId)
-    revalidatePath(`/dashboard/projects/${task.projectId}/schedule`)
+    revalidateSchedulePaths(task.projectId)
     return { success: true }
   } catch (error) {
     console.error("Failed to update task:", error)
@@ -372,11 +377,154 @@ export async function deleteTask(
 
     await db.delete(scheduleTasks).where(eq(scheduleTasks.id, taskId))
     await recalcCriticalPath(db, task.projectId)
-    revalidatePath(`/dashboard/projects/${task.projectId}/schedule`)
+    revalidateSchedulePaths(task.projectId)
     return { success: true }
   } catch (error) {
     console.error("Failed to delete task:", error)
     return { success: false, error: "Failed to delete schedule item" }
+  }
+}
+
+export async function completeScheduleTasks(
+  projectId: string,
+  taskIds: readonly string[]
+): Promise<{ readonly success: true } | { readonly success: false; readonly error: string }> {
+  try {
+    const user = await requireAuth()
+    if (isDemoUser(user.id)) {
+      return { success: false, error: "DEMO_READ_ONLY" }
+    }
+    const orgId = requireOrg(user)
+    const ids = [...new Set(taskIds.map((id) => id.trim()).filter(Boolean))]
+
+    if (ids.length === 0) {
+      return { success: false, error: "Select at least one schedule item" }
+    }
+    if (ids.length > 200) {
+      return {
+        success: false,
+        error: "Update no more than 200 schedule items at a time",
+      }
+    }
+
+    const { env } = await getCloudflareContext()
+    const db = getDb(env.DB)
+    const [project] = await db
+      .select({ id: projects.id })
+      .from(projects)
+      .where(and(eq(projects.id, projectId), eq(projects.organizationId, orgId)))
+      .limit(1)
+
+    if (!project) {
+      return { success: false, error: "Project not found or access denied" }
+    }
+
+    const matchingTasks = await db
+      .select({ id: scheduleTasks.id })
+      .from(scheduleTasks)
+      .where(
+        and(
+          eq(scheduleTasks.projectId, projectId),
+          inArray(scheduleTasks.id, ids)
+        )
+      )
+
+    if (matchingTasks.length !== ids.length) {
+      return {
+        success: false,
+        error: "One or more schedule items could not be found",
+      }
+    }
+
+    await db
+      .update(scheduleTasks)
+      .set({
+        status: "COMPLETE",
+        percentComplete: 100,
+        updatedAt: new Date().toISOString(),
+      })
+      .where(
+        and(
+          eq(scheduleTasks.projectId, projectId),
+          inArray(scheduleTasks.id, ids)
+        )
+      )
+
+    await recalcCriticalPath(db, projectId)
+    revalidateSchedulePaths(projectId)
+    return { success: true }
+  } catch (error) {
+    console.error("Failed to complete schedule items:", error)
+    return { success: false, error: "Failed to complete schedule items" }
+  }
+}
+
+export async function deleteScheduleTasks(
+  projectId: string,
+  taskIds: readonly string[]
+): Promise<{ readonly success: true } | { readonly success: false; readonly error: string }> {
+  try {
+    const user = await requireAuth()
+    if (isDemoUser(user.id)) {
+      return { success: false, error: "DEMO_READ_ONLY" }
+    }
+    const orgId = requireOrg(user)
+    const ids = [...new Set(taskIds.map((id) => id.trim()).filter(Boolean))]
+
+    if (ids.length === 0) {
+      return { success: false, error: "Select at least one schedule item" }
+    }
+    if (ids.length > 200) {
+      return {
+        success: false,
+        error: "Delete no more than 200 schedule items at a time",
+      }
+    }
+
+    const { env } = await getCloudflareContext()
+    const db = getDb(env.DB)
+    const [project] = await db
+      .select({ id: projects.id })
+      .from(projects)
+      .where(and(eq(projects.id, projectId), eq(projects.organizationId, orgId)))
+      .limit(1)
+
+    if (!project) {
+      return { success: false, error: "Project not found or access denied" }
+    }
+
+    const matchingTasks = await db
+      .select({ id: scheduleTasks.id })
+      .from(scheduleTasks)
+      .where(
+        and(
+          eq(scheduleTasks.projectId, projectId),
+          inArray(scheduleTasks.id, ids)
+        )
+      )
+
+    if (matchingTasks.length !== ids.length) {
+      return {
+        success: false,
+        error: "One or more schedule items could not be found",
+      }
+    }
+
+    await db
+      .delete(scheduleTasks)
+      .where(
+        and(
+          eq(scheduleTasks.projectId, projectId),
+          inArray(scheduleTasks.id, ids)
+        )
+      )
+
+    await recalcCriticalPath(db, projectId)
+    revalidateSchedulePaths(projectId)
+    return { success: true }
+  } catch (error) {
+    console.error("Failed to delete schedule items:", error)
+    return { success: false, error: "Failed to delete schedule items" }
   }
 }
 
@@ -412,7 +560,7 @@ export async function reorderTasks(
         .where(eq(scheduleTasks.id, item.id))
     }
 
-    revalidatePath(`/dashboard/projects/${projectId}/schedule`)
+    revalidateSchedulePaths(projectId)
     return { success: true }
   } catch (error) {
     console.error("Failed to reorder tasks:", error)
@@ -535,7 +683,7 @@ export async function createDependency(data: {
     }
 
     await recalcCriticalPath(db, data.projectId)
-    revalidatePath(`/dashboard/projects/${data.projectId}/schedule`)
+    revalidateSchedulePaths(data.projectId)
     return { success: true }
   } catch (error) {
     console.error("Failed to create dependency:", error)
@@ -598,7 +746,7 @@ export async function deleteDependency(
 
     await db.delete(taskDependencies).where(eq(taskDependencies.id, depId))
     await recalcCriticalPath(db, projectId)
-    revalidatePath(`/dashboard/projects/${projectId}/schedule`)
+    revalidateSchedulePaths(projectId)
     return { success: true }
   } catch (error) {
     console.error("Failed to delete dependency:", error)
@@ -648,7 +796,7 @@ export async function updateTaskStatus(
       })
       .where(eq(scheduleTasks.id, taskId))
 
-    revalidatePath(`/dashboard/projects/${task.projectId}/schedule`)
+    revalidateSchedulePaths(task.projectId)
     return { success: true }
   } catch (error) {
     console.error("Failed to update task status:", error)

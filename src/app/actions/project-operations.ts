@@ -28,6 +28,12 @@ import {
   isProjectTodoRecordType,
   isProjectTodoStatus,
 } from "@/lib/project-todos"
+import {
+  isPurchaseOrderStatus,
+  isRfqStatus,
+} from "@/lib/project-operations/status"
+
+export type ProjectOperationKind = "purchase_order" | "rfq"
 
 export type ProjectOperationItem = {
   readonly id: string
@@ -1549,6 +1555,83 @@ export async function getProjectRfqs(
   return rows.map((row) =>
     toRfqItem(row, purchaseOrderVendorEmail(row, contactRows, vendorRows))
   )
+}
+
+export async function updateProjectOperationStatus(
+  projectId: string,
+  operationId: string,
+  operationKind: ProjectOperationKind,
+  requestedStatus: string
+): Promise<ProjectOperationActionResult> {
+  try {
+    const db = await verifyProjectUpdateAccess(projectId)
+    const statusIsValid =
+      operationKind === "purchase_order"
+        ? isPurchaseOrderStatus(requestedStatus)
+        : isRfqStatus(requestedStatus)
+
+    if (!statusIsValid) {
+      return { success: false, error: "Please choose a valid status." }
+    }
+
+    const existing = await db
+      .select({ id: projectOperations.id })
+      .from(projectOperations)
+      .where(
+        and(
+          eq(projectOperations.id, operationId),
+          eq(projectOperations.projectId, projectId),
+          eq(projectOperations.sourceRecordType, operationKind)
+        )
+      )
+      .limit(1)
+      .then((rows) => rows[0] ?? null)
+
+    if (!existing) {
+      return {
+        success: false,
+        error:
+          operationKind === "purchase_order"
+            ? "Purchase order not found."
+            : "RFQ not found.",
+      }
+    }
+
+    await db
+      .update(projectOperations)
+      .set({
+        status: requestedStatus,
+        updatedAt: new Date().toISOString(),
+      })
+      .where(
+        and(
+          eq(projectOperations.id, operationId),
+          eq(projectOperations.projectId, projectId),
+          eq(projectOperations.sourceRecordType, operationKind)
+        )
+      )
+
+    revalidatePath(`/dashboard/projects/${projectId}`)
+    revalidatePath(
+      `/dashboard/projects/${projectId}/${
+        operationKind === "purchase_order" ? "purchase-orders" : "rfqs"
+      }`
+    )
+    revalidatePath("/dashboard/purchase-orders")
+    revalidatePath("/dashboard/financials")
+    revalidatePath("/dashboard/schedule")
+    revalidatePath("/dashboard")
+
+    return { success: true, id: operationId }
+  } catch (error) {
+    return {
+      success: false,
+      error:
+        error instanceof Error
+          ? error.message
+          : "Failed to update status.",
+    }
+  }
 }
 
 export async function createPurchaseOrderRequest(

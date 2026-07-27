@@ -10,11 +10,13 @@ import {
   like,
   ne,
   or,
+  inArray,
 } from "drizzle-orm"
 import { marked } from "marked"
 import { getDb } from "@/db"
 import {
   messages,
+  messageAttachments,
   messageReactions,
   channelMembers,
   channelReadState,
@@ -37,7 +39,21 @@ import { enqueueFeedbackDeskItem } from "@/lib/jarvis/feedback-desk"
 import { notifyChannelMessage } from "@/lib/notifications/events"
 
 const MAX_MESSAGE_LENGTH = 4000
-const EMOJI_REGEX = /^[\p{Emoji}\u200d]+$/u
+const EMOJI_REGEX = /^[\p{Emoji}\u200d\uFE0F]+$/u
+
+type MessageAttachmentItem = {
+  readonly id: string
+  readonly fileName: string
+  readonly mimeType: string
+  readonly fileSize: number
+  readonly storageUrl: string
+}
+
+type MessageReactionItem = {
+  readonly emoji: string
+  readonly count: number
+  readonly reactedByCurrentUser: boolean
+}
 
 // Configure marked for safe rendering
 marked.setOptions({
@@ -103,6 +119,87 @@ function sanitizeHtml(html: string): string {
 async function renderMarkdown(content: string): Promise<string> {
   const html = await marked(content)
   return sanitizeHtml(html)
+}
+
+async function getAttachmentsByMessage(
+  db: ReturnType<typeof getDb>,
+  messageIds: readonly string[]
+): Promise<ReadonlyMap<string, readonly MessageAttachmentItem[]>> {
+  if (messageIds.length === 0) return new Map()
+
+  const rows = await db
+    .select({
+      id: messageAttachments.id,
+      messageId: messageAttachments.messageId,
+      fileName: messageAttachments.fileName,
+      mimeType: messageAttachments.mimeType,
+      fileSize: messageAttachments.fileSize,
+      storageUrl: messageAttachments.r2Path,
+    })
+    .from(messageAttachments)
+    .where(inArray(messageAttachments.messageId, messageIds))
+
+  const attachments = new Map<string, MessageAttachmentItem[]>()
+  for (const row of rows) {
+    const existing = attachments.get(row.messageId) ?? []
+    existing.push({
+      id: row.id,
+      fileName: row.fileName,
+      mimeType: row.mimeType,
+      fileSize: row.fileSize,
+      storageUrl: row.storageUrl,
+    })
+    attachments.set(row.messageId, existing)
+  }
+  return attachments
+}
+
+async function getReactionsByMessage(
+  db: ReturnType<typeof getDb>,
+  messageIds: readonly string[],
+  currentUserId: string
+): Promise<ReadonlyMap<string, readonly MessageReactionItem[]>> {
+  if (messageIds.length === 0) return new Map()
+
+  const rows = await db
+    .select({
+      messageId: messageReactions.messageId,
+      userId: messageReactions.userId,
+      emoji: messageReactions.emoji,
+    })
+    .from(messageReactions)
+    .where(inArray(messageReactions.messageId, messageIds))
+
+  const counts = new Map<
+    string,
+    Map<string, { count: number; reactedByCurrentUser: boolean }>
+  >()
+  for (const row of rows) {
+    const messageCounts = counts.get(row.messageId) ?? new Map()
+    const reaction = messageCounts.get(row.emoji) ?? {
+      count: 0,
+      reactedByCurrentUser: false,
+    }
+    messageCounts.set(row.emoji, {
+      count: reaction.count + 1,
+      reactedByCurrentUser:
+        reaction.reactedByCurrentUser || row.userId === currentUserId,
+    })
+    counts.set(row.messageId, messageCounts)
+  }
+
+  const reactions = new Map<string, MessageReactionItem[]>()
+  for (const [messageId, messageCounts] of counts) {
+    reactions.set(
+      messageId,
+      Array.from(messageCounts.entries()).map(([emoji, reaction]) => ({
+        emoji,
+        count: reaction.count,
+        reactedByCurrentUser: reaction.reactedByCurrentUser,
+      }))
+    )
+  }
+  return reactions
 }
 
 export async function searchMentionableUsers(
@@ -383,6 +480,7 @@ export async function sendMessage(data: {
         content: messages.content,
         contentHtml: messages.contentHtml,
         editedAt: messages.editedAt,
+        deletedAt: messages.deletedAt,
         isPinned: messages.isPinned,
         replyCount: messages.replyCount,
         lastReplyAt: messages.lastReplyAt,
@@ -401,99 +499,16 @@ export async function sendMessage(data: {
       .then((rows) => rows[0] ?? null)
 
     revalidatePath("/dashboard")
-    return { success: true, data: messageWithUser }
+    return {
+      success: true,
+      data: messageWithUser
+        ? { ...messageWithUser, attachments: [], reactions: [] }
+        : null,
+    }
   } catch (err) {
     return {
       success: false,
       error: err instanceof Error ? err.message : "Failed to send message",
-    }
-  }
-}
-
-export async function editMessage(
-  messageId: string,
-  newContent: string,
-  options?: {
-    mentions?: Array<MentionInput>
-    contentHtml?: string
-  }
-) {
-  try {
-    const user = await getCurrentUser()
-    if (!user) {
-      return { success: false, error: "Unauthorized" }
-    }
-    if (isDemoUser(user.id)) {
-      return { success: false, error: "DEMO_READ_ONLY" }
-    }
-
-    const { env } = await getCloudflareContext()
-    const db = getDb(env.DB)
-
-    // fetch the message
-    const message = await db
-      .select()
-      .from(messages)
-      .where(eq(messages.id, messageId))
-      .limit(1)
-      .then((rows) => rows[0] ?? null)
-
-    if (!message) {
-      return { success: false, error: "Message not found" }
-    }
-
-    // check permission: own message or admin
-    if (message.userId !== user.id) {
-      try {
-        requirePermission(user, "channels", "moderate")
-      } catch {
-        return { success: false, error: "Cannot edit other users' messages" }
-      }
-    }
-
-    const now = new Date().toISOString()
-
-    // Use provided HTML or re-render markdown to sanitized HTML
-    const contentHtml = options?.contentHtml
-      ? sanitizeHtml(options.contentHtml)
-      : await renderMarkdown(newContent)
-
-    await db
-      .update(messages)
-      .set({
-        content: newContent,
-        contentHtml,
-        editedAt: now,
-      })
-      .where(eq(messages.id, messageId))
-
-    // update mentions if provided
-    if (options?.mentions !== undefined) {
-      // delete existing mentions
-      await db
-        .delete(messageMentions)
-        .where(eq(messageMentions.messageId, messageId))
-
-      // insert new mentions
-      if (options.mentions.length > 0) {
-        const mentionRows: NewMessageMention[] = options.mentions.map((m) => ({
-          id: crypto.randomUUID(),
-          messageId,
-          mentionType: m.mentionType,
-          targetId: m.targetId,
-          createdAt: now,
-        }))
-        await db.insert(messageMentions).values(mentionRows)
-      }
-      // Note: we do NOT re-notify on edit (MVP requirement)
-    }
-
-    revalidatePath("/dashboard")
-    return { success: true }
-  } catch (err) {
-    return {
-      success: false,
-      error: err instanceof Error ? err.message : "Failed to edit message",
     }
   }
 }
@@ -619,10 +634,25 @@ export async function getMessages(
     const results = await query
 
     // replace deleted content with placeholder
+    const attachmentsByMessage = await getAttachmentsByMessage(
+      db,
+      results.map((message) => message.id)
+    )
+    const reactionsByMessage = await getReactionsByMessage(
+      db,
+      results.map((message) => message.id),
+      user.id
+    )
     const sanitized = results.map((msg) => ({
       ...msg,
       content: msg.deletedAt ? "[Message deleted]" : msg.content,
       contentHtml: msg.deletedAt ? null : msg.contentHtml,
+      attachments: msg.deletedAt
+        ? []
+        : attachmentsByMessage.get(msg.id) ?? [],
+      reactions: msg.deletedAt
+        ? []
+        : reactionsByMessage.get(msg.id) ?? [],
     }))
 
     return { success: true, data: sanitized }
@@ -713,10 +743,25 @@ export async function getThreadMessages(
     const results = await query
 
     // replace deleted content with placeholder
+    const attachmentsByMessage = await getAttachmentsByMessage(
+      db,
+      results.map((message) => message.id)
+    )
+    const reactionsByMessage = await getReactionsByMessage(
+      db,
+      results.map((message) => message.id),
+      user.id
+    )
     const sanitized = results.map((msg) => ({
       ...msg,
       content: msg.deletedAt ? "[Message deleted]" : msg.content,
       contentHtml: msg.deletedAt ? null : msg.contentHtml,
+      attachments: msg.deletedAt
+        ? []
+        : attachmentsByMessage.get(msg.id) ?? [],
+      reactions: msg.deletedAt
+        ? []
+        : reactionsByMessage.get(msg.id) ?? [],
     }))
 
     return { success: true, data: sanitized }

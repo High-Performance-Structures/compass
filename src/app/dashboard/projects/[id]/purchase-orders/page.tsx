@@ -16,11 +16,18 @@ import { ProjectPurchaseOrderDeleteButton } from "@/components/projects/project-
 import { ProjectPurchaseOrderEmailButton } from "@/components/projects/project-purchase-order-email-button"
 import { ProjectPurchaseOrderCreateForm } from "@/components/projects/project-purchase-order-create-form"
 import { ProjectPurchaseOrderPrintButton } from "@/components/projects/project-purchase-order-print-button"
+import { ProjectOperationStatusSelect } from "@/components/projects/project-operation-status-select"
 import { ProjectTaskCreateButton } from "@/components/projects/project-task-create-button"
 import { ProjectQuickSwitcher } from "@/components/projects/project-quick-switcher"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
+import {
+  isClosedProjectOperationStatus,
+  parseProjectOperationStatusFilter,
+  projectOperationMatchesStatusFilter,
+  type ProjectOperationStatusFilter,
+} from "@/lib/project-operations/status"
 
 function money(value: number | null): string {
   if (value === null) return "Amount TBD"
@@ -46,6 +53,22 @@ function label(value: string): string {
     .map((part) => `${part.slice(0, 1).toUpperCase()}${part.slice(1)}`)
     .join(" ")
 }
+
+const PURCHASE_ORDER_FILTERS: readonly {
+  readonly value: ProjectOperationStatusFilter
+  readonly label: string
+}[] = [
+  { value: "open", label: "Open" },
+  { value: "draft", label: "Draft" },
+  { value: "approved", label: "Approved" },
+  { value: "ordered", label: "Ordered" },
+  { value: "partially_received", label: "Partially received" },
+  { value: "received", label: "Received" },
+  { value: "complete", label: "Complete" },
+  { value: "closed", label: "Closed" },
+  { value: "void", label: "Void" },
+  { value: "all", label: "All" },
+]
 
 function purchaseOrderTaskTitle(order: ProjectPurchaseOrderItem): string {
   return `Follow up P.O.: ${order.sourceRecordNumber ?? order.title}`
@@ -102,9 +125,12 @@ function PurchaseOrderCard({
           </div>
           <div className="flex flex-wrap gap-1">
             {isCreated && <Badge variant="secondary">Just created</Badge>}
-            <Badge variant={order.status === "draft" ? "secondary" : "outline"}>
-              {label(order.status)}
-            </Badge>
+            <ProjectOperationStatusSelect
+              projectId={projectId}
+              operationId={order.id}
+              operationKind="purchase_order"
+              status={order.status}
+            />
             <Badge variant="outline">{label(order.syncStatus)}</Badge>
             {order.priority === "high" && (
               <Badge variant="destructive">High</Badge>
@@ -309,6 +335,7 @@ export default async function ProjectPurchaseOrdersPage({
   readonly params: Promise<{ readonly id: string }>
   readonly searchParams: Promise<{
     readonly created?: string | readonly string[]
+    readonly status?: string | readonly string[]
   }>
 }) {
   const { id } = await params
@@ -316,6 +343,7 @@ export default async function ProjectPurchaseOrdersPage({
   const createdPurchaseOrderId = Array.isArray(query.created)
     ? query.created[0] ?? null
     : query.created ?? null
+  const statusFilter = parseProjectOperationStatusFilter(query.status)
   const [projects, purchaseOrders, taskAssigneeOptions] = await Promise.all([
     getProjects(),
     getProjectPurchaseOrders(id),
@@ -327,7 +355,10 @@ export default async function ProjectPurchaseOrdersPage({
     ...taskAssigneeOptions.directoryContacts,
   ]
   const openPurchaseOrders = purchaseOrders.filter(
-    (order) => !["closed", "void", "complete"].includes(order.status)
+    (order) => !isClosedProjectOperationStatus(order.status)
+  )
+  const visiblePurchaseOrders = purchaseOrders.filter((order) =>
+    projectOperationMatchesStatusFilter(order.status, statusFilter)
   )
   const openTotal = openPurchaseOrders.reduce(
     (total, order) => total + (order.amount ?? 0),
@@ -391,8 +422,33 @@ export default async function ProjectPurchaseOrdersPage({
           </div>
         </div>
 
-        {purchaseOrders.length > 0 ? (
-          purchaseOrders.map((order) => (
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <nav
+            aria-label="Filter purchase orders by status"
+            className="flex flex-wrap gap-1"
+          >
+            {PURCHASE_ORDER_FILTERS.map((option) => (
+              <Button
+                key={option.value}
+                asChild
+                size="sm"
+                variant={statusFilter === option.value ? "secondary" : "ghost"}
+              >
+                <Link
+                  href={`/dashboard/projects/${id}/purchase-orders?status=${option.value}`}
+                >
+                  {option.label}
+                </Link>
+              </Button>
+            ))}
+          </nav>
+          <p className="text-xs text-muted-foreground">
+            {visiblePurchaseOrders.length} of {purchaseOrders.length} shown
+          </p>
+        </div>
+
+        {visiblePurchaseOrders.length > 0 ? (
+          visiblePurchaseOrders.map((order) => (
             <PurchaseOrderCard
               key={order.id}
               order={order}
@@ -409,9 +465,15 @@ export default async function ProjectPurchaseOrdersPage({
         ) : (
           <div className="rounded-lg border bg-background p-8 text-center">
             <IconShoppingCart className="mx-auto size-6 text-muted-foreground" />
-            <h2 className="mt-3 text-sm font-semibold">No PO requests yet</h2>
+            <h2 className="mt-3 text-sm font-semibold">
+              {purchaseOrders.length === 0
+                ? "No PO requests yet"
+                : "No purchase orders match this filter"}
+            </h2>
             <p className="mt-1 text-sm text-muted-foreground">
-              Create a PO when a vendor commitment is ready.
+              {purchaseOrders.length === 0
+                ? "Create a PO when a vendor commitment is ready."
+                : "Choose another status to see the rest of the PO queue."}
             </p>
           </div>
         )}

@@ -15,8 +15,9 @@ import {
   ListOrdered,
   Plus,
   Smile,
-  Sticker,
-  Gift,
+  Paperclip,
+  SendHorizontal,
+  X,
   SendToBack,
   Bell,
   Check,
@@ -107,6 +108,7 @@ type MessageComposerProps = {
   readonly threadId?: string
   readonly placeholder?: string
   readonly onSent?: () => void
+  readonly className?: string
 }
 
 export type ProjectRecipientContact = {
@@ -316,6 +318,7 @@ export function MessageComposer({
   threadId,
   placeholder,
   onSent,
+  className,
 }: MessageComposerProps) {
   const router = useRouter()
   const { resolvedTheme } = useTheme()
@@ -328,7 +331,9 @@ export function MessageComposer({
   const [recipientOpen, setRecipientOpen] = React.useState(false)
   const [recipientValue, setRecipientValue] = React.useState("channel")
   const [importantDelivery, setImportantDelivery] = React.useState(false)
+  const [selectedFiles, setSelectedFiles] = React.useState<readonly File[]>([])
   const hasProjectDelivery = isProjectChannel && !threadId
+  const fileInputRef = React.useRef<HTMLInputElement>(null)
 
   const lastTypingSentRef = React.useRef<number>(0)
   const TYPING_DEBOUNCE_MS = 3000
@@ -427,11 +432,71 @@ export function MessageComposer({
     [editor],
   )
 
+  const handleFileSelection = React.useCallback(
+    (event: React.ChangeEvent<HTMLInputElement>) => {
+      const files = Array.from(event.target.files ?? [])
+      event.target.value = ""
+      if (files.length === 0) return
+      if (selectedFiles.length + files.length > 10) {
+        setError("Choose no more than 10 attachments at once.")
+        return
+      }
+      const oversized = files.find((file) => file.size > 25 * 1024 * 1024)
+      if (oversized) {
+        setError(`${oversized.name} exceeds the 25 MB per-file limit.`)
+        return
+      }
+      const combined = [...selectedFiles, ...files]
+      const totalBytes = combined.reduce((total, file) => total + file.size, 0)
+      if (totalBytes > 50 * 1024 * 1024) {
+        setError("The selected files exceed the 50 MB batch limit.")
+        return
+      }
+      setSelectedFiles(combined)
+      setError(null)
+    },
+    [selectedFiles]
+  )
+
+  const uploadAttachments = React.useCallback(
+    async (messageId: string): Promise<string | null> => {
+      if (selectedFiles.length === 0) return null
+      const formData = new FormData()
+      formData.set("messageId", messageId)
+      for (const file of selectedFiles) {
+        formData.append("files", file)
+      }
+      const response = await fetch("/api/conversations/attachments/upload", {
+        method: "POST",
+        body: formData,
+      })
+      const result: unknown = await response.json()
+      if (
+        typeof result === "object" &&
+        result !== null &&
+        "success" in result &&
+        result.success === true
+      ) {
+        return null
+      }
+      if (
+        typeof result === "object" &&
+        result !== null &&
+        "error" in result &&
+        typeof result.error === "string"
+      ) {
+        return result.error
+      }
+      return "Unable to upload message attachments."
+    },
+    [selectedFiles]
+  )
+
   const handleSend = React.useCallback(async () => {
     if (!editor || isSending) return
 
     const plainText = editor.getText().trim()
-    if (!plainText) return
+    if (!plainText && selectedFiles.length === 0) return
 
     setIsSending(true)
     setError(null)
@@ -446,7 +511,12 @@ export function MessageComposer({
         string,
         { getMarkdown?: () => string } | undefined
       >
-      const markdown = storage.markdown?.getMarkdown?.() ?? plainText
+      const editorMarkdown = storage.markdown?.getMarkdown?.() ?? plainText
+      const markdown =
+        editorMarkdown.trim() ||
+        `Shared ${selectedFiles.length} attachment${
+          selectedFiles.length === 1 ? "" : "s"
+        }.`
 
       const result =
         recipientValue === "channel" || threadId
@@ -465,7 +535,22 @@ export function MessageComposer({
             })
 
       if (result.success) {
+        let messageId: string | null = null
+        if ("data" in result && result.data) {
+          if ("messageId" in result.data && typeof result.data.messageId === "string") {
+            messageId = result.data.messageId
+          } else if ("id" in result.data && typeof result.data.id === "string") {
+            messageId = result.data.id
+          }
+        }
+        const attachmentError =
+          selectedFiles.length > 0 && messageId
+            ? await uploadAttachments(messageId)
+            : selectedFiles.length > 0
+              ? "The message was sent, but its attachments could not be linked."
+              : null
         editor.commands.clearContent()
+        setSelectedFiles([])
         setImportantDelivery(false)
         if ("data" in result && result.data && "recipientLabel" in result.data) {
           const noteParts = [`Sent to ${result.data.recipientLabel}`]
@@ -486,6 +571,9 @@ export function MessageComposer({
           setDeliveryNote(`${noteParts.join(". ")}.`)
         } else {
           setDeliveryNote("Sent to the channel.")
+        }
+        if (attachmentError) {
+          setError(`Message sent, but attachments failed: ${attachmentError}`)
         }
         router.refresh()
         onSent?.()
@@ -508,6 +596,8 @@ export function MessageComposer({
     isSending,
     recipientValue,
     importantDelivery,
+    selectedFiles,
+    uploadAttachments,
   ])
 
   React.useEffect(() => {
@@ -529,7 +619,7 @@ export function MessageComposer({
   }, [editor, handleSend])
 
   return (
-    <div className="min-h-[68px] px-2 pb-4 pt-2 sm:px-4">
+    <div className={cn("min-h-[68px] px-2 pb-4 pt-2 sm:px-4", className)}>
       {hasProjectDelivery && (
         <div className="mb-2 flex flex-col gap-2 border-y bg-background/80 px-1 py-2 sm:flex-row sm:items-center sm:justify-between sm:border sm:px-3">
           <div className="flex min-w-0 flex-1 items-center gap-2">
@@ -720,6 +810,34 @@ export function MessageComposer({
       )}
 
       {/* main composer bar */}
+      {selectedFiles.length > 0 && (
+        <div className="mb-2 flex flex-wrap gap-2 border-y py-2">
+          {selectedFiles.map((file, index) => (
+            <div
+              key={`${file.name}-${file.size}-${index}`}
+              className="flex min-w-0 max-w-full items-center gap-2 border-l-2 border-primary/40 px-2 py-1 text-xs"
+            >
+              <Paperclip className="size-3.5 shrink-0 text-muted-foreground" />
+              <span className="max-w-56 truncate">{file.name}</span>
+              <button
+                type="button"
+                onClick={() =>
+                  setSelectedFiles((current) =>
+                    current.filter((_, fileIndex) => fileIndex !== index)
+                  )
+                }
+                aria-label={`Remove ${file.name}`}
+                className="text-muted-foreground hover:text-foreground"
+              >
+                <X className="size-3.5" />
+              </button>
+            </div>
+          ))}
+          <span className="self-center text-xs text-muted-foreground">
+            25 MB per file · 50 MB total
+          </span>
+        </div>
+      )}
       <div
         className={cn(
           "relative flex items-end rounded-lg",
@@ -755,27 +873,24 @@ export function MessageComposer({
 
         {/* right-side action icons */}
         <div className="flex h-[44px] shrink-0 items-center gap-0 pr-1 sm:pr-1.5">
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            className="sr-only"
+            onChange={handleFileSelection}
+          />
           <button
             type="button"
             className={cn(
-              "hidden sm:flex",
-              "h-8 w-8 items-center justify-center rounded-md",
+              "flex h-8 w-8 items-center justify-center rounded-md",
               "text-muted-foreground hover:text-foreground transition-colors",
             )}
-            aria-label="Stickers"
+            onClick={() => fileInputRef.current?.click()}
+            aria-label="Attach files"
+            title="Attach files"
           >
-            <Sticker className="h-[18px] w-[18px]" />
-          </button>
-          <button
-            type="button"
-            className={cn(
-              "hidden sm:flex",
-              "h-8 w-8 items-center justify-center rounded-md",
-              "text-muted-foreground hover:text-foreground transition-colors",
-            )}
-            aria-label="GIF"
-          >
-            <Gift className="h-[18px] w-[18px]" />
+            <Paperclip className="h-[18px] w-[18px]" />
           </button>
 
           {/* emoji picker */}
@@ -821,6 +936,23 @@ export function MessageComposer({
               </React.Suspense>
             </PopoverContent>
           </Popover>
+          <button
+            type="button"
+            className={cn(
+              "flex h-8 w-8 items-center justify-center rounded-md",
+              "text-muted-foreground hover:text-foreground transition-colors",
+              "disabled:cursor-not-allowed disabled:opacity-40",
+            )}
+            onClick={handleSend}
+            disabled={
+              isSending ||
+              (!editor?.getText().trim() && selectedFiles.length === 0)
+            }
+            aria-label="Send message"
+            title="Send message"
+          >
+            <SendHorizontal className="h-[18px] w-[18px]" />
+          </button>
         </div>
       </div>
 

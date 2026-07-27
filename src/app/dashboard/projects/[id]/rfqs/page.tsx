@@ -24,11 +24,18 @@ import { ProjectRfqCreateForm } from "@/components/projects/project-rfq-create-f
 import { ProjectRfqDeleteButton } from "@/components/projects/project-rfq-delete-button"
 import { ProjectRfqEditForm } from "@/components/projects/project-rfq-edit-form"
 import { ProjectRfqShareActions } from "@/components/projects/project-rfq-share-actions"
+import { ProjectOperationStatusSelect } from "@/components/projects/project-operation-status-select"
 import { ProjectTaskCreateButton } from "@/components/projects/project-task-create-button"
 import { ProjectQuickSwitcher } from "@/components/projects/project-quick-switcher"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
+import {
+  isClosedProjectOperationStatus,
+  parseProjectOperationStatusFilter,
+  projectOperationMatchesStatusFilter,
+  type ProjectOperationStatusFilter,
+} from "@/lib/project-operations/status"
 
 export const dynamic = "force-dynamic"
 
@@ -49,10 +56,24 @@ function label(value: string): string {
 }
 
 function isActiveRfqStatus(status: string): boolean {
-  return !["closed", "complete", "void", "cancelled"].includes(
-    status.toLowerCase()
-  )
+  return !isClosedProjectOperationStatus(status)
 }
+
+const RFQ_FILTERS: readonly {
+  readonly value: ProjectOperationStatusFilter
+  readonly label: string
+}[] = [
+  { value: "open", label: "Open" },
+  { value: "draft", label: "Draft" },
+  { value: "sent", label: "Sent" },
+  { value: "response_received", label: "Response received" },
+  { value: "awarded", label: "Awarded" },
+  { value: "declined", label: "Declined" },
+  { value: "complete", label: "Complete" },
+  { value: "closed", label: "Closed" },
+  { value: "void", label: "Void" },
+  { value: "all", label: "All" },
+]
 
 function rfqTaskTitle(rfq: ProjectRfqItem): string {
   return `Follow up RFQ: ${rfq.sourceRecordNumber ?? rfq.title}`
@@ -144,9 +165,12 @@ function RfqCard({
         </div>
         <div className="flex flex-wrap gap-1">
           {isCreated && <Badge variant="secondary">Just created</Badge>}
-          <Badge variant={isActiveRfqStatus(rfq.status) ? "secondary" : "outline"}>
-            {label(rfq.status)}
-          </Badge>
+          <ProjectOperationStatusSelect
+            projectId={projectId}
+            operationId={rfq.id}
+            operationKind="rfq"
+            status={rfq.status}
+          />
           <Badge variant="outline">{label(rfq.syncStatus)}</Badge>
           {rfq.priority === "high" || rfq.priority === "critical" ? (
             <Badge variant="destructive">{label(rfq.priority)}</Badge>
@@ -268,6 +292,7 @@ export default async function ProjectRfqsPage({
   readonly params: Promise<{ readonly id: string }>
   readonly searchParams: Promise<{
     readonly created?: string | readonly string[]
+    readonly status?: string | readonly string[]
   }>
 }): Promise<React.ReactElement> {
   const { id } = await params
@@ -275,6 +300,7 @@ export default async function ProjectRfqsPage({
   const createdRfqId = Array.isArray(query.created)
     ? query.created[0] ?? null
     : query.created ?? null
+  const statusFilter = parseProjectOperationStatusFilter(query.status)
   const [projects, rfqs, taskAssigneeOptions, selectionsSummary, selectionOptions] =
     await Promise.all([
     getProjects(),
@@ -289,6 +315,9 @@ export default async function ProjectRfqsPage({
     ...taskAssigneeOptions.directoryContacts,
   ]
   const openRfqs = rfqs.filter((rfq) => isActiveRfqStatus(rfq.status))
+  const visibleRfqs = rfqs.filter((rfq) =>
+    projectOperationMatchesStatusFilter(rfq.status, statusFilter)
+  )
   const overdueCount = openRfqs.filter((rfq) => {
     if (!rfq.dueDate) return false
     return rfq.dueDate < new Date().toISOString().slice(0, 10)
@@ -352,8 +381,33 @@ export default async function ProjectRfqsPage({
           />
         </div>
 
-        {rfqs.length > 0 ? (
-          rfqs.map((rfq) => (
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <nav
+            aria-label="Filter RFQs by status"
+            className="flex flex-wrap gap-1"
+          >
+            {RFQ_FILTERS.map((option) => (
+              <Button
+                key={option.value}
+                asChild
+                size="sm"
+                variant={statusFilter === option.value ? "secondary" : "ghost"}
+              >
+                <Link
+                  href={`/dashboard/projects/${id}/rfqs?status=${option.value}`}
+                >
+                  {option.label}
+                </Link>
+              </Button>
+            ))}
+          </nav>
+          <p className="text-xs text-muted-foreground">
+            {visibleRfqs.length} of {rfqs.length} shown
+          </p>
+        </div>
+
+        {visibleRfqs.length > 0 ? (
+          visibleRfqs.map((rfq) => (
             <RfqCard
               key={rfq.id}
               rfq={rfq}
@@ -368,9 +422,13 @@ export default async function ProjectRfqsPage({
         ) : (
           <div className="rounded-lg border bg-background p-8 text-center">
             <IconClock className="mx-auto size-6 text-muted-foreground" />
-            <h2 className="mt-3 text-sm font-semibold">No RFQs yet</h2>
+            <h2 className="mt-3 text-sm font-semibold">
+              {rfqs.length === 0 ? "No RFQs yet" : "No RFQs match this filter"}
+            </h2>
             <p className="mt-1 text-sm text-muted-foreground">
-              Create the first quote request for this project.
+              {rfqs.length === 0
+                ? "Create the first quote request for this project."
+                : "Choose another status to see the rest of the RFQ queue."}
             </p>
           </div>
         )}

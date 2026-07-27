@@ -4,8 +4,11 @@ import * as React from "react"
 import Link from "next/link"
 import {
   IconCalendarEvent,
+  IconCalendarMonth,
   IconCalendarPlus,
+  IconCalendarWeek,
   IconClipboardCheck,
+  IconListDetails,
   IconMessageQuestion,
   IconReceipt,
   IconSearch,
@@ -24,6 +27,7 @@ import { workCalendarEntryMatches } from "@/lib/work-calendar"
 import { WorkCalendarEventDialog } from "./work-calendar-event-dialog"
 
 export type WorkCalendarKindFilter = WorkCalendarEntryKind | "all"
+export type WorkCalendarView = "today" | "week" | "month" | "list"
 type CalendarEventEntry = Extract<WorkCalendarEntry, { kind: "event" }>
 
 type KindConfig = {
@@ -65,6 +69,33 @@ const KIND_FILTERS: readonly KindConfig[] = [
   },
 ]
 
+const VIEW_OPTIONS: readonly {
+  readonly id: WorkCalendarView
+  readonly label: string
+  readonly icon: React.ReactNode
+}[] = [
+  {
+    id: "today",
+    label: "Today",
+    icon: <IconCalendarEvent className="size-4" />,
+  },
+  {
+    id: "week",
+    label: "Week",
+    icon: <IconCalendarWeek className="size-4" />,
+  },
+  {
+    id: "month",
+    label: "Month",
+    icon: <IconCalendarMonth className="size-4" />,
+  },
+  {
+    id: "list",
+    label: "List",
+    icon: <IconListDetails className="size-4" />,
+  },
+]
+
 function parseDateKey(date: string): Date {
   return new Date(`${date}T00:00:00`)
 }
@@ -80,6 +111,28 @@ function toDateKey(date: Date): string {
   const month = `${date.getMonth() + 1}`.padStart(2, "0")
   const day = `${date.getDate()}`.padStart(2, "0")
   return `${year}-${month}-${day}`
+}
+
+function startOfWeek(date: Date): Date {
+  const start = new Date(date)
+  const day = start.getDay()
+  const daysSinceMonday = day === 0 ? 6 : day - 1
+  start.setDate(start.getDate() - daysSinceMonday)
+  return start
+}
+
+function monthCalendarDays(date: Date): readonly string[] {
+  const firstOfMonth = new Date(date.getFullYear(), date.getMonth(), 1)
+  const lastOfMonth = new Date(date.getFullYear(), date.getMonth() + 1, 0)
+  const gridStart = startOfWeek(firstOfMonth)
+  const gridEnd = addDays(startOfWeek(lastOfMonth), 6)
+  const length =
+    Math.round(
+      (gridEnd.getTime() - gridStart.getTime()) / (24 * 60 * 60 * 1000)
+    ) + 1
+  return Array.from({ length }, (_, index) =>
+    toDateKey(addDays(gridStart, index))
+  )
 }
 
 function formatShortDate(date: string): string {
@@ -253,24 +306,42 @@ export function WorkCalendar({
   data,
   initialKind = "all",
   initialItemId = null,
+  initialView = "week",
 }: {
   readonly data: WorkCalendarData
   readonly initialKind?: WorkCalendarKindFilter
   readonly initialItemId?: string | null
+  readonly initialView?: WorkCalendarView
 }): React.ReactElement {
   const [query, setQuery] = React.useState("")
   const [editingEvent, setEditingEvent] =
     React.useState<CalendarEventEntry | null>(null)
   const [activeKind, setActiveKind] =
     React.useState<WorkCalendarKindFilter>(initialKind)
+  const [activeView, setActiveView] = React.useState<WorkCalendarView>(
+    initialItemId ? "list" : initialView
+  )
   React.useEffect(() => {
     setActiveKind(initialKind)
   }, [initialKind])
+  React.useEffect(() => {
+    setActiveView(initialItemId ? "list" : initialView)
+  }, [initialItemId, initialView])
   const today = React.useMemo(() => parseDateKey(data.today), [data.today])
-  const days = React.useMemo(
-    () => Array.from({ length: 14 }, (_, index) => toDateKey(addDays(today, index))),
+  const weekDays = React.useMemo(
+    () =>
+      Array.from({ length: 7 }, (_, index) =>
+        toDateKey(addDays(startOfWeek(today), index))
+      ),
     [today]
   )
+  const monthDays = React.useMemo(() => monthCalendarDays(today), [today])
+  const visibleCalendarDays =
+    activeView === "today"
+      ? [data.today]
+      : activeView === "month"
+        ? monthDays
+        : weekDays
   const filteredEntries = data.entries.filter(
     (entry) =>
       (activeKind === "all" || entry.kind === activeKind) &&
@@ -290,7 +361,7 @@ export function WorkCalendar({
     document
       .getElementById(`work-calendar-${initialItemId}`)
       ?.scrollIntoView({ behavior: "smooth", block: "center" })
-  }, [initialItemId])
+  }, [initialItemId, activeView])
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto">
@@ -338,7 +409,8 @@ export function WorkCalendar({
       </section>
 
       <div className="mx-auto grid max-w-7xl gap-5 px-4 py-5 md:px-6">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex flex-col gap-3">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div className="relative w-full lg:max-w-xl">
             <IconSearch className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
             <Input
@@ -372,28 +444,91 @@ export function WorkCalendar({
               </Button>
             ))}
           </div>
+          </div>
+          <div className="flex flex-wrap items-center justify-between gap-3 border-y py-2">
+            <div
+              className="inline-flex overflow-hidden rounded-md border bg-background"
+              role="group"
+              aria-label="Work calendar view"
+            >
+              {VIEW_OPTIONS.map((view) => (
+                <Button
+                  key={view.id}
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  className={cn(
+                    "rounded-none border-r last:border-r-0",
+                    activeView === view.id && "bg-secondary text-secondary-foreground"
+                  )}
+                  onClick={() => setActiveView(view.id)}
+                  aria-pressed={activeView === view.id}
+                >
+                  {view.icon}
+                  {view.label}
+                </Button>
+              ))}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              {filteredEntries.length} work item
+              {filteredEntries.length === 1 ? "" : "s"} match the current
+              filters
+            </p>
+          </div>
         </div>
 
-        <section className="rounded-lg border bg-card p-4">
+        {activeView !== "list" && (
+        <section className="border-y bg-card py-4">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div>
-              <h2 className="text-sm font-semibold">Next 14 days</h2>
+              <h2 className="text-sm font-semibold">
+                {activeView === "today"
+                  ? `Today · ${formatShortDate(data.today)}`
+                  : activeView === "week"
+                    ? `Week of ${formatShortDate(weekDays[0] ?? data.today)}`
+                    : new Intl.DateTimeFormat("en-US", {
+                        month: "long",
+                        year: "numeric",
+                      }).format(today)}
+              </h2>
               <p className="mt-1 text-xs text-muted-foreground">
-                {filteredEntries.length} visible work items across project
-                schedule items, RFIs, Sage operations, and Compass to-dos.
+                Select any item to open its source record.
               </p>
             </div>
-            <Badge variant="secondary">{formatShortDate(data.today)} onward</Badge>
+            <Badge variant="secondary">
+              {activeView === "today"
+                ? `${todayEntries.length} today`
+                : activeView === "week"
+                  ? "Monday–Sunday"
+                  : `${visibleCalendarDays.length / 7} weeks`}
+            </Badge>
           </div>
 
-          <div className="mt-4 grid gap-3 lg:grid-cols-7">
-            {days.map((day) => {
+          <div
+            className={cn(
+              "mt-4 grid overflow-hidden border",
+              activeView === "today"
+                ? "grid-cols-1"
+                : "grid-cols-1 sm:grid-cols-2 lg:grid-cols-7"
+            )}
+          >
+            {visibleCalendarDays.map((day) => {
               const dayEntries = filteredEntries.filter((entry) =>
                 entryOnDay(entry, day)
               )
+              const outsideCurrentMonth =
+                activeView === "month" &&
+                parseDateKey(day).getMonth() !== today.getMonth()
 
               return (
-                <div key={day} className="min-h-40 rounded-lg border bg-muted/20 p-2">
+                <div
+                  key={day}
+                  className={cn(
+                    "min-h-40 border-b border-r bg-muted/20 p-2 last:border-r-0",
+                    activeView === "today" && "min-h-0",
+                    outsideCurrentMonth && "bg-muted/50 text-muted-foreground"
+                  )}
+                >
                   <div className="flex items-center justify-between gap-2">
                     <div>
                       <p className="text-xs font-semibold">{formatWeekday(day)}</p>
@@ -404,16 +539,19 @@ export function WorkCalendar({
                     <Badge variant="outline">{dayEntries.length}</Badge>
                   </div>
                   <div className="mt-2 space-y-2">
-                    {dayEntries.slice(0, 3).map((entry) => (
+                    {dayEntries
+                      .slice(0, activeView === "today" ? 50 : 3)
+                      .map((entry) => (
                       <WorkItem
                         key={`${day}-${entry.kind}-${entry.id}`}
                         entry={entry}
-                        compact
+                        compact={activeView !== "today"}
+                        focused={entry.id === initialItemId}
                         onEditEvent={setEditingEvent}
                         canManageEvents={data.canManageEvents}
                       />
                     ))}
-                    {dayEntries.length > 3 && (
+                    {activeView !== "today" && dayEntries.length > 3 && (
                       <p className="px-1 text-xs text-muted-foreground">
                         +{dayEntries.length - 3} more
                       </p>
@@ -424,9 +562,11 @@ export function WorkCalendar({
             })}
           </div>
         </section>
+        )}
 
+        {activeView === "list" && (
         <section className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_24rem]">
-          <div className="rounded-lg border bg-card p-4">
+          <div className="border-y bg-card py-4">
             <div className="flex items-center justify-between gap-3">
               <h2 className="text-sm font-semibold">Work Queue</h2>
               <Badge variant="outline">{filteredEntries.length} items</Badge>
@@ -450,7 +590,7 @@ export function WorkCalendar({
             </div>
           </div>
 
-          <aside className="rounded-lg border bg-card p-4">
+          <aside className="border-y bg-card py-4">
             <h2 className="text-sm font-semibold">To-do Sources</h2>
             <div className="mt-3 grid gap-2">
               <Link
@@ -480,6 +620,7 @@ export function WorkCalendar({
             </div>
           </aside>
         </section>
+        )}
       </div>
       {editingEvent && data.canManageEvents && (
         <WorkCalendarEventDialog
