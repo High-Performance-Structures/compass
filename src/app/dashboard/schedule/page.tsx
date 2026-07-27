@@ -6,6 +6,7 @@ import {
   type WorkCalendarKindFilter,
   type WorkCalendarView,
 } from "@/components/schedule/work-calendar"
+import { isValidDateKey } from "@/lib/work-calendar"
 
 function kindFilter(
   value: string | readonly string[] | undefined
@@ -47,10 +48,15 @@ export default async function SchedulePage({
     readonly kind?: string | readonly string[]
     readonly item?: string | readonly string[]
     readonly view?: string | readonly string[]
+    readonly date?: string | readonly string[]
   }>
 }): Promise<React.ReactElement> {
   const query = await searchParams
-  const data = await getWorkCalendar()
+  const requestedDate =
+    typeof query.date === "string" ? query.date : query.date?.[0]
+  const initialDate =
+    requestedDate && isValidDateKey(requestedDate) ? requestedDate : undefined
+  const data = await getWorkCalendar(initialDate)
 
   const initialItemId =
     typeof query.item === "string" ? query.item : query.item?.[0] ?? null
@@ -61,6 +67,7 @@ export default async function SchedulePage({
       initialKind={kindFilter(query.kind)}
       initialItemId={initialItemId}
       initialView={calendarView(query.view)}
+      initialDate={initialDate}
     />
   )
 }

@@ -2,11 +2,14 @@
 
 import * as React from "react"
 import Link from "next/link"
+import { useRouter, useSearchParams } from "next/navigation"
 import {
   IconCalendarEvent,
   IconCalendarMonth,
   IconCalendarPlus,
   IconCalendarWeek,
+  IconChevronLeft,
+  IconChevronRight,
   IconClipboardCheck,
   IconListDetails,
   IconMessageQuestion,
@@ -113,6 +116,13 @@ function addDays(date: Date, days: number): Date {
   return next
 }
 
+function addMonths(date: Date, months: number): Date {
+  const next = new Date(date)
+  next.setDate(1)
+  next.setMonth(next.getMonth() + months)
+  return next
+}
+
 function toDateKey(date: Date): string {
   const year = date.getFullYear()
   const month = `${date.getMonth() + 1}`.padStart(2, "0")
@@ -162,6 +172,18 @@ function formatFullDate(date: string): string {
     day: "numeric",
     year: "numeric",
   }).format(parseDateKey(date))
+}
+
+function navigationUnit(view: WorkCalendarView): "day" | "week" | "month" {
+  switch (view) {
+    case "today":
+      return "day"
+    case "week":
+      return "week"
+    case "month":
+    case "list":
+      return "month"
+  }
 }
 
 function kindLabel(kind: WorkCalendarEntryKind): string {
@@ -323,12 +345,16 @@ export function WorkCalendar({
   initialKind = "all",
   initialItemId = null,
   initialView = "week",
+  initialDate,
 }: {
   readonly data: WorkCalendarData
   readonly initialKind?: WorkCalendarKindFilter
   readonly initialItemId?: string | null
   readonly initialView?: WorkCalendarView
+  readonly initialDate?: string
 }): React.ReactElement {
+  const router = useRouter()
+  const searchParams = useSearchParams()
   const [query, setQuery] = React.useState("")
   const [editingEvent, setEditingEvent] =
     React.useState<CalendarEventEntry | null>(null)
@@ -338,24 +364,36 @@ export function WorkCalendar({
   const [activeView, setActiveView] = React.useState<WorkCalendarView>(
     initialItemId ? "list" : initialView
   )
+  const [activeDate, setActiveDate] = React.useState(
+    initialDate ?? data.today
+  )
   React.useEffect(() => {
     setActiveKind(initialKind)
   }, [initialKind])
   React.useEffect(() => {
     setActiveView(initialItemId ? "list" : initialView)
   }, [initialItemId, initialView])
-  const today = React.useMemo(() => parseDateKey(data.today), [data.today])
+  React.useEffect(() => {
+    setActiveDate(initialDate ?? data.today)
+  }, [data.today, initialDate])
+  const calendarDate = React.useMemo(
+    () => parseDateKey(activeDate),
+    [activeDate]
+  )
   const weekDays = React.useMemo(
     () =>
       Array.from({ length: 7 }, (_, index) =>
-        toDateKey(addDays(startOfWeek(today), index))
+        toDateKey(addDays(startOfWeek(calendarDate), index))
       ),
-    [today]
+    [calendarDate]
   )
-  const monthDays = React.useMemo(() => monthCalendarDays(today), [today])
+  const monthDays = React.useMemo(
+    () => monthCalendarDays(calendarDate),
+    [calendarDate]
+  )
   const visibleCalendarDays =
     activeView === "today"
-      ? [data.today]
+      ? [activeDate]
       : activeView === "month"
         ? monthDays
         : weekDays
@@ -370,11 +408,36 @@ export function WorkCalendar({
   const todayEntries = filteredEntries.filter((entry) =>
     entryOnDay(entry, data.today)
   )
+  const activeDateEntries = filteredEntries.filter((entry) =>
+    entryOnDay(entry, activeDate)
+  )
   const expandedDayEntries = expandedDay
     ? filteredEntries.filter((entry) => entryOnDay(entry, expandedDay))
     : []
   const taskCount = filteredEntries.filter((entry) => entry.kind === "task").length
   const rfiCount = filteredEntries.filter((entry) => entry.kind === "rfi").length
+
+  function navigateCalendar(direction: -1 | 1): void {
+    const nextDate =
+      activeView === "month"
+        ? addMonths(calendarDate, direction)
+        : addDays(calendarDate, direction * (activeView === "week" ? 7 : 1))
+    const nextDateKey = toDateKey(nextDate)
+    const params = new URLSearchParams(searchParams.toString())
+    params.set("view", activeView)
+    params.set("date", nextDateKey)
+    if (activeKind === "all") {
+      params.delete("kind")
+    } else {
+      params.set("kind", activeKind)
+    }
+    params.delete("item")
+    setActiveDate(nextDateKey)
+    setExpandedDay(null)
+    router.replace(`/dashboard/schedule?${params.toString()}`, {
+      scroll: false,
+    })
+  }
 
   React.useEffect(() => {
     if (!initialItemId) return
@@ -499,25 +562,54 @@ export function WorkCalendar({
 
         {activeView !== "list" && (
         <section className="border-y bg-card py-4">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div>
-              <h2 className="text-sm font-semibold">
-                {activeView === "today"
-                  ? `Today · ${formatShortDate(data.today)}`
-                  : activeView === "week"
-                    ? `Week of ${formatShortDate(weekDays[0] ?? data.today)}`
-                    : new Intl.DateTimeFormat("en-US", {
-                        month: "long",
-                        year: "numeric",
-                      }).format(today)}
-              </h2>
-              <p className="mt-1 text-xs text-muted-foreground">
-                Select any item to open its source record.
-              </p>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="icon-sm"
+                onClick={() => navigateCalendar(-1)}
+                aria-label={`Previous ${navigationUnit(activeView)}`}
+                title={`Previous ${navigationUnit(activeView)}`}
+              >
+                <IconChevronLeft className="size-4" />
+              </Button>
+              <div className="min-w-40 text-center sm:text-left">
+                <h2
+                  className="text-sm font-semibold"
+                  data-testid="work-calendar-period-label"
+                >
+                  {activeView === "today"
+                    ? activeDate === data.today
+                      ? `Today · ${formatShortDate(activeDate)}`
+                      : formatFullDate(activeDate)
+                    : activeView === "week"
+                      ? `Week of ${formatShortDate(weekDays[0] ?? data.today)}`
+                      : new Intl.DateTimeFormat("en-US", {
+                          month: "long",
+                          year: "numeric",
+                        }).format(calendarDate)}
+                </h2>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Select any item to open its source record.
+                </p>
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="icon-sm"
+                onClick={() => navigateCalendar(1)}
+                aria-label={`Next ${navigationUnit(activeView)}`}
+                title={`Next ${navigationUnit(activeView)}`}
+              >
+                <IconChevronRight className="size-4" />
+              </Button>
             </div>
             <Badge variant="secondary">
               {activeView === "today"
-                ? `${todayEntries.length} today`
+                ? `${activeDateEntries.length} item${
+                    activeDateEntries.length === 1 ? "" : "s"
+                  }`
                 : activeView === "week"
                   ? "Monday–Sunday"
                   : `${visibleCalendarDays.length / 7} weeks`}
@@ -538,7 +630,7 @@ export function WorkCalendar({
               )
               const outsideCurrentMonth =
                 activeView === "month" &&
-                parseDateKey(day).getMonth() !== today.getMonth()
+                parseDateKey(day).getMonth() !== calendarDate.getMonth()
 
               return (
                 <div
