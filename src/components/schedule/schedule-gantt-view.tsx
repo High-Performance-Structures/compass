@@ -743,7 +743,7 @@ export function ScheduleGanttView({
           orientation="horizontal"
           className="min-w-0 flex-1 min-h-[300px] overflow-hidden border"
         >
-          <ResizablePanel defaultSize={30} minSize={20}>
+          <ResizablePanel defaultSize="30%" minSize="20%">
             <div
               ref={taskListRef}
               className="h-full min-w-0 overflow-auto"
@@ -755,7 +755,7 @@ export function ScheduleGanttView({
 
           <ResizableHandle withHandle />
 
-          <ResizablePanel defaultSize={70} minSize={40}>
+          <ResizablePanel defaultSize="70%" minSize="40%">
             <div className="relative h-full min-w-0 overflow-hidden">
               <GanttChart
                 tasks={frappeTasks}
