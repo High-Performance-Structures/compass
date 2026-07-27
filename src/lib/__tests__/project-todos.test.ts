@@ -6,7 +6,9 @@ import {
   isCompletedProjectTodoStatus,
   isProjectTodoRecordType,
   isProjectTodoStatus,
+  isSelectableProjectTodoStatus,
   normalizeProjectTodoStatus,
+  PROJECT_TODO_SELECTABLE_STATUSES,
   projectTodoStatusLabel,
   projectTodoTypeLabel,
 } from "@/lib/project-todos"
@@ -31,9 +33,18 @@ describe("project to-do normalization", () => {
     expect(normalizeProjectTodoStatus("closed")).toBe("complete")
     expect(isCompletedProjectTodoStatus("done")).toBe(true)
     expect(isArchivedProjectTodoStatus("archived")).toBe(true)
+    expect(normalizeProjectTodoStatus("archived")).toBe("archived")
     expect(projectTodoStatusLabel("on-hold")).toBe("Blocked")
     expect(isProjectTodoStatus("in_progress")).toBe(true)
-    expect(isProjectTodoStatus("archived")).toBe(false)
+    expect(isProjectTodoStatus("archived")).toBe(true)
+    expect(PROJECT_TODO_SELECTABLE_STATUSES).toEqual([
+      "open",
+      "in_progress",
+      "complete",
+      "archived",
+    ])
+    expect(isSelectableProjectTodoStatus("archived")).toBe(true)
+    expect(isSelectableProjectTodoStatus("blocked")).toBe(false)
   })
 
   it("uses concise staff-facing type labels", () => {

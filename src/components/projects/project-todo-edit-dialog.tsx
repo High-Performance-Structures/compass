@@ -38,7 +38,9 @@ import { Textarea } from "@/components/ui/textarea"
 import {
   canonicalProjectTodoRecordType,
   isArchivedProjectTodoStatus,
+  isSelectableProjectTodoStatus,
   normalizeProjectTodoStatus,
+  PROJECT_TODO_SELECTABLE_STATUSES,
   projectTodoStatusLabel,
 } from "@/lib/project-todos"
 
@@ -209,22 +211,23 @@ export function ProjectTodoEditDialog({
                 value={status}
                 onChange={(event) => {
                   const value = event.target.value
-                  if (
-                    value === "open" ||
-                    value === "in_progress" ||
-                    value === "blocked" ||
-                    value === "complete"
-                  ) {
+                  if (isSelectableProjectTodoStatus(value)) {
                     setStatus(value)
                   }
                 }}
                 disabled={archived}
                 className="h-10 w-full rounded-md border bg-background px-3 text-sm"
               >
-                <option value="open">Open</option>
-                <option value="in_progress">In progress</option>
-                <option value="blocked">Blocked</option>
-                <option value="complete">Complete</option>
+                {status === "blocked" && (
+                  <option value="blocked" disabled hidden>
+                    Blocked (legacy)
+                  </option>
+                )}
+                {PROJECT_TODO_SELECTABLE_STATUSES.map((selectableStatus) => (
+                  <option key={selectableStatus} value={selectableStatus}>
+                    {projectTodoStatusLabel(selectableStatus)}
+                  </option>
+                ))}
               </select>
             </div>
             <div className="space-y-2">

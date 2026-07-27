@@ -22,7 +22,9 @@ import { cn } from "@/lib/utils"
 import {
   isArchivedProjectTodoStatus,
   isCompletedProjectTodoStatus,
+  isSelectableProjectTodoStatus,
   normalizeProjectTodoStatus,
+  PROJECT_TODO_SELECTABLE_STATUSES,
   projectTodoStatusLabel,
   projectTodoTypeLabel,
   type ProjectTodoStatus,
@@ -137,21 +139,22 @@ function StatusControl({
         disabled={pending}
         onChange={(event) => {
           const value = event.target.value
-          if (
-            value === "open" ||
-            value === "in_progress" ||
-            value === "blocked" ||
-            value === "complete"
-          ) {
+          if (isSelectableProjectTodoStatus(value)) {
             changeStatus(value)
           }
         }}
         className="h-8 rounded-md border bg-background px-2 text-xs"
       >
-        <option value="open">Open</option>
-        <option value="in_progress">In progress</option>
-        <option value="blocked">Blocked</option>
-        <option value="complete">Complete</option>
+        {status === "blocked" && (
+          <option value="blocked" disabled hidden>
+            Blocked (legacy)
+          </option>
+        )}
+        {PROJECT_TODO_SELECTABLE_STATUSES.map((selectableStatus) => (
+          <option key={selectableStatus} value={selectableStatus}>
+            {projectTodoStatusLabel(selectableStatus)}
+          </option>
+        ))}
       </select>
       {error && (
         <p className="mt-1 max-w-56 text-xs text-destructive">{error}</p>

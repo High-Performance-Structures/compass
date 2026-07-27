@@ -5,9 +5,11 @@ import { revalidatePath } from "next/cache"
 
 import { getDb } from "@/db"
 import {
+  organizationMembers,
   projectContacts,
   projectContactSourceLinks,
   projects,
+  users,
   vendors,
 } from "@/db/schema"
 import { requireAuth } from "@/lib/auth"
@@ -412,6 +414,33 @@ function directoryContactToTaskAssigneeOption(input: {
   }
 }
 
+function organizationUserToTaskAssigneeOption(input: {
+  readonly id: string
+  readonly email: string
+  readonly displayName: string | null
+  readonly firstName: string | null
+  readonly lastName: string | null
+}): ProjectTaskAssigneeOption {
+  const fullName = [input.firstName, input.lastName]
+    .filter((part): part is string => part !== null && part.trim().length > 0)
+    .join(" ")
+  const name = input.displayName?.trim() || fullName || input.email
+
+  return {
+    id: `team:${input.id}`,
+    label: name,
+    name,
+    companyName: null,
+    email: input.email,
+    phone: null,
+    contactType: "internal",
+    source: "project",
+    projectContactId: null,
+    directoryContactId: null,
+    projectAccess: true,
+  }
+}
+
 export async function getProjectContactsSummary(
   projectId: string,
   audience: ProjectContactAudience = "internal"
@@ -531,6 +560,41 @@ export async function getProjectTaskAssigneeOptions(
       normalizeDirectoryKey(contact.companyName ?? contact.displayName)
     )
   )
+  const projectAssigneeNameKeys = new Set(
+    projectContactItems.map((contact) =>
+      normalizeDirectoryKey(contact.displayName)
+    )
+  )
+  const projectEmailKeys = new Set(
+    projectContactItems
+      .map((contact) => contact.email?.trim().toLowerCase() ?? "")
+      .filter((email) => email.length > 0)
+  )
+
+  const organizationUserRows = await db
+    .select({
+      id: users.id,
+      email: users.email,
+      displayName: users.displayName,
+      firstName: users.firstName,
+      lastName: users.lastName,
+    })
+    .from(organizationMembers)
+    .innerJoin(users, eq(users.id, organizationMembers.userId))
+    .where(
+      and(
+        eq(organizationMembers.organizationId, orgId),
+        eq(users.isActive, true)
+      )
+    )
+    .orderBy(asc(users.displayName), asc(users.email))
+  const organizationUserOptions = organizationUserRows
+    .map(organizationUserToTaskAssigneeOption)
+    .filter(
+      (option) =>
+        !projectAssigneeNameKeys.has(normalizeDirectoryKey(option.name)) &&
+        !projectEmailKeys.has(option.email?.trim().toLowerCase() ?? "")
+    )
 
   const directoryRows = await db
     .select({
@@ -556,7 +620,10 @@ export async function getProjectTaskAssigneeOptions(
     .map(directoryContactToTaskAssigneeOption)
 
   return {
-    projectContacts: projectContactItems.map(projectContactToTaskAssigneeOption),
+    projectContacts: [
+      ...projectContactItems.map(projectContactToTaskAssigneeOption),
+      ...organizationUserOptions,
+    ],
     directoryContacts,
   }
 }

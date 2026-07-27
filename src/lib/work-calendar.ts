@@ -66,7 +66,7 @@ function isCanonicalInstant(value: string): boolean {
   )
 }
 
-function isValidTimeZone(value: string): boolean {
+export function isValidTimeZone(value: string): boolean {
   try {
     new Intl.DateTimeFormat("en-US", { timeZone: value }).format(new Date(0))
     return true

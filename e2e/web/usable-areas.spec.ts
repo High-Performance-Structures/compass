@@ -132,6 +132,26 @@ test.describe("usable Compass areas", () => {
     }
   })
 
+  test("timezone preference persists after reloading settings", async ({
+    page,
+  }) => {
+    const path = "/dashboard/settings"
+    const response = await page.goto(path)
+    await expectHealthyNavigation(page, response, path)
+
+    const timezone = page.getByRole("combobox", { name: "Timezone" })
+    await timezone.click()
+    await page.getByRole("option", { name: "Pacific (PT)" }).click()
+    await expect(timezone).toContainText("Pacific (PT)")
+    await page.getByRole("button", { name: "Save preferences" }).click()
+    await expect(page.getByText("Preferences saved.")).toBeVisible()
+
+    await page.reload()
+    await expect(
+      page.getByRole("combobox", { name: "Timezone" })
+    ).toContainText("Pacific (PT)")
+  })
+
   test("schedule switches between calendar, list, and Gantt", async ({
     page,
   }) => {
@@ -172,9 +192,11 @@ test.describe("usable Compass areas", () => {
         .first()
     ).toBeVisible()
 
-    await scheduleRow
-      .getByRole("checkbox", { name: "Select Regression Schedule Item" })
-      .check()
+    const selectionCheckbox = scheduleRow.getByRole("checkbox", {
+      name: "Select Regression Schedule Item",
+    })
+    await selectionCheckbox.click()
+    await expect(selectionCheckbox).toHaveAttribute("aria-checked", "true")
     await expect(page.getByText("1 selected", { exact: true })).toBeVisible()
     await expect(
       page.getByRole("button", { name: "Edit selected" })
@@ -188,6 +210,33 @@ test.describe("usable Compass areas", () => {
 
     await page.getByRole("button", { name: "Clear" }).click()
     await expect(page.getByText("1 selected", { exact: true })).toHaveCount(0)
+  })
+
+  test("schedule assignee choices include active organization team members", async ({
+    page,
+  }) => {
+    const path =
+      "/dashboard/projects/e2e-project-001/schedule?view=list"
+    const response = await page.goto(path)
+    await expectHealthyNavigation(
+      page,
+      response,
+      "/dashboard/projects/e2e-project-001/schedule"
+    )
+
+    const scheduleRow = page.locator("#schedule-item-e2e-schedule-001")
+    await scheduleRow.locator('button[title="Edit schedule item"]').click()
+
+    const editDialog = page.getByRole("dialog", {
+      name: "Edit Schedule Item",
+    })
+    await editDialog.getByRole("button", { name: "Demo User" }).click()
+    await expect(
+      page.getByText("Project & team contacts", { exact: true })
+    ).toBeVisible()
+    await expect(
+      page.getByRole("button", { name: "Demo User" })
+    ).toHaveCount(2)
   })
 
   test("work calendar list shows the actual item title", async ({
@@ -213,6 +262,31 @@ test.describe("usable Compass areas", () => {
         exact: true,
       }).first()
     ).toBeVisible()
+  })
+
+  test("work calendar reveals every item hidden behind the overflow count", async ({
+    page,
+  }) => {
+    const response = await page.goto("/dashboard/schedule?view=month")
+    await expectHealthyNavigation(page, response, "/dashboard/schedule")
+
+    const overflowButton = page.getByRole("button", {
+      name: /Show \d+ more items for/,
+    })
+    await expect(overflowButton).toBeVisible()
+    await overflowButton.click()
+
+    const dayDialog = page.getByRole("dialog")
+    await expect(dayDialog).toContainText("5 work items scheduled for this day")
+    for (const title of [
+      "Regression Schedule Item",
+      "Overflow schedule item two",
+      "Overflow schedule item three",
+      "Overflow schedule item four",
+      "Regression follow-up",
+    ]) {
+      await expect(dayDialog.getByText(title, { exact: true })).toBeVisible()
+    }
   })
 
   test("work calendar to-dos open and focus the exact project record", async ({

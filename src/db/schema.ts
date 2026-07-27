@@ -100,6 +100,7 @@ export const notificationPreferences = sqliteTable("notification_preferences", {
   poEnabled: integer("po_enabled", { mode: "boolean" })
     .notNull()
     .default(true),
+  timeZone: text("time_zone").notNull().default("America/Denver"),
   updatedAt: text("updated_at").notNull(),
 })
 

@@ -19,6 +19,7 @@ import { requireAuth } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
 import { isDemoUser } from "@/lib/demo"
 import { createNotificationEvent } from "@/lib/notifications/events"
+import { eventAttendeeNotificationRecipients } from "@/lib/notifications/audience"
 import { requireOrg } from "@/lib/org-scope"
 import {
   can,
@@ -900,9 +901,7 @@ async function notifyEventParticipants(input: {
   readonly actorName: string
   readonly attendees: readonly WorkCalendarEventAttendee[]
 }): Promise<void> {
-  const recipients = input.attendees.filter(
-    (attendee) => attendee.userId !== input.actorId
-  )
+  const recipients = eventAttendeeNotificationRecipients(input.attendees)
   if (recipients.length === 0) return
 
   const projectName = input.project
