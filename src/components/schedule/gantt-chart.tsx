@@ -247,6 +247,9 @@ export function GanttChart({
           }
         },
       })
+      // Frappe resets a custom view-mode collection to its first entry during
+      // construction, so explicitly restore the React-selected mode.
+      ganttRef.current.change_view_mode(viewMode)
 
       const tasksById = new Map(tasks.map((task) => [task.id, task]))
       for (const wrapper of containerRef.current.querySelectorAll<HTMLElement>(
