@@ -1405,10 +1405,14 @@ export async function getProjectDailyLogWorkspace(
           })
           .from(dailyLogTaskLinks)
           .innerJoin(
+            dailyLogs,
+            eq(dailyLogTaskLinks.dailyLogId, dailyLogs.id)
+          )
+          .innerJoin(
             scheduleTasks,
             eq(dailyLogTaskLinks.scheduleTaskId, scheduleTasks.id)
           )
-          .where(inArray(dailyLogTaskLinks.dailyLogId, logIds))
+          .where(eq(dailyLogs.projectId, projectId))
           .orderBy(asc(scheduleTasks.startDate), asc(scheduleTasks.sortOrder))
 
   const todoRows =
@@ -1426,10 +1430,16 @@ export async function getProjectDailyLogWorkspace(
             dueDate: projectOperations.dueDate,
           })
           .from(projectOperations)
+          .innerJoin(
+            dailyLogs,
+            and(
+              eq(projectOperations.sourceRecordId, dailyLogs.id),
+              eq(dailyLogs.projectId, projectId)
+            )
+          )
           .where(
             and(
               eq(projectOperations.projectId, projectId),
-              inArray(projectOperations.sourceRecordId, logIds),
               inArray(projectOperations.sourceRecordType, [
                 "staff_task",
                 "subcontractor_task",
