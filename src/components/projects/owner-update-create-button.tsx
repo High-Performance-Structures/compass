@@ -44,12 +44,11 @@ export function OwnerUpdateCreateButton({
     <div>
       <Button
         type="button"
-        variant="outline"
         onClick={createDraft}
         disabled={isPending}
       >
         <IconFilePlus className="size-4" />
-        {isPending ? "Creating..." : "New Manual Update"}
+        {isPending ? "Creating..." : "Create Owner Update"}
       </Button>
       {error !== null && (
         <p className="mt-1 max-w-64 text-xs text-destructive" role="alert">

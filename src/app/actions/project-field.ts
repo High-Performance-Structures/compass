@@ -24,16 +24,35 @@ import {
   dateRangeFromDates,
   isDateWithinOwnerUpdatePeriod,
   isValidOwnerUpdatePeriod,
-  parseOwnerUpdateScheduleSnapshot,
+  parseOwnerUpdateComposerSnapshot,
   selectRowsByIdOrder,
-  serializeOwnerUpdateScheduleSnapshot,
-  type OwnerUpdateScheduleItem,
+  serializeOwnerUpdateComposerSnapshot,
+  type OwnerUpdateComposerSnapshot,
+  type OwnerUpdateDocumentSelection,
+  type OwnerUpdateScheduleSelection,
+  type OwnerUpdateTodoSelection,
 } from "@/lib/owner-updates/snapshot"
+import {
+  buildOwnerUpdateDraftPrompt,
+  cleanOwnerUpdateDraft,
+  defaultOwnerUpdatePeriod,
+  isCompletedScheduleCandidate,
+  isLookAheadScheduleCandidate,
+  ownerUpdateTodoTiming,
+} from "@/lib/owner-updates/composer"
 import { isOwnerUpdateVisibleToRole } from "@/lib/owner-updates/history"
 import { can } from "@/lib/permissions"
 import { requireFeaturePermission } from "@/lib/permission-enforcement"
 import { assertProjectAccess } from "@/lib/project-access"
 import { canUseProjectAudience } from "@/lib/project-audience-access"
+import {
+  PROJECT_TODO_RECORD_TYPES,
+  isArchivedProjectTodoStatus,
+} from "@/lib/project-todos"
+import {
+  isJarvisAgentBridgeEnabled,
+  relayAgentRequest,
+} from "@/lib/jarvis/agent-relay"
 import { isInternalStaffRole } from "@/lib/user-roles"
 import { revalidatePath } from "next/cache"
 
@@ -93,6 +112,7 @@ type OwnerUpdateProject = {
 
 type OwnerUpdateDailyLog = {
   readonly id: string
+  readonly sourceSystem: string
   readonly logDate: string
   readonly workCompleted: string
   readonly weather: string | null
@@ -101,16 +121,22 @@ type OwnerUpdateDailyLog = {
   readonly issues: string | null
   readonly nextSteps: string | null
   readonly authorName: string | null
+  readonly reviewStatus: string
+  readonly isClientVisible: boolean
 }
 
 type OwnerUpdatePhoto = {
   readonly id: string
+  readonly sourceSystem: string
   readonly fileName: string
+  readonly mimeType: string | null
   readonly driveFileId: string | null
   readonly driveUrl: string | null
   readonly thumbnailUrl: string | null
   readonly caption: string | null
   readonly capturedAt: string | null
+  readonly reviewStatus: string
+  readonly ownerVisible: boolean
 }
 
 type OwnerUpdatePhotoFolder = {
@@ -250,7 +276,12 @@ export type OwnerUpdateDraftEditInput = {
   readonly periodStart: string
   readonly periodEnd: string
   readonly summary: string
+  readonly sourceDailyLogIds: readonly string[]
   readonly selectedPhotoIds: readonly string[]
+  readonly selectedDocumentIds: readonly string[]
+  readonly completedScheduleItems: readonly OwnerUpdateScheduleSelection[]
+  readonly lookAheadScheduleItems: readonly OwnerUpdateScheduleSelection[]
+  readonly todos: readonly OwnerUpdateTodoSelection[]
 }
 
 type DailyLogMutationResult =
@@ -287,12 +318,16 @@ export type OwnerProjectUpdateDocument = {
     readonly sentAt: string | null
     readonly sourceDailyLogIds: readonly string[]
     readonly selectedPhotoIds: readonly string[]
+    readonly selectedDocumentIds: readonly string[]
     readonly periodStart: string | null
     readonly periodEnd: string | null
   }
   readonly dailyLogs: readonly OwnerUpdateDailyLog[]
+  readonly availableDailyLogs: readonly OwnerUpdateDailyLog[]
   readonly photos: readonly OwnerUpdatePhoto[]
   readonly availablePhotos: readonly OwnerUpdatePhoto[]
+  readonly documents: readonly OwnerUpdateDocumentSelection[]
+  readonly availableDocuments: readonly OwnerUpdateDocumentSelection[]
   readonly photoFolder: OwnerUpdatePhotoFolder | null
   readonly nextScheduleItem: {
     readonly title: string
@@ -301,11 +336,20 @@ export type OwnerProjectUpdateDocument = {
     readonly assignedTo: string | null
   } | null
   readonly lookAheadScheduleItems: readonly {
+    readonly id: string
     readonly title: string
     readonly startDate: string
     readonly endDate: string
     readonly assignedTo: string | null
+    readonly status: string
+    readonly percentComplete: number
+    readonly notes: string
   }[]
+  readonly completedScheduleItems: readonly OwnerUpdateScheduleSelection[]
+  readonly availableCompletedScheduleItems: readonly OwnerUpdateScheduleSelection[]
+  readonly availableLookAheadScheduleItems: readonly OwnerUpdateScheduleSelection[]
+  readonly todos: readonly OwnerUpdateTodoSelection[]
+  readonly availableTodos: readonly OwnerUpdateTodoSelection[]
 }
 
 export type ProjectFieldSummary = {
@@ -348,27 +392,115 @@ function parseIdList(value: string | null): readonly string[] {
   }
 }
 
-async function captureOwnerUpdateSchedule(
+async function getOwnerUpdateComposerCandidates(
   db: ReturnType<typeof getDb>,
   projectId: string,
-  startingOn: string
-): Promise<readonly OwnerUpdateScheduleItem[]> {
-  return db
-    .select({
-      title: scheduleTasks.title,
-      startDate: scheduleTasks.startDate,
-      endDate: scheduleTasks.endDateCalculated,
-      assignedTo: scheduleTasks.assignedTo,
-    })
-    .from(scheduleTasks)
-    .where(
-      and(
-        eq(scheduleTasks.projectId, projectId),
-        gte(scheduleTasks.endDateCalculated, startingOn)
+  periodStart: string,
+  periodEnd: string
+): Promise<{
+  readonly completedScheduleItems: readonly OwnerUpdateScheduleSelection[]
+  readonly lookAheadScheduleItems: readonly OwnerUpdateScheduleSelection[]
+  readonly todos: readonly OwnerUpdateTodoSelection[]
+}> {
+  const [scheduleRows, todoRows] = await Promise.all([
+    db
+      .select({
+        id: scheduleTasks.id,
+        title: scheduleTasks.title,
+        startDate: scheduleTasks.startDate,
+        endDate: scheduleTasks.endDateCalculated,
+        assignedTo: scheduleTasks.assignedTo,
+        status: scheduleTasks.status,
+        percentComplete: scheduleTasks.percentComplete,
+      })
+      .from(scheduleTasks)
+      .where(eq(scheduleTasks.projectId, projectId))
+      .orderBy(asc(scheduleTasks.startDate), asc(scheduleTasks.sortOrder)),
+    db
+      .select({
+        id: projectOperations.id,
+        title: projectOperations.title,
+        description: projectOperations.description,
+        status: projectOperations.status,
+        priority: projectOperations.priority,
+        assigneeName: projectOperations.assigneeName,
+        companyName: projectOperations.companyName,
+        dueDate: projectOperations.dueDate,
+        sourceRecordType: projectOperations.sourceRecordType,
+      })
+      .from(projectOperations)
+      .where(
+        and(
+          eq(projectOperations.projectId, projectId),
+          inArray(projectOperations.sourceRecordType, [
+            ...PROJECT_TODO_RECORD_TYPES,
+          ])
+        )
       )
+      .orderBy(asc(projectOperations.dueDate), asc(projectOperations.title)),
+  ])
+
+  const scheduleSelections = scheduleRows.map((item) => ({
+    ...item,
+    notes: "",
+  }))
+  const completedScheduleItems = scheduleSelections
+    .filter((item) =>
+      isCompletedScheduleCandidate(item, periodStart, periodEnd)
     )
-    .orderBy(asc(scheduleTasks.startDate), asc(scheduleTasks.sortOrder))
-    .limit(8)
+    .slice(0, 20)
+  const lookAheadScheduleItems = scheduleSelections
+    .filter((item) => isLookAheadScheduleCandidate(item, periodEnd))
+    .slice(0, 20)
+  const todos = todoRows.flatMap((item) => {
+    if (isArchivedProjectTodoStatus(item.status)) return []
+    const timing = ownerUpdateTodoTiming(item.dueDate, periodStart, periodEnd)
+    if (timing === null) return []
+    return [
+      {
+        id: item.id,
+        title: item.title,
+        description: item.description ?? "",
+        status: item.status,
+        priority: item.priority,
+        assigneeName: item.assigneeName,
+        companyName: item.companyName,
+        dueDate: item.dueDate,
+        timing,
+        notes: "",
+      },
+    ]
+  })
+
+  return {
+    completedScheduleItems,
+    lookAheadScheduleItems,
+    todos,
+  }
+}
+
+function ownerUpdateDocumentSelection(
+  row: {
+    readonly id: string
+    readonly sourceSystem: string
+    readonly fileName: string
+    readonly mimeType: string | null
+    readonly driveFileId: string | null
+    readonly driveUrl: string | null
+    readonly caption: string | null
+    readonly capturedAt: string | null
+  }
+): OwnerUpdateDocumentSelection {
+  return {
+    id: row.id,
+    sourceSystem: row.sourceSystem,
+    fileName: row.fileName,
+    mimeType: row.mimeType,
+    driveFileId: row.driveFileId,
+    driveUrl: row.driveUrl,
+    caption: row.caption,
+    capturedAt: row.capturedAt,
+  }
 }
 
 function isPhotoInOwnerUpdateScope(
@@ -513,6 +645,7 @@ async function verifyProjectMutationAccess(
 ): Promise<{
   readonly db: ReturnType<typeof getDb>
   readonly userId: string
+  readonly user: Awaited<ReturnType<typeof requireAuth>>
 }> {
   const user = await requireAuth()
   if (isDemoUser(user.id)) {
@@ -534,7 +667,7 @@ async function verifyProjectMutationAccess(
     throw new Error("Project not found")
   }
 
-  return { db, userId: user.id }
+  return { db, userId: user.id, user }
 }
 
 async function verifyDailyLogStaffMutationAccess(
@@ -1721,11 +1854,17 @@ export async function draftOwnerUpdateFromDailyLogs(
       .slice(0, 900)
     const updateId = crypto.randomUUID()
     const now = new Date().toISOString()
-    const scheduleSnapshot = await captureOwnerUpdateSchedule(
+    const composerCandidates = await getOwnerUpdateComposerCandidates(
       db,
       projectId,
+      firstLog.logDate,
       lastLog.logDate
     )
+    const scheduleSnapshot = serializeOwnerUpdateComposerSnapshot({
+      version: 2,
+      ...composerCandidates,
+      documents: [],
+    })
 
     await db.insert(ownerProjectUpdates).values({
       id: updateId,
@@ -1740,8 +1879,7 @@ export async function draftOwnerUpdateFromDailyLogs(
       selectedPhotoIds: JSON.stringify(ownerPhotos.map((photo) => photo.id)),
       periodStart: firstLog.logDate,
       periodEnd: lastLog.logDate,
-      scheduleSnapshot:
-        serializeOwnerUpdateScheduleSnapshot(scheduleSnapshot),
+      scheduleSnapshot,
       createdAt: now,
       updatedAt: now,
     })
@@ -1794,11 +1932,18 @@ export async function createManualOwnerProjectUpdateDraft(
     const updateId = crypto.randomUUID()
     const now = new Date().toISOString()
     const label = project.projectNumber ?? project.name
-    const scheduleSnapshot = await captureOwnerUpdateSchedule(
+    const defaultPeriod = defaultOwnerUpdatePeriod(normalizedDate)
+    const composerCandidates = await getOwnerUpdateComposerCandidates(
       db,
       projectId,
+      defaultPeriod.startDate,
       normalizedDate
     )
+    const scheduleSnapshot = serializeOwnerUpdateComposerSnapshot({
+      version: 2,
+      ...composerCandidates,
+      documents: [],
+    })
 
     await db.insert(ownerProjectUpdates).values({
       id: updateId,
@@ -1811,10 +1956,9 @@ export async function createManualOwnerProjectUpdateDraft(
       channel: "compass",
       sourceDailyLogIds: "[]",
       selectedPhotoIds: "[]",
-      periodStart: normalizedDate,
+      periodStart: defaultPeriod.startDate,
       periodEnd: normalizedDate,
-      scheduleSnapshot:
-        serializeOwnerUpdateScheduleSnapshot(scheduleSnapshot),
+      scheduleSnapshot,
       createdAt: now,
       updatedAt: now,
     })
@@ -1950,10 +2094,15 @@ export async function getOwnerProjectUpdateDocument(
 
   const selectedDailyLogIds = parseIdList(update.sourceDailyLogIds)
   const selectedPhotoIds = parseIdList(update.selectedPhotoIds)
+  const composerSnapshot = parseOwnerUpdateComposerSnapshot(
+    update.scheduleSnapshot
+  )
+  const canManage = can(viewer, "project", "update")
 
   const allLogRows = await db
     .select({
       id: dailyLogs.id,
+      sourceSystem: dailyLogs.sourceSystem,
       logDate: dailyLogs.logDate,
       workCompleted: dailyLogs.workCompleted,
       weatherTempF: dailyLogs.weatherTempF,
@@ -1962,6 +2111,8 @@ export async function getOwnerProjectUpdateDocument(
       safetyIncidents: dailyLogs.safetyIncidents,
       issues: dailyLogs.issues,
       notes: dailyLogs.notes,
+      reviewStatus: dailyLogs.reviewStatus,
+      isClientVisible: dailyLogs.isClientVisible,
       authorDisplayName: users.displayName,
       authorFirstName: users.firstName,
       authorLastName: users.lastName,
@@ -1969,19 +2120,14 @@ export async function getOwnerProjectUpdateDocument(
     })
     .from(dailyLogs)
     .leftJoin(users, eq(dailyLogs.authorId, users.id))
-    .where(
-      and(
-        eq(dailyLogs.projectId, projectId),
-        eq(dailyLogs.reviewStatus, "approved"),
-        eq(dailyLogs.isClientVisible, true)
-      )
-    )
+    .where(eq(dailyLogs.projectId, projectId))
     .orderBy(asc(dailyLogs.logDate), asc(dailyLogs.createdAt))
 
   const allPhotoRows = await db
     .select({
       id: dailyLogPhotos.id,
       dailyLogId: dailyLogPhotos.dailyLogId,
+      sourceSystem: dailyLogPhotos.sourceSystem,
       fileName: dailyLogPhotos.fileName,
       driveFileId: dailyLogPhotos.driveFileId,
       driveUrl: dailyLogPhotos.driveUrl,
@@ -2009,23 +2155,23 @@ export async function getOwnerProjectUpdateDocument(
     )
     .limit(1)
 
-  const dailyLogIds = new Set(selectedDailyLogIds)
-  const photoIds = new Set(selectedPhotoIds)
-  const lookAheadTasks =
-    parseOwnerUpdateScheduleSnapshot(update.scheduleSnapshot)
-  const dailyLogsForUpdate = selectRowsByIdOrder(
-    allLogRows,
-    selectedDailyLogIds
-  )
-    .filter((row) =>
-      isDateWithinOwnerUpdatePeriod(
-        row.logDate,
-        update.periodStart,
-        update.periodEnd
+  const attachmentScopeDailyLogIds = new Set(
+    allLogRows
+      .filter((row) =>
+        isDateWithinOwnerUpdatePeriod(
+          row.logDate,
+          update.periodStart,
+          update.periodEnd
+        )
       )
-    )
-    .map((row) => ({
+      .map((row) => row.id)
+  )
+  const photoIds = new Set(selectedPhotoIds)
+  const mapDailyLog = (
+    row: (typeof allLogRows)[number]
+  ): OwnerUpdateDailyLog => ({
       id: row.id,
+      sourceSystem: row.sourceSystem,
       logDate: row.logDate,
       workCompleted: row.workCompleted,
       weather: [
@@ -2046,62 +2192,166 @@ export async function getOwnerProjectUpdateDocument(
         lastName: row.authorLastName,
         email: row.authorEmail,
       }),
-    }))
-
-  const eligiblePhotoRows = allPhotoRows
-    .filter((row) => {
-      const isImage =
-        row.thumbnailUrl !== null || row.mimeType?.startsWith("image/") === true
-      return isImage && row.ownerVisible && row.reviewStatus === "approved"
+      reviewStatus: row.reviewStatus,
+      isClientVisible: row.isClientVisible,
     })
+  const dailyLogsForUpdate = selectRowsByIdOrder(
+    allLogRows,
+    selectedDailyLogIds
+  )
+    .filter(
+      (row) =>
+        row.reviewStatus === "approved" &&
+        row.isClientVisible &&
+        isDateWithinOwnerUpdatePeriod(
+          row.logDate,
+          update.periodStart,
+          update.periodEnd
+        )
+    )
+    .map(mapDailyLog)
+  const availableDailyLogs = canManage
+    ? allLogRows
+        .filter((row) =>
+          isDateWithinOwnerUpdatePeriod(
+            row.logDate,
+            update.periodStart,
+            update.periodEnd
+          )
+        )
+        .slice(0, 100)
+        .map(mapDailyLog)
+    : []
+
+  const imageRows = allPhotoRows.filter(
+    (row) =>
+      row.thumbnailUrl !== null || row.mimeType?.startsWith("image/") === true
+  )
+  const documentRows = allPhotoRows.filter(
+    (row) =>
+      row.thumbnailUrl === null && row.mimeType?.startsWith("image/") !== true
+  )
 
   const photosForUpdate = selectRowsByIdOrder(
-    eligiblePhotoRows,
+    imageRows,
     selectedPhotoIds
   )
     .map((row) => ({
       id: row.id,
+      sourceSystem: row.sourceSystem,
       fileName: row.fileName,
+      mimeType: row.mimeType,
       driveUrl: row.driveUrl,
       driveFileId: row.driveFileId,
       thumbnailUrl: row.thumbnailUrl,
       caption: row.caption,
       capturedAt: row.capturedAt,
+      reviewStatus: row.reviewStatus,
+      ownerVisible: row.ownerVisible,
     }))
 
   const selectedEligiblePhotoRows = selectRowsByIdOrder(
-    eligiblePhotoRows,
+    imageRows,
     selectedPhotoIds
   )
-  const scopedUnselectedPhotoRows = eligiblePhotoRows.filter(
+  const scopedUnselectedPhotoRows = imageRows.filter(
     (row) =>
       !photoIds.has(row.id) &&
       update.periodStart !== null &&
       update.periodEnd !== null &&
       isPhotoInOwnerUpdateScope(
         row,
-        dailyLogIds,
+        attachmentScopeDailyLogIds,
         update.periodStart,
         update.periodEnd
       )
   )
-  const availablePhotos = [
-    ...selectedEligiblePhotoRows,
-    ...scopedUnselectedPhotoRows,
-  ]
-    .slice(0, 80)
-    .map((row) => ({
-      id: row.id,
-      fileName: row.fileName,
-      driveUrl: row.driveUrl,
-      driveFileId: row.driveFileId,
-      thumbnailUrl: row.thumbnailUrl,
-      caption: row.caption,
-      capturedAt: row.capturedAt,
-    }))
+  const availablePhotos = canManage
+    ? [...selectedEligiblePhotoRows, ...scopedUnselectedPhotoRows]
+        .slice(0, 120)
+        .map((row) => ({
+          id: row.id,
+          sourceSystem: row.sourceSystem,
+          fileName: row.fileName,
+          mimeType: row.mimeType,
+          driveUrl: row.driveUrl,
+          driveFileId: row.driveFileId,
+          thumbnailUrl: row.thumbnailUrl,
+          caption: row.caption,
+          capturedAt: row.capturedAt,
+          reviewStatus: row.reviewStatus,
+          ownerVisible: row.ownerVisible,
+        }))
+    : []
+
+  const selectedDocumentIds = composerSnapshot.documents.map(
+    (document) => document.id
+  )
+  const selectedDocumentIdSet = new Set(selectedDocumentIds)
+  const scopedDocumentRows = documentRows.filter(
+    (row) =>
+      !selectedDocumentIdSet.has(row.id) &&
+      update.periodStart !== null &&
+      update.periodEnd !== null &&
+      isPhotoInOwnerUpdateScope(
+        row,
+        attachmentScopeDailyLogIds,
+        update.periodStart,
+        update.periodEnd
+      )
+  )
+  const availableDocuments = canManage
+    ? [
+        ...composerSnapshot.documents,
+        ...scopedDocumentRows.map(ownerUpdateDocumentSelection),
+      ].slice(0, 120)
+    : []
+  const currentCandidates =
+    canManage &&
+    update.status !== "published" &&
+    update.periodStart !== null &&
+    update.periodEnd !== null
+      ? await getOwnerUpdateComposerCandidates(
+          db,
+          projectId,
+          update.periodStart,
+          update.periodEnd
+        )
+      : {
+          completedScheduleItems: [],
+          lookAheadScheduleItems: [],
+          todos: [],
+        }
+  function reconciledScheduleItems(
+    selected: readonly OwnerUpdateScheduleSelection[],
+    available: readonly OwnerUpdateScheduleSelection[]
+  ): readonly OwnerUpdateScheduleSelection[] {
+    const availableById = new Map(available.map((item) => [item.id, item]))
+    return selected.map((item) => {
+      const candidate =
+        availableById.get(item.id) ??
+        available.find(
+          (availableItem) =>
+            availableItem.title === item.title &&
+            availableItem.startDate === item.startDate &&
+            availableItem.endDate === item.endDate
+        )
+      return candidate === undefined
+        ? item
+        : { ...candidate, title: item.title, notes: item.notes }
+    })
+  }
+  const completedScheduleItems = reconciledScheduleItems(
+    composerSnapshot.completedScheduleItems,
+    currentCandidates.completedScheduleItems
+  )
+  const lookAheadScheduleItems = reconciledScheduleItems(
+    composerSnapshot.lookAheadScheduleItems,
+    currentCandidates.lookAheadScheduleItems
+  )
 
   return {
-    canManage: can(viewer, "project", "update"),
+    canManage,
     project,
     update: {
       id: update.id,
@@ -2114,20 +2364,31 @@ export async function getOwnerProjectUpdateDocument(
       sentAt: update.sentAt,
       sourceDailyLogIds: selectedDailyLogIds,
       selectedPhotoIds,
+      selectedDocumentIds,
       periodStart: update.periodStart,
       periodEnd: update.periodEnd,
     },
     dailyLogs: dailyLogsForUpdate,
+    availableDailyLogs,
     photos: photosForUpdate,
     availablePhotos,
+    documents: composerSnapshot.documents,
+    availableDocuments,
     photoFolder:
       photoFolder
         ? {
             label: photoFolder.label,
           }
         : null,
-    nextScheduleItem: lookAheadTasks[0] ?? null,
-    lookAheadScheduleItems: lookAheadTasks,
+    nextScheduleItem: lookAheadScheduleItems[0] ?? null,
+    completedScheduleItems,
+    lookAheadScheduleItems,
+    availableCompletedScheduleItems:
+      currentCandidates.completedScheduleItems,
+    availableLookAheadScheduleItems:
+      currentCandidates.lookAheadScheduleItems,
+    todos: composerSnapshot.todos,
+    availableTodos: currentCandidates.todos,
   }
 }
 
@@ -2149,7 +2410,13 @@ export async function updateOwnerProjectUpdateDraft(
     const periodStart = input.periodStart.trim()
     const periodEnd = input.periodEnd.trim()
     const summary = input.summary.trim()
+    const sourceDailyLogIds = [...new Set(input.sourceDailyLogIds)]
+      .map((id) => id.trim())
+      .filter((id) => id.length > 0)
     const selectedPhotoIds = [...new Set(input.selectedPhotoIds)]
+      .map((id) => id.trim())
+      .filter((id) => id.length > 0)
+    const selectedDocumentIds = [...new Set(input.selectedDocumentIds)]
       .map((id) => id.trim())
       .filter((id) => id.length > 0)
 
@@ -2165,15 +2432,11 @@ export async function updateOwnerProjectUpdateDraft(
         error: "The reporting period must have valid start and end dates.",
       }
     }
-    if (summary.length === 0) {
-      return { success: false, error: "Summary is required." }
-    }
 
     const [update] = await db
       .select({
         id: ownerProjectUpdates.id,
         status: ownerProjectUpdates.status,
-        sourceDailyLogIds: ownerProjectUpdates.sourceDailyLogIds,
       })
       .from(ownerProjectUpdates)
       .where(
@@ -2194,7 +2457,6 @@ export async function updateOwnerProjectUpdateDraft(
       }
     }
 
-    const sourceDailyLogIds = parseIdList(update.sourceDailyLogIds)
     if (sourceDailyLogIds.length > 0) {
       const selectedLogs = await db
         .select({
@@ -2233,36 +2495,63 @@ export async function updateOwnerProjectUpdateDraft(
       }
     }
 
-    if (selectedPhotoIds.length > 0) {
-      const eligiblePhotos = await db
+    const selectedAttachmentIds = [
+      ...selectedPhotoIds,
+      ...selectedDocumentIds,
+    ]
+    let documentSelections: readonly OwnerUpdateDocumentSelection[] = []
+    if (selectedAttachmentIds.length > 0) {
+      const selectedAttachments = await db
         .select({
           id: dailyLogPhotos.id,
           dailyLogId: dailyLogPhotos.dailyLogId,
+          sourceSystem: dailyLogPhotos.sourceSystem,
+          fileName: dailyLogPhotos.fileName,
+          mimeType: dailyLogPhotos.mimeType,
+          driveFileId: dailyLogPhotos.driveFileId,
+          driveUrl: dailyLogPhotos.driveUrl,
+          thumbnailUrl: dailyLogPhotos.thumbnailUrl,
+          caption: dailyLogPhotos.caption,
           capturedAt: dailyLogPhotos.capturedAt,
         })
         .from(dailyLogPhotos)
         .where(
           and(
             eq(dailyLogPhotos.projectId, projectId),
-            inArray(dailyLogPhotos.id, selectedPhotoIds),
-            eq(dailyLogPhotos.ownerVisible, true),
-            eq(dailyLogPhotos.reviewStatus, "approved")
+            inArray(dailyLogPhotos.id, selectedAttachmentIds)
           )
         )
 
-      if (eligiblePhotos.length !== selectedPhotoIds.length) {
+      if (selectedAttachments.length !== selectedAttachmentIds.length) {
         return {
           success: false,
-          error: "Only approved owner-visible photos can be selected.",
+          error: "One or more selected files could not be found.",
         }
       }
 
-      const sourceDailyLogIdSet = new Set(sourceDailyLogIds)
+      const attachmentScopeRows = await db
+        .select({
+          id: dailyLogs.id,
+          logDate: dailyLogs.logDate,
+        })
+        .from(dailyLogs)
+        .where(eq(dailyLogs.projectId, projectId))
+      const sourceDailyLogIdSet = new Set(
+        attachmentScopeRows
+          .filter((log) =>
+            isDateWithinOwnerUpdatePeriod(
+              log.logDate,
+              periodStart,
+              periodEnd
+            )
+          )
+          .map((log) => log.id)
+      )
       if (
-        eligiblePhotos.some(
-          (photo) =>
+        selectedAttachments.some(
+          (attachment) =>
             !isPhotoInOwnerUpdateScope(
-              photo,
+              attachment,
               sourceDailyLogIdSet,
               periodStart,
               periodEnd
@@ -2272,16 +2561,114 @@ export async function updateOwnerProjectUpdateDraft(
         return {
           success: false,
           error:
-            "Selected photos must be tied to a source log or captured during the reporting period.",
+            "Selected files must be tied to a source log or captured during the reporting period.",
         }
       }
+
+      const selectedPhotoIdSet = new Set(selectedPhotoIds)
+      if (
+        selectedAttachments.some((attachment) => {
+          const isImage =
+            attachment.thumbnailUrl !== null ||
+            attachment.mimeType?.startsWith("image/") === true
+          return selectedPhotoIdSet.has(attachment.id) !== isImage
+        })
+      ) {
+        return {
+          success: false,
+          error: "Photos and documents must be selected in the correct section.",
+        }
+      }
+
+      const attachmentsById = new Map(
+        selectedAttachments.map((attachment) => [
+          attachment.id,
+          attachment,
+        ])
+      )
+      documentSelections = selectedDocumentIds.flatMap((id) => {
+        const attachment = attachmentsById.get(id)
+        return attachment === undefined
+          ? []
+          : [ownerUpdateDocumentSelection(attachment)]
+      })
     }
 
-    const scheduleSnapshot = await captureOwnerUpdateSchedule(
+    const candidates = await getOwnerUpdateComposerCandidates(
       db,
       projectId,
+      periodStart,
       periodEnd
     )
+    const completedById = new Map(
+      candidates.completedScheduleItems.map((item) => [item.id, item])
+    )
+    const lookAheadById = new Map(
+      candidates.lookAheadScheduleItems.map((item) => [item.id, item])
+    )
+    const todosById = new Map(
+      candidates.todos.map((item) => [item.id, item])
+    )
+
+    function selectedScheduleItems(
+      selected: readonly OwnerUpdateScheduleSelection[],
+      candidatesById: ReadonlyMap<string, OwnerUpdateScheduleSelection>
+    ): readonly OwnerUpdateScheduleSelection[] {
+      const seen = new Set<string>()
+      return selected.flatMap((item) => {
+        if (seen.has(item.id)) return []
+        seen.add(item.id)
+        const candidate =
+          candidatesById.get(item.id) ??
+          [...candidatesById.values()].find(
+            (candidateItem) =>
+              candidateItem.title === item.title &&
+              candidateItem.startDate === item.startDate &&
+              candidateItem.endDate === item.endDate
+          )
+        if (candidate === undefined) return []
+        const editedTitle = item.title.trim()
+        return [
+          {
+            ...candidate,
+            title: editedTitle.length > 0 ? editedTitle : candidate.title,
+            notes: item.notes.trim(),
+          },
+        ]
+      })
+    }
+
+    const completedScheduleItems = selectedScheduleItems(
+      input.completedScheduleItems,
+      completedById
+    )
+    const lookAheadScheduleItems = selectedScheduleItems(
+      input.lookAheadScheduleItems,
+      lookAheadById
+    )
+    const seenTodoIds = new Set<string>()
+    const todos = input.todos.flatMap((item) => {
+      if (seenTodoIds.has(item.id)) return []
+      seenTodoIds.add(item.id)
+      const candidate = todosById.get(item.id)
+      if (candidate === undefined) return []
+      const editedTitle = item.title.trim()
+      return [
+        {
+          ...candidate,
+          title: editedTitle.length > 0 ? editedTitle : candidate.title,
+          description: item.description.trim(),
+          notes: item.notes.trim(),
+        },
+      ]
+    })
+    const composerSnapshot: OwnerUpdateComposerSnapshot = {
+      version: 2,
+      completedScheduleItems,
+      lookAheadScheduleItems,
+      todos,
+      documents: documentSelections,
+    }
 
     await db
       .update(ownerProjectUpdates)
@@ -2291,9 +2678,10 @@ export async function updateOwnerProjectUpdateDraft(
         periodStart,
         periodEnd,
         summary,
+        sourceDailyLogIds: JSON.stringify(sourceDailyLogIds),
         selectedPhotoIds: JSON.stringify(selectedPhotoIds),
         scheduleSnapshot:
-          serializeOwnerUpdateScheduleSnapshot(scheduleSnapshot),
+          serializeOwnerUpdateComposerSnapshot(composerSnapshot),
         updatedAt: new Date().toISOString(),
       })
       .where(eq(ownerProjectUpdates.id, updateId))
@@ -2312,6 +2700,220 @@ export async function updateOwnerProjectUpdateDraft(
         error instanceof Error
           ? error.message
           : "Unable to update owner draft.",
+    }
+  }
+}
+
+export async function draftOwnerProjectUpdateWithJarvis(
+  projectId: string,
+  updateId: string
+): Promise<
+  | { readonly success: true; readonly summary: string }
+  | { readonly success: false; readonly error: string }
+> {
+  try {
+    const { db, user } = await verifyProjectMutationAccess(
+      projectId,
+      "owner-updates"
+    )
+    const [update] = await db
+      .select({
+        id: ownerProjectUpdates.id,
+        title: ownerProjectUpdates.title,
+        status: ownerProjectUpdates.status,
+        periodStart: ownerProjectUpdates.periodStart,
+        periodEnd: ownerProjectUpdates.periodEnd,
+        sourceDailyLogIds: ownerProjectUpdates.sourceDailyLogIds,
+        selectedPhotoIds: ownerProjectUpdates.selectedPhotoIds,
+        scheduleSnapshot: ownerProjectUpdates.scheduleSnapshot,
+        projectName: projects.name,
+        projectNumber: projects.projectNumber,
+      })
+      .from(ownerProjectUpdates)
+      .innerJoin(projects, eq(ownerProjectUpdates.projectId, projects.id))
+      .where(
+        and(
+          eq(ownerProjectUpdates.id, updateId),
+          eq(ownerProjectUpdates.projectId, projectId)
+        )
+      )
+      .limit(1)
+
+    if (!update || update.status === "published") {
+      return {
+        success: false,
+        error: "Only an owner update draft can be drafted with Jarvis.",
+      }
+    }
+    if (
+      update.periodStart === null ||
+      update.periodEnd === null ||
+      !isValidOwnerUpdatePeriod(update.periodStart, update.periodEnd)
+    ) {
+      return {
+        success: false,
+        error: "Save a valid reporting period before asking Jarvis.",
+      }
+    }
+
+    const sourceDailyLogIds = parseIdList(update.sourceDailyLogIds)
+    const selectedLogs =
+      sourceDailyLogIds.length === 0
+        ? []
+        : await db
+            .select({
+              id: dailyLogs.id,
+              logDate: dailyLogs.logDate,
+              workCompleted: dailyLogs.workCompleted,
+              issues: dailyLogs.issues,
+              notes: dailyLogs.notes,
+            })
+            .from(dailyLogs)
+            .where(
+              and(
+                eq(dailyLogs.projectId, projectId),
+                inArray(dailyLogs.id, sourceDailyLogIds)
+              )
+            )
+            .orderBy(asc(dailyLogs.logDate), asc(dailyLogs.createdAt))
+    const selectedLogById = new Map(
+      selectedLogs.map((log) => [log.id, log])
+    )
+    const orderedLogs = sourceDailyLogIds.flatMap((id) => {
+      const log = selectedLogById.get(id)
+      return log === undefined ? [] : [log]
+    })
+    const composerSnapshot = parseOwnerUpdateComposerSnapshot(
+      update.scheduleSnapshot
+    )
+    const selectedAttachmentIds = [
+      ...parseIdList(update.selectedPhotoIds),
+      ...composerSnapshot.documents.map((document) => document.id),
+    ]
+    const selectedAttachments =
+      selectedAttachmentIds.length === 0
+        ? []
+        : await db
+            .select({
+              id: dailyLogPhotos.id,
+              fileName: dailyLogPhotos.fileName,
+              mimeType: dailyLogPhotos.mimeType,
+              thumbnailUrl: dailyLogPhotos.thumbnailUrl,
+              caption: dailyLogPhotos.caption,
+            })
+            .from(dailyLogPhotos)
+            .where(
+              and(
+                eq(dailyLogPhotos.projectId, projectId),
+                inArray(dailyLogPhotos.id, selectedAttachmentIds)
+              )
+            )
+    const selectedAttachmentById = new Map(
+      selectedAttachments.map((attachment) => [
+        attachment.id,
+        attachment,
+      ])
+    )
+    const orderedAttachments = selectedAttachmentIds.flatMap((id) => {
+      const attachment = selectedAttachmentById.get(id)
+      if (attachment === undefined) return []
+      const isImage =
+        attachment.thumbnailUrl !== null ||
+        attachment.mimeType?.startsWith("image/") === true
+      const kind: "photo" | "document" = isImage ? "photo" : "document"
+      return [
+        {
+          fileName: attachment.fileName,
+          caption: attachment.caption,
+          kind,
+        },
+      ]
+    })
+    const prompt = buildOwnerUpdateDraftPrompt({
+      projectLabel: update.projectNumber ?? update.projectName,
+      periodStart: update.periodStart,
+      periodEnd: update.periodEnd,
+      dailyLogs: orderedLogs,
+      attachments: orderedAttachments,
+      completedScheduleItems:
+        composerSnapshot.completedScheduleItems,
+      lookAheadScheduleItems:
+        composerSnapshot.lookAheadScheduleItems,
+      todos: composerSnapshot.todos,
+    }).slice(0, 3_950)
+
+    const { env } = await getCloudflareContext()
+    const configuredBridgeEnabled = Reflect.get(
+      env,
+      "JARVIS_AGENT_BRIDGE_ENABLED"
+    )
+    const configuredBridgeSecret = Reflect.get(env, "JARVIS_BRIDGE_SECRET")
+    if (
+      !isJarvisAgentBridgeEnabled(
+        typeof configuredBridgeEnabled === "string"
+          ? configuredBridgeEnabled
+          : undefined
+      ) ||
+      typeof configuredBridgeSecret !== "string" ||
+      configuredBridgeSecret.length === 0
+    ) {
+      return {
+        success: false,
+        error: "Jarvis drafting is not configured in this deployment.",
+      }
+    }
+
+    const result = await relayAgentRequest({
+      db,
+      organizationId: user.organizationId,
+      user: {
+        id: user.id,
+        displayName: user.displayName,
+        email: user.email,
+        role: user.role,
+      },
+      sessionId: `owner-update:${updateId}:${Date.now()}`,
+      currentPage:
+        `/dashboard/projects/${projectId}/owner-updates/${updateId}`,
+      timezone: "America/Denver",
+      messages: [{ role: "user", content: prompt }],
+    })
+    if (!result.success) {
+      return { success: false, error: result.error }
+    }
+
+    const summary = cleanOwnerUpdateDraft(result.content)
+    if (summary.length === 0) {
+      return { success: false, error: "Jarvis returned an empty draft." }
+    }
+
+    await db
+      .update(ownerProjectUpdates)
+      .set({
+        summary,
+        updatedAt: new Date().toISOString(),
+      })
+      .where(
+        and(
+          eq(ownerProjectUpdates.id, updateId),
+          eq(ownerProjectUpdates.projectId, projectId),
+          eq(ownerProjectUpdates.status, "draft")
+        )
+      )
+
+    revalidatePath(`/dashboard/projects/${projectId}/owner-updates`)
+    revalidatePath(
+      `/dashboard/projects/${projectId}/owner-updates/${updateId}`
+    )
+
+    return { success: true, summary }
+  } catch (error) {
+    return {
+      success: false,
+      error:
+        error instanceof Error
+          ? error.message
+          : "Jarvis could not draft this owner update.",
     }
   }
 }
@@ -2342,6 +2944,7 @@ export async function publishOwnerProjectUpdate(
       selectedPhotoIds: ownerProjectUpdates.selectedPhotoIds,
       periodStart: ownerProjectUpdates.periodStart,
       periodEnd: ownerProjectUpdates.periodEnd,
+      scheduleSnapshot: ownerProjectUpdates.scheduleSnapshot,
     })
     .from(ownerProjectUpdates)
     .innerJoin(projects, eq(ownerProjectUpdates.projectId, projects.id))
@@ -2375,6 +2978,12 @@ export async function publishOwnerProjectUpdate(
 
   const sourceDailyLogIds = parseIdList(update.sourceDailyLogIds)
   const selectedPhotoIds = parseIdList(update.selectedPhotoIds)
+  const composerSnapshot = parseOwnerUpdateComposerSnapshot(
+    update.scheduleSnapshot
+  )
+  const selectedDocumentIds = composerSnapshot.documents.map(
+    (document) => document.id
+  )
   const selectedLogs =
     sourceDailyLogIds.length === 0
       ? []
@@ -2429,8 +3038,12 @@ export async function publishOwnerProjectUpdate(
     }
   }
 
-  if (selectedPhotoIds.length > 0) {
-    const eligiblePhotos = await db
+  const selectedAttachmentIds = [
+    ...selectedPhotoIds,
+    ...selectedDocumentIds,
+  ]
+  if (selectedAttachmentIds.length > 0) {
+    const selectedAttachments = await db
       .select({
         id: dailyLogPhotos.id,
         dailyLogId: dailyLogPhotos.dailyLogId,
@@ -2440,26 +3053,41 @@ export async function publishOwnerProjectUpdate(
       .where(
         and(
           eq(dailyLogPhotos.projectId, projectId),
-          inArray(dailyLogPhotos.id, selectedPhotoIds),
-          eq(dailyLogPhotos.ownerVisible, true),
-          eq(dailyLogPhotos.reviewStatus, "approved")
+          inArray(dailyLogPhotos.id, selectedAttachmentIds)
         )
       )
 
-    if (eligiblePhotos.length !== selectedPhotoIds.length) {
+    if (selectedAttachments.length !== selectedAttachmentIds.length) {
       return {
         success: false,
         error:
-          "Every selected photo must remain approved and owner-visible before publishing.",
+          "Every selected photo and document must still belong to this project before publishing.",
       }
     }
 
-    const sourceDailyLogIdSet = new Set(sourceDailyLogIds)
+    const attachmentScopeRows = await db
+      .select({
+        id: dailyLogs.id,
+        logDate: dailyLogs.logDate,
+      })
+      .from(dailyLogs)
+      .where(eq(dailyLogs.projectId, projectId))
+    const sourceDailyLogIdSet = new Set(
+      attachmentScopeRows
+        .filter((log) =>
+          isDateWithinOwnerUpdatePeriod(
+            log.logDate,
+            periodStart,
+            periodEnd
+          )
+        )
+        .map((log) => log.id)
+    )
     if (
-      eligiblePhotos.some(
-        (photo) =>
+      selectedAttachments.some(
+        (attachment) =>
           !isPhotoInOwnerUpdateScope(
-            photo,
+            attachment,
             sourceDailyLogIdSet,
             periodStart,
             periodEnd
@@ -2469,16 +3097,25 @@ export async function publishOwnerProjectUpdate(
       return {
         success: false,
         error:
-          "Selected photos must be tied to a source log or captured during the reporting period.",
+          "Selected files must be tied to a source log or captured during the reporting period.",
       }
     }
+
+    await db
+      .update(dailyLogPhotos)
+      .set({
+        reviewStatus: "approved",
+        ownerVisible: true,
+        updatedAt: new Date().toISOString(),
+      })
+      .where(
+        and(
+          eq(dailyLogPhotos.projectId, projectId),
+          inArray(dailyLogPhotos.id, selectedAttachmentIds)
+        )
+      )
   }
 
-  const scheduleSnapshot = await captureOwnerUpdateSchedule(
-    db,
-    projectId,
-    periodEnd
-  )
   const now = new Date().toISOString()
 
   await db
@@ -2490,7 +3127,7 @@ export async function publishOwnerProjectUpdate(
       sourceDailyLogIds: JSON.stringify(sourceDailyLogIds),
       selectedPhotoIds: JSON.stringify(selectedPhotoIds),
       scheduleSnapshot:
-        serializeOwnerUpdateScheduleSnapshot(scheduleSnapshot),
+        serializeOwnerUpdateComposerSnapshot(composerSnapshot),
       publishedAt: now,
       updatedAt: now,
     })

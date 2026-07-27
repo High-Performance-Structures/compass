@@ -4,9 +4,12 @@ import {
   dateRangeFromDates,
   isDateWithinOwnerUpdatePeriod,
   isValidOwnerUpdatePeriod,
+  parseOwnerUpdateComposerSnapshot,
   parseOwnerUpdateScheduleSnapshot,
   selectRowsByIdOrder,
+  serializeOwnerUpdateComposerSnapshot,
   serializeOwnerUpdateScheduleSnapshot,
+  type OwnerUpdateComposerSnapshot,
 } from "@/lib/owner-updates/snapshot"
 
 describe("owner update snapshots", () => {
@@ -56,6 +59,57 @@ describe("owner update snapshots", () => {
         JSON.stringify([{ title: "Missing dates" }])
       )
     ).toEqual([])
+  })
+
+  it("round-trips curated schedule, to-do, and document selections", () => {
+    const snapshot: OwnerUpdateComposerSnapshot = {
+      version: 2,
+      completedScheduleItems: [
+        {
+          id: "schedule-complete",
+          title: "Framing completed",
+          startDate: "2026-07-20",
+          endDate: "2026-07-24",
+          assignedTo: "Framing crew",
+          status: "COMPLETE",
+          percentComplete: 100,
+          notes: "Ready for inspection.",
+        },
+      ],
+      lookAheadScheduleItems: [],
+      todos: [
+        {
+          id: "todo-one",
+          title: "Confirm appliance delivery",
+          description: "Coordinate delivery window.",
+          status: "open",
+          priority: "normal",
+          assigneeName: "Rebekah",
+          companyName: null,
+          dueDate: "2026-07-29",
+          timing: "upcoming",
+          notes: "",
+        },
+      ],
+      documents: [
+        {
+          id: "document-one",
+          fileName: "selection.pdf",
+          mimeType: "application/pdf",
+          driveFileId: "drive-one",
+          driveUrl: null,
+          caption: "Approved selection",
+          capturedAt: "2026-07-24T12:00:00.000Z",
+          sourceSystem: "compass_upload",
+        },
+      ],
+    }
+
+    expect(
+      parseOwnerUpdateComposerSnapshot(
+        serializeOwnerUpdateComposerSnapshot(snapshot)
+      )
+    ).toEqual(snapshot)
   })
 
   it("derives reporting periods from selected log dates", () => {

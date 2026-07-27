@@ -37,6 +37,11 @@ type UploadPhotoResult =
   | {
       readonly success: true
       readonly uploadedCount: number
+      readonly files: readonly {
+        readonly id: string
+        readonly fileName: string
+        readonly mimeType: string | null
+      }[]
     }
   | {
       readonly success: false
@@ -401,6 +406,11 @@ export async function POST(
       auth.sharedDriveId
     )
 
+    const uploadedFiles: {
+      readonly id: string
+      readonly fileName: string
+      readonly mimeType: string | null
+    }[] = []
     for (const file of files) {
       const mimeType = file.type || "application/octet-stream"
       const driveFile = await client.uploadFile(googleEmail, {
@@ -410,9 +420,10 @@ export async function POST(
         driveId: auth.sharedDriveId ?? undefined,
         data: file,
       })
+      const uploadedFileId = crypto.randomUUID()
 
       await db.insert(dailyLogPhotos).values({
-        id: crypto.randomUUID(),
+        id: uploadedFileId,
         projectId,
         dailyLogId: validatedDailyLogId,
         uploadedBy: user.id,
@@ -439,6 +450,11 @@ export async function POST(
         createdAt: now,
         updatedAt: now,
       })
+      uploadedFiles.push({
+        id: uploadedFileId,
+        fileName: driveFile.name,
+        mimeType: driveFile.mimeType,
+      })
     }
 
     revalidatePath(`/dashboard/projects/${projectId}`)
@@ -449,6 +465,7 @@ export async function POST(
     return NextResponse.json({
       success: true,
       uploadedCount: files.length,
+      files: uploadedFiles,
     })
   } catch (error) {
     console.error("Daily-log file upload failed", error)
