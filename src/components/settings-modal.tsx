@@ -356,7 +356,7 @@ export function SettingsModal({
 
           {/* Left Column - Navigation (Desktop only) */}
           <aside className="hidden md:block">
-            <div className="flex h-full flex-col justify-between rounded-xl border bg-muted/20 p-2">
+            <div className="flex h-full flex-col justify-between rounded-lg border bg-muted/20 p-2">
               <div className="flex flex-col gap-1">
                   {menuTabs.map((tab) => (
                     <Button
@@ -420,7 +420,7 @@ export function SettingsModal({
             isMobileChatOpen ? "translate-y-0" : "translate-y-full"
           }`}
         >
-          <div className="mx-4 mb-4 overflow-hidden rounded-xl border bg-background/95 shadow-lg backdrop-blur-sm">
+          <div className="mx-4 mb-4 overflow-hidden rounded-lg border bg-background/95 shadow-lg backdrop-blur-sm">
             <div className="flex items-center justify-between border-b px-4 py-2">
               <span className="text-sm font-medium">AI Assistant</span>
               <Button

@@ -132,7 +132,7 @@ export default async function ProjectSectionPickerPage({
         </p>
       </div>
 
-      <section className="rounded-xl border bg-muted/30 p-4">
+      <section className="rounded-lg border bg-muted/30 p-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <p className="text-sm font-semibold">Project required first</p>
@@ -158,7 +158,7 @@ export default async function ProjectSectionPickerPage({
         </div>
 
         {projects.length > 0 ? (
-          <div className="max-w-xl rounded-xl border bg-background p-4 shadow-sm">
+          <div className="max-w-xl rounded-lg border bg-background p-4 shadow-sm">
             <ProjectQuickSwitcher
               projects={projects}
               targetSection={target.section}

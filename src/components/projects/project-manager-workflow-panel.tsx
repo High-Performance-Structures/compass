@@ -226,28 +226,28 @@ function billsAndDrawsDetail(summary: ProjectBudgetSummary | null): string {
 
 function stepAccentClassName(tone: WorkflowTone, urgent: boolean): string {
   if (urgent) {
-    return "border-l-[#9d832c] bg-card"
+    return "border-l-brand-nutech-gold bg-card"
   }
 
   switch (tone) {
     case "project":
-      return "border-l-[#6f471f] bg-card"
+      return "border-l-brand-orc-brown bg-card"
     case "schedule":
-      return "border-l-[#2f5963] bg-card"
+      return "border-l-brand-compass-blue bg-card"
     case "people":
-      return "border-l-[#3f7d4d] bg-card"
+      return "border-l-brand-hps-primary bg-card"
     case "field":
-      return "border-l-[#9d832c] bg-card"
+      return "border-l-brand-nutech-gold bg-card"
     case "owner":
-      return "border-l-[#6f471f] bg-card"
+      return "border-l-brand-orc-brown bg-card"
     case "money":
-      return "border-l-[#2f5963] bg-card"
+      return "border-l-brand-compass-blue bg-card"
     case "google":
-      return "border-l-[#3f7d4d] bg-card"
+      return "border-l-brand-hps-primary bg-card"
     case "procurement":
-      return "border-l-[#9d832c] bg-card"
+      return "border-l-brand-nutech-gold bg-card"
     case "admin":
-      return "border-l-[#585149] bg-card"
+      return "border-l-muted-foreground bg-card"
   }
 }
 

@@ -703,7 +703,7 @@ export function ChatView({
                 status={chat.status}
                 isGenerating={chat.isGenerating}
                 onSend={handleIdleSend}
-                className="rounded-2xl mt-[6rem]"
+                className="mt-[6rem] rounded-lg"
               />
 
               {stats && (
@@ -834,7 +834,7 @@ export function ChatView({
               isGenerating={chat.isGenerating}
               onSend={handleActiveSend}
               onNewChat={chat.messages.length > 0 ? chat.newChat : undefined}
-              className="rounded-2xl"
+              className="rounded-lg"
             />
           </div>
         </div>

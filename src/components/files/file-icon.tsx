@@ -17,7 +17,7 @@ const iconMap: Record<FileType, { icon: typeof IconFile; color: string }> = {
   folder: { icon: IconFolder, color: "text-amber-500" },
   document: { icon: IconFileText, color: "text-blue-500" },
   spreadsheet: { icon: IconTable, color: "text-green-600" },
-  image: { icon: IconPhoto, color: "text-[#6f471f]" },
+  image: { icon: IconPhoto, color: "text-brand-orc-brown" },
   video: { icon: IconVideo, color: "text-red-500" },
   pdf: { icon: IconFileTypePdf, color: "text-red-600" },
   code: { icon: IconCode, color: "text-emerald-500" },

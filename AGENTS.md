@@ -251,6 +251,16 @@ component conventions
 - shadcn/ui new-york style. add components: `bunx shadcn@latest add <component-name>`
 - aliases: `@/components`, `@/components/ui`, `@/lib`, `@/hooks`
 - `cn()` from `@/lib/utils.ts` for conditional class merging
+- **theme discipline**: use the semantic and named brand colors exposed by
+  `@theme inline` in `src/app/globals.css`. Do not introduce literal hex,
+  `rgb()`, `hsl()`, `oklch()`, or stock Tailwind palette colors in product UI
+  unless the value is first established as an approved global theme token.
+- **20% bubble rule**: keep information surfaces clean and predominantly flat.
+  Use the global `rounded-lg` container radius at most; reserve
+  `rounded-full` for elements whose function is intrinsically circular
+  (avatars, status dots, progress tracks, switches, and round icon controls),
+  never for text-bearing pills or page-level wrappers. Avoid nesting bordered
+  cards when whitespace or a divider communicates the grouping.
 - form validation: react-hook-form + zod
 - icons: lucide-react or @tabler/icons-react
 - data tables: tanstack/react-table

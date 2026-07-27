@@ -279,7 +279,7 @@ export function OwnerUpdateDraftEditor({
         </div>
 
         {status.kind === "saved" && (
-          <p className="border-l-2 border-l-[#3f7d4d] px-3 py-2 text-sm text-[#3f7d4d]">
+          <p className="border-l-2 border-l-brand-hps-primary px-3 py-2 text-sm text-brand-hps-primary">
             {status.message}
           </p>
         )}

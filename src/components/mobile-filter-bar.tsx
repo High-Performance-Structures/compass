@@ -50,7 +50,7 @@ function FilterChip({
   return (
     <button
       className={cn(
-        "inline-flex h-8 shrink-0 items-center gap-1 rounded-full border px-3 text-sm active:bg-muted",
+        "inline-flex h-8 shrink-0 items-center gap-1 rounded-md border px-3 text-sm active:bg-muted",
         isActive
           ? "border-primary bg-primary/10"
           : "bg-background"
@@ -92,7 +92,7 @@ export function MobileFilterBar({
           <Button
             variant="outline"
             size="sm"
-            className="shrink-0 h-8 rounded-full"
+            className="h-8 shrink-0 rounded-md"
             onClick={() => setSortOpen(true)}
           >
             <IconArrowsSort className="mr-1 size-3" />

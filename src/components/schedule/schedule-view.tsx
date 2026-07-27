@@ -375,7 +375,7 @@ export function ScheduleView({
               {activeFilterCount > 0 && (
                 <Badge
                   variant="secondary"
-                  className="ml-1.5 h-4 min-w-4 px-1 text-[10px] rounded-full"
+                  className="ml-1.5 h-4 min-w-4 rounded-sm px-1 text-[10px]"
                 >
                   {activeFilterCount}
                 </Badge>

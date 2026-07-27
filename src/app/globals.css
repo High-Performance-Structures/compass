@@ -14,6 +14,16 @@
 @theme inline {
 	--color-background: var(--background);
 	--color-foreground: var(--foreground);
+	--color-brand-hps-primary: var(--primary);
+	--color-brand-hps-deep: var(--brand-hps-deep);
+	--color-brand-hps-green: var(--brand-hps-green);
+	--color-brand-orc-brown: var(--brand-orc-brown);
+	--color-brand-orc-ink: var(--brand-orc-ink);
+	--color-brand-nutech-gold: var(--brand-nutech-gold);
+	--color-brand-nutech-gold-foreground: var(--brand-nutech-gold-foreground);
+	--color-brand-compass-blue: var(--brand-compass-blue);
+	--color-brand-compass-red: var(--brand-compass-red);
+	--color-brand-stone: var(--brand-stone);
 	--font-sans: var(--font-sans);
 	--font-mono: var(--font-mono);
 	--font-serif: var(--font-serif);
@@ -85,6 +95,9 @@
 	--brand-orc-brown: #6f471f;
 	--brand-orc-ink: #201105;
 	--brand-nutech-gold: #9d832c;
+	--brand-nutech-gold-foreground: #715d1c;
+	--brand-compass-blue: #2f5963;
+	--brand-compass-red: #8a3a2e;
 	--brand-stone: #d3cabd;
 	--background: #f4f1eb;
 	--foreground: #2e2b27;
@@ -338,7 +351,7 @@
 
 /* emoji-mart theme overrides */
 em-emoji-picker {
-  --border-radius: 12px;
+  --border-radius: var(--radius);
   max-height: 350px;
 }
 

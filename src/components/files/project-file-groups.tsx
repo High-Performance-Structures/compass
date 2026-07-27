@@ -120,7 +120,7 @@ function ProjectFolderCard({
       onDoubleClick={handleDoubleClick}
     >
       <div className="flex items-start gap-3">
-        <div className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-md border border-[#9d832c] bg-card text-[#715d1c]">
+        <div className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-md border border-brand-nutech-gold bg-card text-brand-nutech-gold-foreground">
           <FileIcon type="folder" size={18} />
         </div>
         <div className="min-w-0 flex-1">

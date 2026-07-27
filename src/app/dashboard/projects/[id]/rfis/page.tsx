@@ -239,8 +239,8 @@ export default async function ProjectRfisPage({
                 className={cn(
                   "scroll-mt-6 border-l-2 border-y border-r bg-background px-4 py-3",
                   isCreated
-                    ? "border-l-[#3f7d4d] bg-card"
-                    : "border-l-[#9d832c]"
+                    ? "border-l-brand-hps-primary bg-card"
+                    : "border-l-brand-nutech-gold"
                 )}
               >
                 <div className="flex flex-wrap items-start justify-between gap-3">

@@ -96,7 +96,7 @@ const DEPARTMENTS: readonly DepartmentConfig[] = [
     label: "ORC Projects",
     shortLabel: "ORC",
     description: "Open Range Construction jobs and owner-facing builds.",
-    accentClassName: "border-[#6f471f] bg-[#6f471f] text-white",
+    accentClassName: "border-brand-orc-brown bg-brand-orc-brown text-white",
     logoSrc: "/department-logos/orc-mark.png",
     icon: <IconHome className="size-4" />,
   },
@@ -105,7 +105,7 @@ const DEPARTMENTS: readonly DepartmentConfig[] = [
     label: "HPS Projects",
     shortLabel: "HPS",
     description: "High Performance Structures work and internal construction.",
-    accentClassName: "border-[#3f7d4d] bg-[#3f7d4d] text-white",
+    accentClassName: "border-brand-hps-primary bg-brand-hps-primary text-white",
     logoSrc: "/department-logos/hps-h-green.svg",
     icon: <IconBuildingCommunity className="size-4" />,
   },
@@ -114,7 +114,7 @@ const DEPARTMENTS: readonly DepartmentConfig[] = [
     label: "Nu-Tech Projects",
     shortLabel: "Nu-Tech",
     description: "ICF sales, bracing rental, support, and related projects.",
-    accentClassName: "border-[#9d832c] bg-[#9d832c] text-white",
+    accentClassName: "border-brand-nutech-gold bg-brand-nutech-gold text-white",
     logoSrc: "/department-logos/nu-tech-n.png",
     icon: <IconTool className="size-4" />,
   },
@@ -123,7 +123,7 @@ const DEPARTMENTS: readonly DepartmentConfig[] = [
     label: "Design Projects",
     shortLabel: "Design",
     description: "Design-only scopes, drafting, estimating, and handoff work.",
-    accentClassName: "border-[#6f471f] bg-[#6f471f] text-white",
+    accentClassName: "border-brand-orc-brown bg-brand-orc-brown text-white",
     logoSrc: "/department-logos/orc-mark.png",
     icon: <IconPaint className="size-4" />,
   },
@@ -364,13 +364,13 @@ function googleDriveUrl(folderId: string): string {
 function departmentBorderClassName(departmentId: DepartmentId): string {
   switch (departmentId) {
     case "O":
-      return "border-l-[#6f471f]"
+      return "border-l-brand-orc-brown"
     case "H":
-      return "border-l-[#3f7d4d]"
+      return "border-l-brand-hps-primary"
     case "N":
-      return "border-l-[#9d832c]"
+      return "border-l-brand-nutech-gold"
     case "D":
-      return "border-l-[#6f471f]"
+      return "border-l-brand-orc-brown"
     case "UNASSIGNED":
       return "border-l-muted-foreground"
   }
@@ -379,13 +379,13 @@ function departmentBorderClassName(departmentId: DepartmentId): string {
 function departmentHeaderClassName(departmentId: DepartmentId): string {
   switch (departmentId) {
     case "O":
-      return "border-[#6f471f]/60 bg-card"
+      return "border-brand-orc-brown/60 bg-card"
     case "H":
-      return "border-[#3f7d4d]/60 bg-card"
+      return "border-brand-hps-primary/60 bg-card"
     case "N":
-      return "border-[#9d832c]/60 bg-card"
+      return "border-brand-nutech-gold/60 bg-card"
     case "D":
-      return "border-[#6f471f]/60 bg-card"
+      return "border-brand-orc-brown/60 bg-card"
     case "UNASSIGNED":
       return "border-muted bg-muted/30"
   }
@@ -394,13 +394,13 @@ function departmentHeaderClassName(departmentId: DepartmentId): string {
 function departmentRingClassName(departmentId: DepartmentId): string {
   switch (departmentId) {
     case "O":
-      return "ring-[#6f471f]/35"
+      return "ring-brand-orc-brown/35"
     case "H":
-      return "ring-[#3f7d4d]/35"
+      return "ring-brand-hps-primary/35"
     case "N":
-      return "ring-[#9d832c]/35"
+      return "ring-brand-nutech-gold/35"
     case "D":
-      return "ring-[#6f471f]/35"
+      return "ring-brand-orc-brown/35"
     case "UNASSIGNED":
       return "ring-muted-foreground/25"
   }
@@ -409,13 +409,13 @@ function departmentRingClassName(departmentId: DepartmentId): string {
 function departmentSurfaceClassName(departmentId: DepartmentId): string {
   switch (departmentId) {
     case "O":
-      return "border-[#6f471f]/40 bg-[#6f471f]/10 hover:bg-[#6f471f]/15"
+      return "border-brand-orc-brown/40 bg-brand-orc-brown/10 hover:bg-brand-orc-brown/15"
     case "H":
-      return "border-[#3f7d4d]/40 bg-[#3f7d4d]/10 hover:bg-[#3f7d4d]/15"
+      return "border-brand-hps-primary/40 bg-brand-hps-primary/10 hover:bg-brand-hps-primary/15"
     case "N":
-      return "border-[#9d832c]/40 bg-[#9d832c]/10 hover:bg-[#9d832c]/15"
+      return "border-brand-nutech-gold/40 bg-brand-nutech-gold/10 hover:bg-brand-nutech-gold/15"
     case "D":
-      return "border-[#6f471f]/40 bg-[#6f471f]/10 hover:bg-[#6f471f]/15"
+      return "border-brand-orc-brown/40 bg-brand-orc-brown/10 hover:bg-brand-orc-brown/15"
     case "UNASSIGNED":
       return "border-muted bg-muted/25 hover:bg-muted/35"
   }
@@ -1100,7 +1100,7 @@ function ProjectManagerEmbedDialog({
                 <div className="flex items-center gap-2">
                   <span className="size-2 rounded-full bg-[#d14b3a]" />
                   <span className="size-2 rounded-full bg-[#d8a742]" />
-                  <span className="size-2 rounded-full bg-[#3f7d4d]" />
+                  <span className="size-2 rounded-full bg-brand-hps-primary" />
                 </div>
                 <span className="text-xs font-medium text-muted-foreground">
                   Secure Google window
@@ -1108,7 +1108,7 @@ function ProjectManagerEmbedDialog({
               </div>
               <div className="p-6">
                 <div className="flex items-start gap-4">
-                  <div className="flex size-11 shrink-0 items-center justify-center rounded-sm border bg-background text-[#3f7d4d]">
+                  <div className="flex size-11 shrink-0 items-center justify-center rounded-sm border bg-background text-brand-hps-primary">
                     <IconSettingsAutomation className="size-6" />
                   </div>
                   <div className="min-w-0 flex-1">
