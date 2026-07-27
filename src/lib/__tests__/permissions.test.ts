@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest"
 import type { AuthUser } from "@/lib/auth"
 import {
+  canManageWorkCalendarEvents,
   canUseAskCompass,
   canUseFieldDesk,
 } from "@/lib/permissions"
@@ -71,5 +72,31 @@ describe("canUseFieldDesk", () => {
       }),
     ).toBe(false)
     expect(canUseFieldDesk(null)).toBe(false)
+  })
+})
+
+describe("canManageWorkCalendarEvents", () => {
+  it.each(["admin", "office"])(
+    "allows calendar management for %s",
+    (role) => {
+      expect(canManageWorkCalendarEvents(userWithRole(role))).toBe(true)
+    },
+  )
+
+  it.each(["field", "client", "guest", "unknown"])(
+    "does not inherit calendar management from broad schedule access for %s",
+    (role) => {
+      expect(canManageWorkCalendarEvents(userWithRole(role))).toBe(false)
+    },
+  )
+
+  it("denies inactive and unauthenticated users", () => {
+    expect(
+      canManageWorkCalendarEvents({
+        ...userWithRole("admin"),
+        isActive: false,
+      }),
+    ).toBe(false)
+    expect(canManageWorkCalendarEvents(null)).toBe(false)
   })
 })

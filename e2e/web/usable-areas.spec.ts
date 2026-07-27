@@ -153,4 +153,25 @@ test.describe("usable Compass areas", () => {
       })
     }
   })
+
+  test("work calendar compact cards show the actual item title", async ({
+    page,
+  }) => {
+    const response = await page.goto("/dashboard/schedule")
+    await expectHealthyNavigation(page, response, "/dashboard/schedule")
+
+    const nextFourteenDays = page.locator("section").filter({
+      has: page.getByRole("heading", { name: "Next 14 days" }),
+    })
+    await expect(
+      nextFourteenDays.getByText("Regression Schedule Item", {
+        exact: true,
+      }).first()
+    ).toBeVisible()
+    await expect(
+      nextFourteenDays.getByText("Regression follow-up", {
+        exact: true,
+      }).first()
+    ).toBeVisible()
+  })
 })

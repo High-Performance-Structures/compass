@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest"
 
 import {
+  instantForLocalDateTime,
+  normalizeWorkCalendarEventTiming,
   projectTodoHref,
   resolveHOfficeProjectId,
   scheduleItemHref,
@@ -58,5 +60,155 @@ describe("H-Office default project resolution", () => {
         { id: "office-2", name: "H Office Project", projectNumber: null },
       ])
     ).toBeNull()
+  })
+})
+
+describe("work calendar event timing", () => {
+  it("resolves wall-clock times in the organization time zone", () => {
+    expect(
+      instantForLocalDateTime(
+        "2026-07-27",
+        "09:30",
+        "America/Denver"
+      )
+    ).toEqual({
+      success: true,
+      instant: "2026-07-27T15:30:00.000Z",
+      ambiguous: false,
+    })
+  })
+
+  it("rejects the spring-forward gap and marks the fall-back fold", () => {
+    expect(
+      instantForLocalDateTime(
+        "2026-03-08",
+        "02:30",
+        "America/Denver"
+      )
+    ).toEqual({
+      success: false,
+      error: "That local time does not exist in the selected time zone.",
+    })
+
+    expect(
+      instantForLocalDateTime(
+        "2026-11-01",
+        "01:30",
+        "America/Denver"
+      )
+    ).toEqual({
+      success: true,
+      instant: "2026-11-01T07:30:00.000Z",
+      ambiguous: true,
+    })
+  })
+
+  it("normalizes all-day date ranges without inventing a time", () => {
+    expect(
+      normalizeWorkCalendarEventTiming({
+        allDay: true,
+        startDate: "2026-07-27",
+        endDate: "2026-07-29",
+        startTime: "",
+        endTime: "",
+        startsAt: null,
+        endsAt: null,
+        timeZone: "America/Denver",
+      })
+    ).toEqual({
+      success: true,
+      startDate: "2026-07-27",
+      endDateExclusive: "2026-07-30",
+      startsAt: null,
+      endsAt: null,
+      timeZone: "America/Denver",
+    })
+  })
+
+  it("normalizes timed events and rejects zero or negative durations", () => {
+    expect(
+      normalizeWorkCalendarEventTiming({
+        allDay: false,
+        startDate: "2026-07-27",
+        endDate: "2026-07-27",
+        startTime: "09:30",
+        endTime: "10:15",
+        startsAt: "2026-07-27T15:30:00.000Z",
+        endsAt: "2026-07-27T16:15:00.000Z",
+        timeZone: "America/Denver",
+      })
+    ).toMatchObject({
+      success: true,
+      startDate: null,
+      endDateExclusive: null,
+      startsAt: "2026-07-27T15:30:00.000Z",
+      endsAt: "2026-07-27T16:15:00.000Z",
+    })
+
+    expect(
+      normalizeWorkCalendarEventTiming({
+        allDay: false,
+        startDate: "2026-07-27",
+        endDate: "2026-07-27",
+        startTime: "10:15",
+        endTime: "10:15",
+        startsAt: "2026-07-27T16:15:00.000Z",
+        endsAt: "2026-07-27T16:15:00.000Z",
+        timeZone: "America/Denver",
+      })
+    ).toEqual({
+      success: false,
+      error: "A timed event must end after it starts.",
+    })
+  })
+
+  it("rejects impossible dates and backwards all-day ranges", () => {
+    expect(
+      normalizeWorkCalendarEventTiming({
+        allDay: true,
+        startDate: "2026-02-30",
+        endDate: "2026-03-01",
+        startTime: "",
+        endTime: "",
+        startsAt: null,
+        endsAt: null,
+        timeZone: "UTC",
+      })
+    ).toEqual({
+      success: false,
+      error: "Enter valid event dates.",
+    })
+
+    expect(
+      normalizeWorkCalendarEventTiming({
+        allDay: true,
+        startDate: "2026-07-29",
+        endDate: "2026-07-27",
+        startTime: "",
+        endTime: "",
+        startsAt: null,
+        endsAt: null,
+        timeZone: "UTC",
+      })
+    ).toEqual({
+      success: false,
+      error: "End date must be on or after the start date.",
+    })
+
+    expect(
+      normalizeWorkCalendarEventTiming({
+        allDay: true,
+        startDate: "2026-07-27",
+        endDate: "2026-07-27",
+        startTime: "",
+        endTime: "",
+        startsAt: null,
+        endsAt: null,
+        timeZone: "Not/A_Time_Zone",
+      })
+    ).toEqual({
+      success: false,
+      error: "The event time zone is invalid.",
+    })
   })
 })
