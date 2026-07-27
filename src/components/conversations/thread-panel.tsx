@@ -107,7 +107,7 @@ export function ThreadPanel() {
 
       <div
         className={cn(
-          "flex flex-col border-l bg-background",
+          "flex min-h-0 flex-col border-l bg-background",
           "transition-[width,opacity,transform] duration-300 ease-in-out",
           isMobile
             ? "fixed inset-0 z-50"
@@ -142,7 +142,7 @@ export function ThreadPanel() {
           </div>
         ) : (
           <>
-            <ScrollArea className="flex-1">
+            <ScrollArea className="min-h-0 flex-1">
               <div className="p-4">
                 {threadParentMessage && (
                   <>
@@ -181,6 +181,7 @@ export function ThreadPanel() {
                 threadId={threadMessageId ?? undefined}
                 placeholder="Reply to thread..."
                 onSent={refreshReplies}
+                className="shrink-0"
               />
             )}
           </>

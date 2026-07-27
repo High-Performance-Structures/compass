@@ -5,18 +5,25 @@ import { formatDistanceToNow, format, parseISO } from "date-fns"
 import {
   MessageSquare,
   Smile,
-  Edit2,
   Trash2,
-  MoreHorizontal,
+  Paperclip,
 } from "lucide-react"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Textarea } from "@/components/ui/textarea"
 import { MarkdownRenderer } from "@/components/ui/markdown-renderer"
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover"
 import { cn } from "@/lib/utils"
 import { useConversations } from "@/contexts/conversations-context"
-import { editMessage, deleteMessage, addReaction } from "@/app/actions/chat-messages"
+import {
+  addReaction,
+  deleteMessage,
+  removeReaction,
+} from "@/app/actions/chat-messages"
 import { useRouter } from "next/navigation"
 
 type MessageData = {
@@ -31,6 +38,18 @@ type MessageData = {
   readonly replyCount: number
   readonly lastReplyAt: string | null
   readonly createdAt: string
+  readonly attachments?: readonly {
+    readonly id: string
+    readonly fileName: string
+    readonly mimeType: string
+    readonly fileSize: number
+    readonly storageUrl: string
+  }[]
+  readonly reactions?: readonly {
+    readonly emoji: string
+    readonly count: number
+    readonly reactedByCurrentUser: boolean
+  }[]
   readonly user: {
     readonly id: string
     readonly displayName: string | null
@@ -61,15 +80,18 @@ function arePropsEqual(prev: MessageItemProps, next: MessageItemProps): boolean 
     prevMsg.editedAt === nextMsg.editedAt &&
     prevMsg.isPinned === nextMsg.isPinned &&
     prevMsg.replyCount === nextMsg.replyCount &&
-    prevMsg.deletedAt === nextMsg.deletedAt
+    prevMsg.deletedAt === nextMsg.deletedAt &&
+    prevMsg.attachments?.length === nextMsg.attachments?.length &&
+    prevMsg.reactions?.map((reaction) => `${reaction.emoji}:${reaction.count}`).join("|") ===
+      nextMsg.reactions?.map((reaction) => `${reaction.emoji}:${reaction.count}`).join("|")
   )
 }
 
 export const MessageItem = React.memo(function MessageItem({ message }: MessageItemProps) {
-  const [isEditing, setIsEditing] = React.useState(false)
-  const [editContent, setEditContent] = React.useState(message.content)
   const [isHovered, setIsHovered] = React.useState(false)
   const [isFocused, setIsFocused] = React.useState(false)
+  const [reactionOpen, setReactionOpen] = React.useState(false)
+  const [reactionPending, setReactionPending] = React.useState(false)
   const { openThread } = useConversations()
   const router = useRouter()
 
@@ -84,19 +106,6 @@ export const MessageItem = React.memo(function MessageItem({ message }: MessageI
     ? formatDistanceToNow(timestamp, { addSuffix: true })
     : format(timestamp, "MMM d 'at' h:mm a")
 
-  const handleEdit = async () => {
-    if (editContent.trim() === message.content) {
-      setIsEditing(false)
-      return
-    }
-
-    const result = await editMessage(message.id, editContent.trim())
-    if (result.success) {
-      setIsEditing(false)
-      router.refresh()
-    }
-  }
-
   const handleDelete = async () => {
     if (!confirm("Delete this message?")) return
     const result = await deleteMessage(message.id)
@@ -107,6 +116,20 @@ export const MessageItem = React.memo(function MessageItem({ message }: MessageI
 
   const handleReply = () => {
     openThread(message.id, message)
+  }
+
+  async function toggleReaction(
+    emoji: string,
+    reactedByCurrentUser: boolean
+  ): Promise<void> {
+    if (reactionPending) return
+    setReactionPending(true)
+    const result = reactedByCurrentUser
+      ? await removeReaction(message.id, emoji)
+      : await addReaction(message.id, emoji)
+    setReactionPending(false)
+    setReactionOpen(false)
+    if (result.success) router.refresh()
   }
 
   if (message.deletedAt) {
@@ -153,33 +176,56 @@ export const MessageItem = React.memo(function MessageItem({ message }: MessageI
           )}
         </div>
 
-        {isEditing ? (
-          <div className="mt-2 space-y-2">
-            <Textarea
-              value={editContent}
-              onChange={(e) => setEditContent(e.target.value)}
-              className="min-h-[80px]"
-              autoFocus
-            />
-            <div className="flex gap-2">
-              <Button size="sm" onClick={handleEdit}>
-                Save
-              </Button>
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={() => {
-                  setEditContent(message.content)
-                  setIsEditing(false)
-                }}
+        <div className="chat-markdown mt-1 text-sm">
+          <MarkdownRenderer>{message.content}</MarkdownRenderer>
+        </div>
+
+        {message.attachments && message.attachments.length > 0 && (
+          <div className="mt-2 grid gap-1.5">
+            {message.attachments.map((attachment) => (
+              <a
+                key={attachment.id}
+                href={attachment.storageUrl}
+                className="flex min-w-0 items-center gap-2 border-l-2 border-primary/40 px-2 py-1.5 text-xs hover:bg-muted/50"
               >
-                Cancel
-              </Button>
-            </div>
+                <Paperclip className="size-3.5 shrink-0 text-muted-foreground" />
+                <span className="min-w-0 flex-1 truncate font-medium">
+                  {attachment.fileName}
+                </span>
+                <span className="shrink-0 text-muted-foreground">
+                  {attachment.fileSize < 1024 * 1024
+                    ? `${Math.max(1, Math.round(attachment.fileSize / 1024))} KB`
+                    : `${(attachment.fileSize / (1024 * 1024)).toFixed(1)} MB`}
+                </span>
+              </a>
+            ))}
           </div>
-        ) : (
-          <div className="chat-markdown mt-1 text-sm">
-            <MarkdownRenderer>{message.content}</MarkdownRenderer>
+        )}
+
+        {message.reactions && message.reactions.length > 0 && (
+          <div className="mt-2 flex flex-wrap gap-1">
+            {message.reactions.map((reaction) => (
+              <button
+                key={reaction.emoji}
+                type="button"
+                onClick={() =>
+                  toggleReaction(
+                    reaction.emoji,
+                    reaction.reactedByCurrentUser
+                  )
+                }
+                disabled={reactionPending}
+                className={cn(
+                  "inline-flex h-7 items-center gap-1 rounded-md border px-2 text-xs hover:bg-muted",
+                  reaction.reactedByCurrentUser &&
+                    "border-primary/50 bg-primary/10"
+                )}
+                aria-label={`${reaction.reactedByCurrentUser ? "Remove" : "Add"} ${reaction.emoji} reaction`}
+              >
+                <span>{reaction.emoji}</span>
+                <span>{reaction.count}</span>
+              </button>
+            ))}
           </div>
         )}
 
@@ -199,7 +245,7 @@ export const MessageItem = React.memo(function MessageItem({ message }: MessageI
         )}
       </div>
 
-      {(isHovered || isFocused) && !isEditing && (
+      {(isHovered || isFocused || reactionOpen) && (
         <div className="absolute right-4 top-2 flex gap-1 rounded-md border bg-background p-1 shadow-sm">
           <Button
             variant="ghost"
@@ -210,24 +256,46 @@ export const MessageItem = React.memo(function MessageItem({ message }: MessageI
           >
             <MessageSquare className="h-3.5 w-3.5" />
           </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-7 w-7"
-            disabled
-            aria-label="Add reaction"
-          >
-            <Smile className="h-3.5 w-3.5" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-7 w-7"
-            onClick={() => setIsEditing(true)}
-            aria-label="Edit message"
-          >
-            <Edit2 className="h-3.5 w-3.5" />
-          </Button>
+          <Popover open={reactionOpen} onOpenChange={setReactionOpen}>
+            <PopoverTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7"
+                aria-label="Add reaction"
+              >
+                <Smile className="h-3.5 w-3.5" />
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent
+              align="end"
+              side="top"
+              className="flex w-auto gap-1 p-1.5"
+            >
+              {["👍", "❤️", "✅", "🎉", "👀", "🙏"].map((emoji) => {
+                const existing = message.reactions?.find(
+                  (reaction) => reaction.emoji === emoji
+                )
+                return (
+                  <button
+                    key={emoji}
+                    type="button"
+                    disabled={reactionPending}
+                    onClick={() =>
+                      toggleReaction(
+                        emoji,
+                        existing?.reactedByCurrentUser ?? false
+                      )
+                    }
+                    className="flex size-8 items-center justify-center rounded-md text-base hover:bg-muted"
+                    aria-label={`React with ${emoji}`}
+                  >
+                    {emoji}
+                  </button>
+                )
+              })}
+            </PopoverContent>
+          </Popover>
           <Button
             variant="ghost"
             size="icon"

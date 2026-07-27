@@ -657,7 +657,7 @@ export function ScheduleItemFormDialog({
                     {pendingPredecessors.map((pred, idx) => (
                       <div
                         key={idx}
-                        className="grid grid-cols-[minmax(0,1fr)_72px_72px_28px] items-center gap-1.5 sm:grid-cols-[minmax(0,1fr)_90px_72px_28px]"
+                        className="grid grid-cols-[minmax(0,1fr)_6.5rem_2rem] items-end gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(10rem,12rem)_6rem_2rem]"
                       >
                         <Select
                           value={pred.taskId}
@@ -665,7 +665,10 @@ export function ScheduleItemFormDialog({
                             updatePendingPredecessor(idx, "taskId", val)
                           }
                         >
-                          <SelectTrigger className="h-8 text-xs">
+                          <SelectTrigger
+                            className="col-span-3 h-8 min-w-0 text-xs sm:col-span-1"
+                            aria-label="Predecessor schedule item"
+                          >
                             <SelectValue placeholder="Select schedule item" />
                           </SelectTrigger>
                           <SelectContent>
@@ -682,7 +685,10 @@ export function ScheduleItemFormDialog({
                             updatePendingPredecessor(idx, "type", val)
                           }
                         >
-                          <SelectTrigger className="h-8 text-xs">
+                          <SelectTrigger
+                            className="h-8 min-w-0 text-xs"
+                            aria-label="Dependency relationship"
+                          >
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
@@ -695,9 +701,10 @@ export function ScheduleItemFormDialog({
                         </Select>
                         <Input
                           type="number"
-                          placeholder="Lag/lead"
-                          className="h-8 text-xs text-center"
+                          placeholder="Lag days"
+                          className="h-8 min-w-0 text-center text-xs"
                           value={pred.lagDays || ""}
+                          aria-label="Lag or lead in days"
                           onChange={(e) =>
                             updatePendingPredecessor(
                               idx,
@@ -712,6 +719,8 @@ export function ScheduleItemFormDialog({
                           size="icon"
                           className="size-7 text-muted-foreground hover:text-destructive"
                           onClick={() => removePendingPredecessor(idx)}
+                          aria-label="Remove predecessor"
+                          title="Remove predecessor"
                         >
                           <IconTrash className="size-3" />
                         </Button>

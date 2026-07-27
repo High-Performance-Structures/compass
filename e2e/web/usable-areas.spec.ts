@@ -155,22 +155,61 @@ test.describe("usable Compass areas", () => {
     }
   })
 
-  test("work calendar compact cards show the actual item title", async ({
+  test("schedule list exposes edit and selection actions", async ({ page }) => {
+    const path =
+      "/dashboard/projects/e2e-project-001/schedule?view=list"
+    const response = await page.goto(path)
+    await expectHealthyNavigation(
+      page,
+      response,
+      "/dashboard/projects/e2e-project-001/schedule"
+    )
+
+    const scheduleRow = page.locator("#schedule-item-e2e-schedule-001")
+    await expect(
+      scheduleRow
+        .getByRole("button", { name: "Edit Regression Schedule Item" })
+        .first()
+    ).toBeVisible()
+
+    await scheduleRow
+      .getByRole("checkbox", { name: "Select Regression Schedule Item" })
+      .check()
+    await expect(page.getByText("1 selected", { exact: true })).toBeVisible()
+    await expect(
+      page.getByRole("button", { name: "Edit selected" })
+    ).toBeEnabled()
+    await expect(
+      page.getByRole("button", { name: "Mark complete" })
+    ).toBeVisible()
+    await expect(
+      page.getByRole("button", { name: "Delete selected" })
+    ).toBeVisible()
+
+    await page.getByRole("button", { name: "Clear" }).click()
+    await expect(page.getByText("1 selected", { exact: true })).toHaveCount(0)
+  })
+
+  test("work calendar list shows the actual item title", async ({
     page,
   }) => {
     const response = await page.goto("/dashboard/schedule")
     await expectHealthyNavigation(page, response, "/dashboard/schedule")
 
-    const nextFourteenDays = page.locator("section").filter({
-      has: page.getByRole("heading", { name: "Next 14 days" }),
+    await page
+      .getByRole("group", { name: "Work calendar view" })
+      .getByRole("button", { name: "List" })
+      .click()
+    const workQueue = page.locator("section").filter({
+      has: page.getByRole("heading", { name: "Work Queue" }),
     })
     await expect(
-      nextFourteenDays.getByText("Regression Schedule Item", {
+      workQueue.getByText("Regression Schedule Item", {
         exact: true,
       }).first()
     ).toBeVisible()
     await expect(
-      nextFourteenDays.getByText("Regression follow-up", {
+      workQueue.getByText("Regression follow-up", {
         exact: true,
       }).first()
     ).toBeVisible()
@@ -182,6 +221,10 @@ test.describe("usable Compass areas", () => {
     const response = await page.goto("/dashboard/schedule")
     await expectHealthyNavigation(page, response, "/dashboard/schedule")
 
+    await page
+      .getByRole("group", { name: "Work calendar view" })
+      .getByRole("button", { name: "List" })
+      .click()
     const todoLink = page
       .getByRole("link", { name: /Regression follow-up/ })
       .first()

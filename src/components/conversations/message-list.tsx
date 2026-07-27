@@ -1,10 +1,9 @@
 "use client"
 
 import * as React from "react"
-import { formatDistanceToNow, format, isSameDay, parseISO } from "date-fns"
+import { format, parseISO } from "date-fns"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Separator } from "@/components/ui/separator"
-import { Skeleton } from "@/components/ui/skeleton"
 import { MessageItem } from "./message-item"
 import { TypingIndicator } from "./typing-indicator"
 import { Button } from "@/components/ui/button"
@@ -23,6 +22,18 @@ type MessageData = {
   readonly replyCount: number
   readonly lastReplyAt: string | null
   readonly createdAt: string
+  readonly attachments?: readonly {
+    readonly id: string
+    readonly fileName: string
+    readonly mimeType: string
+    readonly fileSize: number
+    readonly storageUrl: string
+  }[]
+  readonly reactions?: readonly {
+    readonly emoji: string
+    readonly count: number
+    readonly reactedByCurrentUser: boolean
+  }[]
   readonly user: {
     readonly id: string
     readonly displayName: string | null

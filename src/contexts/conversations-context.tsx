@@ -14,6 +14,18 @@ export type ThreadMessage = {
   readonly replyCount: number
   readonly lastReplyAt: string | null
   readonly createdAt: string
+  readonly attachments?: readonly {
+    readonly id: string
+    readonly fileName: string
+    readonly mimeType: string
+    readonly fileSize: number
+    readonly storageUrl: string
+  }[]
+  readonly reactions?: readonly {
+    readonly emoji: string
+    readonly count: number
+    readonly reactedByCurrentUser: boolean
+  }[]
   readonly user: {
     readonly id: string
     readonly displayName: string | null
