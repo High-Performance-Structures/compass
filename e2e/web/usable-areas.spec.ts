@@ -192,9 +192,11 @@ test.describe("usable Compass areas", () => {
         .first()
     ).toBeVisible()
 
-    await scheduleRow
-      .getByRole("checkbox", { name: "Select Regression Schedule Item" })
-      .check()
+    const selectionCheckbox = scheduleRow.getByRole("checkbox", {
+      name: "Select Regression Schedule Item",
+    })
+    await selectionCheckbox.click()
+    await expect(selectionCheckbox).toHaveAttribute("aria-checked", "true")
     await expect(page.getByText("1 selected", { exact: true })).toBeVisible()
     await expect(
       page.getByRole("button", { name: "Edit selected" })
