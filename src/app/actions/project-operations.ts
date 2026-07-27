@@ -1193,6 +1193,9 @@ export async function getProjectOperationsSummary(
 export async function getProjectTodos(
   projectId: string
 ): Promise<readonly ProjectOperationItem[]> {
+  const user = await requireAuth()
+  if (isDemoUser(user.id)) return []
+
   const db = await verifyProjectAccess(projectId)
   const operations = await db
     .select()
