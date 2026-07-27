@@ -6,7 +6,7 @@ const isElectron = () => {
 }
 
 const externalBaseUrl = process.env.PLAYWRIGHT_BASE_URL
-const baseURL = externalBaseUrl ?? "http://localhost:3000"
+const baseURL = externalBaseUrl ?? "http://127.0.0.1:3000"
 
 // Web-specific projects
 const webProjects = [
