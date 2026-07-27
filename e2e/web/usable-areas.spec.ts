@@ -142,6 +142,7 @@ test.describe("usable Compass areas", () => {
     const timezone = page.getByRole("combobox", { name: "Timezone" })
     await timezone.click()
     await page.getByRole("option", { name: "Pacific (PT)" }).click()
+    await expect(timezone).toContainText("Pacific (PT)")
     await page.getByRole("button", { name: "Save preferences" }).click()
     await expect(page.getByText("Preferences saved.")).toBeVisible()
 
