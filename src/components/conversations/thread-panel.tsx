@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { X } from "lucide-react"
+import { RefreshCw, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Separator } from "@/components/ui/separator"
@@ -18,6 +18,7 @@ export function ThreadPanel() {
   const isMobile = useIsMobile()
   const [replies, setReplies] = React.useState<readonly ThreadMessage[]>([])
   const [loading, setLoading] = React.useState(false)
+  const [loadError, setLoadError] = React.useState<string | null>(null)
   const [organizationId, setOrganizationId] = React.useState<string | null>(null)
   const [panelWidth, setPanelWidth] = React.useState(400)
   const [isResizing, setIsResizing] = React.useState(false)
@@ -28,22 +29,45 @@ export function ThreadPanel() {
     if (!threadMessageId) {
       setReplies([])
       setOrganizationId(null)
+      setLoadError(null)
       return
     }
 
+    let cancelled = false
     setLoading(true)
+    setLoadError(null)
     Promise.all([
       getThreadMessages(threadMessageId),
       threadParentMessage ? getChannel(threadParentMessage.channelId) : null,
     ]).then(([messagesResult, channelResult]) => {
-      if (messagesResult.success && messagesResult.data) {
-        setReplies([...messagesResult.data].reverse())
+      if (cancelled) return
+      if (!messagesResult.success || !messagesResult.data) {
+        setLoadError(
+          messagesResult.error || "Unable to load this conversation thread."
+        )
+        return
       }
-      if (channelResult?.success && channelResult.data) {
-        setOrganizationId(channelResult.data.organizationId)
+      if (!channelResult?.success || !channelResult.data) {
+        setLoadError("Unable to load this conversation thread.")
+        return
       }
-      setLoading(false)
+      setReplies([...messagesResult.data].reverse())
+      setOrganizationId(channelResult.data.organizationId)
+    }).catch((error: unknown) => {
+      if (cancelled) return
+      const message = error instanceof Error ? error.message : ""
+      setLoadError(
+        /server action|unrecognizedaction/i.test(message)
+          ? "Compass was updated while this conversation was open. Reload to continue replying."
+          : "Unable to load this conversation thread."
+      )
+    }).finally(() => {
+      if (!cancelled) setLoading(false)
     })
+
+    return () => {
+      cancelled = true
+    }
   }, [threadMessageId, threadParentMessage])
 
   // resize handlers (follow ChatPanelShell pattern)
@@ -139,6 +163,19 @@ export function ThreadPanel() {
         {loading ? (
           <div className="flex flex-1 items-center justify-center">
             <p className="text-sm text-muted-foreground">Loading thread...</p>
+          </div>
+        ) : loadError ? (
+          <div className="flex flex-1 flex-col items-center justify-center gap-3 p-6 text-center">
+            <p className="text-sm text-muted-foreground">{loadError}</p>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => window.location.reload()}
+            >
+              <RefreshCw className="size-3.5" />
+              Reload conversation
+            </Button>
           </div>
         ) : (
           <>

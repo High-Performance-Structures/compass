@@ -229,6 +229,51 @@ test.describe("usable Compass areas", () => {
     await expect(sendButton).toBeDisabled()
   })
 
+  test("project conversation threads recover from a stale deployment", async ({
+    page,
+  }) => {
+    const path = "/dashboard/conversations/e2e-channel-001"
+    const response = await page.goto(path)
+    await expectHealthyNavigation(page, response, path)
+
+    let rejectServerActions = false
+    await page.route("**/*", async (route) => {
+      const request = route.request()
+      if (
+        rejectServerActions &&
+        request.method() === "POST" &&
+        request.headers()["next-action"]
+      ) {
+        await route.fulfill({
+          status: 500,
+          contentType: "text/plain",
+          body:
+            'UnrecognizedActionError: Server Action "stale-e2e-action" was not found on the server.',
+        })
+        return
+      }
+      await route.continue()
+    })
+
+    const message = page.getByText("Regression conversation message", {
+      exact: true,
+    })
+    await message.hover()
+    const replyButton = page.getByRole("button", { name: "Reply to message" })
+    await expect(replyButton).toBeVisible()
+    rejectServerActions = true
+    await replyButton.click({ force: true })
+
+    await expect(
+      page.getByText(
+        "Compass was updated while this conversation was open. Reload to continue replying."
+      )
+    ).toBeVisible()
+    await expect(
+      page.getByRole("button", { name: "Reload conversation" })
+    ).toBeVisible()
+  })
+
   test("schedule list exposes edit and selection actions", async ({ page }) => {
     const path =
       "/dashboard/projects/e2e-project-001/schedule?view=list"
