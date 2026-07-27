@@ -1194,9 +1194,20 @@ export async function getProjectTodos(
   projectId: string
 ): Promise<readonly ProjectOperationItem[]> {
   const user = await requireAuth()
-  if (isDemoUser(user.id)) return []
+  let db: ReturnType<typeof getDb>
+  try {
+    db = await verifyProjectAccess(projectId)
+  } catch (error) {
+    if (
+      isDemoUser(user.id) &&
+      error instanceof Error &&
+      error.message === "Project not found"
+    ) {
+      return []
+    }
+    throw error
+  }
 
-  const db = await verifyProjectAccess(projectId)
   const operations = await db
     .select()
     .from(projectOperations)
