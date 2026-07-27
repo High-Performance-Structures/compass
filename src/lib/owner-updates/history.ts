@@ -1,13 +1,7 @@
+import { isInternalStaffRole } from "@/lib/user-roles"
+
 export function canViewOwnerUpdateDrafts(role: string): boolean {
-  switch (role) {
-    case "admin":
-    case "secondary_admin":
-    case "office":
-    case "field":
-      return true
-    default:
-      return false
-  }
+  return isInternalStaffRole(role)
 }
 
 export function isOwnerUpdateVisibleToRole(

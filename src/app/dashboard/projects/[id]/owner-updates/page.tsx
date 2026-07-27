@@ -13,6 +13,7 @@ import {
 import {
   getProjectDailyLogWorkspace,
   getProjectFieldSummary,
+  getOwnerUpdateProjectHeader,
   getProjectOwnerUpdates,
   type ProjectOwnerUpdateListItem,
 } from "@/app/actions/project-field"
@@ -26,7 +27,9 @@ import {
   CardTitle,
 } from "@/components/ui/card"
 import { ProjectContextSwitcher } from "@/components/projects/project-context-switcher"
+import { getCurrentUser } from "@/lib/auth"
 import { redirectIfFeaturePermissionDenied } from "@/lib/permission-redirect"
+import { isInternalStaffRole } from "@/lib/user-roles"
 
 function hasDigest(error: unknown): error is { readonly digest: string } {
   return typeof error === "object" && error !== null && "digest" in error
@@ -81,16 +84,44 @@ export default async function ProjectOwnerUpdatesPage({
   readonly params: Promise<{ readonly id: string }>
 }): Promise<React.ReactElement> {
   const { id } = await params
-  let workspace: Awaited<ReturnType<typeof getProjectDailyLogWorkspace>>
-  let summary: Awaited<ReturnType<typeof getProjectFieldSummary>>
+  const currentUser = await getCurrentUser()
+  const internalViewer =
+    currentUser !== null && isInternalStaffRole(currentUser.role)
+  let project: {
+    readonly id: string
+    readonly name: string
+    readonly projectNumber: string | null
+  }
+  let summary: {
+    readonly ownerUpdateCount: number
+    readonly draftOwnerUpdateCount: number
+    readonly ownerVisiblePhotoCount: number
+  }
   let ownerUpdates: Awaited<ReturnType<typeof getProjectOwnerUpdates>>
 
   try {
-    ;[workspace, summary, ownerUpdates] = await Promise.all([
-      getProjectDailyLogWorkspace(id),
-      getProjectFieldSummary(id),
-      getProjectOwnerUpdates(id),
-    ])
+    if (internalViewer) {
+      const [workspace, fieldSummary, updates] = await Promise.all([
+        getProjectDailyLogWorkspace(id),
+        getProjectFieldSummary(id),
+        getProjectOwnerUpdates(id),
+      ])
+      project = workspace.project
+      summary = fieldSummary
+      ownerUpdates = updates
+    } else {
+      const [header, updates] = await Promise.all([
+        getOwnerUpdateProjectHeader(id),
+        getProjectOwnerUpdates(id),
+      ])
+      project = header
+      ownerUpdates = updates
+      summary = {
+        ownerUpdateCount: updates.length,
+        draftOwnerUpdateCount: 0,
+        ownerVisiblePhotoCount: 0,
+      }
+    }
   } catch (error) {
     if (hasDigest(error) && error.digest === "NEXT_NOT_FOUND") throw error
     redirectIfFeaturePermissionDenied(error)
@@ -98,8 +129,8 @@ export default async function ProjectOwnerUpdatesPage({
   }
 
   const projectLabel =
-    workspace.project.projectNumber ?? workspace.project.name
-  const baseHref = `/dashboard/projects/${workspace.project.id}/owner-updates`
+    project.projectNumber ?? project.name
+  const baseHref = `/dashboard/projects/${project.id}/owner-updates`
   const draftUpdates = ownerUpdates.filter(
     (update) => update.status === "draft"
   )
@@ -113,7 +144,7 @@ export default async function ProjectOwnerUpdatesPage({
         <div>
           <div className="flex flex-wrap items-center gap-2">
             <Link
-              href={`/dashboard/projects/${workspace.project.id}`}
+              href={`/dashboard/projects/${project.id}`}
               className="text-sm text-muted-foreground hover:text-foreground"
             >
               {projectLabel}
@@ -125,30 +156,34 @@ export default async function ProjectOwnerUpdatesPage({
             Owner Updates
           </h1>
           <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
-            Draft, review, and publish owner-facing updates.
+            {internalViewer
+              ? "Draft, review, and publish owner-facing updates."
+              : "View published project updates and progress history."}
           </p>
         </div>
         <div className="flex flex-col items-stretch gap-2 sm:items-end">
           <ProjectContextSwitcher
-            currentProjectId={workspace.project.id}
+            currentProjectId={project.id}
             targetSection="owner-updates"
             placeholder="Switch owner update project..."
             className="w-full sm:w-[280px]"
           />
-          <div className="flex flex-wrap justify-end gap-2">
-            <Button asChild>
-              <Link href={`/dashboard/projects/${workspace.project.id}/daily-logs`}>
-                <IconClipboardText className="size-4" />
-                Build From Logs
-              </Link>
-            </Button>
-            <Button asChild variant="outline">
-              <Link href={`/dashboard/projects/${workspace.project.id}/photos`}>
-                <IconPhoto className="size-4" />
-                Review Photos
-              </Link>
-            </Button>
-          </div>
+          {internalViewer && (
+            <div className="flex flex-wrap justify-end gap-2">
+              <Button asChild>
+                <Link href={`/dashboard/projects/${project.id}/daily-logs`}>
+                  <IconClipboardText className="size-4" />
+                  Build From Logs
+                </Link>
+              </Button>
+              <Button asChild variant="outline">
+                <Link href={`/dashboard/projects/${project.id}/photos`}>
+                  <IconPhoto className="size-4" />
+                  Review Photos
+                </Link>
+              </Button>
+            </div>
+          )}
         </div>
       </div>
 
@@ -170,12 +205,25 @@ export default async function ProjectOwnerUpdatesPage({
           </p>
         </div>
         <div>
-          <p className="text-xl font-semibold tabular-nums">
-            {summary.ownerVisiblePhotoCount}
-          </p>
-          <p className="text-xs font-medium uppercase text-muted-foreground">
-            Owner photos
-          </p>
+          {internalViewer ? (
+            <>
+              <p className="text-xl font-semibold tabular-nums">
+                {summary.ownerVisiblePhotoCount}
+              </p>
+              <p className="text-xs font-medium uppercase text-muted-foreground">
+                Owner photos
+              </p>
+            </>
+          ) : (
+            <>
+              <p className="text-xl font-semibold tabular-nums">
+                {summary.ownerUpdateCount}
+              </p>
+              <p className="text-xs font-medium uppercase text-muted-foreground">
+                Published
+              </p>
+            </>
+          )}
         </div>
       </section>
 
