@@ -88,8 +88,13 @@ test.describe("usable Compass areas", () => {
   })
 
   test("core areas render without application errors", async ({ page }) => {
+    test.slow()
+
     for (const area of coreAreas) {
       await test.step(area.name, async () => {
+        // Isolate each route from background client navigation started by the
+        // previous workspace while keeping the authenticated demo context.
+        await page.goto("about:blank")
         const response = await page.goto(area.path)
         await expectHealthyNavigation(page, response, area.path)
       })
@@ -99,6 +104,11 @@ test.describe("usable Compass areas", () => {
   test("project workspaces render without application errors", async ({
     page,
   }) => {
+    // This test intentionally compiles and opens every project workspace in a
+    // single cold dev-server session. Keep the 30-second navigation limit for
+    // each route, but give the complete cross-browser sweep a realistic budget.
+    test.slow()
+
     const projectsResponse = await page.goto("/dashboard/projects")
     await expectHealthyNavigation(
       page,
@@ -113,6 +123,7 @@ test.describe("usable Compass areas", () => {
 
     for (const area of projectAreas) {
       await test.step(area.name, async () => {
+        await page.goto("about:blank")
         const path = `/dashboard/projects/${projectId}${area.suffix}`
         const response = await page.goto(path)
         await expectHealthyNavigation(page, response, path)
