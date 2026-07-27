@@ -79,27 +79,38 @@ export default async function ProjectsPage(): Promise<React.ReactElement> {
 
     if (hubProjects.length > 0) {
       const projectIds = hubProjects.map((project) => project.id)
-      const telegramLinks = await db
-        .select({
-          projectId: projectExternalLinks.projectId,
-          externalId: projectExternalLinks.externalId,
-        })
-        .from(projectExternalLinks)
-        .where(
-          and(
-            inArray(projectExternalLinks.projectId, projectIds),
-            eq(projectExternalLinks.system, "telegram_owner_updates")
+      const telegramLinks: {
+        readonly projectId: string
+        readonly externalId: string | null
+      }[] = []
+
+      // D1 limits bound parameters per statement. Imported organizations can
+      // contain hundreds of projects, so resolve external links in safe batches.
+      for (let offset = 0; offset < projectIds.length; offset += 75) {
+        const projectIdBatch = projectIds.slice(offset, offset + 75)
+        const linkBatch = await db
+          .select({
+            projectId: projectExternalLinks.projectId,
+            externalId: projectExternalLinks.externalId,
+          })
+          .from(projectExternalLinks)
+          .where(
+            and(
+              inArray(projectExternalLinks.projectId, projectIdBatch),
+              eq(projectExternalLinks.system, "telegram_owner_updates")
+            )
           )
-        )
+        telegramLinks.push(...linkBatch)
+      }
+
+      const telegramLinkByProjectId = new Map(
+        telegramLinks.map((link) => [link.projectId, link.externalId])
+      )
 
       hubProjects = hubProjects.map((project) => {
-        const telegramLink = telegramLinks.find(
-          (link) => link.projectId === project.id
-        )
-
         return {
           ...project,
-          telegramChatId: telegramLink?.externalId ?? null,
+          telegramChatId: telegramLinkByProjectId.get(project.id) ?? null,
         }
       })
     }
