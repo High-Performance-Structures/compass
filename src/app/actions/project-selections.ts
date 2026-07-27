@@ -16,7 +16,7 @@ import {
 import { requireAuth } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
 import { requireOrg } from "@/lib/org-scope"
-import { requirePermission } from "@/lib/permissions"
+import { requireFeaturePermission } from "@/lib/permission-enforcement"
 
 export type ProjectSelectionStatus =
   | "needed"
@@ -207,7 +207,7 @@ async function verifyProjectAccess(
   permission: "read" | "update"
 ): Promise<ReturnType<typeof getDb>> {
   const user = await requireAuth()
-  requirePermission(user, "project", permission)
+  await requireFeaturePermission(user, "finish-selections", permission)
   const orgId = requireOrg(user)
   const { env } = await getCloudflareContext()
   const db = getDb(env.DB)

@@ -9,6 +9,7 @@ import {
   type OwnerProjectUpdateDocument as OwnerProjectUpdateDocumentData,
 } from "@/app/actions/project-field"
 import { OwnerUpdateDocument } from "@/components/projects/owner-update-document"
+import { redirectIfFeaturePermissionDenied } from "@/lib/permission-redirect"
 
 function hasDigest(error: unknown): error is { readonly digest: string } {
   return typeof error === "object" && error !== null && "digest" in error
@@ -40,6 +41,7 @@ export default async function OwnerUpdatePage({
     document = await getOwnerProjectUpdateDocument(id, updateId)
   } catch (error) {
     if (hasDigest(error) && error.digest === "NEXT_NOT_FOUND") throw error
+    redirectIfFeaturePermissionDenied(error)
     notFound()
   }
 

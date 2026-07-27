@@ -5,6 +5,7 @@ import { IconCopy } from "@tabler/icons-react"
 import { toast } from "sonner"
 
 import { createInvite } from "@/app/actions/invites"
+import { USER_ROLE_OPTIONS, userRoleDescription } from "@/lib/user-roles"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -140,12 +141,16 @@ export function CreateInviteDialog({
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="admin">Admin</SelectItem>
-                  <SelectItem value="office">Office</SelectItem>
-                  <SelectItem value="field">Field</SelectItem>
-                  <SelectItem value="client">Client</SelectItem>
+                  {USER_ROLE_OPTIONS.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
+              <p className="text-xs text-muted-foreground">
+                {userRoleDescription(role)}
+              </p>
             </div>
 
             <div className="space-y-2">

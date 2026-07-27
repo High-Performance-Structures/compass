@@ -152,6 +152,30 @@ test.describe("usable Compass areas", () => {
     ).toContainText("Pacific (PT)")
   })
 
+  test("SMS opt-in and permission controls remain available", async ({
+    page,
+  }) => {
+    const path = "/dashboard/settings"
+    const response = await page.goto(path)
+    await expectHealthyNavigation(page, response, path)
+
+    await expect(page.getByText("Text notifications")).toBeVisible()
+    await expect(
+      page.getByRole("button", { name: "Send test text" })
+    ).toBeVisible()
+
+    await page.getByRole("button", { name: "Permissions" }).click()
+    await expect(
+      page.getByRole("heading", { name: "Permission Matrix" })
+    ).toBeVisible()
+    await expect(
+      page.getByText("Demo review only", { exact: true })
+    ).toBeVisible()
+    await expect(
+      page.getByRole("button", { name: "Open Office Talk" })
+    ).toHaveCount(0)
+  })
+
   test("schedule switches between calendar, list, and Gantt", async ({
     page,
   }) => {

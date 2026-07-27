@@ -8,6 +8,7 @@ import {
   notificationPreferences,
   notificationRecipients,
   organizationMembers,
+  projects,
   users,
 } from "@/db/schema"
 import { requireAuth } from "@/lib/auth"
@@ -18,11 +19,21 @@ import {
 } from "@/lib/notifications/delivery"
 import { requireOrg } from "@/lib/org-scope"
 import { sendPushNotification } from "@/lib/push/send"
+import { hasCurrentSmsConsent } from "@/lib/notifications/sms-consent"
 
 type NotificationPreferenceState = {
   readonly inAppEnabled: boolean
   readonly emailEnabled: boolean
+  readonly smsEnabled: boolean
+  readonly smsPhoneNumber: string | null
+  readonly smsConsentAccepted: boolean
+  readonly smsConsentDisclosureVersion: string | null
+  readonly smsConsentPhoneNumber: string | null
   readonly pushEnabled: boolean
+  readonly mentionEmailEnabled: boolean
+  readonly mentionSmsEnabled: boolean
+  readonly announcementEmailEnabled: boolean
+  readonly announcementSmsEnabled: boolean
   readonly weeklyDigestEnabled: boolean
   readonly rfiEnabled: boolean
   readonly ownerUpdateEnabled: boolean
@@ -54,13 +65,37 @@ export type CreateNotificationInput = {
 const DEFAULT_PREFERENCES: NotificationPreferenceState = {
   inAppEnabled: true,
   emailEnabled: true,
+  smsEnabled: false,
+  smsPhoneNumber: null,
+  smsConsentAccepted: false,
+  smsConsentDisclosureVersion: null,
+  smsConsentPhoneNumber: null,
   pushEnabled: true,
+  mentionEmailEnabled: true,
+  mentionSmsEnabled: false,
+  announcementEmailEnabled: true,
+  announcementSmsEnabled: false,
   weeklyDigestEnabled: false,
   rfiEnabled: true,
   ownerUpdateEnabled: true,
   scheduleEnabled: true,
   poEnabled: true,
 }
+
+type SmsDeliveryResult = {
+  readonly status: string
+  readonly provider: string
+  readonly providerMessageId: string | null
+  readonly error: string | null
+}
+
+type GotoAccessTokenResult =
+  | { readonly success: true; readonly accessToken: string }
+  | { readonly success: false; readonly error: string }
+
+const DEFAULT_GOTO_ORC_FROM_NUMBER = "+17196308767"
+const DEFAULT_GOTO_NUTECH_FROM_NUMBER = "+17196860770"
+const DEFAULT_GOTO_HPS_FROM_NUMBER = "+17199008850"
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null
@@ -93,7 +128,16 @@ function preferenceFromRow(
   return {
     inAppEnabled: row.inAppEnabled,
     emailEnabled: row.emailEnabled,
+    smsEnabled: row.smsEnabled,
+    smsPhoneNumber: row.smsPhoneNumber,
+    smsConsentAccepted: row.smsConsentAccepted,
+    smsConsentDisclosureVersion: row.smsConsentDisclosureVersion,
+    smsConsentPhoneNumber: row.smsConsentPhoneNumber,
     pushEnabled: row.pushEnabled,
+    mentionEmailEnabled: row.mentionEmailEnabled,
+    mentionSmsEnabled: row.mentionSmsEnabled,
+    announcementEmailEnabled: row.announcementEmailEnabled,
+    announcementSmsEnabled: row.announcementSmsEnabled,
     weeklyDigestEnabled: row.weeklyDigestEnabled,
     rfiEnabled: row.rfiEnabled,
     ownerUpdateEnabled: row.ownerUpdateEnabled,
@@ -106,6 +150,22 @@ function notificationCategoryEnabled(
   preferences: NotificationPreferenceState,
   eventType: string
 ): boolean {
+  if (eventType === "message.mention") {
+    return (
+      preferences.mentionEmailEnabled ||
+      (preferences.smsEnabled && preferences.mentionSmsEnabled) ||
+      preferences.inAppEnabled ||
+      preferences.pushEnabled
+    )
+  }
+  if (eventType === "announcement.message") {
+    return (
+      preferences.announcementEmailEnabled ||
+      (preferences.smsEnabled && preferences.announcementSmsEnabled) ||
+      preferences.inAppEnabled ||
+      preferences.pushEnabled
+    )
+  }
   if (eventType.startsWith("rfi.")) return preferences.rfiEnabled
   if (eventType.startsWith("owner_update.")) {
     return preferences.ownerUpdateEnabled
@@ -115,6 +175,45 @@ function notificationCategoryEnabled(
   }
   if (eventType.startsWith("po.")) return preferences.poEnabled
   return true
+}
+
+function notificationEmailEnabled(
+  preferences: NotificationPreferenceState,
+  eventType: string,
+  requested: boolean
+): boolean {
+  if (!requested || !preferences.emailEnabled) return false
+  if (eventType === "message.mention") {
+    return preferences.mentionEmailEnabled
+  }
+  if (eventType === "announcement.message") {
+    return preferences.announcementEmailEnabled
+  }
+  return true
+}
+
+function notificationSmsEnabled(
+  preferences: NotificationPreferenceState,
+  eventType: string
+): boolean {
+  if (
+    !preferences.smsEnabled ||
+    !hasCurrentSmsConsent({
+      accepted: preferences.smsConsentAccepted,
+      phoneNumber: preferences.smsPhoneNumber,
+      consentPhoneNumber: preferences.smsConsentPhoneNumber,
+      disclosureVersion: preferences.smsConsentDisclosureVersion,
+    })
+  ) {
+    return false
+  }
+  if (eventType === "message.mention") {
+    return preferences.mentionSmsEnabled
+  }
+  if (eventType === "announcement.message") {
+    return preferences.announcementSmsEnabled
+  }
+  return false
 }
 
 function notificationEmailBody(
@@ -188,6 +287,210 @@ async function sendResendEmail(
   }
 }
 
+function toBasicAuthToken(clientId: string, clientSecret: string): string {
+  return btoa(`${clientId}:${clientSecret}`)
+}
+
+function normalizeSmsPhoneNumber(value: string): string {
+  const trimmed = value.trim()
+  if (trimmed.startsWith("+")) {
+    return `+${trimmed.replace(/\D/g, "")}`
+  }
+
+  const digits = trimmed.replace(/\D/g, "")
+  if (digits.length === 10) return `+1${digits}`
+  if (digits.length === 11 && digits.startsWith("1")) return `+${digits}`
+  return `+${digits}`
+}
+
+function gotoSenderNumberForProject(
+  env: unknown,
+  projectNumber: string | null
+): string {
+  const prefix = projectNumber?.trim().charAt(0).toUpperCase()
+  if (prefix === "N") {
+    return normalizeSmsPhoneNumber(
+      envString(env, "GOTO_SMS_NUTECH_FROM_NUMBER") ??
+        DEFAULT_GOTO_NUTECH_FROM_NUMBER
+    )
+  }
+  if (prefix === "H") {
+    return normalizeSmsPhoneNumber(
+      envString(env, "GOTO_SMS_HPS_FROM_NUMBER") ??
+        DEFAULT_GOTO_HPS_FROM_NUMBER
+    )
+  }
+  if (prefix === "O" || prefix === "D") {
+    return normalizeSmsPhoneNumber(
+      envString(env, "GOTO_SMS_ORC_FROM_NUMBER") ??
+        DEFAULT_GOTO_ORC_FROM_NUMBER
+    )
+  }
+  return normalizeSmsPhoneNumber(
+    envString(env, "GOTO_SMS_FROM_NUMBER") ??
+      DEFAULT_GOTO_ORC_FROM_NUMBER
+  )
+}
+
+function notificationSmsBody(title: string, body: string): string {
+  const message = `${title}\n${body}\nReply STOP to opt out.`.trim()
+  return message.length > 1000
+    ? `${message.slice(0, 997)}...`
+    : message
+}
+
+function extractProviderMessageId(value: unknown): string | null {
+  if (!isRecord(value)) return null
+  if (typeof value.id === "string") return value.id
+  if (typeof value.messageId === "string") return value.messageId
+  if (!Array.isArray(value.messages)) return null
+  const firstMessage = value.messages[0]
+  if (!isRecord(firstMessage)) return null
+  return typeof firstMessage.id === "string" ? firstMessage.id : null
+}
+
+async function getGotoAccessToken(
+  env: unknown
+): Promise<GotoAccessTokenResult> {
+  const pat = envString(env, "GOTO_SMS_ACCESS_TOKEN")
+  const clientId = envString(env, "GOTO_CLIENT_ID")
+  const clientSecret = envString(env, "GOTO_CLIENT_SECRET")
+  if (!pat || !clientId || !clientSecret) {
+    return {
+      success: false,
+      error:
+        "GOTO_SMS_ACCESS_TOKEN, GOTO_CLIENT_ID, and GOTO_CLIENT_SECRET are not configured",
+    }
+  }
+
+  const response = await fetch(
+    "https://authentication.logmeininc.com/oauth/token",
+    {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        Authorization: `Basic ${toBasicAuthToken(clientId, clientSecret)}`,
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: new URLSearchParams({
+        grant_type: "personal_access_token",
+        pat,
+      }).toString(),
+    }
+  )
+  const responseText = await response.text()
+  if (!response.ok) {
+    return { success: false, error: responseText.slice(0, 500) }
+  }
+
+  try {
+    const parsed: unknown = JSON.parse(responseText)
+    if (isRecord(parsed) && typeof parsed.access_token === "string") {
+      return { success: true, accessToken: parsed.access_token }
+    }
+  } catch {
+    return { success: false, error: "GoTo token response was not JSON" }
+  }
+  return {
+    success: false,
+    error: "GoTo token response did not include access_token",
+  }
+}
+
+async function sendGotoSms(
+  env: unknown,
+  toPhoneNumber: string,
+  title: string,
+  body: string,
+  projectNumber: string | null
+): Promise<SmsDeliveryResult> {
+  const tokenResult = await getGotoAccessToken(env)
+  if (!tokenResult.success) {
+    return {
+      status: "pending_provider",
+      provider: "goto",
+      providerMessageId: null,
+      error: tokenResult.error,
+    }
+  }
+
+  const response = await fetch(
+    "https://api.goto.com/messaging/v1/messages",
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${tokenResult.accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        ownerPhoneNumber: gotoSenderNumberForProject(env, projectNumber),
+        contactPhoneNumbers: [normalizeSmsPhoneNumber(toPhoneNumber)],
+        body: notificationSmsBody(title, body),
+      }),
+    }
+  )
+  const responseText = await response.text()
+  let providerMessageId: string | null = null
+  try {
+    providerMessageId = extractProviderMessageId(JSON.parse(responseText))
+  } catch {
+    providerMessageId = null
+  }
+
+  return {
+    status: response.ok ? "sent" : "failed",
+    provider: "goto",
+    providerMessageId,
+    error: response.ok ? null : responseText.slice(0, 500),
+  }
+}
+
+export async function queueSmsDelivery(
+  env: unknown,
+  toPhoneNumber: string,
+  title: string,
+  body: string,
+  projectNumber: string | null
+): Promise<SmsDeliveryResult> {
+  const hasGotoConfig =
+    envString(env, "GOTO_SMS_ACCESS_TOKEN") !== null &&
+    envString(env, "GOTO_CLIENT_ID") !== null &&
+    envString(env, "GOTO_CLIENT_SECRET") !== null
+  if (hasGotoConfig) {
+    return sendGotoSms(
+      env,
+      toPhoneNumber,
+      title,
+      body,
+      projectNumber
+    )
+  }
+
+  const webhookUrl = envString(env, "COMPASS_SMS_WEBHOOK_URL")
+  if (!webhookUrl) {
+    return {
+      status: "pending_provider",
+      provider: "sms_webhook",
+      providerMessageId: null,
+      error:
+        "GoTo SMS credentials and COMPASS_SMS_WEBHOOK_URL are not configured",
+    }
+  }
+
+  const response = await fetch(webhookUrl, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ to: toPhoneNumber, title, body }),
+  })
+  const responseText = await response.text()
+  return {
+    status: response.ok ? "sent" : "failed",
+    provider: "sms_webhook",
+    providerMessageId: null,
+    error: response.ok ? null : responseText.slice(0, 500),
+  }
+}
+
 async function getPreferenceForUser(
   db: ReturnType<typeof getDb>,
   userId: string
@@ -232,6 +535,14 @@ async function persistNotificationEvent(
     )
   if (recipients.length === 0) return
 
+  const projectNumber = input.projectId
+    ? await db
+        .select({ projectNumber: projects.projectNumber })
+        .from(projects)
+        .where(eq(projects.id, input.projectId))
+        .limit(1)
+        .then((rows) => rows[0]?.projectNumber ?? null)
+    : null
   const now = new Date().toISOString()
   const eventId = crypto.randomUUID()
   try {
@@ -266,7 +577,21 @@ async function persistNotificationEvent(
         preferences,
         input.delivery
       )
-      if (!delivery.email && !delivery.inApp && !delivery.push) {
+      const emailEnabled = notificationEmailEnabled(
+        preferences,
+        input.eventType,
+        delivery.email
+      )
+      const smsEnabled = notificationSmsEnabled(
+        preferences,
+        input.eventType
+      )
+      if (
+        !emailEnabled &&
+        !delivery.inApp &&
+        !delivery.push &&
+        !smsEnabled
+      ) {
         continue
       }
 
@@ -276,14 +601,15 @@ async function persistNotificationEvent(
         eventId,
         userId: recipient.userId,
         inApp: delivery.inApp,
-        email: delivery.email,
+        email: emailEnabled,
+        sms: smsEnabled,
         push: delivery.push,
         readAt: null,
         dismissedAt: null,
         createdAt: now,
       })
 
-      if (delivery.email) {
+      if (emailEnabled) {
         const emailDelivery = await sendResendEmail(
           env,
           recipient.googleEmail ?? recipient.email,
@@ -301,6 +627,30 @@ async function persistNotificationEvent(
           provider: "resend",
           providerMessageId: emailDelivery.providerMessageId,
           error: emailDelivery.error,
+          attemptedAt: new Date().toISOString(),
+          createdAt: now,
+        })
+      }
+
+      if (smsEnabled && preferences.smsPhoneNumber) {
+        const smsDelivery = await queueSmsDelivery(
+          env,
+          preferences.smsPhoneNumber,
+          input.title,
+          input.body,
+          projectNumber
+        )
+        await db.insert(notificationDeliveries).values({
+          id: crypto.randomUUID(),
+          eventId,
+          recipientId,
+          userId: recipient.userId,
+          channel: "sms",
+          status: smsDelivery.status,
+          toAddress: preferences.smsPhoneNumber,
+          provider: smsDelivery.provider,
+          providerMessageId: smsDelivery.providerMessageId,
+          error: smsDelivery.error,
           attemptedAt: new Date().toISOString(),
           createdAt: now,
         })

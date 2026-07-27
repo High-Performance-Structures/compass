@@ -14,8 +14,9 @@ import {
   type NewUser,
 } from "@/db/schema"
 import { getCurrentUser } from "@/lib/auth"
-import { requirePermission } from "@/lib/permissions"
-import { eq, and } from "drizzle-orm"
+import { canManageUserAccess, requirePermission } from "@/lib/permissions"
+import { isDemoOrg, isDemoUser } from "@/lib/demo"
+import { eq, and, getTableColumns } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import {
   updateUserRoleSchema,
@@ -37,14 +38,31 @@ export async function getUsers(): Promise<UserWithRelations[]> {
   try {
     const currentUser = await getCurrentUser()
     requirePermission(currentUser, "user", "read")
+    if (!currentUser?.organizationId) return []
+    if (
+      isDemoUser(currentUser.id) ||
+      isDemoOrg(currentUser.organizationId)
+    ) {
+      return []
+    }
 
     const { env } = await getCloudflareContext()
     if (!env?.DB) return []
 
     const db = getDb(env.DB)
+    const organizationId = currentUser.organizationId
 
-    // get all active users
-    const allUsers = await db.select().from(users).where(eq(users.isActive, true))
+    // Never expose users from another organization in the people directory.
+    const allUsers = await db
+      .select(getTableColumns(users))
+      .from(users)
+      .innerJoin(organizationMembers, eq(organizationMembers.userId, users.id))
+      .where(
+        and(
+          eq(users.isActive, true),
+          eq(organizationMembers.organizationId, organizationId)
+        )
+      )
 
     // for each user, fetch their teams, groups, and counts
     const usersWithRelations = await Promise.all(
@@ -54,14 +72,24 @@ export async function getUsers(): Promise<UserWithRelations[]> {
           .select({ id: teams.id, name: teams.name })
           .from(teamMembers)
           .innerJoin(teams, eq(teamMembers.teamId, teams.id))
-          .where(eq(teamMembers.userId, user.id))
+          .where(
+            and(
+              eq(teamMembers.userId, user.id),
+              eq(teams.organizationId, organizationId)
+            )
+          )
 
         // get groups
         const userGroups = await db
           .select({ id: groups.id, name: groups.name, color: groups.color })
           .from(groupMembers)
           .innerJoin(groups, eq(groupMembers.groupId, groups.id))
-          .where(eq(groupMembers.userId, user.id))
+          .where(
+            and(
+              eq(groupMembers.userId, user.id),
+              eq(groups.organizationId, organizationId)
+            )
+          )
 
         // get project count
         const projectCount = await db
@@ -74,7 +102,12 @@ export async function getUsers(): Promise<UserWithRelations[]> {
         const organizationCount = await db
           .select()
           .from(organizationMembers)
-          .where(eq(organizationMembers.userId, user.id))
+          .where(
+            and(
+              eq(organizationMembers.userId, user.id),
+              eq(organizationMembers.organizationId, organizationId)
+            )
+          )
           .then((r) => r.length)
 
         return {
@@ -108,6 +141,12 @@ export async function updateUserRole(
   try {
     const currentUser = await getCurrentUser()
     requirePermission(currentUser, "user", "update")
+    if (!canManageUserAccess(currentUser)) {
+      return { success: false, error: "Only admins can update user roles" }
+    }
+    if (!currentUser?.organizationId) {
+      return { success: false, error: "No active organization selected" }
+    }
 
     const { env } = await getCloudflareContext()
     if (!env?.DB) {
@@ -116,6 +155,22 @@ export async function updateUserRole(
 
     const db = getDb(env.DB)
     const now = new Date().toISOString()
+    const targetMembership = await db
+      .select({ id: organizationMembers.id })
+      .from(organizationMembers)
+      .where(
+        and(
+          eq(organizationMembers.userId, parseResult.data.userId),
+          eq(
+            organizationMembers.organizationId,
+            currentUser.organizationId
+          )
+        )
+      )
+      .get()
+    if (!targetMembership) {
+      return { success: false, error: "User not found in this organization" }
+    }
 
     await db
       .update(users)
@@ -123,6 +178,13 @@ export async function updateUserRole(
       .where(eq(users.id, parseResult.data.userId))
       .run()
 
+    await db
+      .update(organizationMembers)
+      .set({ role: parseResult.data.role })
+      .where(eq(organizationMembers.id, targetMembership.id))
+      .run()
+
+    revalidatePath("/dashboard/settings")
     revalidatePath("/dashboard/people")
     return { success: true }
   } catch (error) {
@@ -147,6 +209,12 @@ export async function deactivateUser(
   try {
     const currentUser = await getCurrentUser()
     requirePermission(currentUser, "user", "delete")
+    if (!canManageUserAccess(currentUser)) {
+      return { success: false, error: "Only admins can deactivate users" }
+    }
+    if (currentUser?.id === parseResult.data.userId) {
+      return { success: false, error: "You cannot deactivate your own account" }
+    }
 
     const { env } = await getCloudflareContext()
     if (!env?.DB) {
@@ -190,6 +258,9 @@ export async function assignUserToProject(
   try {
     const currentUser = await getCurrentUser()
     requirePermission(currentUser, "project", "update")
+    if (!canManageUserAccess(currentUser)) {
+      return { success: false, error: "Only admins can assign project access" }
+    }
 
     const { env } = await getCloudflareContext()
     if (!env?.DB) {
@@ -265,6 +336,9 @@ export async function assignUserToTeam(
   try {
     const currentUser = await getCurrentUser()
     requirePermission(currentUser, "team", "update")
+    if (!canManageUserAccess(currentUser)) {
+      return { success: false, error: "Only admins can assign team access" }
+    }
 
     const { env } = await getCloudflareContext()
     if (!env?.DB) {
@@ -325,6 +399,9 @@ export async function assignUserToGroup(
   try {
     const currentUser = await getCurrentUser()
     requirePermission(currentUser, "group", "update")
+    if (!canManageUserAccess(currentUser)) {
+      return { success: false, error: "Only admins can assign group access" }
+    }
 
     const { env } = await getCloudflareContext()
     if (!env?.DB) {
@@ -386,6 +463,21 @@ export async function inviteUser(
   try {
     const currentUser = await getCurrentUser()
     requirePermission(currentUser, "user", "create")
+    if (!canManageUserAccess(currentUser)) {
+      return { success: false, error: "Only admins can invite users" }
+    }
+    if (!currentUser?.organizationId) {
+      return { success: false, error: "No active organization selected" }
+    }
+
+    const targetOrganizationId =
+      validated.organizationId ?? currentUser.organizationId
+    if (targetOrganizationId !== currentUser.organizationId) {
+      return {
+        success: false,
+        error: "You can only invite users to your active organization",
+      }
+    }
 
     const { env } = await getCloudflareContext()
     if (!env?.DB) {
@@ -440,18 +532,16 @@ export async function inviteUser(
         await db.insert(users).values(newUser).run()
 
         // if organization specified, add to organization
-        if (validated.organizationId) {
-          await db
-            .insert(organizationMembers)
-            .values({
-              id: crypto.randomUUID(),
-              organizationId: validated.organizationId,
-              userId: newUser.id,
-              role: validated.role,
-              joinedAt: now,
-            })
-            .run()
-        }
+        await db
+          .insert(organizationMembers)
+          .values({
+            id: crypto.randomUUID(),
+            organizationId: targetOrganizationId,
+            userId: newUser.id,
+            role: validated.role,
+            joinedAt: now,
+          })
+          .run()
 
         revalidatePath("/dashboard/people")
         return { success: true }
@@ -480,18 +570,16 @@ export async function inviteUser(
 
       await db.insert(users).values(newUser).run()
 
-      if (validated.organizationId) {
-        await db
-          .insert(organizationMembers)
-          .values({
-            id: crypto.randomUUID(),
-            organizationId: validated.organizationId,
-            userId: newUser.id,
-            role: validated.role,
-            joinedAt: now,
-          })
-          .run()
-      }
+      await db
+        .insert(organizationMembers)
+        .values({
+          id: crypto.randomUUID(),
+          organizationId: targetOrganizationId,
+          userId: newUser.id,
+          role: validated.role,
+          joinedAt: now,
+        })
+        .run()
 
       revalidatePath("/dashboard/people")
       return { success: true }

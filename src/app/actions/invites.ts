@@ -10,8 +10,9 @@ import {
   type NewOrganizationInvite,
 } from "@/db/schema"
 import { getCurrentUser } from "@/lib/auth"
-import { requirePermission } from "@/lib/permissions"
+import { canManageUserAccess, requirePermission } from "@/lib/permissions"
 import { isDemoUser } from "@/lib/demo"
+import { userRoleSchema } from "@/lib/validations/common"
 import { eq, and, desc } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { cookies } from "next/headers"
@@ -40,6 +41,14 @@ export async function createInvite(
     if (!currentUser) return { success: false, error: "Unauthorized" }
     if (isDemoUser(currentUser.id)) return { success: false, error: "DEMO_READ_ONLY" }
     requirePermission(currentUser, "organization", "create")
+    if (!canManageUserAccess(currentUser)) {
+      return { success: false, error: "Only admins can create invite links" }
+    }
+
+    const parsedRole = userRoleSchema.safeParse(role)
+    if (!parsedRole.success) {
+      return { success: false, error: "Invalid user role" }
+    }
 
     if (!currentUser.organizationId) {
       return { success: false, error: "No active organization" }
@@ -65,7 +74,7 @@ export async function createInvite(
       id: crypto.randomUUID(),
       organizationId: currentUser.organizationId,
       code,
-      role,
+      role: parsedRole.data,
       maxUses: maxUses ?? null,
       useCount: 0,
       expiresAt: expiresAt ?? null,
@@ -161,6 +170,9 @@ export async function revokeInvite(
     if (!currentUser) return { success: false, error: "Unauthorized" }
     if (isDemoUser(currentUser.id)) return { success: false, error: "DEMO_READ_ONLY" }
     requirePermission(currentUser, "organization", "update")
+    if (!canManageUserAccess(currentUser)) {
+      return { success: false, error: "Only admins can revoke invite links" }
+    }
 
     if (!currentUser.organizationId) {
       return { success: false, error: "No active organization" }

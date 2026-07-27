@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
+import { userRoleLabel } from "@/lib/user-roles"
 import { CreateInviteDialog } from "./create-invite-dialog"
 
 type InviteRow = {
@@ -148,8 +149,8 @@ export function InviteLinksSection() {
                       {invite.code}
                     </TableCell>
                     <TableCell>
-                      <Badge variant="secondary" className="capitalize">
-                        {invite.role}
+                      <Badge variant="secondary">
+                        {userRoleLabel(invite.role)}
                       </Badge>
                     </TableCell>
                     <TableCell>

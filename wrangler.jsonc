@@ -46,6 +46,8 @@
 		}
 	],
 	"vars": {
+		"CLOUDFLARE_ACCOUNT_ID": "8716137c706ea3d5c209b330084fa9e2",
+		"REALTIMEKIT_APP_ID": "3e31a97a-54ce-4940-ac53-c593db8d5c25",
 		"WORKOS_REDIRECT_URI": "https://compass.openrangeconstruction.ltd/callback",
 		"JARVIS_AGENT_BRIDGE_ENABLED": "true"
 	}

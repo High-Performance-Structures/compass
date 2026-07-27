@@ -1,5 +1,7 @@
 import { z } from "zod"
 
+import { USER_ROLES, type UserRole } from "@/lib/user-roles"
+
 // --- Primitive schemas ---
 
 export const emailSchema = z
@@ -22,16 +24,9 @@ export const optionalString = z
 
 // --- User roles ---
 
-export const userRoles = [
-  "admin",
-  "executive",
-  "accounting",
-  "project_manager",
-  "coordinator",
-  "office",
-] as const
+export const userRoles = USER_ROLES
 
-export type UserRole = (typeof userRoles)[number]
+export type { UserRole }
 
 export const userRoleSchema = z.enum(userRoles, {
   message: "Please select a valid role",

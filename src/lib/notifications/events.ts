@@ -23,6 +23,7 @@ export {
   createNotificationEvent,
   createSystemNotificationEvent,
   isMissingNotificationTableError,
+  queueSmsDelivery,
 } from "@/lib/notifications/create-event"
 
 type RfiNotificationInput = {

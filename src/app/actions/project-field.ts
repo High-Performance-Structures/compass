@@ -29,7 +29,9 @@ import {
   type OwnerUpdateScheduleItem,
 } from "@/lib/owner-updates/snapshot"
 import { isOwnerUpdateVisibleToRole } from "@/lib/owner-updates/history"
-import { can, requirePermission } from "@/lib/permissions"
+import { can } from "@/lib/permissions"
+import { requireFeaturePermission } from "@/lib/permission-enforcement"
+import { isInternalStaffRole } from "@/lib/user-roles"
 import { revalidatePath } from "next/cache"
 
 type LatestDailyLog = {
@@ -452,10 +454,11 @@ function numberValue(
 }
 
 async function verifyProjectAccess(
-  projectId: string
+  projectId: string,
+  featureId: string = "daily-logs"
 ): Promise<ReturnType<typeof getDb>> {
   const user = await requireAuth()
-  requirePermission(user, "project", "read")
+  await requireFeaturePermission(user, featureId, "read")
   const orgId = requireOrg(user)
 
   const { env } = await getCloudflareContext()
@@ -475,7 +478,8 @@ async function verifyProjectAccess(
 }
 
 async function verifyProjectMutationAccess(
-  projectId: string
+  projectId: string,
+  featureId: string = "daily-logs"
 ): Promise<{
   readonly db: ReturnType<typeof getDb>
   readonly userId: string
@@ -484,7 +488,7 @@ async function verifyProjectMutationAccess(
   if (isDemoUser(user.id)) {
     throw new Error("DEMO_READ_ONLY")
   }
-  requirePermission(user, "project", "update")
+  await requireFeaturePermission(user, featureId, "update")
   const orgId = requireOrg(user)
 
   const { env } = await getCloudflareContext()
@@ -503,18 +507,6 @@ async function verifyProjectMutationAccess(
   return { db, userId: user.id }
 }
 
-function isInternalStaffRole(role: string): boolean {
-  switch (role) {
-    case "admin":
-    case "secondary_admin":
-    case "office":
-    case "field":
-      return true
-    default:
-      return false
-  }
-}
-
 async function verifyDailyLogStaffMutationAccess(
   projectId: string
 ): Promise<{
@@ -528,6 +520,7 @@ async function verifyDailyLogStaffMutationAccess(
   if (!user.isActive || !isInternalStaffRole(user.role)) {
     throw new Error("Permission denied: staff access is required for daily logs")
   }
+  await requireFeaturePermission(user, "daily-logs", "update")
   const orgId = requireOrg(user)
 
   const { env } = await getCloudflareContext()
@@ -1097,7 +1090,7 @@ export async function getProjectOwnerUpdates(
   projectId: string
 ): Promise<readonly ProjectOwnerUpdateListItem[]> {
   const viewer = await requireAuth()
-  const db = await verifyProjectAccess(projectId)
+  const db = await verifyProjectAccess(projectId, "owner-updates")
 
   const updateRows = await db
     .select({
@@ -1601,7 +1594,10 @@ export async function draftOwnerUpdateFromDailyLogs(
   input: OwnerUpdateDraftInput
 ): Promise<OwnerUpdateDraftResult> {
   try {
-    const { db, userId } = await verifyProjectMutationAccess(projectId)
+    const { db, userId } = await verifyProjectMutationAccess(
+      projectId,
+      "owner-updates"
+    )
     const dailyLogIds = [...new Set(input.dailyLogIds)].filter(
       (id) => id.trim().length > 0
     )
@@ -1725,7 +1721,7 @@ export async function getOwnerProjectUpdateDocument(
   updateId: string
 ): Promise<OwnerProjectUpdateDocument> {
   const viewer = await requireAuth()
-  const db = await verifyProjectAccess(projectId)
+  const db = await verifyProjectAccess(projectId, "owner-updates")
 
   const [project] = await db
     .select({
@@ -1965,7 +1961,10 @@ export async function updateOwnerProjectUpdateDraft(
   | { readonly success: false; readonly error: string }
 > {
   try {
-    const { db } = await verifyProjectMutationAccess(projectId)
+    const { db } = await verifyProjectMutationAccess(
+      projectId,
+      "owner-updates"
+    )
     const title = input.title.trim()
     const updateDate = input.updateDate.trim()
     const periodStart = input.periodStart.trim()
@@ -2149,7 +2148,7 @@ export async function publishOwnerProjectUpdate(
   | { readonly success: false; readonly error: string }
 > {
   const user = await requireAuth()
-  requirePermission(user, "project", "update")
+  await requireFeaturePermission(user, "owner-updates", "update")
   const orgId = requireOrg(user)
 
   const { env } = await getCloudflareContext()
