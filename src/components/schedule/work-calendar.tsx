@@ -4,6 +4,7 @@ import * as React from "react"
 import Link from "next/link"
 import {
   IconCalendarEvent,
+  IconCalendarPlus,
   IconClipboardCheck,
   IconMessageQuestion,
   IconReceipt,
@@ -19,6 +20,8 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
+import { workCalendarEntryMatches } from "@/lib/work-calendar"
+import { WorkCalendarEventDialog } from "./work-calendar-event-dialog"
 
 export type WorkCalendarKindFilter = WorkCalendarEntryKind | "all"
 
@@ -38,6 +41,11 @@ const KIND_FILTERS: readonly KindConfig[] = [
     id: "schedule",
     label: "Schedule items",
     icon: <IconCalendarEvent className="size-4" />,
+  },
+  {
+    id: "event",
+    label: "Events",
+    icon: <IconCalendarPlus className="size-4" />,
   },
   {
     id: "task",
@@ -83,19 +91,12 @@ function formatWeekday(date: string): string {
   }).format(parseDateKey(date))
 }
 
-function normalize(value: string): string {
-  return value
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, " ")
-    .replace(/\s+/g, " ")
-    .trim()
-}
-
 function kindLabel(kind: WorkCalendarEntryKind): string {
   switch (kind) {
     case "schedule":
       return "Schedule item"
+    case "event":
+      return "Event"
     case "task":
       return "To-do"
     case "rfi":
@@ -109,6 +110,8 @@ function kindTone(kind: WorkCalendarEntryKind): string {
   switch (kind) {
     case "schedule":
       return "border-[#2f5963] bg-card text-[#2f5963]"
+    case "event":
+      return "border-[#5f4b8b] bg-card text-[#5f4b8b]"
     case "task":
       return "border-[#3f7d4d] bg-card text-[#3f7d4d]"
     case "rfi":
@@ -118,26 +121,6 @@ function kindTone(kind: WorkCalendarEntryKind): string {
   }
 }
 
-function entryMatches(entry: WorkCalendarEntry, query: string): boolean {
-  if (!query) return true
-
-  const haystack = normalize(
-    [
-      entry.projectLabel,
-      entry.title,
-      entry.status,
-      entry.priority,
-      entry.assignedTo,
-      entry.companyName,
-      entry.sourceLabel,
-    ]
-      .filter((value): value is string => Boolean(value))
-      .join(" ")
-  )
-
-  return haystack.includes(query)
-}
-
 function entryOnDay(entry: WorkCalendarEntry, date: string): boolean {
   return entry.startDate <= date && entry.endDate >= date
 }
@@ -145,16 +128,20 @@ function entryOnDay(entry: WorkCalendarEntry, date: string): boolean {
 function WorkItem({
   entry,
   compact = false,
+  focused = false,
 }: {
   readonly entry: WorkCalendarEntry
   readonly compact?: boolean
+  readonly focused?: boolean
 }): React.ReactElement {
   return (
     <Link
+      id={compact ? undefined : `work-calendar-${entry.id}`}
       href={entry.href}
       className={cn(
         "block rounded-lg border bg-background p-3 transition-all duration-200 hover:-translate-y-0.5 hover:bg-muted/60 hover:shadow-md",
-        compact && "p-2"
+        compact && "p-2",
+        focused && "border-primary bg-primary/5 ring-2 ring-primary/30"
       )}
     >
       <div className="flex items-start justify-between gap-2">
@@ -198,9 +185,11 @@ function WorkItem({
 export function WorkCalendar({
   data,
   initialKind = "all",
+  initialItemId = null,
 }: {
   readonly data: WorkCalendarData
   readonly initialKind?: WorkCalendarKindFilter
+  readonly initialItemId?: string | null
 }): React.ReactElement {
   const [query, setQuery] = React.useState("")
   const [activeKind, setActiveKind] =
@@ -213,11 +202,10 @@ export function WorkCalendar({
     () => Array.from({ length: 14 }, (_, index) => toDateKey(addDays(today, index))),
     [today]
   )
-  const normalizedQuery = normalize(query)
   const filteredEntries = data.entries.filter(
     (entry) =>
       (activeKind === "all" || entry.kind === activeKind) &&
-      entryMatches(entry, normalizedQuery)
+      workCalendarEntryMatches(entry, query)
   )
   const overdueEntries = filteredEntries.filter(
     (entry) => entry.endDate < data.today
@@ -227,6 +215,13 @@ export function WorkCalendar({
   )
   const taskCount = filteredEntries.filter((entry) => entry.kind === "task").length
   const rfiCount = filteredEntries.filter((entry) => entry.kind === "rfi").length
+
+  React.useEffect(() => {
+    if (!initialItemId) return
+    document
+      .getElementById(`work-calendar-${initialItemId}`)
+      ?.scrollIntoView({ behavior: "smooth", block: "center" })
+  }, [initialItemId])
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto">
@@ -285,6 +280,13 @@ export function WorkCalendar({
             />
           </div>
           <div className="flex flex-wrap gap-2">
+            {data.canCreateEvents && (
+              <WorkCalendarEventDialog
+                projects={data.projects}
+                defaultProjectId={data.defaultProjectId}
+                today={data.today}
+              />
+            )}
             {KIND_FILTERS.map((filter) => (
               <Button
                 key={filter.id}
@@ -354,7 +356,11 @@ export function WorkCalendar({
             <div className="mt-4 grid gap-3">
               {filteredEntries.length > 0 ? (
                 filteredEntries.slice(0, 50).map((entry) => (
-                  <WorkItem key={`${entry.kind}-${entry.id}`} entry={entry} />
+                  <WorkItem
+                    key={`${entry.kind}-${entry.id}`}
+                    entry={entry}
+                    focused={entry.id === initialItemId}
+                  />
                 ))
               ) : (
                 <div className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">

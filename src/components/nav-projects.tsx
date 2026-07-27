@@ -5,6 +5,7 @@ import {
   IconAddressBook,
   IconArrowLeft,
   IconCalendarStats,
+  IconClipboardCheck,
   IconClipboardText,
   IconEye,
   IconFileDollar,
@@ -12,6 +13,7 @@ import {
   IconHome2,
   IconMailForward,
   IconMessageCircleQuestion,
+  IconMessages,
   IconPalette,
   IconPhoto,
   IconShoppingCart,
@@ -34,6 +36,8 @@ import type { ProjectListItem } from "@/app/actions/projects"
 type ProjectSectionKey =
   | "overview"
   | "schedule"
+  | "todos"
+  | "conversations"
   | "owner-updates"
   | "daily-logs"
   | "photos"
@@ -66,6 +70,18 @@ const PROJECT_SECTION_ITEMS: readonly ProjectSectionItem[] = [
     hrefSuffix: "schedule",
     icon: IconCalendarStats,
     section: "schedule",
+  },
+  {
+    title: "To-Dos",
+    hrefSuffix: "todos",
+    icon: IconClipboardCheck,
+    section: "todos",
+  },
+  {
+    title: "Conversations",
+    hrefSuffix: "conversations",
+    icon: IconMessages,
+    section: "conversations",
   },
   {
     title: "Owner Updates",
@@ -172,6 +188,8 @@ function activeProjectSection(pathname: string | null): ProjectSectionKey {
     case "rfqs":
     case "rfis":
     case "schedule":
+    case "todos":
+    case "conversations":
       return section
     default:
       return "overview"

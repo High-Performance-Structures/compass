@@ -86,11 +86,13 @@ type CategoryData = {
 type CreateChannelDialogProps = {
   readonly open: boolean
   readonly onOpenChange: (open: boolean) => void
+  readonly projectId?: string
 }
 
 export function CreateChannelDialog({
   open,
   onOpenChange,
+  projectId,
 }: CreateChannelDialogProps) {
   const router = useRouter()
   const [isSubmitting, setIsSubmitting] = React.useState(false)
@@ -135,6 +137,7 @@ export function CreateChannelDialog({
       type: data.type,
       categoryId: data.categoryId,
       isPrivate: data.isPrivate,
+      projectId,
     })
 
     if (result.success && result.data) {

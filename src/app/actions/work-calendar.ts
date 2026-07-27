@@ -1,6 +1,7 @@
 "use server"
 
 import { asc, eq } from "drizzle-orm"
+import { revalidatePath } from "next/cache"
 
 import { getDb } from "@/db"
 import {
@@ -12,9 +13,16 @@ import {
 import { requireAuth } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
 import { requireOrg } from "@/lib/org-scope"
+import { can, requirePermission } from "@/lib/permissions"
+import {
+  projectTodoHref,
+  resolveHOfficeProjectId,
+  scheduleItemHref,
+} from "@/lib/work-calendar"
 
 export type WorkCalendarEntryKind =
   | "schedule"
+  | "event"
   | "rfi"
   | "purchase_order"
   | "task"
@@ -24,6 +32,7 @@ export type WorkCalendarEntry = {
   readonly kind: WorkCalendarEntryKind
   readonly projectId: string
   readonly projectLabel: string
+  readonly projectName: string
   readonly title: string
   readonly status: string
   readonly priority: string
@@ -38,9 +47,12 @@ export type WorkCalendarEntry = {
 export type WorkCalendarData = {
   readonly today: string
   readonly entries: readonly WorkCalendarEntry[]
+  readonly projects: readonly ProjectRow[]
+  readonly defaultProjectId: string | null
+  readonly canCreateEvents: boolean
 }
 
-type ProjectRow = {
+export type ProjectRow = {
   readonly id: string
   readonly name: string
   readonly projectNumber: string | null
@@ -75,10 +87,12 @@ function isClosedStatus(status: string): boolean {
 
 function operationKind(recordType: string): WorkCalendarEntryKind {
   if (recordType === "purchase_order") return "purchase_order"
+  if (recordType === "calendar_event") return "event"
   return "task"
 }
 
 function operationSourceLabel(recordType: string, recordNumber: string | null): string {
+  if (recordType === "calendar_event") return "Calendar event"
   if (recordType === "schedule_task") {
     return recordNumber
       ? `Schedule item follow-up ${recordNumber}`
@@ -143,6 +157,7 @@ export async function getWorkCalendar(): Promise<WorkCalendarData> {
         kind: "schedule",
         projectId: project.id,
         projectLabel: label,
+        projectName: project.name,
         title: task.title,
         status: task.status,
         priority: task.isCriticalPath ? "critical" : "normal",
@@ -151,7 +166,7 @@ export async function getWorkCalendar(): Promise<WorkCalendarData> {
         assignedTo: task.assignedTo,
         companyName: null,
         sourceLabel: "Project schedule",
-        href: `/dashboard/projects/${project.id}/schedule`,
+        href: scheduleItemHref(project.id, task.id),
       })
     }
 
@@ -181,6 +196,7 @@ export async function getWorkCalendar(): Promise<WorkCalendarData> {
         kind: "rfi",
         projectId: project.id,
         projectLabel: label,
+        projectName: project.name,
         title: rfi.subject,
         status: rfi.status,
         priority: rfi.priority,
@@ -222,6 +238,7 @@ export async function getWorkCalendar(): Promise<WorkCalendarData> {
         kind: operationKind(operation.sourceRecordType),
         projectId: project.id,
         projectLabel: label,
+        projectName: project.name,
         title: operation.title,
         status: operation.status,
         priority: operation.priority,
@@ -236,7 +253,16 @@ export async function getWorkCalendar(): Promise<WorkCalendarData> {
         href:
           operation.sourceRecordType === "purchase_order"
             ? `/dashboard/projects/${project.id}/purchase-orders`
-            : `/dashboard/projects/${project.id}`,
+            : operation.sourceRecordType === "calendar_event"
+              ? `/dashboard/schedule?kind=event&item=${encodeURIComponent(operation.id)}#work-calendar-${encodeURIComponent(operation.id)}`
+              : [
+                    "staff_task",
+                    "subcontractor_task",
+                    "supplier_task",
+                    "schedule_task",
+                  ].includes(operation.sourceRecordType)
+                ? projectTodoHref(project.id, operation.id)
+                : `/dashboard/projects/${project.id}`,
       })
     }
   }
@@ -251,5 +277,112 @@ export async function getWorkCalendar(): Promise<WorkCalendarData> {
     return left.title.localeCompare(right.title)
   })
 
-  return { today, entries }
+  return {
+    today,
+    entries,
+    projects: projectRows,
+    defaultProjectId: resolveHOfficeProjectId(projectRows),
+    canCreateEvents: can(user, "schedule", "create"),
+  }
+}
+
+export type CreateWorkCalendarEventInput = {
+  readonly title: string
+  readonly description: string | null
+  readonly projectId: string | null
+  readonly startDate: string
+  readonly endDate: string
+}
+
+type CreateWorkCalendarEventResult =
+  | { readonly success: true; readonly id: string }
+  | { readonly success: false; readonly error: string }
+
+function cleanRequiredText(value: string, label: string): string {
+  const cleaned = value.trim()
+  if (cleaned.length === 0) throw new Error(`${label} is required`)
+  return cleaned
+}
+
+function isDateKey(value: string): boolean {
+  return /^\d{4}-\d{2}-\d{2}$/.test(value)
+}
+
+export async function createWorkCalendarEvent(
+  input: CreateWorkCalendarEventInput
+): Promise<CreateWorkCalendarEventResult> {
+  try {
+    const user = await requireAuth()
+    requirePermission(user, "schedule", "create")
+    const orgId = requireOrg(user)
+    const { env } = await getCloudflareContext()
+    const db = getDb(env.DB)
+
+    const projectRows = await db
+      .select({
+        id: projects.id,
+        name: projects.name,
+        projectNumber: projects.projectNumber,
+      })
+      .from(projects)
+      .where(eq(projects.organizationId, orgId))
+
+    const projectId =
+      input.projectId?.trim() || resolveHOfficeProjectId(projectRows)
+    if (!projectId) {
+      return {
+        success: false,
+        error:
+          "Select a project. Compass could not resolve one unique H-Office project for this organization.",
+      }
+    }
+
+    const project = projectRows.find((candidate) => candidate.id === projectId)
+    if (!project) {
+      return { success: false, error: "Project not found" }
+    }
+
+    const title = cleanRequiredText(input.title, "Event title")
+    const startDate = cleanRequiredText(input.startDate, "Start date")
+    const endDate = cleanRequiredText(input.endDate, "End date")
+    if (!isDateKey(startDate) || !isDateKey(endDate)) {
+      return { success: false, error: "Enter valid event dates." }
+    }
+    if (endDate < startDate) {
+      return {
+        success: false,
+        error: "End date must be on or after the start date.",
+      }
+    }
+
+    const id = crypto.randomUUID()
+    const now = new Date().toISOString()
+    await db.insert(projectOperations).values({
+      id,
+      projectId,
+      sourceSystem: "compass",
+      sourceRecordType: "calendar_event",
+      title,
+      description: input.description?.trim() || null,
+      status: "open",
+      priority: "normal",
+      startDate,
+      dueDate: endDate,
+      syncDirection: "read",
+      syncStatus: "compass_only",
+      createdAt: now,
+      updatedAt: now,
+    })
+
+    revalidatePath("/dashboard/schedule")
+    revalidatePath(`/dashboard/projects/${projectId}`)
+    revalidatePath("/dashboard")
+    return { success: true, id }
+  } catch (error) {
+    return {
+      success: false,
+      error:
+        error instanceof Error ? error.message : "Failed to create calendar event",
+    }
+  }
 }

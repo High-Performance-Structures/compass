@@ -177,6 +177,14 @@ function SidebarNav({
         ? "projects"
         : "main"
 
+  const persistentNav = PERSISTENT_NAV.map((item) =>
+    item.title === "To-Dos" && activeProjectId
+      ? {
+          ...item,
+          url: `/dashboard/projects/${activeProjectId}/todos`,
+        }
+      : item
+  )
   const navMain = NAV_MAIN.map((item) =>
     typeof item.projectPath === "string"
       ? {
@@ -192,7 +200,7 @@ function SidebarNav({
 
   return (
     <div key={mode} className="animate-in fade-in slide-in-from-left-1 flex flex-1 flex-col duration-150">
-      <NavMain items={PERSISTENT_NAV} />
+      <NavMain items={persistentNav} />
       {mode === "files" && (
         <React.Suspense>
           <NavFiles />

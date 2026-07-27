@@ -89,6 +89,8 @@ interface ScheduleViewProps {
   readonly baselines: ScheduleBaselineData[]
   readonly allProjects?: readonly ProjectListItem[]
   readonly assigneeOptions?: readonly ProjectTaskAssigneeOption[]
+  readonly initialView?: View
+  readonly focusTaskId?: string | null
 }
 
 export function ScheduleView({
@@ -98,9 +100,11 @@ export function ScheduleView({
   baselines,
   allProjects = [],
   assigneeOptions = [],
+  initialView = "gantt",
+  focusTaskId = null,
 }: ScheduleViewProps) {
   const isMobile = useIsMobile()
-  const [view, setView] = useState<View>("gantt")
+  const [view, setView] = useState<View>(initialView)
   const [taskFormOpen, setTaskFormOpen] = useState(false)
   const [filters, setFilters] = useState<TaskFilters>(EMPTY_FILTERS)
   const [baselinesOpen, setBaselinesOpen] = useState(false)
@@ -546,6 +550,7 @@ export function ScheduleView({
             dependencies={initialData.dependencies}
             exceptions={initialData.exceptions}
             assigneeOptions={assigneeOptions}
+            focusTaskId={focusTaskId}
           />
         )}
         {view === "gantt" && (

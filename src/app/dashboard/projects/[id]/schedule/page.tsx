@@ -23,10 +23,25 @@ const emptySchedule: ScheduleData = {
 
 export default async function SchedulePage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>
+  searchParams: Promise<{
+    readonly view?: string | readonly string[]
+    readonly item?: string | readonly string[]
+  }>
 }) {
-  const { id } = await params
+  const [{ id }, query] = await Promise.all([params, searchParams])
+  const requestedView =
+    typeof query.view === "string" ? query.view : query.view?.[0]
+  const initialView =
+    requestedView === "calendar" ||
+    requestedView === "list" ||
+    requestedView === "gantt"
+      ? requestedView
+      : undefined
+  const focusTaskId =
+    typeof query.item === "string" ? query.item : query.item?.[0] ?? null
 
   let projectName = "Project"
   let schedule: ScheduleData = emptySchedule
@@ -77,6 +92,8 @@ export default async function SchedulePage({
         baselines={baselines}
         allProjects={allProjects}
         assigneeOptions={assigneeOptions}
+        initialView={focusTaskId ? "list" : initialView}
+        focusTaskId={focusTaskId}
       />
     </div>
   )

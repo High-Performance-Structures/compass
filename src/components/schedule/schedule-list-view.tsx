@@ -45,6 +45,7 @@ import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import { format, parseISO } from "date-fns"
 import { useScheduleDisplayPalette } from "@/hooks/use-schedule-display-palette"
+import { cn } from "@/lib/utils"
 import {
   getScheduleItemDisplayColor,
   type DisplayColorPalette,
@@ -56,6 +57,7 @@ interface ScheduleListViewProps {
   readonly dependencies: TaskDependencyData[]
   readonly exceptions: readonly WorkdayExceptionData[]
   readonly assigneeOptions: readonly ProjectTaskAssigneeOption[]
+  readonly focusTaskId?: string | null
 }
 
 function StatusDot({
@@ -121,6 +123,7 @@ export function ScheduleListView({
   dependencies,
   exceptions,
   assigneeOptions,
+  focusTaskId = null,
 }: ScheduleListViewProps) {
   const router = useRouter()
   const displayColorPalette = useScheduleDisplayPalette(projectId)
@@ -314,6 +317,19 @@ export function ScheduleListView({
     initialState: { pagination: { pageSize: 25 } },
   })
 
+  useEffect(() => {
+    if (!focusTaskId) return
+    const index = localTasks.findIndex((task) => task.id === focusTaskId)
+    if (index < 0) return
+
+    table.setPageIndex(Math.floor(index / table.getState().pagination.pageSize))
+    window.requestAnimationFrame(() => {
+      document
+        .getElementById(`schedule-item-${focusTaskId}`)
+        ?.scrollIntoView({ behavior: "smooth", block: "center" })
+    })
+  }, [focusTaskId, localTasks, table])
+
   return (
     <div className="flex flex-col flex-1 min-h-0">
       <div className="flex gap-2 mb-2">
@@ -363,7 +379,14 @@ export function ScheduleListView({
                 </TableRow>
               ) : (
                 table.getRowModel().rows.map((row) => (
-                  <TableRow key={row.id}>
+                  <TableRow
+                    id={`schedule-item-${row.original.id}`}
+                    key={row.id}
+                    className={cn(
+                      row.original.id === focusTaskId &&
+                        "bg-primary/5 outline outline-2 outline-primary/30"
+                    )}
+                  >
                     {row.getVisibleCells().map((cell) => {
                       const meta = cell.column.columnDef.meta as { className?: string } | undefined
                       return (

@@ -11,7 +11,7 @@ import {
   type NewChannelMember,
   type NewChannelReadState,
 } from "@/db/schema-conversations"
-import { users, organizationMembers } from "@/db/schema"
+import { projects } from "@/db/schema"
 import { getCurrentUser } from "@/lib/auth"
 import { requirePermission } from "@/lib/permissions"
 import { revalidatePath } from "next/cache"
@@ -177,6 +177,22 @@ export async function createChannel(data: {
 
     const { env } = await getCloudflareContext()
     const db = getDb(env.DB)
+
+    if (data.projectId) {
+      const [project] = await db
+        .select({ id: projects.id })
+        .from(projects)
+        .where(
+          and(
+            eq(projects.id, data.projectId),
+            eq(projects.organizationId, orgId)
+          )
+        )
+        .limit(1)
+      if (!project) {
+        return { success: false, error: "Project not found" }
+      }
+    }
 
     const now = new Date().toISOString()
     const channelId = crypto.randomUUID()
