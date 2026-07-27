@@ -93,6 +93,7 @@ function createCompassMeetingConfig(): UIConfig {
         "rtk-chat-toggle",
         "rtk-polls-toggle",
         "rtk-participants-toggle",
+        "rtk-caption-toggle",
         "rtk-settings-toggle",
       ],
       "rtk-more-toggle.activeMoreMenu": [
@@ -114,6 +115,10 @@ function createCompassMeetingConfig(): UIConfig {
           "rtk-participants-toggle",
           { variant: "horizontal", slot: "more-elements" },
         ],
+        [
+          "rtk-caption-toggle",
+          { variant: "horizontal", slot: "more-elements" },
+        ],
         ["rtk-settings-toggle", { variant: "horizontal", slot: "more-elements" }],
         ["rtk-plugins-toggle", { variant: "horizontal", slot: "more-elements" }],
         ["rtk-fullscreen-toggle", { variant: "horizontal", slot: "more-elements" }],
@@ -129,6 +134,10 @@ function createCompassMeetingConfig(): UIConfig {
         ["rtk-polls-toggle", { variant: "horizontal", slot: "more-elements" }],
         [
           "rtk-participants-toggle",
+          { variant: "horizontal", slot: "more-elements" },
+        ],
+        [
+          "rtk-caption-toggle",
           { variant: "horizontal", slot: "more-elements" },
         ],
         ["rtk-settings-toggle", { variant: "horizontal", slot: "more-elements" }],
@@ -1049,13 +1058,13 @@ export function RealtimeKitMeetingWindow({
           [data-compass-meeting] rtk-chat-toggle,
           [data-compass-meeting] rtk-participants-toggle,
           [data-compass-meeting] rtk-polls-toggle,
+          [data-compass-meeting] rtk-caption-toggle,
           [data-compass-meeting] rtk-ai-toggle {
             color: #f8fafc;
           }
           [data-compass-meeting] rtk-ai-toggle,
           [data-compass-meeting] rtk-ai,
           [data-compass-meeting] rtk-ai-transcriptions,
-          [data-compass-meeting] rtk-caption-toggle,
           [data-compass-meeting] rtk-transcripts {
             display: none !important;
           }
@@ -1203,18 +1212,6 @@ export function RealtimeKitMeetingWindow({
                 className="rounded-sm border border-white/20 bg-white/[0.04] px-2 py-2 text-xs font-semibold leading-tight text-white transition-colors hover:border-[#9bd3a8]/70 hover:bg-[#203626] disabled:cursor-not-allowed disabled:opacity-45"
               >
                 {pipButtonLabel}
-              </button>
-              <button
-                type="button"
-                onClick={toggleTranscriptCapture}
-                disabled={!meeting}
-                className={`rounded-sm border px-2 py-2 text-xs font-semibold leading-tight transition-colors disabled:cursor-not-allowed disabled:opacity-45 ${
-                  transcriptEnabled
-                    ? "border-[#9bd3a8]/70 bg-[#3f7d4d] text-white hover:border-[#c1e5c9] hover:bg-[#4f9860]"
-                    : "border-white/20 bg-white/[0.04] text-white hover:border-[#9bd3a8]/70 hover:bg-[#203626]"
-                }`}
-              >
-                {transcriptEnabled ? "Captions On" : "Captions Off"}
               </button>
               {backgroundStatus ? (
                 <span className="rounded-sm border border-white/10 bg-white/[0.03] px-2 py-2 text-center text-xs font-semibold leading-tight text-white/55">
