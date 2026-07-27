@@ -8,6 +8,78 @@ import "./gantt.css"
 
 type ViewMode = "Day" | "Week" | "Month"
 
+function monthYearLabel(date: Date): string {
+  return date.toLocaleDateString("en-US", {
+    month: "long",
+    year: "numeric",
+  })
+}
+
+function monthYearAtBoundary(date: Date, previousDate: Date | null): string {
+  return previousDate === null ||
+    date.getMonth() !== previousDate.getMonth() ||
+    date.getFullYear() !== previousDate.getFullYear()
+    ? monthYearLabel(date)
+    : ""
+}
+
+function weekLabel(date: Date, previousDate: Date | null): string {
+  const end = new Date(date)
+  end.setDate(end.getDate() + 6)
+  const includeStartMonth =
+    previousDate === null ||
+    date.getMonth() !== previousDate.getMonth() ||
+    date.getFullYear() !== previousDate.getFullYear()
+  const includeEndMonth =
+    end.getMonth() !== date.getMonth() ||
+    end.getFullYear() !== date.getFullYear()
+  const startLabel = includeStartMonth
+    ? date.toLocaleDateString("en-US", { day: "numeric", month: "short" })
+    : date.toLocaleDateString("en-US", { day: "numeric" })
+  const endLabel = includeEndMonth
+    ? end.toLocaleDateString("en-US", { day: "numeric", month: "short" })
+    : end.toLocaleDateString("en-US", { day: "numeric" })
+  return `${startLabel} - ${endLabel}`
+}
+
+const GANTT_VIEW_MODES = [
+  {
+    name: "Day",
+    padding: "7d",
+    date_format: "YYYY-MM-DD",
+    step: "1d",
+    lower_text: "D",
+    upper_text: monthYearAtBoundary,
+    thick_line: (date: Date) => date.getDay() === 1,
+  },
+  {
+    name: "Week",
+    padding: "1m",
+    step: "7d",
+    date_format: "YYYY-MM-DD",
+    column_width: 140,
+    lower_text: weekLabel,
+    upper_text: monthYearAtBoundary,
+    upper_text_frequency: 4,
+    thick_line: (date: Date) => date.getDate() >= 1 && date.getDate() <= 7,
+  },
+  {
+    name: "Month",
+    padding: "2m",
+    step: "1m",
+    column_width: 120,
+    date_format: "YYYY-MM",
+    lower_text: monthYearLabel,
+    upper_text: (date: Date, previousDate: Date | null) =>
+      previousDate === null ||
+      date.getFullYear() !== previousDate.getFullYear()
+        ? date.getFullYear().toString()
+        : "",
+    thick_line: (date: Date) => date.getMonth() % 3 === 0,
+    snap_at: "7d",
+  },
+]
+
 interface GanttChartProps {
   tasks: FrappeTask[]
   viewMode: ViewMode
@@ -160,6 +232,7 @@ export function GanttChart({
 
       ganttRef.current = new Gantt(containerRef.current, ganttTasks, {
         view_mode: viewMode,
+        view_modes: GANTT_VIEW_MODES,
         ...(columnWidth ? { column_width: columnWidth } : {}),
         on_date_change: (task: { id: string }, start: Date, end: Date) => {
           if (onDateChange) {

@@ -49,6 +49,7 @@ import { useRouter } from "next/navigation"
 import { useTheme } from "@/components/theme-provider"
 import { cn } from "@/lib/utils"
 import { createMentionSuggestion } from "./mention-suggestion"
+import { normalizeConversationMentions } from "@/lib/conversations/message-content"
 
 // lazy-load emoji picker to keep initial bundle small
 const EmojiPicker = React.lazy(() =>
@@ -517,7 +518,7 @@ export function MessageComposer({
       >
       const editorMarkdown = storage.markdown?.getMarkdown?.() ?? plainText
       const markdown =
-        editorMarkdown.trim() ||
+        normalizeConversationMentions(editorMarkdown).trim() ||
         `Shared ${selectedFiles.length} attachment${
           selectedFiles.length === 1 ? "" : "s"
         }.`

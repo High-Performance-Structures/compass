@@ -169,22 +169,26 @@ export function OwnerUpdateActions({
         )}
         {copied === "link" ? "Copied" : "Copy link"}
       </Button>
-      <Button size="sm" variant="outline" onClick={copyEmail}>
-        {copied === "email" ? (
-          <IconCheck className="size-4" />
-        ) : (
-          <IconMail className="size-4" />
-        )}
-        {copied === "email" ? "Copied" : "Copy email draft"}
-      </Button>
-      <Button size="sm" variant="outline" onClick={copyHtmlEmail}>
-        {copied === "html" ? (
-          <IconCheck className="size-4" />
-        ) : (
-          <IconSparkles className="size-4" />
-        )}
-        {copied === "html" ? "Copied" : "Copy HTML email"}
-      </Button>
+      {canManage && (
+        <>
+          <Button size="sm" variant="outline" onClick={copyEmail}>
+            {copied === "email" ? (
+              <IconCheck className="size-4" />
+            ) : (
+              <IconMail className="size-4" />
+            )}
+            {copied === "email" ? "Copied" : "Copy email draft"}
+          </Button>
+          <Button size="sm" variant="outline" onClick={copyHtmlEmail}>
+            {copied === "html" ? (
+              <IconCheck className="size-4" />
+            ) : (
+              <IconSparkles className="size-4" />
+            )}
+            {copied === "html" ? "Copied" : "Copy HTML email"}
+          </Button>
+        </>
+      )}
       {publishError !== null && (
         <p
           className="basis-full border-l-2 border-l-destructive px-3 py-2 text-sm text-destructive"
