@@ -20,6 +20,7 @@ const coreAreas = [
 const projectAreas = [
   { name: "overview", suffix: "" },
   { name: "schedule", suffix: "/schedule" },
+  { name: "to-dos", suffix: "/todos" },
   { name: "daily logs", suffix: "/daily-logs" },
   { name: "photos", suffix: "/photos" },
   { name: "contacts", suffix: "/contacts" },
@@ -173,5 +174,30 @@ test.describe("usable Compass areas", () => {
         exact: true,
       }).first()
     ).toBeVisible()
+  })
+
+  test("work calendar to-dos open and focus the exact project record", async ({
+    page,
+  }) => {
+    const response = await page.goto("/dashboard/schedule")
+    await expectHealthyNavigation(page, response, "/dashboard/schedule")
+
+    const todoLink = page
+      .getByRole("link", { name: /Regression follow-up/ })
+      .first()
+    await expect(todoLink).toHaveAttribute(
+      "href",
+      /\/dashboard\/projects\/e2e-project-001\/todos\?item=e2e-todo-001/
+    )
+    await todoLink.click()
+
+    await expect(page).toHaveURL(
+      /\/dashboard\/projects\/e2e-project-001\/todos\?item=e2e-todo-001/
+    )
+    const focusedTodo = page.locator(
+      'article[data-focused="true"]#todo-e2e-todo-001'
+    )
+    await expect(focusedTodo).toContainText("Regression follow-up")
+    await expect(focusedTodo).toBeFocused()
   })
 })

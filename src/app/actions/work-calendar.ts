@@ -33,6 +33,7 @@ import {
   resolveHOfficeProjectId,
   scheduleItemHref,
 } from "@/lib/work-calendar"
+import { isProjectTodoRecordType } from "@/lib/project-todos"
 
 export type WorkCalendarEntryKind =
   | "schedule"
@@ -443,12 +444,7 @@ export async function getWorkCalendar(): Promise<WorkCalendarData> {
         href:
           operation.sourceRecordType === "purchase_order"
             ? `/dashboard/projects/${project.id}/purchase-orders`
-            : [
-                    "staff_task",
-                    "subcontractor_task",
-                    "supplier_task",
-                    "schedule_task",
-                  ].includes(operation.sourceRecordType)
+            : isProjectTodoRecordType(operation.sourceRecordType)
                 ? projectTodoHref(project.id, operation.id)
                 : `/dashboard/projects/${project.id}`,
         eventDetails: null,
