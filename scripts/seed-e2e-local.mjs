@@ -2,7 +2,7 @@ import Database from "better-sqlite3"
 import { mkdirSync } from "node:fs"
 import { dirname, resolve } from "node:path"
 
-const databasePath = resolve(process.env.LOCAL_DB_PATH || ".e2e/compass.db")
+const databasePath = resolve(process.env.LOCAL_DB_PATH || "local.db")
 const now = new Date().toISOString()
 const today = now.slice(0, 10)
 
@@ -82,6 +82,45 @@ const upsert = db.transaction(() => {
       status = excluded.status,
       updated_at = excluded.updated_at
   `).run(today, today, now, now)
+
+  db.prepare(`
+    INSERT INTO channels (
+      id, name, type, description, organization_id, project_id, is_private,
+      audience, created_by, sort_order, created_at, updated_at
+    ) VALUES (
+      'e2e-channel-001', 'regression-project-team', 'text',
+      'Project conversation fixture for reply workflow checks.',
+      'demo-org-meridian', 'e2e-project-001', 0, 'staff',
+      'demo-user-001', 1, ?, ?
+    )
+    ON CONFLICT(id) DO UPDATE SET
+      name = excluded.name,
+      project_id = excluded.project_id,
+      updated_at = excluded.updated_at
+  `).run(now, now)
+
+  db.prepare(`
+    INSERT INTO channel_members (
+      id, channel_id, user_id, role, notify_level, joined_at
+    ) VALUES (
+      'e2e-channel-member-001', 'e2e-channel-001', 'demo-user-001',
+      'owner', 'all', ?
+    )
+    ON CONFLICT(id) DO UPDATE SET
+      role = excluded.role,
+      notify_level = excluded.notify_level
+  `).run(now)
+
+  db.prepare(`
+    INSERT INTO messages (
+      id, channel_id, user_id, content, is_pinned, reply_count, created_at
+    ) VALUES (
+      'e2e-message-001', 'e2e-channel-001', 'demo-user-001',
+      'Regression conversation message', 0, 0, ?
+    )
+    ON CONFLICT(id) DO UPDATE SET
+      content = excluded.content
+  `).run(now)
 
   const overflowScheduleItems = [
     ["e2e-schedule-002", "Overflow schedule item two", 2],
