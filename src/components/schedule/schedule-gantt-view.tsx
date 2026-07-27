@@ -1,6 +1,13 @@
 "use client"
 
-import { useState, useCallback, useEffect, useRef, type UIEvent } from "react"
+import {
+  useState,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  type UIEvent,
+} from "react"
 import {
   ResizableHandle,
   ResizablePanel,
@@ -264,21 +271,28 @@ export function ScheduleGanttView({
 
   const filteredTasks = tasks
 
-  const { frappeTasks, displayItems } = phaseGrouping
-    ? transformWithPhaseGroups(
-        filteredTasks as ScheduleTaskData[],
-        dependencies as TaskDependencyData[],
-        collapsedPhases,
-      )
-    : {
-        frappeTasks: transformToFrappeTasks(
-          filteredTasks as ScheduleTaskData[],
-          dependencies as TaskDependencyData[],
-        ),
-        displayItems: filteredTasks.map(
-          (task): DisplayItem => ({ type: "task", task: task as ScheduleTaskData })
-        ),
-      }
+  const { frappeTasks, displayItems } = useMemo(
+    () =>
+      phaseGrouping
+        ? transformWithPhaseGroups(
+            filteredTasks as ScheduleTaskData[],
+            dependencies as TaskDependencyData[],
+            collapsedPhases,
+          )
+        : {
+            frappeTasks: transformToFrappeTasks(
+              filteredTasks as ScheduleTaskData[],
+              dependencies as TaskDependencyData[],
+            ),
+            displayItems: filteredTasks.map(
+              (task): DisplayItem => ({
+                type: "task",
+                task: task as ScheduleTaskData,
+              })
+            ),
+          },
+    [collapsedPhases, dependencies, filteredTasks, phaseGrouping]
+  )
 
   const togglePhase = (phase: string) => {
     setCollapsedPhases((prev) => {
