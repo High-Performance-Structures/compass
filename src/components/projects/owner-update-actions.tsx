@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import { useRouter } from "next/navigation"
 import {
   IconCheck,
   IconCopy,
@@ -8,9 +9,13 @@ import {
   IconPrinter,
   IconSparkles,
   IconSend,
+  IconTrash,
 } from "@tabler/icons-react"
 
-import { publishOwnerProjectUpdate } from "@/app/actions/project-field"
+import {
+  deleteOwnerProjectUpdateDraft,
+  publishOwnerProjectUpdate,
+} from "@/app/actions/project-field"
 import { Button } from "@/components/ui/button"
 
 export function OwnerUpdateActions({
@@ -34,7 +39,9 @@ export function OwnerUpdateActions({
   readonly projectLabel: string
   readonly updateTitle: string
 }): React.ReactElement {
+  const router = useRouter()
   const [isPublishing, setIsPublishing] = useState(false)
+  const [isDeleting, setIsDeleting] = useState(false)
   const [publishError, setPublishError] = useState<string | null>(null)
   const [copied, setCopied] = useState<"link" | "email" | "html" | null>(null)
 
@@ -149,12 +156,47 @@ export function OwnerUpdateActions({
     }
   }
 
+  async function deleteDraft(): Promise<void> {
+    const confirmed = window.confirm(
+      "Delete this owner update draft? This cannot be undone."
+    )
+    if (!confirmed) return
+
+    setPublishError(null)
+    setIsDeleting(true)
+    try {
+      const result = await deleteOwnerProjectUpdateDraft(projectId, updateId)
+      if (!result.success) {
+        setPublishError(result.error)
+        return
+      }
+
+      router.push(`/dashboard/projects/${projectId}/owner-updates`)
+      router.refresh()
+    } catch {
+      setPublishError("Unable to delete this draft. Please try again.")
+    } finally {
+      setIsDeleting(false)
+    }
+  }
+
   return (
     <div className="flex flex-wrap items-center gap-2 print:hidden">
       {canManage && status !== "published" && (
         <Button size="sm" onClick={publish} disabled={isPublishing}>
           <IconSend className="size-4" />
           {isPublishing ? "Publishing..." : "Publish"}
+        </Button>
+      )}
+      {canManage && status === "draft" && (
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={deleteDraft}
+          disabled={isDeleting}
+        >
+          <IconTrash className="size-4" />
+          {isDeleting ? "Deleting..." : "Delete draft"}
         </Button>
       )}
       <Button size="sm" onClick={printOwnerUpdate}>

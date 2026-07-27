@@ -172,9 +172,10 @@ export function OwnerUpdateDraftEditor({
           </div>
         </div>
         <p className="text-xs text-muted-foreground">
-          {document.update.sourceDailyLogIds.length} approved owner-visible daily
+          {document.update.sourceDailyLogIds.length} source daily
           {document.update.sourceDailyLogIds.length === 1 ? " log is" : " logs are"}{" "}
-          included. Saving refreshes the Looking Ahead schedule for the end of
+          included. Owner-hidden logs can seed this draft without exposing the
+          full log. Saving refreshes the Looking Ahead schedule for the end of
           this period.
         </p>
 

@@ -27,6 +27,7 @@ import {
   CardTitle,
 } from "@/components/ui/card"
 import { ProjectContextSwitcher } from "@/components/projects/project-context-switcher"
+import { OwnerUpdateCreateButton } from "@/components/projects/owner-update-create-button"
 import { getCurrentUser } from "@/lib/auth"
 import { redirectIfFeaturePermissionDenied } from "@/lib/permission-redirect"
 import { isInternalStaffRole } from "@/lib/user-roles"
@@ -178,6 +179,7 @@ export default async function ProjectOwnerUpdatesPage({
                   Build From Logs
                 </Link>
               </Button>
+              <OwnerUpdateCreateButton projectId={project.id} />
               <Button asChild variant="outline">
                 <Link href={`/dashboard/projects/${project.id}/photos`}>
                   <IconPhoto className="size-4" />

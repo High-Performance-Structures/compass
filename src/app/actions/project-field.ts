@@ -1763,6 +1763,139 @@ export async function draftOwnerUpdateFromDailyLogs(
   }
 }
 
+export async function createManualOwnerProjectUpdateDraft(
+  projectId: string,
+  updateDate: string
+): Promise<OwnerUpdateDraftResult> {
+  try {
+    const { db, userId } = await verifyProjectMutationAccess(
+      projectId,
+      "owner-updates"
+    )
+    const normalizedDate = updateDate.trim()
+    if (!isValidOwnerUpdatePeriod(normalizedDate, normalizedDate)) {
+      return { success: false, error: "Enter a valid update date." }
+    }
+
+    const [project] = await db
+      .select({
+        id: projects.id,
+        name: projects.name,
+        projectNumber: projects.projectNumber,
+      })
+      .from(projects)
+      .where(eq(projects.id, projectId))
+      .limit(1)
+
+    if (!project) {
+      return { success: false, error: "Project not found." }
+    }
+
+    const updateId = crypto.randomUUID()
+    const now = new Date().toISOString()
+    const label = project.projectNumber ?? project.name
+    const scheduleSnapshot = await captureOwnerUpdateSchedule(
+      db,
+      projectId,
+      normalizedDate
+    )
+
+    await db.insert(ownerProjectUpdates).values({
+      id: updateId,
+      projectId,
+      createdBy: userId,
+      title: `${label} Owner Update - ${normalizedDate}`,
+      updateDate: normalizedDate,
+      summary: "",
+      status: "draft",
+      channel: "compass",
+      sourceDailyLogIds: "[]",
+      selectedPhotoIds: "[]",
+      periodStart: normalizedDate,
+      periodEnd: normalizedDate,
+      scheduleSnapshot:
+        serializeOwnerUpdateScheduleSnapshot(scheduleSnapshot),
+      createdAt: now,
+      updatedAt: now,
+    })
+
+    revalidatePath(`/dashboard/projects/${projectId}`)
+    revalidatePath(`/dashboard/projects/${projectId}/owner-updates`)
+    revalidatePath(`/dashboard/projects/${projectId}/owner-updates/${updateId}`)
+
+    return { success: true, updateId }
+  } catch (error) {
+    return {
+      success: false,
+      error:
+        error instanceof Error
+          ? error.message
+          : "Unable to create owner update.",
+    }
+  }
+}
+
+export async function deleteOwnerProjectUpdateDraft(
+  projectId: string,
+  updateId: string
+): Promise<
+  | { readonly success: true }
+  | { readonly success: false; readonly error: string }
+> {
+  try {
+    const { db } = await verifyProjectMutationAccess(
+      projectId,
+      "owner-updates"
+    )
+    const [update] = await db
+      .select({
+        id: ownerProjectUpdates.id,
+        status: ownerProjectUpdates.status,
+      })
+      .from(ownerProjectUpdates)
+      .where(
+        and(
+          eq(ownerProjectUpdates.id, updateId),
+          eq(ownerProjectUpdates.projectId, projectId)
+        )
+      )
+      .limit(1)
+
+    if (!update) {
+      return { success: false, error: "Owner update not found." }
+    }
+    if (update.status !== "draft") {
+      return {
+        success: false,
+        error: "Only draft owner updates can be deleted.",
+      }
+    }
+
+    await db
+      .delete(ownerProjectUpdates)
+      .where(
+        and(
+          eq(ownerProjectUpdates.id, updateId),
+          eq(ownerProjectUpdates.projectId, projectId),
+          eq(ownerProjectUpdates.status, "draft")
+        )
+      )
+
+    revalidatePath(`/dashboard/projects/${projectId}`)
+    revalidatePath(`/dashboard/projects/${projectId}/owner-updates`)
+
+    return { success: true }
+  } catch (error) {
+    return {
+      success: false,
+      error:
+        error instanceof Error
+          ? error.message
+          : "Unable to delete owner update.",
+    }
+  }
+}
+
 export async function getOwnerProjectUpdateDocument(
   projectId: string,
   updateId: string
@@ -2063,7 +2196,7 @@ export async function updateOwnerProjectUpdateDraft(
 
     const sourceDailyLogIds = parseIdList(update.sourceDailyLogIds)
     if (sourceDailyLogIds.length > 0) {
-      const eligibleLogs = await db
+      const selectedLogs = await db
         .select({
           id: dailyLogs.id,
           logDate: dailyLogs.logDate,
@@ -2072,22 +2205,19 @@ export async function updateOwnerProjectUpdateDraft(
         .where(
           and(
             eq(dailyLogs.projectId, projectId),
-            inArray(dailyLogs.id, sourceDailyLogIds),
-            eq(dailyLogs.reviewStatus, "approved"),
-            eq(dailyLogs.isClientVisible, true)
+            inArray(dailyLogs.id, sourceDailyLogIds)
           )
         )
 
-      if (eligibleLogs.length !== sourceDailyLogIds.length) {
+      if (selectedLogs.length !== sourceDailyLogIds.length) {
         return {
           success: false,
-          error:
-            "Every source daily log must remain approved and owner-visible.",
+          error: "One or more source daily logs could not be found.",
         }
       }
 
       if (
-        eligibleLogs.some(
+        selectedLogs.some(
           (log) =>
             !isDateWithinOwnerUpdatePeriod(
               log.logDate,
@@ -2245,7 +2375,7 @@ export async function publishOwnerProjectUpdate(
 
   const sourceDailyLogIds = parseIdList(update.sourceDailyLogIds)
   const selectedPhotoIds = parseIdList(update.selectedPhotoIds)
-  const eligibleLogs =
+  const selectedLogs =
     sourceDailyLogIds.length === 0
       ? []
       : await db
@@ -2257,22 +2387,19 @@ export async function publishOwnerProjectUpdate(
           .where(
             and(
               eq(dailyLogs.projectId, projectId),
-              inArray(dailyLogs.id, sourceDailyLogIds),
-              eq(dailyLogs.reviewStatus, "approved"),
-              eq(dailyLogs.isClientVisible, true)
+              inArray(dailyLogs.id, sourceDailyLogIds)
             )
           )
 
-  if (eligibleLogs.length !== sourceDailyLogIds.length) {
+  if (selectedLogs.length !== sourceDailyLogIds.length) {
     return {
       success: false,
-      error:
-        "Every source daily log must be approved and owner-visible before publishing.",
+      error: "One or more source daily logs could not be found.",
     }
   }
 
   const derivedPeriod = dateRangeFromDates(
-    eligibleLogs.map((log) => log.logDate)
+    selectedLogs.map((log) => log.logDate)
   )
   const periodStart =
     update.periodStart ?? derivedPeriod?.startDate ?? update.updateDate
@@ -2287,7 +2414,7 @@ export async function publishOwnerProjectUpdate(
   }
 
   if (
-    eligibleLogs.some(
+    selectedLogs.some(
       (log) =>
         !isDateWithinOwnerUpdatePeriod(
           log.logDate,
