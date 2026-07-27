@@ -15,6 +15,12 @@
   scrollbar-color: oklch(0.72 0.02 95 / 0.7) transparent;
 }
 
+.gantt .bar-wrapper.schedule-focused .bar {
+  filter: brightness(1.08);
+  stroke: oklch(0.28 0.03 160) !important;
+  stroke-width: 3px !important;
+}
+
 .gantt-container::-webkit-scrollbar {
   width: 10px;
   height: 10px;
