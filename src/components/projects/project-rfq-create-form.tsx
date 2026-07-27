@@ -659,7 +659,7 @@ export function ProjectRfqCreateForm({
                       {projectRecipientOptions.length > 0 && (
                         <div className="space-y-1">
                           <p className="px-2 py-1 text-xs font-medium text-muted-foreground">
-                            Project contacts
+                            Project &amp; team contacts
                           </p>
                           {projectRecipientOptions.map((option) => (
                             <button

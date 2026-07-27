@@ -11,6 +11,20 @@ type ChannelNotificationMember = {
   readonly notifyLevel: string
 }
 
+type EventNotificationAttendee = {
+  readonly userId: string
+  readonly email: string
+}
+
+export function eventAttendeeNotificationRecipients(
+  attendees: readonly EventNotificationAttendee[]
+): readonly NotificationRecipientInput[] {
+  return attendees.map((attendee) => ({
+    userId: attendee.userId,
+    email: attendee.email,
+  }))
+}
+
 export function channelNotificationRecipients(
   members: readonly ChannelNotificationMember[],
   senderId: string,

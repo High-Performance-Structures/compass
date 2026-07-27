@@ -209,6 +209,33 @@ test.describe("usable Compass areas", () => {
     await expect(page.getByText("1 selected", { exact: true })).toHaveCount(0)
   })
 
+  test("schedule assignee choices include active organization team members", async ({
+    page,
+  }) => {
+    const path =
+      "/dashboard/projects/e2e-project-001/schedule?view=list"
+    const response = await page.goto(path)
+    await expectHealthyNavigation(
+      page,
+      response,
+      "/dashboard/projects/e2e-project-001/schedule"
+    )
+
+    const scheduleRow = page.locator("#schedule-item-e2e-schedule-001")
+    await scheduleRow.locator('button[title="Edit schedule item"]').click()
+
+    const editDialog = page.getByRole("dialog", {
+      name: "Edit Schedule Item",
+    })
+    await editDialog.getByRole("button", { name: "Demo User" }).click()
+    await expect(
+      page.getByText("Project & team contacts", { exact: true })
+    ).toBeVisible()
+    await expect(
+      page.getByRole("button", { name: "Demo User" })
+    ).toHaveCount(2)
+  })
+
   test("work calendar list shows the actual item title", async ({
     page,
   }) => {
