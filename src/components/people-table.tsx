@@ -21,6 +21,7 @@ import {
 
 import type { UserWithRelations } from "@/app/actions/users"
 import { useIsMobile } from "@/hooks/use-mobile"
+import { USER_ROLE_OPTIONS, userRoleLabel } from "@/lib/user-roles"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -124,7 +125,6 @@ export function PeopleTable({
       header: "Role",
       cell: ({ row }) => {
         const role = row.getValue("role") as string
-        const roleLabel = role.charAt(0).toUpperCase() + role.slice(1)
         return (
           <Badge
             variant={
@@ -135,7 +135,7 @@ export function PeopleTable({
                   : "outline"
             }
           >
-            {roleLabel}
+            {userRoleLabel(role)}
           </Badge>
         )
       },
@@ -269,10 +269,11 @@ export function PeopleTable({
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Roles</SelectItem>
-              <SelectItem value="admin">Admin</SelectItem>
-              <SelectItem value="office">Office</SelectItem>
-              <SelectItem value="field">Field</SelectItem>
-              <SelectItem value="client">Client</SelectItem>
+              {USER_ROLE_OPTIONS.map((option) => (
+                <SelectItem key={option.value} value={option.value}>
+                  {option.label}
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
         </div>
@@ -283,7 +284,7 @@ export function PeopleTable({
           {table.getRowModel().rows?.length ? (
             table.getRowModel().rows.map((row) => {
               const user = row.original
-              const roleLabel = user.role.charAt(0).toUpperCase() + user.role.slice(1)
+              const roleLabel = userRoleLabel(user.role)
               const teamNames = user.teams.map((t) => t.name).join(", ")
               return (
                 <MobileListCard

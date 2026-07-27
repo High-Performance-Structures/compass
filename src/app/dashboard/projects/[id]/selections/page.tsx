@@ -15,6 +15,7 @@ import { ProjectQuickSwitcher } from "@/components/projects/project-quick-switch
 import { ProjectSelectionsWorkspace } from "@/components/projects/project-selections-workspace"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { redirectIfFeaturePermissionDenied } from "@/lib/permission-redirect"
 
 export const dynamic = "force-dynamic"
 
@@ -54,6 +55,7 @@ export default async function ProjectSelectionsPage({
     ])
   } catch (error) {
     if (hasDigest(error)) throw error
+    redirectIfFeaturePermissionDenied(error)
     if (isProjectNotFound(error)) notFound()
     throw error
   }

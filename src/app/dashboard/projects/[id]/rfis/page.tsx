@@ -29,6 +29,7 @@ import {
   type RfiStatusFilter,
 } from "@/lib/rfis/status"
 import { cn } from "@/lib/utils"
+import { redirectIfFeaturePermissionDenied } from "@/lib/permission-redirect"
 
 function readFormText(formData: FormData, name: string): string {
   const value = formData.get(name)
@@ -105,7 +106,10 @@ export default async function ProjectRfisPage({
       getProjectRfis(id),
       getProjectContactsSummary(id, "internal"),
       getProjectTaskAssigneeOptions(id),
-    ])
+    ]).catch((error: unknown) => {
+      redirectIfFeaturePermissionDenied(error)
+      throw error
+    })
   const project = projects.find((item) => item.id === id)
   const taskAssignees = [
     ...taskAssigneeOptions.projectContacts,

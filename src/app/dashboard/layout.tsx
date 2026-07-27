@@ -32,6 +32,7 @@ import { isDemoUser } from "@/lib/demo"
 import {
   canUseAskCompass,
   canUseFieldDesk,
+  canUseOfficeTalk,
 } from "@/lib/permissions"
 
 export default async function DashboardLayout({
@@ -52,6 +53,7 @@ export default async function DashboardLayout({
   const isDemo = authUser ? isDemoUser(authUser.id) : false
   const canUseCompassAgent = canUseAskCompass(authUser)
   const canUseCompassFieldDesk = canUseFieldDesk(authUser)
+  const canUseCompassOfficeTalk = canUseOfficeTalk(authUser)
   const offlineScopeKey =
     authUser?.organizationId && authUser.id
       ? `${authUser.organizationId}:${authUser.id}`
@@ -96,6 +98,7 @@ export default async function DashboardLayout({
           <SiteHeader
             user={user}
             canUseAskCompass={canUseCompassAgent}
+            canUseOfficeTalk={canUseCompassOfficeTalk}
           />
           <div className="flex min-h-0 flex-1 overflow-hidden">
             <MainContent>

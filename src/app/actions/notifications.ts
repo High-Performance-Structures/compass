@@ -5,19 +5,40 @@ import { revalidatePath } from "next/cache"
 
 import { getDb } from "@/db"
 import {
+  notificationDeliveries,
   notificationEvents,
   notificationPreferences,
   notificationRecipients,
 } from "@/db/schema"
 import { getCurrentUser, requireAuth } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
-import { isMissingNotificationTableError } from "@/lib/notifications/events"
+import {
+  isMissingNotificationTableError,
+  queueSmsDelivery,
+} from "@/lib/notifications/events"
+import {
+  hasCurrentSmsConsent,
+  SMS_OPT_IN_DISCLOSURE_URL,
+  SMS_OPT_IN_DISCLOSURE_VERSION,
+} from "@/lib/notifications/sms-consent"
+import { requireOrg } from "@/lib/org-scope"
 import { isValidTimeZone } from "@/lib/work-calendar"
 
 export type NotificationPreferenceState = {
   readonly inAppEnabled: boolean
   readonly emailEnabled: boolean
+  readonly smsEnabled: boolean
+  readonly smsPhoneNumber: string | null
+  readonly smsConsentAccepted: boolean
+  readonly smsConsentAcceptedAt: string | null
+  readonly smsConsentDisclosureUrl: string | null
+  readonly smsConsentDisclosureVersion: string | null
+  readonly smsConsentPhoneNumber: string | null
   readonly pushEnabled: boolean
+  readonly mentionEmailEnabled: boolean
+  readonly mentionSmsEnabled: boolean
+  readonly announcementEmailEnabled: boolean
+  readonly announcementSmsEnabled: boolean
   readonly weeklyDigestEnabled: boolean
   readonly rfiEnabled: boolean
   readonly ownerUpdateEnabled: boolean
@@ -47,6 +68,17 @@ type NotificationPreferencesResult =
   | { readonly success: true; readonly data: NotificationPreferenceState }
   | { readonly success: false; readonly error: string }
 
+type NotificationSmsTestResult =
+  | {
+      readonly success: true
+      readonly data: {
+        readonly status: string
+        readonly provider: string
+        readonly providerMessageId: string | null
+      }
+    }
+  | { readonly success: false; readonly error: string }
+
 type NotificationCenterResult =
   | {
       readonly success: true
@@ -60,7 +92,18 @@ type NotificationCenterResult =
 const DEFAULT_PREFERENCES: NotificationPreferenceState = {
   inAppEnabled: true,
   emailEnabled: true,
+  smsEnabled: false,
+  smsPhoneNumber: null,
+  smsConsentAccepted: false,
+  smsConsentAcceptedAt: null,
+  smsConsentDisclosureUrl: null,
+  smsConsentDisclosureVersion: null,
+  smsConsentPhoneNumber: null,
   pushEnabled: true,
+  mentionEmailEnabled: true,
+  mentionSmsEnabled: false,
+  announcementEmailEnabled: true,
+  announcementSmsEnabled: false,
   weeklyDigestEnabled: false,
   rfiEnabled: true,
   ownerUpdateEnabled: true,
@@ -88,7 +131,18 @@ function preferenceFromRow(
   return {
     inAppEnabled: row.inAppEnabled,
     emailEnabled: row.emailEnabled,
+    smsEnabled: row.smsEnabled,
+    smsPhoneNumber: row.smsPhoneNumber,
+    smsConsentAccepted: row.smsConsentAccepted,
+    smsConsentAcceptedAt: row.smsConsentAcceptedAt,
+    smsConsentDisclosureUrl: row.smsConsentDisclosureUrl,
+    smsConsentDisclosureVersion: row.smsConsentDisclosureVersion,
+    smsConsentPhoneNumber: row.smsConsentPhoneNumber,
     pushEnabled: row.pushEnabled,
+    mentionEmailEnabled: row.mentionEmailEnabled,
+    mentionSmsEnabled: row.mentionSmsEnabled,
+    announcementEmailEnabled: row.announcementEmailEnabled,
+    announcementSmsEnabled: row.announcementSmsEnabled,
     weeklyDigestEnabled: row.weeklyDigestEnabled,
     rfiEnabled: row.rfiEnabled,
     ownerUpdateEnabled: row.ownerUpdateEnabled,
@@ -145,20 +199,78 @@ export async function updateNotificationPreferences(
     const { env } = await getCloudflareContext()
     const db = getDb(env.DB)
     const now = new Date().toISOString()
+    const smsPhoneNumber = input.smsPhoneNumber?.trim() || null
+    const wantsSms =
+      input.smsEnabled ||
+      input.mentionSmsEnabled ||
+      input.announcementSmsEnabled
+
+    if (wantsSms && !smsPhoneNumber) {
+      return {
+        success: false,
+        error: "Add a text phone number before enabling SMS notifications.",
+      }
+    }
+    if (wantsSms && !input.smsConsentAccepted) {
+      return {
+        success: false,
+        error: "Accept the SMS opt-in disclosure before enabling texts.",
+      }
+    }
+
+    const existingRow = await db
+      .select()
+      .from(notificationPreferences)
+      .where(eq(notificationPreferences.userId, user.id))
+      .limit(1)
+      .then((rows) => rows[0] ?? null)
+    const consentNeedsRefresh =
+      input.smsConsentAccepted &&
+      (existingRow?.smsConsentAccepted !== true ||
+        existingRow.smsConsentPhoneNumber !== smsPhoneNumber ||
+        existingRow.smsConsentDisclosureVersion !==
+          SMS_OPT_IN_DISCLOSURE_VERSION)
+    const smsConsentAcceptedAt = consentNeedsRefresh
+      ? now
+      : existingRow?.smsConsentAcceptedAt ?? input.smsConsentAcceptedAt
+    const persistedInput: NotificationPreferenceState = {
+      ...input,
+      timeZone,
+      smsEnabled: input.smsEnabled,
+      smsPhoneNumber,
+      smsConsentAccepted: input.smsConsentAccepted,
+      smsConsentAcceptedAt,
+      smsConsentDisclosureUrl: input.smsConsentAccepted
+        ? SMS_OPT_IN_DISCLOSURE_URL
+        : existingRow?.smsConsentDisclosureUrl ??
+          input.smsConsentDisclosureUrl,
+      smsConsentDisclosureVersion: input.smsConsentAccepted
+        ? SMS_OPT_IN_DISCLOSURE_VERSION
+        : existingRow?.smsConsentDisclosureVersion ??
+          input.smsConsentDisclosureVersion,
+      smsConsentPhoneNumber: input.smsConsentAccepted
+        ? smsPhoneNumber
+        : existingRow?.smsConsentPhoneNumber ??
+          input.smsConsentPhoneNumber,
+      mentionSmsEnabled: input.smsEnabled
+        ? input.mentionSmsEnabled
+        : false,
+      announcementSmsEnabled: input.smsEnabled
+        ? input.announcementSmsEnabled
+        : false,
+    }
 
     await db
       .insert(notificationPreferences)
       .values({
         userId: user.id,
-        ...input,
-        timeZone,
+        ...persistedInput,
         updatedAt: now,
       })
       .onConflictDoUpdate({
         target: notificationPreferences.userId,
         set: {
-          ...input,
-          timeZone,
+          ...persistedInput,
           updatedAt: now,
         },
       })
@@ -171,6 +283,119 @@ export async function updateNotificationPreferences(
         error instanceof Error
           ? error.message
           : "Failed to update notification preferences",
+    }
+  }
+}
+
+export async function sendTestSmsNotification(): Promise<NotificationSmsTestResult> {
+  try {
+    const user = await requireAuth()
+    const organizationId = requireOrg(user)
+    const { env } = await getCloudflareContext()
+    const db = getDb(env.DB)
+    const now = new Date().toISOString()
+    const preferences = await db
+      .select()
+      .from(notificationPreferences)
+      .where(eq(notificationPreferences.userId, user.id))
+      .limit(1)
+      .then((rows) => rows[0] ?? null)
+
+    if (!preferences?.smsEnabled || !preferences.smsPhoneNumber) {
+      return {
+        success: false,
+        error: "Save an SMS phone number before sending a test text.",
+      }
+    }
+    if (
+      !hasCurrentSmsConsent({
+        accepted: preferences.smsConsentAccepted,
+        phoneNumber: preferences.smsPhoneNumber,
+        consentPhoneNumber: preferences.smsConsentPhoneNumber,
+        disclosureVersion: preferences.smsConsentDisclosureVersion,
+      })
+    ) {
+      return {
+        success: false,
+        error: "Accept the current SMS opt-in disclosure before testing texts.",
+      }
+    }
+
+    const eventId = crypto.randomUUID()
+    const recipientId = crypto.randomUUID()
+    const title = "Compass SMS test"
+    const body =
+      "Your Compass text notifications are connected. Reply STOP to opt out or HELP for help."
+
+    await db.insert(notificationEvents).values({
+      id: eventId,
+      organizationId,
+      projectId: null,
+      eventType: "sms.test",
+      sourceType: "notification_test",
+      sourceId: user.id,
+      title,
+      body,
+      href: "/dashboard/settings",
+      priority: "normal",
+      audience: "current_user",
+      createdBy: user.id,
+      createdAt: now,
+    })
+    await db.insert(notificationRecipients).values({
+      id: recipientId,
+      eventId,
+      userId: user.id,
+      inApp: false,
+      email: false,
+      sms: true,
+      push: false,
+      readAt: null,
+      dismissedAt: null,
+      createdAt: now,
+    })
+
+    const delivery = await queueSmsDelivery(
+      env,
+      preferences.smsPhoneNumber,
+      title,
+      body,
+      null
+    )
+    await db.insert(notificationDeliveries).values({
+      id: crypto.randomUUID(),
+      eventId,
+      recipientId,
+      userId: user.id,
+      channel: "sms",
+      status: delivery.status,
+      toAddress: preferences.smsPhoneNumber,
+      provider: delivery.provider,
+      providerMessageId: delivery.providerMessageId,
+      error: delivery.error,
+      attemptedAt: new Date().toISOString(),
+      createdAt: now,
+    })
+
+    if (delivery.status !== "sent") {
+      return {
+        success: false,
+        error: delivery.error ?? "GoTo did not accept the test text.",
+      }
+    }
+    return {
+      success: true,
+      data: {
+        status: delivery.status,
+        provider: delivery.provider,
+        providerMessageId: delivery.providerMessageId,
+      },
+    }
+  } catch (error) {
+    return {
+      success: false,
+      error:
+        error instanceof Error ? error.message : "Failed to send test text.",
     }
   }
 }

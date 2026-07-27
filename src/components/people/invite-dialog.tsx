@@ -7,6 +7,7 @@ import { toast } from "sonner"
 import { inviteUser } from "@/app/actions/users"
 import { getOrganizations } from "@/app/actions/organizations"
 import type { Organization } from "@/db/schema"
+import { USER_ROLE_OPTIONS, userRoleDescription } from "@/lib/user-roles"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -128,20 +129,15 @@ export function InviteDialog({
                 <SelectValue placeholder="Select a role" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="admin">Admin</SelectItem>
-                <SelectItem value="office">Office</SelectItem>
-                <SelectItem value="field">Field</SelectItem>
-                <SelectItem value="client">Client</SelectItem>
+                {USER_ROLE_OPTIONS.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
             <p className="text-xs text-muted-foreground">
-              {role === "admin" &&
-                "Full access to all features and settings"}
-              {role === "office" &&
-                "Can manage projects, schedules, and documents"}
-              {role === "field" &&
-                "Can update schedules and create documents"}
-              {role === "client" && "Read-only access to assigned projects"}
+              {userRoleDescription(role)}
             </p>
           </div>
 

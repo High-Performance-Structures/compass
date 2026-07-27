@@ -6,6 +6,7 @@ import { toast } from "sonner"
 
 import type { UserWithRelations } from "@/app/actions/users"
 import { updateUserRole } from "@/app/actions/users"
+import { USER_ROLE_OPTIONS, userRoleDescription } from "@/lib/user-roles"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -155,12 +156,16 @@ export function UserDrawer({
                   <SelectValue placeholder="Select role" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="admin">Admin</SelectItem>
-                  <SelectItem value="office">Office</SelectItem>
-                  <SelectItem value="field">Field</SelectItem>
-                  <SelectItem value="client">Client</SelectItem>
+                  {USER_ROLE_OPTIONS.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
+              <p className="text-xs text-muted-foreground">
+                {userRoleDescription(selectedRole)}
+              </p>
               {selectedRole !== user.role && (
                 <Button
                   onClick={handleSaveRole}

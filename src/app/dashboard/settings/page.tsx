@@ -6,6 +6,7 @@ import {
   IconPalette,
   IconPlug,
   IconRobot,
+  IconShieldLock,
   IconUsers,
 } from "@tabler/icons-react"
 
@@ -23,6 +24,7 @@ import { cn } from "@/lib/utils"
 import { PreferencesTab } from "@/components/settings/preferences-tab"
 import { AppearanceTab } from "@/components/settings/appearance-tab"
 import { TeamTab } from "@/components/settings/team-tab"
+import { PermissionsTab } from "@/components/settings/permissions-tab"
 import { AgentTab } from "@/components/settings/agent-tab"
 import { NetSuiteConnectionStatus } from "@/components/netsuite/connection-status"
 import { SyncControls } from "@/components/netsuite/sync-controls"
@@ -32,6 +34,7 @@ const SETTINGS_TABS = [
   { value: "preferences", label: "Preferences", icon: IconAdjustments },
   { value: "appearance", label: "Theme", icon: IconPalette },
   { value: "team", label: "Team", icon: IconUsers },
+  { value: "permissions", label: "Permissions", icon: IconShieldLock },
   { value: "agent", label: "Agent", icon: IconRobot },
   { value: "integrations", label: "Integrations", icon: IconPlug },
 ] as const
@@ -40,7 +43,7 @@ type SectionValue = (typeof SETTINGS_TABS)[number]["value"]
 
 // wide sections get unconstrained width for tables/complex layouts
 const WIDE_SECTIONS = new Set<string>([
-  "appearance", "team", "agent",
+  "appearance", "team", "permissions", "agent",
 ])
 
 function IntegrationsSection() {
@@ -69,6 +72,8 @@ export default function SettingsPage() {
         return <AppearanceTab />
       case "team":
         return <TeamTab />
+      case "permissions":
+        return <PermissionsTab />
       case "agent":
         return <AgentTab />
       case "integrations":

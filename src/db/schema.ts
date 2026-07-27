@@ -82,9 +82,36 @@ export const notificationPreferences = sqliteTable("notification_preferences", {
   emailEnabled: integer("email_enabled", { mode: "boolean" })
     .notNull()
     .default(true),
+  smsEnabled: integer("sms_enabled", { mode: "boolean" })
+    .notNull()
+    .default(false),
+  smsPhoneNumber: text("sms_phone_number"),
+  smsConsentAccepted: integer("sms_consent_accepted", { mode: "boolean" })
+    .notNull()
+    .default(false),
+  smsConsentAcceptedAt: text("sms_consent_accepted_at"),
+  smsConsentDisclosureUrl: text("sms_consent_disclosure_url"),
+  smsConsentDisclosureVersion: text("sms_consent_disclosure_version"),
+  smsConsentPhoneNumber: text("sms_consent_phone_number"),
   pushEnabled: integer("push_enabled", { mode: "boolean" })
     .notNull()
     .default(true),
+  mentionEmailEnabled: integer("mention_email_enabled", { mode: "boolean" })
+    .notNull()
+    .default(true),
+  mentionSmsEnabled: integer("mention_sms_enabled", { mode: "boolean" })
+    .notNull()
+    .default(false),
+  announcementEmailEnabled: integer("announcement_email_enabled", {
+    mode: "boolean",
+  })
+    .notNull()
+    .default(true),
+  announcementSmsEnabled: integer("announcement_sms_enabled", {
+    mode: "boolean",
+  })
+    .notNull()
+    .default(false),
   weeklyDigestEnabled: integer("weekly_digest_enabled", { mode: "boolean" })
     .notNull()
     .default(false),
@@ -136,6 +163,7 @@ export const notificationRecipients = sqliteTable("notification_recipients", {
     .references(() => users.id, { onDelete: "cascade" }),
   inApp: integer("in_app", { mode: "boolean" }).notNull().default(true),
   email: integer("email", { mode: "boolean" }).notNull().default(false),
+  sms: integer("sms", { mode: "boolean" }).notNull().default(false),
   push: integer("push", { mode: "boolean" }).notNull().default(false),
   readAt: text("read_at"),
   dismissedAt: text("dismissed_at"),
@@ -200,6 +228,106 @@ export const teamMembers = sqliteTable("team_members", {
     .references(() => users.id, { onDelete: "cascade" }),
   joinedAt: text("joined_at").notNull(),
 })
+
+export const rolePermissionOverrides = sqliteTable(
+  "role_permission_overrides",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    role: text("role").notNull(),
+    featureId: text("feature_id").notNull(),
+    accessLevel: text("access_level").notNull(),
+    createdBy: text("created_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    updatedBy: text("updated_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("role_permission_overrides_unique").on(
+      table.organizationId,
+      table.role,
+      table.featureId
+    ),
+    index("role_permission_overrides_org_idx").on(table.organizationId),
+  ]
+)
+
+export const teamPermissionOverrides = sqliteTable(
+  "team_permission_overrides",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    teamId: text("team_id")
+      .notNull()
+      .references(() => teams.id, { onDelete: "cascade" }),
+    featureId: text("feature_id").notNull(),
+    accessLevel: text("access_level").notNull(),
+    createdBy: text("created_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    updatedBy: text("updated_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("team_permission_overrides_unique").on(
+      table.organizationId,
+      table.teamId,
+      table.featureId
+    ),
+    index("team_permission_overrides_org_idx").on(table.organizationId),
+  ]
+)
+
+export const permissionAuditEvents = sqliteTable(
+  "permission_audit_events",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    scope: text("scope").notNull(),
+    role: text("role"),
+    teamId: text("team_id").references(() => teams.id, {
+      onDelete: "set null",
+    }),
+    featureId: text("feature_id").notNull(),
+    previousAccessLevel: text("previous_access_level"),
+    nextAccessLevel: text("next_access_level"),
+    changedBy: text("changed_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    createdAt: text("created_at").notNull(),
+  },
+  (table) => [
+    index("permission_audit_events_org_idx").on(
+      table.organizationId,
+      table.createdAt
+    ),
+  ]
+)
+
+export type RolePermissionOverride =
+  typeof rolePermissionOverrides.$inferSelect
+export type NewRolePermissionOverride =
+  typeof rolePermissionOverrides.$inferInsert
+export type TeamPermissionOverride =
+  typeof teamPermissionOverrides.$inferSelect
+export type NewTeamPermissionOverride =
+  typeof teamPermissionOverrides.$inferInsert
+export type PermissionAuditEvent = typeof permissionAuditEvents.$inferSelect
+export type NewPermissionAuditEvent =
+  typeof permissionAuditEvents.$inferInsert
 
 export const groups = sqliteTable("groups", {
   id: text("id").primaryKey(),

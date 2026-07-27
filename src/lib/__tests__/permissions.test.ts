@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest"
 import type { AuthUser } from "@/lib/auth"
+import { DEMO_USER } from "@/lib/demo"
 import {
   canManageWorkCalendarEvents,
   canUseAskCompass,
   canUseFieldDesk,
+  canUseOfficeTalk,
 } from "@/lib/permissions"
 
 function userWithRole(role: string): AuthUser {
@@ -50,14 +52,29 @@ describe("canUseAskCompass", () => {
 })
 
 describe("canUseFieldDesk", () => {
-  it.each(["admin", "office", "field"])(
+  it.each([
+    "admin",
+    "secondary_admin",
+    "office",
+    "project_manager",
+    "field",
+    "field_superintendent",
+    "field_crew",
+  ])(
     "allows active internal role %s",
     (role) => {
       expect(canUseFieldDesk(userWithRole(role))).toBe(true)
     },
   )
 
-  it.each(["secondary_admin", "client", "guest", "unknown"])(
+  it.each([
+    "developer",
+    "subcontractor",
+    "supplier",
+    "client",
+    "guest",
+    "unknown",
+  ])(
     "denies external or unknown role %s",
     (role) => {
       expect(canUseFieldDesk(userWithRole(role))).toBe(false)
@@ -75,8 +92,43 @@ describe("canUseFieldDesk", () => {
   })
 })
 
+describe("canUseOfficeTalk", () => {
+  it.each([
+    "admin",
+    "secondary_admin",
+    "office",
+    "project_manager",
+    "field_superintendent",
+  ])("allows active staff role %s", (role) => {
+    expect(canUseOfficeTalk(userWithRole(role))).toBe(true)
+  })
+
+  it.each([
+    "developer",
+    "subcontractor",
+    "supplier",
+    "client",
+    "guest",
+    "unknown",
+  ])("denies external or non-staff role %s", (role) => {
+    expect(canUseOfficeTalk(userWithRole(role))).toBe(false)
+  })
+
+  it("keeps the production meeting out of the demo workspace", () => {
+    expect(canUseOfficeTalk(DEMO_USER)).toBe(false)
+  })
+})
+
 describe("canManageWorkCalendarEvents", () => {
-  it.each(["admin", "office"])(
+  it.each([
+    "admin",
+    "secondary_admin",
+    "office",
+    "office_manager",
+    "project_manager",
+    "project_administrator",
+    "assistant_project_manager",
+  ])(
     "allows calendar management for %s",
     (role) => {
       expect(canManageWorkCalendarEvents(userWithRole(role))).toBe(true)

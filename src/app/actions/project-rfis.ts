@@ -13,7 +13,7 @@ import { requireAuth } from "@/lib/auth"
 import type { AuthUser } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
 import { requireOrg } from "@/lib/org-scope"
-import { requirePermission } from "@/lib/permissions"
+import { requireFeaturePermission } from "@/lib/permission-enforcement"
 import {
   validRfiAudience,
   validRfiPriority,
@@ -100,7 +100,7 @@ async function verifyProjectAccess(
   projectId: string
 ): Promise<ReturnType<typeof getDb>> {
   const user = await requireAuth()
-  requirePermission(user, "project", "read")
+  await requireFeaturePermission(user, "rfis", "read")
   const orgId = requireOrg(user)
 
   const { env } = await getCloudflareContext()
@@ -130,7 +130,7 @@ async function getProjectUpdateContext(
   projectId: string
 ): Promise<ProjectUpdateContext> {
   const user = await requireAuth()
-  requirePermission(user, "project", "update")
+  await requireFeaturePermission(user, "rfis", "update")
   const orgId = requireOrg(user)
 
   const { env } = await getCloudflareContext()
