@@ -16,9 +16,18 @@ import {
 } from "@/db/schema"
 import { requireAuth } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
+import { isDemoUser } from "@/lib/demo"
 import { requireOrg } from "@/lib/org-scope"
 import { requirePermission } from "@/lib/permissions"
 import { notifyProjectAssignment } from "@/lib/notifications/events"
+import {
+  PROJECT_TODO_RECORD_TYPES,
+  type ProjectTodoStatus,
+  isArchivedProjectTodoStatus,
+  isCompletedProjectTodoStatus,
+  isProjectTodoRecordType,
+  isProjectTodoStatus,
+} from "@/lib/project-todos"
 
 export type ProjectOperationItem = {
   readonly id: string
@@ -49,6 +58,7 @@ export type ProjectOperationItem = {
   readonly sageRequiredDate: string | null
   readonly sageWriteStatus: string
   readonly sagePayloadJson: string | null
+  readonly updatedAt: string
 }
 
 export type ProjectPurchaseOrderLineItem = {
@@ -239,6 +249,27 @@ export type CreateProjectTaskInput = {
   readonly externalUrl: string | null
 }
 
+export type UpdateProjectTodoInput = {
+  readonly title: string
+  readonly description: string | null
+  readonly sourceRecordType: ProjectTaskRecordType
+  readonly status: ProjectTodoStatus
+  readonly priority: string
+  readonly assigneeName: string | null
+  readonly companyName: string | null
+  readonly startDate: string | null
+  readonly dueDate: string | null
+  readonly expectedUpdatedAt: string
+}
+
+export type ProjectTodoActionResult =
+  | {
+      readonly success: true
+      readonly id: string
+      readonly updatedAt: string
+    }
+  | { readonly success: false; readonly error: string }
+
 type SagePurchaseOrderPayload = {
   readonly source: "compass_po_request"
   readonly header: {
@@ -320,6 +351,9 @@ async function verifyProjectUpdateAccess(
   projectId: string
 ): Promise<ReturnType<typeof getDb>> {
   const user = await requireAuth()
+  if (isDemoUser(user.id)) {
+    throw new Error("DEMO_READ_ONLY")
+  }
   requirePermission(user, "project", "update")
   const orgId = requireOrg(user)
 
@@ -342,6 +376,23 @@ async function verifyProjectUpdateAccess(
 function cleanText(value: string | null): string | null {
   const trimmed = value?.trim() ?? ""
   return trimmed.length > 0 ? trimmed : null
+}
+
+function cleanDate(value: string | null, label: string): string | null {
+  const cleaned = cleanText(value)
+  if (cleaned === null) return null
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(cleaned)) {
+    throw new Error(`${label} must be a valid date`)
+  }
+
+  const parsed = new Date(`${cleaned}T12:00:00Z`)
+  if (
+    Number.isNaN(parsed.getTime()) ||
+    parsed.toISOString().slice(0, 10) !== cleaned
+  ) {
+    throw new Error(`${label} must be a valid date`)
+  }
+  return cleaned
 }
 
 function requireText(value: string, label: string): string {
@@ -449,6 +500,21 @@ function normalizeTaskRecordType(value: ProjectTaskRecordType): ProjectTaskRecor
   if (value === "supplier_task") return "supplier_task"
   if (value === "schedule_task") return "schedule_task"
   return "staff_task"
+}
+
+function assigneeTypeForTask(recordType: ProjectTaskRecordType): string {
+  if (recordType === "subcontractor_task") return "subcontractor"
+  if (recordType === "supplier_task") return "supplier"
+  return "internal"
+}
+
+function revalidateProjectTodoPaths(projectId: string): void {
+  revalidatePath(`/dashboard/projects/${projectId}`)
+  revalidatePath(`/dashboard/projects/${projectId}/todos`)
+  revalidatePath(`/dashboard/projects/${projectId}/daily-logs`)
+  revalidatePath(`/dashboard/projects/${projectId}/schedule`)
+  revalidatePath("/dashboard")
+  revalidatePath("/dashboard/schedule")
 }
 
 function operationSyncKind(recordType: string): ProjectSageSyncItemKind {
@@ -773,6 +839,7 @@ function toOperationItem(row: typeof projectOperations.$inferSelect): ProjectOpe
     sageRequiredDate: row.sageRequiredDate,
     sageWriteStatus: row.sageWriteStatus,
     sagePayloadJson: row.sagePayloadJson,
+    updatedAt: row.updatedAt,
   }
 }
 
@@ -1066,19 +1133,16 @@ export async function getProjectOperationsSummary(
     (operation) => operation.sourceRecordType === "purchase_order"
   )
   const commitments = operations.filter((operation) =>
-    [
-      "staff_task",
-      "subcontractor_task",
-      "supplier_task",
-      "schedule_task",
-    ].includes(operation.sourceRecordType)
+    isProjectTodoRecordType(operation.sourceRecordType)
   )
 
   const openPurchaseOrders = purchaseOrders.filter(
     (operation) => !["closed", "void", "complete"].includes(operation.status)
   )
   const activeCommitments = commitments.filter(
-    (operation) => !["complete", "cancelled"].includes(operation.status)
+    (operation) =>
+      !isCompletedProjectTodoStatus(operation.status) &&
+      !isArchivedProjectTodoStatus(operation.status)
   )
 
   const [nextCompassTask] = await db
@@ -1124,6 +1188,30 @@ export async function getProjectOperationsSummary(
     purchaseOrders: purchaseOrders.slice(0, 5).map(toOperationItem),
     commitments: commitments.slice(0, 6).map(toOperationItem),
   }
+}
+
+export async function getProjectTodos(
+  projectId: string
+): Promise<readonly ProjectOperationItem[]> {
+  const db = await verifyProjectAccess(projectId)
+  const operations = await db
+    .select()
+    .from(projectOperations)
+    .where(
+      and(
+        eq(projectOperations.projectId, projectId),
+        inArray(projectOperations.sourceRecordType, [
+          ...PROJECT_TODO_RECORD_TYPES,
+        ])
+      )
+    )
+    .orderBy(
+      asc(projectOperations.dueDate),
+      asc(projectOperations.createdAt),
+      asc(projectOperations.title)
+    )
+
+  return operations.map(toOperationItem)
 }
 
 export async function getProjectSageSyncQueue(
@@ -1955,10 +2043,7 @@ export async function createProjectTask(
         and(
           eq(projectOperations.projectId, projectId),
           inArray(projectOperations.sourceRecordType, [
-            "staff_task",
-            "subcontractor_task",
-            "supplier_task",
-            "schedule_task",
+            ...PROJECT_TODO_RECORD_TYPES,
           ])
         )
       )
@@ -1981,12 +2066,7 @@ export async function createProjectTask(
       description: cleanText(input.description),
       status: "open",
       priority: cleanText(input.priority) ?? "normal",
-      assigneeType:
-        sourceRecordType === "subcontractor_task"
-          ? "subcontractor"
-          : sourceRecordType === "supplier_task"
-            ? "supplier"
-            : "internal",
+      assigneeType: assigneeTypeForTask(sourceRecordType),
       assigneeName: cleanText(input.assigneeName),
       companyName: cleanText(input.companyName),
       startDate,
@@ -2035,8 +2115,7 @@ export async function createProjectTask(
     revalidatePath(`/dashboard/projects/${projectId}/rfis`)
     revalidatePath(`/dashboard/projects/${projectId}/rfqs`)
     revalidatePath(`/dashboard/projects/${projectId}/purchase-orders`)
-    revalidatePath("/dashboard")
-    revalidatePath("/dashboard/schedule")
+    revalidateProjectTodoPaths(projectId)
 
     return { success: true, id }
   } catch (error) {
@@ -2048,6 +2127,239 @@ export async function createProjectTask(
           : "Failed to create project task",
     }
   }
+}
+
+async function findEditableProjectTodo(
+  projectId: string,
+  todoId: string,
+  expectedUpdatedAt: string
+): Promise<{
+  readonly db: ReturnType<typeof getDb>
+  readonly operation: typeof projectOperations.$inferSelect
+}> {
+  const db = await verifyProjectUpdateAccess(projectId)
+  const [operation] = await db
+    .select()
+    .from(projectOperations)
+    .where(
+      and(
+        eq(projectOperations.id, todoId),
+        eq(projectOperations.projectId, projectId)
+      )
+    )
+    .limit(1)
+
+  if (!operation || !isProjectTodoRecordType(operation.sourceRecordType)) {
+    throw new Error("To-do not found")
+  }
+  if (operation.updatedAt !== expectedUpdatedAt) {
+    throw new Error(
+      "This to-do changed after you opened it. Refresh and review the latest version."
+    )
+  }
+
+  return { db, operation }
+}
+
+export async function updateProjectTodo(
+  projectId: string,
+  todoId: string,
+  input: UpdateProjectTodoInput
+): Promise<ProjectTodoActionResult> {
+  try {
+    const user = await requireAuth()
+    const organizationId = requireOrg(user)
+    const { db, operation } = await findEditableProjectTodo(
+      projectId,
+      todoId,
+      input.expectedUpdatedAt
+    )
+    if (!isProjectTodoStatus(input.status)) {
+      return { success: false, error: "Choose a valid to-do status." }
+    }
+    const sourceRecordType = normalizeTaskRecordType(input.sourceRecordType)
+    const title = requireText(input.title, "Title")
+    const assigneeName = cleanText(input.assigneeName)
+    const companyName = cleanText(input.companyName)
+    const startDate = cleanDate(input.startDate, "Start date")
+    const dueDate = cleanDate(input.dueDate, "Due date")
+    if (startDate && dueDate && dueDate < startDate) {
+      return {
+        success: false,
+        error: "Due date must be on or after the start date.",
+      }
+    }
+
+    const updatedAt = new Date().toISOString()
+    const updatedRows = await db
+      .update(projectOperations)
+      .set({
+        sourceRecordType,
+        title,
+        description: cleanText(input.description),
+        status: input.status,
+        priority: cleanText(input.priority) ?? "normal",
+        assigneeType: assigneeTypeForTask(sourceRecordType),
+        assigneeName,
+        companyName,
+        startDate,
+        dueDate,
+        updatedAt,
+      })
+      .where(
+        and(
+          eq(projectOperations.id, todoId),
+          eq(projectOperations.projectId, projectId),
+          eq(projectOperations.updatedAt, input.expectedUpdatedAt)
+        )
+      )
+      .returning({
+        id: projectOperations.id,
+        updatedAt: projectOperations.updatedAt,
+      })
+    const updated = updatedRows[0]
+    if (!updated) {
+      return {
+        success: false,
+        error:
+          "This to-do changed while you were saving. Refresh and review the latest version.",
+      }
+    }
+
+    if (assigneeName && assigneeName !== operation.assigneeName) {
+      try {
+        await notifyProjectAssignment({
+          organizationId,
+          projectId,
+          itemId: todoId,
+          title,
+          assignedToName: assigneeName,
+          createdBy: user,
+          kind: "task",
+        })
+      } catch (notificationError) {
+        console.error(
+          "Updated project task assignment notification failed:",
+          notificationError
+        )
+      }
+    }
+
+    revalidateProjectTodoPaths(projectId)
+    return { success: true, id: updated.id, updatedAt: updated.updatedAt }
+  } catch (error) {
+    return {
+      success: false,
+      error:
+        error instanceof Error ? error.message : "Failed to update to-do",
+    }
+  }
+}
+
+export async function setProjectTodoStatus(
+  projectId: string,
+  todoId: string,
+  status: ProjectTodoStatus,
+  expectedUpdatedAt: string
+): Promise<ProjectTodoActionResult> {
+  try {
+    if (!isProjectTodoStatus(status)) {
+      return { success: false, error: "Choose a valid to-do status." }
+    }
+    const { db } = await findEditableProjectTodo(
+      projectId,
+      todoId,
+      expectedUpdatedAt
+    )
+    const updatedAt = new Date().toISOString()
+    const updatedRows = await db
+      .update(projectOperations)
+      .set({ status, updatedAt })
+      .where(
+        and(
+          eq(projectOperations.id, todoId),
+          eq(projectOperations.projectId, projectId),
+          eq(projectOperations.updatedAt, expectedUpdatedAt)
+        )
+      )
+      .returning({
+        id: projectOperations.id,
+        updatedAt: projectOperations.updatedAt,
+      })
+    const updated = updatedRows[0]
+    if (!updated) {
+      return {
+        success: false,
+        error:
+          "This to-do changed while you were saving. Refresh and review the latest version.",
+      }
+    }
+
+    revalidateProjectTodoPaths(projectId)
+    return { success: true, id: updated.id, updatedAt: updated.updatedAt }
+  } catch (error) {
+    return {
+      success: false,
+      error:
+        error instanceof Error
+          ? error.message
+          : "Failed to change to-do status",
+    }
+  }
+}
+
+export async function archiveProjectTodo(
+  projectId: string,
+  todoId: string,
+  expectedUpdatedAt: string
+): Promise<ProjectTodoActionResult> {
+  try {
+    const { db } = await findEditableProjectTodo(
+      projectId,
+      todoId,
+      expectedUpdatedAt
+    )
+    const updatedAt = new Date().toISOString()
+    const updatedRows = await db
+      .update(projectOperations)
+      .set({ status: "archived", updatedAt })
+      .where(
+        and(
+          eq(projectOperations.id, todoId),
+          eq(projectOperations.projectId, projectId),
+          eq(projectOperations.updatedAt, expectedUpdatedAt)
+        )
+      )
+      .returning({
+        id: projectOperations.id,
+        updatedAt: projectOperations.updatedAt,
+      })
+    const updated = updatedRows[0]
+    if (!updated) {
+      return {
+        success: false,
+        error:
+          "This to-do changed while you were archiving it. Refresh and review the latest version.",
+      }
+    }
+
+    revalidateProjectTodoPaths(projectId)
+    return { success: true, id: updated.id, updatedAt: updated.updatedAt }
+  } catch (error) {
+    return {
+      success: false,
+      error:
+        error instanceof Error ? error.message : "Failed to archive to-do",
+    }
+  }
+}
+
+export async function restoreProjectTodo(
+  projectId: string,
+  todoId: string,
+  expectedUpdatedAt: string
+): Promise<ProjectTodoActionResult> {
+  return setProjectTodoStatus(projectId, todoId, "open", expectedUpdatedAt)
 }
 
 export async function sendPurchaseOrderEmail(
