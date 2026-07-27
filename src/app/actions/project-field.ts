@@ -294,7 +294,12 @@ type CreateDailyLogResult =
 
 type UpdateDailyLogInput = CreateDailyLogInput & {
   readonly dailyLogId: string
+  readonly targetProjectId: string
 }
+
+type UpdateDailyLogResult =
+  | { readonly success: true; readonly projectId: string }
+  | { readonly success: false; readonly error: string }
 
 type ProjectWeatherSnapshotResult =
   | { readonly success: true; readonly weather: ProjectWeatherSnapshot }
@@ -1607,13 +1612,17 @@ export async function createProjectDailyLog(
 export async function updateProjectDailyLog(
   projectId: string,
   input: UpdateDailyLogInput
-): Promise<DailyLogMutationResult> {
+): Promise<UpdateDailyLogResult> {
   try {
     const { db } = await verifyDailyLogStaffMutationAccess(projectId)
     const dailyLogId = input.dailyLogId.trim()
+    const targetProjectId = input.targetProjectId.trim()
 
     if (dailyLogId.length === 0) {
       return { success: false, error: "Daily log is required." }
+    }
+    if (targetProjectId.length === 0) {
+      return { success: false, error: "Project is required." }
     }
 
     const [existing] = await db
@@ -1628,10 +1637,81 @@ export async function updateProjectDailyLog(
 
     const logDate = normalizedLogDate(input.logDate)
     const workCompleted = requiredText(input.workCompleted, "Work completed")
+    const now = new Date().toISOString()
+
+    if (targetProjectId !== projectId) {
+      await verifyDailyLogStaffMutationAccess(targetProjectId)
+
+      const attachedPhotoRows = await db
+        .select({ id: dailyLogPhotos.id })
+        .from(dailyLogPhotos)
+        .where(eq(dailyLogPhotos.dailyLogId, dailyLogId))
+      const attachedPhotoIds = new Set(
+        attachedPhotoRows.map((photo) => photo.id)
+      )
+      const updateRows = await db
+        .select({
+          title: ownerProjectUpdates.title,
+          sourceDailyLogIds: ownerProjectUpdates.sourceDailyLogIds,
+          selectedPhotoIds: ownerProjectUpdates.selectedPhotoIds,
+        })
+        .from(ownerProjectUpdates)
+        .where(eq(ownerProjectUpdates.projectId, projectId))
+      const referencedUpdate = updateRows.find(
+        (update) =>
+          parseIdList(update.sourceDailyLogIds).includes(dailyLogId) ||
+          parseIdList(update.selectedPhotoIds).some((photoId) =>
+            attachedPhotoIds.has(photoId)
+          )
+      )
+
+      if (referencedUpdate) {
+        return {
+          success: false,
+          error: `Remove this log and its photos from "${referencedUpdate.title}" before changing projects.`,
+        }
+      }
+
+      await db
+        .update(dailyLogPhotos)
+        .set({
+          projectId: targetProjectId,
+          reviewStatus: "needs_review",
+          ownerVisible: false,
+          subVendorVisible: false,
+          updatedAt: now,
+        })
+        .where(
+          and(
+            eq(dailyLogPhotos.projectId, projectId),
+            eq(dailyLogPhotos.dailyLogId, dailyLogId)
+          )
+        )
+
+      await db
+        .update(projectOperations)
+        .set({
+          projectId: targetProjectId,
+          updatedAt: now,
+        })
+        .where(
+          and(
+            eq(projectOperations.projectId, projectId),
+            eq(projectOperations.sourceRecordId, dailyLogId)
+          )
+        )
+
+      // Schedule items belong to a specific project, so their association
+      // cannot safely follow a daily log that moves to another project.
+      await db
+        .delete(dailyLogTaskLinks)
+        .where(eq(dailyLogTaskLinks.dailyLogId, dailyLogId))
+    }
 
     await db
       .update(dailyLogs)
       .set({
+        projectId: targetProjectId,
         logDate,
         weatherTempF: input.weatherTempF,
         weatherConditions: optionalText(input.weatherConditions),
@@ -1648,15 +1728,22 @@ export async function updateProjectDailyLog(
         isClientVisible: false,
         reviewStatus: "needs_review",
         syncStatus: "pending",
-        updatedAt: new Date().toISOString(),
+        updatedAt: now,
       })
       .where(and(eq(dailyLogs.id, dailyLogId), eq(dailyLogs.projectId, projectId)))
 
     revalidatePath(`/dashboard/projects/${projectId}`)
     revalidatePath(`/dashboard/projects/${projectId}/daily-logs`)
     revalidatePath(`/dashboard/projects/${projectId}/owner-updates`)
+    if (targetProjectId !== projectId) {
+      revalidatePath(`/dashboard/projects/${targetProjectId}`)
+      revalidatePath(`/dashboard/projects/${targetProjectId}/daily-logs`)
+      revalidatePath(
+        `/dashboard/projects/${targetProjectId}/owner-updates`
+      )
+    }
 
-    return { success: true }
+    return { success: true, projectId: targetProjectId }
   } catch (error) {
     return {
       success: false,

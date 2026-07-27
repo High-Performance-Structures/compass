@@ -45,6 +45,7 @@ import {
 } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import { DailyLogPrintDocument } from "@/components/projects/daily-log-print-document"
+import { useProjectList } from "@/components/project-list-provider"
 import { ProjectContextSwitcher } from "@/components/projects/project-context-switcher"
 import { ProjectTaskCreateButton } from "@/components/projects/project-task-create-button"
 import {
@@ -515,6 +516,7 @@ export function ProjectDailyLogWorkspace({
   readonly assigneeOptions: readonly ProjectTaskAssigneeOption[]
 }): React.ReactElement {
   const router = useRouter()
+  const projects = useProjectList()
   const [logs, setLogs] =
     React.useState<readonly ProjectDailyLogItem[]>(workspace.logs)
   const [filter, setFilter] = React.useState<LogFilter>("all")
@@ -522,6 +524,9 @@ export function ProjectDailyLogWorkspace({
   const [showNewLog, setShowNewLog] = React.useState(false)
   const [draft, setDraft] = React.useState<DailyLogDraft>(emptyDailyLogDraft)
   const [editingLogId, setEditingLogId] = React.useState<string | null>(null)
+  const [editProjectId, setEditProjectId] = React.useState(
+    workspace.project.id
+  )
   const [editDraft, setEditDraft] =
     React.useState<DailyLogDraft>(emptyDailyLogDraft)
   const [uploadingLogId, setUploadingLogId] = React.useState<string | null>(null)
@@ -547,8 +552,9 @@ export function ProjectDailyLogWorkspace({
     setLogs(workspace.logs)
     setSelectedIds([])
     setEditingLogId(null)
+    setEditProjectId(workspace.project.id)
     setUploadingLogId(null)
-  }, [workspace.logs])
+  }, [workspace.logs, workspace.project.id])
 
   React.useEffect(() => {
     function finishPrinting(): void {
@@ -629,11 +635,13 @@ export function ProjectDailyLogWorkspace({
     setMessage(null)
     setShowNewLog(false)
     setEditingLogId(log.id)
+    setEditProjectId(workspace.project.id)
     setEditDraft(draftFromLog(log))
   }
 
   function cancelEditingLog(): void {
     setEditingLogId(null)
+    setEditProjectId(workspace.project.id)
     setEditDraft(emptyDailyLogDraft())
   }
 
@@ -853,6 +861,7 @@ export function ProjectDailyLogWorkspace({
     startTransition(async () => {
       const result = await updateProjectDailyLog(workspace.project.id, {
         dailyLogId: log.id,
+        targetProjectId: editProjectId,
         logDate: editDraft.logDate,
         weatherTempF: optionalNumber(editDraft.weatherTempF),
         weatherConditions: editDraft.weatherConditions,
@@ -869,8 +878,14 @@ export function ProjectDailyLogWorkspace({
 
       if (result.success) {
         cancelEditingLog()
-        setMessage("Daily log updated and returned to review.")
-        router.refresh()
+        if (result.projectId === workspace.project.id) {
+          setMessage("Daily log updated and returned to review.")
+          router.refresh()
+        } else {
+          router.push(
+            `/dashboard/projects/${result.projectId}/daily-logs#daily-log-${log.id}`
+          )
+        }
       } else {
         setMessage(result.error)
       }
@@ -1414,6 +1429,35 @@ export function ProjectDailyLogWorkspace({
                         Save edits
                       </Button>
                     </div>
+                  </div>
+                  <div className="grid max-w-xl gap-1.5">
+                    <Label htmlFor={`daily-log-edit-project-${log.id}`}>
+                      Project
+                    </Label>
+                    <Select
+                      value={editProjectId}
+                      onValueChange={setEditProjectId}
+                    >
+                      <SelectTrigger
+                        id={`daily-log-edit-project-${log.id}`}
+                        aria-label="Project"
+                      >
+                        <SelectValue placeholder="Select a project" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {projects.map((project) => (
+                          <SelectItem key={project.id} value={project.id}>
+                            {project.projectNumber
+                              ? `${project.projectNumber} - ${project.name}`
+                              : project.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground">
+                      Moving a log also moves its files and linked to-dos.
+                      Project-specific schedule links are cleared.
+                    </p>
                   </div>
                   <DailyLogFields
                     draft={editDraft}
