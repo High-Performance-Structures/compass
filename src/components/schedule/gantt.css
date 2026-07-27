@@ -1,9 +1,34 @@
-/* hide scrollbars on gantt-container (panning handles navigation) */
-.gantt-container {
-  scrollbar-width: none;
+/* Keep the chart at the visible pane height so the full SVG overflows inside
+   the scroll container. Frappe rewrites this height inline after it renders,
+   so the important constraint is intentional. */
+.gantt-wrapper {
+  min-width: 0;
+  min-height: 0;
 }
+
+.gantt-container {
+  height: 100% !important;
+  max-height: 100%;
+  min-height: 0;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: oklch(0.72 0.02 95 / 0.7) transparent;
+}
+
 .gantt-container::-webkit-scrollbar {
-  display: none;
+  width: 10px;
+  height: 10px;
+}
+
+.gantt-container::-webkit-scrollbar-thumb {
+  background: oklch(0.72 0.02 95 / 0.7);
+  border: 3px solid transparent;
+  border-radius: 999px;
+  background-clip: content-box;
+}
+
+.gantt-container::-webkit-scrollbar-track {
+  background: transparent;
 }
 
 /* frappe-gantt base styles (vendored from frappe-gantt/dist/frappe-gantt.css) */
