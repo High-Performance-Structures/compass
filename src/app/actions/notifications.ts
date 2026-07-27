@@ -163,7 +163,6 @@ export async function updateNotificationPreferences(
         },
       })
 
-    revalidatePath("/dashboard/settings")
     return { success: true }
   } catch (error) {
     return {

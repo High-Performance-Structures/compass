@@ -34,6 +34,7 @@ export function PreferencesTab() {
       poEnabled: true,
       timeZone: "America/Denver",
     })
+  const [loading, setLoading] = React.useState(true)
   const [saving, setSaving] = React.useState(false)
   const [message, setMessage] = React.useState<string | null>(null)
   const native = useNative()
@@ -43,8 +44,13 @@ export function PreferencesTab() {
     let cancelled = false
     async function loadPreferences(): Promise<void> {
       const result = await getNotificationPreferences()
-      if (!cancelled && result.success) {
-        setPreferences(result.data)
+      if (!cancelled) {
+        if (result.success) {
+          setPreferences(result.data)
+        } else {
+          setMessage(result.error)
+        }
+        setLoading(false)
       }
     }
     loadPreferences()
@@ -84,6 +90,7 @@ export function PreferencesTab() {
             <Select
               value={preferences.timeZone}
               onValueChange={(value) => updatePreference("timeZone", value)}
+              disabled={loading}
             >
               <SelectTrigger id="timezone" className="h-9 w-full max-w-xs">
                 <SelectValue />
@@ -240,8 +247,16 @@ export function PreferencesTab() {
             </div>
           )}
           <div className="flex flex-wrap items-center gap-3">
-            <Button size="sm" onClick={savePreferences} disabled={saving}>
-              {saving ? "Saving..." : "Save preferences"}
+            <Button
+              size="sm"
+              onClick={savePreferences}
+              disabled={loading || saving}
+            >
+              {loading
+                ? "Loading preferences..."
+                : saving
+                  ? "Saving..."
+                  : "Save preferences"}
             </Button>
             {message && (
               <p className="text-xs text-muted-foreground">{message}</p>
