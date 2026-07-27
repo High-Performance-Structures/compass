@@ -29,6 +29,7 @@ type ScreenShareStatus =
   | "error"
 
 type MediaButtonStatus = "idle" | "starting" | "stopping" | "error"
+type MeetingMediaKind = "audio" | "video"
 
 const MEETING_BACKGROUND_IMAGES = [
   "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1600 900'%3E%3Cdefs%3E%3ClinearGradient id='a' x1='0' x2='1' y1='0' y2='1'%3E%3Cstop stop-color='%2320170f'/%3E%3Cstop offset='.46' stop-color='%234f2f13'/%3E%3Cstop offset='1' stop-color='%233f7d4d'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect fill='url(%23a)' width='1600' height='900'/%3E%3Ccircle cx='1320' cy='160' r='260' fill='%23ffffff' opacity='.12'/%3E%3Cpath d='M0 760 C360 620 580 820 900 680 C1170 562 1320 620 1600 470 L1600 900 L0 900 Z' fill='%230b120d' opacity='.45'/%3E%3C/svg%3E",
@@ -81,10 +82,6 @@ function createCompassMeetingConfig(): UIConfig {
     },
     root: {
       ...base.root,
-      "rtk-stage": {
-        states: ["activeSidebar"],
-        children: ["rtk-grid", "rtk-notifications"],
-      },
       "div#controlbar-left": ["rtk-settings-toggle", "rtk-screen-share-toggle"],
       "div#controlbar-center": [
         "rtk-mic-toggle",
@@ -332,6 +329,59 @@ async function videoBackgroundRuntimeAvailable(): Promise<boolean> {
   return tflite && tfliteSimd
 }
 
+function mediaDeviceLabel(kind: MeetingMediaKind): string {
+  return kind === "audio" ? "microphone" : "camera"
+}
+
+function mediaPermissionMessage(
+  kind: MeetingMediaKind,
+  cause: unknown
+): string {
+  const label = mediaDeviceLabel(kind)
+  if (cause instanceof DOMException) {
+    if (cause.name === "NotFoundError") {
+      return `No ${label} was found. Connect one and try again.`
+    }
+    if (cause.name === "NotReadableError" || cause.name === "AbortError") {
+      return `The ${label} is unavailable or already in use by another app. Close the other app and try again.`
+    }
+    if (cause.name === "NotAllowedError" || cause.name === "SecurityError") {
+      return `Compass still cannot access your ${label}. Allow it for this site. If macOS just granted access, fully quit Brave with ⌘Q, reopen it, and rejoin Office Talk.`
+    }
+  }
+
+  return `Office Talk could not start your ${label}. If macOS just granted access, fully quit Brave with ⌘Q, reopen it, and rejoin Office Talk.`
+}
+
+async function requestMediaTrack(
+  kind: MeetingMediaKind
+): Promise<MediaStreamTrack> {
+  if (
+    typeof navigator === "undefined" ||
+    typeof navigator.mediaDevices?.getUserMedia !== "function"
+  ) {
+    throw new Error("This browser does not support camera or microphone access.")
+  }
+
+  const stream = await navigator.mediaDevices.getUserMedia(
+    kind === "audio"
+      ? { audio: true, video: false }
+      : { audio: false, video: true }
+  )
+  const tracks =
+    kind === "audio" ? stream.getAudioTracks() : stream.getVideoTracks()
+  const track = tracks[0]
+  if (!track) {
+    for (const streamTrack of stream.getTracks()) streamTrack.stop()
+    throw new Error(`No ${mediaDeviceLabel(kind)} track was returned.`)
+  }
+
+  for (const streamTrack of stream.getTracks()) {
+    if (streamTrack !== track) streamTrack.stop()
+  }
+  return track
+}
+
 export function RealtimeKitMeetingWindow({
   channelId,
 }: {
@@ -375,6 +425,8 @@ export function RealtimeKitMeetingWindow({
   const [pictureInPictureActive, setPictureInPictureActive] =
     React.useState(false)
   const addonRef = React.useRef<VideoBackgroundAddonHandle | null>(null)
+  const audioTrackRef = React.useRef<MediaStreamTrack | null>(null)
+  const videoTrackRef = React.useRef<MediaStreamTrack | null>(null)
 
   React.useEffect(() => {
     setCanScreenShare(
@@ -404,6 +456,15 @@ export function RealtimeKitMeetingWindow({
         "leavepictureinpicture",
         updatePictureInPictureState
       )
+    }
+  }, [])
+
+  React.useEffect(() => {
+    return () => {
+      audioTrackRef.current?.stop()
+      videoTrackRef.current?.stop()
+      audioTrackRef.current = null
+      videoTrackRef.current = null
     }
   }, [])
 
@@ -561,6 +622,10 @@ export function RealtimeKitMeetingWindow({
     const handleAudioUpdate = (payload: {
       readonly audioEnabled: boolean
     }): void => {
+      if (!payload.audioEnabled) {
+        audioTrackRef.current?.stop()
+        audioTrackRef.current = null
+      }
       setAudioEnabled(payload.audioEnabled)
       setAudioStatus("idle")
       recordRealtimeKitDiagnostic("audio-update", {
@@ -571,6 +636,10 @@ export function RealtimeKitMeetingWindow({
     const handleVideoUpdate = (payload: {
       readonly videoEnabled: boolean
     }): void => {
+      if (!payload.videoEnabled) {
+        videoTrackRef.current?.stop()
+        videoTrackRef.current = null
+      }
       setVideoEnabled(payload.videoEnabled)
       setVideoStatus("idle")
       recordRealtimeKitDiagnostic("video-update", {
@@ -596,7 +665,10 @@ export function RealtimeKitMeetingWindow({
       setVideoEnabled(meeting.self.videoEnabled)
       setAudioStatus("idle")
       setVideoStatus("idle")
-      if (isRecord(payload) && recordValue(payload, "kind") === "screenshare") {
+      const kind = isRecord(payload) ? recordValue(payload, "kind") : null
+      if (kind === "audio" || kind === "video") {
+        setScreenShareMessage(mediaPermissionMessage(kind, payload))
+      } else if (kind === "screenshare") {
         setScreenShareStatus("blocked")
         setScreenShareMessage(
           "Screen sharing was blocked or canceled by the browser."
@@ -794,23 +866,36 @@ export function RealtimeKitMeetingWindow({
     if (!meeting) return
 
     setScreenShareMessage(null)
+    let requestedTrack: MediaStreamTrack | null = null
     try {
       if (meeting.self.audioEnabled) {
         setAudioStatus("stopping")
         await meeting.self.disableAudio()
+        audioTrackRef.current?.stop()
+        audioTrackRef.current = null
       } else {
         setAudioStatus("starting")
-        await meeting.self.enableAudio()
+        requestedTrack = await requestMediaTrack("audio")
+        await meeting.self.enableAudio(requestedTrack)
+        if (!meeting.self.audioEnabled) {
+          requestedTrack.stop()
+          requestedTrack = null
+          throw new Error("RealtimeKit did not enable the microphone track.")
+        }
+        audioTrackRef.current?.stop()
+        audioTrackRef.current = requestedTrack
+        requestedTrack = null
       }
       setAudioEnabled(meeting.self.audioEnabled)
       setAudioStatus("idle")
     } catch (cause: unknown) {
+      requestedTrack?.stop()
       recordRealtimeKitDiagnostic("audio-toggle-failed", {
         error: realtimeKitErrorDetails(cause),
       })
       setAudioEnabled(meeting.self.audioEnabled)
       setAudioStatus("error")
-      setScreenShareMessage(errorMessageForCause(cause))
+      setScreenShareMessage(mediaPermissionMessage("audio", cause))
     }
   }, [meeting])
 
@@ -818,23 +903,36 @@ export function RealtimeKitMeetingWindow({
     if (!meeting) return
 
     setScreenShareMessage(null)
+    let requestedTrack: MediaStreamTrack | null = null
     try {
       if (meeting.self.videoEnabled) {
         setVideoStatus("stopping")
         await meeting.self.disableVideo()
+        videoTrackRef.current?.stop()
+        videoTrackRef.current = null
       } else {
         setVideoStatus("starting")
-        await meeting.self.enableVideo()
+        requestedTrack = await requestMediaTrack("video")
+        await meeting.self.enableVideo(requestedTrack)
+        if (!meeting.self.videoEnabled) {
+          requestedTrack.stop()
+          requestedTrack = null
+          throw new Error("RealtimeKit did not enable the camera track.")
+        }
+        videoTrackRef.current?.stop()
+        videoTrackRef.current = requestedTrack
+        requestedTrack = null
       }
       setVideoEnabled(meeting.self.videoEnabled)
       setVideoStatus("idle")
     } catch (cause: unknown) {
+      requestedTrack?.stop()
       recordRealtimeKitDiagnostic("video-toggle-failed", {
         error: realtimeKitErrorDetails(cause),
       })
       setVideoEnabled(meeting.self.videoEnabled)
       setVideoStatus("error")
-      setScreenShareMessage(errorMessageForCause(cause))
+      setScreenShareMessage(mediaPermissionMessage("video", cause))
     }
   }, [meeting])
 
