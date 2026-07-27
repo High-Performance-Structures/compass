@@ -199,6 +199,36 @@ test.describe("usable Compass areas", () => {
     }
   })
 
+  test("project conversation replies enable the explicit send action", async ({
+    page,
+  }) => {
+    const path = "/dashboard/conversations/e2e-channel-001"
+    const response = await page.goto(path)
+    await expectHealthyNavigation(page, response, path)
+
+    const message = page.getByText("Regression conversation message", {
+      exact: true,
+    })
+    await message.hover()
+    await page.getByRole("button", { name: "Reply to message" }).click()
+
+    const threadPanel = page
+      .getByRole("heading", { name: "Thread" })
+      .locator("..")
+      .locator("..")
+    const replyEditor = threadPanel.locator('[contenteditable="true"]').last()
+    const sendButton = threadPanel.getByRole("button", {
+      name: "Send message",
+    })
+
+    await expect(replyEditor).toBeVisible()
+    await expect(sendButton).toBeDisabled()
+    await replyEditor.fill("Unsaved regression reply")
+    await expect(sendButton).toBeEnabled()
+    await replyEditor.fill("")
+    await expect(sendButton).toBeDisabled()
+  })
+
   test("schedule list exposes edit and selection actions", async ({ page }) => {
     const path =
       "/dashboard/projects/e2e-project-001/schedule?view=list"

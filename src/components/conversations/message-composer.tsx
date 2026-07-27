@@ -332,6 +332,7 @@ export function MessageComposer({
   const [recipientValue, setRecipientValue] = React.useState("channel")
   const [importantDelivery, setImportantDelivery] = React.useState(false)
   const [selectedFiles, setSelectedFiles] = React.useState<readonly File[]>([])
+  const [hasMessageContent, setHasMessageContent] = React.useState(false)
   const hasProjectDelivery = isProjectChannel && !threadId
   const fileInputRef = React.useRef<HTMLInputElement>(null)
 
@@ -388,7 +389,10 @@ export function MessageComposer({
         ),
       },
     },
-    onUpdate: () => {
+    onUpdate: ({ editor: updatedEditor }) => {
+      // TipTap mutates its editor state without causing React to render.
+      // Mirror whether content exists so the explicit Send button stays current.
+      setHasMessageContent(updatedEditor.getText().trim().length > 0)
       setError(null)
       sendTypingIndicator()
     },
@@ -550,6 +554,7 @@ export function MessageComposer({
               ? "The message was sent, but its attachments could not be linked."
               : null
         editor.commands.clearContent()
+        setHasMessageContent(false)
         setSelectedFiles([])
         setImportantDelivery(false)
         if ("data" in result && result.data && "recipientLabel" in result.data) {
@@ -946,7 +951,7 @@ export function MessageComposer({
             onClick={handleSend}
             disabled={
               isSending ||
-              (!editor?.getText().trim() && selectedFiles.length === 0)
+              (!hasMessageContent && selectedFiles.length === 0)
             }
             aria-label="Send message"
             title="Send message"
