@@ -11,6 +11,8 @@ declare module "frappe-gantt" {
 
   interface GanttOptions {
     view_mode?: string
+    view_modes?: readonly GanttViewMode[]
+    column_width?: number
     on_date_change?: (
       task: { id: string },
       start: Date,
@@ -20,6 +22,23 @@ declare module "frappe-gantt" {
       task: { id: string },
       progress: number
     ) => void
+  }
+
+  interface GanttViewMode {
+    readonly name: string
+    readonly padding?: string
+    readonly step?: string
+    readonly date_format?: string
+    readonly column_width?: number
+    readonly lower_text?:
+      | string
+      | ((date: Date, previousDate: Date | null, language: string) => string)
+    readonly upper_text?:
+      | string
+      | ((date: Date, previousDate: Date | null, language: string) => string)
+    readonly upper_text_frequency?: number
+    readonly thick_line?: (date: Date) => boolean
+    readonly snap_at?: string
   }
 
   export default class Gantt {

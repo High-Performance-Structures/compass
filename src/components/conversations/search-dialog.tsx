@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import { normalizeConversationMentions } from "@/lib/conversations/message-content"
 import { formatDistanceToNow, format, parseISO } from "date-fns"
 import { IconHash, IconUser, IconCalendar, IconSearch, IconLoader2 } from "@tabler/icons-react"
 import {
@@ -313,7 +314,7 @@ export function SearchDialog({
                       </span>
                     </div>
                     <p className="mt-0.5 truncate text-sm text-muted-foreground">
-                      {message.content}
+                      {normalizeConversationMentions(message.content)}
                     </p>
                     <span className="text-xs text-muted-foreground">
                       {timeDisplay}

@@ -25,6 +25,7 @@ import {
   removeReaction,
 } from "@/app/actions/chat-messages"
 import { useRouter } from "next/navigation"
+import { normalizeConversationMentions } from "@/lib/conversations/message-content"
 
 type MessageData = {
   readonly id: string
@@ -177,7 +178,9 @@ export const MessageItem = React.memo(function MessageItem({ message }: MessageI
         </div>
 
         <div className="chat-markdown mt-1 text-sm">
-          <MarkdownRenderer>{message.content}</MarkdownRenderer>
+          <MarkdownRenderer>
+            {normalizeConversationMentions(message.content)}
+          </MarkdownRenderer>
         </div>
 
         {message.attachments && message.attachments.length > 0 && (

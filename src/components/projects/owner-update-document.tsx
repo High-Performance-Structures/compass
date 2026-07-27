@@ -3,7 +3,6 @@ import Link from "next/link"
 import {
   IconArrowLeft,
   IconCalendarStats,
-  IconMail,
   IconPhoto,
   IconPhotoUp,
 } from "@tabler/icons-react"
@@ -46,16 +45,13 @@ function projectLabel(document: OwnerProjectUpdateDocument): string {
 
 export function OwnerUpdateDocument({
   document,
-  absoluteUpdateUrl,
 }: {
   readonly document: OwnerProjectUpdateDocument
-  readonly absoluteUpdateUrl?: string
 }): React.ReactElement {
   const label = projectLabel(document)
   const updateUrl =
     `/dashboard/projects/${document.project.id}` +
     `/owner-updates/${document.update.id}`
-  const fullUpdateHref = absoluteUpdateUrl ?? updateUrl
   const emailSubject = `${label} - ${document.update.title}`
   const emailPreview =
     `${document.update.summary} ` +
@@ -323,49 +319,7 @@ export function OwnerUpdateDocument({
             </section>
           )}
 
-          <section className="border-t py-5 print:break-inside-avoid print:border-t print:border-black print:py-4">
-            <h2 className="text-base font-semibold print:text-sm print:uppercase">
-              Full Update
-            </h2>
-            <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground print:text-[11px] print:leading-5 print:text-black">
-              View the full project update and approved photo gallery in
-              Compass:
-            </p>
-            <a
-              href={fullUpdateHref}
-              className="mt-2 inline-block break-all text-sm font-medium text-primary underline underline-offset-4 print:text-[11px] print:text-black"
-            >
-              {fullUpdateHref}
-            </a>
-          </section>
         </article>
-
-        <section
-          id="email-preview"
-          className="bg-background p-5 shadow-sm sm:p-6 print:hidden"
-        >
-          <div className="flex items-center gap-2">
-            <IconMail className="size-4 text-muted-foreground" />
-            <h2 className="text-sm font-semibold">Email Preview</h2>
-          </div>
-          <div className="mt-4 overflow-hidden rounded-md border">
-            <div className="border-b bg-muted/40 px-4 py-3">
-              <p className="text-xs text-muted-foreground">Subject</p>
-              <p className="mt-1 text-sm font-medium">{emailSubject}</p>
-            </div>
-            <div className="px-4 py-4">
-              <p className="text-base font-semibold">
-                New project update for {label}
-              </p>
-              <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
-                {emailPreview}
-              </p>
-              <Button asChild className="mt-4">
-                <Link href={updateUrl}>View full update</Link>
-              </Button>
-            </div>
-          </div>
-        </section>
       </div>
     </main>
   )

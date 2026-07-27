@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { getPinnedMessages, unpinMessage } from "@/app/actions/message-search"
+import { normalizeConversationMentions } from "@/lib/conversations/message-content"
 
 type PinnedMessage = {
   id: string
@@ -190,7 +191,7 @@ export function PinnedMessagesPanel({
                           onClick={() => handleMessageClick(message)}
                         >
                           <p className="line-clamp-3 text-muted-foreground">
-                            {message.content}
+                            {normalizeConversationMentions(message.content)}
                           </p>
                         </button>
 
