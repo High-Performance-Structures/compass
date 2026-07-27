@@ -132,6 +132,25 @@ test.describe("usable Compass areas", () => {
     }
   })
 
+  test("timezone preference persists after reloading settings", async ({
+    page,
+  }) => {
+    const path = "/dashboard/settings"
+    const response = await page.goto(path)
+    await expectHealthyNavigation(page, response, path)
+
+    const timezone = page.getByRole("combobox", { name: "Timezone" })
+    await timezone.click()
+    await page.getByRole("option", { name: "Pacific (PT)" }).click()
+    await page.getByRole("button", { name: "Save preferences" }).click()
+    await expect(page.getByText("Preferences saved.")).toBeVisible()
+
+    await page.reload()
+    await expect(
+      page.getByRole("combobox", { name: "Timezone" })
+    ).toContainText("Pacific (PT)")
+  })
+
   test("schedule switches between calendar, list, and Gantt", async ({
     page,
   }) => {
@@ -213,6 +232,31 @@ test.describe("usable Compass areas", () => {
         exact: true,
       }).first()
     ).toBeVisible()
+  })
+
+  test("work calendar reveals every item hidden behind the overflow count", async ({
+    page,
+  }) => {
+    const response = await page.goto("/dashboard/schedule?view=month")
+    await expectHealthyNavigation(page, response, "/dashboard/schedule")
+
+    const overflowButton = page.getByRole("button", {
+      name: /Show \d+ more items for/,
+    })
+    await expect(overflowButton).toBeVisible()
+    await overflowButton.click()
+
+    const dayDialog = page.getByRole("dialog")
+    await expect(dayDialog).toContainText("5 work items scheduled for this day")
+    for (const title of [
+      "Regression Schedule Item",
+      "Overflow schedule item two",
+      "Overflow schedule item three",
+      "Overflow schedule item four",
+      "Regression follow-up",
+    ]) {
+      await expect(dayDialog.getByText(title, { exact: true })).toBeVisible()
+    }
   })
 
   test("work calendar to-dos open and focus the exact project record", async ({

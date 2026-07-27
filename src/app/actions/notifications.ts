@@ -12,6 +12,7 @@ import {
 import { getCurrentUser, requireAuth } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
 import { isMissingNotificationTableError } from "@/lib/notifications/events"
+import { isValidTimeZone } from "@/lib/work-calendar"
 
 export type NotificationPreferenceState = {
   readonly inAppEnabled: boolean
@@ -22,6 +23,7 @@ export type NotificationPreferenceState = {
   readonly ownerUpdateEnabled: boolean
   readonly scheduleEnabled: boolean
   readonly poEnabled: boolean
+  readonly timeZone: string
 }
 
 export type NotificationCenterItem = {
@@ -64,6 +66,7 @@ const DEFAULT_PREFERENCES: NotificationPreferenceState = {
   ownerUpdateEnabled: true,
   scheduleEnabled: true,
   poEnabled: true,
+  timeZone: "America/Denver",
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -91,6 +94,7 @@ function preferenceFromRow(
     ownerUpdateEnabled: row.ownerUpdateEnabled,
     scheduleEnabled: row.scheduleEnabled,
     poEnabled: row.poEnabled,
+    timeZone: row.timeZone,
   }
 }
 
@@ -133,6 +137,10 @@ export async function updateNotificationPreferences(
   input: NotificationPreferenceState
 ): Promise<NotificationActionResult> {
   try {
+    const timeZone = input.timeZone.trim()
+    if (!isValidTimeZone(timeZone)) {
+      return { success: false, error: "Choose a valid timezone." }
+    }
     const user = await requireAuth()
     const { env } = await getCloudflareContext()
     const db = getDb(env.DB)
@@ -143,12 +151,14 @@ export async function updateNotificationPreferences(
       .values({
         userId: user.id,
         ...input,
+        timeZone,
         updatedAt: now,
       })
       .onConflictDoUpdate({
         target: notificationPreferences.userId,
         set: {
           ...input,
+          timeZone,
           updatedAt: now,
         },
       })

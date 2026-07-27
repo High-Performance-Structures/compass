@@ -21,6 +21,13 @@ import type {
 } from "@/app/actions/work-calendar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
 import { workCalendarEntryMatches } from "@/lib/work-calendar"
@@ -145,6 +152,15 @@ function formatShortDate(date: string): string {
 function formatWeekday(date: string): string {
   return new Intl.DateTimeFormat("en-US", {
     weekday: "short",
+  }).format(parseDateKey(date))
+}
+
+function formatFullDate(date: string): string {
+  return new Intl.DateTimeFormat("en-US", {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+    year: "numeric",
   }).format(parseDateKey(date))
 }
 
@@ -316,6 +332,7 @@ export function WorkCalendar({
   const [query, setQuery] = React.useState("")
   const [editingEvent, setEditingEvent] =
     React.useState<CalendarEventEntry | null>(null)
+  const [expandedDay, setExpandedDay] = React.useState<string | null>(null)
   const [activeKind, setActiveKind] =
     React.useState<WorkCalendarKindFilter>(initialKind)
   const [activeView, setActiveView] = React.useState<WorkCalendarView>(
@@ -353,6 +370,9 @@ export function WorkCalendar({
   const todayEntries = filteredEntries.filter((entry) =>
     entryOnDay(entry, data.today)
   )
+  const expandedDayEntries = expandedDay
+    ? filteredEntries.filter((entry) => entryOnDay(entry, expandedDay))
+    : []
   const taskCount = filteredEntries.filter((entry) => entry.kind === "task").length
   const rfiCount = filteredEntries.filter((entry) => entry.kind === "rfi").length
 
@@ -552,9 +572,14 @@ export function WorkCalendar({
                       />
                     ))}
                     {activeView !== "today" && dayEntries.length > 3 && (
-                      <p className="px-1 text-xs text-muted-foreground">
+                      <button
+                        type="button"
+                        className="w-full px-1 py-1 text-left text-xs font-medium text-primary underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        onClick={() => setExpandedDay(day)}
+                        aria-label={`Show ${dayEntries.length - 3} more items for ${formatFullDate(day)}`}
+                      >
                         +{dayEntries.length - 3} more
-                      </p>
+                      </button>
                     )}
                   </div>
                 </div>
@@ -622,6 +647,39 @@ export function WorkCalendar({
         </section>
         )}
       </div>
+      <Dialog
+        open={expandedDay !== null}
+        onOpenChange={(open) => {
+          if (!open) setExpandedDay(null)
+        }}
+      >
+        <DialogContent className="max-h-[85vh] overflow-hidden sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>
+              {expandedDay ? formatFullDate(expandedDay) : "Calendar items"}
+            </DialogTitle>
+            <DialogDescription>
+              {expandedDayEntries.length} work item
+              {expandedDayEntries.length === 1 ? "" : "s"} scheduled for this
+              day. Select an item to open its source record.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="-mr-2 max-h-[65vh] space-y-2 overflow-y-auto pr-2">
+            {expandedDayEntries.map((entry) => (
+              <WorkItem
+                key={`${expandedDay}-${entry.kind}-${entry.id}`}
+                entry={entry}
+                focused={entry.id === initialItemId}
+                onEditEvent={(event) => {
+                  setExpandedDay(null)
+                  setEditingEvent(event)
+                }}
+                canManageEvents={data.canManageEvents}
+              />
+            ))}
+          </div>
+        </DialogContent>
+      </Dialog>
       {editingEvent && data.canManageEvents && (
         <WorkCalendarEventDialog
           key={`${editingEvent.id}-${editingEvent.eventDetails.version}`}

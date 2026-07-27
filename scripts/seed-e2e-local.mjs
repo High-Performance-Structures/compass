@@ -83,6 +83,39 @@ const upsert = db.transaction(() => {
       updated_at = excluded.updated_at
   `).run(today, today, now, now)
 
+  const overflowScheduleItems = [
+    ["e2e-schedule-002", "Overflow schedule item two", 2],
+    ["e2e-schedule-003", "Overflow schedule item three", 3],
+    ["e2e-schedule-004", "Overflow schedule item four", 4],
+  ]
+  const upsertOverflowScheduleItem = db.prepare(`
+    INSERT INTO schedule_tasks (
+      id, project_id, title, start_date, workdays, end_date_calculated, phase,
+      display_color, status, is_critical_path, is_milestone, percent_complete,
+      assigned_to, sort_order, created_at, updated_at
+    ) VALUES (
+      ?, 'e2e-project-001', ?, ?, 1, ?, 'Preconstruction', 'blue',
+      'PENDING', 0, 0, 0, 'Demo User', ?, ?, ?
+    )
+    ON CONFLICT(id) DO UPDATE SET
+      title = excluded.title,
+      start_date = excluded.start_date,
+      end_date_calculated = excluded.end_date_calculated,
+      status = excluded.status,
+      updated_at = excluded.updated_at
+  `)
+  for (const [id, title, sortOrder] of overflowScheduleItems) {
+    upsertOverflowScheduleItem.run(
+      id,
+      title,
+      today,
+      today,
+      sortOrder,
+      now,
+      now
+    )
+  }
+
   db.prepare(`
     INSERT INTO daily_logs (
       id, project_id, author_id, source_system, log_date, weather_source,

@@ -32,10 +32,10 @@ export function PreferencesTab() {
       ownerUpdateEnabled: true,
       scheduleEnabled: true,
       poEnabled: true,
+      timeZone: "America/Denver",
     })
   const [saving, setSaving] = React.useState(false)
   const [message, setMessage] = React.useState<string | null>(null)
-  const [timezone, setTimezone] = React.useState("America/New_York")
   const native = useNative()
   const biometric = useBiometricAuth()
 
@@ -67,7 +67,7 @@ export function PreferencesTab() {
     setSaving(false)
     setMessage(
       result.success
-        ? "Notification preferences saved."
+        ? "Preferences saved."
         : result.error
     )
   }
@@ -81,7 +81,10 @@ export function PreferencesTab() {
             <Label htmlFor="timezone" className="text-xs">
               Timezone
             </Label>
-            <Select value={timezone} onValueChange={setTimezone}>
+            <Select
+              value={preferences.timeZone}
+              onValueChange={(value) => updatePreference("timeZone", value)}
+            >
               <SelectTrigger id="timezone" className="h-9 w-full max-w-xs">
                 <SelectValue />
               </SelectTrigger>
@@ -238,7 +241,7 @@ export function PreferencesTab() {
           )}
           <div className="flex flex-wrap items-center gap-3">
             <Button size="sm" onClick={savePreferences} disabled={saving}>
-              {saving ? "Saving..." : "Save notification preferences"}
+              {saving ? "Saving..." : "Save preferences"}
             </Button>
             {message && (
               <p className="text-xs text-muted-foreground">{message}</p>
