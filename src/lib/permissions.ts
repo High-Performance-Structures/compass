@@ -129,6 +129,21 @@ export function canUseFieldDesk(user: AuthUser | null): boolean {
   )
 }
 
+/**
+ * Meetings are organization-wide coordination records. Keep their mutation
+ * surface narrower than schedule.update, which field staff use for progress
+ * updates on assigned schedule work.
+ */
+export function canManageWorkCalendarEvents(
+  user: AuthUser | null
+): boolean {
+  if (!user || !user.isActive) return false
+  return (
+    (user.role === "admin" || user.role === "office") &&
+    can(user, "schedule", "update")
+  )
+}
+
 export function requirePermission(
   user: AuthUser | null,
   resource: Resource,

@@ -24,6 +24,7 @@ import { workCalendarEntryMatches } from "@/lib/work-calendar"
 import { WorkCalendarEventDialog } from "./work-calendar-event-dialog"
 
 export type WorkCalendarKindFilter = WorkCalendarEntryKind | "all"
+type CalendarEventEntry = Extract<WorkCalendarEntry, { kind: "event" }>
 
 type KindConfig = {
   readonly id: WorkCalendarKindFilter
@@ -75,7 +76,10 @@ function addDays(date: Date, days: number): Date {
 }
 
 function toDateKey(date: Date): string {
-  return date.toISOString().slice(0, 10)
+  const year = date.getFullYear()
+  const month = `${date.getMonth() + 1}`.padStart(2, "0")
+  const day = `${date.getDate()}`.padStart(2, "0")
+  return `${year}-${month}-${day}`
 }
 
 function formatShortDate(date: string): string {
@@ -121,6 +125,21 @@ function kindTone(kind: WorkCalendarEntryKind): string {
   }
 }
 
+function compactKindTone(kind: WorkCalendarEntryKind): string {
+  switch (kind) {
+    case "schedule":
+      return "border-l-[#2f5963]"
+    case "event":
+      return "border-l-[#5f4b8b]"
+    case "task":
+      return "border-l-[#3f7d4d]"
+    case "rfi":
+      return "border-l-[#9d832c]"
+    case "purchase_order":
+      return "border-l-[#6f471f]"
+  }
+}
+
 function entryOnDay(entry: WorkCalendarEntry, date: string): boolean {
   return entry.startDate <= date && entry.endDate >= date
 }
@@ -129,21 +148,23 @@ function WorkItem({
   entry,
   compact = false,
   focused = false,
+  onEditEvent,
+  canManageEvents,
 }: {
   readonly entry: WorkCalendarEntry
   readonly compact?: boolean
   readonly focused?: boolean
+  readonly onEditEvent: (event: CalendarEventEntry) => void
+  readonly canManageEvents: boolean
 }): React.ReactElement {
-  return (
-    <Link
-      id={compact ? undefined : `work-calendar-${entry.id}`}
-      href={entry.href}
-      className={cn(
-        "block rounded-lg border bg-background p-3 transition-all duration-200 hover:-translate-y-0.5 hover:bg-muted/60 hover:shadow-md",
-        compact && "p-2",
-        focused && "border-primary bg-primary/5 ring-2 ring-primary/30"
-      )}
-    >
+  const className = cn(
+    "block w-full rounded-lg border bg-background p-3 text-left transition-all duration-200 hover:-translate-y-0.5 hover:bg-muted/60 hover:shadow-md",
+    compact && "border-l-4 p-2",
+    compact && compactKindTone(entry.kind),
+    focused && "border-primary bg-primary/5 ring-2 ring-primary/30"
+  )
+  const contents = (
+    <>
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
           <p className={cn("line-clamp-2 font-medium", compact ? "text-xs" : "text-sm")}>
@@ -153,12 +174,14 @@ function WorkItem({
             {entry.projectLabel} · {entry.sourceLabel}
           </p>
         </div>
-        <Badge
-          variant="outline"
-          className={cn("shrink-0 border", kindTone(entry.kind))}
-        >
-          {kindLabel(entry.kind)}
-        </Badge>
+        {!compact && (
+          <Badge
+            variant="outline"
+            className={cn("shrink-0 border", kindTone(entry.kind))}
+          >
+            {kindLabel(entry.kind)}
+          </Badge>
+        )}
       </div>
       {!compact && (
         <div className="mt-3 flex flex-wrap gap-1.5 text-xs text-muted-foreground">
@@ -170,6 +193,22 @@ function WorkItem({
           </span>
           <span>·</span>
           <span>{entry.status}</span>
+          {entry.kind === "event" && (
+            <>
+              <span>·</span>
+              <span>
+                {entry.eventDetails.allDay
+                  ? "All day"
+                  : `${entry.eventDetails.startTime}–${entry.eventDetails.endTime}`}
+              </span>
+            </>
+          )}
+          {entry.kind === "event" && entry.eventDetails.location && (
+            <>
+              <span>·</span>
+              <span className="truncate">{entry.eventDetails.location}</span>
+            </>
+          )}
           {(entry.assignedTo || entry.companyName) && (
             <>
               <span>·</span>
@@ -178,6 +217,34 @@ function WorkItem({
           )}
         </div>
       )}
+    </>
+  )
+
+  if (
+    entry.kind === "event" &&
+    entry.eventDetails.managed &&
+    canManageEvents
+  ) {
+    return (
+      <button
+        id={compact ? undefined : `work-calendar-${entry.id}`}
+        type="button"
+        className={className}
+        onClick={() => onEditEvent(entry)}
+        aria-label={`Edit calendar event ${entry.title}`}
+      >
+        {contents}
+      </button>
+    )
+  }
+
+  return (
+    <Link
+      id={compact ? undefined : `work-calendar-${entry.id}`}
+      href={entry.href}
+      className={className}
+    >
+      {contents}
     </Link>
   )
 }
@@ -192,6 +259,8 @@ export function WorkCalendar({
   readonly initialItemId?: string | null
 }): React.ReactElement {
   const [query, setQuery] = React.useState("")
+  const [editingEvent, setEditingEvent] =
+    React.useState<CalendarEventEntry | null>(null)
   const [activeKind, setActiveKind] =
     React.useState<WorkCalendarKindFilter>(initialKind)
   React.useEffect(() => {
@@ -282,8 +351,11 @@ export function WorkCalendar({
           <div className="flex flex-wrap gap-2">
             {data.canCreateEvents && (
               <WorkCalendarEventDialog
+                variant="create"
                 projects={data.projects}
+                attendeeOptions={data.attendeeOptions}
                 defaultProjectId={data.defaultProjectId}
+                defaultTimeZone={data.defaultTimeZone}
                 today={data.today}
               />
             )}
@@ -333,7 +405,13 @@ export function WorkCalendar({
                   </div>
                   <div className="mt-2 space-y-2">
                     {dayEntries.slice(0, 3).map((entry) => (
-                      <WorkItem key={`${day}-${entry.kind}-${entry.id}`} entry={entry} compact />
+                      <WorkItem
+                        key={`${day}-${entry.kind}-${entry.id}`}
+                        entry={entry}
+                        compact
+                        onEditEvent={setEditingEvent}
+                        canManageEvents={data.canManageEvents}
+                      />
                     ))}
                     {dayEntries.length > 3 && (
                       <p className="px-1 text-xs text-muted-foreground">
@@ -360,6 +438,8 @@ export function WorkCalendar({
                     key={`${entry.kind}-${entry.id}`}
                     entry={entry}
                     focused={entry.id === initialItemId}
+                    onEditEvent={setEditingEvent}
+                    canManageEvents={data.canManageEvents}
                   />
                 ))
               ) : (
@@ -401,6 +481,22 @@ export function WorkCalendar({
           </aside>
         </section>
       </div>
+      {editingEvent && data.canManageEvents && (
+        <WorkCalendarEventDialog
+          key={`${editingEvent.id}-${editingEvent.eventDetails.version}`}
+          variant="edit"
+          event={editingEvent}
+          open
+          onOpenChange={(open) => {
+            if (!open) setEditingEvent(null)
+          }}
+          projects={data.projects}
+          attendeeOptions={data.attendeeOptions}
+          defaultProjectId={data.defaultProjectId}
+          defaultTimeZone={data.defaultTimeZone}
+          today={data.today}
+        />
+      )}
     </div>
   )
 }

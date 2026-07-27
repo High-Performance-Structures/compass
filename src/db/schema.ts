@@ -1,8 +1,10 @@
 import {
+  index,
   sqliteTable,
   text,
   integer,
   real,
+  uniqueIndex,
 } from "drizzle-orm/sqlite-core"
 
 // Auth and user management tables
@@ -395,6 +397,97 @@ export const projectOperations = sqliteTable("project_operations", {
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
 })
+
+export const organizationCalendarSettings = sqliteTable(
+  "organization_calendar_settings",
+  {
+    organizationId: text("organization_id")
+      .primaryKey()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    defaultProjectId: text("default_project_id").references(
+      () => projects.id,
+      { onDelete: "set null" },
+    ),
+    timeZone: text("time_zone").notNull().default("America/Denver"),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+)
+
+export const workCalendarEvents = sqliteTable(
+  "work_calendar_events",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    projectId: text("project_id").references(() => projects.id, {
+      onDelete: "set null",
+    }),
+    title: text("title").notNull(),
+    description: text("description"),
+    startDate: text("start_date"),
+    endDateExclusive: text("end_date_exclusive"),
+    startsAt: text("starts_at"),
+    endsAt: text("ends_at"),
+    allDay: integer("all_day", { mode: "boolean" })
+      .notNull()
+      .default(false),
+    timeZone: text("time_zone").notNull().default("UTC"),
+    location: text("location"),
+    status: text("status").notNull().default("open"),
+    version: integer("version").notNull().default(1),
+    createdBy: text("created_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    updatedBy: text("updated_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    cancelledBy: text("cancelled_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    cancelledAt: text("cancelled_at"),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => [
+    index("idx_work_calendar_events_org_start").on(
+      table.organizationId,
+      table.status,
+      table.startDate,
+      table.startsAt,
+    ),
+    index("idx_work_calendar_events_project_start").on(
+      table.projectId,
+      table.status,
+      table.startDate,
+      table.startsAt,
+    ),
+  ],
+)
+
+export const workCalendarEventAttendees = sqliteTable(
+  "work_calendar_event_attendees",
+  {
+    id: text("id").primaryKey(),
+    eventId: text("event_id")
+      .notNull()
+      .references(() => workCalendarEvents.id, { onDelete: "cascade" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    responseStatus: text("response_status").notNull().default("needs_action"),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("work_calendar_event_attendee_unique").on(
+      table.eventId,
+      table.userId,
+    ),
+    index("idx_work_calendar_event_attendees_user").on(table.userId),
+  ],
+)
 
 export const projectPurchaseOrderLines = sqliteTable("project_purchase_order_lines", {
   id: text("id").primaryKey(),
@@ -816,6 +909,16 @@ export type OwnerProjectUpdate = typeof ownerProjectUpdates.$inferSelect
 export type NewOwnerProjectUpdate = typeof ownerProjectUpdates.$inferInsert
 export type ProjectOperation = typeof projectOperations.$inferSelect
 export type NewProjectOperation = typeof projectOperations.$inferInsert
+export type WorkCalendarEvent = typeof workCalendarEvents.$inferSelect
+export type NewWorkCalendarEvent = typeof workCalendarEvents.$inferInsert
+export type OrganizationCalendarSettings =
+  typeof organizationCalendarSettings.$inferSelect
+export type NewOrganizationCalendarSettings =
+  typeof organizationCalendarSettings.$inferInsert
+export type WorkCalendarEventAttendee =
+  typeof workCalendarEventAttendees.$inferSelect
+export type NewWorkCalendarEventAttendee =
+  typeof workCalendarEventAttendees.$inferInsert
 export type ProjectPurchaseOrderLine =
   typeof projectPurchaseOrderLines.$inferSelect
 export type NewProjectPurchaseOrderLine =
