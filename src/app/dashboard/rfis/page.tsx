@@ -21,7 +21,7 @@ export default async function RfiProjectPickerPage() {
         </p>
       </div>
 
-      <section className="clarity-panel border-l-[6px] border-l-[#9d832c] p-4">
+      <section className="clarity-panel border-l-[6px] border-l-brand-nutech-gold p-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <p className="text-sm font-semibold">Project required first</p>
@@ -49,7 +49,7 @@ export default async function RfiProjectPickerPage() {
         </div>
 
         {projects.length > 0 ? (
-          <div className="max-w-xl rounded-xl border bg-background p-4 shadow-sm">
+          <div className="max-w-xl rounded-lg border bg-background p-4 shadow-sm">
             <ProjectQuickSwitcher
               projects={projects}
               targetSection="rfis"

@@ -23,7 +23,7 @@ const getStatusBadge = (status: SandboxState) => {
   }
 
   return (
-    <Badge className="gap-1.5 rounded-full text-xs" variant="secondary">
+    <Badge className="gap-1.5 rounded-md text-xs" variant="secondary">
       {icons[status]}
       {labels[status]}
     </Badge>

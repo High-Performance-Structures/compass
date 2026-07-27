@@ -15,14 +15,14 @@ import { useFiles } from "@/hooks/use-files"
 import { cn } from "@/lib/utils"
 
 const fileTypeColors: Record<string, string> = {
-  document: "border border-[#2f5963] bg-card text-[#2f5963]",
-  spreadsheet: "border border-[#3f7d4d] bg-card text-[#3f7d4d]",
-  image: "border border-[#6f471f] bg-card text-[#6f471f]",
-  video: "border border-[#8a3a2e] bg-card text-[#8a3a2e]",
-  pdf: "border border-[#8a3a2e] bg-card text-[#8a3a2e]",
-  code: "border border-[#3f7d4d] bg-card text-[#3f7d4d]",
-  archive: "border border-[#9d832c] bg-card text-[#715d1c]",
-  audio: "border border-[#585149] bg-card text-[#585149]",
+  document: "border border-brand-compass-blue bg-card text-brand-compass-blue",
+  spreadsheet: "border border-brand-hps-primary bg-card text-brand-hps-primary",
+  image: "border border-brand-orc-brown bg-card text-brand-orc-brown",
+  video: "border border-brand-compass-red bg-card text-brand-compass-red",
+  pdf: "border border-brand-compass-red bg-card text-brand-compass-red",
+  code: "border border-brand-hps-primary bg-card text-brand-hps-primary",
+  archive: "border border-brand-nutech-gold bg-card text-brand-nutech-gold-foreground",
+  audio: "border border-muted-foreground bg-card text-muted-foreground",
   unknown: "border bg-card text-muted-foreground",
 }
 
@@ -69,7 +69,7 @@ export const FolderCard = forwardRef<
     <div
       ref={ref}
       className={cn(
-        "group flex items-center gap-3 rounded-xl border bg-card px-3 py-3 cursor-pointer min-h-[60px]",
+        "group flex items-center gap-3 rounded-lg border bg-card px-3 py-3 cursor-pointer min-h-[60px]",
         "hover:shadow-sm hover:border-border/80 transition-all",
         selected && "border-primary ring-2 ring-primary/20"
       )}
@@ -150,7 +150,7 @@ export const FileCard = forwardRef<
     <div
       ref={ref}
       className={cn(
-        "group relative flex flex-col rounded-xl border bg-card overflow-hidden cursor-pointer",
+        "group relative flex flex-col rounded-lg border bg-card overflow-hidden cursor-pointer",
         "hover:shadow-sm hover:border-border/80 transition-all",
         selected && "border-primary ring-2 ring-primary/20"
       )}

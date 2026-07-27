@@ -89,7 +89,7 @@ function PurchaseOrderCard({
       data-po-id={order.id}
       className={cn(
         "po-printable rounded-lg border bg-background p-4 print:border-0 print:p-0",
-        isCreated && "border-[#3f7d4d] bg-card"
+        isCreated && "border-brand-hps-primary bg-card"
       )}
     >
       <div className="print:hidden">

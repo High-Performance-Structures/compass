@@ -26,7 +26,7 @@ export function UploadQueueIndicator({
       type="button"
       onClick={status === "error" ? onRetry : undefined}
       className={cn(
-        "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium transition-colors",
+        "inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-colors",
         status === "error"
           ? "bg-destructive/10 text-destructive hover:bg-destructive/20"
           : status === "uploading"

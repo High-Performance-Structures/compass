@@ -38,7 +38,7 @@ function NavItem({
       <div
         className={cn(
           "flex h-7 w-14 items-center justify-center",
-          "rounded-full transition-colors duration-200",
+          "rounded-md transition-colors duration-200",
           isActive ? "bg-primary/12" : "bg-transparent"
         )}
       >

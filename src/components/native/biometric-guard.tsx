@@ -147,7 +147,7 @@ export function BiometricGuard({
       {/* opt-in prompt */}
       {showPrompt && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50">
-          <div className="mx-4 flex max-w-sm flex-col gap-4 rounded-2xl bg-background p-6 shadow-2xl">
+          <div className="mx-4 flex max-w-sm flex-col gap-4 rounded-lg bg-background p-6 shadow-2xl">
             <div className="flex flex-col items-center gap-2 text-center">
               <Fingerprint className="h-12 w-12 text-primary" />
               <h3 className="text-lg font-semibold">

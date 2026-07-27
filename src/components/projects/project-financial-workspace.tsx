@@ -235,7 +235,7 @@ export function ProjectFinancialWorkspace({
           <FinancialFormPanel
             title="Enter Vendor Bill"
             description="Stage a project bill for Sage review."
-            accentClassName="border-l-[#2f5963]"
+            accentClassName="border-l-brand-compass-blue"
             icon={<IconReceipt className="size-5" />}
             actionLabel="Stage Bill"
             isPending={isPending}
@@ -278,7 +278,7 @@ export function ProjectFinancialWorkspace({
           <FinancialFormPanel
             title="Owner Pay Application"
             description="Stage an AIA-style draw request."
-            accentClassName="border-l-[#3f7d4d]"
+            accentClassName="border-l-brand-hps-primary"
             icon={<IconFileDollar className="size-5" />}
             actionLabel="Stage Pay App"
             isPending={isPending}
@@ -309,7 +309,7 @@ export function ProjectFinancialWorkspace({
           id="rfq"
           title="Request for Quote"
           description="Draft scope by vendor category."
-          accentClassName="border-l-[#9d832c]"
+          accentClassName="border-l-brand-nutech-gold"
           icon={<IconShoppingCartQuestion className="size-5" />}
           actionLabel="Create RFQ"
           isPending={isPending}

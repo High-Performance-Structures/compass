@@ -31,7 +31,7 @@
 .gantt-container .side-header *:hover{filter:brightness(97.5%)}
 .gantt-container .side-header select{width:60px;padding-top:2px;padding-bottom:2px}
 .gantt-container .side-header select:focus{outline:none}
-.gantt-container .date-range-highlight{background-color:var(--g-progress-color);border-radius:12px;height:calc(var(--gv-lower-header-height) - 6px);top:calc(var(--gv-upper-header-height) + 5px);position:absolute}
+.gantt-container .date-range-highlight{background-color:var(--g-progress-color);border-radius:var(--radius);height:calc(var(--gv-lower-header-height) - 6px);top:calc(var(--gv-upper-header-height) + 5px);position:absolute}
 .gantt-container .current-highlight{position:absolute;background:var(--g-today-highlight);width:1px;z-index:999}
 .gantt-container .current-ball-highlight{position:absolute;background:var(--g-today-highlight);z-index:1001;border-radius:50%}
 .gantt-container .current-date-highlight{background:var(--g-today-highlight);color:var(--g-text-light);border-radius:5px}

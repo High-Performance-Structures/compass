@@ -89,7 +89,7 @@ export function ScheduleMobileView({
           <button
             key={month}
             className={cn(
-              "shrink-0 rounded-full px-4 py-1.5 text-sm font-medium transition-colors",
+              "shrink-0 rounded-md px-4 py-1.5 text-sm font-medium transition-colors",
               i === currentMonth
                 ? "bg-primary text-primary-foreground"
                 : "bg-muted text-muted-foreground active:bg-muted/80"

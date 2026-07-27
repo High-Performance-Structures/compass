@@ -511,7 +511,7 @@ export function ProjectTaskCreateButton({
           </div>
 
           {directoryAssignee && (
-            <div className="border-l-4 border-[#9d832c] bg-card px-3 py-2 text-sm text-foreground">
+            <div className="border-l-4 border-brand-nutech-gold bg-card px-3 py-2 text-sm text-foreground">
               <p className="font-medium">
                 {directoryAssignee.name} is in the directory, but not on this
                 project yet.
@@ -533,7 +533,7 @@ export function ProjectTaskCreateButton({
           )}
 
           {status.kind === "saved" && (
-            <p className="rounded-md border border-[#3f7d4d] bg-card px-3 py-2 text-sm text-[#3f7d4d]">
+            <p className="rounded-md border border-brand-hps-primary bg-card px-3 py-2 text-sm text-brand-hps-primary">
               {status.message}
             </p>
           )}

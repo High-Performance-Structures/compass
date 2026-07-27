@@ -102,7 +102,7 @@ function NotificationsList({
                   <div className="mt-0.5 flex items-center gap-2 text-xs text-muted-foreground">
                     <span>{relativeTime(item.createdAt)}</span>
                     {!item.readAt && (
-                      <span className="rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary">
+                      <span className="rounded-sm bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary">
                         New
                       </span>
                     )}

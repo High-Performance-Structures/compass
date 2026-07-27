@@ -99,7 +99,7 @@ export function OfflineStatusBar({ className }: OfflineBannerProps) {
       <WifiOff className="h-3 w-3" />
       <span>Offline</span>
       {pendingCount > 0 && (
-        <span className="ml-1 rounded-full bg-white/20 px-1.5">
+        <span className="ml-1 rounded-sm bg-white/20 px-1.5">
           {pendingCount}
         </span>
       )}

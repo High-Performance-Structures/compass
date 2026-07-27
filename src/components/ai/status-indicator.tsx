@@ -46,7 +46,7 @@ export function StatusIndicator({
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs text-muted-foreground transition-colors",
+        "inline-flex items-center gap-1.5 rounded-md px-3 py-1 text-xs text-muted-foreground transition-colors",
         "hover:bg-muted/80",
         className,
       )}
@@ -85,7 +85,7 @@ export function ThinkingIndicator({
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs text-muted-foreground transition-colors",
+        "inline-flex items-center gap-1.5 rounded-md px-3 py-1 text-xs text-muted-foreground transition-colors",
         "hover:bg-muted/80",
         className,
       )}
@@ -128,7 +128,7 @@ export function CollapsibleIndicator({
     <button
       type="button"
       className={cn(
-        "inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs text-muted-foreground transition-colors",
+        "inline-flex items-center gap-1.5 rounded-md px-3 py-1 text-xs text-muted-foreground transition-colors",
         "hover:bg-muted/80",
         className,
       )}

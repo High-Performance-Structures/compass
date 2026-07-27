@@ -264,41 +264,41 @@ function taskFallsOnDay(
 
 function signalClasses(tone: SignalTone): string {
   if (tone === "green") {
-    return "border-[#3f7d4d] bg-card text-foreground"
+    return "border-brand-hps-primary bg-card text-foreground"
   }
   if (tone === "amber") {
-    return "border-[#9d832c] bg-card text-foreground"
+    return "border-brand-nutech-gold bg-card text-foreground"
   }
   if (tone === "blue") {
-    return "border-[#2f5963] bg-card text-foreground"
+    return "border-brand-compass-blue bg-card text-foreground"
   }
   if (tone === "red") {
-    return "border-[#8a3a2e] bg-card text-foreground"
+    return "border-brand-compass-red bg-card text-foreground"
   }
   return "border-border bg-card text-foreground"
 }
 
 function signalHoverClasses(tone: SignalTone): string {
   if (tone === "green") {
-    return "hover:border-[#3f7d4d] hover:bg-muted hover:ring-2 hover:ring-[#3f7d4d]/25"
+    return "hover:border-brand-hps-primary hover:bg-muted hover:ring-2 hover:ring-brand-hps-primary/25"
   }
   if (tone === "amber") {
-    return "hover:border-[#9d832c] hover:bg-muted hover:ring-2 hover:ring-[#9d832c]/25"
+    return "hover:border-brand-nutech-gold hover:bg-muted hover:ring-2 hover:ring-brand-nutech-gold/25"
   }
   if (tone === "blue") {
-    return "hover:border-[#2f5963] hover:bg-muted hover:ring-2 hover:ring-[#2f5963]/25"
+    return "hover:border-brand-compass-blue hover:bg-muted hover:ring-2 hover:ring-brand-compass-blue/25"
   }
   if (tone === "red") {
-    return "hover:border-[#8a3a2e] hover:bg-muted hover:ring-2 hover:ring-[#8a3a2e]/25"
+    return "hover:border-brand-compass-red hover:bg-muted hover:ring-2 hover:ring-brand-compass-red/25"
   }
   return "hover:border-primary hover:bg-accent hover:ring-2 hover:ring-primary/25"
 }
 
 function signalAccentClasses(tone: SignalTone): string {
-  if (tone === "green") return "bg-[#3f7d4d]"
-  if (tone === "amber") return "bg-[#9d832c]"
-  if (tone === "blue") return "bg-[#2f5963]"
-  if (tone === "red") return "bg-[#8a3a2e]"
+  if (tone === "green") return "bg-brand-hps-primary"
+  if (tone === "amber") return "bg-brand-nutech-gold"
+  if (tone === "blue") return "bg-brand-compass-blue"
+  if (tone === "red") return "bg-brand-compass-red"
   return "bg-muted-foreground"
 }
 
@@ -981,7 +981,7 @@ function CherishPulse(): React.ReactElement {
                 <span
                   key={value}
                   className={cn(
-                    "rounded-full border px-2 py-0.5 text-[11px] font-medium",
+                    "rounded-sm border px-2 py-0.5 text-[11px] font-medium",
                     value === "Reliability"
                       ? "border-emerald-700 bg-emerald-700 text-white"
                       : "bg-muted/40 text-muted-foreground"
@@ -1128,7 +1128,7 @@ function CherishPulse(): React.ReactElement {
                   key={response.id}
                   className={cn(
                     "rounded-md border p-2.5",
-                    response.visibility === "private" && "border-[#9d832c] bg-card"
+                    response.visibility === "private" && "border-brand-nutech-gold bg-card"
                   )}
                 >
                   <div className="flex items-center justify-between gap-2">
@@ -1258,14 +1258,14 @@ function CompassNodeCard({
         <span
           className={cn(
             "rounded-md border bg-card p-2 text-muted-foreground transition-colors group-hover:text-foreground",
-            node.tone === "project" && "border-[#6f471f] text-[#6f471f]",
-            node.tone === "schedule" && "border-[#2f5963] text-[#2f5963]",
-            node.tone === "field" && "border-[#9d832c] text-[#715d1c]",
-            node.tone === "decision" && "border-[#8a3a2e] text-[#8a3a2e]",
-            node.tone === "money" && "border-[#3f7d4d] text-[#3f7d4d]",
-            node.tone === "files" && "border-[#585149] text-[#585149]",
-            node.tone === "talk" && "border-[#2f5963] text-[#2f5963]",
-            node.tone === "automation" && "border-[#6f471f] text-[#6f471f]"
+            node.tone === "project" && "border-brand-orc-brown text-brand-orc-brown",
+            node.tone === "schedule" && "border-brand-compass-blue text-brand-compass-blue",
+            node.tone === "field" && "border-brand-nutech-gold text-brand-nutech-gold-foreground",
+            node.tone === "decision" && "border-brand-compass-red text-brand-compass-red",
+            node.tone === "money" && "border-brand-hps-primary text-brand-hps-primary",
+            node.tone === "files" && "border-muted-foreground text-muted-foreground",
+            node.tone === "talk" && "border-brand-compass-blue text-brand-compass-blue",
+            node.tone === "automation" && "border-brand-orc-brown text-brand-orc-brown"
           )}
         >
           {node.icon}
@@ -1427,9 +1427,9 @@ function CompassDashboard({
         <div className="pointer-events-none absolute left-1/2 top-1/2 h-px w-[45rem] -translate-x-1/2 bg-border/70" />
         <div className="pointer-events-none absolute left-1/2 top-1/2 h-[29rem] w-px -translate-y-1/2 bg-border/70" />
 
-        <div className="absolute left-1/2 top-1/2 flex size-56 -translate-x-1/2 -translate-y-1/2 flex-col items-center justify-center rounded-full border bg-card p-6 text-center shadow-sm">
+        <div className="absolute left-1/2 top-1/2 flex size-56 -translate-x-1/2 -translate-y-1/2 flex-col items-center justify-center rounded-lg border bg-card p-6 text-center shadow-sm">
           <IconTargetArrow className="pointer-events-none absolute size-40 text-muted-foreground/[0.06]" stroke={1.25} />
-          <span className="rounded-full border bg-background p-3 text-primary">
+          <span className="rounded-md border bg-background p-3 text-primary">
             <IconTargetArrow className="size-7" />
           </span>
           <h2 className="mt-3 text-xl font-semibold">Compass</h2>
@@ -1658,9 +1658,9 @@ export function OperationalDashboard({
           </CardHeader>
           <CardContent className="space-y-4">
             {(overview.openRfis.length > 0 || overview.operations.length > 0) && (
-              <div className="grid gap-2 rounded-md border border-[#9d832c] bg-card px-3 py-2 lg:grid-cols-[auto_minmax(0,1fr)] lg:items-center">
+              <div className="grid gap-2 rounded-md border border-brand-nutech-gold bg-card px-3 py-2 lg:grid-cols-[auto_minmax(0,1fr)] lg:items-center">
                 <div className="flex min-w-0 items-center gap-2 text-sm font-semibold">
-                  <IconAlertCircle className="size-4 shrink-0 text-[#715d1c]" />
+                  <IconAlertCircle className="size-4 shrink-0 text-brand-nutech-gold-foreground" />
                   <span className="truncate">Critical Attention</span>
                   <Badge variant="outline">
                     {overview.openRfis.length + overview.operations.length}
@@ -1732,7 +1732,7 @@ export function OperationalDashboard({
                         <Link
                           key={`${day}-${task.id}`}
                           href={`/dashboard/projects/${task.projectId}/schedule`}
-                          className="block rounded-md border border-[#2f5963] bg-card p-2 text-xs transition-colors hover:bg-muted"
+                          className="block rounded-md border border-brand-compass-blue bg-card p-2 text-xs transition-colors hover:bg-muted"
                         >
                           <span className="line-clamp-2 font-medium">
                             {task.title}

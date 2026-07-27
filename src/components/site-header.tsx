@@ -60,7 +60,7 @@ export function SiteHeader({
     <header className="sticky top-0 z-40 flex shrink-0 items-center border-b border-border/40 bg-background/80 backdrop-blur-sm">
       {/* mobile header: single unified pill */}
       <div className="flex h-14 w-full items-center px-3 md:hidden">
-        <div className="flex h-11 w-full items-center gap-2 rounded-full bg-muted/50 px-2.5">
+        <div className="flex h-11 w-full items-center gap-2 rounded-lg bg-muted/50 px-2.5">
           <button
             type="button"
             className="flex size-10 shrink-0 items-center justify-center rounded-full -ml-0.5 hover:bg-background/60"
@@ -73,7 +73,7 @@ export function SiteHeader({
           </button>
           <button
             type="button"
-            className="flex h-9 flex-1 items-center gap-2 rounded-full px-2 hover:bg-background/60"
+            className="flex h-9 flex-1 items-center gap-2 rounded-md px-2 hover:bg-background/60"
             onClick={openCommand}
             aria-label={
               canUseAskCompass
@@ -165,7 +165,7 @@ export function SiteHeader({
                 ? "Ask Jarvis or search Compass..."
                 : "Search Compass..."
             }
-            className="flex h-8 w-full items-center rounded-full border border-border/50 bg-muted/30 pl-9 pr-16 text-sm outline-none transition-colors placeholder:text-muted-foreground/60 hover:bg-muted/50 focus:bg-muted/50 focus:border-border"
+            className="flex h-8 w-full items-center rounded-md border border-border/50 bg-muted/30 pl-9 pr-16 text-sm outline-none transition-colors placeholder:text-muted-foreground/60 hover:bg-muted/50 focus:bg-muted/50 focus:border-border"
           />
           <kbd
             className="text-muted-foreground/50 pointer-events-none absolute top-1/2 right-3 -translate-y-1/2 hidden sm:inline-flex h-5 items-center gap-0.5 rounded-md border border-border/40 bg-background/50 px-1.5 font-mono text-[10px]"

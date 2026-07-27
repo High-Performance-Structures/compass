@@ -49,7 +49,7 @@ export function AgentTab(): React.ReactElement {
               aria-checked={isActive}
               onClick={() => setActiveSubTab(tab.value)}
               className={cn(
-                "flex items-center gap-1.5 rounded-full px-3 py-1.5",
+                "flex items-center gap-1.5 rounded-md px-3 py-1.5",
                 "text-xs font-medium transition-all",
                 isActive
                   ? "bg-primary/10 text-primary ring-1 ring-primary/20"

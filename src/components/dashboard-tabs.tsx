@@ -40,7 +40,7 @@ export function DashboardTabs({
             <span className="flex items-center gap-2">
               {tab.label}
               {tab.count !== undefined && (
-                <span className="rounded-full bg-muted px-1.5 py-0.5 text-xs tabular-nums">
+                <span className="rounded-sm bg-muted px-1.5 py-0.5 text-xs tabular-nums">
                   {tab.count}
                 </span>
               )}

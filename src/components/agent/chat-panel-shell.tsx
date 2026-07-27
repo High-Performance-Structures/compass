@@ -121,7 +121,7 @@ export function ChatPanelShell() {
             "fixed inset-0 z-50",
             "md:relative md:inset-auto md:z-auto",
             "md:shrink-0 md:overflow-hidden",
-            "md:rounded-xl md:border md:border-border md:shadow-lg md:my-2 md:mr-2",
+            "md:rounded-lg md:border md:border-border md:shadow-lg md:my-2 md:mr-2",
             isResizing && "transition-none",
             isOpen
               ? "translate-x-0 md:opacity-100"
