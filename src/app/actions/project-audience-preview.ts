@@ -8,6 +8,7 @@ import {
   dailyLogs,
   ownerProjectUpdates,
   projectContacts,
+  projectMembers,
   projectOperations,
   projectRfis,
   projects,
@@ -16,10 +17,15 @@ import {
 import { channels } from "@/db/schema-conversations"
 import { requireAuth } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
-import { requireOrg } from "@/lib/org-scope"
 import { requirePermission } from "@/lib/permissions"
+import { assertProjectAccess } from "@/lib/project-access"
+import {
+  canUseProjectAudience,
+  type ProjectAudience,
+} from "@/lib/project-audience-access"
+import { isInternalStaffRole } from "@/lib/user-roles"
 
-export type ProjectAudience = "owner" | "sub_vendor"
+export type { ProjectAudience } from "@/lib/project-audience-access"
 
 export type AudiencePhoto = {
   readonly id: string
@@ -132,29 +138,39 @@ export type ProjectAudiencePreview = {
 }
 
 async function verifyProjectAccess(
-  projectId: string
+  projectId: string,
+  audience: ProjectAudience
 ): Promise<{
   readonly db: ReturnType<typeof getDb>
   readonly organizationId: string
 }> {
   const user = await requireAuth()
   requirePermission(user, "project", "read")
-  const orgId = requireOrg(user)
 
   const { env } = await getCloudflareContext()
   const db = getDb(env.DB)
 
-  const existing = await db
-    .select({ id: projects.id })
-    .from(projects)
-    .where(and(eq(projects.id, projectId), eq(projects.organizationId, orgId)))
-    .limit(1)
-
-  if (!existing[0]) {
-    throw new Error("Project not found")
+  const project = await assertProjectAccess(db, user, projectId)
+  if (!project.organizationId) {
+    throw new Error("Project organization is missing")
+  }
+  if (!isInternalStaffRole(user.role)) {
+    const membership = await db
+      .select({ role: projectMembers.role })
+      .from(projectMembers)
+      .where(
+        and(
+          eq(projectMembers.projectId, projectId),
+          eq(projectMembers.userId, user.id)
+        )
+      )
+      .get()
+    if (!canUseProjectAudience(membership?.role ?? null, audience)) {
+      throw new Error("Project not found")
+    }
   }
 
-  return { db, organizationId: orgId }
+  return { db, organizationId: project.organizationId }
 }
 
 function isActiveStatus(value: string): boolean {
@@ -196,7 +212,10 @@ export async function getProjectAudiencePreview(
   projectId: string,
   audience: ProjectAudience
 ): Promise<ProjectAudiencePreview> {
-  const { db, organizationId } = await verifyProjectAccess(projectId)
+  const { db, organizationId } = await verifyProjectAccess(
+    projectId,
+    audience
+  )
   const today = new Date().toISOString().slice(0, 10)
 
   const [project] = await db

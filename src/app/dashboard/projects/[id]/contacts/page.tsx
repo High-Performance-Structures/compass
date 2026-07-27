@@ -12,6 +12,7 @@ import {
   getProjectContactsSummary,
   type ProjectContactsSummary,
 } from "@/app/actions/project-contacts"
+import { getProjects } from "@/app/actions/projects"
 import {
   ProjectContactsDirectory,
   ProjectContactsPanel,
@@ -27,9 +28,20 @@ export default async function ProjectContactsPage({
   const { id } = await params
 
   let contacts: ProjectContactsSummary | null = null
+  let projectLabel = "This project"
 
   try {
-    contacts = await getProjectContactsSummary(id, "internal")
+    const [contactSummary, projectList] = await Promise.all([
+      getProjectContactsSummary(id, "internal"),
+      getProjects(),
+    ])
+    contacts = contactSummary
+    const project = projectList.find((item) => item.id === id)
+    if (project) {
+      projectLabel = project.projectNumber
+        ? `${project.projectNumber} - ${project.name}`
+        : project.name
+    }
   } catch (error) {
     console.warn("Project contacts unavailable", error)
   }
@@ -78,12 +90,19 @@ export default async function ProjectContactsPage({
       <div className="mb-6">
         <ProjectContactsPanel
           projectId={id}
+          projectLabel={projectLabel}
           summary={contacts}
           showOpenLink={false}
         />
       </div>
 
-      {contacts && <ProjectContactsDirectory summary={contacts} />}
+      {contacts && (
+        <ProjectContactsDirectory
+          projectId={id}
+          projectLabel={projectLabel}
+          summary={contacts}
+        />
+      )}
     </div>
   )
 }

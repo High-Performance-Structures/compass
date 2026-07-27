@@ -15,6 +15,8 @@ import type {
   ProjectContactItem,
   ProjectContactsSummary,
 } from "@/app/actions/project-contacts"
+import { ProjectContactInviteButton } from "@/components/projects/project-contact-invite-button"
+import { ProjectContactInviteLauncher } from "@/components/projects/project-contact-invite-launcher"
 import { Badge } from "@/components/ui/badge"
 
 type ProjectContactDisplayGroupId = "customers" | "vendors" | "internal"
@@ -86,9 +88,13 @@ function csiLabel(contact: ProjectContactItem): string | null {
 
 function ContactCard({
   contact,
+  projectId,
+  projectLabel,
   compact = false,
 }: {
   readonly contact: ProjectContactItem
+  readonly projectId: string
+  readonly projectLabel: string
   readonly compact?: boolean
 }): React.ReactElement {
   return (
@@ -135,16 +141,31 @@ function ContactCard({
           {contact.notes}
         </p>
       )}
+
+      {!compact && contact.email && (
+        <div className="mt-3 flex justify-end">
+          <ProjectContactInviteButton
+            projectId={projectId}
+            projectLabel={projectLabel}
+            contactId={contact.id}
+            contactName={contact.displayName}
+            contactEmail={contact.email}
+            contactType={contact.contactType}
+          />
+        </div>
+      )}
     </article>
   )
 }
 
 export function ProjectContactsPanel({
   projectId,
+  projectLabel = "This project",
   summary,
   showOpenLink = true,
 }: {
   readonly projectId: string
+  readonly projectLabel?: string
   readonly summary: ProjectContactsSummary | null
   readonly showOpenLink?: boolean
 }): React.ReactElement {
@@ -179,6 +200,13 @@ export function ProjectContactsPanel({
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          {!showOpenLink && (
+            <ProjectContactInviteLauncher
+              projectId={projectId}
+              projectLabel={projectLabel}
+              contacts={summary.allContacts}
+            />
+          )}
           <Badge variant="secondary">{summary.totalCount} contacts</Badge>
           <Badge variant="outline">
             {summary.matchedSourceCount} Sage/schedule links
@@ -250,7 +278,13 @@ export function ProjectContactsPanel({
       {previewContacts.length > 0 ? (
         <div className="mt-4 grid grid-cols-1 gap-3 lg:grid-cols-2">
           {previewContacts.map((contact) => (
-            <ContactCard key={contact.id} contact={contact} compact />
+            <ContactCard
+              key={contact.id}
+              contact={contact}
+              projectId={projectId}
+              projectLabel={projectLabel}
+              compact
+            />
           ))}
         </div>
       ) : (
@@ -271,8 +305,12 @@ export function ProjectContactsPanel({
 }
 
 export function ProjectContactsDirectory({
+  projectId,
+  projectLabel,
   summary,
 }: {
+  readonly projectId: string
+  readonly projectLabel: string
   readonly summary: ProjectContactsSummary
 }): React.ReactElement {
   const displayGroups = buildDisplayGroups(summary.allContacts)
@@ -291,7 +329,12 @@ export function ProjectContactsDirectory({
           {group.contacts.length > 0 ? (
             <div className="mt-4 grid gap-3 lg:grid-cols-2">
               {group.contacts.map((contact) => (
-                <ContactCard key={contact.id} contact={contact} />
+                <ContactCard
+                  key={contact.id}
+                  contact={contact}
+                  projectId={projectId}
+                  projectLabel={projectLabel}
+                />
               ))}
             </div>
           ) : (

@@ -9,6 +9,7 @@ import {
   dailyLogTaskLinks,
   ownerProjectUpdates,
   projectExternalLinks,
+  projectMembers,
   projectOperations,
   scheduleTasks,
   projects,
@@ -31,6 +32,8 @@ import {
 import { isOwnerUpdateVisibleToRole } from "@/lib/owner-updates/history"
 import { can } from "@/lib/permissions"
 import { requireFeaturePermission } from "@/lib/permission-enforcement"
+import { assertProjectAccess } from "@/lib/project-access"
+import { canUseProjectAudience } from "@/lib/project-audience-access"
 import { isInternalStaffRole } from "@/lib/user-roles"
 import { revalidatePath } from "next/cache"
 
@@ -475,6 +478,33 @@ async function verifyProjectAccess(
   }
 
   return db
+}
+
+async function verifyOwnerUpdateReadAccess(projectId: string): Promise<{
+  readonly db: ReturnType<typeof getDb>
+  readonly viewer: Awaited<ReturnType<typeof requireAuth>>
+}> {
+  const viewer = await requireAuth()
+  await requireFeaturePermission(viewer, "owner-updates", "read")
+  const { env } = await getCloudflareContext()
+  const db = getDb(env.DB)
+  await assertProjectAccess(db, viewer, projectId)
+  if (!isInternalStaffRole(viewer.role)) {
+    const membership = await db
+      .select({ role: projectMembers.role })
+      .from(projectMembers)
+      .where(
+        and(
+          eq(projectMembers.projectId, projectId),
+          eq(projectMembers.userId, viewer.id)
+        )
+      )
+      .get()
+    if (!canUseProjectAudience(membership?.role ?? null, "owner")) {
+      throw new Error("Project not found")
+    }
+  }
+  return { db, viewer }
 }
 
 async function verifyProjectMutationAccess(
@@ -1089,8 +1119,7 @@ export async function getProjectFieldSummary(
 export async function getProjectOwnerUpdates(
   projectId: string
 ): Promise<readonly ProjectOwnerUpdateListItem[]> {
-  const viewer = await requireAuth()
-  const db = await verifyProjectAccess(projectId, "owner-updates")
+  const { db, viewer } = await verifyOwnerUpdateReadAccess(projectId)
 
   const updateRows = await db
     .select({
@@ -1115,6 +1144,26 @@ export async function getProjectOwnerUpdates(
   return updateRows.filter((update) =>
     isOwnerUpdateVisibleToRole(update.status, viewer.role)
   )
+}
+
+export async function getOwnerUpdateProjectHeader(projectId: string): Promise<{
+  readonly id: string
+  readonly name: string
+  readonly projectNumber: string | null
+}> {
+  const { db } = await verifyOwnerUpdateReadAccess(projectId)
+  const project = await db
+    .select({
+      id: projects.id,
+      name: projects.name,
+      projectNumber: projects.projectNumber,
+    })
+    .from(projects)
+    .where(eq(projects.id, projectId))
+    .limit(1)
+    .get()
+  if (!project) throw new Error("Project not found")
+  return project
 }
 
 export async function getProjectDailyLogWorkspace(
@@ -1720,8 +1769,7 @@ export async function getOwnerProjectUpdateDocument(
   projectId: string,
   updateId: string
 ): Promise<OwnerProjectUpdateDocument> {
-  const viewer = await requireAuth()
-  const db = await verifyProjectAccess(projectId, "owner-updates")
+  const { db, viewer } = await verifyOwnerUpdateReadAccess(projectId)
 
   const [project] = await db
     .select({

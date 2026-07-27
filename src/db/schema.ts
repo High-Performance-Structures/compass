@@ -898,6 +898,46 @@ export const projectMembers = sqliteTable("project_members", {
   assignedAt: text("assigned_at").notNull(),
 })
 
+export const projectAccessInvitations = sqliteTable(
+  "project_access_invitations",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    projectContactId: text("project_contact_id").references(
+      () => projectContacts.id,
+      { onDelete: "set null" }
+    ),
+    email: text("email").notNull(),
+    role: text("role").notNull(),
+    status: text("status").notNull().default("sent"),
+    workosInvitationId: text("workos_invitation_id"),
+    workosExpiresAt: text("workos_expires_at"),
+    emailProvider: text("email_provider"),
+    emailProviderMessageId: text("email_provider_message_id"),
+    emailError: text("email_error"),
+    invitedBy: text("invited_by")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    invitedAt: text("invited_at").notNull(),
+    acceptedBy: text("accepted_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    acceptedAt: text("accepted_at"),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => [
+    index("idx_project_access_invites_project").on(table.projectId),
+    index("idx_project_access_invites_email").on(table.email),
+    index("idx_project_access_invites_status").on(table.status),
+  ]
+)
+
 export const scheduleTasks = sqliteTable("schedule_tasks", {
   id: text("id").primaryKey(),
   projectId: text("project_id")
@@ -1140,6 +1180,10 @@ export type GroupMember = typeof groupMembers.$inferSelect
 export type NewGroupMember = typeof groupMembers.$inferInsert
 export type ProjectMember = typeof projectMembers.$inferSelect
 export type NewProjectMember = typeof projectMembers.$inferInsert
+export type ProjectAccessInvitation =
+  typeof projectAccessInvitations.$inferSelect
+export type NewProjectAccessInvitation =
+  typeof projectAccessInvitations.$inferInsert
 
 // Agent memory tables for ElizaOS
 export const agentConversations = sqliteTable("agent_conversations", {

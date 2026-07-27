@@ -11,8 +11,9 @@ import {
 } from "@/db/schema"
 import { getCurrentUser } from "@/lib/auth"
 import { canManageProjectRegistry } from "@/lib/permissions"
+import { getProjectAccessRecord } from "@/lib/project-access"
 import { and, eq } from "drizzle-orm"
-import { notFound } from "next/navigation"
+import { notFound, redirect } from "next/navigation"
 import Link from "next/link"
 import { MobileProjectSwitcher } from "@/components/mobile-project-switcher"
 import {
@@ -141,6 +142,29 @@ export default async function ProjectSummaryPage({
     if (!env?.DB) throw new Error("D1 not available")
 
     const db = getDb(env.DB)
+    if (!currentUser || !(await getProjectAccessRecord(db, currentUser, id))) {
+      notFound()
+    }
+    const routeMembership = await db
+      .select({ role: projectMembers.role })
+      .from(projectMembers)
+      .where(
+        and(
+          eq(projectMembers.projectId, id),
+          eq(projectMembers.userId, currentUser.id),
+        ),
+      )
+      .get()
+    projectRole = routeMembership?.role ?? null
+    if (projectRole === "client" || projectRole === "owner") {
+      redirect(`/dashboard/projects/${id}/owner-updates`)
+    }
+    if (
+      projectRole === "subcontractor" ||
+      projectRole === "supplier"
+    ) {
+      redirect(`/dashboard/projects/${id}/preview/sub-vendor`)
+    }
 
     const [found] = await db
       .select()
@@ -180,19 +204,6 @@ export default async function ProjectSummaryPage({
       .from(scheduleTasks)
       .where(eq(scheduleTasks.projectId, id))
     if (currentUser) {
-      const membership = await db
-        .select({ role: projectMembers.role })
-        .from(projectMembers)
-        .where(
-          and(
-            eq(projectMembers.projectId, id),
-            eq(projectMembers.userId, currentUser.id),
-          ),
-        )
-        .get()
-
-      projectRole = membership?.role ?? null
-
       if (!projectRole) {
         const internalContacts = await db
           .select({
@@ -256,7 +267,13 @@ export default async function ProjectSummaryPage({
     operationsSummary = await getProjectOperationsSummary(id)
     rfiSummary = await getProjectRfiSummary(id)
   } catch (error) {
-    if (hasDigest(error) && error.digest === "NEXT_NOT_FOUND") throw error
+    if (
+      hasDigest(error) &&
+      (error.digest === "NEXT_NOT_FOUND" ||
+        error.digest.startsWith("NEXT_REDIRECT"))
+    ) {
+      throw error
+    }
     console.warn("D1 unavailable in dev mode, using empty data")
   }
 

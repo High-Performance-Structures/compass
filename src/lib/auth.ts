@@ -1,15 +1,24 @@
 import { withAuth, signOut } from "@workos-inc/authkit-nextjs"
 import { getCloudflareContext } from "@/lib/db"
 import { getDb } from "@/db"
-import { users, organizations, organizationMembers } from "@/db/schema"
+import {
+  users,
+  organizations,
+  organizationMembers,
+  projectAccessInvitations,
+  projectMembers,
+} from "@/db/schema"
 import type { User } from "@/db/schema"
-import { eq } from "drizzle-orm"
+import { and, desc, eq, sql } from "drizzle-orm"
 import { cookies } from "next/headers"
 import { DEMO_USER } from "@/lib/demo"
 import {
   isDevAuthFallbackAllowed,
   isWorkOSConfigured,
 } from "@/lib/auth-config"
+import {
+  isExternalProjectRole,
+} from "@/lib/user-roles"
 
 export type AuthUser = {
   readonly id: string
@@ -53,6 +62,155 @@ export function toSidebarUser(user: AuthUser): SidebarUser {
     firstName: user.firstName,
     lastName: user.lastName,
   }
+}
+
+function normalizedExternalProjectRole(role: string): string {
+  return role === "owner" ? "client" : role
+}
+
+async function setActiveOrgCookie(orgId: string): Promise<void> {
+  try {
+    const cookieStore = await cookies()
+    cookieStore.set("compass-active-org", orgId, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      path: "/",
+      maxAge: 60 * 60 * 24 * 365,
+    })
+  } catch {
+    // Cookies are not writable from every server-rendering context.
+  }
+}
+
+async function claimProjectAccessInvitations(
+  db: ReturnType<typeof getDb>,
+  userId: string,
+  email: string,
+  now: string
+): Promise<{ readonly organizationId: string; readonly role: string } | null> {
+  const normalizedEmail = email.trim().toLowerCase()
+  if (!normalizedEmail) return null
+
+  const invitations = await db
+    .select({
+      id: projectAccessInvitations.id,
+      organizationId: projectAccessInvitations.organizationId,
+      projectId: projectAccessInvitations.projectId,
+      role: projectAccessInvitations.role,
+      workosExpiresAt: projectAccessInvitations.workosExpiresAt,
+    })
+    .from(projectAccessInvitations)
+    .where(
+      and(
+        eq(projectAccessInvitations.status, "sent"),
+        sql`lower(trim(${projectAccessInvitations.email})) = ${normalizedEmail}`
+      )
+    )
+    .orderBy(desc(projectAccessInvitations.invitedAt))
+
+  let claimedInvitation: {
+    readonly organizationId: string
+    readonly role: string
+  } | null = null
+  for (const invitation of invitations) {
+    if (
+      invitation.workosExpiresAt &&
+      invitation.workosExpiresAt <= now
+    ) {
+      await db
+        .update(projectAccessInvitations)
+        .set({ status: "expired", updatedAt: now })
+        .where(eq(projectAccessInvitations.id, invitation.id))
+        .run()
+      continue
+    }
+
+    const organizationMembership = await db
+      .select({ role: organizationMembers.role })
+      .from(organizationMembers)
+      .where(
+        and(
+          eq(organizationMembers.userId, userId),
+          eq(
+            organizationMembers.organizationId,
+            invitation.organizationId
+          )
+        )
+      )
+      .get()
+    const preservedOrganizationRole =
+      organizationMembership &&
+      !isExternalProjectRole(organizationMembership.role)
+        ? organizationMembership.role
+        : null
+    const assignedRole = preservedOrganizationRole ?? invitation.role
+
+    if (
+      isExternalProjectRole(invitation.role) &&
+      !preservedOrganizationRole
+    ) {
+      await db
+        .delete(organizationMembers)
+        .where(
+          and(
+            eq(organizationMembers.userId, userId),
+            eq(
+              organizationMembers.organizationId,
+              invitation.organizationId
+            )
+          )
+        )
+        .run()
+    }
+
+    const projectMembership = await db
+      .select({ id: projectMembers.id })
+      .from(projectMembers)
+      .where(
+        and(
+          eq(projectMembers.projectId, invitation.projectId),
+          eq(projectMembers.userId, userId)
+        )
+      )
+      .get()
+
+    if (!projectMembership) {
+      await db
+        .insert(projectMembers)
+        .values({
+          id: crypto.randomUUID(),
+          projectId: invitation.projectId,
+          userId,
+          role: assignedRole,
+          assignedAt: now,
+        })
+        .run()
+    } else {
+      await db
+        .update(projectMembers)
+        .set({ role: assignedRole })
+        .where(eq(projectMembers.id, projectMembership.id))
+        .run()
+    }
+
+    await db
+      .update(projectAccessInvitations)
+      .set({
+        status: "accepted",
+        acceptedBy: userId,
+        acceptedAt: now,
+        updatedAt: now,
+      })
+      .where(eq(projectAccessInvitations.id, invitation.id))
+      .run()
+    claimedInvitation ??= {
+      organizationId: invitation.organizationId,
+      role: assignedRole,
+    }
+  }
+
+  return claimedInvitation
 }
 
 export async function getCurrentUser(): Promise<AuthUser | null> {
@@ -123,6 +281,44 @@ export async function getCurrentUser(): Promise<AuthUser | null> {
       .where(eq(users.id, workosUser.id))
       .get()
 
+    if (!dbUser) {
+      const emailMatch = await db
+        .select()
+        .from(users)
+        .where(
+          sql`lower(trim(${users.email})) = ${workosUser.email
+            .trim()
+            .toLowerCase()}`
+        )
+        .get()
+      const isPendingPlaceholder =
+        emailMatch !== undefined &&
+        !emailMatch.isActive &&
+        !emailMatch.id.startsWith("user_")
+      if (emailMatch && (emailMatch.isActive || isPendingPlaceholder)) {
+        await db
+          .update(users)
+          .set({
+            firstName: workosUser.firstName ?? emailMatch.firstName,
+            lastName: workosUser.lastName ?? emailMatch.lastName,
+            displayName:
+              workosUser.firstName && workosUser.lastName
+                ? `${workosUser.firstName} ${workosUser.lastName}`
+                : emailMatch.displayName,
+            avatarUrl: workosUser.profilePictureUrl ?? emailMatch.avatarUrl,
+            isActive: isPendingPlaceholder ? true : emailMatch.isActive,
+            updatedAt: new Date().toISOString(),
+          })
+          .where(eq(users.id, emailMatch.id))
+          .run()
+        dbUser = await db
+          .select()
+          .from(users)
+          .where(eq(users.id, emailMatch.id))
+          .get()
+      }
+    }
+
     // if user doesn't exist, create them with default role
     if (!dbUser) {
       dbUser = await ensureUserExists(workosUser)
@@ -130,10 +326,16 @@ export async function getCurrentUser(): Promise<AuthUser | null> {
 
     // update last login timestamp
     const now = new Date().toISOString()
+    await claimProjectAccessInvitations(
+      db,
+      dbUser.id,
+      dbUser.email,
+      now
+    )
     await db
       .update(users)
       .set({ lastLoginAt: now })
-      .where(eq(users.id, workosUser.id))
+      .where(eq(users.id, dbUser.id))
       .run()
 
     // query org memberships
@@ -170,6 +372,24 @@ export async function getCurrentUser(): Promise<AuthUser | null> {
       }
     }
 
+    const projectMembership = await db
+      .select({ role: projectMembers.role })
+      .from(projectMembers)
+      .where(eq(projectMembers.userId, dbUser.id))
+      .limit(1)
+      .get()
+    const hasInternalStaffOrganization = orgMemberships.some(
+      (membership) =>
+        membership.orgType === "internal" &&
+        !isExternalProjectRole(membership.memberRole)
+    )
+    const effectiveRole =
+      !hasInternalStaffOrganization &&
+      projectMembership &&
+      isExternalProjectRole(projectMembership.role)
+        ? normalizedExternalProjectRole(projectMembership.role)
+        : activeOrg?.memberRole ?? dbUser.role
+
     return {
       id: dbUser.id,
       email: dbUser.email,
@@ -177,7 +397,7 @@ export async function getCurrentUser(): Promise<AuthUser | null> {
       lastName: dbUser.lastName,
       displayName: dbUser.displayName,
       avatarUrl: dbUser.avatarUrl,
-      role: activeOrg?.memberRole ?? dbUser.role,
+      role: effectiveRole,
       googleEmail: dbUser.googleEmail ?? null,
       isActive: dbUser.isActive,
       lastLoginAt: now,
@@ -217,6 +437,23 @@ export async function ensureUserExists(workosUser: {
   if (existing) return existing
 
   const now = new Date().toISOString()
+  const pendingInvitation = await db
+    .select({
+      role: projectAccessInvitations.role,
+    })
+    .from(projectAccessInvitations)
+    .where(
+      and(
+        eq(projectAccessInvitations.status, "sent"),
+        sql`lower(trim(${projectAccessInvitations.email})) = ${workosUser.email
+          .trim()
+          .toLowerCase()}`,
+        sql`(${projectAccessInvitations.workosExpiresAt} IS NULL OR ${projectAccessInvitations.workosExpiresAt} > ${now})`
+      )
+    )
+    .orderBy(desc(projectAccessInvitations.invitedAt))
+    .limit(1)
+    .get()
 
   const newUser = {
     id: workosUser.id,
@@ -228,7 +465,9 @@ export async function ensureUserExists(workosUser: {
         ? `${workosUser.firstName} ${workosUser.lastName}`
         : workosUser.email.split("@")[0],
     avatarUrl: workosUser.profilePictureUrl ?? null,
-    role: "office", // default role
+    // Project invitation roles remain project-scoped. The effective role is
+    // derived from project_members after authentication.
+    role: pendingInvitation ? "guest" : "office",
     isActive: true,
     lastLoginAt: now,
     createdAt: now,
@@ -237,6 +476,12 @@ export async function ensureUserExists(workosUser: {
 
   await db.insert(users).values(newUser).run()
 
+  await claimProjectAccessInvitations(
+    db,
+    workosUser.id,
+    workosUser.email,
+    now
+  )
   // create personal org
   const personalOrgId = crypto.randomUUID()
   const personalSlug = `${workosUser.id.slice(0, 8)}-personal`
@@ -267,19 +512,7 @@ export async function ensureUserExists(workosUser: {
     })
     .run()
 
-  // set active org cookie
-  try {
-    const cookieStore = await cookies()
-    cookieStore.set("compass-active-org", personalOrgId, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
-      path: "/",
-      maxAge: 60 * 60 * 24 * 365, // 1 year
-    })
-  } catch {
-    // may not be in request context
-  }
+  await setActiveOrgCookie(personalOrgId)
 
   return newUser as User
 }

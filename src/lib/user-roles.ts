@@ -193,7 +193,17 @@ export function canManageUserAccessRole(role: string | null | undefined): boolea
 export function canUseOrganizationProjectScopeRole(
   role: string | null | undefined
 ): boolean {
-  return role !== "developer"
+  return role !== null && role !== undefined && isInternalStaffRole(role)
+}
+
+export function isExternalProjectRole(role: string): boolean {
+  return [
+    "client",
+    "owner",
+    "subcontractor",
+    "supplier",
+    "guest",
+  ].includes(role)
 }
 
 export function isInternalStaffRole(role: string): boolean {
