@@ -29,6 +29,7 @@ import {
 import {
   dateKeyInTimeZone,
   inclusiveEndDateFromExclusive,
+  isValidDateKey,
   normalizeWorkCalendarEventTiming,
   projectTodoHref,
   resolveHOfficeProjectId,
@@ -197,7 +198,22 @@ function operationSourceLabel(recordType: string, recordNumber: string | null): 
   return recordNumber ? `${label} ${recordNumber}` : label
 }
 
-export async function getWorkCalendar(): Promise<WorkCalendarData> {
+function intersectsCalendarWindow(
+  startDate: string,
+  endDate: string,
+  rangeStart: string,
+  rangeEnd: string,
+  today: string
+): boolean {
+  return (
+    (endDate >= rangeStart && startDate <= rangeEnd) ||
+    (endDate >= today && startDate <= today)
+  )
+}
+
+export async function getWorkCalendar(
+  referenceDate?: string
+): Promise<WorkCalendarData> {
   const user = await requireAuth()
   requirePermission(user, "schedule", "read")
   const orgId = requireOrg(user)
@@ -220,9 +236,11 @@ export async function getWorkCalendar(): Promise<WorkCalendarData> {
   const defaultTimeZone =
     calendarSettings?.timeZone ?? "America/Denver"
   const today = dateKeyInTimeZone(new Date(), defaultTimeZone)
-  const todayAnchor = new Date(`${today}T12:00:00Z`)
-  const rangeStart = toDateKey(addDays(todayAnchor, -14))
-  const rangeEnd = toDateKey(addDays(todayAnchor, 30))
+  const calendarDate =
+    referenceDate && isValidDateKey(referenceDate) ? referenceDate : today
+  const calendarAnchor = new Date(`${calendarDate}T12:00:00Z`)
+  const rangeStart = toDateKey(addDays(calendarAnchor, -14))
+  const rangeEnd = toDateKey(addDays(calendarAnchor, 45))
   const projectRows = await db
     .select({
       id: projects.id,
@@ -296,7 +314,17 @@ export async function getWorkCalendar(): Promise<WorkCalendarData> {
 
     for (const task of taskRows) {
       if (isClosedStatus(task.status)) continue
-      if (task.endDate < rangeStart || task.startDate > rangeEnd) continue
+      if (
+        !intersectsCalendarWindow(
+          task.startDate,
+          task.endDate,
+          rangeStart,
+          rangeEnd,
+          today
+        )
+      ) {
+        continue
+      }
 
       entries.push({
         id: task.id,
@@ -334,7 +362,16 @@ export async function getWorkCalendar(): Promise<WorkCalendarData> {
 
     for (const rfi of rfiRows) {
       if (isClosedStatus(rfi.status) || rfi.status === "complete") continue
-      if (!rfi.dueDate || rfi.dueDate < rangeStart || rfi.dueDate > rangeEnd) {
+      if (
+        !rfi.dueDate ||
+        !intersectsCalendarWindow(
+          rfi.dueDate,
+          rfi.dueDate,
+          rangeStart,
+          rangeEnd,
+          today
+        )
+      ) {
         continue
       }
 
@@ -380,7 +417,17 @@ export async function getWorkCalendar(): Promise<WorkCalendarData> {
         const startDate = operation.startDate ?? operation.dueDate
         const endDate = operation.dueDate ?? operation.startDate
         if (!startDate || !endDate) continue
-        if (endDate < rangeStart || startDate > rangeEnd) continue
+        if (
+          !intersectsCalendarWindow(
+            startDate,
+            endDate,
+            rangeStart,
+            rangeEnd,
+            today
+          )
+        ) {
+          continue
+        }
 
         // Preserve visibility for a legacy row created in the brief window
         // between the additive schema migration and the new application
@@ -423,7 +470,17 @@ export async function getWorkCalendar(): Promise<WorkCalendarData> {
       const startDate = operation.startDate ?? operation.dueDate
       const endDate = operation.dueDate ?? operation.startDate
       if (!startDate || !endDate) continue
-      if (endDate < rangeStart || startDate > rangeEnd) continue
+      if (
+        !intersectsCalendarWindow(
+          startDate,
+          endDate,
+          rangeStart,
+          rangeEnd,
+          today
+        )
+      ) {
+        continue
+      }
 
       entries.push({
         id: operation.id,
@@ -519,7 +576,17 @@ export async function getWorkCalendar(): Promise<WorkCalendarData> {
         ? dateKeyInTimeZone(timedEndDisplay, event.timeZone)
         : null
     if (!startDate || !endDate) continue
-    if (endDate < rangeStart || startDate > rangeEnd) continue
+    if (
+      !intersectsCalendarWindow(
+        startDate,
+        endDate,
+        rangeStart,
+        rangeEnd,
+        today
+      )
+    ) {
+      continue
+    }
     const attendees = attendeesByEventId.get(event.id) ?? []
 
     entries.push({

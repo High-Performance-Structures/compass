@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest"
 
 import {
   instantForLocalDateTime,
+  isValidDateKey,
   normalizeWorkCalendarEventTiming,
   projectTodoHref,
   resolveHOfficeProjectId,
@@ -21,6 +22,12 @@ const entry = {
 }
 
 describe("work calendar navigation and search", () => {
+  it("accepts only canonical calendar date keys", () => {
+    expect(isValidDateKey("2026-07-27")).toBe(true)
+    expect(isValidDateKey("2026-02-30")).toBe(false)
+    expect(isValidDateKey("07/27/2026")).toBe(false)
+  })
+
   it("matches a project name even when the display label is its project number", () => {
     expect(workCalendarEntryMatches(entry, "Loeffler")).toBe(true)
     expect(workCalendarEntryMatches(entry, "O-202")).toBe(true)

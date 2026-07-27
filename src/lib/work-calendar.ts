@@ -43,7 +43,7 @@ export type WorkCalendarEventTiming =
 const DATE_KEY_PATTERN = /^\d{4}-\d{2}-\d{2}$/
 const TIME_KEY_PATTERN = /^(?:[01]\d|2[0-3]):[0-5]\d$/
 
-function isRealDateKey(value: string): boolean {
+export function isValidDateKey(value: string): boolean {
   if (!DATE_KEY_PATTERN.test(value)) return false
   const parsed = new Date(`${value}T00:00:00Z`)
   return (
@@ -120,7 +120,7 @@ export function instantForLocalDateTime(
   time: string,
   timeZone: string
 ): LocalDateTimeResolution {
-  if (!isRealDateKey(date) || !TIME_KEY_PATTERN.test(time)) {
+  if (!isValidDateKey(date) || !TIME_KEY_PATTERN.test(time)) {
     return { success: false, error: "Enter a valid date and time." }
   }
 
@@ -195,7 +195,7 @@ export function inclusiveEndDateFromExclusive(
 export function normalizeWorkCalendarEventTiming(
   input: WorkCalendarEventTimingInput
 ): WorkCalendarEventTiming {
-  if (!isRealDateKey(input.startDate) || !isRealDateKey(input.endDate)) {
+  if (!isValidDateKey(input.startDate) || !isValidDateKey(input.endDate)) {
     return { success: false, error: "Enter valid event dates." }
   }
 

@@ -266,13 +266,9 @@ test.describe("usable Compass areas", () => {
   test("work calendar list shows the actual item title", async ({
     page,
   }) => {
-    const response = await page.goto("/dashboard/schedule")
+    const response = await page.goto("/dashboard/schedule?view=list")
     await expectHealthyNavigation(page, response, "/dashboard/schedule")
 
-    await page
-      .getByRole("group", { name: "Work calendar view" })
-      .getByRole("button", { name: "List" })
-      .click()
     const workQueue = page.locator("section").filter({
       has: page.getByRole("heading", { name: "Work Queue" }),
     })
@@ -286,6 +282,48 @@ test.describe("usable Compass areas", () => {
         exact: true,
       }).first()
     ).toBeVisible()
+  })
+
+  test("work calendar arrows move by the active view period", async ({
+    page,
+  }) => {
+    const periodLabel = page.getByTestId("work-calendar-period-label")
+
+    let response = await page.goto("/dashboard/schedule?view=today")
+    await expectHealthyNavigation(page, response, "/dashboard/schedule")
+    const initialDay = await periodLabel.innerText()
+    await page.getByRole("button", { name: "Events" }).click()
+    await page.getByRole("button", { name: "Next day" }).click()
+    await expect(periodLabel).not.toHaveText(initialDay)
+    await expect(page).toHaveURL(
+      /view=today&date=\d{4}-\d{2}-\d{2}&kind=event/
+    )
+    const nextDayUrl = page.url()
+    await page.getByRole("button", { name: "Previous day" }).click()
+    await expect(periodLabel).toHaveText(initialDay)
+    await expect(page).not.toHaveURL(nextDayUrl)
+
+    response = await page.goto("/dashboard/schedule?view=week")
+    await expectHealthyNavigation(page, response, "/dashboard/schedule")
+    const initialWeek = await periodLabel.innerText()
+    await page.getByRole("button", { name: "Next week" }).click()
+    await expect(periodLabel).not.toHaveText(initialWeek)
+    await expect(page).toHaveURL(/view=week&date=\d{4}-\d{2}-\d{2}/)
+    const nextWeekUrl = page.url()
+    await page.getByRole("button", { name: "Previous week" }).click()
+    await expect(periodLabel).toHaveText(initialWeek)
+    await expect(page).not.toHaveURL(nextWeekUrl)
+
+    response = await page.goto("/dashboard/schedule?view=month")
+    await expectHealthyNavigation(page, response, "/dashboard/schedule")
+    const initialMonth = await periodLabel.innerText()
+    await page.getByRole("button", { name: "Next month" }).click()
+    await expect(periodLabel).not.toHaveText(initialMonth)
+    await expect(page).toHaveURL(/view=month&date=\d{4}-\d{2}-\d{2}/)
+    const nextMonthUrl = page.url()
+    await page.getByRole("button", { name: "Previous month" }).click()
+    await expect(periodLabel).toHaveText(initialMonth)
+    await expect(page).not.toHaveURL(nextMonthUrl)
   })
 
   test("work calendar reveals every item hidden behind the overflow count", async ({
@@ -316,13 +354,9 @@ test.describe("usable Compass areas", () => {
   test("work calendar to-dos open and focus the exact project record", async ({
     page,
   }) => {
-    const response = await page.goto("/dashboard/schedule")
+    const response = await page.goto("/dashboard/schedule?view=list")
     await expectHealthyNavigation(page, response, "/dashboard/schedule")
 
-    await page
-      .getByRole("group", { name: "Work calendar view" })
-      .getByRole("button", { name: "List" })
-      .click()
     const todoLink = page
       .getByRole("link", { name: /Regression follow-up/ })
       .first()
