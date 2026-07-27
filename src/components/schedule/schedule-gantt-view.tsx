@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useCallback, useEffect } from "react"
+import { useState, useCallback, useEffect, useRef, type UIEvent } from "react"
 import {
   ResizableHandle,
   ResizablePanel,
@@ -117,8 +117,11 @@ export function ScheduleGanttView({
   const [editingTask, setEditingTask] = useState<ScheduleTaskData | null>(
     null
   )
+  const [focusedTaskId, setFocusedTaskId] = useState<string | null>(null)
   const [mobileView, setMobileView] = useState<"tasks" | "chart">("chart")
   const [panMode] = useState(false)
+  const taskListRef = useRef<HTMLDivElement>(null)
+  const ganttContainerRef = useRef<HTMLElement | null>(null)
 
   const [hasLoadedPalette, setHasLoadedPalette] = useState(false)
 
@@ -181,6 +184,83 @@ export function ScheduleGanttView({
     setViewMode(mode)
     setColumnWidth(defaultWidths[mode])
   }
+
+  const handleGanttContainerReady = useCallback(
+    (container: HTMLElement | null) => {
+      ganttContainerRef.current = container
+      if (container && taskListRef.current) {
+        container.scrollTop = taskListRef.current.scrollTop
+      }
+    },
+    []
+  )
+
+  const handleGanttScroll = useCallback((top: number) => {
+    const taskList = taskListRef.current
+    if (taskList && Math.abs(taskList.scrollTop - top) > 1) {
+      taskList.scrollTop = top
+    }
+  }, [])
+
+  const handleTaskListScroll = useCallback(
+    (event: UIEvent<HTMLDivElement>) => {
+      const top = event.currentTarget.scrollTop
+      const ganttContainer = ganttContainerRef.current
+      if (ganttContainer && Math.abs(ganttContainer.scrollTop - top) > 1) {
+        ganttContainer.scrollTop = top
+      }
+    },
+    []
+  )
+
+  const openTaskEditor = useCallback(
+    (task: FrappeTask) => {
+      const scheduleTask = tasks.find((item) => item.id === task.id)
+      if (!scheduleTask) return
+      setFocusedTaskId(scheduleTask.id)
+      setEditingTask(scheduleTask)
+      setTaskFormOpen(true)
+    },
+    [tasks]
+  )
+
+  const focusTaskOnTimeline = useCallback((task: ScheduleTaskData) => {
+    const container = ganttContainerRef.current
+    if (!container) return
+    const wrapper = container.querySelector<SVGGElement>(
+      `.bar-wrapper[data-id="${CSS.escape(task.id)}"]`
+    )
+    const bar = wrapper?.querySelector<SVGRectElement>(".bar")
+    if (!wrapper || !bar) return
+
+    container
+      .querySelectorAll(".bar-wrapper.schedule-focused")
+      .forEach((element) => element.classList.remove("schedule-focused"))
+    wrapper.classList.add("schedule-focused")
+
+    const x = Number(bar.getAttribute("x") ?? 0)
+    const width = Number(bar.getAttribute("width") ?? 0)
+    const y = Number(bar.getAttribute("y") ?? 0)
+    const height = Number(bar.getAttribute("height") ?? 0)
+    container.scrollTo({
+      left: Math.max(
+        0,
+        Math.min(
+          x + width / 2 - container.clientWidth / 2,
+          container.scrollWidth - container.clientWidth
+        )
+      ),
+      top: Math.max(
+        0,
+        Math.min(
+          y + height / 2 - container.clientHeight / 2,
+          container.scrollHeight - container.clientHeight
+        )
+      ),
+      behavior: "smooth",
+    })
+    setFocusedTaskId(task.id)
+  }, [])
 
   const filteredTasks = tasks
 
@@ -253,9 +333,9 @@ export function ScheduleGanttView({
   }
 
   const taskTable = (
-    <Table>
-      <TableHeader>
-        <TableRow>
+    <Table className="table-fixed">
+      <TableHeader className="sticky top-0 z-10 bg-background">
+        <TableRow className="h-[85px]">
           <TableHead className="text-xs">Title</TableHead>
           <TableHead className="text-xs w-[80px]">Start</TableHead>
           <TableHead className="text-xs w-[52px]">Days</TableHead>
@@ -270,12 +350,12 @@ export function ScheduleGanttView({
             return (
               <TableRow
                 key={`phase-${phase}`}
-                className="bg-muted/40 cursor-pointer hover:bg-muted/60"
+                className="h-[48px] max-h-[48px] bg-muted/40 cursor-pointer hover:bg-muted/60"
                 onClick={() => togglePhase(phase)}
               >
                 <TableCell
                   colSpan={collapsed ? 5 : 1}
-                  className="text-xs py-1.5 font-medium"
+                  className="h-[48px] py-0 text-xs font-medium"
                 >
                   <span className="flex items-center gap-1">
                     {collapsed
@@ -294,12 +374,12 @@ export function ScheduleGanttView({
                 </TableCell>
                 {!collapsed && (
                   <>
-                    <TableCell className="text-xs py-1.5 text-muted-foreground">
+                    <TableCell className="h-[48px] py-0 text-xs text-muted-foreground">
                       {group.startDate.slice(5)}
                     </TableCell>
-                    <TableCell className="text-xs py-1.5" />
-                    <TableCell className="text-xs py-1.5" />
-                    <TableCell className="py-1.5" />
+                    <TableCell className="h-[48px] py-0 text-xs" />
+                    <TableCell className="h-[48px] py-0 text-xs" />
+                    <TableCell className="h-[48px] py-0" />
                   </>
                 )}
               </TableRow>
@@ -308,23 +388,35 @@ export function ScheduleGanttView({
 
           const { task } = item
           return (
-            <TableRow key={task.id}>
-              <TableCell className="text-xs py-1.5 truncate max-w-[140px]">
+            <TableRow
+              key={task.id}
+              data-schedule-task-id={task.id}
+              className={cn(
+                "h-[48px] max-h-[48px] cursor-pointer",
+                focusedTaskId === task.id && "bg-accent"
+              )}
+              onClick={() => focusTaskOnTimeline(task)}
+              title="Show this item on the timeline"
+            >
+              <TableCell className="h-[48px] py-0 text-xs truncate max-w-[140px]">
                 <span className={phaseGrouping ? "pl-4" : ""}>
                   {task.title}
                 </span>
               </TableCell>
-              <TableCell className="text-xs py-1.5 text-muted-foreground">
+              <TableCell className="h-[48px] py-0 text-xs text-muted-foreground">
                 {task.startDate.slice(5)}
               </TableCell>
-              <TableCell className="text-xs py-1.5">
+              <TableCell className="h-[48px] py-0 text-xs">
                 {task.workdays}
               </TableCell>
-              <TableCell className="text-xs py-1.5 tabular-nums">
+              <TableCell className="h-[48px] py-0 text-xs tabular-nums">
                 {effectivePercentComplete(task.status, task.percentComplete)}%
               </TableCell>
-              <TableCell className="py-1.5">
-                <div className="flex items-center">
+              <TableCell className="h-[48px] py-0">
+                <div
+                  className="flex items-center"
+                  onClick={(event) => event.stopPropagation()}
+                >
                   <ProjectTaskCreateButton
                     compact
                     projectId={projectId}
@@ -346,6 +438,7 @@ export function ScheduleGanttView({
                     size="icon"
                     className="size-6"
                     onClick={() => {
+                      setFocusedTaskId(task.id)
                       setEditingTask(task)
                       setTaskFormOpen(true)
                     }}
@@ -613,7 +706,7 @@ export function ScheduleGanttView({
               {taskTable}
             </div>
           ) : (
-            <div className="relative border rounded-md flex-1 min-h-0 overflow-hidden p-2">
+            <div className="relative min-w-0 flex-1 min-h-0 overflow-hidden border">
               <GanttChart
                 tasks={frappeTasks}
                 viewMode={viewMode}
@@ -623,6 +716,9 @@ export function ScheduleGanttView({
                 criticalPathMode={showCriticalPath}
                 displayColorPalette={displayColorPalette}
                 onZoom={handleZoom}
+                onTaskDoubleClick={openTaskEditor}
+                onContainerReady={handleGanttContainerReady}
+                onScrollTopChange={handleGanttScroll}
               />
               {scheduleKey}
             </div>
@@ -631,10 +727,14 @@ export function ScheduleGanttView({
       ) : (
         <ResizablePanelGroup
           orientation="horizontal"
-          className="border rounded-md flex-1 min-h-[300px]"
+          className="min-w-0 flex-1 min-h-[300px] overflow-hidden border"
         >
           <ResizablePanel defaultSize={30} minSize={20}>
-            <div className="h-full overflow-auto">
+            <div
+              ref={taskListRef}
+              className="h-full min-w-0 overflow-auto"
+              onScroll={handleTaskListScroll}
+            >
               {taskTable}
             </div>
           </ResizablePanel>
@@ -642,7 +742,7 @@ export function ScheduleGanttView({
           <ResizableHandle withHandle />
 
           <ResizablePanel defaultSize={70} minSize={40}>
-            <div className="relative h-full overflow-hidden p-2">
+            <div className="relative h-full min-w-0 overflow-hidden">
               <GanttChart
                 tasks={frappeTasks}
                 viewMode={viewMode}
@@ -652,6 +752,9 @@ export function ScheduleGanttView({
                 criticalPathMode={showCriticalPath}
                 displayColorPalette={displayColorPalette}
                 onZoom={handleZoom}
+                onTaskDoubleClick={openTaskEditor}
+                onContainerReady={handleGanttContainerReady}
+                onScrollTopChange={handleGanttScroll}
               />
               {scheduleKey}
             </div>

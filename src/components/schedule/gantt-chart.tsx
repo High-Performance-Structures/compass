@@ -22,6 +22,9 @@ interface GanttChartProps {
   ) => void
   onProgressChange?: (task: FrappeTask, progress: number) => void
   onZoom?: (direction: "in" | "out") => void
+  onTaskDoubleClick?: (task: FrappeTask) => void
+  onContainerReady?: (container: HTMLElement | null) => void
+  onScrollTopChange?: (top: number) => void
 }
 
 export function GanttChart({
@@ -34,12 +37,42 @@ export function GanttChart({
   onDateChange,
   onProgressChange,
   onZoom,
+  onTaskDoubleClick,
+  onContainerReady,
+  onScrollTopChange,
 }: GanttChartProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const wrapperRef = useRef<HTMLDivElement>(null)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const ganttRef = useRef<any>(null)
   const [loaded, setLoaded] = useState(false)
+  const latestTasksRef = useRef(tasks)
+  latestTasksRef.current = tasks
+  const interactionCallbacksRef = useRef({
+    onTaskDoubleClick,
+    onContainerReady,
+    onScrollTopChange,
+  })
+  interactionCallbacksRef.current = {
+    onTaskDoubleClick,
+    onContainerReady,
+    onScrollTopChange,
+  }
+
+  const taskForEventTarget = useCallback((target: EventTarget): FrappeTask | null => {
+    if (!(target instanceof Element)) return null
+    const taskId = target.closest<SVGGElement>(".bar-wrapper[data-id]")?.dataset.id
+    if (!taskId || taskId.startsWith("phase-")) return null
+    return latestTasksRef.current.find((task) => task.id === taskId) ?? null
+  }, [])
+
+  const handleDoubleClick = useCallback(
+    (event: React.MouseEvent<HTMLDivElement>) => {
+      const task = taskForEventTarget(event.target)
+      if (task) interactionCallbacksRef.current.onTaskDoubleClick?.(task)
+    },
+    [taskForEventTarget]
+  )
 
   // pan state - scrolls the .gantt-container directly
   const isPanning = useRef(false)
@@ -98,6 +131,13 @@ export function GanttChart({
     if (!containerRef.current || tasks.length === 0) return
 
     let cancelled = false
+    let activeContainer: HTMLElement | null = null
+    const handleScroll = () => {
+      if (!activeContainer) return
+      interactionCallbacksRef.current.onScrollTopChange?.(
+        activeContainer.scrollTop
+      )
+    }
 
     async function initGantt() {
       const { default: Gantt } = await import("frappe-gantt")
@@ -152,13 +192,25 @@ export function GanttChart({
       if (ganttContainer) {
         ganttContainer.style.height = "100%"
         ganttContainerRef.current = ganttContainer
+        activeContainer = ganttContainer
+        activeContainer.addEventListener("scroll", handleScroll, {
+          passive: true,
+        })
+        interactionCallbacksRef.current.onContainerReady?.(activeContainer)
       }
 
       setLoaded(true)
     }
 
     initGantt()
-    return () => { cancelled = true }
+    return () => {
+      cancelled = true
+      activeContainer?.removeEventListener("scroll", handleScroll)
+      if (ganttContainerRef.current === activeContainer) {
+        ganttContainerRef.current = null
+      }
+      interactionCallbacksRef.current.onContainerReady?.(null)
+    }
   }, [tasks, viewMode, columnWidth, onDateChange, onProgressChange])
 
   useEffect(() => {
@@ -196,6 +248,7 @@ export function GanttChart({
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}
       onMouseLeave={handleMouseUp}
+      onDoubleClick={handleDoubleClick}
     >
       <div ref={containerRef} className="h-full" />
     </div>
