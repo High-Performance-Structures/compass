@@ -29,7 +29,10 @@ import { DesktopOfflineBanner } from "@/components/desktop/offline-banner"
 import { VoiceProvider } from "@/components/voice/voice-provider"
 import { DemoBanner } from "@/components/demo/demo-banner"
 import { isDemoUser } from "@/lib/demo"
-import { canUseAskCompass } from "@/lib/permissions"
+import {
+  canUseAskCompass,
+  canUseFieldDesk,
+} from "@/lib/permissions"
 
 export default async function DashboardLayout({
   children,
@@ -48,9 +51,18 @@ export default async function DashboardLayout({
   const activeOrgName = authUser?.organizationName ?? null
   const isDemo = authUser ? isDemoUser(authUser.id) : false
   const canUseCompassAgent = canUseAskCompass(authUser)
+  const canUseCompassFieldDesk = canUseFieldDesk(authUser)
+  const offlineScopeKey =
+    authUser?.organizationId && authUser.id
+      ? `${authUser.organizationId}:${authUser.id}`
+      : null
 
   return (
-    <ChatProvider enabled={canUseCompassAgent}>
+    <ChatProvider
+      enabled={canUseCompassAgent}
+      offlineScopeKey={offlineScopeKey}
+      canSubmitCherish={canUseCompassFieldDesk}
+    >
     <VoiceProvider>
     <SettingsProvider>
     <ProjectListProvider projects={projectList}>
@@ -75,6 +87,7 @@ export default async function DashboardLayout({
           user={user}
           activeOrgId={activeOrgId}
           activeOrgName={activeOrgName}
+          canUseFieldDesk={canUseCompassFieldDesk}
         />
         <SidebarInset className="overflow-hidden">
           <DesktopOfflineBanner />
@@ -91,7 +104,7 @@ export default async function DashboardLayout({
             {canUseCompassAgent && <ChatPanelShell />}
           </div>
         </SidebarInset>
-        <MobileBottomNav />
+        <MobileBottomNav canUseFieldDesk={canUseCompassFieldDesk} />
         <NativeShell />
         <PushNotificationRegistrar />
         <p className="pointer-events-none fixed bottom-3 left-0 right-0 hidden text-center text-xs text-muted-foreground/60 md:block">

@@ -118,6 +118,46 @@ The queue lifecycle:
 4. **Cleanup**: Successfully uploaded photos are deleted from the filesystem and removed from the queue
 5. **Retry**: Failed uploads get retried up to 3 times. After that, they stay in `failed` status until manually retried
 
+
+field desk and offline text outbox
+---
+
+`/dashboard/field` is the staff field surface. It gives active admin, office,
+and field roles a direct Ask Jarvis entry point plus the CHERISH response
+form. Client, guest, inactive, and unknown roles do not receive the route or
+navigation entry. The existing `agent:read` permission remains the final
+server-side gate for Ask Jarvis.
+
+Text-only Jarvis prompts and CHERISH responses can be saved while the browser
+or Capacitor webview is offline. `src/lib/field/offline-outbox.ts` stores a
+bounded, seven-day outbox under an organization-and-user-specific key. The
+global chat provider replays eligible entries sequentially after the browser
+reports that connectivity has returned:
+
+1. validate and trim the item before it reaches device storage;
+2. retain at most 50 recent entries;
+3. process only entries belonging to the currently authenticated
+   organization/user scope;
+4. re-run the normal authenticated server action or Ask Jarvis request;
+5. remove an entry only after the server reports success.
+
+This first slice works when the authenticated Compass shell is already
+loaded. Cold-launching the hosted webview without any network still requires
+the planned service-worker/app-shell cache; the outbox does not claim to make
+uncached routes available offline.
+
+The outbox does not bypass Compass permissions, and it does not place an
+organization ID, user ID, role, or authorization claim in the replay payload.
+The live authenticated session supplies identity when the request is sent.
+
+Media and document capture for Jarvis is deliberately separate from this
+text outbox. The existing native photo queue is project-photo-specific and
+cannot safely represent ownership plus an intended conversion target. A
+follow-up must define an attachment record with organization, user, project,
+upload state, content metadata, retention policy, and an explicit target
+(`daily_log`, `todo`, `rfi`, or `delivery_notification`) before automatic
+conversion is enabled.
+
 ```typescript
 await Uploader.startUpload({
   filePath: photo.localPath,

@@ -18,7 +18,7 @@ export interface UseAgentReturn {
   setMessages: (
     msgs: AgentMessage[] | ((prev: AgentMessage[]) => AgentMessage[])
   ) => void
-  sendMessage: (params: { text: string }) => void
+  sendMessage: (params: { text: string }) => Promise<boolean>
   stop: () => void
   regenerate: () => void
   readonly status: "ready" | "streaming" | "error"
@@ -46,9 +46,9 @@ export function useAgent(options: UseAgentOptions = {}): UseAgentReturn {
   const dispatchedRef = useRef(new Set<string>())
 
   const sendMessage = useCallback(
-    async (params: { text: string }) => {
-      if (status === "streaming") return
-      if (!params.text.trim()) return
+    async (params: { text: string }): Promise<boolean> => {
+      if (status === "streaming") return false
+      if (!params.text.trim()) return false
 
       // add user message
       const userMessage: AgentMessage = {
@@ -180,9 +180,16 @@ export function useAgent(options: UseAgentOptions = {}): UseAgentReturn {
               setMessages(finalMessages)
 
               if (onFinish) {
-                await onFinish(finalMessages)
+                try {
+                  await onFinish(finalMessages)
+                } catch (finishError) {
+                  console.error(
+                    "Agent response completed but conversation persistence failed:",
+                    finishError,
+                  )
+                }
               }
-              return
+              return true
             }
 
             try {
@@ -293,7 +300,7 @@ export function useAgent(options: UseAgentOptions = {}): UseAgentReturn {
                 case "error": {
                   setError(event.error)
                   setStatus("error")
-                  return
+                  return false
                 }
               }
 
@@ -328,8 +335,16 @@ export function useAgent(options: UseAgentOptions = {}): UseAgentReturn {
         setMessages(finalMessages)
 
         if (onFinish) {
-          await onFinish(finalMessages)
+          try {
+            await onFinish(finalMessages)
+          } catch (finishError) {
+            console.error(
+              "Agent response completed but conversation persistence failed:",
+              finishError,
+            )
+          }
         }
+        return true
       } catch (err) {
         if (err instanceof Error && err.name === "AbortError") {
           setStatus("ready")
@@ -339,6 +354,7 @@ export function useAgent(options: UseAgentOptions = {}): UseAgentReturn {
           setError(errMsg)
           setStatus("error")
         }
+        return false
       } finally {
         abortControllerRef.current = null
       }

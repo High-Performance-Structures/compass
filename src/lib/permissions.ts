@@ -115,6 +115,20 @@ export function canUseAskCompass(user: AuthUser | null): boolean {
   return user?.role !== "guest" && can(user, "agent", "read")
 }
 
+/**
+ * The field desk is an internal staff surface. Client and guest accounts must
+ * never receive its Jarvis or CHERISH submission controls.
+ */
+export function canUseFieldDesk(user: AuthUser | null): boolean {
+  if (!canUseAskCompass(user)) return false
+  if (!user) return false
+  return (
+    user.role === "admin" ||
+    user.role === "office" ||
+    user.role === "field"
+  )
+}
+
 export function requirePermission(
   user: AuthUser | null,
   resource: Resource,

@@ -21,6 +21,25 @@ The bridge has three separate responsibilities:
    the originating authenticated Compass request using the existing agent SSE
    protocol.
 
+Field access and offline replay
+---
+
+Active field-role users have `agent:read` permission and may open Ask Jarvis
+from the Field Desk on mobile or desktop. Guest and client accounts remain
+denied in both the UI and every agent API route.
+
+When a field user submits a text prompt while `navigator.onLine` is false,
+Compass stores it in the scoped field outbox rather than attempting the
+bridge request. On reconnection, the normal authenticated `/api/agent`
+request is made with the current organization/user session and the existing
+Signet isolation headers. A queued prompt is deleted locally only after the
+SSE response completes successfully. CHERISH submissions use the same
+outbox lifecycle but replay through the existing authenticated server action.
+
+The outbox is not a media transport. Photo, video, and document handoff needs
+a separately reviewed attachment contract so an offline file cannot be
+replayed under the wrong user, organization, project, or conversion target.
+
 Data flow
 ---
 

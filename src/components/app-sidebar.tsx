@@ -8,6 +8,7 @@ import {
   IconClipboardText,
   IconFiles,
   IconFileDollar,
+  IconHeartHandshake,
   IconFolder,
   IconHome2,
   IconMailForward,
@@ -152,8 +153,10 @@ const NAV_MAIN = [
 
 function SidebarNav({
   projects,
+  canUseFieldDesk,
 }: {
   projects: ReadonlyArray<ProjectListItem>
+  readonly canUseFieldDesk: boolean
 }) {
   const pathname = usePathname()
   const { state } = useSidebar()
@@ -177,7 +180,7 @@ function SidebarNav({
         ? "projects"
         : "main"
 
-  const persistentNav = PERSISTENT_NAV.map((item) =>
+  const projectScopedPersistentNav = PERSISTENT_NAV.map((item) =>
     item.title === "To-Dos" && activeProjectId
       ? {
           ...item,
@@ -197,6 +200,17 @@ function SidebarNav({
         }
       : item
   )
+
+  const persistentNav = canUseFieldDesk
+    ? [
+        ...projectScopedPersistentNav,
+        {
+          title: "Field Desk",
+          url: "/dashboard/field",
+          icon: IconHeartHandshake,
+        },
+      ]
+    : projectScopedPersistentNav
 
   return (
     <div key={mode} className="animate-in fade-in slide-in-from-left-1 flex flex-1 flex-col duration-150">
@@ -224,12 +238,14 @@ export function AppSidebar({
   user,
   activeOrgId = null,
   activeOrgName = null,
+  canUseFieldDesk = false,
   ...props
 }: React.ComponentProps<typeof Sidebar> & {
   readonly projects?: ReadonlyArray<ProjectListItem>
   readonly user: SidebarUser | null
   readonly activeOrgId?: string | null
   readonly activeOrgName?: string | null
+  readonly canUseFieldDesk?: boolean
 }) {
   const { isMobile } = useSidebar()
   const { channelId } = useVoiceState()
@@ -240,7 +256,10 @@ export function AppSidebar({
         <OrgSwitcher activeOrgId={activeOrgId} activeOrgName={activeOrgName} />
       </SidebarHeader>
       <SidebarContent className="compass-sidebar-scroll">
-        <SidebarNav projects={projects} />
+        <SidebarNav
+          projects={projects}
+          canUseFieldDesk={canUseFieldDesk}
+        />
       </SidebarContent>
       <SidebarFooter className="border-t border-sidebar-border/60">
         {isMobile && (
