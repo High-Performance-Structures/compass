@@ -82,7 +82,7 @@ function createCompassMeetingConfig(): UIConfig {
     },
     root: {
       ...base.root,
-      "div#controlbar-left": ["rtk-settings-toggle", "rtk-screen-share-toggle"],
+      "div#controlbar-left": ["rtk-screen-share-toggle"],
       "div#controlbar-center": [
         "rtk-mic-toggle",
         "rtk-camera-toggle",
@@ -427,6 +427,20 @@ export function RealtimeKitMeetingWindow({
   const addonRef = React.useRef<VideoBackgroundAddonHandle | null>(null)
   const audioTrackRef = React.useRef<MediaStreamTrack | null>(null)
   const videoTrackRef = React.useRef<MediaStreamTrack | null>(null)
+  const meetingUiRef = React.useRef<HTMLDivElement | null>(null)
+
+  const setRealtimeKitCaptions = React.useCallback((enabled: boolean): void => {
+    const meetingElement =
+      meetingUiRef.current?.querySelector<HTMLElement>("rtk-meeting")
+    meetingElement?.dispatchEvent(
+      new CustomEvent("rtkStateUpdate", {
+        detail: { activeCaptions: enabled },
+        bubbles: true,
+        composed: true,
+      })
+    )
+    setTranscriptEnabled(enabled)
+  }, [])
 
   React.useEffect(() => {
     setCanScreenShare(
@@ -467,6 +481,33 @@ export function RealtimeKitMeetingWindow({
       videoTrackRef.current = null
     }
   }, [])
+
+  React.useEffect(() => {
+    if (!meeting || loading || error) return
+    const meetingElement =
+      meetingUiRef.current?.querySelector<HTMLElement>("rtk-meeting")
+    if (!meetingElement) return
+
+    const handleStatesUpdate = (event: Event): void => {
+      if (!(event instanceof CustomEvent) || !isRecord(event.detail)) return
+      const activeCaptions = recordValue(event.detail, "activeCaptions")
+      if (typeof activeCaptions === "boolean") {
+        setTranscriptEnabled(activeCaptions)
+      }
+    }
+
+    meetingElement.addEventListener("rtkStatesUpdate", handleStatesUpdate)
+    // RealtimeKit 2 defaults captions on whenever the preset permits
+    // transcription. Compass requires an explicit per-participant opt-in.
+    const frame = window.requestAnimationFrame(() => {
+      setRealtimeKitCaptions(false)
+    })
+
+    return () => {
+      window.cancelAnimationFrame(frame)
+      meetingElement.removeEventListener("rtkStatesUpdate", handleStatesUpdate)
+    }
+  }, [error, loading, meeting, setRealtimeKitCaptions])
 
   React.useEffect(() => {
     let isCurrent = true
@@ -751,16 +792,14 @@ export function RealtimeKitMeetingWindow({
   }, [channelId, savedTranscriptText])
 
   const toggleTranscriptCapture = React.useCallback((): void => {
-    setTranscriptEnabled((enabled) => {
-      const nextEnabled = !enabled
-      setNotesStatus(
-        nextEnabled
-          ? "Transcript capture started for this meeting."
-          : "Transcript capture paused."
-      )
-      return nextEnabled
-    })
-  }, [])
+    const nextEnabled = !transcriptEnabled
+    setRealtimeKitCaptions(nextEnabled)
+    setNotesStatus(
+      nextEnabled
+        ? "Captions and transcript capture started for you."
+        : "Captions and transcript capture turned off for you."
+    )
+  }, [setRealtimeKitCaptions, transcriptEnabled])
 
   const leaveMeeting = React.useCallback(async (): Promise<void> => {
     try {
@@ -1086,7 +1125,7 @@ export function RealtimeKitMeetingWindow({
             {error}
           </div>
         ) : (
-          <div className="min-w-0 bg-black">
+          <div ref={meetingUiRef} className="min-w-0 bg-black">
             <div className="relative min-h-0 flex-1">
               <RtkMeeting
                 meeting={meeting}
@@ -1175,7 +1214,7 @@ export function RealtimeKitMeetingWindow({
                     : "border-white/20 bg-white/[0.04] text-white hover:border-[#9bd3a8]/70 hover:bg-[#203626]"
                 }`}
               >
-                {transcriptEnabled ? "Transcript On" : "Transcript Off"}
+                {transcriptEnabled ? "Captions On" : "Captions Off"}
               </button>
               {backgroundStatus ? (
                 <span className="rounded-sm border border-white/10 bg-white/[0.03] px-2 py-2 text-center text-xs font-semibold leading-tight text-white/55">
@@ -1246,7 +1285,7 @@ export function RealtimeKitMeetingWindow({
                     {!transcriptEnabled ? (
                       <div className="rounded-sm border border-white/10 bg-white/5 p-3 text-sm text-white/65">
                         <p className="font-semibold text-white">
-                          Transcript capture is off.
+                          Captions and transcript capture are off.
                         </p>
                         <p className="mt-1">
                           Start it only after everyone knows the meeting is being
@@ -1295,7 +1334,9 @@ export function RealtimeKitMeetingWindow({
                           : "bg-[#3f7d4d] hover:bg-[#4f9860]"
                       }`}
                     >
-                      {transcriptEnabled ? "Pause Transcript" : "Start Transcript"}
+                      {transcriptEnabled
+                        ? "Turn Captions Off"
+                        : "Turn Captions On"}
                     </button>
                     <button
                       type="button"
