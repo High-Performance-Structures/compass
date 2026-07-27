@@ -1680,9 +1680,7 @@ export async function draftOwnerUpdateFromDailyLogs(
       .where(
         and(
           eq(dailyLogs.projectId, projectId),
-          inArray(dailyLogs.id, dailyLogIds),
-          eq(dailyLogs.reviewStatus, "approved"),
-          eq(dailyLogs.isClientVisible, true)
+          inArray(dailyLogs.id, dailyLogIds)
         )
       )
       .orderBy(asc(dailyLogs.logDate), asc(dailyLogs.createdAt))
@@ -1690,8 +1688,7 @@ export async function draftOwnerUpdateFromDailyLogs(
     if (selectedLogs.length !== dailyLogIds.length) {
       return {
         success: false,
-        error:
-          "Every selected daily log must be approved and owner-visible before drafting.",
+        error: "One or more selected daily logs could not be found.",
       }
     }
 
@@ -1751,6 +1748,7 @@ export async function draftOwnerUpdateFromDailyLogs(
 
     revalidatePath(`/dashboard/projects/${projectId}`)
     revalidatePath(`/dashboard/projects/${projectId}/daily-logs`)
+    revalidatePath(`/dashboard/projects/${projectId}/owner-updates`)
     revalidatePath(`/dashboard/projects/${projectId}/owner-updates/${updateId}`)
 
     return { success: true, updateId }

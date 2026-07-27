@@ -241,10 +241,6 @@ function selectedLogIds(
   return selectedIds.filter((id) => availableIds.has(id))
 }
 
-function isOwnerUpdateEligibleLog(log: ProjectDailyLogItem): boolean {
-  return log.reviewStatus === "approved" && log.isClientVisible
-}
-
 function LogMetric({
   label,
   value,
@@ -576,9 +572,7 @@ export function ProjectDailyLogWorkspace({
     () => logs.filter((log) => selectedIds.includes(log.id)),
     [logs, selectedIds]
   )
-  const ownerUpdateSelectedIds = selectedLogs
-    .filter(isOwnerUpdateEligibleLog)
-    .map((log) => log.id)
+  const ownerUpdateSelectedIds = selectedLogs.map((log) => log.id)
   const printAuthorOptions = React.useMemo(
     () =>
       [...new Set(logs.map((log) => log.authorName).filter(
@@ -1203,7 +1197,10 @@ export function ProjectDailyLogWorkspace({
           </section>
         )}
 
-        <section className="rounded-lg border p-3 sm:p-4">
+        <section
+          id="owner-update-builder"
+          className="scroll-mt-4 rounded-lg border p-3 sm:p-4"
+        >
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex flex-wrap items-center gap-2">
               <select
@@ -1223,18 +1220,28 @@ export function ProjectDailyLogWorkspace({
                 Clear
               </Button>
             </div>
-            <div className="text-sm text-muted-foreground">
-              {selectedLogs.length} selected
-              {selectedLogs.length !== selectedIdsInView.length
-                ? ` · ${selectedIdsInView.length} in view`
-                : ""}{" "}
-              · {filteredLogs.length} shown · {ownerUpdateSelectedIds.length}{" "}
-              owner-update ready
+            <div className="flex flex-wrap items-center justify-end gap-3">
+              <div className="text-sm text-muted-foreground">
+                {selectedLogs.length} selected
+                {selectedLogs.length !== selectedIdsInView.length
+                  ? ` · ${selectedIdsInView.length} in view`
+                  : ""}{" "}
+                · {filteredLogs.length} shown
+              </div>
+              <Button
+                size="sm"
+                onClick={draftOwnerUpdate}
+                disabled={isPending || ownerUpdateSelectedIds.length === 0}
+              >
+                <IconMailForward className="size-4" />
+                Build draft from selected
+              </Button>
             </div>
           </div>
           <p className="mt-2 text-xs text-muted-foreground">
-            Any checked log can be printed. Owner updates include only checked
-            logs that are approved and marked Owner visible.
+            Selected logs create a staff-only owner update draft. Only photos
+            that have been approved and marked Owner visible are attached, and
+            nothing is shared with the owner until the draft is published.
           </p>
           {message && (
             <p className="mt-3 rounded-md border bg-muted/30 px-3 py-2 text-sm">
@@ -1603,7 +1610,8 @@ export function ProjectDailyLogWorkspace({
                       </div>
                       <p className="mt-1 text-xs text-muted-foreground">
                         Shared uploads are approved immediately. Leave both
-                        unchecked to keep them in staff review.
+                        unchecked to keep them in staff review. Marking a file
+                        for Owners does not make the daily log owner-visible.
                       </p>
                     </fieldset>
                     <div className="flex items-end">
