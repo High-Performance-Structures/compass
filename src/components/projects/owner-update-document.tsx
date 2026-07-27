@@ -2,7 +2,10 @@ import type * as React from "react"
 import Link from "next/link"
 import {
   IconArrowLeft,
+  IconCalendarCheck,
   IconCalendarStats,
+  IconChecklist,
+  IconFile,
   IconPhoto,
   IconPhotoUp,
 } from "@tabler/icons-react"
@@ -41,6 +44,14 @@ function statusLabel(value: string): string {
 
 function projectLabel(document: OwnerProjectUpdateDocument): string {
   return document.project.projectNumber ?? document.project.name
+}
+
+function ownerUpdateDocumentHref(input: {
+  readonly driveFileId: string | null
+  readonly driveUrl: string | null
+}): string | null {
+  if (input.driveFileId) return `/api/google/download/${input.driveFileId}`
+  return input.driveUrl
 }
 
 export function OwnerUpdateDocument({
@@ -169,7 +180,7 @@ export function OwnerUpdateDocument({
             <h2 className="text-base font-semibold print:text-sm print:uppercase">
               Summary
             </h2>
-            <p className="mt-3 max-w-3xl text-sm leading-6 text-muted-foreground print:max-w-none print:text-[12px] print:leading-5 print:text-black">
+            <p className="mt-3 max-w-3xl whitespace-pre-wrap text-sm leading-6 text-muted-foreground print:max-w-none print:text-[12px] print:leading-5 print:text-black">
               {document.update.summary}
             </p>
           </section>
@@ -283,6 +294,127 @@ export function OwnerUpdateDocument({
             </section>
           )}
 
+          {document.documents.length > 0 && (
+            <section className="border-t py-6 print:break-inside-avoid print:border-t print:border-black print:py-4">
+              <div className="flex items-center gap-2">
+                <IconFile className="size-4 text-muted-foreground print:hidden" />
+                <h2 className="text-base font-semibold print:text-sm print:uppercase">
+                  Documents
+                </h2>
+              </div>
+              <div className="mt-3 divide-y border-y print:border-black">
+                {document.documents.map((file) => {
+                  const href = ownerUpdateDocumentHref(file)
+                  return (
+                    <div
+                      key={file.id}
+                      className="flex items-center gap-3 py-3 print:py-2"
+                    >
+                      <IconFile className="size-4 shrink-0 text-muted-foreground print:hidden" />
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-medium print:text-[12px]">
+                          {file.caption ?? file.fileName}
+                        </p>
+                        {file.caption && (
+                          <p className="mt-1 truncate text-xs text-muted-foreground print:text-[10px] print:text-black">
+                            {file.fileName}
+                          </p>
+                        )}
+                      </div>
+                      {href && (
+                        <Button
+                          asChild
+                          variant="outline"
+                          size="sm"
+                          className="print:hidden"
+                        >
+                          <a href={href} target="_blank" rel="noreferrer">
+                            Open
+                          </a>
+                        </Button>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            </section>
+          )}
+
+          {document.completedScheduleItems.length > 0 && (
+            <section className="border-t py-6 print:break-inside-avoid print:border-t print:border-black print:py-4">
+              <div className="flex items-center gap-2">
+                <IconCalendarCheck className="size-4 text-muted-foreground print:hidden" />
+                <h2 className="text-base font-semibold print:text-sm print:uppercase">
+                  Completed This Period
+                </h2>
+              </div>
+              <div className="mt-4 divide-y border-y print:border-black">
+                {document.completedScheduleItems.map((item) => (
+                  <div
+                    key={item.id}
+                    className="grid gap-2 py-3 sm:grid-cols-[8rem_minmax(0,1fr)] print:grid-cols-[6.75rem_minmax(0,1fr)] print:py-2"
+                  >
+                    <p className="text-xs font-medium text-muted-foreground print:text-[10px] print:text-black">
+                      {formatDate(item.startDate)}
+                      {item.endDate !== item.startDate
+                        ? ` - ${formatDate(item.endDate)}`
+                        : ""}
+                    </p>
+                    <div>
+                      <p className="text-sm font-medium print:text-[12px]">
+                        {item.title}
+                      </p>
+                      {(item.notes || item.assignedTo) && (
+                        <p className="mt-1 text-xs text-muted-foreground print:text-[10px] print:text-black">
+                          {[item.notes, item.assignedTo]
+                            .filter(
+                              (value) =>
+                                value !== null && value.trim().length > 0
+                            )
+                            .join(" · ")}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+
+          {document.todos.length > 0 && (
+            <section className="border-t py-6 print:break-inside-avoid print:border-t print:border-black print:py-4">
+              <div className="flex items-center gap-2">
+                <IconChecklist className="size-4 text-muted-foreground print:hidden" />
+                <h2 className="text-base font-semibold print:text-sm print:uppercase">
+                  To-dos
+                </h2>
+              </div>
+              <div className="mt-4 divide-y border-y print:border-black">
+                {document.todos.map((item) => (
+                  <div key={item.id} className="py-3 print:py-2">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <p className="text-sm font-medium print:text-[12px]">
+                        {item.title}
+                      </p>
+                      <p className="text-xs text-muted-foreground print:text-[10px] print:text-black">
+                        {item.dueDate
+                          ? `Due ${formatDate(item.dueDate)}`
+                          : statusLabel(item.status)}
+                      </p>
+                    </div>
+                    {(item.description || item.notes) && (
+                      <p className="mt-1 text-sm text-muted-foreground print:text-[11px] print:text-black">
+                        {[item.description, item.notes]
+                          .filter((value) => value.trim().length > 0)
+                          .join(" ")}
+                      </p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+
           {document.lookAheadScheduleItems.length > 0 && (
             <section className="border-t py-6 print:break-inside-avoid print:border-t print:border-black print:py-4">
               <div className="flex items-center gap-2">
@@ -294,7 +426,7 @@ export function OwnerUpdateDocument({
               <div className="mt-4 overflow-hidden rounded-md border bg-muted/20 print:rounded-none print:border-black print:bg-white">
                 {document.lookAheadScheduleItems.map((item, index) => (
                   <div
-                    key={`${item.title}-${item.startDate}-${index}`}
+                    key={item.id || `${item.title}-${item.startDate}-${index}`}
                     className="grid gap-2 border-b px-4 py-3 last:border-b-0 sm:grid-cols-[8rem_minmax(0,1fr)] print:grid-cols-[6.75rem_minmax(0,1fr)] print:px-3 print:py-2"
                   >
                     <p className="text-xs font-medium text-muted-foreground print:text-[10px] print:text-black">
@@ -310,6 +442,11 @@ export function OwnerUpdateDocument({
                       {item.assignedTo && (
                         <p className="mt-1 text-xs text-muted-foreground print:text-[10px] print:text-black">
                           {item.assignedTo}
+                        </p>
+                      )}
+                      {item.notes && (
+                        <p className="mt-1 text-xs text-muted-foreground print:text-[10px] print:text-black">
+                          {item.notes}
                         </p>
                       )}
                     </div>

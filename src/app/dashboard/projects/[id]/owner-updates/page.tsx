@@ -171,14 +171,6 @@ export default async function ProjectOwnerUpdatesPage({
           />
           {internalViewer && (
             <div className="flex flex-wrap justify-end gap-2">
-              <Button asChild>
-                <Link
-                  href={`/dashboard/projects/${project.id}/daily-logs#owner-update-builder`}
-                >
-                  <IconClipboardText className="size-4" />
-                  Build From Logs
-                </Link>
-              </Button>
               <OwnerUpdateCreateButton projectId={project.id} />
               <Button asChild variant="outline">
                 <Link href={`/dashboard/projects/${project.id}/photos`}>
