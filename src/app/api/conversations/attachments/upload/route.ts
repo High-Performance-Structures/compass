@@ -123,7 +123,6 @@ export async function POST(
         { status: 403 }
       )
     }
-    requirePermission(user, "document", "create")
     const organizationId = requireOrg(user)
     const formData = await request.formData()
     const messageIdValue = formData.get("messageId")
@@ -184,6 +183,7 @@ export async function POST(
         deletedAt: messages.deletedAt,
         projectId: channels.projectId,
         organizationId: channels.organizationId,
+        audience: channels.audience,
       })
       .from(messages)
       .innerJoin(channels, eq(channels.id, messages.channelId))
@@ -219,6 +219,12 @@ export async function POST(
         { success: false, error: "You do not have access to this channel." },
         { status: 403 }
       )
+    }
+    if (
+      message.audience !== "clients" &&
+      message.audience !== "sub_vendors"
+    ) {
+      requirePermission(user, "document", "create")
     }
 
     const auth = await db

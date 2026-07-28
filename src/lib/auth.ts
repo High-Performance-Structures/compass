@@ -19,6 +19,7 @@ import {
 import {
   isExternalProjectRole,
 } from "@/lib/user-roles"
+import { ensureProjectAudienceConversation } from "@/lib/project-audience-conversations"
 
 export type AuthUser = {
   readonly id: string
@@ -68,6 +69,46 @@ function normalizedExternalProjectRole(role: string): string {
   return role === "owner" ? "client" : role
 }
 
+async function ensureExternalOrganizationMembership(input: {
+  readonly db: ReturnType<typeof getDb>
+  readonly organizationId: string
+  readonly userId: string
+  readonly role: string
+  readonly now: string
+}): Promise<void> {
+  const existing = await input.db
+    .select({ id: organizationMembers.id })
+    .from(organizationMembers)
+    .where(
+      and(
+        eq(organizationMembers.userId, input.userId),
+        eq(organizationMembers.organizationId, input.organizationId)
+      )
+    )
+    .get()
+  const role = normalizedExternalProjectRole(input.role)
+
+  if (existing) {
+    await input.db
+      .update(organizationMembers)
+      .set({ role })
+      .where(eq(organizationMembers.id, existing.id))
+      .run()
+    return
+  }
+
+  await input.db
+    .insert(organizationMembers)
+    .values({
+      id: crypto.randomUUID(),
+      organizationId: input.organizationId,
+      userId: input.userId,
+      role,
+      joinedAt: input.now,
+    })
+    .run()
+}
+
 async function setActiveOrgCookie(orgId: string): Promise<void> {
   try {
     const cookieStore = await cookies()
@@ -97,7 +138,9 @@ async function claimProjectAccessInvitations(
       id: projectAccessInvitations.id,
       organizationId: projectAccessInvitations.organizationId,
       projectId: projectAccessInvitations.projectId,
+      projectContactId: projectAccessInvitations.projectContactId,
       role: projectAccessInvitations.role,
+      invitedBy: projectAccessInvitations.invitedBy,
       workosExpiresAt: projectAccessInvitations.workosExpiresAt,
     })
     .from(projectAccessInvitations)
@@ -150,18 +193,13 @@ async function claimProjectAccessInvitations(
       isExternalProjectRole(invitation.role) &&
       !preservedOrganizationRole
     ) {
-      await db
-        .delete(organizationMembers)
-        .where(
-          and(
-            eq(organizationMembers.userId, userId),
-            eq(
-              organizationMembers.organizationId,
-              invitation.organizationId
-            )
-          )
-        )
-        .run()
+      await ensureExternalOrganizationMembership({
+        db,
+        organizationId: invitation.organizationId,
+        userId,
+        role: invitation.role,
+        now,
+      })
     }
 
     const projectMembership = await db
@@ -192,6 +230,27 @@ async function claimProjectAccessInvitations(
         .set({ role: assignedRole })
         .where(eq(projectMembers.id, projectMembership.id))
         .run()
+    }
+
+    const audience =
+      invitation.role === "owner" || invitation.role === "client"
+        ? "owner"
+        : invitation.role === "subcontractor" ||
+            invitation.role === "supplier"
+          ? "sub_vendor"
+          : null
+    if (audience) {
+      await ensureProjectAudienceConversation({
+        db,
+        projectId: invitation.projectId,
+        organizationId: invitation.organizationId,
+        audience,
+        contactId:
+          audience === "owner" ? null : invitation.projectContactId,
+        externalUserId: userId,
+        createdBy: invitation.invitedBy,
+        now,
+      })
     }
 
     await db
@@ -343,12 +402,15 @@ export async function getCurrentUser(): Promise<AuthUser | null> {
 
     // update last login timestamp
     const now = new Date().toISOString()
-    await claimProjectAccessInvitations(
+    const claimedInvitation = await claimProjectAccessInvitations(
       db,
       dbUser.id,
       dbUser.email,
       now
     )
+    if (claimedInvitation) {
+      await setActiveOrgCookie(claimedInvitation.organizationId)
+    }
     await db
       .update(users)
       .set({ lastLoginAt: now })
@@ -406,6 +468,18 @@ export async function getCurrentUser(): Promise<AuthUser | null> {
       isExternalProjectRole(projectMembership.role)
         ? normalizedExternalProjectRole(projectMembership.role)
         : activeOrg?.memberRole ?? dbUser.role
+    if (
+      !hasInternalStaffOrganization &&
+      projectMembership &&
+      isExternalProjectRole(projectMembership.role)
+    ) {
+      activeOrg =
+        orgMemberships.find(
+          (membership) =>
+            membership.orgType === "internal" &&
+            isExternalProjectRole(membership.memberRole)
+        ) ?? activeOrg
+    }
 
     return {
       id: dbUser.id,
@@ -493,12 +567,16 @@ export async function ensureUserExists(workosUser: {
 
   await db.insert(users).values(newUser).run()
 
-  await claimProjectAccessInvitations(
+  const claimedInvitation = await claimProjectAccessInvitations(
     db,
     workosUser.id,
     workosUser.email,
     now
   )
+  if (claimedInvitation) {
+    await setActiveOrgCookie(claimedInvitation.organizationId)
+    return newUser as User
+  }
   // create personal org
   const personalOrgId = crypto.randomUUID()
   const personalSlug = `${workosUser.id.slice(0, 8)}-personal`
