@@ -114,6 +114,7 @@ decision reactivates NetSuite for a specific workflow.
 |----------|-------------|
 | `GITHUB_TOKEN` | GitHub repo token for automatic deployments. |
 | `GITHUB_REPO` | Repository in `owner/repo` format. Default: `High-Performance-Structures/compass`. |
+| `GITHUB_FEEDBACK_PROJECT_ID` | GitHub Project node ID for `Compass Development & Feedback`; used to add sanitized Feedback Desk issues to the project. |
 
 ### Jarvis / Signet feedback bridge (optional)
 

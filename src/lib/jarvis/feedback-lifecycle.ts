@@ -12,6 +12,28 @@ export const FEEDBACK_DESK_STATUSES = [
 export type FeedbackDeskStatus =
   (typeof FEEDBACK_DESK_STATUSES)[number]
 
+export type FeedbackRequesterUpdateKind =
+  | "status_changed"
+  | "draft_pull_request_opened"
+  | "draft_pull_request_updated"
+
+export function feedbackRequesterUpdateKind(
+  previousStatus: string,
+  nextStatus: string,
+  previousDraftPullRequestUrl: string | null,
+  nextDraftPullRequestUrl: string | null,
+): FeedbackRequesterUpdateKind | null {
+  if (
+    nextDraftPullRequestUrl !== null &&
+    nextDraftPullRequestUrl !== previousDraftPullRequestUrl
+  ) {
+    return previousDraftPullRequestUrl === null
+      ? "draft_pull_request_opened"
+      : "draft_pull_request_updated"
+  }
+  return previousStatus === nextStatus ? null : "status_changed"
+}
+
 export function feedbackStatusLabel(status: string): string {
   switch (status) {
     case "new":
@@ -59,6 +81,13 @@ export function feedbackStatusMessage(
     case "closed":
       return `Your request “${title}” has been completed and closed.`
   }
+}
+
+export function feedbackDraftPullRequestMessage(
+  title: string,
+  draftPullRequestUrl: string,
+): string {
+  return `A draft pull request for “${title}” is available for review: ${draftPullRequestUrl}`
 }
 
 export function feedbackStatusUsesEmail(
