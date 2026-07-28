@@ -7,6 +7,7 @@ import { getDb } from "@/db"
 import {
   organizationCalendarSettings,
   organizationMembers,
+  projectMembers,
   projectOperations,
   projectRfis,
   projects,
@@ -18,6 +19,7 @@ import {
 import { requireAuth } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
 import { isDemoUser } from "@/lib/demo"
+import { calendarDetailLevel } from "@/lib/google/calendar/sync-policy"
 import { createNotificationEvent } from "@/lib/notifications/events"
 import { eventAttendeeNotificationRecipients } from "@/lib/notifications/audience"
 import { requireOrg } from "@/lib/org-scope"
@@ -29,13 +31,18 @@ import {
 import {
   dateKeyInTimeZone,
   inclusiveEndDateFromExclusive,
+  isWorkCalendarEventType,
+  isWorkCalendarEventVisibility,
   isValidDateKey,
   normalizeWorkCalendarEventTiming,
   projectTodoHref,
   resolveHOfficeProjectId,
   scheduleItemHref,
+  type WorkCalendarEventType,
+  type WorkCalendarEventVisibility,
 } from "@/lib/work-calendar"
 import { isProjectTodoRecordType } from "@/lib/project-todos"
+import { isInternalStaffRole } from "@/lib/user-roles"
 
 export type WorkCalendarEntryKind =
   | "schedule"
@@ -67,6 +74,8 @@ export type WorkCalendarEventAttendee = {
 }
 
 export type WorkCalendarEventDetails = {
+  readonly eventType: WorkCalendarEventType
+  readonly visibility: WorkCalendarEventVisibility
   readonly description: string | null
   readonly startDate: string
   readonly endDate: string
@@ -77,6 +86,7 @@ export type WorkCalendarEventDetails = {
   readonly allDay: boolean
   readonly timeZone: string
   readonly location: string | null
+  readonly meetingUrl: string | null
   readonly attendees: readonly WorkCalendarEventAttendee[]
   readonly version: number
   readonly managed: boolean
@@ -241,15 +251,33 @@ export async function getWorkCalendar(
   const calendarAnchor = new Date(`${calendarDate}T12:00:00Z`)
   const rangeStart = toDateKey(addDays(calendarAnchor, -14))
   const rangeEnd = toDateKey(addDays(calendarAnchor, 45))
-  const projectRows = await db
-    .select({
-      id: projects.id,
-      name: projects.name,
-      projectNumber: projects.projectNumber,
-    })
-    .from(projects)
-    .where(eq(projects.organizationId, orgId))
-    .orderBy(asc(projects.projectNumber), asc(projects.name))
+  const projectRows =
+    user.organizationType === "internal" &&
+    isInternalStaffRole(user.role)
+      ? await db
+          .select({
+            id: projects.id,
+            name: projects.name,
+            projectNumber: projects.projectNumber,
+          })
+          .from(projects)
+          .where(eq(projects.organizationId, orgId))
+          .orderBy(asc(projects.projectNumber), asc(projects.name))
+      : await db
+          .select({
+            id: projects.id,
+            name: projects.name,
+            projectNumber: projects.projectNumber,
+          })
+          .from(projectMembers)
+          .innerJoin(projects, eq(projects.id, projectMembers.projectId))
+          .where(
+            and(
+              eq(projectMembers.userId, user.id),
+              eq(projects.organizationId, orgId),
+            ),
+          )
+          .orderBy(asc(projects.projectNumber), asc(projects.name))
   const projectById = new Map(
     projectRows.map((project) => [project.id, project])
   )
@@ -449,6 +477,8 @@ export async function getWorkCalendar(
           sourceLabel: "Legacy calendar event",
           href: eventHref(operation.id),
           eventDetails: {
+            eventType: "other",
+            visibility: "organization",
             description: null,
             startDate,
             endDate,
@@ -459,6 +489,7 @@ export async function getWorkCalendar(
             allDay: true,
             timeZone: "UTC",
             location: null,
+            meetingUrl: null,
             attendees: [],
             version: 0,
             managed: false,
@@ -588,27 +619,64 @@ export async function getWorkCalendar(
       continue
     }
     const attendees = attendeesByEventId.get(event.id) ?? []
+    const detailLevel = calendarDetailLevel({
+      visibility: isWorkCalendarEventVisibility(event.visibility)
+        ? event.visibility
+        : "organization",
+      viewerIsOwner: event.createdBy === user.id,
+      viewerIsParticipant: attendees.some(
+        (attendee) => attendee.userId === user.id,
+      ),
+      viewerHasProjectAccess:
+        event.projectId === null || projectById.has(event.projectId),
+      hasProjectScope: event.projectId !== null,
+    })
+    if (detailLevel === "hidden") continue
+    const showDetails = detailLevel === "full"
+    const eventType = isWorkCalendarEventType(event.eventType)
+      ? event.eventType
+      : "other"
 
     entries.push({
       id: event.id,
       kind: "event",
-      projectId: project?.id ?? null,
-      projectLabel: project ? projectLabel(project) : "No project",
-      projectName: project?.name ?? "Archived project",
-      title: event.title,
+      projectId: showDetails ? project?.id ?? null : null,
+      projectLabel: showDetails
+        ? project
+          ? projectLabel(project)
+          : "No project"
+        : "Private",
+      projectName: showDetails
+        ? project?.name ?? "Archived project"
+        : "Private",
+      title: showDetails ? event.title : "Busy",
       status: event.status,
       priority: "normal",
       startDate,
       endDate,
       assignedTo:
-        attendees.length > 0
+        showDetails && attendees.length > 0
           ? attendees.map((attendee) => attendee.name).join(", ")
           : null,
       companyName: null,
-      sourceLabel: "Calendar event",
-      href: `/dashboard/schedule?kind=event&item=${encodeURIComponent(event.id)}#work-calendar-${encodeURIComponent(event.id)}`,
+      sourceLabel: showDetails
+        ? eventType
+            .split("_")
+            .map(
+              (part) =>
+                `${part.slice(0, 1).toUpperCase()}${part.slice(1)}`,
+            )
+            .join(" ")
+        : "Private calendar event",
+      href: showDetails
+        ? `/dashboard/schedule?kind=event&item=${encodeURIComponent(event.id)}#work-calendar-${encodeURIComponent(event.id)}`
+        : "/dashboard/schedule",
       eventDetails: {
-        description: event.description,
+        eventType,
+        visibility: isWorkCalendarEventVisibility(event.visibility)
+          ? event.visibility
+          : "organization",
+        description: showDetails ? event.description : null,
         startDate,
         endDate,
         startTime: event.allDay
@@ -621,10 +689,11 @@ export async function getWorkCalendar(
         endsAt: event.endsAt,
         allDay: event.allDay,
         timeZone: event.timeZone,
-        location: event.location,
-        attendees,
+        location: showDetails ? event.location : null,
+        meetingUrl: showDetails ? event.meetingUrl : null,
+        attendees: showDetails ? attendees : [],
         version: event.version,
-        managed: true,
+        managed: showDetails,
       },
     })
   }
@@ -653,6 +722,8 @@ export async function getWorkCalendar(
 
 export type WorkCalendarEventMutationInput = {
   readonly title: string
+  readonly eventType: WorkCalendarEventType
+  readonly visibility: WorkCalendarEventVisibility
   readonly description: string | null
   readonly projectId: string | null
   readonly allDay: boolean
@@ -664,6 +735,7 @@ export type WorkCalendarEventMutationInput = {
   readonly endsAt: string | null
   readonly timeZone: string
   readonly location: string | null
+  readonly meetingUrl: string | null
   readonly attendeeUserIds: readonly string[]
 }
 
@@ -674,6 +746,8 @@ type WorkCalendarEventMutationResult =
 type ValidatedEventInput = {
   readonly project: ProjectRow
   readonly title: string
+  readonly eventType: WorkCalendarEventType
+  readonly visibility: WorkCalendarEventVisibility
   readonly description: string | null
   readonly startDate: string | null
   readonly endDateExclusive: string | null
@@ -682,6 +756,7 @@ type ValidatedEventInput = {
   readonly allDay: boolean
   readonly timeZone: string
   readonly location: string | null
+  readonly meetingUrl: string | null
   readonly attendees: readonly WorkCalendarEventAttendee[]
 }
 
@@ -708,6 +783,24 @@ function cleanOptionalText(
     throw new Error(`${label} must be ${maxLength} characters or fewer`)
   }
   return cleaned || null
+}
+
+function cleanOptionalUrl(
+  value: string | null,
+  label: string,
+): string | null {
+  const cleaned = cleanOptionalText(value, label, 2_000)
+  if (!cleaned) return null
+
+  try {
+    const parsed = new URL(cleaned)
+    if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
+      throw new Error()
+    }
+    return parsed.toString()
+  } catch {
+    throw new Error(`${label} must be a valid web address`)
+  }
 }
 
 async function organizationProjects(
@@ -833,10 +926,18 @@ async function validateEventInput(
 
   const timing = normalizeWorkCalendarEventTiming(input)
   if (!timing.success) throw new Error(timing.error)
+  if (!isWorkCalendarEventType(input.eventType)) {
+    throw new Error("Select a valid event type")
+  }
+  if (!isWorkCalendarEventVisibility(input.visibility)) {
+    throw new Error("Select a valid event visibility")
+  }
 
   return {
     project,
     title: cleanRequiredText(input.title, "Event title", 200),
+    eventType: input.eventType,
+    visibility: input.visibility,
     description: cleanOptionalText(input.description, "Description", 5_000),
     startDate: timing.startDate,
     endDateExclusive: timing.endDateExclusive,
@@ -845,6 +946,7 @@ async function validateEventInput(
     allDay: input.allDay,
     timeZone: timing.timeZone,
     location: cleanOptionalText(input.location, "Location", 500),
+    meetingUrl: cleanOptionalUrl(input.meetingUrl, "Meeting link"),
     attendees: await validateAttendees(
       db,
       organizationId,
@@ -1040,6 +1142,8 @@ export async function createWorkCalendarEvent(
       organizationId: orgId,
       projectId: validated.project.id,
       title: validated.title,
+      eventType: validated.eventType,
+      visibility: validated.visibility,
       description: validated.description,
       startDate: validated.startDate,
       endDateExclusive: validated.endDateExclusive,
@@ -1048,6 +1152,7 @@ export async function createWorkCalendarEvent(
       allDay: validated.allDay,
       timeZone: validated.timeZone,
       location: validated.location,
+      meetingUrl: validated.meetingUrl,
       status: "open",
       version: 1,
       createdBy: user.id,
@@ -1145,6 +1250,8 @@ export async function updateWorkCalendarEvent(
       .set({
         projectId: validated.project.id,
         title: validated.title,
+        eventType: validated.eventType,
+        visibility: validated.visibility,
         description: validated.description,
         startDate: validated.startDate,
         endDateExclusive: validated.endDateExclusive,
@@ -1153,6 +1260,7 @@ export async function updateWorkCalendarEvent(
         allDay: validated.allDay,
         timeZone: validated.timeZone,
         location: validated.location,
+        meetingUrl: validated.meetingUrl,
         version: expectedVersion + 1,
         updatedBy: user.id,
         updatedAt: now,

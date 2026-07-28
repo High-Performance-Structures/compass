@@ -554,6 +554,8 @@ export const workCalendarEvents = sqliteTable(
       onDelete: "set null",
     }),
     title: text("title").notNull(),
+    eventType: text("event_type").notNull().default("meeting"),
+    visibility: text("visibility").notNull().default("organization"),
     description: text("description"),
     startDate: text("start_date"),
     endDateExclusive: text("end_date_exclusive"),
@@ -564,6 +566,7 @@ export const workCalendarEvents = sqliteTable(
       .default(false),
     timeZone: text("time_zone").notNull().default("UTC"),
     location: text("location"),
+    meetingUrl: text("meeting_url"),
     status: text("status").notNull().default("open"),
     version: integer("version").notNull().default(1),
     createdBy: text("created_by").references(() => users.id, {
@@ -615,6 +618,149 @@ export const workCalendarEventAttendees = sqliteTable(
       table.userId,
     ),
     index("idx_work_calendar_event_attendees_user").on(table.userId),
+  ],
+)
+
+export const googleCalendarConnections = sqliteTable(
+  "google_calendar_connections",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    googleAccountId: text("google_account_id").notNull(),
+    googleAccountEmail: text("google_account_email").notNull(),
+    refreshTokenEncrypted: text("refresh_token_encrypted").notNull(),
+    grantedScopes: text("granted_scopes").notNull(),
+    status: text("status").notNull().default("connected"),
+    calendarSyncEnabled: integer("calendar_sync_enabled", {
+      mode: "boolean",
+    })
+      .notNull()
+      .default(false),
+    tasksSyncEnabled: integer("tasks_sync_enabled", { mode: "boolean" })
+      .notNull()
+      .default(false),
+    connectedAt: text("connected_at").notNull(),
+    lastSyncedAt: text("last_synced_at"),
+    lastError: text("last_error"),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("google_calendar_connection_user_unique").on(
+      table.organizationId,
+      table.userId,
+    ),
+    uniqueIndex("google_calendar_connection_account_unique").on(
+      table.organizationId,
+      table.googleAccountId,
+    ),
+    index("idx_google_calendar_connections_status").on(
+      table.organizationId,
+      table.status,
+    ),
+  ],
+)
+
+export const googleCalendarSelections = sqliteTable(
+  "google_calendar_selections",
+  {
+    id: text("id").primaryKey(),
+    connectionId: text("connection_id")
+      .notNull()
+      .references(() => googleCalendarConnections.id, {
+        onDelete: "cascade",
+      }),
+    googleCalendarId: text("google_calendar_id").notNull(),
+    summary: text("summary").notNull(),
+    description: text("description"),
+    timeZone: text("time_zone"),
+    backgroundColor: text("background_color"),
+    accessRole: text("access_role").notNull().default("reader"),
+    isPrimary: integer("is_primary", { mode: "boolean" })
+      .notNull()
+      .default(false),
+    selected: integer("selected", { mode: "boolean" })
+      .notNull()
+      .default(false),
+    importEvents: integer("import_events", { mode: "boolean" })
+      .notNull()
+      .default(false),
+    exportCompassEvents: integer("export_compass_events", {
+      mode: "boolean",
+    })
+      .notNull()
+      .default(false),
+    isCompassDestination: integer("is_compass_destination", {
+      mode: "boolean",
+    })
+      .notNull()
+      .default(false),
+    syncToken: text("sync_token"),
+    watchChannelId: text("watch_channel_id"),
+    watchResourceId: text("watch_resource_id"),
+    watchExpiresAt: text("watch_expires_at"),
+    lastSyncedAt: text("last_synced_at"),
+    lastError: text("last_error"),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("google_calendar_selection_unique").on(
+      table.connectionId,
+      table.googleCalendarId,
+    ),
+    index("idx_google_calendar_selections_selected").on(
+      table.connectionId,
+      table.selected,
+    ),
+  ],
+)
+
+export const googleCalendarEntityLinks = sqliteTable(
+  "google_calendar_entity_links",
+  {
+    id: text("id").primaryKey(),
+    connectionId: text("connection_id")
+      .notNull()
+      .references(() => googleCalendarConnections.id, {
+        onDelete: "cascade",
+      }),
+    googleCalendarId: text("google_calendar_id").notNull(),
+    googleEventId: text("google_event_id").notNull(),
+    googleICalUid: text("google_ical_uid"),
+    sourceType: text("source_type").notNull(),
+    sourceId: text("source_id").notNull(),
+    syncDirection: text("sync_direction").notNull().default("push"),
+    syncStatus: text("sync_status").notNull().default("pending"),
+    googleEtag: text("google_etag"),
+    googleUpdatedAt: text("google_updated_at"),
+    compassVersion: integer("compass_version"),
+    lastSyncedAt: text("last_synced_at"),
+    lastError: text("last_error"),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("google_calendar_entity_source_unique").on(
+      table.connectionId,
+      table.googleCalendarId,
+      table.sourceType,
+      table.sourceId,
+    ),
+    uniqueIndex("google_calendar_entity_event_unique").on(
+      table.connectionId,
+      table.googleCalendarId,
+      table.googleEventId,
+    ),
+    index("idx_google_calendar_entity_sync_status").on(
+      table.connectionId,
+      table.syncStatus,
+    ),
   ],
 )
 
@@ -1088,6 +1234,18 @@ export type WorkCalendarEventAttendee =
   typeof workCalendarEventAttendees.$inferSelect
 export type NewWorkCalendarEventAttendee =
   typeof workCalendarEventAttendees.$inferInsert
+export type GoogleCalendarConnection =
+  typeof googleCalendarConnections.$inferSelect
+export type NewGoogleCalendarConnection =
+  typeof googleCalendarConnections.$inferInsert
+export type GoogleCalendarSelection =
+  typeof googleCalendarSelections.$inferSelect
+export type NewGoogleCalendarSelection =
+  typeof googleCalendarSelections.$inferInsert
+export type GoogleCalendarEntityLink =
+  typeof googleCalendarEntityLinks.$inferSelect
+export type NewGoogleCalendarEntityLink =
+  typeof googleCalendarEntityLinks.$inferInsert
 export type ProjectPurchaseOrderLine =
   typeof projectPurchaseOrderLines.$inferSelect
 export type NewProjectPurchaseOrderLine =
