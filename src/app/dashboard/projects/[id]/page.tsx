@@ -12,6 +12,7 @@ import {
 import { getCurrentUser } from "@/lib/auth"
 import { canManageProjectRegistry } from "@/lib/permissions"
 import { getProjectAccessRecord } from "@/lib/project-access"
+import { projectAudiencePreviewHref } from "@/lib/project-audience-preview-routes"
 import { and, eq } from "drizzle-orm"
 import { notFound, redirect } from "next/navigation"
 import Link from "next/link"
@@ -157,13 +158,13 @@ export default async function ProjectSummaryPage({
       .get()
     projectRole = routeMembership?.role ?? null
     if (projectRole === "client" || projectRole === "owner") {
-      redirect(`/dashboard/projects/${id}/owner-updates`)
+      redirect(projectAudiencePreviewHref(id, "owner"))
     }
     if (
       projectRole === "subcontractor" ||
       projectRole === "supplier"
     ) {
-      redirect(`/dashboard/projects/${id}/preview/sub-vendor`)
+      redirect(projectAudiencePreviewHref(id, "sub-vendor"))
     }
 
     const [found] = await db

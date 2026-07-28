@@ -119,6 +119,7 @@ export type AudienceContact = {
 
 export type ProjectAudiencePreview = {
   readonly audience: ProjectAudience
+  readonly viewerIsInternal: boolean
   readonly projectOptions: readonly AudienceProjectOption[]
   readonly project: {
     readonly id: string
@@ -143,6 +144,7 @@ async function verifyProjectAccess(
 ): Promise<{
   readonly db: ReturnType<typeof getDb>
   readonly organizationId: string
+  readonly viewerIsInternal: boolean
 }> {
   const user = await requireAuth()
   requirePermission(user, "project", "read")
@@ -154,7 +156,8 @@ async function verifyProjectAccess(
   if (!project.organizationId) {
     throw new Error("Project organization is missing")
   }
-  if (!isInternalStaffRole(user.role)) {
+  const viewerIsInternal = isInternalStaffRole(user.role)
+  if (!viewerIsInternal) {
     const membership = await db
       .select({ role: projectMembers.role })
       .from(projectMembers)
@@ -170,7 +173,11 @@ async function verifyProjectAccess(
     }
   }
 
-  return { db, organizationId: project.organizationId }
+  return {
+    db,
+    organizationId: project.organizationId,
+    viewerIsInternal,
+  }
 }
 
 function isActiveStatus(value: string): boolean {
@@ -212,7 +219,7 @@ export async function getProjectAudiencePreview(
   projectId: string,
   audience: ProjectAudience
 ): Promise<ProjectAudiencePreview> {
-  const { db, organizationId } = await verifyProjectAccess(
+  const { db, organizationId, viewerIsInternal } = await verifyProjectAccess(
     projectId,
     audience
   )
@@ -438,6 +445,7 @@ export async function getProjectAudiencePreview(
 
   return {
     audience,
+    viewerIsInternal,
     projectOptions,
     project,
     ownerUpdates: ownerUpdateRows,

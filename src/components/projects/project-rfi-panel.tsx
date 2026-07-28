@@ -6,6 +6,7 @@ import {
   IconMessageQuestion,
   IconUsers,
 } from "@tabler/icons-react"
+import { projectAudiencePreviewHref } from "@/lib/project-audience-preview-routes"
 
 import type {
   ProjectRfiItem,
@@ -148,14 +149,18 @@ export function ProjectRfiPanel({
             <IconExternalLink className="size-4" />
           </Link>
           <Link
-            href={`/dashboard/projects/${projectId}/preview/sub-vendor`}
+            href={projectAudiencePreviewHref(projectId, "sub-vendor")}
+            target="_blank"
+            rel="noopener noreferrer"
             className="inline-flex items-center gap-1.5 rounded-md border bg-background px-3 py-1.5 text-sm font-medium transition-colors hover:bg-accent"
           >
             <IconUsers className="size-4" />
             Sub/vendor view
           </Link>
           <Link
-            href={`/dashboard/projects/${projectId}/preview/owner`}
+            href={projectAudiencePreviewHref(projectId, "owner")}
+            target="_blank"
+            rel="noopener noreferrer"
             className="inline-flex items-center gap-1.5 rounded-md border bg-background px-3 py-1.5 text-sm font-medium transition-colors hover:bg-accent"
           >
             <IconEye className="size-4" />

@@ -1,7 +1,6 @@
 import type * as React from "react"
 import Link from "next/link"
 import {
-  IconArrowLeft,
   IconArrowRight,
   IconCalendarStats,
   IconChevronDown,
@@ -35,6 +34,11 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { OwnerCoverPhotoControl } from "@/components/projects/owner-cover-photo-control"
 import { ProjectAudiencePhotoGallery } from "@/components/projects/project-audience-photo-gallery"
+import { ProjectAudiencePreviewShell } from "@/components/projects/project-audience-preview-shell"
+import {
+  ownerUpdatePreviewHref,
+  projectAudiencePreviewHref,
+} from "@/lib/project-audience-preview-routes"
 
 function formatDate(value: string | null): string {
   if (!value) return "Unscheduled"
@@ -50,10 +54,6 @@ function statusLabel(value: string): string {
     .split("_")
     .map((part) => `${part.slice(0, 1).toUpperCase()}${part.slice(1)}`)
     .join(" ")
-}
-
-function audienceLabel(value: ProjectAudience): string {
-  return value === "owner" ? "Owner Preview" : "Sub/Vendor Preview"
 }
 
 function audienceDescription(value: ProjectAudience): string {
@@ -74,8 +74,8 @@ function projectOptionLabel(project: AudienceProjectOption): string {
 
 function previewPath(projectId: string, audience: ProjectAudience): string {
   return audience === "owner"
-    ? `/dashboard/projects/${projectId}/preview/owner`
-    : `/dashboard/projects/${projectId}/preview/sub-vendor`
+    ? projectAudiencePreviewHref(projectId, "owner")
+    : projectAudiencePreviewHref(projectId, "sub-vendor")
 }
 
 function recordTypeLabel(value: string): string {
@@ -214,12 +214,14 @@ function RfiRow({
 
 function MessageChannelRow({
   channel,
+  previewHref,
 }: {
   readonly channel: AudienceMessageChannel
+  readonly previewHref: string
 }): React.ReactElement {
   return (
     <Link
-      href={`/dashboard/conversations/${channel.id}`}
+      href={`${previewHref}?channel=${encodeURIComponent(channel.id)}#messages`}
       className="block rounded-md border bg-background p-3 transition-colors hover:bg-accent"
     >
       <div className="flex items-center justify-between gap-3">
@@ -284,35 +286,6 @@ function ownerHeroTitle(data: ProjectAudiencePreviewData): string {
     : projectLabel(data)
 }
 
-function OwnerPreviewControls({
-  projectId,
-}: {
-  readonly projectId: string
-}): React.ReactElement {
-  return (
-    <div className="flex flex-wrap items-center justify-between gap-3">
-      <Button asChild variant="ghost" size="sm">
-        <Link href={`/dashboard/projects/${projectId}`}>
-          <IconArrowLeft className="size-4" />
-          Project
-        </Link>
-      </Button>
-      <div className="flex flex-wrap gap-2">
-        <Button asChild variant="default" size="sm">
-          <Link href={`/dashboard/projects/${projectId}/preview/owner`}>
-            Owner
-          </Link>
-        </Button>
-        <Button asChild variant="outline" size="sm">
-          <Link href={`/dashboard/projects/${projectId}/preview/sub-vendor`}>
-            Sub/vendor
-          </Link>
-        </Button>
-      </div>
-    </div>
-  )
-}
-
 function OwnerUpdateCard({
   projectId,
   update,
@@ -355,7 +328,7 @@ function OwnerUpdateCard({
         size="sm"
         className="mt-4"
       >
-        <Link href={`/dashboard/projects/${projectId}/owner-updates/${update.id}`}>
+        <Link href={ownerUpdatePreviewHref(projectId, update.id)}>
           Open update
           <IconArrowRight className="size-4" />
         </Link>
@@ -466,41 +439,48 @@ function OwnerProjectPreview({
   return (
     <main className="min-h-screen bg-[oklch(0.96_0.018_115)]">
       <div className="mx-auto flex max-w-6xl flex-col gap-4 px-4 py-4 sm:px-6 lg:px-8">
-        <OwnerPreviewControls projectId={data.project.id} />
-        <OwnerCoverPhotoControl
-          projectId={data.project.id}
-          projectTitle={ownerHeroTitle(data)}
-          projectLabel={projectLabel(data)}
-          projectAddress={data.project.address}
-          latestUpdate={
-            latestUpdate
-              ? {
-                  id: latestUpdate.id,
-                  title: latestUpdate.title,
-                }
-              : null
-          }
-          nextScheduleItem={
-            nextScheduleItem
-              ? {
-                  title: nextScheduleItem.title,
-                  dateRange:
-                    `${formatDate(nextScheduleItem.startDate)} - ` +
-                    formatDate(nextScheduleItem.endDate),
-                }
-              : null
-          }
-          approvedPhotos={data.photos.map((photo) => ({
-            id: photo.id,
-            fileName: photo.fileName,
-            driveFileId: photo.driveFileId,
-            thumbnailUrl: photo.thumbnailUrl,
-            caption: photo.caption,
-          }))}
-        />
+        <div id="overview" className="scroll-mt-36">
+          <OwnerCoverPhotoControl
+            projectId={data.project.id}
+            projectTitle={ownerHeroTitle(data)}
+            projectLabel={projectLabel(data)}
+            projectAddress={data.project.address}
+            latestUpdate={
+              latestUpdate
+                ? {
+                    id: latestUpdate.id,
+                    title: latestUpdate.title,
+                  }
+                : null
+            }
+            nextScheduleItem={
+              nextScheduleItem
+                ? {
+                    title: nextScheduleItem.title,
+                    dateRange:
+                      `${formatDate(nextScheduleItem.startDate)} - ` +
+                      formatDate(nextScheduleItem.endDate),
+                  }
+                : null
+            }
+            approvedPhotos={data.photos.map((photo) => ({
+              id: photo.id,
+              fileName: photo.fileName,
+              driveFileId: photo.driveFileId,
+              thumbnailUrl: photo.thumbnailUrl,
+              caption: photo.caption,
+            }))}
+            latestUpdateHref={
+              latestUpdate
+                ? ownerUpdatePreviewHref(data.project.id, latestUpdate.id)
+                : null
+            }
+            editable={false}
+          />
+        </div>
 
         <section className="grid gap-4 lg:grid-cols-[1.15fr_0.85fr]">
-          <div className="space-y-4">
+          <div id="updates" className="scroll-mt-36 space-y-4">
             <div className="flex items-center justify-between gap-3">
               <div>
                 <p className="text-xs font-medium uppercase text-muted-foreground">
@@ -535,7 +515,10 @@ function OwnerProjectPreview({
           </div>
 
           <aside className="space-y-4">
-            <section className="rounded-lg border bg-background p-5">
+            <section
+              id="schedule"
+              className="scroll-mt-36 rounded-lg border bg-background p-5"
+            >
               <div className="flex items-center gap-2">
                 <IconCalendarStats className="size-4 text-muted-foreground" />
                 <h2 className="text-sm font-semibold">What happens next</h2>
@@ -553,7 +536,10 @@ function OwnerProjectPreview({
               )}
             </section>
 
-            <section className="rounded-lg border bg-background p-5">
+            <section
+              id="team"
+              className="scroll-mt-36 rounded-lg border bg-background p-5"
+            >
               <div className="flex items-center gap-2">
                 <IconSparkles className="size-4 text-muted-foreground" />
                 <h2 className="text-sm font-semibold">Your project team</h2>
@@ -595,11 +581,13 @@ function OwnerProjectPreview({
           </aside>
         </section>
 
-        <ProjectAudiencePhotoGallery
-          photos={data.photos}
-          title="Approved Photo Gallery"
-          emptyMessage="No photos have been approved for this audience yet."
-        />
+        <div id="photos" className="scroll-mt-36">
+          <ProjectAudiencePhotoGallery
+            photos={data.photos}
+            title="Approved Photo Gallery"
+            emptyMessage="No photos have been approved for this audience yet."
+          />
+        </div>
       </div>
     </main>
   )
@@ -620,49 +608,38 @@ export function ProjectAudiencePreview({
   })
 
   if (isOwner) {
-    return <OwnerProjectPreview data={data} />
+    return (
+      <ProjectAudiencePreviewShell
+        audience={data.audience}
+        projectId={data.project.id}
+        projectName={data.project.name}
+        projectNumber={data.project.projectNumber}
+        viewerIsInternal={data.viewerIsInternal}
+      >
+        <OwnerProjectPreview data={data} />
+      </ProjectAudiencePreviewShell>
+    )
   }
 
   return (
-    <main className="min-h-screen bg-muted/30">
-      <div className="mx-auto flex max-w-6xl flex-col gap-4 px-4 py-4 sm:px-6 lg:px-8">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <Button asChild variant="ghost" size="sm">
-            <Link href={`/dashboard/projects/${data.project.id}`}>
-              <IconArrowLeft className="size-4" />
-              Project
-            </Link>
-          </Button>
-          <div className="flex flex-wrap gap-2">
-            <Button
-              asChild
-              variant={isOwner ? "default" : "outline"}
-              size="sm"
-            >
-              <Link href={`/dashboard/projects/${data.project.id}/preview/owner`}>
-                Owner
-              </Link>
-            </Button>
-            <Button
-              asChild
-              variant={isOwner ? "outline" : "default"}
-              size="sm"
-            >
-              <Link
-                href={`/dashboard/projects/${data.project.id}/preview/sub-vendor`}
-              >
-                Sub/vendor
-              </Link>
-            </Button>
-          </div>
-        </div>
-
-        <section className="rounded-lg border bg-background p-5 sm:p-6">
+    <ProjectAudiencePreviewShell
+      audience={data.audience}
+      projectId={data.project.id}
+      projectName={data.project.name}
+      projectNumber={data.project.projectNumber}
+      viewerIsInternal={data.viewerIsInternal}
+    >
+      <main className="min-h-screen bg-muted/30">
+        <div className="mx-auto flex max-w-6xl flex-col gap-4 px-4 py-4 sm:px-6 lg:px-8">
+        <section
+          id="overview"
+          className="scroll-mt-36 rounded-lg border bg-background p-5 sm:p-6"
+        >
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
-              <Badge variant="secondary">Internal preview</Badge>
+              <Badge variant="secondary">Partner project home</Badge>
               <h1 className="mt-3 text-2xl font-semibold tracking-tight">
-                {audienceLabel(data.audience)}
+                {data.project.name}
               </h1>
               <p className="mt-2 max-w-3xl text-sm text-muted-foreground">
                 {audienceDescription(data.audience)}
@@ -734,7 +711,10 @@ export function ProjectAudiencePreview({
 
         {!isOwner && <AudienceMetricStrip data={data} />}
 
-        <section className="rounded-lg border bg-background p-4 sm:p-5">
+        <section
+          id="team"
+          className="scroll-mt-36 rounded-lg border bg-background p-4 sm:p-5"
+        >
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center gap-2">
               <IconUsers className="size-4 text-muted-foreground" />
@@ -802,7 +782,10 @@ export function ProjectAudiencePreview({
         )}
 
         <section className="grid gap-4 lg:grid-cols-[1fr_0.85fr]">
-          <div className="rounded-lg border bg-background p-4 sm:p-5">
+          <div
+            id="schedule"
+            className="scroll-mt-36 rounded-lg border bg-background p-4 sm:p-5"
+          >
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex items-center gap-2">
                 <IconCalendarStats className="size-4 text-muted-foreground" />
@@ -825,7 +808,10 @@ export function ProjectAudiencePreview({
             )}
           </div>
 
-          <div className="rounded-lg border bg-background p-4 sm:p-5">
+          <div
+            id="commitments"
+            className="scroll-mt-36 rounded-lg border bg-background p-4 sm:p-5"
+          >
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex items-center gap-2">
                 <IconUsers className="size-4 text-muted-foreground" />
@@ -872,7 +858,10 @@ export function ProjectAudiencePreview({
 
         {!isOwner && (
           <section className="grid gap-4 lg:grid-cols-[1fr_0.85fr]">
-            <div className="rounded-lg border bg-background p-4 sm:p-5">
+            <div
+              id="rfis"
+              className="scroll-mt-36 rounded-lg border bg-background p-4 sm:p-5"
+            >
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div className="flex items-center gap-2">
                   <IconQuestionMark className="size-4 text-muted-foreground" />
@@ -893,7 +882,10 @@ export function ProjectAudiencePreview({
               )}
             </div>
 
-            <div className="rounded-lg border bg-background p-4 sm:p-5">
+            <div
+              id="messages"
+              className="scroll-mt-36 rounded-lg border bg-background p-4 sm:p-5"
+            >
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div className="flex items-center gap-2">
                   <IconMessageCircle className="size-4 text-muted-foreground" />
@@ -906,7 +898,11 @@ export function ProjectAudiencePreview({
               {data.messageChannels.length > 0 ? (
                 <div className="mt-4 grid gap-3">
                   {data.messageChannels.map((channel) => (
-                    <MessageChannelRow key={channel.id} channel={channel} />
+                    <MessageChannelRow
+                      key={channel.id}
+                      channel={channel}
+                      previewHref={previewPath(data.project.id, data.audience)}
+                    />
                   ))}
                 </div>
               ) : (
@@ -923,12 +919,15 @@ export function ProjectAudiencePreview({
           </section>
         )}
 
-        <ProjectAudiencePhotoGallery
-          photos={data.photos}
-          title="Visible Photos"
-          emptyMessage="No photos have been approved for this audience yet."
-        />
-      </div>
-    </main>
+        <div id="photos" className="scroll-mt-36">
+          <ProjectAudiencePhotoGallery
+            photos={data.photos}
+            title="Visible Photos"
+            emptyMessage="No photos have been approved for this audience yet."
+          />
+        </div>
+        </div>
+      </main>
+    </ProjectAudiencePreviewShell>
   )
 }
