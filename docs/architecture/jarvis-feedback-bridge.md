@@ -47,7 +47,7 @@ Data flow
 Compass conversation / feedback widget
                  |
                  v
-       D1 feedback desk + outbox
+       D1 feedback desk + private provenance/outbox
                  |
           signed pull / ack
                  |
@@ -115,6 +115,36 @@ The bridge intake endpoint accepts `telegram`, `jarvis-email`, and
 `ask-jarvis` events from the private adapter. All message content is marked
 and treated as untrusted user content. Message text must never be interpreted
 as bridge configuration or permission to perform an external action.
+
+`jarvis-email` is the existing Jarvis mailbox adapter for
+`jarvis@hps-colorado.com`; it is not a separate public email integration.
+Compass stores the sender address and adapter routing data only in the
+Feedback Desk's protected record and bridge payloads.
+
+GitHub issue and privacy boundary
+---
+
+Every Feedback Desk item is mirrored to a GitHub issue and added to the
+`Compass Development & Feedback` GitHub Project. GitHub is deliberately a
+minimal engineering tracker, not the system of record for a request. Its
+title and body contain only the request kind and an opaque `CFD-<UUID>`
+correlation reference. They never contain the submitted title or message,
+reporter name, email address, Telegram identifier, source event identifier,
+page URL, user agent, or bridge metadata.
+
+The corresponding request content, source provenance, requester identity,
+and reply target stay in Compass D1 and the signed private bridge. Configure
+`GITHUB_FEEDBACK_PROJECT_ID` with the node ID of the `Compass Development &
+Feedback` Project for deterministic project insertion. When it is absent,
+Compass attempts a title lookup among the token owner's projects and logs a
+configuration error rather than exporting private data.
+
+The prior feedback-widget issue formatter included the optional reporter name
+and email in GitHub issue bodies. It has been removed: new widget submissions
+now use the same sanitized export as Telegram, Jarvis email, and Compass
+conversation feedback. Any historical issue created by the former formatter
+must be edited in GitHub to remove the reporter line before the issue is
+shared further.
 
 Guest policy
 ---
@@ -277,7 +307,7 @@ POST /api/integrations/jarvis/feedback/<feedback-desk-item-id>/status
 The signed lifecycle endpoint accepts an idempotency key, one of the visible
 request states (`new`, `triaged`, `needs_info`, `planned`, `in_progress`,
 `testing`, `deployed`, or `closed`), an optional staff-facing message,
-priority, and GitHub issue URL. Compass updates the durable Feedback Desk
+priority, GitHub issue URL, and optional `draftPullRequestUrl`. Compass updates the durable Feedback Desk
 record and creates:
 
 - an in-app notification for the matching authenticated requester;
@@ -285,6 +315,24 @@ record and creates:
   deployment milestones; and
 - a `feedback.status_changed` outbound bridge event so Telegram, email, and
   originating Compass-thread adapters can reply through the source channel.
+
+Compass creates a neutral receipt event when the item is first recorded.
+Subsequent triage, planned, and in-progress events use the same source-aware
+payload. A new `draftPullRequestUrl` sets `notificationKind` to
+`draft_pull_request_opened`; the bridge delivers the human-readable pull
+request link only to the originating private channel. Compass-thread replies
+are posted through the existing signed reply endpoint, which derives the
+stored original thread instead of trusting a callback-supplied destination.
+Compass suppresses repeated callbacks that leave both the lifecycle status and
+draft pull request unchanged. Requesters receive only receipt, a meaningful
+status transition (triage, information needed, planned, implementation,
+testing, deployment, or closure), or a newly opened/materially updated draft
+pull request.
+The event's `source` is always the original source (`telegram`,
+`jarvis-email`, or `compass-conversation`), never a generic fallback route:
+the adapter must send Telegram updates only through Telegram, Jarvis mailbox
+updates only through email, and Compass updates only to the stored Compass
+thread/request. Cross-channel delivery requires a separate product decision.
 
 The notification links to `/dashboard/requests`, where authenticated users
 see only requests matching their organization and account email. GitHub

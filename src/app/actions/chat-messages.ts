@@ -37,6 +37,7 @@ import { isDemoUser } from "@/lib/demo"
 import { requireOrg } from "@/lib/org-scope"
 import { revalidatePath } from "next/cache"
 import { enqueueFeedbackDeskItem } from "@/lib/jarvis/feedback-desk"
+import { linkFeedbackDeskItemToGithub } from "@/lib/jarvis/feedback-github"
 import {
   createNotificationEvent,
   notifyChannelMessage,
@@ -572,7 +573,7 @@ export async function sendMessage(data: {
 
     if (channel && (asksCompass || isFeedbackChannel)) {
       try {
-        await enqueueFeedbackDeskItem(db, {
+        const feedbackItem = await enqueueFeedbackDeskItem(db, {
           organizationId: channel.organizationId,
           source: "compass-conversation",
           sourceId: messageId,
@@ -591,6 +592,7 @@ export async function sendMessage(data: {
             channelName: channel.name,
           },
         })
+        await linkFeedbackDeskItemToGithub(db, env, feedbackItem)
       } catch (error) {
         console.error("conversation_feedback_enqueue_failed", {
           messageId,

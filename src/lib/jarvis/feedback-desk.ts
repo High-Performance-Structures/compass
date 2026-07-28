@@ -38,6 +38,46 @@ type CreateFeedbackDeskItemInput = {
   readonly metadata?: Readonly<Record<string, unknown>>
 }
 
+export async function enqueueFeedbackReceipt(
+  db: CompassDb,
+  item: FeedbackDeskItem,
+): Promise<void> {
+  const now = new Date().toISOString()
+  const receiptPayload = {
+    schemaVersion: 1,
+    feedbackDeskItemId: item.id,
+    source: item.source,
+    sourceId: item.sourceId,
+    status: "new",
+    title: item.title,
+    message: `Your request “${item.title}” has been received.`,
+    compass: {
+      organizationId: item.organizationId,
+      channelId: item.channelId,
+      messageId: item.messageId,
+      threadId: item.threadId,
+    },
+    createdAt: item.createdAt,
+  }
+
+  await db
+    .insert(jarvisBridgeEvents)
+    .values({
+      id: crypto.randomUUID(),
+      organizationId: item.organizationId,
+      direction: "outbound",
+      source: item.source,
+      eventType: "feedback.status_changed",
+      idempotencyKey: `receipt:${item.id}`,
+      feedbackDeskItemId: item.id,
+      payload: JSON.stringify(receiptPayload),
+      availableAt: now,
+      createdAt: now,
+      updatedAt: now,
+    })
+    .onConflictDoNothing()
+}
+
 export async function enqueueFeedbackDeskItem(
   db: CompassDb,
   input: CreateFeedbackDeskItemInput,
@@ -129,6 +169,8 @@ export async function enqueueFeedbackDeskItem(
       updatedAt: now,
     })
     .onConflictDoNothing()
+
+  await enqueueFeedbackReceipt(db, item)
 
   return item
 }

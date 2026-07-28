@@ -11,6 +11,8 @@ import {
   readBoundedBody,
   verifyJarvisRequest,
 } from "@/lib/jarvis/auth"
+import { linkFeedbackDeskItemToGithub } from "@/lib/jarvis/feedback-github"
+import { enqueueFeedbackReceipt } from "@/lib/jarvis/feedback-desk"
 
 const CLAIM_RETRY_MILLISECONDS = 5 * 60 * 1000
 const MAX_EVENT_BATCH = 50
@@ -235,7 +237,7 @@ export async function POST(request: Request): Promise<Response> {
     .onConflictDoNothing()
 
   const item = await db
-    .select({ id: feedbackDeskItems.id })
+    .select()
     .from(feedbackDeskItems)
     .where(
       and(
@@ -270,6 +272,9 @@ export async function POST(request: Request): Promise<Response> {
       updatedAt: now,
     })
     .onConflictDoNothing()
+
+  await enqueueFeedbackReceipt(db, item)
+  await linkFeedbackDeskItemToGithub(db, env, item)
 
   return Response.json(
     { success: true, feedbackDeskItemId: item.id },

@@ -24,6 +24,8 @@ export const feedbackDeskItems = sqliteTable(
     messageId: text("message_id"),
     threadId: text("thread_id"),
     githubIssueUrl: text("github_issue_url"),
+    githubIssueNodeId: text("github_issue_node_id"),
+    githubDraftPullRequestUrl: text("github_draft_pull_request_url"),
     metadata: text("metadata"),
     createdAt: text("created_at").notNull(),
     updatedAt: text("updated_at").notNull(),

@@ -16,6 +16,8 @@ import {
 import {
   FEEDBACK_DESK_STATUSES,
   feedbackStatusLabel,
+  feedbackDraftPullRequestMessage,
+  feedbackRequesterUpdateKind,
   feedbackStatusMessage,
   feedbackStatusUsesEmail,
 } from "@/lib/jarvis/feedback-lifecycle"
@@ -27,6 +29,9 @@ const statusUpdateSchema = z.object({
   message: z.string().min(1).max(2_000).optional(),
   priority: z.enum(["low", "normal", "high", "urgent"]).optional(),
   githubIssueUrl: z.union([z.url().max(2_048), z.null()]).optional(),
+  draftPullRequestUrl: z
+    .union([z.url().max(2_048), z.null()])
+    .optional(),
 })
 
 function metadataActorId(metadata: string | null): string | null {
@@ -172,10 +177,25 @@ export async function POST(
         )
     : []
 
+  const draftPullRequestUrl =
+    parsed.data.draftPullRequestUrl === undefined
+      ? item.githubDraftPullRequestUrl
+      : parsed.data.draftPullRequestUrl
+  const requesterUpdateKind = feedbackRequesterUpdateKind(
+    item.status,
+    parsed.data.status,
+    item.githubDraftPullRequestUrl,
+    draftPullRequestUrl,
+  )
+  const hasDraftPullRequestUpdate =
+    draftPullRequestUrl !== null &&
+    draftPullRequestUrl !== item.githubDraftPullRequestUrl
   const now = new Date().toISOString()
   const message =
     parsed.data.message ??
-    feedbackStatusMessage(parsed.data.status, item.title)
+    (hasDraftPullRequestUpdate
+      ? feedbackDraftPullRequestMessage(item.title, draftPullRequestUrl)
+      : feedbackStatusMessage(parsed.data.status, item.title))
   await db
     .update(feedbackDeskItems)
     .set({
@@ -185,11 +205,12 @@ export async function POST(
         parsed.data.githubIssueUrl === undefined
           ? item.githubIssueUrl
           : parsed.data.githubIssueUrl,
+      githubDraftPullRequestUrl: draftPullRequestUrl,
       updatedAt: now,
     })
     .where(eq(feedbackDeskItems.id, id))
 
-  if (recipients.length > 0) {
+  if (requesterUpdateKind && recipients.length > 0) {
     try {
       await createSystemNotificationEvent({
         organizationId,
@@ -245,6 +266,8 @@ export async function POST(
       parsed.data.githubIssueUrl === undefined
         ? item.githubIssueUrl
         : parsed.data.githubIssueUrl,
+    draftPullRequestUrl,
+    notificationKind: requesterUpdateKind,
     updatedAt: now,
   })
 
@@ -264,27 +287,30 @@ export async function POST(
     createdAt: now,
     updatedAt: now,
   })
-  await db
-    .insert(jarvisBridgeEvents)
-    .values({
-      id: crypto.randomUUID(),
-      organizationId,
-      direction: "outbound",
-      source: "feedback-lifecycle",
-      eventType: "feedback.status_changed",
-      idempotencyKey: `notify:${eventKey}`,
-      feedbackDeskItemId: id,
-      payload: statusPayload,
-      availableAt: now,
-      createdAt: now,
-      updatedAt: now,
-    })
-    .onConflictDoNothing()
+  if (requesterUpdateKind) {
+    await db
+      .insert(jarvisBridgeEvents)
+      .values({
+        id: crypto.randomUUID(),
+        organizationId,
+        direction: "outbound",
+        source: item.source,
+        eventType: "feedback.status_changed",
+        idempotencyKey: `notify:${eventKey}`,
+        feedbackDeskItemId: id,
+        payload: statusPayload,
+        availableAt: now,
+        createdAt: now,
+        updatedAt: now,
+      })
+      .onConflictDoNothing()
+  }
 
   return Response.json({
     success: true,
     feedbackDeskItemId: id,
     status: parsed.data.status,
-    notifiedUserCount: recipients.length,
+    notifiedUserCount: requesterUpdateKind ? recipients.length : 0,
+    requesterUpdateQueued: requesterUpdateKind !== null,
   })
 }

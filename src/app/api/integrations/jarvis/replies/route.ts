@@ -122,6 +122,7 @@ export async function POST(request: Request): Promise<Response> {
     .select({
       id: jarvisBridgeEvents.id,
       eventType: jarvisBridgeEvents.eventType,
+      source: jarvisBridgeEvents.source,
       payload: jarvisBridgeEvents.payload,
     })
     .from(jarvisBridgeEvents)
@@ -135,18 +136,29 @@ export async function POST(request: Request): Promise<Response> {
 
   if (
     !sourceEvent ||
-    sourceEvent.eventType !== "assistance.requested"
+    (sourceEvent.eventType !== "assistance.requested" &&
+      sourceEvent.eventType !== "feedback.status_changed")
   ) {
     return Response.json(
-      { error: "Assistance request not found" },
+      { error: "Replyable request not found" },
       { status: 404 },
+    )
+  }
+
+  if (
+    sourceEvent.eventType === "feedback.status_changed" &&
+    sourceEvent.source !== "compass-conversation"
+  ) {
+    return Response.json(
+      { error: "Feedback update belongs to a non-Compass source" },
+      { status: 409 },
     )
   }
 
   const target = replyTarget(sourceEvent.payload)
   if (!target) {
     return Response.json(
-      { error: "Assistance request has no reply target" },
+      { error: "Request has no Compass reply target" },
       { status: 409 },
     )
   }
