@@ -1,6 +1,12 @@
 "use client"
 
-import { useEffect, useMemo, useState, useTransition } from "react"
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  useTransition,
+} from "react"
 import Image from "next/image"
 import Link from "next/link"
 import {
@@ -31,7 +37,10 @@ import {
   submitCherishPulseResponse,
   type CherishPulseResponseType,
 } from "@/app/actions/cherish-pulse"
-import { updatePresence } from "@/app/actions/presence"
+import {
+  getOrganizationTeamAvailability,
+  updatePresence,
+} from "@/app/actions/presence"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -64,6 +73,7 @@ import {
   deskStatusForPresenceMessage,
   isDeskStatus,
   type DeskStatus,
+  type TeamAvailabilityMember,
 } from "@/lib/dashboard/office-status"
 import { cn } from "@/lib/utils"
 
@@ -79,6 +89,7 @@ type LaunchpadTask = {
 
 const MARTINE_DEFAULT_DESK_PHOTO = "/user-desk-photos/martine-desk-photo.jpeg"
 const HIDDEN_DESK_PHOTO = "__hidden__"
+const TEAM_AVAILABILITY_REFRESH_MS = 10_000
 
 function deskPhotoForUser(user: SidebarUser | null): string | null {
   if (!user) return null
@@ -163,11 +174,29 @@ function deskStatusDotClass(status: DeskStatus): string {
   return "bg-emerald-600"
 }
 
-function deskStatusAvailability(status: DeskStatus): string {
-  if (status === "out") return "Unavailable"
-  if (status === "on-site") return "Field"
-  if (status === "remote") return "Remote"
-  return "Available"
+function includeCurrentAvailability(
+  members: readonly TeamAvailabilityMember[],
+  user: SidebarUser | null,
+  status: DeskStatus
+): readonly TeamAvailabilityMember[] {
+  if (!user) return members
+
+  const existing = members.find((member) => member.userId === user.id)
+  const currentMember: TeamAvailabilityMember = {
+    userId: user.id,
+    name: user.name,
+    avatarUrl: user.avatar,
+    status,
+    updatedAt: existing?.updatedAt ?? new Date().toISOString(),
+    isCurrentUser: true,
+  }
+
+  return [
+    currentMember,
+    ...members
+      .filter((member) => member.userId !== user.id)
+      .map((member) => ({ ...member, isCurrentUser: false })),
+  ]
 }
 
 function parseDateKey(value: string): Date {
@@ -698,35 +727,106 @@ function OfficeTaskList({
 }
 
 function OfficePresence({
+  initialAvailability,
+  user,
   status,
 }: {
+  readonly initialAvailability: readonly TeamAvailabilityMember[]
+  readonly user: SidebarUser | null
   readonly status: DeskStatus
 }): React.ReactElement {
+  const [members, setMembers] = useState<readonly TeamAvailabilityMember[]>(
+    () => includeCurrentAvailability(initialAvailability, user, status)
+  )
+  const [isRefreshing, startRefreshTransition] = useTransition()
+
+  const refreshAvailability = useCallback(() => {
+    startRefreshTransition(async () => {
+      const result = await getOrganizationTeamAvailability()
+      if (!result.success) return
+      setMembers(includeCurrentAvailability(result.data, user, status))
+    })
+  }, [status, user])
+
+  useEffect(() => {
+    setMembers((current) => includeCurrentAvailability(current, user, status))
+  }, [status, user])
+
+  useEffect(() => {
+    refreshAvailability()
+    const refreshTimer = window.setInterval(
+      refreshAvailability,
+      TEAM_AVAILABILITY_REFRESH_MS
+    )
+    const handleVisibilityChange = (): void => {
+      if (!document.hidden) refreshAvailability()
+    }
+    document.addEventListener("visibilitychange", handleVisibilityChange)
+
+    return () => {
+      window.clearInterval(refreshTimer)
+      document.removeEventListener("visibilitychange", handleVisibilityChange)
+    }
+  }, [refreshAvailability])
+
   return (
     <section className="border-y border-border/70 bg-background">
       <div className="flex items-center justify-between gap-3 px-4 py-3">
         <div>
           <h2 className="text-sm font-semibold">Who&apos;s in today</h2>
-          <p className="text-xs text-muted-foreground">Current team availability</p>
+          <p className="text-xs text-muted-foreground">
+            {isRefreshing ? "Updating team availability..." : "Updates automatically"}
+          </p>
         </div>
         <IconUsers className="size-5 text-muted-foreground" />
       </div>
-      <div className="space-y-3 border-t px-4 py-3">
-        <div className="flex items-center gap-3">
-          <span
-            className={cn("size-2.5 rounded-full", deskStatusDotClass(status))}
-          />
-          <div className="min-w-0 flex-1">
-            <p className="text-sm font-medium">You</p>
-            <p className="text-xs text-muted-foreground">
-              {DESK_STATUS_LABELS[status]}
-            </p>
+      <div className="max-h-64 divide-y overflow-y-auto border-t">
+        {members.map((member) => (
+          <div
+            key={member.userId}
+            data-team-availability-user={member.userId}
+            className="flex items-center gap-3 px-4 py-3"
+          >
+            <div className="relative flex size-8 shrink-0 items-center justify-center overflow-hidden rounded-full bg-muted text-xs font-semibold">
+              {member.avatarUrl ? (
+                <Image
+                  src={member.avatarUrl}
+                  alt=""
+                  fill
+                  sizes="32px"
+                  unoptimized
+                  className="object-cover"
+                />
+              ) : (
+                member.name.slice(0, 1).toUpperCase()
+              )}
+            </div>
+            <span
+              className={cn(
+                "-ml-4 mt-6 size-2.5 shrink-0 rounded-full ring-2 ring-background",
+                deskStatusDotClass(member.status)
+              )}
+            />
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-medium">
+                {member.name}
+                {member.isCurrentUser ? (
+                  <span className="ml-1 font-normal text-muted-foreground">
+                    (You)
+                  </span>
+                ) : null}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                {DESK_STATUS_LABELS[member.status]}
+              </p>
+            </div>
           </div>
-          <Badge variant="secondary">{deskStatusAvailability(status)}</Badge>
-        </div>
-        <p className="border-t pt-3 text-xs leading-5 text-muted-foreground">
-          Team status will populate here as staff update their availability.
-        </p>
+        ))}
+        {members.length === 0 ? (
+          <p className="px-4 py-6 text-sm text-muted-foreground">
+            No team availability has been set yet.
+          </p>
+        ) : null}
       </div>
     </section>
   )
@@ -1060,10 +1160,12 @@ export function DashboardLaunchpad({
   overview,
   user,
   initialDeskStatusMessage,
+  initialTeamAvailability,
 }: {
   readonly overview: DashboardOverview
   readonly user: SidebarUser | null
   readonly initialDeskStatusMessage: string | null
+  readonly initialTeamAvailability: readonly TeamAvailabilityMember[]
 }): React.ReactElement {
   const [mode, setMode] = useState<DashboardMode>("office")
   const [deskStatus, setDeskStatus] = useState<DeskStatus>(() =>
@@ -1128,7 +1230,11 @@ export function DashboardLaunchpad({
         <div className="grid gap-4 xl:grid-cols-[minmax(0,1.35fr)_minmax(20rem,0.65fr)]">
           <OfficeTaskList overview={overview} />
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-1">
-            <OfficePresence status={deskStatus} />
+            <OfficePresence
+              initialAvailability={initialTeamAvailability}
+              user={user}
+              status={deskStatus}
+            />
             <OfficeAlerts overview={overview} />
             <QuickDock />
           </div>
