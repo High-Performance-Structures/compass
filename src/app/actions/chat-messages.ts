@@ -34,6 +34,7 @@ import {
   requirePermission,
 } from "@/lib/permissions"
 import { isDemoUser } from "@/lib/demo"
+import { isInternalStaffRole } from "@/lib/user-roles"
 import { requireOrg } from "@/lib/org-scope"
 import { revalidatePath } from "next/cache"
 import { enqueueFeedbackDeskItem } from "@/lib/jarvis/feedback-desk"
@@ -228,6 +229,7 @@ export async function searchMentionableUsers(
         displayName: users.displayName,
         email: users.email,
         avatarUrl: users.avatarUrl,
+        role: users.role,
       })
       .from(users)
       .innerJoin(
@@ -247,10 +249,19 @@ export async function searchMentionableUsers(
       )
       .limit(10)
 
-    const data = results.map((u) => ({
-      ...u,
-      type: "user" as const,
-    }))
+    const data = results
+      .filter(
+        (result) =>
+          isInternalStaffRole(user.role) ||
+          isInternalStaffRole(result.role)
+      )
+      .map((result) => ({
+        id: result.id,
+        displayName: result.displayName,
+        email: result.email,
+        avatarUrl: result.avatarUrl,
+        type: "user" as const,
+      }))
 
     return { success: true, data }
   } catch (err) {

@@ -61,6 +61,8 @@ export default async function OwnerUpdatePreviewPage({
       projectId={preview.project.id}
       projectName={preview.project.name}
       projectNumber={preview.project.projectNumber}
+      projectOptions={preview.projectOptions}
+      viewer={preview.viewer}
       viewerIsInternal={preview.viewerIsInternal}
     >
       <OwnerUpdateDocument

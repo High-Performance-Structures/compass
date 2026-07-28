@@ -13,3 +13,14 @@ export function ownerUpdatePreviewHref(
 ): string {
   return `${projectAudiencePreviewHref(projectId, "owner")}/updates/${encodeURIComponent(updateId)}`
 }
+
+export function projectAudienceConversationHref(
+  projectId: string,
+  audience: ProjectAudiencePreviewRoute,
+  channelId: string
+): string {
+  return (
+    `${projectAudiencePreviewHref(projectId, audience)}` +
+    `/conversations/${encodeURIComponent(channelId)}`
+  )
+}

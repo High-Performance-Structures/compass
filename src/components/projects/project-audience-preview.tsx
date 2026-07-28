@@ -35,8 +35,10 @@ import {
 import { OwnerCoverPhotoControl } from "@/components/projects/owner-cover-photo-control"
 import { ProjectAudiencePhotoGallery } from "@/components/projects/project-audience-photo-gallery"
 import { ProjectAudiencePreviewShell } from "@/components/projects/project-audience-preview-shell"
+import { ProjectAudienceSchedule } from "@/components/projects/project-audience-schedule"
 import {
   ownerUpdatePreviewHref,
+  projectAudienceConversationHref,
   projectAudiencePreviewHref,
 } from "@/lib/project-audience-preview-routes"
 
@@ -98,42 +100,6 @@ function operationReferenceLabel(item: AudienceOperationItem): string {
   return item.sourceRecordNumber
     ? `${label} ${item.sourceRecordNumber}`
     : `${label} commitment`
-}
-
-function ScheduleRow({
-  item,
-}: {
-  readonly item: AudienceScheduleItem
-}): React.ReactElement {
-  return (
-    <div className="rounded-md border bg-background p-3">
-      <div className="flex flex-wrap items-start justify-between gap-2">
-        <div className="min-w-0">
-          <p className="line-clamp-2 text-sm font-medium">{item.title}</p>
-          <p className="mt-1 text-xs text-muted-foreground">
-            {formatDate(item.startDate)}
-            {" - "}
-            {formatDate(item.endDate)}
-            {item.assignedTo ? ` · ${item.assignedTo}` : ""}
-          </p>
-        </div>
-        <Badge variant={item.isMilestone ? "default" : "outline"}>
-          {item.isMilestone ? "Milestone" : statusLabel(item.status)}
-        </Badge>
-      </div>
-      <div className="mt-3 flex items-center gap-2">
-        <div className="h-1.5 flex-1 rounded-full bg-muted">
-          <div
-            className="h-full rounded-full bg-primary"
-            style={{ width: `${item.percentComplete}%` }}
-          />
-        </div>
-        <span className="w-10 text-right text-xs text-muted-foreground">
-          {item.percentComplete}%
-        </span>
-      </div>
-    </div>
-  )
 }
 
 function OperationRow({
@@ -214,14 +180,22 @@ function RfiRow({
 
 function MessageChannelRow({
   channel,
-  previewHref,
+  projectId,
+  audience,
 }: {
   readonly channel: AudienceMessageChannel
-  readonly previewHref: string
+  readonly projectId: string
+  readonly audience: ProjectAudience
 }): React.ReactElement {
+  const routeAudience = audience === "owner" ? "owner" : "sub-vendor"
+
   return (
     <Link
-      href={`${previewHref}?channel=${encodeURIComponent(channel.id)}#messages`}
+      href={projectAudienceConversationHref(
+        projectId,
+        routeAudience,
+        channel.id
+      )}
       className="block rounded-md border bg-background p-3 transition-colors hover:bg-accent"
     >
       <div className="flex items-center justify-between gap-3">
@@ -236,6 +210,53 @@ function MessageChannelRow({
         </p>
       )}
     </Link>
+  )
+}
+
+function AudienceConversationSection({
+  data,
+}: {
+  readonly data: ProjectAudiencePreviewData
+}): React.ReactElement {
+  return (
+    <section
+      id="messages"
+      className="scroll-mt-24 border bg-background p-4 sm:p-5"
+    >
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <IconMessageCircle className="size-4 text-muted-foreground" />
+          <h2 className="text-sm font-semibold">Project Conversations</h2>
+        </div>
+        <Badge variant="outline">
+          {data.messageChannels.length}{" "}
+          {data.messageChannels.length === 1
+            ? "conversation"
+            : "conversations"}
+        </Badge>
+      </div>
+      <p className="mt-2 text-xs text-muted-foreground">
+        Messages here go only to the internal project team and approved
+        participants in this private workspace.
+      </p>
+      {data.messageChannels.length > 0 ? (
+        <div className="mt-4 grid gap-3 md:grid-cols-2">
+          {data.messageChannels.map((channel) => (
+            <MessageChannelRow
+              key={channel.id}
+              channel={channel}
+              projectId={data.project.id}
+              audience={data.audience}
+            />
+          ))}
+        </div>
+      ) : (
+        <p className="mt-4 border p-3 text-sm text-muted-foreground">
+          Your private project conversation will appear when access is
+          activated.
+        </p>
+      )}
+    </section>
   )
 }
 
@@ -516,8 +537,7 @@ function OwnerProjectPreview({
 
           <aside className="space-y-4">
             <section
-              id="schedule"
-              className="scroll-mt-36 rounded-lg border bg-background p-5"
+              className="rounded-lg border bg-background p-5"
             >
               <div className="flex items-center gap-2">
                 <IconCalendarStats className="size-4 text-muted-foreground" />
@@ -581,6 +601,10 @@ function OwnerProjectPreview({
           </aside>
         </section>
 
+        <ProjectAudienceSchedule items={data.scheduleItems} />
+
+        <AudienceConversationSection data={data} />
+
         <div id="photos" className="scroll-mt-36">
           <ProjectAudiencePhotoGallery
             photos={data.photos}
@@ -614,6 +638,8 @@ export function ProjectAudiencePreview({
         projectId={data.project.id}
         projectName={data.project.name}
         projectNumber={data.project.projectNumber}
+        projectOptions={data.projectOptions}
+        viewer={data.viewer}
         viewerIsInternal={data.viewerIsInternal}
       >
         <OwnerProjectPreview data={data} />
@@ -627,6 +653,8 @@ export function ProjectAudiencePreview({
       projectId={data.project.id}
       projectName={data.project.name}
       projectNumber={data.project.projectNumber}
+      projectOptions={data.projectOptions}
+      viewer={data.viewer}
       viewerIsInternal={data.viewerIsInternal}
     >
       <main className="min-h-screen bg-muted/30">
@@ -781,33 +809,9 @@ export function ProjectAudiencePreview({
           </section>
         )}
 
-        <section className="grid gap-4 lg:grid-cols-[1fr_0.85fr]">
-          <div
-            id="schedule"
-            className="scroll-mt-36 rounded-lg border bg-background p-4 sm:p-5"
-          >
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div className="flex items-center gap-2">
-                <IconCalendarStats className="size-4 text-muted-foreground" />
-                <h2 className="text-sm font-semibold">Schedule</h2>
-              </div>
-              <Badge variant="outline">
-                {data.scheduleItems.length} visible
-              </Badge>
-            </div>
-            {data.scheduleItems.length > 0 ? (
-              <div className="mt-4 grid gap-3">
-                {data.scheduleItems.map((item) => (
-                  <ScheduleRow key={item.id} item={item} />
-                ))}
-              </div>
-            ) : (
-              <p className="mt-4 rounded-md border p-3 text-sm text-muted-foreground">
-                No upcoming schedule items are currently visible.
-              </p>
-            )}
-          </div>
+        <ProjectAudienceSchedule items={data.scheduleItems} />
 
+        <section>
           <div
             id="commitments"
             className="scroll-mt-36 rounded-lg border bg-background p-4 sm:p-5"
@@ -882,40 +886,7 @@ export function ProjectAudiencePreview({
               )}
             </div>
 
-            <div
-              id="messages"
-              className="scroll-mt-36 rounded-lg border bg-background p-4 sm:p-5"
-            >
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div className="flex items-center gap-2">
-                  <IconMessageCircle className="size-4 text-muted-foreground" />
-                  <h2 className="text-sm font-semibold">Project Messages</h2>
-                </div>
-                <Badge variant="outline">
-                  {data.messageChannels.length} channels
-                </Badge>
-              </div>
-              {data.messageChannels.length > 0 ? (
-                <div className="mt-4 grid gap-3">
-                  {data.messageChannels.map((channel) => (
-                    <MessageChannelRow
-                      key={channel.id}
-                      channel={channel}
-                      previewHref={previewPath(data.project.id, data.audience)}
-                    />
-                  ))}
-                </div>
-              ) : (
-                <div className="mt-4 rounded-md border p-3">
-                  <p className="text-sm text-muted-foreground">
-                    No project channel yet.
-                  </p>
-                  <p className="mt-2 text-xs font-medium text-foreground">
-                    Message target: {label}
-                  </p>
-                </div>
-              )}
-            </div>
+            <AudienceConversationSection data={data} />
           </section>
         )}
 

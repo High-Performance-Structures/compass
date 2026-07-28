@@ -20,6 +20,7 @@ import { isDemoUser } from "@/lib/demo"
 import { sendCompassEmail } from "@/lib/email/compass-email"
 import { buildProjectAccessWelcomeHtml } from "@/lib/email/project-access-welcome"
 import { requirePermission } from "@/lib/permissions"
+import { ensureProjectAudienceConversation } from "@/lib/project-audience-conversations"
 import {
   isExternalProjectRole,
   isInternalStaffRole,
@@ -103,6 +104,46 @@ async function ensureProjectMembership(input: {
       projectId: input.projectId,
       role: input.role,
       assignedAt: input.now,
+    })
+    .run()
+}
+
+async function ensureExternalOrganizationMembership(input: {
+  readonly db: ReturnType<typeof getDb>
+  readonly organizationId: string
+  readonly userId: string
+  readonly role: string
+  readonly now: string
+}): Promise<void> {
+  const existing = await input.db
+    .select({ id: organizationMembers.id })
+    .from(organizationMembers)
+    .where(
+      and(
+        eq(organizationMembers.userId, input.userId),
+        eq(organizationMembers.organizationId, input.organizationId)
+      )
+    )
+    .get()
+  const role = input.role === "owner" ? "client" : input.role
+
+  if (existing) {
+    await input.db
+      .update(organizationMembers)
+      .set({ role })
+      .where(eq(organizationMembers.id, existing.id))
+      .run()
+    return
+  }
+
+  await input.db
+    .insert(organizationMembers)
+    .values({
+      id: crypto.randomUUID(),
+      organizationId: input.organizationId,
+      userId: input.userId,
+      role,
+      joinedAt: input.now,
     })
     .run()
 }
@@ -234,9 +275,9 @@ export async function sendProjectAccessInvitation(
     let workosExpiresAt: string | null = null
     const destinationPath =
       requestedRole === "owner"
-        ? `/dashboard/projects/${parsed.data.projectId}/owner-updates`
+        ? `/preview/projects/${parsed.data.projectId}/owner`
         : requestedRole === "subcontractor" || requestedRole === "supplier"
-          ? `/dashboard/projects/${parsed.data.projectId}/preview/sub-vendor`
+          ? `/preview/projects/${parsed.data.projectId}/sub-vendor`
           : `/dashboard/projects/${parsed.data.projectId}`
     let actionUrl = `${appBaseUrl(env)}/login?from=${encodeURIComponent(
       destinationPath
@@ -245,15 +286,13 @@ export async function sendProjectAccessInvitation(
 
     if (activeExistingUser) {
       if (!verifiedOrganizationMembership) {
-        await db
-          .delete(organizationMembers)
-          .where(
-            and(
-              eq(organizationMembers.userId, activeExistingUser.id),
-              eq(organizationMembers.organizationId, row.organizationId)
-            )
-          )
-          .run()
+        await ensureExternalOrganizationMembership({
+          db,
+          organizationId: row.organizationId,
+          userId: activeExistingUser.id,
+          role: requestedRole,
+          now,
+        })
       }
       await ensureProjectMembership({
         db,
@@ -294,6 +333,25 @@ export async function sendProjectAccessInvitation(
       .set(visibility)
       .where(eq(projectContacts.id, row.contact.id))
       .run()
+
+    const audience =
+      requestedRole === "owner"
+        ? "owner"
+        : requestedRole === "subcontractor" || requestedRole === "supplier"
+          ? "sub_vendor"
+          : null
+    if (audience) {
+      await ensureProjectAudienceConversation({
+        db,
+        projectId: parsed.data.projectId,
+        organizationId: row.organizationId,
+        audience,
+        contactId: audience === "owner" ? null : row.contact.id,
+        externalUserId: activeExistingUser?.id ?? null,
+        createdBy: currentUser.id,
+        now,
+      })
+    }
 
     const projectLabel = row.projectNumber
       ? `${row.projectNumber} - ${row.projectName}`

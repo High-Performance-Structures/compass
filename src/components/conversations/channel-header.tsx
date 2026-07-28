@@ -25,6 +25,8 @@ type ChannelHeaderProps = {
     readonly clientName: string | null
   } | null
   readonly memberCount: number
+  readonly projectHref?: string
+  readonly conversationBaseHref?: string
 }
 
 function projectLabel(project: NonNullable<ChannelHeaderProps["project"]>): string {
@@ -39,13 +41,19 @@ export function ChannelHeader({
   description,
   project = null,
   memberCount,
+  projectHref,
+  conversationBaseHref,
 }: ChannelHeaderProps) {
   const router = useRouter()
   const [searchOpen, setSearchOpen] = React.useState(false)
   const [pinnedOpen, setPinnedOpen] = React.useState(false)
 
   function jumpToMessage(_messageId: string, targetChannelId: string): void {
-    router.push(`/dashboard/conversations/${targetChannelId}`)
+    router.push(
+      conversationBaseHref
+        ? `${conversationBaseHref}/${encodeURIComponent(targetChannelId)}`
+        : `/dashboard/conversations/${targetChannelId}`
+    )
   }
 
   return (
@@ -60,7 +68,7 @@ export function ChannelHeader({
                 <>
                   <IconFolder className="size-3.5 shrink-0" />
                   <Link
-                    href={`/dashboard/projects/${project.id}`}
+                    href={projectHref ?? `/dashboard/projects/${project.id}`}
                     className="truncate font-medium text-foreground/80 hover:text-foreground hover:underline"
                   >
                     {projectLabel(project)}

@@ -17,6 +17,7 @@ import { requirePermission } from "@/lib/permissions"
 import { revalidatePath } from "next/cache"
 import { requireOrg } from "@/lib/org-scope"
 import { isDemoUser } from "@/lib/demo"
+import { isInternalStaffRole } from "@/lib/user-roles"
 
 export async function listChannels() {
   try {
@@ -28,6 +29,7 @@ export async function listChannels() {
 
     const { env } = await getCloudflareContext()
     const db = getDb(env.DB)
+    const viewerIsInternal = isInternalStaffRole(user.role)
 
     // get all channels the user can access:
     // - public channels in their org
@@ -42,6 +44,7 @@ export async function listChannels() {
         projectId: channels.projectId,
         categoryId: channels.categoryId,
         isPrivate: channels.isPrivate,
+        audience: channels.audience,
         sortOrder: channels.sortOrder,
         archivedAt: channels.archivedAt,
         createdAt: channels.createdAt,
@@ -68,8 +71,10 @@ export async function listChannels() {
         and(
           // must be in user's org
           eq(channels.organizationId, orgId),
-          // if private, must be a member
-          sql`(${channels.isPrivate} = 0 OR ${channelMembers.userId} IS NOT NULL)`,
+          // External project users only discover conversations they belong to.
+          viewerIsInternal
+            ? sql`(${channels.isPrivate} = 0 OR ${channelMembers.userId} IS NOT NULL)`
+            : sql`${channelMembers.userId} IS NOT NULL`,
           // not archived
           sql`${channels.archivedAt} IS NULL`
         )
@@ -112,23 +117,23 @@ export async function getChannel(channelId: string) {
       return { success: false, error: "Channel not found" }
     }
 
-    // if private, check membership
-    if (channel.isPrivate) {
-      const membership = await db
-        .select()
-        .from(channelMembers)
-        .where(
-          and(
-            eq(channelMembers.channelId, channelId),
-            eq(channelMembers.userId, user.id)
-          )
+    const membership = await db
+      .select()
+      .from(channelMembers)
+      .where(
+        and(
+          eq(channelMembers.channelId, channelId),
+          eq(channelMembers.userId, user.id)
         )
-        .limit(1)
-        .then((rows) => rows[0] ?? null)
+      )
+      .limit(1)
+      .then((rows) => rows[0] ?? null)
 
-      if (!membership) {
-        return { success: false, error: "Access denied" }
-      }
+    if (
+      (channel.isPrivate || !isInternalStaffRole(user.role)) &&
+      !membership
+    ) {
+      return { success: false, error: "Access denied" }
     }
 
     // count members
@@ -173,6 +178,9 @@ export async function createChannel(data: {
 
     // only office+ can create channels
     requirePermission(user, "channels", "create")
+    if (!isInternalStaffRole(user.role)) {
+      return { success: false, error: "Only staff can create channels" }
+    }
     const orgId = requireOrg(user)
 
     const { env } = await getCloudflareContext()
@@ -258,6 +266,12 @@ export async function joinChannel(channelId: string) {
 
     if (isDemoUser(user.id)) {
       return { success: false, error: "DEMO_READ_ONLY" }
+    }
+    if (!isInternalStaffRole(user.role)) {
+      return {
+        success: false,
+        error: "Project partners join conversations through their project team.",
+      }
     }
 
     const { env } = await getCloudflareContext()

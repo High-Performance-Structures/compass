@@ -1,6 +1,6 @@
 "use server"
 
-import { and, asc, desc, eq, gte, isNull, or } from "drizzle-orm"
+import { and, asc, desc, eq, isNull, or } from "drizzle-orm"
 
 import { getDb } from "@/db"
 import {
@@ -14,7 +14,7 @@ import {
   projects,
   scheduleTasks,
 } from "@/db/schema"
-import { channels } from "@/db/schema-conversations"
+import { channelMembers, channels } from "@/db/schema-conversations"
 import { requireAuth } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
 import { requirePermission } from "@/lib/permissions"
@@ -120,6 +120,12 @@ export type AudienceContact = {
 export type ProjectAudiencePreview = {
   readonly audience: ProjectAudience
   readonly viewerIsInternal: boolean
+  readonly viewer: {
+    readonly id: string
+    readonly name: string
+    readonly email: string
+    readonly avatarUrl: string | null
+  }
   readonly projectOptions: readonly AudienceProjectOption[]
   readonly project: {
     readonly id: string
@@ -145,6 +151,12 @@ async function verifyProjectAccess(
   readonly db: ReturnType<typeof getDb>
   readonly organizationId: string
   readonly viewerIsInternal: boolean
+  readonly viewer: {
+    readonly id: string
+    readonly name: string
+    readonly email: string
+    readonly avatarUrl: string | null
+  }
 }> {
   const user = await requireAuth()
   requirePermission(user, "project", "read")
@@ -177,6 +189,12 @@ async function verifyProjectAccess(
     db,
     organizationId: project.organizationId,
     viewerIsInternal,
+    viewer: {
+      id: user.id,
+      name: user.displayName ?? user.email.split("@")[0] ?? "Compass user",
+      email: user.email,
+      avatarUrl: user.avatarUrl,
+    },
   }
 }
 
@@ -219,11 +237,8 @@ export async function getProjectAudiencePreview(
   projectId: string,
   audience: ProjectAudience
 ): Promise<ProjectAudiencePreview> {
-  const { db, organizationId, viewerIsInternal } = await verifyProjectAccess(
-    projectId,
-    audience
-  )
-  const today = new Date().toISOString().slice(0, 10)
+  const { db, organizationId, viewerIsInternal, viewer } =
+    await verifyProjectAccess(projectId, audience)
 
   const [project] = await db
     .select({
@@ -243,14 +258,44 @@ export async function getProjectAudiencePreview(
     throw new Error("Project not found")
   }
 
-  const projectOptions: readonly AudienceProjectOption[] = [
-    {
-      id: project.id,
-      name: project.name,
-      projectNumber: project.projectNumber,
-      status: project.status,
-    },
-  ]
+  const projectOptions: readonly AudienceProjectOption[] = viewerIsInternal
+    ? [
+        {
+          id: project.id,
+          name: project.name,
+          projectNumber: project.projectNumber,
+          status: project.status,
+        },
+      ]
+    : await db
+        .select({
+          id: projects.id,
+          name: projects.name,
+          projectNumber: projects.projectNumber,
+          status: projects.status,
+          projectRole: projectMembers.role,
+        })
+        .from(projectMembers)
+        .innerJoin(projects, eq(projects.id, projectMembers.projectId))
+        .where(
+          and(
+            eq(projectMembers.userId, viewer.id),
+            eq(projects.organizationId, organizationId)
+          )
+        )
+        .orderBy(asc(projects.projectNumber), asc(projects.name))
+        .then((rows) =>
+          rows
+            .filter((row) =>
+              canUseProjectAudience(row.projectRole, audience)
+            )
+            .map((row) => ({
+              id: row.id,
+              name: row.name,
+              projectNumber: row.projectNumber,
+              status: row.status,
+            }))
+        )
 
   const visibilityFilter =
     audience === "owner"
@@ -304,14 +349,8 @@ export async function getProjectAudiencePreview(
       isMilestone: scheduleTasks.isMilestone,
     })
     .from(scheduleTasks)
-    .where(
-      and(
-        eq(scheduleTasks.projectId, projectId),
-        gte(scheduleTasks.endDateCalculated, today)
-      )
-    )
+    .where(eq(scheduleTasks.projectId, projectId))
     .orderBy(asc(scheduleTasks.startDate), asc(scheduleTasks.sortOrder))
-    .limit(audience === "owner" ? 5 : 10)
 
   const contactRows = await db
     .select({
@@ -415,6 +454,8 @@ export async function getProjectAudiencePreview(
     .where(and(eq(projectRfis.projectId, projectId), rfiVisibility))
     .orderBy(asc(projectRfis.dueDate), desc(projectRfis.submittedAt))
 
+  const channelAudience =
+    audience === "owner" ? "clients" : "sub_vendors"
   const messageChannelRows = await db
     .select({
       id: channels.id,
@@ -423,19 +464,35 @@ export async function getProjectAudiencePreview(
       isPrivate: channels.isPrivate,
     })
     .from(channels)
+    .innerJoin(
+      channelMembers,
+      and(
+        eq(channelMembers.channelId, channels.id),
+        eq(channelMembers.userId, viewer.id)
+      )
+    )
     .where(
       and(
         eq(channels.organizationId, organizationId),
         eq(channels.projectId, projectId),
         eq(channels.type, "text"),
-        eq(channels.isPrivate, false),
+        eq(channels.audience, channelAudience),
         isNull(channels.archivedAt)
       )
     )
     .orderBy(asc(channels.sortOrder), asc(channels.name))
 
+  const visibleContactRows =
+    !viewerIsInternal && audience === "sub_vendor"
+      ? contactRows.filter(
+          (contact) =>
+            contact.contactType === "internal" ||
+            contact.email?.trim().toLowerCase() ===
+              viewer.email.trim().toLowerCase()
+        )
+      : contactRows
   const visibleContactNames = new Set(
-    contactRows
+    visibleContactRows
       .flatMap((contact) => [
         normalizeVisibleName(contact.displayName),
         normalizeVisibleName(contact.companyName),
@@ -446,6 +503,7 @@ export async function getProjectAudiencePreview(
   return {
     audience,
     viewerIsInternal,
+    viewer,
     projectOptions,
     project,
     ownerUpdates: ownerUpdateRows,
@@ -473,7 +531,12 @@ export async function getProjectAudiencePreview(
             : "No phase assigned.",
       }
     }),
-    scheduleItems: scheduleRows,
+    scheduleItems:
+      audience === "owner"
+        ? scheduleRows
+        : scheduleRows.filter((item) =>
+            visibleContactNames.has(normalizeVisibleName(item.assignedTo))
+          ),
     operations: operationRows
       .filter(
         (operation) =>
@@ -485,6 +548,6 @@ export async function getProjectAudiencePreview(
       .slice(0, 10),
     rfis: rfiRows,
     messageChannels: messageChannelRows,
-    contacts: contactRows,
+    contacts: visibleContactRows,
   }
 }
