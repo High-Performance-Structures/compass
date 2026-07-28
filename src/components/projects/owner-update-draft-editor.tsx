@@ -16,7 +16,6 @@ import {
 
 import {
   draftOwnerProjectUpdateWithJarvis,
-  updateOwnerProjectUpdateDraft,
   type OwnerProjectUpdateDocument,
 } from "@/app/actions/project-field"
 import { Badge } from "@/components/ui/badge"
@@ -39,6 +38,12 @@ import {
   PHOTO_UPLOAD_LIMIT_LABEL,
 } from "@/lib/photos/upload-limits"
 import { resolvePhotoImageSource } from "@/lib/photo-sources"
+import {
+  ownerUpdateDraftStorageKey,
+  parseRecoverableOwnerUpdateDraft,
+  serializeOwnerUpdateDraftBackup,
+  type OwnerUpdateDraftEdit,
+} from "@/lib/owner-updates/draft-recovery"
 
 type DraftStatus =
   | { readonly kind: "idle" }
@@ -91,6 +96,30 @@ function parseUploadedFiles(value: unknown): readonly UploadedFile[] {
         : null
     return [{ id: file.id, fileName: file.fileName, mimeType }]
   })
+}
+
+function parseDraftSaveResult(
+  value: unknown
+):
+  | { readonly success: true }
+  | { readonly success: false; readonly error: string } {
+  if (
+    typeof value === "object" &&
+    value !== null &&
+    "success" in value &&
+    value.success === true
+  ) {
+    return { success: true }
+  }
+  if (
+    typeof value === "object" &&
+    value !== null &&
+    "error" in value &&
+    typeof value.error === "string"
+  ) {
+    return { success: false, error: value.error }
+  }
+  return { success: false, error: "Compass returned an invalid save response." }
 }
 
 function SelectionCount({
@@ -147,6 +176,57 @@ export function OwnerUpdateDraftEditor({
   const [uploadFiles, setUploadFiles] = React.useState<readonly File[]>([])
   const [uploadCaption, setUploadCaption] = React.useState("")
   const [isUploading, setIsUploading] = React.useState(false)
+  const [draftRecoveryReady, setDraftRecoveryReady] = React.useState(false)
+  const draftStorageKey = ownerUpdateDraftStorageKey(
+    document.viewerId,
+    document.project.id,
+    document.update.id
+  )
+  const serverDraft = React.useMemo<OwnerUpdateDraftEdit>(
+    () => ({
+      title: document.update.title,
+      updateDate: document.update.updateDate,
+      periodStart: document.update.periodStart ?? document.update.updateDate,
+      periodEnd: document.update.periodEnd ?? document.update.updateDate,
+      summary: document.update.summary,
+      sourceDailyLogIds: document.update.sourceDailyLogIds,
+      selectedPhotoIds: document.update.selectedPhotoIds,
+      selectedDocumentIds: document.update.selectedDocumentIds,
+      completedScheduleItems: document.completedScheduleItems,
+      lookAheadScheduleItems: document.lookAheadScheduleItems,
+      todos: document.todos,
+    }),
+    [document]
+  )
+  const initialServerDraftJson = React.useRef(JSON.stringify(serverDraft))
+  const currentDraft = React.useMemo<OwnerUpdateDraftEdit>(
+    () => ({
+      title,
+      updateDate,
+      periodStart,
+      periodEnd,
+      summary,
+      sourceDailyLogIds,
+      selectedPhotoIds,
+      selectedDocumentIds,
+      completedScheduleItems,
+      lookAheadScheduleItems,
+      todos,
+    }),
+    [
+      completedScheduleItems,
+      lookAheadScheduleItems,
+      periodEnd,
+      periodStart,
+      selectedDocumentIds,
+      selectedPhotoIds,
+      sourceDailyLogIds,
+      summary,
+      title,
+      todos,
+      updateDate,
+    ]
+  )
   const selectedDailyLogIdSet = new Set(sourceDailyLogIds)
   const selectedPhotoIdSet = new Set(selectedPhotoIds)
   const selectedDocumentIdSet = new Set(selectedDocumentIds)
@@ -157,6 +237,77 @@ export function OwnerUpdateDraftEditor({
   const buildertrendPhotoCount = document.availablePhotos.filter((photo) =>
     photo.sourceSystem.toLowerCase().includes("buildertrend")
   ).length
+
+  React.useEffect(() => {
+    try {
+      const backup = parseRecoverableOwnerUpdateDraft(
+        globalThis.localStorage.getItem(draftStorageKey),
+        document.update.updatedAt
+      )
+      if (
+        backup !== null &&
+        JSON.stringify(backup.draft) !== initialServerDraftJson.current
+      ) {
+        setTitle(backup.draft.title)
+        setUpdateDate(backup.draft.updateDate)
+        setPeriodStart(backup.draft.periodStart)
+        setPeriodEnd(backup.draft.periodEnd)
+        setSummary(backup.draft.summary)
+        setSourceDailyLogIds(backup.draft.sourceDailyLogIds)
+        setSelectedPhotoIds(backup.draft.selectedPhotoIds)
+        setSelectedDocumentIds(backup.draft.selectedDocumentIds)
+        setCompletedScheduleItems(backup.draft.completedScheduleItems)
+        setLookAheadScheduleItems(backup.draft.lookAheadScheduleItems)
+        setTodos(backup.draft.todos)
+        setStatus({
+          kind: "saved",
+          message:
+            "Recovered unsaved edits from this browser. Review them, then save the draft.",
+        })
+      } else {
+        globalThis.localStorage.removeItem(draftStorageKey)
+      }
+    } catch {
+      // Browser storage can be unavailable in private or locked-down contexts.
+    } finally {
+      setDraftRecoveryReady(true)
+    }
+  }, [document.update.updatedAt, draftStorageKey])
+
+  React.useEffect(() => {
+    if (!draftRecoveryReady) return
+
+    const currentDraftJson = JSON.stringify(currentDraft)
+    if (currentDraftJson === initialServerDraftJson.current) {
+      try {
+        globalThis.localStorage.removeItem(draftStorageKey)
+      } catch {
+        // Browser storage is an extra recovery layer, not a save requirement.
+      }
+      return
+    }
+
+    const timeoutId = globalThis.setTimeout(() => {
+      try {
+        globalThis.localStorage.setItem(
+          draftStorageKey,
+          serializeOwnerUpdateDraftBackup({
+            draft: currentDraft,
+            serverUpdatedAt: document.update.updatedAt,
+          })
+        )
+      } catch {
+        // The server save remains available if browser storage is unavailable.
+      }
+    }, 250)
+
+    return () => globalThis.clearTimeout(timeoutId)
+  }, [
+    currentDraft,
+    document.update.updatedAt,
+    draftRecoveryReady,
+    draftStorageKey,
+  ])
 
   function scrollToSection(id: string): void {
     globalThis.document.getElementById(id)?.scrollIntoView({
@@ -265,29 +416,28 @@ export function OwnerUpdateDraftEditor({
   async function saveDraft(): Promise<boolean> {
     setStatus({ kind: "saving", message: "Saving curated sources..." })
     try {
-      const result = await updateOwnerProjectUpdateDraft(
-        document.project.id,
-        document.update.id,
+      const response = await fetch(
+        `/api/projects/${document.project.id}/owner-updates/${document.update.id}/draft`,
         {
-          title,
-          updateDate,
-          periodStart,
-          periodEnd,
-          summary,
-          sourceDailyLogIds,
-          selectedPhotoIds,
-          selectedDocumentIds,
-          completedScheduleItems,
-          lookAheadScheduleItems,
-          todos,
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(currentDraft),
         }
       )
+      const result = parseDraftSaveResult(await response.json())
 
       if (!result.success) {
         setStatus({ kind: "error", message: result.error })
         return false
       }
 
+      try {
+        globalThis.localStorage.removeItem(draftStorageKey)
+      } catch {
+        // The server save succeeded even if browser storage cleanup fails.
+      }
+      initialServerDraftJson.current = JSON.stringify(currentDraft)
+      setDraftRecoveryReady(false)
       setStatus({
         kind: "saved",
         message: "Draft saved. Choices were refreshed for this period.",
@@ -297,7 +447,8 @@ export function OwnerUpdateDraftEditor({
     } catch {
       setStatus({
         kind: "error",
-        message: "Unable to save this draft. Please try again.",
+        message:
+          "Unable to reach Compass. Your edits are backed up in this browser; do not close this page until the connection returns.",
       })
       return false
     }
