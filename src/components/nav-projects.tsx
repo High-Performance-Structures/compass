@@ -33,6 +33,7 @@ import {
 import { ProjectQuickSwitcher } from "@/components/projects/project-quick-switcher"
 import { cn } from "@/lib/utils"
 import type { ProjectListItem } from "@/app/actions/projects"
+import { projectAudiencePreviewHref } from "@/lib/project-audience-preview-routes"
 
 type ProjectSectionKey =
   | "overview"
@@ -159,8 +160,19 @@ const PROJECT_SECTION_ITEMS: readonly ProjectSectionItem[] = [
 ]
 
 function projectSectionHref(projectId: string, suffix: string): string {
+  if (suffix === "preview/owner") {
+    return projectAudiencePreviewHref(projectId, "owner")
+  }
+  if (suffix === "preview/sub-vendor") {
+    return projectAudiencePreviewHref(projectId, "sub-vendor")
+  }
+
   const baseHref = `/dashboard/projects/${projectId}`
   return suffix ? `${baseHref}/${suffix}` : baseHref
+}
+
+function isPreviewSection(section: ProjectSectionKey): boolean {
+  return section === "preview-owner" || section === "preview-sub-vendor"
 }
 
 function projectTargetSection(
@@ -270,7 +282,15 @@ export function NavProjects({
                         "bg-sidebar-foreground/10 font-medium"
                     )}
                   >
-                    <Link href={projectSectionHref(activeId, item.hrefSuffix)}>
+                    <Link
+                      href={projectSectionHref(activeId, item.hrefSuffix)}
+                      target={isPreviewSection(item.section) ? "_blank" : undefined}
+                      rel={
+                        isPreviewSection(item.section)
+                          ? "noopener noreferrer"
+                          : undefined
+                      }
+                    >
                       <item.icon />
                       <span>{item.title}</span>
                     </Link>

@@ -18,6 +18,7 @@ import { OwnerUpdateActions } from "@/components/projects/owner-update-actions"
 import { OwnerUpdateDraftEditor } from "@/components/projects/owner-update-draft-editor"
 import { OwnerUpdatePhotoTile } from "@/components/projects/owner-update-photo-tile"
 import { projectBrandFor } from "@/lib/project-branding"
+import { projectAudiencePreviewHref } from "@/lib/project-audience-preview-routes"
 
 function formatDate(value: string): string {
   return new Date(`${value}T00:00:00`).toLocaleDateString("en-US", {
@@ -58,8 +59,13 @@ function ownerUpdateDocumentHref(input: {
 
 export function OwnerUpdateDocument({
   document,
+  previewMode,
 }: {
   readonly document: OwnerProjectUpdateDocument
+  readonly previewMode?: {
+    readonly homeHref: string
+    readonly photosHref: string
+  }
 }): React.ReactElement {
   const label = projectLabel(document)
   const updateUrl =
@@ -81,25 +87,34 @@ export function OwnerUpdateDocument({
       <div className="mx-auto flex max-w-5xl flex-col gap-4 px-4 py-4 sm:px-6 lg:px-8 print:max-w-none print:px-0">
         <div className="flex flex-wrap items-center justify-between gap-3 print:hidden">
           <Button asChild variant="ghost" size="sm">
-            <Link href={`/dashboard/projects/${document.project.id}`}>
+            <Link
+              href={
+                previewMode?.homeHref ??
+                `/dashboard/projects/${document.project.id}`
+              }
+            >
               <IconArrowLeft className="size-4" />
-              Project
+              {previewMode ? "Owner Compass" : "Project"}
             </Link>
           </Button>
-          <OwnerUpdateActions
-            canManage={document.canManage}
-            projectId={document.project.id}
-            updateId={document.update.id}
-            status={document.update.status}
-            emailSubject={emailSubject}
-            emailPreview={emailPreview}
-            updatePath={updateUrl}
-            projectLabel={label}
-            updateTitle={document.update.title}
-          />
+          {!previewMode && (
+            <OwnerUpdateActions
+              canManage={document.canManage}
+              projectId={document.project.id}
+              updateId={document.update.id}
+              status={document.update.status}
+              emailSubject={emailSubject}
+              emailPreview={emailPreview}
+              updatePath={updateUrl}
+              projectLabel={label}
+              updateTitle={document.update.title}
+            />
+          )}
         </div>
 
-        {document.canManage && document.update.status !== "published" && (
+        {!previewMode &&
+          document.canManage &&
+          document.update.status !== "published" && (
           <OwnerUpdateDraftEditor document={document} />
         )}
 
@@ -277,7 +292,12 @@ export function OwnerUpdateDocument({
                     className="print:hidden"
                   >
                     <Link
-                      href={`/dashboard/projects/${document.project.id}/preview/owner#photos`}
+                      href={
+                        previewMode?.photosHref ??
+                        `${projectAudiencePreviewHref(document.project.id, "owner")}#photos`
+                      }
+                      target={previewMode ? undefined : "_blank"}
+                      rel={previewMode ? undefined : "noopener noreferrer"}
                     >
                       <IconPhotoUp className="size-4" />
                       View all approved photos

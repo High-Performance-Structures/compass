@@ -20,6 +20,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import { projectAudiencePreviewHref } from "@/lib/project-audience-preview-routes"
 
 export function ProjectActionsMenu({
   projectId,
@@ -88,13 +89,21 @@ export function ProjectActionsMenu({
           </Link>
         </DropdownMenuItem>
         <DropdownMenuItem asChild>
-          <Link href={`/dashboard/projects/${projectId}/preview/owner`}>
+          <Link
+            href={projectAudiencePreviewHref(projectId, "owner")}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
             <IconEye />
             Owner preview
           </Link>
         </DropdownMenuItem>
         <DropdownMenuItem asChild>
-          <Link href={`/dashboard/projects/${projectId}/preview/sub-vendor`}>
+          <Link
+            href={projectAudiencePreviewHref(projectId, "sub-vendor")}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
             <IconUsers />
             Sub/vendor preview
           </Link>

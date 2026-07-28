@@ -62,6 +62,8 @@ type OwnerCoverPhotoControlProps = {
       }
     | null
   readonly approvedPhotos: readonly OwnerCoverPhotoOption[]
+  readonly latestUpdateHref: string | null
+  readonly editable?: boolean
 }
 
 function storageKey(projectId: string): string {
@@ -207,6 +209,8 @@ export function OwnerCoverPhotoControl({
   latestUpdate,
   nextScheduleItem,
   approvedPhotos,
+  latestUpdateHref,
+  editable = true,
 }: OwnerCoverPhotoControlProps): React.ReactElement {
   const [open, setOpen] = React.useState(false)
   const [selection, setSelection] =
@@ -215,8 +219,8 @@ export function OwnerCoverPhotoControl({
   const [message, setMessage] = React.useState<string | null>(null)
 
   React.useEffect(() => {
-    setSelection(readCoverSelection(projectId))
-  }, [projectId])
+    setSelection(editable ? readCoverSelection(projectId) : null)
+  }, [editable, projectId])
 
   const coverUrl = approvedCoverPhotoUrl(selection, approvedPhotos)
 
@@ -297,19 +301,20 @@ export function OwnerCoverPhotoControl({
         )}
         <div className="absolute inset-0 bg-black/45" />
         <div className="relative flex min-h-[370px] flex-col justify-between gap-6 p-5 sm:p-8">
-          <div className="flex justify-end">
-            <Dialog open={open} onOpenChange={setOpen}>
-              <DialogTrigger asChild>
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  className="bg-white/90 text-[#17231c] hover:bg-white"
-                >
-                  <IconPhotoEdit className="size-4" />
-                  Change cover
-                </Button>
-              </DialogTrigger>
-              <DialogContent className="max-h-[88vh] overflow-y-auto sm:max-w-3xl">
+          {editable && (
+            <div className="flex justify-end">
+              <Dialog open={open} onOpenChange={setOpen}>
+                <DialogTrigger asChild>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    className="bg-white/90 text-[#17231c] hover:bg-white"
+                  >
+                    <IconPhotoEdit className="size-4" />
+                    Change cover
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="max-h-[88vh] overflow-y-auto sm:max-w-3xl">
                 <DialogHeader>
                   <DialogTitle>Choose a cover photo</DialogTitle>
                   <DialogDescription>
@@ -408,9 +413,10 @@ export function OwnerCoverPhotoControl({
                     Use latest approved photo
                   </Button>
                 </DialogFooter>
-              </DialogContent>
-            </Dialog>
-          </div>
+                </DialogContent>
+              </Dialog>
+            </div>
+          )}
 
           <div className="flex flex-col gap-6">
             <div className="max-w-3xl">
@@ -443,9 +449,9 @@ export function OwnerCoverPhotoControl({
                   {latestUpdate?.title ??
                     "Your next project update is being prepared."}
                 </p>
-                {latestUpdate && (
+                {latestUpdate && latestUpdateHref && (
                   <a
-                    href={`/dashboard/projects/${projectId}/owner-updates/${latestUpdate.id}`}
+                    href={latestUpdateHref}
                     className="mt-3 inline-flex items-center gap-1 text-xs font-medium text-white hover:underline"
                   >
                     Read update
