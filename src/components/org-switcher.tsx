@@ -37,6 +37,21 @@ type OrgInfo = {
   readonly role: string
 }
 
+const COMPASS_COMPANY_NAME = "High Performance Structures, Inc."
+
+function sidebarCompanyName(activeOrgName: string | null): string {
+  // Project department branding belongs in project documents. It must never
+  // replace the main Compass company identity in global navigation.
+  if (
+    activeOrgName === null ||
+    activeOrgName === "Open Range Construction" ||
+    activeOrgName.startsWith("High Performance Structures")
+  ) {
+    return COMPASS_COMPANY_NAME
+  }
+  return activeOrgName
+}
+
 export function OrgSwitcher({
   activeOrgId,
   activeOrgName,
@@ -71,7 +86,7 @@ export function OrgSwitcher({
     }
   }
 
-  const displayName = activeOrgName ?? "Compass"
+  const displayName = sidebarCompanyName(activeOrgName)
   const hasOrgs = orgs.length > 1
 
   return (

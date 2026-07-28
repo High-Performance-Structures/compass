@@ -114,7 +114,10 @@ export function OwnerUpdateDocument({
                 alt={brand.logoAlt}
                 width={56}
                 height={56}
+                priority
                 unoptimized
+                sizes="56px"
+                data-owner-update-brand-logo="true"
                 className="h-14 w-14 object-contain"
               />
               <div>

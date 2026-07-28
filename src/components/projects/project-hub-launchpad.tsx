@@ -236,43 +236,56 @@ function ProjectCard({
       )}
     >
       {photo ? (
-        <Link href={`/dashboard/projects/${project.id}`} className="relative block aspect-[16/7] overflow-hidden bg-muted">
+        <Link
+          href={`/dashboard/projects/${project.id}`}
+          className="relative block h-20 overflow-hidden bg-muted sm:h-24"
+        >
           <Image
             src={photo.imageUrl}
             alt={photo.caption ?? photo.fileName}
             fill
-            sizes="(min-width: 1280px) 30vw, (min-width: 768px) 45vw, 100vw"
+            sizes="(min-width: 1536px) 18vw, (min-width: 1280px) 23vw, (min-width: 1024px) 30vw, (min-width: 640px) 45vw, 100vw"
             unoptimized
             className="object-cover transition-transform duration-300 group-hover:scale-[1.02]"
           />
         </Link>
       ) : (
-        <div className="flex aspect-[16/7] items-center justify-center bg-gradient-to-br from-muted to-muted/40">
-          <IconBuilding className="size-8 text-muted-foreground/40" />
+        <div className="flex h-20 items-center justify-center bg-gradient-to-br from-muted to-muted/40 sm:h-24">
+          <IconBuilding className="size-6 text-muted-foreground/40" />
         </div>
       )}
 
-      <div className="p-4">
-        <div className="flex items-start justify-between gap-3">
+      <div className="p-3">
+        <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
-            <p className="truncate text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            <p className="truncate text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
               {project.projectNumber ?? "Compass project"}
             </p>
-            <h2 className="mt-1 truncate text-base font-semibold">{project.name}</h2>
+            <h2 className="mt-0.5 truncate text-sm font-semibold">
+              {project.name}
+            </h2>
           </div>
-          <Badge variant="outline">
+          <Badge
+            variant="outline"
+            className="shrink-0 px-1.5 py-0 text-[10px]"
+          >
             {department === "OTHER" ? "Other" : department}
           </Badge>
         </div>
 
-        <p className="mt-3 truncate text-sm text-muted-foreground">
+        <p className="mt-2 truncate text-xs text-muted-foreground">
           {health?.nextTask ? `Next: ${health.nextTask.title}` : project.clientName ?? "No next phase recorded"}
         </p>
-        <div className="mt-3">
+        <div className="mt-2">
           <ProjectHealth projectId={project.id} overview={overview} />
         </div>
 
-        <Button asChild variant="ghost" size="sm" className="mt-4 w-full justify-between px-0 hover:bg-transparent">
+        <Button
+          asChild
+          variant="ghost"
+          size="sm"
+          className="mt-2 h-7 w-full justify-between px-0 text-xs hover:bg-transparent"
+        >
           <Link href={`/dashboard/projects/${project.id}`}>
             Open project hub
             <span aria-hidden="true">→</span>
@@ -642,7 +655,7 @@ export function ProjectHubLaunchpad({
           className={cn(
             "mt-3",
             layout === "cards"
-              ? "grid gap-4 sm:grid-cols-2 2xl:grid-cols-3"
+              ? "grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5"
               : "divide-y border-y"
           )}
         >
