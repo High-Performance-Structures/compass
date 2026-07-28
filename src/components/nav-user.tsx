@@ -1,10 +1,14 @@
 "use client"
 
 import * as React from "react"
+import Image from "next/image"
 import Link from "next/link"
 import {
   IconAutomation,
+  IconChevronUp,
   IconCreditCard,
+  IconPhotoEdit,
+  IconRefresh,
   IconLogout,
   IconUserCircle,
   IconMicrophone,
@@ -12,8 +16,8 @@ import {
   IconHeadphones,
   IconHeadphonesOff,
   IconSettings,
-  IconChevronUp,
 } from "@tabler/icons-react"
+import { toast } from "sonner"
 
 import { logout } from "@/app/actions/profile"
 
@@ -44,9 +48,13 @@ import {
 import { AccountModal } from "@/components/account-modal"
 import { DevicePicker } from "@/components/voice/device-picker"
 import { useVoiceState } from "@/hooks/use-voice-state"
+import { sidebarDeskPhotoStorageKey } from "@/lib/user-photo-storage"
 import { cn } from "@/lib/utils"
 import { getInitials } from "@/lib/utils"
 import type { SidebarUser } from "@/lib/auth"
+
+const MARTINE_DEFAULT_SIDEBAR_PHOTO =
+  "/user-desk-photos/martine-desk-photo.jpeg"
 
 function stopEvent(e: React.MouseEvent | React.PointerEvent): void {
   e.stopPropagation()
@@ -57,6 +65,86 @@ function stopPropagation(e: React.MouseEvent | React.PointerEvent): void {
   e.stopPropagation()
 }
 
+function defaultSidebarPhoto(user: SidebarUser): string | null {
+  const identity = `${user.name} ${user.email}`.toLowerCase()
+  if (identity.includes("martine")) return MARTINE_DEFAULT_SIDEBAR_PHOTO
+  return user.avatar
+}
+
+function loadSidebarPhoto(user: SidebarUser): string | null {
+  try {
+    return (
+      window.localStorage.getItem(sidebarDeskPhotoStorageKey(user.email)) ??
+      defaultSidebarPhoto(user)
+    )
+  } catch {
+    return defaultSidebarPhoto(user)
+  }
+}
+
+function saveSidebarPhoto(user: SidebarUser, dataUrl: string): void {
+  try {
+    window.localStorage.setItem(
+      sidebarDeskPhotoStorageKey(user.email),
+      dataUrl
+    )
+  } catch {
+    // The selected photo still remains visible for this browser session.
+  }
+}
+
+function resetSidebarPhoto(user: SidebarUser): void {
+  try {
+    window.localStorage.removeItem(sidebarDeskPhotoStorageKey(user.email))
+  } catch {
+    // The reset still applies for this browser session.
+  }
+}
+
+function readFileAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => {
+      if (typeof reader.result === "string") {
+        resolve(reader.result)
+        return
+      }
+      reject(new Error("Could not read this image."))
+    }
+    reader.onerror = () => reject(new Error("Could not read this image."))
+    reader.readAsDataURL(file)
+  })
+}
+
+function resizeSidebarPhoto(dataUrl: string): Promise<string> {
+  return new Promise((resolve) => {
+    const image = new window.Image()
+    image.onload = () => {
+      const scale = Math.min(
+        1,
+        720 / image.naturalWidth,
+        420 / image.naturalHeight
+      )
+      const width = Math.max(1, Math.round(image.naturalWidth * scale))
+      const height = Math.max(1, Math.round(image.naturalHeight * scale))
+      const canvas = document.createElement("canvas")
+      canvas.width = width
+      canvas.height = height
+      const context = canvas.getContext("2d")
+
+      if (!context) {
+        resolve(dataUrl)
+        return
+      }
+
+      context.drawImage(image, 0, 0, width, height)
+      resolve(canvas.toDataURL("image/jpeg", 0.84))
+    }
+    image.onerror = () => resolve(dataUrl)
+    image.src = dataUrl
+  })
+}
+
 export function NavUser({
   user,
 }: {
@@ -64,7 +152,12 @@ export function NavUser({
 }): React.ReactElement | null {
   const { isMobile } = useSidebar()
   const [accountOpen, setAccountOpen] = React.useState(false)
+  const [sidebarPhotoUrl, setSidebarPhotoUrl] = React.useState<string | null>(
+    null
+  )
+  const [sidebarPhotoFailed, setSidebarPhotoFailed] = React.useState(false)
   const [isLoggingOut, startLogoutTransition] = React.useTransition()
+  const photoInputRef = React.useRef<HTMLInputElement>(null)
   const {
     isMuted,
     isDeafened,
@@ -78,6 +171,12 @@ export function NavUser({
     setOutputDevice,
   } = useVoiceState()
 
+  React.useEffect(() => {
+    if (!user) return
+    setSidebarPhotoFailed(false)
+    setSidebarPhotoUrl(loadSidebarPhoto(user))
+  }, [user])
+
   if (!user) {
     return null
   }
@@ -88,6 +187,39 @@ export function NavUser({
     startLogoutTransition(async () => {
       await logout()
     })
+  }
+
+  async function handleSidebarPhotoUpload(
+    event: React.ChangeEvent<HTMLInputElement>
+  ): Promise<void> {
+    const file = event.currentTarget.files?.[0]
+    event.currentTarget.value = ""
+    if (!file || !user) return
+
+    if (!file.type.startsWith("image/")) {
+      toast.error("Choose an image file.")
+      return
+    }
+
+    try {
+      const dataUrl = await readFileAsDataUrl(file)
+      const resizedDataUrl = await resizeSidebarPhoto(dataUrl)
+      saveSidebarPhoto(user, resizedDataUrl)
+      setSidebarPhotoFailed(false)
+      setSidebarPhotoUrl(resizedDataUrl)
+      toast.success("Sidebar photo updated.")
+    } catch {
+      toast.error("Could not update the sidebar photo.")
+    }
+  }
+
+  function handleSidebarPhotoReset(): void {
+    if (!user) return
+
+    resetSidebarPhoto(user)
+    setSidebarPhotoFailed(false)
+    setSidebarPhotoUrl(defaultSidebarPhoto(user))
+    toast.success("Sidebar photo reset.")
   }
 
   return (
@@ -110,16 +242,25 @@ export function NavUser({
                 "[data-mobile=true]_&:h-14 [data-mobile=true]_&:text-base",
               )}
             >
-              <Avatar className="h-8 w-8 shrink-0 rounded-lg grayscale">
-                {user.avatar && (
-                  <AvatarImage src={user.avatar} alt={user.name} />
+              <span className="relative h-8 min-w-0 flex-1 overflow-hidden rounded-sm border border-sidebar-border bg-sidebar-accent group-data-[collapsible=icon]:size-7! group-data-[collapsible=icon]:flex-none">
+                {sidebarPhotoUrl && !sidebarPhotoFailed ? (
+                  <Image
+                    src={sidebarPhotoUrl}
+                    alt={`${user.name}'s sidebar photo`}
+                    fill
+                    sizes="160px"
+                    unoptimized
+                    className="object-cover"
+                    onError={() => setSidebarPhotoFailed(true)}
+                  />
+                ) : (
+                  <span className="flex h-full w-full items-center justify-center bg-sidebar-accent text-xs font-semibold text-sidebar-foreground/70">
+                    {initials}
+                  </span>
                 )}
-                <AvatarFallback className="rounded-lg">
-                  {initials}
-                </AvatarFallback>
-              </Avatar>
-              <span className="min-w-0 flex-1 truncate text-sm font-medium text-sidebar-foreground">
-                {user.name}
+                <span className="absolute inset-x-0 bottom-0 hidden items-center justify-center bg-black/45 py-0.5 text-[9px] font-medium text-white group-hover/menu-button:flex group-data-[collapsible=icon]:hidden">
+                  Account
+                </span>
               </span>
               {/* Voice controls -- replace the old dots icon */}
               <div className="group-data-[collapsible=icon]:hidden flex shrink-0 items-center">
@@ -183,6 +324,20 @@ export function NavUser({
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
             <DropdownMenuGroup>
+              <DropdownMenuItem
+                onSelect={(event) => {
+                  event.preventDefault()
+                  photoInputRef.current?.click()
+                }}
+              >
+                <IconPhotoEdit />
+                Change sidebar photo
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={handleSidebarPhotoReset}>
+                <IconRefresh />
+                Reset sidebar photo
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
               <DropdownMenuItem onSelect={() => setAccountOpen(true)}>
                 <IconUserCircle />
                 Account
@@ -213,6 +368,14 @@ export function NavUser({
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
+        <input
+          ref={photoInputRef}
+          type="file"
+          accept="image/*"
+          className="sr-only"
+          aria-label="Choose sidebar photo"
+          onChange={handleSidebarPhotoUpload}
+        />
       </SidebarMenuItem>
       <AccountModal
         open={accountOpen}

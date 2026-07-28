@@ -75,6 +75,7 @@ import {
   type DeskStatus,
   type TeamAvailabilityMember,
 } from "@/lib/dashboard/office-status"
+import { dashboardDeskPhotoStorageKey } from "@/lib/user-photo-storage"
 import { cn } from "@/lib/utils"
 
 type DashboardMode = "office" | "project"
@@ -96,7 +97,7 @@ function deskPhotoForUser(user: SidebarUser | null): string | null {
 
   try {
     const storedPhoto = window.localStorage.getItem(
-      `compass-desk-photo:${user.email}`
+      dashboardDeskPhotoStorageKey(user.email)
     )
     if (storedPhoto === HIDDEN_DESK_PHOTO) return null
     if (storedPhoto) return storedPhoto
@@ -153,7 +154,7 @@ function resizeDeskPhoto(dataUrl: string): Promise<string> {
 function saveDeskPhoto(user: SidebarUser, dataUrl: string): void {
   try {
     window.localStorage.setItem(
-      `compass-desk-photo:${user.email}`,
+      dashboardDeskPhotoStorageKey(user.email),
       dataUrl
     )
   } catch {
