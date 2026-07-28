@@ -4,8 +4,14 @@ import { getCloudflareContext } from "@/lib/db"
 import { eq, and } from "drizzle-orm"
 import { getDb } from "@/db"
 import { userPresence, channelMembers } from "@/db/schema-conversations"
-import { users } from "@/db/schema"
+import { organizationMembers, users } from "@/db/schema"
 import { getCurrentUser } from "@/lib/auth"
+import {
+  teamAvailabilityFromRows,
+  type TeamAvailabilityMember,
+} from "@/lib/dashboard/office-status"
+import { requireOrg } from "@/lib/org-scope"
+import { isInternalStaffRole } from "@/lib/user-roles"
 
 export type PresenceStatus = "online" | "idle" | "dnd" | "offline"
 
@@ -149,6 +155,64 @@ export async function getCurrentUserPresence(): Promise<
       success: false,
       error:
         err instanceof Error ? err.message : "Failed to get current presence",
+    }
+  }
+}
+
+/**
+ * Read the saved office availability for internal staff in the active
+ * organization. This is intentionally separate from channel membership so
+ * dashboard availability is shared across the whole company.
+ */
+export async function getOrganizationTeamAvailability(): Promise<
+  | { success: true; data: readonly TeamAvailabilityMember[] }
+  | { success: false; error: string }
+> {
+  try {
+    const user = await getCurrentUser()
+    if (!user) {
+      return { success: false, error: "Unauthorized" }
+    }
+    if (!isInternalStaffRole(user.role)) {
+      return { success: false, error: "Access denied" }
+    }
+
+    const organizationId = requireOrg(user)
+    const { env } = await getCloudflareContext()
+    const db = getDb(env.DB)
+    const rows = await db
+      .select({
+        userId: users.id,
+        email: users.email,
+        firstName: users.firstName,
+        lastName: users.lastName,
+        displayName: users.displayName,
+        avatarUrl: users.avatarUrl,
+        role: users.role,
+        statusMessage: userPresence.statusMessage,
+        updatedAt: userPresence.updatedAt,
+      })
+      .from(organizationMembers)
+      .innerJoin(users, eq(organizationMembers.userId, users.id))
+      .leftJoin(userPresence, eq(users.id, userPresence.userId))
+      .where(
+        and(
+          eq(organizationMembers.organizationId, organizationId),
+          eq(users.isActive, true)
+        )
+      )
+
+    return {
+      success: true,
+      data: teamAvailabilityFromRows(rows, user.id),
+    }
+  } catch (err) {
+    return {
+      success: false,
+      error:
+        err instanceof Error
+          ? err.message
+          : "Failed to get team availability",
     }
   }
 }
