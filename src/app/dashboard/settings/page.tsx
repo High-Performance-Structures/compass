@@ -29,6 +29,7 @@ import { AgentTab } from "@/components/settings/agent-tab"
 import { NetSuiteConnectionStatus } from "@/components/netsuite/connection-status"
 import { SyncControls } from "@/components/netsuite/sync-controls"
 import { GoogleDriveConnectionStatus } from "@/components/google/connection-status"
+import { GoogleCalendarConnectionCard } from "@/components/google/calendar-connection-status"
 
 const SETTINGS_TABS = [
   { value: "preferences", label: "Preferences", icon: IconAdjustments },
@@ -51,6 +52,8 @@ function IntegrationsSection() {
     <div className="space-y-4">
       <GoogleDriveConnectionStatus />
       <Separator />
+      <GoogleCalendarConnectionCard />
+      <Separator />
       <NetSuiteConnectionStatus />
       <SyncControls />
     </div>
@@ -61,6 +64,13 @@ export default function SettingsPage() {
   const [activeSection, setActiveSection] =
     React.useState<SectionValue>("preferences")
   const isMobile = useIsMobile()
+
+  React.useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    if (params.has("google-calendar")) {
+      setActiveSection("integrations")
+    }
+  }, [])
 
   const isWide = WIDE_SECTIONS.has(activeSection)
 
