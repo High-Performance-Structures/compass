@@ -18,6 +18,7 @@ import {
   IconMapPin,
   IconMessageCircleQuestion,
   IconPhoto,
+  IconPhotoEdit,
   IconPlus,
   IconReceipt,
   IconSparkles,
@@ -96,6 +97,59 @@ function deskPhotoForUser(user: SidebarUser | null): string | null {
 
   const identity = `${user.name} ${user.email}`.toLowerCase()
   return identity.includes("martine") ? MARTINE_DEFAULT_DESK_PHOTO : null
+}
+
+function readFileAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => {
+      if (typeof reader.result === "string") {
+        resolve(reader.result)
+        return
+      }
+      reject(new Error("Could not read this image."))
+    }
+    reader.onerror = () => reject(new Error("Could not read this image."))
+    reader.readAsDataURL(file)
+  })
+}
+
+function resizeDeskPhoto(dataUrl: string): Promise<string> {
+  return new Promise((resolve) => {
+    const image = new window.Image()
+    image.onload = () => {
+      const scale = Math.min(
+        1,
+        900 / image.naturalWidth,
+        700 / image.naturalHeight
+      )
+      const width = Math.max(1, Math.round(image.naturalWidth * scale))
+      const height = Math.max(1, Math.round(image.naturalHeight * scale))
+      const canvas = document.createElement("canvas")
+      canvas.width = width
+      canvas.height = height
+      const context = canvas.getContext("2d")
+      if (!context) {
+        resolve(dataUrl)
+        return
+      }
+      context.drawImage(image, 0, 0, width, height)
+      resolve(canvas.toDataURL("image/jpeg", 0.86))
+    }
+    image.onerror = () => resolve(dataUrl)
+    image.src = dataUrl
+  })
+}
+
+function saveDeskPhoto(user: SidebarUser, dataUrl: string): void {
+  try {
+    window.localStorage.setItem(
+      `compass-desk-photo:${user.email}`,
+      dataUrl
+    )
+  } catch {
+    // The updated image still remains available for the current session.
+  }
 }
 
 function isDeskStatus(value: string): value is DeskStatus {
@@ -282,6 +336,7 @@ function DeskHero({
 }): React.ReactElement {
   const [deskPhotoFailed, setDeskPhotoFailed] = useState(false)
   const [deskPhotoUrl, setDeskPhotoUrl] = useState<string | null>(null)
+  const [deskPhotoMessage, setDeskPhotoMessage] = useState<string | null>(null)
   const [status, setStatus] = useState<DeskStatus>("in-office")
   const [statusMessage, setStatusMessage] = useState<string | null>(null)
   const [isStatusPending, startStatusTransition] = useTransition()
@@ -306,6 +361,30 @@ function DeskHero({
     })
   }
 
+  async function handleDeskPhotoUpload(
+    event: React.ChangeEvent<HTMLInputElement>
+  ): Promise<void> {
+    const file = event.currentTarget.files?.[0]
+    if (!file || !user) return
+    event.currentTarget.value = ""
+
+    if (!file.type.startsWith("image/")) {
+      setDeskPhotoMessage("Choose an image file.")
+      return
+    }
+
+    try {
+      const dataUrl = await readFileAsDataUrl(file)
+      const resizedDataUrl = await resizeDeskPhoto(dataUrl)
+      saveDeskPhoto(user, resizedDataUrl)
+      setDeskPhotoFailed(false)
+      setDeskPhotoUrl(resizedDataUrl)
+      setDeskPhotoMessage("Desk photo updated.")
+    } catch {
+      setDeskPhotoMessage("Could not update the desk photo.")
+    }
+  }
+
   return (
     <section className="grid min-h-52 overflow-hidden border-y border-border/70 bg-background sm:grid-cols-[minmax(10rem,0.8fr)_minmax(0,1.2fr)]">
       <div className="relative min-h-40 overflow-hidden bg-muted">
@@ -324,6 +403,18 @@ function DeskHero({
             <IconHome2 className="size-10 text-[#2f5963]/60" />
           </div>
         )}
+        {user ? (
+          <label className="absolute bottom-3 left-3 flex cursor-pointer items-center gap-1.5 border border-white/40 bg-black/55 px-2.5 py-1.5 text-xs font-medium text-white backdrop-blur-sm transition hover:bg-black/70">
+            <IconPhotoEdit className="size-3.5" />
+            Change desk photo
+            <input
+              type="file"
+              accept="image/*"
+              className="sr-only"
+              onChange={handleDeskPhotoUpload}
+            />
+          </label>
+        ) : null}
       </div>
 
       <div className="flex min-w-0 flex-col justify-center px-5 py-4">
@@ -334,6 +425,11 @@ function DeskHero({
         <p className="mt-1 text-sm text-muted-foreground">
           Here is what needs your attention today.
         </p>
+        {deskPhotoMessage ? (
+          <p className="mt-1 text-xs text-muted-foreground">
+            {deskPhotoMessage}
+          </p>
+        ) : null}
 
         <div className="mt-4 flex flex-wrap items-center gap-2">
           <Select
