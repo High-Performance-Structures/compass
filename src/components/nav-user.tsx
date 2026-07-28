@@ -230,20 +230,20 @@ export function NavUser({
               data-size="lg"
               data-active={false}
               className={cn(
-                "peer/menu-button flex h-12 w-full items-center gap-2 overflow-hidden rounded-md p-2 text-left text-sm outline-hidden ring-sidebar-ring transition-[width,height,padding]",
+                "peer/menu-button flex h-28 w-full items-center gap-2 overflow-hidden rounded-md p-2 text-left text-sm outline-hidden ring-sidebar-ring transition-[width,height,padding]",
                 "hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground",
                 "data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground",
                 "group-data-[collapsible=icon]:size-9! group-data-[collapsible=icon]:justify-center! group-data-[collapsible=icon]:gap-0! group-data-[collapsible=icon]:p-2! group-data-[collapsible=icon]:[&>*:nth-child(n+2)]:hidden",
-                "[data-mobile=true]_&:h-14 [data-mobile=true]_&:text-base",
+                "[data-mobile=true]_&:h-28 [data-mobile=true]_&:text-base",
               )}
             >
-              <span className="relative h-8 min-w-0 flex-1 overflow-hidden rounded-sm border border-sidebar-border bg-sidebar-accent group-data-[collapsible=icon]:size-7! group-data-[collapsible=icon]:flex-none">
+              <span className="relative h-24 min-w-0 flex-1 overflow-hidden rounded-sm border border-sidebar-border bg-sidebar-accent group-data-[collapsible=icon]:size-7! group-data-[collapsible=icon]:flex-none">
                 {sidebarPhotoUrl && !sidebarPhotoFailed ? (
                   <Image
                     src={sidebarPhotoUrl}
                     alt={`${user.name}'s sidebar photo`}
                     fill
-                    sizes="160px"
+                    sizes="220px"
                     unoptimized
                     className="object-cover"
                     onError={() => setSidebarPhotoFailed(true)}
