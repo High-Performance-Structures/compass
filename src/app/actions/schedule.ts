@@ -12,7 +12,10 @@ import { eq, asc, and, inArray } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { calculateEndDate } from "@/lib/schedule/business-days"
 import { findCriticalPath } from "@/lib/schedule/critical-path"
-import { wouldCreateCycle } from "@/lib/schedule/dependency-validation"
+import {
+  wouldCreateCycle,
+  wouldDependencyUpdateCreateCycle,
+} from "@/lib/schedule/dependency-validation"
 import { propagateDates } from "@/lib/schedule/propagate-dates"
 import {
   effectivePercentComplete,
@@ -688,6 +691,147 @@ export async function createDependency(data: {
   } catch (error) {
     console.error("Failed to create dependency:", error)
     return { success: false, error: "Failed to create dependency" }
+  }
+}
+
+export async function updateDependency(data: {
+  dependencyId: string
+  predecessorId: string
+  successorId: string
+  type: DependencyType
+  lagDays: number
+  projectId: string
+}): Promise<
+  | { readonly success: true }
+  | { readonly success: false; readonly error: string }
+> {
+  try {
+    const user = await requireAuth()
+    if (isDemoUser(user.id)) {
+      return { success: false, error: "DEMO_READ_ONLY" }
+    }
+    const orgId = requireOrg(user)
+
+    const { env } = await getCloudflareContext()
+    const db = getDb(env.DB)
+    const [project] = await db
+      .select({ id: projects.id })
+      .from(projects)
+      .where(
+        and(
+          eq(projects.id, data.projectId),
+          eq(projects.organizationId, orgId)
+        )
+      )
+      .limit(1)
+
+    if (!project) {
+      return { success: false, error: "Project not found or access denied" }
+    }
+    if (data.predecessorId === data.successorId) {
+      return {
+        success: false,
+        error: "A schedule item cannot depend on itself",
+      }
+    }
+
+    const schedule = await getSchedule(data.projectId)
+    const taskIds = new Set(schedule.tasks.map((task) => task.id))
+    const currentDependency = schedule.dependencies.find(
+      (dependency) => dependency.id === data.dependencyId
+    )
+
+    if (!currentDependency) {
+      return { success: false, error: "Dependency not found" }
+    }
+    if (
+      !taskIds.has(data.predecessorId) ||
+      !taskIds.has(data.successorId)
+    ) {
+      return {
+        success: false,
+        error: "Both schedule items must belong to this project",
+      }
+    }
+
+    const otherDependencies = schedule.dependencies.filter(
+      (dependency) => dependency.id !== data.dependencyId
+    )
+    if (
+      otherDependencies.some(
+        (dependency) =>
+          dependency.predecessorId === data.predecessorId &&
+          dependency.successorId === data.successorId
+      )
+    ) {
+      return { success: false, error: "That dependency already exists" }
+    }
+    if (
+      wouldDependencyUpdateCreateCycle(
+        schedule.dependencies,
+        data.dependencyId,
+        data.predecessorId,
+        data.successorId
+      )
+    ) {
+      return { success: false, error: "This dependency would create a cycle" }
+    }
+
+    const updatedDependency = {
+      id: data.dependencyId,
+      predecessorId: data.predecessorId,
+      successorId: data.successorId,
+      type: data.type,
+      lagDays: data.lagDays,
+    }
+    const recalculated = propagateDates(
+      data.predecessorId,
+      schedule.tasks,
+      [...otherDependencies, updatedDependency],
+      schedule.exceptions
+    )
+    const updatedAt = new Date().toISOString()
+    const statements: D1PreparedStatement[] = [
+      env.DB.prepare(
+        `UPDATE task_dependencies
+         SET predecessor_id = ?, successor_id = ?, type = ?, lag_days = ?
+         WHERE id = ?`
+      ).bind(
+        data.predecessorId,
+        data.successorId,
+        data.type,
+        data.lagDays,
+        data.dependencyId
+      ),
+    ]
+
+    for (const [taskId, dates] of recalculated.updatedTasks) {
+      statements.push(
+        env.DB.prepare(
+          `UPDATE schedule_tasks
+           SET start_date = ?, end_date_calculated = ?, updated_at = ?
+           WHERE id = ? AND project_id = ?`
+        ).bind(
+          dates.startDate,
+          dates.endDateCalculated,
+          updatedAt,
+          taskId,
+          data.projectId
+        )
+      )
+    }
+
+    const results = await env.DB.batch(statements)
+    if (results.some((result) => !result.success)) {
+      throw new Error("Dependency update batch failed")
+    }
+
+    await recalcCriticalPath(db, data.projectId)
+    revalidateSchedulePaths(data.projectId)
+    return { success: true }
+  } catch (error) {
+    console.error("Failed to update dependency:", error)
+    return { success: false, error: "Failed to update dependency" }
   }
 }
 

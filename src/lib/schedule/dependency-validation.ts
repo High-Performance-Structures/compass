@@ -44,3 +44,18 @@ export function wouldCreateCycle(
 
   return false
 }
+
+export function wouldDependencyUpdateCreateCycle(
+  existingDependencies: readonly TaskDependencyData[],
+  dependencyId: string,
+  predecessorId: string,
+  successorId: string
+): boolean {
+  return wouldCreateCycle(
+    existingDependencies.filter(
+      (dependency) => dependency.id !== dependencyId
+    ),
+    predecessorId,
+    successorId
+  )
+}
