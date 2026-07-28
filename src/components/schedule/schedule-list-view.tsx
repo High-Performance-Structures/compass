@@ -36,9 +36,11 @@ import { ScheduleItemFormDialog } from "./schedule-item-form-dialog"
 import { DependencyDialog } from "./dependency-dialog"
 import { effectivePercentComplete } from "@/lib/schedule/progress"
 import {
+  assignScheduleTasks,
   completeScheduleTasks,
   deleteScheduleTasks,
 } from "@/app/actions/schedule"
+import { addDirectoryContactToProjectForTask } from "@/app/actions/project-contacts"
 import type {
   ScheduleTaskData,
   TaskDependencyData,
@@ -55,6 +57,7 @@ import {
   getScheduleItemDisplayColor,
   type DisplayColorPalette,
 } from "@/lib/schedule/appearance"
+import { ProjectAssigneePicker } from "@/components/projects/project-assignee-picker"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -369,6 +372,57 @@ export function ScheduleListView({
     router.refresh()
   }
 
+  const handleAssignSelected = async (
+    value: string,
+    option: ProjectTaskAssigneeOption | null
+  ): Promise<void> => {
+    const selectedIds = selectedTasks.map((task) => task.id)
+    if (selectedIds.length === 0) return
+
+    setIsWorking(true)
+    let assignedName = value.trim()
+    if (option?.source === "directory" && option.directoryContactId) {
+      const contactResult = await addDirectoryContactToProjectForTask(
+        projectId,
+        option.directoryContactId
+      )
+      if (!contactResult.success) {
+        setIsWorking(false)
+        toast.error(contactResult.error)
+        return
+      }
+      assignedName = contactResult.contact.name
+    }
+
+    const result = await assignScheduleTasks(
+      projectId,
+      selectedIds,
+      assignedName || null
+    )
+    setIsWorking(false)
+
+    if (!result.success) {
+      toast.error(result.error)
+      return
+    }
+
+    const assignedIds = new Set(selectedIds)
+    setLocalTasks((current) =>
+      current.map((task) =>
+        assignedIds.has(task.id)
+          ? { ...task, assignedTo: assignedName || null }
+          : task
+      )
+    )
+    setRowSelection({})
+    toast.success(
+      assignedName
+        ? `${selectedIds.length} schedule item${selectedIds.length === 1 ? "" : "s"} assigned to ${assignedName}.`
+        : `${selectedIds.length} schedule item${selectedIds.length === 1 ? "" : "s"} unassigned.`
+    )
+    router.refresh()
+  }
+
   const handleConfirmDelete = async (): Promise<void> => {
     const deletingTasks = pendingDeleteTasks
     const selectedIds = deletingTasks.map((task) => task.id)
@@ -451,6 +505,19 @@ export function ScheduleListView({
               <IconCircleCheck className="size-4" />
               Mark complete
             </Button>
+            <div className="w-[220px]">
+              <ProjectAssigneePicker
+                value=""
+                options={assigneeOptions}
+                disabled={isWorking}
+                placeholder="Assign / reassign"
+                clearLabel="Unassign selected"
+                className="h-8 text-xs"
+                onValueChange={(value, option) => {
+                  void handleAssignSelected(value, option)
+                }}
+              />
+            </div>
             <Button
               type="button"
               size="sm"

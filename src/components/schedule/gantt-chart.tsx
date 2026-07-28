@@ -8,11 +8,57 @@ import {
   dominantScrollAxis,
   lockWheelToDominantAxis,
   normalizeWheelDelta,
+  paddingToIncludeDate,
   type GanttScrollAxis,
 } from "@/lib/schedule/gantt-scroll"
 import "./gantt.css"
 
 type ViewMode = "Day" | "Week" | "Month"
+
+export interface GanttScrollPosition {
+  readonly left: number
+  readonly top: number
+  readonly anchorDate?: string
+}
+
+function differenceInUnits(date: Date, start: Date, unit: string): number {
+  if (unit === "month") {
+    const yearDifference = date.getFullYear() - start.getFullYear()
+    let monthDifference = date.getMonth() - start.getMonth()
+    monthDifference += date.getDate() / 31
+    if (date.getDate() < start.getDate()) monthDifference -= 1
+    return yearDifference * 12 + monthDifference
+  }
+
+  const timezoneOffset = start.getTimezoneOffset() - date.getTimezoneOffset()
+  const milliseconds = date.getTime() - start.getTime() + timezoneOffset * 60_000
+  return milliseconds / 86_400_000
+}
+
+function addUnits(start: Date, amount: number, unit: string): Date {
+  const date = new Date(start)
+  if (unit === "month") {
+    const wholeMonths = Math.trunc(amount)
+    date.setMonth(date.getMonth() + wholeMonths)
+    date.setTime(date.getTime() + (amount - wholeMonths) * 30 * 86_400_000)
+    return date
+  }
+  date.setTime(date.getTime() + amount * 86_400_000)
+  return date
+}
+
+function dateKey(date: Date): string {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, "0")
+  const day = String(date.getDate()).padStart(2, "0")
+  return `${year}-${month}-${day}`
+}
+
+function basePaddingDays(viewMode: ViewMode): number {
+  if (viewMode === "Day") return 7
+  if (viewMode === "Week") return 31
+  return 62
+}
 
 function monthYearLabel(date: Date): string {
   return date.toLocaleDateString("en-US", {
@@ -102,7 +148,12 @@ interface GanttChartProps {
   onZoom?: (direction: "in" | "out") => void
   onTaskDoubleClick?: (task: FrappeTask) => void
   onContainerReady?: (container: HTMLElement | null) => void
-  onScrollTopChange?: (top: number) => void
+  onScrollPositionChange?: (position: GanttScrollPosition) => void
+  onTodayScrollReady?: (handler: (() => void) | null) => void
+  onDateScrollReady?: (handler: ((date: string) => void) | null) => void
+  onTaskVisibilityReady?: (
+    handler: ((taskId: string) => void) | null
+  ) => void
 }
 
 export function GanttChart({
@@ -117,7 +168,10 @@ export function GanttChart({
   onZoom,
   onTaskDoubleClick,
   onContainerReady,
-  onScrollTopChange,
+  onScrollPositionChange,
+  onTodayScrollReady,
+  onDateScrollReady,
+  onTaskVisibilityReady,
 }: GanttChartProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const wrapperRef = useRef<HTMLDivElement>(null)
@@ -129,12 +183,18 @@ export function GanttChart({
   const interactionCallbacksRef = useRef({
     onTaskDoubleClick,
     onContainerReady,
-    onScrollTopChange,
+    onScrollPositionChange,
+    onTodayScrollReady,
+    onDateScrollReady,
+    onTaskVisibilityReady,
   })
   interactionCallbacksRef.current = {
     onTaskDoubleClick,
     onContainerReady,
-    onScrollTopChange,
+    onScrollPositionChange,
+    onTodayScrollReady,
+    onDateScrollReady,
+    onTaskVisibilityReady,
   }
 
   const taskForEventTarget = useCallback((target: EventTarget): FrappeTask | null => {
@@ -228,9 +288,23 @@ export function GanttChart({
     let activeContainer: HTMLElement | null = null
     const handleScroll = () => {
       if (!activeContainer) return
-      interactionCallbacksRef.current.onScrollTopChange?.(
-        activeContainer.scrollTop
-      )
+      const gantt = ganttRef.current
+      const centerUnits = gantt
+        ? ((activeContainer.scrollLeft + activeContainer.clientWidth / 2) /
+            gantt.config.column_width) *
+          gantt.config.step
+        : 0
+      interactionCallbacksRef.current.onScrollPositionChange?.({
+        left: activeContainer.scrollLeft,
+        top: activeContainer.scrollTop,
+        ...(gantt
+          ? {
+              anchorDate: dateKey(
+                addUnits(gantt.gantt_start, centerUnits, gantt.config.unit)
+              ),
+            }
+          : {}),
+      })
     }
     const handleAxisLockedWheel = (event: WheelEvent) => {
       if (!activeContainer || event.ctrlKey) return
@@ -272,10 +346,31 @@ export function GanttChart({
         dependencies: t.dependencies,
         custom_class: t.custom_class,
       }))
+      const earliestStart = tasks
+        .map((task) => task.start)
+        .sort((left, right) => left.localeCompare(right))[0]
+      const latestEnd = tasks
+        .map((task) => task.end)
+        .sort((left, right) => right.localeCompare(left))[0]
+      const today = dateKey(new Date())
+      const viewModes = GANTT_VIEW_MODES.map((mode) =>
+        mode.name === viewMode
+          ? {
+              ...mode,
+              padding: paddingToIncludeDate(
+                earliestStart,
+                latestEnd,
+                today,
+                basePaddingDays(viewMode)
+              ),
+            }
+          : mode
+      )
 
       ganttRef.current = new Gantt(containerRef.current, ganttTasks, {
         view_mode: viewMode,
-        view_modes: GANTT_VIEW_MODES,
+        view_modes: viewModes,
+        infinite_padding: false,
         ...(columnWidth ? { column_width: columnWidth } : {}),
         on_date_change: (task: { id: string }, start: Date, end: Date) => {
           if (onDateChange) {
@@ -293,6 +388,45 @@ export function GanttChart({
       // Frappe resets a custom view-mode collection to its first entry during
       // construction, so explicitly restore the React-selected mode.
       ganttRef.current.change_view_mode(viewMode)
+      const gantt = ganttRef.current
+      interactionCallbacksRef.current.onTodayScrollReady?.(() => {
+        const container = ganttContainerRef.current
+        if (!container) return
+        const todayDate = new Date()
+        todayDate.setHours(0, 0, 0, 0)
+        const units = differenceInUnits(
+          todayDate,
+          gantt.gantt_start,
+          gantt.config.unit
+        )
+        const left =
+          (units / gantt.config.step) * gantt.config.column_width -
+          container.clientWidth / 2
+        container.scrollTo({
+          left: Math.max(
+            0,
+            Math.min(left, container.scrollWidth - container.clientWidth)
+          ),
+          behavior: "smooth",
+        })
+      })
+      interactionCallbacksRef.current.onDateScrollReady?.((date) => {
+        const container = ganttContainerRef.current
+        if (!container) return
+        const anchor = new Date(`${date}T00:00:00`)
+        const units = differenceInUnits(
+          anchor,
+          gantt.gantt_start,
+          gantt.config.unit
+        )
+        const left =
+          (units / gantt.config.step) * gantt.config.column_width -
+          container.clientWidth / 2
+        container.scrollLeft = Math.max(
+          0,
+          Math.min(left, container.scrollWidth - container.clientWidth)
+        )
+      })
 
       const tasksById = new Map(tasks.map((task) => [task.id, task]))
       for (const wrapper of containerRef.current.querySelectorAll<HTMLElement>(
@@ -318,6 +452,35 @@ export function GanttChart({
         activeContainer.addEventListener("wheel", handleAxisLockedWheel, {
           passive: false,
         })
+        interactionCallbacksRef.current.onTaskVisibilityReady?.((taskId) => {
+          const root = containerRef.current
+          const container = ganttContainerRef.current
+          if (!root || !container) return
+          const bar = root.querySelector<SVGRectElement>(
+            `.gantt .bar-wrapper[data-id="${CSS.escape(taskId)}"] .bar`
+          )
+          if (!bar) return
+          const barLeft = Number(bar.getAttribute("x"))
+          const barWidth = Number(bar.getAttribute("width"))
+          if (!Number.isFinite(barLeft) || !Number.isFinite(barWidth)) return
+          const safeLeft = container.scrollLeft + 32
+          const safeRight =
+            container.scrollLeft + container.clientWidth - 32
+          const barRight = barLeft + barWidth
+          if (barRight >= safeLeft && barLeft <= safeRight) return
+          const centeredLeft =
+            barLeft + barWidth / 2 - container.clientWidth / 2
+          container.scrollTo({
+            left: Math.max(
+              0,
+              Math.min(
+                centeredLeft,
+                container.scrollWidth - container.clientWidth
+              )
+            ),
+            behavior: "auto",
+          })
+        })
         interactionCallbacksRef.current.onContainerReady?.(activeContainer)
       }
 
@@ -333,6 +496,9 @@ export function GanttChart({
         ganttContainerRef.current = null
       }
       interactionCallbacksRef.current.onContainerReady?.(null)
+      interactionCallbacksRef.current.onTodayScrollReady?.(null)
+      interactionCallbacksRef.current.onDateScrollReady?.(null)
+      interactionCallbacksRef.current.onTaskVisibilityReady?.(null)
     }
   }, [tasks, viewMode, columnWidth, onDateChange, onProgressChange])
 

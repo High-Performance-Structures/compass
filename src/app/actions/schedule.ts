@@ -462,6 +462,82 @@ export async function completeScheduleTasks(
   }
 }
 
+export async function assignScheduleTasks(
+  projectId: string,
+  taskIds: readonly string[],
+  assignedTo: string | null
+): Promise<
+  | { readonly success: true }
+  | { readonly success: false; readonly error: string }
+> {
+  try {
+    const user = await requireAuth()
+    if (isDemoUser(user.id)) {
+      return { success: false, error: "DEMO_READ_ONLY" }
+    }
+    const orgId = requireOrg(user)
+    const ids = [...new Set(taskIds.map((id) => id.trim()).filter(Boolean))]
+
+    if (ids.length === 0) {
+      return { success: false, error: "Select at least one schedule item" }
+    }
+    if (ids.length > 200) {
+      return {
+        success: false,
+        error: "Update no more than 200 schedule items at a time",
+      }
+    }
+
+    const { env } = await getCloudflareContext()
+    const db = getDb(env.DB)
+    const [project] = await db
+      .select({ id: projects.id })
+      .from(projects)
+      .where(and(eq(projects.id, projectId), eq(projects.organizationId, orgId)))
+      .limit(1)
+
+    if (!project) {
+      return { success: false, error: "Project not found or access denied" }
+    }
+
+    const matchingTasks = await db
+      .select({ id: scheduleTasks.id })
+      .from(scheduleTasks)
+      .where(
+        and(
+          eq(scheduleTasks.projectId, projectId),
+          inArray(scheduleTasks.id, ids)
+        )
+      )
+
+    if (matchingTasks.length !== ids.length) {
+      return {
+        success: false,
+        error: "One or more schedule items could not be found",
+      }
+    }
+
+    await db
+      .update(scheduleTasks)
+      .set({
+        assignedTo: assignedTo?.trim() || null,
+        updatedAt: new Date().toISOString(),
+      })
+      .where(
+        and(
+          eq(scheduleTasks.projectId, projectId),
+          inArray(scheduleTasks.id, ids)
+        )
+      )
+
+    revalidateSchedulePaths(projectId)
+    return { success: true }
+  } catch (error) {
+    console.error("Failed to assign schedule items:", error)
+    return { success: false, error: "Failed to assign schedule items" }
+  }
+}
+
 export async function deleteScheduleTasks(
   projectId: string,
   taskIds: readonly string[]
