@@ -69,6 +69,17 @@ describe("Google Calendar OAuth configuration", () => {
       ),
     ).toBe(false)
   })
+
+  it("accepts Google's canonical userinfo email scope", () => {
+    expect(
+      hasRequiredGoogleCalendarScopes([
+        "openid",
+        "https://www.googleapis.com/auth/userinfo.email",
+        "https://www.googleapis.com/auth/calendar.calendarlist.readonly",
+        "https://www.googleapis.com/auth/calendar.events",
+      ]),
+    ).toBe(true)
+  })
 })
 
 describe("calendar privacy", () => {
