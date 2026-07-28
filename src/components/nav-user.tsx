@@ -53,9 +53,6 @@ import { cn } from "@/lib/utils"
 import { getInitials } from "@/lib/utils"
 import type { SidebarUser } from "@/lib/auth"
 
-const MARTINE_DEFAULT_SIDEBAR_PHOTO =
-  "/user-desk-photos/martine-desk-photo.jpeg"
-
 function stopEvent(e: React.MouseEvent | React.PointerEvent): void {
   e.stopPropagation()
   e.preventDefault()
@@ -66,8 +63,6 @@ function stopPropagation(e: React.MouseEvent | React.PointerEvent): void {
 }
 
 function defaultSidebarPhoto(user: SidebarUser): string | null {
-  const identity = `${user.name} ${user.email}`.toLowerCase()
-  if (identity.includes("martine")) return MARTINE_DEFAULT_SIDEBAR_PHOTO
   return user.avatar
 }
 
