@@ -49,7 +49,13 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
-import { instantForLocalDateTime } from "@/lib/work-calendar"
+import {
+  instantForLocalDateTime,
+  isWorkCalendarEventType,
+  isWorkCalendarEventVisibility,
+  type WorkCalendarEventType,
+  type WorkCalendarEventVisibility,
+} from "@/lib/work-calendar"
 
 const DEFAULT_PROJECT_VALUE = "__h_office_default__"
 
@@ -78,6 +84,8 @@ type WorkCalendarEventDialogProps = CommonProps &
 
 type EventFormSeed = {
   readonly title: string
+  readonly eventType: WorkCalendarEventType
+  readonly visibility: WorkCalendarEventVisibility
   readonly description: string
   readonly projectValue: string
   readonly allDay: boolean
@@ -87,6 +95,7 @@ type EventFormSeed = {
   readonly endTime: string
   readonly timeZone: string
   readonly location: string
+  readonly meetingUrl: string
   readonly attendeeUserIds: readonly string[]
 }
 
@@ -103,6 +112,8 @@ function formSeed(
     const details = props.event.eventDetails
     return {
       title: props.event.title,
+      eventType: details.eventType,
+      visibility: details.visibility,
       description: details.description ?? "",
       projectValue:
         props.event.projectId ??
@@ -114,6 +125,7 @@ function formSeed(
       endTime: details.endTime || "10:00",
       timeZone: details.timeZone,
       location: details.location ?? "",
+      meetingUrl: details.meetingUrl ?? "",
       attendeeUserIds: details.attendees.map(
         (attendee) => attendee.userId
       ),
@@ -122,6 +134,8 @@ function formSeed(
 
   return {
     title: "",
+    eventType: "meeting",
+    visibility: "organization",
     description: "",
     projectValue: props.defaultProjectId
       ? DEFAULT_PROJECT_VALUE
@@ -133,6 +147,7 @@ function formSeed(
     endTime: "10:00",
     timeZone: props.defaultTimeZone,
     location: "",
+    meetingUrl: "",
     attendeeUserIds: [],
   }
 }
@@ -145,6 +160,8 @@ export function WorkCalendarEventDialog(
   const [createOpen, setCreateOpen] = React.useState(false)
   const [pending, startTransition] = React.useTransition()
   const [title, setTitle] = React.useState(seed.title)
+  const [eventType, setEventType] = React.useState(seed.eventType)
+  const [visibility, setVisibility] = React.useState(seed.visibility)
   const [description, setDescription] = React.useState(seed.description)
   const [projectValue, setProjectValue] = React.useState(seed.projectValue)
   const [allDay, setAllDay] = React.useState(seed.allDay)
@@ -154,6 +171,7 @@ export function WorkCalendarEventDialog(
   const [endTime, setEndTime] = React.useState(seed.endTime)
   const [timeZone, setTimeZone] = React.useState(seed.timeZone)
   const [location, setLocation] = React.useState(seed.location)
+  const [meetingUrl, setMeetingUrl] = React.useState(seed.meetingUrl)
   const [attendeeUserIds, setAttendeeUserIds] = React.useState<
     readonly string[]
   >(seed.attendeeUserIds)
@@ -163,6 +181,8 @@ export function WorkCalendarEventDialog(
   function reset(): void {
     const next = formSeed(props)
     setTitle(next.title)
+    setEventType(next.eventType)
+    setVisibility(next.visibility)
     setDescription(next.description)
     setProjectValue(next.projectValue)
     setAllDay(next.allDay)
@@ -172,6 +192,7 @@ export function WorkCalendarEventDialog(
     setEndTime(next.endTime)
     setTimeZone(next.timeZone)
     setLocation(next.location)
+    setMeetingUrl(next.meetingUrl)
     setAttendeeUserIds(next.attendeeUserIds)
   }
 
@@ -217,6 +238,8 @@ export function WorkCalendarEventDialog(
     }
     const input = {
       title,
+      eventType,
+      visibility,
       description: description || null,
       projectId,
       allDay,
@@ -228,6 +251,7 @@ export function WorkCalendarEventDialog(
       endsAt: endResolution?.instant ?? null,
       timeZone,
       location: location || null,
+      meetingUrl: meetingUrl || null,
       attendeeUserIds,
     }
 
@@ -310,6 +334,68 @@ export function WorkCalendarEventDialog(
                 maxLength={200}
                 required
               />
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="grid gap-2">
+                <Label htmlFor={`work-calendar-event-type-${props.variant}`}>
+                  Event type
+                </Label>
+                <Select
+                  value={eventType}
+                  onValueChange={(value) => {
+                    if (isWorkCalendarEventType(value)) setEventType(value)
+                  }}
+                >
+                  <SelectTrigger
+                    id={`work-calendar-event-type-${props.variant}`}
+                  >
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="meeting">Meeting</SelectItem>
+                    <SelectItem value="appointment">Appointment</SelectItem>
+                    <SelectItem value="inspection">Inspection</SelectItem>
+                    <SelectItem value="delivery">Delivery</SelectItem>
+                    <SelectItem value="company_event">
+                      Company event
+                    </SelectItem>
+                    <SelectItem value="absence">Absence / time off</SelectItem>
+                    <SelectItem value="other">Other</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="grid gap-2">
+                <Label
+                  htmlFor={`work-calendar-event-visibility-${props.variant}`}
+                >
+                  Visibility
+                </Label>
+                <Select
+                  value={visibility}
+                  onValueChange={(value) => {
+                    if (isWorkCalendarEventVisibility(value)) {
+                      setVisibility(value)
+                    }
+                  }}
+                >
+                  <SelectTrigger
+                    id={`work-calendar-event-visibility-${props.variant}`}
+                  >
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="organization">
+                      Company details
+                    </SelectItem>
+                    <SelectItem value="participants">
+                      Participants only
+                    </SelectItem>
+                    <SelectItem value="busy">Busy to others</SelectItem>
+                    <SelectItem value="private">Private</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
 
             <div className="grid gap-2">
@@ -417,6 +503,22 @@ export function WorkCalendarEventDialog(
                 onChange={(event) => setLocation(event.target.value)}
                 placeholder="Office, job site, or video link"
                 maxLength={500}
+              />
+            </div>
+
+            <div className="grid gap-2">
+              <Label
+                htmlFor={`work-calendar-event-meeting-link-${props.variant}`}
+              >
+                Meeting link
+              </Label>
+              <Input
+                id={`work-calendar-event-meeting-link-${props.variant}`}
+                type="url"
+                value={meetingUrl}
+                onChange={(event) => setMeetingUrl(event.target.value)}
+                placeholder="https://meet.google.com/..."
+                maxLength={2_000}
               />
             </div>
 

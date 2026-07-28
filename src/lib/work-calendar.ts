@@ -4,6 +4,43 @@ export type WorkCalendarProjectIdentity = {
   readonly projectNumber: string | null
 }
 
+export const WORK_CALENDAR_EVENT_TYPES = [
+  "meeting",
+  "appointment",
+  "inspection",
+  "delivery",
+  "company_event",
+  "absence",
+  "other",
+] as const
+
+export type WorkCalendarEventType =
+  (typeof WORK_CALENDAR_EVENT_TYPES)[number]
+
+export const WORK_CALENDAR_EVENT_VISIBILITIES = [
+  "organization",
+  "participants",
+  "busy",
+  "private",
+] as const
+
+export type WorkCalendarEventVisibility =
+  (typeof WORK_CALENDAR_EVENT_VISIBILITIES)[number]
+
+export function isWorkCalendarEventType(
+  value: string,
+): value is WorkCalendarEventType {
+  return WORK_CALENDAR_EVENT_TYPES.some((candidate) => candidate === value)
+}
+
+export function isWorkCalendarEventVisibility(
+  value: string,
+): value is WorkCalendarEventVisibility {
+  return WORK_CALENDAR_EVENT_VISIBILITIES.some(
+    (candidate) => candidate === value,
+  )
+}
+
 export type WorkCalendarSearchableEntry = {
   readonly projectLabel: string
   readonly projectName: string
