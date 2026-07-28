@@ -1,8 +1,13 @@
 import { getDashboardOverview } from "@/app/actions/dashboard-overview"
-import { OperationalDashboard } from "@/components/dashboard/operational-dashboard"
+import { DashboardLaunchpad } from "@/components/dashboard/dashboard-launchpad"
+import { getCurrentUser, toSidebarUser } from "@/lib/auth"
 
 export default async function Page() {
-  const overview = await getDashboardOverview()
+  const [overview, currentUser] = await Promise.all([
+    getDashboardOverview(),
+    getCurrentUser(),
+  ])
+  const sidebarUser = currentUser ? toSidebarUser(currentUser) : null
 
-  return <OperationalDashboard overview={overview} />
+  return <DashboardLaunchpad overview={overview} user={sidebarUser} />
 }
