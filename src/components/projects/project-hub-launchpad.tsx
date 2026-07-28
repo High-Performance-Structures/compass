@@ -22,6 +22,8 @@ import {
   createProjectShell,
   type ProjectListItem,
 } from "@/app/actions/projects"
+import { useActiveProject } from "@/components/project-list-provider"
+import { ProjectQuickSwitcher } from "@/components/projects/project-quick-switcher"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -483,6 +485,7 @@ export function ProjectHubLaunchpad({
   readonly overview: DashboardOverview
   readonly canManageProjects: boolean
 }): React.ReactElement {
+  const { activeProjectId } = useActiveProject()
   const [department, setDepartment] = useState<DepartmentFilter>("ALL")
   const [status, setStatus] = useState<StatusFilter>("active")
   const [layout, setLayout] = useState<ProjectLayout>("cards")
@@ -563,6 +566,14 @@ export function ProjectHubLaunchpad({
                 </span>
               </button>
             ))}
+            <div className="min-w-[17rem] flex-1 bg-background">
+              <ProjectQuickSwitcher
+                projects={projects}
+                currentProjectId={activeProjectId}
+                placeholder="Jump to project..."
+                className="w-full rounded-none border-0 bg-background shadow-none"
+              />
+            </div>
           </div>
         </div>
 

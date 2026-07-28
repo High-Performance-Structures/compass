@@ -324,6 +324,23 @@ export async function getCurrentUser(): Promise<AuthUser | null> {
       dbUser = await ensureUserExists(workosUser)
     }
 
+    // Backfill the Google/WorkOS profile image for older accounts while
+    // preserving any avatar that was already chosen in Compass.
+    if (!dbUser.avatarUrl && workosUser.profilePictureUrl) {
+      await db
+        .update(users)
+        .set({
+          avatarUrl: workosUser.profilePictureUrl,
+          updatedAt: new Date().toISOString(),
+        })
+        .where(eq(users.id, dbUser.id))
+        .run()
+      dbUser = {
+        ...dbUser,
+        avatarUrl: workosUser.profilePictureUrl,
+      }
+    }
+
     // update last login timestamp
     const now = new Date().toISOString()
     await claimProjectAccessInvitations(
