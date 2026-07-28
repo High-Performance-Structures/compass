@@ -29,6 +29,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import type { ProjectBrand } from "@/lib/project-branding"
 
 type SelectionFilterState = {
   readonly division: string
@@ -441,12 +442,14 @@ function EmptySelectionsState({
 }
 
 export function ProjectSelectionsWorkspace({
+  brand,
   clientName,
   options,
   projectId,
   projectLabel,
   summary,
 }: {
+  readonly brand: ProjectBrand
   readonly clientName: string | null
   readonly options: ProjectSelectionOptions
   readonly projectId: string
@@ -627,6 +630,7 @@ export function ProjectSelectionsWorkspace({
 
       <div className="flex flex-wrap items-center justify-between gap-3">
         <ProjectSelectionShareActions
+          brand={brand}
           clientName={clientName}
           filterLabel={activeFilterLabel}
           projectId={projectId}

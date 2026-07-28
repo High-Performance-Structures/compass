@@ -1,4 +1,5 @@
 import type * as React from "react"
+import Image from "next/image"
 import Link from "next/link"
 import { IconArrowLeft } from "@tabler/icons-react"
 import { notFound } from "next/navigation"
@@ -16,6 +17,7 @@ import { ProjectSelectionsWorkspace } from "@/components/projects/project-select
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { redirectIfFeaturePermissionDenied } from "@/lib/permission-redirect"
+import { projectBrandFor } from "@/lib/project-branding"
 
 export const dynamic = "force-dynamic"
 
@@ -63,6 +65,10 @@ export default async function ProjectSelectionsPage({
   const projects = await getProjects()
   const project = projects.find((item) => item.id === id)
   const label = projectLabel(project)
+  const brand = projectBrandFor({
+    projectId: id,
+    projectNumber: project?.projectNumber,
+  })
 
   return (
     <ProjectContextWatermarkShell>
@@ -75,9 +81,12 @@ export default async function ProjectSelectionsPage({
             </Link>
           </Button>
           <div className="flex items-center gap-3">
-            <img
-              src="/department-logos/orc-mark.png"
-              alt="Open Range Construction"
+            <Image
+              src={brand.logoSrc}
+              alt={brand.logoAlt}
+              width={32}
+              height={32}
+              unoptimized
               className="h-8 w-8 object-contain"
             />
             <h1 className="text-2xl font-semibold tracking-tight">
@@ -119,6 +128,7 @@ export default async function ProjectSelectionsPage({
       </div>
 
       <ProjectSelectionsWorkspace
+        brand={brand}
         clientName={project?.clientName ?? null}
         projectLabel={label}
         projectId={id}

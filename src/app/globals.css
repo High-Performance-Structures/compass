@@ -836,6 +836,18 @@ em-emoji-picker {
     padding-bottom: 0.1in;
   }
 
+  .rfq-print-brand {
+    align-items: flex-start;
+    display: flex;
+    gap: 0.1in;
+  }
+
+  .rfq-print-brand img {
+    height: 0.38in;
+    object-fit: contain;
+    width: 0.38in;
+  }
+
   .rfq-print-header p {
     color: #6f471f;
     font-size: 10px;

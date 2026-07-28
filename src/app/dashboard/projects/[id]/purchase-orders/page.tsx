@@ -1,4 +1,5 @@
 import type * as React from "react"
+import Image from "next/image"
 import Link from "next/link"
 import {
   IconArrowLeft,
@@ -29,6 +30,10 @@ import {
   projectOperationMatchesStatusFilter,
   type ProjectOperationStatusFilter,
 } from "@/lib/project-operations/status"
+import {
+  projectBrandFor,
+  type ProjectBrand,
+} from "@/lib/project-branding"
 
 function money(value: number | null): string {
   if (value === null) return "Amount TBD"
@@ -94,12 +99,14 @@ function purchaseOrderTaskDescription(order: ProjectPurchaseOrderItem): string {
 }
 
 function PurchaseOrderCard({
+  brand,
   order,
   projectId,
   projectLabel,
   isCreated,
   taskAssigneeOptions,
 }: {
+  readonly brand: ProjectBrand
   readonly order: ProjectPurchaseOrderItem
   readonly projectId: string
   readonly projectLabel: string
@@ -228,17 +235,21 @@ function PurchaseOrderCard({
       <div className="hidden text-[11px] leading-tight text-black print:block">
         <div className="flex items-start justify-between border-b-2 border-black pb-4">
           <div className="flex items-center gap-3">
-            <img
-              src="/department-logos/hps-h-green.svg"
-              alt="HPS logo"
+            <Image
+              src={brand.logoSrc}
+              alt={brand.logoAlt}
+              width={64}
+              height={64}
+              unoptimized
               className="h-16 w-16 shrink-0 object-contain"
             />
             <div>
               <p className="text-sm font-bold uppercase">
-                High Performance Structures, Inc.
+                {brand.companyName}
               </p>
-              <p>P.O. Box 878</p>
-              <p>Woodland Park, CO 80866</p>
+              {brand.mailingAddress.map((line) => (
+                <p key={line}>{line}</p>
+              ))}
             </div>
           </div>
           <div className="text-right">
@@ -354,6 +365,10 @@ export default async function ProjectPurchaseOrdersPage({
     throw error
   })
   const project = projects.find((item) => item.id === id)
+  const brand = projectBrandFor({
+    projectId: id,
+    projectNumber: project?.projectNumber,
+  })
   const taskAssignees = [
     ...taskAssigneeOptions.projectContacts,
     ...taskAssigneeOptions.directoryContacts,
@@ -455,6 +470,7 @@ export default async function ProjectPurchaseOrdersPage({
           visiblePurchaseOrders.map((order) => (
             <PurchaseOrderCard
               key={order.id}
+              brand={brand}
               order={order}
               projectId={id}
               projectLabel={
