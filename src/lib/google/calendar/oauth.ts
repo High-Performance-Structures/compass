@@ -21,11 +21,23 @@ export type GoogleAccountIdentity = {
   readonly emailVerified: boolean
 }
 
+const GOOGLE_SCOPE_EQUIVALENTS: Readonly<
+  Record<string, readonly string[]>
+> = {
+  email: [
+    "email",
+    "https://www.googleapis.com/auth/userinfo.email",
+  ],
+}
+
 export function hasRequiredGoogleCalendarScopes(
   scopes: readonly string[],
 ): boolean {
   const granted = new Set(scopes)
-  return GOOGLE_CALENDAR_SCOPES.every((scope) => granted.has(scope))
+  return GOOGLE_CALENDAR_SCOPES.every((scope) => {
+    const equivalents = GOOGLE_SCOPE_EQUIVALENTS[scope] ?? [scope]
+    return equivalents.some((candidate) => granted.has(candidate))
+  })
 }
 
 function isRecord(value: unknown): value is JsonRecord {
