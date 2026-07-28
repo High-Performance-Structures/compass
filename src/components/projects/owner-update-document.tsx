@@ -18,7 +18,7 @@ import { OwnerUpdateActions } from "@/components/projects/owner-update-actions"
 import { OwnerUpdateDraftEditor } from "@/components/projects/owner-update-draft-editor"
 import { OwnerUpdatePhotoTile } from "@/components/projects/owner-update-photo-tile"
 import { projectBrandFor } from "@/lib/project-branding"
-import { projectAudiencePreviewHref } from "@/lib/project-audience-preview-routes"
+import { projectAudienceSectionHref } from "@/lib/project-audience-preview-routes"
 
 function formatDate(value: string): string {
   return new Date(`${value}T00:00:00`).toLocaleDateString("en-US", {
@@ -294,7 +294,11 @@ export function OwnerUpdateDocument({
                     <Link
                       href={
                         previewMode?.photosHref ??
-                        `${projectAudiencePreviewHref(document.project.id, "owner")}#photos`
+                        projectAudienceSectionHref(
+                          document.project.id,
+                          "owner",
+                          "photos"
+                        )
                       }
                       target={previewMode ? undefined : "_blank"}
                       rel={previewMode ? undefined : "noopener noreferrer"}

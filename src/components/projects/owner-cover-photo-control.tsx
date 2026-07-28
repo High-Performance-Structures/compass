@@ -63,6 +63,8 @@ type OwnerCoverPhotoControlProps = {
     | null
   readonly approvedPhotos: readonly OwnerCoverPhotoOption[]
   readonly latestUpdateHref: string | null
+  readonly photoGalleryHref?: string
+  readonly workspaceLabel?: string
   readonly editable?: boolean
 }
 
@@ -210,6 +212,8 @@ export function OwnerCoverPhotoControl({
   nextScheduleItem,
   approvedPhotos,
   latestUpdateHref,
+  photoGalleryHref = "#photos",
+  workspaceLabel = "Owner project home",
   editable = true,
 }: OwnerCoverPhotoControlProps): React.ReactElement {
   const [open, setOpen] = React.useState(false)
@@ -421,7 +425,7 @@ export function OwnerCoverPhotoControl({
           <div className="flex flex-col gap-6">
             <div className="max-w-3xl">
               <Badge className="bg-white/90 text-[#17231c] hover:bg-white">
-                Owner project home
+                {workspaceLabel}
               </Badge>
               <h1 className="mt-4 text-3xl font-semibold tracking-tight sm:text-5xl">
                 {projectTitle}
@@ -481,7 +485,7 @@ export function OwnerCoverPhotoControl({
                   {approvedPhotos.length} approved project photos
                 </p>
                 <a
-                  href="#photos"
+                  href={photoGalleryHref}
                   className="mt-3 inline-flex items-center gap-1 text-xs font-medium text-white hover:underline"
                 >
                   View photos

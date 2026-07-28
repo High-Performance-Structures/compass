@@ -5,7 +5,6 @@ import {
   IconCalendarStats,
   IconChevronDown,
   IconClipboardCheck,
-  IconExternalLink,
   IconFolder,
   IconMessageCircle,
   IconQuestionMark,
@@ -40,6 +39,8 @@ import {
   ownerUpdatePreviewHref,
   projectAudienceConversationHref,
   projectAudiencePreviewHref,
+  projectAudienceSectionHref,
+  type ProjectAudienceWorkspaceSection,
 } from "@/lib/project-audience-preview-routes"
 import { selectUpcomingScheduleItems } from "@/lib/project-audience-schedule-selection"
 
@@ -57,12 +58,6 @@ function statusLabel(value: string): string {
     .split("_")
     .map((part) => `${part.slice(0, 1).toUpperCase()}${part.slice(1)}`)
     .join(" ")
-}
-
-function audienceDescription(value: ProjectAudience): string {
-  return value === "owner"
-    ? "Approved updates, schedule items, and owner-visible photos."
-    : "Visible commitments, schedule items, RFIs, and project photos."
 }
 
 function projectLabel(data: ProjectAudiencePreviewData): string {
@@ -451,8 +446,10 @@ function OwnerScheduleCard({
 
 function OwnerProjectPreview({
   data,
+  section,
 }: {
   readonly data: ProjectAudiencePreviewData
+  readonly section: ProjectAudienceWorkspaceSection
 }): React.ReactElement {
   const latestUpdate = data.ownerUpdates[0]
   const olderUpdates = data.ownerUpdates.slice(1)
@@ -465,7 +462,8 @@ function OwnerProjectPreview({
   return (
     <main className="min-h-screen bg-[oklch(0.96_0.018_115)]">
       <div className="mx-auto flex max-w-6xl flex-col gap-4 px-4 py-4 sm:px-6 lg:px-8">
-        <div id="overview" className="scroll-mt-36">
+        {section === "overview" && (
+        <div>
           <OwnerCoverPhotoControl
             projectId={data.project.id}
             projectTitle={ownerHeroTitle(data)}
@@ -501,12 +499,25 @@ function OwnerProjectPreview({
                 ? ownerUpdatePreviewHref(data.project.id, latestUpdate.id)
                 : null
             }
+            photoGalleryHref={projectAudienceSectionHref(
+              data.project.id,
+              "owner",
+              "photos"
+            )}
             editable={false}
           />
         </div>
+        )}
 
-        <section className="grid gap-4 lg:grid-cols-[1.15fr_0.85fr]">
-          <div id="updates" className="scroll-mt-36 space-y-4">
+        {(section === "overview" || section === "updates") && (
+        <section
+          className={
+            section === "overview"
+              ? "grid gap-4 lg:grid-cols-[1.15fr_0.85fr]"
+              : "space-y-4"
+          }
+        >
+          <div className="space-y-4">
             <div className="flex items-center justify-between gap-3">
               <div>
                 <p className="text-xs font-medium uppercase text-muted-foreground">
@@ -540,6 +551,7 @@ function OwnerProjectPreview({
             )}
           </div>
 
+          {section === "overview" && (
           <aside className="space-y-4">
             <section
               className="rounded-lg border bg-background p-5"
@@ -561,10 +573,7 @@ function OwnerProjectPreview({
               )}
             </section>
 
-            <section
-              id="team"
-              className="scroll-mt-36 rounded-lg border bg-background p-5"
-            >
+            <section className="rounded-lg border bg-background p-5">
               <div className="flex items-center gap-2">
                 <IconSparkles className="size-4 text-muted-foreground" />
                 <h2 className="text-sm font-semibold">Your project team</h2>
@@ -604,19 +613,55 @@ function OwnerProjectPreview({
               </div>
             </section>
           </aside>
+          )}
         </section>
+        )}
 
+        {section === "team" && (
+          <section className="rounded-lg border bg-background p-4 sm:p-5">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <IconUsers className="size-4 text-muted-foreground" />
+                <div>
+                  <p className="text-xs font-medium uppercase text-muted-foreground">
+                    Project directory
+                  </p>
+                  <h1 className="text-xl font-semibold">Your project team</h1>
+                </div>
+              </div>
+              <Badge variant="outline">{data.contacts.length} contacts</Badge>
+            </div>
+            {data.contacts.length > 0 ? (
+              <div className="mt-4 grid gap-3 md:grid-cols-2">
+                {data.contacts.map((contact) => (
+                  <ContactRow key={contact.id} contact={contact} />
+                ))}
+              </div>
+            ) : (
+              <p className="mt-4 text-sm text-muted-foreground">
+                No approved project contacts yet.
+              </p>
+            )}
+          </section>
+        )}
+
+        {section === "schedule" && (
         <ProjectAudienceSchedule items={data.scheduleItems} />
+        )}
 
+        {section === "conversations" && (
         <AudienceConversationSection data={data} />
+        )}
 
-        <div id="photos" className="scroll-mt-36">
+        {section === "photos" && (
+        <div>
           <ProjectAudiencePhotoGallery
             photos={data.photos}
             title="Approved Photo Gallery"
             emptyMessage="No photos have been approved for this audience yet."
           />
         </div>
+        )}
       </div>
     </main>
   )
@@ -624,8 +669,10 @@ function OwnerProjectPreview({
 
 export function ProjectAudiencePreview({
   data,
+  section = "overview",
 }: {
   readonly data: ProjectAudiencePreviewData
+  readonly section?: ProjectAudienceWorkspaceSection
 }): React.ReactElement {
   const label = projectLabel(data)
   const isOwner = data.audience === "owner"
@@ -635,6 +682,11 @@ export function ProjectAudiencePreview({
     projectNumber: data.project.projectNumber,
     status: "OPEN",
   })
+  const partnerUpcomingScheduleItems = selectUpcomingScheduleItems(
+    data.scheduleItems,
+    new Date().toISOString().slice(0, 10)
+  )
+  const partnerNextScheduleItem = partnerUpcomingScheduleItems[0]
 
   if (isOwner) {
     return (
@@ -646,8 +698,9 @@ export function ProjectAudiencePreview({
         projectOptions={data.projectOptions}
         viewer={data.viewer}
         viewerIsInternal={data.viewerIsInternal}
+        activeSection={section}
       >
-        <OwnerProjectPreview data={data} />
+        <OwnerProjectPreview data={data} section={section} />
       </ProjectAudiencePreviewShell>
     )
   }
@@ -661,38 +714,46 @@ export function ProjectAudiencePreview({
       projectOptions={data.projectOptions}
       viewer={data.viewer}
       viewerIsInternal={data.viewerIsInternal}
+      activeSection={section}
     >
       <main className="min-h-screen bg-muted/30">
         <div className="mx-auto flex max-w-6xl flex-col gap-4 px-4 py-4 sm:px-6 lg:px-8">
-        <section
-          id="overview"
-          className="scroll-mt-36 rounded-lg border bg-background p-5 sm:p-6"
-        >
-          <div className="flex flex-wrap items-start justify-between gap-4">
-            <div>
-              <Badge variant="secondary">Partner project home</Badge>
-              <h1 className="mt-3 text-2xl font-semibold tracking-tight">
-                {data.project.name}
-              </h1>
-              <p className="mt-2 max-w-3xl text-sm text-muted-foreground">
-                {audienceDescription(data.audience)}
-              </p>
-            </div>
-            <div className="text-left sm:text-right">
-              <p className="text-sm font-medium">{label}</p>
-              <p className="mt-1 text-sm text-muted-foreground">
-                {data.project.name}
-              </p>
-              {data.project.address && (
-                <p className="mt-1 text-xs text-muted-foreground">
-                  {data.project.address}
-                </p>
-              )}
-            </div>
-          </div>
-        </section>
+        {section === "overview" && (
+          <OwnerCoverPhotoControl
+            projectId={data.project.id}
+            projectTitle={data.project.name}
+            projectLabel={label}
+            projectAddress={data.project.address}
+            latestUpdate={null}
+            nextScheduleItem={
+              partnerNextScheduleItem
+                ? {
+                    title: partnerNextScheduleItem.title,
+                    dateRange:
+                      `${formatDate(partnerNextScheduleItem.startDate)} - ` +
+                      formatDate(partnerNextScheduleItem.endDate),
+                  }
+                : null
+            }
+            approvedPhotos={data.photos.map((photo) => ({
+              id: photo.id,
+              fileName: photo.fileName,
+              driveFileId: photo.driveFileId,
+              thumbnailUrl: photo.thumbnailUrl,
+              caption: photo.caption,
+            }))}
+            latestUpdateHref={null}
+            photoGalleryHref={projectAudienceSectionHref(
+              data.project.id,
+              "sub-vendor",
+              "photos"
+            )}
+            workspaceLabel="Partner project home"
+            editable={false}
+          />
+        )}
 
-        {!isOwner && (
+        {section === "overview" && (
           <section className="rounded-lg border bg-background/80 px-3 py-2">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex min-w-0 items-center gap-2">
@@ -742,11 +803,11 @@ export function ProjectAudiencePreview({
           </section>
         )}
 
-        {!isOwner && <AudienceMetricStrip data={data} />}
+        {section === "overview" && <AudienceMetricStrip data={data} />}
 
+        {(section === "overview" || section === "team") && (
         <section
-          id="team"
-          className="scroll-mt-36 rounded-lg border bg-background p-4 sm:p-5"
+          className="rounded-lg border bg-background p-4 sm:p-5"
         >
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center gap-2">
@@ -767,91 +828,25 @@ export function ProjectAudiencePreview({
             </p>
           )}
         </section>
-
-        {isOwner && (
-          <section className="rounded-lg border bg-background p-4 sm:p-5">
-            <div className="flex items-center gap-2">
-              <IconClipboardCheck className="size-4 text-muted-foreground" />
-              <h2 className="text-sm font-semibold">Owner Updates</h2>
-            </div>
-            {data.ownerUpdates.length > 0 ? (
-              <div className="mt-4 grid gap-3 md:grid-cols-2">
-                {data.ownerUpdates.map((update) => (
-                  <article key={update.id} className="rounded-md border p-3">
-                    <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                      <span>{formatDate(update.updateDate)}</span>
-                      {update.publishedAt && (
-                        <>
-                          <span>&middot;</span>
-                          <span>Published</span>
-                        </>
-                      )}
-                    </div>
-                    <h3 className="mt-2 line-clamp-2 text-sm font-medium">
-                      {update.title}
-                    </h3>
-                    <p className="mt-2 line-clamp-3 text-sm text-muted-foreground">
-                      {update.summary}
-                    </p>
-                    <Link
-                      href={
-                        `/dashboard/projects/${data.project.id}` +
-                        `/owner-updates/${update.id}`
-                      }
-                      className="mt-3 inline-flex items-center gap-1 text-xs text-primary hover:underline"
-                    >
-                      <IconExternalLink className="size-3" />
-                      Open update
-                    </Link>
-                  </article>
-                ))}
-              </div>
-            ) : (
-              <p className="mt-4 rounded-md border p-3 text-sm text-muted-foreground">
-                No published owner updates are visible to owners yet.
-              </p>
-            )}
-          </section>
         )}
 
-        <ProjectAudienceSchedule items={data.scheduleItems} />
+        {section === "schedule" && (
+          <ProjectAudienceSchedule items={data.scheduleItems} />
+        )}
 
+        {section === "commitments" && (
         <section>
           <div
-            id="commitments"
-            className="scroll-mt-36 rounded-lg border bg-background p-4 sm:p-5"
+            className="rounded-lg border bg-background p-4 sm:p-5"
           >
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex items-center gap-2">
                 <IconUsers className="size-4 text-muted-foreground" />
-                <h2 className="text-sm font-semibold">
-                  {isOwner ? "Project Contacts" : "Commitments"}
-                </h2>
+                <h2 className="text-sm font-semibold">Commitments</h2>
               </div>
-              {!isOwner && (
-                <Badge variant="outline">{data.operations.length} active</Badge>
-              )}
+              <Badge variant="outline">{data.operations.length} active</Badge>
             </div>
-            {isOwner ? (
-              <div className="mt-4 space-y-3 text-sm">
-                {data.project.projectManager && (
-                  <div className="rounded-md border p-3">
-                    <p className="text-xs font-medium uppercase text-muted-foreground">
-                      Project manager
-                    </p>
-                    <p className="mt-1">{data.project.projectManager}</p>
-                  </div>
-                )}
-                {data.project.clientName && (
-                  <div className="rounded-md border p-3">
-                    <p className="text-xs font-medium uppercase text-muted-foreground">
-                      Owner
-                    </p>
-                    <p className="mt-1">{data.project.clientName}</p>
-                  </div>
-                )}
-              </div>
-            ) : data.operations.length > 0 ? (
+            {data.operations.length > 0 ? (
               <div className="mt-4 grid gap-3">
                 {data.operations.map((item) => (
                   <OperationRow key={item.id} item={item} />
@@ -864,12 +859,12 @@ export function ProjectAudiencePreview({
             )}
           </div>
         </section>
+        )}
 
-        {!isOwner && (
-          <section className="grid gap-4 lg:grid-cols-[1fr_0.85fr]">
+        {section === "rfis" && (
+          <section>
             <div
-              id="rfis"
-              className="scroll-mt-36 rounded-lg border bg-background p-4 sm:p-5"
+              className="rounded-lg border bg-background p-4 sm:p-5"
             >
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div className="flex items-center gap-2">
@@ -890,18 +885,22 @@ export function ProjectAudiencePreview({
                 </p>
               )}
             </div>
-
-            <AudienceConversationSection data={data} />
           </section>
         )}
 
-        <div id="photos" className="scroll-mt-36">
+        {section === "conversations" && (
+          <AudienceConversationSection data={data} />
+        )}
+
+        {section === "photos" && (
+        <div>
           <ProjectAudiencePhotoGallery
             photos={data.photos}
             title="Visible Photos"
             emptyMessage="No photos have been approved for this audience yet."
           />
         </div>
+        )}
         </div>
       </main>
     </ProjectAudiencePreviewShell>
