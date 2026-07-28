@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useMemo, useRef } from "react"
+import { useState, useMemo, useRef, useEffect } from "react"
 import Link from "next/link"
 import { cn } from "@/lib/utils"
 import { useIsMobile } from "@/hooks/use-mobile"
@@ -35,6 +35,13 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import {
   IconSearch,
   IconFilter,
@@ -73,6 +80,12 @@ import {
   EMPTY_FILTERS,
   STATUS_OPTIONS,
 } from "@/lib/schedule/types"
+import {
+  isScheduleOrderMode,
+  orderScheduleTasks,
+  scheduleOrderStorageKey,
+  type ScheduleOrderMode,
+} from "@/lib/schedule/task-ordering"
 
 type View = "calendar" | "list" | "gantt"
 
@@ -105,6 +118,8 @@ export function ScheduleView({
 }: ScheduleViewProps) {
   const isMobile = useIsMobile()
   const [view, setView] = useState<View>(initialView)
+  const [orderMode, setOrderMode] =
+    useState<ScheduleOrderMode>("chronological")
   const [taskFormOpen, setTaskFormOpen] = useState(false)
   const [filters, setFilters] = useState<TaskFilters>(EMPTY_FILTERS)
   const [baselinesOpen, setBaselinesOpen] = useState(false)
@@ -112,6 +127,21 @@ export function ScheduleView({
   const [importDialogOpen, setImportDialogOpen] = useState(false)
   const [isImporting, setIsImporting] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    const storedMode = window.localStorage.getItem(
+      scheduleOrderStorageKey(projectId)
+    )
+    setOrderMode(
+      isScheduleOrderMode(storedMode) ? storedMode : "chronological"
+    )
+  }, [projectId])
+
+  const handleOrderModeChange = (value: string): void => {
+    if (!isScheduleOrderMode(value)) return
+    setOrderMode(value)
+    window.localStorage.setItem(scheduleOrderStorageKey(projectId), value)
+  }
 
   const phaseOptions = useMemo(() => {
     const seen = new Set<string>()
@@ -146,8 +176,8 @@ export function ScheduleView({
         t.title.toLowerCase().includes(search)
       )
     }
-    return tasks
-  }, [initialData.tasks, filters])
+    return orderScheduleTasks(tasks, orderMode)
+  }, [initialData.tasks, filters, orderMode])
 
   const activeFilterCount =
     filters.status.length +
@@ -356,7 +386,7 @@ export function ScheduleView({
       {/* Action bar: search, filters, overflow */}
       <div className="flex items-center gap-2 mb-3 print:hidden">
         {/* Search */}
-        <div className="relative flex-1 sm:flex-none sm:w-52">
+        <div className="relative min-w-0 flex-1 sm:flex-none sm:w-52">
           <IconSearch className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground pointer-events-none" />
           <Input
             placeholder="Search schedule items..."
@@ -449,6 +479,19 @@ export function ScheduleView({
             </div>
           </PopoverContent>
         </Popover>
+
+        <Select value={orderMode} onValueChange={handleOrderModeChange}>
+          <SelectTrigger
+            className="h-8 w-[132px] shrink-0 text-xs sm:w-[146px]"
+            aria-label="Schedule ordering"
+          >
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="chronological">Chronological</SelectItem>
+            <SelectItem value="manual">Manual order</SelectItem>
+          </SelectContent>
+        </Select>
 
         {/* Active filter chips */}
         <div className="hidden sm:flex items-center gap-1 overflow-x-auto min-w-0">

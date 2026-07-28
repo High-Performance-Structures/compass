@@ -54,6 +54,7 @@ import {
   createTask,
   updateTask,
   createDependency,
+  updateDependency,
   deleteDependency,
 } from "@/app/actions/schedule"
 import { calculateEndDate } from "@/lib/schedule/business-days"
@@ -135,6 +136,9 @@ export function ScheduleItemFormDialog({
   const [pendingPredecessors, setPendingPredecessors] = useState<
     PendingPredecessor[]
   >([])
+  const [existingPredecessorEdits, setExistingPredecessorEdits] = useState<
+    Record<string, PendingPredecessor>
+  >({})
 
   const existingPredecessors = useMemo(() => {
     if (!editingTask) return []
@@ -195,6 +199,28 @@ export function ScheduleItemFormDialog({
     setPendingPredecessors([])
   }, [editingTask, form])
 
+  useEffect(() => {
+    if (!editingTask) {
+      setExistingPredecessorEdits({})
+      return
+    }
+
+    setExistingPredecessorEdits(
+      Object.fromEntries(
+        dependencies
+          .filter((dependency) => dependency.successorId === editingTask.id)
+          .map((dependency) => [
+            dependency.id,
+            {
+              taskId: dependency.predecessorId,
+              type: dependency.type,
+              lagDays: dependency.lagDays,
+            },
+          ])
+      )
+    )
+  }, [dependencies, editingTask])
+
   const watchedStart = form.watch("startDate")
   const watchedWorkdays = form.watch("workdays")
   const watchedPhase = form.watch("phase")
@@ -234,6 +260,30 @@ export function ScheduleItemFormDialog({
     }
 
     const dependencyErrors: string[] = []
+    for (const dependency of existingPredecessors) {
+      const edit = existingPredecessorEdits[dependency.id]
+      if (
+        !edit ||
+        (edit.taskId === dependency.predecessorId &&
+          edit.type === dependency.type &&
+          edit.lagDays === dependency.lagDays)
+      ) {
+        continue
+      }
+
+      const dependencyResult = await updateDependency({
+        dependencyId: dependency.id,
+        predecessorId: edit.taskId,
+        successorId: savedTaskId,
+        type: edit.type,
+        lagDays: edit.lagDays,
+        projectId,
+      })
+      if (!dependencyResult.success) {
+        dependencyErrors.push(dependencyResult.error)
+      }
+    }
+
     for (const predecessor of pendingPredecessors) {
       if (predecessor.taskId) {
         const dependencyResult = await createDependency({
@@ -249,15 +299,16 @@ export function ScheduleItemFormDialog({
       }
     }
 
-    onOpenChange(false)
     router.refresh()
     if (dependencyErrors.length > 0) {
       toast.warning(
-        `Schedule item saved, but ${dependencyErrors.length} dependency link${
+        `Schedule item saved, but ${dependencyErrors.length} predecessor change${
           dependencyErrors.length === 1 ? "" : "s"
-        } could not be added: ${dependencyErrors.join("; ")}`
+        } could not be saved: ${dependencyErrors.join("; ")}`
       )
+      return
     }
+    onOpenChange(false)
   }
 
   const addPendingPredecessor = () => {
@@ -288,6 +339,21 @@ export function ScheduleItemFormDialog({
     } else {
       toast.error(result.error)
     }
+  }
+
+  const updateExistingPredecessor = (
+    dependencyId: string,
+    field: keyof PendingPredecessor,
+    value: string | number
+  ): void => {
+    setExistingPredecessorEdits((current) => {
+      const existing = current[dependencyId]
+      if (!existing) return current
+      return {
+        ...current,
+        [dependencyId]: { ...existing, [field]: value },
+      }
+    })
   }
 
   const hasPredecessors =
@@ -621,26 +687,80 @@ export function ScheduleItemFormDialog({
                     </span>
 
                     {existingPredecessors.map((dep) => {
-                      const predTask = allTasks.find(
-                        (t) => t.id === dep.predecessorId
-                      )
+                      const edit = existingPredecessorEdits[dep.id] ?? {
+                        taskId: dep.predecessorId,
+                        type: dep.type,
+                        lagDays: dep.lagDays,
+                      }
                       return (
                         <div
                           key={dep.id}
-                          className="flex items-center gap-2 text-sm"
+                          className="grid grid-cols-[minmax(0,1fr)_6.5rem_2rem] items-end gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(9rem,11rem)_5.5rem_2rem]"
                         >
-                          <div className="flex-1 truncate px-2 py-1.5 rounded bg-muted/40 text-xs">
-                            {predTask?.title ?? "Unknown"}
-                          </div>
-                          <span className="text-[10px] text-muted-foreground shrink-0 w-8 text-center">
-                            {dep.type}
-                          </span>
-                          {dep.lagDays !== 0 && (
-                            <span className="text-[10px] text-muted-foreground shrink-0">
-                              {dep.lagDays > 0 ? "+" : ""}
-                              {dep.lagDays}d
-                            </span>
-                          )}
+                          <Select
+                            value={edit.taskId}
+                            onValueChange={(value) =>
+                              updateExistingPredecessor(
+                                dep.id,
+                                "taskId",
+                                value
+                              )
+                            }
+                          >
+                            <SelectTrigger
+                              className="col-span-3 h-8 min-w-0 text-xs sm:col-span-1"
+                              aria-label="Saved predecessor schedule item"
+                            >
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {availableTasks.map((task) => (
+                                <SelectItem key={task.id} value={task.id}>
+                                  {task.title}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <Select
+                            value={edit.type}
+                            onValueChange={(value) =>
+                              updateExistingPredecessor(
+                                dep.id,
+                                "type",
+                                value
+                              )
+                            }
+                          >
+                            <SelectTrigger
+                              className="h-8 min-w-0 text-xs"
+                              aria-label="Saved dependency relationship"
+                            >
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {DEPENDENCY_TYPES.map((dependencyType) => (
+                                <SelectItem
+                                  key={dependencyType.value}
+                                  value={dependencyType.value}
+                                >
+                                  {dependencyType.label}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <Input
+                            type="number"
+                            className="h-8 min-w-0 text-center text-xs"
+                            value={edit.lagDays}
+                            aria-label="Saved dependency lag or lead in days"
+                            onChange={(event) =>
+                              updateExistingPredecessor(
+                                dep.id,
+                                "lagDays",
+                                Number(event.target.value) || 0
+                              )
+                            }
+                          />
                           <Button
                             type="button"
                             variant="ghost"

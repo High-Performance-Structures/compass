@@ -188,7 +188,7 @@ export function ScheduleListView({
         header: "#",
         cell: ({ row }) => (
           <span className="text-xs text-muted-foreground">
-            {row.original.sortOrder + 1}
+            {row.index + 1}
           </span>
         ),
         size: 40,

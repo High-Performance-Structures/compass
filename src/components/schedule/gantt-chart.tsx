@@ -4,6 +4,12 @@ import { useRef, useEffect, useState, useCallback, type CSSProperties } from "re
 import type { FrappeTask } from "@/lib/schedule/gantt-transform"
 import type { DisplayColorPalette } from "@/lib/schedule/appearance"
 import { getScheduleItemClasses } from "@/lib/schedule/appearance"
+import {
+  dominantScrollAxis,
+  lockWheelToDominantAxis,
+  normalizeWheelDelta,
+  type GanttScrollAxis,
+} from "@/lib/schedule/gantt-scroll"
 import "./gantt.css"
 
 type ViewMode = "Day" | "Week" | "Month"
@@ -152,6 +158,7 @@ export function GanttChart({
   const panStartY = useRef(0)
   const panScrollLeft = useRef(0)
   const panScrollTop = useRef(0)
+  const panAxis = useRef<GanttScrollAxis | null>(null)
   const ganttContainerRef = useRef<HTMLElement | null>(null)
 
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
@@ -165,6 +172,7 @@ export function GanttChart({
     panStartY.current = e.clientY
     panScrollLeft.current = gc.scrollLeft
     panScrollTop.current = gc.scrollTop
+    panAxis.current = null
     const wrapper = wrapperRef.current
     if (wrapper) wrapper.style.cursor = "grabbing"
   }, [panMode])
@@ -173,13 +181,27 @@ export function GanttChart({
     if (!isPanning.current) return
     const gc = ganttContainerRef.current
     if (!gc) return
-    gc.scrollLeft = panScrollLeft.current - (e.clientX - panStartX.current)
-    gc.scrollTop = panScrollTop.current - (e.clientY - panStartY.current)
+    const deltaX = e.clientX - panStartX.current
+    const deltaY = e.clientY - panStartY.current
+    if (
+      panAxis.current === null &&
+      Math.max(Math.abs(deltaX), Math.abs(deltaY)) >= 6
+    ) {
+      panAxis.current = dominantScrollAxis(deltaX, deltaY)
+    }
+    if (panAxis.current === "horizontal") {
+      gc.scrollLeft = panScrollLeft.current - deltaX
+      return
+    }
+    if (panAxis.current === "vertical") {
+      gc.scrollTop = panScrollTop.current - deltaY
+    }
   }, [])
 
   const handleMouseUp = useCallback(() => {
     if (!isPanning.current) return
     isPanning.current = false
+    panAxis.current = null
     const wrapper = wrapperRef.current
     if (wrapper) wrapper.style.cursor = ""
   }, [])
@@ -209,6 +231,27 @@ export function GanttChart({
       interactionCallbacksRef.current.onScrollTopChange?.(
         activeContainer.scrollTop
       )
+    }
+    const handleAxisLockedWheel = (event: WheelEvent) => {
+      if (!activeContainer || event.ctrlKey) return
+
+      const pageSize = Math.max(
+        activeContainer.clientWidth,
+        activeContainer.clientHeight
+      )
+      const rawDeltaX =
+        event.shiftKey && event.deltaX === 0 ? event.deltaY : event.deltaX
+      const rawDeltaY =
+        event.shiftKey && event.deltaX === 0 ? 0 : event.deltaY
+      const locked = lockWheelToDominantAxis(
+        normalizeWheelDelta(rawDeltaX, event.deltaMode, pageSize),
+        normalizeWheelDelta(rawDeltaY, event.deltaMode, pageSize)
+      )
+      if (locked.deltaX === 0 && locked.deltaY === 0) return
+
+      event.preventDefault()
+      activeContainer.scrollLeft += locked.deltaX
+      activeContainer.scrollTop += locked.deltaY
     }
 
     async function initGantt() {
@@ -272,6 +315,9 @@ export function GanttChart({
         activeContainer.addEventListener("scroll", handleScroll, {
           passive: true,
         })
+        activeContainer.addEventListener("wheel", handleAxisLockedWheel, {
+          passive: false,
+        })
         interactionCallbacksRef.current.onContainerReady?.(activeContainer)
       }
 
@@ -282,6 +328,7 @@ export function GanttChart({
     return () => {
       cancelled = true
       activeContainer?.removeEventListener("scroll", handleScroll)
+      activeContainer?.removeEventListener("wheel", handleAxisLockedWheel)
       if (ganttContainerRef.current === activeContainer) {
         ganttContainerRef.current = null
       }
