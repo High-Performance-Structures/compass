@@ -3,11 +3,16 @@
 import { getCloudflareContext } from "@/lib/db"
 import { eq, and } from "drizzle-orm"
 import { getDb } from "@/db"
-import { userPresence, channelMembers, channels } from "@/db/schema-conversations"
+import { userPresence, channelMembers } from "@/db/schema-conversations"
 import { users } from "@/db/schema"
 import { getCurrentUser } from "@/lib/auth"
 
-type PresenceStatus = "online" | "idle" | "dnd" | "offline"
+export type PresenceStatus = "online" | "idle" | "dnd" | "offline"
+
+export type CurrentUserPresence = {
+  readonly status: PresenceStatus
+  readonly statusMessage: string | null
+}
 
 const VALID_STATUSES = ["online", "idle", "dnd", "offline"] as const
 const MAX_STATUS_LENGTH = 100
@@ -93,6 +98,57 @@ export async function updatePresence(
     return {
       success: false,
       error: err instanceof Error ? err.message : "Failed to update presence",
+    }
+  }
+}
+
+/**
+ * Read the current user's saved presence. The dashboard uses the status
+ * message to restore the user's selected office location after a refresh.
+ */
+export async function getCurrentUserPresence(): Promise<
+  | { success: true; data: CurrentUserPresence | null }
+  | { success: false; error: string }
+> {
+  try {
+    const user = await getCurrentUser()
+    if (!user) {
+      return { success: false, error: "Unauthorized" }
+    }
+
+    const { env } = await getCloudflareContext()
+    const db = getDb(env.DB)
+    const presence = await db
+      .select({
+        status: userPresence.status,
+        statusMessage: userPresence.statusMessage,
+      })
+      .from(userPresence)
+      .where(eq(userPresence.userId, user.id))
+      .limit(1)
+      .then((rows) => rows[0] ?? null)
+
+    if (!presence) {
+      return { success: true, data: null }
+    }
+
+    const status = VALID_STATUSES.find((value) => value === presence.status)
+    if (!status) {
+      return { success: false, error: "Saved presence status is invalid" }
+    }
+
+    return {
+      success: true,
+      data: {
+        status,
+        statusMessage: presence.statusMessage,
+      },
+    }
+  } catch (err) {
+    return {
+      success: false,
+      error:
+        err instanceof Error ? err.message : "Failed to get current presence",
     }
   }
 }

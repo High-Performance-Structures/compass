@@ -59,10 +59,15 @@ import {
 } from "@/components/ui/sheet"
 import { Textarea } from "@/components/ui/textarea"
 import type { SidebarUser } from "@/lib/auth"
+import {
+  DESK_STATUS_LABELS,
+  deskStatusForPresenceMessage,
+  isDeskStatus,
+  type DeskStatus,
+} from "@/lib/dashboard/office-status"
 import { cn } from "@/lib/utils"
 
 type DashboardMode = "office" | "project"
-type DeskStatus = "in-office" | "on-site" | "remote" | "out"
 
 type LaunchpadTask = {
   readonly id: string
@@ -74,13 +79,6 @@ type LaunchpadTask = {
 
 const MARTINE_DEFAULT_DESK_PHOTO = "/user-desk-photos/martine-desk-photo.jpeg"
 const HIDDEN_DESK_PHOTO = "__hidden__"
-
-const DESK_STATUS_LABELS: Record<DeskStatus, string> = {
-  "in-office": "In Office",
-  "on-site": "On Site",
-  remote: "Remote",
-  out: "Out",
-}
 
 function deskPhotoForUser(user: SidebarUser | null): string | null {
   if (!user) return null
@@ -152,14 +150,24 @@ function saveDeskPhoto(user: SidebarUser, dataUrl: string): void {
   }
 }
 
-function isDeskStatus(value: string): value is DeskStatus {
-  return value === "in-office" || value === "on-site" || value === "remote" || value === "out"
-}
-
 function presenceStatusForDeskStatus(
   status: DeskStatus
 ): "online" | "offline" {
   return status === "out" ? "offline" : "online"
+}
+
+function deskStatusDotClass(status: DeskStatus): string {
+  if (status === "out") return "bg-muted-foreground"
+  if (status === "on-site") return "bg-amber-500"
+  if (status === "remote") return "bg-sky-600"
+  return "bg-emerald-600"
+}
+
+function deskStatusAvailability(status: DeskStatus): string {
+  if (status === "out") return "Unavailable"
+  if (status === "on-site") return "Field"
+  if (status === "remote") return "Remote"
+  return "Available"
 }
 
 function parseDateKey(value: string): Date {
@@ -330,14 +338,17 @@ function Horizon({
 function DeskHero({
   user,
   today,
+  status,
+  onStatusChange,
 }: {
   readonly user: SidebarUser | null
   readonly today: string
+  readonly status: DeskStatus
+  readonly onStatusChange: (status: DeskStatus) => void
 }): React.ReactElement {
   const [deskPhotoFailed, setDeskPhotoFailed] = useState(false)
   const [deskPhotoUrl, setDeskPhotoUrl] = useState<string | null>(null)
   const [deskPhotoMessage, setDeskPhotoMessage] = useState<string | null>(null)
-  const [status, setStatus] = useState<DeskStatus>("in-office")
   const [statusMessage, setStatusMessage] = useState<string | null>(null)
   const [isStatusPending, startStatusTransition] = useTransition()
   const firstName = user?.firstName ?? user?.name.split(" ")[0] ?? "there"
@@ -348,7 +359,8 @@ function DeskHero({
   }, [user])
 
   function handleStatusChange(nextStatus: DeskStatus): void {
-    setStatus(nextStatus)
+    const previousStatus = status
+    onStatusChange(nextStatus)
     setStatusMessage(null)
     startStatusTransition(async () => {
       const result = await updatePresence(
@@ -356,6 +368,7 @@ function DeskHero({
         DESK_STATUS_LABELS[nextStatus]
       )
       if (!result.success) {
+        onStatusChange(previousStatus)
         setStatusMessage(result.error)
       }
     })
@@ -442,11 +455,7 @@ function DeskHero({
               <span
                 className={cn(
                   "size-2 rounded-full",
-                  status === "out"
-                    ? "bg-muted-foreground"
-                    : status === "on-site"
-                      ? "bg-amber-500"
-                      : "bg-emerald-600"
+                  deskStatusDotClass(status)
                 )}
               />
               <SelectValue>{DESK_STATUS_LABELS[status]}</SelectValue>
@@ -688,7 +697,11 @@ function OfficeTaskList({
   )
 }
 
-function OfficePresence(): React.ReactElement {
+function OfficePresence({
+  status,
+}: {
+  readonly status: DeskStatus
+}): React.ReactElement {
   return (
     <section className="border-y border-border/70 bg-background">
       <div className="flex items-center justify-between gap-3 px-4 py-3">
@@ -700,12 +713,16 @@ function OfficePresence(): React.ReactElement {
       </div>
       <div className="space-y-3 border-t px-4 py-3">
         <div className="flex items-center gap-3">
-          <span className="size-2.5 rounded-full bg-emerald-600" />
+          <span
+            className={cn("size-2.5 rounded-full", deskStatusDotClass(status))}
+          />
           <div className="min-w-0 flex-1">
             <p className="text-sm font-medium">You</p>
-            <p className="text-xs text-muted-foreground">In Office</p>
+            <p className="text-xs text-muted-foreground">
+              {DESK_STATUS_LABELS[status]}
+            </p>
           </div>
-          <Badge variant="secondary">Available</Badge>
+          <Badge variant="secondary">{deskStatusAvailability(status)}</Badge>
         </div>
         <p className="border-t pt-3 text-xs leading-5 text-muted-foreground">
           Team status will populate here as staff update their availability.
@@ -1042,11 +1059,16 @@ function TeamPulseDrawer({
 export function DashboardLaunchpad({
   overview,
   user,
+  initialDeskStatusMessage,
 }: {
   readonly overview: DashboardOverview
   readonly user: SidebarUser | null
+  readonly initialDeskStatusMessage: string | null
 }): React.ReactElement {
   const [mode, setMode] = useState<DashboardMode>("office")
+  const [deskStatus, setDeskStatus] = useState<DeskStatus>(() =>
+    deskStatusForPresenceMessage(initialDeskStatusMessage)
+  )
 
   return (
     <main className="mx-auto w-full max-w-[1500px] space-y-4 p-3 sm:p-4 lg:p-5">
@@ -1093,7 +1115,12 @@ export function DashboardLaunchpad({
       </div>
 
       <div className="grid gap-4 xl:grid-cols-[minmax(20rem,0.72fr)_minmax(0,1.28fr)]">
-        <DeskHero user={user} today={overview.today} />
+        <DeskHero
+          user={user}
+          today={overview.today}
+          status={deskStatus}
+          onStatusChange={setDeskStatus}
+        />
         <Horizon overview={overview} mode={mode} />
       </div>
 
@@ -1101,7 +1128,7 @@ export function DashboardLaunchpad({
         <div className="grid gap-4 xl:grid-cols-[minmax(0,1.35fr)_minmax(20rem,0.65fr)]">
           <OfficeTaskList overview={overview} />
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-1">
-            <OfficePresence />
+            <OfficePresence status={deskStatus} />
             <OfficeAlerts overview={overview} />
             <QuickDock />
           </div>
