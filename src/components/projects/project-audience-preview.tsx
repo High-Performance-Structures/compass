@@ -41,6 +41,7 @@ import {
   projectAudienceConversationHref,
   projectAudiencePreviewHref,
 } from "@/lib/project-audience-preview-routes"
+import { selectUpcomingScheduleItems } from "@/lib/project-audience-schedule-selection"
 
 function formatDate(value: string | null): string {
   if (!value) return "Unscheduled"
@@ -455,7 +456,11 @@ function OwnerProjectPreview({
 }): React.ReactElement {
   const latestUpdate = data.ownerUpdates[0]
   const olderUpdates = data.ownerUpdates.slice(1)
-  const nextScheduleItem = data.scheduleItems[0]
+  const upcomingScheduleItems = selectUpcomingScheduleItems(
+    data.scheduleItems,
+    new Date().toISOString().slice(0, 10)
+  )
+  const nextScheduleItem = upcomingScheduleItems[0]
 
   return (
     <main className="min-h-screen bg-[oklch(0.96_0.018_115)]">
@@ -543,9 +548,9 @@ function OwnerProjectPreview({
                 <IconCalendarStats className="size-4 text-muted-foreground" />
                 <h2 className="text-sm font-semibold">What happens next</h2>
               </div>
-              {data.scheduleItems.length > 0 ? (
+              {upcomingScheduleItems.length > 0 ? (
                 <div className="mt-4 space-y-3">
-                  {data.scheduleItems.slice(0, 3).map((item) => (
+                  {upcomingScheduleItems.map((item) => (
                     <OwnerScheduleCard key={item.id} item={item} />
                   ))}
                 </div>
