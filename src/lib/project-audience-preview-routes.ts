@@ -1,10 +1,28 @@
 export type ProjectAudiencePreviewRoute = "owner" | "sub-vendor"
+export type ProjectAudienceWorkspaceSection =
+  | "overview"
+  | "updates"
+  | "schedule"
+  | "commitments"
+  | "rfis"
+  | "conversations"
+  | "photos"
+  | "team"
 
 export function projectAudiencePreviewHref(
   projectId: string,
   audience: ProjectAudiencePreviewRoute
 ): string {
   return `/preview/projects/${encodeURIComponent(projectId)}/${audience}`
+}
+
+export function projectAudienceSectionHref(
+  projectId: string,
+  audience: ProjectAudiencePreviewRoute,
+  section: ProjectAudienceWorkspaceSection
+): string {
+  const homeHref = projectAudiencePreviewHref(projectId, audience)
+  return section === "overview" ? homeHref : `${homeHref}/${section}`
 }
 
 export function ownerUpdatePreviewHref(

@@ -97,6 +97,7 @@ export async function ProjectAudienceConversation({
       projectOptions={preview.projectOptions}
       viewer={preview.viewer}
       viewerIsInternal={preview.viewerIsInternal}
+      activeSection="conversations"
     >
       <main className="h-[calc(100vh-3.5rem)] min-h-[34rem] bg-background md:h-screen">
         <ConversationsProvider>

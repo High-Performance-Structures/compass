@@ -13,7 +13,10 @@ import {
 } from "@/app/actions/project-field"
 import { OwnerUpdateDocument } from "@/components/projects/owner-update-document"
 import { ProjectAudiencePreviewShell } from "@/components/projects/project-audience-preview-shell"
-import { projectAudiencePreviewHref } from "@/lib/project-audience-preview-routes"
+import {
+  projectAudiencePreviewHref,
+  projectAudienceSectionHref,
+} from "@/lib/project-audience-preview-routes"
 
 function hasDigest(error: unknown): error is { readonly digest: string } {
   return typeof error === "object" && error !== null && "digest" in error
@@ -64,12 +67,13 @@ export default async function OwnerUpdatePreviewPage({
       projectOptions={preview.projectOptions}
       viewer={preview.viewer}
       viewerIsInternal={preview.viewerIsInternal}
+      activeSection="updates"
     >
       <OwnerUpdateDocument
         document={document}
         previewMode={{
           homeHref,
-          photosHref: `${homeHref}#photos`,
+          photosHref: projectAudienceSectionHref(id, "owner", "photos"),
         }}
       />
     </ProjectAudiencePreviewShell>

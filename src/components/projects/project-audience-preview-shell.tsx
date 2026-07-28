@@ -15,7 +15,11 @@ import {
 
 import type { AudienceProjectOption } from "@/app/actions/project-audience-preview"
 import type { ProjectAudience } from "@/lib/project-audience-access"
-import { projectAudiencePreviewHref } from "@/lib/project-audience-preview-routes"
+import {
+  projectAudiencePreviewHref,
+  projectAudienceSectionHref,
+  type ProjectAudienceWorkspaceSection,
+} from "@/lib/project-audience-preview-routes"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -30,35 +34,39 @@ import { cn } from "@/lib/utils"
 
 type PreviewNavigationItem = {
   readonly label: string
-  readonly anchor: string
+  readonly section: ProjectAudienceWorkspaceSection
   readonly icon: React.ReactElement
 }
 
 const OWNER_NAVIGATION: readonly PreviewNavigationItem[] = [
   {
     label: "Overview",
-    anchor: "overview",
+    section: "overview",
     icon: <IconHome className="size-4" />,
   },
   {
     label: "Owner Updates",
-    anchor: "updates",
+    section: "updates",
     icon: <IconClipboardCheck className="size-4" />,
   },
   {
     label: "Schedule",
-    anchor: "schedule",
+    section: "schedule",
     icon: <IconCalendar className="size-4" />,
   },
   {
     label: "Conversations",
-    anchor: "messages",
+    section: "conversations",
     icon: <IconMessageCircle className="size-4" />,
   },
-  { label: "Photos", anchor: "photos", icon: <IconPhoto className="size-4" /> },
+  {
+    label: "Photos",
+    section: "photos",
+    icon: <IconPhoto className="size-4" />,
+  },
   {
     label: "Project Team",
-    anchor: "team",
+    section: "team",
     icon: <IconUsers className="size-4" />,
   },
 ]
@@ -66,33 +74,37 @@ const OWNER_NAVIGATION: readonly PreviewNavigationItem[] = [
 const SUB_VENDOR_NAVIGATION: readonly PreviewNavigationItem[] = [
   {
     label: "Overview",
-    anchor: "overview",
+    section: "overview",
     icon: <IconHome className="size-4" />,
   },
   {
     label: "Schedule",
-    anchor: "schedule",
+    section: "schedule",
     icon: <IconCalendar className="size-4" />,
   },
   {
     label: "Commitments",
-    anchor: "commitments",
+    section: "commitments",
     icon: <IconClipboardCheck className="size-4" />,
   },
   {
     label: "RFIs",
-    anchor: "rfis",
+    section: "rfis",
     icon: <IconQuestionMark className="size-4" />,
   },
   {
     label: "Conversations",
-    anchor: "messages",
+    section: "conversations",
     icon: <IconMessageCircle className="size-4" />,
   },
-  { label: "Photos", anchor: "photos", icon: <IconPhoto className="size-4" /> },
+  {
+    label: "Photos",
+    section: "photos",
+    icon: <IconPhoto className="size-4" />,
+  },
   {
     label: "Project Team",
-    anchor: "team",
+    section: "team",
     icon: <IconUsers className="size-4" />,
   },
 ]
@@ -115,6 +127,7 @@ export function ProjectAudiencePreviewShell({
   projectOptions,
   viewer,
   viewerIsInternal,
+  activeSection = "overview",
   children,
 }: {
   readonly audience: ProjectAudience
@@ -128,6 +141,7 @@ export function ProjectAudiencePreviewShell({
     readonly avatarUrl: string | null
   }
   readonly viewerIsInternal: boolean
+  readonly activeSection?: ProjectAudienceWorkspaceSection
   readonly children: React.ReactNode
 }): React.ReactElement {
   const routeAudience = audienceRoute(audience)
@@ -177,9 +191,10 @@ export function ProjectAudiencePreviewShell({
                 {projectOptions.map((project) => (
                   <DropdownMenuItem key={project.id} asChild>
                     <Link
-                      href={projectAudiencePreviewHref(
+                      href={projectAudienceSectionHref(
                         project.id,
-                        routeAudience
+                        routeAudience,
+                        activeSection
                       )}
                     >
                       {projectOptionLabel(project)}
@@ -206,9 +221,19 @@ export function ProjectAudiencePreviewShell({
         >
           {navigation.map((item) => (
             <Link
-              key={item.anchor}
-              href={`${homeHref}#${item.anchor}`}
-              className="flex items-center gap-3 px-3 py-2 text-sm text-sidebar-foreground/75 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+              key={item.section}
+              href={projectAudienceSectionHref(
+                projectId,
+                routeAudience,
+                item.section
+              )}
+              aria-current={activeSection === item.section ? "page" : undefined}
+              className={cn(
+                "flex items-center gap-3 px-3 py-2 text-sm transition-colors",
+                activeSection === item.section
+                  ? "bg-sidebar-accent font-medium text-sidebar-accent-foreground"
+                  : "text-sidebar-foreground/75 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+              )}
             >
               {item.icon}
               {item.label}
@@ -269,11 +294,20 @@ export function ProjectAudiencePreviewShell({
           <nav className="mt-3 flex gap-1 overflow-x-auto border-t pt-2">
             {navigation.map((item) => (
               <Link
-                key={item.anchor}
-                href={`${homeHref}#${item.anchor}`}
+                key={item.section}
+                href={projectAudienceSectionHref(
+                  projectId,
+                  routeAudience,
+                  item.section
+                )}
+                aria-current={
+                  activeSection === item.section ? "page" : undefined
+                }
                 className={cn(
                   "flex shrink-0 items-center gap-1.5 px-2 py-1.5 text-xs",
-                  "text-muted-foreground hover:bg-accent hover:text-foreground"
+                  activeSection === item.section
+                    ? "bg-accent font-medium text-foreground"
+                    : "text-muted-foreground hover:bg-accent hover:text-foreground"
                 )}
               >
                 {item.icon}
