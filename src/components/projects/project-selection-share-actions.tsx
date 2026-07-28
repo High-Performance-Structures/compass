@@ -19,6 +19,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import type { ProjectBrand } from "@/lib/project-branding"
 
 type CopiedState = "link" | "email" | "html" | "sheet" | null
 type PrintMode = "packet" | "room_sheets"
@@ -126,6 +127,7 @@ function packetSelectionRows(
 }
 
 function packetHtml({
+  brand,
   projectLabel,
   clientName,
   filterLabel,
@@ -133,6 +135,7 @@ function packetHtml({
   summary,
   mode,
 }: {
+  readonly brand: ProjectBrand
   readonly projectLabel: string
   readonly clientName: string | null
   readonly filterLabel: string | null
@@ -150,9 +153,9 @@ function packetHtml({
   return `
     <header class="selection-print-header">
       <div class="selection-print-brand">
-        <img src="/department-logos/orc-mark.png" alt="Open Range Construction" />
+        <img src="${escapeHtml(brand.logoSrc)}" alt="${escapeHtml(brand.logoAlt)}" />
         <div>
-          <p>Open Range Construction</p>
+          <p>${escapeHtml(brand.companyName)}</p>
           <span>Finish Selection Packet</span>
         </div>
       </div>
@@ -177,12 +180,14 @@ function packetHtml({
 }
 
 export function ProjectSelectionShareActions({
+  brand,
   projectId,
   projectLabel,
   clientName,
   filterLabel = null,
   summary,
 }: {
+  readonly brand: ProjectBrand
   readonly projectId: string
   readonly projectLabel: string
   readonly clientName: string | null
@@ -336,6 +341,7 @@ export function ProjectSelectionShareActions({
     printRoot.setAttribute("data-selection-print-root", "true")
     printRoot.className = "selection-printable bg-white text-black"
     printRoot.innerHTML = packetHtml({
+      brand,
       projectLabel,
       clientName,
       filterLabel,

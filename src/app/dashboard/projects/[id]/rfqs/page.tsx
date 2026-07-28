@@ -37,6 +37,10 @@ import {
   projectOperationMatchesStatusFilter,
   type ProjectOperationStatusFilter,
 } from "@/lib/project-operations/status"
+import {
+  projectBrandFor,
+  type ProjectBrand,
+} from "@/lib/project-branding"
 
 export const dynamic = "force-dynamic"
 
@@ -131,6 +135,7 @@ function rfqTaskDescription(rfq: ProjectRfqItem): string {
 }
 
 function RfqCard({
+  brand,
   rfq,
   projectId,
   projectLabel,
@@ -139,6 +144,7 @@ function RfqCard({
   selectionOptions,
   selectionsSummary,
 }: {
+  readonly brand: ProjectBrand
   readonly rfq: ProjectRfqItem
   readonly projectId: string
   readonly projectLabel: string
@@ -183,6 +189,7 @@ function RfqCard({
             selectionsSummary={selectionsSummary}
           />
           <ProjectRfqShareActions
+            brand={brand}
             projectId={projectId}
             projectLabel={projectLabel}
             rfq={rfq}
@@ -327,6 +334,10 @@ export default async function ProjectRfqsPage({
     return rfq.dueDate < new Date().toISOString().slice(0, 10)
   }).length
   const projectLabel = projectDisplayLabel(project)
+  const brand = projectBrandFor({
+    projectId: id,
+    projectNumber: project?.projectNumber,
+  })
 
   return (
     <div className="flex-1 space-y-6 p-4 pt-6 sm:p-6 md:p-8">
@@ -414,6 +425,7 @@ export default async function ProjectRfqsPage({
           visibleRfqs.map((rfq) => (
             <RfqCard
               key={rfq.id}
+              brand={brand}
               rfq={rfq}
               projectId={id}
               projectLabel={projectLabel}

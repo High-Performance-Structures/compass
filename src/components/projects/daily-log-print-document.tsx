@@ -1,6 +1,8 @@
 import type * as React from "react"
+import Image from "next/image"
 
 import type { ProjectDailyLogItem } from "@/app/actions/project-field"
+import { projectBrandFor } from "@/lib/project-branding"
 
 function formatPrintDate(value: string): string {
   const parsed = new Date(`${value}T12:00:00`)
@@ -60,15 +62,20 @@ function PrintDetail({
 export function DailyLogPrintDocument({
   clientName,
   logs,
+  projectId,
   projectLabel,
   projectName,
+  projectNumber,
 }: {
   readonly clientName: string | null
   readonly logs: readonly ProjectDailyLogItem[]
+  readonly projectId: string
   readonly projectLabel: string
   readonly projectName: string
+  readonly projectNumber: string | null
 }): React.ReactElement | null {
   if (logs.length === 0) return null
+  const brand = projectBrandFor({ projectId, projectNumber })
 
   return (
     <article
@@ -77,13 +84,23 @@ export function DailyLogPrintDocument({
     >
       <header className="border-b-2 border-black pb-4">
         <div className="flex items-start justify-between gap-6">
-          <div>
-            <p className="text-sm font-bold uppercase">
-              High Performance Structures, Inc.
-            </p>
-            <h1 className="mt-1 text-2xl font-semibold">Daily Logs</h1>
-            <p className="mt-1 text-sm">{projectName}</p>
-            {clientName && <p className="text-xs">Client: {clientName}</p>}
+          <div className="flex items-start gap-3">
+            <Image
+              src={brand.logoSrc}
+              alt={brand.logoAlt}
+              width={48}
+              height={48}
+              unoptimized
+              className="h-12 w-12 object-contain"
+            />
+            <div>
+              <p className="text-sm font-bold uppercase">
+                {brand.companyName}
+              </p>
+              <h1 className="mt-1 text-2xl font-semibold">Daily Logs</h1>
+              <p className="mt-1 text-sm">{projectName}</p>
+              {clientName && <p className="text-xs">Client: {clientName}</p>}
+            </div>
           </div>
           <div className="text-right text-xs">
             <p className="font-semibold">{projectLabel}</p>

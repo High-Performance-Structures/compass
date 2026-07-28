@@ -11,6 +11,7 @@ import {
 
 import type { ProjectRfqItem } from "@/app/actions/project-operations"
 import { Button } from "@/components/ui/button"
+import type { ProjectBrand } from "@/lib/project-branding"
 
 type CopiedState = "link" | "email" | "html" | null
 
@@ -61,10 +62,12 @@ function documentRows(rfq: ProjectRfqItem): string {
 }
 
 function printHtml({
+  brand,
   projectLabel,
   rfq,
   url,
 }: {
+  readonly brand: ProjectBrand
   readonly projectLabel: string
   readonly rfq: ProjectRfqItem
   readonly url: string
@@ -72,9 +75,12 @@ function printHtml({
   return `
     <article class="rfq-printable">
       <header class="rfq-print-header">
-        <div>
-          <p>Open Range Construction</p>
-          <h1>${escapeHtml(rfq.title)}</h1>
+        <div class="rfq-print-brand">
+          <img src="${escapeHtml(brand.logoSrc)}" alt="${escapeHtml(brand.logoAlt)}" />
+          <div>
+            <p>${escapeHtml(brand.companyName)}</p>
+            <h1>${escapeHtml(rfq.title)}</h1>
+          </div>
         </div>
         <div>
           <p>${escapeHtml(projectLabel)}</p>
@@ -128,10 +134,12 @@ function printHtml({
 }
 
 export function ProjectRfqShareActions({
+  brand,
   projectId,
   projectLabel,
   rfq,
 }: {
+  readonly brand: ProjectBrand
   readonly projectId: string
   readonly projectLabel: string
   readonly rfq: ProjectRfqItem
@@ -223,6 +231,7 @@ export function ProjectRfqShareActions({
     const printRoot = document.createElement("article")
     printRoot.setAttribute("data-rfq-print-root", "true")
     printRoot.innerHTML = printHtml({
+      brand,
       projectLabel,
       rfq,
       url: absoluteUrl(),

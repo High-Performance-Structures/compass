@@ -1,4 +1,5 @@
 import type * as React from "react"
+import Image from "next/image"
 import Link from "next/link"
 import {
   IconArrowLeft,
@@ -16,6 +17,7 @@ import { Button } from "@/components/ui/button"
 import { OwnerUpdateActions } from "@/components/projects/owner-update-actions"
 import { OwnerUpdateDraftEditor } from "@/components/projects/owner-update-draft-editor"
 import { OwnerUpdatePhotoTile } from "@/components/projects/owner-update-photo-tile"
+import { projectBrandFor } from "@/lib/project-branding"
 
 function formatDate(value: string): string {
   return new Date(`${value}T00:00:00`).toLocaleDateString("en-US", {
@@ -69,6 +71,10 @@ export function OwnerUpdateDocument({
     (document.nextScheduleItem
       ? `Next up: ${document.nextScheduleItem.title}.`
       : "Open Compass to view the full owner update.")
+  const brand = projectBrandFor({
+    projectId: document.project.id,
+    projectNumber: document.project.projectNumber,
+  })
 
   return (
     <main className="min-h-screen bg-muted/30 print:bg-white">
@@ -103,14 +109,17 @@ export function OwnerUpdateDocument({
         >
           <div className="hidden print:mb-6 print:flex print:items-start print:justify-between print:border-b-2 print:border-black print:pb-4">
             <div className="flex items-center gap-3">
-              <img
-                src="/department-logos/hps-h-green.svg"
-                alt="High Performance Structures"
+              <Image
+                src={brand.logoSrc}
+                alt={brand.logoAlt}
+                width={56}
+                height={56}
+                unoptimized
                 className="h-14 w-14 object-contain"
               />
               <div>
                 <p className="text-sm font-bold uppercase">
-                  High Performance Structures, Inc.
+                  {brand.companyName}
                 </p>
                 <p className="text-xs">Project Owner Update</p>
               </div>

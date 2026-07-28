@@ -1779,8 +1779,10 @@ export function ProjectDailyLogWorkspace({
     <DailyLogPrintDocument
       clientName={workspace.project.clientName}
       logs={printLogs}
+      projectId={workspace.project.id}
       projectLabel={projectLabel}
       projectName={workspace.project.name}
+      projectNumber={workspace.project.projectNumber}
     />
     </>
   )
