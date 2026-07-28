@@ -11,6 +11,7 @@ import {
   projectOperations,
   projectPurchaseOrderLines,
   projects,
+  sageCostCodes,
   scheduleTasks,
   vendors,
 } from "@/db/schema"
@@ -85,6 +86,23 @@ export type ProjectPurchaseOrderLineItem = {
 export type ProjectPurchaseOrderItem = ProjectOperationItem & {
   readonly lines: readonly ProjectPurchaseOrderLineItem[]
   readonly vendorEmail: string | null
+}
+
+export type ProjectPurchaseOrderPhaseOption = {
+  readonly value: string
+  readonly label: string
+}
+
+export type ProjectPurchaseOrderCostCodeOption = {
+  readonly value: string
+  readonly label: string
+  readonly description: string
+  readonly divisionCode: string
+}
+
+export type ProjectPurchaseOrderFormOptions = {
+  readonly phases: readonly ProjectPurchaseOrderPhaseOption[]
+  readonly costCodes: readonly ProjectPurchaseOrderCostCodeOption[]
 }
 
 export type ProjectRfqScopeLineItem = {
@@ -1510,6 +1528,80 @@ export async function getProjectPurchaseOrders(
     lines: linesByOperation.get(row.id) ?? [],
     vendorEmail: purchaseOrderVendorEmail(row, contactRows, vendorRows),
   }))
+}
+
+export async function getProjectPurchaseOrderFormOptions(
+  projectId: string
+): Promise<ProjectPurchaseOrderFormOptions> {
+  const db = await verifyProjectAccess(projectId, "purchase-orders")
+  const [sageRows, budgetRows] = await Promise.all([
+    db
+      .select({
+        code: sageCostCodes.code,
+        description: sageCostCodes.description,
+        displayLabel: sageCostCodes.displayLabel,
+        divisionCode: sageCostCodes.divisionCode,
+        divisionDisplayLabel: sageCostCodes.divisionDisplayLabel,
+      })
+      .from(sageCostCodes)
+      .where(eq(sageCostCodes.active, true))
+      .orderBy(asc(sageCostCodes.divisionCode), asc(sageCostCodes.displayLabel)),
+    db
+      .select({
+        costCode: projectBudgetLines.costCode,
+        description: projectBudgetLines.description,
+        divisionCode: projectBudgetLines.csiDivision,
+        divisionName: projectBudgetLines.csiDivisionName,
+      })
+      .from(projectBudgetLines)
+      .where(eq(projectBudgetLines.projectId, projectId))
+      .orderBy(
+        asc(projectBudgetLines.csiDivision),
+        asc(projectBudgetLines.costCode)
+      ),
+  ])
+
+  const phaseMap = new Map<string, ProjectPurchaseOrderPhaseOption>()
+  const costCodeMap = new Map<string, ProjectPurchaseOrderCostCodeOption>()
+
+  for (const row of sageRows) {
+    phaseMap.set(row.divisionCode, {
+      value: row.divisionCode,
+      label: row.divisionDisplayLabel,
+    })
+    costCodeMap.set(row.code, {
+      value: row.code,
+      label: row.displayLabel,
+      description: row.description,
+      divisionCode: row.divisionCode,
+    })
+  }
+
+  for (const row of budgetRows) {
+    if (!phaseMap.has(row.divisionCode)) {
+      phaseMap.set(row.divisionCode, {
+        value: row.divisionCode,
+        label: `${row.divisionCode} 00 00 ${row.divisionName}`,
+      })
+    }
+    if (!costCodeMap.has(row.costCode)) {
+      costCodeMap.set(row.costCode, {
+        value: row.costCode,
+        label: `${row.costCode} ${row.description}`,
+        description: row.description,
+        divisionCode: row.divisionCode,
+      })
+    }
+  }
+
+  return {
+    phases: Array.from(phaseMap.values()).sort((left, right) =>
+      left.label.localeCompare(right.label)
+    ),
+    costCodes: Array.from(costCodeMap.values()).sort((left, right) =>
+      left.label.localeCompare(right.label)
+    ),
+  }
 }
 
 export async function getProjectRfqs(

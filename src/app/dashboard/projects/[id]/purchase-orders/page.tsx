@@ -8,6 +8,7 @@ import {
 } from "@tabler/icons-react"
 
 import {
+  getProjectPurchaseOrderFormOptions,
   getProjectPurchaseOrders,
   type ProjectPurchaseOrderItem,
 } from "@/app/actions/project-operations"
@@ -356,10 +357,16 @@ export default async function ProjectPurchaseOrdersPage({
     ? query.created[0] ?? null
     : query.created ?? null
   const statusFilter = parseProjectOperationStatusFilter(query.status)
-  const [projects, purchaseOrders, taskAssigneeOptions] = await Promise.all([
+  const [
+    projects,
+    purchaseOrders,
+    taskAssigneeOptions,
+    purchaseOrderCodingOptions,
+  ] = await Promise.all([
     getProjects(),
     getProjectPurchaseOrders(id),
     getProjectTaskAssigneeOptions(id),
+    getProjectPurchaseOrderFormOptions(id),
   ]).catch((error: unknown) => {
     redirectIfFeaturePermissionDenied(error)
     throw error
@@ -437,7 +444,12 @@ export default async function ProjectPurchaseOrdersPage({
                 <IconExternalLink className="size-4" />
               </Link>
             </Button>
-            <ProjectPurchaseOrderCreateForm projectId={id} />
+            <ProjectPurchaseOrderCreateForm
+              projectId={id}
+              contactOptions={taskAssignees}
+              phaseOptions={purchaseOrderCodingOptions.phases}
+              costCodeOptions={purchaseOrderCodingOptions.costCodes}
+            />
           </div>
         </div>
 
