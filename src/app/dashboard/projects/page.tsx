@@ -2,9 +2,12 @@ export const dynamic = "force-dynamic"
 
 import { and, asc, eq, inArray } from "drizzle-orm"
 
+import { getDashboardOverview } from "@/app/actions/dashboard-overview"
+import { getProjects } from "@/app/actions/projects"
 import { getDb } from "@/db"
 import { projectExternalLinks, projects } from "@/db/schema"
 import { ProjectsHub } from "@/components/projects/projects-hub"
+import { ProjectHubLaunchpad } from "@/components/projects/project-hub-launchpad"
 import { getCurrentUser } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
 import { canManageProjectRegistry } from "@/lib/permissions"
@@ -31,7 +34,35 @@ export type ProjectsHubProject = {
   readonly createdAt: string
 }
 
-export default async function ProjectsPage(): Promise<React.ReactElement> {
+export default async function ProjectsPage({
+  searchParams,
+}: {
+  readonly searchParams: Promise<
+    Record<string, string | readonly string[] | undefined>
+  >
+}): Promise<React.ReactElement> {
+  const params = await searchParams
+  const showRegistry =
+    params.manage !== undefined ||
+    params.department !== undefined ||
+    params.status !== undefined
+
+  if (!showRegistry) {
+    const [projectList, overview, currentUser] = await Promise.all([
+      getProjects(),
+      getDashboardOverview(),
+      getCurrentUser(),
+    ])
+
+    return (
+      <ProjectHubLaunchpad
+        projects={projectList}
+        overview={overview}
+        canManageProjects={canManageProjectRegistry(currentUser)}
+      />
+    )
+  }
+
   let hubProjects: ProjectsHubProject[] = []
   let canCreateOrUpdateProjects = false
 
