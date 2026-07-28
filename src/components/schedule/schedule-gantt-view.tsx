@@ -51,7 +51,10 @@ import {
 } from "@/components/ui/select"
 import { cn } from "@/lib/utils"
 import { useIsMobile } from "@/hooks/use-mobile"
-import { GanttChart } from "./gantt-chart"
+import {
+  GanttChart,
+  type GanttScrollPosition,
+} from "./gantt-chart"
 import { ScheduleItemFormDialog } from "./schedule-item-form-dialog"
 import {
   transformToFrappeTasks,
@@ -81,6 +84,10 @@ import { ProjectTaskCreateButton } from "@/components/projects/project-task-crea
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import { format } from "date-fns"
+import {
+  ganttRowIndexForScrollTop,
+  synchronizedScrollTop,
+} from "@/lib/schedule/gantt-scroll"
 
 type ViewMode = "Day" | "Week" | "Month"
 
@@ -129,6 +136,15 @@ export function ScheduleGanttView({
   const [panMode] = useState(false)
   const taskListRef = useRef<HTMLDivElement>(null)
   const ganttContainerRef = useRef<HTMLElement | null>(null)
+  const scrollPositionRef = useRef<GanttScrollPosition>({ left: 0, top: 0 })
+  const scrollStorageTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const scrollToTodayRef = useRef<(() => void) | null>(null)
+  const scrollToDateRef = useRef<((date: string) => void) | null>(null)
+  const scrollTaskIntoViewRef = useRef<((taskId: string) => void) | null>(null)
+  const displayItemsRef = useRef<readonly DisplayItem[]>([])
+  const followedListItemRef = useRef<string | null>(null)
+  const scrollRestoredProjectRef = useRef<string | null>(null)
+  const scrollStorageKey = `compass:schedule-scroll:${projectId}`
 
   const [hasLoadedPalette, setHasLoadedPalette] = useState(false)
 
@@ -192,32 +208,171 @@ export function ScheduleGanttView({
     setColumnWidth(defaultWidths[mode])
   }
 
+  const rememberScrollPosition = useCallback(
+    (position: GanttScrollPosition) => {
+      scrollPositionRef.current = position
+      if (scrollStorageTimerRef.current) {
+        clearTimeout(scrollStorageTimerRef.current)
+      }
+      scrollStorageTimerRef.current = setTimeout(() => {
+        try {
+          window.sessionStorage.setItem(
+            scrollStorageKey,
+            JSON.stringify(scrollPositionRef.current)
+          )
+        } catch {
+          // In-memory state still preserves this visit.
+        }
+      }, 150)
+    },
+    [scrollStorageKey]
+  )
+
+  const flushScrollPosition = useCallback(() => {
+    if (scrollStorageTimerRef.current) {
+      clearTimeout(scrollStorageTimerRef.current)
+      scrollStorageTimerRef.current = null
+    }
+    try {
+      window.sessionStorage.setItem(
+        scrollStorageKey,
+        JSON.stringify(scrollPositionRef.current)
+      )
+    } catch {
+      // Persisting the position is optional.
+    }
+  }, [scrollStorageKey])
+
+  useEffect(() => {
+    return flushScrollPosition
+  }, [flushScrollPosition])
+
   const handleGanttContainerReady = useCallback(
     (container: HTMLElement | null) => {
       ganttContainerRef.current = container
-      if (container && taskListRef.current) {
-        container.scrollTop = taskListRef.current.scrollTop
+      if (!container) return
+
+      let position = scrollPositionRef.current
+      if (scrollRestoredProjectRef.current !== projectId) {
+        try {
+          const stored = window.sessionStorage.getItem(scrollStorageKey)
+          if (stored) {
+            const parsed: unknown = JSON.parse(stored)
+            if (
+              parsed &&
+              typeof parsed === "object" &&
+              "left" in parsed &&
+              "top" in parsed &&
+              typeof parsed.left === "number" &&
+              typeof parsed.top === "number" &&
+              (!("anchorDate" in parsed) ||
+                typeof parsed.anchorDate === "string")
+            ) {
+              const anchorDate =
+                "anchorDate" in parsed &&
+                typeof parsed.anchorDate === "string"
+                  ? parsed.anchorDate
+                  : null
+              position = {
+                left: parsed.left,
+                top: parsed.top,
+                ...(anchorDate ? { anchorDate } : {}),
+              }
+            }
+          }
+        } catch {
+          // Use the current in-memory position.
+        }
+        scrollRestoredProjectRef.current = projectId
       }
+
+      scrollPositionRef.current = position
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          if (position.anchorDate && scrollToDateRef.current) {
+            scrollToDateRef.current(position.anchorDate)
+          } else {
+            container.scrollLeft = position.left
+          }
+          container.scrollTop = position.top
+          if (taskListRef.current) {
+            taskListRef.current.scrollTop = synchronizedScrollTop(
+              position.top,
+              container.scrollHeight,
+              container.clientHeight,
+              taskListRef.current.scrollHeight,
+              taskListRef.current.clientHeight
+            )
+          }
+        })
+      })
     },
-    []
+    [projectId, scrollStorageKey]
   )
 
-  const handleGanttScroll = useCallback((top: number) => {
-    const taskList = taskListRef.current
-    if (taskList && Math.abs(taskList.scrollTop - top) > 1) {
-      taskList.scrollTop = top
-    }
-  }, [])
+  const handleGanttScroll = useCallback(
+    (position: GanttScrollPosition) => {
+      const taskList = taskListRef.current
+      const ganttContainer = ganttContainerRef.current
+      if (taskList && ganttContainer) {
+        const synchronizedTop = synchronizedScrollTop(
+          position.top,
+          ganttContainer.scrollHeight,
+          ganttContainer.clientHeight,
+          taskList.scrollHeight,
+          taskList.clientHeight
+        )
+        if (Math.abs(taskList.scrollTop - synchronizedTop) > 1) {
+          taskList.scrollTop = synchronizedTop
+        }
+      }
+      rememberScrollPosition(position)
+    },
+    [rememberScrollPosition]
+  )
 
   const handleTaskListScroll = useCallback(
     (event: UIEvent<HTMLDivElement>) => {
       const top = event.currentTarget.scrollTop
       const ganttContainer = ganttContainerRef.current
-      if (ganttContainer && Math.abs(ganttContainer.scrollTop - top) > 1) {
-        ganttContainer.scrollTop = top
+      if (ganttContainer) {
+        const synchronizedTop = synchronizedScrollTop(
+          top,
+          event.currentTarget.scrollHeight,
+          event.currentTarget.clientHeight,
+          ganttContainer.scrollHeight,
+          ganttContainer.clientHeight
+        )
+        if (Math.abs(ganttContainer.scrollTop - synchronizedTop) > 1) {
+          ganttContainer.scrollTop = synchronizedTop
+        }
+
+        const itemIndex = ganttRowIndexForScrollTop(
+          top,
+          displayItemsRef.current.length
+        )
+        const item =
+          itemIndex === null ? undefined : displayItemsRef.current[itemIndex]
+        const itemKey =
+          item?.type === "task" ? item.task.id : item?.phase ?? null
+        if (item && itemKey && followedListItemRef.current !== itemKey) {
+          followedListItemRef.current = itemKey
+          if (item.type === "task") {
+            scrollTaskIntoViewRef.current?.(item.task.id)
+          } else {
+            scrollToDateRef.current?.(item.group.startDate)
+          }
+        }
       }
+      rememberScrollPosition({
+        left: ganttContainer?.scrollLeft ?? scrollPositionRef.current.left,
+        top: ganttContainer?.scrollTop ?? top,
+        ...(scrollPositionRef.current.anchorDate
+          ? { anchorDate: scrollPositionRef.current.anchorDate }
+          : {}),
+      })
     },
-    []
+    [rememberScrollPosition]
   )
 
   const openTaskEditor = useCallback(
@@ -293,6 +448,7 @@ export function ScheduleGanttView({
           },
     [collapsedPhases, dependencies, filteredTasks, phaseGrouping]
   )
+  displayItemsRef.current = displayItems
 
   const togglePhase = (phase: string) => {
     setCollapsedPhases((prev) => {
@@ -337,14 +493,30 @@ export function ScheduleGanttView({
     [exceptions, router]
   )
 
-  const scrollToToday = () => {
-    const todayEl = document.querySelector(
-      ".gantt-container .today-highlight"
-    )
-    if (todayEl) {
-      todayEl.scrollIntoView({ behavior: "smooth", inline: "center" })
-    }
-  }
+  const handleTodayScrollReady = useCallback(
+    (handler: (() => void) | null) => {
+      scrollToTodayRef.current = handler
+    },
+    []
+  )
+
+  const handleDateScrollReady = useCallback(
+    (handler: ((date: string) => void) | null) => {
+      scrollToDateRef.current = handler
+    },
+    []
+  )
+
+  const handleTaskVisibilityReady = useCallback(
+    (handler: ((taskId: string) => void) | null) => {
+      scrollTaskIntoViewRef.current = handler
+    },
+    []
+  )
+
+  const scrollToToday = useCallback(() => {
+    scrollToTodayRef.current?.()
+  }, [])
 
   const taskTable = (
     <Table className="table-fixed">
@@ -732,7 +904,10 @@ export function ScheduleGanttView({
                 onZoom={handleZoom}
                 onTaskDoubleClick={openTaskEditor}
                 onContainerReady={handleGanttContainerReady}
-                onScrollTopChange={handleGanttScroll}
+                onScrollPositionChange={handleGanttScroll}
+                onTodayScrollReady={handleTodayScrollReady}
+                onDateScrollReady={handleDateScrollReady}
+                onTaskVisibilityReady={handleTaskVisibilityReady}
               />
               {scheduleKey}
             </div>
@@ -768,7 +943,10 @@ export function ScheduleGanttView({
                 onZoom={handleZoom}
                 onTaskDoubleClick={openTaskEditor}
                 onContainerReady={handleGanttContainerReady}
-                onScrollTopChange={handleGanttScroll}
+                onScrollPositionChange={handleGanttScroll}
+                onTodayScrollReady={handleTodayScrollReady}
+                onDateScrollReady={handleDateScrollReady}
+                onTaskVisibilityReady={handleTaskVisibilityReady}
               />
               {scheduleKey}
             </div>

@@ -27,6 +27,7 @@ type ProjectAssigneePickerProps = {
   readonly placeholder?: string
   readonly className?: string
   readonly disabled?: boolean
+  readonly clearLabel?: string
 }
 
 function normalizeChoice(value: string): string {
@@ -91,6 +92,7 @@ export function ProjectAssigneePicker({
   placeholder = "Choose contact or type a name...",
   className,
   disabled = false,
+  clearLabel = "Clear",
 }: ProjectAssigneePickerProps): React.ReactElement {
   const [open, setOpen] = React.useState(false)
   const [query, setQuery] = React.useState("")
@@ -205,7 +207,7 @@ export function ProjectAssigneePicker({
               setOpen(false)
             }}
           >
-            Clear
+            {clearLabel}
           </Button>
           <Button
             type="button"

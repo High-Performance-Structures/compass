@@ -13,6 +13,7 @@ declare module "frappe-gantt" {
     view_mode?: string
     view_modes?: readonly GanttViewMode[]
     column_width?: number
+    infinite_padding?: boolean
     on_date_change?: (
       task: { id: string },
       start: Date,
@@ -26,7 +27,7 @@ declare module "frappe-gantt" {
 
   interface GanttViewMode {
     readonly name: string
-    readonly padding?: string
+    readonly padding?: string | readonly [string, string]
     readonly step?: string
     readonly date_format?: string
     readonly column_width?: number
@@ -47,5 +48,12 @@ declare module "frappe-gantt" {
       tasks: GanttTask[],
       options?: GanttOptions
     )
+    change_view_mode(viewMode?: string, maintainPosition?: boolean): void
+    readonly gantt_start: Date
+    readonly config: {
+      readonly column_width: number
+      readonly step: number
+      readonly unit: string
+    }
   }
 }
