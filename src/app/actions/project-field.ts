@@ -311,6 +311,7 @@ type OwnerUpdateDraftResult =
 
 export type OwnerProjectUpdateDocument = {
   readonly canManage: boolean
+  readonly viewerId: string
   readonly project: OwnerUpdateProject
   readonly update: {
     readonly id: string
@@ -321,6 +322,7 @@ export type OwnerProjectUpdateDocument = {
     readonly channel: string
     readonly publishedAt: string | null
     readonly sentAt: string | null
+    readonly updatedAt: string
     readonly sourceDailyLogIds: readonly string[]
     readonly selectedPhotoIds: readonly string[]
     readonly selectedDocumentIds: readonly string[]
@@ -2172,6 +2174,7 @@ export async function getOwnerProjectUpdateDocument(
       scheduleSnapshot: ownerProjectUpdates.scheduleSnapshot,
       publishedAt: ownerProjectUpdates.publishedAt,
       sentAt: ownerProjectUpdates.sentAt,
+      updatedAt: ownerProjectUpdates.updatedAt,
     })
     .from(ownerProjectUpdates)
     .where(
@@ -2449,6 +2452,7 @@ export async function getOwnerProjectUpdateDocument(
 
   return {
     canManage,
+    viewerId: viewer.id,
     project,
     update: {
       id: update.id,
@@ -2459,6 +2463,7 @@ export async function getOwnerProjectUpdateDocument(
       channel: update.channel,
       publishedAt: update.publishedAt,
       sentAt: update.sentAt,
+      updatedAt: update.updatedAt,
       sourceDailyLogIds: selectedDailyLogIds,
       selectedPhotoIds,
       selectedDocumentIds,
