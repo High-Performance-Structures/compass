@@ -151,6 +151,19 @@ export function OwnerUpdateDraftEditor({
   const selectedPhotoIdSet = new Set(selectedPhotoIds)
   const selectedDocumentIdSet = new Set(selectedDocumentIds)
   const failedImageSet = new Set(failedImageIds)
+  const compassPhotoCount = document.availablePhotos.filter((photo) =>
+    photo.sourceSystem.toLowerCase().includes("compass")
+  ).length
+  const buildertrendPhotoCount = document.availablePhotos.filter((photo) =>
+    photo.sourceSystem.toLowerCase().includes("buildertrend")
+  ).length
+
+  function scrollToSection(id: string): void {
+    globalThis.document.getElementById(id)?.scrollIntoView({
+      behavior: "smooth",
+      block: "start",
+    })
+  }
 
   function toggleId(
     setter: React.Dispatch<React.SetStateAction<readonly string[]>>,
@@ -409,6 +422,68 @@ export function OwnerUpdateDraftEditor({
           schedule items, and to-dos.
         </p>
 
+        <section
+          aria-labelledby="owner-update-attachments-heading"
+          className="border-y bg-muted/20 px-4 py-4"
+        >
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <h3
+                id="owner-update-attachments-heading"
+                className="text-sm font-semibold"
+              >
+                Photos &amp; documents
+              </h3>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Choose existing Compass or Buildertrend photos, attach existing
+                documents, or upload new files directly to this draft.
+              </p>
+              <p className="mt-2 text-xs text-muted-foreground">
+                {compassPhotoCount} Compass photo
+                {compassPhotoCount === 1 ? "" : "s"} ·{" "}
+                {buildertrendPhotoCount} Buildertrend photo
+                {buildertrendPhotoCount === 1 ? "" : "s"} ·{" "}
+                {document.availableDocuments.length} document
+                {document.availableDocuments.length === 1 ? "" : "s"}
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() =>
+                  scrollToSection("owner-update-photo-library")
+                }
+              >
+                <IconPhoto className="size-4" />
+                Choose project photos
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() =>
+                  scrollToSection("owner-update-document-library")
+                }
+              >
+                <IconFile className="size-4" />
+                Choose documents
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                onClick={() =>
+                  scrollToSection("owner-update-file-upload")
+                }
+              >
+                <IconUpload className="size-4" />
+                Upload photos or documents
+              </Button>
+            </div>
+          </div>
+        </section>
+
         <section className="border-t pt-5">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div>
@@ -465,12 +540,15 @@ export function OwnerUpdateDraftEditor({
           )}
         </section>
 
-        <section className="border-t pt-5">
+        <section
+          id="owner-update-photo-library"
+          className="scroll-mt-20 border-t pt-5"
+        >
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="flex items-center gap-2">
               <IconPhoto className="size-4 text-muted-foreground" />
               <h3 className="text-sm font-semibold">
-                Compass and Buildertrend photos
+                Project photo library
               </h3>
             </div>
             <SelectionCount
@@ -479,8 +557,9 @@ export function OwnerUpdateDraftEditor({
             />
           </div>
           <p className="mt-1 text-xs text-muted-foreground">
-            Selecting a photo shares that photo when this update is published;
-            it does not make its whole daily log visible.
+            Choose Compass or Buildertrend photos for this update. Selecting a
+            photo shares only that photo when the update is published; it does
+            not make its whole daily log visible.
           </p>
           {document.availablePhotos.length === 0 ? (
             <p className="mt-3 text-sm text-muted-foreground">
@@ -543,7 +622,10 @@ export function OwnerUpdateDraftEditor({
           )}
         </section>
 
-        <section className="border-t pt-5">
+        <section
+          id="owner-update-document-library"
+          className="scroll-mt-20 border-t pt-5"
+        >
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="flex items-center gap-2">
               <IconFile className="size-4 text-muted-foreground" />
@@ -590,7 +672,10 @@ export function OwnerUpdateDraftEditor({
             </div>
           )}
 
-          <div className="mt-4 grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
+          <div
+            id="owner-update-file-upload"
+            className="scroll-mt-20 mt-4 grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]"
+          >
             <div className="space-y-2">
               <Label htmlFor={`owner-update-files-${document.update.id}`}>
                 Upload photos or documents

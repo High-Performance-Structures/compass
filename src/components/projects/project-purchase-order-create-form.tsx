@@ -2,14 +2,37 @@
 
 import * as React from "react"
 import { useRouter } from "next/navigation"
-import { IconPlus, IconShoppingCart, IconTrash } from "@tabler/icons-react"
+import {
+  IconCheck,
+  IconChevronDown,
+  IconPlus,
+  IconShoppingCart,
+  IconTrash,
+} from "@tabler/icons-react"
 
+import type { ProjectTaskAssigneeOption } from "@/app/actions/project-contacts"
 import {
   createPurchaseOrderRequest,
   type CreatePurchaseOrderLineInput,
+  type ProjectPurchaseOrderCostCodeOption,
+  type ProjectPurchaseOrderPhaseOption,
 } from "@/app/actions/project-operations"
+import { ProjectAssigneePicker } from "@/components/projects/project-assignee-picker"
 import { Button } from "@/components/ui/button"
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command"
 import { Input } from "@/components/ui/input"
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover"
 import {
   Sheet,
   SheetContent,
@@ -19,6 +42,11 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet"
 import { Textarea } from "@/components/ui/textarea"
+import {
+  purchaseOrderCostCodesForPhase,
+  purchaseOrderInternalOwnerOptions,
+  purchaseOrderVendorOptions,
+} from "@/lib/purchase-orders/form-options"
 
 type DraftPurchaseOrderLine = {
   readonly id: string
@@ -48,6 +76,128 @@ const DOCUMENT_SELECT_CLASS =
   "h-9 w-full rounded-none border-x-0 border-t-0 bg-background px-0 text-sm shadow-none outline-none focus:border-foreground"
 const LINE_INPUT_CLASS =
   "h-8 rounded-none border-0 bg-transparent px-1 shadow-none focus-visible:ring-0 focus-visible:bg-background"
+
+type PurchaseOrderPickerOption = {
+  readonly value: string
+  readonly label: string
+  readonly description?: string
+}
+
+function normalizedOptionText(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim()
+}
+
+function PurchaseOrderOptionPicker({
+  value,
+  options,
+  placeholder,
+  ariaLabel,
+  onValueChange,
+}: {
+  readonly value: string
+  readonly options: readonly PurchaseOrderPickerOption[]
+  readonly placeholder: string
+  readonly ariaLabel: string
+  readonly onValueChange: (value: string) => void
+}): React.ReactElement {
+  const [open, setOpen] = React.useState(false)
+  const [query, setQuery] = React.useState("")
+  const normalizedQuery = normalizedOptionText(query)
+  const selected =
+    options.find((option) => option.value === value) ?? null
+  const filteredOptions = options.filter((option) => {
+    if (normalizedQuery.length === 0) return true
+    return normalizedOptionText(
+      `${option.value} ${option.label} ${option.description ?? ""}`
+    ).includes(normalizedQuery)
+  })
+  const typedValue = query.trim()
+  const canUseTypedValue =
+    typedValue.length > 0 &&
+    normalizedOptionText(typedValue) !== normalizedOptionText(value)
+
+  function chooseValue(nextValue: string): void {
+    onValueChange(nextValue)
+    setQuery("")
+    setOpen(false)
+  }
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          type="button"
+          variant="ghost"
+          aria-label={ariaLabel}
+          className="h-8 w-full min-w-0 justify-between rounded-none bg-transparent px-1 text-left text-xs font-normal hover:bg-background"
+        >
+          <span className="truncate">
+            {selected?.label ?? (value || placeholder)}
+          </span>
+          <IconChevronDown className="size-3.5 shrink-0 opacity-60" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent align="start" className="w-[min(26rem,calc(100vw-3rem))] p-0">
+        <Command shouldFilter={false}>
+          <CommandInput
+            value={query}
+            onValueChange={setQuery}
+            placeholder={`Search ${placeholder.toLowerCase()}...`}
+          />
+          <CommandList className="compass-content-scroll max-h-72">
+            <CommandEmpty>No matching options.</CommandEmpty>
+            <CommandGroup>
+              {filteredOptions.map((option) => (
+                <CommandItem
+                  key={option.value}
+                  value={`${option.value} ${option.label}`}
+                  onSelect={() => chooseValue(option.value)}
+                >
+                  <IconCheck
+                    className={
+                      option.value === value ? "size-4 opacity-100" : "size-4 opacity-0"
+                    }
+                  />
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate">{option.label}</span>
+                    {option.description && (
+                      <span className="block truncate text-xs text-muted-foreground">
+                        {option.description}
+                      </span>
+                    )}
+                  </span>
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          </CommandList>
+          <div className="flex items-center justify-between gap-2 border-t p-2">
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => chooseValue("")}
+            >
+              Clear
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={!canUseTypedValue}
+              onClick={() => chooseValue(typedValue)}
+            >
+              Use typed value
+            </Button>
+          </div>
+        </Command>
+      </PopoverContent>
+    </Popover>
+  )
+}
 
 function newLine(): DraftPurchaseOrderLine {
   return {
@@ -122,8 +272,14 @@ function Field({
 
 export function ProjectPurchaseOrderCreateForm({
   projectId,
+  contactOptions,
+  phaseOptions,
+  costCodeOptions,
 }: {
   readonly projectId: string
+  readonly contactOptions: readonly ProjectTaskAssigneeOption[]
+  readonly phaseOptions: readonly ProjectPurchaseOrderPhaseOption[]
+  readonly costCodeOptions: readonly ProjectPurchaseOrderCostCodeOption[]
 }): React.ReactElement {
   const router = useRouter()
   const formRef = React.useRef<HTMLFormElement>(null)
@@ -131,9 +287,19 @@ export function ProjectPurchaseOrderCreateForm({
     newLine(),
   ])
   const [sageVendorId, setSageVendorId] = React.useState("")
+  const [companyName, setCompanyName] = React.useState("")
+  const [assigneeName, setAssigneeName] = React.useState("")
   const [submitting, setSubmitting] = React.useState(false)
   const [message, setMessage] = React.useState<string | null>(null)
   const [open, setOpen] = React.useState(false)
+  const vendorOptions = React.useMemo(
+    () => purchaseOrderVendorOptions(contactOptions),
+    [contactOptions]
+  )
+  const internalOwnerOptions = React.useMemo(
+    () => purchaseOrderInternalOwnerOptions(contactOptions),
+    [contactOptions]
+  )
 
   const total = lines.reduce((sum, line) => sum + lineAmount(line), 0)
   const codedLineCount = lines.filter(
@@ -183,9 +349,9 @@ export function ProjectPurchaseOrderCreateForm({
       const result = await createPurchaseOrderRequest(projectId, {
         title: String(formData.get("title") ?? ""),
         description: cleanText(String(formData.get("description") ?? "")),
-        companyName: cleanText(String(formData.get("companyName") ?? "")),
+        companyName: cleanText(companyName),
         sageVendorId: cleanText(String(formData.get("sageVendorId") ?? "")),
-        assigneeName: cleanText(String(formData.get("assigneeName") ?? "")),
+        assigneeName: cleanText(assigneeName),
         shipTo: cleanText(String(formData.get("shipTo") ?? "")),
         orderDate: cleanText(String(formData.get("orderDate") ?? "")),
         dueDate: cleanText(String(formData.get("dueDate") ?? "")),
@@ -200,6 +366,8 @@ export function ProjectPurchaseOrderCreateForm({
       form.reset()
       setLines([newLine()])
       setSageVendorId("")
+      setCompanyName("")
+      setAssigneeName("")
       setMessage("P.O. request saved in Compass.")
       setOpen(false)
       router.push(
@@ -264,10 +432,14 @@ export function ProjectPurchaseOrderCreateForm({
           </Field>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <Field label="Vendor / supplier">
-              <Input
-                name="companyName"
-                placeholder="Vendor or supplier name"
-                className={DOCUMENT_INPUT_CLASS}
+              <ProjectAssigneePicker
+                value={companyName}
+                options={vendorOptions}
+                placeholder="Choose vendor or type a name..."
+                onValueChange={(value, option) =>
+                  setCompanyName(option?.companyName ?? value)
+                }
+                className="rounded-none border-x-0 border-t-0 px-0 shadow-none focus-visible:ring-0"
               />
             </Field>
             <Field label="Accounting vendor ID (optional)">
@@ -280,10 +452,12 @@ export function ProjectPurchaseOrderCreateForm({
               />
             </Field>
             <Field label="Internal owner">
-              <Input
-                name="assigneeName"
-                placeholder="PM/APM responsible"
-                className={DOCUMENT_INPUT_CLASS}
+              <ProjectAssigneePicker
+                value={assigneeName}
+                options={internalOwnerOptions}
+                placeholder="Choose staff member or type a name..."
+                onValueChange={(value) => setAssigneeName(value)}
+                className="rounded-none border-x-0 border-t-0 px-0 shadow-none focus-visible:ring-0"
               />
             </Field>
             <Field label="Ship to / delivery location">
@@ -337,8 +511,8 @@ export function ProjectPurchaseOrderCreateForm({
             </Button>
           </div>
           <div className="overflow-x-auto">
-            <div className="min-w-[920px]">
-              <div className="grid grid-cols-[2rem_minmax(12rem,1fr)_5rem_6rem_5rem_6rem_5rem_6rem_5rem_2.5rem] gap-2 border-b py-2 text-xs font-medium text-muted-foreground">
+            <div className="min-w-[1120px]">
+              <div className="grid grid-cols-[2rem_minmax(12rem,1fr)_11rem_13rem_5rem_6rem_5rem_6rem_5rem_2.5rem] gap-2 border-b py-2 text-xs font-medium text-muted-foreground">
                 <span>#</span>
                 <span>Description</span>
                 <span>Phase</span>
@@ -353,7 +527,7 @@ export function ProjectPurchaseOrderCreateForm({
               {lines.map((line, index) => (
                 <div
                   key={line.id}
-                  className="grid grid-cols-[2rem_minmax(12rem,1fr)_5rem_6rem_5rem_6rem_5rem_6rem_5rem_2.5rem] gap-2 border-b py-2 last:border-b-0"
+                  className="grid grid-cols-[2rem_minmax(12rem,1fr)_11rem_13rem_5rem_6rem_5rem_6rem_5rem_2.5rem] gap-2 border-b py-2 last:border-b-0"
                 >
                   <span className="pt-2 text-xs font-medium text-muted-foreground">
                     {index + 1}
@@ -366,21 +540,28 @@ export function ProjectPurchaseOrderCreateForm({
                     placeholder="Scope or item"
                     className={LINE_INPUT_CLASS}
                   />
-                  <Input
+                  <PurchaseOrderOptionPicker
                     value={line.phaseCode}
-                    onChange={(event) =>
-                      updateLine(line.id, "phaseCode", event.target.value)
-                    }
+                    options={phaseOptions}
                     placeholder="Phase"
-                    className={LINE_INPUT_CLASS}
-                  />
-                  <Input
-                    value={line.costCode}
-                    onChange={(event) =>
-                      updateLine(line.id, "costCode", event.target.value)
+                    ariaLabel={`Choose phase for line ${index + 1}`}
+                    onValueChange={(value) =>
+                      updateLine(line.id, "phaseCode", value)
                     }
-                    placeholder="CSI"
-                    className={LINE_INPUT_CLASS}
+                  />
+                  <PurchaseOrderOptionPicker
+                    value={line.costCode}
+                    options={
+                      purchaseOrderCostCodesForPhase(
+                        costCodeOptions,
+                        line.phaseCode
+                      )
+                    }
+                    placeholder="Cost code"
+                    ariaLabel={`Choose cost code for line ${index + 1}`}
+                    onValueChange={(value) =>
+                      updateLine(line.id, "costCode", value)
+                    }
                   />
                   <Input
                     value={line.quantity}
