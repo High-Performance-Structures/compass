@@ -695,7 +695,7 @@ export function ScheduleItemFormDialog({
                       return (
                         <div
                           key={dep.id}
-                          className="grid grid-cols-[minmax(0,1fr)_6.5rem_2rem] items-end gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(9rem,11rem)_5.5rem_2rem]"
+                          className="space-y-2 border-b border-border/70 pb-3 last:border-b-0 last:pb-0"
                         >
                           <Select
                             value={edit.taskId}
@@ -708,7 +708,7 @@ export function ScheduleItemFormDialog({
                             }
                           >
                             <SelectTrigger
-                              className="col-span-3 h-8 min-w-0 text-xs sm:col-span-1"
+                              className="h-9 w-full min-w-0 text-xs [&_[data-slot=select-value]]:truncate"
                               aria-label="Saved predecessor schedule item"
                             >
                               <SelectValue />
@@ -721,55 +721,69 @@ export function ScheduleItemFormDialog({
                               ))}
                             </SelectContent>
                           </Select>
-                          <Select
-                            value={edit.type}
-                            onValueChange={(value) =>
-                              updateExistingPredecessor(
-                                dep.id,
-                                "type",
-                                value
-                              )
-                            }
-                          >
-                            <SelectTrigger
-                              className="h-8 min-w-0 text-xs"
-                              aria-label="Saved dependency relationship"
-                            >
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {DEPENDENCY_TYPES.map((dependencyType) => (
-                                <SelectItem
-                                  key={dependencyType.value}
-                                  value={dependencyType.value}
+                          <div className="grid grid-cols-[minmax(0,1fr)_7rem_2rem] items-end gap-2">
+                            <div className="min-w-0 space-y-1">
+                              <span className="block text-[10px] text-muted-foreground">
+                                Relationship
+                              </span>
+                              <Select
+                                value={edit.type}
+                                onValueChange={(value) =>
+                                  updateExistingPredecessor(
+                                    dep.id,
+                                    "type",
+                                    value
+                                  )
+                                }
+                              >
+                                <SelectTrigger
+                                  className="h-9 w-full min-w-0 text-xs [&_[data-slot=select-value]]:truncate"
+                                  aria-label="Saved dependency relationship"
                                 >
-                                  {dependencyType.label}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                          <Input
-                            type="number"
-                            className="h-8 min-w-0 text-center text-xs"
-                            value={edit.lagDays}
-                            aria-label="Saved dependency lag or lead in days"
-                            onChange={(event) =>
-                              updateExistingPredecessor(
-                                dep.id,
-                                "lagDays",
-                                Number(event.target.value) || 0
-                              )
-                            }
-                          />
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon"
-                            className="size-7 shrink-0 text-muted-foreground hover:text-destructive"
-                            onClick={() => handleDeleteExistingDep(dep.id)}
-                          >
-                            <IconTrash className="size-3" />
-                          </Button>
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {DEPENDENCY_TYPES.map((dependencyType) => (
+                                    <SelectItem
+                                      key={dependencyType.value}
+                                      value={dependencyType.value}
+                                    >
+                                      {dependencyType.label}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            <div className="min-w-0 space-y-1">
+                              <span className="block text-[10px] text-muted-foreground">
+                                Lag / lead days
+                              </span>
+                              <Input
+                                type="number"
+                                className="h-9 min-w-0 text-center text-xs"
+                                value={edit.lagDays}
+                                aria-label="Saved dependency lag or lead in days"
+                                onChange={(event) =>
+                                  updateExistingPredecessor(
+                                    dep.id,
+                                    "lagDays",
+                                    Number(event.target.value) || 0
+                                  )
+                                }
+                              />
+                            </div>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              className="mb-0.5 size-8 shrink-0 text-muted-foreground hover:text-destructive"
+                              onClick={() => handleDeleteExistingDep(dep.id)}
+                              aria-label="Remove saved predecessor"
+                              title="Remove predecessor"
+                            >
+                              <IconTrash className="size-3" />
+                            </Button>
+                          </div>
                         </div>
                       )
                     })}
@@ -777,7 +791,7 @@ export function ScheduleItemFormDialog({
                     {pendingPredecessors.map((pred, idx) => (
                       <div
                         key={idx}
-                        className="grid grid-cols-[minmax(0,1fr)_6.5rem_2rem] items-end gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(10rem,12rem)_6rem_2rem]"
+                        className="space-y-2 border-b border-border/70 pb-3 last:border-b-0 last:pb-0"
                       >
                         <Select
                           value={pred.taskId}
@@ -786,7 +800,7 @@ export function ScheduleItemFormDialog({
                           }
                         >
                           <SelectTrigger
-                            className="col-span-3 h-8 min-w-0 text-xs sm:col-span-1"
+                            className="h-9 w-full min-w-0 text-xs [&_[data-slot=select-value]]:truncate"
                             aria-label="Predecessor schedule item"
                           >
                             <SelectValue placeholder="Select schedule item" />
@@ -799,51 +813,62 @@ export function ScheduleItemFormDialog({
                             ))}
                           </SelectContent>
                         </Select>
-                        <Select
-                          value={pred.type}
-                          onValueChange={(val) =>
-                            updatePendingPredecessor(idx, "type", val)
-                          }
-                        >
-                          <SelectTrigger
-                            className="h-8 min-w-0 text-xs"
-                            aria-label="Dependency relationship"
+                        <div className="grid grid-cols-[minmax(0,1fr)_7rem_2rem] items-end gap-2">
+                          <div className="min-w-0 space-y-1">
+                            <span className="block text-[10px] text-muted-foreground">
+                              Relationship
+                            </span>
+                            <Select
+                              value={pred.type}
+                              onValueChange={(val) =>
+                                updatePendingPredecessor(idx, "type", val)
+                              }
+                            >
+                              <SelectTrigger
+                                className="h-9 w-full min-w-0 text-xs [&_[data-slot=select-value]]:truncate"
+                                aria-label="Dependency relationship"
+                              >
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {DEPENDENCY_TYPES.map((d) => (
+                                  <SelectItem key={d.value} value={d.value}>
+                                    {d.label}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div className="min-w-0 space-y-1">
+                            <span className="block text-[10px] text-muted-foreground">
+                              Lag / lead days
+                            </span>
+                            <Input
+                              type="number"
+                              className="h-9 min-w-0 text-center text-xs"
+                              value={pred.lagDays || ""}
+                              aria-label="Lag or lead in days"
+                              onChange={(e) =>
+                                updatePendingPredecessor(
+                                  idx,
+                                  "lagDays",
+                                  Number(e.target.value) || 0
+                                )
+                              }
+                            />
+                          </div>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="mb-0.5 size-8 text-muted-foreground hover:text-destructive"
+                            onClick={() => removePendingPredecessor(idx)}
+                            aria-label="Remove predecessor"
+                            title="Remove predecessor"
                           >
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {DEPENDENCY_TYPES.map((d) => (
-                              <SelectItem key={d.value} value={d.value}>
-                                {d.label}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <Input
-                          type="number"
-                          placeholder="Lag days"
-                          className="h-8 min-w-0 text-center text-xs"
-                          value={pred.lagDays || ""}
-                          aria-label="Lag or lead in days"
-                          onChange={(e) =>
-                            updatePendingPredecessor(
-                              idx,
-                              "lagDays",
-                              Number(e.target.value) || 0
-                            )
-                          }
-                        />
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          className="size-7 text-muted-foreground hover:text-destructive"
-                          onClick={() => removePendingPredecessor(idx)}
-                          aria-label="Remove predecessor"
-                          title="Remove predecessor"
-                        >
-                          <IconTrash className="size-3" />
-                        </Button>
+                            <IconTrash className="size-3" />
+                          </Button>
+                        </div>
                       </div>
                     ))}
 
