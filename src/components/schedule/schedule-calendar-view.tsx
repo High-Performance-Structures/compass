@@ -1,342 +1,509 @@
 "use client"
 
-import { useState, useMemo } from "react"
+import { useMemo, useState } from "react"
+import Link from "next/link"
 import {
-  startOfMonth,
-  endOfMonth,
-  startOfWeek,
-  endOfWeek,
-  eachDayOfInterval,
-  format,
+  addDays,
   addMonths,
-  subMonths,
-  isToday,
+  addWeeks,
+  eachDayOfInterval,
+  endOfMonth,
+  endOfWeek,
+  format,
   isSameMonth,
+  isToday,
   parseISO,
-  differenceInCalendarDays,
+  startOfMonth,
+  startOfWeek,
+  subDays,
+  subMonths,
+  subWeeks,
 } from "date-fns"
-import { cn } from "@/lib/utils"
-import { Button } from "@/components/ui/button"
 import {
+  IconCalendar,
   IconChevronLeft,
   IconChevronRight,
+  IconList,
 } from "@tabler/icons-react"
-import type {
-  ScheduleTaskData,
-  WorkdayExceptionData,
-} from "@/lib/schedule/types"
+
+import { Button } from "@/components/ui/button"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import { cn } from "@/lib/utils"
 import { useScheduleDisplayPalette } from "@/hooks/use-schedule-display-palette"
 import { getScheduleItemDisplayColor } from "@/lib/schedule/appearance"
 import { isNonWorkday } from "@/lib/schedule/business-days"
 import { effectivePercentComplete } from "@/lib/schedule/progress"
+import {
+  projectScheduleLabel,
+  type ScheduleProjectData,
+} from "@/lib/schedule/project-scope"
+import type {
+  ScheduleTaskData,
+  WorkdayExceptionData,
+} from "@/lib/schedule/types"
+
+type CalendarMode = "month" | "week" | "day" | "agenda"
 
 interface ScheduleCalendarViewProps {
   readonly projectId: string
   readonly tasks: readonly ScheduleTaskData[]
   readonly exceptions: readonly WorkdayExceptionData[]
+  readonly projects?: readonly ScheduleProjectData[]
 }
 
-// How many task lanes to show before "+N more"
-const MAX_LANES = 3
-const LANE_HEIGHT = 22
-const DAY_HEADER_HEIGHT = 24
+function taskIncludesDay(task: ScheduleTaskData, day: Date): boolean {
+  const start = parseISO(task.startDate)
+  const end = parseISO(task.endDateCalculated)
+  return day >= start && day <= end
+}
 
-interface WeekTask {
+function taskHref(task: ScheduleTaskData): string {
+  return `/dashboard/projects/${encodeURIComponent(task.projectId)}/schedule?view=list&item=${encodeURIComponent(task.id)}#schedule-item-${encodeURIComponent(task.id)}`
+}
+
+function dateRangeLabel(mode: CalendarMode, date: Date): string {
+  if (mode === "month") return format(date, "MMMM yyyy")
+  if (mode === "week") {
+    const start = startOfWeek(date)
+    const end = endOfWeek(date)
+    return `${format(start, "MMM d")} – ${format(end, "MMM d, yyyy")}`
+  }
+  if (mode === "day") return format(date, "EEEE, MMMM d, yyyy")
+  return "Schedule agenda"
+}
+
+function ProjectIdentity({
+  project,
+}: {
+  readonly project: ScheduleProjectData
+}): React.ReactElement {
+  return (
+    <span
+      className="inline-flex min-w-0 items-center gap-1"
+      title={projectScheduleLabel(project)}
+    >
+      <span
+        className="size-2 shrink-0 rounded-full"
+        style={{ backgroundColor: project.color }}
+      />
+      <span className="truncate">
+        {project.projectNumber ?? project.name}
+      </span>
+    </span>
+  )
+}
+
+function ScheduleTaskCard({
+  task,
+  project,
+  color,
+  compact = false,
+  showProject,
+}: {
   readonly task: ScheduleTaskData
-  readonly startCol: number
-  readonly span: number
-  readonly lane: number
-  readonly isStart: boolean
-  readonly isEnd: boolean
-}
+  readonly project: ScheduleProjectData | null
+  readonly color: string
+  readonly compact?: boolean
+  readonly showProject: boolean
+}): React.ReactElement {
+  const percent = effectivePercentComplete(task.status, task.percentComplete)
 
-interface WeekRow {
-  readonly days: readonly Date[]
-  readonly tasks: WeekTask[]
-  readonly maxLane: number
-  readonly overflowByDay: readonly number[]
-}
-
-function buildWeekRows(
-  calendarDays: readonly Date[],
-  tasks: readonly ScheduleTaskData[]
-): WeekRow[] {
-  const weeks: {
-    days: Date[]
-    tasks: {
-      task: ScheduleTaskData
-      startCol: number
-      span: number
-      lane: number
-      isStart: boolean
-      isEnd: boolean
-    }[]
-  }[] = []
-
-  for (let i = 0; i < calendarDays.length; i += 7) {
-    weeks.push({
-      days: calendarDays.slice(i, i + 7) as Date[],
-      tasks: [],
-    })
-  }
-
-  // Place each task into the weeks it overlaps
-  for (const task of tasks) {
-    const taskStart = parseISO(task.startDate)
-    const taskEnd = parseISO(task.endDateCalculated)
-
-    for (const week of weeks) {
-      const weekStart = week.days[0]
-      const weekEnd = week.days[6]
-
-      // Check overlap: task must start on or before weekEnd,
-      // and end on or after weekStart
-      if (taskStart > weekEnd || taskEnd < weekStart) continue
-
-      const startCol = Math.max(
-        0,
-        differenceInCalendarDays(taskStart, weekStart)
-      )
-      const endCol = Math.min(
-        6,
-        differenceInCalendarDays(taskEnd, weekStart)
-      )
-      const span = endCol - startCol + 1
-
-      week.tasks.push({
-        task,
-        startCol,
-        span,
-        lane: 0,
-        isStart: taskStart >= weekStart,
-        isEnd: taskEnd <= weekEnd,
-      })
-    }
-  }
-
-  // Assign lanes using first-fit
-  return weeks.map((week) => {
-    // Sort: earlier start first, then longer tasks first (they anchor better)
-    week.tasks.sort(
-      (a, b) => a.startCol - b.startCol || b.span - a.span
-    )
-
-    const lanes: boolean[][] = []
-    for (const wt of week.tasks) {
-      let lane = 0
-      while (true) {
-        if (!lanes[lane]) lanes[lane] = Array(7).fill(false) as boolean[]
-        const cols = lanes[lane].slice(wt.startCol, wt.startCol + wt.span)
-        if (cols.every((occupied) => !occupied)) break
-        lane++
-      }
-      wt.lane = lane
-      if (!lanes[lane]) lanes[lane] = Array(7).fill(false) as boolean[]
-      for (let c = wt.startCol; c < wt.startCol + wt.span; c++) {
-        lanes[lane][c] = true
-      }
-    }
-
-    // Count overflow per day (tasks in lanes >= MAX_LANES)
-    const overflowByDay = Array(7).fill(0) as number[]
-    for (const wt of week.tasks) {
-      if (wt.lane >= MAX_LANES) {
-        for (let c = wt.startCol; c < wt.startCol + wt.span; c++) {
-          overflowByDay[c]++
-        }
-      }
-    }
-
-    const maxLane = week.tasks.reduce(
-      (max, wt) => Math.max(max, wt.lane),
-      -1
-    )
-
-    return {
-      days: week.days,
-      tasks: week.tasks,
-      maxLane: Math.min(maxLane, MAX_LANES - 1),
-      overflowByDay,
-    }
-  })
+  return (
+    <Link
+      href={taskHref(task)}
+      className={cn(
+        "block min-w-0 border-l-[3px] bg-card transition-colors hover:bg-accent",
+        compact ? "px-1.5 py-1" : "rounded-r-md border-y border-r px-3 py-2"
+      )}
+      style={{ borderLeftColor: color }}
+      title={`${task.title} — ${percent}% complete`}
+    >
+      {showProject && project && (
+        <span className="mb-0.5 block truncate text-[10px] font-medium text-muted-foreground">
+          <ProjectIdentity project={project} />
+        </span>
+      )}
+      <span
+        className={cn(
+          "block truncate font-medium",
+          compact ? "text-[10px]" : "text-sm"
+        )}
+      >
+        {task.title}
+      </span>
+      {!compact && (
+        <span className="mt-1 block text-xs text-muted-foreground">
+          {format(parseISO(task.startDate), "MMM d")} –{" "}
+          {format(parseISO(task.endDateCalculated), "MMM d")} · {percent}%
+        </span>
+      )}
+    </Link>
+  )
 }
 
 export function ScheduleCalendarView({
   projectId,
   tasks,
   exceptions,
-}: ScheduleCalendarViewProps) {
+  projects = [],
+}: ScheduleCalendarViewProps): React.ReactElement {
   const [currentDate, setCurrentDate] = useState(new Date())
+  const [mode, setMode] = useState<CalendarMode>("month")
+  const [expandedDay, setExpandedDay] = useState<Date | null>(null)
   const displayColorPalette = useScheduleDisplayPalette(projectId)
-
-  const calendarDays = useMemo(() => {
-    const monthStart = startOfMonth(currentDate)
-    const monthEnd = endOfMonth(currentDate)
-    return eachDayOfInterval({
-      start: startOfWeek(monthStart),
-      end: endOfWeek(monthEnd),
-    })
-  }, [currentDate])
-
-  const weekRows = useMemo(
-    () => buildWeekRows(calendarDays, tasks),
-    [calendarDays, tasks]
+  const projectById = useMemo(
+    () => new Map(projects.map((project) => [project.id, project])),
+    [projects]
   )
+  const multipleProjects = projectById.size > 1
+  const sortedTasks = useMemo(
+    () =>
+      [...tasks].sort(
+        (left, right) =>
+          left.startDate.localeCompare(right.startDate) ||
+          left.endDateCalculated.localeCompare(right.endDateCalculated) ||
+          left.title.localeCompare(right.title)
+      ),
+    [tasks]
+  )
+  const monthDays = useMemo(() => {
+    const start = startOfWeek(startOfMonth(currentDate))
+    const end = endOfWeek(endOfMonth(currentDate))
+    return eachDayOfInterval({ start, end })
+  }, [currentDate])
+  const weekDays = useMemo(
+    () =>
+      eachDayOfInterval({
+        start: startOfWeek(currentDate),
+        end: endOfWeek(currentDate),
+      }),
+    [currentDate]
+  )
+  const agendaGroups = useMemo(() => {
+    const groups = new Map<string, ScheduleTaskData[]>()
+    for (const task of sortedTasks) {
+      const current = groups.get(task.startDate) ?? []
+      current.push(task)
+      groups.set(task.startDate, current)
+    }
+    return [...groups]
+  }, [sortedTasks])
+
+  function colorFor(task: ScheduleTaskData): string {
+    const project = projectById.get(task.projectId)
+    return multipleProjects && project
+      ? project.color
+      : getScheduleItemDisplayColor(task, displayColorPalette)
+  }
+
+  function tasksForDay(day: Date): readonly ScheduleTaskData[] {
+    return sortedTasks.filter((task) => taskIncludesDay(task, day))
+  }
+
+  function navigate(direction: -1 | 1): void {
+    setExpandedDay(null)
+    setCurrentDate((date) => {
+      if (mode === "month") {
+        return direction === 1 ? addMonths(date, 1) : subMonths(date, 1)
+      }
+      if (mode === "week") {
+        return direction === 1 ? addWeeks(date, 1) : subWeeks(date, 1)
+      }
+      return direction === 1 ? addDays(date, 1) : subDays(date, 1)
+    })
+  }
+
+  function nonWorkday(day: Date): boolean {
+    return !multipleProjects && isNonWorkday(day, exceptions)
+  }
+
+  const expandedTasks = expandedDay ? tasksForDay(expandedDay) : []
 
   return (
-    <div className="flex flex-col flex-1 min-h-0">
-      {/* Calendar controls */}
-      <div className="flex items-center gap-2 mb-2">
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => setCurrentDate(new Date())}
-          className="h-8 text-xs"
-        >
-          Today
-        </Button>
-        <div className="flex items-center">
-          <Button
-            variant="ghost"
-            size="icon"
-            className="size-8"
-            onClick={() => setCurrentDate(subMonths(currentDate, 1))}
-          >
-            <IconChevronLeft className="size-4" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="size-8"
-            onClick={() => setCurrentDate(addMonths(currentDate, 1))}
-          >
-            <IconChevronRight className="size-4" />
-          </Button>
-        </div>
-        <h2 className="text-sm font-medium">
-          {format(currentDate, "MMMM yyyy")}
-        </h2>
-      </div>
-
-      {/* Calendar grid */}
-      <div className="border rounded-md overflow-hidden flex flex-col flex-1 min-h-0">
-        {/* Weekday headers */}
-        <div className="grid grid-cols-7 border-b bg-muted/30">
-          {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day) => (
-            <div
-              key={day}
-              className="text-center text-[11px] font-medium text-muted-foreground py-1.5 border-r last:border-r-0"
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div className="mb-2 flex flex-wrap items-center gap-2">
+        {mode !== "agenda" && (
+          <>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setCurrentDate(new Date())}
+              className="h-8 text-xs"
             >
-              {day}
+              Today
+            </Button>
+            <div className="flex items-center">
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="size-8"
+                onClick={() => navigate(-1)}
+                aria-label={`Previous ${mode}`}
+              >
+                <IconChevronLeft className="size-4" />
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="size-8"
+                onClick={() => navigate(1)}
+                aria-label={`Next ${mode}`}
+              >
+                <IconChevronRight className="size-4" />
+              </Button>
             </div>
+          </>
+        )}
+        <h2 className="min-w-[180px] text-sm font-medium">
+          {dateRangeLabel(mode, currentDate)}
+        </h2>
+        <div
+          className="ml-auto inline-flex overflow-hidden rounded-md border"
+          role="group"
+          aria-label="Schedule calendar view"
+        >
+          {(
+            [
+              ["month", "Month", IconCalendar],
+              ["week", "Week", IconCalendar],
+              ["day", "Day", IconCalendar],
+              ["agenda", "Agenda", IconList],
+            ] as const
+          ).map(([value, label, Icon]) => (
+            <Button
+              key={value}
+              type="button"
+              size="sm"
+              variant="ghost"
+              className={cn(
+                "h-8 rounded-none border-r px-2.5 text-xs last:border-r-0",
+                mode === value && "bg-secondary text-secondary-foreground"
+              )}
+              onClick={() => setMode(value)}
+              aria-pressed={mode === value}
+            >
+              <Icon className="size-3.5" />
+              <span className="hidden sm:inline">{label}</span>
+            </Button>
           ))}
         </div>
+      </div>
 
-        {/* Week rows */}
-        <div className="flex flex-col flex-1 min-h-0">
-          {weekRows.map((week, weekIdx) => {
-            const visibleLanes = Math.min(week.maxLane + 1, MAX_LANES)
-            const contentHeight = DAY_HEADER_HEIGHT + visibleLanes * LANE_HEIGHT
-            const hasOverflow = week.overflowByDay.some((n) => n > 0)
-            const totalHeight = contentHeight + (hasOverflow ? 16 : 0)
-
-            return (
-              <div
-                key={weekIdx}
-                className="relative border-b last:border-b-0 flex-1"
-                style={{ minHeight: `${Math.max(totalHeight, 60)}px` }}
-              >
-                {/* Day cells (background + day numbers) */}
-                <div className="grid grid-cols-7 absolute inset-0">
-                  {week.days.map((day) => {
-                    const inMonth = isSameMonth(day, currentDate)
-                    const nonWorkday = isNonWorkday(day, exceptions)
-
-                    return (
-                      <div
-                        key={format(day, "yyyy-MM-dd")}
-                        className={cn(
-                          "border-r last:border-r-0 p-1",
-                          !inMonth && "bg-muted/20",
-                          nonWorkday && inMonth && "bg-muted/40",
-                        )}
-                      >
-                        <span
-                          className={cn(
-                            "text-[11px] leading-none",
-                            isToday(day)
-                              ? "bg-primary text-primary-foreground rounded-full size-5 inline-flex items-center justify-center font-bold"
-                              : inMonth
-                                ? "text-foreground/80"
-                                : "text-muted-foreground/50",
-                          )}
-                        >
-                          {format(day, "d")}
-                        </span>
-                      </div>
-                    )
-                  })}
+      {mode === "month" && (
+        <div className="min-h-0 flex-1 overflow-auto rounded-md border">
+          <div className="grid min-w-[760px] grid-cols-7 border-b bg-muted/30">
+            {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map(
+              (day) => (
+                <div
+                  key={day}
+                  className="border-r py-1.5 text-center text-[11px] font-medium text-muted-foreground last:border-r-0"
+                >
+                  {day}
                 </div>
-
-                {/* Task bars (overlaid) */}
-                {week.tasks
-                  .filter((wt) => wt.lane < MAX_LANES)
-                  .map((wt) => (
-                    <div
-                      key={`${wt.task.id}-${weekIdx}`}
-                      className={cn(
-                        "absolute text-[10px] text-white font-medium truncate px-1.5 leading-[20px] cursor-default",
-                        wt.isStart && wt.isEnd && "rounded",
-                        wt.isStart && !wt.isEnd && "rounded-l",
-                        !wt.isStart && wt.isEnd && "rounded-r",
-                        !wt.isStart && !wt.isEnd && "rounded-none",
-                      )}
-                      style={{
-                        backgroundColor: getScheduleItemDisplayColor(
-                          wt.task,
-                          displayColorPalette
-                        ),
-                        top: `${DAY_HEADER_HEIGHT + wt.lane * LANE_HEIGHT}px`,
-                        left: `${(wt.startCol / 7) * 100}%`,
-                        width: `${(wt.span / 7) * 100}%`,
-                        height: `${LANE_HEIGHT - 2}px`,
-                        paddingLeft: wt.isStart ? "6px" : "2px",
-                      }}
-                      title={`${wt.task.title} — ${effectivePercentComplete(
-                        wt.task.status,
-                        wt.task.percentComplete
-                      )}% complete (${wt.task.startDate} - ${wt.task.endDateCalculated})`}
-                    >
-                      {wt.isStart
-                        ? `${effectivePercentComplete(
-                            wt.task.status,
-                            wt.task.percentComplete
-                          )}% · ${wt.task.title}`
-                        : ""}
-                    </div>
-                  ))}
-
-                {/* Overflow indicators */}
-                {hasOverflow && (
-                  <div
-                    className="grid grid-cols-7 absolute left-0 right-0"
-                    style={{ top: `${contentHeight}px` }}
+              )
+            )}
+          </div>
+          <div className="grid min-w-[760px] grid-cols-7">
+            {monthDays.map((day) => {
+              const dayTasks = tasksForDay(day)
+              return (
+                <div
+                  key={format(day, "yyyy-MM-dd")}
+                  className={cn(
+                    "min-h-[112px] border-b border-r p-1.5",
+                    !isSameMonth(day, currentDate) && "bg-muted/20",
+                    nonWorkday(day) && "bg-muted/35"
+                  )}
+                >
+                  <span
+                    className={cn(
+                      "mb-1 inline-flex size-5 items-center justify-center rounded-full text-[11px]",
+                      isToday(day)
+                        ? "bg-primary font-semibold text-primary-foreground"
+                        : "text-muted-foreground"
+                    )}
                   >
-                    {week.overflowByDay.map((count, dayIdx) => (
-                      <div
-                        key={dayIdx}
-                        className="text-[10px] text-primary px-1 border-r last:border-r-0"
-                      >
-                        {count > 0 ? `+${count} more` : ""}
-                      </div>
+                    {format(day, "d")}
+                  </span>
+                  <div className="space-y-1">
+                    {dayTasks.slice(0, 3).map((task) => (
+                      <ScheduleTaskCard
+                        key={task.id}
+                        task={task}
+                        project={projectById.get(task.projectId) ?? null}
+                        color={colorFor(task)}
+                        compact
+                        showProject={multipleProjects}
+                      />
                     ))}
+                    {dayTasks.length > 3 && (
+                      <button
+                        type="button"
+                        className="w-full px-1 text-left text-[10px] font-medium text-primary hover:underline"
+                        onClick={() => setExpandedDay(day)}
+                      >
+                        +{dayTasks.length - 3} more
+                      </button>
+                    )}
                   </div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
+      {mode === "week" && (
+        <div className="grid min-h-0 flex-1 grid-cols-1 overflow-auto rounded-md border sm:grid-cols-7">
+          {weekDays.map((day) => {
+            const dayTasks = tasksForDay(day)
+            return (
+              <section
+                key={format(day, "yyyy-MM-dd")}
+                className={cn(
+                  "min-h-[180px] border-b p-2 sm:border-b-0 sm:border-r sm:last:border-r-0",
+                  nonWorkday(day) && "bg-muted/35"
                 )}
-              </div>
+              >
+                <button
+                  type="button"
+                  className="mb-2 flex w-full items-center justify-between text-left"
+                  onClick={() => {
+                    setCurrentDate(day)
+                    setMode("day")
+                  }}
+                >
+                  <span className="text-xs font-medium">
+                    {format(day, "EEE")}
+                  </span>
+                  <span
+                    className={cn(
+                      "inline-flex size-6 items-center justify-center rounded-full text-xs",
+                      isToday(day) &&
+                        "bg-primary font-semibold text-primary-foreground"
+                    )}
+                  >
+                    {format(day, "d")}
+                  </span>
+                </button>
+                <div className="space-y-1.5">
+                  {dayTasks.map((task) => (
+                    <ScheduleTaskCard
+                      key={task.id}
+                      task={task}
+                      project={projectById.get(task.projectId) ?? null}
+                      color={colorFor(task)}
+                      compact
+                      showProject={multipleProjects}
+                    />
+                  ))}
+                  {dayTasks.length === 0 && (
+                    <p className="text-[11px] text-muted-foreground">No items</p>
+                  )}
+                </div>
+              </section>
             )
           })}
         </div>
-      </div>
+      )}
+
+      {mode === "day" && (
+        <div className="min-h-0 flex-1 overflow-auto rounded-md border p-3">
+          <div className="mx-auto max-w-3xl space-y-2">
+            {tasksForDay(currentDate).map((task) => (
+              <ScheduleTaskCard
+                key={task.id}
+                task={task}
+                project={projectById.get(task.projectId) ?? null}
+                color={colorFor(task)}
+                showProject={multipleProjects}
+              />
+            ))}
+            {tasksForDay(currentDate).length === 0 && (
+              <div className="py-16 text-center text-sm text-muted-foreground">
+                No schedule items on this day.
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {mode === "agenda" && (
+        <div className="min-h-0 flex-1 overflow-auto rounded-md border">
+          <div className="divide-y">
+            {agendaGroups.map(([date, groupedTasks]) => (
+              <section
+                key={date}
+                className="grid gap-3 p-3 sm:grid-cols-[9rem_minmax(0,1fr)]"
+              >
+                <div>
+                  <p className="text-sm font-medium">
+                    {format(parseISO(date), "EEE, MMM d")}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {groupedTasks.length} item
+                    {groupedTasks.length === 1 ? "" : "s"} starting
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  {groupedTasks.map((task) => (
+                    <ScheduleTaskCard
+                      key={task.id}
+                      task={task}
+                      project={projectById.get(task.projectId) ?? null}
+                      color={colorFor(task)}
+                      showProject={multipleProjects}
+                    />
+                  ))}
+                </div>
+              </section>
+            ))}
+            {agendaGroups.length === 0 && (
+              <div className="py-16 text-center text-sm text-muted-foreground">
+                No schedule items match the current scope and filters.
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      <Dialog
+        open={expandedDay !== null}
+        onOpenChange={(open) => {
+          if (!open) setExpandedDay(null)
+        }}
+      >
+        <DialogContent className="max-h-[80vh] overflow-y-auto sm:max-w-xl">
+          <DialogHeader>
+            <DialogTitle>
+              {expandedDay ? format(expandedDay, "EEEE, MMMM d, yyyy") : "Day"}
+            </DialogTitle>
+            <DialogDescription>
+              All schedule items active on this date.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            {expandedTasks.map((task) => (
+              <ScheduleTaskCard
+                key={task.id}
+                task={task}
+                project={projectById.get(task.projectId) ?? null}
+                color={colorFor(task)}
+                showProject={multipleProjects}
+              />
+            ))}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

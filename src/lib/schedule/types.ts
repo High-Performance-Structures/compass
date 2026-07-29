@@ -84,6 +84,10 @@ export interface ScheduleData {
   exceptions: WorkdayExceptionData[]
 }
 
+export interface ScopedScheduleData extends ScheduleData {
+  projects: import("@/lib/schedule/project-scope").ScheduleProjectData[]
+}
+
 export interface TaskFilters {
   readonly status: readonly TaskStatus[]
   readonly phase: readonly string[]

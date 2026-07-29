@@ -13,7 +13,7 @@ import {
 } from "@/lib/schedule/gantt-scroll"
 import "./gantt.css"
 
-type ViewMode = "Day" | "Week" | "Month"
+type ViewMode = "Day" | "Week" | "Month" | "Year"
 
 export interface GanttScrollPosition {
   readonly left: number
@@ -57,7 +57,8 @@ function dateKey(date: Date): string {
 function basePaddingDays(viewMode: ViewMode): number {
   if (viewMode === "Day") return 7
   if (viewMode === "Week") return 31
-  return 62
+  if (viewMode === "Month") return 62
+  return 183
 }
 
 function monthYearLabel(date: Date): string {
@@ -129,6 +130,21 @@ const GANTT_VIEW_MODES = [
         : "",
     thick_line: (date: Date) => date.getMonth() % 3 === 0,
     snap_at: "7d",
+  },
+  {
+    name: "Year",
+    padding: "6m",
+    step: "3m",
+    column_width: 160,
+    date_format: "YYYY-MM",
+    lower_text: (date: Date) => `Q${Math.floor(date.getMonth() / 3) + 1}`,
+    upper_text: (date: Date, previousDate: Date | null) =>
+      previousDate === null ||
+      date.getFullYear() !== previousDate.getFullYear()
+        ? date.getFullYear().toString()
+        : "",
+    thick_line: (date: Date) => date.getMonth() === 0,
+    snap_at: "1m",
   },
 ]
 
@@ -437,6 +453,13 @@ export function GanttChart({
         const task = tasksById.get(wrapper.dataset.id ?? "")
         if (!task || task.id.startsWith("phase-")) continue
         wrapper.classList.add(...getScheduleItemClasses(task))
+        if (task.projectColor) {
+          wrapper.classList.add("project-color")
+          wrapper.style.setProperty(
+            "--schedule-project-color",
+            task.projectColor
+          )
+        }
       }
 
       // constrain gantt-container to wrapper height so content overflows

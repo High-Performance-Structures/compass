@@ -25,12 +25,17 @@ import { requireAuth } from "@/lib/auth"
 import { requireOrg } from "@/lib/org-scope"
 import { isDemoUser } from "@/lib/demo"
 import { notifyProjectAssignment } from "@/lib/notifications/events"
+import { getProjects } from "@/app/actions/projects"
+import { projectDepartment } from "@/lib/project-branding"
+import { projectScheduleColor } from "@/lib/schedule/project-scope"
+import { requirePermission } from "@/lib/permissions"
 import type {
   TaskStatus,
   DependencyType,
   ExceptionCategory,
   ExceptionRecurrence,
   ScheduleData,
+  ScopedScheduleData,
   WorkdayExceptionData,
   WorkdayExceptionType,
 } from "@/lib/schedule/types"
@@ -38,6 +43,14 @@ import type {
 function revalidateSchedulePaths(projectId: string): void {
   revalidatePath(`/dashboard/projects/${projectId}/schedule`)
   revalidatePath("/dashboard/schedule")
+}
+
+function chunkValues<T>(values: readonly T[], size: number): T[][] {
+  const chunks: T[][] = []
+  for (let index = 0; index < values.length; index += size) {
+    chunks.push(values.slice(index, index + size))
+  }
+  return chunks
 }
 
 async function fetchExceptions(
@@ -61,7 +74,12 @@ export async function getSchedule(
   projectId: string
 ): Promise<ScheduleData> {
   const user = await requireAuth()
+  requirePermission(user, "schedule", "read")
   const orgId = requireOrg(user)
+  const accessibleProjects = await getProjects()
+  if (!accessibleProjects.some((project) => project.id === projectId)) {
+    throw new Error("Project not found or access denied")
+  }
 
   const { env } = await getCloudflareContext()
   const db = getDb(env.DB)
@@ -106,6 +124,156 @@ export async function getSchedule(
       type: d.type as DependencyType,
     })),
     exceptions,
+  }
+}
+
+export async function getScopedSchedule(
+  requestedProjectIds?: readonly string[]
+): Promise<ScopedScheduleData> {
+  const user = await requireAuth()
+  requirePermission(user, "schedule", "read")
+  const orgId = requireOrg(user)
+  const accessibleProjects = await getProjects()
+  const requestedIds = new Set(
+    requestedProjectIds
+      ?.map((projectId) => projectId.trim())
+      .filter(Boolean) ?? []
+  )
+  const selectedProjects =
+    requestedIds.size === 0
+      ? accessibleProjects
+      : accessibleProjects.filter((project) => requestedIds.has(project.id))
+
+  const scopedProjects = selectedProjects.map((project) => ({
+    id: project.id,
+    name: project.name,
+    projectNumber: project.projectNumber,
+    department: projectDepartment({
+      projectId: project.id,
+      projectNumber: project.projectNumber,
+    }),
+    color: projectScheduleColor(project.id),
+  }))
+
+  if (scopedProjects.length === 0) {
+    return {
+      projects: [],
+      tasks: [],
+      dependencies: [],
+      exceptions: [],
+    }
+  }
+
+  const { env } = await getCloudflareContext()
+  const db = getDb(env.DB)
+  const projectIds = scopedProjects.map((project) => project.id)
+  const verifiedProjects = (
+    await Promise.all(
+      chunkValues(projectIds, 50).map((projectIdChunk) =>
+        db
+          .select({ id: projects.id })
+          .from(projects)
+          .where(
+            and(
+              eq(projects.organizationId, orgId),
+              inArray(projects.id, projectIdChunk)
+            )
+          )
+      )
+    )
+  ).flat()
+  const verifiedProjectIds = new Set(
+    verifiedProjects.map((project) => project.id)
+  )
+  const safeProjectIds = projectIds.filter((projectId) =>
+    verifiedProjectIds.has(projectId)
+  )
+
+  if (safeProjectIds.length === 0) {
+    return {
+      projects: [],
+      tasks: [],
+      dependencies: [],
+      exceptions: [],
+    }
+  }
+
+  const [taskChunks, exceptionChunks] = await Promise.all([
+    Promise.all(
+      chunkValues(safeProjectIds, 50).map((projectIdChunk) =>
+        db
+          .select()
+          .from(scheduleTasks)
+          .where(inArray(scheduleTasks.projectId, projectIdChunk))
+          .orderBy(
+            asc(scheduleTasks.startDate),
+            asc(scheduleTasks.sortOrder),
+            asc(scheduleTasks.title)
+          )
+      )
+    ),
+    Promise.all(
+      chunkValues(safeProjectIds, 50).map((projectIdChunk) =>
+        db
+          .select()
+          .from(workdayExceptions)
+          .where(inArray(workdayExceptions.projectId, projectIdChunk))
+      )
+    ),
+  ])
+  const tasks = taskChunks
+    .flat()
+    .sort(
+      (left, right) =>
+        left.startDate.localeCompare(right.startDate) ||
+        left.sortOrder - right.sortOrder ||
+        left.title.localeCompare(right.title)
+    )
+  const exceptions = exceptionChunks.flat()
+  const taskIds = tasks.map((task) => task.id)
+  const dependencies = (
+    await Promise.all(
+      chunkValues(taskIds, 50).map((taskIdChunk) =>
+        db
+          .select()
+          .from(taskDependencies)
+          .where(inArray(taskDependencies.successorId, taskIdChunk))
+      )
+    )
+  ).flat()
+  const taskIdSet = new Set(taskIds)
+
+  return {
+    projects: scopedProjects.filter((project) =>
+      verifiedProjectIds.has(project.id)
+    ),
+    tasks: tasks.map((task) => {
+      const status = task.status as TaskStatus
+      return {
+        ...task,
+        status,
+        percentComplete: effectivePercentComplete(
+          status,
+          task.percentComplete
+        ),
+      }
+    }),
+    dependencies: dependencies
+      .filter(
+        (dependency) =>
+          taskIdSet.has(dependency.predecessorId) &&
+          taskIdSet.has(dependency.successorId)
+      )
+      .map((dependency) => ({
+        ...dependency,
+        type: dependency.type as DependencyType,
+      })),
+    exceptions: exceptions.map((exception) => ({
+      ...exception,
+      type: exception.type as WorkdayExceptionType,
+      category: exception.category as ExceptionCategory,
+      recurrence: exception.recurrence as ExceptionRecurrence,
+    })),
   }
 }
 
