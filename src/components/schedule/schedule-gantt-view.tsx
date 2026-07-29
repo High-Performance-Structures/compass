@@ -86,6 +86,8 @@ import { toast } from "sonner"
 import { format } from "date-fns"
 import {
   ganttRowIndexForScrollTop,
+  lockWheelToDominantAxis,
+  normalizeWheelDelta,
   synchronizedScrollTop,
 } from "@/lib/schedule/gantt-scroll"
 
@@ -246,6 +248,38 @@ export function ScheduleGanttView({
   useEffect(() => {
     return flushScrollPosition
   }, [flushScrollPosition])
+
+  useEffect(() => {
+    const taskList = taskListRef.current
+    if (!taskList) return
+
+    // The resizable layout can consume trackpad wheel gestures before the
+    // browser applies its default nested-scroll behavior. Own the gesture on
+    // the task pane just as the timeline does so either side remains usable.
+    const handleTaskListWheel = (event: WheelEvent) => {
+      if (event.ctrlKey) return
+
+      const pageSize = Math.max(taskList.clientWidth, taskList.clientHeight)
+      const rawDeltaX =
+        event.shiftKey && event.deltaX === 0 ? event.deltaY : event.deltaX
+      const rawDeltaY =
+        event.shiftKey && event.deltaX === 0 ? 0 : event.deltaY
+      const locked = lockWheelToDominantAxis(
+        normalizeWheelDelta(rawDeltaX, event.deltaMode, pageSize),
+        normalizeWheelDelta(rawDeltaY, event.deltaMode, pageSize)
+      )
+      if (locked.deltaX === 0 && locked.deltaY === 0) return
+
+      event.preventDefault()
+      taskList.scrollLeft += locked.deltaX
+      taskList.scrollTop += locked.deltaY
+    }
+
+    taskList.addEventListener("wheel", handleTaskListWheel, {
+      passive: false,
+    })
+    return () => taskList.removeEventListener("wheel", handleTaskListWheel)
+  }, [isMobile])
 
   const handleGanttContainerReady = useCallback(
     (container: HTMLElement | null) => {
@@ -921,7 +955,7 @@ export function ScheduleGanttView({
           <ResizablePanel defaultSize="30%" minSize="20%">
             <div
               ref={taskListRef}
-              className="h-full min-w-0 overflow-auto"
+              className="schedule-gantt-task-list h-full min-w-0 overflow-auto"
               onScroll={handleTaskListScroll}
             >
               {taskTable}
