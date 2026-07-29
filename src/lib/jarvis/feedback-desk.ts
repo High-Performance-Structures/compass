@@ -8,6 +8,21 @@ import {
 
 type CompassDb = ReturnType<typeof getDb>
 
+function metadataExternalActorId(metadata: string | null): string | null {
+  if (!metadata) return null
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(metadata)
+  } catch {
+    return null
+  }
+  if (typeof parsed !== "object" || parsed === null) return null
+  const externalActorId = Reflect.get(parsed, "externalActorId")
+  return typeof externalActorId === "string" && externalActorId.length > 0
+    ? externalActorId
+    : null
+}
+
 export type FeedbackDeskSource =
   | "compass-conversation"
   | "feedback-widget"
@@ -51,12 +66,18 @@ export async function enqueueFeedbackReceipt(
     status: "new",
     title: item.title,
     message: `Your request “${item.title}” has been received.`,
+    reporter: {
+      name: item.reporterName,
+      email: item.reporterEmail,
+      externalActorId: metadataExternalActorId(item.metadata),
+    },
     compass: {
       organizationId: item.organizationId,
       channelId: item.channelId,
       messageId: item.messageId,
       threadId: item.threadId,
     },
+    metadata: item.metadata,
     createdAt: item.createdAt,
   }
 

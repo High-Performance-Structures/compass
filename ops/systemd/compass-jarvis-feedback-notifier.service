@@ -1,0 +1,21 @@
+[Unit]
+Description=Compass requester lifecycle notification relay
+After=network-online.target hermes-gateway.service
+Wants=network-online.target hermes-gateway.service
+
+[Service]
+Type=simple
+EnvironmentFile=%h/.hermes/.env
+Environment=HERMES_AGENT_ROOT=%h/.hermes/hermes-agent
+Environment=COMPASS_FEEDBACK_LEDGER=%h/.local/state/compass/feedback-notifier.json
+ExecStart=/usr/bin/python3 %h/.local/lib/compass/jarvis-feedback-notifier.py
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=%h/.local/state/compass
+
+[Install]
+WantedBy=default.target
