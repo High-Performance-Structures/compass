@@ -17,6 +17,17 @@ import { enqueueFeedbackReceipt } from "@/lib/jarvis/feedback-desk"
 const CLAIM_RETRY_MILLISECONDS = 5 * 60 * 1000
 const MAX_EVENT_BATCH = 50
 
+type EventTypeFilter =
+  | "agent.prompt"
+  | "feedback.status_changed"
+
+function isEventTypeFilter(value: string): value is EventTypeFilter {
+  return (
+    value === "agent.prompt" ||
+    value === "feedback.status_changed"
+  )
+}
+
 const inboundEventSchema = z.object({
   source: z.enum(["telegram", "jarvis-email", "ask-jarvis"]),
   sourceEventId: z.string().min(1).max(256),
@@ -78,7 +89,7 @@ export async function GET(request: Request): Promise<Response> {
   const requestedEventType = url.searchParams.get("eventType")
   if (
     requestedEventType !== null &&
-    requestedEventType !== "agent.prompt"
+    !isEventTypeFilter(requestedEventType)
   ) {
     return Response.json(
       { error: "Unsupported event type filter" },
@@ -86,7 +97,7 @@ export async function GET(request: Request): Promise<Response> {
     )
   }
   const eventTypeFilter =
-    requestedEventType === "agent.prompt"
+    requestedEventType !== null
       ? eq(jarvisBridgeEvents.eventType, requestedEventType)
       : undefined
   const now = new Date()

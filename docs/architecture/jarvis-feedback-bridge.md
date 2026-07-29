@@ -212,6 +212,16 @@ The reference poller is
 `~/.config/systemd/user/`, then enable it only after the filtered production
 endpoint is deployed.
 
+Requester lifecycle delivery uses the separate deterministic notifier at
+`scripts/jarvis-feedback-notifier.py` and the
+`ops/systemd/compass-jarvis-feedback-notifier.service` template. It pulls only
+`feedback.status_changed` events, routes Telegram and Jarvis-mail updates
+through Hermes's existing send adapters, posts Compass-conversation replies
+through the signed reply endpoint, and acknowledges Ask Jarvis/widget events
+after their Compass-native receipt or notification is available. Its local
+delivery ledger prevents a service restart from sending the same external
+update twice before acknowledgement.
+
 ### Acknowledge an event
 
 ```text
@@ -415,6 +425,9 @@ Rollout checklist
     explicit empty `platform_toolsets.api_server` list.
 12. Start the private agent poller, verify one `agent.prompt` round trip, then
     enable `JARVIS_AGENT_BRIDGE_ENABLED` in Compass.
+13. Start the requester lifecycle notifier, submit one test request per
+    enabled source, and confirm each receipt returns only through its original
+    source.
 
 The bundled bridge helper includes a `configure` command for step 5. It
 generates the HMAC key on the private runtime and returns only RSA-encrypted
