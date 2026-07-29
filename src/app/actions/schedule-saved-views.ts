@@ -31,51 +31,56 @@ type SaveScheduleViewInput = {
 export async function getScheduleSavedViews(): Promise<
   readonly SavedScheduleViewData[]
 > {
-  const user = await requireAuth()
-  if (!isInternalStaffRole(user.role)) return []
-  const organizationId = requireOrg(user)
-  const { env } = await getCloudflareContext()
-  const db = getDb(env.DB)
-  const rows = await db
-    .select()
-    .from(scheduleSavedViews)
-    .where(
-      and(
-        eq(scheduleSavedViews.organizationId, organizationId),
-        or(
-          eq(scheduleSavedViews.ownerUserId, user.id),
-          eq(scheduleSavedViews.visibility, "shared")
+  try {
+    const user = await requireAuth()
+    if (!isInternalStaffRole(user.role)) return []
+    const organizationId = requireOrg(user)
+    const { env } = await getCloudflareContext()
+    const db = getDb(env.DB)
+    const rows = await db
+      .select()
+      .from(scheduleSavedViews)
+      .where(
+        and(
+          eq(scheduleSavedViews.organizationId, organizationId),
+          or(
+            eq(scheduleSavedViews.ownerUserId, user.id),
+            eq(scheduleSavedViews.visibility, "shared")
+          )
         )
       )
-    )
-    .orderBy(asc(scheduleSavedViews.name))
+      .orderBy(asc(scheduleSavedViews.name))
 
-  return rows.flatMap((row) => {
-    let rawDefinition: unknown
-    try {
-      rawDefinition = JSON.parse(row.definition)
-    } catch {
-      return []
-    }
-    const parsedDefinition =
-      scheduleViewDefinitionSchema.safeParse(rawDefinition)
-    if (
-      !parsedDefinition.success ||
-      (row.visibility !== "personal" && row.visibility !== "shared")
-    ) {
-      return []
-    }
-    return [
-      {
-        id: row.id,
-        name: row.name,
-        visibility: row.visibility,
-        ownerUserId: row.ownerUserId,
-        isOwner: row.ownerUserId === user.id,
-        definition: parsedDefinition.data,
-      },
-    ]
-  })
+    return rows.flatMap((row) => {
+      let rawDefinition: unknown
+      try {
+        rawDefinition = JSON.parse(row.definition)
+      } catch {
+        return []
+      }
+      const parsedDefinition =
+        scheduleViewDefinitionSchema.safeParse(rawDefinition)
+      if (
+        !parsedDefinition.success ||
+        (row.visibility !== "personal" && row.visibility !== "shared")
+      ) {
+        return []
+      }
+      return [
+        {
+          id: row.id,
+          name: row.name,
+          visibility: row.visibility,
+          ownerUserId: row.ownerUserId,
+          isOwner: row.ownerUserId === user.id,
+          definition: parsedDefinition.data,
+        },
+      ]
+    })
+  } catch (error) {
+    console.warn("Unable to load schedule saved views", error)
+    return []
+  }
 }
 
 export async function saveScheduleView(
