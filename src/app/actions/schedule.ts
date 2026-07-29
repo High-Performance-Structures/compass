@@ -30,6 +30,7 @@ import { projectDepartment } from "@/lib/project-branding"
 import { projectScheduleColor } from "@/lib/schedule/project-scope"
 import { requirePermission } from "@/lib/permissions"
 import { isInternalStaffRole } from "@/lib/user-roles"
+import { recordActivityEvent } from "@/lib/activity-log"
 import {
   isOwnerScheduleView,
   type OwnerScheduleView,
@@ -211,6 +212,20 @@ export async function updateOwnerScheduleView(
       })
       .where(eq(projects.id, projectId))
 
+    await recordActivityEvent({
+      db,
+      organizationId: orgId,
+      projectId,
+      actor: user,
+      category: "schedule",
+      action: "schedule.owner_visibility_changed",
+      entityType: "project_schedule",
+      entityId: projectId,
+      summary:
+        ownerScheduleView === "phases"
+          ? "Changed the owner schedule to phase-only visibility."
+          : "Changed the owner schedule to item-level visibility.",
+    })
     revalidateOwnerSchedulePaths(projectId)
     return { success: true }
   } catch (error) {
@@ -452,6 +467,18 @@ export async function createTask(
       updatedAt: now,
     })
 
+    await recordActivityEvent({
+      db,
+      organizationId: orgId,
+      projectId,
+      actor: user,
+      category: "schedule",
+      action: "schedule.item_created",
+      entityType: "schedule_item",
+      entityId: id,
+      summary: `Created schedule item “${data.title}”.`,
+    })
+
     try {
       await notifyProjectAssignment({
         organizationId: orgId,
@@ -551,6 +578,18 @@ export async function updateTask(
       })
       .where(eq(scheduleTasks.id, taskId))
 
+    await recordActivityEvent({
+      db,
+      organizationId: orgId,
+      projectId: task.projectId,
+      actor: user,
+      category: "schedule",
+      action: "schedule.item_updated",
+      entityType: "schedule_item",
+      entityId: taskId,
+      summary: `Updated schedule item “${data.title ?? task.title}”.`,
+    })
+
     if (
       data.assignedTo !== undefined &&
       data.assignedTo !== null &&
@@ -644,6 +683,17 @@ export async function deleteTask(
     }
 
     await db.delete(scheduleTasks).where(eq(scheduleTasks.id, taskId))
+    await recordActivityEvent({
+      db,
+      organizationId: orgId,
+      projectId: task.projectId,
+      actor: user,
+      category: "schedule",
+      action: "schedule.item_deleted",
+      entityType: "schedule_item",
+      entityId: taskId,
+      summary: `Deleted schedule item “${task.title}”.`,
+    })
     await recalcCriticalPath(db, task.projectId)
     revalidateSchedulePaths(task.projectId)
     return { success: true }
@@ -678,7 +728,7 @@ export async function completeScheduleTasks(
     const { env } = await getCloudflareContext()
     const db = getDb(env.DB)
     const [project] = await db
-      .select({ id: projects.id })
+      .select({ id: projects.id, name: projects.name })
       .from(projects)
       .where(and(eq(projects.id, projectId), eq(projects.organizationId, orgId)))
       .limit(1)
@@ -718,6 +768,17 @@ export async function completeScheduleTasks(
         )
       )
 
+    await recordActivityEvent({
+      db,
+      organizationId: orgId,
+      projectId,
+      actor: user,
+      category: "schedule",
+      action: "schedule.items_completed",
+      entityType: "schedule_item_batch",
+      summary: `Marked ${ids.length} schedule ${ids.length === 1 ? "item" : "items"} complete.`,
+      metadata: { itemCount: ids.length },
+    })
     await recalcCriticalPath(db, projectId)
     revalidateSchedulePaths(projectId)
     return { success: true }
@@ -756,7 +817,7 @@ export async function assignScheduleTasks(
     const { env } = await getCloudflareContext()
     const db = getDb(env.DB)
     const [project] = await db
-      .select({ id: projects.id })
+      .select({ id: projects.id, name: projects.name })
       .from(projects)
       .where(and(eq(projects.id, projectId), eq(projects.organizationId, orgId)))
       .limit(1)
@@ -795,6 +856,19 @@ export async function assignScheduleTasks(
         )
       )
 
+    await recordActivityEvent({
+      db,
+      organizationId: orgId,
+      projectId,
+      actor: user,
+      category: "schedule",
+      action: "schedule.items_assigned",
+      entityType: "schedule_item_batch",
+      summary: assignedTo?.trim()
+        ? `Assigned ${ids.length} schedule ${ids.length === 1 ? "item" : "items"} to ${assignedTo.trim()}.`
+        : `Cleared the assignee from ${ids.length} schedule ${ids.length === 1 ? "item" : "items"}.`,
+      metadata: { itemCount: ids.length },
+    })
     revalidateSchedulePaths(projectId)
     return { success: true }
   } catch (error) {
@@ -828,7 +902,7 @@ export async function deleteScheduleTasks(
     const { env } = await getCloudflareContext()
     const db = getDb(env.DB)
     const [project] = await db
-      .select({ id: projects.id })
+      .select({ id: projects.id, name: projects.name })
       .from(projects)
       .where(and(eq(projects.id, projectId), eq(projects.organizationId, orgId)))
       .limit(1)
@@ -863,6 +937,17 @@ export async function deleteScheduleTasks(
         )
       )
 
+    await recordActivityEvent({
+      db,
+      organizationId: orgId,
+      projectId,
+      actor: user,
+      category: "schedule",
+      action: "schedule.items_deleted",
+      entityType: "schedule_item_batch",
+      summary: `Deleted ${ids.length} schedule ${ids.length === 1 ? "item" : "items"}.`,
+      metadata: { itemCount: ids.length },
+    })
     await recalcCriticalPath(db, projectId)
     revalidateSchedulePaths(projectId)
     return { success: true }

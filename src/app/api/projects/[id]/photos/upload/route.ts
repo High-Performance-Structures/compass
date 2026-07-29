@@ -27,6 +27,7 @@ import {
   PHOTO_UPLOAD_LIMIT_LABEL,
 } from "@/lib/photos/upload-limits"
 import { photoUploadVisibility } from "@/lib/photos/upload-visibility"
+import { recordActivityEvent } from "@/lib/activity-log"
 
 const GOOGLE_FOLDER_MIME_TYPE = "application/vnd.google-apps.folder"
 const DEFAULT_PHOTO_FOLDER_NAME = "Pictures"
@@ -456,6 +457,20 @@ export async function POST(
         mimeType: driveFile.mimeType,
       })
     }
+
+    await recordActivityEvent({
+      db,
+      organizationId,
+      projectId,
+      actor: user,
+      category: "file",
+      action: "project.files_uploaded",
+      entityType: "project_file_batch",
+      summary: `Uploaded ${files.length} ${files.length === 1 ? "file" : "files"}: ${uploadedFiles
+        .map((file) => file.fileName)
+        .join(", ")}.`,
+      metadata: { fileCount: files.length },
+    })
 
     revalidatePath(`/dashboard/projects/${projectId}`)
     revalidatePath(`/dashboard/projects/${projectId}/photos`)

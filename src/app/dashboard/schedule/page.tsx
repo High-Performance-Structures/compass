@@ -19,6 +19,9 @@ import type {
   ScheduleScopeKind,
 } from "@/lib/schedule/project-scope"
 import type { ProjectDepartment } from "@/lib/project-branding"
+import { getScheduleSavedViews } from "@/app/actions/schedule-saved-views"
+import { getCurrentUser } from "@/lib/auth"
+import { scheduleAssigneeTerms } from "@/lib/schedule/saved-views"
 
 function kindFilter(
   value: string | readonly string[] | undefined
@@ -91,7 +94,11 @@ export default async function SchedulePage({
 }): Promise<React.ReactElement> {
   const query = await searchParams
   if (firstValue(query.mode) === "projects") {
-    const allProjects = await getProjects()
+    const [allProjects, savedViews, currentUser] = await Promise.all([
+      getProjects(),
+      getScheduleSavedViews(),
+      getCurrentUser(),
+    ])
     const requestedScope = firstValue(query.scope)
     const scopeKind = isScopeKind(requestedScope) ? requestedScope : "all"
     const requestedProjectId = firstValue(query.project)
@@ -187,6 +194,8 @@ export default async function SchedulePage({
           initialView={initialView}
           globalMode
           ownerScheduleView={ownerScheduleView}
+          savedViews={savedViews}
+          currentUserAssigneeTerms={scheduleAssigneeTerms(currentUser)}
         />
       </div>
     )

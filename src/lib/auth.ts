@@ -20,6 +20,7 @@ import {
   isExternalProjectRole,
 } from "@/lib/user-roles"
 import { ensureProjectAudienceConversation } from "@/lib/project-audience-conversations"
+import { recordActivityEvent } from "@/lib/activity-log"
 
 export type AuthUser = {
   readonly id: string
@@ -334,6 +335,7 @@ export async function getCurrentUser(): Promise<AuthUser | null> {
     const db = getDb(env.DB)
 
     // check if user exists in our database
+    let activatedPendingAccount = false
     let dbUser = await db
       .select()
       .from(users)
@@ -370,6 +372,7 @@ export async function getCurrentUser(): Promise<AuthUser | null> {
           })
           .where(eq(users.id, emailMatch.id))
           .run()
+        activatedPendingAccount = isPendingPlaceholder
         dbUser = await db
           .select()
           .from(users)
@@ -479,6 +482,26 @@ export async function getCurrentUser(): Promise<AuthUser | null> {
             membership.orgType === "internal" &&
             isExternalProjectRole(membership.memberRole)
         ) ?? activeOrg
+    }
+
+    if (activatedPendingAccount && activeOrg) {
+      await recordActivityEvent({
+        db,
+        organizationId: activeOrg.orgId,
+        actor: {
+          id: dbUser.id,
+          email: dbUser.email,
+          displayName: dbUser.displayName,
+          firstName: dbUser.firstName,
+          lastName: dbUser.lastName,
+          role: effectiveRole,
+        },
+        category: "account",
+        action: "account.activated",
+        entityType: "user",
+        entityId: dbUser.id,
+        summary: "Activated their Compass account.",
+      })
     }
 
     return {

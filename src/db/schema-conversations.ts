@@ -132,6 +132,8 @@ export const userPresence = sqliteTable("user_presence", {
   status: text("status").notNull().default("offline"), // online | idle | dnd | offline
   statusMessage: text("status_message"),
   lastSeenAt: text("last_seen_at").notNull(),
+  // Updated only by real user input, not by connection heartbeats.
+  lastActiveAt: text("last_active_at"),
   updatedAt: text("updated_at").notNull(),
 })
 

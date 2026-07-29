@@ -15,6 +15,9 @@ import {
 import { ScheduleView } from "@/components/schedule/schedule-view"
 import type { ScheduleData, ScheduleBaselineData } from "@/lib/schedule/types"
 import type { OwnerScheduleView } from "@/lib/schedule/owner-visibility"
+import { getScheduleSavedViews } from "@/app/actions/schedule-saved-views"
+import { getCurrentUser } from "@/lib/auth"
+import { scheduleAssigneeTerms } from "@/lib/schedule/saved-views"
 
 const emptySchedule: ScheduleData = {
   tasks: [],
@@ -50,6 +53,10 @@ export default async function SchedulePage({
   let allProjects: ProjectListItem[] = []
   let assigneeOptions: ProjectTaskAssigneeOption[] = []
   let ownerScheduleView: OwnerScheduleView = "items"
+  const [savedViews, currentUser] = await Promise.all([
+    getScheduleSavedViews(),
+    getCurrentUser(),
+  ])
 
   try {
     const { env } = await getCloudflareContext()
@@ -99,6 +106,8 @@ export default async function SchedulePage({
         initialView={focusTaskId ? "list" : initialView}
         focusTaskId={focusTaskId}
         ownerScheduleView={ownerScheduleView}
+        savedViews={savedViews}
+        currentUserAssigneeTerms={scheduleAssigneeTerms(currentUser)}
       />
     </div>
   )

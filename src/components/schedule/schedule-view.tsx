@@ -1,7 +1,14 @@
 "use client"
 
-import { useState, useMemo, useRef, useEffect } from "react"
+import {
+  useState,
+  useMemo,
+  useRef,
+  useEffect,
+  useTransition,
+} from "react"
 import Link from "next/link"
+import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import { cn } from "@/lib/utils"
 import { useIsMobile } from "@/hooks/use-mobile"
 import { Input } from "@/components/ui/input"
@@ -58,6 +65,9 @@ import {
   IconHistory,
   IconCalendarOff,
   IconLoader2,
+  IconDeviceFloppy,
+  IconBookmark,
+  IconTrash,
 } from "@tabler/icons-react"
 import { toast } from "sonner"
 import { ScheduleListView } from "./schedule-list-view"
@@ -93,6 +103,20 @@ import {
   type ScheduleOrderMode,
 } from "@/lib/schedule/task-ordering"
 import type { OwnerScheduleView } from "@/lib/schedule/owner-visibility"
+import {
+  deleteScheduleView,
+  saveScheduleView,
+} from "@/app/actions/schedule-saved-views"
+import {
+  SCHEDULE_GROUP_MODES,
+  SCHEDULE_LIST_COLUMNS,
+  SCHEDULE_VIEW_PRESETS,
+  type SavedScheduleViewData,
+  type ScheduleGroupMode,
+  type ScheduleListColumn,
+  type ScheduleViewDefinition,
+  type ScheduleViewPreset,
+} from "@/lib/schedule/saved-views"
 
 type View = "calendar" | "list" | "gantt"
 
@@ -115,6 +139,8 @@ interface ScheduleViewProps {
   readonly focusTaskId?: string | null
   readonly globalMode?: boolean
   readonly ownerScheduleView?: OwnerScheduleView
+  readonly savedViews?: readonly SavedScheduleViewData[]
+  readonly currentUserAssigneeTerms?: readonly string[]
 }
 
 export function ScheduleView({
@@ -130,13 +156,60 @@ export function ScheduleView({
   focusTaskId = null,
   globalMode = false,
   ownerScheduleView = "items",
+  savedViews: initialSavedViews = [],
+  currentUserAssigneeTerms = [],
 }: ScheduleViewProps) {
+  const router = useRouter()
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
   const isMobile = useIsMobile()
+  const requestedPreset = searchParams.get("preset")
+  const initialPreset =
+    SCHEDULE_VIEW_PRESETS.find((value) => value === requestedPreset) ?? "all"
+  const requestedGroup = searchParams.get("group")
+  const initialGroup =
+    SCHEDULE_GROUP_MODES.find((value) => value === requestedGroup) ?? "none"
+  const requestedColumns = (searchParams.get("columns") ?? "")
+    .split(",")
+    .filter((value): value is ScheduleListColumn =>
+      SCHEDULE_LIST_COLUMNS.some((column) => column === value)
+    )
+  const initialColumns =
+    requestedColumns.length > 0
+      ? requestedColumns
+      : [...SCHEDULE_LIST_COLUMNS]
+  const requestedStatuses = (searchParams.get("status") ?? "")
+    .split(",")
+    .flatMap((value) => {
+      const option = STATUS_OPTIONS.find((candidate) => candidate.value === value)
+      return option ? [option.value] : []
+    })
   const [view, setView] = useState<View>(initialView)
   const [orderMode, setOrderMode] =
-    useState<ScheduleOrderMode>("chronological")
+    useState<ScheduleOrderMode>(() => {
+      const requestedOrder = searchParams.get("order")
+      return isScheduleOrderMode(requestedOrder)
+        ? requestedOrder
+        : "chronological"
+    })
   const [taskFormOpen, setTaskFormOpen] = useState(false)
-  const [filters, setFilters] = useState<TaskFilters>(EMPTY_FILTERS)
+  const [filters, setFilters] = useState<TaskFilters>(() => ({
+    status: requestedStatuses,
+    phase: (searchParams.get("phase") ?? "").split(",").filter(Boolean),
+    assignedTo: searchParams.get("assignee") ?? "",
+    search: searchParams.get("q") ?? "",
+  }))
+  const [preset, setPreset] = useState<ScheduleViewPreset>(initialPreset)
+  const [groupMode, setGroupMode] =
+    useState<ScheduleGroupMode>(initialGroup)
+  const [visibleColumns, setVisibleColumns] =
+    useState<readonly ScheduleListColumn[]>(initialColumns)
+  const [savedViews, setSavedViews] =
+    useState<readonly SavedScheduleViewData[]>(initialSavedViews)
+  const [saveViewOpen, setSaveViewOpen] = useState(false)
+  const [saveViewName, setSaveViewName] = useState("")
+  const [saveViewShared, setSaveViewShared] = useState(false)
+  const [isSavingView, startSaveViewTransition] = useTransition()
   const [baselinesOpen, setBaselinesOpen] = useState(false)
   const [exceptionsOpen, setExceptionsOpen] = useState(false)
   const [importDialogOpen, setImportDialogOpen] = useState(false)
@@ -145,13 +218,59 @@ export function ScheduleView({
   const preferenceScopeKey = projectId ?? "unified"
 
   useEffect(() => {
+    const requestedOrder = searchParams.get("order")
+    if (isScheduleOrderMode(requestedOrder)) {
+      setOrderMode(requestedOrder)
+      return
+    }
     const storedMode = window.localStorage.getItem(
       scheduleOrderStorageKey(preferenceScopeKey)
     )
     setOrderMode(
       isScheduleOrderMode(storedMode) ? storedMode : "chronological"
     )
-  }, [preferenceScopeKey])
+  }, [preferenceScopeKey, searchParams])
+
+  useEffect(() => {
+    const params = new URLSearchParams(searchParams.toString())
+    params.set("view", view)
+    params.set("order", orderMode)
+
+    const setOrDelete = (key: string, value: string): void => {
+      if (value) params.set(key, value)
+      else params.delete(key)
+    }
+    setOrDelete("status", filters.status.join(","))
+    setOrDelete("phase", filters.phase.join(","))
+    setOrDelete("assignee", filters.assignedTo)
+    setOrDelete("q", filters.search)
+    setOrDelete("preset", preset === "all" ? "" : preset)
+    setOrDelete("group", groupMode === "none" ? "" : groupMode)
+    setOrDelete(
+      "columns",
+      visibleColumns.length === SCHEDULE_LIST_COLUMNS.length
+        ? ""
+        : visibleColumns.join(",")
+    )
+
+    const nextQuery = params.toString()
+    const currentQuery = searchParams.toString()
+    if (nextQuery !== currentQuery) {
+      router.replace(nextQuery ? `${pathname}?${nextQuery}` : pathname, {
+        scroll: false,
+      })
+    }
+  }, [
+    filters,
+    groupMode,
+    orderMode,
+    pathname,
+    preset,
+    router,
+    searchParams,
+    view,
+    visibleColumns,
+  ])
 
   const handleOrderModeChange = (value: string): void => {
     if (!isScheduleOrderMode(value)) return
@@ -195,8 +314,67 @@ export function ScheduleView({
         t.title.toLowerCase().includes(search)
       )
     }
-    return orderScheduleTasks(tasks, orderMode)
-  }, [initialData.tasks, filters, orderMode])
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    if (preset === "my-items") {
+      const terms = currentUserAssigneeTerms
+        .map((term) => term.trim().toLowerCase())
+        .filter(Boolean)
+      tasks = tasks.filter((task) => {
+        const assignee = task.assignedTo?.trim().toLowerCase() ?? ""
+        return terms.some(
+          (term) => assignee === term || assignee.includes(term)
+        )
+      })
+    } else if (preset === "past-due") {
+      tasks = tasks.filter(
+        (task) =>
+          task.status !== "COMPLETE" &&
+          new Date(`${task.endDateCalculated}T00:00:00`).getTime() <
+            today.getTime()
+      )
+    } else if (
+      preset === "next-7" ||
+      preset === "next-30" ||
+      preset === "next-90"
+    ) {
+      const dayCount =
+        preset === "next-7" ? 7 : preset === "next-30" ? 30 : 90
+      const horizon = new Date(today)
+      horizon.setDate(horizon.getDate() + dayCount)
+      tasks = tasks.filter(
+        (task) =>
+          new Date(`${task.startDate}T00:00:00`).getTime() <=
+            horizon.getTime() &&
+          new Date(`${task.endDateCalculated}T00:00:00`).getTime() >=
+            today.getTime()
+      )
+    }
+
+    const ordered = orderScheduleTasks(tasks, orderMode)
+    if (groupMode === "none") return ordered
+
+    const projectById = new Map(
+      scheduleProjects.map((project) => [project.id, project])
+    )
+    const groupKey = (task: (typeof ordered)[number]): string => {
+      if (groupMode === "phase") return task.phase
+      if (groupMode === "status") return task.status
+      const project = projectById.get(task.projectId)
+      return project?.projectNumber ?? project?.name ?? task.projectId
+    }
+    return [...ordered].sort((left, right) =>
+      groupKey(left).localeCompare(groupKey(right))
+    )
+  }, [
+    currentUserAssigneeTerms,
+    filters,
+    groupMode,
+    initialData.tasks,
+    orderMode,
+    preset,
+    scheduleProjects,
+  ])
 
   const activeFilterCount =
     filters.status.length +
@@ -234,6 +412,72 @@ export function ScheduleView({
   }
 
   const clearFilters = () => setFilters(EMPTY_FILTERS)
+
+  const currentViewDefinition = (): ScheduleViewDefinition => ({
+    view,
+    orderMode,
+    groupMode,
+    preset,
+    status: [...filters.status],
+    phase: [...filters.phase],
+    assignedTo: filters.assignedTo,
+    search: filters.search,
+    columns: [...visibleColumns],
+  })
+
+  const applySavedView = (savedView: SavedScheduleViewData): void => {
+    const definition = savedView.definition
+    setView(definition.view)
+    setOrderMode(definition.orderMode)
+    setGroupMode(definition.groupMode)
+    setPreset(definition.preset)
+    setFilters({
+      status: definition.status,
+      phase: definition.phase,
+      assignedTo: definition.assignedTo,
+      search: definition.search,
+    })
+    setVisibleColumns(definition.columns)
+    toast.success(`Applied “${savedView.name}”.`)
+  }
+
+  const handleSaveView = (): void => {
+    const name = saveViewName.trim()
+    if (!name) return
+    startSaveViewTransition(async () => {
+      const result = await saveScheduleView({
+        name,
+        visibility: saveViewShared ? "shared" : "personal",
+        definition: currentViewDefinition(),
+      })
+      if (!result.success) {
+        toast.error(result.error)
+        return
+      }
+      setSavedViews((current) => [
+        ...current.filter((savedView) => savedView.id !== result.view.id),
+        result.view,
+      ])
+      setSaveViewOpen(false)
+      setSaveViewName("")
+      setSaveViewShared(false)
+      toast.success(`Saved “${result.view.name}”.`)
+    })
+  }
+
+  const handleDeleteView = (savedView: SavedScheduleViewData): void => {
+    startSaveViewTransition(async () => {
+      const result = await deleteScheduleView(savedView.id)
+      if (!result.success) {
+        toast.error(result.error)
+        return
+      }
+      setSavedViews((current) =>
+        current.filter((candidate) => candidate.id !== savedView.id)
+      )
+      toast.success(`Deleted “${savedView.name}”.`)
+    })
+  }
 
   // CSV export
   const handleExportCSV = () => {
@@ -459,7 +703,7 @@ export function ScheduleView({
       </div>
 
       {/* Action bar: search, filters, overflow */}
-      <div className="flex items-center gap-2 mb-3 print:hidden">
+      <div className="mb-3 flex flex-wrap items-center gap-2 print:hidden">
         {/* Search */}
         <div className="relative min-w-0 flex-1 sm:flex-none sm:w-52">
           <IconSearch className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground pointer-events-none" />
@@ -568,6 +812,150 @@ export function ScheduleView({
           </SelectContent>
         </Select>
 
+        <Select
+          value={preset}
+          onValueChange={(value) => {
+            const nextPreset = SCHEDULE_VIEW_PRESETS.find(
+              (candidate) => candidate === value
+            )
+            if (nextPreset) setPreset(nextPreset)
+          }}
+        >
+          <SelectTrigger className="h-8 w-[126px] shrink-0 text-xs">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All dates</SelectItem>
+            <SelectItem value="my-items">My items</SelectItem>
+            <SelectItem value="past-due">Past due</SelectItem>
+            <SelectItem value="next-7">Next 7 days</SelectItem>
+            <SelectItem value="next-30">Next 30 days</SelectItem>
+            <SelectItem value="next-90">Next 90 days</SelectItem>
+          </SelectContent>
+        </Select>
+
+        <Select
+          value={groupMode}
+          onValueChange={(value) => {
+            const nextGroup = SCHEDULE_GROUP_MODES.find(
+              (candidate) => candidate === value
+            )
+            if (nextGroup) setGroupMode(nextGroup)
+          }}
+        >
+          <SelectTrigger className="h-8 w-[118px] shrink-0 text-xs">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="none">No grouping</SelectItem>
+            <SelectItem value="phase">By phase</SelectItem>
+            <SelectItem value="project">By project</SelectItem>
+            <SelectItem value="status">By status</SelectItem>
+          </SelectContent>
+        </Select>
+
+        {view === "list" ? (
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button variant="outline" size="sm" className="h-8 text-xs">
+                Columns
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent align="start" className="w-52 p-3">
+              <p className="mb-2 text-xs font-medium text-muted-foreground">
+                Visible columns
+              </p>
+              <div className="space-y-1.5">
+                {SCHEDULE_LIST_COLUMNS.map((column) => (
+                  <label
+                    key={column}
+                    className="flex cursor-pointer items-center gap-2 text-sm"
+                  >
+                    <Checkbox
+                      checked={visibleColumns.includes(column)}
+                      onCheckedChange={() =>
+                        setVisibleColumns((current) =>
+                          current.includes(column)
+                            ? current.filter((value) => value !== column)
+                            : [...current, column]
+                        )
+                      }
+                    />
+                    <span className="capitalize">
+                      {column
+                        .replace("endDateCalculated", "End date")
+                        .replace("startDate", "Start date")
+                        .replace("assignedTo", "Responsible")}
+                    </span>
+                  </label>
+                ))}
+              </div>
+            </PopoverContent>
+          </Popover>
+        ) : null}
+
+        <Popover>
+          <PopoverTrigger asChild>
+            <Button variant="outline" size="sm" className="h-8 text-xs">
+              <IconBookmark className="size-3.5" />
+              Views
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent align="start" className="w-72 p-2">
+            <div className="flex items-center justify-between px-2 py-1">
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Saved views
+              </p>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-7 px-2 text-xs"
+                onClick={() => setSaveViewOpen(true)}
+              >
+                <IconDeviceFloppy className="size-3.5" />
+                Save current
+              </Button>
+            </div>
+            <div className="mt-1 max-h-64 overflow-y-auto">
+              {savedViews.map((savedView) => (
+                <div
+                  key={savedView.id}
+                  className="flex items-center gap-1 hover:bg-muted"
+                >
+                  <button
+                    type="button"
+                    className="min-w-0 flex-1 px-2 py-2 text-left text-sm"
+                    onClick={() => applySavedView(savedView)}
+                  >
+                    <span className="block truncate">{savedView.name}</span>
+                    <span className="text-[11px] capitalize text-muted-foreground">
+                      {savedView.visibility}
+                    </span>
+                  </button>
+                  {savedView.isOwner ? (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="size-7"
+                      disabled={isSavingView}
+                      onClick={() => handleDeleteView(savedView)}
+                      aria-label={`Delete ${savedView.name}`}
+                    >
+                      <IconTrash className="size-3.5" />
+                    </Button>
+                  ) : null}
+                </div>
+              ))}
+              {savedViews.length === 0 ? (
+                <p className="px-2 py-4 text-xs text-muted-foreground">
+                  Save a personal view or share one with the team.
+                </p>
+              ) : null}
+            </div>
+          </PopoverContent>
+        </Popover>
+
         {/* Active filter chips */}
         <div className="hidden sm:flex items-center gap-1 overflow-x-auto min-w-0">
           {filters.status.map((s) => (
@@ -671,6 +1059,7 @@ export function ScheduleView({
             assigneeOptions={assigneeOptions}
             focusTaskId={focusTaskId}
             projects={scheduleProjects}
+            visibleColumns={visibleColumns}
           />
         )}
         {view === "gantt" && (
@@ -681,6 +1070,10 @@ export function ScheduleView({
             exceptions={initialData.exceptions}
             assigneeOptions={assigneeOptions}
             projects={scheduleProjects}
+            groupByPhase={groupMode === "phase"}
+            onGroupByPhaseChange={(grouped) =>
+              setGroupMode(grouped ? "phase" : "none")
+            }
           />
         )}
       </div>
@@ -741,6 +1134,62 @@ export function ScheduleView({
             <p className="text-xs text-muted-foreground mt-2">
               Supported format: CSV with headers
             </p>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={saveViewOpen} onOpenChange={setSaveViewOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Save schedule view</DialogTitle>
+            <DialogDescription>
+              Save the current scope, filters, grouping, ordering, and columns.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label htmlFor="schedule-view-name">View name</Label>
+              <Input
+                id="schedule-view-name"
+                value={saveViewName}
+                onChange={(event) => setSaveViewName(event.target.value)}
+                placeholder="Example: Wes · next 30 days"
+                className="mt-1.5"
+              />
+            </div>
+            <label className="flex items-start gap-2 text-sm">
+              <Checkbox
+                checked={saveViewShared}
+                onCheckedChange={(checked) =>
+                  setSaveViewShared(checked === true)
+                }
+              />
+              <span>
+                Share with internal staff
+                <span className="block text-xs text-muted-foreground">
+                  Personal views are visible only to you.
+                </span>
+              </span>
+            </label>
+            <div className="flex justify-end gap-2">
+              <Button
+                variant="outline"
+                onClick={() => setSaveViewOpen(false)}
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={handleSaveView}
+                disabled={!saveViewName.trim() || isSavingView}
+              >
+                {isSavingView ? (
+                  <IconLoader2 className="size-4 animate-spin" />
+                ) : (
+                  <IconDeviceFloppy className="size-4" />
+                )}
+                Save view
+              </Button>
+            </div>
           </div>
         </DialogContent>
       </Dialog>

@@ -77,6 +77,7 @@ import {
 } from "@/lib/dashboard/office-status"
 import { dashboardDeskPhotoStorageKey } from "@/lib/user-photo-storage"
 import { cn } from "@/lib/utils"
+import { usePresence } from "@/contexts/presence-context"
 
 type DashboardMode = "office" | "project"
 
@@ -178,7 +179,8 @@ function deskStatusDotClass(status: DeskStatus): string {
 function includeCurrentAvailability(
   members: readonly TeamAvailabilityMember[],
   user: SidebarUser | null,
-  status: DeskStatus
+  status: DeskStatus,
+  activity: "active" | "idle"
 ): readonly TeamAvailabilityMember[] {
   if (!user) return members
 
@@ -188,6 +190,11 @@ function includeCurrentAvailability(
     name: user.name,
     avatarUrl: user.avatar,
     status,
+    activity,
+    lastActiveAt:
+      activity === "active"
+        ? new Date().toISOString()
+        : existing?.lastActiveAt ?? null,
     updatedAt: existing?.updatedAt ?? new Date().toISOString(),
     isCurrentUser: true,
   }
@@ -395,7 +402,8 @@ function DeskHero({
     startStatusTransition(async () => {
       const result = await updatePresence(
         presenceStatusForDeskStatus(nextStatus),
-        DESK_STATUS_LABELS[nextStatus]
+        DESK_STATUS_LABELS[nextStatus],
+        true
       )
       if (!result.success) {
         onStatusChange(previousStatus)
@@ -736,8 +744,16 @@ function OfficePresence({
   readonly user: SidebarUser | null
   readonly status: DeskStatus
 }): React.ReactElement {
+  const { isIdle } = usePresence()
+  const currentActivity = isIdle ? "idle" : "active"
   const [members, setMembers] = useState<readonly TeamAvailabilityMember[]>(
-    () => includeCurrentAvailability(initialAvailability, user, status)
+    () =>
+      includeCurrentAvailability(
+        initialAvailability,
+        user,
+        status,
+        currentActivity
+      )
   )
   const [isRefreshing, startRefreshTransition] = useTransition()
 
@@ -745,13 +761,22 @@ function OfficePresence({
     startRefreshTransition(async () => {
       const result = await getOrganizationTeamAvailability()
       if (!result.success) return
-      setMembers(includeCurrentAvailability(result.data, user, status))
+      setMembers(
+        includeCurrentAvailability(
+          result.data,
+          user,
+          status,
+          currentActivity
+        )
+      )
     })
-  }, [status, user])
+  }, [currentActivity, status, user])
 
   useEffect(() => {
-    setMembers((current) => includeCurrentAvailability(current, user, status))
-  }, [status, user])
+    setMembers((current) =>
+      includeCurrentAvailability(current, user, status, currentActivity)
+    )
+  }, [currentActivity, status, user])
 
   useEffect(() => {
     refreshAvailability()
@@ -818,7 +843,9 @@ function OfficePresence({
                 ) : null}
               </p>
               <p className="text-xs text-muted-foreground">
-                {DESK_STATUS_LABELS[member.status]}
+                {member.activity === "idle"
+                  ? `${DESK_STATUS_LABELS[member.status]} · Idle`
+                  : DESK_STATUS_LABELS[member.status]}
               </p>
             </div>
           </div>
