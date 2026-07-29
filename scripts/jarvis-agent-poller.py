@@ -255,6 +255,7 @@ def explicitly_requests_compass_feedback(message: str) -> bool:
             r"(?:upload|create|open|save|send|edit|delete|view|see|use|submit)\b"
         ),
         r"\b(?:not working|doesn['’]?t work|isn['’]?t working)\b",
+        r"\b(?:incorrect|incomplete|missing|empty)\b",
         r"\b(?:feature request|enhancement|feedback|suggestion|suggest)\b",
         (
             r"(?:^|[.!?]\s+)(?:please\s+|also\s+)?"
@@ -270,10 +271,10 @@ def explicitly_requests_compass_feedback(message: str) -> bool:
     return any(re.search(pattern, value) for pattern in patterns)
 
 
-def confirms_pending_feedback(payload: dict[str, Any]) -> bool:
+def pending_feedback_report(payload: dict[str, Any]) -> str | None:
     messages = payload.get("messages")
     if not isinstance(messages, list):
-        return False
+        return None
     conversation = [
         message
         for message in messages
@@ -285,7 +286,7 @@ def confirms_pending_feedback(payload: dict[str, Any]) -> bool:
         )
     ]
     if len(conversation) < 3:
-        return False
+        return None
 
     latest = conversation[-1]
     previous = conversation[-2]
@@ -295,10 +296,10 @@ def confirms_pending_feedback(payload: dict[str, Any]) -> bool:
         or previous.get("role") != "assistant"
         or report.get("role") != "user"
     ):
-        return False
+        return None
 
     latest_content = str(latest["content"]).strip().lower()
-    confirmation = re.fullmatch(
+    short_confirmation = re.fullmatch(
         (
             r"(?:yes|yep|yeah)(?:,\s*please)?"
             r"(?:,?\s+(?:file|submit|report)\s+it)?[.!]?"
@@ -307,11 +308,61 @@ def confirms_pending_feedback(payload: dict[str, Any]) -> bool:
         ),
         latest_content,
     )
-    return bool(
-        confirmation
-        and FEEDBACK_CONFIRMATION_QUESTION in str(previous["content"])
-        and explicitly_requests_compass_feedback(str(report["content"]))
+    explicit_confirmation = bool(
+        re.match(
+            r"^(?:yes|yep|yeah|please\s+do|go\s+ahead|"
+            r"file|submit|report|do\s+it)\b",
+            latest_content,
+        )
+        and (
+            re.search(r"\b(?:file|submit|report|record)\b", latest_content)
+            or "feedback desk" in latest_content
+        )
     )
+    if not short_confirmation and not explicit_confirmation:
+        return None
+    if FEEDBACK_CONFIRMATION_QUESTION not in str(previous["content"]):
+        return None
+
+    report_content = str(report["content"]).strip()
+    if not explicitly_requests_compass_feedback(report_content):
+        return None
+    return report_content
+
+
+def confirms_pending_feedback(payload: dict[str, Any]) -> bool:
+    return pending_feedback_report(payload) is not None
+
+
+def fallback_feedback_candidate(report: str) -> dict[str, str]:
+    normalized = " ".join(report.split())
+    lowered = normalized.lower()
+    if re.search(
+        r"\b(?:bug|issue|problem|broken|error|fails?|failed|unable to|"
+        r"not working|doesn['’]?t work|isn['’]?t working|"
+        r"incorrect|incomplete|missing|empty)\b",
+        lowered,
+    ):
+        kind = "bug"
+    elif re.search(
+        r"\b(?:feature request|enhancement|would like|please add|"
+        r"should (?:be|have|show|allow|include|use))\b",
+        lowered,
+    ):
+        kind = "feature"
+    elif normalized.endswith("?"):
+        kind = "question"
+    else:
+        kind = "general"
+
+    title = normalized
+    if len(title) > 160:
+        title = f"{title[:157].rstrip()}..."
+    return {
+        "kind": kind,
+        "title": title,
+        "description": report.strip(),
+    }
 
 
 def _required_payload_string(
@@ -647,8 +698,9 @@ def handle_event(event: dict[str, Any]) -> None:
         assistant_content(completion),
     )
     latest_message = latest_user_message(payload)
+    confirmed_report = pending_feedback_report(payload)
     if feedback is not None:
-        if confirms_pending_feedback(payload):
+        if confirmed_report is not None:
             pass
         elif explicitly_requests_compass_feedback(latest_message):
             feedback = None
@@ -663,11 +715,15 @@ def handle_event(event: dict[str, Any]) -> None:
                 event_id,
             )
             feedback = None
+    elif confirmed_report is not None:
+        # Hermes occasionally acknowledges a confirmation without repeating
+        # the structured candidate. The relay owns the confirmation contract,
+        # so recover the immediately preceding report deterministically.
+        feedback = fallback_feedback_candidate(confirmed_report)
     if feedback is not None:
         submit_feedback(event_id, payload, feedback)
         content = (
-            f"{content}\n\n"
-            "I recorded that with the Compass Feedback Desk."
+            f"I recorded “{feedback['title']}” with the Compass Feedback Desk."
         )
 
     model = completion.get("model")

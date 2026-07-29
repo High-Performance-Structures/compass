@@ -161,6 +161,117 @@ class CompassSearchContextTests(unittest.TestCase):
         self.assertTrue(MODULE.confirms_pending_feedback(confirmed))
         self.assertFalse(MODULE.confirms_pending_feedback(unrelated))
 
+    def test_feedback_confirmation_accepts_explicit_sentence_with_context(
+        self,
+    ) -> None:
+        report = (
+            "The owner update says required fields are incomplete even "
+            "though I filled them in."
+        )
+        payload = {
+            "messages": [
+                {"role": "user", "content": report},
+                {
+                    "role": "assistant",
+                    "content": MODULE.FEEDBACK_CONFIRMATION_QUESTION,
+                },
+                {
+                    "role": "user",
+                    "content": (
+                        "Yes, please file this with the Compass Feedback "
+                        "Desk. The draft also reopened without my photos."
+                    ),
+                },
+            ]
+        }
+
+        self.assertEqual(
+            MODULE.pending_feedback_report(payload),
+            report,
+        )
+
+    def test_confirmed_report_has_deterministic_fallback_candidate(
+        self,
+    ) -> None:
+        report = (
+            "The owner update fails to publish after I complete the fields."
+        )
+
+        self.assertEqual(
+            MODULE.fallback_feedback_candidate(report),
+            {
+                "kind": "bug",
+                "title": report,
+                "description": report,
+            },
+        )
+
+    def test_confirmation_submits_when_model_omits_feedback_object(
+        self,
+    ) -> None:
+        report = "Please add Select all to the owner-update photo picker."
+        event = {
+            "id": "event-confirmed-feedback",
+            "eventType": "agent.prompt",
+            "payload": {
+                "user": {
+                    "id": "user-1",
+                    "displayName": "Staff Member",
+                    "email": "staff@example.com",
+                },
+                "context": {"organizationId": "org-1"},
+                "messages": [
+                    {"role": "user", "content": report},
+                    {
+                        "role": "assistant",
+                        "content": MODULE.FEEDBACK_CONFIRMATION_QUESTION,
+                    },
+                    {"role": "user", "content": "Yes, please file it."},
+                ],
+            },
+        }
+        completion = {
+            "model": "hermes-agent",
+            "choices": [
+                {
+                    "message": {
+                        "content": MODULE.json.dumps(
+                            {
+                                "response": "I will submit that.",
+                                "feedback": None,
+                            }
+                        )
+                    }
+                }
+            ],
+        }
+
+        with (
+            patch.object(
+                MODULE,
+                "compass_search",
+                return_value=None,
+            ),
+            patch.object(
+                MODULE,
+                "hermes_request",
+                return_value=completion,
+            ),
+            patch.object(MODULE, "submit_feedback") as submit,
+            patch.object(MODULE, "acknowledge") as acknowledge,
+        ):
+            MODULE.handle_event(event)
+
+        submitted = submit.call_args.args[2]
+        self.assertEqual(submitted["kind"], "feature")
+        self.assertEqual(submitted["description"], report)
+        result = acknowledge.call_args.args[1]["result"]
+        self.assertTrue(result["feedbackSubmitted"])
+        self.assertNotIn(
+            MODULE.FEEDBACK_CONFIRMATION_QUESTION,
+            result["content"],
+        )
+
     def test_initial_report_is_not_confirmation(self) -> None:
         payload = {
             "messages": [
