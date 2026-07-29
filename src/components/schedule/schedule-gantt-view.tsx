@@ -84,6 +84,8 @@ import { ProjectTaskCreateButton } from "@/components/projects/project-task-crea
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import { format } from "date-fns"
+import type { ScheduleProjectData } from "@/lib/schedule/project-scope"
+import { projectScheduleLabel } from "@/lib/schedule/project-scope"
 import {
   ganttRowIndexForScrollTop,
   lockWheelToDominantAxis,
@@ -91,7 +93,7 @@ import {
   synchronizedScrollTop,
 } from "@/lib/schedule/gantt-scroll"
 
-type ViewMode = "Day" | "Week" | "Month"
+type ViewMode = "Day" | "Week" | "Month" | "Year"
 
 const COLOR_PICKER_SWATCHES = [
   "#ef4444", "#f97316", "#eab308", "#22c55e", "#14b8a6", "#06b6d4",
@@ -99,11 +101,12 @@ const COLOR_PICKER_SWATCHES = [
 ] as const
 
 interface ScheduleGanttViewProps {
-  readonly projectId: string
+  readonly projectId: string | null
   readonly tasks: readonly ScheduleTaskData[]
   readonly dependencies: readonly TaskDependencyData[]
   readonly exceptions: readonly WorkdayExceptionData[]
   readonly assigneeOptions: readonly ProjectTaskAssigneeOption[]
+  readonly projects?: readonly ScheduleProjectData[]
 }
 
 export function ScheduleGanttView({
@@ -112,6 +115,7 @@ export function ScheduleGanttView({
   dependencies,
   exceptions,
   assigneeOptions,
+  projects = [],
 }: ScheduleGanttViewProps) {
   const router = useRouter()
   const isMobile = useIsMobile()
@@ -146,14 +150,24 @@ export function ScheduleGanttView({
   const displayItemsRef = useRef<readonly DisplayItem[]>([])
   const followedListItemRef = useRef<string | null>(null)
   const scrollRestoredProjectRef = useRef<string | null>(null)
-  const scrollStorageKey = `compass:schedule-scroll:${projectId}`
+  const preferenceScopeKey = projectId ?? "unified"
+  const scrollStorageKey = `compass:schedule-scroll:${preferenceScopeKey}`
+  const projectById = useMemo(
+    () => new Map(projects.map((project) => [project.id, project])),
+    [projects]
+  )
+  const multipleProjects = projectById.size > 1
 
   const [hasLoadedPalette, setHasLoadedPalette] = useState(false)
 
   useEffect(() => {
     try {
-      const storedPalette = window.localStorage.getItem(schedulePaletteStorageKey(projectId))
-      const storedLabels = window.localStorage.getItem(schedulePaletteLabelStorageKey(projectId))
+      const storedPalette = window.localStorage.getItem(
+        schedulePaletteStorageKey(preferenceScopeKey)
+      )
+      const storedLabels = window.localStorage.getItem(
+        schedulePaletteLabelStorageKey(preferenceScopeKey)
+      )
       if (storedPalette) {
         setDisplayColorPalette(normalizeDisplayColorPalette(JSON.parse(storedPalette)))
       }
@@ -171,19 +185,24 @@ export function ScheduleGanttView({
     } finally {
       setHasLoadedPalette(true)
     }
-  }, [projectId])
+  }, [preferenceScopeKey])
 
   useEffect(() => {
     if (!hasLoadedPalette) return
     window.localStorage.setItem(
-      schedulePaletteStorageKey(projectId),
+      schedulePaletteStorageKey(preferenceScopeKey),
       JSON.stringify(displayColorPalette)
     )
     window.localStorage.setItem(
-      schedulePaletteLabelStorageKey(projectId),
+      schedulePaletteLabelStorageKey(preferenceScopeKey),
       JSON.stringify(displayColorLabels)
     )
-  }, [displayColorLabels, displayColorPalette, hasLoadedPalette, projectId])
+  }, [
+    displayColorLabels,
+    displayColorPalette,
+    hasLoadedPalette,
+    preferenceScopeKey,
+  ])
 
   const updatePaletteColor = (color: DisplayColor, value: string) => {
     setDisplayColorPalette((palette) => ({ ...palette, [color]: value }))
@@ -194,7 +213,10 @@ export function ScheduleGanttView({
   }
 
   const defaultWidths: Record<ViewMode, number> = {
-    Day: 38, Week: 140, Month: 120,
+    Day: 38,
+    Week: 140,
+    Month: 120,
+    Year: 160,
   }
   const [columnWidth, setColumnWidth] = useState(defaultWidths[viewMode])
 
@@ -460,28 +482,46 @@ export function ScheduleGanttView({
 
   const filteredTasks = tasks
 
-  const { frappeTasks, displayItems } = useMemo(
-    () =>
-      phaseGrouping
-        ? transformWithPhaseGroups(
+  const { frappeTasks, displayItems } = useMemo(() => {
+    const transformed = phaseGrouping
+      ? transformWithPhaseGroups(
+          filteredTasks as ScheduleTaskData[],
+          dependencies as TaskDependencyData[],
+          collapsedPhases,
+        )
+      : {
+          frappeTasks: transformToFrappeTasks(
             filteredTasks as ScheduleTaskData[],
             dependencies as TaskDependencyData[],
-            collapsedPhases,
-          )
-        : {
-            frappeTasks: transformToFrappeTasks(
-              filteredTasks as ScheduleTaskData[],
-              dependencies as TaskDependencyData[],
-            ),
-            displayItems: filteredTasks.map(
-              (task): DisplayItem => ({
-                type: "task",
-                task: task as ScheduleTaskData,
-              })
-            ),
-          },
-    [collapsedPhases, dependencies, filteredTasks, phaseGrouping]
-  )
+          ),
+          displayItems: filteredTasks.map(
+            (task): DisplayItem => ({
+              type: "task",
+              task: task as ScheduleTaskData,
+            })
+          ),
+        }
+
+    if (!multipleProjects) return transformed
+    const taskById = new Map(filteredTasks.map((task) => [task.id, task]))
+    return {
+      ...transformed,
+      frappeTasks: transformed.frappeTasks.map((task) => {
+        const scheduleTask = taskById.get(task.id)
+        const project = scheduleTask
+          ? projectById.get(scheduleTask.projectId)
+          : null
+        return project ? { ...task, projectColor: project.color } : task
+      }),
+    }
+  }, [
+    collapsedPhases,
+    dependencies,
+    filteredTasks,
+    multipleProjects,
+    phaseGrouping,
+    projectById,
+  ])
   displayItemsRef.current = displayItems
 
   const togglePhase = (phase: string) => {
@@ -511,7 +551,19 @@ export function ScheduleGanttView({
       if (task.id.startsWith("phase-")) return
       const startDate = format(start, "yyyy-MM-dd")
       const endDate = format(end, "yyyy-MM-dd")
-      const workdays = countBusinessDays(startDate, endDate, exceptions)
+      const scheduleTask = tasks.find(
+        (candidate) => candidate.id === task.id
+      )
+      const taskExceptions = scheduleTask
+        ? exceptions.filter(
+            (exception) => exception.projectId === scheduleTask.projectId
+          )
+        : []
+      const workdays = countBusinessDays(
+        startDate,
+        endDate,
+        taskExceptions
+      )
 
       const result = await updateTask(task.id, {
         startDate,
@@ -524,7 +576,7 @@ export function ScheduleGanttView({
         toast.error(result.error)
       }
     },
-    [exceptions, router]
+    [exceptions, router, tasks]
   )
 
   const handleTodayScrollReady = useCallback(
@@ -607,6 +659,7 @@ export function ScheduleGanttView({
           }
 
           const { task } = item
+          const taskProject = projectById.get(task.projectId)
           return (
             <TableRow
               key={task.id}
@@ -619,8 +672,27 @@ export function ScheduleGanttView({
               title="Show this item on the timeline"
             >
               <TableCell className="h-[48px] py-0 text-xs truncate max-w-[140px]">
-                <span className={phaseGrouping ? "pl-4" : ""}>
-                  {task.title}
+                <span
+                  className={cn(
+                    "flex min-w-0 items-center gap-1.5",
+                    phaseGrouping && "pl-4"
+                  )}
+                >
+                  {multipleProjects && taskProject && (
+                    <span
+                      className="inline-flex max-w-[72px] shrink-0 items-center gap-1 rounded-sm bg-muted px-1 py-0.5 text-[9px] font-medium"
+                      title={projectScheduleLabel(taskProject)}
+                    >
+                      <span
+                        className="size-2 shrink-0 rounded-full"
+                        style={{ backgroundColor: taskProject.color }}
+                      />
+                      <span className="truncate">
+                        {taskProject.projectNumber ?? taskProject.name}
+                      </span>
+                    </span>
+                  )}
+                  <span className="truncate">{task.title}</span>
                 </span>
               </TableCell>
               <TableCell className="h-[48px] py-0 text-xs text-muted-foreground">
@@ -639,11 +711,11 @@ export function ScheduleGanttView({
                 >
                   <ProjectTaskCreateButton
                     compact
-                    projectId={projectId}
+                    projectId={task.projectId}
                     sourceLabel="Schedule item"
                     sourceRecordId={task.id}
                     sourceRecordNumber={null}
-                    sourceHref={`/dashboard/projects/${projectId}/schedule`}
+                    sourceHref={`/dashboard/projects/${task.projectId}/schedule`}
                     defaultTitle={`Follow up: ${task.title}`}
                     defaultDescription={`${task.phase} schedule item.`}
                     defaultAssigneeName={task.assignedTo}
@@ -657,6 +729,7 @@ export function ScheduleGanttView({
                     variant="ghost"
                     size="icon"
                     className="size-6"
+                    aria-label={`Edit ${task.title}`}
                     onClick={() => {
                       setFocusedTaskId(task.id)
                       setEditingTask(task)
@@ -670,22 +743,24 @@ export function ScheduleGanttView({
             </TableRow>
           )
         })}
-        <TableRow>
-          <TableCell colSpan={5} className="py-1">
-            <Button
-              variant="ghost"
-              size="sm"
-              className="text-xs w-full justify-start"
-              onClick={() => {
-                setEditingTask(null)
-                setTaskFormOpen(true)
-              }}
-            >
-              <IconPlus className="size-3 mr-1" />
-              Add Schedule Item
-            </Button>
-          </TableCell>
-        </TableRow>
+        {projectId && (
+          <TableRow>
+            <TableCell colSpan={5} className="py-1">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-xs w-full justify-start"
+                onClick={() => {
+                  setEditingTask(null)
+                  setTaskFormOpen(true)
+                }}
+              >
+                <IconPlus className="size-3 mr-1" />
+                Add Schedule Item
+              </Button>
+            </TableCell>
+          </TableRow>
+        )}
       </TableBody>
     </Table>
   )
@@ -828,9 +903,9 @@ export function ScheduleGanttView({
             </Select>
           )}
 
-          {/* Day / Week / Month */}
+          {/* Day / Week / Month / Year */}
           <div className="flex items-center rounded-md border bg-muted/40 p-0.5">
-            {(["Day", "Week", "Month"] as const).map((mode) => (
+            {(["Day", "Week", "Month", "Year"] as const).map((mode) => (
               <button
                 key={mode}
                 onClick={() => handleViewModeChange(mode)}
@@ -988,16 +1063,24 @@ export function ScheduleGanttView({
         </ResizablePanelGroup>
       )}
 
-      <ScheduleItemFormDialog
-        open={taskFormOpen}
-        onOpenChange={setTaskFormOpen}
-        projectId={projectId}
-        editingTask={editingTask}
-        allTasks={tasks}
-        dependencies={dependencies}
-        exceptions={exceptions}
-        assigneeOptions={assigneeOptions}
-      />
+      {(editingTask || projectId) && (
+        <ScheduleItemFormDialog
+          open={taskFormOpen}
+          onOpenChange={setTaskFormOpen}
+          projectId={editingTask?.projectId ?? projectId ?? ""}
+          editingTask={editingTask}
+          allTasks={tasks.filter(
+            (task) =>
+              task.projectId === (editingTask?.projectId ?? projectId)
+          )}
+          dependencies={dependencies}
+          exceptions={exceptions.filter(
+            (exception) =>
+              exception.projectId === (editingTask?.projectId ?? projectId)
+          )}
+          assigneeOptions={assigneeOptions}
+        />
+      )}
     </div>
   )
 }

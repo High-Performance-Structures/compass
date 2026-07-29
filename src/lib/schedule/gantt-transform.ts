@@ -16,6 +16,7 @@ export interface FrappeTask {
   dependencies: string
   custom_class: string
   displayColor: string | null
+  projectColor?: string
   isCriticalPath: boolean
   isMilestone: boolean
 }

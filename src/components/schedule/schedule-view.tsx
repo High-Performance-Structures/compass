@@ -68,8 +68,13 @@ import { WorkdayExceptionsView } from "./workday-exceptions-view"
 import { ScheduleBaselineView } from "./schedule-baseline-view"
 import { ScheduleItemFormDialog } from "./schedule-item-form-dialog"
 import { ProjectQuickSwitcher } from "@/components/projects/project-quick-switcher"
+import { ScheduleScopeSwitcher } from "./schedule-scope-switcher"
 import type { ProjectListItem } from "@/app/actions/projects"
 import type { ProjectTaskAssigneeOption } from "@/app/actions/project-contacts"
+import type {
+  ScheduleProjectData,
+  ScheduleScope,
+} from "@/lib/schedule/project-scope"
 import type {
   ScheduleData,
   ScheduleBaselineData,
@@ -96,14 +101,17 @@ const VIEW_OPTIONS = [
 ]
 
 interface ScheduleViewProps {
-  readonly projectId: string
+  readonly projectId: string | null
   readonly projectName: string
   readonly initialData: ScheduleData
   readonly baselines: ScheduleBaselineData[]
   readonly allProjects?: readonly ProjectListItem[]
+  readonly scheduleProjects?: readonly ScheduleProjectData[]
+  readonly scope?: ScheduleScope
   readonly assigneeOptions?: readonly ProjectTaskAssigneeOption[]
   readonly initialView?: View
   readonly focusTaskId?: string | null
+  readonly globalMode?: boolean
 }
 
 export function ScheduleView({
@@ -112,9 +120,12 @@ export function ScheduleView({
   initialData,
   baselines,
   allProjects = [],
+  scheduleProjects = [],
+  scope,
   assigneeOptions = [],
   initialView = "gantt",
   focusTaskId = null,
+  globalMode = false,
 }: ScheduleViewProps) {
   const isMobile = useIsMobile()
   const [view, setView] = useState<View>(initialView)
@@ -127,20 +138,24 @@ export function ScheduleView({
   const [importDialogOpen, setImportDialogOpen] = useState(false)
   const [isImporting, setIsImporting] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const preferenceScopeKey = projectId ?? "unified"
 
   useEffect(() => {
     const storedMode = window.localStorage.getItem(
-      scheduleOrderStorageKey(projectId)
+      scheduleOrderStorageKey(preferenceScopeKey)
     )
     setOrderMode(
       isScheduleOrderMode(storedMode) ? storedMode : "chronological"
     )
-  }, [projectId])
+  }, [preferenceScopeKey])
 
   const handleOrderModeChange = (value: string): void => {
     if (!isScheduleOrderMode(value)) return
     setOrderMode(value)
-    window.localStorage.setItem(scheduleOrderStorageKey(projectId), value)
+    window.localStorage.setItem(
+      scheduleOrderStorageKey(preferenceScopeKey),
+      value
+    )
   }
 
   const phaseOptions = useMemo(() => {
@@ -218,12 +233,25 @@ export function ScheduleView({
 
   // CSV export
   const handleExportCSV = () => {
+    const includeProject = scheduleProjects.length > 1
     const headers = [
+      ...(includeProject ? ["Project"] : []),
       "Title", "Phase", "Status", "Start Date", "End Date",
       "Duration (days)", "% Complete", "Assigned To",
       "Critical Path", "Milestone",
     ]
     const rows = filteredTasks.map((task) => [
+      ...(includeProject
+        ? [
+            scheduleProjects.find(
+              (project) => project.id === task.projectId
+            )?.projectNumber ??
+              scheduleProjects.find(
+                (project) => project.id === task.projectId
+              )?.name ??
+              task.projectId,
+          ]
+        : []),
       task.title, task.phase, task.status, task.startDate,
       task.endDateCalculated, task.workdays.toString(),
       task.percentComplete.toString(), task.assignedTo ?? "",
@@ -336,23 +364,49 @@ export function ScheduleView({
       <div className="mb-3 flex flex-col gap-2 lg:flex-row lg:items-center">
         <nav className="flex min-w-0 items-center gap-1.5 text-sm">
           <Link
-            href={`/dashboard/projects/${projectId}`}
+            href={
+              globalMode || !projectId
+                ? "/dashboard/schedule"
+                : `/dashboard/projects/${projectId}`
+            }
             className="text-muted-foreground hover:text-foreground truncate transition-colors"
           >
-            {projectName}
+            {globalMode ? "Scheduling" : projectName}
           </Link>
           <IconChevronRight className="size-3.5 text-muted-foreground/60 shrink-0" />
-          <span className="font-medium">Schedule</span>
+          <span className="font-medium">
+            {globalMode ? "Project schedules" : "Schedule"}
+          </span>
         </nav>
 
         <div className="flex flex-wrap items-center gap-2 lg:ml-auto lg:justify-end">
-          <ProjectQuickSwitcher
-            projects={allProjects}
-            currentProjectId={projectId}
-            targetSection="schedule"
-            placeholder="Switch schedule project..."
-            className="w-full sm:w-[300px]"
-          />
+          {globalMode && scope ? (
+            <>
+              <Button asChild variant="outline" size="sm" className="h-8">
+                <Link href="/dashboard/schedule">Work calendar</Link>
+              </Button>
+              <ScheduleScopeSwitcher
+                projects={allProjects}
+                scheduleProjects={scheduleProjects}
+                scope={scope}
+              />
+            </>
+          ) : (
+            <>
+              <ProjectQuickSwitcher
+                projects={allProjects}
+                currentProjectId={projectId}
+                targetSection="schedule"
+                placeholder="Switch schedule project..."
+                className="w-full sm:w-[300px]"
+              />
+              <Button asChild variant="outline" size="sm" className="h-8">
+                <Link href="/dashboard/schedule?mode=projects&scope=all&view=gantt">
+                  All project schedules
+                </Link>
+              </Button>
+            </>
+          )}
 
           {/* View switcher */}
           <div className={cn(
@@ -376,7 +430,17 @@ export function ScheduleView({
             ))}
           </div>
 
-          <Button size="sm" onClick={() => setTaskFormOpen(true)} className="h-8">
+          <Button
+            size="sm"
+            onClick={() => setTaskFormOpen(true)}
+            className="h-8"
+            disabled={!projectId}
+            title={
+              projectId
+                ? "Create a schedule item"
+                : "Choose one project before creating a schedule item"
+            }
+          >
             <IconPlus className="size-3.5" />
             <span className="hidden sm:inline ml-1.5">New Schedule Item</span>
           </Button>
@@ -572,17 +636,18 @@ export function ScheduleView({
       {/* View content */}
       <div className="flex flex-col flex-1 min-h-0">
         {view === "calendar" && (
-          isMobile ? (
+          isMobile && !globalMode ? (
             <ScheduleMobileView
-              projectId={projectId}
+              projectId={projectId ?? preferenceScopeKey}
               tasks={filteredTasks}
               exceptions={initialData.exceptions}
             />
           ) : (
             <ScheduleCalendarView
-              projectId={projectId}
+              projectId={projectId ?? preferenceScopeKey}
               tasks={filteredTasks}
               exceptions={initialData.exceptions}
+              projects={scheduleProjects}
             />
           )
         )}
@@ -594,6 +659,7 @@ export function ScheduleView({
             exceptions={initialData.exceptions}
             assigneeOptions={assigneeOptions}
             focusTaskId={focusTaskId}
+            projects={scheduleProjects}
           />
         )}
         {view === "gantt" && (
@@ -603,21 +669,28 @@ export function ScheduleView({
             dependencies={initialData.dependencies}
             exceptions={initialData.exceptions}
             assigneeOptions={assigneeOptions}
+            projects={scheduleProjects}
           />
         )}
       </div>
 
       {/* New schedule item dialog */}
-      <ScheduleItemFormDialog
-        open={taskFormOpen}
-        onOpenChange={setTaskFormOpen}
-        projectId={projectId}
-        editingTask={null}
-        allTasks={initialData.tasks}
-        dependencies={initialData.dependencies}
-        exceptions={initialData.exceptions}
-        assigneeOptions={assigneeOptions}
-      />
+      {projectId && (
+        <ScheduleItemFormDialog
+          open={taskFormOpen}
+          onOpenChange={setTaskFormOpen}
+          projectId={projectId}
+          editingTask={null}
+          allTasks={initialData.tasks.filter(
+            (task) => task.projectId === projectId
+          )}
+          dependencies={initialData.dependencies}
+          exceptions={initialData.exceptions.filter(
+            (exception) => exception.projectId === projectId
+          )}
+          assigneeOptions={assigneeOptions}
+        />
+      )}
 
       {/* Import dialog */}
       <Dialog open={importDialogOpen} onOpenChange={setImportDialogOpen}>
@@ -671,11 +744,17 @@ export function ScheduleView({
             </SheetDescription>
           </SheetHeader>
           <div className="mt-4">
-            <ScheduleBaselineView
-              projectId={projectId}
-              baselines={baselines}
-              currentTasks={initialData.tasks}
-            />
+            {projectId ? (
+              <ScheduleBaselineView
+                projectId={projectId}
+                baselines={baselines}
+                currentTasks={initialData.tasks}
+              />
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                Choose one project to manage its baselines.
+              </p>
+            )}
           </div>
         </SheetContent>
       </Sheet>
@@ -690,10 +769,16 @@ export function ScheduleView({
             </SheetDescription>
           </SheetHeader>
           <div className="mt-4">
-            <WorkdayExceptionsView
-              projectId={projectId}
-              exceptions={initialData.exceptions}
-            />
+            {projectId ? (
+              <WorkdayExceptionsView
+                projectId={projectId}
+                exceptions={initialData.exceptions}
+              />
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                Choose one project to manage its workday exceptions.
+              </p>
+            )}
           </div>
         </SheetContent>
       </Sheet>

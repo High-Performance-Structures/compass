@@ -147,6 +147,16 @@
 .gantt .bar-wrapper.display-color-teal .bar-progress { fill: color-mix(in srgb, var(--schedule-display-teal, #14b8a6) 68%, black); }
 .gantt .bar-wrapper.display-color-gray .bar-progress { fill: color-mix(in srgb, var(--schedule-display-gray, #6b7280) 68%, black); }
 
+/* Multi-project schedules use a stable project color across every view. */
+.gantt .bar-wrapper.project-color .bar {
+  fill: var(--schedule-project-color);
+  stroke: color-mix(in srgb, var(--schedule-project-color) 78%, black);
+}
+
+.gantt .bar-wrapper.project-color .bar-progress {
+  fill: color-mix(in srgb, var(--schedule-project-color) 68%, black);
+}
+
 /* Buildertrend's Critical Path view: blue time-sensitive work, grey float. */
 .gantt-wrapper.critical-path-mode .gantt .bar-wrapper:not([data-id^="phase-"]) .bar {
   fill: oklch(0.67 0.01 260);

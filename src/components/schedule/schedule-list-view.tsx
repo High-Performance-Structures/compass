@@ -47,6 +47,8 @@ import type {
   WorkdayExceptionData,
 } from "@/lib/schedule/types"
 import type { ProjectTaskAssigneeOption } from "@/app/actions/project-contacts"
+import type { ScheduleProjectData } from "@/lib/schedule/project-scope"
+import { projectScheduleLabel } from "@/lib/schedule/project-scope"
 import { ProjectTaskCreateButton } from "@/components/projects/project-task-create-button"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
@@ -70,12 +72,13 @@ import {
 } from "@/components/ui/alert-dialog"
 
 interface ScheduleListViewProps {
-  readonly projectId: string
+  readonly projectId: string | null
   readonly tasks: ScheduleTaskData[]
   readonly dependencies: TaskDependencyData[]
   readonly exceptions: readonly WorkdayExceptionData[]
   readonly assigneeOptions: readonly ProjectTaskAssigneeOption[]
   readonly focusTaskId?: string | null
+  readonly projects?: readonly ScheduleProjectData[]
 }
 
 function StatusDot({
@@ -142,9 +145,10 @@ export function ScheduleListView({
   exceptions,
   assigneeOptions,
   focusTaskId = null,
+  projects = [],
 }: ScheduleListViewProps) {
   const router = useRouter()
-  const displayColorPalette = useScheduleDisplayPalette(projectId)
+  const displayColorPalette = useScheduleDisplayPalette(projectId ?? "unified")
   const [taskFormOpen, setTaskFormOpen] = useState(false)
   const [editingTask, setEditingTask] = useState<ScheduleTaskData | null>(null)
   const [depDialogOpen, setDepDialogOpen] = useState(false)
@@ -154,6 +158,11 @@ export function ScheduleListView({
     readonly ScheduleTaskData[]
   >([])
   const [isWorking, setIsWorking] = useState(false)
+  const projectById = useMemo(
+    () => new Map(projects.map((project) => [project.id, project])),
+    [projects]
+  )
+  const multipleProjects = projectById.size > 1
 
   useEffect(() => {
     setLocalTasks(tasks)
@@ -216,6 +225,30 @@ export function ScheduleListView({
             </button>
           </div>
         ),
+      },
+      {
+        id: "project",
+        header: "Project",
+        cell: ({ row }) => {
+          const project = projectById.get(row.original.projectId)
+          return project ? (
+            <div
+              className="flex max-w-[180px] items-center gap-1.5 text-xs"
+              title={projectScheduleLabel(project)}
+            >
+              <span
+                className="size-2.5 shrink-0 rounded-full"
+                style={{ backgroundColor: project.color }}
+              />
+              <span className="truncate">
+                {project.projectNumber ?? project.name}
+              </span>
+            </div>
+          ) : (
+            <span className="text-xs text-muted-foreground">—</span>
+          )
+        },
+        meta: { className: multipleProjects ? "" : "hidden" },
       },
       {
         id: "complete",
@@ -286,11 +319,11 @@ export function ScheduleListView({
           <div className="flex items-center gap-1">
             <ProjectTaskCreateButton
               compact
-              projectId={projectId}
+              projectId={row.original.projectId}
               sourceLabel="Schedule item"
               sourceRecordId={row.original.id}
               sourceRecordNumber={null}
-              sourceHref={`/dashboard/projects/${projectId}/schedule`}
+              sourceHref={`/dashboard/projects/${row.original.projectId}/schedule`}
               defaultTitle={`Follow up: ${row.original.title}`}
               defaultDescription={`${row.original.phase} schedule item.`}
               defaultAssigneeName={row.original.assignedTo}
@@ -327,7 +360,13 @@ export function ScheduleListView({
         size: 110,
       },
     ],
-    [assigneeOptions, displayColorPalette, handleEdit, projectId]
+    [
+      assigneeOptions,
+      displayColorPalette,
+      handleEdit,
+      multipleProjects,
+      projectById,
+    ]
   )
 
   const table = useReactTable({
@@ -344,16 +383,31 @@ export function ScheduleListView({
     .getSelectedRowModel()
     .rows.map((row) => row.original)
 
+  function selectedByProject(): ReadonlyMap<string, readonly string[]> {
+    const grouped = new Map<string, string[]>()
+    for (const task of selectedTasks) {
+      const current = grouped.get(task.projectId) ?? []
+      current.push(task.id)
+      grouped.set(task.projectId, current)
+    }
+    return grouped
+  }
+
   const handleCompleteSelected = async (): Promise<void> => {
     const selectedIds = selectedTasks.map((task) => task.id)
     if (selectedIds.length === 0) return
 
     setIsWorking(true)
-    const result = await completeScheduleTasks(projectId, selectedIds)
+    const results = await Promise.all(
+      [...selectedByProject()].map(([selectedProjectId, ids]) =>
+        completeScheduleTasks(selectedProjectId, ids)
+      )
+    )
     setIsWorking(false)
 
-    if (!result.success) {
-      toast.error(result.error)
+    const failedResult = results.find((result) => !result.success)
+    if (failedResult && !failedResult.success) {
+      toast.error(failedResult.error)
       return
     }
 
@@ -382,27 +436,34 @@ export function ScheduleListView({
     setIsWorking(true)
     let assignedName = value.trim()
     if (option?.source === "directory" && option.directoryContactId) {
-      const contactResult = await addDirectoryContactToProjectForTask(
-        projectId,
-        option.directoryContactId
-      )
-      if (!contactResult.success) {
-        setIsWorking(false)
-        toast.error(contactResult.error)
-        return
+      for (const selectedProjectId of selectedByProject().keys()) {
+        const contactResult = await addDirectoryContactToProjectForTask(
+          selectedProjectId,
+          option.directoryContactId
+        )
+        if (!contactResult.success) {
+          setIsWorking(false)
+          toast.error(contactResult.error)
+          return
+        }
+        assignedName = contactResult.contact.name
       }
-      assignedName = contactResult.contact.name
     }
 
-    const result = await assignScheduleTasks(
-      projectId,
-      selectedIds,
-      assignedName || null
+    const results = await Promise.all(
+      [...selectedByProject()].map(([selectedProjectId, ids]) =>
+        assignScheduleTasks(
+          selectedProjectId,
+          ids,
+          assignedName || null
+        )
+      )
     )
     setIsWorking(false)
 
-    if (!result.success) {
-      toast.error(result.error)
+    const failedResult = results.find((result) => !result.success)
+    if (failedResult && !failedResult.success) {
+      toast.error(failedResult.error)
       return
     }
 
@@ -429,11 +490,22 @@ export function ScheduleListView({
     if (selectedIds.length === 0) return
 
     setIsWorking(true)
-    const result = await deleteScheduleTasks(projectId, selectedIds)
+    const grouped = new Map<string, string[]>()
+    for (const task of deletingTasks) {
+      const current = grouped.get(task.projectId) ?? []
+      current.push(task.id)
+      grouped.set(task.projectId, current)
+    }
+    const results = await Promise.all(
+      [...grouped].map(([selectedProjectId, ids]) =>
+        deleteScheduleTasks(selectedProjectId, ids)
+      )
+    )
     setIsWorking(false)
 
-    if (!result.success) {
-      toast.error(result.error)
+    const failedResult = results.find((result) => !result.success)
+    if (failedResult && !failedResult.success) {
+      toast.error(failedResult.error)
       return
     }
 
@@ -469,7 +541,12 @@ export function ScheduleListView({
           size="sm"
           variant="outline"
           onClick={() => setDepDialogOpen(true)}
-          disabled={localTasks.length < 2}
+          disabled={!projectId || localTasks.length < 2}
+          title={
+            projectId
+              ? "Add a dependency"
+              : "Choose one project to manage dependencies"
+          }
         >
           <IconLink className="size-4 mr-1" />
           Add Dependency
@@ -654,24 +731,34 @@ export function ScheduleListView({
         </div>
       </div>
 
-      <ScheduleItemFormDialog
-        open={taskFormOpen}
-        onOpenChange={setTaskFormOpen}
-        projectId={projectId}
-        editingTask={editingTask}
-        allTasks={localTasks}
-        dependencies={dependencies}
-        exceptions={exceptions}
-        assigneeOptions={assigneeOptions}
-      />
+      {(editingTask || projectId) && (
+        <ScheduleItemFormDialog
+          open={taskFormOpen}
+          onOpenChange={setTaskFormOpen}
+          projectId={editingTask?.projectId ?? projectId ?? ""}
+          editingTask={editingTask}
+          allTasks={localTasks.filter(
+            (task) =>
+              task.projectId === (editingTask?.projectId ?? projectId)
+          )}
+          dependencies={dependencies}
+          exceptions={exceptions.filter(
+            (exception) =>
+              exception.projectId === (editingTask?.projectId ?? projectId)
+          )}
+          assigneeOptions={assigneeOptions}
+        />
+      )}
 
-      <DependencyDialog
-        open={depDialogOpen}
-        onOpenChange={setDepDialogOpen}
-        projectId={projectId}
-        tasks={localTasks}
-        dependencies={dependencies}
-      />
+      {projectId && (
+        <DependencyDialog
+          open={depDialogOpen}
+          onOpenChange={setDepDialogOpen}
+          projectId={projectId}
+          tasks={localTasks}
+          dependencies={dependencies}
+        />
+      )}
 
       <AlertDialog
         open={pendingDeleteTasks.length > 0}

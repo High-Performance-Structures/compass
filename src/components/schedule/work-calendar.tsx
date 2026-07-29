@@ -504,6 +504,11 @@ export function WorkCalendar({
             />
           </div>
           <div className="flex flex-wrap gap-2">
+            <Button asChild size="sm" variant="outline">
+              <Link href="/dashboard/schedule?mode=projects&scope=all&view=gantt">
+                Project schedules
+              </Link>
+            </Button>
             {data.canCreateEvents && (
               <WorkCalendarEventDialog
                 variant="create"
