@@ -86,6 +86,37 @@ function csiLabel(contact: ProjectContactItem): string | null {
   return `${contact.csiDivision} ${contact.csiDivisionName}`
 }
 
+function accessStatusLabel(contact: ProjectContactItem): string {
+  switch (contact.accessStatus) {
+    case "active":
+      return "Active"
+    case "pending":
+      return "Pending"
+    case "expired":
+      return "Expired"
+    case "inactive":
+      return "Inactive"
+    case "not_invited":
+      return "Not invited"
+  }
+}
+
+function accessStatusBadgeVariant(
+  contact: ProjectContactItem
+): "default" | "secondary" | "destructive" | "outline" {
+  switch (contact.accessStatus) {
+    case "active":
+      return "default"
+    case "pending":
+      return "secondary"
+    case "expired":
+    case "inactive":
+      return "destructive"
+    case "not_invited":
+      return "outline"
+  }
+}
+
 function ContactCard({
   contact,
   projectId,
@@ -105,6 +136,9 @@ function ContactCard({
             <p className="line-clamp-1 text-sm font-medium">
               {contact.displayName}
             </p>
+            <Badge variant={accessStatusBadgeVariant(contact)}>
+              {accessStatusLabel(contact)}
+            </Badge>
             {contact.primaryContact && <Badge variant="secondary">Primary</Badge>}
             {csiLabel(contact) && (
               <Badge variant="outline">{csiLabel(contact)}</Badge>

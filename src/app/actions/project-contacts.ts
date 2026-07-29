@@ -1,13 +1,15 @@
 "use server"
 
-import { and, asc, eq, inArray, or } from "drizzle-orm"
+import { and, asc, desc, eq, inArray, or } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
 import { getDb } from "@/db"
 import {
   organizationMembers,
+  projectAccessInvitations,
   projectContacts,
   projectContactSourceLinks,
+  projectMembers,
   projects,
   users,
   vendors,
@@ -17,6 +19,11 @@ import { getCloudflareContext } from "@/lib/db"
 import { isDemoUser } from "@/lib/demo"
 import { requireOrg } from "@/lib/org-scope"
 import { requirePermission } from "@/lib/permissions"
+import {
+  projectContactAccessStatus,
+  type ProjectContactAccessStatus,
+  type ProjectContactInvitationSnapshot,
+} from "@/lib/project-contact-access-status"
 
 export type ProjectContactType =
   | "owner"
@@ -50,6 +57,7 @@ export type ProjectContactItem = {
   readonly active: boolean
   readonly syncStatus: string
   readonly lastSyncedAt: string | null
+  readonly accessStatus: ProjectContactAccessStatus
 }
 
 export type ProjectContactGroup = {
@@ -250,7 +258,8 @@ function requireLinkIds(formData: FormData): readonly string[] {
 }
 
 function toContactItem(
-  row: typeof projectContacts.$inferSelect
+  row: typeof projectContacts.$inferSelect,
+  accessStatus: ProjectContactAccessStatus = "not_invited"
 ): ProjectContactItem {
   return {
     id: row.id,
@@ -276,6 +285,7 @@ function toContactItem(
     active: row.active,
     syncStatus: row.syncStatus,
     lastSyncedAt: row.lastSyncedAt,
+    accessStatus,
   }
 }
 
@@ -480,7 +490,83 @@ export async function getProjectContactsSummary(
       asc(projectContacts.displayName)
     )
 
-  const allContacts = rows.map(toContactItem)
+  const invitationRows = await db
+    .select({
+      projectContactId: projectAccessInvitations.projectContactId,
+      email: projectAccessInvitations.email,
+      status: projectAccessInvitations.status,
+      workosExpiresAt: projectAccessInvitations.workosExpiresAt,
+      acceptedUserActive: users.isActive,
+      invitedAt: projectAccessInvitations.invitedAt,
+    })
+    .from(projectAccessInvitations)
+    .leftJoin(users, eq(users.id, projectAccessInvitations.acceptedBy))
+    .where(eq(projectAccessInvitations.projectId, projectId))
+    .orderBy(desc(projectAccessInvitations.invitedAt))
+  const activeProjectMemberRows = await db
+    .select({
+      userId: users.id,
+      email: users.email,
+    })
+    .from(projectMembers)
+    .innerJoin(users, eq(users.id, projectMembers.userId))
+    .where(
+      and(
+        eq(projectMembers.projectId, projectId),
+        eq(users.isActive, true)
+      )
+    )
+  const latestInvitationByContactId = new Map<
+    string,
+    ProjectContactInvitationSnapshot
+  >()
+  const latestInvitationByEmail = new Map<
+    string,
+    ProjectContactInvitationSnapshot
+  >()
+  for (const invitation of invitationRows) {
+    const snapshot: ProjectContactInvitationSnapshot = {
+      status: invitation.status,
+      workosExpiresAt: invitation.workosExpiresAt,
+      acceptedUserActive: invitation.acceptedUserActive,
+    }
+    if (
+      invitation.projectContactId &&
+      !latestInvitationByContactId.has(invitation.projectContactId)
+    ) {
+      latestInvitationByContactId.set(invitation.projectContactId, snapshot)
+    }
+    const email = invitation.email.trim().toLowerCase()
+    if (email && !latestInvitationByEmail.has(email)) {
+      latestInvitationByEmail.set(email, snapshot)
+    }
+  }
+  const activeProjectUserIds = new Set(
+    activeProjectMemberRows.map((member) => member.userId)
+  )
+  const activeProjectEmails = new Set(
+    activeProjectMemberRows.map((member) => member.email.trim().toLowerCase())
+  )
+  const allContacts = rows.map((row) => {
+    const email = row.email?.trim().toLowerCase() ?? ""
+    const latestInvitation =
+      latestInvitationByContactId.get(row.id) ??
+      (email ? latestInvitationByEmail.get(email) : undefined) ??
+      null
+    const activeProjectMember =
+      (row.sourceEntityType === "user" &&
+        row.sourceEntityId !== null &&
+        activeProjectUserIds.has(row.sourceEntityId)) ||
+      (email.length > 0 && activeProjectEmails.has(email))
+
+    return toContactItem(
+      row,
+      projectContactAccessStatus({
+        activeProjectMember,
+        latestInvitation,
+      })
+    )
+  })
   const sourceLinks = await db
     .select({
       matchStatus: projectContactSourceLinks.matchStatus,
@@ -547,7 +633,9 @@ export async function getProjectTaskAssigneeOptions(
       asc(projectContacts.displayName)
     )
 
-  const projectContactItems = projectContactRows.map(toContactItem)
+  const projectContactItems = projectContactRows.map((row) =>
+    toContactItem(row)
+  )
   const projectSourceVendorIds = new Set(
     projectContactItems
       .map((contact) =>
@@ -642,7 +730,7 @@ export async function getProjectContactMatchReview(
       asc(projectContacts.displayName)
     )
 
-  const contacts = contactRows.map(toContactItem)
+  const contacts = contactRows.map((row) => toContactItem(row))
   const contactsById = new Map(contacts.map((contact) => [contact.id, contact]))
 
   const user = await requireAuth()
