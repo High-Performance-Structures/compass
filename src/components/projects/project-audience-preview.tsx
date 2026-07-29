@@ -646,7 +646,10 @@ function OwnerProjectPreview({
         )}
 
         {section === "schedule" && (
-        <ProjectAudienceSchedule items={data.scheduleItems} />
+        <ProjectAudienceSchedule
+          items={data.scheduleItems}
+          presentation={data.project.ownerScheduleView}
+        />
         )}
 
         {section === "conversations" && (

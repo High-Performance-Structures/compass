@@ -24,6 +24,12 @@ import {
   type ProjectAudience,
 } from "@/lib/project-audience-access"
 import { isInternalStaffRole } from "@/lib/user-roles"
+import {
+  isOwnerScheduleView,
+  summarizeOwnerScheduleByPhase,
+  type OwnerScheduleView,
+  type OwnerScheduleVisibleItem,
+} from "@/lib/schedule/owner-visibility"
 
 export type { ProjectAudience } from "@/lib/project-audience-access"
 
@@ -134,6 +140,7 @@ export type ProjectAudiencePreview = {
     readonly address: string | null
     readonly clientName: string | null
     readonly projectManager: string | null
+    readonly ownerScheduleView: OwnerScheduleView
   }
   readonly ownerUpdates: readonly AudienceOwnerUpdate[]
   readonly photos: readonly AudiencePhoto[]
@@ -248,6 +255,7 @@ export async function getProjectAudiencePreview(
       address: projects.address,
       clientName: projects.clientName,
       projectManager: projects.projectManager,
+      ownerScheduleView: projects.ownerScheduleView,
       status: projects.status,
     })
     .from(projects)
@@ -347,6 +355,7 @@ export async function getProjectAudiencePreview(
       assignedTo: scheduleTasks.assignedTo,
       percentComplete: scheduleTasks.percentComplete,
       isMilestone: scheduleTasks.isMilestone,
+      workdays: scheduleTasks.workdays,
     })
     .from(scheduleTasks)
     .where(eq(scheduleTasks.projectId, projectId))
@@ -499,13 +508,41 @@ export async function getProjectAudiencePreview(
       ])
       .filter((value) => value.length > 0)
   )
+  const ownerScheduleView = isOwnerScheduleView(project.ownerScheduleView)
+    ? project.ownerScheduleView
+    : "items"
+  const visibleScheduleItem = (
+    item: (typeof scheduleRows)[number]
+  ): OwnerScheduleVisibleItem => ({
+    id: item.id,
+    title: item.title,
+    startDate: item.startDate,
+    endDate: item.endDate,
+    status: item.status,
+    phase: item.phase,
+    assignedTo: item.assignedTo,
+    percentComplete: item.percentComplete,
+    isMilestone: item.isMilestone,
+  })
+  const ownerScheduleItems =
+    ownerScheduleView === "phases"
+      ? summarizeOwnerScheduleByPhase(scheduleRows)
+      : scheduleRows.map(visibleScheduleItem)
 
   return {
     audience,
     viewerIsInternal,
     viewer,
     projectOptions,
-    project,
+    project: {
+      id: project.id,
+      name: project.name,
+      projectNumber: project.projectNumber,
+      address: project.address,
+      clientName: project.clientName,
+      projectManager: project.projectManager,
+      ownerScheduleView,
+    },
     ownerUpdates: ownerUpdateRows,
     photos: photoRows.filter(isImage).map((photo) => {
       const resolvedPhotoDate = photoDate({
@@ -533,10 +570,10 @@ export async function getProjectAudiencePreview(
     }),
     scheduleItems:
       audience === "owner"
-        ? scheduleRows
+        ? ownerScheduleItems
         : scheduleRows.filter((item) =>
             visibleContactNames.has(normalizeVisibleName(item.assignedTo))
-          ),
+          ).map(visibleScheduleItem),
     operations: operationRows
       .filter(
         (operation) =>

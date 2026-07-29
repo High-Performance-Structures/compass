@@ -69,6 +69,7 @@ import { ScheduleBaselineView } from "./schedule-baseline-view"
 import { ScheduleItemFormDialog } from "./schedule-item-form-dialog"
 import { ProjectQuickSwitcher } from "@/components/projects/project-quick-switcher"
 import { ScheduleScopeSwitcher } from "./schedule-scope-switcher"
+import { OwnerScheduleVisibilityControl } from "./owner-schedule-visibility-control"
 import type { ProjectListItem } from "@/app/actions/projects"
 import type { ProjectTaskAssigneeOption } from "@/app/actions/project-contacts"
 import type {
@@ -91,6 +92,7 @@ import {
   scheduleOrderStorageKey,
   type ScheduleOrderMode,
 } from "@/lib/schedule/task-ordering"
+import type { OwnerScheduleView } from "@/lib/schedule/owner-visibility"
 
 type View = "calendar" | "list" | "gantt"
 
@@ -112,6 +114,7 @@ interface ScheduleViewProps {
   readonly initialView?: View
   readonly focusTaskId?: string | null
   readonly globalMode?: boolean
+  readonly ownerScheduleView?: OwnerScheduleView
 }
 
 export function ScheduleView({
@@ -126,6 +129,7 @@ export function ScheduleView({
   initialView = "gantt",
   focusTaskId = null,
   globalMode = false,
+  ownerScheduleView = "items",
 }: ScheduleViewProps) {
   const isMobile = useIsMobile()
   const [view, setView] = useState<View>(initialView)
@@ -406,6 +410,13 @@ export function ScheduleView({
                 </Link>
               </Button>
             </>
+          )}
+
+          {projectId && (
+            <OwnerScheduleVisibilityControl
+              projectId={projectId}
+              initialValue={ownerScheduleView}
+            />
           )}
 
           {/* View switcher */}

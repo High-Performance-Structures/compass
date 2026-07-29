@@ -6,14 +6,16 @@ import {
   IconChevronLeft,
   IconChevronRight,
   IconList,
+  IconTimeline,
 } from "@tabler/icons-react"
 
 import type { AudienceScheduleItem } from "@/app/actions/project-audience-preview"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
+import type { OwnerScheduleView } from "@/lib/schedule/owner-visibility"
 
-type ScheduleView = "list" | "calendar"
+type ScheduleView = "list" | "calendar" | "gantt"
 
 const WEEKDAYS: readonly string[] = [
   "Sun",
@@ -87,10 +89,196 @@ function itemsForDay(
   return items.filter((item) => item.startDate <= key && item.endDate >= key)
 }
 
-export function ProjectAudienceSchedule({
+function addDays(value: Date, amount: number): Date {
+  const next = new Date(value)
+  next.setDate(next.getDate() + amount)
+  return next
+}
+
+function daysBetween(start: string, end: string): number {
+  const [startYear, startMonth, startDay] = start.split("-").map(Number)
+  const [endYear, endMonth, endDay] = end.split("-").map(Number)
+  const milliseconds =
+    Date.UTC(endYear, endMonth - 1, endDay) -
+    Date.UTC(startYear, startMonth - 1, startDay)
+  return Math.round(milliseconds / 86_400_000)
+}
+
+type GanttMonth = {
+  readonly key: string
+  readonly label: string
+  readonly left: number
+  readonly width: number
+}
+
+function ProjectAudienceGantt({
   items,
 }: {
   readonly items: readonly AudienceScheduleItem[]
+}): React.ReactElement {
+  const range = React.useMemo(() => {
+    const earliest = items.reduce(
+      (date, item) => (item.startDate < date ? item.startDate : date),
+      items[0].startDate
+    )
+    const latest = items.reduce(
+      (date, item) => (item.endDate > date ? item.endDate : date),
+      items[0].endDate
+    )
+    const start = dateKey(addDays(dateFromKey(earliest), -3))
+    const end = dateKey(addDays(dateFromKey(latest), 7))
+    const totalDays = daysBetween(start, end) + 1
+    const dayWidth =
+      totalDays > 240 ? 10 : totalDays > 120 ? 14 : totalDays > 60 ? 18 : 24
+    return {
+      start,
+      end,
+      totalDays,
+      dayWidth,
+      chartWidth: Math.max(680, totalDays * dayWidth),
+    }
+  }, [items])
+  const months = React.useMemo(() => {
+    const segments: GanttMonth[] = []
+    let cursor = dateFromKey(range.start)
+    const rangeEnd = dateFromKey(range.end)
+
+    while (cursor <= rangeEnd) {
+      const monthStartDate = new Date(
+        cursor.getFullYear(),
+        cursor.getMonth(),
+        1
+      )
+      const nextMonth = new Date(
+        cursor.getFullYear(),
+        cursor.getMonth() + 1,
+        1
+      )
+      const segmentStart =
+        cursor > monthStartDate ? cursor : monthStartDate
+      const monthEnd = addDays(nextMonth, -1)
+      const segmentEnd = monthEnd < rangeEnd ? monthEnd : rangeEnd
+      const segmentStartKey = dateKey(segmentStart)
+      const segmentEndKey = dateKey(segmentEnd)
+      segments.push({
+        key: segmentStartKey,
+        label: segmentStart.toLocaleDateString("en-US", {
+          month: "short",
+          year: "numeric",
+        }),
+        left: daysBetween(range.start, segmentStartKey) * range.dayWidth,
+        width:
+          (daysBetween(segmentStartKey, segmentEndKey) + 1) * range.dayWidth,
+      })
+      cursor = nextMonth
+    }
+
+    return segments
+  }, [range])
+  const today = dateKey(new Date())
+  const todayVisible = today >= range.start && today <= range.end
+  const labelWidth = 240
+
+  return (
+    <div className="overflow-auto" aria-label="Read-only project Gantt chart">
+      <div
+        className="relative"
+        style={{ minWidth: labelWidth + range.chartWidth }}
+      >
+        <div className="sticky top-0 z-20 flex h-10 border-b bg-background">
+          <div
+            className="sticky left-0 z-30 flex shrink-0 items-center border-r bg-background px-4 text-xs font-medium"
+            style={{ width: labelWidth }}
+          >
+            Schedule
+          </div>
+          <div
+            className="relative shrink-0 overflow-hidden"
+            style={{ width: range.chartWidth }}
+          >
+            {months.map((month) => (
+              <div
+                key={month.key}
+                className="absolute inset-y-0 border-r px-2 py-2 text-xs font-medium text-muted-foreground"
+                style={{ left: month.left, width: month.width }}
+              >
+                {month.label}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {items.map((item) => {
+          const left =
+            daysBetween(range.start, item.startDate) * range.dayWidth
+          const width = Math.max(
+            range.dayWidth,
+            (daysBetween(item.startDate, item.endDate) + 1) * range.dayWidth
+          )
+          const percentComplete = Math.min(
+            100,
+            Math.max(0, item.percentComplete)
+          )
+
+          return (
+            <div key={item.id} className="flex h-14 border-b">
+              <div
+                className="sticky left-0 z-10 flex shrink-0 flex-col justify-center border-r bg-background px-4"
+                style={{ width: labelWidth }}
+              >
+                <span className="truncate text-xs font-medium">{item.title}</span>
+                <span className="mt-0.5 truncate text-[10px] text-muted-foreground">
+                  {formatDate(item.startDate)} – {formatDate(item.endDate)}
+                </span>
+              </div>
+              <div
+                className="relative shrink-0"
+                style={{
+                  width: range.chartWidth,
+                  backgroundImage:
+                    "linear-gradient(to right, transparent calc(100% - 1px), var(--border) calc(100% - 1px))",
+                  backgroundSize: `${range.dayWidth}px 100%`,
+                }}
+              >
+                {todayVisible && (
+                  <span
+                    aria-hidden="true"
+                    className="absolute inset-y-0 z-10 w-px bg-destructive/60"
+                    style={{
+                      left:
+                        daysBetween(range.start, today) * range.dayWidth +
+                        range.dayWidth / 2,
+                    }}
+                  />
+                )}
+                <div
+                  className="absolute top-3 h-8 overflow-hidden rounded-sm border border-primary/30 bg-primary/15"
+                  style={{ left, width }}
+                  title={`${item.title}: ${percentComplete}% complete`}
+                >
+                  <div
+                    className="h-full bg-primary/45"
+                    style={{ width: `${percentComplete}%` }}
+                  />
+                  <span className="absolute inset-0 flex items-center px-2 text-[10px] font-medium">
+                    {percentComplete}%
+                  </span>
+                </div>
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+export function ProjectAudienceSchedule({
+  items,
+  presentation = "items",
+}: {
+  readonly items: readonly AudienceScheduleItem[]
+  readonly presentation?: OwnerScheduleView
 }): React.ReactElement {
   const [view, setView] = React.useState<ScheduleView>("list")
   const [visibleMonth, setVisibleMonth] = React.useState(() =>
@@ -114,7 +302,8 @@ export function ProjectAudienceSchedule({
         <div>
           <h2 className="text-sm font-semibold">Project Schedule</h2>
           <p className="mt-1 text-xs text-muted-foreground">
-            {items.length} visible item{items.length === 1 ? "" : "s"}
+            {items.length} visible {presentation === "phases" ? "phase" : "item"}
+            {items.length === 1 ? "" : "s"} · Read only
           </p>
         </div>
         <div className="flex items-center border">
@@ -135,6 +324,15 @@ export function ProjectAudienceSchedule({
           >
             <IconCalendar className="size-4" />
             Calendar
+          </Button>
+          <Button
+            variant={view === "gantt" ? "secondary" : "ghost"}
+            size="sm"
+            className="rounded-none border-l"
+            onClick={() => setView("gantt")}
+          >
+            <IconTimeline className="size-4" />
+            Gantt
           </Button>
         </div>
       </div>
@@ -172,7 +370,7 @@ export function ProjectAudienceSchedule({
             </article>
           ))}
         </div>
-      ) : (
+      ) : view === "calendar" ? (
         <div>
           <div className="flex items-center justify-between border-b px-4 py-3">
             <Button
@@ -270,6 +468,8 @@ export function ProjectAudienceSchedule({
             </div>
           </div>
         </div>
+      ) : (
+        <ProjectAudienceGantt items={sortedItems} />
       )}
     </section>
   )
