@@ -106,6 +106,10 @@ type MessageComposerProps = {
   readonly organizationId: string
   readonly isProjectChannel?: boolean
   readonly projectRecipients?: readonly ProjectRecipientContact[]
+  readonly initialMention?: {
+    readonly userId: string
+    readonly label: string
+  }
   readonly threadId?: string
   readonly placeholder?: string
   readonly onSent?: () => void
@@ -316,6 +320,7 @@ export function MessageComposer({
   organizationId,
   isProjectChannel = false,
   projectRecipients = [],
+  initialMention,
   threadId,
   placeholder,
   onSent,
@@ -336,6 +341,7 @@ export function MessageComposer({
   const [hasMessageContent, setHasMessageContent] = React.useState(false)
   const hasProjectDelivery = isProjectChannel && !threadId
   const fileInputRef = React.useRef<HTMLInputElement>(null)
+  const appliedInitialMentionRef = React.useRef<string | null>(null)
 
   const lastTypingSentRef = React.useRef<number>(0)
   const TYPING_DEBOUNCE_MS = 3000
@@ -365,7 +371,7 @@ export function MessageComposer({
         transformCopiedText: true,
       }),
       Placeholder.configure({
-        placeholder: placeholder ?? `Message #${channelName}`,
+        placeholder: placeholder ?? `Message ${channelName}`,
       }),
       Link.configure({
         openOnClick: false,
@@ -398,6 +404,34 @@ export function MessageComposer({
       sendTypingIndicator()
     },
   })
+
+  React.useEffect(() => {
+    if (!editor || !initialMention) return
+    const mentionKey = `${initialMention.userId}:${initialMention.label}`
+    if (appliedInitialMentionRef.current === mentionKey) return
+
+    editor.commands.setContent({
+      type: "doc",
+      content: [
+        {
+          type: "paragraph",
+          content: [
+            {
+              type: "mention",
+              attrs: {
+                id: initialMention.userId,
+                label: initialMention.label,
+              },
+            },
+            { type: "text", text: " " },
+          ],
+        },
+      ],
+    })
+    editor.commands.focus("end")
+    setHasMessageContent(true)
+    appliedInitialMentionRef.current = mentionKey
+  }, [editor, initialMention])
 
   const recipientOptions = React.useMemo(() => {
     return buildRecipientOptions(projectRecipients)
@@ -700,7 +734,7 @@ export function MessageComposer({
                   </PopoverContent>
                 </Popover>
                 <Badge variant="outline" className="rounded-md">
-                  #{channelName}
+                  {channelName}
                 </Badge>
                 {recipientValue !== "channel" && (
                   <Button

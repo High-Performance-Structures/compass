@@ -21,6 +21,7 @@ import { useCompassTheme, useTheme } from "@/components/theme-provider"
 import { THEME_PRESETS } from "@/lib/theme/presets"
 import { sidebarDeskPhotoStorageKey } from "@/lib/user-photo-storage"
 import { cn } from "@/lib/utils"
+import { ProjectAudienceNotificationSettings } from "@/components/projects/project-audience-notification-settings"
 
 type AudienceViewer = {
   readonly name: string
@@ -151,6 +152,8 @@ export function ProjectAudienceSidebarProfile({
           <IconCamera className="size-3.5" />
         </span>
       </button>
+
+      <ProjectAudienceNotificationSettings />
 
       <Popover>
         <PopoverTrigger asChild>

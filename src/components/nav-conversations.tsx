@@ -3,8 +3,11 @@
 import * as React from "react"
 import {
   IconArrowLeft,
-  IconHash,
+  IconBuilding,
+  IconMessageCircle,
+  IconMessages,
   IconPlus,
+  IconUser,
 } from "@tabler/icons-react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
@@ -30,6 +33,7 @@ import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { CreateChannelDialog } from "@/components/conversations/create-channel-dialog"
 import { VoiceChannelStub } from "@/components/conversations/voice-channel-stub"
+import { DirectMessageDialog } from "@/components/conversations/direct-message-dialog"
 import { ChevronRight } from "lucide-react"
 
 type ChannelData = {
@@ -38,6 +42,7 @@ type ChannelData = {
   readonly type: string
   readonly projectId: string | null
   readonly categoryId: string | null
+  readonly audience: string
   readonly unreadCount: number | null
 }
 
@@ -68,6 +73,7 @@ export function NavConversations() {
   const [projects, setProjects] = React.useState<ProjectListItem[]>([])
   const [loading, setLoading] = React.useState(true)
   const [createDialogOpen, setCreateDialogOpen] = React.useState(false)
+  const [directDialogOpen, setDirectDialogOpen] = React.useState(false)
   const [projectsOpen, setProjectsOpen] = React.useState(true)
   const [categoryCollapsedStates, setCategoryCollapsedStates] = React.useState<
     Record<string, boolean>
@@ -98,6 +104,7 @@ export function NavConversations() {
             type: c.type,
             projectId: c.projectId,
             categoryId: c.categoryId,
+            audience: c.audience,
             unreadCount: c.unreadCount,
           }))
         )
@@ -119,10 +126,17 @@ export function NavConversations() {
       setLoading(false)
     }
     loadData()
-  }, [])
+  }, [pathname])
 
   const globalChannels = channels.filter(
-    (c) => !c.projectId && !c.categoryId && c.type === "text"
+    (c) =>
+      !c.projectId &&
+      !c.categoryId &&
+      c.type === "text" &&
+      c.audience !== "direct"
+  )
+  const directChannels = channels.filter(
+    (channel) => channel.type === "text" && channel.audience === "direct"
   )
   const projectChannels = channels.filter((c) => c.projectId && c.type === "text")
   const voiceChannels = channels.filter((c) => c.type === "voice")
@@ -187,7 +201,13 @@ export function NavConversations() {
         )}
       >
         <Link href={`/dashboard/conversations/${channel.id}`}>
-          <IconHash className="shrink-0" />
+          {channel.audience === "direct" ? (
+            <IconUser className="shrink-0" />
+          ) : channel.projectId ? (
+            <IconBuilding className="shrink-0" />
+          ) : (
+            <IconMessageCircle className="shrink-0" />
+          )}
           <span className={cn(channel.unreadCount && channel.unreadCount > 0 && "font-semibold")}>
             {channel.name}
           </span>
@@ -235,7 +255,7 @@ export function NavConversations() {
 
       {/* uncategorized channels */}
       <SidebarGroup>
-        <SidebarGroupLabel>CHANNELS</SidebarGroupLabel>
+        <SidebarGroupLabel>MESSAGES</SidebarGroupLabel>
         <SidebarGroupContent>
           <SidebarMenu>
             {loading ? (
@@ -248,6 +268,39 @@ export function NavConversations() {
               </SidebarMenuItem>
             ) : (
               globalChannels.map(renderChannelItem)
+            )}
+          </SidebarMenu>
+        </SidebarGroupContent>
+      </SidebarGroup>
+
+      <SidebarGroup>
+        <SidebarGroupLabel className="justify-between">
+          <span>DIRECT MESSAGES</span>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="size-6"
+            aria-label="New direct message"
+            onClick={() => setDirectDialogOpen(true)}
+          >
+            <IconPlus className="size-3.5" />
+          </Button>
+        </SidebarGroupLabel>
+        <SidebarGroupContent>
+          <SidebarMenu>
+            {directChannels.length > 0 ? (
+              directChannels.map(renderChannelItem)
+            ) : (
+              <SidebarMenuItem>
+                <button
+                  type="button"
+                  className="flex w-full items-center gap-2 px-2 py-1.5 text-left text-xs text-muted-foreground hover:text-foreground"
+                  onClick={() => setDirectDialogOpen(true)}
+                >
+                  <IconMessages className="size-4" />
+                  Start a direct message
+                </button>
+              </SidebarMenuItem>
             )}
           </SidebarMenu>
         </SidebarGroupContent>
@@ -294,7 +347,7 @@ export function NavConversations() {
           <SidebarGroup>
             <SidebarGroupLabel asChild>
               <CollapsibleTrigger className="group/collapsible">
-                PROJECT CHANNELS
+                PROJECT MESSAGES
                 <ChevronRight className="ml-auto transition-transform group-data-[state=open]/collapsible:rotate-90" />
               </CollapsibleTrigger>
             </SidebarGroupLabel>
@@ -353,6 +406,10 @@ export function NavConversations() {
       </div>
 
       <CreateChannelDialog open={createDialogOpen} onOpenChange={setCreateDialogOpen} />
+      <DirectMessageDialog
+        open={directDialogOpen}
+        onOpenChange={setDirectDialogOpen}
+      />
     </>
   )
 }

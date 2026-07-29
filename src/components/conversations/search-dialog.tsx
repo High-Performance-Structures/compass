@@ -3,7 +3,7 @@
 import * as React from "react"
 import { normalizeConversationMentions } from "@/lib/conversations/message-content"
 import { formatDistanceToNow, format, parseISO } from "date-fns"
-import { IconHash, IconUser, IconCalendar, IconSearch, IconLoader2 } from "@tabler/icons-react"
+import { IconMessageCircle, IconUser, IconCalendar, IconSearch, IconLoader2 } from "@tabler/icons-react"
 import {
   CommandDialog,
   CommandList,
@@ -194,7 +194,7 @@ export function SearchDialog({
       <div className="flex items-center gap-2 border-b px-3 py-2">
         <Select value={selectedChannel} onValueChange={setSelectedChannel}>
           <SelectTrigger size="sm" className="h-7 text-xs">
-            <IconHash className="mr-1 size-3" />
+            <IconMessageCircle className="mr-1 size-3" />
             <SelectValue placeholder="Channel" />
           </SelectTrigger>
           <SelectContent>
@@ -310,7 +310,7 @@ export function SearchDialog({
                     <div className="flex items-center gap-2">
                       <span className="text-sm font-medium">{displayName}</span>
                       <span className="text-xs text-muted-foreground">
-                        in #{message.channelName}
+                        in {message.channelName}
                       </span>
                     </div>
                     <p className="mt-0.5 truncate text-sm text-muted-foreground">

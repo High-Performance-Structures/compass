@@ -319,10 +319,74 @@ async function resolveMentionNotificationRecipients(
   senderId: string,
   mentions: readonly MentionInput[]
 ): Promise<readonly { readonly userId: string; readonly email: string }[]> {
-  const members = await getChannelNotificationMembers(
-    db,
-    channelId,
-    senderId
+  const [members, allMemberRows, channel] = await Promise.all([
+    getChannelNotificationMembers(db, channelId, senderId),
+    db
+      .select({ userId: channelMembers.userId })
+      .from(channelMembers)
+      .where(eq(channelMembers.channelId, channelId)),
+    db
+      .select({
+        organizationId: channels.organizationId,
+        isPrivate: channels.isPrivate,
+      })
+      .from(channels)
+      .where(eq(channels.id, channelId))
+      .get(),
+  ])
+  const memberById = new Map(members.map((member) => [member.userId, member]))
+  const allMemberIds = new Set(allMemberRows.map((member) => member.userId))
+  const directTargetIds = Array.from(
+    new Set(
+      mentions
+        .filter(
+          (mention) =>
+            mention.mentionType === "user" &&
+            Boolean(mention.targetId) &&
+            mention.targetId !== senderId &&
+            !allMemberIds.has(mention.targetId ?? "")
+        )
+        .map((mention) => mention.targetId)
+        .filter((targetId): targetId is string => Boolean(targetId))
+    )
+  )
+
+  // Public/internal conversations can mention any active coworker in the
+  // organization. Private owner, partner, and direct-message channels remain
+  // strictly membership-scoped so a crafted mention cannot leak their content.
+  const additionalDirectTargets =
+    channel && !channel.isPrivate && directTargetIds.length > 0
+      ? await db
+          .select({
+            userId: users.id,
+            email: users.email,
+            role: organizationMembers.role,
+          })
+          .from(users)
+          .innerJoin(
+            organizationMembers,
+            and(
+              eq(organizationMembers.userId, users.id),
+              eq(organizationMembers.organizationId, channel.organizationId)
+            )
+          )
+          .where(
+            and(
+              inArray(users.id, directTargetIds),
+              eq(users.isActive, true)
+            )
+          )
+          .then((rows) =>
+            rows
+              .filter((row) => isInternalStaffRole(row.role))
+              .map((row) => ({
+                userId: row.userId,
+                email: row.email,
+              }))
+          )
+      : []
+  const directTargetById = new Map(
+    additionalDirectTargets.map((target) => [target.userId, target])
   )
   const onlineRows = mentions.some(
     (mention) => mention.mentionType === "here"
@@ -340,13 +404,13 @@ async function resolveMentionNotificationRecipients(
 
   for (const mention of mentions) {
     if (mention.mentionType === "user" && mention.targetId) {
-      const member = members.find(
-        (row) => row.userId === mention.targetId
-      )
-      if (member) {
-        recipients.set(member.userId, {
-          userId: member.userId,
-          email: member.email,
+      const recipient =
+        memberById.get(mention.targetId) ??
+        directTargetById.get(mention.targetId)
+      if (recipient) {
+        recipients.set(recipient.userId, {
+          userId: recipient.userId,
+          email: recipient.email,
         })
       }
       continue
@@ -379,6 +443,20 @@ function messagePreview(content: string): string {
   return normalized.length <= 180
     ? normalized
     : `${normalized.slice(0, 177)}...`
+}
+
+function conversationHref(channel: {
+  readonly id: string
+  readonly projectId: string | null
+  readonly audience: string
+}): string {
+  if (channel.projectId && channel.audience === "clients") {
+    return `/preview/projects/${channel.projectId}/owner/conversations/${channel.id}`
+  }
+  if (channel.projectId && channel.audience === "sub_vendors") {
+    return `/preview/projects/${channel.projectId}/sub-vendor/conversations/${channel.id}`
+  }
+  return `/dashboard/conversations/${channel.id}`
 }
 
 export async function sendMessage(data: {
@@ -518,10 +596,12 @@ export async function sendMessage(data: {
 
     const channel = await db
       .select({
+        id: channels.id,
         name: channels.name,
         type: channels.type,
         organizationId: channels.organizationId,
         projectId: channels.projectId,
+        audience: channels.audience,
       })
       .from(channels)
       .where(eq(channels.id, data.channelId))
@@ -543,7 +623,7 @@ export async function sendMessage(data: {
           sourceId: messageId,
           title: `${user.displayName ?? user.email} mentioned you`,
           body: messagePreview(data.content),
-          href: `/dashboard/conversations/${data.channelId}`,
+          href: conversationHref(channel),
           priority: "normal",
           audience: "mention",
           createdBy: user.id,
@@ -578,9 +658,9 @@ export async function sendMessage(data: {
           eventType: "announcement.message",
           sourceType: "message",
           sourceId: messageId,
-          title: `Announcement in #${channel.name}`,
+          title: `Announcement in ${channel.name}`,
           body: messagePreview(data.content),
-          href: `/dashboard/conversations/${data.channelId}`,
+          href: conversationHref(channel),
           priority: "high",
           audience: "announcement",
           createdBy: user.id,
@@ -663,6 +743,7 @@ export async function sendMessage(data: {
           projectId: channel.projectId,
           channelId: data.channelId,
           channelName: channel.name,
+          href: conversationHref(channel),
           messageId,
           threadId: data.threadId ?? null,
           content: data.content,

@@ -6,19 +6,32 @@ import { ProjectAudienceConversation } from "@/components/projects/project-audie
 
 export default async function SubVendorConversationPage({
   params,
+  searchParams,
 }: {
   readonly params: Promise<{
     readonly id: string
     readonly channelId: string
   }>
+  readonly searchParams: Promise<{
+    readonly mention?: string | readonly string[]
+    readonly label?: string | readonly string[]
+  }>
 }): Promise<React.ReactElement> {
   const { id, channelId } = await params
+  const query = await searchParams
+  const mention =
+    typeof query.mention === "string" ? query.mention : query.mention?.[0]
+  const label =
+    typeof query.label === "string" ? query.label : query.label?.[0]
 
   return (
     <ProjectAudienceConversation
       projectId={id}
       channelId={channelId}
       audience="sub_vendor"
+      initialMention={
+        mention && label ? { userId: mention, label } : undefined
+      }
     />
   )
 }

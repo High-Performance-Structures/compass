@@ -63,6 +63,7 @@ type ChannelMessageNotificationInput = {
   readonly projectId: string | null
   readonly channelId: string
   readonly channelName: string
+  readonly href?: string
   readonly messageId: string
   readonly threadId: string | null
   readonly content: string
@@ -204,10 +205,10 @@ export async function notifyChannelMessage(
     sourceType: "message",
     sourceId: input.messageId,
     title: input.threadId
-      ? `${senderName} replied in #${input.channelName}`
-      : `${senderName} in #${input.channelName}`,
+      ? `${senderName} replied in ${input.channelName}`
+      : `${senderName} in ${input.channelName}`,
     body: notificationPreview(input.content),
-    href: `/dashboard/conversations/${input.channelId}`,
+    href: input.href ?? `/dashboard/conversations/${input.channelId}`,
     priority: "normal",
     audience: "channel",
     createdBy: input.sender.id,

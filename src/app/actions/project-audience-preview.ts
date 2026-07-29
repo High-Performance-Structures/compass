@@ -6,6 +6,7 @@ import { getDb } from "@/db"
 import {
   dailyLogPhotos,
   dailyLogs,
+  organizationMembers,
   ownerProjectUpdates,
   projectContacts,
   projectMembers,
@@ -13,6 +14,7 @@ import {
   projectRfis,
   projects,
   scheduleTasks,
+  users,
 } from "@/db/schema"
 import { channelMembers, channels } from "@/db/schema-conversations"
 import { requireAuth } from "@/lib/auth"
@@ -111,6 +113,7 @@ export type AudienceMessageChannel = {
 
 export type AudienceContact = {
   readonly id: string
+  readonly userId: string | null
   readonly contactType: string
   readonly displayName: string
   readonly companyName: string | null
@@ -364,6 +367,7 @@ export async function getProjectAudiencePreview(
   const contactRows = await db
     .select({
       id: projectContacts.id,
+      userId: projectContacts.sourceEntityId,
       contactType: projectContacts.contactType,
       displayName: projectContacts.displayName,
       companyName: projectContacts.companyName,
@@ -491,15 +495,53 @@ export async function getProjectAudiencePreview(
     )
     .orderBy(asc(channels.sortOrder), asc(channels.name))
 
-  const visibleContactRows =
-    !viewerIsInternal && audience === "sub_vendor"
-      ? contactRows.filter(
-          (contact) =>
-            contact.contactType === "internal" ||
-            contact.email?.trim().toLowerCase() ===
-              viewer.email.trim().toLowerCase()
+  const internalTeamRows = viewerIsInternal
+    ? []
+    : await db
+        .select({
+          id: projectMembers.id,
+          userId: users.id,
+          displayName: users.displayName,
+          email: users.email,
+          role: organizationMembers.role,
+        })
+        .from(projectMembers)
+        .innerJoin(users, eq(users.id, projectMembers.userId))
+        .innerJoin(
+          organizationMembers,
+          and(
+            eq(organizationMembers.userId, users.id),
+            eq(organizationMembers.organizationId, organizationId)
+          )
         )
-      : contactRows
+        .where(
+          and(
+            eq(projectMembers.projectId, projectId),
+            eq(users.isActive, true)
+          )
+        )
+
+  // External workspaces expose the authoritative internal project team only.
+  // Owners and partners do not need to see themselves or discover other
+  // external contacts assigned to the project.
+  const visibleContactRows = viewerIsInternal
+    ? contactRows
+    : internalTeamRows
+        .filter((member) => isInternalStaffRole(member.role))
+        .map((member) => ({
+          id: member.id,
+          userId: member.userId,
+          contactType: "internal",
+          displayName: member.displayName ?? member.email,
+          companyName: null,
+          role: member.role,
+          trade: null,
+          csiDivision: null,
+          csiDivisionName: null,
+          email: member.email,
+          phone: null,
+          primaryContact: false,
+        }))
   const visibleContactNames = new Set(
     visibleContactRows
       .flatMap((contact) => [
