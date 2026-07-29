@@ -8,14 +8,10 @@ import {
   IconMail,
   IconPrinter,
   IconSparkles,
-  IconSend,
   IconTrash,
 } from "@tabler/icons-react"
 
-import {
-  deleteOwnerProjectUpdateDraft,
-  publishOwnerProjectUpdate,
-} from "@/app/actions/project-field"
+import { deleteOwnerProjectUpdateDraft } from "@/app/actions/project-field"
 import { Button } from "@/components/ui/button"
 
 const PRINT_IMAGE_TIMEOUT_MS = 3_000
@@ -88,7 +84,6 @@ export function OwnerUpdateActions({
   readonly updateTitle: string
 }): React.ReactElement {
   const router = useRouter()
-  const [isPublishing, setIsPublishing] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
   const [publishError, setPublishError] = useState<string | null>(null)
   const [copied, setCopied] = useState<"link" | "email" | "html" | null>(null)
@@ -188,23 +183,6 @@ export function OwnerUpdateActions({
     window.setTimeout(resetPrintState, 5000)
   }
 
-  async function publish(): Promise<void> {
-    setPublishError(null)
-    setIsPublishing(true)
-    try {
-      const result = await publishOwnerProjectUpdate(projectId, updateId)
-      if (result.success) {
-        window.location.reload()
-        return
-      }
-      setPublishError(result.error)
-    } catch {
-      setPublishError("Unable to publish this update. Please try again.")
-    } finally {
-      setIsPublishing(false)
-    }
-  }
-
   async function deleteDraft(): Promise<void> {
     const confirmed = window.confirm(
       "Delete this owner update draft? This cannot be undone."
@@ -231,12 +209,6 @@ export function OwnerUpdateActions({
 
   return (
     <div className="flex flex-wrap items-center gap-2 print:hidden">
-      {canManage && status !== "published" && (
-        <Button size="sm" onClick={publish} disabled={isPublishing}>
-          <IconSend className="size-4" />
-          {isPublishing ? "Publishing..." : "Publish"}
-        </Button>
-      )}
       {canManage && status === "draft" && (
         <Button
           size="sm"

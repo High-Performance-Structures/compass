@@ -1,5 +1,9 @@
-import { updateOwnerProjectUpdateDraft } from "@/app/actions/project-field"
+import {
+  publishOwnerProjectUpdate,
+  updateOwnerProjectUpdateDraft,
+} from "@/app/actions/project-field"
 import { ownerUpdateDraftEditSchema } from "@/lib/owner-updates/draft-recovery"
+import { persistOwnerUpdateDraft } from "@/lib/owner-updates/draft-publish"
 
 export async function PUT(
   request: Request,
@@ -31,11 +35,20 @@ export async function PUT(
   }
 
   const { id, updateId } = await params
-  const result = await updateOwnerProjectUpdateDraft(
-    id,
-    updateId,
-    parsed.data
-  )
+  const intent =
+    new URL(request.url).searchParams.get("intent") === "publish"
+      ? "publish"
+      : "save"
+  const result = await persistOwnerUpdateDraft({
+    intent,
+    save: () =>
+      updateOwnerProjectUpdateDraft(
+        id,
+        updateId,
+        parsed.data
+      ),
+    publish: () => publishOwnerProjectUpdate(id, updateId),
+  })
 
   return Response.json(result, { status: result.success ? 200 : 400 })
 }
