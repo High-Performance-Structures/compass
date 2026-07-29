@@ -91,7 +91,12 @@ export function teamAvailabilityFromRows(
   for (const row of rows) {
     if (!isInternalStaffRole(row.role)) continue
 
-    const status = deskStatusFromPresenceMessage(row.statusMessage)
+    // The dashboard presents "In Office" as the initial designation. A staff
+    // member who already has a presence record must therefore remain visible
+    // to coworkers even when that initial label has not yet been persisted.
+    const status =
+      deskStatusFromPresenceMessage(row.statusMessage) ??
+      (row.updatedAt ? "in-office" : null)
     if (!status) continue
     const lastActiveTimestamp = row.lastActiveAt
       ? new Date(row.lastActiveAt).getTime()

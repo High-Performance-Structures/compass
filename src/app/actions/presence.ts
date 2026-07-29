@@ -209,7 +209,7 @@ export async function getOrganizationTeamAvailability(): Promise<
         lastName: users.lastName,
         displayName: users.displayName,
         avatarUrl: users.avatarUrl,
-        role: users.role,
+        role: organizationMembers.role,
         statusMessage: userPresence.statusMessage,
         lastActiveAt: userPresence.lastActiveAt,
         updatedAt: userPresence.updatedAt,

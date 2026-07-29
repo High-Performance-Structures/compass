@@ -109,7 +109,41 @@ describe("teamAvailabilityFromRows", () => {
     ])
   })
 
-  it("omits staff who have not set dashboard availability", () => {
+  it("uses the visible in-office default when an active staff member has no saved label", () => {
+    expect(
+      teamAvailabilityFromRows(
+        [
+          {
+            userId: "cassandra",
+            email: "cassandra@example.com",
+            firstName: "Cassandra",
+            lastName: "Example",
+            displayName: "Cassandra Example",
+            avatarUrl: null,
+            role: "office",
+            statusMessage: null,
+            lastActiveAt: "2026-07-27T15:45:00.000Z",
+            updatedAt: "2026-07-27T16:00:00.000Z",
+          },
+        ],
+        "martine",
+        new Date("2026-07-27T16:00:00.000Z")
+      )
+    ).toEqual([
+      {
+        userId: "cassandra",
+        name: "Cassandra Example",
+        avatarUrl: null,
+        status: "in-office",
+        activity: "active",
+        lastActiveAt: "2026-07-27T15:45:00.000Z",
+        updatedAt: "2026-07-27T16:00:00.000Z",
+        isCurrentUser: false,
+      },
+    ])
+  })
+
+  it("omits staff who have never established presence", () => {
     expect(
       teamAvailabilityFromRows(
         [
