@@ -41,6 +41,7 @@ import {
   ownerUpdateTodoTiming,
 } from "@/lib/owner-updates/composer"
 import { isOwnerUpdateVisibleToRole } from "@/lib/owner-updates/history"
+import { ownerUpdateIdBatches } from "@/lib/owner-updates/query-batches"
 import { can } from "@/lib/permissions"
 import { requireFeaturePermission } from "@/lib/permission-enforcement"
 import { assertProjectAccess } from "@/lib/project-access"
@@ -2563,18 +2564,24 @@ export async function updateOwnerProjectUpdateDraft(
     }
 
     if (sourceDailyLogIds.length > 0) {
-      const selectedLogs = await db
-        .select({
-          id: dailyLogs.id,
-          logDate: dailyLogs.logDate,
-        })
-        .from(dailyLogs)
-        .where(
-          and(
-            eq(dailyLogs.projectId, projectId),
-            inArray(dailyLogs.id, sourceDailyLogIds)
+      const selectedLogs = (
+        await Promise.all(
+          ownerUpdateIdBatches(sourceDailyLogIds).map((idBatch) =>
+            db
+              .select({
+                id: dailyLogs.id,
+                logDate: dailyLogs.logDate,
+              })
+              .from(dailyLogs)
+              .where(
+                and(
+                  eq(dailyLogs.projectId, projectId),
+                  inArray(dailyLogs.id, idBatch)
+                )
+              )
           )
         )
+      ).flat()
 
       if (selectedLogs.length !== sourceDailyLogIds.length) {
         return {
@@ -2606,26 +2613,32 @@ export async function updateOwnerProjectUpdateDraft(
     ]
     let documentSelections: readonly OwnerUpdateDocumentSelection[] = []
     if (selectedAttachmentIds.length > 0) {
-      const selectedAttachments = await db
-        .select({
-          id: dailyLogPhotos.id,
-          dailyLogId: dailyLogPhotos.dailyLogId,
-          sourceSystem: dailyLogPhotos.sourceSystem,
-          fileName: dailyLogPhotos.fileName,
-          mimeType: dailyLogPhotos.mimeType,
-          driveFileId: dailyLogPhotos.driveFileId,
-          driveUrl: dailyLogPhotos.driveUrl,
-          thumbnailUrl: dailyLogPhotos.thumbnailUrl,
-          caption: dailyLogPhotos.caption,
-          capturedAt: dailyLogPhotos.capturedAt,
-        })
-        .from(dailyLogPhotos)
-        .where(
-          and(
-            eq(dailyLogPhotos.projectId, projectId),
-            inArray(dailyLogPhotos.id, selectedAttachmentIds)
+      const selectedAttachments = (
+        await Promise.all(
+          ownerUpdateIdBatches(selectedAttachmentIds).map((idBatch) =>
+            db
+              .select({
+                id: dailyLogPhotos.id,
+                dailyLogId: dailyLogPhotos.dailyLogId,
+                sourceSystem: dailyLogPhotos.sourceSystem,
+                fileName: dailyLogPhotos.fileName,
+                mimeType: dailyLogPhotos.mimeType,
+                driveFileId: dailyLogPhotos.driveFileId,
+                driveUrl: dailyLogPhotos.driveUrl,
+                thumbnailUrl: dailyLogPhotos.thumbnailUrl,
+                caption: dailyLogPhotos.caption,
+                capturedAt: dailyLogPhotos.capturedAt,
+              })
+              .from(dailyLogPhotos)
+              .where(
+                and(
+                  eq(dailyLogPhotos.projectId, projectId),
+                  inArray(dailyLogPhotos.id, idBatch)
+                )
+              )
           )
         )
+      ).flat()
 
       if (selectedAttachments.length !== selectedAttachmentIds.length) {
         return {
@@ -2862,10 +2875,10 @@ export async function draftOwnerProjectUpdateWithJarvis(
     }
 
     const sourceDailyLogIds = parseIdList(update.sourceDailyLogIds)
-    const selectedLogs =
-      sourceDailyLogIds.length === 0
-        ? []
-        : await db
+    const selectedLogs = (
+      await Promise.all(
+        ownerUpdateIdBatches(sourceDailyLogIds).map((idBatch) =>
+          db
             .select({
               id: dailyLogs.id,
               logDate: dailyLogs.logDate,
@@ -2877,10 +2890,13 @@ export async function draftOwnerProjectUpdateWithJarvis(
             .where(
               and(
                 eq(dailyLogs.projectId, projectId),
-                inArray(dailyLogs.id, sourceDailyLogIds)
+                inArray(dailyLogs.id, idBatch)
               )
             )
             .orderBy(asc(dailyLogs.logDate), asc(dailyLogs.createdAt))
+        )
+      )
+    ).flat()
     const selectedLogById = new Map(
       selectedLogs.map((log) => [log.id, log])
     )
@@ -2895,10 +2911,10 @@ export async function draftOwnerProjectUpdateWithJarvis(
       ...parseIdList(update.selectedPhotoIds),
       ...composerSnapshot.documents.map((document) => document.id),
     ]
-    const selectedAttachments =
-      selectedAttachmentIds.length === 0
-        ? []
-        : await db
+    const selectedAttachments = (
+      await Promise.all(
+        ownerUpdateIdBatches(selectedAttachmentIds).map((idBatch) =>
+          db
             .select({
               id: dailyLogPhotos.id,
               fileName: dailyLogPhotos.fileName,
@@ -2910,9 +2926,12 @@ export async function draftOwnerProjectUpdateWithJarvis(
             .where(
               and(
                 eq(dailyLogPhotos.projectId, projectId),
-                inArray(dailyLogPhotos.id, selectedAttachmentIds)
+                inArray(dailyLogPhotos.id, idBatch)
               )
             )
+        )
+      )
+    ).flat()
     const selectedAttachmentById = new Map(
       selectedAttachments.map((attachment) => [
         attachment.id,
@@ -3089,10 +3108,10 @@ export async function publishOwnerProjectUpdate(
   const selectedDocumentIds = composerSnapshot.documents.map(
     (document) => document.id
   )
-  const selectedLogs =
-    sourceDailyLogIds.length === 0
-      ? []
-      : await db
+  const selectedLogs = (
+    await Promise.all(
+      ownerUpdateIdBatches(sourceDailyLogIds).map((idBatch) =>
+        db
           .select({
             id: dailyLogs.id,
             logDate: dailyLogs.logDate,
@@ -3101,9 +3120,12 @@ export async function publishOwnerProjectUpdate(
           .where(
             and(
               eq(dailyLogs.projectId, projectId),
-              inArray(dailyLogs.id, sourceDailyLogIds)
+              inArray(dailyLogs.id, idBatch)
             )
           )
+      )
+    )
+  ).flat()
 
   if (selectedLogs.length !== sourceDailyLogIds.length) {
     return {
@@ -3148,19 +3170,25 @@ export async function publishOwnerProjectUpdate(
     ...selectedDocumentIds,
   ]
   if (selectedAttachmentIds.length > 0) {
-    const selectedAttachments = await db
-      .select({
-        id: dailyLogPhotos.id,
-        dailyLogId: dailyLogPhotos.dailyLogId,
-        capturedAt: dailyLogPhotos.capturedAt,
-      })
-      .from(dailyLogPhotos)
-      .where(
-        and(
-          eq(dailyLogPhotos.projectId, projectId),
-          inArray(dailyLogPhotos.id, selectedAttachmentIds)
+    const selectedAttachments = (
+      await Promise.all(
+        ownerUpdateIdBatches(selectedAttachmentIds).map((idBatch) =>
+          db
+            .select({
+              id: dailyLogPhotos.id,
+              dailyLogId: dailyLogPhotos.dailyLogId,
+              capturedAt: dailyLogPhotos.capturedAt,
+            })
+            .from(dailyLogPhotos)
+            .where(
+              and(
+                eq(dailyLogPhotos.projectId, projectId),
+                inArray(dailyLogPhotos.id, idBatch)
+              )
+            )
         )
       )
+    ).flat()
 
     if (selectedAttachments.length !== selectedAttachmentIds.length) {
       return {
@@ -3206,19 +3234,21 @@ export async function publishOwnerProjectUpdate(
       }
     }
 
-    await db
-      .update(dailyLogPhotos)
-      .set({
-        reviewStatus: "approved",
-        ownerVisible: true,
-        updatedAt: new Date().toISOString(),
-      })
-      .where(
-        and(
-          eq(dailyLogPhotos.projectId, projectId),
-          inArray(dailyLogPhotos.id, selectedAttachmentIds)
+    for (const idBatch of ownerUpdateIdBatches(selectedAttachmentIds)) {
+      await db
+        .update(dailyLogPhotos)
+        .set({
+          reviewStatus: "approved",
+          ownerVisible: true,
+          updatedAt: new Date().toISOString(),
+        })
+        .where(
+          and(
+            eq(dailyLogPhotos.projectId, projectId),
+            inArray(dailyLogPhotos.id, idBatch)
+          )
         )
-      )
+    }
   }
 
   const now = new Date().toISOString()
