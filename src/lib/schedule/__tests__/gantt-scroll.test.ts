@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest"
 import {
+  centeredGanttRowScrollTop,
   centeredTimelineScrollLeft,
   dominantScrollAxis,
   ganttRowIndexForScrollTop,
   lockWheelToDominantAxis,
+  nearestScheduleRowIndexForDate,
   normalizeWheelDelta,
   paddingToIncludeDate,
   synchronizedScrollTop,
@@ -55,6 +57,54 @@ describe("Gantt dominant-axis scrolling", () => {
     expect(ganttRowIndexForScrollTop(133, 10)).toBe(1)
     expect(ganttRowIndexForScrollTop(10_000, 10)).toBe(9)
     expect(ganttRowIndexForScrollTop(0, 0)).toBeNull()
+  })
+
+  it("selects work active today before nearby schedule rows", () => {
+    expect(
+      nearestScheduleRowIndexForDate(
+        [
+          { startDate: "2025-02-01", endDate: "2025-02-10" },
+          { startDate: "2026-07-28", endDate: "2026-08-03" },
+          { startDate: "2026-08-04", endDate: "2026-08-08" },
+        ],
+        "2026-07-29"
+      )
+    ).toBe(1)
+  })
+
+  it("falls forward to upcoming work, then back to the latest past work", () => {
+    const rows = [
+      { startDate: "2025-02-01", endDate: "2025-02-10" },
+      { startDate: "2026-08-04", endDate: "2026-08-08" },
+      { startDate: "2026-08-01", endDate: "2026-08-02" },
+    ]
+    expect(nearestScheduleRowIndexForDate(rows, "2026-07-29")).toBe(2)
+    expect(nearestScheduleRowIndexForDate(rows, "2027-01-01")).toBe(1)
+    expect(nearestScheduleRowIndexForDate([], "2026-07-29")).toBeNull()
+  })
+
+  it("centers the relevant row while respecting scroll boundaries", () => {
+    expect(
+      centeredGanttRowScrollTop({
+        rowIndex: 10,
+        clientHeight: 400,
+        scrollHeight: 1_200,
+      })
+    ).toBe(389)
+    expect(
+      centeredGanttRowScrollTop({
+        rowIndex: 0,
+        clientHeight: 400,
+        scrollHeight: 1_200,
+      })
+    ).toBe(0)
+    expect(
+      centeredGanttRowScrollTop({
+        rowIndex: 40,
+        clientHeight: 400,
+        scrollHeight: 1_200,
+      })
+    ).toBe(800)
   })
 
   it("centers a selected date in the timeline beside sticky labels", () => {
