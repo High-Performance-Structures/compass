@@ -107,6 +107,8 @@ interface ScheduleGanttViewProps {
   readonly exceptions: readonly WorkdayExceptionData[]
   readonly assigneeOptions: readonly ProjectTaskAssigneeOption[]
   readonly projects?: readonly ScheduleProjectData[]
+  readonly groupByPhase?: boolean
+  readonly onGroupByPhaseChange?: (grouped: boolean) => void
 }
 
 export function ScheduleGanttView({
@@ -116,6 +118,8 @@ export function ScheduleGanttView({
   exceptions,
   assigneeOptions,
   projects = [],
+  groupByPhase = false,
+  onGroupByPhaseChange,
 }: ScheduleGanttViewProps) {
   const router = useRouter()
   const isMobile = useIsMobile()
@@ -157,6 +161,10 @@ export function ScheduleGanttView({
     [projects]
   )
   const multipleProjects = projectById.size > 1
+
+  useEffect(() => {
+    setPhaseGrouping(groupByPhase)
+  }, [groupByPhase])
 
   const [hasLoadedPalette, setHasLoadedPalette] = useState(false)
 
@@ -950,7 +958,10 @@ export function ScheduleGanttView({
                   <span className="text-xs">Group by Phase</span>
                   <Switch
                     checked={phaseGrouping}
-                    onCheckedChange={setPhaseGrouping}
+                    onCheckedChange={(checked) => {
+                      setPhaseGrouping(checked)
+                      onGroupByPhaseChange?.(checked)
+                    }}
                     className="scale-75"
                   />
                 </div>

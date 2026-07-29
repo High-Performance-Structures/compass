@@ -23,20 +23,21 @@ type PresenceContextValue = {
 const PresenceContext = createContext<PresenceContextValue | null>(null)
 
 const HEARTBEAT_INTERVAL_MS = 30_000 // 30 seconds
-const IDLE_TIMEOUT_MS = 300_000 // 5 minutes
+const ACTIVITY_SYNC_INTERVAL_MS = 60_000
+const IDLE_TIMEOUT_MS = 60 * 60 * 1000
 
 export function PresenceProvider({ children }: { children: React.ReactNode }) {
   const [status, setStatus] = useState<PresenceStatus>("online")
   const [statusMessage, setStatusMessage] = useState<string | null>(null)
-  const [lastActivity, setLastActivity] = useState<Date | null>(null)
+  const [lastActivity, setLastActivity] = useState<Date | null>(() => new Date())
   const [isIdle, setIsIdle] = useState(false)
-  const [isVisible, setIsVisible] = useState(true)
 
   const idleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const heartbeatTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const statusRef = useRef<PresenceStatus>(status)
   const statusMessageRef = useRef<string | null>(statusMessage)
-  const lastActivityCallRef = useRef<number>(0)
+  const lastActivityAtRef = useRef<number>(Date.now())
+  const lastActivitySyncRef = useRef<number>(0)
+  const lastActivityHandledRef = useRef<number>(0)
 
   // keep refs in sync with state
   useEffect(() => {
@@ -63,7 +64,11 @@ export function PresenceProvider({ children }: { children: React.ReactNode }) {
       }
 
       try {
-        await updatePresence(newStatus, effectiveMessage ?? undefined)
+        await updatePresence(
+          newStatus,
+          effectiveMessage ?? undefined,
+          newStatus !== "offline"
+        )
       } catch {
         // silently fail - presence updates are non-critical
       }
@@ -71,40 +76,33 @@ export function PresenceProvider({ children }: { children: React.ReactNode }) {
     []
   )
 
-  const resetIdleTimer = useCallback(() => {
-    // clear existing timer
+  const clearIdleTimer = useCallback((): void => {
     if (idleTimerRef.current) {
       clearTimeout(idleTimerRef.current)
       idleTimerRef.current = null
     }
+  }, [])
 
-    // if we were idle, mark as active again
-    if (statusRef.current === "idle" || isIdle) {
-      setIsIdle(false)
-      setStatus("online")
-      updatePresence("online", statusMessageRef.current ?? undefined).catch(
-        () => {}
-      )
-    }
-
-    setLastActivity(new Date())
-
-    // set new idle timer
+  const scheduleIdleTimer = useCallback((): void => {
+    clearIdleTimer()
+    const elapsed = Date.now() - lastActivityAtRef.current
+    const remaining = Math.max(0, IDLE_TIMEOUT_MS - elapsed)
     idleTimerRef.current = setTimeout(() => {
-      if (statusRef.current === "online" && isVisible) {
+      if (!document.hidden && statusRef.current !== "dnd") {
         setIsIdle(true)
         setStatus("idle")
+        statusRef.current = "idle"
         updatePresence("idle", statusMessageRef.current ?? undefined).catch(
           () => {}
         )
       }
-    }, IDLE_TIMEOUT_MS)
-  }, [isIdle, isVisible])
+    }, remaining)
+  }, [clearIdleTimer])
 
   // heartbeat function
   const sendHeartbeat = useCallback(async () => {
-    // only send heartbeat if page is visible and user is online or idle
-    if (!isVisible) return
+    // Heartbeats prove the connection is alive but must not reset inactivity.
+    if (document.hidden) return
     if (statusRef.current === "offline" || statusRef.current === "dnd") return
 
     try {
@@ -112,70 +110,87 @@ export function PresenceProvider({ children }: { children: React.ReactNode }) {
     } catch {
       // silently fail - presence updates are non-critical
     }
-  }, [isVisible])
+  }, [])
 
   // set up heartbeat interval
   useEffect(() => {
-    heartbeatTimerRef.current = setInterval(sendHeartbeat, HEARTBEAT_INTERVAL_MS)
+    const heartbeatTimer = window.setInterval(
+      sendHeartbeat,
+      HEARTBEAT_INTERVAL_MS
+    )
 
     return () => {
-      if (heartbeatTimerRef.current) {
-        clearInterval(heartbeatTimerRef.current)
-        heartbeatTimerRef.current = null
-      }
+      window.clearInterval(heartbeatTimer)
     }
   }, [sendHeartbeat])
 
-  // throttled activity handler (1 second max rate)
-  const throttledHandleActivity = useCallback(() => {
+  const handleActivity = useCallback((): void => {
     const now = Date.now()
-    if (now - lastActivityCallRef.current < 1000) {
-      return // skip if called within last second
+    if (
+      statusRef.current !== "idle" &&
+      now - lastActivityHandledRef.current < 1000
+    ) {
+      return
     }
-    lastActivityCallRef.current = now
+    lastActivityHandledRef.current = now
+    lastActivityAtRef.current = now
+    setLastActivity(new Date(now))
 
-    if (statusRef.current !== "dnd" && statusRef.current !== "offline") {
-      resetIdleTimer()
+    if (statusRef.current === "idle") {
+      statusRef.current = "online"
+      setStatus("online")
+      setIsIdle(false)
     }
-  }, [resetIdleTimer])
+
+    scheduleIdleTimer()
+
+    if (now - lastActivitySyncRef.current >= ACTIVITY_SYNC_INTERVAL_MS) {
+      lastActivitySyncRef.current = now
+      updatePresence(
+        "online",
+        statusMessageRef.current ?? undefined,
+        true
+      ).catch(() => {})
+    }
+  }, [scheduleIdleTimer])
 
   // track user activity
   useEffect(() => {
     const activityEvents = ["mousemove", "keydown", "touchstart", "scroll"]
 
     for (const event of activityEvents) {
-      window.addEventListener(event, throttledHandleActivity, { passive: true })
+      window.addEventListener(event, handleActivity, { passive: true })
     }
 
-    // start initial idle timer
-    resetIdleTimer()
+    scheduleIdleTimer()
 
     return () => {
       for (const event of activityEvents) {
-        window.removeEventListener(event, throttledHandleActivity)
+        window.removeEventListener(event, handleActivity)
       }
-      if (idleTimerRef.current) {
-        clearTimeout(idleTimerRef.current)
-      }
+      clearIdleTimer()
     }
-  }, [throttledHandleActivity, resetIdleTimer])
+  }, [clearIdleTimer, handleActivity, scheduleIdleTimer])
 
   // handle page visibility changes
   useEffect(() => {
     const handleVisibilityChange = () => {
       const nowVisible = !document.hidden
-      setIsVisible(nowVisible)
 
       if (nowVisible) {
-        // page became visible - resume heartbeat and check if we should be idle
-        resetIdleTimer()
+        if (Date.now() - lastActivityAtRef.current >= IDLE_TIMEOUT_MS) {
+          setIsIdle(true)
+          setStatus("idle")
+          statusRef.current = "idle"
+          updatePresence("idle", statusMessageRef.current ?? undefined).catch(
+            () => {}
+          )
+        } else {
+          scheduleIdleTimer()
+        }
         sendHeartbeat()
       } else {
-        // page hidden - clear idle timer to pause idle detection
-        if (idleTimerRef.current) {
-          clearTimeout(idleTimerRef.current)
-          idleTimerRef.current = null
-        }
+        clearIdleTimer()
       }
     }
 
@@ -184,31 +199,12 @@ export function PresenceProvider({ children }: { children: React.ReactNode }) {
     return () => {
       document.removeEventListener("visibilitychange", handleVisibilityChange)
     }
-  }, [resetIdleTimer, sendHeartbeat])
-
-  // set offline on beforeunload
-  useEffect(() => {
-    const handleBeforeUnload = () => {
-      // use navigator.sendBeacon for reliable delivery during page unload
-      // the server action won't work here since the page is unloading
-      // we still call it for browsers that support it, but it may not complete
-      updatePresence("offline", statusMessageRef.current ?? undefined).catch(() => {})
-
-      // as a fallback, try to use sendBeacon with a dedicated endpoint
-      // this would require a separate API route, but we'll rely on the
-      // server-side timeout mechanism to mark users as offline
-    }
-
-    window.addEventListener("beforeunload", handleBeforeUnload)
-
-    return () => {
-      window.removeEventListener("beforeunload", handleBeforeUnload)
-    }
-  }, [])
+  }, [clearIdleTimer, scheduleIdleTimer, sendHeartbeat])
 
   // send initial presence on mount
   useEffect(() => {
-    updatePresence("online").catch(() => {})
+    lastActivitySyncRef.current = Date.now()
+    updatePresence("online", undefined, true).catch(() => {})
   }, [])
 
   const value: PresenceContextValue = {

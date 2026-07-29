@@ -40,6 +40,8 @@ export type TeamAvailabilityMember = {
   readonly name: string
   readonly avatarUrl: string | null
   readonly status: DeskStatus
+  readonly activity: "active" | "idle"
+  readonly lastActiveAt: string | null
   readonly updatedAt: string
   readonly isCurrentUser: boolean
 }
@@ -53,8 +55,11 @@ export type TeamAvailabilityRow = {
   readonly avatarUrl: string | null
   readonly role: string
   readonly statusMessage: string | null
+  readonly lastActiveAt: string | null
   readonly updatedAt: string | null
 }
+
+export const TEAM_IDLE_AFTER_MS = 60 * 60 * 1000
 
 function availabilityName(row: TeamAvailabilityRow): string {
   const displayName = row.displayName?.trim()
@@ -78,7 +83,8 @@ function statusRank(status: DeskStatus): number {
 
 export function teamAvailabilityFromRows(
   rows: readonly TeamAvailabilityRow[],
-  currentUserId: string
+  currentUserId: string,
+  now = new Date()
 ): readonly TeamAvailabilityMember[] {
   const membersById = new Map<string, TeamAvailabilityMember>()
 
@@ -87,12 +93,22 @@ export function teamAvailabilityFromRows(
 
     const status = deskStatusFromPresenceMessage(row.statusMessage)
     if (!status) continue
+    const lastActiveTimestamp = row.lastActiveAt
+      ? new Date(row.lastActiveAt).getTime()
+      : Number.NaN
+    const activity =
+      Number.isFinite(lastActiveTimestamp) &&
+      now.getTime() - lastActiveTimestamp < TEAM_IDLE_AFTER_MS
+        ? "active"
+        : "idle"
 
     const member: TeamAvailabilityMember = {
       userId: row.userId,
       name: availabilityName(row),
       avatarUrl: row.avatarUrl,
       status,
+      activity,
+      lastActiveAt: row.lastActiveAt,
       updatedAt: row.updatedAt ?? "",
       isCurrentUser: row.userId === currentUserId,
     }

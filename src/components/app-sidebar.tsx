@@ -3,6 +3,7 @@
 import * as React from "react"
 import {
   IconAddressBook,
+  IconActivity,
   IconCalendarStats,
   IconClipboardCheck,
   IconClipboardText,
@@ -61,6 +62,12 @@ const PERSISTENT_NAV = [
 ]
 
 const NAV_MAIN = [
+  {
+    title: "Activity",
+    url: "/dashboard/activity",
+    icon: IconActivity,
+    internalOnly: true,
+  },
   {
     title: "Projects",
     url: "/dashboard/projects",
@@ -153,9 +160,11 @@ const NAV_MAIN = [
 function SidebarNav({
   projects,
   canUseFieldDesk,
+  canViewActivity,
 }: {
   projects: ReadonlyArray<ProjectListItem>
   readonly canUseFieldDesk: boolean
+  readonly canViewActivity: boolean
 }) {
   const pathname = usePathname()
   const { state } = useSidebar()
@@ -187,7 +196,9 @@ function SidebarNav({
         }
       : item
   )
-  const navMain = NAV_MAIN.map((item) =>
+  const navMain = NAV_MAIN.filter(
+    (item) => !item.internalOnly || canViewActivity
+  ).map((item) =>
     typeof item.projectPath === "string"
       ? {
           ...item,
@@ -238,6 +249,7 @@ export function AppSidebar({
   activeOrgId = null,
   activeOrgName = null,
   canUseFieldDesk = false,
+  canViewActivity = false,
   ...props
 }: React.ComponentProps<typeof Sidebar> & {
   readonly projects?: ReadonlyArray<ProjectListItem>
@@ -245,6 +257,7 @@ export function AppSidebar({
   readonly activeOrgId?: string | null
   readonly activeOrgName?: string | null
   readonly canUseFieldDesk?: boolean
+  readonly canViewActivity?: boolean
 }) {
   const { isMobile } = useSidebar()
   const { channelId } = useVoiceState()
@@ -258,6 +271,7 @@ export function AppSidebar({
         <SidebarNav
           projects={projects}
           canUseFieldDesk={canUseFieldDesk}
+          canViewActivity={canViewActivity}
         />
       </SidebarContent>
       <SidebarFooter className="border-t border-sidebar-border/60">

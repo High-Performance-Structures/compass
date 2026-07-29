@@ -43,6 +43,7 @@ import {
   createNotificationEvent,
   notifyChannelMessage,
 } from "@/lib/notifications/events"
+import { recordActivityEvent } from "@/lib/activity-log"
 
 const MAX_MESSAGE_LENGTH = 4000
 const EMOJI_REGEX = /^[\p{Emoji}\u200d\uFE0F]+$/u
@@ -419,6 +420,18 @@ export async function sendMessage(data: {
     if (!membership) {
       return { success: false, error: "Not a member of this channel" }
     }
+    const activityChannel = await db
+      .select({
+        name: channels.name,
+        organizationId: channels.organizationId,
+        projectId: channels.projectId,
+      })
+      .from(channels)
+      .where(eq(channels.id, data.channelId))
+      .get()
+    if (!activityChannel) {
+      return { success: false, error: "Channel not found" }
+    }
 
     const now = new Date().toISOString()
     const messageId = crypto.randomUUID()
@@ -445,6 +458,21 @@ export async function sendMessage(data: {
     }
 
     await db.insert(messages).values(newMessage)
+    await recordActivityEvent({
+      db,
+      organizationId: activityChannel.organizationId,
+      projectId: activityChannel.projectId,
+      actor: user,
+      category: "conversation",
+      action: data.threadId
+        ? "conversation.reply_sent"
+        : "conversation.message_sent",
+      entityType: "message",
+      entityId: messageId,
+      summary: data.threadId
+        ? `Replied in ${activityChannel.name}.`
+        : `Sent a message in ${activityChannel.name}.`,
+    })
 
     // insert mentions if provided
     if (data.mentions && data.mentions.length > 0) {

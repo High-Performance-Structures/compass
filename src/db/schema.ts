@@ -378,6 +378,77 @@ export const projects = sqliteTable("projects", {
   updatedAt: text("updated_at"),
 })
 
+export const activityEvents = sqliteTable(
+  "activity_events",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    projectId: text("project_id").references(() => projects.id, {
+      onDelete: "set null",
+    }),
+    actorUserId: text("actor_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    actorName: text("actor_name").notNull(),
+    actorRole: text("actor_role").notNull(),
+    category: text("category").notNull(),
+    action: text("action").notNull(),
+    entityType: text("entity_type").notNull(),
+    entityId: text("entity_id"),
+    summary: text("summary").notNull(),
+    metadata: text("metadata"),
+    createdAt: text("created_at").notNull(),
+  },
+  (table) => [
+    index("activity_events_org_created_idx").on(
+      table.organizationId,
+      table.createdAt
+    ),
+    index("activity_events_project_created_idx").on(
+      table.projectId,
+      table.createdAt
+    ),
+    index("activity_events_actor_created_idx").on(
+      table.actorUserId,
+      table.createdAt
+    ),
+  ]
+)
+
+export type ActivityEvent = typeof activityEvents.$inferSelect
+export type NewActivityEvent = typeof activityEvents.$inferInsert
+
+export const scheduleSavedViews = sqliteTable(
+  "schedule_saved_views",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    ownerUserId: text("owner_user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    visibility: text("visibility").notNull().default("personal"),
+    definition: text("definition").notNull(),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => [
+    index("schedule_saved_views_org_idx").on(table.organizationId),
+    index("schedule_saved_views_owner_idx").on(table.ownerUserId),
+    uniqueIndex("schedule_saved_views_owner_name_unique").on(
+      table.ownerUserId,
+      table.name
+    ),
+  ]
+)
+
+export type ScheduleSavedView = typeof scheduleSavedViews.$inferSelect
+export type NewScheduleSavedView = typeof scheduleSavedViews.$inferInsert
+
 export const projectExternalLinks = sqliteTable("project_external_links", {
   id: text("id").primaryKey(),
   projectId: text("project_id")

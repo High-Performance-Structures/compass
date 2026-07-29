@@ -41,6 +41,7 @@ describe("teamAvailabilityFromRows", () => {
           avatarUrl: "/martine.jpg",
           role: "admin",
           statusMessage: "In Office",
+          lastActiveAt: "2026-07-27T14:30:00.000Z",
           updatedAt: "2026-07-27T15:00:00.000Z",
         },
         {
@@ -52,6 +53,7 @@ describe("teamAvailabilityFromRows", () => {
           avatarUrl: null,
           role: "office",
           statusMessage: "Out",
+          lastActiveAt: "2026-07-27T13:30:00.000Z",
           updatedAt: "2026-07-27T14:00:00.000Z",
         },
         {
@@ -63,6 +65,7 @@ describe("teamAvailabilityFromRows", () => {
           avatarUrl: null,
           role: "office",
           statusMessage: "Remote",
+          lastActiveAt: "2026-07-27T15:45:00.000Z",
           updatedAt: "2026-07-27T16:00:00.000Z",
         },
         {
@@ -74,10 +77,12 @@ describe("teamAvailabilityFromRows", () => {
           avatarUrl: null,
           role: "client",
           statusMessage: "In Office",
+          lastActiveAt: "2026-07-27T15:45:00.000Z",
           updatedAt: "2026-07-27T16:00:00.000Z",
         },
       ],
-      "martine"
+      "martine",
+      new Date("2026-07-27T16:00:00.000Z")
     )
 
     expect(availability).toEqual([
@@ -86,6 +91,8 @@ describe("teamAvailabilityFromRows", () => {
         name: "Martine Vogel",
         avatarUrl: "/martine.jpg",
         status: "in-office",
+        activity: "idle",
+        lastActiveAt: "2026-07-27T14:30:00.000Z",
         updatedAt: "2026-07-27T15:00:00.000Z",
         isCurrentUser: true,
       },
@@ -94,6 +101,8 @@ describe("teamAvailabilityFromRows", () => {
         name: "Sylvi Example",
         avatarUrl: null,
         status: "remote",
+        activity: "active",
+        lastActiveAt: "2026-07-27T15:45:00.000Z",
         updatedAt: "2026-07-27T16:00:00.000Z",
         isCurrentUser: false,
       },
@@ -113,6 +122,7 @@ describe("teamAvailabilityFromRows", () => {
             avatarUrl: null,
             role: "office",
             statusMessage: null,
+            lastActiveAt: null,
             updatedAt: null,
           },
         ],

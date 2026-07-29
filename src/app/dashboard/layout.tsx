@@ -27,6 +27,7 @@ import { PushNotificationRegistrar } from "@/hooks/use-native-push"
 import { DesktopShell } from "@/components/desktop/desktop-shell"
 import { DesktopOfflineBanner } from "@/components/desktop/offline-banner"
 import { VoiceProvider } from "@/components/voice/voice-provider"
+import { PresenceProvider } from "@/contexts/presence-context"
 import { DemoBanner } from "@/components/demo/demo-banner"
 import { isDemoUser } from "@/lib/demo"
 import {
@@ -34,6 +35,7 @@ import {
   canUseFieldDesk,
   canUseOfficeTalk,
 } from "@/lib/permissions"
+import { isInternalStaffRole } from "@/lib/user-roles"
 
 export default async function DashboardLayout({
   children,
@@ -54,6 +56,9 @@ export default async function DashboardLayout({
   const canUseCompassAgent = canUseAskCompass(authUser)
   const canUseCompassFieldDesk = canUseFieldDesk(authUser)
   const canUseCompassOfficeTalk = canUseOfficeTalk(authUser)
+  const canViewActivity = authUser
+    ? isInternalStaffRole(authUser.role)
+    : false
   const offlineScopeKey =
     authUser?.organizationId && authUser.id
       ? `${authUser.organizationId}:${authUser.id}`
@@ -65,6 +70,7 @@ export default async function DashboardLayout({
       offlineScopeKey={offlineScopeKey}
       canSubmitCherish={canUseCompassFieldDesk}
     >
+    <PresenceProvider>
     <VoiceProvider>
     <SettingsProvider>
     <ProjectListProvider projects={projectList}>
@@ -90,6 +96,7 @@ export default async function DashboardLayout({
           activeOrgId={activeOrgId}
           activeOrgName={activeOrgName}
           canUseFieldDesk={canUseCompassFieldDesk}
+          canViewActivity={canViewActivity}
         />
         <SidebarInset className="overflow-hidden">
           <DesktopOfflineBanner />
@@ -124,6 +131,7 @@ export default async function DashboardLayout({
     </ProjectListProvider>
     </SettingsProvider>
     </VoiceProvider>
+    </PresenceProvider>
     </ChatProvider>
   )
 }

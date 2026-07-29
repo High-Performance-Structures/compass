@@ -12,6 +12,7 @@ import {
 } from "@/lib/dashboard/office-status"
 import { requireOrg } from "@/lib/org-scope"
 import { isInternalStaffRole } from "@/lib/user-roles"
+import { recordActivityEvent } from "@/lib/activity-log"
 
 export type PresenceStatus = "online" | "idle" | "dnd" | "offline"
 
@@ -46,7 +47,8 @@ type GroupedMembers = {
  */
 export async function updatePresence(
   status?: PresenceStatus,
-  statusMessage?: string
+  statusMessage?: string,
+  observedActivity = false
 ): Promise<{ success: true } | { success: false; error: string }> {
   try {
     const user = await getCurrentUser()
@@ -84,6 +86,7 @@ export async function updatePresence(
           status: effectiveStatus,
           statusMessage: statusMessage ?? existing.statusMessage,
           lastSeenAt: now,
+          ...(observedActivity ? { lastActiveAt: now } : {}),
           updatedAt: now,
         })
         .where(eq(userPresence.userId, user.id))
@@ -95,7 +98,25 @@ export async function updatePresence(
         status: effectiveStatus,
         statusMessage: statusMessage ?? null,
         lastSeenAt: now,
+        lastActiveAt: observedActivity ? now : null,
         updatedAt: now,
+      })
+    }
+
+    if (
+      user.organizationId &&
+      statusMessage !== undefined &&
+      statusMessage !== existing?.statusMessage
+    ) {
+      await recordActivityEvent({
+        db,
+        organizationId: user.organizationId,
+        actor: user,
+        category: "presence",
+        action: "presence.designation_changed",
+        entityType: "user_presence",
+        entityId: user.id,
+        summary: `Changed work status to ${statusMessage}.`,
       })
     }
 
@@ -190,6 +211,7 @@ export async function getOrganizationTeamAvailability(): Promise<
         avatarUrl: users.avatarUrl,
         role: users.role,
         statusMessage: userPresence.statusMessage,
+        lastActiveAt: userPresence.lastActiveAt,
         updatedAt: userPresence.updatedAt,
       })
       .from(organizationMembers)

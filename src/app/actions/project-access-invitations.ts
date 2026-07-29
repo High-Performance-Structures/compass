@@ -25,6 +25,7 @@ import {
   isExternalProjectRole,
   isInternalStaffRole,
 } from "@/lib/user-roles"
+import { recordActivityEvent } from "@/lib/activity-log"
 
 const invitationSchema = z.object({
   projectId: z.string().trim().min(1),
@@ -411,6 +412,24 @@ export async function sendProjectAccessInvitation(
         updatedAt: now,
       })
       .run()
+
+    await recordActivityEvent({
+      db,
+      organizationId: row.organizationId,
+      projectId: parsed.data.projectId,
+      actor: currentUser,
+      category: "access",
+      action:
+        accessStatus === "access_granted"
+          ? "project.access_granted"
+          : "project.invitation_sent",
+      entityType: "project_access_invitation",
+      entityId: row.contact.id,
+      summary:
+        accessStatus === "access_granted"
+          ? `Granted ${row.contact.displayName} access to ${projectLabel}.`
+          : `Invited ${row.contact.displayName} to ${projectLabel}.`,
+    })
 
     revalidatePath(`/dashboard/projects/${parsed.data.projectId}/contacts`)
     revalidatePath("/dashboard/people")

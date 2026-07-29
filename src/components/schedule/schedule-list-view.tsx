@@ -59,6 +59,10 @@ import {
   getScheduleItemDisplayColor,
   type DisplayColorPalette,
 } from "@/lib/schedule/appearance"
+import {
+  SCHEDULE_LIST_COLUMNS,
+  type ScheduleListColumn,
+} from "@/lib/schedule/saved-views"
 import { ProjectAssigneePicker } from "@/components/projects/project-assignee-picker"
 import {
   AlertDialog,
@@ -79,6 +83,7 @@ interface ScheduleListViewProps {
   readonly assigneeOptions: readonly ProjectTaskAssigneeOption[]
   readonly focusTaskId?: string | null
   readonly projects?: readonly ScheduleProjectData[]
+  readonly visibleColumns?: readonly ScheduleListColumn[]
 }
 
 function StatusDot({
@@ -146,6 +151,7 @@ export function ScheduleListView({
   assigneeOptions,
   focusTaskId = null,
   projects = [],
+  visibleColumns = SCHEDULE_LIST_COLUMNS,
 }: ScheduleListViewProps) {
   const router = useRouter()
   const displayColorPalette = useScheduleDisplayPalette(projectId ?? "unified")
@@ -369,6 +375,17 @@ export function ScheduleListView({
     ]
   )
 
+  const columnVisibility = useMemo(
+    () =>
+      Object.fromEntries(
+        SCHEDULE_LIST_COLUMNS.map((column) => [
+          column,
+          visibleColumns.includes(column),
+        ])
+      ),
+    [visibleColumns]
+  )
+
   const table = useReactTable({
     data: localTasks,
     columns,
@@ -376,7 +393,7 @@ export function ScheduleListView({
     getPaginationRowModel: getPaginationRowModel(),
     getRowId: (row) => row.id,
     onRowSelectionChange: setRowSelection,
-    state: { rowSelection },
+    state: { rowSelection, columnVisibility },
     initialState: { pagination: { pageSize: 25 } },
   })
   const selectedTasks = table
