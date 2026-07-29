@@ -19,6 +19,7 @@ import { OwnerUpdateDraftEditor } from "@/components/projects/owner-update-draft
 import { OwnerUpdatePhotoTile } from "@/components/projects/owner-update-photo-tile"
 import { projectBrandFor } from "@/lib/project-branding"
 import { projectAudienceSectionHref } from "@/lib/project-audience-preview-routes"
+import { projectAudiencePhotoUrl } from "@/lib/photo-sources"
 
 function formatDate(value: string): string {
   return new Date(`${value}T00:00:00`).toLocaleDateString("en-US", {
@@ -314,9 +315,21 @@ export function OwnerUpdateDocument({
                   <OwnerUpdatePhotoTile
                     key={photo.id}
                     fileName={photo.fileName}
-                    driveFileId={photo.driveFileId}
+                    driveFileId={
+                      document.update.status === "published"
+                        ? null
+                        : photo.driveFileId
+                    }
                     driveUrl={photo.driveUrl}
-                    thumbnailUrl={photo.thumbnailUrl}
+                    thumbnailUrl={
+                      document.update.status === "published"
+                        ? projectAudiencePhotoUrl(
+                            document.project.id,
+                            photo.id,
+                            "owner"
+                          )
+                        : photo.thumbnailUrl
+                    }
                     caption={photo.caption}
                   />
                 ))}
