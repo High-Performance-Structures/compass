@@ -12,10 +12,33 @@ import {
 import type { AudienceScheduleItem } from "@/app/actions/project-audience-preview"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import {
+  lockWheelToDominantAxis,
+  normalizeWheelDelta,
+} from "@/lib/schedule/gantt-scroll"
 import { cn } from "@/lib/utils"
 import type { OwnerScheduleView } from "@/lib/schedule/owner-visibility"
 
 type ScheduleView = "list" | "calendar" | "gantt"
+type GanttViewMode = "Day" | "Week" | "Month"
+
+const GANTT_DAY_WIDTH: Readonly<Record<GanttViewMode, number>> = {
+  Day: 38,
+  Week: 20,
+  Month: 8,
+}
+
+const GANTT_PADDING_DAYS: Readonly<Record<GanttViewMode, number>> = {
+  Day: 7,
+  Week: 31,
+  Month: 62,
+}
+
+const GANTT_VIEW_MODES: readonly GanttViewMode[] = [
+  "Day",
+  "Week",
+  "Month",
+]
 
 const WEEKDAYS: readonly string[] = [
   "Sun",
@@ -111,25 +134,34 @@ type GanttMonth = {
   readonly width: number
 }
 
+type GanttTick = GanttMonth
+
 function ProjectAudienceGantt({
   items,
 }: {
   readonly items: readonly AudienceScheduleItem[]
 }): React.ReactElement {
+  const scrollContainerRef = React.useRef<HTMLDivElement>(null)
+  const pendingAnchorDateRef = React.useRef<string | null>(null)
+  const didInitialScrollRef = React.useRef(false)
+  const [viewMode, setViewMode] = React.useState<GanttViewMode>("Week")
+  const today = dateKey(new Date())
   const range = React.useMemo(() => {
-    const earliest = items.reduce(
+    const earliestItem = items.reduce(
       (date, item) => (item.startDate < date ? item.startDate : date),
       items[0].startDate
     )
-    const latest = items.reduce(
+    const latestItem = items.reduce(
       (date, item) => (item.endDate > date ? item.endDate : date),
       items[0].endDate
     )
-    const start = dateKey(addDays(dateFromKey(earliest), -3))
-    const end = dateKey(addDays(dateFromKey(latest), 7))
+    const earliest = earliestItem < today ? earliestItem : today
+    const latest = latestItem > today ? latestItem : today
+    const paddingDays = GANTT_PADDING_DAYS[viewMode]
+    const start = dateKey(addDays(dateFromKey(earliest), -paddingDays))
+    const end = dateKey(addDays(dateFromKey(latest), paddingDays))
     const totalDays = daysBetween(start, end) + 1
-    const dayWidth =
-      totalDays > 240 ? 10 : totalDays > 120 ? 14 : totalDays > 60 ? 18 : 24
+    const dayWidth = GANTT_DAY_WIDTH[viewMode]
     return {
       start,
       end,
@@ -137,7 +169,7 @@ function ProjectAudienceGantt({
       dayWidth,
       chartWidth: Math.max(680, totalDays * dayWidth),
     }
-  }, [items])
+  }, [items, today, viewMode])
   const months = React.useMemo(() => {
     const segments: GanttMonth[] = []
     let cursor = dateFromKey(range.start)
@@ -175,72 +207,260 @@ function ProjectAudienceGantt({
 
     return segments
   }, [range])
-  const today = dateKey(new Date())
-  const todayVisible = today >= range.start && today <= range.end
+  const years = React.useMemo(() => {
+    const segments: GanttMonth[] = []
+    let cursor = dateFromKey(range.start)
+    const rangeEnd = dateFromKey(range.end)
+
+    while (cursor <= rangeEnd) {
+      const yearStart = new Date(cursor.getFullYear(), 0, 1)
+      const nextYear = new Date(cursor.getFullYear() + 1, 0, 1)
+      const segmentStart = cursor > yearStart ? cursor : yearStart
+      const yearEnd = addDays(nextYear, -1)
+      const segmentEnd = yearEnd < rangeEnd ? yearEnd : rangeEnd
+      const segmentStartKey = dateKey(segmentStart)
+      const segmentEndKey = dateKey(segmentEnd)
+      segments.push({
+        key: segmentStartKey,
+        label: String(segmentStart.getFullYear()),
+        left: daysBetween(range.start, segmentStartKey) * range.dayWidth,
+        width:
+          (daysBetween(segmentStartKey, segmentEndKey) + 1) * range.dayWidth,
+      })
+      cursor = nextYear
+    }
+
+    return segments
+  }, [range])
+  const ticks = React.useMemo((): readonly GanttTick[] => {
+    if (viewMode === "Month") {
+      return months.map((month) => ({
+        ...month,
+        label: dateFromKey(month.key).toLocaleDateString("en-US", {
+          month: "short",
+        }),
+      }))
+    }
+
+    const step = viewMode === "Day" ? 1 : 7
+    const result: GanttTick[] = []
+    const rangeEnd = dateFromKey(range.end)
+    let cursor = dateFromKey(range.start)
+    while (cursor <= rangeEnd) {
+      const key = dateKey(cursor)
+      const remainingDays = daysBetween(key, range.end) + 1
+      result.push({
+        key,
+        label:
+          viewMode === "Day"
+            ? cursor.toLocaleDateString("en-US", {
+                weekday: "narrow",
+                day: "numeric",
+              })
+            : cursor.toLocaleDateString("en-US", {
+                month: "short",
+                day: "numeric",
+              }),
+        left: daysBetween(range.start, key) * range.dayWidth,
+        width: Math.min(step, remainingDays) * range.dayWidth,
+      })
+      cursor = addDays(cursor, step)
+    }
+    return result
+  }, [months, range, viewMode])
+  const upperSegments = viewMode === "Month" ? years : months
   const labelWidth = 240
 
+  const scrollToDate = React.useCallback(
+    (date: string, behavior: ScrollBehavior = "smooth") => {
+      const container = scrollContainerRef.current
+      if (!container) return
+      const center =
+        daysBetween(range.start, date) * range.dayWidth +
+        range.dayWidth / 2
+      container.scrollTo({
+        left: Math.max(
+          0,
+          Math.min(
+            labelWidth + center - container.clientWidth / 2,
+            container.scrollWidth - container.clientWidth
+          )
+        ),
+        behavior,
+      })
+    },
+    [range]
+  )
+
+  const handleViewModeChange = React.useCallback(
+    (nextMode: GanttViewMode) => {
+      if (nextMode === viewMode) return
+      const container = scrollContainerRef.current
+      if (container) {
+        const timelineCenter = Math.max(
+          0,
+          container.scrollLeft + container.clientWidth / 2 - labelWidth
+        )
+        pendingAnchorDateRef.current = dateKey(
+          addDays(
+            dateFromKey(range.start),
+            Math.round(timelineCenter / range.dayWidth)
+          )
+        )
+      }
+      setViewMode(nextMode)
+    },
+    [range, viewMode]
+  )
+
+  React.useEffect(() => {
+    const container = scrollContainerRef.current
+    if (!container) return
+
+    const handleWheel = (event: WheelEvent) => {
+      if (event.ctrlKey) return
+      const pageSize = Math.max(container.clientWidth, container.clientHeight)
+      const rawDeltaX =
+        event.shiftKey && event.deltaX === 0 ? event.deltaY : event.deltaX
+      const rawDeltaY =
+        event.shiftKey && event.deltaX === 0 ? 0 : event.deltaY
+      const locked = lockWheelToDominantAxis(
+        normalizeWheelDelta(rawDeltaX, event.deltaMode, pageSize),
+        normalizeWheelDelta(rawDeltaY, event.deltaMode, pageSize)
+      )
+      if (locked.deltaX === 0 && locked.deltaY === 0) return
+
+      event.preventDefault()
+      container.scrollBy({
+        left: locked.deltaX,
+        top: locked.deltaY,
+        behavior: "auto",
+      })
+    }
+
+    container.addEventListener("wheel", handleWheel, { passive: false })
+    return () => container.removeEventListener("wheel", handleWheel)
+  }, [])
+
+  React.useEffect(() => {
+    const anchorDate = pendingAnchorDateRef.current
+    if (anchorDate) {
+      pendingAnchorDateRef.current = null
+      requestAnimationFrame(() => scrollToDate(anchorDate, "auto"))
+      return
+    }
+    if (!didInitialScrollRef.current) {
+      didInitialScrollRef.current = true
+      requestAnimationFrame(() => scrollToDate(today, "auto"))
+    }
+  }, [scrollToDate, today])
+
   return (
-    <div className="overflow-auto" aria-label="Read-only project Gantt chart">
-      <div
-        className="relative"
-        style={{ minWidth: labelWidth + range.chartWidth }}
-      >
-        <div className="sticky top-0 z-20 flex h-10 border-b bg-background">
-          <div
-            className="sticky left-0 z-30 flex shrink-0 items-center border-r bg-background px-4 text-xs font-medium"
-            style={{ width: labelWidth }}
-          >
-            Schedule
-          </div>
-          <div
-            className="relative shrink-0 overflow-hidden"
-            style={{ width: range.chartWidth }}
-          >
-            {months.map((month) => (
-              <div
-                key={month.key}
-                className="absolute inset-y-0 border-r px-2 py-2 text-xs font-medium text-muted-foreground"
-                style={{ left: month.left, width: month.width }}
-              >
-                {month.label}
-              </div>
-            ))}
-          </div>
+    <div>
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b bg-muted/15 px-4 py-2">
+        <div
+          className="flex items-center border bg-background"
+          aria-label="Gantt scale"
+        >
+          {GANTT_VIEW_MODES.map((mode, index) => (
+            <Button
+              key={mode}
+              type="button"
+              variant={viewMode === mode ? "secondary" : "ghost"}
+              size="sm"
+              className={cn("h-8 rounded-none", index > 0 && "border-l")}
+              aria-pressed={viewMode === mode}
+              onClick={() => handleViewModeChange(mode)}
+            >
+              {mode}
+            </Button>
+          ))}
         </div>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="h-8"
+          onClick={() => scrollToDate(today)}
+        >
+          Today
+        </Button>
+      </div>
+      <div
+        ref={scrollContainerRef}
+        className="max-h-[34rem] overflow-auto overscroll-contain [scrollbar-gutter:stable]"
+        aria-label="Read-only project Gantt chart"
+      >
+        <div
+          className="relative"
+          style={{ minWidth: labelWidth + range.chartWidth }}
+        >
+          <div className="sticky top-0 z-20 flex h-14 border-b bg-background">
+            <div
+              className="sticky left-0 z-30 flex shrink-0 items-center border-r bg-background px-4 text-xs font-medium"
+              style={{ width: labelWidth }}
+            >
+              Schedule
+            </div>
+            <div
+              className="relative shrink-0 overflow-hidden"
+              style={{ width: range.chartWidth }}
+            >
+              {upperSegments.map((segment) => (
+                <div
+                  key={segment.key}
+                  className="absolute inset-x-auto top-0 h-7 truncate border-r px-2 py-1.5 text-xs font-medium text-muted-foreground"
+                  style={{ left: segment.left, width: segment.width }}
+                >
+                  {segment.label}
+                </div>
+              ))}
+              {ticks.map((tick) => (
+                <div
+                  key={tick.key}
+                  className="absolute bottom-0 h-7 truncate border-r border-t px-1 py-1.5 text-center text-[10px] tabular-nums text-muted-foreground"
+                  style={{ left: tick.left, width: tick.width }}
+                >
+                  {tick.label}
+                </div>
+              ))}
+            </div>
+          </div>
 
-        {items.map((item) => {
-          const left =
-            daysBetween(range.start, item.startDate) * range.dayWidth
-          const width = Math.max(
-            range.dayWidth,
-            (daysBetween(item.startDate, item.endDate) + 1) * range.dayWidth
-          )
-          const percentComplete = Math.min(
-            100,
-            Math.max(0, item.percentComplete)
-          )
+          {items.map((item) => {
+            const left =
+              daysBetween(range.start, item.startDate) * range.dayWidth
+            const width = Math.max(
+              range.dayWidth,
+              (daysBetween(item.startDate, item.endDate) + 1) * range.dayWidth
+            )
+            const percentComplete = Math.min(
+              100,
+              Math.max(0, item.percentComplete)
+            )
 
-          return (
-            <div key={item.id} className="flex h-14 border-b">
-              <div
-                className="sticky left-0 z-10 flex shrink-0 flex-col justify-center border-r bg-background px-4"
-                style={{ width: labelWidth }}
-              >
-                <span className="truncate text-xs font-medium">{item.title}</span>
-                <span className="mt-0.5 truncate text-[10px] text-muted-foreground">
-                  {formatDate(item.startDate)} – {formatDate(item.endDate)}
-                </span>
-              </div>
-              <div
-                className="relative shrink-0"
-                style={{
-                  width: range.chartWidth,
-                  backgroundImage:
-                    "linear-gradient(to right, transparent calc(100% - 1px), var(--border) calc(100% - 1px))",
-                  backgroundSize: `${range.dayWidth}px 100%`,
-                }}
-              >
-                {todayVisible && (
+            return (
+              <div key={item.id} className="flex h-14 border-b">
+                <div
+                  className="sticky left-0 z-10 flex shrink-0 flex-col justify-center border-r bg-background px-4"
+                  style={{ width: labelWidth }}
+                >
+                  <span className="truncate text-xs font-medium">
+                    {item.title}
+                  </span>
+                  <span className="mt-0.5 truncate text-[10px] text-muted-foreground">
+                    {formatDate(item.startDate)} – {formatDate(item.endDate)}
+                  </span>
+                </div>
+                <div
+                  className="relative shrink-0"
+                  style={{
+                    width: range.chartWidth,
+                    backgroundImage:
+                      "linear-gradient(to right, transparent calc(100% - 1px), var(--border) calc(100% - 1px))",
+                    backgroundSize: `${range.dayWidth}px 100%`,
+                  }}
+                >
                   <span
                     aria-hidden="true"
                     className="absolute inset-y-0 z-10 w-px bg-destructive/60"
@@ -250,24 +470,24 @@ function ProjectAudienceGantt({
                         range.dayWidth / 2,
                     }}
                   />
-                )}
-                <div
-                  className="absolute top-3 h-8 overflow-hidden rounded-sm border border-primary/30 bg-primary/15"
-                  style={{ left, width }}
-                  title={`${item.title}: ${percentComplete}% complete`}
-                >
                   <div
-                    className="h-full bg-primary/45"
-                    style={{ width: `${percentComplete}%` }}
-                  />
-                  <span className="absolute inset-0 flex items-center px-2 text-[10px] font-medium">
-                    {percentComplete}%
-                  </span>
+                    className="absolute top-3 h-8 overflow-hidden rounded-sm border border-primary/30 bg-primary/15"
+                    style={{ left, width }}
+                    title={`${item.title}: ${percentComplete}% complete`}
+                  >
+                    <div
+                      className="h-full bg-primary/45"
+                      style={{ width: `${percentComplete}%` }}
+                    />
+                    <span className="absolute inset-0 flex items-center px-2 text-[10px] font-medium">
+                      {percentComplete}%
+                    </span>
+                  </div>
                 </div>
               </div>
-            </div>
-          )
-        })}
+            )
+          })}
+        </div>
       </div>
     </div>
   )
