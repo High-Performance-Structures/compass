@@ -5,6 +5,11 @@ interface WheelDelta {
   readonly deltaY: number
 }
 
+interface ScheduleRowDateRange {
+  readonly startDate: string
+  readonly endDate: string
+}
+
 export function dominantScrollAxis(
   deltaX: number,
   deltaY: number
@@ -91,6 +96,54 @@ export function ganttRowIndexForScrollTop(
   if (itemCount === 0) return null
   const rowOffset = Math.max(0, scrollTop - headerHeight)
   return Math.min(itemCount - 1, Math.floor(rowOffset / rowHeight))
+}
+
+export function nearestScheduleRowIndexForDate(
+  rows: readonly ScheduleRowDateRange[],
+  targetDate: string
+): number | null {
+  let nextIndex: number | null = null
+  let nextStart: string | null = null
+  let previousIndex: number | null = null
+  let previousEnd: string | null = null
+
+  for (const [index, row] of rows.entries()) {
+    if (row.startDate <= targetDate && row.endDate >= targetDate) {
+      return index
+    }
+    if (
+      row.startDate > targetDate &&
+      (nextStart === null || row.startDate < nextStart)
+    ) {
+      nextIndex = index
+      nextStart = row.startDate
+    }
+    if (
+      row.endDate < targetDate &&
+      (previousEnd === null || row.endDate > previousEnd)
+    ) {
+      previousIndex = index
+      previousEnd = row.endDate
+    }
+  }
+
+  return nextIndex ?? previousIndex
+}
+
+export function centeredGanttRowScrollTop(input: {
+  readonly rowIndex: number
+  readonly clientHeight: number
+  readonly scrollHeight: number
+  readonly headerHeight?: number
+  readonly rowHeight?: number
+}): number {
+  const headerHeight = input.headerHeight ?? 85
+  const rowHeight = input.rowHeight ?? 48
+  const rowCenter =
+    headerHeight + input.rowIndex * rowHeight + rowHeight / 2
+  const desiredTop = rowCenter - input.clientHeight / 2
+  const maximumTop = Math.max(0, input.scrollHeight - input.clientHeight)
+  return Math.max(0, Math.min(desiredTop, maximumTop))
 }
 
 export function centeredTimelineScrollLeft(input: {

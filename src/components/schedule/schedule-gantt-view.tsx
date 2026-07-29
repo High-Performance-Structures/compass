@@ -87,8 +87,10 @@ import { format } from "date-fns"
 import type { ScheduleProjectData } from "@/lib/schedule/project-scope"
 import { projectScheduleLabel } from "@/lib/schedule/project-scope"
 import {
+  centeredGanttRowScrollTop,
   ganttRowIndexForScrollTop,
   lockWheelToDominantAxis,
+  nearestScheduleRowIndexForDate,
   normalizeWheelDelta,
   synchronizedScrollTop,
 } from "@/lib/schedule/gantt-scroll"
@@ -596,8 +598,61 @@ export function ScheduleGanttView({
   )
 
   const scrollToToday = useCallback(() => {
+    const ganttContainer = ganttContainerRef.current
+    if (!ganttContainer) {
+      scrollToTodayRef.current?.()
+      return
+    }
+    const today = format(new Date(), "yyyy-MM-dd")
+    const rowIndex = nearestScheduleRowIndexForDate(
+      displayItems.map((item) =>
+        item.type === "task"
+          ? {
+              startDate: item.task.startDate,
+              endDate: item.task.endDateCalculated,
+            }
+          : {
+              startDate: item.group.startDate,
+              endDate: item.group.endDate,
+            }
+      ),
+      today
+    )
+    if (rowIndex === null) {
+      scrollToTodayRef.current?.()
+      return
+    }
+
+    const ganttTop = centeredGanttRowScrollTop({
+      rowIndex,
+      clientHeight: ganttContainer.clientHeight,
+      scrollHeight: ganttContainer.scrollHeight,
+    })
+    ganttContainer.scrollTop = ganttTop
+
+    const taskList = taskListRef.current
+    if (taskList) {
+      taskList.scrollTop = synchronizedScrollTop(
+        ganttTop,
+        ganttContainer.scrollHeight,
+        ganttContainer.clientHeight,
+        taskList.scrollHeight,
+        taskList.clientHeight
+      )
+    }
+
+    const targetItem = displayItems[rowIndex]
+    if (targetItem?.type === "task") {
+      setFocusedTaskId(targetItem.task.id)
+      followedListItemRef.current = targetItem.task.id
+    } else if (targetItem) {
+      followedListItemRef.current = targetItem.phase
+    }
+
+    // Start the smooth horizontal movement last. Assigning scrollTop after
+    // scrollTo({ behavior: "smooth" }) cancels that animation in browsers.
     scrollToTodayRef.current?.()
-  }, [])
+  }, [displayItems])
 
   const taskTable = (
     <Table className="table-fixed">
