@@ -1,7 +1,10 @@
 export const dynamic = "force-dynamic"
 
 import { getWorkCalendar } from "@/app/actions/work-calendar"
-import { getScopedSchedule } from "@/app/actions/schedule"
+import {
+  getOwnerScheduleView,
+  getScopedSchedule,
+} from "@/app/actions/schedule"
 import { getProjects } from "@/app/actions/projects"
 import {
   WorkCalendar,
@@ -162,6 +165,10 @@ export default async function SchedulePage({
         ? requestedView
         : "gantt"
     const primaryProject = data.projects[0] ?? null
+    const ownerScheduleView =
+      scope.kind === "project" && primaryProject
+        ? await getOwnerScheduleView(primaryProject.id)
+        : "items"
 
     return (
       <div className="flex min-h-0 flex-1 flex-col px-4 py-2">
@@ -179,6 +186,7 @@ export default async function SchedulePage({
           scope={scope}
           initialView={initialView}
           globalMode
+          ownerScheduleView={ownerScheduleView}
         />
       </div>
     )

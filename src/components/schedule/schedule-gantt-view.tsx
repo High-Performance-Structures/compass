@@ -533,19 +533,6 @@ export function ScheduleGanttView({
     })
   }
 
-  const toggleClientView = () => {
-    if (phaseGrouping && collapsedPhases.size > 0) {
-      setPhaseGrouping(false)
-      setCollapsedPhases(new Set())
-    } else {
-      setPhaseGrouping(true)
-      const allPhases = new Set(
-        filteredTasks.map((t) => t.phase || "uncategorized")
-      )
-      setCollapsedPhases(allPhases)
-    }
-  }
-
   const handleDateChange = useCallback(
     async (task: FrappeTask, start: Date, end: Date) => {
       if (task.id.startsWith("phase-")) return
@@ -975,18 +962,6 @@ export function ScheduleGanttView({
                     className="scale-75"
                   />
                 </div>
-                <Button
-                  variant={
-                    phaseGrouping && collapsedPhases.size > 0
-                      ? "default"
-                      : "outline"
-                  }
-                  size="sm"
-                  onClick={toggleClientView}
-                  className="w-full mt-1 text-xs h-7"
-                >
-                  Client View
-                </Button>
               </div>
             </DropdownMenuContent>
           </DropdownMenu>

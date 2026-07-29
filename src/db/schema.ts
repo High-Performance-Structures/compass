@@ -373,6 +373,7 @@ export const projects = sqliteTable("projects", {
   }).notNull().default(true),
   ownerUpdateChannel: text("owner_update_channel").notNull().default("compass"),
   ownerUpdateCadence: text("owner_update_cadence").notNull().default("weekly"),
+  ownerScheduleView: text("owner_schedule_view").notNull().default("items"),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at"),
 })

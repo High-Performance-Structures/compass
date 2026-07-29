@@ -14,6 +14,7 @@ import {
 } from "@/app/actions/project-contacts"
 import { ScheduleView } from "@/components/schedule/schedule-view"
 import type { ScheduleData, ScheduleBaselineData } from "@/lib/schedule/types"
+import type { OwnerScheduleView } from "@/lib/schedule/owner-visibility"
 
 const emptySchedule: ScheduleData = {
   tasks: [],
@@ -48,6 +49,7 @@ export default async function SchedulePage({
   let baselines: ScheduleBaselineData[] = []
   let allProjects: ProjectListItem[] = []
   let assigneeOptions: ProjectTaskAssigneeOption[] = []
+  let ownerScheduleView: OwnerScheduleView = "items"
 
   try {
     const { env } = await getCloudflareContext()
@@ -63,6 +65,8 @@ export default async function SchedulePage({
     if (!project) notFound()
 
     projectName = project.projectNumber ?? project.name
+    ownerScheduleView =
+      project.ownerScheduleView === "phases" ? "phases" : "items"
     ;[schedule, baselines, allProjects] = await Promise.all([
       getSchedule(id),
       getBaselines(id),
@@ -94,6 +98,7 @@ export default async function SchedulePage({
         assigneeOptions={assigneeOptions}
         initialView={focusTaskId ? "list" : initialView}
         focusTaskId={focusTaskId}
+        ownerScheduleView={ownerScheduleView}
       />
     </div>
   )

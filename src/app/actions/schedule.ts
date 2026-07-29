@@ -29,6 +29,11 @@ import { getProjects } from "@/app/actions/projects"
 import { projectDepartment } from "@/lib/project-branding"
 import { projectScheduleColor } from "@/lib/schedule/project-scope"
 import { requirePermission } from "@/lib/permissions"
+import { isInternalStaffRole } from "@/lib/user-roles"
+import {
+  isOwnerScheduleView,
+  type OwnerScheduleView,
+} from "@/lib/schedule/owner-visibility"
 import type {
   TaskStatus,
   DependencyType,
@@ -43,6 +48,12 @@ import type {
 function revalidateSchedulePaths(projectId: string): void {
   revalidatePath(`/dashboard/projects/${projectId}/schedule`)
   revalidatePath("/dashboard/schedule")
+}
+
+function revalidateOwnerSchedulePaths(projectId: string): void {
+  revalidateSchedulePaths(projectId)
+  revalidatePath(`/preview/projects/${projectId}/owner`)
+  revalidatePath(`/preview/projects/${projectId}/owner/schedule`)
 }
 
 function chunkValues<T>(values: readonly T[], size: number): T[][] {
@@ -124,6 +135,92 @@ export async function getSchedule(
       type: d.type as DependencyType,
     })),
     exceptions,
+  }
+}
+
+export async function getOwnerScheduleView(
+  projectId: string
+): Promise<OwnerScheduleView> {
+  const user = await requireAuth()
+  requirePermission(user, "schedule", "read")
+  const orgId = requireOrg(user)
+  const accessibleProjects = await getProjects()
+  if (!accessibleProjects.some((project) => project.id === projectId)) {
+    throw new Error("Project not found or access denied")
+  }
+
+  const { env } = await getCloudflareContext()
+  const db = getDb(env.DB)
+  const project = await db
+    .select({ ownerScheduleView: projects.ownerScheduleView })
+    .from(projects)
+    .where(
+      and(eq(projects.id, projectId), eq(projects.organizationId, orgId))
+    )
+    .get()
+
+  if (!project) throw new Error("Project not found or access denied")
+  return isOwnerScheduleView(project.ownerScheduleView)
+    ? project.ownerScheduleView
+    : "items"
+}
+
+export async function updateOwnerScheduleView(
+  projectId: string,
+  ownerScheduleView: string
+): Promise<
+  | { readonly success: true }
+  | { readonly success: false; readonly error: string }
+> {
+  try {
+    const user = await requireAuth()
+    if (isDemoUser(user.id)) {
+      return { success: false, error: "DEMO_READ_ONLY" }
+    }
+    requirePermission(user, "schedule", "update")
+    if (!isInternalStaffRole(user.role)) {
+      return {
+        success: false,
+        error: "Only internal project staff can change owner schedule access.",
+      }
+    }
+    if (!isOwnerScheduleView(ownerScheduleView)) {
+      return { success: false, error: "Unsupported owner schedule view." }
+    }
+
+    const orgId = requireOrg(user)
+    const { env } = await getCloudflareContext()
+    const db = getDb(env.DB)
+    const existing = await db
+      .select({ id: projects.id })
+      .from(projects)
+      .where(
+        and(eq(projects.id, projectId), eq(projects.organizationId, orgId))
+      )
+      .get()
+
+    if (!existing) {
+      return { success: false, error: "Project not found or access denied" }
+    }
+
+    await db
+      .update(projects)
+      .set({
+        ownerScheduleView,
+        updatedAt: new Date().toISOString(),
+      })
+      .where(eq(projects.id, projectId))
+
+    revalidateOwnerSchedulePaths(projectId)
+    return { success: true }
+  } catch (error) {
+    return {
+      success: false,
+      error:
+        error instanceof Error
+          ? error.message
+          : "Unable to update the owner schedule view.",
+    }
   }
 }
 
