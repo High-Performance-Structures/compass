@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest"
 import {
+  centeredTimelineScrollLeft,
   dominantScrollAxis,
   ganttRowIndexForScrollTop,
   lockWheelToDominantAxis,
@@ -54,5 +55,38 @@ describe("Gantt dominant-axis scrolling", () => {
     expect(ganttRowIndexForScrollTop(133, 10)).toBe(1)
     expect(ganttRowIndexForScrollTop(10_000, 10)).toBe(9)
     expect(ganttRowIndexForScrollTop(0, 0)).toBeNull()
+  })
+
+  it("centers a selected date in the timeline beside sticky labels", () => {
+    expect(
+      centeredTimelineScrollLeft({
+        dayOffset: 50,
+        dayWidth: 20,
+        labelWidth: 240,
+        clientWidth: 1_000,
+        scrollWidth: 2_400,
+      })
+    ).toBe(630)
+  })
+
+  it("clamps timeline navigation to both scroll boundaries", () => {
+    expect(
+      centeredTimelineScrollLeft({
+        dayOffset: 0,
+        dayWidth: 20,
+        labelWidth: 240,
+        clientWidth: 1_000,
+        scrollWidth: 2_400,
+      })
+    ).toBe(0)
+    expect(
+      centeredTimelineScrollLeft({
+        dayOffset: 200,
+        dayWidth: 20,
+        labelWidth: 240,
+        clientWidth: 1_000,
+        scrollWidth: 2_400,
+      })
+    ).toBe(1_400)
   })
 })

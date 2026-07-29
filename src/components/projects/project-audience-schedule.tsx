@@ -13,6 +13,7 @@ import type { AudienceScheduleItem } from "@/app/actions/project-audience-previe
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
+  centeredTimelineScrollLeft,
   lockWheelToDominantAxis,
   normalizeWheelDelta,
 } from "@/lib/schedule/gantt-scroll"
@@ -145,6 +146,13 @@ function ProjectAudienceGantt({
   const pendingAnchorDateRef = React.useRef<string | null>(null)
   const didInitialScrollRef = React.useRef(false)
   const [viewMode, setViewMode] = React.useState<GanttViewMode>("Week")
+  const [selectedItemId, setSelectedItemId] = React.useState<string | null>(
+    null
+  )
+  const [horizontalScroll, setHorizontalScroll] = React.useState({
+    value: 0,
+    maximum: 0,
+  })
   const today = dateKey(new Date())
   const range = React.useMemo(() => {
     const earliestItem = items.reduce(
@@ -275,17 +283,14 @@ function ProjectAudienceGantt({
     (date: string, behavior: ScrollBehavior = "smooth") => {
       const container = scrollContainerRef.current
       if (!container) return
-      const center =
-        daysBetween(range.start, date) * range.dayWidth +
-        range.dayWidth / 2
       container.scrollTo({
-        left: Math.max(
-          0,
-          Math.min(
-            labelWidth + center - container.clientWidth / 2,
-            container.scrollWidth - container.clientWidth
-          )
-        ),
+        left: centeredTimelineScrollLeft({
+          dayOffset: daysBetween(range.start, date),
+          dayWidth: range.dayWidth,
+          labelWidth,
+          clientWidth: container.clientWidth,
+          scrollWidth: container.scrollWidth,
+        }),
         behavior,
       })
     },
@@ -299,7 +304,8 @@ function ProjectAudienceGantt({
       if (container) {
         const timelineCenter = Math.max(
           0,
-          container.scrollLeft + container.clientWidth / 2 - labelWidth
+          container.scrollLeft +
+            Math.max(0, container.clientWidth - labelWidth) / 2
         )
         pendingAnchorDateRef.current = dateKey(
           addDays(
@@ -355,8 +361,48 @@ function ProjectAudienceGantt({
     }
   }, [scrollToDate, today])
 
+  React.useEffect(() => {
+    const container = scrollContainerRef.current
+    if (!container) return
+
+    const updateHorizontalScroll = () => {
+      setHorizontalScroll({
+        value: container.scrollLeft,
+        maximum: Math.max(0, container.scrollWidth - container.clientWidth),
+      })
+    }
+    const resizeObserver = new ResizeObserver(updateHorizontalScroll)
+    resizeObserver.observe(container)
+    const content = container.firstElementChild
+    if (content) resizeObserver.observe(content)
+    container.addEventListener("scroll", updateHorizontalScroll, {
+      passive: true,
+    })
+    requestAnimationFrame(updateHorizontalScroll)
+
+    return () => {
+      resizeObserver.disconnect()
+      container.removeEventListener("scroll", updateHorizontalScroll)
+    }
+  }, [items.length, range.chartWidth])
+
+  const scrollToItem = React.useCallback(
+    (item: AudienceScheduleItem) => {
+      const duration = Math.max(
+        0,
+        daysBetween(item.startDate, item.endDate)
+      )
+      const midpoint = dateKey(
+        addDays(dateFromKey(item.startDate), Math.floor(duration / 2))
+      )
+      setSelectedItemId(item.id)
+      scrollToDate(midpoint)
+    },
+    [scrollToDate]
+  )
+
   return (
-    <div>
+    <div className="min-w-0">
       <div className="flex flex-wrap items-center justify-between gap-2 border-b bg-muted/15 px-4 py-2">
         <div
           className="flex items-center border bg-background"
@@ -388,7 +434,7 @@ function ProjectAudienceGantt({
       </div>
       <div
         ref={scrollContainerRef}
-        className="max-h-[34rem] overflow-auto overscroll-contain [scrollbar-gutter:stable]"
+        className="max-h-[34rem] overflow-scroll overscroll-contain [scrollbar-gutter:stable_both-edges]"
         aria-label="Read-only project Gantt chart"
       >
         <div
@@ -441,9 +487,16 @@ function ProjectAudienceGantt({
 
             return (
               <div key={item.id} className="flex h-14 border-b">
-                <div
-                  className="sticky left-0 z-10 flex shrink-0 flex-col justify-center border-r bg-background px-4"
+                <button
+                  type="button"
+                  className={cn(
+                    "sticky left-0 z-10 flex shrink-0 flex-col justify-center border-r bg-background px-4 text-left transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-inset",
+                    selectedItemId === item.id && "bg-accent"
+                  )}
                   style={{ width: labelWidth }}
+                  aria-label={`Show ${item.title} on the timeline`}
+                  aria-pressed={selectedItemId === item.id}
+                  onClick={() => scrollToItem(item)}
                 >
                   <span className="truncate text-xs font-medium">
                     {item.title}
@@ -451,7 +504,7 @@ function ProjectAudienceGantt({
                   <span className="mt-0.5 truncate text-[10px] text-muted-foreground">
                     {formatDate(item.startDate)} – {formatDate(item.endDate)}
                   </span>
-                </div>
+                </button>
                 <div
                   className="relative shrink-0"
                   style={{
@@ -471,7 +524,11 @@ function ProjectAudienceGantt({
                     }}
                   />
                   <div
-                    className="absolute top-3 h-8 overflow-hidden rounded-sm border border-primary/30 bg-primary/15"
+                    className={cn(
+                      "absolute top-3 h-8 overflow-hidden rounded-sm border border-primary/30 bg-primary/15 transition-shadow",
+                      selectedItemId === item.id &&
+                        "ring-2 ring-primary ring-offset-1"
+                    )}
                     style={{ left, width }}
                     title={`${item.title}: ${percentComplete}% complete`}
                   >
@@ -488,6 +545,29 @@ function ProjectAudienceGantt({
             )
           })}
         </div>
+      </div>
+      <div className="flex items-center gap-3 border-t bg-background px-3 py-2">
+        <span className="shrink-0 text-[11px] font-medium text-muted-foreground">
+          Timeline
+        </span>
+        <input
+          type="range"
+          min={0}
+          max={Math.max(1, horizontalScroll.maximum)}
+          step={1}
+          value={Math.min(
+            horizontalScroll.value,
+            Math.max(1, horizontalScroll.maximum)
+          )}
+          disabled={horizontalScroll.maximum === 0}
+          aria-label="Scroll Gantt timeline horizontally"
+          className="h-2 w-full cursor-ew-resize accent-primary disabled:cursor-default disabled:opacity-40"
+          onChange={(event) => {
+            const container = scrollContainerRef.current
+            if (!container) return
+            container.scrollLeft = Number(event.currentTarget.value)
+          }}
+        />
       </div>
     </div>
   )

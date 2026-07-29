@@ -92,3 +92,24 @@ export function ganttRowIndexForScrollTop(
   const rowOffset = Math.max(0, scrollTop - headerHeight)
   return Math.min(itemCount - 1, Math.floor(rowOffset / rowHeight))
 }
+
+export function centeredTimelineScrollLeft(input: {
+  readonly dayOffset: number
+  readonly dayWidth: number
+  readonly labelWidth: number
+  readonly clientWidth: number
+  readonly scrollWidth: number
+}): number {
+  const visibleTimelineWidth = Math.max(
+    0,
+    input.clientWidth - input.labelWidth
+  )
+  const dateCenter =
+    input.dayOffset * input.dayWidth + input.dayWidth / 2
+  const desiredScrollLeft = dateCenter - visibleTimelineWidth / 2
+  const maximumScrollLeft = Math.max(
+    0,
+    input.scrollWidth - input.clientWidth
+  )
+  return Math.max(0, Math.min(desiredScrollLeft, maximumScrollLeft))
+}
