@@ -27,6 +27,7 @@ function isHttpUrl(value: string): boolean {
 function isLocalRenderablePhotoUrl(value: string): boolean {
   return (
     value.startsWith("/api/google/download/") ||
+    (value.startsWith("/api/projects/") && value.includes("/photos/")) ||
     value.startsWith("/owner-update-photos/") ||
     value.startsWith("/project-photo-previews/")
   )
@@ -34,6 +35,14 @@ function isLocalRenderablePhotoUrl(value: string): boolean {
 
 export function googleDriveDownloadUrl(fileId: string): string {
   return `/api/google/download/${encodeURIComponent(fileId)}`
+}
+
+export function projectAudiencePhotoUrl(
+  projectId: string,
+  photoId: string,
+  audience: "owner" | "sub_vendor"
+): string {
+  return `/api/projects/${encodeURIComponent(projectId)}/photos/${encodeURIComponent(photoId)}?audience=${audience}`
 }
 
 export function isLegacyExternalPhotoUrl(value: string): boolean {

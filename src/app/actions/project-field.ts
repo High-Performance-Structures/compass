@@ -2332,10 +2332,13 @@ export async function getOwnerProjectUpdateDocument(
       row.thumbnailUrl === null && row.mimeType?.startsWith("image/") !== true
   )
 
-  const photosForUpdate = selectRowsByIdOrder(
-    imageRows,
-    selectedPhotoIds
-  )
+  const selectedImageRows = selectRowsByIdOrder(imageRows, selectedPhotoIds)
+  const photosForUpdate = selectedImageRows
+    .filter(
+      (row) =>
+        update.status !== "published" ||
+        (row.reviewStatus === "approved" && row.ownerVisible)
+    )
     .map((row) => ({
       id: row.id,
       sourceSystem: row.sourceSystem,

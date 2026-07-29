@@ -32,6 +32,7 @@ import {
   type OwnerScheduleView,
   type OwnerScheduleVisibleItem,
 } from "@/lib/schedule/owner-visibility"
+import { projectAudiencePhotoUrl } from "@/lib/photo-sources"
 
 export type { ProjectAudience } from "@/lib/project-audience-access"
 
@@ -597,8 +598,8 @@ export async function getProjectAudiencePreview(
       return {
         id: photo.id,
         fileName: photo.fileName,
-        driveFileId: photo.driveFileId,
-        thumbnailUrl: photo.thumbnailUrl,
+        driveFileId: null,
+        thumbnailUrl: projectAudiencePhotoUrl(projectId, photo.id, audience),
         caption: photo.caption,
         capturedAt: photo.capturedAt,
         photoDate: resolvedPhotoDate,
