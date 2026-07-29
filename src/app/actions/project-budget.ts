@@ -6,14 +6,17 @@ import { getDb } from "@/db"
 import {
   projectBudgetApplications,
   projectBudgetLines,
-  projects,
 } from "@/db/schema"
 import { requireAuth } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
-import { requireOrg } from "@/lib/org-scope"
 import { requirePermission } from "@/lib/permissions"
+import { assertProjectAccess } from "@/lib/project-access"
+import {
+  effectiveProjectBudgetAudience,
+  type ProjectBudgetAudience,
+} from "@/lib/project-budget-audience"
 
-export type ProjectBudgetAudience = "internal" | "owner"
+export type { ProjectBudgetAudience } from "@/lib/project-budget-audience"
 export type ProjectBudgetDetailMode = "cost_code" | "category"
 
 export type ProjectBudgetApplicationItem = {
@@ -97,33 +100,29 @@ export type ProjectBudgetSummary = {
 type ProjectAccess = {
   readonly db: ReturnType<typeof getDb>
   readonly projectNumber: string | null
+  readonly viewerRole: string
 }
 
 async function verifyProjectAccess(projectId: string): Promise<ProjectAccess> {
   const user = await requireAuth()
   requirePermission(user, "budget", "read")
-  const orgId = requireOrg(user)
 
   const { env } = await getCloudflareContext()
   const db = getDb(env.DB)
+  const project = await assertProjectAccess(db, user, projectId)
 
-  const existing = await db
-    .select({ id: projects.id, projectNumber: projects.projectNumber })
-    .from(projects)
-    .where(and(eq(projects.id, projectId), eq(projects.organizationId, orgId)))
-    .limit(1)
-
-  const project = existing[0]
-  if (!project) {
-    throw new Error("Project not found")
+  return {
+    db,
+    projectNumber: project.projectNumber,
+    viewerRole: user.role,
   }
-
-  return { db, projectNumber: project.projectNumber }
 }
 
 function toApplicationItem(
-  row: typeof projectBudgetApplications.$inferSelect
+  row: typeof projectBudgetApplications.$inferSelect,
+  audience: ProjectBudgetAudience
 ): ProjectBudgetApplicationItem {
+  const ownerSafe = audience === "owner"
   return {
     id: row.id,
     sourceSystem: row.sourceSystem,
@@ -140,14 +139,16 @@ function toApplicationItem(
     currentPaymentDue: row.currentPaymentDue,
     balanceToFinish: row.balanceToFinish,
     ownerVisible: row.ownerVisible,
-    sourceUrl: row.sourceUrl,
-    lastSyncedAt: row.lastSyncedAt,
+    sourceUrl: ownerSafe ? null : row.sourceUrl,
+    lastSyncedAt: ownerSafe ? null : row.lastSyncedAt,
   }
 }
 
 function toLineItem(
-  row: typeof projectBudgetLines.$inferSelect
+  row: typeof projectBudgetLines.$inferSelect,
+  audience: ProjectBudgetAudience
 ): ProjectBudgetLineItem {
+  const ownerSafe = audience === "owner"
   return {
     id: row.id,
     sourceSystem: row.sourceSystem,
@@ -155,7 +156,7 @@ function toLineItem(
     csiDivision: row.csiDivision,
     csiDivisionName: row.csiDivisionName,
     description: row.description,
-    notes: row.notes,
+    notes: ownerSafe ? null : row.notes,
     originalEstimate: row.originalEstimate,
     priorChanges: row.priorChanges,
     currentChanges: row.currentChanges,
@@ -167,10 +168,10 @@ function toLineItem(
     percentComplete: row.percentComplete,
     balanceToFinish: row.balanceToFinish,
     retainageHeld: row.retainageHeld,
-    vendorName: row.vendorName,
+    vendorName: ownerSafe ? null : row.vendorName,
     ownerLabel: row.ownerLabel,
     ownerVisible: row.ownerVisible,
-    internalNotes: row.internalNotes,
+    internalNotes: ownerSafe ? null : row.internalNotes,
   }
 }
 
@@ -292,14 +293,20 @@ export async function getProjectBudgetSummary(
   audience: ProjectBudgetAudience = "internal"
 ): Promise<ProjectBudgetSummary> {
   const access = await verifyProjectAccess(projectId)
+  const effectiveAudience = effectiveProjectBudgetAudience(
+    audience,
+    access.viewerRole
+  )
   const detailMode =
-    audience === "owner" ? ownerDetailMode(access.projectNumber) : "cost_code"
+    effectiveAudience === "owner"
+      ? ownerDetailMode(access.projectNumber)
+      : "cost_code"
 
   const applicationRows = await access.db
     .select()
     .from(projectBudgetApplications)
     .where(
-      audience === "owner"
+      effectiveAudience === "owner"
         ? and(
             eq(projectBudgetApplications.projectId, projectId),
             eq(projectBudgetApplications.ownerVisible, true)
@@ -310,14 +317,14 @@ export async function getProjectBudgetSummary(
     .limit(1)
 
   const currentApplication = applicationRows[0]
-    ? toApplicationItem(applicationRows[0])
+    ? toApplicationItem(applicationRows[0], effectiveAudience)
     : null
 
   const lineRows = await access.db
     .select()
     .from(projectBudgetLines)
     .where(
-      audience === "owner"
+      effectiveAudience === "owner"
         ? and(
             eq(projectBudgetLines.projectId, projectId),
             eq(projectBudgetLines.ownerVisible, true)
@@ -326,7 +333,9 @@ export async function getProjectBudgetSummary(
     )
     .orderBy(asc(projectBudgetLines.sortOrder), asc(projectBudgetLines.costCode))
 
-  const sourceLines = lineRows.map(toLineItem)
+  const sourceLines = lineRows.map((row) =>
+    toLineItem(row, effectiveAudience)
+  )
   const allLines =
     detailMode === "category" ? buildOwnerCategoryLines(sourceLines) : sourceLines
   const divisions = buildDivisions(allLines)
@@ -342,7 +351,7 @@ export async function getProjectBudgetSummary(
   )
 
   return {
-    audience,
+    audience: effectiveAudience,
     detailMode,
     currentApplication,
     totals: {

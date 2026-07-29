@@ -35,6 +35,12 @@ describe("project audience preview routes", () => {
     ).toBe("/preview/projects/project%2Fone/owner")
   })
 
+  it("routes owner budget access through the guarded owner workspace", () => {
+    expect(
+      projectAudienceSectionHref("project/one", "owner", "budget")
+    ).toBe("/preview/projects/project%2Fone/owner/budget")
+  })
+
   it("keeps conversations inside the guarded audience workspace", () => {
     expect(
       projectAudienceConversationHref("project/one", "owner", "channel/two")

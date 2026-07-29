@@ -3,7 +3,6 @@ import { and, eq } from "drizzle-orm"
 import type { getDb } from "@/db"
 import {
   organizationMembers,
-  projectMembers,
   projects,
   users,
 } from "@/db/schema"
@@ -13,7 +12,7 @@ import {
   channels,
 } from "@/db/schema-conversations"
 import type { ProjectAudience } from "@/lib/project-audience-access"
-import { isInternalStaffRole } from "@/lib/user-roles"
+import { isVisibleAudienceTeamMember } from "@/lib/project-audience-team"
 
 type Db = ReturnType<typeof getDb>
 
@@ -45,91 +44,95 @@ function channelName(input: {
     : `${projectLabel} · Project Team`
 }
 
-async function ensureMember(
+async function ensureMembers(
   db: Db,
   channelId: string,
-  userId: string,
-  role: "owner" | "moderator" | "member",
+  desiredMembers: readonly {
+    readonly userId: string
+    readonly role: "owner" | "moderator" | "member"
+  }[],
   now: string
 ): Promise<void> {
-  const existing = await db
-    .select({ id: channelMembers.id })
+  const existingMembers = await db
+    .select({ userId: channelMembers.userId })
     .from(channelMembers)
-    .where(
-      and(
-        eq(channelMembers.channelId, channelId),
-        eq(channelMembers.userId, userId)
-      )
-    )
-    .get()
+    .where(eq(channelMembers.channelId, channelId))
 
-  if (!existing) {
+  const existingMemberIds = new Set(
+    existingMembers.map((member) => member.userId)
+  )
+  const missingMembers = desiredMembers.filter(
+    (member) => !existingMemberIds.has(member.userId)
+  )
+  if (missingMembers.length > 0) {
     await db
       .insert(channelMembers)
-      .values({
+      .values(missingMembers.map((member) => ({
         id: crypto.randomUUID(),
         channelId,
-        userId,
-        role,
+        userId: member.userId,
+        role: member.role,
         notifyLevel: "all",
         joinedAt: now,
-      })
+      })))
       .run()
   }
 
-  const readState = await db
-    .select({ id: channelReadState.id })
+  const existingReadStates = await db
+    .select({ userId: channelReadState.userId })
     .from(channelReadState)
-    .where(
-      and(
-        eq(channelReadState.channelId, channelId),
-        eq(channelReadState.userId, userId)
-      )
-    )
-    .get()
+    .where(eq(channelReadState.channelId, channelId))
 
-  if (!readState) {
+  const existingReadStateUserIds = new Set(
+    existingReadStates.map((state) => state.userId)
+  )
+  const missingReadStates = desiredMembers.filter(
+    (member) => !existingReadStateUserIds.has(member.userId)
+  )
+  if (missingReadStates.length > 0) {
     await db
       .insert(channelReadState)
-      .values({
+      .values(missingReadStates.map((member) => ({
         id: crypto.randomUUID(),
-        userId,
+        userId: member.userId,
         channelId,
         lastReadMessageId: null,
         lastReadAt: now,
         unreadCount: 0,
-      })
+      })))
       .run()
   }
 }
 
-async function projectStaffUserIds(
+async function organizationStaffUserIds(
   db: Db,
-  projectId: string,
   organizationId: string
 ): Promise<readonly string[]> {
   const memberRows = await db
     .select({
-      userId: projectMembers.userId,
+      userId: organizationMembers.userId,
+      email: users.email,
       role: organizationMembers.role,
     })
-    .from(projectMembers)
-    .innerJoin(users, eq(users.id, projectMembers.userId))
-    .innerJoin(
-      organizationMembers,
-      and(
-        eq(organizationMembers.userId, users.id),
-        eq(organizationMembers.organizationId, organizationId)
-      )
-    )
+    .from(organizationMembers)
+    .innerJoin(users, eq(users.id, organizationMembers.userId))
     .where(
-      and(eq(projectMembers.projectId, projectId), eq(users.isActive, true))
+      and(
+        eq(organizationMembers.organizationId, organizationId),
+        eq(users.isActive, true)
+      )
     )
 
   return Array.from(
     new Set(
       memberRows
-        .filter((row) => isInternalStaffRole(row.role))
+        .filter((row) =>
+          isVisibleAudienceTeamMember({
+            userId: row.userId,
+            email: row.email,
+            role: row.role,
+          })
+        )
         .map((row) => row.userId)
     )
   )
@@ -161,6 +164,13 @@ export async function ensureProjectAudienceConversation(input: {
 
   if (!project) throw new Error("Project not found")
 
+  const staffIds = await organizationStaffUserIds(
+    input.db,
+    input.organizationId
+  )
+  const createdBy = staffIds.includes(input.createdBy)
+    ? input.createdBy
+    : staffIds[0] ?? input.createdBy
   const channelId = projectAudienceConversationId({
     projectId: input.projectId,
     audience: input.audience,
@@ -189,7 +199,7 @@ export async function ensureProjectAudienceConversation(input: {
         categoryId: null,
         isPrivate: true,
         audience: projectAudienceChannelAudience(input.audience),
-        createdBy: input.createdBy,
+        createdBy,
         sortOrder: 0,
         archivedAt: null,
         createdAt: input.now,
@@ -198,24 +208,20 @@ export async function ensureProjectAudienceConversation(input: {
       .run()
   }
 
-  const staffIds = await projectStaffUserIds(
-    input.db,
-    input.projectId,
-    input.organizationId
-  )
-  const internalIds = new Set([input.createdBy, ...staffIds])
-  for (const userId of internalIds) {
-    await ensureMember(input.db, channelId, userId, "moderator", input.now)
+  const desiredMembers: {
+    userId: string
+    role: "moderator" | "member"
+  }[] = staffIds.map((userId) => ({
+    userId,
+    role: "moderator",
+  }))
+  if (input.externalUserId && !staffIds.includes(input.externalUserId)) {
+    desiredMembers.push({
+      userId: input.externalUserId,
+      role: "member",
+    })
   }
-  if (input.externalUserId) {
-    await ensureMember(
-      input.db,
-      channelId,
-      input.externalUserId,
-      "member",
-      input.now
-    )
-  }
+  await ensureMembers(input.db, channelId, desiredMembers, input.now)
 
   return channelId
 }
