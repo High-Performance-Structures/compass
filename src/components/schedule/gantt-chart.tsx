@@ -266,15 +266,39 @@ export function GanttChart({
     if (wrapper) wrapper.style.cursor = ""
   }, [])
 
-  // ctrl+scroll zoom
+  // Keep wheel handling on the stable React wrapper. Frappe may rebuild its
+  // generated scroll element when the view changes, but the wrapper survives.
   useEffect(() => {
     const wrapper = wrapperRef.current
-    if (!wrapper || !onZoom) return
+    if (!wrapper) return
 
     const handleWheel = (e: WheelEvent) => {
-      if (!e.ctrlKey) return
+      if (e.ctrlKey) {
+        if (!onZoom) return
+        e.preventDefault()
+        onZoom(e.deltaY < 0 ? "in" : "out")
+        return
+      }
+
+      const container = ganttContainerRef.current
+      if (!container) return
+      const pageSize = Math.max(
+        container.clientWidth,
+        container.clientHeight
+      )
+      const rawDeltaX =
+        e.shiftKey && e.deltaX === 0 ? e.deltaY : e.deltaX
+      const rawDeltaY =
+        e.shiftKey && e.deltaX === 0 ? 0 : e.deltaY
+      const locked = lockWheelToDominantAxis(
+        normalizeWheelDelta(rawDeltaX, e.deltaMode, pageSize),
+        normalizeWheelDelta(rawDeltaY, e.deltaMode, pageSize)
+      )
+      if (locked.deltaX === 0 && locked.deltaY === 0) return
+
       e.preventDefault()
-      onZoom(e.deltaY < 0 ? "in" : "out")
+      container.scrollLeft += locked.deltaX
+      container.scrollTop += locked.deltaY
     }
 
     wrapper.addEventListener("wheel", handleWheel, { passive: false })
@@ -306,28 +330,6 @@ export function GanttChart({
           : {}),
       })
     }
-    const handleAxisLockedWheel = (event: WheelEvent) => {
-      if (!activeContainer || event.ctrlKey) return
-
-      const pageSize = Math.max(
-        activeContainer.clientWidth,
-        activeContainer.clientHeight
-      )
-      const rawDeltaX =
-        event.shiftKey && event.deltaX === 0 ? event.deltaY : event.deltaX
-      const rawDeltaY =
-        event.shiftKey && event.deltaX === 0 ? 0 : event.deltaY
-      const locked = lockWheelToDominantAxis(
-        normalizeWheelDelta(rawDeltaX, event.deltaMode, pageSize),
-        normalizeWheelDelta(rawDeltaY, event.deltaMode, pageSize)
-      )
-      if (locked.deltaX === 0 && locked.deltaY === 0) return
-
-      event.preventDefault()
-      activeContainer.scrollLeft += locked.deltaX
-      activeContainer.scrollTop += locked.deltaY
-    }
-
     async function initGantt() {
       const { default: Gantt } = await import("frappe-gantt")
       if (cancelled || !containerRef.current) return
@@ -449,9 +451,6 @@ export function GanttChart({
         activeContainer.addEventListener("scroll", handleScroll, {
           passive: true,
         })
-        activeContainer.addEventListener("wheel", handleAxisLockedWheel, {
-          passive: false,
-        })
         interactionCallbacksRef.current.onTaskVisibilityReady?.((taskId) => {
           const root = containerRef.current
           const container = ganttContainerRef.current
@@ -491,7 +490,6 @@ export function GanttChart({
     return () => {
       cancelled = true
       activeContainer?.removeEventListener("scroll", handleScroll)
-      activeContainer?.removeEventListener("wheel", handleAxisLockedWheel)
       if (ganttContainerRef.current === activeContainer) {
         ganttContainerRef.current = null
       }
