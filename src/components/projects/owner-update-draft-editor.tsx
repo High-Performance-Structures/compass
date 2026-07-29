@@ -10,6 +10,7 @@ import {
   IconPhoto,
   IconRefresh,
   IconRobot,
+  IconSend,
   IconUpload,
   IconX,
 } from "@tabler/icons-react"
@@ -413,11 +414,19 @@ export function OwnerUpdateDraftEditor({
     }
   }
 
-  async function saveDraft(): Promise<boolean> {
-    setStatus({ kind: "saving", message: "Saving curated sources..." })
+  async function saveDraft(
+    intent: "save" | "publish" = "save"
+  ): Promise<boolean> {
+    setStatus({
+      kind: "saving",
+      message:
+        intent === "publish"
+          ? "Saving the latest edits before publishing..."
+          : "Saving curated sources...",
+    })
     try {
       const response = await fetch(
-        `/api/projects/${document.project.id}/owner-updates/${document.update.id}/draft`,
+        `/api/projects/${document.project.id}/owner-updates/${document.update.id}/draft?intent=${intent}`,
         {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
@@ -436,6 +445,15 @@ export function OwnerUpdateDraftEditor({
       } catch {
         // The server save succeeded even if browser storage cleanup fails.
       }
+      if (intent === "publish") {
+        setStatus({
+          kind: "saved",
+          message: "Draft saved and published.",
+        })
+        window.location.reload()
+        return true
+      }
+
       initialServerDraftJson.current = JSON.stringify(currentDraft)
       setDraftRecoveryReady(false)
       setStatus({
@@ -448,7 +466,9 @@ export function OwnerUpdateDraftEditor({
       setStatus({
         kind: "error",
         message:
-          "Unable to reach Compass. Your edits are backed up in this browser; do not close this page until the connection returns.",
+          intent === "publish"
+            ? "Unable to save and publish. Your edits are backed up in this browser; do not close this page until the connection returns."
+            : "Unable to reach Compass. Your edits are backed up in this browser; do not close this page until the connection returns.",
       })
       return false
     }
@@ -516,6 +536,17 @@ export function OwnerUpdateDraftEditor({
                 <IconRefresh className="size-4" />
               )}
               Save draft
+            </Button>
+            <Button
+              type="button"
+              onClick={() => void saveDraft("publish")}
+              disabled={status.kind === "saving"}
+            >
+              <IconSend className="size-4" />
+              {status.kind === "saving" &&
+              status.message.includes("publishing")
+                ? "Publishing..."
+                : "Save & publish"}
             </Button>
           </div>
         </div>
