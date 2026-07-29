@@ -1,7 +1,7 @@
 import type * as React from "react"
+import Image from "next/image"
 import Link from "next/link"
 import {
-  IconBuilding,
   IconCalendar,
   IconChevronDown,
   IconClipboardCheck,
@@ -30,6 +30,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { ProjectAudiencePreviewWindowControls } from "@/components/projects/project-audience-preview-window-controls"
 import { ProjectAudienceSidebarProfile } from "@/components/projects/project-audience-sidebar-profile"
+import { ProjectAudienceNotificationSettings } from "@/components/projects/project-audience-notification-settings"
 import { cn } from "@/lib/utils"
 
 type PreviewNavigationItem = {
@@ -154,12 +155,18 @@ export function ProjectAudiencePreviewShell({
       <aside className="sticky top-0 hidden h-screen flex-col border-r bg-sidebar text-sidebar-foreground md:flex">
         <div className="border-b border-sidebar-border p-4">
           <Link href={homeHref} className="flex items-center gap-3">
-            <span className="grid size-9 shrink-0 place-items-center bg-primary text-primary-foreground">
-              <IconBuilding className="size-5" />
+            <span className="grid size-10 shrink-0 place-items-center bg-white p-1">
+              <Image
+                src="/department-logos/hps-h-green.svg"
+                alt="High Performance Structures"
+                width={34}
+                height={34}
+                className="size-full object-contain"
+              />
             </span>
             <span className="min-w-0">
-              <span className="block truncate text-sm font-semibold">
-                Compass
+              <span className="block text-xs font-semibold leading-tight">
+                High Performance Structures Inc.
               </span>
               <span className="block truncate text-xs text-sidebar-foreground/65">
                 {audience === "owner" ? "Owner workspace" : "Partner workspace"}
@@ -289,7 +296,10 @@ export function ProjectAudiencePreviewShell({
                 {audience === "owner" ? "Owner Compass" : "Partner Compass"}
               </p>
             </Link>
-            <Badge variant="outline">Compass</Badge>
+            <div className="flex items-center gap-1">
+              <ProjectAudienceNotificationSettings compact />
+              <Badge variant="outline">Compass</Badge>
+            </div>
           </div>
           <nav className="mt-3 flex gap-1 overflow-x-auto border-t pt-2">
             {navigation.map((item) => (

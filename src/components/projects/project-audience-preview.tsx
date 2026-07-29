@@ -195,7 +195,7 @@ function MessageChannelRow({
       className="block rounded-md border bg-background p-3 transition-colors hover:bg-accent"
     >
       <div className="flex items-center justify-between gap-3">
-        <p className="line-clamp-1 text-sm font-medium">#{channel.name}</p>
+        <p className="line-clamp-1 text-sm font-medium">{channel.name}</p>
         <Badge variant={channel.isPrivate ? "secondary" : "outline"}>
           {channel.isPrivate ? "Private" : "Project"}
         </Badge>
@@ -258,8 +258,10 @@ function AudienceConversationSection({
 
 function ContactRow({
   contact,
+  messageHref,
 }: {
   readonly contact: AudienceContact
+  readonly messageHref?: string | null
 }): React.ReactElement {
   const detail = [
     contact.companyName,
@@ -293,8 +295,31 @@ function ContactRow({
         {contact.email && <span>{contact.email}</span>}
         {contact.phone && <span>{contact.phone}</span>}
       </div>
+      {messageHref && (
+        <Button asChild variant="outline" size="sm" className="mt-3">
+          <Link href={messageHref}>
+            <IconMessageCircle className="size-4" />
+            Message {contact.displayName}
+          </Link>
+        </Button>
+      )}
     </article>
   )
+}
+
+function contactMessageHref(
+  data: ProjectAudiencePreviewData,
+  contact: AudienceContact
+): string | null {
+  const channel = data.messageChannels[0]
+  if (data.viewerIsInternal || !channel || !contact.userId) return null
+  const routeAudience = data.audience === "owner" ? "owner" : "sub-vendor"
+  const href = projectAudienceConversationHref(
+    data.project.id,
+    routeAudience,
+    channel.id
+  )
+  return `${href}?mention=${encodeURIComponent(contact.userId)}&label=${encodeURIComponent(contact.displayName)}`
 }
 
 function ownerHeroTitle(data: ProjectAudiencePreviewData): string {
@@ -634,7 +659,11 @@ function OwnerProjectPreview({
             {data.contacts.length > 0 ? (
               <div className="mt-4 grid gap-3 md:grid-cols-2">
                 {data.contacts.map((contact) => (
-                  <ContactRow key={contact.id} contact={contact} />
+                  <ContactRow
+                    key={contact.id}
+                    contact={contact}
+                    messageHref={contactMessageHref(data, contact)}
+                  />
                 ))}
               </div>
             ) : (
@@ -822,7 +851,11 @@ export function ProjectAudiencePreview({
           {data.contacts.length > 0 ? (
             <div className="mt-4 grid gap-3 md:grid-cols-2">
               {data.contacts.map((contact) => (
-                <ContactRow key={contact.id} contact={contact} />
+                <ContactRow
+                  key={contact.id}
+                  contact={contact}
+                  messageHref={contactMessageHref(data, contact)}
+                />
               ))}
             </div>
           ) : (

@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation"
 import Link from "next/link"
 import {
   IconFolder,
-  IconHash,
+  IconMessageCircle,
   IconPin,
   IconSearch,
   IconUsers,
@@ -60,7 +60,7 @@ export function ChannelHeader({
     <>
       <header className="flex h-14 shrink-0 items-center justify-between border-b px-4">
         <div className="flex items-center gap-2 overflow-hidden">
-          <IconHash className="h-5 w-5 shrink-0 text-muted-foreground" />
+          <IconMessageCircle className="h-5 w-5 shrink-0 text-muted-foreground" />
           <div className="min-w-0 flex-1">
             <h1 className="truncate text-base font-semibold">{name}</h1>
             <div className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">

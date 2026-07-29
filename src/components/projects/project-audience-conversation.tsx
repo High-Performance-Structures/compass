@@ -68,10 +68,15 @@ export async function ProjectAudienceConversation({
   projectId,
   channelId,
   audience,
+  initialMention,
 }: {
   readonly projectId: string
   readonly channelId: string
   readonly audience: ProjectAudience
+  readonly initialMention?: {
+    readonly userId: string
+    readonly label: string
+  }
 }): Promise<React.ReactElement> {
   const { preview, channel, messages } = await loadConversation(
     projectId,
@@ -121,6 +126,7 @@ export async function ProjectAudienceConversation({
                 channelName={channel.name}
                 organizationId={channel.organizationId}
                 isProjectChannel={false}
+                initialMention={initialMention}
               />
             </div>
             <ThreadPanel />

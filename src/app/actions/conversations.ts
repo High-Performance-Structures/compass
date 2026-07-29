@@ -1,7 +1,7 @@
 "use server"
 
 import { getCloudflareContext } from "@/lib/db"
-import { eq, and, sql } from "drizzle-orm"
+import { eq, and, sql, ne } from "drizzle-orm"
 import { getDb } from "@/db"
 import {
   channels,
@@ -11,13 +11,211 @@ import {
   type NewChannelMember,
   type NewChannelReadState,
 } from "@/db/schema-conversations"
-import { projects } from "@/db/schema"
+import { organizationMembers, projects, users } from "@/db/schema"
 import { getCurrentUser } from "@/lib/auth"
 import { requirePermission } from "@/lib/permissions"
 import { revalidatePath } from "next/cache"
 import { requireOrg } from "@/lib/org-scope"
 import { isDemoUser } from "@/lib/demo"
 import { isInternalStaffRole } from "@/lib/user-roles"
+
+async function directChannelId(
+  organizationId: string,
+  firstUserId: string,
+  secondUserId: string
+): Promise<string> {
+  const participants = [firstUserId, secondUserId].sort().join(":")
+  const bytes = new TextEncoder().encode(`${organizationId}:${participants}`)
+  const digest = await crypto.subtle.digest("SHA-256", bytes)
+  const hash = Array.from(new Uint8Array(digest))
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("")
+  return `direct-${hash.slice(0, 32)}`
+}
+
+async function ensureChannelMember(
+  db: ReturnType<typeof getDb>,
+  channelId: string,
+  userId: string,
+  now: string
+): Promise<void> {
+  const existingMember = await db
+    .select({ id: channelMembers.id })
+    .from(channelMembers)
+    .where(
+      and(
+        eq(channelMembers.channelId, channelId),
+        eq(channelMembers.userId, userId)
+      )
+    )
+    .get()
+
+  if (!existingMember) {
+    await db.insert(channelMembers).values({
+      id: crypto.randomUUID(),
+      channelId,
+      userId,
+      role: "member",
+      notifyLevel: "all",
+      joinedAt: now,
+    })
+  }
+
+  const existingReadState = await db
+    .select({ id: channelReadState.id })
+    .from(channelReadState)
+    .where(
+      and(
+        eq(channelReadState.channelId, channelId),
+        eq(channelReadState.userId, userId)
+      )
+    )
+    .get()
+
+  if (!existingReadState) {
+    await db.insert(channelReadState).values({
+      id: crypto.randomUUID(),
+      channelId,
+      userId,
+      lastReadMessageId: null,
+      lastReadAt: now,
+      unreadCount: 0,
+    })
+  }
+}
+
+export async function listDirectMessageRecipients() {
+  try {
+    const user = await getCurrentUser()
+    if (!user || !isInternalStaffRole(user.role)) {
+      return { success: false, error: "Only staff can start direct messages" }
+    }
+    const organizationId = requireOrg(user)
+    const { env } = await getCloudflareContext()
+    const db = getDb(env.DB)
+    const rows = await db
+      .select({
+        id: users.id,
+        name: users.displayName,
+        email: users.email,
+        avatarUrl: users.avatarUrl,
+        role: organizationMembers.role,
+      })
+      .from(users)
+      .innerJoin(
+        organizationMembers,
+        and(
+          eq(organizationMembers.userId, users.id),
+          eq(organizationMembers.organizationId, organizationId)
+        )
+      )
+      .where(and(ne(users.id, user.id), eq(users.isActive, true)))
+      .orderBy(users.displayName, users.email)
+
+    return {
+      success: true,
+      data: rows
+        .filter((row) => isInternalStaffRole(row.role))
+        .map((row) => ({
+          id: row.id,
+          name: row.name ?? row.email,
+          email: row.email,
+          avatarUrl: row.avatarUrl,
+        })),
+    }
+  } catch (err) {
+    return {
+      success: false,
+      error:
+        err instanceof Error
+          ? err.message
+          : "Failed to load direct message recipients",
+    }
+  }
+}
+
+export async function createDirectMessage(targetUserId: string) {
+  try {
+    const user = await getCurrentUser()
+    if (!user || !isInternalStaffRole(user.role)) {
+      return { success: false, error: "Only staff can start direct messages" }
+    }
+    if (isDemoUser(user.id)) {
+      return { success: false, error: "DEMO_READ_ONLY" }
+    }
+    if (targetUserId === user.id) {
+      return { success: false, error: "Choose another team member" }
+    }
+
+    const organizationId = requireOrg(user)
+    const { env } = await getCloudflareContext()
+    const db = getDb(env.DB)
+    const target = await db
+      .select({
+        id: users.id,
+        name: users.displayName,
+        email: users.email,
+        role: organizationMembers.role,
+      })
+      .from(users)
+      .innerJoin(
+        organizationMembers,
+        and(
+          eq(organizationMembers.userId, users.id),
+          eq(organizationMembers.organizationId, organizationId)
+        )
+      )
+      .where(and(eq(users.id, targetUserId), eq(users.isActive, true)))
+      .get()
+
+    if (!target || !isInternalStaffRole(target.role)) {
+      return { success: false, error: "Team member not found" }
+    }
+
+    const channelId = await directChannelId(
+      organizationId,
+      user.id,
+      target.id
+    )
+    const now = new Date().toISOString()
+    const existingChannel = await db
+      .select({ id: channels.id })
+      .from(channels)
+      .where(eq(channels.id, channelId))
+      .get()
+
+    if (!existingChannel) {
+      await db.insert(channels).values({
+        id: channelId,
+        name: `${user.displayName ?? user.email} · ${target.name ?? target.email}`,
+        type: "text",
+        description: "Private direct message",
+        organizationId,
+        projectId: null,
+        categoryId: null,
+        isPrivate: true,
+        audience: "direct",
+        createdBy: user.id,
+        sortOrder: 0,
+        archivedAt: null,
+        createdAt: now,
+        updatedAt: now,
+      })
+    }
+
+    await ensureChannelMember(db, channelId, user.id, now)
+    await ensureChannelMember(db, channelId, target.id, now)
+
+    revalidatePath("/dashboard/conversations")
+    return { success: true, data: { channelId } }
+  } catch (err) {
+    return {
+      success: false,
+      error:
+        err instanceof Error ? err.message : "Failed to start direct message",
+    }
+  }
+}
 
 export async function listChannels() {
   try {
