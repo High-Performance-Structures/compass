@@ -35,6 +35,7 @@ export type ProjectBudgetApplicationItem = {
   readonly currentPaymentDue: number
   readonly balanceToFinish: number
   readonly ownerVisible: boolean
+  readonly documentAvailable: boolean
   readonly sourceUrl: string | null
   readonly lastSyncedAt: string | null
 }
@@ -70,8 +71,10 @@ export type ProjectBudgetDivision = {
   readonly originalEstimate: number
   readonly totalChanges: number
   readonly adjustedEstimate: number
+  readonly priorCosts: number
   readonly totalCosts: number
   readonly currentCosts: number
+  readonly retainageHeld: number
   readonly balanceToFinish: number
   readonly percentComplete: number
   readonly lineCount: number
@@ -79,9 +82,13 @@ export type ProjectBudgetDivision = {
 }
 
 export type ProjectBudgetTotals = {
+  readonly originalEstimate: number
+  readonly totalChanges: number
   readonly adjustedEstimate: number
+  readonly priorCosts: number
   readonly totalCosts: number
   readonly currentCosts: number
+  readonly retainageHeld: number
   readonly balanceToFinish: number
   readonly percentComplete: number
   readonly overBudgetAmount: number
@@ -91,6 +98,7 @@ export type ProjectBudgetTotals = {
 export type ProjectBudgetSummary = {
   readonly audience: ProjectBudgetAudience
   readonly detailMode: ProjectBudgetDetailMode
+  readonly applications: readonly ProjectBudgetApplicationItem[]
   readonly currentApplication: ProjectBudgetApplicationItem | null
   readonly totals: ProjectBudgetTotals
   readonly divisions: readonly ProjectBudgetDivision[]
@@ -123,6 +131,9 @@ function toApplicationItem(
   audience: ProjectBudgetAudience
 ): ProjectBudgetApplicationItem {
   const ownerSafe = audience === "owner"
+  const documentAvailable =
+    row.sourceSystem === "google_drive_g702_g703" &&
+    Boolean(row.sourceRecordId)
   return {
     id: row.id,
     sourceSystem: row.sourceSystem,
@@ -139,6 +150,7 @@ function toApplicationItem(
     currentPaymentDue: row.currentPaymentDue,
     balanceToFinish: row.balanceToFinish,
     ownerVisible: row.ownerVisible,
+    documentAvailable,
     sourceUrl: ownerSafe ? null : row.sourceUrl,
     lastSyncedAt: ownerSafe ? null : row.lastSyncedAt,
   }
@@ -215,7 +227,12 @@ function buildDivisions(
       0
     )
     const totalCosts = items.reduce((sum, item) => sum + item.totalCosts, 0)
+    const priorCosts = items.reduce((sum, item) => sum + item.priorCosts, 0)
     const currentCosts = items.reduce((sum, item) => sum + item.currentCosts, 0)
+    const retainageHeld = items.reduce(
+      (sum, item) => sum + item.retainageHeld,
+      0
+    )
     const balanceToFinish = items.reduce(
       (sum, item) => sum + item.balanceToFinish,
       0
@@ -227,8 +244,10 @@ function buildDivisions(
       originalEstimate,
       totalChanges,
       adjustedEstimate,
+      priorCosts,
       totalCosts,
       currentCosts,
+      retainageHeld,
       balanceToFinish,
       percentComplete: percent(totalCosts, adjustedEstimate),
       lineCount: items.length,
@@ -313,12 +332,15 @@ export async function getProjectBudgetSummary(
           )
         : eq(projectBudgetApplications.projectId, projectId)
     )
-    .orderBy(desc(projectBudgetApplications.periodTo))
-    .limit(1)
+    .orderBy(
+      desc(projectBudgetApplications.periodTo),
+      desc(projectBudgetApplications.createdAt)
+    )
 
-  const currentApplication = applicationRows[0]
-    ? toApplicationItem(applicationRows[0], effectiveAudience)
-    : null
+  const applications = applicationRows.map((row) =>
+    toApplicationItem(row, effectiveAudience)
+  )
+  const currentApplication = applications[0] ?? null
 
   const lineRows = await access.db
     .select()
@@ -339,12 +361,25 @@ export async function getProjectBudgetSummary(
   const allLines =
     detailMode === "category" ? buildOwnerCategoryLines(sourceLines) : sourceLines
   const divisions = buildDivisions(allLines)
+  const originalEstimate = allLines.reduce(
+    (sum, line) => sum + line.originalEstimate,
+    0
+  )
+  const totalChanges = allLines.reduce(
+    (sum, line) => sum + line.totalChanges,
+    0
+  )
   const adjustedEstimate = allLines.reduce(
     (sum, line) => sum + line.adjustedEstimate,
     0
   )
+  const priorCosts = allLines.reduce((sum, line) => sum + line.priorCosts, 0)
   const totalCosts = allLines.reduce((sum, line) => sum + line.totalCosts, 0)
   const currentCosts = allLines.reduce((sum, line) => sum + line.currentCosts, 0)
+  const retainageHeld = allLines.reduce(
+    (sum, line) => sum + line.retainageHeld,
+    0
+  )
   const balanceToFinish = allLines.reduce(
     (sum, line) => sum + line.balanceToFinish,
     0
@@ -353,11 +388,16 @@ export async function getProjectBudgetSummary(
   return {
     audience: effectiveAudience,
     detailMode,
+    applications,
     currentApplication,
     totals: {
+      originalEstimate,
+      totalChanges,
       adjustedEstimate,
+      priorCosts,
       totalCosts,
       currentCosts,
+      retainageHeld,
       balanceToFinish,
       percentComplete: percent(totalCosts, adjustedEstimate),
       overBudgetAmount: Math.max(0, totalCosts - adjustedEstimate),

@@ -16,6 +16,7 @@ import {
   getExportMimeType,
   getExportExtension,
 } from "@/lib/google/mapper"
+import { isInternalStaffRole } from "@/lib/user-roles"
 
 export async function GET(
   _request: NextRequest,
@@ -24,6 +25,11 @@ export async function GET(
   try {
     const user = await requireAuth()
     requirePermission(user, "document", "read")
+    // External users must use project-specific download routes that verify
+    // membership and record visibility before resolving a storage ID.
+    if (!isInternalStaffRole(user.role)) {
+      return new Response("File not found", { status: 404 })
+    }
 
     const googleEmail = user.googleEmail ?? user.email
 
