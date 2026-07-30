@@ -93,11 +93,15 @@ test.describe("usable Compass areas", () => {
 
     for (const area of coreAreas) {
       await test.step(area.name, async () => {
-        // Isolate each route from background client navigation started by the
-        // previous workspace while keeping the authenticated demo context.
-        await page.goto("about:blank")
-        const response = await page.goto(area.path)
-        await expectHealthyNavigation(page, response, area.path)
+        // Keep the authenticated browser context while giving each workspace a
+        // page that cannot be interrupted by the previous route's client work.
+        const isolatedPage = await page.context().newPage()
+        try {
+          const response = await isolatedPage.goto(area.path)
+          await expectHealthyNavigation(isolatedPage, response, area.path)
+        } finally {
+          await isolatedPage.close()
+        }
       })
     }
   })
@@ -327,7 +331,9 @@ test.describe("usable Compass areas", () => {
       "/dashboard/projects/e2e-project-001/schedule"
     )
 
-    const scheduleRow = page.locator("#schedule-item-e2e-schedule-001")
+    const scheduleRow = page
+      .locator("#schedule-item-e2e-schedule-001")
+      .last()
     await scheduleRow.locator('button[title="Edit schedule item"]').click()
 
     const editDialog = page.getByRole("dialog", {
@@ -361,7 +367,9 @@ test.describe("usable Compass areas", () => {
       page.getByText("Published schedule commitment", { exact: true })
     ).toHaveCount(0)
 
-    const scheduleRow = page.locator("#schedule-item-e2e-schedule-001")
+    const scheduleRow = page
+      .locator("#schedule-item-e2e-schedule-001")
+      .last()
     await scheduleRow.locator('button[title="Edit schedule item"]').click()
     const editDialog = page.getByRole("dialog", {
       name: "Edit Schedule Item",
