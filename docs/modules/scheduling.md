@@ -19,6 +19,13 @@ The scheduling data lives in four tables defined in the core schema (`src/db/sch
 
 **`schedule_publications`** -- immutable, versioned snapshots released to owner and subcontractor workspaces. Internal schedule mutations remain draft changes until staff publishes a new snapshot with a reason. Existing projects receive an initial snapshot during migration so the rollout does not expose later internal edits by accident.
 
+Each schedule item has independent owner and subcontractor visibility. Internal
+staff always retain access, and external visibility changes take effect only
+when the schedule is published. Staff can also require an assigned Compass
+user to confirm or decline a schedule commitment. The request is delivered
+after publication; manual-name assignees remain supported but cannot confirm
+until linked to an active Compass account.
+
 The type system (`src/lib/schedule/types.ts`) models construction phases explicitly:
 
 ```typescript

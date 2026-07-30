@@ -31,7 +31,13 @@ describe("schedule publications", () => {
       exceptions: [],
     }))
 
-    expect(snapshot?.tasks[0]?.title).toBe("Framing")
+    expect(snapshot?.tasks[0]).toMatchObject({
+      title: "Framing",
+      confirmationRequired: false,
+      confirmationStatus: "not_requested",
+    })
+    expect(snapshot?.tasks[0]?.ownerVisible).toBeUndefined()
+    expect(snapshot?.tasks[0]?.subVendorVisible).toBeUndefined()
   })
 
   it("rejects malformed publication data", () => {

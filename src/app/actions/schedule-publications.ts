@@ -13,6 +13,10 @@ import {
   workdayExceptions,
 } from "@/db/schema"
 import { recordActivityEvent } from "@/lib/activity-log"
+import {
+  sendPublishedScheduleAssignment,
+  sendScheduleTaskReminder,
+} from "@/app/actions/schedule-confirmations"
 import { requireAuth } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
 import { isDemoUser } from "@/lib/demo"
@@ -20,6 +24,7 @@ import { requireOrg } from "@/lib/org-scope"
 import { requirePermission } from "@/lib/permissions"
 import {
   DRAFT_SCHEDULE_ACTIONS,
+  parsePublishedScheduleSnapshot,
   publishedScheduleSnapshotSchema,
 } from "@/lib/schedule/publications"
 
@@ -139,6 +144,19 @@ export async function publishSchedule(
     const db = getDb(env.DB)
     await requireProject(db, projectId, organizationId)
 
+    const previousPublication = await db
+      .select({ snapshotData: schedulePublications.snapshotData })
+      .from(schedulePublications)
+      .where(eq(schedulePublications.projectId, projectId))
+      .orderBy(desc(schedulePublications.publishedAt))
+      .limit(1)
+      .then((rows) => rows[0] ?? null)
+    const previousSnapshot = previousPublication
+      ? parsePublishedScheduleSnapshot(previousPublication.snapshotData)
+      : null
+    const previousTasksById = new Map(
+      previousSnapshot?.tasks.map((task) => [task.id, task]) ?? []
+    )
     const tasks = await db
       .select()
       .from(scheduleTasks)
@@ -188,6 +206,41 @@ export async function publishSchedule(
       },
       createdAt: publishedAt,
     })
+    for (const task of tasks) {
+      const previousTask = previousTasksById.get(task.id)
+      const assignmentChanged =
+        task.assignedTo !== null &&
+        (previousTask?.assignedTo !== task.assignedTo ||
+          previousTask.assignedUserId !== task.assignedUserId)
+      if (
+        assignmentChanged &&
+        task.assignedUserId &&
+        !task.confirmationRequired &&
+        (!previousPublication || previousSnapshot)
+      ) {
+        const notification = await sendPublishedScheduleAssignment(task.id)
+        if (!notification.success) {
+          console.error(
+            `Unable to send published schedule assignment for ${task.id}:`,
+            notification.error
+          )
+        }
+      }
+      if (
+        task.confirmationRequired &&
+        task.assignedUserId &&
+        task.confirmationStatus === "pending" &&
+        !task.reminderSentAt
+      ) {
+        const reminder = await sendScheduleTaskReminder(task.id)
+        if (!reminder.success) {
+          console.error(
+            `Unable to send published schedule confirmation for ${task.id}:`,
+            reminder.error
+          )
+        }
+      }
+    }
 
     revalidatePath(`/dashboard/projects/${projectId}/schedule`)
     revalidatePath("/dashboard/schedule")

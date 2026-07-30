@@ -57,6 +57,7 @@ import {
   updateDependency,
   deleteDependency,
 } from "@/app/actions/schedule"
+import { sendScheduleTaskReminder } from "@/app/actions/schedule-confirmations"
 import { calculateEndDate } from "@/lib/schedule/business-days"
 import type {
   ScheduleTaskData,
@@ -98,6 +99,9 @@ const scheduleItemSchema = z.object({
   isMilestone: z.boolean(),
   percentComplete: z.number().min(0).max(100),
   assignedTo: z.string(),
+  ownerVisible: z.boolean(),
+  subVendorVisible: z.boolean(),
+  confirmationRequired: z.boolean(),
   notes: z.string(),
 })
 
@@ -139,6 +143,8 @@ export function ScheduleItemFormDialog({
   const [existingPredecessorEdits, setExistingPredecessorEdits] = useState<
     Record<string, PendingPredecessor>
   >({})
+  const [assignedOptionId, setAssignedOptionId] = useState<string | null>(null)
+  const [sendingReminder, setSendingReminder] = useState(false)
 
   const existingPredecessors = useMemo(() => {
     if (!editingTask) return []
@@ -161,6 +167,9 @@ export function ScheduleItemFormDialog({
       isMilestone: false,
       percentComplete: 0,
       assignedTo: "",
+      ownerVisible: true,
+      subVendorVisible: false,
+      confirmationRequired: false,
       notes: "",
     },
   })
@@ -177,8 +186,18 @@ export function ScheduleItemFormDialog({
         isMilestone: editingTask.isMilestone,
         percentComplete: editingTask.percentComplete,
         assignedTo: editingTask.assignedTo ?? "",
+        ownerVisible: editingTask.ownerVisible ?? true,
+        subVendorVisible: editingTask.subVendorVisible ?? false,
+        confirmationRequired: editingTask.confirmationRequired ?? false,
         notes: "",
       })
+      setAssignedOptionId(
+        assigneeOptions.find(
+          (option) =>
+            option.name.trim().toLowerCase() ===
+            (editingTask.assignedTo ?? "").trim().toLowerCase()
+        )?.id ?? null
+      )
       // expand details when editing since they likely want to see everything
       setDetailsOpen(true)
     } else {
@@ -192,12 +211,16 @@ export function ScheduleItemFormDialog({
         isMilestone: false,
         percentComplete: 0,
         assignedTo: "",
+        ownerVisible: true,
+        subVendorVisible: false,
+        confirmationRequired: false,
         notes: "",
       })
+      setAssignedOptionId(null)
       setDetailsOpen(false)
     }
     setPendingPredecessors([])
-  }, [editingTask, form])
+  }, [assigneeOptions, editingTask, form])
 
   useEffect(() => {
     if (!editingTask) {
@@ -241,6 +264,7 @@ export function ScheduleItemFormDialog({
       const result = await updateTask(editingTask.id, {
         ...taskValues,
         assignedTo: taskValues.assignedTo || null,
+        assignedOptionId,
       })
       if (!result.success) {
         toast.error(result.error)
@@ -251,6 +275,7 @@ export function ScheduleItemFormDialog({
       const result = await createTask(projectId, {
         ...taskValues,
         assignedTo: taskValues.assignedTo || undefined,
+        assignedOptionId,
       })
       if (!result.success) {
         toast.error(result.error)
@@ -358,6 +383,19 @@ export function ScheduleItemFormDialog({
 
   const hasPredecessors =
     existingPredecessors.length > 0 || pendingPredecessors.length > 0
+
+  async function handleSendReminder(): Promise<void> {
+    if (!editingTask) return
+    setSendingReminder(true)
+    const result = await sendScheduleTaskReminder(editingTask.id)
+    setSendingReminder(false)
+    if (!result.success) {
+      toast.error(result.error)
+      return
+    }
+    toast.success("Confirmation reminder sent.")
+    router.refresh()
+  }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -610,7 +648,23 @@ export function ScheduleItemFormDialog({
                           <ProjectAssigneePicker
                             value={field.value}
                             options={assigneeOptions}
-                            onValueChange={(value) => field.onChange(value)}
+                            onValueChange={(value, option) => {
+                              field.onChange(value)
+                              setAssignedOptionId(option?.id ?? null)
+                              if (option?.contactType === "owner") {
+                                form.setValue("ownerVisible", true, {
+                                  shouldDirty: true,
+                                })
+                              }
+                              if (
+                                option?.contactType === "subcontractor" ||
+                                option?.contactType === "supplier"
+                              ) {
+                                form.setValue("subVendorVisible", true, {
+                                  shouldDirty: true,
+                                })
+                              }
+                            }}
                             placeholder="Choose contact or type a name..."
                           />
                         </FormItem>
@@ -679,6 +733,90 @@ export function ScheduleItemFormDialog({
                       </FormItem>
                     )}
                   />
+
+                  <div className="border-t pt-4">
+                    <p className="text-xs font-medium">
+                      Audience &amp; commitment
+                    </p>
+                    <p className="mt-1 text-[11px] text-muted-foreground">
+                      Visibility changes reach project workspaces only after the
+                      schedule is published.
+                    </p>
+                    <div className="mt-3 grid gap-3 sm:grid-cols-3">
+                      <FormField
+                        control={form.control}
+                        name="ownerVisible"
+                        render={({ field }) => (
+                          <FormItem className="flex items-center justify-between gap-3 border px-3 py-2">
+                            <FormLabel className="!mt-0 text-xs">
+                              Owner can view
+                            </FormLabel>
+                            <FormControl>
+                              <Switch
+                                checked={field.value}
+                                onCheckedChange={field.onChange}
+                              />
+                            </FormControl>
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={form.control}
+                        name="subVendorVisible"
+                        render={({ field }) => (
+                          <FormItem className="flex items-center justify-between gap-3 border px-3 py-2">
+                            <FormLabel className="!mt-0 text-xs">
+                              Subs can view
+                            </FormLabel>
+                            <FormControl>
+                              <Switch
+                                checked={field.value}
+                                onCheckedChange={field.onChange}
+                              />
+                            </FormControl>
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={form.control}
+                        name="confirmationRequired"
+                        render={({ field }) => (
+                          <FormItem className="flex items-center justify-between gap-3 border px-3 py-2">
+                            <FormLabel className="!mt-0 text-xs">
+                              Require confirmation
+                            </FormLabel>
+                            <FormControl>
+                              <Switch
+                                checked={field.value}
+                                onCheckedChange={field.onChange}
+                              />
+                            </FormControl>
+                          </FormItem>
+                        )}
+                      />
+                    </div>
+                    {isEditing && editingTask.confirmationRequired && (
+                      <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs">
+                        <span className="text-muted-foreground">
+                          Status:{" "}
+                          {(editingTask.confirmationStatus ?? "not_requested")
+                            .replace(/_/g, " ")
+                            .replace(/^\w/, (letter) => letter.toUpperCase())}
+                        </span>
+                        {editingTask.confirmationStatus !== "confirmed" && (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            disabled={sendingReminder}
+                            onClick={handleSendReminder}
+                          >
+                            {sendingReminder ? "Sending…" : "Send reminder"}
+                          </Button>
+                        )}
+                      </div>
+                    )}
+                  </div>
 
                   {/* Predecessors */}
                   <div className="space-y-2">
