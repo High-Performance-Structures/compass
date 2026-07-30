@@ -1231,6 +1231,28 @@ export const scheduleBaselines = sqliteTable("schedule_baselines", {
   createdAt: text("created_at").notNull(),
 })
 
+export const schedulePublications = sqliteTable(
+  "schedule_publications",
+  {
+    id: text("id").primaryKey(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    snapshotData: text("snapshot_data").notNull(),
+    changeReason: text("change_reason").notNull(),
+    publishedBy: text("published_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    publishedAt: text("published_at").notNull(),
+  },
+  (table) => [
+    index("idx_schedule_publications_project_published").on(
+      table.projectId,
+      table.publishedAt
+    ),
+  ]
+)
+
 export const customers = sqliteTable("customers", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),
@@ -1354,6 +1376,8 @@ export type WorkdayException = typeof workdayExceptions.$inferSelect
 export type NewWorkdayException = typeof workdayExceptions.$inferInsert
 export type ScheduleBaseline = typeof scheduleBaselines.$inferSelect
 export type NewScheduleBaseline = typeof scheduleBaselines.$inferInsert
+export type SchedulePublication = typeof schedulePublications.$inferSelect
+export type NewSchedulePublication = typeof schedulePublications.$inferInsert
 export type Customer = typeof customers.$inferSelect
 export type NewCustomer = typeof customers.$inferInsert
 export type SageCostCode = typeof sageCostCodes.$inferSelect

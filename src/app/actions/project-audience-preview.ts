@@ -13,6 +13,7 @@ import {
   projectOperations,
   projectRfis,
   projects,
+  schedulePublications,
   scheduleTasks,
   users,
 } from "@/db/schema"
@@ -34,6 +35,7 @@ import {
   type OwnerScheduleView,
   type OwnerScheduleVisibleItem,
 } from "@/lib/schedule/owner-visibility"
+import { parsePublishedScheduleSnapshot } from "@/lib/schedule/publications"
 import { projectAudiencePhotoUrl } from "@/lib/photo-sources"
 
 export type { ProjectAudience } from "@/lib/project-audience-access"
@@ -350,7 +352,7 @@ export async function getProjectAudiencePreview(
     )
     .orderBy(desc(dailyLogPhotos.capturedAt), desc(dailyLogPhotos.createdAt))
 
-  const scheduleRows = await db
+  const currentScheduleRows = await db
     .select({
       id: scheduleTasks.id,
       title: scheduleTasks.title,
@@ -366,6 +368,40 @@ export async function getProjectAudiencePreview(
     .from(scheduleTasks)
     .where(eq(scheduleTasks.projectId, projectId))
     .orderBy(asc(scheduleTasks.startDate), asc(scheduleTasks.sortOrder))
+  const publishedSchedule = await db
+    .select({ snapshotData: schedulePublications.snapshotData })
+    .from(schedulePublications)
+    .where(eq(schedulePublications.projectId, projectId))
+    .orderBy(desc(schedulePublications.publishedAt))
+    .limit(1)
+    .then((rows) => rows[0] ?? null)
+  const publishedSnapshot = publishedSchedule
+    ? parsePublishedScheduleSnapshot(publishedSchedule.snapshotData)
+    : null
+  // Once a publication exists, fail closed if its immutable snapshot cannot
+  // be parsed. Falling back to live rows could expose unpublished changes.
+  const scheduleRowsUnsorted = publishedSchedule
+    ? publishedSnapshot
+      ? publishedSnapshot.tasks.map((task) => ({
+          id: task.id,
+          title: task.title,
+          startDate: task.startDate,
+          endDate: task.endDateCalculated,
+          status: task.status,
+          phase: task.phase,
+          assignedTo: task.assignedTo,
+          percentComplete: task.percentComplete,
+          isMilestone: task.isMilestone,
+          workdays: task.workdays,
+        }))
+      : []
+    : currentScheduleRows
+  const scheduleRows = [...scheduleRowsUnsorted].sort(
+    (left, right) =>
+      left.startDate.localeCompare(right.startDate) ||
+      left.title.localeCompare(right.title) ||
+      left.id.localeCompare(right.id)
+  )
 
   const contactRows = await db
     .select({

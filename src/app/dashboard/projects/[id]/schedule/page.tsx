@@ -16,6 +16,10 @@ import { ScheduleView } from "@/components/schedule/schedule-view"
 import type { ScheduleData, ScheduleBaselineData } from "@/lib/schedule/types"
 import type { OwnerScheduleView } from "@/lib/schedule/owner-visibility"
 import { getScheduleSavedViews } from "@/app/actions/schedule-saved-views"
+import {
+  getSchedulePublicationStatus,
+  type SchedulePublicationStatus,
+} from "@/app/actions/schedule-publications"
 import { getCurrentUser } from "@/lib/auth"
 import { scheduleAssigneeTerms } from "@/lib/schedule/saved-views"
 
@@ -53,6 +57,7 @@ export default async function SchedulePage({
   let allProjects: ProjectListItem[] = []
   let assigneeOptions: ProjectTaskAssigneeOption[] = []
   let ownerScheduleView: OwnerScheduleView = "items"
+  let publicationStatus: SchedulePublicationStatus | null = null
   const [savedViews, currentUser] = await Promise.all([
     getScheduleSavedViews(),
     getCurrentUser(),
@@ -74,10 +79,11 @@ export default async function SchedulePage({
     projectName = project.projectNumber ?? project.name
     ownerScheduleView =
       project.ownerScheduleView === "phases" ? "phases" : "items"
-    ;[schedule, baselines, allProjects] = await Promise.all([
+    ;[schedule, baselines, allProjects, publicationStatus] = await Promise.all([
       getSchedule(id),
       getBaselines(id),
       getProjects(),
+      getSchedulePublicationStatus(id),
     ])
   } catch (e: unknown) {
     if (e && typeof e === "object" && "digest" in e && e.digest === "NEXT_NOT_FOUND") throw e
@@ -108,6 +114,7 @@ export default async function SchedulePage({
         ownerScheduleView={ownerScheduleView}
         savedViews={savedViews}
         currentUserAssigneeTerms={scheduleAssigneeTerms(currentUser)}
+        publicationStatus={publicationStatus}
       />
     </div>
   )

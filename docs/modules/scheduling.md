@@ -15,7 +15,9 @@ The scheduling data lives in four tables defined in the core schema (`src/db/sch
 
 **`workday_exceptions`** -- non-working days per project. Holidays, vacation days, weather days. These are excluded from business-day calculations. Exceptions can be one-time or yearly recurring, and are categorized (national holiday, state holiday, vacation, company holiday, weather day).
 
-**`schedule_baselines`** -- named snapshots of the schedule at a point in time. Stores a JSON blob of all tasks and dependencies, used for tracking schedule drift.
+**`schedule_baselines`** -- named snapshots of the schedule at a point in time. Stores a JSON blob of all tasks and dependencies, used for tracking schedule drift. Comparisons report start and finish movement per item plus the overall project-finish slippage.
+
+**`schedule_publications`** -- immutable, versioned snapshots released to owner and subcontractor workspaces. Internal schedule mutations remain draft changes until staff publishes a new snapshot with a reason. Existing projects receive an initial snapshot during migration so the rollout does not expose later internal edits by accident.
 
 The type system (`src/lib/schedule/types.ts`) models construction phases explicitly:
 
@@ -135,6 +137,15 @@ server actions
 - `createWorkdayException(projectId, data)` -- create an exception
 - `updateWorkdayException(exceptionId, data)` -- update an exception
 - `deleteWorkdayException(exceptionId)` -- delete an exception
+
+Each exception mutation calculates the resulting schedule first, then commits
+the exception and every affected schedule date in one D1 batch. The activity
+history records how many schedule items moved.
+
+`src/app/actions/schedule-publications.ts` provides:
+
+- `getSchedulePublicationStatus(projectId)` -- report the latest external release and whether internal draft changes exist
+- `publishSchedule(projectId, reason)` -- save the current schedule, dependencies, and workday calendar as the next external snapshot
 
 
 UI components
