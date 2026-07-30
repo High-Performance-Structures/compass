@@ -21,7 +21,6 @@ import {
   projectAudienceSectionHref,
   type ProjectAudienceWorkspaceSection,
 } from "@/lib/project-audience-preview-routes"
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
   DropdownMenu,
@@ -30,8 +29,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { ProjectAudiencePreviewWindowControls } from "@/components/projects/project-audience-preview-window-controls"
+import { ProjectAudienceHeaderControls } from "@/components/projects/project-audience-header-controls"
 import { ProjectAudienceSidebarProfile } from "@/components/projects/project-audience-sidebar-profile"
-import { ProjectAudienceNotificationSettings } from "@/components/projects/project-audience-notification-settings"
 import { cn } from "@/lib/utils"
 
 type PreviewNavigationItem = {
@@ -161,13 +160,15 @@ export function ProjectAudiencePreviewShell({
       <aside className="sticky top-0 hidden h-screen flex-col border-r bg-sidebar text-sidebar-foreground md:flex">
         <div className="border-b border-sidebar-border p-4">
           <Link href={homeHref} className="flex items-center gap-3">
-            <span className="grid size-10 shrink-0 place-items-center bg-white p-1">
+            <span className="flex size-9 shrink-0 items-center justify-center">
               <Image
                 src="/department-logos/hps-h-green.svg"
-                alt="High Performance Structures"
-                width={34}
-                height={34}
-                className="size-full object-contain"
+                alt="High Performance Structures Inc."
+                width={36}
+                height={36}
+                className="size-9 rounded-[5px] object-contain"
+                priority
+                unoptimized
               />
             </span>
             <span className="min-w-0">
@@ -258,6 +259,10 @@ export function ProjectAudiencePreviewShell({
       </aside>
 
       <div className="min-w-0">
+        <header className="sticky top-0 z-40 hidden h-12 items-center justify-end border-b border-border/40 bg-background/80 px-4 backdrop-blur-sm md:flex">
+          <ProjectAudienceHeaderControls viewer={viewer} />
+        </header>
+
         {viewerIsInternal && (
           <div className="border-b bg-amber-50 px-4 py-2 text-amber-950 dark:bg-amber-950 dark:text-amber-50">
             <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-2">
@@ -292,7 +297,7 @@ export function ProjectAudiencePreviewShell({
           </div>
         )}
 
-        <header className="sticky top-0 z-30 border-b bg-background/95 px-4 py-3 backdrop-blur md:hidden">
+        <header className="sticky top-0 z-40 border-b bg-background/95 px-3 py-2 backdrop-blur md:hidden">
           <div className="flex items-center justify-between gap-3">
             <Link href={homeHref} className="min-w-0">
               <p className="truncate text-sm font-semibold">
@@ -302,10 +307,7 @@ export function ProjectAudiencePreviewShell({
                 {audience === "owner" ? "Owner Compass" : "Partner Compass"}
               </p>
             </Link>
-            <div className="flex items-center gap-1">
-              <ProjectAudienceNotificationSettings compact />
-              <Badge variant="outline">Compass</Badge>
-            </div>
+            <ProjectAudienceHeaderControls viewer={viewer} />
           </div>
           <nav className="mt-3 flex gap-1 overflow-x-auto border-t pt-2">
             {navigation.map((item) => (
