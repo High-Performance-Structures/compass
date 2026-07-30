@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server"
 import { getCloudflareContext } from "@/lib/db"
-import { requireAuth } from "@/lib/auth"
-import { requirePermission } from "@/lib/permissions"
+import { getCurrentUser } from "@/lib/auth"
+import { can } from "@/lib/permissions"
 import { getDb } from "@/db"
 import { googleAuth } from "@/db/schema-google"
 import { decrypt } from "@/lib/crypto"
@@ -23,11 +23,16 @@ export async function GET(
   { params }: { params: Promise<{ fileId: string }> }
 ): Promise<Response> {
   try {
-    const user = await requireAuth()
-    requirePermission(user, "document", "read")
+    const user = await getCurrentUser()
+    if (!user) {
+      return new Response("Unauthorized", { status: 401 })
+    }
     // External users must use project-specific download routes that verify
     // membership and record visibility before resolving a storage ID.
-    if (!isInternalStaffRole(user.role)) {
+    if (
+      !isInternalStaffRole(user.role) ||
+      !can(user, "document", "read")
+    ) {
       return new Response("File not found", { status: 404 })
     }
 
