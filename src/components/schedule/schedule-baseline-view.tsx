@@ -20,6 +20,10 @@ import type {
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import { format, parseISO } from "date-fns"
+import {
+  parseBaselineTasks,
+  scheduleBaselineVariance,
+} from "@/lib/schedule/baseline-variance"
 
 interface ScheduleBaselineViewProps {
   projectId: string
@@ -35,12 +39,10 @@ function formatDate(dateStr: string): string {
   }
 }
 
-interface SnapshotTask {
-  id: string
-  title: string
-  startDate: string
-  endDateCalculated: string
-  workdays: number
+function varianceLabel(value: number | null): string {
+  if (value === null) return "—"
+  if (value === 0) return "On plan"
+  return `${value > 0 ? "+" : ""}${value} days`
 }
 
 export function ScheduleBaselineView({
@@ -87,49 +89,9 @@ export function ScheduleBaselineView({
     const baseline = baselines.find((b) => b.id === selectedId)
     if (!baseline) return null
 
-    let snapshotTasks: SnapshotTask[] = []
-    try {
-      const parsed = JSON.parse(baseline.snapshotData)
-      snapshotTasks = parsed.tasks || []
-    } catch {
-      return null
-    }
-
-    const snapshotMap = new Map(
-      snapshotTasks.map((t) => [t.id, t])
-    )
-
-    return currentTasks.map((current) => {
-      const original = snapshotMap.get(current.id)
-      if (!original) {
-        return {
-          title: current.title,
-          originalStart: "-",
-          originalEnd: "-",
-          currentStart: current.startDate,
-          currentEnd: current.endDateCalculated,
-          variance: "New",
-        }
-      }
-
-      const origDays = original.workdays
-      const currDays = current.workdays
-      const diff = currDays - origDays
-
-      return {
-        title: current.title,
-        originalStart: original.startDate,
-        originalEnd: original.endDateCalculated,
-        currentStart: current.startDate,
-        currentEnd: current.endDateCalculated,
-        variance:
-          diff === 0
-            ? "On track"
-            : diff > 0
-              ? `+${diff} days`
-              : `${diff} days`,
-      }
-    })
+    const snapshotTasks = parseBaselineTasks(baseline.snapshotData)
+    if (!snapshotTasks) return null
+    return scheduleBaselineVariance(currentTasks, snapshotTasks)
   }, [selectedId, baselines, currentTasks])
 
   return (
@@ -214,6 +176,46 @@ export function ScheduleBaselineView({
           <h3 className="text-sm font-medium mb-2">
             Comparison: Current vs Baseline
           </h3>
+          <div className="mb-4 grid grid-cols-2 gap-x-6 gap-y-2 border-y py-3 text-sm md:grid-cols-4">
+            <div>
+              <span className="block text-xs text-muted-foreground">
+                Baseline finish
+              </span>
+              {comparison.baselineFinish
+                ? formatDate(comparison.baselineFinish)
+                : "—"}
+            </div>
+            <div>
+              <span className="block text-xs text-muted-foreground">
+                Current finish
+              </span>
+              {comparison.currentFinish
+                ? formatDate(comparison.currentFinish)
+                : "—"}
+            </div>
+            <div>
+              <span className="block text-xs text-muted-foreground">
+                Project slippage
+              </span>
+              <span
+                className={
+                  comparison.finishVarianceDays !== null &&
+                  comparison.finishVarianceDays > 0
+                    ? "font-medium text-red-600"
+                    : "font-medium text-green-700"
+                }
+              >
+                {varianceLabel(comparison.finishVarianceDays)}
+              </span>
+            </div>
+            <div>
+              <span className="block text-xs text-muted-foreground">
+                Item movement
+              </span>
+              {comparison.delayedItemCount} delayed ·{" "}
+              {comparison.aheadItemCount} ahead
+            </div>
+          </div>
           <div className="rounded-md border">
             <Table>
               <TableHeader>
@@ -223,44 +225,69 @@ export function ScheduleBaselineView({
                   <TableHead>Baseline End</TableHead>
                   <TableHead>Current Start</TableHead>
                   <TableHead>Current End</TableHead>
-                  <TableHead>Variance</TableHead>
+                  <TableHead>Start Variance</TableHead>
+                  <TableHead>Finish Variance</TableHead>
+                  <TableHead>Duration</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {comparison.map((row, i) => (
-                  <TableRow key={i}>
+                {comparison.rows.map((row) => (
+                  <TableRow key={row.id}>
                     <TableCell className="font-medium text-sm">
                       {row.title}
+                      {row.state !== "existing" && (
+                        <span className="ml-2 text-xs font-normal text-muted-foreground">
+                          {row.state === "new" ? "New" : "Removed"}
+                        </span>
+                      )}
                     </TableCell>
                     <TableCell className="text-xs text-muted-foreground">
-                      {row.originalStart === "-"
-                        ? "-"
-                        : formatDate(row.originalStart)}
+                      {row.baselineStart
+                        ? formatDate(row.baselineStart)
+                        : "—"}
                     </TableCell>
                     <TableCell className="text-xs text-muted-foreground">
-                      {row.originalEnd === "-"
-                        ? "-"
-                        : formatDate(row.originalEnd)}
+                      {row.baselineFinish
+                        ? formatDate(row.baselineFinish)
+                        : "—"}
                     </TableCell>
                     <TableCell className="text-xs text-muted-foreground">
-                      {formatDate(row.currentStart)}
+                      {row.currentStart
+                        ? formatDate(row.currentStart)
+                        : "—"}
                     </TableCell>
                     <TableCell className="text-xs text-muted-foreground">
-                      {formatDate(row.currentEnd)}
+                      {row.currentFinish
+                        ? formatDate(row.currentFinish)
+                        : "—"}
                     </TableCell>
                     <TableCell>
                       <span
-                        className={`text-xs font-medium ${
-                          row.variance === "On track"
-                            ? "text-green-600"
-                            : row.variance === "New"
-                              ? "text-blue-600"
-                              : row.variance.startsWith("+")
-                                ? "text-red-600"
-                                : "text-green-600"
-                        }`}
+                        className={
+                          row.startVarianceDays !== null &&
+                          row.startVarianceDays > 0
+                            ? "text-xs font-medium text-red-600"
+                            : "text-xs font-medium text-green-700"
+                        }
                       >
-                        {row.variance}
+                        {varianceLabel(row.startVarianceDays)}
+                      </span>
+                    </TableCell>
+                    <TableCell>
+                      <span
+                        className={
+                          row.finishVarianceDays !== null &&
+                          row.finishVarianceDays > 0
+                            ? "text-xs font-medium text-red-600"
+                            : "text-xs font-medium text-green-700"
+                        }
+                      >
+                        {varianceLabel(row.finishVarianceDays)}
+                      </span>
+                    </TableCell>
+                    <TableCell>
+                      <span className="text-xs font-medium">
+                        {varianceLabel(row.durationVarianceDays)}
                       </span>
                     </TableCell>
                   </TableRow>

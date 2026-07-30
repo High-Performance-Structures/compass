@@ -13,12 +13,15 @@ import { revalidatePath } from "next/cache"
 import { requireAuth } from "@/lib/auth"
 import { requireOrg } from "@/lib/org-scope"
 import { isDemoUser } from "@/lib/demo"
+import { requirePermission } from "@/lib/permissions"
+import { recordActivityEvent } from "@/lib/activity-log"
 import type { ScheduleBaselineData } from "@/lib/schedule/types"
 
 export async function getBaselines(
   projectId: string
 ): Promise<ScheduleBaselineData[]> {
   const user = await requireAuth()
+  requirePermission(user, "schedule", "read")
   const orgId = requireOrg(user)
 
   const { env } = await getCloudflareContext()
@@ -50,6 +53,7 @@ export async function createBaseline(
     if (isDemoUser(user.id)) {
       return { success: false, error: "DEMO_READ_ONLY" }
     }
+    requirePermission(user, "schedule", "update")
     const orgId = requireOrg(user)
 
     const { env } = await getCloudflareContext()
@@ -80,14 +84,27 @@ export async function createBaseline(
 
     const snapshot = JSON.stringify({ tasks, dependencies: projectDeps })
 
+    const baselineId = crypto.randomUUID()
     await db.insert(scheduleBaselines).values({
-      id: crypto.randomUUID(),
+      id: baselineId,
       projectId,
       name,
       snapshotData: snapshot,
       createdAt: new Date().toISOString(),
     })
 
+    await recordActivityEvent({
+      db,
+      organizationId: orgId,
+      projectId,
+      actor: user,
+      category: "schedule",
+      action: "schedule.baseline_created",
+      entityType: "schedule_baseline",
+      entityId: baselineId,
+      summary: `Saved schedule baseline “${name}”.`,
+      metadata: { itemCount: tasks.length },
+    })
     revalidatePath(`/dashboard/projects/${projectId}/schedule`)
     return { success: true }
   } catch (error) {
@@ -104,6 +121,7 @@ export async function deleteBaseline(
     if (isDemoUser(user.id)) {
       return { success: false, error: "DEMO_READ_ONLY" }
     }
+    requirePermission(user, "schedule", "update")
     const orgId = requireOrg(user)
 
     const { env } = await getCloudflareContext()
@@ -132,6 +150,17 @@ export async function deleteBaseline(
       .delete(scheduleBaselines)
       .where(eq(scheduleBaselines.id, baselineId))
 
+    await recordActivityEvent({
+      db,
+      organizationId: orgId,
+      projectId: existing.projectId,
+      actor: user,
+      category: "schedule",
+      action: "schedule.baseline_deleted",
+      entityType: "schedule_baseline",
+      entityId: baselineId,
+      summary: "Deleted a schedule baseline.",
+    })
     revalidatePath(
       `/dashboard/projects/${existing.projectId}/schedule`
     )

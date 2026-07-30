@@ -12,6 +12,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import { cn } from "@/lib/utils"
 import { useIsMobile } from "@/hooks/use-mobile"
 import { Input } from "@/components/ui/input"
+import { Textarea } from "@/components/ui/textarea"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Label } from "@/components/ui/label"
@@ -68,6 +69,7 @@ import {
   IconDeviceFloppy,
   IconBookmark,
   IconTrash,
+  IconSend,
 } from "@tabler/icons-react"
 import { toast } from "sonner"
 import { ScheduleListView } from "./schedule-list-view"
@@ -108,6 +110,10 @@ import {
   saveScheduleView,
 } from "@/app/actions/schedule-saved-views"
 import {
+  publishSchedule,
+  type SchedulePublicationStatus,
+} from "@/app/actions/schedule-publications"
+import {
   SCHEDULE_GROUP_MODES,
   SCHEDULE_LIST_COLUMNS,
   SCHEDULE_VIEW_PRESETS,
@@ -141,6 +147,7 @@ interface ScheduleViewProps {
   readonly ownerScheduleView?: OwnerScheduleView
   readonly savedViews?: readonly SavedScheduleViewData[]
   readonly currentUserAssigneeTerms?: readonly string[]
+  readonly publicationStatus?: SchedulePublicationStatus | null
 }
 
 export function ScheduleView({
@@ -158,6 +165,7 @@ export function ScheduleView({
   ownerScheduleView = "items",
   savedViews: initialSavedViews = [],
   currentUserAssigneeTerms = [],
+  publicationStatus: initialPublicationStatus = null,
 }: ScheduleViewProps) {
   const router = useRouter()
   const pathname = usePathname()
@@ -214,8 +222,35 @@ export function ScheduleView({
   const [exceptionsOpen, setExceptionsOpen] = useState(false)
   const [importDialogOpen, setImportDialogOpen] = useState(false)
   const [isImporting, setIsImporting] = useState(false)
+  const [publicationStatus, setPublicationStatus] =
+    useState<SchedulePublicationStatus | null>(initialPublicationStatus)
+  const [publishOpen, setPublishOpen] = useState(false)
+  const [publishReason, setPublishReason] = useState("")
+  const [isPublishing, startPublishTransition] = useTransition()
   const fileInputRef = useRef<HTMLInputElement>(null)
   const preferenceScopeKey = projectId ?? "unified"
+
+  function handlePublish(): void {
+    if (!projectId) return
+    startPublishTransition(async () => {
+      const result = await publishSchedule(projectId, publishReason)
+      if (!result.success) {
+        toast.error(result.error)
+        return
+      }
+      setPublicationStatus({
+        hasPublishedSchedule: true,
+        hasUnpublishedChanges: false,
+        publishedAt: result.publishedAt,
+        publishedBy: null,
+        changeReason: publishReason.trim(),
+      })
+      setPublishReason("")
+      setPublishOpen(false)
+      toast.success("Schedule published to owner and subcontractor views.")
+      router.refresh()
+    })
+  }
 
   useEffect(() => {
     const requestedOrder = searchParams.get("order")
@@ -702,6 +737,38 @@ export function ScheduleView({
         </div>
       </div>
 
+      {projectId && publicationStatus && (
+        <div className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-1 border-y py-2 text-xs">
+          <span className="font-medium">
+            External schedule:
+            {" "}
+            {publicationStatus.hasPublishedSchedule
+              ? `Published ${new Date(
+                  publicationStatus.publishedAt ?? ""
+                ).toLocaleString()}`
+              : "Not yet published"}
+          </span>
+          {publicationStatus.hasUnpublishedChanges && (
+            <span className="text-amber-700 dark:text-amber-300">
+              Unpublished changes
+            </span>
+          )}
+          <Button
+            className="ml-auto h-7"
+            size="sm"
+            variant={
+              publicationStatus.hasUnpublishedChanges
+                ? "default"
+                : "outline"
+            }
+            onClick={() => setPublishOpen(true)}
+          >
+            <IconSend className="mr-1.5 size-3.5" />
+            Publish schedule
+          </Button>
+        </div>
+      )}
+
       {/* Action bar: search, filters, overflow */}
       <div className="mb-3 flex flex-wrap items-center gap-2 print:hidden">
         {/* Search */}
@@ -1138,6 +1205,51 @@ export function ScheduleView({
         </DialogContent>
       </Dialog>
 
+      <Dialog open={publishOpen} onOpenChange={setPublishOpen}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Publish schedule</DialogTitle>
+            <DialogDescription>
+              Owner and subcontractor workspaces will receive this schedule
+              snapshot. Internal edits made afterward remain unpublished until
+              the next release.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <Label htmlFor="schedule-publish-reason">Change reason</Label>
+            <Textarea
+              id="schedule-publish-reason"
+              value={publishReason}
+              onChange={(event) => setPublishReason(event.currentTarget.value)}
+              placeholder="Summarize what changed and why..."
+              rows={4}
+              maxLength={500}
+            />
+            <p className="text-xs text-muted-foreground">
+              This reason appears in the internal activity history.
+            </p>
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setPublishOpen(false)}
+              disabled={isPublishing}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handlePublish}
+              disabled={isPublishing || publishReason.trim().length < 3}
+            >
+              {isPublishing && (
+                <IconLoader2 className="mr-1.5 size-4 animate-spin" />
+              )}
+              Publish
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={saveViewOpen} onOpenChange={setSaveViewOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
@@ -1196,7 +1308,10 @@ export function ScheduleView({
 
       {/* Baselines sheet */}
       <Sheet open={baselinesOpen} onOpenChange={setBaselinesOpen}>
-        <SheetContent side="right" className="w-full sm:max-w-lg overflow-y-auto">
+        <SheetContent
+          side="right"
+          className="w-full overflow-y-auto sm:max-w-3xl xl:max-w-5xl"
+        >
           <SheetHeader>
             <SheetTitle>Baselines</SheetTitle>
             <SheetDescription>

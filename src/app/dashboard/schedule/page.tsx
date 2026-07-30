@@ -20,6 +20,7 @@ import type {
 } from "@/lib/schedule/project-scope"
 import type { ProjectDepartment } from "@/lib/project-branding"
 import { getScheduleSavedViews } from "@/app/actions/schedule-saved-views"
+import { getSchedulePublicationStatus } from "@/app/actions/schedule-publications"
 import { getCurrentUser } from "@/lib/auth"
 import { scheduleAssigneeTerms } from "@/lib/schedule/saved-views"
 
@@ -176,6 +177,10 @@ export default async function SchedulePage({
       scope.kind === "project" && primaryProject
         ? await getOwnerScheduleView(primaryProject.id)
         : "items"
+    const publicationStatus =
+      scope.kind === "project" && primaryProject
+        ? await getSchedulePublicationStatus(primaryProject.id)
+        : null
 
     return (
       <div className="flex min-h-0 flex-1 flex-col px-4 py-2">
@@ -196,6 +201,7 @@ export default async function SchedulePage({
           ownerScheduleView={ownerScheduleView}
           savedViews={savedViews}
           currentUserAssigneeTerms={scheduleAssigneeTerms(currentUser)}
+          publicationStatus={publicationStatus}
         />
       </div>
     )

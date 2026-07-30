@@ -411,6 +411,7 @@ export async function createTask(
     if (isDemoUser(user.id)) {
       return { success: false, error: "DEMO_READ_ONLY" }
     }
+    requirePermission(user, "schedule", "update")
     const orgId = requireOrg(user)
 
     const { env } = await getCloudflareContext()
@@ -524,6 +525,7 @@ export async function updateTask(
     if (isDemoUser(user.id)) {
       return { success: false, error: "DEMO_READ_ONLY" }
     }
+    requirePermission(user, "schedule", "update")
     const orgId = requireOrg(user)
 
     const { env } = await getCloudflareContext()
@@ -658,6 +660,7 @@ export async function deleteTask(
     if (isDemoUser(user.id)) {
       return { success: false, error: "DEMO_READ_ONLY" }
     }
+    requirePermission(user, "schedule", "update")
     const orgId = requireOrg(user)
 
     const { env } = await getCloudflareContext()
@@ -712,6 +715,7 @@ export async function completeScheduleTasks(
     if (isDemoUser(user.id)) {
       return { success: false, error: "DEMO_READ_ONLY" }
     }
+    requirePermission(user, "schedule", "update")
     const orgId = requireOrg(user)
     const ids = [...new Set(taskIds.map((id) => id.trim()).filter(Boolean))]
 
@@ -801,6 +805,7 @@ export async function assignScheduleTasks(
     if (isDemoUser(user.id)) {
       return { success: false, error: "DEMO_READ_ONLY" }
     }
+    requirePermission(user, "schedule", "update")
     const orgId = requireOrg(user)
     const ids = [...new Set(taskIds.map((id) => id.trim()).filter(Boolean))]
 
@@ -886,6 +891,7 @@ export async function deleteScheduleTasks(
     if (isDemoUser(user.id)) {
       return { success: false, error: "DEMO_READ_ONLY" }
     }
+    requirePermission(user, "schedule", "update")
     const orgId = requireOrg(user)
     const ids = [...new Set(taskIds.map((id) => id.trim()).filter(Boolean))]
 
@@ -966,6 +972,7 @@ export async function reorderTasks(
     if (isDemoUser(user.id)) {
       return { success: false, error: "DEMO_READ_ONLY" }
     }
+    requirePermission(user, "schedule", "update")
     const orgId = requireOrg(user)
 
     const { env } = await getCloudflareContext()
@@ -982,13 +989,63 @@ export async function reorderTasks(
       return { success: false, error: "Project not found or access denied" }
     }
 
-    for (const item of items) {
+    const uniqueItems = [...new Map(
+      items
+        .filter((item) => item.id.trim().length > 0)
+        .map((item) => [item.id, item])
+    ).values()]
+    if (uniqueItems.length === 0) {
+      return { success: false, error: "Select schedule items to reorder" }
+    }
+    if (uniqueItems.length > 500) {
+      return {
+        success: false,
+        error: "Reorder no more than 500 schedule items at a time",
+      }
+    }
+    const matchingTasks = await db
+      .select({ id: scheduleTasks.id })
+      .from(scheduleTasks)
+      .where(
+        and(
+          eq(scheduleTasks.projectId, projectId),
+          inArray(
+            scheduleTasks.id,
+            uniqueItems.map((item) => item.id)
+          )
+        )
+      )
+    if (matchingTasks.length !== uniqueItems.length) {
+      return {
+        success: false,
+        error: "One or more schedule items do not belong to this project",
+      }
+    }
+
+    for (const item of uniqueItems) {
       await db
         .update(scheduleTasks)
         .set({ sortOrder: item.sortOrder })
-        .where(eq(scheduleTasks.id, item.id))
+        .where(
+          and(
+            eq(scheduleTasks.id, item.id),
+            eq(scheduleTasks.projectId, projectId)
+          )
+        )
     }
 
+    await recordActivityEvent({
+      db,
+      organizationId: orgId,
+      projectId,
+      actor: user,
+      category: "schedule",
+      action: "schedule.items_reordered",
+      entityType: "project_schedule",
+      entityId: projectId,
+      summary: `Reordered ${uniqueItems.length} schedule ${uniqueItems.length === 1 ? "item" : "items"}.`,
+      metadata: { itemCount: uniqueItems.length },
+    })
     revalidateSchedulePaths(projectId)
     return { success: true }
   } catch (error) {
@@ -1012,6 +1069,7 @@ export async function createDependency(data: {
     if (isDemoUser(user.id)) {
       return { success: false, error: "DEMO_READ_ONLY" }
     }
+    requirePermission(user, "schedule", "update")
     const orgId = requireOrg(user)
 
     const { env } = await getCloudflareContext()
@@ -1111,6 +1169,21 @@ export async function createDependency(data: {
         .where(eq(scheduleTasks.id, id))
     }
 
+    await recordActivityEvent({
+      db,
+      organizationId: orgId,
+      projectId: data.projectId,
+      actor: user,
+      category: "schedule",
+      action: "schedule.dependency_created",
+      entityType: "schedule_dependency",
+      summary: "Added a schedule dependency.",
+      metadata: {
+        affectedItemCount: updatedTasks.size,
+        relationship: data.type,
+        lagDays: data.lagDays,
+      },
+    })
     await recalcCriticalPath(db, data.projectId)
     revalidateSchedulePaths(data.projectId)
     return { success: true }
@@ -1136,6 +1209,7 @@ export async function updateDependency(data: {
     if (isDemoUser(user.id)) {
       return { success: false, error: "DEMO_READ_ONLY" }
     }
+    requirePermission(user, "schedule", "update")
     const orgId = requireOrg(user)
 
     const { env } = await getCloudflareContext()
@@ -1252,6 +1326,22 @@ export async function updateDependency(data: {
       throw new Error("Dependency update batch failed")
     }
 
+    await recordActivityEvent({
+      db,
+      organizationId: orgId,
+      projectId: data.projectId,
+      actor: user,
+      category: "schedule",
+      action: "schedule.dependency_updated",
+      entityType: "schedule_dependency",
+      entityId: data.dependencyId,
+      summary: "Updated a schedule dependency.",
+      metadata: {
+        affectedItemCount: recalculated.updatedTasks.size,
+        relationship: data.type,
+        lagDays: data.lagDays,
+      },
+    })
     await recalcCriticalPath(db, data.projectId)
     revalidateSchedulePaths(data.projectId)
     return { success: true }
@@ -1270,6 +1360,7 @@ export async function deleteDependency(
     if (isDemoUser(user.id)) {
       return { success: false, error: "DEMO_READ_ONLY" }
     }
+    requirePermission(user, "schedule", "update")
     const orgId = requireOrg(user)
 
     const { env } = await getCloudflareContext()
@@ -1315,6 +1406,17 @@ export async function deleteDependency(
     }
 
     await db.delete(taskDependencies).where(eq(taskDependencies.id, depId))
+    await recordActivityEvent({
+      db,
+      organizationId: orgId,
+      projectId,
+      actor: user,
+      category: "schedule",
+      action: "schedule.dependency_deleted",
+      entityType: "schedule_dependency",
+      entityId: depId,
+      summary: "Removed a schedule dependency.",
+    })
     await recalcCriticalPath(db, projectId)
     revalidateSchedulePaths(projectId)
     return { success: true }
@@ -1333,6 +1435,7 @@ export async function updateTaskStatus(
     if (isDemoUser(user.id)) {
       return { success: false, error: "DEMO_READ_ONLY" }
     }
+    requirePermission(user, "schedule", "update")
     const orgId = requireOrg(user)
 
     const { env } = await getCloudflareContext()
@@ -1366,6 +1469,18 @@ export async function updateTaskStatus(
       })
       .where(eq(scheduleTasks.id, taskId))
 
+    await recordActivityEvent({
+      db,
+      organizationId: orgId,
+      projectId: task.projectId,
+      actor: user,
+      category: "schedule",
+      action: "schedule.item_status_changed",
+      entityType: "schedule_item",
+      entityId: taskId,
+      summary: `Changed “${task.title}” to ${status.toLowerCase().replace("_", " ")}.`,
+      metadata: { status },
+    })
     revalidateSchedulePaths(task.projectId)
     return { success: true }
   } catch (error) {
