@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Sora, IBM_Plex_Mono, Playfair_Display } from "next/font/google";
 import { AuthKitProvider } from "@workos-inc/authkit-nextjs/components";
 import { ThemeProvider } from "@/components/theme-provider";
+import { isWorkOSConfigured } from "@/lib/auth-config";
 import "./globals.css";
 
 const sora = Sora({
@@ -42,15 +43,17 @@ export default function RootLayout({
 }: Readonly<{
 	children: React.ReactNode;
 }>) {
+	const content = <ThemeProvider>{children}</ThemeProvider>;
+
 	return (
 		<html lang="en" suppressHydrationWarning>
 		<body className={`${sora.variable} ${ibmPlexMono.variable} ${playfair.variable} font-sans antialiased`}>
-			<AuthKitProvider>
-				<ThemeProvider>
-					{children}
-				</ThemeProvider>
-			</AuthKitProvider>
+			{isWorkOSConfigured() ? (
+				<AuthKitProvider>{content}</AuthKitProvider>
+			) : (
+				content
+			)}
 		</body>
-		</html>
+	</html>
 	);
 }

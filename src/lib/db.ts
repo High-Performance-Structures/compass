@@ -1,3 +1,5 @@
+import { isE2ETest } from "@/lib/auth-config"
+
 type CompassCloudflareContext = {
     env: CloudflareEnv
     ctx: {
@@ -10,7 +12,8 @@ export async function getCloudflareContext(): Promise<CompassCloudflareContext> 
     const useCloudflareDevProxy =
         process.env.COMPASS_USE_CLOUDFLARE_DEV_PROXY === "true"
     const isLocalDev =
-        process.env.NODE_ENV === "development" && !useCloudflareDevProxy
+        (process.env.NODE_ENV === "development" || isE2ETest()) &&
+        !useCloudflareDevProxy
 
     if (isLocalDev) {
         return getLocalCloudflareContext()
@@ -23,7 +26,7 @@ export async function getCloudflareContext(): Promise<CompassCloudflareContext> 
         return getCfContext()
     } catch (error) {
         if (
-            process.env.NODE_ENV === "development" &&
+            (process.env.NODE_ENV === "development" || isE2ETest()) &&
             error instanceof Error &&
             error.message.includes("initOpenNextCloudflareForDev")
         ) {

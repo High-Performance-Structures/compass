@@ -66,6 +66,16 @@ const upsert = db.transaction(() => {
   `).run(now, now)
 
   db.prepare(`
+    INSERT INTO project_members (
+      id, project_id, user_id, role, assigned_at
+    ) VALUES (
+      'e2e-project-member-001', 'e2e-project-001', 'demo-user-001',
+      'project_manager', ?
+    )
+    ON CONFLICT(id) DO UPDATE SET role = excluded.role
+  `).run(now)
+
+  db.prepare(`
     INSERT INTO schedule_tasks (
       id, project_id, title, start_date, workdays, end_date_calculated, phase,
       display_color, status, is_critical_path, is_milestone, percent_complete,
