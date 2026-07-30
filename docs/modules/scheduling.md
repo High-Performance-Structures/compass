@@ -26,6 +26,11 @@ user to confirm or decline a schedule commitment. The request is delivered
 after publication; manual-name assignees remain supported but cannot confirm
 until linked to an active Compass account.
 
+Staff can attach operational links to a schedule item for the file, RFI,
+conversation, or to-do that carries the work forward. Links are project-scoped,
+permission checked, and remain internal; they are not included in owner or
+subcontractor publication snapshots.
+
 The type system (`src/lib/schedule/types.ts`) models construction phases explicitly:
 
 ```typescript
