@@ -1,13 +1,16 @@
 import { NextRequest, NextResponse } from "next/server"
 import { authkit, handleAuthkitHeaders } from "@workos-inc/authkit-nextjs"
-import { isLocalDevelopment, isWorkOSConfigured } from "@/lib/auth-config"
+import {
+  isDevAuthFallbackAllowed,
+  isWorkOSConfigured,
+} from "@/lib/auth-config"
 import { isPublicPath } from "@/lib/public-paths"
 
 export default async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
 
   if (!isWorkOSConfigured()) {
-    if (isLocalDevelopment()) {
+    if (isDevAuthFallbackAllowed()) {
       return NextResponse.next()
     }
 

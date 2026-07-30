@@ -14,6 +14,13 @@ export function isLocalDevelopment(): boolean {
   return process.env.NODE_ENV === "development"
 }
 
+export function isE2ETest(): boolean {
+  return process.env.COMPASS_E2E === "true"
+}
+
 export function isDevAuthFallbackAllowed(): boolean {
-  return isLocalDevelopment() && !isWorkOSConfigured()
+  return (
+    (isLocalDevelopment() || isE2ETest()) &&
+    !isWorkOSConfigured()
+  )
 }
