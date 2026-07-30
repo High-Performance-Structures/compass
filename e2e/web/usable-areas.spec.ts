@@ -431,7 +431,12 @@ test.describe("usable Compass areas", () => {
   test("work calendar arrows move by the active view period", async ({
     page,
   }) => {
-    const periodLabel = page.getByTestId("work-calendar-period-label")
+    // App Router can briefly retain the previous streamed tree while the next
+    // calendar route commits. Both labels contain the same period, so target
+    // the active tree without making the navigation assertion timing-sensitive.
+    const periodLabel = page
+      .getByTestId("work-calendar-period-label")
+      .last()
 
     let response = await page.goto("/dashboard/schedule?view=today")
     await expectHealthyNavigation(page, response, "/dashboard/schedule")
