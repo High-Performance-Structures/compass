@@ -76,6 +76,7 @@ import { toast } from "sonner"
 import { cn } from "@/lib/utils"
 import type { ProjectTaskAssigneeOption } from "@/app/actions/project-contacts"
 import { ProjectAssigneePicker } from "@/components/projects/project-assignee-picker"
+import { ScheduleItemLinks } from "@/components/schedule/schedule-item-links"
 
 const phases = PHASE_ORDER.map((value) => ({
   value,
@@ -817,6 +818,8 @@ export function ScheduleItemFormDialog({
                       </div>
                     )}
                   </div>
+
+                  {isEditing && <ScheduleItemLinks taskId={editingTask.id} />}
 
                   {/* Predecessors */}
                   <div className="space-y-2">

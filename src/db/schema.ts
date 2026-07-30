@@ -1199,6 +1199,34 @@ export const scheduleTasks = sqliteTable("schedule_tasks", {
   updatedAt: text("updated_at").notNull(),
 })
 
+export const scheduleTaskLinks = sqliteTable(
+  "schedule_task_links",
+  {
+    id: text("id").primaryKey(),
+    scheduleTaskId: text("schedule_task_id")
+      .notNull()
+      .references(() => scheduleTasks.id, { onDelete: "cascade" }),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    resourceType: text("resource_type").notNull(),
+    resourceId: text("resource_id"),
+    label: text("label").notNull(),
+    href: text("href").notNull(),
+    createdBy: text("created_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    createdAt: text("created_at").notNull(),
+  },
+  (table) => [
+    index("idx_schedule_task_links_task").on(table.scheduleTaskId),
+    index("idx_schedule_task_links_project_type").on(
+      table.projectId,
+      table.resourceType
+    ),
+  ]
+)
+
 export const dailyLogTaskLinks = sqliteTable("daily_log_task_links", {
   id: text("id").primaryKey(),
   dailyLogId: text("daily_log_id")
