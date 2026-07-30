@@ -39,10 +39,12 @@ export function ProjectBudgetPanel({
   projectId,
   summary,
   detailHref,
+  divisionLimit = 6,
 }: {
   readonly projectId: string
   readonly summary: ProjectBudgetSummary | null
   readonly detailHref?: string | null
+  readonly divisionLimit?: number | null
 }): React.ReactElement {
   if (!summary || summary.allLines.length === 0) {
     return (
@@ -58,9 +60,13 @@ export function ProjectBudgetPanel({
     )
   }
 
-  const topDivisions = summary.divisions
-    .filter((division) => division.adjustedEstimate > 0)
-    .slice(0, 6)
+  const visibleDivisions = summary.divisions.filter(
+    (division) => division.adjustedEstimate > 0
+  )
+  const displayedDivisions =
+    divisionLimit === null
+      ? visibleDivisions
+      : visibleDivisions.slice(0, divisionLimit)
   const resolvedDetailHref =
     detailHref === undefined
       ? `/dashboard/projects/${projectId}/budget`
@@ -145,8 +151,8 @@ export function ProjectBudgetPanel({
         </div>
       </div>
 
-      <div className="mt-4 space-y-3">
-        {topDivisions.map((division) => (
+      <div className="mt-4 space-y-3 print:hidden">
+        {displayedDivisions.map((division) => (
           <div key={division.csiDivision} className="border-l-2 border-l-teal-500 border-y border-r px-3 py-2">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div className="min-w-0">
@@ -171,7 +177,7 @@ export function ProjectBudgetPanel({
         ))}
       </div>
 
-      <div className="mt-4 flex items-start gap-2 border-t pt-3 text-xs text-muted-foreground">
+      <div className="mt-4 flex items-start gap-2 border-t pt-3 text-xs text-muted-foreground print:hidden">
         <IconLock className="mt-0.5 size-4 shrink-0" />
         <p>
           Internal view shows all budget detail. Owner view uses approved
@@ -229,7 +235,9 @@ export function ProjectBudgetG703Table({
                 <td className="px-3 py-2 text-right font-semibold">
                   {money(division.adjustedEstimate)}
                 </td>
-                <td className="px-3 py-2 text-right" />
+                <td className="px-3 py-2 text-right font-semibold">
+                  {money(division.priorCosts)}
+                </td>
                 <td className="px-3 py-2 text-right font-semibold">
                   {money(division.currentCosts)}
                 </td>
@@ -303,6 +311,38 @@ export function ProjectBudgetG703Table({
             </Fragment>
           ))}
         </tbody>
+        <tfoot className="border-t-2 bg-muted/50">
+          <tr>
+            <td className="px-3 py-3 text-left font-semibold" colSpan={2}>
+              G703 project totals
+            </td>
+            <td className="px-3 py-3 text-right font-semibold">
+              {money(summary.totals.originalEstimate)}
+            </td>
+            <td className="px-3 py-3 text-right font-semibold">
+              {money(summary.totals.totalChanges)}
+            </td>
+            <td className="px-3 py-3 text-right font-semibold">
+              {money(summary.totals.adjustedEstimate)}
+            </td>
+            <td className="px-3 py-3 text-right font-semibold">
+              {money(summary.totals.priorCosts)}
+            </td>
+            <td className="px-3 py-3 text-right font-semibold">
+              {money(summary.totals.currentCosts)}
+            </td>
+            <td className="px-3 py-3 text-right font-semibold">
+              {money(summary.totals.totalCosts)}
+            </td>
+            <td className="px-3 py-3 text-right font-semibold">
+              {pct(summary.totals.percentComplete)}
+            </td>
+            <td className="px-3 py-3 text-right font-semibold">
+              {money(summary.totals.balanceToFinish)}
+            </td>
+            {showVisibility && <td className="px-3 py-3" />}
+          </tr>
+        </tfoot>
       </table>
     </div>
   )
