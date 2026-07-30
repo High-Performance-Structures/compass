@@ -5,6 +5,91 @@ import { dirname, resolve } from "node:path"
 const databasePath = resolve(process.env.LOCAL_DB_PATH || "local.db")
 const now = new Date().toISOString()
 const today = now.slice(0, 10)
+const publishedScheduleSnapshot = JSON.stringify({
+  version: 1,
+  tasks: [
+    {
+      id: "e2e-schedule-001",
+      projectId: "e2e-project-001",
+      title: "Published schedule commitment",
+      startDate: today,
+      workdays: 3,
+      endDateCalculated: today,
+      phase: "Preconstruction",
+      displayColor: "blue",
+      status: "IN_PROGRESS",
+      isCriticalPath: true,
+      isMilestone: false,
+      percentComplete: 25,
+      assignedTo: "Demo User",
+      assignedUserId: "demo-user-001",
+      ownerVisible: true,
+      subVendorVisible: true,
+      confirmationRequired: true,
+      confirmationStatus: "pending",
+      confirmationRequestedAt: now,
+      confirmationRespondedAt: null,
+      reminderSentAt: null,
+      sortOrder: 1,
+      createdAt: now,
+      updatedAt: now,
+    },
+    {
+      id: "e2e-published-owner-only",
+      projectId: "e2e-project-001",
+      title: "Owner-visible published milestone",
+      startDate: today,
+      workdays: 1,
+      endDateCalculated: today,
+      phase: "Closeout",
+      displayColor: "green",
+      status: "PENDING",
+      isCriticalPath: false,
+      isMilestone: true,
+      percentComplete: 0,
+      assignedTo: null,
+      assignedUserId: null,
+      ownerVisible: true,
+      subVendorVisible: false,
+      confirmationRequired: false,
+      confirmationStatus: "not_requested",
+      confirmationRequestedAt: null,
+      confirmationRespondedAt: null,
+      reminderSentAt: null,
+      sortOrder: 2,
+      createdAt: now,
+      updatedAt: now,
+    },
+    {
+      id: "e2e-published-sub-only",
+      projectId: "e2e-project-001",
+      title: "Partner-visible published delivery",
+      startDate: today,
+      workdays: 1,
+      endDateCalculated: today,
+      phase: "Procurement",
+      displayColor: "orange",
+      status: "PENDING",
+      isCriticalPath: false,
+      isMilestone: true,
+      percentComplete: 0,
+      assignedTo: "Demo Trade Partner",
+      assignedUserId: null,
+      ownerVisible: false,
+      subVendorVisible: true,
+      confirmationRequired: false,
+      confirmationStatus: "not_requested",
+      confirmationRequestedAt: null,
+      confirmationRespondedAt: null,
+      reminderSentAt: null,
+      sortOrder: 3,
+      createdAt: now,
+      updatedAt: now,
+    },
+  ],
+  dependencies: [],
+  exceptions: [],
+})
 
 mkdirSync(dirname(databasePath), { recursive: true })
 
@@ -199,6 +284,36 @@ const upsert = db.transaction(() => {
       due_date = excluded.due_date,
       updated_at = excluded.updated_at
   `).run(today, now, now)
+
+  db.prepare(`
+    INSERT INTO schedule_task_links (
+      id, schedule_task_id, project_id, resource_type, resource_id, label,
+      href, created_by, created_at
+    ) VALUES (
+      'e2e-schedule-link-001', 'e2e-schedule-001', 'e2e-project-001',
+      'rfi', 'e2e-rfi-private', 'Internal regression RFI link',
+      '/dashboard/projects/e2e-project-001/rfis?item=e2e-rfi-private',
+      'demo-user-001', ?
+    )
+    ON CONFLICT(id) DO UPDATE SET
+      label = excluded.label,
+      href = excluded.href
+  `).run(now)
+
+  db.prepare(`
+    INSERT INTO schedule_publications (
+      id, project_id, snapshot_data, change_reason, published_by, published_at
+    ) VALUES (
+      'e2e-schedule-publication-001', 'e2e-project-001', ?,
+      'Deterministic published schedule regression fixture.',
+      'demo-user-001', ?
+    )
+    ON CONFLICT(id) DO UPDATE SET
+      snapshot_data = excluded.snapshot_data,
+      change_reason = excluded.change_reason,
+      published_by = excluded.published_by,
+      published_at = excluded.published_at
+  `).run(publishedScheduleSnapshot, now)
 })
 
 try {

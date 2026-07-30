@@ -338,6 +338,75 @@ test.describe("usable Compass areas", () => {
     ).toHaveCount(2)
   })
 
+  test("published audience schedules stay isolated from drafts and internal links", async ({
+    page,
+  }) => {
+    const internalPath =
+      "/dashboard/projects/e2e-project-001/schedule?view=list"
+    let response = await page.goto(internalPath)
+    await expectHealthyNavigation(
+      page,
+      response,
+      "/dashboard/projects/e2e-project-001/schedule"
+    )
+
+    await expect(
+      page.getByText("Regression Schedule Item", { exact: true }).first()
+    ).toBeVisible()
+    await expect(
+      page.getByText("Published schedule commitment", { exact: true })
+    ).toHaveCount(0)
+
+    const scheduleRow = page.locator("#schedule-item-e2e-schedule-001")
+    await scheduleRow.locator('button[title="Edit schedule item"]').click()
+    const editDialog = page.getByRole("dialog", {
+      name: "Edit Schedule Item",
+    })
+    await expect(editDialog.getByText("Operational links")).toBeVisible()
+    await expect(
+      editDialog.getByRole("link", { name: "Internal regression RFI link" })
+    ).toBeVisible()
+
+    await page.keyboard.press("Escape")
+    const ownerPath =
+      "/preview/projects/e2e-project-001/owner/schedule"
+    response = await page.goto(ownerPath)
+    await expectHealthyNavigation(page, response, ownerPath)
+    await expect(
+      page.getByText("Published schedule commitment", { exact: true })
+    ).toBeVisible()
+    await expect(
+      page.getByText("Owner-visible published milestone", { exact: true })
+    ).toBeVisible()
+    await expect(
+      page.getByText("Partner-visible published delivery", { exact: true })
+    ).toHaveCount(0)
+    await expect(
+      page.getByText("Regression Schedule Item", { exact: true })
+    ).toHaveCount(0)
+    await expect(page.getByText("Internal regression RFI link")).toHaveCount(0)
+    await expect(page.getByText("Awaiting confirmation")).toBeVisible()
+    await expect(page.getByRole("button", { name: "Confirm" })).toHaveCount(0)
+
+    const partnerPath =
+      "/preview/projects/e2e-project-001/sub-vendor/schedule"
+    response = await page.goto(partnerPath)
+    await expectHealthyNavigation(page, response, partnerPath)
+    await expect(
+      page.getByText("Published schedule commitment", { exact: true })
+    ).toBeVisible()
+    await expect(
+      page.getByText("Partner-visible published delivery", { exact: true })
+    ).toBeVisible()
+    await expect(
+      page.getByText("Owner-visible published milestone", { exact: true })
+    ).toHaveCount(0)
+    await expect(
+      page.getByText("Regression Schedule Item", { exact: true })
+    ).toHaveCount(0)
+    await expect(page.getByText("Internal regression RFI link")).toHaveCount(0)
+  })
+
   test("work calendar list shows the actual item title", async ({
     page,
   }) => {

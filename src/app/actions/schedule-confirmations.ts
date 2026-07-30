@@ -19,6 +19,7 @@ import { createNotificationEvent } from "@/lib/notifications/events"
 import { requireOrg } from "@/lib/org-scope"
 import { requirePermission } from "@/lib/permissions"
 import { assertProjectAccess } from "@/lib/project-access"
+import { isPublishedScheduleAssignmentVisible } from "@/lib/schedule/confirmation"
 import { parsePublishedScheduleSnapshot } from "@/lib/schedule/publications"
 
 type ConfirmationResponse = "confirmed" | "declined"
@@ -119,13 +120,13 @@ export async function sendPublishedScheduleAssignment(
         )
       )
       .get()
-    if (
-      ((membership?.role === "client" || membership?.role === "owner") &&
-        publishedTask.ownerVisible === false) ||
-      ((membership?.role === "subcontractor" ||
-        membership?.role === "supplier") &&
-        publishedTask.subVendorVisible !== true)
-    ) {
+    if (!isPublishedScheduleAssignmentVisible({
+      currentAssignedUserId: task.assignedUserId,
+      publishedAssignedUserId: publishedTask.assignedUserId,
+      projectRole: membership?.role ?? null,
+      ownerVisible: publishedTask.ownerVisible,
+      subVendorVisible: publishedTask.subVendorVisible,
+    })) {
       return {
         success: false,
         error: "The published item is not visible to the assigned user.",
@@ -265,13 +266,15 @@ export async function sendScheduleTaskReminder(
         )
       )
       .get()
-    if (
-      ((membership?.role === "client" || membership?.role === "owner") &&
-        publishedTask.ownerVisible === false) ||
-      ((membership?.role === "subcontractor" ||
-        membership?.role === "supplier") &&
-        publishedTask.subVendorVisible !== true)
-    ) {
+    if (!isPublishedScheduleAssignmentVisible({
+      currentAssignedUserId: task.assignedUserId,
+      publishedAssignedUserId: publishedTask.assignedUserId,
+      projectRole: membership?.role ?? null,
+      ownerVisible: publishedTask.ownerVisible,
+      subVendorVisible: publishedTask.subVendorVisible,
+      confirmationRequired: true,
+      publishedConfirmationRequired: publishedTask.confirmationRequired,
+    })) {
       return {
         success: false,
         error:
