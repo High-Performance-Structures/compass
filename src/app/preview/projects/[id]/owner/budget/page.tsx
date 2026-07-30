@@ -258,6 +258,7 @@ export default async function OwnerBudgetPage({
                   alt={brand.logoAlt}
                   width={64}
                   height={64}
+                  priority
                   className="size-14 object-contain"
                 />
                 <div>

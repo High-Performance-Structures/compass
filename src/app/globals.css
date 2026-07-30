@@ -431,6 +431,11 @@ em-emoji-picker {
   color: var(--primary);
 }
 
+/* Print clones stay hidden on-screen while iPad Safari builds its preview. */
+.owner-budget-print-root {
+  display: none;
+}
+
 @media print {
   @page {
     margin: 0.5in;

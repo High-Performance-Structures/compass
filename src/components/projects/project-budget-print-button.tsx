@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button"
 import { requiresSynchronousPrint } from "@/lib/print/ios-print"
 
 const PRINT_IMAGE_TIMEOUT_MS = 3_000
+const IOS_PRINT_STATE_TIMEOUT_MS = 120_000
 
 async function waitForImage(image: HTMLImageElement): Promise<void> {
   if (image.complete) return
@@ -54,15 +55,17 @@ export function ProjectBudgetPrintButton(): React.ReactElement {
       window.removeEventListener("afterprint", resetPrintState)
     }
 
-    window.addEventListener("afterprint", resetPrintState)
     if (requiresSynchronousPrint(window.navigator)) {
       // iPad Safari drops the tap's user activation after the first await,
-      // causing window.print() to be ignored entirely.
+      // causing window.print() to be ignored entirely. Its print sheet also
+      // renders asynchronously, so keep the isolated document alive while the
+      // preview is generated instead of relying on afterprint or a short timer.
       window.print()
-      window.setTimeout(resetPrintState, 5_000)
+      window.setTimeout(resetPrintState, IOS_PRINT_STATE_TIMEOUT_MS)
       return
     }
 
+    window.addEventListener("afterprint", resetPrintState)
     await Promise.all(
       Array.from(printRoot.querySelectorAll("img")).map(waitForImage)
     )
