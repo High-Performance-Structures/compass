@@ -91,6 +91,7 @@ export default async function ProjectRfisPage({
   readonly params: Promise<{ readonly id: string }>
   readonly searchParams: Promise<{
     readonly created?: string | readonly string[]
+    readonly item?: string | readonly string[]
     readonly status?: string | readonly string[]
   }>
 }) {
@@ -99,6 +100,9 @@ export default async function ProjectRfisPage({
   const createdRfiId = Array.isArray(query.created)
     ? query.created[0] ?? null
     : query.created ?? null
+  const focusedRfiId = Array.isArray(query.item)
+    ? query.item[0] ?? null
+    : query.item ?? null
   const statusFilter = parseRfiStatusFilter(query.status)
   const [projects, rfis, contactsSummary, taskAssigneeOptions] =
     await Promise.all([
@@ -235,6 +239,7 @@ export default async function ProjectRfisPage({
         {visibleRfis.length > 0 ? (
           visibleRfis.map((rfi) => {
             const isCreated = rfi.id === createdRfiId
+            const isFocused = rfi.id === focusedRfiId
             const canonicalStatus = canonicalRfiStatus(rfi.status)
             return (
               <article
@@ -242,7 +247,7 @@ export default async function ProjectRfisPage({
                 id={`rfi-${rfi.id}`}
                 className={cn(
                   "scroll-mt-6 border-l-2 border-y border-r bg-background px-4 py-3",
-                  isCreated
+                  isCreated || isFocused
                     ? "border-l-brand-hps-primary bg-card"
                     : "border-l-brand-nutech-gold"
                 )}
@@ -259,6 +264,9 @@ export default async function ProjectRfisPage({
                   <div className="flex flex-wrap gap-1">
                     {isCreated && (
                       <Badge variant="secondary">Just created</Badge>
+                    )}
+                    {isFocused && !isCreated && (
+                      <Badge variant="secondary">Selected from calendar</Badge>
                     )}
                     <Badge
                       variant={

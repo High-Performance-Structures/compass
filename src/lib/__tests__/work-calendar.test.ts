@@ -1,9 +1,12 @@
 import { describe, expect, it } from "vitest"
 
 import {
+  compareOfficeCalendarPriority,
   instantForLocalDateTime,
   isValidDateKey,
   normalizeWorkCalendarEventTiming,
+  projectPurchaseOrderHref,
+  projectRfiHref,
   projectTodoHref,
   resolveHOfficeProjectId,
   scheduleItemHref,
@@ -35,13 +38,48 @@ describe("work calendar navigation and search", () => {
     expect(workCalendarEntryMatches(entry, "Loomis")).toBe(false)
   })
 
-  it("builds focused links for to-dos and schedule items", () => {
+  it("builds focused links for every Work Calendar source record", () => {
     expect(projectTodoHref("proj/o 202", "todo/14")).toBe(
       "/dashboard/projects/proj%2Fo%20202/todos?item=todo%2F14#todo-todo%2F14"
     )
     expect(scheduleItemHref("proj/o 202", "task/8")).toBe(
       "/dashboard/projects/proj%2Fo%20202/schedule?view=list&item=task%2F8#schedule-item-task%2F8"
     )
+    expect(projectRfiHref("proj/o 202", "rfi/3")).toBe(
+      "/dashboard/projects/proj%2Fo%20202/rfis?status=all&item=rfi%2F3#rfi-rfi%2F3"
+    )
+    expect(projectPurchaseOrderHref("proj/o 202", "po/9")).toBe(
+      "/dashboard/projects/proj%2Fo%20202/purchase-orders?status=all&item=po%2F9#purchase-order-po%2F9"
+    )
+  })
+
+  it("places H-Office events before other company events", () => {
+    const events = [
+      {
+        projectId: "loeffler",
+        startDate: "2026-07-30",
+        title: "Site walk",
+      },
+      {
+        projectId: "h-office",
+        startDate: "2026-07-31",
+        title: "Office meeting",
+      },
+      {
+        projectId: null,
+        startDate: "2026-07-29",
+        title: "Company event",
+      },
+    ]
+
+    expect(
+      events
+        .slice()
+        .sort((left, right) =>
+          compareOfficeCalendarPriority(left, right, "h-office")
+        )
+        .map((event) => event.title)
+    ).toEqual(["Office meeting", "Company event", "Site walk"])
   })
 })
 

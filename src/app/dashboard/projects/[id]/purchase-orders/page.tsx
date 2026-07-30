@@ -105,6 +105,7 @@ function PurchaseOrderCard({
   projectId,
   projectLabel,
   isCreated,
+  isFocused,
   taskAssigneeOptions,
 }: {
   readonly brand: ProjectBrand
@@ -112,16 +113,18 @@ function PurchaseOrderCard({
   readonly projectId: string
   readonly projectLabel: string
   readonly isCreated: boolean
+  readonly isFocused: boolean
   readonly taskAssigneeOptions: React.ComponentProps<
     typeof ProjectTaskCreateButton
   >["assigneeOptions"]
 }): React.ReactElement {
   return (
     <article
+      id={`purchase-order-${order.id}`}
       data-po-id={order.id}
       className={cn(
-        "po-printable rounded-lg border bg-background p-4 print:border-0 print:p-0",
-        isCreated && "border-brand-hps-primary bg-card"
+        "po-printable scroll-mt-6 rounded-lg border bg-background p-4 print:border-0 print:p-0",
+        (isCreated || isFocused) && "border-brand-hps-primary bg-card"
       )}
     >
       <div className="print:hidden">
@@ -134,6 +137,9 @@ function PurchaseOrderCard({
           </div>
           <div className="flex flex-wrap gap-1">
             {isCreated && <Badge variant="secondary">Just created</Badge>}
+            {isFocused && !isCreated && (
+              <Badge variant="secondary">Selected from calendar</Badge>
+            )}
             <ProjectOperationStatusSelect
               projectId={projectId}
               operationId={order.id}
@@ -348,6 +354,7 @@ export default async function ProjectPurchaseOrdersPage({
   readonly params: Promise<{ readonly id: string }>
   readonly searchParams: Promise<{
     readonly created?: string | readonly string[]
+    readonly item?: string | readonly string[]
     readonly status?: string | readonly string[]
   }>
 }) {
@@ -356,6 +363,9 @@ export default async function ProjectPurchaseOrdersPage({
   const createdPurchaseOrderId = Array.isArray(query.created)
     ? query.created[0] ?? null
     : query.created ?? null
+  const focusedPurchaseOrderId = Array.isArray(query.item)
+    ? query.item[0] ?? null
+    : query.item ?? null
   const statusFilter = parseProjectOperationStatusFilter(query.status)
   const [
     projects,
@@ -491,6 +501,7 @@ export default async function ProjectPurchaseOrdersPage({
                 }`
               }
               isCreated={order.id === createdPurchaseOrderId}
+              isFocused={order.id === focusedPurchaseOrderId}
               taskAssigneeOptions={taskAssignees}
             />
           ))

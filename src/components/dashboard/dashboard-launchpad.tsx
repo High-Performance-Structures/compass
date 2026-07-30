@@ -76,6 +76,13 @@ import {
   type TeamAvailabilityMember,
 } from "@/lib/dashboard/office-status"
 import { dashboardDeskPhotoStorageKey } from "@/lib/user-photo-storage"
+import { isProjectTodoRecordType } from "@/lib/project-todos"
+import {
+  compareOfficeCalendarPriority,
+  projectPurchaseOrderHref,
+  projectTodoHref,
+  scheduleItemHref,
+} from "@/lib/work-calendar"
 import { cn } from "@/lib/utils"
 import { usePresence } from "@/contexts/presence-context"
 
@@ -86,7 +93,23 @@ type LaunchpadTask = {
   readonly title: string
   readonly detail: string
   readonly href: string
-  readonly category: "Schedule" | "Invoice" | "Owner update" | "Field review"
+  readonly category:
+    | "Event"
+    | "Invoice"
+    | "Owner update"
+    | "Field review"
+}
+
+export type DashboardOfficeEvent = {
+  readonly id: string
+  readonly projectId: string | null
+  readonly projectLabel: string
+  readonly title: string
+  readonly startDate: string
+  readonly endDate: string
+  readonly href: string
+  readonly allDay: boolean
+  readonly startTime: string
 }
 
 const MARTINE_DEFAULT_DESK_PHOTO = "/user-desk-photos/martine-desk-photo.jpeg"
@@ -243,7 +266,10 @@ function formatLongDate(value: string): string {
 }
 
 function taskFallsOnDay(
-  task: DashboardOverview["upcomingTasks"][number],
+  task: {
+    readonly startDate: string
+    readonly endDate: string
+  },
   day: string
 ): boolean {
   return task.startDate <= day && task.endDate >= day
@@ -277,9 +303,13 @@ function greetingForNow(): string {
 function Horizon({
   overview,
   mode,
+  officeCalendarEvents,
+  officeProjectId,
 }: {
   readonly overview: DashboardOverview
   readonly mode: DashboardMode
+  readonly officeCalendarEvents: readonly DashboardOfficeEvent[]
+  readonly officeProjectId: string | null
 }): React.ReactElement {
   const days = useMemo(
     () =>
@@ -287,6 +317,31 @@ function Horizon({
         dateKey(addDays(parseDateKey(overview.today), index))
       ),
     [overview.today]
+  )
+  const horizonEntries = useMemo(
+    () =>
+      mode === "office"
+        ? officeCalendarEvents
+            .slice()
+            .sort((left, right) =>
+              compareOfficeCalendarPriority(
+                left,
+                right,
+                officeProjectId
+              )
+            )
+        : overview.upcomingTasks.map((task) => ({
+            id: task.id,
+            projectId: task.projectId,
+            projectLabel: task.projectLabel,
+            title: task.title,
+            startDate: task.startDate,
+            endDate: task.endDate,
+            href: scheduleItemHref(task.projectId, task.id),
+            allDay: true,
+            startTime: "",
+          })),
+    [mode, officeCalendarEvents, officeProjectId, overview.upcomingTasks]
   )
 
   return (
@@ -298,13 +353,19 @@ function Horizon({
             <h2 className="text-sm font-semibold">Five-day horizon</h2>
             <p className="text-xs text-muted-foreground">
               {mode === "office"
-                ? "H-Office commitments first, then company-wide work"
+                ? "H-Office events first, then company-wide events"
                 : "The next commitments across active projects"}
             </p>
           </div>
         </div>
         <Button asChild variant="ghost" size="sm" className="shrink-0">
-          <Link href="/dashboard/schedule">
+          <Link
+            href={
+              mode === "office"
+                ? "/dashboard/schedule?kind=event"
+                : "/dashboard/schedule?mode=projects&scope=all&view=gantt"
+            }
+          >
             Full calendar
             <IconArrowRight className="size-4" />
           </Link>
@@ -313,11 +374,9 @@ function Horizon({
 
       <div className="grid grid-cols-2 border-t sm:grid-cols-3 xl:grid-cols-5">
         {days.map((day, index) => {
-          const dayTasks = overview.upcomingTasks
-            .filter((task) => taskFallsOnDay(task, day))
-            .sort((left, right) =>
-              mode === "office" ? compareOfficePriority(left, right) : 0
-            )
+          const dayTasks = horizonEntries.filter((task) =>
+            taskFallsOnDay(task, day)
+          )
 
           return (
             <div
@@ -346,17 +405,21 @@ function Horizon({
                 {dayTasks.slice(0, 2).map((task) => (
                   <Link
                     key={`${day}-${task.id}`}
-                    href={`/dashboard/projects/${task.projectId}/schedule?task=${encodeURIComponent(task.id)}`}
+                    href={task.href}
                     className="block border-l-2 border-[#2f5963] pl-2 text-xs transition-colors hover:text-primary"
                   >
                     <span className="line-clamp-1 font-medium">{task.title}</span>
                     <span className="mt-0.5 block truncate text-[11px] text-muted-foreground">
-                      {task.projectLabel}
+                      {!task.allDay && task.startTime
+                        ? `${task.startTime} · ${task.projectLabel}`
+                        : task.projectLabel}
                     </span>
                   </Link>
                 ))}
                 {dayTasks.length === 0 ? (
-                  <p className="pt-1 text-xs text-muted-foreground/70">Open</p>
+                  <p className="pt-1 text-xs text-muted-foreground/70">
+                    {mode === "office" ? "No office events" : "Open"}
+                  </p>
                 ) : null}
                 {dayTasks.length > 2 ? (
                   <p className="text-[11px] font-medium text-muted-foreground">
@@ -625,24 +688,27 @@ function CherishComposer(): React.ReactElement {
 
 function OfficeTaskList({
   overview,
+  officeCalendarEvents,
+  officeProjectId,
 }: {
   readonly overview: DashboardOverview
+  readonly officeCalendarEvents: readonly DashboardOfficeEvent[]
+  readonly officeProjectId: string | null
 }): React.ReactElement {
   const tasks = useMemo<readonly LaunchpadTask[]>(() => {
-    const scheduleTasks: readonly LaunchpadTask[] = overview.upcomingTasks
+    const eventTasks: readonly LaunchpadTask[] = officeCalendarEvents
       .slice()
-      .sort((left, right) => {
-        const officePriority = compareOfficePriority(left, right)
-        if (officePriority !== 0) return officePriority
-        return left.startDate.localeCompare(right.startDate)
-      })
+      .filter((event) => event.endDate >= overview.today)
+      .sort((left, right) =>
+        compareOfficeCalendarPriority(left, right, officeProjectId)
+      )
       .slice(0, 3)
-      .map((task) => ({
-        id: `schedule-${task.id}`,
-        title: task.title,
-        detail: `${task.projectLabel} · ${formatMonthDay(task.startDate)}`,
-        href: `/dashboard/projects/${task.projectId}/schedule?task=${encodeURIComponent(task.id)}`,
-        category: "Schedule",
+      .map((event) => ({
+        id: `event-${event.id}`,
+        title: event.title,
+        detail: `${event.projectLabel} · ${formatMonthDay(event.startDate)}`,
+        href: event.href,
+        category: "Event",
       }))
     const operationTasks: readonly LaunchpadTask[] = overview.operations
       .slice()
@@ -654,8 +720,10 @@ function OfficeTaskList({
         detail: `${operation.projectLabel}${operation.companyName ? ` · ${operation.companyName}` : ""}`,
         href:
           operation.type === "purchase_order"
-            ? `/dashboard/projects/${operation.projectId}/purchase-orders`
-            : `/dashboard/projects/${operation.projectId}`,
+            ? projectPurchaseOrderHref(operation.projectId, operation.id)
+            : isProjectTodoRecordType(operation.type)
+              ? projectTodoHref(operation.projectId, operation.id)
+              : `/dashboard/projects/${operation.projectId}`,
         category: "Invoice",
       }))
     const ownerUpdateTasks: readonly LaunchpadTask[] =
@@ -680,12 +748,12 @@ function OfficeTaskList({
         : []
 
     return [
-      ...scheduleTasks,
+      ...eventTasks,
       ...ownerUpdateTasks,
       ...operationTasks,
       ...photoTasks,
     ].slice(0, 6)
-  }, [overview])
+  }, [officeCalendarEvents, officeProjectId, overview])
 
   return (
     <section className="min-w-0 border-y border-border/70 bg-background">
@@ -1189,11 +1257,15 @@ export function DashboardLaunchpad({
   user,
   initialDeskStatusMessage,
   initialTeamAvailability,
+  officeCalendarEvents,
+  officeProjectId,
 }: {
   readonly overview: DashboardOverview
   readonly user: SidebarUser | null
   readonly initialDeskStatusMessage: string | null
   readonly initialTeamAvailability: readonly TeamAvailabilityMember[]
+  readonly officeCalendarEvents: readonly DashboardOfficeEvent[]
+  readonly officeProjectId: string | null
 }): React.ReactElement {
   const [mode, setMode] = useState<DashboardMode>("office")
   const [deskStatus, setDeskStatus] = useState<DeskStatus>(() =>
@@ -1251,12 +1323,21 @@ export function DashboardLaunchpad({
           status={deskStatus}
           onStatusChange={setDeskStatus}
         />
-        <Horizon overview={overview} mode={mode} />
+        <Horizon
+          overview={overview}
+          mode={mode}
+          officeCalendarEvents={officeCalendarEvents}
+          officeProjectId={officeProjectId}
+        />
       </div>
 
       {mode === "office" ? (
         <div className="grid gap-4 xl:grid-cols-[minmax(0,1.35fr)_minmax(20rem,0.65fr)]">
-          <OfficeTaskList overview={overview} />
+          <OfficeTaskList
+            overview={overview}
+            officeCalendarEvents={officeCalendarEvents}
+            officeProjectId={officeProjectId}
+          />
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-1">
             <OfficePresence
               initialAvailability={initialTeamAvailability}

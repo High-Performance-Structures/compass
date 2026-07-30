@@ -7,7 +7,9 @@ import {
   getCurrentUserPresence,
   getOrganizationTeamAvailability,
 } from "@/app/actions/presence"
+import { getWorkCalendar } from "@/app/actions/work-calendar"
 import { DashboardLaunchpad } from "@/components/dashboard/dashboard-launchpad"
+import type { DashboardOfficeEvent } from "@/components/dashboard/dashboard-launchpad"
 import { getCurrentUser, toSidebarUser } from "@/lib/auth"
 
 export default async function Page(): Promise<React.ReactElement> {
@@ -35,10 +37,12 @@ export default async function Page(): Promise<React.ReactElement> {
     overview,
     presenceResult,
     teamAvailabilityResult,
+    workCalendar,
   ] = await Promise.all([
     getDashboardOverview(),
     getCurrentUserPresence(),
     getOrganizationTeamAvailability(),
+    getWorkCalendar(undefined, { eventsOnly: true }).catch(() => null),
   ])
   const sidebarUser = currentUser ? toSidebarUser(currentUser) : null
   const initialDeskStatusMessage = presenceResult.success
@@ -47,6 +51,22 @@ export default async function Page(): Promise<React.ReactElement> {
   const initialTeamAvailability = teamAvailabilityResult.success
     ? teamAvailabilityResult.data
     : []
+  const officeCalendarEvents: readonly DashboardOfficeEvent[] =
+    workCalendar?.entries.flatMap((entry) =>
+      entry.kind === "event"
+        ? [{
+            id: entry.id,
+            projectId: entry.projectId,
+            projectLabel: entry.projectLabel,
+            title: entry.title,
+            startDate: entry.startDate,
+            endDate: entry.endDate,
+            href: entry.href,
+            allDay: entry.eventDetails.allDay,
+            startTime: entry.eventDetails.startTime,
+          }]
+        : []
+    ) ?? []
 
   return (
     <DashboardLaunchpad
@@ -54,6 +74,8 @@ export default async function Page(): Promise<React.ReactElement> {
       user={sidebarUser}
       initialDeskStatusMessage={initialDeskStatusMessage}
       initialTeamAvailability={initialTeamAvailability}
+      officeCalendarEvents={officeCalendarEvents}
+      officeProjectId={workCalendar?.defaultProjectId ?? null}
     />
   )
 }
