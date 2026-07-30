@@ -733,10 +733,37 @@ export function OwnerUpdateDraftEditor({
                 Project photo library
               </h3>
             </div>
-            <SelectionCount
-              selected={selectedPhotoIds.length}
-              total={document.availablePhotos.length}
-            />
+            <div className="flex flex-wrap items-center gap-2">
+              <SelectionCount
+                selected={selectedPhotoIds.length}
+                total={document.availablePhotos.length}
+              />
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() =>
+                  setSelectedPhotoIds(
+                    document.availablePhotos.map((photo) => photo.id)
+                  )
+                }
+                disabled={
+                  document.availablePhotos.length === 0 ||
+                  selectedPhotoIds.length === document.availablePhotos.length
+                }
+              >
+                Select all
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => setSelectedPhotoIds([])}
+                disabled={selectedPhotoIds.length === 0}
+              >
+                Clear
+              </Button>
+            </div>
           </div>
           <p className="mt-1 text-xs text-muted-foreground">
             Choose Compass or Buildertrend photos for this update. Selecting a
@@ -756,12 +783,13 @@ export function OwnerUpdateDraftEditor({
                   ? null
                   : resolvedImage.src
                 return (
-                  <label
+                  <article
                     key={photo.id}
-                    className="group relative cursor-pointer overflow-hidden border bg-muted/20"
+                    className="group relative overflow-hidden border bg-muted/20"
                   >
                     <div className="absolute left-2 top-2 z-10 bg-background/90 p-1 shadow-sm">
                       <Checkbox
+                        id={`owner-update-photo-${photo.id}`}
                         checked={checked}
                         onCheckedChange={(value) =>
                           toggleId(
@@ -778,6 +806,8 @@ export function OwnerUpdateDraftEditor({
                         src={src}
                         alt={photo.caption ?? photo.fileName}
                         className="aspect-[4/3] w-full object-cover"
+                        loading="lazy"
+                        decoding="async"
                         onError={() =>
                           setFailedImageIds((current) =>
                             uniqueIds([...current, photo.id])
@@ -797,7 +827,7 @@ export function OwnerUpdateDraftEditor({
                         {sourceLabel(photo.sourceSystem)}
                       </p>
                     </div>
-                  </label>
+                  </article>
                 )
               })}
             </div>

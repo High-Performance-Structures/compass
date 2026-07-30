@@ -41,6 +41,7 @@ import {
   ownerUpdateTodoTiming,
 } from "@/lib/owner-updates/composer"
 import { isOwnerUpdateVisibleToRole } from "@/lib/owner-updates/history"
+import { retainSelectedAndScopedRows } from "@/lib/owner-updates/photo-selection"
 import { ownerUpdateIdBatches } from "@/lib/owner-updates/query-batches"
 import { can } from "@/lib/permissions"
 import { requireFeaturePermission } from "@/lib/permission-enforcement"
@@ -2267,7 +2268,6 @@ export async function getOwnerProjectUpdateDocument(
       )
       .map((row) => row.id)
   )
-  const photoIds = new Set(selectedPhotoIds)
   const mapDailyLog = (
     row: (typeof allLogRows)[number]
   ): OwnerUpdateDailyLog => ({
@@ -2354,13 +2354,10 @@ export async function getOwnerProjectUpdateDocument(
       ownerVisible: row.ownerVisible,
     }))
 
-  const selectedEligiblePhotoRows = selectRowsByIdOrder(
+  const selectablePhotoRows = retainSelectedAndScopedRows(
     imageRows,
-    selectedPhotoIds
-  )
-  const scopedUnselectedPhotoRows = imageRows.filter(
+    selectedPhotoIds,
     (row) =>
-      !photoIds.has(row.id) &&
       update.periodStart !== null &&
       update.periodEnd !== null &&
       isPhotoInOwnerUpdateScope(
@@ -2371,9 +2368,7 @@ export async function getOwnerProjectUpdateDocument(
       )
   )
   const availablePhotos = canManage
-    ? [...selectedEligiblePhotoRows, ...scopedUnselectedPhotoRows]
-        .slice(0, 120)
-        .map((row) => ({
+    ? selectablePhotoRows.map((row) => ({
           id: row.id,
           sourceSystem: row.sourceSystem,
           fileName: row.fileName,
