@@ -284,7 +284,11 @@ test.describe("usable Compass areas", () => {
       "/dashboard/projects/e2e-project-001/schedule"
     )
 
-    const scheduleRow = page.locator("#schedule-item-e2e-schedule-001")
+    // WebKit can retain the previous streamed schedule tree for a frame while
+    // App Router commits the current one. Use the active copy of the row.
+    const scheduleRow = page
+      .locator("#schedule-item-e2e-schedule-001")
+      .last()
     await expect(
       scheduleRow
         .getByRole("button", { name: "Edit Regression Schedule Item" })
