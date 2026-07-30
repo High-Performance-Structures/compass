@@ -142,6 +142,7 @@ export type ProjectAudiencePreview = {
     readonly name: string
     readonly email: string
     readonly avatarUrl: string | null
+    readonly sidebarPhotoUrl: string | null
   }
   readonly projectOptions: readonly AudienceProjectOption[]
   readonly project: {
@@ -174,6 +175,7 @@ async function verifyProjectAccess(
     readonly name: string
     readonly email: string
     readonly avatarUrl: string | null
+    readonly sidebarPhotoUrl: string | null
   }
 }> {
   const user = await requireAuth()
@@ -212,6 +214,7 @@ async function verifyProjectAccess(
       name: user.displayName ?? user.email.split("@")[0] ?? "Compass user",
       email: user.email,
       avatarUrl: user.avatarUrl,
+      sidebarPhotoUrl: user.sidebarDeskPhotoUrl ?? null,
     },
   }
 }

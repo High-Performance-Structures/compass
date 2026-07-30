@@ -7,7 +7,7 @@ import { CommandMenuProvider } from "@/components/command-menu-provider"
 import { SettingsProvider } from "@/components/settings-provider"
 import { FeedbackWidget } from "@/components/feedback-widget"
 import { PageActionsProvider } from "@/components/page-actions-provider"
-import { DashboardContextMenu } from "@/components/dashboard-context-menu"
+import { NavigationProgress } from "@/components/navigation-progress"
 import { Toaster } from "@/components/ui/sonner"
 import { ChatPanelShell } from "@/components/agent/chat-panel-shell"
 import { MainContent } from "@/components/agent/main-content"
@@ -59,6 +59,7 @@ export default async function DashboardLayout({
   const canViewActivity = authUser
     ? isInternalStaffRole(authUser.role)
     : false
+  const canUseDirectMessages = canViewActivity
   const offlineScopeKey =
     authUser?.organizationId && authUser.id
       ? `${authUser.organizationId}:${authUser.id}`
@@ -79,7 +80,6 @@ export default async function DashboardLayout({
       <BiometricGuard userId={authUser?.id}>
       <DesktopShell>
       <FeedbackWidget>
-      <DashboardContextMenu>
       <SidebarProvider
         defaultOpen={sidebarOpen}
         className="h-screen overflow-hidden"
@@ -106,7 +106,9 @@ export default async function DashboardLayout({
             user={user}
             canUseAskCompass={canUseCompassAgent}
             canUseOfficeTalk={canUseCompassOfficeTalk}
+            canUseDirectMessages={canUseDirectMessages}
           />
+          <NavigationProgress />
           <div className="flex min-h-0 flex-1 overflow-hidden">
             <MainContent>
               {children}
@@ -122,7 +124,6 @@ export default async function DashboardLayout({
         </p>
         <Toaster position="bottom-right" />
       </SidebarProvider>
-      </DashboardContextMenu>
       </FeedbackWidget>
       </DesktopShell>
       </BiometricGuard>

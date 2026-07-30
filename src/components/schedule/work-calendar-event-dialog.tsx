@@ -56,6 +56,10 @@ import {
   type WorkCalendarEventType,
   type WorkCalendarEventVisibility,
 } from "@/lib/work-calendar"
+import {
+  isWorkCalendarRecurrence,
+  type WorkCalendarRecurrence,
+} from "@/lib/work-calendar-recurrence"
 
 const DEFAULT_PROJECT_VALUE = "__h_office_default__"
 
@@ -96,6 +100,8 @@ type EventFormSeed = {
   readonly timeZone: string
   readonly location: string
   readonly meetingUrl: string
+  readonly recurrence: WorkCalendarRecurrence
+  readonly recurrenceUntil: string
   readonly attendeeUserIds: readonly string[]
 }
 
@@ -126,6 +132,8 @@ function formSeed(
       timeZone: details.timeZone,
       location: details.location ?? "",
       meetingUrl: details.meetingUrl ?? "",
+      recurrence: details.recurrence,
+      recurrenceUntil: details.recurrenceUntil ?? "",
       attendeeUserIds: details.attendees.map(
         (attendee) => attendee.userId
       ),
@@ -148,6 +156,8 @@ function formSeed(
     timeZone: props.defaultTimeZone,
     location: "",
     meetingUrl: "",
+    recurrence: "none",
+    recurrenceUntil: "",
     attendeeUserIds: [],
   }
 }
@@ -172,6 +182,10 @@ export function WorkCalendarEventDialog(
   const [timeZone, setTimeZone] = React.useState(seed.timeZone)
   const [location, setLocation] = React.useState(seed.location)
   const [meetingUrl, setMeetingUrl] = React.useState(seed.meetingUrl)
+  const [recurrence, setRecurrence] = React.useState(seed.recurrence)
+  const [recurrenceUntil, setRecurrenceUntil] = React.useState(
+    seed.recurrenceUntil
+  )
   const [attendeeUserIds, setAttendeeUserIds] = React.useState<
     readonly string[]
   >(seed.attendeeUserIds)
@@ -193,6 +207,8 @@ export function WorkCalendarEventDialog(
     setTimeZone(next.timeZone)
     setLocation(next.location)
     setMeetingUrl(next.meetingUrl)
+    setRecurrence(next.recurrence)
+    setRecurrenceUntil(next.recurrenceUntil)
     setAttendeeUserIds(next.attendeeUserIds)
   }
 
@@ -252,6 +268,8 @@ export function WorkCalendarEventDialog(
       timeZone,
       location: location || null,
       meetingUrl: meetingUrl || null,
+      recurrence,
+      recurrenceUntil: recurrence === "none" ? null : recurrenceUntil,
       attendeeUserIds,
     }
 
@@ -260,7 +278,7 @@ export function WorkCalendarEventDialog(
         props.variant === "create"
           ? await createWorkCalendarEvent(input)
           : await updateWorkCalendarEvent(
-              props.event.id,
+              props.event.eventDetails.masterEventId,
               props.event.eventDetails.version,
               input
             )
@@ -284,7 +302,7 @@ export function WorkCalendarEventDialog(
     if (props.variant !== "edit") return
     startTransition(async () => {
       const result = await cancelWorkCalendarEvent(
-        props.event.id,
+        props.event.eventDetails.masterEventId,
         props.event.eventDetails.version
       )
       if (!result.success) {
@@ -493,6 +511,61 @@ export function WorkCalendarEventDialog(
               </p>
             )}
 
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="grid gap-2">
+                <Label htmlFor={`work-calendar-event-repeat-${props.variant}`}>
+                  Repeat
+                </Label>
+                <Select
+                  value={recurrence}
+                  onValueChange={(value) => {
+                    if (!isWorkCalendarRecurrence(value)) return
+                    setRecurrence(value)
+                    if (value !== "none" && !recurrenceUntil) {
+                      setRecurrenceUntil(startDate)
+                    }
+                  }}
+                >
+                  <SelectTrigger
+                    id={`work-calendar-event-repeat-${props.variant}`}
+                  >
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Does not repeat</SelectItem>
+                    <SelectItem value="daily">Daily</SelectItem>
+                    <SelectItem value="weekly">Weekly</SelectItem>
+                    <SelectItem value="monthly">Monthly</SelectItem>
+                    <SelectItem value="yearly">Yearly</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              {recurrence !== "none" && (
+                <div className="grid gap-2">
+                  <Label
+                    htmlFor={`work-calendar-event-repeat-until-${props.variant}`}
+                  >
+                    Repeat until
+                  </Label>
+                  <Input
+                    id={`work-calendar-event-repeat-until-${props.variant}`}
+                    type="date"
+                    min={startDate}
+                    value={recurrenceUntil}
+                    onChange={(event) =>
+                      setRecurrenceUntil(event.currentTarget.value)
+                    }
+                    required
+                  />
+                </div>
+              )}
+            </div>
+            {props.variant === "edit" && recurrence !== "none" && (
+              <p className="text-xs text-muted-foreground">
+                Saving changes updates the entire recurring series.
+              </p>
+            )}
+
             <div className="grid gap-2">
               <Label htmlFor={`work-calendar-event-location-${props.variant}`}>
                 Location
@@ -587,15 +660,16 @@ export function WorkCalendarEventDialog(
                       disabled={pending}
                     >
                       <IconTrash className="size-4" />
-                      Cancel event
+                      {recurrence === "none" ? "Cancel event" : "Cancel series"}
                     </Button>
                   </AlertDialogTrigger>
                   <AlertDialogContent>
                     <AlertDialogHeader>
                       <AlertDialogTitle>Cancel this event?</AlertDialogTitle>
                       <AlertDialogDescription>
-                        The event will leave the active calendar and its
-                        attendees will be notified.
+                        {recurrence === "none"
+                          ? "The event will leave the active calendar and its attendees will be notified."
+                          : "Every occurrence in this series will leave the active calendar and its attendees will be notified."}
                       </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
@@ -631,6 +705,8 @@ export function WorkCalendarEventDialog(
                   endDate.length === 0 ||
                   (!allDay &&
                     (startTime.length === 0 || endTime.length === 0)) ||
+                  (recurrence !== "none" &&
+                    recurrenceUntil.length === 0) ||
                   (!props.defaultProjectId && projectValue.length === 0)
                 }
               >

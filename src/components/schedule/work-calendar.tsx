@@ -35,6 +35,7 @@ import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
 import { workCalendarEntryMatches } from "@/lib/work-calendar"
 import { WorkCalendarEventDialog } from "./work-calendar-event-dialog"
+import { WorkCalendarTodoDialog } from "./work-calendar-todo-dialog"
 
 export type WorkCalendarKindFilter = WorkCalendarEntryKind | "all"
 export type WorkCalendarView = "today" | "week" | "month" | "list"
@@ -516,6 +517,13 @@ export function WorkCalendar({
                 attendeeOptions={data.attendeeOptions}
                 defaultProjectId={data.defaultProjectId}
                 defaultTimeZone={data.defaultTimeZone}
+                today={data.today}
+              />
+            )}
+            {data.canCreateTodos && (
+              <WorkCalendarTodoDialog
+                projects={data.projects}
+                defaultProjectId={data.defaultProjectId}
                 today={data.today}
               />
             )}

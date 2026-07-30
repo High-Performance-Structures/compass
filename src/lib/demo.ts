@@ -10,6 +10,8 @@ export const DEMO_USER: AuthUser = {
   lastName: "User",
   displayName: "Demo User",
   avatarUrl: null,
+  dashboardDeskPhotoUrl: null,
+  sidebarDeskPhotoUrl: null,
   role: "admin",
   googleEmail: null,
   isActive: true,

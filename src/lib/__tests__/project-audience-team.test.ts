@@ -16,6 +16,7 @@ describe("project audience team", () => {
     ["service agent", "svc_jarvis", "jarvis@example.com", "office"],
     ["Compass system account", "user-compass", "compass@hps-colorado.com", "admin"],
     ["archive account", "system-archive", "archive@compass.local", "office"],
+    ["external developer", "user-developer", "nicholai@biohazardvfx.com", "admin"],
   ])("hides %s", (_label, userId, email, role) => {
     expect(isVisibleAudienceTeamMember({ userId, email, role })).toBe(false)
   })

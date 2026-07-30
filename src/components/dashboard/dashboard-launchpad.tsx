@@ -4,6 +4,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   useTransition,
 } from "react"
@@ -33,6 +34,7 @@ import {
 } from "@tabler/icons-react"
 
 import type { DashboardOverview } from "@/app/actions/dashboard-overview"
+import { updateWorkspacePhoto } from "@/app/actions/profile"
 import {
   submitCherishPulseResponse,
   type CherishPulseResponseType,
@@ -118,6 +120,8 @@ const TEAM_AVAILABILITY_REFRESH_MS = 10_000
 
 function deskPhotoForUser(user: SidebarUser | null): string | null {
   if (!user) return null
+  if (user.dashboardDeskPhoto === HIDDEN_DESK_PHOTO) return null
+  if (user.dashboardDeskPhoto) return user.dashboardDeskPhoto
 
   try {
     const storedPhoto = window.localStorage.getItem(
@@ -451,11 +455,32 @@ function DeskHero({
   const [deskPhotoMessage, setDeskPhotoMessage] = useState<string | null>(null)
   const [statusMessage, setStatusMessage] = useState<string | null>(null)
   const [isStatusPending, startStatusTransition] = useTransition()
+  const migratedLegacyPhotoFor = useRef<string | null>(null)
   const firstName = user?.firstName ?? user?.name.split(" ")[0] ?? "there"
 
   useEffect(() => {
     setDeskPhotoFailed(false)
     setDeskPhotoUrl(deskPhotoForUser(user))
+
+    if (
+      !user ||
+      user.dashboardDeskPhoto ||
+      migratedLegacyPhotoFor.current === user.email
+    ) {
+      return
+    }
+
+    try {
+      const legacyPhoto = window.localStorage.getItem(
+        dashboardDeskPhotoStorageKey(user.email)
+      )
+      if (!legacyPhoto) return
+
+      migratedLegacyPhotoFor.current = user.email
+      void updateWorkspacePhoto("dashboard", legacyPhoto)
+    } catch {
+      // Keep the browser-local photo when storage is unavailable.
+    }
   }, [user])
 
   function handleStatusChange(nextStatus: DeskStatus): void {
@@ -490,6 +515,11 @@ function DeskHero({
     try {
       const dataUrl = await readFileAsDataUrl(file)
       const resizedDataUrl = await resizeDeskPhoto(dataUrl)
+      const result = await updateWorkspacePhoto("dashboard", resizedDataUrl)
+      if (!result.success) {
+        setDeskPhotoMessage(result.error)
+        return
+      }
       saveDeskPhoto(user, resizedDataUrl)
       setDeskPhotoFailed(false)
       setDeskPhotoUrl(resizedDataUrl)

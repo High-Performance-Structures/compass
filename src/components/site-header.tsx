@@ -5,6 +5,7 @@ import { useTheme } from "@/components/theme-provider"
 import {
   IconLogout,
   IconMenu2,
+  IconMessageCircle,
   IconMoon,
   IconSearch,
   IconSparkles,
@@ -30,6 +31,7 @@ import { NotificationsPopover } from "@/components/notifications-popover"
 import { useCommandMenu } from "@/components/command-menu-provider"
 import { useAgentOptional } from "@/components/agent/chat-provider"
 import { AccountModal } from "@/components/account-modal"
+import { DirectMessageDialog } from "@/components/conversations/direct-message-dialog"
 import { getInitials } from "@/lib/utils"
 import type { SidebarUser } from "@/lib/auth"
 
@@ -71,10 +73,12 @@ export function SiteHeader({
   user,
   canUseAskCompass,
   canUseOfficeTalk,
+  canUseDirectMessages,
 }: {
   readonly user: SidebarUser | null
   readonly canUseAskCompass: boolean
   readonly canUseOfficeTalk: boolean
+  readonly canUseDirectMessages: boolean
 }) {
   const { theme, setTheme } = useTheme()
   const { open: openCommand, openWithQuery } = useCommandMenu()
@@ -82,6 +86,7 @@ export function SiteHeader({
   const searchInputRef = React.useRef<HTMLInputElement>(null)
   const agentContext = useAgentOptional()
   const [accountOpen, setAccountOpen] = React.useState(false)
+  const [directMessageOpen, setDirectMessageOpen] = React.useState(false)
   const [isLoggingOut, startLogoutTransition] = React.useTransition()
   const { toggleSidebar } = useSidebar()
 
@@ -145,6 +150,18 @@ export function SiteHeader({
               title="Office Talk"
             >
               <IconVideo className="size-4" />
+            </Button>
+          )}
+          {canUseDirectMessages && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="size-9 shrink-0 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+              onClick={() => setDirectMessageOpen(true)}
+              aria-label="Direct message a team member"
+              title="Direct message"
+            >
+              <IconMessageCircle className="size-4" />
             </Button>
           )}
           <DropdownMenu>
@@ -238,6 +255,18 @@ export function SiteHeader({
               <IconVideo className="size-4" />
             </Button>
           )}
+          {canUseDirectMessages && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="size-7 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+              onClick={() => setDirectMessageOpen(true)}
+              aria-label="Direct message a team member"
+              title="Direct message"
+            >
+              <IconMessageCircle className="size-4" />
+            </Button>
+          )}
           {canUseAskCompass && (
             <Button
               variant="ghost"
@@ -289,6 +318,12 @@ export function SiteHeader({
       </div>
 
       <AccountModal open={accountOpen} onOpenChange={setAccountOpen} user={user} />
+      {canUseDirectMessages && (
+        <DirectMessageDialog
+          open={directMessageOpen}
+          onOpenChange={setDirectMessageOpen}
+        />
+      )}
     </header>
   )
 }

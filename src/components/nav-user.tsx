@@ -19,7 +19,7 @@ import {
 } from "@tabler/icons-react"
 import { toast } from "sonner"
 
-import { logout } from "@/app/actions/profile"
+import { logout, updateWorkspacePhoto } from "@/app/actions/profile"
 
 import {
   Avatar,
@@ -67,6 +67,7 @@ function defaultSidebarPhoto(user: SidebarUser): string | null {
 }
 
 function loadSidebarPhoto(user: SidebarUser): string | null {
+  if (user.sidebarDeskPhoto) return user.sidebarDeskPhoto
   try {
     return (
       window.localStorage.getItem(sidebarDeskPhotoStorageKey(user.email)) ??
@@ -153,6 +154,7 @@ export function NavUser({
   const [sidebarPhotoFailed, setSidebarPhotoFailed] = React.useState(false)
   const [isLoggingOut, startLogoutTransition] = React.useTransition()
   const photoInputRef = React.useRef<HTMLInputElement>(null)
+  const migratedLegacyPhotoFor = React.useRef<string | null>(null)
   const {
     isMuted,
     isDeafened,
@@ -170,6 +172,22 @@ export function NavUser({
     if (!user) return
     setSidebarPhotoFailed(false)
     setSidebarPhotoUrl(loadSidebarPhoto(user))
+
+    if (user.sidebarDeskPhoto || migratedLegacyPhotoFor.current === user.email) {
+      return
+    }
+
+    try {
+      const legacyPhoto = window.localStorage.getItem(
+        sidebarDeskPhotoStorageKey(user.email)
+      )
+      if (!legacyPhoto) return
+
+      migratedLegacyPhotoFor.current = user.email
+      void updateWorkspacePhoto("sidebar", legacyPhoto)
+    } catch {
+      // Keep the browser-local photo when storage is unavailable.
+    }
   }, [user])
 
   if (!user) {
@@ -199,6 +217,11 @@ export function NavUser({
     try {
       const dataUrl = await readFileAsDataUrl(file)
       const resizedDataUrl = await resizeSidebarPhoto(dataUrl)
+      const result = await updateWorkspacePhoto("sidebar", resizedDataUrl)
+      if (!result.success) {
+        toast.error(result.error)
+        return
+      }
       saveSidebarPhoto(user, resizedDataUrl)
       setSidebarPhotoFailed(false)
       setSidebarPhotoUrl(resizedDataUrl)
@@ -208,9 +231,14 @@ export function NavUser({
     }
   }
 
-  function handleSidebarPhotoReset(): void {
+  async function handleSidebarPhotoReset(): Promise<void> {
     if (!user) return
 
+    const result = await updateWorkspacePhoto("sidebar", null)
+    if (!result.success) {
+      toast.error(result.error)
+      return
+    }
     resetSidebarPhoto(user)
     setSidebarPhotoFailed(false)
     setSidebarPhotoUrl(defaultSidebarPhoto(user))
@@ -328,7 +356,9 @@ export function NavUser({
                 <IconPhotoEdit />
                 Change sidebar photo
               </DropdownMenuItem>
-              <DropdownMenuItem onSelect={handleSidebarPhotoReset}>
+              <DropdownMenuItem
+                onSelect={() => void handleSidebarPhotoReset()}
+              >
                 <IconRefresh />
                 Reset sidebar photo
               </DropdownMenuItem>

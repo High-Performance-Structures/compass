@@ -26,6 +26,7 @@ import {
 } from "@/app/actions/chat-messages"
 import { useRouter } from "next/navigation"
 import { normalizeConversationMentions } from "@/lib/conversations/message-content"
+import { importedConversationContent } from "@/lib/conversations/imported-message-content"
 
 type MessageData = {
   readonly id: string
@@ -179,7 +180,12 @@ export const MessageItem = React.memo(function MessageItem({ message }: MessageI
 
         <div className="chat-markdown mt-1 text-sm">
           <MarkdownRenderer>
-            {normalizeConversationMentions(message.content)}
+            {normalizeConversationMentions(
+              importedConversationContent({
+                id: message.id,
+                content: message.content,
+              })
+            )}
           </MarkdownRenderer>
         </div>
 

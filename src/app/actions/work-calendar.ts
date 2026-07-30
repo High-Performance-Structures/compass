@@ -45,6 +45,11 @@ import {
 } from "@/lib/work-calendar"
 import { isProjectTodoRecordType } from "@/lib/project-todos"
 import { isInternalStaffRole } from "@/lib/user-roles"
+import {
+  expandWorkCalendarRecurrence,
+  isWorkCalendarRecurrence,
+  type WorkCalendarRecurrence,
+} from "@/lib/work-calendar-recurrence"
 
 export type WorkCalendarEntryKind =
   | "schedule"
@@ -76,6 +81,7 @@ export type WorkCalendarEventAttendee = {
 }
 
 export type WorkCalendarEventDetails = {
+  readonly masterEventId: string
   readonly eventType: WorkCalendarEventType
   readonly visibility: WorkCalendarEventVisibility
   readonly description: string | null
@@ -89,6 +95,8 @@ export type WorkCalendarEventDetails = {
   readonly timeZone: string
   readonly location: string | null
   readonly meetingUrl: string | null
+  readonly recurrence: WorkCalendarRecurrence
+  readonly recurrenceUntil: string | null
   readonly attendees: readonly WorkCalendarEventAttendee[]
   readonly version: number
   readonly managed: boolean
@@ -114,6 +122,7 @@ export type WorkCalendarData = {
   readonly defaultProjectId: string | null
   readonly defaultTimeZone: string
   readonly canCreateEvents: boolean
+  readonly canCreateTodos: boolean
   readonly canManageEvents: boolean
 }
 
@@ -236,6 +245,8 @@ export async function getWorkCalendar(
     !isDemoUser(user.id) && canManageWorkCalendarEvents(user)
   const canCreateEvents =
     canManageEvents && can(user, "schedule", "create")
+  const canCreateTodos =
+    !isDemoUser(user.id) && isInternalStaffRole(user.role)
 
   const { env } = await getCloudflareContext()
   const db = getDb(env.DB)
@@ -482,6 +493,7 @@ export async function getWorkCalendar(
           sourceLabel: "Legacy calendar event",
           href: eventHref(operation.id),
           eventDetails: {
+            masterEventId: operation.id,
             eventType: "other",
             visibility: "organization",
             description: null,
@@ -495,6 +507,8 @@ export async function getWorkCalendar(
             timeZone: "UTC",
             location: null,
             meetingUrl: null,
+            recurrence: "none",
+            recurrenceUntil: null,
             attendees: [],
             version: 0,
             managed: false,
@@ -599,30 +613,19 @@ export async function getWorkCalendar(
       timedEnd && !Number.isNaN(timedEnd.getTime())
         ? new Date(timedEnd.getTime() - 1)
         : null
-    const startDate = event.allDay
+    const seriesStartDate = event.allDay
       ? event.startDate
       : timedStart && !Number.isNaN(timedStart.getTime())
         ? dateKeyInTimeZone(timedStart, event.timeZone)
         : null
-    const endDate = event.allDay
+    const seriesEndDate = event.allDay
       ? event.endDateExclusive
         ? inclusiveEndDateFromExclusive(event.endDateExclusive)
         : null
       : timedEndDisplay
         ? dateKeyInTimeZone(timedEndDisplay, event.timeZone)
         : null
-    if (!startDate || !endDate) continue
-    if (
-      !intersectsCalendarWindow(
-        startDate,
-        endDate,
-        rangeStart,
-        rangeEnd,
-        today
-      )
-    ) {
-      continue
-    }
+    if (!seriesStartDate || !seriesEndDate) continue
     const attendees = attendeesByEventId.get(event.id) ?? []
     const detailLevel = calendarDetailLevel({
       visibility: isWorkCalendarEventVisibility(event.visibility)
@@ -641,70 +644,117 @@ export async function getWorkCalendar(
     const eventType = isWorkCalendarEventType(event.eventType)
       ? event.eventType
       : "other"
+    const recurrence = isWorkCalendarRecurrence(event.recurrence)
+      ? event.recurrence
+      : "none"
+    const occurrences = [
+      ...expandWorkCalendarRecurrence({
+        startDate: seriesStartDate,
+        endDate: seriesEndDate,
+        recurrence,
+        recurrenceUntil: event.recurrenceUntil,
+        windowStart: rangeStart,
+        windowEnd: rangeEnd,
+      }),
+    ]
+    if (today < rangeStart || today > rangeEnd) {
+      for (const occurrence of expandWorkCalendarRecurrence({
+        startDate: seriesStartDate,
+        endDate: seriesEndDate,
+        recurrence,
+        recurrenceUntil: event.recurrenceUntil,
+        windowStart: today,
+        windowEnd: today,
+      })) {
+        if (
+          !occurrences.some(
+            (candidate) => candidate.startDate === occurrence.startDate
+          )
+        ) {
+          occurrences.push(occurrence)
+        }
+      }
+    }
+    const startTime = event.allDay
+      ? ""
+      : localTimeInZone(event.startsAt, event.timeZone)
+    const endTime = event.allDay
+      ? ""
+      : localTimeInZone(event.endsAt, event.timeZone)
 
-    entries.push({
-      id: event.id,
-      kind: "event",
-      projectId: showDetails ? project?.id ?? null : null,
-      projectLabel: showDetails
-        ? project
-          ? projectLabel(project)
-          : "No project"
-        : "Private",
-      projectName: showDetails
-        ? project?.name ?? "Archived project"
-        : "Private",
-      title: showDetails ? event.title : "Busy",
-      status: event.status,
-      priority: "normal",
-      startDate,
-      endDate,
-      assignedTo:
-        showDetails && attendees.length > 0
-          ? attendees.map((attendee) => attendee.name).join(", ")
-          : null,
-      companyName: null,
-      sourceLabel: showDetails
-        ? eventType
-            .split("_")
-            .map(
-              (part) =>
-                `${part.slice(0, 1).toUpperCase()}${part.slice(1)}`,
-            )
-            .join(" ")
-        : "Private calendar event",
-      href: showDetails
-        ? `/dashboard/schedule?kind=event&item=${encodeURIComponent(event.id)}#work-calendar-${encodeURIComponent(event.id)}`
-        : "/dashboard/schedule",
-      eventDetails: {
-        // Busy projections must not leak the underlying category or privacy
-        // choice through the client payload.
-        eventType: showDetails ? eventType : "other",
-        visibility: showDetails
-          ? isWorkCalendarEventVisibility(event.visibility)
-            ? event.visibility
-            : "organization"
-          : "busy",
-        description: showDetails ? event.description : null,
-        startDate,
-        endDate,
-        startTime: event.allDay
+    for (const occurrence of occurrences) {
+      const occurrenceId =
+        recurrence === "none"
+          ? event.id
+          : `${event.id}--${occurrence.startDate}`
+      const recurrenceLabel =
+        recurrence === "none"
           ? ""
-          : localTimeInZone(event.startsAt, event.timeZone),
-        endTime: event.allDay
-          ? ""
-          : localTimeInZone(event.endsAt, event.timeZone),
-        startsAt: event.startsAt,
-        endsAt: event.endsAt,
-        allDay: event.allDay,
-        timeZone: event.timeZone,
-        location: showDetails ? event.location : null,
-        meetingUrl: showDetails ? event.meetingUrl : null,
-        attendees: showDetails ? attendees : [],
-        version: event.version,
-        managed: showDetails,
-      },
-    })
+          : ` · Repeats ${recurrence}`
+
+      entries.push({
+        id: occurrenceId,
+        kind: "event",
+        projectId: showDetails ? project?.id ?? null : null,
+        projectLabel: showDetails
+          ? project
+            ? projectLabel(project)
+            : "No project"
+          : "Private",
+        projectName: showDetails
+          ? project?.name ?? "Archived project"
+          : "Private",
+        title: showDetails ? event.title : "Busy",
+        status: event.status,
+        priority: "normal",
+        startDate: occurrence.startDate,
+        endDate: occurrence.endDate,
+        assignedTo:
+          showDetails && attendees.length > 0
+            ? attendees.map((attendee) => attendee.name).join(", ")
+            : null,
+        companyName: null,
+        sourceLabel: showDetails
+          ? `${eventType
+              .split("_")
+              .map(
+                (part) =>
+                  `${part.slice(0, 1).toUpperCase()}${part.slice(1)}`,
+              )
+              .join(" ")}${recurrenceLabel}`
+          : "Private calendar event",
+        href: showDetails
+          ? `/dashboard/schedule?kind=event&item=${encodeURIComponent(occurrenceId)}#work-calendar-${encodeURIComponent(occurrenceId)}`
+          : "/dashboard/schedule",
+        eventDetails: {
+          // Busy projections must not leak the underlying category or privacy
+          // choice through the client payload.
+          masterEventId: event.id,
+          eventType: showDetails ? eventType : "other",
+          visibility: showDetails
+            ? isWorkCalendarEventVisibility(event.visibility)
+              ? event.visibility
+              : "organization"
+            : "busy",
+          description: showDetails ? event.description : null,
+          startDate: seriesStartDate,
+          endDate: seriesEndDate,
+          startTime,
+          endTime,
+          startsAt: event.startsAt,
+          endsAt: event.endsAt,
+          allDay: event.allDay,
+          timeZone: event.timeZone,
+          location: showDetails ? event.location : null,
+          meetingUrl: showDetails ? event.meetingUrl : null,
+          recurrence: showDetails ? recurrence : "none",
+          recurrenceUntil: showDetails ? event.recurrenceUntil : null,
+          attendees: showDetails ? attendees : [],
+          version: event.version,
+          managed: showDetails,
+        },
+      })
+    }
   }
 
   entries.sort((left, right) => {
@@ -725,6 +775,7 @@ export async function getWorkCalendar(
     defaultProjectId,
     defaultTimeZone,
     canCreateEvents,
+    canCreateTodos,
     canManageEvents,
   }
 }
@@ -745,6 +796,8 @@ export type WorkCalendarEventMutationInput = {
   readonly timeZone: string
   readonly location: string | null
   readonly meetingUrl: string | null
+  readonly recurrence: WorkCalendarRecurrence
+  readonly recurrenceUntil: string | null
   readonly attendeeUserIds: readonly string[]
 }
 
@@ -766,6 +819,8 @@ type ValidatedEventInput = {
   readonly timeZone: string
   readonly location: string | null
   readonly meetingUrl: string | null
+  readonly recurrence: WorkCalendarRecurrence
+  readonly recurrenceUntil: string | null
   readonly attendees: readonly WorkCalendarEventAttendee[]
 }
 
@@ -941,6 +996,28 @@ async function validateEventInput(
   if (!isWorkCalendarEventVisibility(input.visibility)) {
     throw new Error("Select a valid event visibility")
   }
+  if (!isWorkCalendarRecurrence(input.recurrence)) {
+    throw new Error("Select a valid repeat option")
+  }
+  const recurrenceUntil =
+    input.recurrence === "none" ? null : input.recurrenceUntil?.trim() ?? ""
+  if (
+    input.recurrence !== "none" &&
+    (
+      !recurrenceUntil ||
+      !isValidDateKey(recurrenceUntil) ||
+      recurrenceUntil < input.startDate
+    )
+  ) {
+    throw new Error("Repeat-until date must be on or after the first event")
+  }
+  if (recurrenceUntil) {
+    const latest = new Date(`${input.startDate}T12:00:00Z`)
+    latest.setUTCFullYear(latest.getUTCFullYear() + 10)
+    if (recurrenceUntil > latest.toISOString().slice(0, 10)) {
+      throw new Error("A recurring series can span up to 10 years")
+    }
+  }
 
   return {
     project,
@@ -956,6 +1033,8 @@ async function validateEventInput(
     timeZone: timing.timeZone,
     location: cleanOptionalText(input.location, "Location", 500),
     meetingUrl: cleanOptionalUrl(input.meetingUrl, "Meeting link"),
+    recurrence: input.recurrence,
+    recurrenceUntil: recurrenceUntil || null,
     attendees: await validateAttendees(
       db,
       organizationId,
@@ -1162,6 +1241,8 @@ export async function createWorkCalendarEvent(
       timeZone: validated.timeZone,
       location: validated.location,
       meetingUrl: validated.meetingUrl,
+      recurrence: validated.recurrence,
+      recurrenceUntil: validated.recurrenceUntil,
       status: "open",
       version: 1,
       createdBy: user.id,
@@ -1270,6 +1351,8 @@ export async function updateWorkCalendarEvent(
         timeZone: validated.timeZone,
         location: validated.location,
         meetingUrl: validated.meetingUrl,
+        recurrence: validated.recurrence,
+        recurrenceUntil: validated.recurrenceUntil,
         version: expectedVersion + 1,
         updatedBy: user.id,
         updatedAt: now,
