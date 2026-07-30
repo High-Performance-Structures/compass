@@ -35,6 +35,8 @@ import {
   isWorkCalendarEventVisibility,
   isValidDateKey,
   normalizeWorkCalendarEventTiming,
+  projectPurchaseOrderHref,
+  projectRfiHref,
   projectTodoHref,
   resolveHOfficeProjectId,
   scheduleItemHref,
@@ -222,7 +224,10 @@ function intersectsCalendarWindow(
 }
 
 export async function getWorkCalendar(
-  referenceDate?: string
+  referenceDate?: string,
+  options?: {
+    readonly eventsOnly?: boolean
+  },
 ): Promise<WorkCalendarData> {
   const user = await requireAuth()
   requirePermission(user, "schedule", "read")
@@ -323,7 +328,7 @@ export async function getWorkCalendar(
 
   const entries: WorkCalendarEntry[] = []
 
-  for (const project of projectRows) {
+  for (const project of options?.eventsOnly ? [] : projectRows) {
     const label = projectLabel(project)
 
     const taskRows = await db
@@ -417,7 +422,7 @@ export async function getWorkCalendar(
         assignedTo: rfi.assignedToName,
         companyName: rfi.companyName,
         sourceLabel: `RFI ${rfi.rfiNumber}`,
-        href: `/dashboard/projects/${project.id}/rfis`,
+        href: projectRfiHref(project.id, rfi.id),
         eventDetails: null,
       })
     }
@@ -532,7 +537,7 @@ export async function getWorkCalendar(
         ),
         href:
           operation.sourceRecordType === "purchase_order"
-            ? `/dashboard/projects/${project.id}/purchase-orders`
+            ? projectPurchaseOrderHref(project.id, operation.id)
             : isProjectTodoRecordType(operation.sourceRecordType)
                 ? projectTodoHref(project.id, operation.id)
                 : `/dashboard/projects/${project.id}`,

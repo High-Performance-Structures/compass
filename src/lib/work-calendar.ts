@@ -372,3 +372,38 @@ export function scheduleItemHref(projectId: string, itemId: string): string {
 export function projectTodoHref(projectId: string, itemId: string): string {
   return `/dashboard/projects/${encodeURIComponent(projectId)}/todos?item=${encodeURIComponent(itemId)}#todo-${encodeURIComponent(itemId)}`
 }
+
+export function projectRfiHref(projectId: string, itemId: string): string {
+  return `/dashboard/projects/${encodeURIComponent(projectId)}/rfis?status=all&item=${encodeURIComponent(itemId)}#rfi-${encodeURIComponent(itemId)}`
+}
+
+export function projectPurchaseOrderHref(
+  projectId: string,
+  itemId: string,
+): string {
+  return `/dashboard/projects/${encodeURIComponent(projectId)}/purchase-orders?status=all&item=${encodeURIComponent(itemId)}#purchase-order-${encodeURIComponent(itemId)}`
+}
+
+export function compareOfficeCalendarPriority(
+  left: {
+    readonly projectId: string | null
+    readonly startDate: string
+    readonly title: string
+  },
+  right: {
+    readonly projectId: string | null
+    readonly startDate: string
+    readonly title: string
+  },
+  officeProjectId: string | null,
+): number {
+  const leftIsOffice =
+    officeProjectId !== null && left.projectId === officeProjectId
+  const rightIsOffice =
+    officeProjectId !== null && right.projectId === officeProjectId
+  if (leftIsOffice !== rightIsOffice) return leftIsOffice ? -1 : 1
+
+  const byDate = left.startDate.localeCompare(right.startDate)
+  if (byDate !== 0) return byDate
+  return left.title.localeCompare(right.title)
+}
