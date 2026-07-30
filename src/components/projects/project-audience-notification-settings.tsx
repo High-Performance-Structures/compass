@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { IconBell } from "@tabler/icons-react"
+import { IconBell, IconSettings } from "@tabler/icons-react"
 
 import { PreferencesTab } from "@/components/settings/preferences-tab"
 import { Button } from "@/components/ui/button"
@@ -18,11 +18,15 @@ import { cn } from "@/lib/utils"
 
 export function ProjectAudienceNotificationSettings({
   compact = false,
+  triggerIcon = "bell",
   className,
 }: {
   readonly compact?: boolean
+  readonly triggerIcon?: "bell" | "settings"
   readonly className?: string
 }): React.ReactElement {
+  const TriggerIcon = triggerIcon === "settings" ? IconSettings : IconBell
+
   return (
     <Dialog>
       <DialogTrigger asChild>
@@ -31,9 +35,10 @@ export function ProjectAudienceNotificationSettings({
           size={compact ? "icon" : "sm"}
           className={cn(!compact && "w-full justify-start", className)}
           aria-label={compact ? "Notification settings" : undefined}
+          title={compact ? "Notification settings" : undefined}
         >
-          <IconBell className="size-4" />
-          {!compact && "Notifications"}
+          <TriggerIcon className="size-4" />
+          {!compact && "Notification settings"}
         </Button>
       </DialogTrigger>
       <DialogContent className="max-h-[90vh] gap-0 overflow-hidden p-0 sm:max-w-2xl">
