@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest"
 
-import { newScheduleConfirmationState } from "@/lib/schedule/confirmation"
+import {
+  canViewerConfirmScheduleTask,
+  isPublishedScheduleAssignmentVisible,
+  newScheduleConfirmationState,
+} from "@/lib/schedule/confirmation"
 
 describe("schedule assignment confirmation", () => {
   const now = "2026-07-29T12:00:00.000Z"
@@ -33,5 +37,63 @@ describe("schedule assignment confirmation", () => {
         now,
       })
     ).toEqual({ status: "not_requested", requestedAt: null })
+  })
+
+  it("only lets the assigned external user respond", () => {
+    expect(
+      canViewerConfirmScheduleTask({
+        viewerIsInternal: false,
+        viewerId: "assigned-user",
+        assignedUserId: "assigned-user",
+        confirmationRequired: true,
+      })
+    ).toBe(true)
+    expect(
+      canViewerConfirmScheduleTask({
+        viewerIsInternal: true,
+        viewerId: "assigned-user",
+        assignedUserId: "assigned-user",
+        confirmationRequired: true,
+      })
+    ).toBe(false)
+    expect(
+      canViewerConfirmScheduleTask({
+        viewerIsInternal: false,
+        viewerId: "different-user",
+        assignedUserId: "assigned-user",
+        confirmationRequired: true,
+      })
+    ).toBe(false)
+  })
+
+  it("gates assignment notifications on the published audience snapshot", () => {
+    const shared = {
+      currentAssignedUserId: "assigned-user",
+      publishedAssignedUserId: "assigned-user",
+      projectRole: "subcontractor",
+      ownerVisible: true,
+      subVendorVisible: true,
+    } satisfies Parameters<typeof isPublishedScheduleAssignmentVisible>[0]
+
+    expect(isPublishedScheduleAssignmentVisible(shared)).toBe(true)
+    expect(
+      isPublishedScheduleAssignmentVisible({
+        ...shared,
+        publishedAssignedUserId: "previous-user",
+      })
+    ).toBe(false)
+    expect(
+      isPublishedScheduleAssignmentVisible({
+        ...shared,
+        subVendorVisible: false,
+      })
+    ).toBe(false)
+    expect(
+      isPublishedScheduleAssignmentVisible({
+        ...shared,
+        confirmationRequired: true,
+        publishedConfirmationRequired: false,
+      })
+    ).toBe(false)
   })
 })

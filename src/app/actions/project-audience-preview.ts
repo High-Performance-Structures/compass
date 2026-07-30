@@ -36,6 +36,7 @@ import {
 } from "@/lib/schedule/owner-visibility"
 import { parsePublishedScheduleSnapshot } from "@/lib/schedule/publications"
 import { projectAudiencePhotoUrl } from "@/lib/photo-sources"
+import { canViewerConfirmScheduleTask } from "@/lib/schedule/confirmation"
 
 export type { ProjectAudience } from "@/lib/project-audience-access"
 
@@ -685,10 +686,12 @@ export async function getProjectAudiencePreview(
     isMilestone: item.isMilestone,
     confirmationRequired: item.confirmationRequired,
     confirmationStatus: item.confirmationStatus,
-    viewerCanConfirm:
-      !viewerIsInternal &&
-      item.confirmationRequired &&
-      item.assignedUserId === viewer.id,
+    viewerCanConfirm: canViewerConfirmScheduleTask({
+      viewerIsInternal,
+      viewerId: viewer.id,
+      assignedUserId: item.assignedUserId,
+      confirmationRequired: item.confirmationRequired,
+    }),
   })
   const audienceScheduleItems: readonly AudienceScheduleItem[] =
     ownerScheduleView === "phases"
