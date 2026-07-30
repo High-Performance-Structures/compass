@@ -29,6 +29,8 @@ export type AuthUser = {
   readonly lastName: string | null
   readonly displayName: string | null
   readonly avatarUrl: string | null
+  readonly dashboardDeskPhotoUrl?: string | null
+  readonly sidebarDeskPhotoUrl?: string | null
   readonly role: string
   readonly googleEmail: string | null
   readonly isActive: boolean
@@ -48,6 +50,8 @@ export type SidebarUser = Readonly<{
   name: string
   email: string
   avatar: string | null
+  dashboardDeskPhoto: string | null
+  sidebarDeskPhoto: string | null
   firstName: string | null
   lastName: string | null
 }>
@@ -61,6 +65,8 @@ export function toSidebarUser(user: AuthUser): SidebarUser {
     name: user.displayName ?? user.email.split("@")[0] ?? "User",
     email: user.email,
     avatar: user.avatarUrl,
+    dashboardDeskPhoto: user.dashboardDeskPhotoUrl ?? null,
+    sidebarDeskPhoto: user.sidebarDeskPhotoUrl ?? null,
     firstName: user.firstName,
     lastName: user.lastName,
   }
@@ -296,6 +302,8 @@ export async function getCurrentUser(): Promise<AuthUser | null> {
         lastName: "User",
         displayName: "Dev User",
         avatarUrl: null,
+        dashboardDeskPhotoUrl: null,
+        sidebarDeskPhotoUrl: null,
         role: "admin",
         googleEmail: null,
         isActive: true,
@@ -511,6 +519,8 @@ export async function getCurrentUser(): Promise<AuthUser | null> {
       lastName: dbUser.lastName,
       displayName: dbUser.displayName,
       avatarUrl: dbUser.avatarUrl,
+      dashboardDeskPhotoUrl: dbUser.dashboardDeskPhotoUrl,
+      sidebarDeskPhotoUrl: dbUser.sidebarDeskPhotoUrl,
       role: effectiveRole,
       googleEmail: dbUser.googleEmail ?? null,
       isActive: dbUser.isActive,

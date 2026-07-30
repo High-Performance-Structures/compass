@@ -15,6 +15,8 @@ export const users = sqliteTable("users", {
   lastName: text("last_name"),
   displayName: text("display_name"),
   avatarUrl: text("avatar_url"),
+  dashboardDeskPhotoUrl: text("dashboard_desk_photo_url"),
+  sidebarDeskPhotoUrl: text("sidebar_desk_photo_url"),
   role: text("role").notNull().default("office"), // admin, office, field, client
   googleEmail: text("google_email"), // override for google workspace impersonation
   isActive: integer("is_active", { mode: "boolean" }).notNull().default(true),
@@ -639,6 +641,8 @@ export const workCalendarEvents = sqliteTable(
     timeZone: text("time_zone").notNull().default("UTC"),
     location: text("location"),
     meetingUrl: text("meeting_url"),
+    recurrence: text("recurrence").notNull().default("none"),
+    recurrenceUntil: text("recurrence_until"),
     status: text("status").notNull().default("open"),
     version: integer("version").notNull().default(1),
     createdBy: text("created_by").references(() => users.id, {

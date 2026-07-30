@@ -11,6 +11,7 @@ import {
 } from "@tabler/icons-react"
 import { toast } from "sonner"
 
+import { updateWorkspacePhoto } from "@/app/actions/profile"
 import { Button } from "@/components/ui/button"
 import {
   Popover,
@@ -27,6 +28,7 @@ type AudienceViewer = {
   readonly name: string
   readonly email: string
   readonly avatarUrl: string | null
+  readonly sidebarPhotoUrl: string | null
 }
 
 function readFileAsDataUrl(file: File): Promise<string> {
@@ -79,20 +81,34 @@ export function ProjectAudienceSidebarProfile({
   const { theme, setTheme } = useTheme()
   const { activeThemeId, setVisualTheme } = useCompassTheme()
   const [photoUrl, setPhotoUrl] = React.useState<string | null>(
-    viewer.avatarUrl
+    viewer.sidebarPhotoUrl ?? viewer.avatarUrl
   )
   const inputRef = React.useRef<HTMLInputElement>(null)
+  const migratedLegacyPhotoFor = React.useRef<string | null>(null)
 
   React.useEffect(() => {
     try {
+      const legacyPhoto = window.localStorage.getItem(
+        sidebarDeskPhotoStorageKey(viewer.email)
+      )
       setPhotoUrl(
-        window.localStorage.getItem(sidebarDeskPhotoStorageKey(viewer.email)) ??
+        viewer.sidebarPhotoUrl ??
+          legacyPhoto ??
           viewer.avatarUrl
       )
+
+      if (
+        !viewer.sidebarPhotoUrl &&
+        legacyPhoto &&
+        migratedLegacyPhotoFor.current !== viewer.email
+      ) {
+        migratedLegacyPhotoFor.current = viewer.email
+        void updateWorkspacePhoto("sidebar", legacyPhoto)
+      }
     } catch {
       setPhotoUrl(viewer.avatarUrl)
     }
-  }, [viewer.avatarUrl, viewer.email])
+  }, [viewer.avatarUrl, viewer.email, viewer.sidebarPhotoUrl])
 
   async function handlePhoto(
     event: React.ChangeEvent<HTMLInputElement>
@@ -107,6 +123,11 @@ export function ProjectAudienceSidebarProfile({
 
     try {
       const photo = await resizeSidebarPhoto(await readFileAsDataUrl(file))
+      const result = await updateWorkspacePhoto("sidebar", photo)
+      if (!result.success) {
+        toast.error(result.error)
+        return
+      }
       window.localStorage.setItem(
         sidebarDeskPhotoStorageKey(viewer.email),
         photo

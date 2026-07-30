@@ -994,3 +994,14 @@ em-emoji-picker {
     font-size: 10px;
   }
 }
+@keyframes compass-route-progress {
+  0% {
+    transform: translateX(-110%);
+  }
+  55% {
+    transform: translateX(160%);
+  }
+  100% {
+    transform: translateX(410%);
+  }
+}

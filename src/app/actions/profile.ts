@@ -5,6 +5,7 @@ import { getCloudflareContext } from "@/lib/db"
 import { getDb } from "@/db"
 import { users } from "@/db/schema"
 import { eq } from "drizzle-orm"
+import { revalidatePath } from "next/cache"
 import { requireAuth } from "@/lib/auth"
 import {
   updateProfileSchema,
@@ -16,6 +17,61 @@ import {
 type ActionResult<T = undefined> =
   | { success: true; data?: T }
   | { success: false; error: string }
+
+const HIDDEN_WORKSPACE_PHOTO = "__hidden__"
+const MAX_WORKSPACE_PHOTO_LENGTH = 680_000
+const SAFE_IMAGE_DATA_URL =
+  /^data:image\/(?:jpeg|png|webp);base64,[a-z0-9+/]+={0,2}$/i
+
+export async function updateWorkspacePhoto(
+  slot: "dashboard" | "sidebar",
+  value: string | null
+): Promise<ActionResult> {
+  try {
+    if (slot !== "dashboard" && slot !== "sidebar") {
+      return { success: false, error: "Select a valid workspace photo." }
+    }
+    const currentUser = await requireAuth()
+    const normalized = value?.trim() || null
+    if (
+      normalized !== null &&
+      normalized !== HIDDEN_WORKSPACE_PHOTO &&
+      (
+        normalized.length > MAX_WORKSPACE_PHOTO_LENGTH ||
+        !SAFE_IMAGE_DATA_URL.test(normalized)
+      )
+    ) {
+      return {
+        success: false,
+        error: "Use a JPEG, PNG, or WebP image under 500 KB.",
+      }
+    }
+
+    const { env } = await getCloudflareContext()
+    const db = getDb(env.DB)
+    await db
+      .update(users)
+      .set({
+        ...(slot === "dashboard"
+          ? { dashboardDeskPhotoUrl: normalized }
+          : { sidebarDeskPhotoUrl: normalized }),
+        updatedAt: new Date().toISOString(),
+      })
+      .where(eq(users.id, currentUser.id))
+      .run()
+
+    revalidatePath("/dashboard", "layout")
+    return { success: true }
+  } catch (error) {
+    return {
+      success: false,
+      error:
+        error instanceof Error
+          ? error.message
+          : "Failed to update workspace photo",
+    }
+  }
+}
 
 /**
  * Update the current user's profile (first name, last name)

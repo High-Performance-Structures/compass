@@ -145,6 +145,7 @@ export function ProjectAudiencePreviewShell({
     readonly name: string
     readonly email: string
     readonly avatarUrl: string | null
+    readonly sidebarPhotoUrl: string | null
   }
   readonly viewerIsInternal: boolean
   readonly activeSection?: ProjectAudienceWorkspaceSection

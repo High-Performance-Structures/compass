@@ -3,6 +3,7 @@ import { isInternalStaffRole } from "@/lib/user-roles"
 const HIDDEN_AUDIENCE_TEAM_EMAILS = new Set([
   "compass@hps-colorado.com",
   "buildertrend-archive@compass.local",
+  "nicholai@biohazardvfx.com",
 ])
 
 export function isVisibleAudienceTeamMember(input: {
