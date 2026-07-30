@@ -4,6 +4,7 @@ import type * as React from "react"
 import { IconPrinter } from "@tabler/icons-react"
 
 import { Button } from "@/components/ui/button"
+import { requiresSynchronousPrint } from "@/lib/print/ios-print"
 
 const PRINT_IMAGE_TIMEOUT_MS = 3_000
 
@@ -54,6 +55,14 @@ export function ProjectBudgetPrintButton(): React.ReactElement {
     }
 
     window.addEventListener("afterprint", resetPrintState)
+    if (requiresSynchronousPrint(window.navigator)) {
+      // iPad Safari drops the tap's user activation after the first await,
+      // causing window.print() to be ignored entirely.
+      window.print()
+      window.setTimeout(resetPrintState, 5_000)
+      return
+    }
+
     await Promise.all(
       Array.from(printRoot.querySelectorAll("img")).map(waitForImage)
     )
