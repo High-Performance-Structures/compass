@@ -128,10 +128,14 @@ test.describe("usable Compass areas", () => {
 
     for (const area of projectAreas) {
       await test.step(area.name, async () => {
-        await page.goto("about:blank")
         const path = `/dashboard/projects/${projectId}${area.suffix}`
-        const response = await page.goto(path)
-        await expectHealthyNavigation(page, response, path)
+        const isolatedPage = await page.context().newPage()
+        try {
+          const response = await isolatedPage.goto(path)
+          await expectHealthyNavigation(isolatedPage, response, path)
+        } finally {
+          await isolatedPage.close()
+        }
       })
     }
   })
@@ -229,7 +233,11 @@ test.describe("usable Compass areas", () => {
     await expect(sendButton).toBeDisabled()
     await replyEditor.fill("Unsaved regression reply")
     await expect(sendButton).toBeEnabled()
-    await replyEditor.fill("")
+    // Clear through the editor's keyboard transaction so TipTap emits the
+    // same update event a user produces in WebKit.
+    await replyEditor.click()
+    await page.keyboard.press("ControlOrMeta+A")
+    await page.keyboard.press("Backspace")
     await expect(sendButton).toBeDisabled()
   })
 
@@ -353,7 +361,7 @@ test.describe("usable Compass areas", () => {
   }) => {
     const internalPath =
       "/dashboard/projects/e2e-project-001/schedule?view=list"
-    let response = await page.goto(internalPath)
+    const response = await page.goto(internalPath)
     await expectHealthyNavigation(
       page,
       response,
@@ -382,41 +390,65 @@ test.describe("usable Compass areas", () => {
     await page.keyboard.press("Escape")
     const ownerPath =
       "/preview/projects/e2e-project-001/owner/schedule"
-    response = await page.goto(ownerPath)
-    await expectHealthyNavigation(page, response, ownerPath)
-    await expect(
-      page.getByText("Published schedule commitment", { exact: true })
-    ).toBeVisible()
-    await expect(
-      page.getByText("Owner-visible published milestone", { exact: true })
-    ).toBeVisible()
-    await expect(
-      page.getByText("Partner-visible published delivery", { exact: true })
-    ).toHaveCount(0)
-    await expect(
-      page.getByText("Regression Schedule Item", { exact: true })
-    ).toHaveCount(0)
-    await expect(page.getByText("Internal regression RFI link")).toHaveCount(0)
-    await expect(page.getByText("Awaiting confirmation")).toBeVisible()
-    await expect(page.getByRole("button", { name: "Confirm" })).toHaveCount(0)
+    const ownerPage = await page.context().newPage()
+    try {
+      const ownerResponse = await ownerPage.goto(ownerPath)
+      await expectHealthyNavigation(ownerPage, ownerResponse, ownerPath)
+      await expect(
+        ownerPage.getByText("Published schedule commitment", { exact: true })
+      ).toBeVisible()
+      await expect(
+        ownerPage.getByText("Owner-visible published milestone", {
+          exact: true,
+        })
+      ).toBeVisible()
+      await expect(
+        ownerPage.getByText("Partner-visible published delivery", {
+          exact: true,
+        })
+      ).toHaveCount(0)
+      await expect(
+        ownerPage.getByText("Regression Schedule Item", { exact: true })
+      ).toHaveCount(0)
+      await expect(
+        ownerPage.getByText("Internal regression RFI link")
+      ).toHaveCount(0)
+      await expect(ownerPage.getByText("Awaiting confirmation")).toBeVisible()
+      await expect(
+        ownerPage.getByRole("button", { name: "Confirm" })
+      ).toHaveCount(0)
+    } finally {
+      await ownerPage.close()
+    }
 
     const partnerPath =
       "/preview/projects/e2e-project-001/sub-vendor/schedule"
-    response = await page.goto(partnerPath)
-    await expectHealthyNavigation(page, response, partnerPath)
-    await expect(
-      page.getByText("Published schedule commitment", { exact: true })
-    ).toBeVisible()
-    await expect(
-      page.getByText("Partner-visible published delivery", { exact: true })
-    ).toBeVisible()
-    await expect(
-      page.getByText("Owner-visible published milestone", { exact: true })
-    ).toHaveCount(0)
-    await expect(
-      page.getByText("Regression Schedule Item", { exact: true })
-    ).toHaveCount(0)
-    await expect(page.getByText("Internal regression RFI link")).toHaveCount(0)
+    const partnerPage = await page.context().newPage()
+    try {
+      const partnerResponse = await partnerPage.goto(partnerPath)
+      await expectHealthyNavigation(partnerPage, partnerResponse, partnerPath)
+      await expect(
+        partnerPage.getByText("Published schedule commitment", { exact: true })
+      ).toBeVisible()
+      await expect(
+        partnerPage.getByText("Partner-visible published delivery", {
+          exact: true,
+        })
+      ).toBeVisible()
+      await expect(
+        partnerPage.getByText("Owner-visible published milestone", {
+          exact: true,
+        })
+      ).toHaveCount(0)
+      await expect(
+        partnerPage.getByText("Regression Schedule Item", { exact: true })
+      ).toHaveCount(0)
+      await expect(
+        partnerPage.getByText("Internal regression RFI link")
+      ).toHaveCount(0)
+    } finally {
+      await partnerPage.close()
+    }
   })
 
   test("work calendar list shows the actual item title", async ({
