@@ -3,6 +3,7 @@ export type ProjectAudienceWorkspaceSection =
   | "overview"
   | "updates"
   | "schedule"
+  | "budget"
   | "commitments"
   | "rfis"
   | "conversations"

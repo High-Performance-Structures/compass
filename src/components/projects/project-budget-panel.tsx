@@ -38,9 +38,11 @@ function barWidth(value: number): string {
 export function ProjectBudgetPanel({
   projectId,
   summary,
+  detailHref,
 }: {
   readonly projectId: string
   readonly summary: ProjectBudgetSummary | null
+  readonly detailHref?: string | null
 }): React.ReactElement {
   if (!summary || summary.allLines.length === 0) {
     return (
@@ -59,6 +61,10 @@ export function ProjectBudgetPanel({
   const topDivisions = summary.divisions
     .filter((division) => division.adjustedEstimate > 0)
     .slice(0, 6)
+  const resolvedDetailHref =
+    detailHref === undefined
+      ? `/dashboard/projects/${projectId}/budget`
+      : detailHref
 
   return (
     <section className="rounded-lg border p-3 sm:p-4">
@@ -83,13 +89,15 @@ export function ProjectBudgetPanel({
               ? `${summary.divisions.length} owner categories`
               : `${summary.totals.ownerVisibleLineCount} owner-visible lines`}
           </Badge>
-          <Link
-            href={`/dashboard/projects/${projectId}/budget`}
-            className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90"
-          >
-            <IconChartBar className="size-4" />
-            Open budget
-          </Link>
+          {resolvedDetailHref && (
+            <Link
+              href={resolvedDetailHref}
+              className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+            >
+              <IconChartBar className="size-4" />
+              Open budget
+            </Link>
+          )}
         </div>
       </div>
 
@@ -176,8 +184,10 @@ export function ProjectBudgetPanel({
 
 export function ProjectBudgetG703Table({
   summary,
+  showVisibility = true,
 }: {
   readonly summary: ProjectBudgetSummary
+  readonly showVisibility?: boolean
 }): React.ReactElement {
   const showLineDetail = summary.detailMode === "cost_code"
 
@@ -196,7 +206,9 @@ export function ProjectBudgetG703Table({
             <th className="px-3 py-2 text-right font-medium">Total</th>
             <th className="px-3 py-2 text-right font-medium">%</th>
             <th className="px-3 py-2 text-right font-medium">Balance</th>
-            <th className="px-3 py-2 text-left font-medium">Visibility</th>
+            {showVisibility && (
+              <th className="px-3 py-2 text-left font-medium">Visibility</th>
+            )}
           </tr>
         </thead>
         <tbody>
@@ -230,7 +242,7 @@ export function ProjectBudgetG703Table({
                 <td className="px-3 py-2 text-right font-semibold">
                   {money(division.balanceToFinish)}
                 </td>
-                <td className="px-3 py-2" />
+                {showVisibility && <td className="px-3 py-2" />}
               </tr>
               {showLineDetail &&
                 division.lines.map((line) => (
@@ -274,16 +286,18 @@ export function ProjectBudgetG703Table({
                     <td className="px-3 py-2 text-right">
                       {money(line.balanceToFinish)}
                     </td>
-                    <td className="px-3 py-2">
-                      {line.ownerVisible ? (
-                        <Badge variant="secondary">Owner</Badge>
-                      ) : (
-                        <Badge variant="outline">
-                          <IconReceipt2 className="mr-1 size-3" />
-                          Internal
-                        </Badge>
-                      )}
-                    </td>
+                    {showVisibility && (
+                      <td className="px-3 py-2">
+                        {line.ownerVisible ? (
+                          <Badge variant="secondary">Owner</Badge>
+                        ) : (
+                          <Badge variant="outline">
+                            <IconReceipt2 className="mr-1 size-3" />
+                            Internal
+                          </Badge>
+                        )}
+                      </td>
+                    )}
                   </tr>
                 ))}
             </Fragment>

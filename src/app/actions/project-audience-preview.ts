@@ -25,6 +25,8 @@ import {
   canUseProjectAudience,
   type ProjectAudience,
 } from "@/lib/project-audience-access"
+import { ensureProjectAudienceConversation } from "@/lib/project-audience-conversations"
+import { isVisibleAudienceTeamMember } from "@/lib/project-audience-team"
 import { isInternalStaffRole } from "@/lib/user-roles"
 import {
   isOwnerScheduleView,
@@ -468,6 +470,26 @@ export async function getProjectAudiencePreview(
     .where(and(eq(projectRfis.projectId, projectId), rfiVisibility))
     .orderBy(asc(projectRfis.dueDate), desc(projectRfis.submittedAt))
 
+  const audienceContactId =
+    viewerIsInternal
+      ? null
+      : contactRows.find((contact) => contact.userId === viewer.id)?.id ?? null
+  if (
+    audience === "owner" ||
+    (!viewerIsInternal && audienceContactId !== null)
+  ) {
+    await ensureProjectAudienceConversation({
+      db,
+      projectId,
+      organizationId,
+      audience,
+      contactId: audience === "owner" ? null : audienceContactId,
+      externalUserId: viewerIsInternal ? null : viewer.id,
+      createdBy: viewer.id,
+      now: new Date().toISOString(),
+    })
+  }
+
   const channelAudience =
     audience === "owner" ? "clients" : "sub_vendors"
   const messageChannelRows = await db
@@ -496,53 +518,61 @@ export async function getProjectAudiencePreview(
     )
     .orderBy(asc(channels.sortOrder), asc(channels.name))
 
-  const internalTeamRows = viewerIsInternal
-    ? []
-    : await db
-        .select({
-          id: projectMembers.id,
-          userId: users.id,
-          displayName: users.displayName,
-          email: users.email,
-          role: organizationMembers.role,
-        })
-        .from(projectMembers)
-        .innerJoin(users, eq(users.id, projectMembers.userId))
-        .innerJoin(
-          organizationMembers,
-          and(
-            eq(organizationMembers.userId, users.id),
-            eq(organizationMembers.organizationId, organizationId)
-          )
-        )
-        .where(
-          and(
-            eq(projectMembers.projectId, projectId),
-            eq(users.isActive, true)
-          )
-        )
+  const internalTeamRows = await db
+    .select({
+      id: users.id,
+      userId: users.id,
+      displayName: users.displayName,
+      email: users.email,
+      organizationRole: organizationMembers.role,
+      projectRole: projectMembers.role,
+      projectAssignedAt: projectMembers.assignedAt,
+    })
+    .from(organizationMembers)
+    .innerJoin(users, eq(users.id, organizationMembers.userId))
+    .leftJoin(
+      projectMembers,
+      and(
+        eq(projectMembers.userId, users.id),
+        eq(projectMembers.projectId, projectId)
+      )
+    )
+    .where(
+      and(
+        eq(organizationMembers.organizationId, organizationId),
+        eq(users.isActive, true)
+      )
+    )
+    .orderBy(desc(projectMembers.assignedAt), asc(users.displayName))
 
-  // External workspaces expose the authoritative internal project team only.
-  // Owners and partners do not need to see themselves or discover other
-  // external contacts assigned to the project.
-  const visibleContactRows = viewerIsInternal
-    ? contactRows
-    : internalTeamRows
-        .filter((member) => isInternalStaffRole(member.role))
-        .map((member) => ({
-          id: member.id,
-          userId: member.userId,
-          contactType: "internal",
-          displayName: member.displayName ?? member.email,
-          companyName: null,
-          role: member.role,
-          trade: null,
-          csiDivision: null,
-          csiDivisionName: null,
-          email: member.email,
-          phone: null,
-          primaryContact: false,
-        }))
+  // Audience workspaces expose the authoritative internal team only. Internal
+  // previewers receive the same directory that an owner or partner will see.
+  const visibleContactRows = Array.from(
+    new Map(
+      internalTeamRows
+        .filter((member) =>
+          isVisibleAudienceTeamMember({
+            userId: member.userId,
+            email: member.email,
+            role: member.organizationRole,
+          })
+        )
+        .map((member) => [member.userId, member])
+    ).values()
+  ).map((member) => ({
+    id: member.id,
+    userId: member.userId,
+    contactType: "internal",
+    displayName: member.displayName ?? member.email,
+    companyName: null,
+    role: member.projectRole ?? member.organizationRole,
+    trade: null,
+    csiDivision: null,
+    csiDivisionName: null,
+    email: member.email,
+    phone: null,
+    primaryContact: false,
+  }))
   const visibleContactNames = new Set(
     visibleContactRows
       .flatMap((contact) => [

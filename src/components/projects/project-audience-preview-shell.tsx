@@ -6,6 +6,7 @@ import {
   IconChevronDown,
   IconClipboardCheck,
   IconEye,
+  IconFileDollar,
   IconHome,
   IconMessageCircle,
   IconPhoto,
@@ -54,6 +55,11 @@ const OWNER_NAVIGATION: readonly PreviewNavigationItem[] = [
     label: "Schedule",
     section: "schedule",
     icon: <IconCalendar className="size-4" />,
+  },
+  {
+    label: "Budget / G703",
+    section: "budget",
+    icon: <IconFileDollar className="size-4" />,
   },
   {
     label: "Conversations",

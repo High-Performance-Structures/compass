@@ -36,8 +36,11 @@ async function loadConversation(
   audience: ProjectAudience
 ) {
   try {
-    const [preview, channelResult, messagesResult] = await Promise.all([
-      getProjectAudiencePreview(projectId, audience),
+    // Loading the preview first synchronizes the private audience channel's
+    // current owner/partner and internal-team memberships before message
+    // authorization runs.
+    const preview = await getProjectAudiencePreview(projectId, audience)
+    const [channelResult, messagesResult] = await Promise.all([
       getChannel(channelId),
       getMessages(channelId),
     ])
