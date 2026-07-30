@@ -33,7 +33,6 @@ import {
   isOwnerScheduleView,
   summarizeOwnerScheduleByPhase,
   type OwnerScheduleView,
-  type OwnerScheduleVisibleItem,
 } from "@/lib/schedule/owner-visibility"
 import { parsePublishedScheduleSnapshot } from "@/lib/schedule/publications"
 import { projectAudiencePhotoUrl } from "@/lib/photo-sources"
@@ -63,6 +62,9 @@ export type AudienceScheduleItem = {
   readonly assignedTo: string | null
   readonly percentComplete: number
   readonly isMilestone: boolean
+  readonly confirmationRequired: boolean
+  readonly confirmationStatus: string
+  readonly viewerCanConfirm: boolean
 }
 
 export type AudienceOperationItem = {
@@ -364,6 +366,14 @@ export async function getProjectAudiencePreview(
       percentComplete: scheduleTasks.percentComplete,
       isMilestone: scheduleTasks.isMilestone,
       workdays: scheduleTasks.workdays,
+      assignedUserId: scheduleTasks.assignedUserId,
+      ownerVisible: scheduleTasks.ownerVisible,
+      subVendorVisible: scheduleTasks.subVendorVisible,
+      confirmationRequired: scheduleTasks.confirmationRequired,
+      confirmationStatus: scheduleTasks.confirmationStatus,
+      confirmationRequestedAt: scheduleTasks.confirmationRequestedAt,
+      confirmationRespondedAt: scheduleTasks.confirmationRespondedAt,
+      reminderSentAt: scheduleTasks.reminderSentAt,
     })
     .from(scheduleTasks)
     .where(eq(scheduleTasks.projectId, projectId))
@@ -380,6 +390,9 @@ export async function getProjectAudiencePreview(
     : null
   // Once a publication exists, fail closed if its immutable snapshot cannot
   // be parsed. Falling back to live rows could expose unpublished changes.
+  const currentScheduleById = new Map(
+    currentScheduleRows.map((task) => [task.id, task])
+  )
   const scheduleRowsUnsorted = publishedSchedule
     ? publishedSnapshot
       ? publishedSnapshot.tasks.map((task) => ({
@@ -393,6 +406,37 @@ export async function getProjectAudiencePreview(
           percentComplete: task.percentComplete,
           isMilestone: task.isMilestone,
           workdays: task.workdays,
+          assignedUserId: task.assignedUserId,
+          ownerVisible: task.ownerVisible,
+          subVendorVisible: task.subVendorVisible,
+          confirmationRequired: task.confirmationRequired,
+          // Response state may update after publication, but only overlay it
+          // while the published assignee and requirement still match live.
+          confirmationStatus:
+            currentScheduleById.get(task.id)?.assignedUserId ===
+              task.assignedUserId &&
+            currentScheduleById.get(task.id)?.confirmationRequired ===
+              task.confirmationRequired
+              ? currentScheduleById.get(task.id)?.confirmationStatus ??
+                task.confirmationStatus
+              : task.confirmationStatus,
+          confirmationRequestedAt: task.confirmationRequestedAt,
+          confirmationRespondedAt:
+            currentScheduleById.get(task.id)?.assignedUserId ===
+              task.assignedUserId &&
+            currentScheduleById.get(task.id)?.confirmationRequired ===
+              task.confirmationRequired
+              ? currentScheduleById.get(task.id)?.confirmationRespondedAt ??
+                task.confirmationRespondedAt
+              : task.confirmationRespondedAt,
+          reminderSentAt:
+            currentScheduleById.get(task.id)?.assignedUserId ===
+              task.assignedUserId &&
+            currentScheduleById.get(task.id)?.confirmationRequired ===
+              task.confirmationRequired
+              ? currentScheduleById.get(task.id)?.reminderSentAt ??
+                task.reminderSentAt
+              : task.reminderSentAt,
         }))
       : []
     : currentScheduleRows
@@ -617,12 +661,19 @@ export async function getProjectAudiencePreview(
       ])
       .filter((value) => value.length > 0)
   )
-  const ownerScheduleView = isOwnerScheduleView(project.ownerScheduleView)
-    ? project.ownerScheduleView
-    : "items"
+  const ownerScheduleView =
+    audience === "owner" && isOwnerScheduleView(project.ownerScheduleView)
+      ? project.ownerScheduleView
+      : "items"
+  const audienceScheduleRows = scheduleRows.filter((item) =>
+    audience === "owner"
+      ? item.ownerVisible !== false
+      : item.subVendorVisible ??
+        visibleContactNames.has(normalizeVisibleName(item.assignedTo))
+  )
   const visibleScheduleItem = (
-    item: (typeof scheduleRows)[number]
-  ): OwnerScheduleVisibleItem => ({
+    item: (typeof audienceScheduleRows)[number]
+  ): AudienceScheduleItem => ({
     id: item.id,
     title: item.title,
     startDate: item.startDate,
@@ -632,11 +683,22 @@ export async function getProjectAudiencePreview(
     assignedTo: item.assignedTo,
     percentComplete: item.percentComplete,
     isMilestone: item.isMilestone,
+    confirmationRequired: item.confirmationRequired,
+    confirmationStatus: item.confirmationStatus,
+    viewerCanConfirm:
+      !viewerIsInternal &&
+      item.confirmationRequired &&
+      item.assignedUserId === viewer.id,
   })
-  const ownerScheduleItems =
+  const audienceScheduleItems: readonly AudienceScheduleItem[] =
     ownerScheduleView === "phases"
-      ? summarizeOwnerScheduleByPhase(scheduleRows)
-      : scheduleRows.map(visibleScheduleItem)
+      ? summarizeOwnerScheduleByPhase(audienceScheduleRows).map((item) => ({
+          ...item,
+          confirmationRequired: false,
+          confirmationStatus: "not_requested",
+          viewerCanConfirm: false,
+        }))
+      : audienceScheduleRows.map(visibleScheduleItem)
 
   return {
     audience,
@@ -677,12 +739,7 @@ export async function getProjectAudiencePreview(
             : "No phase assigned.",
       }
     }),
-    scheduleItems:
-      audience === "owner"
-        ? ownerScheduleItems
-        : scheduleRows.filter((item) =>
-            visibleContactNames.has(normalizeVisibleName(item.assignedTo))
-          ).map(visibleScheduleItem),
+    scheduleItems: audienceScheduleItems,
     operations: operationRows
       .filter(
         (operation) =>

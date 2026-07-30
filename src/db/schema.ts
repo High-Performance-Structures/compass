@@ -1176,6 +1176,24 @@ export const scheduleTasks = sqliteTable("schedule_tasks", {
     .default(false),
   percentComplete: integer("percent_complete").notNull().default(0),
   assignedTo: text("assigned_to"),
+  assignedUserId: text("assigned_user_id").references(() => users.id, {
+    onDelete: "set null",
+  }),
+  ownerVisible: integer("owner_visible", { mode: "boolean" })
+    .notNull()
+    .default(true),
+  subVendorVisible: integer("sub_vendor_visible", { mode: "boolean" })
+    .notNull()
+    .default(false),
+  confirmationRequired: integer("confirmation_required", { mode: "boolean" })
+    .notNull()
+    .default(false),
+  confirmationStatus: text("confirmation_status")
+    .notNull()
+    .default("not_requested"),
+  confirmationRequestedAt: text("confirmation_requested_at"),
+  confirmationRespondedAt: text("confirmation_responded_at"),
+  reminderSentAt: text("reminder_sent_at"),
   sortOrder: integer("sort_order").notNull().default(0),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),

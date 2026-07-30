@@ -20,6 +20,9 @@ function scheduleItem(
     assignedTo: null,
     percentComplete,
     isMilestone: false,
+    confirmationRequired: false,
+    confirmationStatus: "not_requested",
+    viewerCanConfirm: false,
   }
 }
 

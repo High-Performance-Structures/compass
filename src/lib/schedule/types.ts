@@ -43,6 +43,14 @@ export interface ScheduleTaskData {
   isMilestone: boolean
   percentComplete: number
   assignedTo: string | null
+  assignedUserId?: string | null
+  ownerVisible?: boolean
+  subVendorVisible?: boolean
+  confirmationRequired?: boolean
+  confirmationStatus?: string
+  confirmationRequestedAt?: string | null
+  confirmationRespondedAt?: string | null
+  reminderSentAt?: string | null
   sortOrder: number
   createdAt: string
   updatedAt: string

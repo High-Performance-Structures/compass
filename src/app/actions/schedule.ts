@@ -7,6 +7,9 @@ import {
   taskDependencies,
   workdayExceptions,
   projects,
+  organizationMembers,
+  projectAccessInvitations,
+  users,
 } from "@/db/schema"
 import { eq, asc, and, inArray } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
@@ -21,10 +24,10 @@ import {
   effectivePercentComplete,
   normalizeScheduleProgress,
 } from "@/lib/schedule/progress"
+import { newScheduleConfirmationState } from "@/lib/schedule/confirmation"
 import { requireAuth } from "@/lib/auth"
 import { requireOrg } from "@/lib/org-scope"
 import { isDemoUser } from "@/lib/demo"
-import { notifyProjectAssignment } from "@/lib/notifications/events"
 import { getProjects } from "@/app/actions/projects"
 import { projectDepartment } from "@/lib/project-branding"
 import { projectScheduleColor } from "@/lib/schedule/project-scope"
@@ -80,6 +83,54 @@ async function fetchExceptions(
     category: r.category as ExceptionCategory,
     recurrence: r.recurrence as ExceptionRecurrence,
   }))
+}
+
+async function resolveAssignedUserId(
+  db: ReturnType<typeof getDb>,
+  organizationId: string,
+  projectId: string,
+  assigneeOptionId: string | null | undefined
+): Promise<string | null> {
+  if (!assigneeOptionId) return null
+
+  if (assigneeOptionId.startsWith("team:")) {
+    const userId = assigneeOptionId.slice("team:".length)
+    const member = await db
+      .select({ userId: users.id })
+      .from(users)
+      .innerJoin(
+        organizationMembers,
+        eq(organizationMembers.userId, users.id)
+      )
+      .where(
+        and(
+          eq(users.id, userId),
+          eq(users.isActive, true),
+          eq(organizationMembers.organizationId, organizationId)
+        )
+      )
+      .get()
+    return member?.userId ?? null
+  }
+
+  if (assigneeOptionId.startsWith("project:")) {
+    const projectContactId = assigneeOptionId.slice("project:".length)
+    const invitation = await db
+      .select({ userId: projectAccessInvitations.acceptedBy })
+      .from(projectAccessInvitations)
+      .where(
+        and(
+          eq(projectAccessInvitations.organizationId, organizationId),
+          eq(projectAccessInvitations.projectId, projectId),
+          eq(projectAccessInvitations.projectContactId, projectContactId),
+          eq(projectAccessInvitations.status, "accepted")
+        )
+      )
+      .get()
+    return invitation?.userId ?? null
+  }
+
+  return null
 }
 
 export async function getSchedule(
@@ -401,6 +452,10 @@ export async function createTask(
     isMilestone?: boolean
     percentComplete?: number
     assignedTo?: string
+    assignedOptionId?: string | null
+    ownerVisible?: boolean
+    subVendorVisible?: boolean
+    confirmationRequired?: boolean
   }
 ): Promise<
   | { readonly success: true; readonly taskId: string }
@@ -445,6 +500,18 @@ export async function createTask(
       : 0
 
     const id = crypto.randomUUID()
+    const assignedUserId = await resolveAssignedUserId(
+      db,
+      orgId,
+      projectId,
+      data.assignedOptionId
+    )
+    const confirmationRequired = data.confirmationRequired ?? false
+    const confirmation = newScheduleConfirmationState({
+      required: confirmationRequired,
+      assignedUserId,
+      now,
+    })
     const progress = normalizeScheduleProgress(
       data.status ?? "PENDING",
       data.percentComplete ?? 0
@@ -463,6 +530,12 @@ export async function createTask(
       isMilestone: data.isMilestone ?? false,
       percentComplete: progress.percentComplete,
       assignedTo: data.assignedTo ?? null,
+      assignedUserId,
+      ownerVisible: data.ownerVisible ?? true,
+      subVendorVisible: data.subVendorVisible ?? false,
+      confirmationRequired,
+      confirmationStatus: confirmation.status,
+      confirmationRequestedAt: confirmation.requestedAt,
       sortOrder: nextOrder,
       createdAt: now,
       updatedAt: now,
@@ -479,23 +552,6 @@ export async function createTask(
       entityId: id,
       summary: `Created schedule item “${data.title}”.`,
     })
-
-    try {
-      await notifyProjectAssignment({
-        organizationId: orgId,
-        projectId,
-        itemId: id,
-        title: data.title,
-        assignedToName: data.assignedTo ?? null,
-        createdBy: user,
-        kind: "schedule",
-      })
-    } catch (notificationError) {
-      console.error(
-        "Schedule assignment notification failed:",
-        notificationError
-      )
-    }
 
     await recalcCriticalPath(db, projectId)
     revalidateSchedulePaths(projectId)
@@ -518,6 +574,10 @@ export async function updateTask(
     isMilestone?: boolean
     percentComplete?: number
     assignedTo?: string | null
+    assignedOptionId?: string | null
+    ownerVisible?: boolean
+    subVendorVisible?: boolean
+    confirmationRequired?: boolean
   }
 ): Promise<{ success: boolean; error?: string }> {
   try {
@@ -558,6 +618,34 @@ export async function updateTask(
       (data.status ?? task.status) as TaskStatus,
       data.percentComplete ?? task.percentComplete
     )
+    const assignedUserId =
+      data.assignedOptionId !== undefined
+        ? await resolveAssignedUserId(
+            db,
+            orgId,
+            task.projectId,
+            data.assignedOptionId
+          )
+        : data.assignedTo === null
+          ? null
+          : task.assignedUserId
+    const assignmentChanged =
+      (data.assignedTo !== undefined &&
+        data.assignedTo !== task.assignedTo) ||
+      (data.assignedOptionId !== undefined &&
+        assignedUserId !== task.assignedUserId)
+    const confirmationRequired =
+      data.confirmationRequired ?? task.confirmationRequired
+    const resetConfirmation =
+      assignmentChanged ||
+      (data.confirmationRequired !== undefined &&
+        data.confirmationRequired !== task.confirmationRequired)
+    const now = new Date().toISOString()
+    const confirmation = newScheduleConfirmationState({
+      required: confirmationRequired,
+      assignedUserId,
+      now,
+    })
 
     await db
       .update(scheduleTasks)
@@ -576,7 +664,27 @@ export async function updateTask(
         ...(data.assignedTo !== undefined && {
           assignedTo: data.assignedTo,
         }),
-        updatedAt: new Date().toISOString(),
+        ...(data.assignedOptionId !== undefined || data.assignedTo === null
+          ? { assignedUserId }
+          : {}),
+        ...(data.ownerVisible !== undefined && {
+          ownerVisible: data.ownerVisible,
+        }),
+        ...(data.subVendorVisible !== undefined && {
+          subVendorVisible: data.subVendorVisible,
+        }),
+        ...(data.confirmationRequired !== undefined && {
+          confirmationRequired,
+        }),
+        ...(resetConfirmation
+          ? {
+              confirmationStatus: confirmation.status,
+              confirmationRequestedAt: confirmation.requestedAt,
+              confirmationRespondedAt: null,
+              reminderSentAt: null,
+            }
+          : {}),
+        updatedAt: now,
       })
       .where(eq(scheduleTasks.id, taskId))
 
@@ -591,29 +699,6 @@ export async function updateTask(
       entityId: taskId,
       summary: `Updated schedule item “${data.title ?? task.title}”.`,
     })
-
-    if (
-      data.assignedTo !== undefined &&
-      data.assignedTo !== null &&
-      data.assignedTo !== task.assignedTo
-    ) {
-      try {
-        await notifyProjectAssignment({
-          organizationId: orgId,
-          projectId: task.projectId,
-          itemId: taskId,
-          title: data.title ?? task.title,
-          assignedToName: data.assignedTo,
-          createdBy: user,
-          kind: "schedule",
-        })
-      } catch (notificationError) {
-        console.error(
-          "Schedule reassignment notification failed:",
-          notificationError
-        )
-      }
-    }
 
     // propagate date changes to downstream tasks
     const schedule = await getSchedule(task.projectId)
@@ -832,7 +917,10 @@ export async function assignScheduleTasks(
     }
 
     const matchingTasks = await db
-      .select({ id: scheduleTasks.id })
+      .select({
+        id: scheduleTasks.id,
+        confirmationRequired: scheduleTasks.confirmationRequired,
+      })
       .from(scheduleTasks)
       .where(
         and(
@@ -848,18 +936,28 @@ export async function assignScheduleTasks(
       }
     }
 
-    await db
-      .update(scheduleTasks)
-      .set({
-        assignedTo: assignedTo?.trim() || null,
-        updatedAt: new Date().toISOString(),
-      })
-      .where(
-        and(
-          eq(scheduleTasks.projectId, projectId),
-          inArray(scheduleTasks.id, ids)
+    const now = new Date().toISOString()
+    for (const task of matchingTasks) {
+      await db
+        .update(scheduleTasks)
+        .set({
+          assignedTo: assignedTo?.trim() || null,
+          assignedUserId: null,
+          confirmationStatus: task.confirmationRequired
+            ? "unavailable"
+            : "not_requested",
+          confirmationRequestedAt: task.confirmationRequired ? now : null,
+          confirmationRespondedAt: null,
+          reminderSentAt: null,
+          updatedAt: now,
+        })
+        .where(
+          and(
+            eq(scheduleTasks.id, task.id),
+            eq(scheduleTasks.projectId, projectId)
+          )
         )
-      )
+    }
 
     await recordActivityEvent({
       db,

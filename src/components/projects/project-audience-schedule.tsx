@@ -1,14 +1,19 @@
 "use client"
 
 import * as React from "react"
+import { useRouter } from "next/navigation"
 import {
   IconCalendar,
+  IconCheck,
   IconChevronLeft,
   IconChevronRight,
   IconList,
   IconTimeline,
+  IconX,
 } from "@tabler/icons-react"
+import { toast } from "sonner"
 
+import { respondToScheduleTaskConfirmation } from "@/app/actions/schedule-confirmations"
 import type { AudienceScheduleItem } from "@/app/actions/project-audience-preview"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -103,6 +108,74 @@ function statusLabel(value: string): string {
     .split("_")
     .map((part) => `${part.slice(0, 1).toUpperCase()}${part.slice(1)}`)
     .join(" ")
+}
+
+function confirmationLabel(value: string): string {
+  if (value === "confirmed") return "Confirmed"
+  if (value === "declined") return "Cannot commit"
+  if (value === "pending") return "Awaiting confirmation"
+  if (value === "unavailable") return "Compass account needed"
+  return "Not requested"
+}
+
+function ScheduleConfirmationControl({
+  item,
+}: {
+  readonly item: AudienceScheduleItem
+}): React.ReactElement | null {
+  const router = useRouter()
+  const [pending, startTransition] = React.useTransition()
+  if (!item.confirmationRequired) return null
+
+  const respond = (response: "confirmed" | "declined"): void => {
+    startTransition(async () => {
+      const result = await respondToScheduleTaskConfirmation(item.id, response)
+      if (!result.success) {
+        toast.error(result.error)
+        return
+      }
+      toast.success(
+        response === "confirmed"
+          ? "Schedule commitment confirmed."
+          : "The project team has been notified that you cannot commit."
+      )
+      router.refresh()
+    })
+  }
+
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <Badge
+        variant={item.confirmationStatus === "confirmed" ? "secondary" : "outline"}
+      >
+        {confirmationLabel(item.confirmationStatus)}
+      </Badge>
+      {item.viewerCanConfirm && item.confirmationStatus !== "confirmed" && (
+        <>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={pending}
+            onClick={() => respond("confirmed")}
+          >
+            <IconCheck className="size-4" />
+            Confirm
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            disabled={pending}
+            onClick={() => respond("declined")}
+          >
+            <IconX className="size-4" />
+            Cannot commit
+          </Button>
+        </>
+      )}
+    </div>
+  )
 }
 
 function itemsForDay(
@@ -658,15 +731,18 @@ export function ProjectAudienceSchedule({
               <p className="text-xs tabular-nums text-muted-foreground">
                 {formatDate(item.startDate)} – {formatDate(item.endDate)}
               </p>
-              <Badge
-                variant={item.percentComplete === 100 ? "secondary" : "outline"}
-              >
-                {item.percentComplete === 100
-                  ? "Complete"
-                  : item.isMilestone
-                    ? "Milestone"
-                    : `${item.percentComplete}%`}
-              </Badge>
+              <div className="flex flex-wrap items-center justify-end gap-2">
+                <Badge
+                  variant={item.percentComplete === 100 ? "secondary" : "outline"}
+                >
+                  {item.percentComplete === 100
+                    ? "Complete"
+                    : item.isMilestone
+                      ? "Milestone"
+                      : `${item.percentComplete}%`}
+                </Badge>
+                <ScheduleConfirmationControl item={item} />
+              </div>
             </article>
           ))}
         </div>

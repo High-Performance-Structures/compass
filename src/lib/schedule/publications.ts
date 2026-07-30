@@ -14,6 +14,22 @@ const publishedTaskSchema = z.object({
   isMilestone: z.boolean(),
   percentComplete: z.number(),
   assignedTo: z.string().nullable(),
+  assignedUserId: z.string().nullable().default(null),
+  ownerVisible: z.boolean().optional(),
+  subVendorVisible: z.boolean().optional(),
+  confirmationRequired: z.boolean().default(false),
+  confirmationStatus: z
+    .enum([
+      "not_requested",
+      "pending",
+      "confirmed",
+      "declined",
+      "unavailable",
+    ])
+    .default("not_requested"),
+  confirmationRequestedAt: z.string().nullable().default(null),
+  confirmationRespondedAt: z.string().nullable().default(null),
+  reminderSentAt: z.string().nullable().default(null),
   sortOrder: z.number(),
   createdAt: z.string(),
   updatedAt: z.string(),
