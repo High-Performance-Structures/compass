@@ -26,6 +26,7 @@ import { ProjectBudgetPrintButton } from "@/components/projects/project-budget-p
 import { ProjectAudiencePreviewShell } from "@/components/projects/project-audience-preview-shell"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { projectAudienceMessageShortcut } from "@/lib/project-audience-direct-message"
 import { projectBrandFor } from "@/lib/project-branding"
 
 function hasDigest(error: unknown): error is { readonly digest: string } {
@@ -114,6 +115,13 @@ export default async function OwnerBudgetPage({
     Math.abs(contractDifference) >= 0.02 ||
     Math.abs(priorDifference) >= 0.02 ||
     Math.abs(currentDifference) >= 0.02
+  const messageShortcut = projectAudienceMessageShortcut({
+    projectId: preview.project.id,
+    audience: preview.audience,
+    viewerId: preview.viewer.id,
+    contacts: preview.contacts,
+    messageChannels: preview.messageChannels,
+  })
 
   return (
     <ProjectAudiencePreviewShell
@@ -124,6 +132,7 @@ export default async function OwnerBudgetPage({
       projectOptions={preview.projectOptions}
       viewer={preview.viewer}
       viewerIsInternal={preview.viewerIsInternal}
+      messageShortcut={messageShortcut}
       activeSection="budget"
     >
       <main className="min-h-screen bg-muted/20 px-4 py-5 sm:px-6 lg:px-8">
