@@ -220,7 +220,7 @@ export async function POST(
         sourceId: id,
         title: `Request update: ${feedbackStatusLabel(parsed.data.status)}`,
         body: message,
-        href: `/dashboard/requests#request-${id}`,
+        href: `/dashboard/requests/${encodeURIComponent(id)}`,
         priority:
           parsed.data.status === "needs_info" ? "high" : "normal",
         audience: "requester",

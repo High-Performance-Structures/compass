@@ -5,6 +5,7 @@ import { sql } from "drizzle-orm"
 import { enqueueFeedbackDeskItem } from "@/lib/jarvis/feedback-desk"
 import { linkFeedbackDeskItemToGithub } from "@/lib/jarvis/feedback-github"
 import { getJarvisEnvValue } from "@/lib/jarvis/auth"
+import { getCurrentUser } from "@/lib/auth"
 
 const FEEDBACK_TYPES = ["bug", "feature", "question", "general"] as const
 
@@ -49,6 +50,16 @@ export async function POST(request: Request) {
 
   const { env, cf } = await getCloudflareContext()
   const db = getDb(env.DB)
+  const currentUser = await getCurrentUser()
+  const reporterName =
+    currentUser?.displayName ?? name?.trim() ?? null
+  const reporterEmail =
+    currentUser?.email.trim().toLowerCase() ??
+    email?.trim().toLowerCase() ??
+    null
+  const organizationId =
+    currentUser?.organizationId ??
+    getJarvisEnvValue(env, "JARVIS_BRIDGE_ORGANIZATION_ID")
 
   const ip = (cf as { request?: Request })?.request?.headers?.get("cf-connecting-ip")
     ?? request.headers.get("cf-connecting-ip")
@@ -77,8 +88,8 @@ export async function POST(request: Request) {
     id,
     type,
     message: message.trim(),
-    name: name?.trim() || null,
-    email: email?.trim() || null,
+    name: reporterName,
+    email: reporterEmail,
     pageUrl: pageUrl || null,
     userAgent: userAgent || null,
     viewportWidth: viewportWidth || null,
@@ -89,22 +100,21 @@ export async function POST(request: Request) {
 
   try {
     const item = await enqueueFeedbackDeskItem(db, {
-      organizationId: getJarvisEnvValue(
-        env,
-        "JARVIS_BRIDGE_ORGANIZATION_ID",
-      ),
+      organizationId,
       source: "feedback-widget",
       sourceId: id,
       kind: type,
       title: message.trim().slice(0, 160),
       description: message.trim(),
-      reporterName: name?.trim(),
-      reporterEmail: email?.trim(),
+      reporterName,
+      reporterEmail,
       metadata: {
         pageUrl: pageUrl ?? null,
         userAgent: userAgent ?? null,
         viewportWidth: viewportWidth ?? null,
         viewportHeight: viewportHeight ?? null,
+        externalActorId: currentUser?.id ?? null,
+        authenticatedSubmission: currentUser !== null,
         untrustedUserContent: true,
       },
     })

@@ -161,6 +161,25 @@ class CompassSearchContextTests(unittest.TestCase):
         self.assertTrue(MODULE.confirms_pending_feedback(confirmed))
         self.assertFalse(MODULE.confirms_pending_feedback(unrelated))
 
+    def test_feedback_confirmation_accepts_natural_filing_questions(
+        self,
+    ) -> None:
+        self.assertTrue(
+            MODULE.asked_to_file_feedback(
+                "Would you like me to file both requests?"
+            )
+        )
+        self.assertTrue(
+            MODULE.asked_to_file_feedback(
+                "Should I submit this to the Compass Feedback Desk?"
+            )
+        )
+        self.assertFalse(
+            MODULE.asked_to_file_feedback(
+                "I can explain how the Feedback Desk works."
+            )
+        )
+
     def test_feedback_confirmation_accepts_explicit_sentence_with_context(
         self,
     ) -> None:

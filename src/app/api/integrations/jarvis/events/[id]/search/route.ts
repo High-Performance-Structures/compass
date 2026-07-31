@@ -21,6 +21,7 @@ import {
   currentProjectIdFromPath,
   dailyLogHref,
   feedbackRequestHref,
+  jarvisSearchQueryForConversation,
   jarvisSearchTerms,
   ownerUpdateHref,
   projectHref,
@@ -68,17 +69,20 @@ function eventPayload(value: string): Record<string, unknown> | null {
   }
 }
 
-function latestUserMessage(payload: Record<string, unknown>): string {
+function recentUserMessages(
+  payload: Record<string, unknown>
+): readonly string[] {
   const messages = payload.messages
-  if (!Array.isArray(messages)) return ""
+  if (!Array.isArray(messages)) return []
 
-  for (let index = messages.length - 1; index >= 0; index -= 1) {
+  const userMessages: string[] = []
+  for (let index = 0; index < messages.length; index += 1) {
     const message = messages[index]
     if (!isRecord(message) || message.role !== "user") continue
     const content = recordString(message, "content")?.trim() ?? ""
-    if (content.length > 0) return content.slice(0, 2_000)
+    if (content.length > 0) userMessages.push(content.slice(0, 2_000))
   }
-  return ""
+  return userMessages.slice(-2)
 }
 
 function payloadContextValue(
@@ -174,7 +178,9 @@ export async function GET(
     )
   }
 
-  const query = latestUserMessage(payload)
+  const query = jarvisSearchQueryForConversation(
+    recentUserMessages(payload)
+  )
   if (query.length === 0) {
     return Response.json({ query: "", results: [], count: 0 })
   }

@@ -5,6 +5,7 @@ import {
   currentProjectIdFromPath,
   dailyLogHref,
   feedbackRequestHref,
+  jarvisSearchQueryForConversation,
   jarvisSearchTerms,
   ownerUpdateHref,
   projectIdsForJarvisSearch,
@@ -73,6 +74,11 @@ describe("Jarvis Compass search", () => {
         "I think you can now provide some links to locations in Compass now."
       )
     ).toEqual([])
+    expect(
+      jarvisSearchTerms(
+        "Do you have any updates on the status of my requests through Compass?"
+      )
+    ).toEqual([])
   })
 
   it("narrows explicit record-type requests", () => {
@@ -89,6 +95,28 @@ describe("Jarvis Compass search", () => {
     expect(
       requestedJarvisSearchKinds("Verify the status of my feedback request")
     ).toEqual(["feedback_request"])
+    expect(
+      requestedJarvisSearchKinds(
+        "Do you have any updates on the status of my requests through Compass?"
+      )
+    ).toEqual(["feedback_request"])
+  })
+
+  it("keeps verified request-status scope for an immediate retry", () => {
+    expect(
+      jarvisSearchQueryForConversation([
+        "Do you have any updates on the status of my requests through Compass?",
+        "Check again please.",
+      ])
+    ).toBe(
+      "Do you have any updates on the status of my requests through Compass?"
+    )
+    expect(
+      jarvisSearchQueryForConversation([
+        "Show the open Loomis RFIs.",
+        "Check again please.",
+      ])
+    ).toBe("Check again please.")
   })
 
   it("builds encoded live Compass links", () => {
@@ -105,7 +133,7 @@ describe("Jarvis Compass search", () => {
       "/dashboard/projects/proj%20one/rfis?status=all#rfi-rfi%20one"
     )
     expect(feedbackRequestHref("request one")).toBe(
-      "/dashboard/requests#request-request%20one"
+      "/dashboard/requests/request%20one"
     )
   })
 })
