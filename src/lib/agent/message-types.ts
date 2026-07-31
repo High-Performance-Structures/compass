@@ -64,6 +64,12 @@ export interface AgentMessage {
 export type AgentPart =
   | { readonly type: "text"; readonly text: string }
   | {
+      readonly type: "image"
+      readonly filename: string
+      readonly mediaType: string
+      readonly dataUrl?: string
+    }
+  | {
       readonly type: "tool-call"
       readonly toolName: string
       readonly toolCallId: string

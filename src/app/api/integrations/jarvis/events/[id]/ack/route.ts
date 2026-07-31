@@ -8,6 +8,7 @@ import {
   readBoundedBody,
   verifyJarvisRequest,
 } from "@/lib/jarvis/auth"
+import { jarvisPayloadAfterCompletion } from "@/lib/jarvis/visual-context"
 
 const acknowledgementSchema = z.object({
   status: z.enum(["completed", "failed"]),
@@ -81,7 +82,11 @@ export async function POST(
   const db = getDb(env.DB)
 
   const existing = await db
-    .select({ id: jarvisBridgeEvents.id })
+    .select({
+      id: jarvisBridgeEvents.id,
+      eventType: jarvisBridgeEvents.eventType,
+      payload: jarvisBridgeEvents.payload,
+    })
     .from(jarvisBridgeEvents)
     .where(
       and(
@@ -109,6 +114,10 @@ export async function POST(
       claimedAt: null,
       completedAt:
         parsed.data.status === "completed" ? nowIso : null,
+      payload:
+        !shouldRetry && existing.eventType === "agent.prompt"
+          ? jarvisPayloadAfterCompletion(existing.payload)
+          : existing.payload,
       updatedAt: nowIso,
     })
     .where(eq(jarvisBridgeEvents.id, id))

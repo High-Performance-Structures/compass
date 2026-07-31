@@ -130,6 +130,17 @@ class SignatureTests(unittest.TestCase):
                 "shared-bridge-secret",
             )
 
+    def test_visuals_command_requires_an_output_directory(self) -> None:
+        parser = MODULE.build_parser()
+        with self.assertRaises(SystemExit):
+            parser.parse_args(["visuals", "--event-id", "event-1"])
+
+    def test_visual_response_limit_exceeds_normal_bridge_limit(self) -> None:
+        self.assertGreater(
+            MODULE.MAX_VISUAL_RESPONSE_BYTES,
+            MODULE.MAX_BODY_BYTES,
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

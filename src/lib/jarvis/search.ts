@@ -1,8 +1,11 @@
+import { isInternalStaffRole } from "@/lib/user-roles"
+
 export type JarvisCompassSearchKind =
   | "project"
   | "daily_log"
   | "owner_update"
   | "rfi"
+  | "feedback_request"
 
 export type JarvisSearchProject = {
   readonly id: string
@@ -10,8 +13,6 @@ export type JarvisSearchProject = {
   readonly projectNumber: string | null
   readonly clientName: string | null
 }
-
-const SEARCHABLE_ROLES: readonly string[] = ["admin", "office", "field"]
 
 const GENERIC_SEARCH_WORDS: readonly string[] = [
   "about",
@@ -34,10 +35,18 @@ const GENERIC_SEARCH_WORDS: readonly string[] = [
   "now",
   "please",
   "project",
+  "progress",
   "provide",
+  "report",
+  "reported",
+  "request",
+  "requests",
   "search",
   "show",
   "since",
+  "status",
+  "submission",
+  "submitted",
   "some",
   "tell",
   "that",
@@ -51,6 +60,12 @@ const GENERIC_SEARCH_WORDS: readonly string[] = [
   "with",
   "you",
   "your",
+  "bug",
+  "deployed",
+  "feature",
+  "feedback",
+  "implemented",
+  "triaged",
 ]
 
 function normalized(value: string): string {
@@ -58,7 +73,7 @@ function normalized(value: string): string {
 }
 
 export function canSearchCompassRole(role: string): boolean {
-  return SEARCHABLE_ROLES.includes(normalized(role))
+  return isInternalStaffRole(normalized(role))
 }
 
 export function currentProjectIdFromPath(path: string): string | null {
@@ -138,6 +153,14 @@ export function requestedJarvisSearchKinds(
   query: string
 ): readonly JarvisCompassSearchKind[] {
   const value = normalized(query)
+  if (
+    /\b(feedback|request|submission|report|bug|feature)\b/.test(value) &&
+    /\b(status|progress|triag|implement|deploy|verify|received|submitted)\w*\b/.test(
+      value,
+    )
+  ) {
+    return ["feedback_request"]
+  }
   if (/\brfis?\b/.test(value)) return ["rfi"]
   if (value.includes("owner update")) return ["owner_update"]
   if (value.includes("daily log")) return ["daily_log"]
@@ -174,4 +197,8 @@ export function rfiHref(projectId: string, rfiId: string): string {
   return `${projectSectionHref(projectId, "rfis")}?status=all#rfi-${encodeURIComponent(
     rfiId
   )}`
+}
+
+export function feedbackRequestHref(requestId: string): string {
+  return `/dashboard/requests#request-${encodeURIComponent(requestId)}`
 }

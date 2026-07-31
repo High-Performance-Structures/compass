@@ -12,6 +12,12 @@ export const FEEDBACK_DESK_STATUSES = [
 export type FeedbackDeskStatus =
   (typeof FEEDBACK_DESK_STATUSES)[number]
 
+export type FeedbackStaffStage =
+  | "submitted"
+  | "triaged"
+  | "in_process"
+  | "implemented"
+
 export type FeedbackRequesterUpdateKind =
   | "status_changed"
   | "draft_pull_request_opened"
@@ -56,6 +62,25 @@ export function feedbackStatusLabel(status: string): string {
       return status
         .replace(/[_-]+/g, " ")
         .replace(/\b\w/g, (letter) => letter.toUpperCase())
+  }
+}
+
+export function feedbackStaffStage(status: string): FeedbackStaffStage {
+  switch (status) {
+    case "new":
+      return "submitted"
+    case "triaged":
+    case "needs_info":
+    case "planned":
+      return "triaged"
+    case "in_progress":
+    case "testing":
+      return "in_process"
+    case "deployed":
+    case "closed":
+      return "implemented"
+    default:
+      return "submitted"
   }
 }
 

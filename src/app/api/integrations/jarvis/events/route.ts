@@ -13,6 +13,7 @@ import {
 } from "@/lib/jarvis/auth"
 import { linkFeedbackDeskItemToGithub } from "@/lib/jarvis/feedback-github"
 import { enqueueFeedbackReceipt } from "@/lib/jarvis/feedback-desk"
+import { jarvisPayloadForDelivery } from "@/lib/jarvis/visual-context"
 
 const CLAIM_RETRY_MILLISECONDS = 5 * 60 * 1000
 const MAX_EVENT_BATCH = 50
@@ -165,7 +166,10 @@ export async function GET(request: Request): Promise<Response> {
       eventType: event.eventType,
       source: event.source,
       attempt: event.attemptCount,
-      payload: jsonValue(event.payload),
+      payload:
+        event.eventType === "agent.prompt"
+          ? jarvisPayloadForDelivery(event.id, event.payload)
+          : jsonValue(event.payload),
       createdAt: event.createdAt,
     })),
   })

@@ -11,6 +11,7 @@ import {
   XIcon,
   Loader2Icon,
   SquarePenIcon,
+  ImagePlusIcon,
 } from "lucide-react"
 import {
   IconBrandGithub,
@@ -57,12 +58,20 @@ import {
   PromptInputSubmit,
   PromptInputTools,
   PromptInputButton,
+  PromptInputAttachment,
+  PromptInputAttachments,
+  usePromptInputAttachments,
 } from "@/components/ai/prompt-input"
 import { useAudioRecorder } from "@/hooks/use-audio-recorder"
 import type { AudioRecorder } from "@/hooks/use-audio-recorder"
 import { AudioWaveform } from "@/components/ai/audio-waveform"
 import { useChatState } from "./chat-provider"
 import { getRepoStats } from "@/app/actions/github"
+import {
+  MAX_JARVIS_VISUALS,
+  prepareJarvisVisuals,
+  type JarvisVisualAttachment,
+} from "@/lib/agent/visual-context"
 
 type RepoStats = {
   readonly stargazers_count: number
@@ -196,9 +205,37 @@ const ChatMessage = memo(
         .filter((p) => p.type === "text")
         .map((p) => (p as Extract<typeof p, { type: "text" }>).text)
         .join("")
+      const images = msg.parts.filter(
+        (part): part is Extract<typeof part, { type: "image" }> =>
+          part.type === "image",
+      )
       return (
         <Message from="user">
-          <MessageContent>{text}</MessageContent>
+          <MessageContent>
+            {images.length > 0 && (
+              <div className="mb-2 grid max-w-md grid-cols-2 gap-2">
+                {images.map((image, index) =>
+                  image.dataUrl ? (
+                    <img
+                      alt={image.filename}
+                      className="max-h-64 w-full rounded-md border object-contain"
+                      key={`${image.filename}-${index}`}
+                      src={image.dataUrl}
+                    />
+                  ) : (
+                    <div
+                      className="flex items-center gap-2 rounded-md border px-3 py-2 text-xs"
+                      key={`${image.filename}-${index}`}
+                    >
+                      <ImagePlusIcon className="size-4" />
+                      <span className="truncate">{image.filename}</span>
+                    </div>
+                  ),
+                )}
+              </div>
+            )}
+            {text}
+          </MessageContent>
         </Message>
       )
     }
@@ -379,6 +416,19 @@ const ChatMessage = memo(
   }
 )
 
+function VisualAttachmentButton(): React.ReactNode {
+  const attachments = usePromptInputAttachments()
+  return (
+    <PromptInputButton
+      aria-label="Attach screenshots for Jarvis"
+      onClick={attachments.openFileDialog}
+      type="button"
+    >
+      <ImagePlusIcon className="size-4" />
+    </PromptInputButton>
+  )
+}
+
 function ChatInput({
   textareaRef,
   placeholder,
@@ -397,7 +447,10 @@ function ChatInput({
   readonly recorder: AudioRecorder
   readonly status: string
   readonly isGenerating: boolean
-  readonly onSend: (text: string) => void
+  readonly onSend: (input: {
+    readonly text: string
+    readonly visuals?: readonly JarvisVisualAttachment[]
+  }) => Promise<boolean>
   readonly onNewChat?: () => void
   readonly className?: string
   readonly onActivate?: () => void
@@ -405,17 +458,38 @@ function ChatInput({
   const isRecording = recorder.state === "recording"
   const isTranscribing = recorder.state === "transcribing"
   const isIdle = recorder.state === "idle"
+  const [attachmentError, setAttachmentError] = useState<string | null>(null)
 
   return (
     <PromptInput
+      accept="image/jpeg,image/png,image/webp"
       className={className}
+      maxFiles={MAX_JARVIS_VISUALS}
+      maxFileSize={10 * 1024 * 1024}
+      multiple
       onClickCapture={onActivate}
       onFocusCapture={onActivate}
-      onSubmit={({ text }) => {
-        if (!text.trim() || isGenerating) return
-        onSend(text.trim())
+      onError={({ message }) => setAttachmentError(message)}
+      onSubmit={async ({ text, files }) => {
+        if ((!text.trim() && files.length === 0) || isGenerating) return
+        setAttachmentError(null)
+        try {
+          const visuals = await prepareJarvisVisuals(files)
+          const sent = await onSend({ text: text.trim(), visuals })
+          if (!sent) throw new Error("The message was not sent.")
+        } catch (error) {
+          const message =
+            error instanceof Error
+              ? error.message
+              : "Jarvis could not prepare that image."
+          setAttachmentError(message)
+          throw error
+        }
       }}
     >
+      <PromptInputAttachments>
+        {(attachment) => <PromptInputAttachment data={attachment} />}
+      </PromptInputAttachments>
       {/* textarea stays mounted (hidden) to preserve value */}
       <PromptInputTextarea
         ref={textareaRef}
@@ -460,6 +534,7 @@ function ChatInput({
                 <SquarePenIcon className="size-4" />
               </PromptInputButton>
             )}
+            <VisualAttachmentButton />
           </PromptInputTools>
           <div className="flex items-center gap-1">
             <PromptInputButton
@@ -483,6 +558,11 @@ function ChatInput({
             />
           </div>
         </PromptInputFooter>
+      )}
+      {attachmentError && (
+        <p className="px-3 pb-2 text-xs text-destructive" role="alert">
+          {attachmentError}
+        </p>
       )}
     </PromptInput>
   )
@@ -629,17 +709,21 @@ export function ChatView({
   )
 
   const handleIdleSend = useCallback(
-    (text: string) => {
+    async (input: {
+      readonly text: string
+      readonly visuals?: readonly JarvisVisualAttachment[]
+    }): Promise<boolean> => {
       setIsActive(true)
-      chat.sendMessage({ text })
+      return chat.sendMessage(input)
     },
     [chat.sendMessage]
   )
 
   const handleActiveSend = useCallback(
-    (text: string) => {
-      chat.sendMessage({ text })
-    },
+    (input: {
+      readonly text: string
+      readonly visuals?: readonly JarvisVisualAttachment[]
+    }): Promise<boolean> => chat.sendMessage(input),
     [chat.sendMessage]
   )
 
