@@ -3,6 +3,7 @@
 import { and, asc, desc, eq } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
+import { getUploadSessionUrl } from "@/app/actions/google-drive"
 import { getDb } from "@/db"
 import {
   projectBudgetLines,
@@ -12,6 +13,7 @@ import {
   projectChangeOrders,
   projectContacts,
   projectMembers,
+  projects,
   sageCostCodes,
 } from "@/db/schema"
 import { requireAuth, type AuthUser } from "@/lib/auth"
@@ -169,6 +171,10 @@ type ChangeOrderActionResult =
   | { readonly success: true; readonly id: string }
   | { readonly success: false; readonly error: string }
 
+type ChangeOrderUploadSessionResult =
+  | { readonly success: true; readonly uploadUrl: string }
+  | { readonly success: false; readonly error: string }
+
 function cleanText(value: string | null): string | null {
   const trimmed = value?.trim() ?? ""
   return trimmed.length > 0 ? trimmed : null
@@ -213,7 +219,7 @@ function cleanDocuments(
   documents: readonly ChangeOrderDocumentInput[]
 ): readonly ChangeOrderDocumentInput[] {
   if (documents.length > 20) {
-    throw new Error("A change order can have at most 20 document links")
+    throw new Error("A change order can have at most 20 supporting documents")
   }
   return documents
     .filter((document) => cleanText(document.url) !== null)
@@ -420,6 +426,34 @@ export async function getProjectChangeOrderCapabilities(
   return {
     canCreate: createAllowed && context.requesterType !== null,
     requesterType: context.requesterType,
+  }
+}
+
+export async function getProjectChangeOrderUploadSessionUrl(
+  projectId: string,
+  fileName: string,
+  mimeType: string
+): Promise<ChangeOrderUploadSessionResult> {
+  try {
+    const context = await changeOrderContext(projectId, "create")
+    const project = await context.db
+      .select({ googleDriveFolderId: projects.googleDriveFolderId })
+      .from(projects)
+      .where(eq(projects.id, projectId))
+      .get()
+    return await getUploadSessionUrl(
+      fileName,
+      mimeType,
+      project?.googleDriveFolderId ?? undefined
+    )
+  } catch (error) {
+    return {
+      success: false,
+      error:
+        error instanceof Error
+          ? error.message
+          : "Could not start the document upload.",
+    }
   }
 }
 

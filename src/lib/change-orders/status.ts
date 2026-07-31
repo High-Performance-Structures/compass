@@ -69,6 +69,17 @@ export function changeOrderStatusLabel(status: ChangeOrderStatus): string {
     .join(" ")
 }
 
+export function changeOrderDisplayStatus(
+  status: ChangeOrderStatus,
+  sourceType: string
+): string {
+  if (sourceType !== "buildertrend_import") {
+    return changeOrderStatusLabel(status)
+  }
+  if (status === "executed") return "Approved · Buildertrend"
+  return `${changeOrderStatusLabel(status)} · Buildertrend`
+}
+
 export function allowedChangeOrderTransitions(
   status: ChangeOrderStatus
 ): readonly ChangeOrderStatus[] {
