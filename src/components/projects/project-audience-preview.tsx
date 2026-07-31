@@ -42,6 +42,7 @@ import {
   projectAudienceSectionHref,
   type ProjectAudienceWorkspaceSection,
 } from "@/lib/project-audience-preview-routes"
+import { projectAudienceMessageShortcut } from "@/lib/project-audience-direct-message"
 import { selectUpcomingScheduleItems } from "@/lib/project-audience-schedule-selection"
 
 function formatDate(value: string | null): string {
@@ -719,6 +720,13 @@ export function ProjectAudiencePreview({
     new Date().toISOString().slice(0, 10)
   )
   const partnerNextScheduleItem = partnerUpcomingScheduleItems[0]
+  const messageShortcut = projectAudienceMessageShortcut({
+    projectId: data.project.id,
+    audience: data.audience,
+    viewerId: data.viewer.id,
+    contacts: data.contacts,
+    messageChannels: data.messageChannels,
+  })
 
   if (isOwner) {
     return (
@@ -730,6 +738,7 @@ export function ProjectAudiencePreview({
         projectOptions={data.projectOptions}
         viewer={data.viewer}
         viewerIsInternal={data.viewerIsInternal}
+        messageShortcut={messageShortcut}
         activeSection={section}
       >
         <OwnerProjectPreview data={data} section={section} />
@@ -746,6 +755,7 @@ export function ProjectAudiencePreview({
       projectOptions={data.projectOptions}
       viewer={data.viewer}
       viewerIsInternal={data.viewerIsInternal}
+      messageShortcut={messageShortcut}
       activeSection={section}
     >
       <main className="min-h-screen bg-muted/30">

@@ -32,6 +32,7 @@ import { ProjectAudiencePreviewWindowControls } from "@/components/projects/proj
 import { ProjectAudienceHeaderControls } from "@/components/projects/project-audience-header-controls"
 import { ProjectAudienceSidebarProfile } from "@/components/projects/project-audience-sidebar-profile"
 import { cn } from "@/lib/utils"
+import type { ProjectAudienceMessageShortcut } from "@/lib/project-audience-direct-message"
 
 type PreviewNavigationItem = {
   readonly label: string
@@ -133,6 +134,8 @@ export function ProjectAudiencePreviewShell({
   projectOptions,
   viewer,
   viewerIsInternal,
+  messageShortcut,
+  contentMode = "document",
   activeSection = "overview",
   children,
 }: {
@@ -148,6 +151,8 @@ export function ProjectAudiencePreviewShell({
     readonly sidebarPhotoUrl: string | null
   }
   readonly viewerIsInternal: boolean
+  readonly messageShortcut: ProjectAudienceMessageShortcut | null
+  readonly contentMode?: "document" | "viewport"
   readonly activeSection?: ProjectAudienceWorkspaceSection
   readonly children: React.ReactNode
 }): React.ReactElement {
@@ -157,8 +162,15 @@ export function ProjectAudiencePreviewShell({
     audience === "owner" ? OWNER_NAVIGATION : SUB_VENDOR_NAVIGATION
 
   return (
-    <div className="min-h-screen bg-muted/20 text-foreground md:grid md:grid-cols-[16rem_minmax(0,1fr)]">
-      <aside className="sticky top-0 hidden h-screen flex-col border-r bg-sidebar text-sidebar-foreground md:flex">
+    <div
+      className={cn(
+        "bg-muted/20 text-foreground md:grid md:grid-cols-[16rem_minmax(0,1fr)]",
+        contentMode === "viewport"
+          ? "h-dvh min-h-0 overflow-hidden"
+          : "min-h-screen"
+      )}
+    >
+      <aside className="sticky top-0 hidden h-dvh flex-col border-r bg-sidebar text-sidebar-foreground md:flex">
         <div className="border-b border-sidebar-border p-4">
           <Link href={homeHref} className="flex items-center gap-3">
             <span className="flex size-9 shrink-0 items-center justify-center">
@@ -259,9 +271,18 @@ export function ProjectAudiencePreviewShell({
         <ProjectAudienceSidebarProfile viewer={viewer} />
       </aside>
 
-      <div className="min-w-0">
+      <div
+        className={cn(
+          "min-w-0",
+          contentMode === "viewport" &&
+            "flex h-dvh min-h-0 flex-col overflow-hidden"
+        )}
+      >
         <header className="sticky top-0 z-40 hidden h-12 items-center justify-end border-b border-border/40 bg-background/80 px-4 backdrop-blur-sm md:flex">
-          <ProjectAudienceHeaderControls viewer={viewer} />
+          <ProjectAudienceHeaderControls
+            viewer={viewer}
+            messageShortcut={messageShortcut}
+          />
         </header>
 
         {viewerIsInternal && (
@@ -308,7 +329,10 @@ export function ProjectAudiencePreviewShell({
                 {audience === "owner" ? "Owner Compass" : "Partner Compass"}
               </p>
             </Link>
-            <ProjectAudienceHeaderControls viewer={viewer} />
+            <ProjectAudienceHeaderControls
+              viewer={viewer}
+              messageShortcut={messageShortcut}
+            />
           </div>
           <nav className="mt-3 flex gap-1 overflow-x-auto border-t pt-2">
             {navigation.map((item) => (

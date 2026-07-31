@@ -15,6 +15,7 @@ import {
   projectAudiencePreviewHref,
   type ProjectAudiencePreviewRoute,
 } from "@/lib/project-audience-preview-routes"
+import { projectAudienceMessageShortcut } from "@/lib/project-audience-direct-message"
 
 function routeAudience(audience: ProjectAudience): ProjectAudiencePreviewRoute {
   return audience === "owner" ? "owner" : "sub-vendor"
@@ -95,6 +96,13 @@ export async function ProjectAudienceConversation({
     projectNumber: preview.project.projectNumber,
     clientName: preview.project.clientName,
   }
+  const messageShortcut = projectAudienceMessageShortcut({
+    projectId: preview.project.id,
+    audience,
+    viewerId: preview.viewer.id,
+    contacts: preview.contacts,
+    messageChannels: preview.messageChannels,
+  })
 
   return (
     <ProjectAudiencePreviewShell
@@ -105,9 +113,11 @@ export async function ProjectAudienceConversation({
       projectOptions={preview.projectOptions}
       viewer={preview.viewer}
       viewerIsInternal={preview.viewerIsInternal}
+      messageShortcut={messageShortcut}
+      contentMode="viewport"
       activeSection="conversations"
     >
-      <main className="h-[calc(100vh-3.5rem)] min-h-[34rem] bg-background md:h-screen">
+      <main className="min-h-0 flex-1 overflow-hidden bg-background">
         <ConversationsProvider>
           <div className="flex h-full w-full min-w-0 overflow-hidden">
             <div
