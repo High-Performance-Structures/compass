@@ -68,6 +68,7 @@ the repository.
 
 | Variable | Description |
 |----------|-------------|
+| `SAGE_BRIDGE_SECRET` | HMAC secret shared by Compass and the private tailnet Sage poller. Generate at least 32 random bytes. |
 | `SAGE_SQL_SERVER` | Sage SQL Server host or private network name. |
 | `SAGE_SQL_DATABASE` | Sage company database name. |
 | `SAGE_SQL_USER` | Least-privilege Sage/SQL integration user. |

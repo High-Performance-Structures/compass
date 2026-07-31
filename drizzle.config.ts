@@ -12,6 +12,7 @@ export default defineConfig({
     "./src/db/schema-dashboards.ts",
     "./src/db/schema-mcp.ts",
     "./src/db/schema-conversations.ts",
+    "./src/db/schema-sage.ts",
     "./src/lib/sync/schema.ts",
   ],
   out: "./drizzle",
