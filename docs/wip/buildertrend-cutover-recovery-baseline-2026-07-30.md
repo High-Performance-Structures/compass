@@ -7,16 +7,19 @@ without merging a long-lived, divergent development branch into current
 `main`. It complements the cutover epic in GitHub issue #144 and the extraction
 work tracked in #147.
 
+The metadata-only retained-slice inventory for draft PR #104 is recorded in
+`docs/wip/buildertrend-draft-104-inventory-2026-07-30.md`.
+
 The primary rule is simple: treat the divergent branch and local working files
 as an inventory source, then forward-port reviewed capabilities through small
 branches based on current `main`.
 
 ## Current baseline
 
-- Current production migrations end at `0080_work_calendar_recurrence.sql`.
-- The historical staging migration number must not be reused.
-- The first recovered migration is
-  `0084_buildertrend_staging_foundation.sql`.
+- Current production migrations include
+  `0084_buildertrend_staging_foundation.sql` and
+  `0085_buildertrend_identity_reconciliation.sql`.
+- Historical staging migration numbers must not be reused.
 - Existing production activity, scheduling, audience, owner-update, and
   financial-read models remain authoritative.
 - Buildertrend imports are archive and review operations by default.
