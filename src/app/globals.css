@@ -492,11 +492,11 @@ em-emoji-picker {
     overflow: visible !important;
   }
 
-  body.owner-budget-printing > :not([data-owner-budget-print-root="true"]) {
+  body.owner-budget-printing > :not([data-project-budget-print-root="true"]) {
     display: none !important;
   }
 
-  body.owner-budget-printing [data-owner-budget-print-root="true"] {
+  body.owner-budget-printing [data-project-budget-print-root="true"] {
     display: block !important;
     position: static !important;
     width: 100%;

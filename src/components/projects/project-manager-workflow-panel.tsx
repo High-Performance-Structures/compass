@@ -6,7 +6,6 @@ import {
   IconAddressBook,
   IconCalendarStats,
   IconChevronRight,
-  IconFolder,
   IconFileDollar,
   IconHomeShare,
   IconMessageCircleQuestion,
@@ -312,7 +311,6 @@ function WorkflowCard({
 
 export function ProjectManagerWorkflowPanel({
   projectId,
-  projectNumber,
   totalTaskCount,
   pastDueCount,
   operationsSummary,
@@ -328,7 +326,6 @@ export function ProjectManagerWorkflowPanel({
   showRoleControls = true,
 }: {
   readonly projectId: string
-  readonly projectNumber: string | null
   readonly totalTaskCount: number
   readonly pastDueCount: number
   readonly operationsSummary: ProjectOperationsSummary | null
@@ -349,18 +346,6 @@ export function ProjectManagerWorkflowPanel({
   )
   const needsContactReview = reviewCount(contactsSummary) > 0
   const steps: readonly WorkflowStep[] = [
-    {
-      id: "context",
-      label: "Confirm context",
-      href: "/dashboard/projects",
-      eyebrow: projectNumber ?? "Project search",
-      status: "Switch job",
-      detail:
-        "Jump to another project when needed.",
-      icon: <IconFolder className="size-5" />,
-      tone: "project",
-      urgent: false,
-    },
     {
       id: "schedule",
       label: "Review schedule",

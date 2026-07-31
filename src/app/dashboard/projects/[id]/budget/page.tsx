@@ -1,6 +1,7 @@
 export const dynamic = "force-dynamic"
 
 import Link from "next/link"
+import Image from "next/image"
 import {
   IconArrowLeft,
   IconEye,
@@ -12,6 +13,7 @@ import {
   getProjectBudgetSummary,
   type ProjectBudgetSummary,
 } from "@/app/actions/project-budget"
+import { getProjects, type ProjectListItem } from "@/app/actions/projects"
 import {
   getSagePayApplicationSyncState,
   type SagePayApplicationSyncState,
@@ -20,9 +22,11 @@ import {
   ProjectBudgetG703Table,
   ProjectBudgetPanel,
 } from "@/components/projects/project-budget-panel"
+import { ProjectBudgetPrintButton } from "@/components/projects/project-budget-print-button"
 import { ProjectContextSwitcher } from "@/components/projects/project-context-switcher"
 import { SagePayApplicationSyncControl } from "@/components/projects/sage-pay-application-sync-control"
 import { Badge } from "@/components/ui/badge"
+import { projectBrandFor } from "@/lib/project-branding"
 
 export default async function ProjectBudgetPage({
   params,
@@ -34,14 +38,17 @@ export default async function ProjectBudgetPage({
   let internalBudget: ProjectBudgetSummary | null = null
   let ownerBudget: ProjectBudgetSummary | null = null
   let sageSyncState: SagePayApplicationSyncState | null = null
+  let project: ProjectListItem | null = null
 
   try {
-    const [internal, owner] = await Promise.all([
+    const [internal, owner, projectOptions] = await Promise.all([
       getProjectBudgetSummary(id, "internal"),
       getProjectBudgetSummary(id, "owner"),
+      getProjects(),
     ])
     internalBudget = internal
     ownerBudget = owner
+    project = projectOptions.find((option) => option.id === id) ?? null
   } catch (error) {
     console.warn("Budget unavailable", error)
   }
@@ -50,6 +57,10 @@ export default async function ProjectBudgetPage({
   } catch (error) {
     console.warn("Sage sync unavailable", error)
   }
+  const brand = projectBrandFor({
+    projectId: id,
+    projectNumber: project?.projectNumber ?? null,
+  })
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto p-4 md:p-6">
@@ -100,17 +111,56 @@ export default async function ProjectBudgetPage({
       )}
 
       <div className="mb-6">
-        <ProjectBudgetPanel projectId={id} summary={internalBudget} />
+        <ProjectBudgetPanel
+          projectId={id}
+          summary={internalBudget}
+          detailHref={null}
+          divisionLimit={null}
+        />
       </div>
 
       {internalBudget && internalBudget.allLines.length > 0 && (
-        <div className="mb-6">
+        <div
+          className="mb-6"
+          data-project-budget-print-source="true"
+        >
+          <header className="hidden border-b pb-3 print:flex print:items-start print:justify-between print:gap-4">
+            <div className="flex items-center gap-3">
+              <Image
+                src={brand.logoSrc}
+                alt={brand.logoAlt}
+                width={64}
+                height={64}
+                priority
+                className="size-14 object-contain"
+              />
+              <div>
+                <p className="text-lg font-semibold">{brand.companyName}</p>
+                <p className="text-sm text-muted-foreground">
+                  {project?.projectNumber ?? project?.name ?? "Project"}
+                </p>
+              </div>
+            </div>
+            <div className="text-right text-xs">
+              <p className="font-semibold">Internal G703 Schedule of Values</p>
+              <p className="mt-1 text-muted-foreground">
+                {internalBudget.currentApplication
+                  ? `Pay application ${internalBudget.currentApplication.applicationNumber}`
+                  : "Current budget"}
+              </p>
+            </div>
+          </header>
           <div className="mb-3 flex items-center justify-between gap-3">
             <div>
               <h2 className="text-sm font-semibold">Internal G703</h2>
               <p className="text-xs text-muted-foreground">
-                All mapped lines and internal-only detail.
+                All mapped lines and internal-only detail. Page access follows
+                the Budget / G703 permission; each Owner/Internal badge is
+                stored on its individual budget line.
               </p>
+            </div>
+            <div className="print:hidden">
+              <ProjectBudgetPrintButton />
             </div>
           </div>
           <ProjectBudgetG703Table summary={internalBudget} />

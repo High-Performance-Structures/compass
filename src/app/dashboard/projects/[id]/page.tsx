@@ -419,7 +419,6 @@ export default async function ProjectSummaryPage({
         <div className="mb-4 sm:mb-6">
           <ProjectWorkspaceShell
             projectId={id}
-            projectNumber={project?.projectNumber ?? null}
             totalTaskCount={totalCount}
             pastDueCount={pastDue.length}
             operationsSummary={operationsSummary}
