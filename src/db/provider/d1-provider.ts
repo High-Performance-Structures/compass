@@ -9,6 +9,7 @@ import * as googleSchema from "../schema-google"
 import * as dashboardSchema from "../schema-dashboards"
 import * as mcpSchema from "../schema-mcp"
 import * as conversationsSchema from "../schema-conversations"
+import * as buildertrendSchema from "../schema-buildertrend"
 import type { DatabaseProvider, DrizzleDB } from "./interface"
 
 const allSchemas = {
@@ -22,6 +23,7 @@ const allSchemas = {
   ...dashboardSchema,
   ...mcpSchema,
   ...conversationsSchema,
+  ...buildertrendSchema,
 }
 
 type D1DrizzleDB = ReturnType<typeof createD1Drizzle>

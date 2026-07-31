@@ -11,6 +11,7 @@ import * as mcpSchema from "./schema-mcp"
 import * as conversationsSchema from "./schema-conversations"
 import * as jarvisSchema from "./schema-jarvis"
 import * as sageSchema from "./schema-sage"
+import * as buildertrendSchema from "./schema-buildertrend"
 
 const allSchemas = {
   ...schema,
@@ -25,6 +26,7 @@ const allSchemas = {
   ...conversationsSchema,
   ...jarvisSchema,
   ...sageSchema,
+  ...buildertrendSchema,
 }
 
 // Legacy function - kept for backwards compatibility

@@ -1,0 +1,46 @@
+{
+  "runKey": "example-job-inventory-2026-07-30",
+  "sourceMethod": "authenticated_export",
+  "sourceLabel": "Buildertrend example job inventory",
+  "capturedAt": "2026-07-30T12:00:00.000Z",
+  "notes": "Generic fixture for dry-run and replay validation.",
+  "records": [
+    {
+      "sourceKey": "job:example-123",
+      "projectId": "project-example-123",
+      "sourceRecordType": "job",
+      "buildertrendJobId": "example-123",
+      "buildertrendRecordId": "example-123",
+      "title": "Example project",
+      "recordStatus": "Open",
+      "rawPayload": {
+        "status": "Open"
+      }
+    }
+  ],
+  "files": [
+    {
+      "sourceKey": "file:example-123:photo-1",
+      "sourceRecordKey": "job:example-123",
+      "projectId": "project-example-123",
+      "sourceRecordType": "job_photo",
+      "buildertrendJobId": "example-123",
+      "buildertrendFileId": "photo-1",
+      "fileName": "photo-1.jpg",
+      "mimeType": "image/jpeg",
+      "checksum": "fixture-checksum"
+    }
+  ],
+  "accessCandidates": [
+    {
+      "sourceKey": "access:example-123:contact-1",
+      "sourceRecordKey": "job:example-123",
+      "projectId": "project-example-123",
+      "buildertrendJobId": "example-123",
+      "buildertrendContactId": "contact-1",
+      "buildertrendAccessRole": "client",
+      "contactName": "Example Owner",
+      "proposedContactType": "customer"
+    }
+  ]
+}

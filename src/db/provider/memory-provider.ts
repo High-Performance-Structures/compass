@@ -51,6 +51,7 @@ export function createMemoryProvider(config?: MemoryProviderConfig): DatabasePro
       const dashboardSchema = await import("../schema-dashboards")
       const mcpSchema = await import("../schema-mcp")
       const conversationsSchema = await import("../schema-conversations")
+      const buildertrendSchema = await import("../schema-buildertrend")
 
       const allSchemas = {
         ...schemaModule,
@@ -63,6 +64,7 @@ export function createMemoryProvider(config?: MemoryProviderConfig): DatabasePro
         ...dashboardSchema,
         ...mcpSchema,
         ...conversationsSchema,
+        ...buildertrendSchema,
       }
 
       sqlite = new Database(":memory:") as BetterSqlite3Database
