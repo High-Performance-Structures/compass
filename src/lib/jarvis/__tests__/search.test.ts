@@ -4,6 +4,7 @@ import {
   canSearchCompassRole,
   currentProjectIdFromPath,
   dailyLogHref,
+  feedbackRequestHref,
   jarvisSearchTerms,
   ownerUpdateHref,
   projectIdsForJarvisSearch,
@@ -33,8 +34,12 @@ describe("Jarvis Compass search", () => {
     expect(canSearchCompassRole("admin")).toBe(true)
     expect(canSearchCompassRole("office")).toBe(true)
     expect(canSearchCompassRole("field")).toBe(true)
+    expect(canSearchCompassRole("project_manager")).toBe(true)
+    expect(canSearchCompassRole("project_administrator")).toBe(true)
+    expect(canSearchCompassRole("field_crew")).toBe(true)
     expect(canSearchCompassRole("guest")).toBe(false)
     expect(canSearchCompassRole("client")).toBe(false)
+    expect(canSearchCompassRole("developer")).toBe(false)
   })
 
   it("derives a project only from a project dashboard path", () => {
@@ -78,6 +83,12 @@ describe("Jarvis Compass search", () => {
     expect(requestedJarvisSearchKinds("Find yesterday's daily log")).toEqual([
       "daily_log",
     ])
+    expect(
+      requestedJarvisSearchKinds("Has my schedule bug report been implemented?")
+    ).toEqual(["feedback_request"])
+    expect(
+      requestedJarvisSearchKinds("Verify the status of my feedback request")
+    ).toEqual(["feedback_request"])
   })
 
   it("builds encoded live Compass links", () => {
@@ -92,6 +103,9 @@ describe("Jarvis Compass search", () => {
     )
     expect(rfiHref("proj one", "rfi one")).toBe(
       "/dashboard/projects/proj%20one/rfis?status=all#rfi-rfi%20one"
+    )
+    expect(feedbackRequestHref("request one")).toBe(
+      "/dashboard/requests#request-request%20one"
     )
   })
 })

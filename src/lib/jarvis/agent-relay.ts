@@ -1,6 +1,7 @@
 import { eq } from "drizzle-orm"
 import type { getDb } from "@/db"
 import { jarvisBridgeEvents } from "@/db/schema-jarvis"
+import type { JarvisVisualAttachment } from "@/lib/agent/visual-context"
 
 type CompassDb = ReturnType<typeof getDb>
 
@@ -28,6 +29,7 @@ type RelayRequestInput = {
   readonly currentPage: string
   readonly timezone: string
   readonly messages: ReadonlyArray<AgentRelayMessage>
+  readonly visuals?: readonly JarvisVisualAttachment[]
   readonly timeoutMilliseconds?: number
   readonly pollMilliseconds?: number
 }
@@ -93,9 +95,10 @@ async function requestDigest(
   userId: string,
   sessionId: string,
   messages: ReadonlyArray<AgentRelayMessage>,
+  visuals: readonly JarvisVisualAttachment[],
 ): Promise<string> {
   const encoded = new TextEncoder().encode(
-    JSON.stringify({ userId, sessionId, messages }),
+    JSON.stringify({ userId, sessionId, messages, visuals }),
   )
   const digest = await crypto.subtle.digest("SHA-256", encoded)
   return Array.from(new Uint8Array(digest))
@@ -154,7 +157,13 @@ export async function relayAgentRequest(
 ): Promise<AgentRelayResult> {
   const sessionId = normalizedSessionId(input.sessionId)
   const messages = relayMessages(input.messages)
-  const digest = await requestDigest(input.user.id, sessionId, messages)
+  const visuals = input.visuals ?? []
+  const digest = await requestDigest(
+    input.user.id,
+    sessionId,
+    messages,
+    visuals,
+  )
   const idempotencyKey = `agent:${input.user.id}:${digest}`
   const now = new Date().toISOString()
 
@@ -177,9 +186,23 @@ export async function relayAgentRequest(
           timezone: input.timezone,
         },
         messages,
+        ...(visuals.length > 0
+          ? {
+              visualContext: {
+                explicitUserAttachments: true,
+                images: visuals,
+              },
+            }
+          : {}),
         safety: {
           basicAssistanceOnly: true,
           toolsAllowed: false,
+          mutationsAllowed: false,
+          readOnlyCapabilities: [
+            "compass.search",
+            "compass.feedback_status",
+            "compass.visual_context",
+          ],
         },
         createdAt: now,
       }),

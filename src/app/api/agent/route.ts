@@ -37,6 +37,35 @@ import type {
   ProviderConfig,
   McpServerConfig,
 } from "agent-core"
+import {
+  JARVIS_VISUAL_MEDIA_TYPES,
+  MAX_JARVIS_VISUALS,
+  MAX_JARVIS_VISUAL_DATA_URL_CHARACTERS,
+} from "@/lib/agent/visual-context"
+
+const visualAttachmentSchema = z
+  .object({
+    filename: z.string().trim().min(1).max(180),
+    mediaType: z.enum(JARVIS_VISUAL_MEDIA_TYPES),
+    dataUrl: z.string().max(MAX_JARVIS_VISUAL_DATA_URL_CHARACTERS),
+  })
+  .superRefine((visual, context) => {
+    const prefix = `data:${visual.mediaType};base64,`
+    const encoded = visual.dataUrl.startsWith(prefix)
+      ? visual.dataUrl.slice(prefix.length)
+      : ""
+    if (
+      encoded.length === 0 ||
+      encoded.length % 4 !== 0 ||
+      !/^[A-Za-z0-9+/]+={0,2}$/.test(encoded)
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["dataUrl"],
+        message: "Image data is invalid or does not match its media type",
+      })
+    }
+  })
 
 const chatRequestSchema = z.object({
   messages: z
@@ -48,6 +77,10 @@ const chatRequestSchema = z.object({
     )
     .min(1)
     .max(100),
+  visuals: z
+    .array(visualAttachmentSchema)
+    .max(MAX_JARVIS_VISUALS)
+    .default([]),
 })
 
 export async function POST(
@@ -137,6 +170,7 @@ export async function POST(
       currentPage,
       timezone,
       messages: body.messages,
+      visuals: body.visuals,
     })
     if (!relayResult.success) {
       return Response.json(
@@ -145,6 +179,16 @@ export async function POST(
       )
     }
     return createAgentRelayResponse(relayResult.content)
+  }
+
+  if (body.visuals.length > 0) {
+    return Response.json(
+      {
+        error:
+          "Screenshot analysis requires the private Jarvis connection.",
+      },
+      { status: 503 },
+    )
   }
 
   const activeAgentConfig = await db

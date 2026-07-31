@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest"
 
 import {
   feedbackStatusLabel,
+  feedbackStaffStage,
   feedbackDraftPullRequestMessage,
   feedbackRequesterUpdateKind,
   feedbackStatusMessage,
@@ -28,6 +29,16 @@ describe("Feedback Desk lifecycle", () => {
     expect(
       feedbackStatusMessage("deployed", "Daily Log printing")
     ).toContain("deployed to Compass")
+  })
+
+  it("maps detailed workflow states to the four staff-facing stages", () => {
+    expect(feedbackStaffStage("new")).toBe("submitted")
+    expect(feedbackStaffStage("triaged")).toBe("triaged")
+    expect(feedbackStaffStage("needs_info")).toBe("triaged")
+    expect(feedbackStaffStage("in_progress")).toBe("in_process")
+    expect(feedbackStaffStage("testing")).toBe("in_process")
+    expect(feedbackStaffStage("deployed")).toBe("implemented")
+    expect(feedbackStaffStage("closed")).toBe("implemented")
   })
 
   it("reserves email for updates that need attention or close the loop", () => {

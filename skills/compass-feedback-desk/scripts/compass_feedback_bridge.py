@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import Any
 
 MAX_BODY_BYTES = 64 * 1024
+MAX_VISUAL_RESPONSE_BYTES = 3 * 1024 * 1024
 
 
 def update_env_file(path: Path, values: dict[str, str]) -> None:
@@ -120,6 +121,7 @@ def request_json(
     method: str,
     target: str,
     body: bytes = b"",
+    max_response_bytes: int = MAX_BODY_BYTES,
 ) -> Any:
     base_url = os.environ.get("COMPASS_BASE_URL", "").rstrip("/")
     secret = os.environ.get("JARVIS_BRIDGE_SECRET", "")
@@ -160,7 +162,9 @@ def request_json(
         with urllib.request.urlopen(request, timeout=30) as response:
             response_status = response.status
             response_type = response.headers.get("Content-Type", "unknown")
-            response_body = response.read(MAX_BODY_BYTES)
+            response_body = response.read(max_response_bytes + 1)
+            if len(response_body) > max_response_bytes:
+                raise RuntimeError("Compass response exceeded the allowed size")
     except urllib.error.HTTPError as error:
         error_body = error.read(2048).decode("utf-8", errors="replace")
         raise RuntimeError(
@@ -197,6 +201,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     search = commands.add_parser("search")
     search.add_argument("--event-id", required=True)
+
+    visuals = commands.add_parser("visuals")
+    visuals.add_argument("--event-id", required=True)
+    visuals.add_argument("--output-dir", required=True)
 
     configure = commands.add_parser("configure")
     configure.add_argument("--base-url", required=True)
@@ -255,6 +263,49 @@ def main() -> int:
             "GET",
             f"/api/integrations/jarvis/events/{event_id}/search",
         )
+    elif args.command == "visuals":
+        event_id = urllib.parse.quote(args.event_id, safe="")
+        visual_result = request_json(
+            "GET",
+            f"/api/integrations/jarvis/events/{event_id}/visuals",
+            max_response_bytes=MAX_VISUAL_RESPONSE_BYTES,
+        )
+        output_dir = Path(args.output_dir).resolve()
+        output_dir.mkdir(parents=True, exist_ok=True)
+        written: list[dict[str, str]] = []
+        for index, image in enumerate(visual_result.get("images", [])):
+            if not isinstance(image, dict):
+                continue
+            data_url = image.get("dataUrl")
+            media_type = image.get("mediaType")
+            if not isinstance(data_url, str) or not isinstance(media_type, str):
+                continue
+            prefix = f"data:{media_type};base64,"
+            if not data_url.startswith(prefix):
+                continue
+            extension = {
+                "image/jpeg": ".jpg",
+                "image/png": ".png",
+                "image/webp": ".webp",
+            }.get(media_type)
+            if extension is None:
+                continue
+            filename = f"compass-visual-{index + 1}{extension}"
+            destination = output_dir / filename
+            destination.write_bytes(base64.b64decode(data_url[len(prefix):], validate=True))
+            written.append(
+                {
+                    "path": str(destination),
+                    "mediaType": media_type,
+                    "sourceName": str(image.get("filename", filename)),
+                }
+            )
+        result = {
+            "eventId": visual_result.get("eventId"),
+            "files": written,
+            "count": len(written),
+            "explicitUserAttachments": True,
+        }
     else:
         result = request_json(
             "POST",

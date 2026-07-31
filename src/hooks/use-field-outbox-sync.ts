@@ -12,9 +12,11 @@ import {
   removeFieldOutboxItem,
   type FieldOutboxItem,
 } from "@/lib/field/offline-outbox"
+import type { JarvisVisualAttachment } from "@/lib/agent/visual-context"
 
 type SendOnlineMessage = (params: {
   readonly text: string
+  readonly visuals?: readonly JarvisVisualAttachment[]
 }) => Promise<boolean>
 
 export function useFieldOutboxSync(input: {
@@ -147,12 +149,22 @@ export function useFieldOutboxSync(input: {
   ])
 
   const sendMessage = useCallback<SendOnlineMessage>(
-    async ({ text }) => {
+    async ({ text, visuals }) => {
       const trimmed = text.trim()
-      if (!trimmed || !canUseAskJarvis) return false
+      const selectedVisuals = visuals ?? []
+      if ((!trimmed && selectedVisuals.length === 0) || !canUseAskJarvis) {
+        return false
+      }
 
       if (!scopeKey || navigator.onLine) {
-        return sendOnlineMessage({ text: trimmed })
+        return sendOnlineMessage({ text: trimmed, visuals: selectedVisuals })
+      }
+
+      if (selectedVisuals.length > 0) {
+        toast.error(
+          "Image questions require a connection. Reconnect to send this screenshot to Jarvis.",
+        )
+        return false
       }
 
       const queued = enqueueFieldOutboxItem(

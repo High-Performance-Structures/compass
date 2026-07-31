@@ -21,6 +21,7 @@ import {
   setBridgeEnabled as storeBridgeEnabled,
 } from "@/lib/agent/bridge-store"
 import { useFieldOutboxSync } from "@/hooks/use-field-outbox-sync"
+import type { JarvisVisualAttachment } from "@/lib/agent/visual-context"
 
 // --- Panel context (open/close sidebar) ---
 
@@ -53,7 +54,10 @@ interface ChatStateValue {
       | AgentMessage[]
       | ((prev: AgentMessage[]) => AgentMessage[])
   ) => void
-  sendMessage: (params: { text: string }) => Promise<boolean>
+  sendMessage: (params: {
+    readonly text: string
+    readonly visuals?: readonly JarvisVisualAttachment[]
+  }) => Promise<boolean>
   regenerate: () => void
   stop: () => void
   readonly status: string
@@ -275,7 +279,15 @@ function EnabledChatProvider({
         id: m.id,
         role: m.role,
         content: getTextFromParts(m.parts),
-        parts: m.parts,
+        parts: m.parts.map((part) =>
+          part.type === "image"
+            ? {
+                type: part.type,
+                filename: part.filename,
+                mediaType: part.mediaType,
+              }
+            : part
+        ),
         createdAt: m.createdAt.toISOString(),
       }))
 

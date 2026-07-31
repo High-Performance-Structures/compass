@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray } from "drizzle-orm"
+import { and, desc, eq, inArray, sql } from "drizzle-orm"
 
 import { getDb } from "@/db"
 import {
@@ -7,7 +7,10 @@ import {
   projectRfis,
   projects,
 } from "@/db/schema"
-import { jarvisBridgeEvents } from "@/db/schema-jarvis"
+import {
+  feedbackDeskItems,
+  jarvisBridgeEvents,
+} from "@/db/schema-jarvis"
 import { getCloudflareContext } from "@/lib/db"
 import {
   getJarvisEnvValue,
@@ -17,6 +20,8 @@ import {
   canSearchCompassRole,
   currentProjectIdFromPath,
   dailyLogHref,
+  feedbackRequestHref,
+  jarvisSearchTerms,
   ownerUpdateHref,
   projectHref,
   projectIdsForJarvisSearch,
@@ -24,6 +29,10 @@ import {
   requestedJarvisSearchKinds,
   type JarvisCompassSearchKind,
 } from "@/lib/jarvis/search"
+import {
+  feedbackStaffStage,
+  feedbackStatusLabel,
+} from "@/lib/jarvis/feedback-lifecycle"
 
 type SearchResult = {
   readonly kind: JarvisCompassSearchKind
@@ -34,6 +43,8 @@ type SearchResult = {
   readonly date: string
   readonly status: string | null
   readonly href: string
+  readonly verified: boolean
+  readonly lifecycleStage: string | null
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -81,6 +92,13 @@ function payloadContextValue(
 function payloadUserRole(payload: Record<string, unknown>): string | null {
   const user = payload.user
   return isRecord(user) ? recordString(user, "role") : null
+}
+
+function payloadUserEmail(payload: Record<string, unknown>): string | null {
+  const user = payload.user
+  if (!isRecord(user)) return null
+  const email = recordString(user, "email")?.trim().toLowerCase() ?? ""
+  return email.length > 0 ? email : null
 }
 
 function cleanSummary(...values: readonly (string | null)[]): string {
@@ -161,6 +179,81 @@ export async function GET(
     return Response.json({ query: "", results: [], count: 0 })
   }
 
+  const kinds = requestedJarvisSearchKinds(query)
+  const kindsSet = new Set(kinds)
+  const results: SearchResult[] = []
+
+  if (kindsSet.has("feedback_request")) {
+    const email = payloadUserEmail(payload)
+    if (!email) {
+      return Response.json(
+        { error: "A verified staff email is required for request status" },
+        { status: 403 },
+      )
+    }
+
+    const terms = jarvisSearchTerms(query)
+    const rows = await db
+      .select({
+        id: feedbackDeskItems.id,
+        kind: feedbackDeskItems.kind,
+        status: feedbackDeskItems.status,
+        title: feedbackDeskItems.title,
+        description: feedbackDeskItems.description,
+        updatedAt: feedbackDeskItems.updatedAt,
+      })
+      .from(feedbackDeskItems)
+      .where(
+        and(
+          eq(feedbackDeskItems.organizationId, event.organizationId),
+          sql`lower(${feedbackDeskItems.reporterEmail}) = ${email}`,
+        ),
+      )
+      .orderBy(desc(feedbackDeskItems.updatedAt))
+      .limit(100)
+
+    const matchingRows =
+      terms.length === 0
+        ? rows
+        : rows.filter((row) => {
+            const searchable =
+              `${row.title} ${row.description}`.toLowerCase()
+            return terms.some((term) => searchable.includes(term))
+          })
+
+    for (const row of matchingRows.slice(0, 15)) {
+      results.push({
+        kind: "feedback_request",
+        title: row.title,
+        summary:
+          `${feedbackStatusLabel(row.status)} · ${row.kind} · ` +
+          cleanSummary(row.description),
+        projectName: "Compass Feedback Desk",
+        projectNumber: null,
+        date: row.updatedAt,
+        status: row.status,
+        href: feedbackRequestHref(row.id),
+        verified: true,
+        lifecycleStage: feedbackStaffStage(row.status),
+      })
+    }
+
+    const origin = new URL(request.url).origin
+    const verifiedAt = new Date().toISOString()
+    return Response.json({
+      query,
+      scope: {
+        kinds,
+        requester: "authenticated_staff",
+      },
+      results: results.map((result) => absoluteResult(origin, result)),
+      count: results.length,
+      readOnly: true,
+      verifiedAt,
+      verificationSource: "feedback_desk_items",
+    })
+  }
+
   const projectRows = await db
     .select({
       id: projects.id,
@@ -182,9 +275,6 @@ export async function GET(
     return Response.json({ query, results: [], count: 0 })
   }
 
-  const kinds = requestedJarvisSearchKinds(query)
-  const kindsSet = new Set(kinds)
-  const results: SearchResult[] = []
   const projectById = new Map(projectRows.map((project) => [project.id, project]))
 
   for (const projectId of projectIds.slice(0, 3)) {
@@ -199,6 +289,8 @@ export async function GET(
       date: "",
       status: null,
       href: projectHref(project.id),
+      verified: false,
+      lifecycleStage: null,
     })
   }
 
@@ -236,6 +328,8 @@ export async function GET(
         date: row.logDate,
         status: row.reviewStatus,
         href: dailyLogHref(row.projectId, row.id),
+        verified: false,
+        lifecycleStage: null,
       })
     }
   }
@@ -276,6 +370,8 @@ export async function GET(
         date: row.updateDate,
         status: row.status,
         href: ownerUpdateHref(row.projectId, row.id),
+        verified: false,
+        lifecycleStage: null,
       })
     }
   }
@@ -315,6 +411,8 @@ export async function GET(
         date: row.submittedAt,
         status: row.status,
         href: rfiHref(row.projectId, row.id),
+        verified: false,
+        lifecycleStage: null,
       })
     }
   }

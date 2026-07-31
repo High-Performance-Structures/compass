@@ -4,6 +4,10 @@ import { useState, useRef, useCallback } from "react"
 import type { AgentMessage, SSEEvent } from "@/lib/agent/message-types"
 import { dispatchToolActions } from "@/lib/agent/chat-adapter"
 import { getAgentModelId } from "@/components/agent/model-dropdown"
+import {
+  isJarvisVisualMediaType,
+  type JarvisVisualAttachment,
+} from "@/lib/agent/visual-context"
 
 export interface UseAgentOptions {
   readonly agentServerUrl?: string
@@ -18,7 +22,10 @@ export interface UseAgentReturn {
   setMessages: (
     msgs: AgentMessage[] | ((prev: AgentMessage[]) => AgentMessage[])
   ) => void
-  sendMessage: (params: { text: string }) => Promise<boolean>
+  sendMessage: (params: {
+    readonly text: string
+    readonly visuals?: readonly JarvisVisualAttachment[]
+  }) => Promise<boolean>
   stop: () => void
   regenerate: () => void
   readonly status: "ready" | "streaming" | "error"
@@ -46,15 +53,29 @@ export function useAgent(options: UseAgentOptions = {}): UseAgentReturn {
   const dispatchedRef = useRef(new Set<string>())
 
   const sendMessage = useCallback(
-    async (params: { text: string }): Promise<boolean> => {
+    async (params: {
+      readonly text: string
+      readonly visuals?: readonly JarvisVisualAttachment[]
+    }): Promise<boolean> => {
       if (status === "streaming") return false
-      if (!params.text.trim()) return false
+      const visuals = params.visuals ?? []
+      if (!params.text.trim() && visuals.length === 0) return false
 
       // add user message
       const userMessage: AgentMessage = {
         id: crypto.randomUUID(),
         role: "user",
-        parts: [{ type: "text", text: params.text }],
+        parts: [
+          ...(params.text.trim()
+            ? [{ type: "text" as const, text: params.text.trim() }]
+            : []),
+          ...visuals.map((visual) => ({
+            type: "image" as const,
+            filename: visual.filename,
+            mediaType: visual.mediaType,
+            dataUrl: visual.dataUrl,
+          })),
+        ],
         createdAt: new Date(),
       }
 
@@ -116,6 +137,7 @@ export function useAgent(options: UseAgentOptions = {}): UseAgentReturn {
                 .map((p) => (p as { text: string }).text)
                 .join(""),
             })),
+            visuals,
           }),
           signal: controller.signal,
         })
@@ -390,9 +412,25 @@ export function useAgent(options: UseAgentOptions = {}): UseAgentReturn {
           .filter((p) => p.type === "text")
           .map((p) => (p as { text: string }).text)
           .join("")
+        const visuals = lastUser.parts.flatMap((part) => {
+          if (
+            part.type !== "image" ||
+            !part.dataUrl ||
+            !isJarvisVisualMediaType(part.mediaType)
+          ) {
+            return []
+          }
+          return [
+            {
+              filename: part.filename,
+              mediaType: part.mediaType,
+              dataUrl: part.dataUrl,
+            },
+          ]
+        })
 
         // re-send (but keep the filtered messages first)
-        setTimeout(() => sendMessage({ text }), 0)
+        setTimeout(() => sendMessage({ text, visuals }), 0)
         return filtered
       }
       return filtered
