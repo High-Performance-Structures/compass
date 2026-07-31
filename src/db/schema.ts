@@ -114,6 +114,22 @@ export const notificationPreferences = sqliteTable("notification_preferences", {
   })
     .notNull()
     .default(false),
+  projectActivitySmsEnabled: integer("project_activity_sms_enabled", {
+    mode: "boolean",
+  })
+    .notNull()
+    .default(true),
+  smsQuietHoursEnabled: integer("sms_quiet_hours_enabled", {
+    mode: "boolean",
+  })
+    .notNull()
+    .default(false),
+  smsQuietHoursStart: text("sms_quiet_hours_start")
+    .notNull()
+    .default("21:00"),
+  smsQuietHoursEnd: text("sms_quiet_hours_end")
+    .notNull()
+    .default("07:00"),
   weeklyDigestEnabled: integer("weekly_digest_enabled", { mode: "boolean" })
     .notNull()
     .default(false),

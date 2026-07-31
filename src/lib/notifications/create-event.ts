@@ -1,4 +1,4 @@
-import { and, eq, inArray } from "drizzle-orm"
+import { and, eq, inArray, isNull } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
 import { getDb } from "@/db"
@@ -11,6 +11,12 @@ import {
   projects,
   users,
 } from "@/db/schema"
+import {
+  channelMembers,
+  channels,
+  messageMentions,
+  messages,
+} from "@/db/schema-conversations"
 import { requireAuth } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
 import {
@@ -19,7 +25,11 @@ import {
 } from "@/lib/notifications/delivery"
 import { requireOrg } from "@/lib/org-scope"
 import { sendPushNotification } from "@/lib/push/send"
-import { hasCurrentSmsConsent } from "@/lib/notifications/sms-consent"
+import {
+  isProjectActivitySmsEvent,
+  shouldSendSmsNotification,
+  shouldUseProjectActivitySmsRoute,
+} from "@/lib/notifications/sms-policy"
 
 type NotificationPreferenceState = {
   readonly inAppEnabled: boolean
@@ -34,11 +44,16 @@ type NotificationPreferenceState = {
   readonly mentionSmsEnabled: boolean
   readonly announcementEmailEnabled: boolean
   readonly announcementSmsEnabled: boolean
+  readonly projectActivitySmsEnabled: boolean
+  readonly smsQuietHoursEnabled: boolean
+  readonly smsQuietHoursStart: string
+  readonly smsQuietHoursEnd: string
   readonly weeklyDigestEnabled: boolean
   readonly rfiEnabled: boolean
   readonly ownerUpdateEnabled: boolean
   readonly scheduleEnabled: boolean
   readonly poEnabled: boolean
+  readonly timeZone: string
 }
 
 export type NotificationRecipientInput = {
@@ -75,11 +90,16 @@ const DEFAULT_PREFERENCES: NotificationPreferenceState = {
   mentionSmsEnabled: false,
   announcementEmailEnabled: true,
   announcementSmsEnabled: false,
+  projectActivitySmsEnabled: true,
+  smsQuietHoursEnabled: false,
+  smsQuietHoursStart: "21:00",
+  smsQuietHoursEnd: "07:00",
   weeklyDigestEnabled: false,
   rfiEnabled: true,
   ownerUpdateEnabled: true,
   scheduleEnabled: true,
   poEnabled: true,
+  timeZone: "America/Denver",
 }
 
 type SmsDeliveryResult = {
@@ -138,11 +158,16 @@ function preferenceFromRow(
     mentionSmsEnabled: row.mentionSmsEnabled,
     announcementEmailEnabled: row.announcementEmailEnabled,
     announcementSmsEnabled: row.announcementSmsEnabled,
+    projectActivitySmsEnabled: row.projectActivitySmsEnabled,
+    smsQuietHoursEnabled: row.smsQuietHoursEnabled,
+    smsQuietHoursStart: row.smsQuietHoursStart,
+    smsQuietHoursEnd: row.smsQuietHoursEnd,
     weeklyDigestEnabled: row.weeklyDigestEnabled,
     rfiEnabled: row.rfiEnabled,
     ownerUpdateEnabled: row.ownerUpdateEnabled,
     scheduleEnabled: row.scheduleEnabled,
     poEnabled: row.poEnabled,
+    timeZone: row.timeZone,
   }
 }
 
@@ -194,26 +219,14 @@ function notificationEmailEnabled(
 
 function notificationSmsEnabled(
   preferences: NotificationPreferenceState,
-  eventType: string
+  input: Pick<CreateNotificationInput, "eventType" | "createdBy">,
+  occurredAt: Date
 ): boolean {
-  if (
-    !preferences.smsEnabled ||
-    !hasCurrentSmsConsent({
-      accepted: preferences.smsConsentAccepted,
-      phoneNumber: preferences.smsPhoneNumber,
-      consentPhoneNumber: preferences.smsConsentPhoneNumber,
-      disclosureVersion: preferences.smsConsentDisclosureVersion,
-    })
-  ) {
-    return false
-  }
-  if (eventType === "message.mention") {
-    return preferences.mentionSmsEnabled
-  }
-  if (eventType === "announcement.message") {
-    return preferences.announcementSmsEnabled
-  }
-  return false
+  return shouldSendSmsNotification(preferences, {
+    eventType: input.eventType,
+    createdBy: input.createdBy,
+    occurredAt,
+  })
 }
 
 function notificationEmailBody(
@@ -505,6 +518,99 @@ async function getPreferenceForUser(
   return preferenceFromRow(row)
 }
 
+function isMessageSmsEvent(eventType: string): boolean {
+  return (
+    eventType === "message.mention" ||
+    eventType === "announcement.message" ||
+    isProjectActivitySmsEvent(eventType)
+  )
+}
+
+async function isEligibleLiveMessageSmsRecipient(
+  db: ReturnType<typeof getDb>,
+  input: CreateNotificationInput,
+  userId: string
+): Promise<boolean> {
+  if (!isMessageSmsEvent(input.eventType)) return true
+  if (
+    input.sourceType !== "message" ||
+    input.sourceId === null ||
+    input.createdBy === null
+  ) {
+    return false
+  }
+
+  const source = await db
+    .select({
+      channelType: channels.type,
+    })
+    .from(messages)
+    .innerJoin(channels, eq(channels.id, messages.channelId))
+    .innerJoin(
+      channelMembers,
+      and(
+        eq(channelMembers.channelId, channels.id),
+        eq(channelMembers.userId, userId)
+      )
+    )
+    .where(
+      and(
+        eq(messages.id, input.sourceId),
+        eq(messages.userId, input.createdBy),
+        eq(channels.organizationId, input.organizationId),
+        input.projectId === null
+          ? isNull(channels.projectId)
+          : eq(channels.projectId, input.projectId)
+      )
+    )
+    .limit(1)
+    .then((rows) => rows[0] ?? null)
+  if (!source) return false
+
+  if (!isProjectActivitySmsEvent(input.eventType)) return true
+  // Announcements and mentions have their own explicit SMS switches. Do not
+  // silently route them through the broader project-message preference.
+  const mentions = await db
+    .select({
+      mentionType: messageMentions.mentionType,
+      targetId: messageMentions.targetId,
+    })
+    .from(messageMentions)
+    .where(eq(messageMentions.messageId, input.sourceId))
+  return shouldUseProjectActivitySmsRoute({
+    channelType: source.channelType,
+    recipientUserId: userId,
+    mentions,
+  })
+}
+
+async function hasExistingSmsDeliveryForSource(
+  db: ReturnType<typeof getDb>,
+  input: CreateNotificationInput,
+  userId: string
+): Promise<boolean> {
+  if (input.sourceId === null) return false
+
+  return db
+    .select({ id: notificationDeliveries.id })
+    .from(notificationDeliveries)
+    .innerJoin(
+      notificationEvents,
+      eq(notificationEvents.id, notificationDeliveries.eventId)
+    )
+    .where(
+      and(
+        eq(notificationEvents.organizationId, input.organizationId),
+        eq(notificationEvents.sourceType, input.sourceType),
+        eq(notificationEvents.sourceId, input.sourceId),
+        eq(notificationDeliveries.userId, userId),
+        eq(notificationDeliveries.channel, "sms")
+      )
+    )
+    .limit(1)
+    .then((rows) => rows.length > 0)
+}
+
 async function persistNotificationEvent(
   input: CreateNotificationInput
 ): Promise<void> {
@@ -543,7 +649,8 @@ async function persistNotificationEvent(
         .limit(1)
         .then((rows) => rows[0]?.projectNumber ?? null)
     : null
-  const now = new Date().toISOString()
+  const occurredAt = new Date()
+  const now = occurredAt.toISOString()
   const eventId = crypto.randomUUID()
   try {
     await db.insert(notificationEvents).values({
@@ -582,10 +689,23 @@ async function persistNotificationEvent(
         input.eventType,
         delivery.email
       )
-      const smsEnabled = notificationSmsEnabled(
+      const smsPolicyEnabled = notificationSmsEnabled(
         preferences,
-        input.eventType
+        input,
+        occurredAt
       )
+      const smsEnabled =
+        smsPolicyEnabled &&
+        (await isEligibleLiveMessageSmsRecipient(
+          db,
+          input,
+          recipient.userId
+        )) &&
+        !(await hasExistingSmsDeliveryForSource(
+          db,
+          input,
+          recipient.userId
+        ))
       if (
         !emailEnabled &&
         !delivery.inApp &&
