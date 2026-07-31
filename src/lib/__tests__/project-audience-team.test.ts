@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest"
 
-import { isVisibleAudienceTeamMember } from "@/lib/project-audience-team"
+import {
+  isAssignedVisibleAudienceTeamMember,
+  isVisibleAudienceTeamMember,
+} from "@/lib/project-audience-team"
 
 describe("project audience team", () => {
   it.each([
@@ -19,5 +22,35 @@ describe("project audience team", () => {
     ["external developer", "user-developer", "nicholai@biohazardvfx.com", "admin"],
   ])("hides %s", (_label, userId, email, role) => {
     expect(isVisibleAudienceTeamMember({ userId, email, role })).toBe(false)
+  })
+
+  it("requires an internal project assignment before exposing staff", () => {
+    expect(
+      isAssignedVisibleAudienceTeamMember({
+        userId: "user-project-a",
+        email: "pm@example.com",
+        organizationRole: "project_manager",
+        projectRole: "project_manager",
+      })
+    ).toBe(true)
+    expect(
+      isAssignedVisibleAudienceTeamMember({
+        userId: "user-project-b",
+        email: "office@example.com",
+        organizationRole: "office",
+        projectRole: null,
+      })
+    ).toBe(false)
+  })
+
+  it("rejects an external project role even when the organization role is internal", () => {
+    expect(
+      isAssignedVisibleAudienceTeamMember({
+        userId: "user-cross-role",
+        email: "owner@example.com",
+        organizationRole: "office",
+        projectRole: "owner",
+      })
+    ).toBe(false)
   })
 })

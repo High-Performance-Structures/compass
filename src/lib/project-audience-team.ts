@@ -19,3 +19,20 @@ export function isVisibleAudienceTeamMember(input: {
     !HIDDEN_AUDIENCE_TEAM_EMAILS.has(normalizedEmail)
   )
 }
+
+export function isAssignedVisibleAudienceTeamMember(input: {
+  readonly userId: string
+  readonly email: string
+  readonly organizationRole: string
+  readonly projectRole: string | null
+}): boolean {
+  return (
+    input.projectRole !== null &&
+    isInternalStaffRole(input.projectRole) &&
+    isVisibleAudienceTeamMember({
+      userId: input.userId,
+      email: input.email,
+      role: input.organizationRole,
+    })
+  )
+}

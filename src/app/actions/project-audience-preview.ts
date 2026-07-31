@@ -27,7 +27,7 @@ import {
   type ProjectAudience,
 } from "@/lib/project-audience-access"
 import { ensureProjectAudienceConversation } from "@/lib/project-audience-conversations"
-import { isVisibleAudienceTeamMember } from "@/lib/project-audience-team"
+import { isAssignedVisibleAudienceTeamMember } from "@/lib/project-audience-team"
 import { isInternalStaffRole } from "@/lib/user-roles"
 import {
   isOwnerScheduleView,
@@ -612,18 +612,18 @@ export async function getProjectAudiencePreview(
       projectRole: projectMembers.role,
       projectAssignedAt: projectMembers.assignedAt,
     })
-    .from(organizationMembers)
-    .innerJoin(users, eq(users.id, organizationMembers.userId))
-    .leftJoin(
-      projectMembers,
+    .from(projectMembers)
+    .innerJoin(users, eq(users.id, projectMembers.userId))
+    .innerJoin(
+      organizationMembers,
       and(
-        eq(projectMembers.userId, users.id),
-        eq(projectMembers.projectId, projectId)
+        eq(organizationMembers.userId, projectMembers.userId),
+        eq(organizationMembers.organizationId, organizationId)
       )
     )
     .where(
       and(
-        eq(organizationMembers.organizationId, organizationId),
+        eq(projectMembers.projectId, projectId),
         eq(users.isActive, true)
       )
     )
@@ -635,10 +635,11 @@ export async function getProjectAudiencePreview(
     new Map(
       internalTeamRows
         .filter((member) =>
-          isVisibleAudienceTeamMember({
+          isAssignedVisibleAudienceTeamMember({
             userId: member.userId,
             email: member.email,
-            role: member.organizationRole,
+            organizationRole: member.organizationRole,
+            projectRole: member.projectRole,
           })
         )
         .map((member) => [member.userId, member])
@@ -649,7 +650,7 @@ export async function getProjectAudiencePreview(
     contactType: "internal",
     displayName: member.displayName ?? member.email,
     companyName: null,
-    role: member.projectRole ?? member.organizationRole,
+    role: member.projectRole,
     trade: null,
     csiDivision: null,
     csiDivisionName: null,
