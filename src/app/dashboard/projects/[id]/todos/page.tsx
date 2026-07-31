@@ -11,7 +11,7 @@ import { getProjects } from "@/app/actions/projects"
 import { ProjectTodosView } from "@/components/projects/project-todos-view"
 import { requireAuth } from "@/lib/auth"
 import { isDemoUser } from "@/lib/demo"
-import { can } from "@/lib/permissions"
+import { canFeature } from "@/lib/permission-enforcement"
 
 export default async function ProjectTodosPage({
   params,
@@ -37,7 +37,7 @@ export default async function ProjectTodosPage({
   const initialItemId =
     typeof query.item === "string" ? query.item : query.item?.[0] ?? null
   const canManage =
-    !isDemoUser(user.id) && can(user, "project", "update")
+    !isDemoUser(user.id) && (await canFeature(user, "tasks", "update"))
   let assigneeOptions: ProjectTaskAssigneeOption[] = []
   if (canManage) {
     const assigneeData = await getProjectTaskAssigneeOptions(id)

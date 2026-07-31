@@ -18,6 +18,7 @@ import { requireAuth } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
 import { isDemoUser } from "@/lib/demo"
 import { requireOrg } from "@/lib/org-scope"
+import { requireFeaturePermission } from "@/lib/permission-enforcement"
 import { requirePermission } from "@/lib/permissions"
 import {
   projectContactAccessStatus,
@@ -618,8 +619,9 @@ export async function getProjectContactsSummary(
 export async function getProjectTaskAssigneeOptions(
   projectId: string
 ): Promise<ProjectTaskAssigneeOptions> {
-  const db = await verifyProjectAccess(projectId)
   const user = await requireAuth()
+  await requireFeaturePermission(user, "tasks", "update")
+  const db = await verifyProjectAccess(projectId)
   const orgId = requireOrg(user)
 
   const projectContactRows = await db
@@ -898,6 +900,7 @@ export async function addDirectoryContactToProjectForTask(
   try {
     const user = await requireAuth()
     if (isDemoUser(user.id)) return { success: false, error: "DEMO_READ_ONLY" }
+    await requireFeaturePermission(user, "tasks", "update")
 
     const orgId = requireOrg(user)
     const db = await verifyProjectAccess(projectId, "update")

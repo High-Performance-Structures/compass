@@ -5,8 +5,14 @@ import { IconClipboardPlus } from "@tabler/icons-react"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 
+import {
+  getProjectTaskAssigneeOptions,
+  type ProjectTaskAssigneeOption,
+} from "@/app/actions/project-contacts"
 import { createProjectTask } from "@/app/actions/project-operations"
 import type { ProjectRow } from "@/app/actions/work-calendar"
+import { ProjectAssigneePicker } from "@/components/projects/project-assignee-picker"
+import { ProjectCompanyPicker } from "@/components/projects/project-company-picker"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -53,6 +59,43 @@ export function WorkCalendarTodoDialog({
   const [companyName, setCompanyName] = React.useState("")
   const [dueDate, setDueDate] = React.useState(today)
   const [priority, setPriority] = React.useState("normal")
+  const [assigneeOptions, setAssigneeOptions] = React.useState<
+    readonly ProjectTaskAssigneeOption[]
+  >([])
+  const [loadingAssignees, setLoadingAssignees] = React.useState(false)
+
+  React.useEffect(() => {
+    if (!open || !projectId) {
+      setAssigneeOptions([])
+      setLoadingAssignees(false)
+      return
+    }
+
+    let cancelled = false
+    setLoadingAssignees(true)
+    setAssigneeOptions([])
+
+    void getProjectTaskAssigneeOptions(projectId)
+      .then((result) => {
+        if (cancelled) return
+        setAssigneeOptions([
+          ...result.projectContacts,
+          ...result.directoryContacts,
+        ])
+      })
+      .catch(() => {
+        if (cancelled) return
+        setAssigneeOptions([])
+        toast.error("Unable to load project contacts.")
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingAssignees(false)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [open, projectId])
 
   function reset(): void {
     setProjectId(defaultProjectId ?? "")
@@ -120,7 +163,14 @@ export function WorkCalendarTodoDialog({
           <div className="grid gap-4 py-5">
             <div className="grid gap-2">
               <Label htmlFor="calendar-todo-project">Project</Label>
-              <Select value={projectId} onValueChange={setProjectId}>
+              <Select
+                value={projectId}
+                onValueChange={(value) => {
+                  setProjectId(value)
+                  setAssigneeName("")
+                  setCompanyName("")
+                }}
+              >
                 <SelectTrigger id="calendar-todo-project">
                   <SelectValue placeholder="Select a project" />
                 </SelectTrigger>
@@ -146,25 +196,36 @@ export function WorkCalendarTodoDialog({
             </div>
             <div className="grid gap-2 sm:grid-cols-2">
               <div className="grid gap-2">
-                <Label htmlFor="calendar-todo-assignee">Assignee</Label>
-                <Input
-                  id="calendar-todo-assignee"
+                <Label>Assignee</Label>
+                <ProjectAssigneePicker
                   value={assigneeName}
-                  onChange={(event) =>
-                    setAssigneeName(event.currentTarget.value)
+                  options={assigneeOptions}
+                  onValueChange={(value, option) => {
+                    setAssigneeName(value)
+                    setCompanyName(option?.companyName ?? "")
+                  }}
+                  placeholder={
+                    loadingAssignees
+                      ? "Loading project contacts..."
+                      : "Choose contact or type a name..."
                   }
-                  placeholder="Name"
+                  className="h-10"
+                  disabled={loadingAssignees}
                 />
               </div>
               <div className="grid gap-2">
-                <Label htmlFor="calendar-todo-company">Company</Label>
-                <Input
-                  id="calendar-todo-company"
+                <Label>Company</Label>
+                <ProjectCompanyPicker
                   value={companyName}
-                  onChange={(event) =>
-                    setCompanyName(event.currentTarget.value)
+                  options={assigneeOptions}
+                  onValueChange={setCompanyName}
+                  placeholder={
+                    loadingAssignees
+                      ? "Loading project companies..."
+                      : "Choose company or type a name..."
                   }
-                  placeholder="Optional"
+                  className="h-10"
+                  disabled={loadingAssignees}
                 />
               </div>
             </div>
