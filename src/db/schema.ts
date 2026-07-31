@@ -1062,6 +1062,115 @@ export const projectRfiAttachments = sqliteTable("project_rfi_attachments", {
   updatedAt: text("updated_at").notNull(),
 })
 
+export const projectChangeOrders = sqliteTable(
+  "project_change_orders",
+  {
+    id: text("id").primaryKey(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    changeOrderNumber: text("change_order_number").notNull(),
+    title: text("title").notNull(),
+    scope: text("scope").notNull(),
+    reason: text("reason"),
+    amountCents: integer("amount_cents"),
+    status: text("status").notNull().default("draft"),
+    audience: text("audience").notNull().default("internal"),
+    requesterType: text("requester_type").notNull(),
+    requesterUserId: text("requester_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    requesterName: text("requester_name").notNull(),
+    requesterCompany: text("requester_company"),
+    sourceType: text("source_type").notNull(),
+    sourceRecordId: text("source_record_id"),
+    sourceHref: text("source_href"),
+    internalNotes: text("internal_notes"),
+    foxitStatus: text("foxit_status").notNull().default("not_started"),
+    foxitEnvelopeId: text("foxit_envelope_id"),
+    signatureRequestedAt: text("signature_requested_at"),
+    executedAt: text("executed_at"),
+    sageStatus: text("sage_status").notNull().default("not_ready"),
+    sageRecordId: text("sage_record_id"),
+    lastSageSyncAt: text("last_sage_sync_at"),
+    createdBy: text("created_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    submittedAt: text("submitted_at"),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("project_change_orders_project_number_uq").on(
+      table.projectId,
+      table.changeOrderNumber
+    ),
+    index("project_change_orders_project_status_idx").on(
+      table.projectId,
+      table.status
+    ),
+    index("project_change_orders_requester_idx").on(
+      table.projectId,
+      table.requesterUserId
+    ),
+  ]
+)
+
+export const projectChangeOrderDocuments = sqliteTable(
+  "project_change_order_documents",
+  {
+    id: text("id").primaryKey(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    changeOrderId: text("change_order_id")
+      .notNull()
+      .references(() => projectChangeOrders.id, { onDelete: "cascade" }),
+    label: text("label").notNull(),
+    url: text("url").notNull(),
+    notes: text("notes"),
+    createdBy: text("created_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    createdAt: text("created_at").notNull(),
+  },
+  (table) => [
+    index("project_change_order_documents_order_idx").on(table.changeOrderId),
+    index("project_change_order_documents_project_idx").on(table.projectId),
+  ]
+)
+
+export const projectChangeOrderHistory = sqliteTable(
+  "project_change_order_history",
+  {
+    id: text("id").primaryKey(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    changeOrderId: text("change_order_id")
+      .notNull()
+      .references(() => projectChangeOrders.id, { onDelete: "cascade" }),
+    eventType: text("event_type").notNull(),
+    fromStatus: text("from_status"),
+    toStatus: text("to_status"),
+    actorUserId: text("actor_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    actorName: text("actor_name").notNull(),
+    actorRole: text("actor_role").notNull(),
+    note: text("note"),
+    metadataJson: text("metadata_json"),
+    createdAt: text("created_at").notNull(),
+  },
+  (table) => [
+    index("project_change_order_history_order_idx").on(
+      table.changeOrderId,
+      table.createdAt
+    ),
+    index("project_change_order_history_project_idx").on(table.projectId),
+  ]
+)
+
 export const projectContacts = sqliteTable("project_contacts", {
   id: text("id").primaryKey(),
   projectId: text("project_id")
@@ -1428,6 +1537,16 @@ export type ProjectRfi = typeof projectRfis.$inferSelect
 export type NewProjectRfi = typeof projectRfis.$inferInsert
 export type ProjectRfiAttachment = typeof projectRfiAttachments.$inferSelect
 export type NewProjectRfiAttachment = typeof projectRfiAttachments.$inferInsert
+export type ProjectChangeOrder = typeof projectChangeOrders.$inferSelect
+export type NewProjectChangeOrder = typeof projectChangeOrders.$inferInsert
+export type ProjectChangeOrderDocument =
+  typeof projectChangeOrderDocuments.$inferSelect
+export type NewProjectChangeOrderDocument =
+  typeof projectChangeOrderDocuments.$inferInsert
+export type ProjectChangeOrderHistory =
+  typeof projectChangeOrderHistory.$inferSelect
+export type NewProjectChangeOrderHistory =
+  typeof projectChangeOrderHistory.$inferInsert
 export type ProjectContact = typeof projectContacts.$inferSelect
 export type NewProjectContact = typeof projectContacts.$inferInsert
 export type ProjectContactSourceLink =

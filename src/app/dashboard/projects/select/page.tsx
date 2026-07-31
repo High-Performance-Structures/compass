@@ -3,6 +3,7 @@ import {
   IconAddressBook,
   IconClipboardText,
   IconFileDollar,
+  IconFileInvoice,
   IconFolderSearch,
   IconMailForward,
   IconMessageCircleQuestion,
@@ -91,6 +92,14 @@ const TARGETS: readonly ProjectTarget[] = [
     placeholder: "Search projects for RFQs...",
     badge: "RFQ context",
     icon: <IconShoppingCartQuestion className="size-5 text-muted-foreground" />,
+  },
+  {
+    section: "change-orders",
+    title: "Change Orders",
+    description: "Choose a project before requesting or reviewing scope changes.",
+    placeholder: "Search projects for change orders...",
+    badge: "Change-order context",
+    icon: <IconFileInvoice className="size-5 text-muted-foreground" />,
   },
   {
     section: "schedule",

@@ -9,6 +9,7 @@ import {
   IconClipboardText,
   IconEye,
   IconFileDollar,
+  IconFileInvoice,
   IconFolder,
   IconHome2,
   IconMailForward,
@@ -47,6 +48,7 @@ type ProjectSectionKey =
   | "rfis"
   | "rfqs"
   | "purchase-orders"
+  | "change-orders"
   | "budget"
   | "financials"
   | "contacts"
@@ -126,6 +128,12 @@ const PROJECT_SECTION_ITEMS: readonly ProjectSectionItem[] = [
     hrefSuffix: "purchase-orders",
     icon: IconShoppingCart,
     section: "purchase-orders",
+  },
+  {
+    title: "Change Orders",
+    hrefSuffix: "change-orders",
+    icon: IconFileInvoice,
+    section: "change-orders",
   },
   {
     title: "Budget / G703",
