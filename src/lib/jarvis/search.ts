@@ -17,6 +17,7 @@ export type JarvisSearchProject = {
 const GENERIC_SEARCH_WORDS: readonly string[] = [
   "about",
   "anything",
+  "any",
   "can",
   "capabilities",
   "changed",
@@ -26,6 +27,7 @@ const GENERIC_SEARCH_WORDS: readonly string[] = [
   "for",
   "from",
   "give",
+  "have",
   "latest",
   "link",
   "links",
@@ -50,8 +52,10 @@ const GENERIC_SEARCH_WORDS: readonly string[] = [
   "some",
   "tell",
   "that",
+  "the",
   "think",
   "this",
+  "through",
   "update",
   "updates",
   "what",
@@ -154,7 +158,9 @@ export function requestedJarvisSearchKinds(
 ): readonly JarvisCompassSearchKind[] {
   const value = normalized(query)
   if (
-    /\b(feedback|request|submission|report|bug|feature)\b/.test(value) &&
+    /\b(feedback|requests?|submissions?|reports?|bugs?|features?)\b/.test(
+      value
+    ) &&
     /\b(status|progress|triag|implement|deploy|verify|received|submitted)\w*\b/.test(
       value,
     )
@@ -165,6 +171,25 @@ export function requestedJarvisSearchKinds(
   if (value.includes("owner update")) return ["owner_update"]
   if (value.includes("daily log")) return ["daily_log"]
   return ["daily_log", "owner_update", "rfi"]
+}
+
+function isJarvisSearchRetry(query: string): boolean {
+  const value = normalized(query).replace(/[.!?]+$/, "")
+  return /^(?:please\s+)?(?:check|look|try)(?:\s+(?:it|that))?\s+again(?:\s+please)?$/.test(
+    value
+  )
+}
+
+export function jarvisSearchQueryForConversation(
+  userMessages: readonly string[]
+): string {
+  const latest = userMessages.at(-1)?.trim() ?? ""
+  if (!isJarvisSearchRetry(latest)) return latest
+
+  const previous = userMessages.at(-2)?.trim() ?? ""
+  return requestedJarvisSearchKinds(previous).includes("feedback_request")
+    ? previous
+    : latest
 }
 
 export function projectHref(projectId: string): string {
