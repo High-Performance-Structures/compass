@@ -20,4 +20,17 @@ describe("middleware public routes", () => {
   it("does not make unrelated integration routes public", () => {
     expect(isPublicPath("/api/integrations/other/events")).toBe(false)
   })
+
+  it("allows only the two HMAC-authenticated Sage bridge endpoints", () => {
+    expect(
+      isPublicPath("/api/integrations/sage/pay-applications/requests")
+    ).toBe(true)
+    expect(
+      isPublicPath("/api/integrations/sage/pay-applications/results")
+    ).toBe(true)
+    expect(isPublicPath("/api/integrations/sage/admin")).toBe(false)
+    expect(
+      isPublicPath("/api/integrations/sage/pay-applications/requests/extra")
+    ).toBe(false)
+  })
 })

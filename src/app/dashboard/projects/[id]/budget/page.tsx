@@ -13,10 +13,15 @@ import {
   type ProjectBudgetSummary,
 } from "@/app/actions/project-budget"
 import {
+  getSagePayApplicationSyncState,
+  type SagePayApplicationSyncState,
+} from "@/app/actions/sage-pay-applications"
+import {
   ProjectBudgetG703Table,
   ProjectBudgetPanel,
 } from "@/components/projects/project-budget-panel"
 import { ProjectContextSwitcher } from "@/components/projects/project-context-switcher"
+import { SagePayApplicationSyncControl } from "@/components/projects/sage-pay-application-sync-control"
 import { Badge } from "@/components/ui/badge"
 
 export default async function ProjectBudgetPage({
@@ -28,12 +33,22 @@ export default async function ProjectBudgetPage({
 
   let internalBudget: ProjectBudgetSummary | null = null
   let ownerBudget: ProjectBudgetSummary | null = null
+  let sageSyncState: SagePayApplicationSyncState | null = null
 
   try {
-    internalBudget = await getProjectBudgetSummary(id, "internal")
-    ownerBudget = await getProjectBudgetSummary(id, "owner")
+    const [internal, owner] = await Promise.all([
+      getProjectBudgetSummary(id, "internal"),
+      getProjectBudgetSummary(id, "owner"),
+    ])
+    internalBudget = internal
+    ownerBudget = owner
   } catch (error) {
     console.warn("Budget unavailable", error)
+  }
+  try {
+    sageSyncState = await getSagePayApplicationSyncState(id)
+  } catch (error) {
+    console.warn("Sage sync unavailable", error)
   }
 
   return (
@@ -77,6 +92,13 @@ export default async function ProjectBudgetPage({
         </div>
       </div>
 
+      {sageSyncState && (
+        <SagePayApplicationSyncControl
+          projectId={id}
+          state={sageSyncState}
+        />
+      )}
+
       <div className="mb-6">
         <ProjectBudgetPanel projectId={id} summary={internalBudget} />
       </div>
@@ -86,7 +108,7 @@ export default async function ProjectBudgetPage({
           <div className="mb-3 flex items-center justify-between gap-3">
             <div>
               <h2 className="text-sm font-semibold">Internal G703</h2>
-            <p className="text-xs text-muted-foreground">
+              <p className="text-xs text-muted-foreground">
                 All mapped lines and internal-only detail.
               </p>
             </div>
@@ -100,7 +122,7 @@ export default async function ProjectBudgetPage({
           <div className="mb-3 flex items-center justify-between gap-3">
             <div>
               <h2 className="text-sm font-semibold">Owner View</h2>
-            <p className="text-xs text-muted-foreground">
+              <p className="text-xs text-muted-foreground">
                 O jobs show approved cost-code detail. H jobs roll up to
                 categories.
               </p>

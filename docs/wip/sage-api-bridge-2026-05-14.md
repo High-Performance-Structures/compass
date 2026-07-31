@@ -30,6 +30,9 @@ The prior Sage work established that HPS Sage access is through Sage 100 Contrac
 - `SAGE_SQL_INSTANCE` optional, if a named instance is still used
 - `SAGE_SQL_ENCRYPT` optional, depends on the SQL Server certificate setup
 - `SAGE_READ_ONLY` defaults to read-only unless explicitly set to `false`
+- `SAGE_BRIDGE_SECRET` is a separate HMAC secret shared between Compass and the
+  private poller. SQL credentials remain tailnet-only and are never sent to
+  Compass.
 
 The live connector should start with read-only sync jobs. Writes back to Sage should require a visible user action, idempotency key, diff/conflict review, and audit log entry.
 
@@ -55,4 +58,25 @@ Known workflow/table hints from the migration trail:
 
 The dashboard now exposes the bridge status from `src/lib/sage/config.ts` through `getDashboardOverview()`. It shows whether the Sage bridge has credentials loaded, whether it is read-only, how many projects are mapped to Sage, how many Sage operation records are in Compass, and the latest recorded Sage operation sync time.
 
-This is intentionally not yet a live SQL query from the page. The next implementation step is a dedicated server-only Sage import runner that uses these same config keys, reads Sage, then updates Compass read-model tables.
+Pay-application/G703 reads use an outbound pull queue:
+
+1. Authorized internal staff select **Sync with Sage** in the project budget.
+2. Compass records an idempotent, project-scoped read request.
+3. The private poller claims requests with an HMAC-authenticated `GET` to
+   `/api/integrations/sage/pay-applications/requests`.
+4. The poller reads Sage with least-privilege SQL credentials and posts the
+   captured header and lines to
+   `/api/integrations/sage/pay-applications/results`.
+5. Compass verifies the HMAC, queued job identity, formulas, row identity, and
+   revision/hash before normalizing an internal-only G703 application.
+
+The result body is bounded to 1 MiB. Exact replays are idempotent. Changed data
+without a changed Sage revision, duplicate line IDs, job mismatches, and total
+reconciliation failures cannot replace the current view or become
+owner-visible. Owner publication remains a separate reviewed action.
+
+Each poll carries a unique `x-compass-request-id` UUID. The HMAC covers that
+request ID together with the timestamp, method, target, and raw body. Compass
+consumes poll request IDs once, rejects replayed polls, and only reports the
+bridge online after a recent authenticated poll. Production and
+non-production environments must use distinct `SAGE_BRIDGE_SECRET` values.

@@ -10,6 +10,7 @@ import * as dashboardSchema from "./schema-dashboards"
 import * as mcpSchema from "./schema-mcp"
 import * as conversationsSchema from "./schema-conversations"
 import * as jarvisSchema from "./schema-jarvis"
+import * as sageSchema from "./schema-sage"
 
 const allSchemas = {
   ...schema,
@@ -23,6 +24,7 @@ const allSchemas = {
   ...mcpSchema,
   ...conversationsSchema,
   ...jarvisSchema,
+  ...sageSchema,
 }
 
 // Legacy function - kept for backwards compatibility
