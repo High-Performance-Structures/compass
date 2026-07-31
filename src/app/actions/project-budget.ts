@@ -1,6 +1,6 @@
 "use server"
 
-import { and, asc, desc, eq } from "drizzle-orm"
+import { and, asc, desc, eq, sql } from "drizzle-orm"
 
 import { getDb } from "@/db"
 import {
@@ -15,6 +15,13 @@ import {
   effectiveProjectBudgetAudience,
   type ProjectBudgetAudience,
 } from "@/lib/project-budget-audience"
+import {
+  sanitizeBudgetApplicationForOwner,
+  sanitizeBudgetLineForOwner,
+  scopeBudgetLinesToApplication,
+  selectBudgetApplication,
+  type BudgetLineSnapshotRow,
+} from "@/lib/project-budget-snapshot"
 
 export type { ProjectBudgetAudience } from "@/lib/project-budget-audience"
 export type ProjectBudgetDetailMode = "cost_code" | "category"
@@ -130,11 +137,10 @@ function toApplicationItem(
   row: typeof projectBudgetApplications.$inferSelect,
   audience: ProjectBudgetAudience
 ): ProjectBudgetApplicationItem {
-  const ownerSafe = audience === "owner"
   const documentAvailable =
     row.sourceSystem === "google_drive_g702_g703" &&
     Boolean(row.sourceRecordId)
-  return {
+  const application = {
     id: row.id,
     sourceSystem: row.sourceSystem,
     applicationNumber: row.applicationNumber,
@@ -151,24 +157,26 @@ function toApplicationItem(
     balanceToFinish: row.balanceToFinish,
     ownerVisible: row.ownerVisible,
     documentAvailable,
-    sourceUrl: ownerSafe ? null : row.sourceUrl,
-    lastSyncedAt: ownerSafe ? null : row.lastSyncedAt,
+    sourceUrl: row.sourceUrl,
+    lastSyncedAt: row.lastSyncedAt,
   }
+  return audience === "owner"
+    ? sanitizeBudgetApplicationForOwner(application)
+    : application
 }
 
 function toLineItem(
   row: typeof projectBudgetLines.$inferSelect,
   audience: ProjectBudgetAudience
 ): ProjectBudgetLineItem {
-  const ownerSafe = audience === "owner"
-  return {
+  const line = {
     id: row.id,
     sourceSystem: row.sourceSystem,
     costCode: row.costCode,
     csiDivision: row.csiDivision,
     csiDivisionName: row.csiDivisionName,
     description: row.description,
-    notes: ownerSafe ? null : row.notes,
+    notes: row.notes,
     originalEstimate: row.originalEstimate,
     priorChanges: row.priorChanges,
     currentChanges: row.currentChanges,
@@ -180,11 +188,12 @@ function toLineItem(
     percentComplete: row.percentComplete,
     balanceToFinish: row.balanceToFinish,
     retainageHeld: row.retainageHeld,
-    vendorName: ownerSafe ? null : row.vendorName,
+    vendorName: row.vendorName,
     ownerLabel: row.ownerLabel,
     ownerVisible: row.ownerVisible,
-    internalNotes: ownerSafe ? null : row.internalNotes,
+    internalNotes: row.internalNotes,
   }
+  return audience === "owner" ? sanitizeBudgetLineForOwner(line) : line
 }
 
 function percent(numerator: number, denominator: number): number {
@@ -309,7 +318,8 @@ function buildOwnerCategoryLines(
 
 export async function getProjectBudgetSummary(
   projectId: string,
-  audience: ProjectBudgetAudience = "internal"
+  audience: ProjectBudgetAudience = "internal",
+  applicationId?: string
 ): Promise<ProjectBudgetSummary> {
   const access = await verifyProjectAccess(projectId)
   const effectiveAudience = effectiveProjectBudgetAudience(
@@ -321,43 +331,145 @@ export async function getProjectBudgetSummary(
       ? ownerDetailMode(access.projectNumber)
       : "cost_code"
 
-  const applicationRows = await access.db
-    .select()
-    .from(projectBudgetApplications)
-    .where(
-      effectiveAudience === "owner"
-        ? and(
-            eq(projectBudgetApplications.projectId, projectId),
-            eq(projectBudgetApplications.ownerVisible, true)
-          )
-        : eq(projectBudgetApplications.projectId, projectId)
-    )
-    .orderBy(
-      desc(projectBudgetApplications.periodTo),
-      desc(projectBudgetApplications.createdAt)
-    )
+  const applications =
+    effectiveAudience === "owner"
+      ? (
+          await access.db
+            .select({
+              id: projectBudgetApplications.id,
+              sourceSystem: projectBudgetApplications.sourceSystem,
+              applicationNumber: projectBudgetApplications.applicationNumber,
+              periodTo: projectBudgetApplications.periodTo,
+              status: projectBudgetApplications.status,
+              originalContractSum:
+                projectBudgetApplications.originalContractSum,
+              netChanges: projectBudgetApplications.netChanges,
+              contractSumToDate: projectBudgetApplications.contractSumToDate,
+              totalCompletedStoredToDate:
+                projectBudgetApplications.totalCompletedStoredToDate,
+              retainageHeld: projectBudgetApplications.retainageHeld,
+              totalEarnedLessRetainage:
+                projectBudgetApplications.totalEarnedLessRetainage,
+              previousCertificates:
+                projectBudgetApplications.previousCertificates,
+              currentPaymentDue: projectBudgetApplications.currentPaymentDue,
+              balanceToFinish: projectBudgetApplications.balanceToFinish,
+              ownerVisible: projectBudgetApplications.ownerVisible,
+              documentAvailable: sql<number>`
+                case
+                  when ${projectBudgetApplications.sourceSystem} = 'google_drive_g702_g703'
+                    and ${projectBudgetApplications.sourceRecordId} is not null
+                  then 1
+                  else 0
+                end
+              `,
+            })
+            .from(projectBudgetApplications)
+            .where(
+              and(
+                eq(projectBudgetApplications.projectId, projectId),
+                eq(projectBudgetApplications.ownerVisible, true)
+              )
+            )
+            .orderBy(
+              desc(projectBudgetApplications.periodTo),
+              desc(projectBudgetApplications.createdAt)
+            )
+        ).map((row) =>
+          sanitizeBudgetApplicationForOwner({
+            ...row,
+            documentAvailable: Boolean(row.documentAvailable),
+            sourceUrl: null,
+            lastSyncedAt: null,
+          })
+        )
+      : (
+          await access.db
+            .select()
+            .from(projectBudgetApplications)
+            .where(eq(projectBudgetApplications.projectId, projectId))
+            .orderBy(
+              desc(projectBudgetApplications.periodTo),
+              desc(projectBudgetApplications.createdAt)
+            )
+        ).map((row) => toApplicationItem(row, effectiveAudience))
 
-  const applications = applicationRows.map((row) =>
-    toApplicationItem(row, effectiveAudience)
+  const currentApplication = selectBudgetApplication(
+    applications,
+    applicationId
   )
-  const currentApplication = applications[0] ?? null
 
-  const lineRows = await access.db
-    .select()
-    .from(projectBudgetLines)
-    .where(
-      effectiveAudience === "owner"
-        ? and(
-            eq(projectBudgetLines.projectId, projectId),
-            eq(projectBudgetLines.ownerVisible, true)
-          )
-        : eq(projectBudgetLines.projectId, projectId)
-    )
-    .orderBy(asc(projectBudgetLines.sortOrder), asc(projectBudgetLines.costCode))
-
-  const sourceLines = lineRows.map((row) =>
-    toLineItem(row, effectiveAudience)
-  )
+  const sourceLines: readonly ProjectBudgetLineItem[] = currentApplication
+    ? effectiveAudience === "owner"
+      ? scopeBudgetLinesToApplication(
+          (
+            await access.db
+              .select({
+                applicationId: projectBudgetLines.applicationId,
+                id: projectBudgetLines.id,
+                sourceSystem: projectBudgetLines.sourceSystem,
+                costCode: projectBudgetLines.costCode,
+                csiDivision: projectBudgetLines.csiDivision,
+                csiDivisionName: projectBudgetLines.csiDivisionName,
+                description: projectBudgetLines.description,
+                originalEstimate: projectBudgetLines.originalEstimate,
+                priorChanges: projectBudgetLines.priorChanges,
+                currentChanges: projectBudgetLines.currentChanges,
+                totalChanges: projectBudgetLines.totalChanges,
+                adjustedEstimate: projectBudgetLines.adjustedEstimate,
+                priorCosts: projectBudgetLines.priorCosts,
+                currentCosts: projectBudgetLines.currentCosts,
+                totalCosts: projectBudgetLines.totalCosts,
+                percentComplete: projectBudgetLines.percentComplete,
+                balanceToFinish: projectBudgetLines.balanceToFinish,
+                retainageHeld: projectBudgetLines.retainageHeld,
+                ownerLabel: projectBudgetLines.ownerLabel,
+                ownerVisible: projectBudgetLines.ownerVisible,
+              })
+              .from(projectBudgetLines)
+              .where(
+                and(
+                  eq(projectBudgetLines.projectId, projectId),
+                  eq(projectBudgetLines.applicationId, currentApplication.id),
+                  eq(projectBudgetLines.ownerVisible, true)
+                )
+              )
+              .orderBy(
+                asc(projectBudgetLines.sortOrder),
+                asc(projectBudgetLines.costCode)
+              )
+          ).map(
+            (row): BudgetLineSnapshotRow => ({
+              ...row,
+              notes: null,
+              vendorName: null,
+              internalNotes: null,
+            })
+          ),
+          currentApplication.id
+        ).map((row) => sanitizeBudgetLineForOwner(row))
+      : scopeBudgetLinesToApplication(
+          (
+            await access.db
+              .select()
+              .from(projectBudgetLines)
+              .where(
+                and(
+                  eq(projectBudgetLines.projectId, projectId),
+                  eq(projectBudgetLines.applicationId, currentApplication.id)
+                )
+              )
+              .orderBy(
+                asc(projectBudgetLines.sortOrder),
+                asc(projectBudgetLines.costCode)
+              )
+          ).map((row) => ({
+            ...toLineItem(row, effectiveAudience),
+            applicationId: row.applicationId,
+          })),
+          currentApplication.id
+        )
+    : []
   const allLines =
     detailMode === "category" ? buildOwnerCategoryLines(sourceLines) : sourceLines
   const divisions = buildDivisions(allLines)
