@@ -107,6 +107,20 @@ Recover in independent, reviewable branches:
 Historical imports must not overwrite newer Compass-authored work or trigger
 the normal notification lifecycle.
 
+### Identity reconciliation
+
+Buildertrend job and lead IDs are the source identities. Project numbers,
+customer names, email addresses, and accounting-customer records are review
+evidence only and must never collapse distinct Buildertrend jobs.
+
+Identity review manifests record immutable decisions and explicit
+relationships for same-owner projects, development phases, continuations,
+department transitions, and lead-to-project conversions. They may reference an
+existing Compass project or customer within the same organization, but they do
+not create projects, grant portal access, invite contacts, or modify the source
+staging record. Pooled accounting customers are provenance only and can never
+become portal identities through the identity-review workflow.
+
 ### Restricted preservation evidence
 
 Client-, dispute-, claim-, and project-specific preservation material belongs

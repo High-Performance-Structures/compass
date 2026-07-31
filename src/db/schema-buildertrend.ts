@@ -1,4 +1,5 @@
 import {
+  check,
   index,
   integer,
   real,
@@ -6,6 +7,7 @@ import {
   text,
   uniqueIndex,
 } from "drizzle-orm/sqlite-core"
+import { sql } from "drizzle-orm"
 
 import {
   customers,
@@ -287,6 +289,150 @@ export const buildertrendImportObservations = sqliteTable(
   ]
 )
 
+export const buildertrendIdentityReviewRuns = sqliteTable(
+  "buildertrend_staging_identity_review_runs",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    reviewKey: text("review_key").notNull(),
+    manifestFingerprint: text("manifest_fingerprint").notNull(),
+    status: text("status").notNull().default("in_progress"),
+    expectedDecisionCount: integer("expected_decision_count").notNull(),
+    expectedRelationshipCount: integer("expected_relationship_count")
+      .notNull(),
+    reviewedBy: text("reviewed_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    reviewedAt: text("reviewed_at").notNull(),
+    summaryJson: text("summary_json"),
+    createdAt: text("created_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("buildertrend_identity_review_runs_org_key_unique").on(
+      table.organizationId,
+      table.reviewKey
+    ),
+    index("buildertrend_identity_review_runs_org_status_idx").on(
+      table.organizationId,
+      table.status
+    ),
+  ]
+)
+
+export const buildertrendIdentityDecisions = sqliteTable(
+  "buildertrend_staging_identity_decisions",
+  {
+    id: text("id").primaryKey(),
+    reviewRunId: text("review_run_id")
+      .notNull()
+      .references(() => buildertrendIdentityReviewRuns.id, {
+        onDelete: "restrict",
+      }),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    sourceRecordId: text("source_record_id")
+      .notNull()
+      .references(() => buildertrendSourceRecords.id, {
+        onDelete: "restrict",
+      }),
+    sourceKey: text("source_key").notNull(),
+    sourceIdentityKind: text("source_identity_kind").notNull(),
+    sourceIdentityId: text("source_identity_id").notNull(),
+    lifecycleStatus: text("lifecycle_status").notNull(),
+    disposition: text("disposition").notNull(),
+    departmentCode: text("department_code"),
+    matchedProjectId: text("matched_project_id").references(
+      () => projects.id,
+      { onDelete: "set null" }
+    ),
+    customerProvenanceId: text("customer_provenance_id").references(
+      () => customers.id,
+      { onDelete: "set null" }
+    ),
+    customerProvenanceKind: text("customer_provenance_kind")
+      .notNull()
+      .default("none"),
+    portalIdentityAllowed: integer("portal_identity_allowed", {
+      mode: "boolean",
+    })
+      .notNull()
+      .default(false),
+    reviewStatus: text("review_status").notNull().default("needs_review"),
+    reviewNotes: text("review_notes"),
+    createdAt: text("created_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("buildertrend_identity_decisions_run_source_unique").on(
+      table.reviewRunId,
+      table.sourceRecordId
+    ),
+    index("buildertrend_identity_decisions_org_status_idx").on(
+      table.organizationId,
+      table.reviewStatus
+    ),
+    index("buildertrend_identity_decisions_project_idx").on(
+      table.matchedProjectId
+    ),
+    check(
+      "buildertrend_identity_decisions_no_portal_access",
+      sql`${table.portalIdentityAllowed} = 0`
+    ),
+  ]
+)
+
+export const buildertrendIdentityRelationships = sqliteTable(
+  "buildertrend_staging_identity_relationships",
+  {
+    id: text("id").primaryKey(),
+    reviewRunId: text("review_run_id")
+      .notNull()
+      .references(() => buildertrendIdentityReviewRuns.id, {
+        onDelete: "restrict",
+      }),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    fromDecisionId: text("from_decision_id")
+      .notNull()
+      .references(() => buildertrendIdentityDecisions.id, {
+        onDelete: "restrict",
+      }),
+    toDecisionId: text("to_decision_id")
+      .notNull()
+      .references(() => buildertrendIdentityDecisions.id, {
+        onDelete: "restrict",
+      }),
+    relationshipType: text("relationship_type").notNull(),
+    reviewStatus: text("review_status").notNull().default("needs_review"),
+    reviewNotes: text("review_notes"),
+    grantsPortalAccess: integer("grants_portal_access", {
+      mode: "boolean",
+    })
+      .notNull()
+      .default(false),
+    createdAt: text("created_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("buildertrend_identity_relationships_run_edge_unique").on(
+      table.reviewRunId,
+      table.fromDecisionId,
+      table.toDecisionId,
+      table.relationshipType
+    ),
+    index("buildertrend_identity_relationships_org_type_idx").on(
+      table.organizationId,
+      table.relationshipType
+    ),
+    check(
+      "buildertrend_identity_relationships_no_portal_access",
+      sql`${table.grantsPortalAccess} = 0`
+    ),
+  ]
+)
+
 export type BuildertrendImportRun = typeof buildertrendImportRuns.$inferSelect
 export type NewBuildertrendImportRun =
   typeof buildertrendImportRuns.$inferInsert
@@ -306,3 +452,15 @@ export type BuildertrendImportObservation =
   typeof buildertrendImportObservations.$inferSelect
 export type NewBuildertrendImportObservation =
   typeof buildertrendImportObservations.$inferInsert
+export type BuildertrendIdentityReviewRun =
+  typeof buildertrendIdentityReviewRuns.$inferSelect
+export type NewBuildertrendIdentityReviewRun =
+  typeof buildertrendIdentityReviewRuns.$inferInsert
+export type BuildertrendIdentityDecision =
+  typeof buildertrendIdentityDecisions.$inferSelect
+export type NewBuildertrendIdentityDecision =
+  typeof buildertrendIdentityDecisions.$inferInsert
+export type BuildertrendIdentityRelationship =
+  typeof buildertrendIdentityRelationships.$inferSelect
+export type NewBuildertrendIdentityRelationship =
+  typeof buildertrendIdentityRelationships.$inferInsert
