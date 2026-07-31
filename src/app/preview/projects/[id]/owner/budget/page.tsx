@@ -28,6 +28,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { projectAudienceMessageShortcut } from "@/lib/project-audience-direct-message"
 import { projectBrandFor } from "@/lib/project-branding"
+import { budgetPaymentBreakdown } from "@/lib/project-budget-snapshot"
 
 function hasDigest(error: unknown): error is { readonly digest: string } {
   return typeof error === "object" && error !== null && "digest" in error
@@ -169,62 +170,70 @@ export default async function OwnerBudgetPage({
                 </Badge>
               </div>
               <div className="mt-4 divide-y border">
-                {budget.applications.map((application, index) => (
-                  <article
-                    key={application.id}
-                    className="grid gap-3 p-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center"
-                  >
-                    <div className="min-w-0">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <p className="font-medium">
-                          Pay application {application.applicationNumber}
+                {budget.applications.map((application, index) => {
+                  const payment = budgetPaymentBreakdown(application)
+
+                  return (
+                    <article
+                      key={application.id}
+                      className="grid gap-3 p-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center"
+                    >
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="font-medium">
+                            Pay application {application.applicationNumber}
+                          </p>
+                          {index === 0 && <Badge>Current</Badge>}
+                          <Badge variant="outline">
+                            {statusLabel(application.status)}
+                          </Badge>
+                        </div>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          Through {formatDate(application.periodTo)}
+                          {" · "}
+                          {money(payment.applicationTotal)} application total
+                          {" · "}
+                          {payment.depositApplied > 0
+                            ? `${money(payment.currentPaymentDue)} due after ${money(payment.depositApplied)} deposit`
+                            : `${money(payment.currentPaymentDue)} current payment`}
+                          {" · "}
+                          {money(application.contractSumToDate)} contract to date
                         </p>
-                        {index === 0 && <Badge>Current</Badge>}
-                        <Badge variant="outline">
-                          {statusLabel(application.status)}
-                        </Badge>
                       </div>
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        Through {formatDate(application.periodTo)}
-                        {" · "}
-                        {money(application.currentPaymentDue)} current payment
-                        {" · "}
-                        {money(application.contractSumToDate)} contract to date
-                      </p>
-                    </div>
-                    {application.documentAvailable ? (
-                      <div className="flex flex-wrap gap-2">
-                        <Button asChild size="sm" variant="outline">
-                          <a
-                            href={applicationDownloadHref(
-                              id,
-                              application.id
-                            )}
-                            target="_blank"
-                            rel="noreferrer"
-                          >
-                            <IconExternalLink className="size-4" />
-                            Open PDF
-                          </a>
-                        </Button>
-                        <Button asChild size="sm" variant="outline">
-                          <a
-                            href={applicationDownloadHref(
-                              id,
-                              application.id,
-                              true
-                            )}
-                          >
-                            <IconDownload className="size-4" />
-                            Save
-                          </a>
-                        </Button>
-                      </div>
-                    ) : (
-                      <Badge variant="secondary">Document unavailable</Badge>
-                    )}
-                  </article>
-                ))}
+                      {application.documentAvailable ? (
+                        <div className="flex flex-wrap gap-2">
+                          <Button asChild size="sm" variant="outline">
+                            <a
+                              href={applicationDownloadHref(
+                                id,
+                                application.id
+                              )}
+                              target="_blank"
+                              rel="noreferrer"
+                            >
+                              <IconExternalLink className="size-4" />
+                              Open PDF
+                            </a>
+                          </Button>
+                          <Button asChild size="sm" variant="outline">
+                            <a
+                              href={applicationDownloadHref(
+                                id,
+                                application.id,
+                                true
+                              )}
+                            >
+                              <IconDownload className="size-4" />
+                              Save
+                            </a>
+                          </Button>
+                        </div>
+                      ) : (
+                        <Badge variant="secondary">Document unavailable</Badge>
+                      )}
+                    </article>
+                  )
+                })}
               </div>
             </section>
           )}

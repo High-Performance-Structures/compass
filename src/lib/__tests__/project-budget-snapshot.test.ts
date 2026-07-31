@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest"
 
 import {
+  budgetPaymentBreakdown,
   sanitizeBudgetApplicationForOwner,
   sanitizeBudgetLineForOwner,
   scopeBudgetLinesToApplication,
@@ -107,5 +108,36 @@ describe("project budget snapshot boundary", () => {
     expect(safeLine.notes).toBeNull()
     expect(safeLine.vendorName).toBeNull()
     expect(safeLine.internalNotes).toBeNull()
+  })
+
+  it("includes a deposit already applied to the first payment application", () => {
+    const firstApplication: BudgetApplicationView = {
+      ...application("pay-app-1"),
+      totalCompletedStoredToDate: 68_782.88,
+      totalEarnedLessRetainage: 68_782.88,
+      previousCertificates: 0,
+      currentPaymentDue: 18_460.77,
+    }
+
+    expect(budgetPaymentBreakdown(firstApplication)).toEqual({
+      applicationTotal: 68_782.88,
+      currentPaymentDue: 18_460.77,
+      depositApplied: 50_322.11,
+    })
+  })
+
+  it("does not invent a deposit when the application has no positive balance", () => {
+    const laterApplication: BudgetApplicationView = {
+      ...application("pay-app-2"),
+      totalEarnedLessRetainage: 199_584.37,
+      previousCertificates: 68_782.88,
+      currentPaymentDue: 133_149.11,
+    }
+
+    expect(budgetPaymentBreakdown(laterApplication)).toEqual({
+      applicationTotal: 133_149.11,
+      currentPaymentDue: 133_149.11,
+      depositApplied: 0,
+    })
   })
 })

@@ -19,6 +19,12 @@ export type BudgetApplicationView = {
   readonly lastSyncedAt: string | null
 }
 
+export type BudgetPaymentBreakdown = {
+  readonly applicationTotal: number
+  readonly currentPaymentDue: number
+  readonly depositApplied: number
+}
+
 export type BudgetLineView = {
   readonly id: string
   readonly sourceSystem: string
@@ -79,6 +85,35 @@ export function sanitizeBudgetApplicationForOwner(
     ...application,
     sourceUrl: null,
     lastSyncedAt: null,
+  }
+}
+
+function currency(value: number): number {
+  return Math.round(value * 100) / 100
+}
+
+export function budgetPaymentBreakdown(
+  application: BudgetApplicationView
+): BudgetPaymentBreakdown {
+  const impliedDeposit = currency(
+    application.totalEarnedLessRetainage -
+      application.previousCertificates -
+      application.currentPaymentDue
+  )
+  // On the first certified application, a positive difference is an amount
+  // already applied to the draw, such as a construction deposit.
+  const depositApplied =
+    Math.abs(application.previousCertificates) < 0.02 &&
+    impliedDeposit >= 0.02
+      ? impliedDeposit
+      : 0
+
+  return {
+    applicationTotal: currency(
+      application.currentPaymentDue + depositApplied
+    ),
+    currentPaymentDue: application.currentPaymentDue,
+    depositApplied,
   }
 }
 
