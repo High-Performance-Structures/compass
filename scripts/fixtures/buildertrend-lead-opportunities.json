@@ -1,0 +1,18 @@
+{
+  "rows": [
+    {
+      "buildertrendLeadId": "2001",
+      "title": "D-100-2001 Example Design Lead",
+      "href": "/app/leads/opportunities/Lead/2001",
+      "status": "Open",
+      "rowText": "D-100-2001 Example Design Lead | Open",
+      "contacts": [
+        {
+          "name": "Example Lead",
+          "buildertrendContactId": "601",
+          "email": "lead@example.test"
+        }
+      ]
+    }
+  ]
+}

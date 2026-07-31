@@ -61,6 +61,39 @@ Recover after the foundation:
 Every generator must require explicit organization context, validate project
 ownership, produce a reconciliation summary, and support dry-run operation.
 
+The job and lead-opportunity adapter is intentionally separate from proposal
+and payment history. It converts captured inventory rows into the normalized
+staging manifest, but it does not infer a project from a project number or
+name. The normalized manifest then flows through the organization-scoped
+staging SQL generator. Lead proposals remain a later financial-history slice
+so Buildertrend amounts and payment labels cannot be mistaken for Sage
+authority.
+
+Example review-only pipeline:
+
+```bash
+bun scripts/build-buildertrend-inventory-manifest.mjs \
+  --input path/to/captured-jobs.json \
+  --kind jobs \
+  --run-key buildertrend-jobs-YYYY-MM-DD \
+  --source-label "Buildertrend job inventory" \
+  --captured-at 2026-07-30T12:00:00.000Z \
+  --expected-row-count EXPECTED_CAPTURE_COUNT \
+  --output path/to/staging-manifest.json
+
+bun scripts/build-buildertrend-staging-sql.mjs \
+  --input path/to/staging-manifest.json \
+  --organization-id organization-id \
+  --output path/to/review-only-import.sql
+```
+
+Both commands support `--dry-run`. Generated SQL remains confined to
+`buildertrend_staging_*` tables. Empty, failed, count-mismatched, duplicate,
+and identity-inconsistent captures fail closed. The inventory adapter reports
+only whether an explicit project ID was supplied; authoritative organization
+ownership and project resolution occur in the organization-scoped staging
+step.
+
 ### Operational history
 
 Recover in independent, reviewable branches:

@@ -1,0 +1,19 @@
+{
+  "summary": "Visible Buildertrend jobs",
+  "rows": [
+    {
+      "buildertrendJobId": "1001",
+      "name": "O-100-1001 Example Residence",
+      "href": "/app/JobPage/1001/1",
+      "projectId": "project-example",
+      "buildertrendStatus": "Open",
+      "rowText": "O-100-1001 Example Residence | Open",
+      "contacts": [
+        {
+          "text": "Example Owner",
+          "href": "/app/Contact/501"
+        }
+      ]
+    }
+  ]
+}

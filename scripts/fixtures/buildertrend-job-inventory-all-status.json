@@ -1,0 +1,32 @@
+{
+  "summary": "All Buildertrend job statuses",
+  "rows": [
+    {
+      "jobHref": "/app/JobPage/1002/1",
+      "cells": [
+        "",
+        "",
+        "N-100-1002 Example Service Project",
+        "100 Example Road",
+        "Example City",
+        "CO",
+        "80000",
+        "Example Manager",
+        "",
+        "555-0100",
+        "owner@example.test",
+        "",
+        "",
+        "",
+        "",
+        "Complete"
+      ],
+      "contactLinks": [
+        {
+          "text": "First Owner & Second Owner",
+          "href": "/app/Contact/502"
+        }
+      ]
+    }
+  ]
+}
