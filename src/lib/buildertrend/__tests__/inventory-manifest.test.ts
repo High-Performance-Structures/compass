@@ -320,6 +320,108 @@ describe("Buildertrend inventory manifests", () => {
         "rows.0.contacts.0: Buildertrend contact ID does not match its contact link",
       ],
     })
+
+    const jobAliasMismatch = buildBuildertrendInventoryManifest(
+      {
+        rows: [
+          {
+            buildertrendJobId: "1008",
+            jobId: "9999",
+            name: "Mismatched Job Aliases",
+          },
+        ],
+      },
+      baseOptions
+    )
+    expect(jobAliasMismatch).toEqual({
+      success: false,
+      errors: ["rows.0: Buildertrend job ID aliases disagree"],
+    })
+
+    const jobLinkMismatch = buildBuildertrendInventoryManifest(
+      {
+        rows: [
+          {
+            name: "Mismatched Job Links",
+            href: "/app/JobPage/1008/1",
+            jobHref: "/app/JobPage/9999/1",
+          },
+        ],
+      },
+      baseOptions
+    )
+    expect(jobLinkMismatch).toEqual({
+      success: false,
+      errors: ["rows.0: Buildertrend job links disagree"],
+    })
+
+    const leadAliasMismatch = buildBuildertrendInventoryManifest(
+      {
+        rows: [
+          {
+            buildertrendLeadId: "2002",
+            leadId: "9999",
+            title: "Mismatched Lead Aliases",
+          },
+        ],
+      },
+      { ...baseOptions, kind: "lead_opportunities" }
+    )
+    expect(leadAliasMismatch).toEqual({
+      success: false,
+      errors: ["rows.0: Buildertrend lead ID aliases disagree"],
+    })
+
+    const untrustedContact = buildBuildertrendInventoryManifest(
+      {
+        rows: [
+          {
+            buildertrendJobId: "1008",
+            name: "Untrusted Contact",
+            contacts: [
+              {
+                buildertrendContactId: "700",
+                text: "Example Contact",
+                href: "https://example.test/app/Contact/700",
+              },
+            ],
+          },
+        ],
+      },
+      baseOptions
+    )
+    expect(untrustedContact).toEqual({
+      success: false,
+      errors: [
+        "rows.0.contacts.0: Buildertrend contact link is not trusted",
+      ],
+    })
+
+    const lowercaseContactMismatch =
+      buildBuildertrendInventoryManifest(
+        {
+          rows: [
+            {
+              buildertrendJobId: "1008",
+              name: "Lowercase Contact Link",
+              contacts: [
+                {
+                  buildertrendContactId: "700",
+                  text: "Example Contact",
+                  href: "/app/contact/701",
+                },
+              ],
+            },
+          ],
+        },
+        baseOptions
+      )
+    expect(lowercaseContactMismatch).toEqual({
+      success: false,
+      errors: [
+        "rows.0.contacts.0: Buildertrend contact ID does not match its contact link",
+      ],
+    })
   })
 
   it("produces byte-stable manifests for exact replay", () => {

@@ -171,7 +171,7 @@ function buildertrendIdFromHref(
   segment: "JobPage" | "Contact"
 ): string | undefined {
   if (!href) return undefined
-  return href.match(new RegExp(`${segment}/(\\d+)`))?.[1]
+  return href.match(new RegExp(`${segment}/(\\d+)`, "i"))?.[1]
 }
 
 function leadIdFromHref(href: string | undefined): string | undefined {
@@ -179,13 +179,7 @@ function leadIdFromHref(href: string | undefined): string | undefined {
   return href.match(/\/leads\/opportunities\/Lead\/(\d+)/i)?.[1]
 }
 
-function trustedBuildertrendEntityUrl(
-  href: string | undefined,
-  fallbackPath: string,
-  entityKind: "job" | "lead",
-  entityId: string
-): string | undefined {
-  const candidate = href || fallbackPath
+function trustedBuildertrendUrl(candidate: string): URL | undefined {
   try {
     const url = new URL(candidate, "https://buildertrend.net")
     const hostname = url.hostname.toLowerCase()
@@ -203,6 +197,21 @@ function trustedBuildertrendEntityUrl(
     ) {
       return undefined
     }
+    return url
+  } catch {
+    return undefined
+  }
+}
+
+function trustedBuildertrendEntityUrl(
+  href: string | undefined,
+  fallbackPath: string,
+  entityKind: "job" | "lead",
+  entityId: string
+): string | undefined {
+  const url = trustedBuildertrendUrl(href || fallbackPath)
+  if (!url) return undefined
+  try {
     const pathMatches =
       entityKind === "job"
         ? new RegExp(`^/app/JobPage/${entityId}(?:/|$)`, "i").test(
@@ -219,8 +228,21 @@ function trustedBuildertrendEntityUrl(
   }
 }
 
+function trustedBuildertrendContactId(
+  href: string | undefined
+): string | undefined {
+  if (!href) return undefined
+  const url = trustedBuildertrendUrl(href)
+  if (!url) return undefined
+  return url.pathname.match(/\/Contact\/(\d+)(?:\/|$)/i)?.[1]
+}
+
 function validBuildertrendId(value: string): boolean {
   return /^\d+$/.test(value)
+}
+
+function uniqueValues(values: readonly (string | undefined)[]): readonly string[] {
+  return [...new Set(values.filter((value) => value !== undefined))]
 }
 
 function normalizedContacts(
@@ -239,9 +261,12 @@ function contactIdentityError(
   contact: z.infer<typeof contactSchema>
 ): string | undefined {
   const explicitId = contact.buildertrendContactId
-  const hrefId = buildertrendIdFromHref(contact.href, "Contact")
+  const hrefId = trustedBuildertrendContactId(contact.href)
   if (explicitId && !validBuildertrendId(explicitId)) {
     return "Buildertrend contact ID must contain only digits"
+  }
+  if (contact.href && !hrefId) {
+    return "Buildertrend contact link is not trusted"
   }
   if (explicitId && hrefId && explicitId !== hrefId) {
     return "Buildertrend contact ID does not match its contact link"
@@ -260,7 +285,7 @@ function accessCandidate(
   if (!name) return null
   const buildertrendContactId =
     contact.buildertrendContactId ||
-    buildertrendIdFromHref(contact.href, "Contact")
+    trustedBuildertrendContactId(contact.href)
   const stableContactKey =
     buildertrendContactId || slug(contact.email || "") || slug(name)
   if (!stableContactKey) return null
@@ -302,9 +327,26 @@ function normalizeJob(
   }
 
   const row = parsed.data
-  const href = firstText(row.href, row.jobHref)
-  const explicitJobId = firstText(row.buildertrendJobId, row.jobId)
-  const hrefJobId = buildertrendIdFromHref(href, "JobPage")
+  const explicitJobIds = uniqueValues([
+    row.buildertrendJobId,
+    row.jobId,
+  ])
+  if (explicitJobIds.length > 1) {
+    return {
+      error: `rows.${index}: Buildertrend job ID aliases disagree`,
+    }
+  }
+  const hrefs = uniqueValues([row.href, row.jobHref])
+  const hrefJobIds = uniqueValues(
+    hrefs.map((href) => buildertrendIdFromHref(href, "JobPage"))
+  )
+  if (hrefJobIds.length > 1) {
+    return {
+      error: `rows.${index}: Buildertrend job links disagree`,
+    }
+  }
+  const explicitJobId = explicitJobIds[0]
+  const hrefJobId = hrefJobIds[0]
   if (explicitJobId && !validBuildertrendId(explicitJobId)) {
     return {
       error: `rows.${index}: Buildertrend job ID must contain only digits`,
@@ -323,12 +365,20 @@ function normalizeJob(
     }
   }
 
-  const sourceUrl = trustedBuildertrendEntityUrl(
-    href,
-    `/app/JobPage/${jobId}/1`,
-    "job",
-    jobId
+  const normalizedHrefs = (
+    hrefs.length > 0 ? hrefs : [undefined]
+  ).map((href) =>
+    trustedBuildertrendEntityUrl(
+      href,
+      `/app/JobPage/${jobId}/1`,
+      "job",
+      jobId
+    )
   )
+  if (normalizedHrefs.some((href) => !href)) {
+    return { error: `rows.${index}: Buildertrend job URL is not trusted` }
+  }
+  const sourceUrl = normalizedHrefs[0]
   if (!sourceUrl) {
     return { error: `rows.${index}: Buildertrend job URL is not trusted` }
   }
@@ -424,7 +474,16 @@ function normalizeLead(
     return { error: `rows.${index}: ${parsed.error.issues[0]?.message}` }
   }
   const row = parsed.data
-  const explicitLeadId = firstText(row.buildertrendLeadId, row.leadId)
+  const explicitLeadIds = uniqueValues([
+    row.buildertrendLeadId,
+    row.leadId,
+  ])
+  if (explicitLeadIds.length > 1) {
+    return {
+      error: `rows.${index}: Buildertrend lead ID aliases disagree`,
+    }
+  }
+  const explicitLeadId = explicitLeadIds[0]
   const hrefLeadId = leadIdFromHref(row.href)
   if (explicitLeadId && !validBuildertrendId(explicitLeadId)) {
     return {
