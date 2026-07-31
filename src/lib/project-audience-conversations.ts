@@ -1,8 +1,10 @@
-import { and, eq } from "drizzle-orm"
+import { and, eq, inArray, isNull } from "drizzle-orm"
 
 import type { getDb } from "@/db"
 import {
   organizationMembers,
+  projectAccessInvitations,
+  projectMembers,
   projects,
   users,
 } from "@/db/schema"
@@ -11,10 +13,60 @@ import {
   channelReadState,
   channels,
 } from "@/db/schema-conversations"
-import type { ProjectAudience } from "@/lib/project-audience-access"
-import { isVisibleAudienceTeamMember } from "@/lib/project-audience-team"
+import {
+  canUseProjectAudience,
+  type ProjectAudience,
+} from "@/lib/project-audience-access"
+import { isAssignedVisibleAudienceTeamMember } from "@/lib/project-audience-team"
 
 type Db = ReturnType<typeof getDb>
+type ConversationMemberRole = "owner" | "moderator" | "member"
+type DesiredMember = {
+  readonly userId: string
+  readonly role: ConversationMemberRole
+}
+type ExistingMember = DesiredMember
+
+export type ProjectAudienceMemberReconciliation = {
+  readonly addMembers: readonly DesiredMember[]
+  readonly updateMembers: readonly DesiredMember[]
+  readonly removeMemberUserIds: readonly string[]
+  readonly addReadStateUserIds: readonly string[]
+  readonly removeReadStateUserIds: readonly string[]
+}
+
+export function planProjectAudienceMemberReconciliation(input: {
+  readonly existingMembers: readonly ExistingMember[]
+  readonly existingReadStateUserIds: readonly string[]
+  readonly desiredMembers: readonly DesiredMember[]
+}): ProjectAudienceMemberReconciliation {
+  const desiredByUserId = new Map(
+    input.desiredMembers.map((member) => [member.userId, member])
+  )
+  const existingByUserId = new Map(
+    input.existingMembers.map((member) => [member.userId, member])
+  )
+  const existingReadStateUserIds = new Set(input.existingReadStateUserIds)
+
+  return {
+    addMembers: Array.from(desiredByUserId.values()).filter(
+      (member) => !existingByUserId.has(member.userId)
+    ),
+    updateMembers: Array.from(desiredByUserId.values()).filter((member) => {
+      const existing = existingByUserId.get(member.userId)
+      return existing !== undefined && existing.role !== member.role
+    }),
+    removeMemberUserIds: Array.from(existingByUserId.keys()).filter(
+      (userId) => !desiredByUserId.has(userId)
+    ),
+    addReadStateUserIds: Array.from(desiredByUserId.keys()).filter(
+      (userId) => !existingReadStateUserIds.has(userId)
+    ),
+    removeReadStateUserIds: Array.from(existingReadStateUserIds).filter(
+      (userId) => !desiredByUserId.has(userId)
+    ),
+  }
+}
 
 export function projectAudienceChannelAudience(
   audience: ProjectAudience
@@ -47,27 +99,78 @@ function channelName(input: {
 async function ensureMembers(
   db: Db,
   channelId: string,
-  desiredMembers: readonly {
-    readonly userId: string
-    readonly role: "owner" | "moderator" | "member"
-  }[],
+  desiredMembers: readonly DesiredMember[],
   now: string
 ): Promise<void> {
   const existingMembers = await db
-    .select({ userId: channelMembers.userId })
+    .select({
+      userId: channelMembers.userId,
+      role: channelMembers.role,
+    })
     .from(channelMembers)
     .where(eq(channelMembers.channelId, channelId))
 
-  const existingMemberIds = new Set(
-    existingMembers.map((member) => member.userId)
-  )
-  const missingMembers = desiredMembers.filter(
-    (member) => !existingMemberIds.has(member.userId)
-  )
-  if (missingMembers.length > 0) {
+  const existingReadStates = await db
+    .select({ userId: channelReadState.userId })
+    .from(channelReadState)
+    .where(eq(channelReadState.channelId, channelId))
+
+  const reconciliation = planProjectAudienceMemberReconciliation({
+    existingMembers: existingMembers.map((member) => ({
+      userId: member.userId,
+      role:
+        member.role === "owner" || member.role === "moderator"
+          ? member.role
+          : "member",
+    })),
+    existingReadStateUserIds: existingReadStates.map((state) => state.userId),
+    desiredMembers,
+  })
+
+  // Revoke stale access first so a partial reconciliation fails closed.
+  if (reconciliation.removeReadStateUserIds.length > 0) {
+    await db
+      .delete(channelReadState)
+      .where(
+        and(
+          eq(channelReadState.channelId, channelId),
+          inArray(
+            channelReadState.userId,
+            reconciliation.removeReadStateUserIds
+          )
+        )
+      )
+      .run()
+  }
+  if (reconciliation.removeMemberUserIds.length > 0) {
+    await db
+      .delete(channelMembers)
+      .where(
+        and(
+          eq(channelMembers.channelId, channelId),
+          inArray(channelMembers.userId, reconciliation.removeMemberUserIds)
+        )
+      )
+      .run()
+  }
+
+  for (const member of reconciliation.updateMembers) {
+    await db
+      .update(channelMembers)
+      .set({ role: member.role })
+      .where(
+        and(
+          eq(channelMembers.channelId, channelId),
+          eq(channelMembers.userId, member.userId)
+        )
+      )
+      .run()
+  }
+
+  if (reconciliation.addMembers.length > 0) {
     await db
       .insert(channelMembers)
-      .values(missingMembers.map((member) => ({
+      .values(reconciliation.addMembers.map((member) => ({
         id: crypto.randomUUID(),
         channelId,
         userId: member.userId,
@@ -78,23 +181,12 @@ async function ensureMembers(
       .run()
   }
 
-  const existingReadStates = await db
-    .select({ userId: channelReadState.userId })
-    .from(channelReadState)
-    .where(eq(channelReadState.channelId, channelId))
-
-  const existingReadStateUserIds = new Set(
-    existingReadStates.map((state) => state.userId)
-  )
-  const missingReadStates = desiredMembers.filter(
-    (member) => !existingReadStateUserIds.has(member.userId)
-  )
-  if (missingReadStates.length > 0) {
+  if (reconciliation.addReadStateUserIds.length > 0) {
     await db
       .insert(channelReadState)
-      .values(missingReadStates.map((member) => ({
+      .values(reconciliation.addReadStateUserIds.map((userId) => ({
         id: crypto.randomUUID(),
-        userId: member.userId,
+        userId,
         channelId,
         lastReadMessageId: null,
         lastReadAt: now,
@@ -106,19 +198,28 @@ async function ensureMembers(
 
 async function organizationStaffUserIds(
   db: Db,
-  organizationId: string
+  organizationId: string,
+  projectId: string
 ): Promise<readonly string[]> {
   const memberRows = await db
     .select({
       userId: organizationMembers.userId,
       email: users.email,
-      role: organizationMembers.role,
+      organizationRole: organizationMembers.role,
+      projectRole: projectMembers.role,
     })
-    .from(organizationMembers)
-    .innerJoin(users, eq(users.id, organizationMembers.userId))
+    .from(projectMembers)
+    .innerJoin(users, eq(users.id, projectMembers.userId))
+    .innerJoin(
+      organizationMembers,
+      and(
+        eq(organizationMembers.userId, projectMembers.userId),
+        eq(organizationMembers.organizationId, organizationId)
+      )
+    )
     .where(
       and(
-        eq(organizationMembers.organizationId, organizationId),
+        eq(projectMembers.projectId, projectId),
         eq(users.isActive, true)
       )
     )
@@ -127,15 +228,77 @@ async function organizationStaffUserIds(
     new Set(
       memberRows
         .filter((row) =>
-          isVisibleAudienceTeamMember({
+          isAssignedVisibleAudienceTeamMember({
             userId: row.userId,
             email: row.email,
-            role: row.role,
+            organizationRole: row.organizationRole,
+            projectRole: row.projectRole,
           })
         )
         .map((row) => row.userId)
     )
   )
+}
+
+async function externalParticipantUserIds(input: {
+  readonly db: Db
+  readonly projectId: string
+  readonly audience: ProjectAudience
+  readonly contactId: string | null
+  readonly requestedUserId: string | null
+}): Promise<readonly string[]> {
+  const projectMemberRows = await input.db
+    .select({
+      userId: projectMembers.userId,
+      projectRole: projectMembers.role,
+    })
+    .from(projectMembers)
+    .innerJoin(users, eq(users.id, projectMembers.userId))
+    .where(
+      and(
+        eq(projectMembers.projectId, input.projectId),
+        eq(users.isActive, true)
+      )
+    )
+  const eligibleUserIds = new Set(
+    projectMemberRows
+      .filter((member) =>
+        canUseProjectAudience(member.projectRole, input.audience)
+      )
+      .map((member) => member.userId)
+  )
+
+  if (input.audience === "owner") {
+    return Array.from(eligibleUserIds)
+  }
+
+  const acceptedInvitationRows = await input.db
+    .select({ userId: projectAccessInvitations.acceptedBy })
+    .from(projectAccessInvitations)
+    .where(
+      and(
+        eq(projectAccessInvitations.projectId, input.projectId),
+        input.contactId === null
+          ? isNull(projectAccessInvitations.projectContactId)
+          : eq(projectAccessInvitations.projectContactId, input.contactId),
+        eq(projectAccessInvitations.status, "accepted")
+      )
+    )
+  const acceptedUserIds = acceptedInvitationRows.flatMap((invitation) =>
+    invitation.userId === null ? [] : [invitation.userId]
+  )
+  const participantUserIds = new Set(
+    acceptedUserIds.filter((userId) => eligibleUserIds.has(userId))
+  )
+  // Invitation acceptance provisions the channel before the invitation row is
+  // marked accepted. The requested user is still constrained by project role.
+  if (
+    input.requestedUserId !== null &&
+    eligibleUserIds.has(input.requestedUserId)
+  ) {
+    participantUserIds.add(input.requestedUserId)
+  }
+  return Array.from(participantUserIds)
 }
 
 export async function ensureProjectAudienceConversation(input: {
@@ -166,8 +329,16 @@ export async function ensureProjectAudienceConversation(input: {
 
   const staffIds = await organizationStaffUserIds(
     input.db,
-    input.organizationId
+    input.organizationId,
+    input.projectId
   )
+  const externalParticipantIds = await externalParticipantUserIds({
+    db: input.db,
+    projectId: input.projectId,
+    audience: input.audience,
+    contactId: input.contactId,
+    requestedUserId: input.externalUserId,
+  })
   const createdBy = staffIds.includes(input.createdBy)
     ? input.createdBy
     : staffIds[0] ?? input.createdBy
@@ -215,9 +386,10 @@ export async function ensureProjectAudienceConversation(input: {
     userId,
     role: "moderator",
   }))
-  if (input.externalUserId && !staffIds.includes(input.externalUserId)) {
+  for (const externalUserId of externalParticipantIds) {
+    if (staffIds.includes(externalUserId)) continue
     desiredMembers.push({
-      userId: input.externalUserId,
+      userId: externalUserId,
       role: "member",
     })
   }
