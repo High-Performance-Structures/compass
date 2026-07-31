@@ -13,6 +13,7 @@ import {
   type ProjectTaskRecordType,
 } from "@/app/actions/project-operations"
 import { ProjectAssigneePicker } from "@/components/projects/project-assignee-picker"
+import { ProjectCompanyPicker } from "@/components/projects/project-company-picker"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -255,20 +256,20 @@ export function ProjectTodoEditDialog({
                 options={assigneeOptions}
                 onValueChange={(value, option) => {
                   setAssigneeName(value)
-                  if (option?.companyName) setCompanyName(option.companyName)
+                  setCompanyName(option?.companyName ?? "")
                 }}
                 className="h-10"
                 disabled={archived}
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor={`todo-company-${item.id}`}>Company</Label>
-              <Input
-                id={`todo-company-${item.id}`}
+              <Label>Company</Label>
+              <ProjectCompanyPicker
                 value={companyName}
-                onChange={(event) => setCompanyName(event.target.value)}
+                options={assigneeOptions}
+                onValueChange={setCompanyName}
+                className="h-10"
                 disabled={archived}
-                placeholder="Optional"
               />
             </div>
           </div>

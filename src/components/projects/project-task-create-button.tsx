@@ -4,7 +4,6 @@ import * as React from "react"
 import { useRouter } from "next/navigation"
 import {
   IconCheck,
-  IconChevronDown,
   IconListCheck,
   IconPlus,
 } from "@tabler/icons-react"
@@ -17,6 +16,8 @@ import {
   createProjectTask,
   type ProjectTaskRecordType,
 } from "@/app/actions/project-operations"
+import { ProjectAssigneePicker } from "@/components/projects/project-assignee-picker"
+import { ProjectCompanyPicker } from "@/components/projects/project-company-picker"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -29,13 +30,7 @@ import {
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover"
 import { Textarea } from "@/components/ui/textarea"
-import { cn } from "@/lib/utils"
 
 type TaskStatus =
   | { readonly kind: "idle" }
@@ -90,25 +85,6 @@ function normalizeChoice(value: string): string {
     .trim()
 }
 
-function optionMatches(
-  option: ProjectTaskAssigneeOption,
-  normalizedQuery: string
-): boolean {
-  if (!normalizedQuery) return true
-
-  return normalizeChoice(
-    [
-      option.name,
-      option.label,
-      option.companyName,
-      option.email,
-      option.contactType,
-    ]
-      .filter((value): value is string => Boolean(value))
-      .join(" ")
-  ).includes(normalizedQuery)
-}
-
 export function ProjectTaskCreateButton({
   projectId,
   sourceLabel,
@@ -127,8 +103,6 @@ export function ProjectTaskCreateButton({
 }: ProjectTaskCreateButtonProps): React.ReactElement {
   const router = useRouter()
   const [open, setOpen] = React.useState(false)
-  const [assigneePickerOpen, setAssigneePickerOpen] = React.useState(false)
-  const [assigneeQuery, setAssigneeQuery] = React.useState("")
   const [selectedAssigneeId, setSelectedAssigneeId] = React.useState<
     string | null
   >(null)
@@ -149,17 +123,6 @@ export function ProjectTaskCreateButton({
   const [dueDate, setDueDate] = React.useState(defaultDueDate ?? "")
   const [priority, setPriority] = React.useState(defaultPriority)
   const [status, setStatus] = React.useState<TaskStatus>({ kind: "idle" })
-  const normalizedAssigneeQuery = normalizeChoice(assigneeQuery)
-  const projectAssigneeOptions = assigneeOptions.filter(
-    (option) =>
-      option.source === "project" &&
-      optionMatches(option, normalizedAssigneeQuery)
-  )
-  const directoryAssigneeOptions = assigneeOptions.filter(
-    (option) =>
-      option.source === "directory" &&
-      optionMatches(option, normalizedAssigneeQuery)
-  )
   const selectedAssignee = selectedAssigneeId
     ? assigneeOptions.find((option) => option.id === selectedAssigneeId) ?? null
     : (() => {
@@ -179,29 +142,13 @@ export function ProjectTaskCreateButton({
   const hasAssigneeText = assigneeName.trim().length > 0
   const hasUnmatchedAssignee = hasAssigneeText && !selectedAssignee
 
-  function selectAssignee(option: ProjectTaskAssigneeOption): void {
-    setSelectedAssigneeId(option.id)
-    setAssigneeName(option.name)
-    setCompanyName(option.companyName ?? "")
-    setAssigneeQuery("")
-    setAssigneePickerOpen(false)
-  }
-
-  function useTypedAssignee(): void {
-    const typedName = assigneeQuery.trim()
-    if (!typedName) return
-
-    setSelectedAssigneeId(null)
-    setAssigneeName(typedName)
-    setAssigneeQuery("")
-    setAssigneePickerOpen(false)
-  }
-
-  function clearAssignee(): void {
-    setSelectedAssigneeId(null)
-    setAssigneeName("")
-    setCompanyName("")
-    setAssigneeQuery("")
+  function changeAssignee(
+    value: string,
+    option: ProjectTaskAssigneeOption | null
+  ): void {
+    setSelectedAssigneeId(option?.id ?? null)
+    setAssigneeName(value)
+    setCompanyName(option?.companyName ?? "")
   }
 
   async function saveTask(input?: {
@@ -352,137 +299,21 @@ export function ProjectTaskCreateButton({
 
           <div className="grid gap-4 sm:grid-cols-3">
             <div className="space-y-2">
-              <Label htmlFor={`task-assignee-${sourceRecordId ?? sourceLabel}`}>
-                Assigned to
-              </Label>
-              <Popover
-                open={assigneePickerOpen}
-                onOpenChange={setAssigneePickerOpen}
-              >
-                <PopoverTrigger asChild>
-                  <Button
-                    id={`task-assignee-${sourceRecordId ?? sourceLabel}`}
-                    type="button"
-                    variant="outline"
-                    className={cn(
-                      "h-10 w-full justify-between rounded-md bg-background px-3 text-left font-normal",
-                      !assigneeName && "text-muted-foreground"
-                    )}
-                  >
-                    <span className="min-w-0 truncate">
-                      {assigneeName || "Choose contact..."}
-                    </span>
-                    <IconChevronDown className="size-4 shrink-0 opacity-60" />
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent
-                  align="start"
-                  className="w-[min(28rem,calc(100vw-3rem))] p-0"
-                >
-                  <div className="border-b p-3">
-                    <Input
-                      value={assigneeQuery}
-                      onChange={(event) => setAssigneeQuery(event.target.value)}
-                      placeholder="Search contacts or type a name..."
-                      autoFocus
-                    />
-                  </div>
-                  <div className="max-h-72 overflow-y-auto p-2">
-                    {projectAssigneeOptions.length > 0 && (
-                      <div className="space-y-1">
-                        <p className="px-2 py-1 text-xs font-medium text-muted-foreground">
-                          Project &amp; team contacts
-                        </p>
-                        {projectAssigneeOptions.map((option) => (
-                          <button
-                            key={option.id}
-                            type="button"
-                            onClick={() => selectAssignee(option)}
-                            className="flex w-full items-start justify-between gap-3 rounded-md px-2 py-2 text-left text-sm hover:bg-accent"
-                          >
-                            <span className="min-w-0">
-                              <span className="block truncate font-medium">
-                                {option.name}
-                              </span>
-                              <span className="block truncate text-xs text-muted-foreground">
-                                {option.companyName ?? option.contactType}
-                              </span>
-                            </span>
-                            {selectedAssigneeId === option.id && (
-                              <IconCheck className="mt-0.5 size-4 shrink-0" />
-                            )}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-
-                    {directoryAssigneeOptions.length > 0 && (
-                      <div className="mt-2 space-y-1 border-t pt-2">
-                        <p className="px-2 py-1 text-xs font-medium text-muted-foreground">
-                          Directory contacts
-                        </p>
-                        {directoryAssigneeOptions.map((option) => (
-                          <button
-                            key={option.id}
-                            type="button"
-                            onClick={() => selectAssignee(option)}
-                            className="flex w-full items-start justify-between gap-3 rounded-md px-2 py-2 text-left text-sm hover:bg-accent"
-                          >
-                            <span className="min-w-0">
-                              <span className="block truncate font-medium">
-                                {option.name}
-                              </span>
-                              <span className="block truncate text-xs text-muted-foreground">
-                                Not on this project yet
-                              </span>
-                            </span>
-                            {selectedAssigneeId === option.id && (
-                              <IconCheck className="mt-0.5 size-4 shrink-0" />
-                            )}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-
-                    {normalizedAssigneeQuery &&
-                      projectAssigneeOptions.length === 0 &&
-                      directoryAssigneeOptions.length === 0 && (
-                        <p className="px-2 py-3 text-sm text-muted-foreground">
-                          No matching contacts.
-                        </p>
-                      )}
-                  </div>
-                  <div className="flex items-center justify-between gap-2 border-t p-2">
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      onClick={clearAssignee}
-                    >
-                      Clear
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      disabled={!assigneeQuery.trim()}
-                      onClick={useTypedAssignee}
-                    >
-                      Use typed name
-                    </Button>
-                  </div>
-                </PopoverContent>
-              </Popover>
+              <Label>Assigned to</Label>
+              <ProjectAssigneePicker
+                value={assigneeName}
+                options={assigneeOptions}
+                onValueChange={changeAssignee}
+                className="h-10"
+              />
             </div>
             <div className="space-y-2">
-              <Label htmlFor={`task-company-${sourceRecordId ?? sourceLabel}`}>
-                Company
-              </Label>
-              <Input
-                id={`task-company-${sourceRecordId ?? sourceLabel}`}
+              <Label>Company</Label>
+              <ProjectCompanyPicker
                 value={companyName}
-                onChange={(event) => setCompanyName(event.target.value)}
-                placeholder="Optional"
+                options={assigneeOptions}
+                onValueChange={setCompanyName}
+                className="h-10"
               />
             </div>
             <div className="space-y-2">

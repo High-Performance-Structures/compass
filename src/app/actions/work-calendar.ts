@@ -23,6 +23,7 @@ import { calendarDetailLevel } from "@/lib/google/calendar/sync-policy"
 import { createNotificationEvent } from "@/lib/notifications/events"
 import { eventAttendeeNotificationRecipients } from "@/lib/notifications/audience"
 import { requireOrg } from "@/lib/org-scope"
+import { canFeature } from "@/lib/permission-enforcement"
 import {
   can,
   canManageWorkCalendarEvents,
@@ -246,7 +247,7 @@ export async function getWorkCalendar(
   const canCreateEvents =
     canManageEvents && can(user, "schedule", "create")
   const canCreateTodos =
-    !isDemoUser(user.id) && isInternalStaffRole(user.role)
+    !isDemoUser(user.id) && (await canFeature(user, "tasks", "update"))
 
   const { env } = await getCloudflareContext()
   const db = getDb(env.DB)
