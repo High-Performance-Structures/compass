@@ -1,0 +1,56 @@
+{
+  "reviewKey": "identity-review-example-2026-07-31",
+  "reviewedAt": "2026-07-31T05:30:00.000Z",
+  "reviewedBy": "reviewer-user-id",
+  "decisions": [
+    {
+      "sourceKey": "lead:2001",
+      "sourceIdentity": {
+        "kind": "lead",
+        "id": "2001"
+      },
+      "lifecycleStatus": "preconstruction",
+      "disposition": "lead_only",
+      "departmentCode": "D",
+      "customerProvenance": {
+        "customerId": "customer-id",
+        "kind": "named_customer"
+      },
+      "reviewStatus": "approved",
+      "reviewNotes": "Reviewed lead identity; no access is granted."
+    },
+    {
+      "sourceKey": "job:1001",
+      "sourceIdentity": {
+        "kind": "job",
+        "id": "1001"
+      },
+      "lifecycleStatus": "active",
+      "disposition": "existing_project",
+      "departmentCode": "O",
+      "matchedProjectId": "project-id",
+      "customerProvenance": {
+        "customerId": "customer-id",
+        "kind": "named_customer"
+      },
+      "reviewStatus": "approved",
+      "reviewNotes": "Reviewed job identity; operational data remains unchanged."
+    }
+  ],
+  "relationships": [
+    {
+      "fromSourceKey": "lead:2001",
+      "toSourceKey": "job:1001",
+      "type": "lead_conversion",
+      "reviewStatus": "approved",
+      "reviewNotes": "Explicitly reviewed conversion from lead to job."
+    },
+    {
+      "fromSourceKey": "lead:2001",
+      "toSourceKey": "job:1001",
+      "type": "department_transition",
+      "reviewStatus": "approved",
+      "reviewNotes": "Explicitly reviewed Design-to-ORC transition."
+    }
+  ]
+}
