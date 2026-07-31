@@ -51,6 +51,7 @@ test("generates idempotent operational imports with faithful statuses", () => {
   assert.match(output, /INSERT OR IGNORE INTO project_change_order_lines/)
   assert.match(output, /INSERT OR IGNORE INTO project_change_order_history/)
   assert.match(output, /Owner''s change/)
+  assert.doesNotMatch(output, /\b(?:BEGIN|COMMIT)\b/)
 })
 
 test("rejects duplicate change-order numbers", () => {

@@ -100,12 +100,13 @@ function insertChangeOrder(project, order, capturedAt) {
 
 export function generateBuildertrendChangeOrderImportSql(fixture) {
   validateFixture(fixture)
-  const statements = ["BEGIN;"]
+  // Wrangler's remote D1 executor rejects SQL BEGIN/COMMIT statements. Each
+  // statement is conflict-safe so an interrupted import can be rerun safely.
+  const statements = []
   for (const project of fixture.projects) {
     for (const order of project.orders) {
       statements.push(insertChangeOrder(project, order, fixture.capturedAt))
     }
   }
-  statements.push("COMMIT;")
   return `${statements.join("\n")}\n`
 }
