@@ -2,7 +2,10 @@ import type * as React from "react"
 import Link from "next/link"
 import { IconFileInvoice } from "@tabler/icons-react"
 
-import type { ProjectChangeOrderItem } from "@/app/actions/project-change-orders"
+import type {
+  ProjectChangeOrderFormOptions,
+  ProjectChangeOrderItem,
+} from "@/app/actions/project-change-orders"
 import { ProjectChangeOrderCreateForm } from "@/components/projects/project-change-order-create-form"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -21,12 +24,14 @@ export function ProjectChangeOrderList({
   items,
   detailBaseHref,
   internal,
+  formOptions,
   canCreate = true,
 }: {
   readonly projectId: string
   readonly items: readonly ProjectChangeOrderItem[]
   readonly detailBaseHref: string
   readonly internal: boolean
+  readonly formOptions: ProjectChangeOrderFormOptions
   readonly canCreate?: boolean
 }): React.ReactElement {
   const openCount = items.filter(
@@ -54,6 +59,7 @@ export function ProjectChangeOrderList({
               projectId={projectId}
               detailBaseHref={detailBaseHref}
               internal={internal}
+              formOptions={formOptions}
             />
           )}
         </div>
@@ -82,6 +88,9 @@ export function ProjectChangeOrderList({
                 </p>
                 <p className="mt-2 text-xs text-muted-foreground">
                   {money(item.amountCents)} · Requested by {item.requesterName}
+                  {item.scheduleImpactDays !== null
+                    ? ` · ${item.scheduleImpactDays} schedule day${item.scheduleImpactDays === 1 ? "" : "s"}`
+                    : ""}
                 </p>
               </div>
               <Button asChild variant="outline" size="sm">

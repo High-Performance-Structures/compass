@@ -5,12 +5,22 @@ import { revalidatePath } from "next/cache"
 
 import { getDb } from "@/db"
 import {
+  projectBudgetLines,
   projectChangeOrderDocuments,
   projectChangeOrderHistory,
+  projectChangeOrderLines,
   projectChangeOrders,
+  projectContacts,
   projectMembers,
+  sageCostCodes,
 } from "@/db/schema"
 import { requireAuth, type AuthUser } from "@/lib/auth"
+import {
+  changeOrderCostLinesTotalCents,
+  cleanChangeOrderCostLines,
+  cleanScheduleImpactDays,
+  type ChangeOrderCostLineInput,
+} from "@/lib/change-orders/cost-lines"
 import {
   allowedChangeOrderTransitions,
   canEditChangeOrderContent,
@@ -40,6 +50,30 @@ export type ChangeOrderDocumentInput = {
   readonly notes: string | null
 }
 
+export type ProjectChangeOrderPhaseOption = {
+  readonly value: string
+  readonly label: string
+}
+
+export type ProjectChangeOrderCostCodeOption = {
+  readonly value: string
+  readonly label: string
+  readonly description: string
+  readonly divisionCode: string
+}
+
+export type ProjectChangeOrderCompanyOption = {
+  readonly value: string
+  readonly label: string
+  readonly description: string
+}
+
+export type ProjectChangeOrderFormOptions = {
+  readonly phases: readonly ProjectChangeOrderPhaseOption[]
+  readonly costCodes: readonly ProjectChangeOrderCostCodeOption[]
+  readonly companies: readonly ProjectChangeOrderCompanyOption[]
+}
+
 export type ProjectChangeOrderItem = {
   readonly id: string
   readonly projectId: string
@@ -48,6 +82,7 @@ export type ProjectChangeOrderItem = {
   readonly scope: string
   readonly reason: string | null
   readonly amountCents: number | null
+  readonly scheduleImpactDays: number | null
   readonly status: ChangeOrderStatus
   readonly audience: ChangeOrderAudience
   readonly requesterType: ChangeOrderRequesterType
@@ -66,6 +101,14 @@ export type ProjectChangeOrderItem = {
   readonly canEdit: boolean
   readonly canApprove: boolean
   readonly allowedTransitions: readonly ChangeOrderStatus[]
+  readonly lines: readonly {
+    readonly id: string
+    readonly lineNumber: number
+    readonly description: string
+    readonly phaseCode: string | null
+    readonly costCode: string | null
+    readonly amountCents: number | null
+  }[]
   readonly documents: readonly {
     readonly id: string
     readonly label: string
@@ -88,7 +131,8 @@ export type CreateProjectChangeOrderInput = {
   readonly title: string
   readonly scope: string
   readonly reason: string | null
-  readonly amountCents: number | null
+  readonly scheduleImpactDays: number | null
+  readonly lines: readonly ChangeOrderCostLineInput[]
   readonly audience: ChangeOrderAudience
   readonly requesterCompany: string | null
   readonly sourceRecordId: string | null
@@ -101,7 +145,8 @@ export type UpdateProjectChangeOrderInput = {
   readonly title: string
   readonly scope: string
   readonly reason: string | null
-  readonly amountCents: number | null
+  readonly scheduleImpactDays: number | null
+  readonly lines: readonly ChangeOrderCostLineInput[]
   readonly audience: ChangeOrderAudience
   readonly internalNotes: string | null
   readonly status: ChangeOrderStatus
@@ -153,16 +198,6 @@ function cleanLimitedText(
 
 function validAudience(value: string): value is ChangeOrderAudience {
   return ["internal", "owner", "sub_vendor"].includes(value)
-}
-
-function cleanAmountCents(value: number | null): number | null {
-  if (value === null) return null
-  if (!Number.isFinite(value)) throw new Error("Requested amount is invalid")
-  const cents = Math.round(value)
-  if (!Number.isSafeInteger(cents) || Math.abs(cents) > 1_000_000_000_000) {
-    throw new Error("Requested amount is outside the supported range")
-  }
-  return cents
 }
 
 function safeDocumentUrl(value: string): string {
@@ -280,6 +315,7 @@ function actorName(user: AuthUser): string {
 function viewModel(
   row: typeof projectChangeOrders.$inferSelect,
   context: ChangeOrderContext,
+  lines: ProjectChangeOrderItem["lines"],
   documents: ProjectChangeOrderItem["documents"],
   history: ProjectChangeOrderItem["history"]
 ): ProjectChangeOrderItem | null {
@@ -326,6 +362,7 @@ function viewModel(
     scope: row.scope,
     reason: row.reason,
     amountCents: row.amountCents,
+    scheduleImpactDays: row.scheduleImpactDays,
     status,
     audience: row.audience,
     requesterType,
@@ -344,6 +381,7 @@ function viewModel(
     canEdit,
     canApprove,
     allowedTransitions: transitions.filter((status) => status !== "synced"),
+    lines,
     documents,
     history,
   }
@@ -363,7 +401,7 @@ export async function getProjectChangeOrders(
 
   return rows
     .filter((row) => canExternalViewerSee(row, context))
-    .map((row) => viewModel(row, context, [], []))
+    .map((row) => viewModel(row, context, [], [], []))
     .filter((row): row is ProjectChangeOrderItem => row !== null)
 }
 
@@ -382,6 +420,110 @@ export async function getProjectChangeOrderCapabilities(
   return {
     canCreate: createAllowed && context.requesterType !== null,
     requesterType: context.requesterType,
+  }
+}
+
+export async function getProjectChangeOrderFormOptions(
+  projectId: string,
+  viewAsAudience?: ProjectAudience
+): Promise<ProjectChangeOrderFormOptions> {
+  const authorizedContext = await changeOrderContext(projectId, "read")
+  const context = audiencePreviewContext(authorizedContext, viewAsAudience)
+  if (!context.internal) {
+    return { phases: [], costCodes: [], companies: [] }
+  }
+  const [sageRows, budgetRows, contactRows] = await Promise.all([
+    context.db
+      .select({
+        code: sageCostCodes.code,
+        description: sageCostCodes.description,
+        displayLabel: sageCostCodes.displayLabel,
+        divisionCode: sageCostCodes.divisionCode,
+        divisionDisplayLabel: sageCostCodes.divisionDisplayLabel,
+      })
+      .from(sageCostCodes)
+      .where(eq(sageCostCodes.active, true))
+      .orderBy(asc(sageCostCodes.divisionCode), asc(sageCostCodes.displayLabel)),
+    context.db
+      .select({
+        costCode: projectBudgetLines.costCode,
+        description: projectBudgetLines.description,
+        divisionCode: projectBudgetLines.csiDivision,
+        divisionName: projectBudgetLines.csiDivisionName,
+      })
+      .from(projectBudgetLines)
+      .where(eq(projectBudgetLines.projectId, projectId))
+      .orderBy(
+        asc(projectBudgetLines.csiDivision),
+        asc(projectBudgetLines.costCode)
+      ),
+    context.db
+      .select({
+        displayName: projectContacts.displayName,
+        companyName: projectContacts.companyName,
+        contactType: projectContacts.contactType,
+      })
+      .from(projectContacts)
+      .where(
+        and(
+          eq(projectContacts.projectId, projectId),
+          eq(projectContacts.active, true)
+        )
+      )
+      .orderBy(asc(projectContacts.companyName), asc(projectContacts.displayName)),
+  ])
+  const phaseMap = new Map<string, ProjectChangeOrderPhaseOption>()
+  const costCodeMap = new Map<string, ProjectChangeOrderCostCodeOption>()
+  const companyMap = new Map<string, ProjectChangeOrderCompanyOption>()
+
+  for (const row of sageRows) {
+    phaseMap.set(row.divisionCode, {
+      value: row.divisionCode,
+      label: row.divisionDisplayLabel,
+    })
+    costCodeMap.set(row.code, {
+      value: row.code,
+      label: row.displayLabel,
+      description: row.description,
+      divisionCode: row.divisionCode,
+    })
+  }
+  for (const row of budgetRows) {
+    if (!phaseMap.has(row.divisionCode)) {
+      phaseMap.set(row.divisionCode, {
+        value: row.divisionCode,
+        label: `${row.divisionCode} 00 00 ${row.divisionName}`,
+      })
+    }
+    if (!costCodeMap.has(row.costCode)) {
+      costCodeMap.set(row.costCode, {
+        value: row.costCode,
+        label: `${row.costCode} ${row.description}`,
+        description: row.description,
+        divisionCode: row.divisionCode,
+      })
+    }
+  }
+  for (const row of contactRows) {
+    const value = cleanText(row.companyName) ?? cleanText(row.displayName)
+    if (!value || companyMap.has(value.toLowerCase())) continue
+    companyMap.set(value.toLowerCase(), {
+      value,
+      label: value,
+      description: `${row.contactType} · ${row.displayName}`,
+    })
+  }
+
+  return {
+    phases: Array.from(phaseMap.values()).sort((left, right) =>
+      left.label.localeCompare(right.label)
+    ),
+    costCodes: Array.from(costCodeMap.values()).sort((left, right) =>
+      left.label.localeCompare(right.label)
+    ),
+    companies: Array.from(companyMap.values()).sort((left, right) =>
+      left.label.localeCompare(right.label)
+    ),
   }
 }
 
@@ -404,7 +546,19 @@ export async function getProjectChangeOrder(
     .get()
   if (!row || !canExternalViewerSee(row, context)) return null
 
-  const [documentRows, historyRows] = await Promise.all([
+  const [lineRows, documentRows, historyRows] = await Promise.all([
+    authorizedContext.db
+      .select({
+        id: projectChangeOrderLines.id,
+        lineNumber: projectChangeOrderLines.lineNumber,
+        description: projectChangeOrderLines.description,
+        phaseCode: projectChangeOrderLines.phaseCode,
+        costCode: projectChangeOrderLines.costCode,
+        amountCents: projectChangeOrderLines.amountCents,
+      })
+      .from(projectChangeOrderLines)
+      .where(eq(projectChangeOrderLines.changeOrderId, changeOrderId))
+      .orderBy(asc(projectChangeOrderLines.lineNumber)),
     authorizedContext.db
       .select({
         id: projectChangeOrderDocuments.id,
@@ -454,7 +608,7 @@ export async function getProjectChangeOrder(
               : null,
         }))
 
-  return viewModel(row, context, documentRows, visibleHistory)
+  return viewModel(row, context, lineRows, documentRows, visibleHistory)
 }
 
 export async function createProjectChangeOrder(
@@ -490,6 +644,11 @@ export async function createProjectChangeOrder(
       return { success: false, error: "Choose a valid audience." }
     }
     const documents = cleanDocuments(input.documents)
+    const lines = cleanChangeOrderCostLines(input.lines)
+    const amountCents = changeOrderCostLinesTotalCents(lines)
+    const scheduleImpactDays = cleanScheduleImpactDays(
+      input.scheduleImpactDays
+    )
     const sourceType =
       context.requesterType === "owner"
         ? "owner_request"
@@ -506,7 +665,8 @@ export async function createProjectChangeOrder(
       title: requireText(input.title, "Title", 200),
       scope: requireText(input.scope, "Scope", 10_000),
       reason: cleanLimitedText(input.reason, "Reason", 4_000),
-      amountCents: cleanAmountCents(input.amountCents),
+      amountCents,
+      scheduleImpactDays,
       status,
       audience,
       requesterType: context.requesterType,
@@ -536,6 +696,18 @@ export async function createProjectChangeOrder(
       createdBy: context.user.id,
       createdAt: now,
     }))
+    const lineRows = lines.map((line) => ({
+      id: crypto.randomUUID(),
+      projectId,
+      changeOrderId: id,
+      lineNumber: line.lineNumber,
+      description: line.description,
+      phaseCode: line.phaseCode,
+      costCode: line.costCode,
+      amountCents: line.amountCents,
+      createdAt: now,
+      updatedAt: now,
+    }))
     const historyRow = {
       id: crypto.randomUUID(),
       projectId,
@@ -547,11 +719,29 @@ export async function createProjectChangeOrder(
       actorName: actorName(context.user),
       actorRole: context.user.role,
       note: null,
-      metadataJson: JSON.stringify({ audience, sourceType }),
+      metadataJson: JSON.stringify({
+        audience,
+        sourceType,
+        lineCount: lineRows.length,
+        scheduleImpactDays,
+      }),
       createdAt: now,
     }
 
-    if (documentRows.length > 0) {
+    if (documentRows.length > 0 && lineRows.length > 0) {
+      await context.db.batch([
+        context.db.insert(projectChangeOrders).values(row),
+        context.db.insert(projectChangeOrderLines).values(lineRows),
+        context.db.insert(projectChangeOrderDocuments).values(documentRows),
+        context.db.insert(projectChangeOrderHistory).values(historyRow),
+      ])
+    } else if (lineRows.length > 0) {
+      await context.db.batch([
+        context.db.insert(projectChangeOrders).values(row),
+        context.db.insert(projectChangeOrderLines).values(lineRows),
+        context.db.insert(projectChangeOrderHistory).values(historyRow),
+      ])
+    } else if (documentRows.length > 0) {
       await context.db.batch([
         context.db.insert(projectChangeOrders).values(row),
         context.db.insert(projectChangeOrderDocuments).values(documentRows),
@@ -637,6 +827,7 @@ export async function updateProjectChangeOrder(
     }
     const now = new Date().toISOString()
     const documents = contentAllowed ? cleanDocuments(input.documents) : null
+    const lines = contentAllowed ? cleanChangeOrderCostLines(input.lines) : null
     const title = contentAllowed
       ? requireText(input.title, "Title", 200)
       : existing.title
@@ -646,9 +837,12 @@ export async function updateProjectChangeOrder(
     const reason = contentAllowed
       ? cleanLimitedText(input.reason, "Reason", 4_000)
       : existing.reason
-    const amountCents = contentAllowed
-      ? cleanAmountCents(input.amountCents)
+    const amountCents = lines
+      ? changeOrderCostLinesTotalCents(lines)
       : existing.amountCents
+    const scheduleImpactDays = contentAllowed
+      ? cleanScheduleImpactDays(input.scheduleImpactDays)
+      : existing.scheduleImpactDays
     const updateStatement = context.db
       .update(projectChangeOrders)
       .set({
@@ -656,6 +850,7 @@ export async function updateProjectChangeOrder(
         scope,
         reason,
         amountCents,
+        scheduleImpactDays,
         audience: contentAllowed ? audience : existing.audience,
         internalNotes: context.internal
           ? cleanLimitedText(input.internalNotes, "Internal notes", 4_000)
@@ -703,10 +898,12 @@ export async function updateProjectChangeOrder(
         metadataJson: JSON.stringify({
           audience: contentAllowed ? audience : existing.audience,
           documentCount: documents?.length ?? null,
+          lineCount: lines?.length ?? null,
+          scheduleImpactDays,
         }),
         createdAt: now,
       })
-    if (documents === null) {
+    if (documents === null || lines === null) {
       await context.db.batch([updateStatement, historyStatement])
     } else {
       const deleteDocumentsStatement = context.db
@@ -717,31 +914,69 @@ export async function updateProjectChangeOrder(
             eq(projectChangeOrderDocuments.projectId, projectId)
           )
         )
-      if (documents.length === 0) {
+      const deleteLinesStatement = context.db
+        .delete(projectChangeOrderLines)
+        .where(
+          and(
+            eq(projectChangeOrderLines.changeOrderId, changeOrderId),
+            eq(projectChangeOrderLines.projectId, projectId)
+          )
+        )
+      const lineRows = lines.map((line) => ({
+        id: crypto.randomUUID(),
+        projectId,
+        changeOrderId,
+        lineNumber: line.lineNumber,
+        description: line.description,
+        phaseCode: line.phaseCode,
+        costCode: line.costCode,
+        amountCents: line.amountCents,
+        createdAt: now,
+        updatedAt: now,
+      }))
+      const documentRows = documents.map((document) => ({
+        id: crypto.randomUUID(),
+        projectId,
+        changeOrderId,
+        label: document.label,
+        url: document.url,
+        notes: document.notes,
+        createdBy: context.user.id,
+        createdAt: now,
+      }))
+      if (documentRows.length === 0 && lineRows.length === 0) {
         await context.db.batch([
           updateStatement,
           deleteDocumentsStatement,
+          deleteLinesStatement,
           historyStatement,
         ])
-      } else {
+      } else if (documentRows.length > 0 && lineRows.length > 0) {
+        await context.db.batch([
+          updateStatement,
+          deleteDocumentsStatement,
+          context.db.insert(projectChangeOrderDocuments).values(documentRows),
+          deleteLinesStatement,
+          context.db.insert(projectChangeOrderLines).values(lineRows),
+          historyStatement,
+        ])
+      } else if (documentRows.length > 0) {
         const insertDocumentsStatement = context.db
           .insert(projectChangeOrderDocuments)
-          .values(
-            documents.map((document) => ({
-            id: crypto.randomUUID(),
-            projectId,
-            changeOrderId,
-            label: document.label,
-            url: document.url,
-            notes: document.notes,
-            createdBy: context.user.id,
-            createdAt: now,
-          }))
-          )
+          .values(documentRows)
         await context.db.batch([
           updateStatement,
           deleteDocumentsStatement,
           insertDocumentsStatement,
+          deleteLinesStatement,
+          historyStatement,
+        ])
+      } else {
+        await context.db.batch([
+          updateStatement,
+          deleteDocumentsStatement,
+          deleteLinesStatement,
+          context.db.insert(projectChangeOrderLines).values(lineRows),
           historyStatement,
         ])
       }

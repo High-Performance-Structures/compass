@@ -4,6 +4,7 @@ import { notFound } from "next/navigation"
 import {
   getProjectChangeOrder,
   getProjectChangeOrderCapabilities,
+  getProjectChangeOrderFormOptions,
   getProjectChangeOrders,
 } from "@/app/actions/project-change-orders"
 import {
@@ -59,7 +60,10 @@ export async function ProjectAudienceChangeOrders({
   const items = changeOrderId
     ? []
     : await getProjectChangeOrders(projectId, audience)
-  const capabilities = await getProjectChangeOrderCapabilities(projectId)
+  const [capabilities, formOptions] = await Promise.all([
+    getProjectChangeOrderCapabilities(projectId),
+    getProjectChangeOrderFormOptions(projectId, audience),
+  ])
   const messageShortcut = projectAudienceMessageShortcut({
     projectId: preview.project.id,
     audience,
@@ -88,6 +92,7 @@ export async function ProjectAudienceChangeOrders({
               item={item}
               backHref={baseHref}
               internal={false}
+              formOptions={formOptions}
             />
           ) : (
             <ProjectChangeOrderList
@@ -95,6 +100,7 @@ export async function ProjectAudienceChangeOrders({
               items={items}
               detailBaseHref={baseHref}
               internal={false}
+              formOptions={formOptions}
               canCreate={
                 !preview.viewerIsInternal && capabilities.canCreate
               }

@@ -1,7 +1,10 @@
 import type * as React from "react"
 import { notFound } from "next/navigation"
 
-import { getProjectChangeOrder } from "@/app/actions/project-change-orders"
+import {
+  getProjectChangeOrder,
+  getProjectChangeOrderFormOptions,
+} from "@/app/actions/project-change-orders"
 import { ProjectChangeOrderDetail } from "@/components/projects/project-change-order-detail"
 import { redirectIfFeaturePermissionDenied } from "@/lib/permission-redirect"
 
@@ -14,12 +17,13 @@ export default async function ProjectChangeOrderDetailPage({
   }>
 }): Promise<React.ReactElement> {
   const { id, changeOrderId } = await params
-  const item = await getProjectChangeOrder(id, changeOrderId).catch(
-    (error: unknown) => {
-      redirectIfFeaturePermissionDenied(error)
-      throw error
-    }
-  )
+  const [item, formOptions] = await Promise.all([
+    getProjectChangeOrder(id, changeOrderId),
+    getProjectChangeOrderFormOptions(id),
+  ]).catch((error: unknown) => {
+    redirectIfFeaturePermissionDenied(error)
+    throw error
+  })
   if (!item) notFound()
 
   const backHref =
@@ -30,6 +34,7 @@ export default async function ProjectChangeOrderDetailPage({
         item={item}
         backHref={backHref}
         internal
+        formOptions={formOptions}
       />
     </div>
   )

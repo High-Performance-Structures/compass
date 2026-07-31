@@ -4,6 +4,7 @@ import { IconArrowLeft } from "@tabler/icons-react"
 
 import {
   getProjectChangeOrderCapabilities,
+  getProjectChangeOrderFormOptions,
   getProjectChangeOrders,
 } from "@/app/actions/project-change-orders"
 import { getProjects } from "@/app/actions/projects"
@@ -18,10 +19,11 @@ export default async function ProjectChangeOrdersPage({
   readonly params: Promise<{ readonly id: string }>
 }): Promise<React.ReactElement> {
   const { id } = await params
-  const [projects, items, capabilities] = await Promise.all([
+  const [projects, items, capabilities, formOptions] = await Promise.all([
     getProjects(),
     getProjectChangeOrders(id),
     getProjectChangeOrderCapabilities(id),
+    getProjectChangeOrderFormOptions(id),
   ]).catch((error: unknown) => {
     redirectIfFeaturePermissionDenied(error)
     throw error
@@ -57,6 +59,7 @@ export default async function ProjectChangeOrdersPage({
         items={items}
         detailBaseHref={baseHref}
         internal
+        formOptions={formOptions}
         canCreate={capabilities.canCreate}
       />
     </div>
