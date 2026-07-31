@@ -1,3 +1,4 @@
+-- Follows 0086_change_order_cost_lines.sql on main.
 CREATE TABLE `project_templates` (
   `id` text PRIMARY KEY NOT NULL,
   `organization_id` text NOT NULL,

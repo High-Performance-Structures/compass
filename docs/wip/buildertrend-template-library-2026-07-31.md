@@ -64,19 +64,51 @@ bun scripts/build-buildertrend-template-inventory-sql.mjs \
 The expected dry-run result is 40 imported active-source rows and 27 excluded
 archived rows.
 
+Capture stable Buildertrend IDs, module counts, and reviewed schedule content:
+
+```bash
+bun scripts/build-buildertrend-template-capture-sql.mjs \
+  --inventory scripts/fixtures/buildertrend-active-template-inventory-2026-07-31.json \
+  --capture scripts/fixtures/buildertrend-active-template-capture-2026-07-31.json \
+  --organization-id <organization-id> \
+  --dry-run
+```
+
+The capture import is idempotent and draft-only. It does not publish a version,
+mark a template verified, or make a template usable in a project. Replaying it
+can refresh draft content but cannot overwrite published version content or
+downgrade a verified template. Buildertrend rows with archive-prefixed names or
+archived/inactive/deleted source metadata are rejected before SQL is generated.
+Generated files intentionally omit explicit transaction statements because D1
+file execution supplies its own transaction boundary.
+
+## Capture Progress
+
+The authenticated My Templates grid provided stable Buildertrend IDs, direct
+source links, schedule durations, and module counts for all 40 active records.
+The 27 archive-prefixed records remain excluded.
+
+`MEP - Rough & Top Out` is the first schedule pilot. Its draft capture contains
+the nine source schedule items and six finish-to-start dependency links shown in
+Buildertrend. The source uses a Monday-through-Friday workweek; items beginning
+May 30 are stored at a five-workday offset from the May 23 anchor.
+
+Fields that were not exposed in the read-only grid remain deliberately pending
+review: display color, milestone state, assignee, owner visibility,
+subcontractor visibility, and notes. The capture generator uses conservative
+defaults and records this pending-field list in module provenance rather than
+guessing values.
+
 ## Next Capture Pass
 
-For each of the 40 inventory records:
+For each of the remaining schedule-bearing inventory records:
 
-1. Capture the stable Buildertrend template ID and direct source URL.
-2. Capture schedule item IDs, titles, phases, durations, relative starts,
+1. Capture schedule item IDs, titles, phases, durations, relative starts,
    colors, milestones, visibility, assignee placeholders, and notes.
-3. Capture predecessor relationships, relationship types, and lag values.
-4. Record counts for Tasks, Bid Packages, Estimates, Purchase Orders, Bills,
-   document folders, photo folders, Selections, and Specifications without
-   promoting them into operational or Sage-facing tables.
-5. Validate the dependency graph and item count against Buildertrend.
-6. Publish version 1 and mark the template verified only after review.
+2. Capture predecessor relationships, relationship types, and lag values.
+3. Validate the dependency graph and item count against Buildertrend.
+4. Review the fields Buildertrend does not expose in the summary grid.
+5. Publish version 1 and mark the template verified only after review.
 
 Schedule definitions are the first promotion target. Task/checklist templates
 follow next, then folders, specifications, and finish selections. Financial
