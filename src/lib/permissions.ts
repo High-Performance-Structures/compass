@@ -151,6 +151,14 @@ export const PERMISSION_FEATURES: readonly PermissionFeature[] = [
     resource: "project",
   },
   {
+    id: "change-orders",
+    group: "Operations",
+    label: "Change Orders",
+    description:
+      "Project change requests, pricing, owner approval, signatures, and Sage handoff.",
+    resource: "changeorder",
+  },
+  {
     id: "finish-selections",
     group: "Client Experience",
     label: "Finish Selections",
@@ -398,6 +406,11 @@ const EXTERNAL_PROJECT_PERMISSIONS: RolePermissionSet = {
   help: [],
 }
 
+const EXTERNAL_CHANGE_REQUEST_PERMISSIONS: RolePermissionSet = {
+  ...EXTERNAL_PROJECT_PERMISSIONS,
+  changeorder: ["create", "read"],
+}
+
 const DEVELOPER_PERMISSIONS: RolePermissionSet = {
   project: ["read", "update"],
   schedule: ["create", "read", "update"],
@@ -444,8 +457,8 @@ const PERMISSIONS: RolePermissions = {
   field_superintendent: FIELD_PERMISSIONS,
   field_crew: FIELD_PERMISSIONS,
   field: FIELD_PERMISSIONS,
-  client: EXTERNAL_PROJECT_PERMISSIONS,
-  subcontractor: EXTERNAL_PROJECT_PERMISSIONS,
+  client: EXTERNAL_CHANGE_REQUEST_PERMISSIONS,
+  subcontractor: EXTERNAL_CHANGE_REQUEST_PERMISSIONS,
   supplier: EXTERNAL_PROJECT_PERMISSIONS,
   guest: EXTERNAL_PROJECT_PERMISSIONS,
 }

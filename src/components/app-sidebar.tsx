@@ -9,6 +9,7 @@ import {
   IconClipboardText,
   IconFiles,
   IconFileDollar,
+  IconFileInvoice,
   IconHeartHandshake,
   IconFolder,
   IconHome2,
@@ -154,6 +155,11 @@ const NAV_MAIN = [
     title: "Purchase Orders",
     url: "/dashboard/purchase-orders",
     icon: IconShoppingCart,
+  },
+  {
+    title: "Change Orders",
+    url: "/dashboard/projects/select?target=change-orders",
+    icon: IconFileInvoice,
   },
 ]
 

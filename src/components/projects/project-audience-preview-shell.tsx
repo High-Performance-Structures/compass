@@ -7,6 +7,7 @@ import {
   IconClipboardCheck,
   IconEye,
   IconFileDollar,
+  IconFileInvoice,
   IconHome,
   IconMessageCircle,
   IconPhoto,
@@ -62,6 +63,11 @@ const OWNER_NAVIGATION: readonly PreviewNavigationItem[] = [
     icon: <IconFileDollar className="size-4" />,
   },
   {
+    label: "Change Orders",
+    section: "change-orders",
+    icon: <IconFileInvoice className="size-4" />,
+  },
+  {
     label: "Conversations",
     section: "conversations",
     icon: <IconMessageCircle className="size-4" />,
@@ -98,6 +104,11 @@ const SUB_VENDOR_NAVIGATION: readonly PreviewNavigationItem[] = [
     label: "RFIs",
     section: "rfis",
     icon: <IconQuestionMark className="size-4" />,
+  },
+  {
+    label: "Change Orders",
+    section: "change-orders",
+    icon: <IconFileInvoice className="size-4" />,
   },
   {
     label: "Conversations",

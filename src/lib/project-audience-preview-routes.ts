@@ -6,6 +6,7 @@ export type ProjectAudienceWorkspaceSection =
   | "budget"
   | "commitments"
   | "rfis"
+  | "change-orders"
   | "conversations"
   | "photos"
   | "team"

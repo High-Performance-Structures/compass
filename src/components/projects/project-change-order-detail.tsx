@@ -1,0 +1,151 @@
+import type * as React from "react"
+import Link from "next/link"
+import { IconArrowLeft, IconExternalLink } from "@tabler/icons-react"
+
+import type { ProjectChangeOrderItem } from "@/app/actions/project-change-orders"
+import { ProjectChangeOrderEditForm } from "@/components/projects/project-change-order-edit-form"
+import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import {
+  changeOrderStatusLabel,
+  isChangeOrderStatus,
+} from "@/lib/change-orders/status"
+
+function formatDate(value: string): string {
+  return new Date(value).toLocaleString("en-US", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  })
+}
+
+function money(cents: number | null): string {
+  if (cents === null) return "Not determined"
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+  }).format(cents / 100)
+}
+
+function historyStatusLabel(value: string | null): string {
+  return value && isChangeOrderStatus(value)
+    ? changeOrderStatusLabel(value)
+    : value ?? "Updated"
+}
+
+export function ProjectChangeOrderDetail({
+  item,
+  backHref,
+  internal,
+}: {
+  readonly item: ProjectChangeOrderItem
+  readonly backHref: string
+  readonly internal: boolean
+}): React.ReactElement {
+  return (
+    <div className="space-y-5">
+      <Button asChild variant="ghost" size="sm" className="-ml-2">
+        <Link href={backHref}>
+          <IconArrowLeft className="size-4" />
+          Change orders
+        </Link>
+      </Button>
+      <header className="border-b pb-4">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <p className="text-xs font-medium text-muted-foreground">
+              {item.changeOrderNumber}
+            </p>
+            <h1 className="mt-1 text-2xl font-semibold">{item.title}</h1>
+            <p className="mt-2 text-sm text-muted-foreground">
+              Requested by {item.requesterName}
+              {item.requesterCompany ? ` · ${item.requesterCompany}` : ""}
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Badge>{changeOrderStatusLabel(item.status)}</Badge>
+            <Badge variant="outline">{money(item.amountCents)}</Badge>
+            <Badge variant="secondary">{item.audience}</Badge>
+          </div>
+        </div>
+      </header>
+
+      <ProjectChangeOrderEditForm item={item} internal={internal} />
+
+      <section className="grid gap-4 lg:grid-cols-2">
+        <div className="border-y bg-background p-4">
+          <h2 className="text-sm font-semibold">Supporting documents</h2>
+          {item.documents.length > 0 ? (
+            <div className="mt-3 space-y-2">
+              {item.documents.map((document) => (
+                <a
+                  key={document.id}
+                  href={document.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="flex items-center justify-between gap-3 border px-3 py-2 text-sm hover:bg-muted"
+                >
+                  <span>
+                    <span className="font-medium">{document.label}</span>
+                    {document.notes && (
+                      <span className="mt-1 block text-xs text-muted-foreground">
+                        {document.notes}
+                      </span>
+                    )}
+                  </span>
+                  <IconExternalLink className="size-4 shrink-0" />
+                </a>
+              ))}
+            </div>
+          ) : (
+            <p className="mt-3 text-sm text-muted-foreground">
+              No supporting links.
+            </p>
+          )}
+        </div>
+        <div className="border-y bg-background p-4">
+          <h2 className="text-sm font-semibold">Integration boundaries</h2>
+          <dl className="mt-3 grid gap-3 text-sm">
+            <div>
+              <dt className="text-xs text-muted-foreground">Foxit signature</dt>
+              <dd className="font-medium">{item.foxitStatus}</dd>
+            </div>
+            <div>
+              <dt className="text-xs text-muted-foreground">Sage</dt>
+              <dd className="font-medium">{item.sageStatus}</dd>
+            </div>
+          </dl>
+          <p className="mt-3 text-xs leading-5 text-muted-foreground">
+            Compass records readiness only. No document is sent to Foxit and no
+            accounting record is written to Sage from this workflow.
+          </p>
+        </div>
+      </section>
+
+      <section className="border-y bg-background p-4">
+        <h2 className="text-sm font-semibold">Activity history</h2>
+        <div className="mt-3 divide-y">
+          {item.history.map((event) => (
+            <article key={event.id} className="py-3 text-sm">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="font-medium">
+                  {event.eventType === "status_transition"
+                    ? `${event.fromStatus ? historyStatusLabel(event.fromStatus) : "Created"} → ${historyStatusLabel(event.toStatus)}`
+                    : event.eventType === "created"
+                      ? "Request created"
+                      : "Request updated"}
+                </p>
+                <time className="text-xs text-muted-foreground">
+                  {formatDate(event.createdAt)}
+                </time>
+              </div>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {event.actorName} · {event.actorRole}
+              </p>
+              {event.note && <p className="mt-2">{event.note}</p>}
+            </article>
+          ))}
+        </div>
+      </section>
+    </div>
+  )
+}
