@@ -1074,6 +1074,7 @@ export const projectChangeOrders = sqliteTable(
     scope: text("scope").notNull(),
     reason: text("reason"),
     amountCents: integer("amount_cents"),
+    scheduleImpactDays: integer("schedule_impact_days"),
     status: text("status").notNull().default("draft"),
     audience: text("audience").notNull().default("internal"),
     requesterType: text("requester_type").notNull(),
@@ -1112,6 +1113,37 @@ export const projectChangeOrders = sqliteTable(
     index("project_change_orders_requester_idx").on(
       table.projectId,
       table.requesterUserId
+    ),
+  ]
+)
+
+export const projectChangeOrderLines = sqliteTable(
+  "project_change_order_lines",
+  {
+    id: text("id").primaryKey(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    changeOrderId: text("change_order_id")
+      .notNull()
+      .references(() => projectChangeOrders.id, { onDelete: "cascade" }),
+    lineNumber: integer("line_number").notNull(),
+    description: text("description").notNull(),
+    phaseCode: text("phase_code"),
+    costCode: text("cost_code"),
+    amountCents: integer("amount_cents"),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("project_change_order_lines_order_uq").on(
+      table.changeOrderId,
+      table.lineNumber
+    ),
+    index("project_change_order_lines_project_idx").on(table.projectId),
+    index("project_change_order_lines_cost_code_idx").on(
+      table.projectId,
+      table.costCode
     ),
   ]
 )
@@ -1539,6 +1571,10 @@ export type ProjectRfiAttachment = typeof projectRfiAttachments.$inferSelect
 export type NewProjectRfiAttachment = typeof projectRfiAttachments.$inferInsert
 export type ProjectChangeOrder = typeof projectChangeOrders.$inferSelect
 export type NewProjectChangeOrder = typeof projectChangeOrders.$inferInsert
+export type ProjectChangeOrderLine =
+  typeof projectChangeOrderLines.$inferSelect
+export type NewProjectChangeOrderLine =
+  typeof projectChangeOrderLines.$inferInsert
 export type ProjectChangeOrderDocument =
   typeof projectChangeOrderDocuments.$inferSelect
 export type NewProjectChangeOrderDocument =

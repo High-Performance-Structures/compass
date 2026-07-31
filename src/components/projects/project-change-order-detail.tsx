@@ -2,7 +2,10 @@ import type * as React from "react"
 import Link from "next/link"
 import { IconArrowLeft, IconExternalLink } from "@tabler/icons-react"
 
-import type { ProjectChangeOrderItem } from "@/app/actions/project-change-orders"
+import type {
+  ProjectChangeOrderFormOptions,
+  ProjectChangeOrderItem,
+} from "@/app/actions/project-change-orders"
 import { ProjectChangeOrderEditForm } from "@/components/projects/project-change-order-edit-form"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -36,10 +39,12 @@ export function ProjectChangeOrderDetail({
   item,
   backHref,
   internal,
+  formOptions,
 }: {
   readonly item: ProjectChangeOrderItem
   readonly backHref: string
   readonly internal: boolean
+  readonly formOptions: ProjectChangeOrderFormOptions
 }): React.ReactElement {
   return (
     <div className="space-y-5">
@@ -64,12 +69,21 @@ export function ProjectChangeOrderDetail({
           <div className="flex flex-wrap gap-2">
             <Badge>{changeOrderStatusLabel(item.status)}</Badge>
             <Badge variant="outline">{money(item.amountCents)}</Badge>
+            <Badge variant="outline">
+              {item.scheduleImpactDays === null
+                ? "Schedule impact not set"
+                : `${item.scheduleImpactDays} schedule day${item.scheduleImpactDays === 1 ? "" : "s"}`}
+            </Badge>
             <Badge variant="secondary">{item.audience}</Badge>
           </div>
         </div>
       </header>
 
-      <ProjectChangeOrderEditForm item={item} internal={internal} />
+      <ProjectChangeOrderEditForm
+        item={item}
+        internal={internal}
+        formOptions={formOptions}
+      />
 
       <section className="grid gap-4 lg:grid-cols-2">
         <div className="border-y bg-background p-4">

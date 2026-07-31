@@ -5,7 +5,19 @@ import { IconFilePlus } from "@tabler/icons-react"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 
-import { createProjectChangeOrder } from "@/app/actions/project-change-orders"
+import {
+  createProjectChangeOrder,
+  type ProjectChangeOrderFormOptions,
+} from "@/app/actions/project-change-orders"
+import {
+  changeOrderMoney,
+  draftChangeOrderTotalCents,
+  newDraftChangeOrderCostLine,
+  ProjectChangeOrderCostLinesEditor,
+  ProjectChangeOrderOptionPicker,
+  toChangeOrderCostLineInput,
+  type DraftChangeOrderCostLine,
+} from "@/components/projects/project-change-order-cost-lines-editor"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -20,6 +32,11 @@ import {
 } from "@/components/ui/sheet"
 import { Textarea } from "@/components/ui/textarea"
 
+const DOCUMENT_INPUT_CLASS =
+  "rounded-none border-x-0 border-t-0 px-0 shadow-none focus-visible:border-foreground focus-visible:ring-0"
+const DOCUMENT_SELECT_CLASS =
+  "h-9 w-full rounded-none border-x-0 border-t-0 bg-background px-0 text-sm shadow-none outline-none focus:border-foreground"
+
 function optionalText(formData: FormData, name: string): string | null {
   const value = formData.get(name)
   if (typeof value !== "string") return null
@@ -31,25 +48,46 @@ function requiredText(formData: FormData, name: string): string {
   return optionalText(formData, name) ?? ""
 }
 
-function amountCents(formData: FormData): number | null {
-  const value = optionalText(formData, "amount")
+function scheduleImpactDays(formData: FormData): number | null {
+  const value = optionalText(formData, "scheduleImpactDays")
   if (!value) return null
-  const amount = Number(value.replaceAll(",", ""))
-  return Number.isFinite(amount) ? Math.round(amount * 100) : Number.NaN
+  return Number(value)
+}
+
+function Field({
+  label,
+  children,
+}: {
+  readonly label: string
+  readonly children: React.ReactNode
+}): React.ReactElement {
+  return (
+    <div className="space-y-1.5">
+      <span className="text-xs font-medium text-muted-foreground">{label}</span>
+      {children}
+    </div>
+  )
 }
 
 export function ProjectChangeOrderCreateForm({
   projectId,
   detailBaseHref,
   internal,
+  formOptions,
 }: {
   readonly projectId: string
   readonly detailBaseHref: string
   readonly internal: boolean
+  readonly formOptions: ProjectChangeOrderFormOptions
 }): React.ReactElement {
   const router = useRouter()
   const [open, setOpen] = React.useState(false)
   const [saving, startSaving] = React.useTransition()
+  const [requesterCompany, setRequesterCompany] = React.useState("")
+  const [lines, setLines] = React.useState<readonly DraftChangeOrderCostLine[]>([
+    newDraftChangeOrderCostLine(),
+  ])
+  const totalCents = draftChangeOrderTotalCents(lines)
 
   function submit(formData: FormData): void {
     startSaving(async () => {
@@ -58,14 +96,15 @@ export function ProjectChangeOrderCreateForm({
         title: requiredText(formData, "title"),
         scope: requiredText(formData, "scope"),
         reason: optionalText(formData, "reason"),
-        amountCents: amountCents(formData),
+        scheduleImpactDays: scheduleImpactDays(formData),
+        lines: lines.map(toChangeOrderCostLineInput),
         audience:
           optionalText(formData, "audience") === "owner"
             ? "owner"
             : optionalText(formData, "audience") === "sub_vendor"
               ? "sub_vendor"
               : "internal",
-        requesterCompany: optionalText(formData, "requesterCompany"),
+        requesterCompany: requesterCompany.trim() || null,
         sourceRecordId: null,
         sourceHref: optionalText(formData, "sourceHref"),
         initialStatus:
@@ -89,6 +128,8 @@ export function ProjectChangeOrderCreateForm({
         return
       }
       setOpen(false)
+      setRequesterCompany("")
+      setLines([newDraftChangeOrderCostLine()])
       toast.success("Change order request created.")
       router.push(`${detailBaseHref}/${encodeURIComponent(result.id)}`)
       router.refresh()
@@ -103,104 +144,145 @@ export function ProjectChangeOrderCreateForm({
           Request change
         </Button>
       </SheetTrigger>
-      <SheetContent className="w-full overflow-y-auto sm:max-w-xl">
-        <SheetHeader>
+      <SheetContent className="w-[min(96vw,1180px)] overflow-y-auto sm:max-w-none">
+        <SheetHeader className="border-b px-5 py-4">
           <SheetTitle>Request a change order</SheetTitle>
           <SheetDescription>
-            Describe the requested scope and attach a supporting document link.
-            This does not approve work or send anything to Sage or Foxit.
+            Describe the scope, code each cost line, and record any schedule
+            impact. This does not approve work or send anything to Sage or Foxit.
           </SheetDescription>
         </SheetHeader>
-        <form action={submit} className="space-y-5 px-4 pb-6">
-          <div className="space-y-2">
-            <Label htmlFor="change-order-title">Title</Label>
-            <Input id="change-order-title" name="title" required />
+        <form action={submit} className="space-y-5 px-5 pb-6">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b py-3 text-sm">
+            <span className="font-medium">Draft change request</span>
+            <span className="text-muted-foreground">
+              {changeOrderMoney(totalCents)} total · schedule impact entered below
+            </span>
           </div>
-          <div className="space-y-2">
-            <Label htmlFor="change-order-scope">Requested scope</Label>
-            <Textarea
-              id="change-order-scope"
-              name="scope"
-              rows={6}
-              required
-              placeholder="Describe what should change and the desired result."
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="change-order-reason">Reason</Label>
-            <Textarea id="change-order-reason" name="reason" rows={3} />
-          </div>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="space-y-2">
-              <Label htmlFor="change-order-amount">
-                Requested amount (optional)
-              </Label>
+
+          <div className="space-y-4">
+            <Field label="Change order title">
               <Input
-                id="change-order-amount"
-                name="amount"
-                type="number"
-                step="0.01"
-                inputMode="decimal"
+                id="change-order-title"
+                name="title"
+                required
+                placeholder="Owner-requested kitchen revision"
+                className={DOCUMENT_INPUT_CLASS}
               />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="change-order-company">Company</Label>
-              <Input id="change-order-company" name="requesterCompany" />
+            </Field>
+            <Field label="Requested scope">
+              <Textarea
+                id="change-order-scope"
+                name="scope"
+                rows={5}
+                required
+                placeholder="Describe what should change and the desired result."
+                className={`min-h-28 ${DOCUMENT_INPUT_CLASS}`}
+              />
+            </Field>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field label="Reason">
+                <Textarea
+                  id="change-order-reason"
+                  name="reason"
+                  rows={3}
+                  className={DOCUMENT_INPUT_CLASS}
+                />
+              </Field>
+              <div className="grid content-start gap-4">
+                <Field label="Requesting company">
+                  <ProjectChangeOrderOptionPicker
+                    value={requesterCompany}
+                    options={formOptions.companies}
+                    placeholder="Company"
+                    ariaLabel="Choose requesting company"
+                    disabled={false}
+                    onValueChange={setRequesterCompany}
+                  />
+                </Field>
+                <Field label="Schedule impact (days)">
+                  <Input
+                    id="change-order-schedule-impact"
+                    name="scheduleImpactDays"
+                    type="number"
+                    min="0"
+                    max="3650"
+                    step="1"
+                    inputMode="numeric"
+                    placeholder="0"
+                    className={DOCUMENT_INPUT_CLASS}
+                  />
+                </Field>
+              </div>
             </div>
           </div>
+
+          <ProjectChangeOrderCostLinesEditor
+            lines={lines}
+            phaseOptions={formOptions.phases}
+            costCodeOptions={formOptions.costCodes}
+            onLinesChange={setLines}
+          />
+
           {internal && (
             <div className="grid gap-4 sm:grid-cols-2">
-              <div className="space-y-2">
-                <Label htmlFor="change-order-audience">Audience</Label>
+              <Field label="Audience">
                 <select
                   id="change-order-audience"
                   name="audience"
-                  className="h-9 w-full rounded-md border bg-background px-3 text-sm"
+                  className={DOCUMENT_SELECT_CLASS}
                   defaultValue="internal"
                 >
                   <option value="internal">Internal only</option>
                   <option value="owner">Owner visible when approved</option>
                   <option value="sub_vendor">Sub/vendor request</option>
                 </select>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="change-order-initial-status">Save as</Label>
+              </Field>
+              <Field label="Save as">
                 <select
                   id="change-order-initial-status"
                   name="initialStatus"
-                  className="h-9 w-full rounded-md border bg-background px-3 text-sm"
+                  className={DOCUMENT_SELECT_CLASS}
                   defaultValue="draft"
                 >
                   <option value="draft">Draft</option>
                   <option value="submitted">Submitted for triage</option>
                 </select>
-              </div>
+              </Field>
             </div>
           )}
-          <div className="space-y-2">
-            <Label htmlFor="change-order-source">Source link (optional)</Label>
-            <Input
-              id="change-order-source"
-              name="sourceHref"
-              type="url"
-              placeholder="https://..."
-            />
-          </div>
-          <div className="border-t pt-4">
-            <p className="text-sm font-medium">Supporting document</p>
-            <p className="mt-1 text-xs text-muted-foreground">
-              Link a plan, estimate, photo folder, or other project document.
-            </p>
-            <div className="mt-3 grid gap-3">
-              <Input name="documentLabel" placeholder="Document label" />
+
+          <div className="grid gap-4 border-t pt-4 sm:grid-cols-2">
+            <Field label="Source link (optional)">
               <Input
-                name="documentUrl"
+                id="change-order-source"
+                name="sourceHref"
                 type="url"
                 placeholder="https://..."
+                className={DOCUMENT_INPUT_CLASS}
               />
+            </Field>
+            <div>
+              <Label className="text-xs text-muted-foreground">
+                Supporting document
+              </Label>
+              <div className="mt-1 grid gap-2">
+                <Input
+                  name="documentLabel"
+                  placeholder="Document label"
+                  className={DOCUMENT_INPUT_CLASS}
+                />
+                <Input
+                  name="documentUrl"
+                  type="url"
+                  placeholder="https://..."
+                  className={DOCUMENT_INPUT_CLASS}
+                />
+              </div>
             </div>
           </div>
-          <SheetFooter>
+
+          <SheetFooter className="border-t pt-4">
             <Button
               type="button"
               variant="outline"
@@ -209,7 +291,11 @@ export function ProjectChangeOrderCreateForm({
               Cancel
             </Button>
             <Button type="submit" disabled={saving}>
-              {saving ? "Creating…" : internal ? "Create request" : "Submit request"}
+              {saving
+                ? "Creating…"
+                : internal
+                  ? "Create request"
+                  : "Submit request"}
             </Button>
           </SheetFooter>
         </form>
