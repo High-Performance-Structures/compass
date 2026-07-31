@@ -55,6 +55,10 @@ export function PreferencesTab() {
       mentionSmsEnabled: false,
       announcementEmailEnabled: true,
       announcementSmsEnabled: false,
+      projectActivitySmsEnabled: true,
+      smsQuietHoursEnabled: false,
+      smsQuietHoursStart: "21:00",
+      smsQuietHoursEnd: "07:00",
       weeklyDigestEnabled: false,
       rfiEnabled: true,
       ownerUpdateEnabled: true,
@@ -118,6 +122,9 @@ export function PreferencesTab() {
       mentionSmsEnabled: checked ? current.mentionSmsEnabled : false,
       announcementSmsEnabled: checked
         ? current.announcementSmsEnabled
+        : false,
+      projectActivitySmsEnabled: checked
+        ? current.projectActivitySmsEnabled
         : false,
     }))
     setHasUnsavedChanges(true)
@@ -334,7 +341,7 @@ export function PreferencesTab() {
               <div>
                 <Label className="text-xs">Text notifications</Label>
                 <p className="text-muted-foreground text-xs">
-                  Direct mentions and announcements by text.
+                  Project messages, direct mentions, and announcements by text.
                 </p>
               </div>
               <Switch
@@ -428,6 +435,24 @@ export function PreferencesTab() {
           <div className="grid grid-cols-1 gap-3 border-y py-3 sm:grid-cols-2">
             <div className="space-y-3">
               <div>
+                <Label className="text-xs">Project messages</Label>
+                <p className="text-muted-foreground text-xs">
+                  New messages in project channels you follow.
+                </p>
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-xs text-muted-foreground">Text</span>
+                <Switch
+                  checked={preferences.projectActivitySmsEnabled}
+                  disabled={!preferences.smsEnabled || !smsConsentReady}
+                  onCheckedChange={(checked) =>
+                    updatePreference("projectActivitySmsEnabled", checked)
+                  }
+                />
+              </div>
+            </div>
+            <div className="space-y-3">
+              <div>
                 <Label className="text-xs">When I am mentioned</Label>
                 <p className="text-muted-foreground text-xs">
                   Applies to @mentions, @channel, and @here.
@@ -484,6 +509,60 @@ export function PreferencesTab() {
                 />
               </div>
             </div>
+          </div>
+
+          <div className="space-y-3 border-b pb-3">
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <Label className="text-xs">SMS quiet hours</Label>
+                <p className="text-muted-foreground text-xs">
+                  Pause notification texts in your selected timezone.
+                </p>
+              </div>
+              <Switch
+                checked={preferences.smsQuietHoursEnabled}
+                disabled={!preferences.smsEnabled}
+                onCheckedChange={(checked) =>
+                  updatePreference("smsQuietHoursEnabled", checked)
+                }
+              />
+            </div>
+            {preferences.smsQuietHoursEnabled && (
+              <div className="grid max-w-sm grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label htmlFor="smsQuietHoursStart" className="text-xs">
+                    Starts
+                  </Label>
+                  <Input
+                    id="smsQuietHoursStart"
+                    type="time"
+                    value={preferences.smsQuietHoursStart}
+                    onChange={(event) =>
+                      updatePreference(
+                        "smsQuietHoursStart",
+                        event.currentTarget.value
+                      )
+                    }
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="smsQuietHoursEnd" className="text-xs">
+                    Ends
+                  </Label>
+                  <Input
+                    id="smsQuietHoursEnd"
+                    type="time"
+                    value={preferences.smsQuietHoursEnd}
+                    onChange={(event) =>
+                      updatePreference(
+                        "smsQuietHoursEnd",
+                        event.currentTarget.value
+                      )
+                    }
+                  />
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="grid grid-cols-1 gap-3 rounded-md border p-3 sm:grid-cols-2">

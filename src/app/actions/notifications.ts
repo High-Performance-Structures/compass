@@ -21,6 +21,7 @@ import {
   SMS_OPT_IN_DISCLOSURE_URL,
   SMS_OPT_IN_DISCLOSURE_VERSION,
 } from "@/lib/notifications/sms-consent"
+import { isValidSmsQuietHoursTime } from "@/lib/notifications/sms-policy"
 import { requireOrg } from "@/lib/org-scope"
 import { isValidTimeZone } from "@/lib/work-calendar"
 
@@ -39,6 +40,10 @@ export type NotificationPreferenceState = {
   readonly mentionSmsEnabled: boolean
   readonly announcementEmailEnabled: boolean
   readonly announcementSmsEnabled: boolean
+  readonly projectActivitySmsEnabled: boolean
+  readonly smsQuietHoursEnabled: boolean
+  readonly smsQuietHoursStart: string
+  readonly smsQuietHoursEnd: string
   readonly weeklyDigestEnabled: boolean
   readonly rfiEnabled: boolean
   readonly ownerUpdateEnabled: boolean
@@ -104,6 +109,10 @@ const DEFAULT_PREFERENCES: NotificationPreferenceState = {
   mentionSmsEnabled: false,
   announcementEmailEnabled: true,
   announcementSmsEnabled: false,
+  projectActivitySmsEnabled: true,
+  smsQuietHoursEnabled: false,
+  smsQuietHoursStart: "21:00",
+  smsQuietHoursEnd: "07:00",
   weeklyDigestEnabled: false,
   rfiEnabled: true,
   ownerUpdateEnabled: true,
@@ -143,6 +152,10 @@ function preferenceFromRow(
     mentionSmsEnabled: row.mentionSmsEnabled,
     announcementEmailEnabled: row.announcementEmailEnabled,
     announcementSmsEnabled: row.announcementSmsEnabled,
+    projectActivitySmsEnabled: row.projectActivitySmsEnabled,
+    smsQuietHoursEnabled: row.smsQuietHoursEnabled,
+    smsQuietHoursStart: row.smsQuietHoursStart,
+    smsQuietHoursEnd: row.smsQuietHoursEnd,
     weeklyDigestEnabled: row.weeklyDigestEnabled,
     rfiEnabled: row.rfiEnabled,
     ownerUpdateEnabled: row.ownerUpdateEnabled,
@@ -195,15 +208,21 @@ export async function updateNotificationPreferences(
     if (!isValidTimeZone(timeZone)) {
       return { success: false, error: "Choose a valid timezone." }
     }
+    if (
+      !isValidSmsQuietHoursTime(input.smsQuietHoursStart) ||
+      !isValidSmsQuietHoursTime(input.smsQuietHoursEnd)
+    ) {
+      return {
+        success: false,
+        error: "Choose valid SMS quiet-hour start and end times.",
+      }
+    }
     const user = await requireAuth()
     const { env } = await getCloudflareContext()
     const db = getDb(env.DB)
     const now = new Date().toISOString()
     const smsPhoneNumber = input.smsPhoneNumber?.trim() || null
-    const wantsSms =
-      input.smsEnabled ||
-      input.mentionSmsEnabled ||
-      input.announcementSmsEnabled
+    const wantsSms = input.smsEnabled
 
     if (wantsSms && !smsPhoneNumber) {
       return {
@@ -257,6 +276,9 @@ export async function updateNotificationPreferences(
         : false,
       announcementSmsEnabled: input.smsEnabled
         ? input.announcementSmsEnabled
+        : false,
+      projectActivitySmsEnabled: input.smsEnabled
+        ? input.projectActivitySmsEnabled
         : false,
     }
 
