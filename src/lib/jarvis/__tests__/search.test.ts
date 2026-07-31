@@ -105,7 +105,7 @@ describe("Jarvis Compass search", () => {
       "/dashboard/projects/proj%20one/rfis?status=all#rfi-rfi%20one"
     )
     expect(feedbackRequestHref("request one")).toBe(
-      "/dashboard/requests#request-request%20one"
+      "/dashboard/requests/request%20one"
     )
   })
 })

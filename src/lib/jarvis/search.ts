@@ -200,5 +200,5 @@ export function rfiHref(projectId: string, rfiId: string): string {
 }
 
 export function feedbackRequestHref(requestId: string): string {
-  return `/dashboard/requests#request-${encodeURIComponent(requestId)}`
+  return `/dashboard/requests/${encodeURIComponent(requestId)}`
 }

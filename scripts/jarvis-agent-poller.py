@@ -271,6 +271,29 @@ def explicitly_requests_compass_feedback(message: str) -> bool:
     return any(re.search(pattern, value) for pattern in patterns)
 
 
+def asked_to_file_feedback(message: str) -> bool:
+    value = " ".join(message.lower().split())
+    return bool(
+        re.search(
+            (
+                r"\b(?:would|do) you (?:like|want) me to "
+                r"(?:file|submit|report|record)\b"
+                r"|\bshould i (?:file|submit|report|record)\b"
+                r"|\b(?:file|submit|report|record) "
+                r"(?:this|it|that|both|these|the request|the requests)\b"
+            ),
+            value,
+        )
+        and (
+            "feedback" in value
+            or "request" in value
+            or "issue" in value
+            or "bug" in value
+            or "file" in value
+        )
+    )
+
+
 def pending_feedback_report(payload: dict[str, Any]) -> str | None:
     messages = payload.get("messages")
     if not isinstance(messages, list):
@@ -321,7 +344,7 @@ def pending_feedback_report(payload: dict[str, Any]) -> str | None:
     )
     if not short_confirmation and not explicit_confirmation:
         return None
-    if FEEDBACK_CONFIRMATION_QUESTION not in str(previous["content"]):
+    if not asked_to_file_feedback(str(previous["content"])):
         return None
 
     report_content = str(report["content"]).strip()
