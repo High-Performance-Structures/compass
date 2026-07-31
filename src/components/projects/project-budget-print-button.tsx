@@ -31,7 +31,7 @@ async function waitForImage(image: HTMLImageElement): Promise<void> {
 export function ProjectBudgetPrintButton(): React.ReactElement {
   async function printBudget(): Promise<void> {
     const selected = document.querySelector(
-      '[data-owner-budget-print-source="true"]'
+      '[data-project-budget-print-source="true"]'
     )
     if (!(selected instanceof HTMLElement)) {
       window.print()
@@ -44,7 +44,7 @@ export function ProjectBudgetPrintButton(): React.ReactElement {
       return
     }
 
-    printRoot.setAttribute("data-owner-budget-print-root", "true")
+    printRoot.setAttribute("data-project-budget-print-root", "true")
     printRoot.classList.add("owner-budget-print-root")
     document.body.classList.add("owner-budget-printing")
     document.body.appendChild(printRoot)

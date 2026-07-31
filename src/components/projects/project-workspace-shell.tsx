@@ -172,7 +172,6 @@ function ProjectWorkspaceControlsPortal({
 
 export function ProjectWorkspaceShell({
   projectId,
-  projectNumber,
   totalTaskCount,
   pastDueCount,
   operationsSummary,
@@ -187,7 +186,6 @@ export function ProjectWorkspaceShell({
   allowedRoleIds,
 }: {
   readonly projectId: string
-  readonly projectNumber: string | null
   readonly totalTaskCount: number
   readonly pastDueCount: number
   readonly operationsSummary: ProjectOperationsSummary | null
@@ -262,7 +260,6 @@ export function ProjectWorkspaceShell({
 
       <ProjectManagerWorkflowPanel
         projectId={projectId}
-        projectNumber={projectNumber}
         totalTaskCount={totalTaskCount}
         pastDueCount={pastDueCount}
         operationsSummary={operationsSummary}

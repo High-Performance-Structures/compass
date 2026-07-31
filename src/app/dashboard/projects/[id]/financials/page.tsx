@@ -4,9 +4,12 @@ import Link from "next/link"
 import { IconArrowLeft, IconFileDollar } from "@tabler/icons-react"
 
 import {
+  getProjectFinancialCodingOptions,
   getProjectFinancialWorkflowItems,
+  type ProjectFinancialCodingOptions,
   type ProjectFinancialWorkflowItem,
 } from "@/app/actions/project-financial-workflows"
+import { getProjects } from "@/app/actions/projects"
 import { ProjectContextSwitcher } from "@/components/projects/project-context-switcher"
 import { ProjectContextWatermarkShell } from "@/components/projects/project-context-watermark-shell"
 import { ProjectFinancialWorkspace } from "@/components/projects/project-financial-workspace"
@@ -18,11 +21,25 @@ export default async function ProjectFinancialsPage({
 }): Promise<React.ReactElement> {
   const { id } = await params
   let items: readonly ProjectFinancialWorkflowItem[] = []
+  let codingOptions: ProjectFinancialCodingOptions = {
+    phases: [],
+    costCodes: [],
+  }
+  let projectDriveFolderId: string | null = null
 
   try {
     items = await getProjectFinancialWorkflowItems(id)
   } catch (error) {
     console.warn("Project financial workflow unavailable", error)
+  }
+  const projectOptions = await getProjects()
+  projectDriveFolderId =
+    projectOptions.find((project) => project.id === id)?.googleDriveFolderId ??
+    null
+  try {
+    codingOptions = await getProjectFinancialCodingOptions(id)
+  } catch (error) {
+    console.warn("Project financial coding options unavailable", error)
   }
 
   return (
@@ -44,7 +61,8 @@ export default async function ProjectFinancialsPage({
               </h1>
             </div>
             <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
-              Vendor bills, owner pay applications, and quote requests.
+              Vendor bills, owner pay applications, and their supporting
+              packages.
             </p>
           </div>
           <ProjectContextSwitcher
@@ -55,7 +73,13 @@ export default async function ProjectFinancialsPage({
           />
         </div>
 
-        <ProjectFinancialWorkspace projectId={id} items={items} />
+        <ProjectFinancialWorkspace
+          projectId={id}
+          items={items}
+          phaseOptions={codingOptions.phases}
+          costCodeOptions={codingOptions.costCodes}
+          projectDriveFolderId={projectDriveFolderId}
+        />
       </div>
     </ProjectContextWatermarkShell>
   )

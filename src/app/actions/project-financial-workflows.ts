@@ -4,7 +4,13 @@ import { and, asc, eq, inArray } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
 import { getDb } from "@/db"
-import { projectOperations, projects } from "@/db/schema"
+import {
+  projectBudgetApplications,
+  projectBudgetLines,
+  projectOperations,
+  projects,
+  sageCostCodes,
+} from "@/db/schema"
 import { requireAuth } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
 import { requireOrg } from "@/lib/org-scope"
@@ -21,6 +27,7 @@ export type ProjectFinancialWorkflowItem = {
   readonly dueDate: string | null
   readonly syncStatus: string
   readonly sageWriteStatus: string
+  readonly supportingPackageUrl: string | null
   readonly updatedAt: string
 }
 
@@ -49,6 +56,24 @@ export type CreateProjectOwnerPayApplicationInput = {
   readonly periodTo: string | null
   readonly amount: number | null
   readonly notes: string | null
+  readonly supportingPackageUrl: string | null
+}
+
+export type ProjectFinancialPhaseOption = {
+  readonly value: string
+  readonly label: string
+}
+
+export type ProjectFinancialCostCodeOption = {
+  readonly value: string
+  readonly label: string
+  readonly description: string
+  readonly divisionCode: string
+}
+
+export type ProjectFinancialCodingOptions = {
+  readonly phases: readonly ProjectFinancialPhaseOption[]
+  readonly costCodes: readonly ProjectFinancialCostCodeOption[]
 }
 
 type ProjectFinancialWorkflowActionResult =
@@ -122,6 +147,20 @@ function finiteAmount(value: number | null): number | null {
   return Number.isFinite(value) ? value : null
 }
 
+function safeHttpUrl(value: string | null): string | null {
+  const candidate = cleanText(value)
+  if (!candidate) return null
+
+  try {
+    const url = new URL(candidate)
+    return url.protocol === "https:" || url.protocol === "http:"
+      ? url.toString()
+      : null
+  } catch {
+    return null
+  }
+}
+
 function prefixForType(type: ProjectFinancialWorkflowItem["type"]): string {
   if (type === "vendor_bill") return "BILL"
   if (type === "owner_pay_application") return "PAYAPP"
@@ -164,20 +203,34 @@ export async function getProjectFinancialWorkflowItems(
   projectId: string
 ): Promise<readonly ProjectFinancialWorkflowItem[]> {
   const { db } = await verifyProjectReadAccess(projectId)
-  const rows = await db
-    .select()
-    .from(projectOperations)
-    .where(
-      and(
-        eq(projectOperations.projectId, projectId),
-        inArray(projectOperations.sourceRecordType, [
-          "vendor_bill",
-          "owner_pay_application",
-          "rfq",
-        ])
+  const [rows, applications] = await Promise.all([
+    db
+      .select()
+      .from(projectOperations)
+      .where(
+        and(
+          eq(projectOperations.projectId, projectId),
+          inArray(projectOperations.sourceRecordType, [
+            "vendor_bill",
+            "owner_pay_application",
+          ])
+        )
       )
-    )
-    .orderBy(asc(projectOperations.dueDate), asc(projectOperations.updatedAt))
+      .orderBy(asc(projectOperations.dueDate), asc(projectOperations.updatedAt)),
+    db
+      .select({
+        applicationNumber: projectBudgetApplications.applicationNumber,
+        sourceUrl: projectBudgetApplications.sourceUrl,
+      })
+      .from(projectBudgetApplications)
+      .where(eq(projectBudgetApplications.projectId, projectId)),
+  ])
+  const applicationPackageUrls = new Map(
+    applications.flatMap((application) => {
+      const url = safeHttpUrl(application.sourceUrl)
+      return url ? [[application.applicationNumber, url] as const] : []
+    })
+  )
 
   return rows.map((row) => ({
     id: row.id,
@@ -194,8 +247,87 @@ export async function getProjectFinancialWorkflowItems(
     dueDate: row.dueDate,
     syncStatus: row.syncStatus,
     sageWriteStatus: row.sageWriteStatus,
+    supportingPackageUrl:
+      safeHttpUrl(row.externalUrl) ??
+      (row.sourceRecordType === "owner_pay_application" &&
+      row.sourceRecordNumber
+        ? applicationPackageUrls.get(row.sourceRecordNumber) ?? null
+        : null),
     updatedAt: row.updatedAt,
   }))
+}
+
+export async function getProjectFinancialCodingOptions(
+  projectId: string
+): Promise<ProjectFinancialCodingOptions> {
+  const { db } = await verifyProjectReadAccess(projectId)
+  const [sageRows, budgetRows] = await Promise.all([
+    db
+      .select({
+        code: sageCostCodes.code,
+        description: sageCostCodes.description,
+        displayLabel: sageCostCodes.displayLabel,
+        divisionCode: sageCostCodes.divisionCode,
+        divisionDisplayLabel: sageCostCodes.divisionDisplayLabel,
+      })
+      .from(sageCostCodes)
+      .where(eq(sageCostCodes.active, true))
+      .orderBy(asc(sageCostCodes.divisionCode), asc(sageCostCodes.displayLabel)),
+    db
+      .select({
+        costCode: projectBudgetLines.costCode,
+        description: projectBudgetLines.description,
+        divisionCode: projectBudgetLines.csiDivision,
+        divisionName: projectBudgetLines.csiDivisionName,
+      })
+      .from(projectBudgetLines)
+      .where(eq(projectBudgetLines.projectId, projectId))
+      .orderBy(
+        asc(projectBudgetLines.csiDivision),
+        asc(projectBudgetLines.costCode)
+      ),
+  ])
+  const phases = new Map<string, ProjectFinancialPhaseOption>()
+  const costCodes = new Map<string, ProjectFinancialCostCodeOption>()
+
+  for (const row of sageRows) {
+    phases.set(row.divisionCode, {
+      value: row.divisionCode,
+      label: row.divisionDisplayLabel,
+    })
+    costCodes.set(row.code, {
+      value: row.code,
+      label: row.displayLabel,
+      description: row.description,
+      divisionCode: row.divisionCode,
+    })
+  }
+
+  for (const row of budgetRows) {
+    if (!phases.has(row.divisionCode)) {
+      phases.set(row.divisionCode, {
+        value: row.divisionCode,
+        label: `${row.divisionCode} 00 00 ${row.divisionName}`,
+      })
+    }
+    if (!costCodes.has(row.costCode)) {
+      costCodes.set(row.costCode, {
+        value: row.costCode,
+        label: `${row.costCode} ${row.description}`,
+        description: row.description,
+        divisionCode: row.divisionCode,
+      })
+    }
+  }
+
+  return {
+    phases: Array.from(phases.values()).sort((left, right) =>
+      left.label.localeCompare(right.label)
+    ),
+    costCodes: Array.from(costCodes.values()).sort((left, right) =>
+      left.label.localeCompare(right.label)
+    ),
+  }
 }
 
 export async function createProjectVendorBillDraft(
@@ -356,6 +488,7 @@ export async function createProjectOwnerPayApplicationDraft(
       assigneeType: "owner",
       dueDate: periodTo,
       amount,
+      externalUrl: safeHttpUrl(input.supportingPackageUrl),
       sageJobId: project.sageJobId,
       sageJobNumber: project.sageJobNumber,
       sageWriteStatus: "draft_ready",
@@ -368,6 +501,7 @@ export async function createProjectOwnerPayApplicationDraft(
         periodTo,
         amount,
         notes: cleanText(input.notes),
+        supportingPackageUrl: safeHttpUrl(input.supportingPackageUrl),
         format: "AIA_G702_G703_STYLE",
       }),
       syncDirection: "write",

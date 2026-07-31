@@ -258,7 +258,7 @@ export default async function OwnerBudgetPage({
 
           <div
             className="mt-5"
-            data-owner-budget-print-source="true"
+            data-project-budget-print-source="true"
           >
             <header className="hidden border-b pb-3 print:flex print:items-start print:justify-between print:gap-4">
               <div className="flex items-center gap-3">
