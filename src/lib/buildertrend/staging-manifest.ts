@@ -146,11 +146,42 @@ function jsonText(value: unknown): string {
 async function manifestFingerprint(
   manifest: BuildertrendStagingManifest
 ): Promise<string> {
-  const bytes = new TextEncoder().encode(JSON.stringify(manifest))
+  const canonicalManifest = {
+    ...manifest,
+    records: [...manifest.records].sort((left, right) =>
+      stableTextCompare(left.sourceKey, right.sourceKey)
+    ),
+    files: [...manifest.files].sort((left, right) =>
+      stableTextCompare(left.sourceKey, right.sourceKey)
+    ),
+    accessCandidates: [...manifest.accessCandidates].sort((left, right) =>
+      stableTextCompare(left.sourceKey, right.sourceKey)
+    ),
+  }
+  const bytes = new TextEncoder().encode(
+    JSON.stringify(canonicalJsonValue(canonicalManifest))
+  )
   const digest = await crypto.subtle.digest("SHA-256", bytes)
   return [...new Uint8Array(digest)]
     .map((byte) => byte.toString(16).padStart(2, "0"))
     .join("")
+}
+
+function canonicalJsonValue(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(canonicalJsonValue)
+  if (value === null || typeof value !== "object") return value
+
+  return Object.fromEntries(
+    Object.entries(value)
+      .sort(([left], [right]) => stableTextCompare(left, right))
+      .map(([key, nestedValue]) => [key, canonicalJsonValue(nestedValue)])
+  )
+}
+
+function stableTextCompare(left: string, right: string): number {
+  if (left < right) return -1
+  if (left > right) return 1
+  return 0
 }
 
 function stableId(

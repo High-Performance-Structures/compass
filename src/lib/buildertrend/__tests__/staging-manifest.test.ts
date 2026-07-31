@@ -204,6 +204,84 @@ describe("Buildertrend staging manifest", () => {
     })
   })
 
+  it("treats reordered manifest members as the same captured run", async () => {
+    const firstRecord = {
+      ...manifestInput.records[0],
+      rawPayload: {
+        z: 1,
+        nested: { b: 2, a: 1 },
+        a: 0,
+      },
+    }
+    const reorderedFirstRecord = {
+      ...manifestInput.records[0],
+      rawPayload: {
+        a: 0,
+        nested: { a: 1, b: 2 },
+        z: 1,
+      },
+    }
+    const secondRecord = {
+      ...manifestInput.records[0],
+      sourceKey: "job:456",
+      projectId: "project-other",
+      buildertrendJobId: "456",
+      buildertrendRecordId: "456",
+      title: "Second example project",
+    }
+    const secondFile = {
+      ...manifestInput.files[0],
+      sourceKey: "file:123:photo-2",
+      buildertrendFileId: "photo-2",
+      fileName: "photo-2.jpg",
+    }
+    const secondAccessCandidate = {
+      ...manifestInput.accessCandidates[0],
+      sourceKey: "access:123:contact-2",
+      buildertrendContactId: "contact-2",
+      contactName: "Second Example Owner",
+    }
+    const original = parsedManifest({
+      ...manifestInput,
+      records: [firstRecord, secondRecord],
+      files: [manifestInput.files[0], secondFile],
+      accessCandidates: [
+        manifestInput.accessCandidates[0],
+        secondAccessCandidate,
+      ],
+    })
+    const reordered = parsedManifest({
+      ...manifestInput,
+      records: [secondRecord, reorderedFirstRecord],
+      files: [secondFile, manifestInput.files[0]],
+      accessCandidates: [
+        secondAccessCandidate,
+        manifestInput.accessCandidates[0],
+      ],
+    })
+    const firstBuild = await buildBuildertrendStagingSql(
+      "org-example",
+      original
+    )
+    const secondBuild = await buildBuildertrendStagingSql(
+      "org-example",
+      reordered
+    )
+
+    database.exec(firstBuild.sql)
+    database.exec(secondBuild.sql)
+
+    expect(
+      scalar(database, "SELECT status FROM buildertrend_staging_runs")
+    ).toBe("completed")
+    expect(
+      scalar(
+        database,
+        "SELECT COUNT(*) FROM buildertrend_staging_observations"
+      )
+    ).toBe(6)
+  })
+
   it("leaves an interrupted import visibly in progress", async () => {
     const build = await buildBuildertrendStagingSql(
       "org-example",
