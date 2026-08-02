@@ -277,28 +277,24 @@ export function ProjectFinancialWorkspace({
 
         <FinancialFormPanel
           title="Owner Pay Application"
-          description="Stage an AIA-style draw request."
+          description="Create the next G702/G703 draw from the current accepted contract budget."
           accentClassName="border-l-brand-hps-primary"
           icon={<IconFileDollar className="size-5" />}
-          actionLabel="Stage Pay App"
+          actionLabel="Create From Budget"
           isPending={isPending}
           onSubmit={handlePayApplication}
         >
             <FormField label="Application number" htmlFor="applicationNumber">
               <Input id="applicationNumber" name="applicationNumber" />
             </FormField>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <FormField label="Period to" htmlFor="periodTo">
-                <Input id="periodTo" name="periodTo" type="date" />
-              </FormField>
-              <FormField label="Amount" htmlFor="payApplicationAmount">
-                <Input
-                  id="payApplicationAmount"
-                  name="amount"
-                  inputMode="decimal"
-                />
-              </FormField>
-            </div>
+            <FormField label="Period to" htmlFor="periodTo">
+              <Input id="periodTo" name="periodTo" type="date" />
+            </FormField>
+            <p className="text-xs text-muted-foreground">
+              Contract value, approved changes, prior billing, and cost-code
+              lines come from the locked budget revision. Enter current work
+              and stored materials on the generated G703 before Sage review.
+            </p>
             <FormField label="Notes" htmlFor="payApplicationNotes">
               <Textarea id="payApplicationNotes" name="notes" rows={7} />
             </FormField>
@@ -397,6 +393,21 @@ export function ProjectFinancialWorkspace({
                           </a>
                         </Button>
                       )}
+                      {item.type === "owner_pay_application" &&
+                        item.sourceRecordId && (
+                          <Button
+                            asChild
+                            size="sm"
+                            variant="link"
+                            className="mt-1 h-auto justify-start p-0"
+                          >
+                            <a
+                              href={`/dashboard/projects/${projectId}/financials/pay-applications/${item.sourceRecordId}`}
+                            >
+                              Edit G702 / G703
+                            </a>
+                          </Button>
+                        )}
                     </div>
                     <span>{money(item.amount)}</span>
                     <span>{dateText(item.dueDate)}</span>

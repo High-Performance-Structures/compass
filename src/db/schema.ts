@@ -972,6 +972,7 @@ export const projectBudgetApplications = sqliteTable("project_budget_application
     .notNull()
     .default(false),
   sourceUrl: text("source_url"),
+  budgetRevisionId: text("budget_revision_id"),
   syncStatus: text("sync_status").notNull().default("synced"),
   lastSyncedAt: text("last_synced_at"),
   createdAt: text("created_at").notNull(),
@@ -987,6 +988,7 @@ export const projectBudgetLines = sqliteTable("project_budget_lines", {
     () => projectBudgetApplications.id,
     { onDelete: "set null" }
   ),
+  budgetRevisionLineId: text("budget_revision_line_id"),
   sourceSystem: text("source_system").notNull().default("sage"),
   sourceRecordId: text("source_record_id"),
   sourceRecordNumber: text("source_record_number"),
@@ -1000,6 +1002,9 @@ export const projectBudgetLines = sqliteTable("project_budget_lines", {
   currentChanges: real("current_changes").notNull().default(0),
   totalChanges: real("total_changes").notNull().default(0),
   adjustedEstimate: real("adjusted_estimate").notNull().default(0),
+  previousWorkCompleted: real("previous_work_completed").notNull().default(0),
+  currentWorkCompleted: real("current_work_completed").notNull().default(0),
+  storedMaterials: real("stored_materials").notNull().default(0),
   priorCosts: real("prior_costs").notNull().default(0),
   currentCosts: real("current_costs").notNull().default(0),
   totalCosts: real("total_costs").notNull().default(0),

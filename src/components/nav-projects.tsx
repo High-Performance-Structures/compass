@@ -49,6 +49,7 @@ type ProjectSectionKey =
   | "rfqs"
   | "purchase-orders"
   | "change-orders"
+  | "estimate"
   | "budget"
   | "financials"
   | "contacts"
@@ -136,6 +137,12 @@ const PROJECT_SECTION_ITEMS: readonly ProjectSectionItem[] = [
     section: "change-orders",
   },
   {
+    title: "Estimate",
+    hrefSuffix: "estimate",
+    icon: IconFileDollar,
+    section: "estimate",
+  },
+  {
     title: "Budget / G703",
     hrefSuffix: "budget",
     icon: IconFileDollar,
@@ -207,6 +214,7 @@ function activeProjectSection(pathname: string | null): ProjectSectionKey {
     case "contacts":
     case "daily-logs":
     case "financials":
+    case "estimate":
     case "owner-updates":
     case "photos":
     case "selections":
