@@ -8,6 +8,7 @@ import {
   IconFileExport,
   IconPlus,
   IconReceiptTax,
+  IconRefresh,
   IconSend,
   IconTrash,
 } from "@tabler/icons-react"
@@ -16,6 +17,7 @@ import {
   addProjectEstimateBasisDocument,
   createProjectEstimateDraft,
   deleteProjectEstimateLine,
+  importProjectEstimateFromGoogleSheet,
   prepareProjectEstimateForFoxit,
   recordSignedProjectEstimate,
   saveProjectEstimateLine,
@@ -138,6 +140,10 @@ export function ProjectEstimateWorkspacePanel({
   const availableCostCodes = workspace.costCodes.filter(
     (option) => option.divisionCode === line.divisionCode
   )
+  const mappedCostCodes = useMemo(
+    () => new Set(workspace.costCodes.map((option) => option.value)),
+    [workspace.costCodes]
+  )
   const groupedLines = useMemo(() => {
     const groups = new Map<string, ProjectEstimateLineItem[]>()
     for (const item of workspace.lines) {
@@ -221,6 +227,38 @@ export function ProjectEstimateWorkspacePanel({
         lineId
       )
       finish(result.success ? "Estimate line removed." : result.error)
+    })
+  }
+
+  function importSourceCsi(): void {
+    if (!estimate) return
+    if (
+      workspace.lines.length > 0 &&
+      !window.confirm(
+        "Importing Project Totals will replace every line in this editable draft. Continue?"
+      )
+    ) {
+      return
+    }
+    setMessage(null)
+    startTransition(async () => {
+      const result = await importProjectEstimateFromGoogleSheet(
+        projectId,
+        estimate.id
+      )
+      if (!result.success) {
+        finish(result.error)
+        return
+      }
+      const rounding = result.roundingAdjustmentCents === 0
+        ? ""
+        : ` A ${money(Math.abs(result.roundingAdjustmentCents))} source-rounding adjustment was recorded.`
+      const mappings = result.missingSageMappingCount === 0
+        ? ""
+        : ` ${result.missingSageMappingCount} source cost codes require Sage mapping before signature.`
+      finish(
+        `${result.lineCount} reconciled CSI lines imported for ${money(result.totalCents)}.${rounding}${mappings}`
+      )
     })
   }
 
@@ -455,13 +493,32 @@ export function ProjectEstimateWorkspacePanel({
       </form>
 
       <section className="clarity-panel-strong p-4">
-        <div className="mb-4">
-          <h2 className="font-semibold">CSI estimate</h2>
-          <p className="text-xs text-muted-foreground">
-            Select a division first, then add the Sage cost codes needed within
-            it. Each division subtotal updates from its lines.
-          </p>
+        <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="font-semibold">CSI estimate</h2>
+            <p className="text-xs text-muted-foreground">
+              Select a division first, then add the Sage cost codes needed within
+              it. Each division subtotal updates from its lines.
+            </p>
+          </div>
+          {editable && estimate.sourceWorkbookUrl && (
+            <Button
+              type="button"
+              variant="outline"
+              onClick={importSourceCsi}
+              disabled={isPending}
+            >
+              <IconRefresh
+                className={isPending ? "size-4 animate-spin" : "size-4"}
+              />
+              Import source CSI
+            </Button>
+          )}
         </div>
+        <p className="mb-4 text-xs text-muted-foreground">
+          Company overhead, margin, and contingency import as clearly labeled
+          contract adjustments; they are not represented as Sage cost-code mappings.
+        </p>
         {groupedLines.length === 0 ? (
           <p className="text-sm text-muted-foreground">No estimate lines yet.</p>
         ) : (
@@ -491,6 +548,11 @@ export function ProjectEstimateWorkspacePanel({
                           <p className="text-sm font-medium">
                             {item.costCode} · {item.description}
                           </p>
+                          {!mappedCostCodes.has(item.costCode) && (
+                            <Badge variant="outline" className="mt-1">
+                              Sage mapping required
+                            </Badge>
+                          )}
                           <p className="text-xs text-muted-foreground">
                             {item.quantity} {item.unit} × {money(item.unitCostCents)} ·
                             markup {percent(item.markupRateBasisPoints)}
