@@ -5,6 +5,10 @@ import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 
 import {
+  uploadChangeOrderDocuments,
+  validateChangeOrderDocumentCount,
+} from "@/components/projects/project-change-order-document-upload"
+import {
   updateProjectChangeOrder,
   type ProjectChangeOrderFormOptions,
   type ProjectChangeOrderItem,
@@ -53,7 +57,10 @@ export function ProjectChangeOrderEditForm({
   readonly formOptions: ProjectChangeOrderFormOptions
 }): React.ReactElement {
   const router = useRouter()
+  const formRef = React.useRef<HTMLFormElement>(null)
+  const fileInputRef = React.useRef<HTMLInputElement>(null)
   const [documents, setDocuments] = React.useState(item.documents)
+  const [selectedFiles, setSelectedFiles] = React.useState<readonly File[]>([])
   const [lines, setLines] = React.useState<readonly DraftChangeOrderCostLine[]>(
     initialDraftChangeOrderCostLines(item.lines, item.amountCents)
   )
@@ -61,47 +68,77 @@ export function ProjectChangeOrderEditForm({
   const totalCents = draftChangeOrderTotalCents(lines)
   const readOnly = !item.canEdit && item.allowedTransitions.length === 0
 
-  function submit(formData: FormData): void {
+  function submit(event: React.FormEvent<HTMLFormElement>): void {
+    event.preventDefault()
+    const form = formRef.current
+    if (!form) return
+    const formData = new FormData(form)
     startSaving(async () => {
-      const requestedStatus = requiredText(formData, "status")
-      const status =
-        isChangeOrderStatus(requestedStatus) &&
-        (requestedStatus === item.status ||
-          item.allowedTransitions.includes(requestedStatus))
-          ? requestedStatus
-          : item.status
-      const result = await updateProjectChangeOrder(item.projectId, item.id, {
-        title: requiredText(formData, "title"),
-        scope: requiredText(formData, "scope"),
-        reason: optionalText(formData, "reason"),
-        scheduleImpactDays: scheduleImpactDays(formData),
-        lines: lines.map(toChangeOrderCostLineInput),
-        audience:
-          optionalText(formData, "audience") === "owner"
-            ? "owner"
-            : optionalText(formData, "audience") === "sub_vendor"
-              ? "sub_vendor"
-              : "internal",
-        internalNotes: optionalText(formData, "internalNotes"),
-        status,
-        transitionNote: optionalText(formData, "transitionNote"),
-        documents: documents.map((document) => ({
-          label: document.label,
-          url: document.url,
-          notes: document.notes,
-        })),
-      })
-      if (!result.success) {
-        toast.error(result.error)
-        return
+      try {
+        validateChangeOrderDocumentCount(documents.length, selectedFiles)
+        const uploaded = await uploadChangeOrderDocuments(
+          selectedFiles,
+          item.projectId
+        )
+        const nextDocuments = [
+          ...documents.map((document) => ({
+            label: document.label,
+            url: document.url,
+            notes: document.notes,
+          })),
+          ...uploaded,
+        ]
+        const requestedStatus = requiredText(formData, "status")
+        const status =
+          isChangeOrderStatus(requestedStatus) &&
+          (requestedStatus === item.status ||
+            item.allowedTransitions.includes(requestedStatus))
+            ? requestedStatus
+            : item.status
+        const result = await updateProjectChangeOrder(item.projectId, item.id, {
+          title: requiredText(formData, "title"),
+          scope: requiredText(formData, "scope"),
+          reason: optionalText(formData, "reason"),
+          scheduleImpactDays: scheduleImpactDays(formData),
+          lines: lines.map(toChangeOrderCostLineInput),
+          audience:
+            optionalText(formData, "audience") === "owner"
+              ? "owner"
+              : optionalText(formData, "audience") === "sub_vendor"
+                ? "sub_vendor"
+                : "internal",
+          internalNotes: optionalText(formData, "internalNotes"),
+          status,
+          transitionNote: optionalText(formData, "transitionNote"),
+          documents: nextDocuments,
+        })
+        if (!result.success) throw new Error(result.error)
+
+        setDocuments((current) => [
+          ...current,
+          ...uploaded.map((document) => ({
+            id: crypto.randomUUID(),
+            ...document,
+          })),
+        ])
+        setSelectedFiles([])
+        if (fileInputRef.current) fileInputRef.current.value = ""
+        toast.success("Change order request updated.")
+        router.refresh()
+      } catch (error) {
+        toast.error(
+          error instanceof Error ? error.message : "Could not update change order."
+        )
       }
-      toast.success("Change order request updated.")
-      router.refresh()
     })
   }
 
   return (
-    <form action={submit} className="space-y-5 border-y bg-background p-4">
+    <form
+      ref={formRef}
+      onSubmit={submit}
+      className="space-y-5 border-y bg-background p-4"
+    >
       {readOnly && (
         <p className="border-l-2 border-l-muted-foreground px-3 py-2 text-sm text-muted-foreground">
           This record is read-only at its current workflow stage.
@@ -198,66 +235,19 @@ export function ProjectChangeOrderEditForm({
       )}
       {item.canEdit && (
         <div className="space-y-3 border-t pt-4">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <p className="text-sm font-medium">Document links</p>
-              <p className="text-xs text-muted-foreground">
-                Links stay in Compass; no document is sent externally.
-              </p>
-            </div>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() =>
-                setDocuments((current) => [
-                  ...current,
-                  {
-                    id: crypto.randomUUID(),
-                    label: "",
-                    url: "",
-                    notes: null,
-                  },
-                ])
-              }
-            >
-              Add link
-            </Button>
+          <div>
+            <p className="text-sm font-medium">Supporting documents</p>
+            <p className="text-xs text-muted-foreground">
+              Upload photos, proposals, drawings, or other files to the project
+              Drive folder.
+            </p>
           </div>
-          {documents.map((document, index) => (
+          {documents.map((document) => (
             <div
               key={document.id}
-              className="grid gap-2 border-l-2 pl-3 sm:grid-cols-[1fr_2fr_auto]"
+              className="flex items-center justify-between gap-3 border-l-2 px-3 py-2"
             >
-              <Input
-                value={document.label}
-                aria-label={`Document ${index + 1} label`}
-                placeholder="Label"
-                onChange={(event) =>
-                  setDocuments((current) =>
-                    current.map((item) =>
-                      item.id === document.id
-                        ? { ...item, label: event.currentTarget.value }
-                        : item
-                    )
-                  )
-                }
-              />
-              <Input
-                value={document.url}
-                aria-label={`Document ${index + 1} URL`}
-                type="url"
-                placeholder="https://..."
-                onChange={(event) =>
-                  setDocuments((current) =>
-                    current.map((item) =>
-                      item.id === document.id
-                        ? { ...item, url: event.currentTarget.value }
-                        : item
-                    )
-                  )
-                }
-              />
+              <span className="min-w-0 truncate text-sm">{document.label}</span>
               <Button
                 type="button"
                 variant="ghost"
@@ -271,6 +261,21 @@ export function ProjectChangeOrderEditForm({
               </Button>
             </div>
           ))}
+          <Input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt"
+            onChange={(event) => {
+              const files = event.currentTarget.files
+              setSelectedFiles(files ? Array.from(files) : [])
+            }}
+          />
+          {selectedFiles.length > 0 && (
+            <p className="text-xs text-muted-foreground">
+              {selectedFiles.length} file{selectedFiles.length === 1 ? "" : "s"} selected for upload
+            </p>
+          )}
         </div>
       )}
       <div className="grid gap-4 border-t pt-4 lg:grid-cols-[1fr_2fr_auto]">

@@ -1,10 +1,14 @@
 "use client"
 
 import * as React from "react"
-import { IconFilePlus } from "@tabler/icons-react"
+import { IconFilePlus, IconPaperclip } from "@tabler/icons-react"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 
+import {
+  uploadChangeOrderDocuments,
+  validateChangeOrderDocumentCount,
+} from "@/components/projects/project-change-order-document-upload"
 import {
   createProjectChangeOrder,
   type ProjectChangeOrderFormOptions,
@@ -20,7 +24,6 @@ import {
 } from "@/components/projects/project-change-order-cost-lines-editor"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
 import {
   Sheet,
   SheetContent,
@@ -81,58 +84,63 @@ export function ProjectChangeOrderCreateForm({
   readonly formOptions: ProjectChangeOrderFormOptions
 }): React.ReactElement {
   const router = useRouter()
+  const formRef = React.useRef<HTMLFormElement>(null)
+  const fileInputRef = React.useRef<HTMLInputElement>(null)
   const [open, setOpen] = React.useState(false)
   const [saving, startSaving] = React.useTransition()
+  const [selectedFiles, setSelectedFiles] = React.useState<readonly File[]>([])
   const [requesterCompany, setRequesterCompany] = React.useState("")
   const [lines, setLines] = React.useState<readonly DraftChangeOrderCostLine[]>([
     newDraftChangeOrderCostLine(),
   ])
   const totalCents = draftChangeOrderTotalCents(lines)
 
-  function submit(formData: FormData): void {
+  function submit(event: React.FormEvent<HTMLFormElement>): void {
+    event.preventDefault()
+    const form = formRef.current
+    if (!form) return
+    const formData = new FormData(form)
     startSaving(async () => {
-      const documentUrl = optionalText(formData, "documentUrl")
-      const result = await createProjectChangeOrder(projectId, {
-        title: requiredText(formData, "title"),
-        scope: requiredText(formData, "scope"),
-        reason: optionalText(formData, "reason"),
-        scheduleImpactDays: scheduleImpactDays(formData),
-        lines: lines.map(toChangeOrderCostLineInput),
-        audience:
-          optionalText(formData, "audience") === "owner"
-            ? "owner"
-            : optionalText(formData, "audience") === "sub_vendor"
-              ? "sub_vendor"
-              : "internal",
-        requesterCompany: requesterCompany.trim() || null,
-        sourceRecordId: null,
-        sourceHref: optionalText(formData, "sourceHref"),
-        initialStatus:
-          optionalText(formData, "initialStatus") === "submitted"
-            ? "submitted"
-            : "draft",
-        documents: documentUrl
-          ? [
-              {
-                label:
-                  optionalText(formData, "documentLabel") ??
-                  "Supporting document",
-                url: documentUrl,
-                notes: null,
-              },
-            ]
-          : [],
-      })
-      if (!result.success) {
-        toast.error(result.error)
-        return
+      try {
+        validateChangeOrderDocumentCount(0, selectedFiles)
+        const documents = await uploadChangeOrderDocuments(selectedFiles, projectId)
+        const result = await createProjectChangeOrder(projectId, {
+          title: requiredText(formData, "title"),
+          scope: requiredText(formData, "scope"),
+          reason: optionalText(formData, "reason"),
+          scheduleImpactDays: scheduleImpactDays(formData),
+          lines: lines.map(toChangeOrderCostLineInput),
+          audience:
+            optionalText(formData, "audience") === "owner"
+              ? "owner"
+              : optionalText(formData, "audience") === "sub_vendor"
+                ? "sub_vendor"
+                : "internal",
+          requesterCompany: requesterCompany.trim() || null,
+          sourceRecordId: null,
+          sourceHref: null,
+          initialStatus:
+            optionalText(formData, "initialStatus") === "submitted"
+              ? "submitted"
+              : "draft",
+          documents,
+        })
+        if (!result.success) throw new Error(result.error)
+
+        setOpen(false)
+        setRequesterCompany("")
+        setLines([newDraftChangeOrderCostLine()])
+        setSelectedFiles([])
+        if (fileInputRef.current) fileInputRef.current.value = ""
+        form.reset()
+        toast.success("Change order request created.")
+        router.push(`${detailBaseHref}/${encodeURIComponent(result.id)}`)
+        router.refresh()
+      } catch (error) {
+        toast.error(
+          error instanceof Error ? error.message : "Could not create change order."
+        )
       }
-      setOpen(false)
-      setRequesterCompany("")
-      setLines([newDraftChangeOrderCostLine()])
-      toast.success("Change order request created.")
-      router.push(`${detailBaseHref}/${encodeURIComponent(result.id)}`)
-      router.refresh()
     })
   }
 
@@ -152,7 +160,11 @@ export function ProjectChangeOrderCreateForm({
             impact. This does not approve work or send anything to Sage or Foxit.
           </SheetDescription>
         </SheetHeader>
-        <form action={submit} className="space-y-5 px-5 pb-6">
+        <form
+          ref={formRef}
+          onSubmit={submit}
+          className="space-y-5 px-5 pb-6"
+        >
           <div className="flex flex-wrap items-center justify-between gap-3 border-b py-3 text-sm">
             <span className="font-medium">Draft change request</span>
             <span className="text-muted-foreground">
@@ -252,34 +264,33 @@ export function ProjectChangeOrderCreateForm({
             </div>
           )}
 
-          <div className="grid gap-4 border-t pt-4 sm:grid-cols-2">
-            <Field label="Source link (optional)">
-              <Input
-                id="change-order-source"
-                name="sourceHref"
-                type="url"
-                placeholder="https://..."
-                className={DOCUMENT_INPUT_CLASS}
-              />
-            </Field>
-            <div>
-              <Label className="text-xs text-muted-foreground">
-                Supporting document
-              </Label>
-              <div className="mt-1 grid gap-2">
-                <Input
-                  name="documentLabel"
-                  placeholder="Document label"
-                  className={DOCUMENT_INPUT_CLASS}
-                />
-                <Input
-                  name="documentUrl"
-                  type="url"
-                  placeholder="https://..."
-                  className={DOCUMENT_INPUT_CLASS}
-                />
-              </div>
-            </div>
+          <div className="border-t pt-4">
+            <label className="flex items-start gap-2 text-sm font-medium">
+              <IconPaperclip className="mt-0.5 size-4 text-muted-foreground" />
+              <span>
+                Supporting documents
+                <span className="mt-1 block text-xs font-normal text-muted-foreground">
+                  Upload photos, proposals, drawings, or other change-order files
+                  to the project Drive folder.
+                </span>
+              </span>
+            </label>
+            <Input
+              ref={fileInputRef}
+              type="file"
+              multiple
+              accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt"
+              className="mt-3"
+              onChange={(event) => {
+                const files = event.currentTarget.files
+                setSelectedFiles(files ? Array.from(files) : [])
+              }}
+            />
+            {selectedFiles.length > 0 && (
+              <p className="mt-2 text-xs text-muted-foreground">
+                {selectedFiles.length} file{selectedFiles.length === 1 ? "" : "s"} selected
+              </p>
+            )}
           </div>
 
           <SheetFooter className="border-t pt-4">

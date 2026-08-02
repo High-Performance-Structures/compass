@@ -10,6 +10,7 @@ import { ProjectChangeOrderEditForm } from "@/components/projects/project-change
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
+  changeOrderDisplayStatus,
   changeOrderStatusLabel,
   isChangeOrderStatus,
 } from "@/lib/change-orders/status"
@@ -67,7 +68,7 @@ export function ProjectChangeOrderDetail({
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
-            <Badge>{changeOrderStatusLabel(item.status)}</Badge>
+            <Badge>{changeOrderDisplayStatus(item.status, item.sourceType)}</Badge>
             <Badge variant="outline">{money(item.amountCents)}</Badge>
             <Badge variant="outline">
               {item.scheduleImpactDays === null
@@ -112,7 +113,7 @@ export function ProjectChangeOrderDetail({
             </div>
           ) : (
             <p className="mt-3 text-sm text-muted-foreground">
-              No supporting links.
+              No supporting documents.
             </p>
           )}
         </div>
@@ -144,6 +145,8 @@ export function ProjectChangeOrderDetail({
                 <p className="font-medium">
                   {event.eventType === "status_transition"
                     ? `${event.fromStatus ? historyStatusLabel(event.fromStatus) : "Created"} → ${historyStatusLabel(event.toStatus)}`
+                    : event.eventType === "buildertrend_import"
+                      ? "Imported from Buildertrend"
                     : event.eventType === "created"
                       ? "Request created"
                       : "Request updated"}

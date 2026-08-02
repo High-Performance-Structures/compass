@@ -9,7 +9,7 @@ import type {
 import { ProjectChangeOrderCreateForm } from "@/components/projects/project-change-order-create-form"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { changeOrderStatusLabel } from "@/lib/change-orders/status"
+import { changeOrderDisplayStatus } from "@/lib/change-orders/status"
 
 function money(cents: number | null): string {
   if (cents === null) return "Amount not determined"
@@ -78,7 +78,7 @@ export function ProjectChangeOrderList({
                     {item.changeOrderNumber}
                   </p>
                   <Badge variant="outline">
-                    {changeOrderStatusLabel(item.status)}
+                    {changeOrderDisplayStatus(item.status, item.sourceType)}
                   </Badge>
                   <Badge variant="secondary">{item.requesterType}</Badge>
                 </div>
