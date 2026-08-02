@@ -3,10 +3,17 @@ export type GoogleConfig = {
 }
 
 export function getGoogleConfig(
-  env: Record<string, string | undefined>
+  env: unknown
 ): GoogleConfig {
+  const environmentKey =
+    typeof env === "object" &&
+    env !== null &&
+    "GOOGLE_SERVICE_ACCOUNT_ENCRYPTION_KEY" in env &&
+    typeof env.GOOGLE_SERVICE_ACCOUNT_ENCRYPTION_KEY === "string"
+      ? env.GOOGLE_SERVICE_ACCOUNT_ENCRYPTION_KEY
+      : undefined
   const encryptionKey =
-    env.GOOGLE_SERVICE_ACCOUNT_ENCRYPTION_KEY ??
+    environmentKey ??
     process.env.GOOGLE_SERVICE_ACCOUNT_ENCRYPTION_KEY
   if (!encryptionKey) {
     throw new Error(
@@ -56,6 +63,9 @@ export const GOOGLE_TOKEN_URL =
 
 export const GOOGLE_DRIVE_API =
   "https://www.googleapis.com/drive/v3"
+
+export const GOOGLE_SHEETS_API =
+  "https://sheets.googleapis.com/v4/spreadsheets"
 
 export const GOOGLE_UPLOAD_API =
   "https://www.googleapis.com/upload/drive/v3"

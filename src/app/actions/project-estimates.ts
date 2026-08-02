@@ -1,6 +1,6 @@
 "use server"
 
-import { and, asc, desc, eq, ne } from "drizzle-orm"
+import { and, asc, desc, eq, inArray, ne } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
 import { getDb } from "@/db"
@@ -12,7 +12,9 @@ import {
   projectEstimates,
   sageTaxEntities,
 } from "@/db/schema-estimates"
+import { googleAuth } from "@/db/schema-google"
 import { requireAuth, type AuthUser } from "@/lib/auth"
+import { decrypt } from "@/lib/crypto"
 import { getCloudflareContext } from "@/lib/db"
 import { rebuildProjectContractBudget } from "@/lib/financials/contract-budget-store"
 import {
@@ -23,6 +25,17 @@ import {
   isEstimateStatus,
   type EstimateLedgerLine,
 } from "@/lib/financials/estimate-ledger"
+import {
+  CONTRACT_ADJUSTMENT_COST_CODES,
+  parseProjectTotalsRows,
+  spreadsheetIdFromUrl,
+} from "@/lib/financials/project-totals-import"
+import { SheetsClient } from "@/lib/google/client/sheets-client"
+import {
+  getGoogleConfig,
+  getGoogleCryptoSalt,
+  parseServiceAccountKey,
+} from "@/lib/google/config"
 import { requirePermission } from "@/lib/permissions"
 import { assertProjectAccess } from "@/lib/project-access"
 import { isInternalStaffRole } from "@/lib/user-roles"
@@ -161,6 +174,19 @@ export type ProjectEstimateBasisInput = {
 export type ProjectEstimateActionResult =
   | { readonly success: true; readonly id: string }
   | { readonly success: false; readonly error: string }
+
+export type ProjectEstimateImportActionResult =
+  | {
+      readonly success: true
+      readonly id: string
+      readonly lineCount: number
+      readonly totalCents: number
+      readonly roundingAdjustmentCents: number
+      readonly missingSageMappingCount: number
+    }
+  | { readonly success: false; readonly error: string }
+
+const PROJECT_TOTALS_RANGE = "Project Totals!A1:AA506"
 
 type CompassDb = ReturnType<typeof getDb>
 
@@ -459,14 +485,24 @@ export async function getProjectEstimateWorkspace(
       notes: row.notes,
       sortOrder: row.sortOrder,
     })),
-    costCodes: costCodeRows.map((row) => ({
-      value: row.code,
-      label: row.displayLabel,
-      description: row.description,
-      divisionCode: row.divisionCode,
-      divisionName: row.divisionDescription,
-      divisionLabel: row.divisionDisplayLabel,
-    })),
+    costCodes: [
+      ...costCodeRows.map((row) => ({
+        value: row.code,
+        label: row.displayLabel,
+        description: row.description,
+        divisionCode: row.divisionCode,
+        divisionName: row.divisionDescription,
+        divisionLabel: row.divisionDisplayLabel,
+      })),
+      ...CONTRACT_ADJUSTMENT_COST_CODES.map((item) => ({
+        value: item.value,
+        label: `${item.value} · ${item.description} · contract adjustment — not Sage mapped`,
+        description: item.description,
+        divisionCode: "99",
+        divisionName: "Contract Adjustments",
+        divisionLabel: "99 · Contract Adjustments",
+      })),
+    ],
     taxEntities: taxRows.map((row) => ({
       value: row.id,
       label: `${row.code} · ${row.name}`,
@@ -575,6 +611,155 @@ export async function updateProjectEstimateHeader(
   }
 }
 
+export async function importProjectEstimateFromGoogleSheet(
+  projectId: string,
+  estimateId: string
+): Promise<ProjectEstimateImportActionResult> {
+  try {
+    const access = await estimateAccess(projectId, true)
+    const estimate = await requireEditableEstimate(
+      access.db,
+      projectId,
+      estimateId
+    )
+    const spreadsheetId = spreadsheetIdFromUrl(estimate.sourceWorkbookUrl)
+    if (!spreadsheetId) {
+      throw new Error(
+        "Save a valid Google Sheets Source CSI workbook before importing."
+      )
+    }
+
+    const authRows = access.organizationId
+      ? await access.db
+          .select()
+          .from(googleAuth)
+          .where(eq(googleAuth.organizationId, access.organizationId))
+          .limit(1)
+      : await access.db.select().from(googleAuth).limit(1)
+    const auth = authRows[0]
+    if (!auth) {
+      throw new Error("Google Workspace service account is not connected.")
+    }
+
+    const { env } = await getCloudflareContext()
+    const config = getGoogleConfig(env)
+    const keyJson = await decrypt(
+      auth.serviceAccountKeyEncrypted,
+      config.encryptionKey,
+      getGoogleCryptoSalt()
+    )
+    const client = new SheetsClient(parseServiceAccountKey(keyJson))
+    const googleEmail = access.user.googleEmail ?? access.user.email
+    const rows = await client.getValues(googleEmail, {
+      spreadsheetId,
+      range: PROJECT_TOTALS_RANGE,
+      valueRenderOption: "UNFORMATTED_VALUE",
+    })
+    const parsed = parseProjectTotalsRows(rows)
+    if (!parsed.success) throw new Error(parsed.error)
+
+    const sourceCostCodes = parsed.lines
+      .filter((line) => line.divisionCode !== "99")
+      .map((line) => line.costCode)
+    const activeCostCodeRows = sourceCostCodes.length > 0
+      ? await access.db
+          .select({ code: sageCostCodes.code })
+          .from(sageCostCodes)
+          .where(
+            and(
+              eq(sageCostCodes.active, true),
+              inArray(sageCostCodes.code, sourceCostCodes)
+            )
+          )
+      : []
+    const activeCostCodes = new Set(activeCostCodeRows.map((row) => row.code))
+    const missingCostCodes = sourceCostCodes.filter(
+      (code) => !activeCostCodes.has(code)
+    )
+    const missingCostCodeSet = new Set(missingCostCodes)
+
+    const now = new Date().toISOString()
+    const lineValues = parsed.lines.map((line) => {
+      const mappingNote = missingCostCodeSet.has(line.costCode)
+        ? `Source CSI cost code ${line.costCode} is not active in Sage; remap before signature or accounting handoff.`
+        : null
+      return {
+        id: crypto.randomUUID(),
+        projectId,
+        estimateId,
+        divisionCode: line.divisionCode,
+        divisionName: line.divisionName,
+        costCode: line.costCode,
+        costCodeName: line.description,
+        description: line.description,
+        specifications: [line.specifications, mappingNote]
+          .filter(Boolean)
+          .join(" ") || null,
+        quantity: 1,
+        unit: "LS",
+        unitCostCents: line.amountCents,
+        directCostCents: line.amountCents,
+        markupRateBasisPoints: 0,
+        markupCents: 0,
+        taxable: false,
+        taxEntityId: null,
+        taxCode: null,
+        taxName: null,
+        taxRateBasisPoints: 0,
+        taxCents: 0,
+        lineTotalCents: line.amountCents,
+        ownerVisible: true,
+        sortOrder: line.sortOrder,
+        createdAt: now,
+        updatedAt: now,
+      }
+    })
+    const [firstLine, ...remainingLines] = lineValues
+    if (!firstLine) {
+      throw new Error("Project Totals did not produce any importable lines.")
+    }
+
+    await access.db.batch([
+      access.db
+        .delete(projectEstimateLines)
+        .where(eq(projectEstimateLines.estimateId, estimateId)),
+      access.db.insert(projectEstimateLines).values(firstLine),
+      ...remainingLines.map((lineValue) =>
+        access.db.insert(projectEstimateLines).values(lineValue)
+      ),
+      access.db
+        .update(projectEstimates)
+        .set({
+          sourceSystem: "google_csi_project_totals",
+          sourceWorkbookId: spreadsheetId,
+          sourceRevision: `Project Totals imported ${now}`,
+          directCostCents: parsed.displayedTotalCents,
+          markupCents: 0,
+          taxCents: 0,
+          estimateTotalCents: parsed.displayedTotalCents,
+          updatedAt: now,
+        })
+        .where(eq(projectEstimates.id, estimateId)),
+    ])
+
+    revalidateEstimate(projectId)
+    return {
+      success: true,
+      id: estimateId,
+      lineCount: parsed.lines.length,
+      totalCents: parsed.displayedTotalCents,
+      roundingAdjustmentCents: parsed.roundingAdjustmentCents,
+      missingSageMappingCount: missingCostCodes.length,
+    }
+  } catch (error) {
+    return {
+      success: false,
+      error:
+        error instanceof Error ? error.message : "Unable to import source CSI.",
+    }
+  }
+}
+
 export async function saveProjectEstimateLine(
   projectId: string,
   estimateId: string,
@@ -589,13 +774,25 @@ export async function saveProjectEstimateLine(
       estimateId
     )
     const costCode = requiredText(input.costCode, "Cost code")
-    const costRows = await access.db
-      .select()
-      .from(sageCostCodes)
-      .where(and(eq(sageCostCodes.code, costCode), eq(sageCostCodes.active, true)))
-      .limit(1)
+    const contractAdjustment = CONTRACT_ADJUSTMENT_COST_CODES.find(
+      (item) => item.value === costCode
+    )
+    const costRows = contractAdjustment
+      ? []
+      : await access.db
+          .select()
+          .from(sageCostCodes)
+          .where(
+            and(
+              eq(sageCostCodes.code, costCode),
+              eq(sageCostCodes.active, true)
+            )
+          )
+          .limit(1)
     const cost = costRows[0]
-    if (!cost) throw new Error("Choose an active Sage cost code.")
+    if (!cost && !contractAdjustment) {
+      throw new Error("Choose an active Sage cost code.")
+    }
     const taxEntityId = cleanText(input.taxEntityId) ?? estimate.defaultTaxEntityId
     const taxRows = taxEntityId
       ? await access.db
@@ -630,10 +827,11 @@ export async function saveProjectEstimateLine(
       .orderBy(desc(projectEstimateLines.sortOrder))
       .limit(1)
     const values = {
-      divisionCode: cost.divisionCode,
-      divisionName: cost.divisionDescription,
-      costCode: cost.code,
-      costCodeName: cost.description,
+      divisionCode: cost?.divisionCode ?? "99",
+      divisionName: cost?.divisionDescription ?? "Contract Adjustments",
+      costCode: cost?.code ?? contractAdjustment?.value ?? costCode,
+      costCodeName:
+        cost?.description ?? contractAdjustment?.description ?? costCode,
       description: requiredText(input.description, "Description"),
       specifications: cleanText(input.specifications),
       quantity,
@@ -780,6 +978,33 @@ export async function prepareProjectEstimateForFoxit(
       .where(eq(projectEstimateBasisDocuments.estimateId, estimateId))
       .orderBy(asc(projectEstimateBasisDocuments.sortOrder))
     if (lines.length === 0) throw new Error("Add estimate lines before signature.")
+    const sourceCostCodes = [
+      ...new Set(
+        lines
+          .filter((line) => line.divisionCode !== "99")
+          .map((line) => line.costCode)
+      ),
+    ]
+    const activeCostCodeRows = sourceCostCodes.length > 0
+      ? await access.db
+          .select({ code: sageCostCodes.code })
+          .from(sageCostCodes)
+          .where(
+            and(
+              eq(sageCostCodes.active, true),
+              inArray(sageCostCodes.code, sourceCostCodes)
+            )
+          )
+      : []
+    const activeCostCodes = new Set(activeCostCodeRows.map((row) => row.code))
+    const missingCostCodes = sourceCostCodes.filter(
+      (code) => !activeCostCodes.has(code)
+    )
+    if (missingCostCodes.length > 0) {
+      throw new Error(
+        `${missingCostCodes.length} estimate cost codes require Sage mapping before Foxit handoff: ${missingCostCodes.join(", ")}.`
+      )
+    }
     if (!cleanText(estimate.contractTerms)) {
       throw new Error("Add the contract terms before signature.")
     }
