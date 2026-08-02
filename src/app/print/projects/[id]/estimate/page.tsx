@@ -33,6 +33,7 @@ export default async function ProjectEstimatePrintPage({
     projectNumber: workspace.projectNumber,
   })
   const divisions = new Map<string, typeof workspace.lines>()
+  const taxableLineCount = workspace.lines.filter((line) => line.taxable).length
   for (const line of workspace.lines) {
     const current = divisions.get(line.divisionCode) ?? []
     divisions.set(line.divisionCode, [...current, line])
@@ -111,10 +112,10 @@ export default async function ProjectEstimatePrintPage({
         })}
       </section>
 
-      <section className="ml-auto mt-5 w-full max-w-sm space-y-1 text-sm">
+      <section className="ml-auto mt-5 w-full max-w-sm break-inside-avoid space-y-1 border-t border-black pt-3 text-sm">
         <div className="flex justify-between"><span>Direct cost</span><span>{money(estimate.directCostCents)}</span></div>
         <div className="flex justify-between"><span>Line markup</span><span>{money(estimate.markupCents)}</span></div>
-        <div className="flex justify-between"><span>Sales tax</span><span>{money(estimate.taxCents)}</span></div>
+        <div className="flex justify-between"><span>Total tax · {taxableLineCount} taxable {taxableLineCount === 1 ? "item" : "items"}</span><span>{money(estimate.taxCents)}</span></div>
         <div className="flex justify-between border-t border-black pt-2 text-base font-bold"><span>Construction estimate</span><span>{money(estimate.estimateTotalCents)}</span></div>
       </section>
 

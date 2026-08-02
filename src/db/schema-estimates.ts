@@ -97,6 +97,10 @@ export const projectEstimates = sqliteTable(
     signaturePackageUrl: text("signature_package_url"),
     signatureRequestedAt: text("signature_requested_at"),
     signedAt: text("signed_at"),
+    acceptanceMethod: text("acceptance_method"),
+    acceptanceNote: text("acceptance_note"),
+    acceptanceEvidenceLabel: text("acceptance_evidence_label"),
+    acceptanceRecordedByName: text("acceptance_recorded_by_name"),
     acceptedAt: text("accepted_at"),
     acceptedBy: text("accepted_by").references(() => users.id, {
       onDelete: "set null",

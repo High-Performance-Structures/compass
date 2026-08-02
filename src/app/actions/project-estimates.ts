@@ -3,6 +3,7 @@
 import { and, asc, desc, eq, inArray, ne } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
+import { getUploadSessionUrl } from "@/app/actions/google-drive"
 import { getDb } from "@/db"
 import { projects, sageCostCodes } from "@/db/schema"
 import {
@@ -14,15 +15,21 @@ import {
 } from "@/db/schema-estimates"
 import { googleAuth } from "@/db/schema-google"
 import { requireAuth, type AuthUser } from "@/lib/auth"
+import { activityActorName, recordActivityEvent } from "@/lib/activity-log"
 import { decrypt } from "@/lib/crypto"
 import { getCloudflareContext } from "@/lib/db"
-import { rebuildProjectContractBudget } from "@/lib/financials/contract-budget-store"
+import {
+  preflightProjectContractBudget,
+  rebuildProjectContractBudget,
+} from "@/lib/financials/contract-budget-store"
 import {
   calculateEstimateLine,
   calculateEstimateTotals,
   estimateCanBeEdited,
   estimateSourceHash,
+  isEstimateAcceptanceMethod,
   isEstimateStatus,
+  type EstimateAcceptanceMethod,
   type EstimateLedgerLine,
 } from "@/lib/financials/estimate-ledger"
 import {
@@ -63,6 +70,10 @@ export type ProjectEstimateSummary = {
   readonly foxitEnvelopeId: string | null
   readonly signaturePackageUrl: string | null
   readonly signedAt: string | null
+  readonly acceptanceMethod: string | null
+  readonly acceptanceNote: string | null
+  readonly acceptanceEvidenceLabel: string | null
+  readonly acceptanceRecordedByName: string | null
   readonly acceptedAt: string | null
   readonly sageStatus: string
 }
@@ -171,6 +182,15 @@ export type ProjectEstimateBasisInput = {
   readonly notes: string | null
 }
 
+export type ProjectEstimateManualAcceptanceInput = {
+  readonly acceptanceMethod: string | null
+  readonly ownerApprovedAt: string | null
+  readonly evidenceUrl: string | null
+  readonly evidenceLabel: string | null
+  readonly acceptanceNote: string | null
+  readonly attested: boolean
+}
+
 export type ProjectEstimateActionResult =
   | { readonly success: true; readonly id: string }
   | { readonly success: false; readonly error: string }
@@ -186,7 +206,22 @@ export type ProjectEstimateImportActionResult =
     }
   | { readonly success: false; readonly error: string }
 
+type ProjectEstimateUploadSessionResult =
+  | { readonly success: true; readonly uploadUrl: string }
+  | { readonly success: false; readonly error: string }
+
 const PROJECT_TOTALS_RANGE = "Project Totals!A1:AA506"
+const ACCEPTANCE_EVIDENCE_MIME_TYPES = new Set([
+  "application/msword",
+  "application/pdf",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "image/gif",
+  "image/heic",
+  "image/heif",
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+])
 
 type CompassDb = ReturnType<typeof getDb>
 
@@ -255,6 +290,60 @@ function safeUrl(value: string | null): string | null {
   }
 }
 
+function safeEvidenceUrl(value: string | null): string | null {
+  const url = safeUrl(value)
+  if (!url) return null
+  return new URL(url).protocol === "https:" ? url : null
+}
+
+function limitedText(
+  value: string | null,
+  label: string,
+  maxLength: number,
+  required = false
+): string | null {
+  const cleaned = cleanText(value)
+  if (!cleaned) {
+    if (required) throw new Error(`${label} is required.`)
+    return null
+  }
+  if (cleaned.length > maxLength) {
+    throw new Error(`${label} must be ${maxLength} characters or fewer.`)
+  }
+  return cleaned
+}
+
+function ownerApprovalDate(value: string | null): string {
+  const cleaned = requiredText(value, "Owner approval date")
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(cleaned)) {
+    throw new Error("Owner approval date must be a valid date.")
+  }
+  const parsed = new Date(`${cleaned}T00:00:00.000Z`)
+  if (
+    Number.isNaN(parsed.getTime()) ||
+    parsed.toISOString().slice(0, 10) !== cleaned
+  ) {
+    throw new Error("Owner approval date must be a valid date.")
+  }
+  const tomorrow = new Date()
+  tomorrow.setUTCDate(tomorrow.getUTCDate() + 1)
+  if (parsed >= tomorrow) {
+    throw new Error("Owner approval date cannot be in the future.")
+  }
+  return cleaned
+}
+
+function acceptanceMethodLabel(method: EstimateAcceptanceMethod): string {
+  const labels: Readonly<Record<EstimateAcceptanceMethod, string>> = {
+    foxit: "Foxit signature",
+    wet_signature: "Wet-signed document",
+    external_esignature: "External e-signature",
+    written_owner_approval: "Written owner approval",
+    historical_executed_contract: "Historical executed contract",
+  }
+  return labels[method]
+}
+
 function estimateSummary(
   row: typeof projectEstimates.$inferSelect
 ): ProjectEstimateSummary {
@@ -281,6 +370,10 @@ function estimateSummary(
     foxitEnvelopeId: row.foxitEnvelopeId,
     signaturePackageUrl: row.signaturePackageUrl,
     signedAt: row.signedAt,
+    acceptanceMethod: row.acceptanceMethod,
+    acceptanceNote: row.acceptanceNote,
+    acceptanceEvidenceLabel: row.acceptanceEvidenceLabel,
+    acceptanceRecordedByName: row.acceptanceRecordedByName,
     acceptedAt: row.acceptedAt,
     sageStatus: row.sageStatus,
   }
@@ -331,6 +424,90 @@ function ledgerLine(
     ownerVisible: row.ownerVisible,
     sortOrder: row.sortOrder,
   }
+}
+
+async function estimateSigningSnapshot(
+  db: CompassDb,
+  estimate: typeof projectEstimates.$inferSelect
+): Promise<{
+  readonly lines: readonly (typeof projectEstimateLines.$inferSelect)[]
+  readonly basisDocuments: readonly (typeof projectEstimateBasisDocuments.$inferSelect)[]
+  readonly sourceHash: string
+}> {
+  const [lines, basisDocuments] = await Promise.all([
+    db
+      .select()
+      .from(projectEstimateLines)
+      .where(eq(projectEstimateLines.estimateId, estimate.id))
+      .orderBy(asc(projectEstimateLines.sortOrder)),
+    db
+      .select()
+      .from(projectEstimateBasisDocuments)
+      .where(eq(projectEstimateBasisDocuments.estimateId, estimate.id))
+      .orderBy(asc(projectEstimateBasisDocuments.sortOrder)),
+  ])
+  if (lines.length === 0) throw new Error("Add estimate lines before acceptance.")
+
+  const sourceHash = await estimateSourceHash({
+    estimateId: estimate.id,
+    versionNumber: estimate.versionNumber,
+    title: estimate.title,
+    contractTerms: estimate.contractTerms,
+    lines: lines.map((line) => ({
+      id: line.id,
+      divisionCode: line.divisionCode,
+      costCode: line.costCode,
+      description: line.description,
+      specifications: line.specifications,
+      quantity: line.quantity,
+      unit: line.unit,
+      unitCostCents: line.unitCostCents,
+      markupRateBasisPoints: line.markupRateBasisPoints,
+      taxable: line.taxable,
+      taxCode: line.taxCode,
+      taxRateBasisPoints: line.taxRateBasisPoints,
+      lineTotalCents: line.lineTotalCents,
+      ownerVisible: line.ownerVisible,
+      sortOrder: line.sortOrder,
+    })),
+    basisDocuments: basisDocuments.map((document) => ({
+      id: document.id,
+      documentType: document.documentType,
+      title: document.title,
+      documentDate: document.documentDate,
+      revision: document.revision,
+      driveFileId: document.driveFileId,
+      driveUrl: document.driveUrl,
+      notes: document.notes,
+      sortOrder: document.sortOrder,
+    })),
+  })
+  return { lines, basisDocuments, sourceHash }
+}
+
+async function missingSageCostCodes(
+  db: CompassDb,
+  lines: readonly (typeof projectEstimateLines.$inferSelect)[]
+): Promise<readonly string[]> {
+  const sourceCostCodes = [
+    ...new Set(
+      lines
+        .filter((line) => line.divisionCode !== "99")
+        .map((line) => line.costCode)
+    ),
+  ]
+  if (sourceCostCodes.length === 0) return []
+  const activeRows = await db
+    .select({ code: sageCostCodes.code })
+    .from(sageCostCodes)
+    .where(
+      and(
+        eq(sageCostCodes.active, true),
+        inArray(sageCostCodes.code, sourceCostCodes)
+      )
+    )
+  const activeCodes = new Set(activeRows.map((row) => row.code))
+  return sourceCostCodes.filter((code) => !activeCodes.has(code))
 }
 
 function activeEstimate(
@@ -967,38 +1144,10 @@ export async function prepareProjectEstimateForFoxit(
       projectId,
       estimateId
     )
-    const lines = await access.db
-      .select()
-      .from(projectEstimateLines)
-      .where(eq(projectEstimateLines.estimateId, estimateId))
-      .orderBy(asc(projectEstimateLines.sortOrder))
-    const basisDocuments = await access.db
-      .select()
-      .from(projectEstimateBasisDocuments)
-      .where(eq(projectEstimateBasisDocuments.estimateId, estimateId))
-      .orderBy(asc(projectEstimateBasisDocuments.sortOrder))
-    if (lines.length === 0) throw new Error("Add estimate lines before signature.")
-    const sourceCostCodes = [
-      ...new Set(
-        lines
-          .filter((line) => line.divisionCode !== "99")
-          .map((line) => line.costCode)
-      ),
-    ]
-    const activeCostCodeRows = sourceCostCodes.length > 0
-      ? await access.db
-          .select({ code: sageCostCodes.code })
-          .from(sageCostCodes)
-          .where(
-            and(
-              eq(sageCostCodes.active, true),
-              inArray(sageCostCodes.code, sourceCostCodes)
-            )
-          )
-      : []
-    const activeCostCodes = new Set(activeCostCodeRows.map((row) => row.code))
-    const missingCostCodes = sourceCostCodes.filter(
-      (code) => !activeCostCodes.has(code)
+    const snapshot = await estimateSigningSnapshot(access.db, estimate)
+    const missingCostCodes = await missingSageCostCodes(
+      access.db,
+      snapshot.lines
     )
     if (missingCostCodes.length > 0) {
       throw new Error(
@@ -1008,40 +1157,6 @@ export async function prepareProjectEstimateForFoxit(
     if (!cleanText(estimate.contractTerms)) {
       throw new Error("Add the contract terms before signature.")
     }
-    const sourceHash = await estimateSourceHash({
-      estimateId,
-      versionNumber: estimate.versionNumber,
-      title: estimate.title,
-      contractTerms: estimate.contractTerms,
-      lines: lines.map((line) => ({
-        id: line.id,
-        divisionCode: line.divisionCode,
-        costCode: line.costCode,
-        description: line.description,
-        specifications: line.specifications,
-        quantity: line.quantity,
-        unit: line.unit,
-        unitCostCents: line.unitCostCents,
-        markupRateBasisPoints: line.markupRateBasisPoints,
-        taxable: line.taxable,
-        taxCode: line.taxCode,
-        taxRateBasisPoints: line.taxRateBasisPoints,
-        lineTotalCents: line.lineTotalCents,
-        ownerVisible: line.ownerVisible,
-        sortOrder: line.sortOrder,
-      })),
-      basisDocuments: basisDocuments.map((document) => ({
-        id: document.id,
-        documentType: document.documentType,
-        title: document.title,
-        documentDate: document.documentDate,
-        revision: document.revision,
-        driveFileId: document.driveFileId,
-        driveUrl: document.driveUrl,
-        notes: document.notes,
-        sortOrder: document.sortOrder,
-      })),
-    })
     const now = new Date().toISOString()
     await access.db
       .update(projectEstimates)
@@ -1049,7 +1164,7 @@ export async function prepareProjectEstimateForFoxit(
         status: "signature_pending",
         foxitStatus: "handoff_ready",
         signatureRequestedAt: now,
-        sourceHash,
+        sourceHash: snapshot.sourceHash,
         updatedAt: now,
       })
       .where(eq(projectEstimates.id, estimateId))
@@ -1063,6 +1178,107 @@ export async function prepareProjectEstimateForFoxit(
         error instanceof Error ? error.message : "Unable to prepare signature.",
     }
   }
+}
+
+async function acceptProjectEstimate(input: {
+  readonly access: EstimateAccess
+  readonly estimate: typeof projectEstimates.$inferSelect
+  readonly acceptanceMethod: EstimateAcceptanceMethod
+  readonly evidenceUrl: string
+  readonly evidenceLabel: string
+  readonly acceptanceNote: string | null
+  readonly signedAt: string
+  readonly foxitStatus: string
+  readonly foxitEnvelopeId: string | null
+}): Promise<ProjectEstimateActionResult> {
+  const preflight = await preflightProjectContractBudget({
+    db: input.access.db,
+    projectId: input.estimate.projectId,
+    estimateId: input.estimate.id,
+  })
+  if (!preflight.success) {
+    throw new Error(
+      `Resolve the contract budget before acceptance: ${preflight.error}`
+    )
+  }
+
+  const snapshot = await estimateSigningSnapshot(input.access.db, input.estimate)
+  const missingCostCodes = await missingSageCostCodes(
+    input.access.db,
+    snapshot.lines
+  )
+  const now = new Date().toISOString()
+  const recordedByName = activityActorName(input.access.user)
+
+  // Superseding the prior baseline and accepting this version must be atomic.
+  // Budget construction follows only after its source version is unambiguous.
+  await input.access.db.batch([
+    input.access.db
+      .update(projectEstimates)
+      .set({ status: "superseded", updatedAt: now })
+      .where(
+        and(
+          eq(projectEstimates.projectId, input.estimate.projectId),
+          eq(projectEstimates.status, "accepted"),
+          ne(projectEstimates.id, input.estimate.id)
+        )
+      ),
+    input.access.db
+      .update(projectEstimates)
+      .set({
+        status: "accepted",
+        foxitStatus: input.foxitStatus,
+        foxitEnvelopeId: input.foxitEnvelopeId,
+        signaturePackageUrl: input.evidenceUrl,
+        signedAt: input.signedAt,
+        sourceHash: snapshot.sourceHash,
+        acceptanceMethod: input.acceptanceMethod,
+        acceptanceNote: input.acceptanceNote,
+        acceptanceEvidenceLabel: input.evidenceLabel,
+        acceptanceRecordedByName: recordedByName,
+        acceptedAt: now,
+        acceptedBy: input.access.user.id,
+        sageStatus: missingCostCodes.length > 0 ? "mapping_required" : "ready",
+        updatedAt: now,
+      })
+      .where(eq(projectEstimates.id, input.estimate.id)),
+  ])
+
+  const budget = await rebuildProjectContractBudget({
+    db: input.access.db,
+    projectId: input.estimate.projectId,
+    actorUserId: input.access.user.id,
+  })
+  if (!budget.success) {
+    return {
+      success: false,
+      error: `Estimate accepted, but the contract budget needs review: ${budget.error}`,
+    }
+  }
+
+  if (input.access.organizationId) {
+    await recordActivityEvent({
+      db: input.access.db,
+      organizationId: input.access.organizationId,
+      projectId: input.estimate.projectId,
+      actor: input.access.user,
+      category: "financial",
+      action: "estimate_owner_acceptance_recorded",
+      entityType: "project_estimate",
+      entityId: input.estimate.id,
+      summary: `Recorded owner acceptance for ${input.estimate.estimateNumber} via ${acceptanceMethodLabel(input.acceptanceMethod)}.`,
+      metadata: {
+        acceptanceMethod: input.acceptanceMethod,
+        approvalDate: input.signedAt.slice(0, 10),
+        estimateTotalCents: input.estimate.estimateTotalCents,
+        missingSageMappingCount: missingCostCodes.length,
+      },
+      createdAt: now,
+    })
+  }
+
+  revalidateEstimate(input.estimate.projectId)
+  return { success: true, id: input.estimate.id }
 }
 
 export async function recordSignedProjectEstimate(
@@ -1094,52 +1310,142 @@ export async function recordSignedProjectEstimate(
       throw new Error("Add the signed Foxit document link before acceptance.")
     }
     const now = new Date().toISOString()
-    // A project has one accepted contractual baseline. Preserve prior versions
-    // for the audit trail while ensuring downstream budgets resolve unambiguously.
-    await access.db
-      .update(projectEstimates)
-      .set({ status: "superseded", updatedAt: now })
-      .where(
-        and(
-          eq(projectEstimates.projectId, projectId),
-          eq(projectEstimates.status, "accepted"),
-          ne(projectEstimates.id, estimateId)
-        )
-      )
-      .run()
-    await access.db
-      .update(projectEstimates)
-      .set({
-        status: "accepted",
-        foxitStatus: "completed",
-        foxitEnvelopeId: cleanText(input.foxitEnvelopeId),
-        signaturePackageUrl,
-        signedAt: now,
-        acceptedAt: now,
-        acceptedBy: access.user.id,
-        sageStatus: "ready",
-        updatedAt: now,
-      })
-      .where(eq(projectEstimates.id, estimateId))
-      .run()
-    const budget = await rebuildProjectContractBudget({
-      db: access.db,
-      projectId,
-      actorUserId: access.user.id,
+    return acceptProjectEstimate({
+      access,
+      estimate,
+      acceptanceMethod: "foxit",
+      evidenceUrl: signaturePackageUrl,
+      evidenceLabel: "Signed Foxit estimate",
+      acceptanceNote: null,
+      signedAt: now,
+      foxitStatus: "completed",
+      foxitEnvelopeId: cleanText(input.foxitEnvelopeId),
     })
-    if (!budget.success) {
-      return {
-        success: false,
-        error: `Estimate accepted, but the contract budget needs review: ${budget.error}`,
-      }
-    }
-    revalidateEstimate(projectId)
-    return { success: true, id: estimateId }
   } catch (error) {
     return {
       success: false,
       error:
         error instanceof Error ? error.message : "Unable to accept estimate.",
+    }
+  }
+}
+
+export async function recordManualProjectEstimateAcceptance(
+  projectId: string,
+  estimateId: string,
+  input: ProjectEstimateManualAcceptanceInput
+): Promise<ProjectEstimateActionResult> {
+  try {
+    const access = await estimateAccess(projectId, true)
+    const rows = await access.db
+      .select()
+      .from(projectEstimates)
+      .where(
+        and(
+          eq(projectEstimates.id, estimateId),
+          eq(projectEstimates.projectId, projectId)
+        )
+      )
+      .limit(1)
+    const estimate = rows[0]
+    if (
+      !estimate ||
+      !["draft", "internal_review", "signature_pending"].includes(
+        estimate.status
+      )
+    ) {
+      throw new Error("Only an unaccepted estimate can be manually accepted.")
+    }
+    if (!input.attested) {
+      throw new Error(
+        "Confirm that the attached evidence reflects the owner's approval."
+      )
+    }
+    if (
+      !isEstimateAcceptanceMethod(input.acceptanceMethod) ||
+      input.acceptanceMethod === "foxit"
+    ) {
+      throw new Error("Choose how the owner approved the estimate.")
+    }
+    const approvalDate = ownerApprovalDate(input.ownerApprovedAt)
+    const evidenceUrl = safeEvidenceUrl(input.evidenceUrl)
+    if (!evidenceUrl) {
+      throw new Error("Upload or link the executed approval evidence.")
+    }
+    const evidenceLabel = limitedText(
+      input.evidenceLabel,
+      "Evidence label",
+      200,
+      true
+    )
+    const acceptanceNote = limitedText(
+      input.acceptanceNote,
+      "Acceptance note",
+      2_000,
+      true
+    )
+    if (!evidenceLabel || !acceptanceNote) {
+      throw new Error("Evidence label and acceptance note are required.")
+    }
+
+    return acceptProjectEstimate({
+      access,
+      estimate,
+      acceptanceMethod: input.acceptanceMethod,
+      evidenceUrl,
+      evidenceLabel,
+      acceptanceNote,
+      signedAt: `${approvalDate}T12:00:00.000Z`,
+      foxitStatus: "not_applicable",
+      foxitEnvelopeId: null,
+    })
+  } catch (error) {
+    return {
+      success: false,
+      error:
+        error instanceof Error
+          ? error.message
+          : "Unable to record manual estimate acceptance.",
+    }
+  }
+}
+
+export async function getProjectEstimateAcceptanceUploadSessionUrl(
+  projectId: string,
+  fileName: string,
+  mimeType: string
+): Promise<ProjectEstimateUploadSessionResult> {
+  try {
+    const access = await estimateAccess(projectId, true)
+    const safeFileName = limitedText(fileName, "File name", 240, true)
+    const safeMimeType = limitedText(mimeType, "File type", 160, true)
+    if (!safeFileName || !safeMimeType) {
+      throw new Error("Choose an executed contract file to upload.")
+    }
+    if (!ACCEPTANCE_EVIDENCE_MIME_TYPES.has(safeMimeType)) {
+      throw new Error(
+        "Upload the executed estimate as a PDF, Word document, or image."
+      )
+    }
+    const projectRows = await access.db
+      .select({ googleDriveFolderId: projects.googleDriveFolderId })
+      .from(projects)
+      .where(eq(projects.id, projectId))
+      .limit(1)
+    const googleDriveFolderId = projectRows[0]?.googleDriveFolderId
+    if (!googleDriveFolderId) {
+      throw new Error(
+        "Connect the project Google Drive folder before uploading the executed contract."
+      )
+    }
+    return getUploadSessionUrl(safeFileName, safeMimeType, googleDriveFolderId)
+  } catch (error) {
+    return {
+      success: false,
+      error:
+        error instanceof Error
+          ? error.message
+          : "Unable to start the executed contract upload.",
     }
   }
 }

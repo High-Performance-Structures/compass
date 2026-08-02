@@ -11,6 +11,7 @@ import {
   IconRefresh,
   IconSend,
   IconTrash,
+  IconUpload,
 } from "@tabler/icons-react"
 
 import {
@@ -19,12 +20,14 @@ import {
   deleteProjectEstimateLine,
   importProjectEstimateFromGoogleSheet,
   prepareProjectEstimateForFoxit,
+  recordManualProjectEstimateAcceptance,
   recordSignedProjectEstimate,
   saveProjectEstimateLine,
   updateProjectEstimateHeader,
   type ProjectEstimateLineItem,
   type ProjectEstimateWorkspace,
 } from "@/app/actions/project-estimates"
+import { uploadEstimateAcceptanceEvidence } from "@/components/projects/project-estimate-acceptance-upload"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -63,6 +66,12 @@ function formNumber(formData: FormData, name: string): number | null {
 
 function statusLabel(value: string): string {
   return value.replaceAll("_", " ")
+}
+
+function localDateInput(): string {
+  const now = new Date()
+  now.setMinutes(now.getMinutes() - now.getTimezoneOffset())
+  return now.toISOString().slice(0, 10)
 }
 
 type LineDraft = {
@@ -123,6 +132,8 @@ export function ProjectEstimateWorkspacePanel({
   const [isPending, startTransition] = useTransition()
   const [message, setMessage] = useState<string | null>(null)
   const [line, setLine] = useState<LineDraft>(EMPTY_LINE)
+  const [manualAcceptanceAttested, setManualAcceptanceAttested] =
+    useState(false)
   const estimate = workspace.activeEstimate
   const editable =
     workspace.canEdit &&
@@ -314,6 +325,63 @@ export function ProjectEstimateWorkspacePanel({
           ? "Signed estimate accepted and contract budget created."
           : result.error
       )
+    })
+  }
+
+  function acceptManually(event: FormEvent<HTMLFormElement>): void {
+    event.preventDefault()
+    if (!estimate) return
+    const form = event.currentTarget
+    const formData = new FormData(form)
+    const fileValue = formData.get("acceptanceEvidenceFile")
+    const file = fileValue instanceof File && fileValue.size > 0
+      ? fileValue
+      : null
+    const linkedEvidenceUrl = formText(formData, "acceptanceEvidenceUrl")
+    if (file && linkedEvidenceUrl) {
+      setMessage("Choose either a file upload or an existing Google Drive link.")
+      return
+    }
+    if (!file && !linkedEvidenceUrl) {
+      setMessage("Upload or link the executed estimate approval evidence.")
+      return
+    }
+
+    setMessage(null)
+    startTransition(async () => {
+      try {
+        const uploaded = file
+          ? await uploadEstimateAcceptanceEvidence(file, projectId)
+          : null
+        const result = await recordManualProjectEstimateAcceptance(
+          projectId,
+          estimate.id,
+          {
+            acceptanceMethod: formText(formData, "acceptanceMethod"),
+            ownerApprovedAt: formText(formData, "ownerApprovedAt"),
+            evidenceUrl: uploaded?.url ?? linkedEvidenceUrl,
+            evidenceLabel:
+              uploaded?.label ?? formText(formData, "acceptanceEvidenceLabel"),
+            acceptanceNote: formText(formData, "acceptanceNote"),
+            attested: manualAcceptanceAttested,
+          }
+        )
+        if (result.success) {
+          form.reset()
+          setManualAcceptanceAttested(false)
+        }
+        finish(
+          result.success
+            ? "Owner approval recorded and contract budget created."
+            : result.error
+        )
+      } catch (error) {
+        finish(
+          error instanceof Error
+            ? error.message
+            : "Unable to upload the executed estimate evidence."
+        )
+      }
     })
   }
 
@@ -594,6 +662,30 @@ export function ProjectEstimateWorkspacePanel({
           </div>
         )}
 
+        {workspace.lines.length > 0 && (
+          <div className="ml-auto mt-5 w-full max-w-md border-t pt-3 text-sm">
+            <div className="flex justify-between gap-4 py-1">
+              <span>Direct cost</span>
+              <span>{money(estimate.directCostCents)}</span>
+            </div>
+            <div className="flex justify-between gap-4 py-1">
+              <span>Line markup</span>
+              <span>{money(estimate.markupCents)}</span>
+            </div>
+            <div className="flex justify-between gap-4 py-1 font-medium">
+              <span>
+                Total tax · {workspace.lines.filter((item) => item.taxable).length}{" "}
+                taxable {workspace.lines.filter((item) => item.taxable).length === 1 ? "item" : "items"}
+              </span>
+              <span>{money(estimate.taxCents)}</span>
+            </div>
+            <div className="mt-1 flex justify-between gap-4 border-t pt-2 text-base font-semibold">
+              <span>Construction estimate total</span>
+              <span>{money(estimate.estimateTotalCents)}</span>
+            </div>
+          </div>
+        )}
+
         {editable && (
           <form className="mt-5 border-t pt-4" onSubmit={saveLine}>
             <h3 className="mb-3 text-sm font-semibold">
@@ -735,8 +827,9 @@ export function ProjectEstimateWorkspacePanel({
           <div className="flex-1">
             <h2 className="font-semibold">Approval and accounting handoff</h2>
             <p className="mt-1 text-sm text-muted-foreground">
-              Preparing the package locks this version. Recording the completed
-              Foxit package accepts it and creates the original G703 budget.
+              Use Foxit for a new signature or record approval that happened
+              outside Compass. Acceptance locks this version and creates the
+              original G703 contract budget.
             </p>
             {editable && (
               <Button className="mt-3" onClick={prepareFoxit} disabled={isPending || workspace.lines.length === 0}>
@@ -750,10 +843,174 @@ export function ProjectEstimateWorkspacePanel({
                 <div className="md:col-span-2"><Button type="submit" disabled={isPending}>Record signatures and accept estimate</Button></div>
               </form>
             )}
+            {workspace.canEdit &&
+              ["draft", "internal_review", "signature_pending"].includes(
+                estimate.status
+              ) && (
+                <form
+                  className="mt-5 space-y-4 border-t pt-4"
+                  onSubmit={acceptManually}
+                >
+                  <div>
+                    <h3 className="text-sm font-semibold">
+                      Owner approved outside Compass
+                    </h3>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      For an executed estimate, wet signature, or documented
+                      approval that predates this Compass workflow.
+                    </p>
+                  </div>
+                  <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                    <div className="space-y-1.5">
+                      <Label htmlFor="acceptanceMethod">Approval method</Label>
+                      <Select name="acceptanceMethod" required>
+                        <SelectTrigger id="acceptanceMethod">
+                          <SelectValue placeholder="Choose method" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="wet_signature">
+                            Wet-signed document
+                          </SelectItem>
+                          <SelectItem value="external_esignature">
+                            External e-signature
+                          </SelectItem>
+                          <SelectItem value="written_owner_approval">
+                            Written owner approval
+                          </SelectItem>
+                          <SelectItem value="historical_executed_contract">
+                            Historical executed contract
+                          </SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="ownerApprovedAt">Owner approval date</Label>
+                      <Input
+                        id="ownerApprovedAt"
+                        name="ownerApprovedAt"
+                        type="date"
+                        max={localDateInput()}
+                        defaultValue={localDateInput()}
+                        required
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="acceptanceEvidenceFile">
+                        Upload executed document
+                      </Label>
+                      <Input
+                        id="acceptanceEvidenceFile"
+                        name="acceptanceEvidenceFile"
+                        type="file"
+                        accept="application/pdf,image/*,.doc,.docx"
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        PDF, Word, or image; 50 MB maximum.
+                      </p>
+                    </div>
+                    <div className="space-y-1.5 md:col-span-2">
+                      <Label htmlFor="acceptanceEvidenceUrl">
+                        Or existing Google Drive link
+                      </Label>
+                      <Input
+                        id="acceptanceEvidenceUrl"
+                        name="acceptanceEvidenceUrl"
+                        type="url"
+                        placeholder="https://drive.google.com/..."
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="acceptanceEvidenceLabel">
+                        Evidence label
+                      </Label>
+                      <Input
+                        id="acceptanceEvidenceLabel"
+                        name="acceptanceEvidenceLabel"
+                        placeholder="Executed CA22 estimate"
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        Required for a linked document; uploads use the filename.
+                      </p>
+                    </div>
+                    <div className="space-y-1.5 md:col-span-2 xl:col-span-3">
+                      <Label htmlFor="acceptanceNote">Acceptance record</Label>
+                      <Textarea
+                        id="acceptanceNote"
+                        name="acceptanceNote"
+                        placeholder="Who approved it, how approval was received, and any relevant contract context."
+                        maxLength={2000}
+                        required
+                      />
+                    </div>
+                  </div>
+                  <div className="flex items-start gap-2 border-t pt-3">
+                    <Checkbox
+                      id="manualAcceptanceAttestation"
+                      checked={manualAcceptanceAttested}
+                      onCheckedChange={(checked) =>
+                        setManualAcceptanceAttested(checked === true)
+                      }
+                    />
+                    <Label
+                      htmlFor="manualAcceptanceAttestation"
+                      className="max-w-3xl text-sm font-normal leading-5"
+                    >
+                      I confirm this evidence reflects the owner&apos;s approval
+                      and I am authorized to record acceptance on the
+                      owner&apos;s behalf.
+                    </Label>
+                  </div>
+                  <Button
+                    type="submit"
+                    variant="outline"
+                    disabled={isPending || !manualAcceptanceAttested}
+                  >
+                    <IconUpload className="size-4" />
+                    Record owner approval and accept estimate
+                  </Button>
+                </form>
+              )}
             {estimate.status === "accepted" && (
-              <p className="mt-3 text-sm font-medium text-emerald-700">
-                Accepted estimate is locked. Budget changes now require an executed change order.
-              </p>
+              <div className="mt-4 border-t pt-4 text-sm">
+                <p className="font-medium text-emerald-700">
+                  Accepted estimate is locked. Budget changes now require an
+                  executed change order.
+                </p>
+                <dl className="mt-3 grid gap-x-6 gap-y-2 md:grid-cols-2">
+                  <div>
+                    <dt className="text-xs text-muted-foreground">Method</dt>
+                    <dd>{statusLabel(estimate.acceptanceMethod ?? "not recorded")}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-xs text-muted-foreground">Approved</dt>
+                    <dd>
+                      {estimate.signedAt
+                        ? new Date(estimate.signedAt).toLocaleDateString()
+                        : "Date not recorded"}
+                    </dd>
+                  </div>
+                  {estimate.acceptanceRecordedByName && (
+                    <div>
+                      <dt className="text-xs text-muted-foreground">Recorded by</dt>
+                      <dd>{estimate.acceptanceRecordedByName}</dd>
+                    </div>
+                  )}
+                  {estimate.acceptanceNote && (
+                    <div className="md:col-span-2">
+                      <dt className="text-xs text-muted-foreground">Record</dt>
+                      <dd className="whitespace-pre-wrap">{estimate.acceptanceNote}</dd>
+                    </div>
+                  )}
+                </dl>
+                {estimate.signaturePackageUrl && (
+                  <Button className="mt-3" variant="outline" size="sm" asChild>
+                    <Link href={estimate.signaturePackageUrl} target="_blank">
+                      <IconFileDescription className="size-4" />
+                      {estimate.acceptanceEvidenceLabel ?? "Open signed estimate"}
+                    </Link>
+                  </Button>
+                )}
+              </div>
             )}
           </div>
         </div>

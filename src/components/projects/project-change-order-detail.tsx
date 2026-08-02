@@ -7,6 +7,7 @@ import type {
   ProjectChangeOrderItem,
 } from "@/app/actions/project-change-orders"
 import { ProjectChangeOrderEditForm } from "@/components/projects/project-change-order-edit-form"
+import { ProjectChangeOrderManualAcceptance } from "@/components/projects/project-change-order-manual-acceptance"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -86,6 +87,8 @@ export function ProjectChangeOrderDetail({
         formOptions={formOptions}
       />
 
+      <ProjectChangeOrderManualAcceptance item={item} />
+
       <section className="grid gap-4 lg:grid-cols-2">
         <div className="border-y bg-background p-4">
           <h2 className="text-sm font-semibold">Supporting documents</h2>
@@ -128,7 +131,31 @@ export function ProjectChangeOrderDetail({
               <dt className="text-xs text-muted-foreground">Sage</dt>
               <dd className="font-medium">{item.sageStatus}</dd>
             </div>
+            {item.acceptanceMethod && (
+              <div>
+                <dt className="text-xs text-muted-foreground">Owner approval</dt>
+                <dd className="font-medium">
+                  {item.acceptanceMethod.replaceAll("_", " ")}
+                  {item.executedAt
+                    ? ` · ${new Date(item.executedAt).toLocaleDateString()}`
+                    : ""}
+                </dd>
+                {item.acceptanceRecordedByName && (
+                  <p className="text-xs text-muted-foreground">
+                    Recorded by {item.acceptanceRecordedByName}
+                  </p>
+                )}
+              </div>
+            )}
           </dl>
+          {item.acceptanceEvidenceUrl && (
+            <Button className="mt-3" variant="outline" size="sm" asChild>
+              <Link href={item.acceptanceEvidenceUrl} target="_blank">
+                <IconExternalLink className="size-4" />
+                {item.acceptanceEvidenceLabel ?? "Open acceptance evidence"}
+              </Link>
+            </Button>
+          )}
           <p className="mt-3 text-xs leading-5 text-muted-foreground">
             Compass records readiness only. No document is sent to Foxit and no
             accounting record is written to Sage from this workflow.
@@ -145,6 +172,8 @@ export function ProjectChangeOrderDetail({
                 <p className="font-medium">
                   {event.eventType === "status_transition"
                     ? `${event.fromStatus ? historyStatusLabel(event.fromStatus) : "Created"} → ${historyStatusLabel(event.toStatus)}`
+                    : event.eventType === "manual_owner_acceptance"
+                      ? "Owner acceptance recorded"
                     : event.eventType === "buildertrend_import"
                       ? "Imported from Buildertrend"
                     : event.eventType === "created"

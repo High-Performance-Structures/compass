@@ -30,6 +30,10 @@ export type ContractBudgetRebuildResult =
     }
   | { readonly success: false; readonly error: string }
 
+export type ContractBudgetPreflightResult =
+  | { readonly success: true }
+  | { readonly success: false; readonly error: string }
+
 type CompassDb = ReturnType<typeof getDb>
 
 const BUDGET_CHANGE_ORDER_STATUSES = [
@@ -38,6 +42,15 @@ const BUDGET_CHANGE_ORDER_STATUSES = [
   "synced",
   "closed",
 ]
+
+type ContractBudgetInputs = {
+  readonly estimateRows: readonly (typeof projectEstimateLines.$inferSelect)[]
+  readonly adjustments: readonly ContractAdjustment[]
+}
+
+type ContractBudgetInputsResult =
+  | { readonly success: true; readonly inputs: ContractBudgetInputs }
+  | { readonly success: false; readonly error: string }
 
 function estimateLedgerLine(
   row: typeof projectEstimateLines.$inferSelect
@@ -57,40 +70,21 @@ function estimateLedgerLine(
   }
 }
 
-export async function rebuildProjectContractBudget(input: {
+async function loadContractBudgetInputs(input: {
   readonly db: CompassDb
   readonly projectId: string
-  readonly actorUserId: string | null
-}): Promise<ContractBudgetRebuildResult> {
-  const acceptedRows = await input.db
-    .select()
-    .from(projectEstimates)
-    .where(
-      and(
-        eq(projectEstimates.projectId, input.projectId),
-        eq(projectEstimates.status, "accepted")
-      )
-    )
-    .orderBy(desc(projectEstimates.versionNumber))
-    .limit(1)
-  const accepted = acceptedRows[0]
-  if (!accepted) {
-    return {
-      success: false,
-      error: "Accept a signed estimate before building the contract budget.",
-    }
-  }
-
+  readonly estimateId: string
+}): Promise<ContractBudgetInputsResult> {
   const estimateRows = await input.db
     .select()
     .from(projectEstimateLines)
-    .where(eq(projectEstimateLines.estimateId, accepted.id))
+    .where(eq(projectEstimateLines.estimateId, input.estimateId))
     .orderBy(
       projectEstimateLines.divisionCode,
       projectEstimateLines.sortOrder
     )
   if (estimateRows.length === 0) {
-    return { success: false, error: "The accepted estimate has no lines." }
+    return { success: false, error: "The estimate has no lines." }
   }
 
   const changeRows = await input.db
@@ -137,6 +131,50 @@ export async function rebuildProjectContractBudget(input: {
       executedAt: row.executedAt,
     })
   }
+
+  return { success: true, inputs: { estimateRows, adjustments } }
+}
+
+export async function preflightProjectContractBudget(input: {
+  readonly db: CompassDb
+  readonly projectId: string
+  readonly estimateId: string
+}): Promise<ContractBudgetPreflightResult> {
+  const result = await loadContractBudgetInputs(input)
+  return result.success ? { success: true } : result
+}
+
+export async function rebuildProjectContractBudget(input: {
+  readonly db: CompassDb
+  readonly projectId: string
+  readonly actorUserId: string | null
+}): Promise<ContractBudgetRebuildResult> {
+  const acceptedRows = await input.db
+    .select()
+    .from(projectEstimates)
+    .where(
+      and(
+        eq(projectEstimates.projectId, input.projectId),
+        eq(projectEstimates.status, "accepted")
+      )
+    )
+    .orderBy(desc(projectEstimates.versionNumber))
+    .limit(1)
+  const accepted = acceptedRows[0]
+  if (!accepted) {
+    return {
+      success: false,
+      error: "Accept a signed estimate before building the contract budget.",
+    }
+  }
+
+  const inputRows = await loadContractBudgetInputs({
+    db: input.db,
+    projectId: input.projectId,
+    estimateId: accepted.id,
+  })
+  if (!inputRows.success) return inputRows
+  const { estimateRows, adjustments } = inputRows.inputs
 
   const sourceHash = await contractBudgetSourceHash({
     estimateId: accepted.id,

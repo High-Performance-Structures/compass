@@ -7,6 +7,7 @@ import {
   estimateCanBeAccepted,
   estimateCanBeEdited,
   estimateSourceHash,
+  isEstimateAcceptanceMethod,
   type EstimateLedgerLine,
 } from "@/lib/financials/estimate-ledger"
 
@@ -134,6 +135,14 @@ describe("estimate ledger", () => {
         lineCount: 1,
       })
     ).toBe(false)
+  })
+
+  it("allows only auditable estimate acceptance methods", () => {
+    expect(isEstimateAcceptanceMethod("wet_signature")).toBe(true)
+    expect(isEstimateAcceptanceMethod("historical_executed_contract")).toBe(
+      true
+    )
+    expect(isEstimateAcceptanceMethod("verbal_approval")).toBe(false)
   })
 
   it("hashes the full signed estimate basis, not only its totals", async () => {

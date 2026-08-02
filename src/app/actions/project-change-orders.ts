@@ -1,6 +1,6 @@
 "use server"
 
-import { and, asc, desc, eq } from "drizzle-orm"
+import { and, asc, desc, eq, inArray } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
 import { getUploadSessionUrl } from "@/app/actions/google-drive"
@@ -16,6 +16,7 @@ import {
   projects,
   sageCostCodes,
 } from "@/db/schema"
+import { projectEstimates } from "@/db/schema-estimates"
 import { requireAuth, type AuthUser } from "@/lib/auth"
 import {
   changeOrderCostLinesTotalCents,
@@ -37,7 +38,14 @@ import {
   type ChangeOrderRequesterType,
 } from "@/lib/change-orders/access"
 import { getCloudflareContext } from "@/lib/db"
-import { rebuildProjectContractBudget } from "@/lib/financials/contract-budget-store"
+import {
+  preflightProjectContractBudget,
+  rebuildProjectContractBudget,
+} from "@/lib/financials/contract-budget-store"
+import {
+  isEstimateAcceptanceMethod,
+  type EstimateAcceptanceMethod,
+} from "@/lib/financials/estimate-ledger"
 import {
   canFeature,
   requireFeaturePermission,
@@ -97,6 +105,12 @@ export type ProjectChangeOrderItem = {
   readonly sourceHref: string | null
   readonly internalNotes: string | null
   readonly foxitStatus: string
+  readonly acceptanceMethod: string | null
+  readonly acceptanceEvidenceUrl: string | null
+  readonly acceptanceEvidenceLabel: string | null
+  readonly acceptanceNote: string | null
+  readonly acceptanceRecordedByName: string | null
+  readonly executedAt: string | null
   readonly sageStatus: string
   readonly submittedAt: string | null
   readonly createdAt: string
@@ -157,6 +171,15 @@ export type UpdateProjectChangeOrderInput = {
   readonly documents: readonly ChangeOrderDocumentInput[]
 }
 
+export type ChangeOrderManualAcceptanceInput = {
+  readonly acceptanceMethod: string | null
+  readonly ownerApprovedAt: string | null
+  readonly evidenceUrl: string | null
+  readonly evidenceLabel: string | null
+  readonly acceptanceNote: string | null
+  readonly attested: boolean
+}
+
 type ChangeOrderContext = {
   readonly db: ReturnType<typeof getDb>
   readonly user: AuthUser
@@ -201,6 +224,57 @@ function cleanLimitedText(
     throw new Error(`${label} must be ${maxLength} characters or fewer`)
   }
   return cleaned
+}
+
+function requiredLimitedText(
+  value: string | null,
+  label: string,
+  maxLength: number
+): string {
+  const cleaned = cleanLimitedText(value, label, maxLength)
+  if (!cleaned) throw new Error(`${label} is required`)
+  return cleaned
+}
+
+function ownerApprovalDate(value: string | null): string {
+  const cleaned = requiredLimitedText(value, "Owner approval date", 10)
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(cleaned)) {
+    throw new Error("Owner approval date must be a valid date")
+  }
+  const parsed = new Date(`${cleaned}T00:00:00.000Z`)
+  if (
+    Number.isNaN(parsed.getTime()) ||
+    parsed.toISOString().slice(0, 10) !== cleaned
+  ) {
+    throw new Error("Owner approval date must be a valid date")
+  }
+  const tomorrow = new Date()
+  tomorrow.setUTCDate(tomorrow.getUTCDate() + 1)
+  if (parsed >= tomorrow) {
+    throw new Error("Owner approval date cannot be in the future")
+  }
+  return cleaned
+}
+
+function safeAcceptanceEvidenceUrl(value: string | null): string {
+  const url = safeDocumentUrl(
+    requiredLimitedText(value, "Approval evidence", 2_048)
+  )
+  if (new URL(url).protocol !== "https:") {
+    throw new Error("Approval evidence links must use HTTPS")
+  }
+  return url
+}
+
+function acceptanceMethodLabel(method: EstimateAcceptanceMethod): string {
+  const labels: Readonly<Record<EstimateAcceptanceMethod, string>> = {
+    foxit: "Foxit signature",
+    wet_signature: "Wet-signed document",
+    external_esignature: "External e-signature",
+    written_owner_approval: "Written owner approval",
+    historical_executed_contract: "Historical executed contract",
+  }
+  return labels[method]
 }
 
 function validAudience(value: string): value is ChangeOrderAudience {
@@ -381,13 +455,21 @@ function viewModel(
     sourceHref: context.internal ? row.sourceHref : null,
     internalNotes: context.internal ? row.internalNotes : null,
     foxitStatus: row.foxitStatus,
+    acceptanceMethod: row.acceptanceMethod,
+    acceptanceEvidenceUrl: row.acceptanceEvidenceUrl,
+    acceptanceEvidenceLabel: row.acceptanceEvidenceLabel,
+    acceptanceNote: context.internal ? row.acceptanceNote : null,
+    acceptanceRecordedByName: row.acceptanceRecordedByName,
+    executedAt: row.executedAt,
     sageStatus: row.sageStatus,
     submittedAt: row.submittedAt,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
     canEdit,
     canApprove,
-    allowedTransitions: transitions.filter((status) => status !== "synced"),
+    allowedTransitions: transitions.filter(
+      (status) => status !== "synced" && status !== "executed"
+    ),
     lines,
     documents,
     history,
@@ -850,6 +932,13 @@ export async function updateProjectChangeOrder(
     ) {
       return { success: false, error: "That status transition is not allowed." }
     }
+    if (statusChanged && input.status === "executed") {
+      return {
+        success: false,
+        error:
+          "Record the owner's approval and supporting evidence before executing this change order.",
+      }
+    }
     if (input.status === "synced") {
       return {
         success: false,
@@ -1065,6 +1154,254 @@ export async function updateProjectChangeOrder(
         error instanceof Error
           ? error.message
           : "Failed to update change order request",
+    }
+  }
+}
+
+export async function recordManualProjectChangeOrderAcceptance(
+  projectId: string,
+  changeOrderId: string,
+  input: ChangeOrderManualAcceptanceInput
+): Promise<ChangeOrderActionResult> {
+  try {
+    const context = await changeOrderContext(projectId, "update")
+    if (!context.internal || !context.canApprove) {
+      return {
+        success: false,
+        error: "Change-order approval permission is required.",
+      }
+    }
+    const existing = await context.db
+      .select()
+      .from(projectChangeOrders)
+      .where(
+        and(
+          eq(projectChangeOrders.id, changeOrderId),
+          eq(projectChangeOrders.projectId, projectId)
+        )
+      )
+      .get()
+    if (
+      !existing ||
+      !["approved_for_owner", "signature_pending"].includes(existing.status)
+    ) {
+      return {
+        success: false,
+        error:
+          "Move the change order to Approved for Owner or Signature Pending before recording acceptance.",
+      }
+    }
+    if (!input.attested) {
+      return {
+        success: false,
+        error:
+          "Confirm that the evidence reflects the owner's approval of this change order.",
+      }
+    }
+    if (
+      !isEstimateAcceptanceMethod(input.acceptanceMethod) ||
+      input.acceptanceMethod === "foxit"
+    ) {
+      return { success: false, error: "Choose how the owner approved it." }
+    }
+
+    const approvalDate = ownerApprovalDate(input.ownerApprovedAt)
+    const evidenceUrl = safeAcceptanceEvidenceUrl(input.evidenceUrl)
+    const evidenceLabel = requiredLimitedText(
+      input.evidenceLabel,
+      "Evidence label",
+      200
+    )
+    const acceptanceNote = requiredLimitedText(
+      input.acceptanceNote,
+      "Acceptance note",
+      2_000
+    )
+
+    const lines = await context.db
+      .select({
+        costCode: projectChangeOrderLines.costCode,
+        amountCents: projectChangeOrderLines.amountCents,
+      })
+      .from(projectChangeOrderLines)
+      .where(
+        and(
+          eq(projectChangeOrderLines.changeOrderId, changeOrderId),
+          eq(projectChangeOrderLines.projectId, projectId)
+        )
+      )
+    if (lines.length === 0) {
+      return {
+        success: false,
+        error: "Add at least one cost-coded line before acceptance.",
+      }
+    }
+    if (lines.some((line) => !line.costCode || line.amountCents === null)) {
+      return {
+        success: false,
+        error:
+          "Every accepted change-order line needs a cost code and amount so it can revise the G703.",
+      }
+    }
+
+    const acceptedEstimates = await context.db
+      .select({ id: projectEstimates.id })
+      .from(projectEstimates)
+      .where(
+        and(
+          eq(projectEstimates.projectId, projectId),
+          eq(projectEstimates.status, "accepted")
+        )
+      )
+      .orderBy(desc(projectEstimates.versionNumber))
+      .limit(1)
+    const acceptedEstimate = acceptedEstimates[0]
+    if (!acceptedEstimate) {
+      return {
+        success: false,
+        error:
+          "Accept the project's original estimate before executing a change order.",
+      }
+    }
+    const preflight = await preflightProjectContractBudget({
+      db: context.db,
+      projectId,
+      estimateId: acceptedEstimate.id,
+    })
+    if (!preflight.success) {
+      return {
+        success: false,
+        error: `Resolve the contract budget before acceptance: ${preflight.error}`,
+      }
+    }
+
+    const costCodes = [
+      ...new Set(
+        lines
+          .map((line) => line.costCode)
+          .filter((code): code is string => code !== null)
+      ),
+    ]
+    const activeCodeRows = costCodes.length > 0
+      ? await context.db
+          .select({ code: sageCostCodes.code })
+          .from(sageCostCodes)
+          .where(
+            and(
+              eq(sageCostCodes.active, true),
+              inArray(sageCostCodes.code, costCodes)
+            )
+          )
+      : []
+    const activeCodes = new Set(activeCodeRows.map((row) => row.code))
+    const missingCostCodeCount = costCodes.filter(
+      (code) => !activeCodes.has(code)
+    ).length
+    const now = new Date().toISOString()
+    const executedAt = `${approvalDate}T12:00:00.000Z`
+    const acceptanceRecordedByName = actorName(context.user)
+    const existingDocuments = await context.db
+      .select({
+        id: projectChangeOrderDocuments.id,
+        url: projectChangeOrderDocuments.url,
+      })
+      .from(projectChangeOrderDocuments)
+      .where(
+        eq(projectChangeOrderDocuments.changeOrderId, changeOrderId)
+      )
+    const matchingEvidence = existingDocuments.find(
+      (document) => document.url === evidenceUrl
+    )
+    if (!matchingEvidence && existingDocuments.length >= 20) {
+      return {
+        success: false,
+        error:
+          "Remove a supporting document before adding owner-acceptance evidence.",
+      }
+    }
+
+    const updateStatement = context.db
+      .update(projectChangeOrders)
+      .set({
+        status: "executed",
+        executedAt,
+        foxitStatus: "not_applicable",
+        acceptanceMethod: input.acceptanceMethod,
+        acceptanceEvidenceUrl: evidenceUrl,
+        acceptanceEvidenceLabel: evidenceLabel,
+        acceptanceNote,
+        acceptanceRecordedByName,
+        sageStatus:
+          missingCostCodeCount > 0 ? "mapping_required" : "ready",
+        updatedAt: now,
+      })
+      .where(
+        and(
+          eq(projectChangeOrders.id, changeOrderId),
+          eq(projectChangeOrders.projectId, projectId)
+        )
+      )
+    const historyStatement = context.db
+      .insert(projectChangeOrderHistory)
+      .values({
+        id: crypto.randomUUID(),
+        projectId,
+        changeOrderId,
+        eventType: "manual_owner_acceptance",
+        fromStatus: existing.status,
+        toStatus: "executed",
+        actorUserId: context.user.id,
+        actorName: acceptanceRecordedByName,
+        actorRole: context.user.role,
+        note: acceptanceNote,
+        metadataJson: JSON.stringify({
+          acceptanceMethod: input.acceptanceMethod,
+          approvalDate,
+          evidenceLabel,
+          amountCents: existing.amountCents,
+          missingSageMappingCount: missingCostCodeCount,
+        }),
+        createdAt: now,
+      })
+    if (matchingEvidence) {
+      await context.db.batch([updateStatement, historyStatement])
+    } else {
+      await context.db.batch([
+        updateStatement,
+        context.db.insert(projectChangeOrderDocuments).values({
+          id: crypto.randomUUID(),
+          projectId,
+          changeOrderId,
+          label: evidenceLabel,
+          url: evidenceUrl,
+          notes: `Owner acceptance evidence · ${acceptanceMethodLabel(input.acceptanceMethod)}`,
+          createdBy: context.user.id,
+          createdAt: now,
+        }),
+        historyStatement,
+      ])
+    }
+
+    const budget = await rebuildProjectContractBudget({
+      db: context.db,
+      projectId,
+      actorUserId: context.user.id,
+    })
+    if (!budget.success) {
+      return {
+        success: false,
+        error: `Change order accepted, but the G703 needs review: ${budget.error}`,
+      }
+    }
+    revalidateChangeOrderPaths(projectId)
+    return { success: true, id: changeOrderId }
+  } catch (error) {
+    return {
+      success: false,
+      error:
+        error instanceof Error
+          ? error.message
+          : "Failed to record change-order acceptance",
     }
   }
 }

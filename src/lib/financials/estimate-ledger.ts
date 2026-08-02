@@ -9,6 +9,17 @@ export const ESTIMATE_STATUSES = [
 
 export type EstimateStatus = (typeof ESTIMATE_STATUSES)[number]
 
+export const ESTIMATE_ACCEPTANCE_METHODS = [
+  "foxit",
+  "wet_signature",
+  "external_esignature",
+  "written_owner_approval",
+  "historical_executed_contract",
+] as const
+
+export type EstimateAcceptanceMethod =
+  (typeof ESTIMATE_ACCEPTANCE_METHODS)[number]
+
 export type EstimateLineCalculationInput = {
   readonly quantity: number
   readonly unitCostCents: number
@@ -127,6 +138,12 @@ export function calculateEstimateTotals(
 
 export function isEstimateStatus(value: string): value is EstimateStatus {
   return ESTIMATE_STATUSES.some((status) => status === value)
+}
+
+export function isEstimateAcceptanceMethod(
+  value: unknown
+): value is EstimateAcceptanceMethod {
+  return ESTIMATE_ACCEPTANCE_METHODS.some((method) => method === value)
 }
 
 export function estimateCanBeEdited(status: EstimateStatus): boolean {
