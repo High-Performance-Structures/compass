@@ -1,0 +1,942 @@
+"use server"
+
+import { and, asc, desc, eq, ne } from "drizzle-orm"
+import { revalidatePath } from "next/cache"
+
+import { getDb } from "@/db"
+import { projects, sageCostCodes } from "@/db/schema"
+import {
+  estimateTermsTemplates,
+  projectEstimateBasisDocuments,
+  projectEstimateLines,
+  projectEstimates,
+  sageTaxEntities,
+} from "@/db/schema-estimates"
+import { requireAuth, type AuthUser } from "@/lib/auth"
+import { getCloudflareContext } from "@/lib/db"
+import { rebuildProjectContractBudget } from "@/lib/financials/contract-budget-store"
+import {
+  calculateEstimateLine,
+  calculateEstimateTotals,
+  estimateCanBeEdited,
+  estimateSourceHash,
+  isEstimateStatus,
+  type EstimateLedgerLine,
+} from "@/lib/financials/estimate-ledger"
+import { requirePermission } from "@/lib/permissions"
+import { assertProjectAccess } from "@/lib/project-access"
+import { isInternalStaffRole } from "@/lib/user-roles"
+
+export type ProjectEstimateSummary = {
+  readonly id: string
+  readonly estimateNumber: string
+  readonly versionNumber: number
+  readonly title: string
+  readonly status: string
+  readonly estimateDate: string | null
+  readonly clientName: string | null
+  readonly sourceWorkbookUrl: string | null
+  readonly defaultTaxEntityId: string | null
+  readonly defaultTaxCode: string | null
+  readonly defaultTaxName: string | null
+  readonly defaultTaxRateBasisPoints: number
+  readonly termsTemplateId: string | null
+  readonly contractTerms: string | null
+  readonly directCostCents: number
+  readonly markupCents: number
+  readonly taxCents: number
+  readonly estimateTotalCents: number
+  readonly foxitStatus: string
+  readonly foxitEnvelopeId: string | null
+  readonly signaturePackageUrl: string | null
+  readonly signedAt: string | null
+  readonly acceptedAt: string | null
+  readonly sageStatus: string
+}
+
+export type ProjectEstimateLineItem = {
+  readonly id: string
+  readonly divisionCode: string
+  readonly divisionName: string
+  readonly costCode: string
+  readonly costCodeName: string
+  readonly description: string
+  readonly specifications: string | null
+  readonly quantity: number
+  readonly unit: string
+  readonly unitCostCents: number
+  readonly directCostCents: number
+  readonly markupRateBasisPoints: number
+  readonly markupCents: number
+  readonly taxable: boolean
+  readonly taxEntityId: string | null
+  readonly taxCode: string | null
+  readonly taxName: string | null
+  readonly taxRateBasisPoints: number
+  readonly taxCents: number
+  readonly lineTotalCents: number
+  readonly ownerVisible: boolean
+  readonly sortOrder: number
+}
+
+export type ProjectEstimateBasisItem = {
+  readonly id: string
+  readonly documentType: string
+  readonly title: string
+  readonly documentDate: string | null
+  readonly revision: string | null
+  readonly driveUrl: string | null
+  readonly notes: string | null
+  readonly sortOrder: number
+}
+
+export type ProjectEstimateCostCodeOption = {
+  readonly value: string
+  readonly label: string
+  readonly description: string
+  readonly divisionCode: string
+  readonly divisionName: string
+  readonly divisionLabel: string
+}
+
+export type ProjectEstimateTaxOption = {
+  readonly value: string
+  readonly label: string
+  readonly code: string
+  readonly rateBasisPoints: number
+}
+
+export type ProjectEstimateTermsOption = {
+  readonly value: string
+  readonly label: string
+  readonly body: string
+}
+
+export type ProjectEstimateWorkspace = {
+  readonly canEdit: boolean
+  readonly projectNumber: string | null
+  readonly projectName: string
+  readonly estimates: readonly ProjectEstimateSummary[]
+  readonly activeEstimate: ProjectEstimateSummary | null
+  readonly lines: readonly ProjectEstimateLineItem[]
+  readonly basisDocuments: readonly ProjectEstimateBasisItem[]
+  readonly costCodes: readonly ProjectEstimateCostCodeOption[]
+  readonly taxEntities: readonly ProjectEstimateTaxOption[]
+  readonly termsTemplates: readonly ProjectEstimateTermsOption[]
+}
+
+export type ProjectEstimateHeaderInput = {
+  readonly estimateNumber: string | null
+  readonly title: string | null
+  readonly estimateDate: string | null
+  readonly clientName: string | null
+  readonly sourceWorkbookUrl: string | null
+  readonly defaultTaxEntityId: string | null
+  readonly termsTemplateId: string | null
+  readonly contractTerms: string | null
+}
+
+export type ProjectEstimateLineInput = {
+  readonly costCode: string | null
+  readonly description: string | null
+  readonly specifications: string | null
+  readonly quantity: number | null
+  readonly unit: string | null
+  readonly unitCost: number | null
+  readonly markupPercent: number | null
+  readonly taxable: boolean
+  readonly taxEntityId: string | null
+  readonly ownerVisible: boolean
+}
+
+export type ProjectEstimateBasisInput = {
+  readonly documentType: string | null
+  readonly title: string | null
+  readonly documentDate: string | null
+  readonly revision: string | null
+  readonly driveUrl: string | null
+  readonly notes: string | null
+}
+
+export type ProjectEstimateActionResult =
+  | { readonly success: true; readonly id: string }
+  | { readonly success: false; readonly error: string }
+
+type CompassDb = ReturnType<typeof getDb>
+
+type EstimateAccess = {
+  readonly db: CompassDb
+  readonly user: AuthUser
+  readonly projectNumber: string | null
+  readonly projectName: string
+  readonly organizationId: string | null
+  readonly canEdit: boolean
+}
+
+async function estimateAccess(
+  projectId: string,
+  update: boolean
+): Promise<EstimateAccess> {
+  const user = await requireAuth()
+  requirePermission(user, "budget", update ? "update" : "read")
+  const { env } = await getCloudflareContext()
+  const db = getDb(env.DB)
+  const access = await assertProjectAccess(db, user, projectId)
+  const projectRows = await db
+    .select({
+      name: projects.name,
+      organizationId: projects.organizationId,
+    })
+    .from(projects)
+    .where(eq(projects.id, projectId))
+    .limit(1)
+  const project = projectRows[0]
+  if (!project) throw new Error("Project not found")
+  const canEdit = update && isInternalStaffRole(user.role)
+  if (update && !canEdit) {
+    throw new Error("Only authorized internal staff can edit estimates.")
+  }
+  return {
+    db,
+    user,
+    projectNumber: access.projectNumber,
+    projectName: project.name,
+    organizationId: project.organizationId,
+    canEdit,
+  }
+}
+
+function cleanText(value: string | null): string | null {
+  const cleaned = value?.trim() ?? ""
+  return cleaned.length > 0 ? cleaned : null
+}
+
+function requiredText(value: string | null, label: string): string {
+  const cleaned = cleanText(value)
+  if (!cleaned) throw new Error(`${label} is required.`)
+  return cleaned
+}
+
+function safeUrl(value: string | null): string | null {
+  const cleaned = cleanText(value)
+  if (!cleaned) return null
+  try {
+    const url = new URL(cleaned)
+    if (url.protocol !== "https:" && url.protocol !== "http:") return null
+    return url.toString()
+  } catch {
+    return null
+  }
+}
+
+function estimateSummary(
+  row: typeof projectEstimates.$inferSelect
+): ProjectEstimateSummary {
+  return {
+    id: row.id,
+    estimateNumber: row.estimateNumber,
+    versionNumber: row.versionNumber,
+    title: row.title,
+    status: row.status,
+    estimateDate: row.estimateDate,
+    clientName: row.clientName,
+    sourceWorkbookUrl: row.sourceWorkbookUrl,
+    defaultTaxEntityId: row.defaultTaxEntityId,
+    defaultTaxCode: row.defaultTaxCode,
+    defaultTaxName: row.defaultTaxName,
+    defaultTaxRateBasisPoints: row.defaultTaxRateBasisPoints,
+    termsTemplateId: row.termsTemplateId,
+    contractTerms: row.contractTerms,
+    directCostCents: row.directCostCents,
+    markupCents: row.markupCents,
+    taxCents: row.taxCents,
+    estimateTotalCents: row.estimateTotalCents,
+    foxitStatus: row.foxitStatus,
+    foxitEnvelopeId: row.foxitEnvelopeId,
+    signaturePackageUrl: row.signaturePackageUrl,
+    signedAt: row.signedAt,
+    acceptedAt: row.acceptedAt,
+    sageStatus: row.sageStatus,
+  }
+}
+
+function estimateLineItem(
+  row: typeof projectEstimateLines.$inferSelect
+): ProjectEstimateLineItem {
+  return {
+    id: row.id,
+    divisionCode: row.divisionCode,
+    divisionName: row.divisionName,
+    costCode: row.costCode,
+    costCodeName: row.costCodeName,
+    description: row.description,
+    specifications: row.specifications,
+    quantity: row.quantity,
+    unit: row.unit,
+    unitCostCents: row.unitCostCents,
+    directCostCents: row.directCostCents,
+    markupRateBasisPoints: row.markupRateBasisPoints,
+    markupCents: row.markupCents,
+    taxable: row.taxable,
+    taxEntityId: row.taxEntityId,
+    taxCode: row.taxCode,
+    taxName: row.taxName,
+    taxRateBasisPoints: row.taxRateBasisPoints,
+    taxCents: row.taxCents,
+    lineTotalCents: row.lineTotalCents,
+    ownerVisible: row.ownerVisible,
+    sortOrder: row.sortOrder,
+  }
+}
+
+function ledgerLine(
+  row: typeof projectEstimateLines.$inferSelect
+): EstimateLedgerLine {
+  return {
+    id: row.id,
+    divisionCode: row.divisionCode,
+    divisionName: row.divisionName,
+    costCode: row.costCode,
+    description: row.description,
+    directCostCents: row.directCostCents,
+    markupCents: row.markupCents,
+    taxCents: row.taxCents,
+    lineTotalCents: row.lineTotalCents,
+    ownerVisible: row.ownerVisible,
+    sortOrder: row.sortOrder,
+  }
+}
+
+function activeEstimate(
+  estimates: readonly ProjectEstimateSummary[],
+  estimateId?: string
+): ProjectEstimateSummary | null {
+  if (estimateId) {
+    return estimates.find((estimate) => estimate.id === estimateId) ?? null
+  }
+  return (
+    estimates.find((estimate) =>
+      ["draft", "internal_review", "signature_pending"].includes(
+        estimate.status
+      )
+    ) ??
+    estimates.find((estimate) => estimate.status === "accepted") ??
+    estimates[0] ??
+    null
+  )
+}
+
+function revalidateEstimate(projectId: string): void {
+  revalidatePath(`/dashboard/projects/${projectId}/estimate`)
+  revalidatePath(`/dashboard/projects/${projectId}/budget`)
+  revalidatePath(`/dashboard/projects/${projectId}/financials`)
+  revalidatePath(`/dashboard/projects/${projectId}/preview/owner`)
+}
+
+async function requireEditableEstimate(
+  db: CompassDb,
+  projectId: string,
+  estimateId: string
+): Promise<typeof projectEstimates.$inferSelect> {
+  const rows = await db
+    .select()
+    .from(projectEstimates)
+    .where(
+      and(
+        eq(projectEstimates.id, estimateId),
+        eq(projectEstimates.projectId, projectId)
+      )
+    )
+    .limit(1)
+  const estimate = rows[0]
+  if (!estimate || !isEstimateStatus(estimate.status)) {
+    throw new Error("Estimate not found.")
+  }
+  if (!estimateCanBeEdited(estimate.status)) {
+    throw new Error(
+      "This estimate is locked. Create a revision instead of changing accepted contract values."
+    )
+  }
+  return estimate
+}
+
+async function refreshEstimateTotals(
+  db: CompassDb,
+  estimateId: string,
+  now: string
+): Promise<void> {
+  const rows = await db
+    .select()
+    .from(projectEstimateLines)
+    .where(eq(projectEstimateLines.estimateId, estimateId))
+  const totals = calculateEstimateTotals(rows.map(ledgerLine))
+  await db
+    .update(projectEstimates)
+    .set({ ...totals, updatedAt: now })
+    .where(eq(projectEstimates.id, estimateId))
+    .run()
+}
+
+export async function getProjectEstimateWorkspace(
+  projectId: string,
+  estimateId?: string
+): Promise<ProjectEstimateWorkspace> {
+  const access = await estimateAccess(projectId, false)
+  const canEdit = isInternalStaffRole(access.user.role)
+  const estimateRows = await access.db
+    .select()
+    .from(projectEstimates)
+    .where(eq(projectEstimates.projectId, projectId))
+    .orderBy(
+      desc(projectEstimates.versionNumber),
+      desc(projectEstimates.updatedAt)
+    )
+  const estimates = estimateRows.map(estimateSummary)
+  const selected = activeEstimate(estimates, estimateId)
+  const [lineRows, basisRows, costCodeRows, taxRows, templateRows] =
+    await Promise.all([
+      selected
+        ? access.db
+            .select()
+            .from(projectEstimateLines)
+            .where(eq(projectEstimateLines.estimateId, selected.id))
+            .orderBy(
+              asc(projectEstimateLines.divisionCode),
+              asc(projectEstimateLines.sortOrder)
+            )
+        : Promise.resolve([]),
+      selected
+        ? access.db
+            .select()
+            .from(projectEstimateBasisDocuments)
+            .where(eq(projectEstimateBasisDocuments.estimateId, selected.id))
+            .orderBy(asc(projectEstimateBasisDocuments.sortOrder))
+        : Promise.resolve([]),
+      access.db
+        .select()
+        .from(sageCostCodes)
+        .where(eq(sageCostCodes.active, true))
+        .orderBy(
+          asc(sageCostCodes.divisionCode),
+          asc(sageCostCodes.displayLabel)
+        ),
+      access.db
+        .select()
+        .from(sageTaxEntities)
+        .where(eq(sageTaxEntities.active, true))
+        .orderBy(asc(sageTaxEntities.name)),
+      access.organizationId
+        ? access.db
+            .select()
+            .from(estimateTermsTemplates)
+            .where(
+              and(
+                eq(
+                  estimateTermsTemplates.organizationId,
+                  access.organizationId
+                ),
+                eq(estimateTermsTemplates.active, true)
+              )
+            )
+            .orderBy(asc(estimateTermsTemplates.name))
+        : Promise.resolve([]),
+    ])
+
+  return {
+    canEdit,
+    projectNumber: access.projectNumber,
+    projectName: access.projectName,
+    estimates,
+    activeEstimate: selected,
+    lines: lineRows.map(estimateLineItem),
+    basisDocuments: basisRows.map((row) => ({
+      id: row.id,
+      documentType: row.documentType,
+      title: row.title,
+      documentDate: row.documentDate,
+      revision: row.revision,
+      driveUrl: row.driveUrl,
+      notes: row.notes,
+      sortOrder: row.sortOrder,
+    })),
+    costCodes: costCodeRows.map((row) => ({
+      value: row.code,
+      label: row.displayLabel,
+      description: row.description,
+      divisionCode: row.divisionCode,
+      divisionName: row.divisionDescription,
+      divisionLabel: row.divisionDisplayLabel,
+    })),
+    taxEntities: taxRows.map((row) => ({
+      value: row.id,
+      label: `${row.code} · ${row.name}`,
+      code: row.code,
+      rateBasisPoints: row.rateBasisPoints,
+    })),
+    termsTemplates: templateRows.map((row) => ({
+      value: row.id,
+      label: row.name,
+      body: row.body,
+    })),
+  }
+}
+
+export async function createProjectEstimateDraft(
+  projectId: string
+): Promise<ProjectEstimateActionResult> {
+  try {
+    const access = await estimateAccess(projectId, true)
+    const prior = await access.db
+      .select({ versionNumber: projectEstimates.versionNumber })
+      .from(projectEstimates)
+      .where(eq(projectEstimates.projectId, projectId))
+      .orderBy(desc(projectEstimates.versionNumber))
+      .limit(1)
+    const versionNumber = (prior[0]?.versionNumber ?? 0) + 1
+    const estimateNumber = `${access.projectNumber ?? "PROJECT"}-00`
+    const id = crypto.randomUUID()
+    const now = new Date().toISOString()
+    await access.db.insert(projectEstimates).values({
+      id,
+      projectId,
+      estimateNumber,
+      versionNumber,
+      title: "CA22 Construction Estimate",
+      status: "draft",
+      estimateDate: now.slice(0, 10),
+      sourceSystem: "compass",
+      createdBy: access.user.id,
+      createdAt: now,
+      updatedAt: now,
+    })
+    revalidateEstimate(projectId)
+    return { success: true, id }
+  } catch (error) {
+    return {
+      success: false,
+      error:
+        error instanceof Error ? error.message : "Unable to create estimate.",
+    }
+  }
+}
+
+export async function updateProjectEstimateHeader(
+  projectId: string,
+  estimateId: string,
+  input: ProjectEstimateHeaderInput
+): Promise<ProjectEstimateActionResult> {
+  try {
+    const access = await estimateAccess(projectId, true)
+    await requireEditableEstimate(access.db, projectId, estimateId)
+    const taxEntityRows = input.defaultTaxEntityId
+      ? await access.db
+          .select()
+          .from(sageTaxEntities)
+          .where(eq(sageTaxEntities.id, input.defaultTaxEntityId))
+          .limit(1)
+      : []
+    const taxEntity = taxEntityRows[0]
+    const termsTemplateRows = input.termsTemplateId
+      ? await access.db
+          .select()
+          .from(estimateTermsTemplates)
+          .where(eq(estimateTermsTemplates.id, input.termsTemplateId))
+          .limit(1)
+      : []
+    const termsTemplate = termsTemplateRows[0]
+    const contractTerms =
+      cleanText(input.contractTerms) ?? termsTemplate?.body ?? null
+    await access.db
+      .update(projectEstimates)
+      .set({
+        estimateNumber: requiredText(input.estimateNumber, "Estimate number"),
+        title: requiredText(input.title, "Estimate title"),
+        estimateDate: cleanText(input.estimateDate),
+        clientName: cleanText(input.clientName),
+        sourceWorkbookUrl: safeUrl(input.sourceWorkbookUrl),
+        defaultTaxEntityId: taxEntity?.id ?? null,
+        defaultTaxCode: taxEntity?.code ?? null,
+        defaultTaxName: taxEntity?.name ?? null,
+        defaultTaxRateBasisPoints: taxEntity?.rateBasisPoints ?? 0,
+        termsTemplateId: termsTemplate?.id ?? null,
+        contractTerms,
+        updatedAt: new Date().toISOString(),
+      })
+      .where(eq(projectEstimates.id, estimateId))
+      .run()
+    revalidateEstimate(projectId)
+    return { success: true, id: estimateId }
+  } catch (error) {
+    return {
+      success: false,
+      error:
+        error instanceof Error ? error.message : "Unable to save estimate.",
+    }
+  }
+}
+
+export async function saveProjectEstimateLine(
+  projectId: string,
+  estimateId: string,
+  lineId: string | null,
+  input: ProjectEstimateLineInput
+): Promise<ProjectEstimateActionResult> {
+  try {
+    const access = await estimateAccess(projectId, true)
+    const estimate = await requireEditableEstimate(
+      access.db,
+      projectId,
+      estimateId
+    )
+    const costCode = requiredText(input.costCode, "Cost code")
+    const costRows = await access.db
+      .select()
+      .from(sageCostCodes)
+      .where(and(eq(sageCostCodes.code, costCode), eq(sageCostCodes.active, true)))
+      .limit(1)
+    const cost = costRows[0]
+    if (!cost) throw new Error("Choose an active Sage cost code.")
+    const taxEntityId = cleanText(input.taxEntityId) ?? estimate.defaultTaxEntityId
+    const taxRows = taxEntityId
+      ? await access.db
+          .select()
+          .from(sageTaxEntities)
+          .where(and(eq(sageTaxEntities.id, taxEntityId), eq(sageTaxEntities.active, true)))
+          .limit(1)
+      : []
+    const tax = taxRows[0]
+    if (input.taxable && !tax) {
+      throw new Error("Choose the Sage tax entity for a taxable line.")
+    }
+    const quantity = input.quantity ?? 1
+    const unitCostCents = Math.round((input.unitCost ?? 0) * 100)
+    const markupRateBasisPoints = Math.round((input.markupPercent ?? 0) * 100)
+    const calculation = calculateEstimateLine({
+      quantity,
+      unitCostCents,
+      markupRateBasisPoints,
+      taxable: input.taxable,
+      taxRateBasisPoints: tax?.rateBasisPoints ?? 0,
+    })
+    if (calculation.lineTotalCents <= 0) {
+      throw new Error("Enter a quantity and unit cost greater than zero.")
+    }
+    const now = new Date().toISOString()
+    const id = lineId ?? crypto.randomUUID()
+    const prior = await access.db
+      .select({ sortOrder: projectEstimateLines.sortOrder })
+      .from(projectEstimateLines)
+      .where(eq(projectEstimateLines.estimateId, estimateId))
+      .orderBy(desc(projectEstimateLines.sortOrder))
+      .limit(1)
+    const values = {
+      divisionCode: cost.divisionCode,
+      divisionName: cost.divisionDescription,
+      costCode: cost.code,
+      costCodeName: cost.description,
+      description: requiredText(input.description, "Description"),
+      specifications: cleanText(input.specifications),
+      quantity,
+      unit: cleanText(input.unit) ?? "LS",
+      unitCostCents,
+      ...calculation,
+      markupRateBasisPoints,
+      taxable: input.taxable,
+      taxEntityId: tax?.id ?? null,
+      taxCode: tax?.code ?? null,
+      taxName: tax?.name ?? null,
+      taxRateBasisPoints: tax?.rateBasisPoints ?? 0,
+      ownerVisible: input.ownerVisible,
+      updatedAt: now,
+    }
+    if (lineId) {
+      const existing = await access.db
+        .select({ id: projectEstimateLines.id })
+        .from(projectEstimateLines)
+        .where(
+          and(
+            eq(projectEstimateLines.id, lineId),
+            eq(projectEstimateLines.estimateId, estimateId)
+          )
+        )
+        .limit(1)
+      if (!existing[0]) throw new Error("Estimate line not found.")
+      await access.db
+        .update(projectEstimateLines)
+        .set(values)
+        .where(eq(projectEstimateLines.id, lineId))
+        .run()
+    } else {
+      await access.db.insert(projectEstimateLines).values({
+        id,
+        projectId,
+        estimateId,
+        ...values,
+        sortOrder: (prior[0]?.sortOrder ?? 0) + 1,
+        createdAt: now,
+      })
+    }
+    await refreshEstimateTotals(access.db, estimateId, now)
+    revalidateEstimate(projectId)
+    return { success: true, id }
+  } catch (error) {
+    return {
+      success: false,
+      error:
+        error instanceof Error ? error.message : "Unable to save estimate line.",
+    }
+  }
+}
+
+export async function deleteProjectEstimateLine(
+  projectId: string,
+  estimateId: string,
+  lineId: string
+): Promise<ProjectEstimateActionResult> {
+  try {
+    const access = await estimateAccess(projectId, true)
+    await requireEditableEstimate(access.db, projectId, estimateId)
+    await access.db
+      .delete(projectEstimateLines)
+      .where(
+        and(
+          eq(projectEstimateLines.id, lineId),
+          eq(projectEstimateLines.estimateId, estimateId)
+        )
+      )
+      .run()
+    await refreshEstimateTotals(access.db, estimateId, new Date().toISOString())
+    revalidateEstimate(projectId)
+    return { success: true, id: lineId }
+  } catch (error) {
+    return {
+      success: false,
+      error:
+        error instanceof Error ? error.message : "Unable to delete estimate line.",
+    }
+  }
+}
+
+export async function addProjectEstimateBasisDocument(
+  projectId: string,
+  estimateId: string,
+  input: ProjectEstimateBasisInput
+): Promise<ProjectEstimateActionResult> {
+  try {
+    const access = await estimateAccess(projectId, true)
+    await requireEditableEstimate(access.db, projectId, estimateId)
+    const prior = await access.db
+      .select({ sortOrder: projectEstimateBasisDocuments.sortOrder })
+      .from(projectEstimateBasisDocuments)
+      .where(eq(projectEstimateBasisDocuments.estimateId, estimateId))
+      .orderBy(desc(projectEstimateBasisDocuments.sortOrder))
+      .limit(1)
+    const id = crypto.randomUUID()
+    const now = new Date().toISOString()
+    await access.db.insert(projectEstimateBasisDocuments).values({
+      id,
+      projectId,
+      estimateId,
+      documentType: requiredText(input.documentType, "Document type"),
+      title: requiredText(input.title, "Document title"),
+      documentDate: cleanText(input.documentDate),
+      revision: cleanText(input.revision),
+      driveUrl: safeUrl(input.driveUrl),
+      notes: cleanText(input.notes),
+      sortOrder: (prior[0]?.sortOrder ?? 0) + 1,
+      createdAt: now,
+      updatedAt: now,
+    })
+    revalidateEstimate(projectId)
+    return { success: true, id }
+  } catch (error) {
+    return {
+      success: false,
+      error:
+        error instanceof Error ? error.message : "Unable to add basis document.",
+    }
+  }
+}
+
+export async function prepareProjectEstimateForFoxit(
+  projectId: string,
+  estimateId: string
+): Promise<ProjectEstimateActionResult> {
+  try {
+    const access = await estimateAccess(projectId, true)
+    const estimate = await requireEditableEstimate(
+      access.db,
+      projectId,
+      estimateId
+    )
+    const lines = await access.db
+      .select()
+      .from(projectEstimateLines)
+      .where(eq(projectEstimateLines.estimateId, estimateId))
+      .orderBy(asc(projectEstimateLines.sortOrder))
+    const basisDocuments = await access.db
+      .select()
+      .from(projectEstimateBasisDocuments)
+      .where(eq(projectEstimateBasisDocuments.estimateId, estimateId))
+      .orderBy(asc(projectEstimateBasisDocuments.sortOrder))
+    if (lines.length === 0) throw new Error("Add estimate lines before signature.")
+    if (!cleanText(estimate.contractTerms)) {
+      throw new Error("Add the contract terms before signature.")
+    }
+    const sourceHash = await estimateSourceHash({
+      estimateId,
+      versionNumber: estimate.versionNumber,
+      title: estimate.title,
+      contractTerms: estimate.contractTerms,
+      lines: lines.map((line) => ({
+        id: line.id,
+        divisionCode: line.divisionCode,
+        costCode: line.costCode,
+        description: line.description,
+        specifications: line.specifications,
+        quantity: line.quantity,
+        unit: line.unit,
+        unitCostCents: line.unitCostCents,
+        markupRateBasisPoints: line.markupRateBasisPoints,
+        taxable: line.taxable,
+        taxCode: line.taxCode,
+        taxRateBasisPoints: line.taxRateBasisPoints,
+        lineTotalCents: line.lineTotalCents,
+        ownerVisible: line.ownerVisible,
+        sortOrder: line.sortOrder,
+      })),
+      basisDocuments: basisDocuments.map((document) => ({
+        id: document.id,
+        documentType: document.documentType,
+        title: document.title,
+        documentDate: document.documentDate,
+        revision: document.revision,
+        driveFileId: document.driveFileId,
+        driveUrl: document.driveUrl,
+        notes: document.notes,
+        sortOrder: document.sortOrder,
+      })),
+    })
+    const now = new Date().toISOString()
+    await access.db
+      .update(projectEstimates)
+      .set({
+        status: "signature_pending",
+        foxitStatus: "handoff_ready",
+        signatureRequestedAt: now,
+        sourceHash,
+        updatedAt: now,
+      })
+      .where(eq(projectEstimates.id, estimateId))
+      .run()
+    revalidateEstimate(projectId)
+    return { success: true, id: estimateId }
+  } catch (error) {
+    return {
+      success: false,
+      error:
+        error instanceof Error ? error.message : "Unable to prepare signature.",
+    }
+  }
+}
+
+export async function recordSignedProjectEstimate(
+  projectId: string,
+  estimateId: string,
+  input: {
+    readonly signedDocumentUrl: string | null
+    readonly foxitEnvelopeId: string | null
+  }
+): Promise<ProjectEstimateActionResult> {
+  try {
+    const access = await estimateAccess(projectId, true)
+    const rows = await access.db
+      .select()
+      .from(projectEstimates)
+      .where(
+        and(
+          eq(projectEstimates.id, estimateId),
+          eq(projectEstimates.projectId, projectId)
+        )
+      )
+      .limit(1)
+    const estimate = rows[0]
+    if (!estimate || estimate.status !== "signature_pending") {
+      throw new Error("Only a signature-pending estimate can be accepted.")
+    }
+    const signaturePackageUrl = safeUrl(input.signedDocumentUrl)
+    if (!signaturePackageUrl) {
+      throw new Error("Add the signed Foxit document link before acceptance.")
+    }
+    const now = new Date().toISOString()
+    // A project has one accepted contractual baseline. Preserve prior versions
+    // for the audit trail while ensuring downstream budgets resolve unambiguously.
+    await access.db
+      .update(projectEstimates)
+      .set({ status: "superseded", updatedAt: now })
+      .where(
+        and(
+          eq(projectEstimates.projectId, projectId),
+          eq(projectEstimates.status, "accepted"),
+          ne(projectEstimates.id, estimateId)
+        )
+      )
+      .run()
+    await access.db
+      .update(projectEstimates)
+      .set({
+        status: "accepted",
+        foxitStatus: "completed",
+        foxitEnvelopeId: cleanText(input.foxitEnvelopeId),
+        signaturePackageUrl,
+        signedAt: now,
+        acceptedAt: now,
+        acceptedBy: access.user.id,
+        sageStatus: "ready",
+        updatedAt: now,
+      })
+      .where(eq(projectEstimates.id, estimateId))
+      .run()
+    const budget = await rebuildProjectContractBudget({
+      db: access.db,
+      projectId,
+      actorUserId: access.user.id,
+    })
+    if (!budget.success) {
+      return {
+        success: false,
+        error: `Estimate accepted, but the contract budget needs review: ${budget.error}`,
+      }
+    }
+    revalidateEstimate(projectId)
+    return { success: true, id: estimateId }
+  } catch (error) {
+    return {
+      success: false,
+      error:
+        error instanceof Error ? error.message : "Unable to accept estimate.",
+    }
+  }
+}
+
+export async function rebuildCurrentProjectContractBudget(
+  projectId: string
+): Promise<ProjectEstimateActionResult> {
+  try {
+    const access = await estimateAccess(projectId, true)
+    const result = await rebuildProjectContractBudget({
+      db: access.db,
+      projectId,
+      actorUserId: access.user.id,
+    })
+    if (!result.success) return result
+    revalidateEstimate(projectId)
+    return { success: true, id: result.revisionId }
+  } catch (error) {
+    return {
+      success: false,
+      error:
+        error instanceof Error ? error.message : "Unable to rebuild budget.",
+    }
+  }
+}

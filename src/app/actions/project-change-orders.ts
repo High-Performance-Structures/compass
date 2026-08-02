@@ -37,6 +37,7 @@ import {
   type ChangeOrderRequesterType,
 } from "@/lib/change-orders/access"
 import { getCloudflareContext } from "@/lib/db"
+import { rebuildProjectContractBudget } from "@/lib/financials/contract-budget-store"
 import {
   canFeature,
   requireFeaturePermission,
@@ -877,6 +878,39 @@ export async function updateProjectChangeOrder(
     const scheduleImpactDays = contentAllowed
       ? cleanScheduleImpactDays(input.scheduleImpactDays)
       : existing.scheduleImpactDays
+    if (input.status === "executed") {
+      const executionLines =
+        lines ??
+        (await context.db
+          .select({
+            costCode: projectChangeOrderLines.costCode,
+            amountCents: projectChangeOrderLines.amountCents,
+          })
+          .from(projectChangeOrderLines)
+          .where(
+            and(
+              eq(projectChangeOrderLines.changeOrderId, changeOrderId),
+              eq(projectChangeOrderLines.projectId, projectId)
+            )
+          ))
+      if (executionLines.length === 0) {
+        return {
+          success: false,
+          error: "Add at least one cost-coded line before execution.",
+        }
+      }
+      if (
+        executionLines.some(
+          (line) => !line.costCode || line.amountCents === null
+        )
+      ) {
+        return {
+          success: false,
+          error:
+            "Every executed change-order line needs a cost code and amount so it can revise the G703.",
+        }
+      }
+    }
     const updateStatement = context.db
       .update(projectChangeOrders)
       .set({
@@ -1014,6 +1048,13 @@ export async function updateProjectChangeOrder(
           historyStatement,
         ])
       }
+    }
+    if (statusChanged && input.status === "executed") {
+      await rebuildProjectContractBudget({
+        db: context.db,
+        projectId,
+        actorUserId: context.user.id,
+      })
     }
     revalidateChangeOrderPaths(projectId)
     return { success: true, id: changeOrderId }

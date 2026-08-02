@@ -1,6 +1,6 @@
 "use server"
 
-import { and, asc, eq, inArray } from "drizzle-orm"
+import { and, asc, desc, eq, inArray, ne } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
 import { getDb } from "@/db"
@@ -11,6 +11,10 @@ import {
   projects,
   sageCostCodes,
 } from "@/db/schema"
+import {
+  projectContractBudgetLines,
+  projectContractBudgetRevisions,
+} from "@/db/schema-estimates"
 import { requireAuth } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
 import { requireOrg } from "@/lib/org-scope"
@@ -18,6 +22,7 @@ import { requirePermission } from "@/lib/permissions"
 
 export type ProjectFinancialWorkflowItem = {
   readonly id: string
+  readonly sourceRecordId: string | null
   readonly type: "vendor_bill" | "owner_pay_application" | "rfq"
   readonly number: string | null
   readonly title: string
@@ -74,6 +79,42 @@ export type ProjectFinancialCostCodeOption = {
 export type ProjectFinancialCodingOptions = {
   readonly phases: readonly ProjectFinancialPhaseOption[]
   readonly costCodes: readonly ProjectFinancialCostCodeOption[]
+}
+
+export type ProjectOwnerPayApplicationLine = {
+  readonly id: string
+  readonly costCode: string
+  readonly divisionCode: string
+  readonly divisionName: string
+  readonly description: string
+  readonly originalEstimate: number
+  readonly totalChanges: number
+  readonly adjustedEstimate: number
+  readonly previousWorkCompleted: number
+  readonly currentWorkCompleted: number
+  readonly storedMaterials: number
+  readonly totalCompletedStored: number
+  readonly retainageHeld: number
+  readonly balanceToFinish: number
+  readonly ownerVisible: boolean
+}
+
+export type ProjectOwnerPayApplicationDraft = {
+  readonly id: string
+  readonly applicationNumber: string
+  readonly periodTo: string | null
+  readonly status: string
+  readonly budgetRevisionId: string | null
+  readonly originalContractSum: number
+  readonly netChanges: number
+  readonly contractSumToDate: number
+  readonly totalCompletedStoredToDate: number
+  readonly retainageHeld: number
+  readonly totalEarnedLessRetainage: number
+  readonly previousCertificates: number
+  readonly currentPaymentDue: number
+  readonly balanceToFinish: number
+  readonly lines: readonly ProjectOwnerPayApplicationLine[]
 }
 
 type ProjectFinancialWorkflowActionResult =
@@ -234,6 +275,7 @@ export async function getProjectFinancialWorkflowItems(
 
   return rows.map((row) => ({
     id: row.id,
+    sourceRecordId: row.sourceRecordId,
     type:
       row.sourceRecordType === "vendor_bill" ||
       row.sourceRecordType === "owner_pay_application"
@@ -255,6 +297,342 @@ export async function getProjectFinancialWorkflowItems(
         : null),
     updatedAt: row.updatedAt,
   }))
+}
+
+export async function getProjectOwnerPayApplicationDraft(
+  projectId: string,
+  applicationId: string
+): Promise<ProjectOwnerPayApplicationDraft | null> {
+  const { db } = await verifyProjectReadAccess(projectId)
+  const applicationRows = await db
+    .select()
+    .from(projectBudgetApplications)
+    .where(
+      and(
+        eq(projectBudgetApplications.id, applicationId),
+        eq(projectBudgetApplications.projectId, projectId),
+        eq(projectBudgetApplications.sourceSystem, "compass_contract_budget")
+      )
+    )
+    .limit(1)
+  const application = applicationRows[0]
+  if (!application) return null
+  const lines = await db
+    .select()
+    .from(projectBudgetLines)
+    .where(
+      and(
+        eq(projectBudgetLines.projectId, projectId),
+        eq(projectBudgetLines.applicationId, applicationId)
+      )
+    )
+    .orderBy(
+      asc(projectBudgetLines.csiDivision),
+      asc(projectBudgetLines.sortOrder)
+    )
+
+  return {
+    id: application.id,
+    applicationNumber: application.applicationNumber,
+    periodTo: application.periodTo,
+    status: application.status,
+    budgetRevisionId: application.budgetRevisionId,
+    originalContractSum: application.originalContractSum,
+    netChanges: application.netChanges,
+    contractSumToDate: application.contractSumToDate,
+    totalCompletedStoredToDate: application.totalCompletedStoredToDate,
+    retainageHeld: application.retainageHeld,
+    totalEarnedLessRetainage: application.totalEarnedLessRetainage,
+    previousCertificates: application.previousCertificates,
+    currentPaymentDue: application.currentPaymentDue,
+    balanceToFinish: application.balanceToFinish,
+    lines: lines.map((line) => ({
+      id: line.id,
+      costCode: line.costCode,
+      divisionCode: line.csiDivision,
+      divisionName: line.csiDivisionName,
+      description: line.description,
+      originalEstimate: line.originalEstimate,
+      totalChanges: line.totalChanges,
+      adjustedEstimate: line.adjustedEstimate,
+      previousWorkCompleted: line.previousWorkCompleted,
+      currentWorkCompleted: line.currentWorkCompleted,
+      storedMaterials: line.storedMaterials,
+      totalCompletedStored: line.totalCosts,
+      retainageHeld: line.retainageHeld,
+      balanceToFinish: line.balanceToFinish,
+      ownerVisible: line.ownerVisible,
+    })),
+  }
+}
+
+function nonnegativeAmount(value: number | null, label: string): number {
+  if (value === null || !Number.isFinite(value) || value < 0) {
+    throw new Error(`${label} must be zero or greater.`)
+  }
+  return Math.round(value * 100) / 100
+}
+
+async function refreshOwnerPayApplication(
+  db: ReturnType<typeof getDb>,
+  projectId: string,
+  applicationId: string,
+  now: string
+): Promise<void> {
+  const applicationRows = await db
+    .select()
+    .from(projectBudgetApplications)
+    .where(eq(projectBudgetApplications.id, applicationId))
+    .limit(1)
+  const application = applicationRows[0]
+  if (!application) throw new Error("Pay application not found.")
+  const lines = await db
+    .select()
+    .from(projectBudgetLines)
+    .where(eq(projectBudgetLines.applicationId, applicationId))
+  const totalCompletedStoredToDate = lines.reduce(
+    (sum, line) => sum + line.totalCosts,
+    0
+  )
+  const retainageHeld = lines.reduce(
+    (sum, line) => sum + line.retainageHeld,
+    0
+  )
+  const totalEarnedLessRetainage =
+    Math.round((totalCompletedStoredToDate - retainageHeld) * 100) / 100
+  const currentPaymentDue =
+    Math.round(
+      (totalEarnedLessRetainage - application.previousCertificates) * 100
+    ) / 100
+  const balanceToFinish =
+    Math.round(
+      (application.contractSumToDate - totalEarnedLessRetainage) * 100
+    ) / 100
+  await db
+    .update(projectBudgetApplications)
+    .set({
+      totalCompletedStoredToDate,
+      retainageHeld,
+      totalEarnedLessRetainage,
+      currentPaymentDue,
+      balanceToFinish,
+      updatedAt: now,
+    })
+    .where(eq(projectBudgetApplications.id, applicationId))
+    .run()
+  await db
+    .update(projectOperations)
+    .set({ amount: currentPaymentDue, updatedAt: now })
+    .where(
+      and(
+        eq(projectOperations.projectId, projectId),
+        eq(projectOperations.sourceRecordId, applicationId)
+      )
+    )
+    .run()
+}
+
+export async function updateProjectOwnerPayApplicationLine(
+  projectId: string,
+  applicationId: string,
+  lineId: string,
+  input: {
+    readonly currentWorkCompleted: number | null
+    readonly storedMaterials: number | null
+    readonly retainagePercent: number | null
+    readonly ownerVisible: boolean
+  }
+): Promise<ProjectFinancialWorkflowActionResult> {
+  try {
+    const { db } = await verifyProjectUpdateAccess(projectId)
+    const applicationRows = await db
+      .select({ status: projectBudgetApplications.status })
+      .from(projectBudgetApplications)
+      .where(
+        and(
+          eq(projectBudgetApplications.id, applicationId),
+          eq(projectBudgetApplications.projectId, projectId),
+          eq(projectBudgetApplications.sourceSystem, "compass_contract_budget")
+        )
+      )
+      .limit(1)
+    if (applicationRows[0]?.status !== "draft") {
+      throw new Error("Only a draft pay application can be edited.")
+    }
+    const lineRows = await db
+      .select()
+      .from(projectBudgetLines)
+      .where(
+        and(
+          eq(projectBudgetLines.id, lineId),
+          eq(projectBudgetLines.applicationId, applicationId),
+          eq(projectBudgetLines.projectId, projectId)
+        )
+      )
+      .limit(1)
+    const line = lineRows[0]
+    if (!line) throw new Error("Pay application line not found.")
+    const currentWorkCompleted = nonnegativeAmount(
+      input.currentWorkCompleted,
+      "Current work"
+    )
+    const storedMaterials = nonnegativeAmount(
+      input.storedMaterials,
+      "Stored materials"
+    )
+    const retainagePercent = nonnegativeAmount(
+      input.retainagePercent,
+      "Retainage"
+    )
+    if (retainagePercent > 100) {
+      throw new Error("Retainage cannot exceed 100%.")
+    }
+    const totalCompletedStored =
+      line.previousWorkCompleted + currentWorkCompleted + storedMaterials
+    if (totalCompletedStored > line.adjustedEstimate + 0.01) {
+      throw new Error(
+        "Completed work and stored materials cannot exceed the adjusted budget line."
+      )
+    }
+    const retainageHeld =
+      Math.round(totalCompletedStored * retainagePercent) / 100
+    const now = new Date().toISOString()
+    await db
+      .update(projectBudgetLines)
+      .set({
+        currentWorkCompleted,
+        storedMaterials,
+        priorCosts: line.previousWorkCompleted,
+        currentCosts: currentWorkCompleted + storedMaterials,
+        totalCosts: totalCompletedStored,
+        percentComplete:
+          line.adjustedEstimate > 0
+            ? Math.round((totalCompletedStored / line.adjustedEstimate) * 1_000) /
+              10
+            : 0,
+        balanceToFinish: line.adjustedEstimate - totalCompletedStored,
+        retainageHeld,
+        ownerVisible: input.ownerVisible,
+        updatedAt: now,
+      })
+      .where(eq(projectBudgetLines.id, lineId))
+      .run()
+    await refreshOwnerPayApplication(db, projectId, applicationId, now)
+    revalidateFinancialPaths(projectId)
+    return { success: true, id: lineId }
+  } catch (error) {
+    return {
+      success: false,
+      error:
+        error instanceof Error ? error.message : "Unable to update pay application.",
+    }
+  }
+}
+
+export async function markProjectOwnerPayApplicationReady(
+  projectId: string,
+  applicationId: string
+): Promise<ProjectFinancialWorkflowActionResult> {
+  try {
+    const { db } = await verifyProjectUpdateAccess(projectId)
+    const rows = await db
+      .select()
+      .from(projectBudgetApplications)
+      .where(
+        and(
+          eq(projectBudgetApplications.id, applicationId),
+          eq(projectBudgetApplications.projectId, projectId),
+          eq(projectBudgetApplications.status, "draft")
+        )
+      )
+      .limit(1)
+    const application = rows[0]
+    if (!application) throw new Error("Draft pay application not found.")
+    if (application.currentPaymentDue <= 0) {
+      throw new Error("Enter current work or stored materials before Sage review.")
+    }
+    const lines = await db
+      .select()
+      .from(projectBudgetLines)
+      .where(eq(projectBudgetLines.applicationId, applicationId))
+      .orderBy(
+        asc(projectBudgetLines.csiDivision),
+        asc(projectBudgetLines.sortOrder)
+      )
+    if (lines.length === 0) {
+      throw new Error("The pay application has no G703 lines.")
+    }
+    const now = new Date().toISOString()
+    const sageReviewPayload = JSON.stringify({
+      schemaVersion: 1,
+      source: "compass_owner_pay_application",
+      writeApprovalRequired: true,
+      applicationId,
+      applicationNumber: application.applicationNumber,
+      periodTo: application.periodTo,
+      budgetRevisionId: application.budgetRevisionId,
+      g702: {
+        originalContractSum: application.originalContractSum,
+        netChanges: application.netChanges,
+        contractSumToDate: application.contractSumToDate,
+        totalCompletedStoredToDate: application.totalCompletedStoredToDate,
+        retainageHeld: application.retainageHeld,
+        totalEarnedLessRetainage: application.totalEarnedLessRetainage,
+        previousCertificates: application.previousCertificates,
+        currentPaymentDue: application.currentPaymentDue,
+        balanceToFinish: application.balanceToFinish,
+      },
+      g703: lines.map((line) => ({
+        sourceLineId: line.id,
+        budgetRevisionLineId: line.budgetRevisionLineId,
+        divisionCode: line.csiDivision,
+        costCode: line.costCode,
+        description: line.description,
+        originalEstimate: line.originalEstimate,
+        totalChanges: line.totalChanges,
+        adjustedEstimate: line.adjustedEstimate,
+        previousWorkCompleted: line.previousWorkCompleted,
+        currentWorkCompleted: line.currentWorkCompleted,
+        storedMaterials: line.storedMaterials,
+        totalCompletedStored: line.totalCosts,
+        retainageHeld: line.retainageHeld,
+        balanceToFinish: line.balanceToFinish,
+      })),
+    })
+    await db
+      .update(projectBudgetApplications)
+      .set({
+        status: "internal_review",
+        syncStatus: "needs_review",
+        updatedAt: now,
+      })
+      .where(eq(projectBudgetApplications.id, applicationId))
+      .run()
+    await db
+      .update(projectOperations)
+      .set({
+        status: "internal_review",
+        sageWriteStatus: "draft_ready",
+        sagePayloadJson: sageReviewPayload,
+        syncStatus: "needs_review",
+        updatedAt: now,
+      })
+      .where(
+        and(
+          eq(projectOperations.projectId, projectId),
+          eq(projectOperations.sourceRecordId, applicationId)
+        )
+      )
+      .run()
+    revalidateFinancialPaths(projectId)
+    return { success: true, id: applicationId }
+  } catch (error) {
+    return {
+      success: false,
+      error:
+        error instanceof Error ? error.message : "Unable to stage Sage review.",
+    }
+  }
 }
 
 export async function getProjectFinancialCodingOptions(
@@ -385,7 +763,7 @@ export async function createProjectVendorBillDraft(
         description,
       }),
       syncDirection: "write",
-      syncStatus: "pending_sage",
+      syncStatus: "compass_only",
       createdAt: now,
       updatedAt: now,
     })
@@ -469,17 +847,175 @@ export async function createProjectOwnerPayApplicationDraft(
     const { db, project } = await verifyProjectUpdateAccess(projectId)
     const now = new Date().toISOString()
     const id = crypto.randomUUID()
+    const applicationId = crypto.randomUUID()
     const recordNumber =
       cleanText(input.applicationNumber) ??
       (await nextRecordNumber(db, projectId, "owner_pay_application"))
     const periodTo = cleanText(input.periodTo)
-    const amount = finiteAmount(input.amount)
+    const revisionRows = await db
+      .select()
+      .from(projectContractBudgetRevisions)
+      .where(
+        and(
+          eq(projectContractBudgetRevisions.projectId, projectId),
+          eq(projectContractBudgetRevisions.status, "current")
+        )
+      )
+      .orderBy(desc(projectContractBudgetRevisions.revisionNumber))
+      .limit(1)
+    const revision = revisionRows[0]
+    if (!revision) {
+      throw new Error(
+        "Accept the signed estimate and build the contract budget before creating a pay application."
+      )
+    }
+    const revisionLines = await db
+      .select()
+      .from(projectContractBudgetLines)
+      .where(eq(projectContractBudgetLines.revisionId, revision.id))
+      .orderBy(
+        asc(projectContractBudgetLines.divisionCode),
+        asc(projectContractBudgetLines.sortOrder)
+      )
+    if (revisionLines.length === 0) {
+      throw new Error("The current contract budget has no lines.")
+    }
+    const duplicateRows = await db
+      .select({ id: projectBudgetApplications.id })
+      .from(projectBudgetApplications)
+      .where(
+        and(
+          eq(projectBudgetApplications.projectId, projectId),
+          eq(projectBudgetApplications.applicationNumber, recordNumber)
+        )
+      )
+      .limit(1)
+    if (duplicateRows[0]) {
+      throw new Error("That pay application number already exists.")
+    }
+    const priorApplications = await db
+      .select()
+      .from(projectBudgetApplications)
+      .where(
+        and(
+          eq(projectBudgetApplications.projectId, projectId),
+          ne(projectBudgetApplications.status, "budget_current"),
+          ne(projectBudgetApplications.status, "budget_superseded"),
+          ne(projectBudgetApplications.status, "building")
+        )
+      )
+      .orderBy(
+        desc(projectBudgetApplications.periodTo),
+        desc(projectBudgetApplications.createdAt)
+      )
+      .limit(1)
+    const priorApplication = priorApplications[0]
+    const priorLines = priorApplication
+      ? await db
+          .select()
+          .from(projectBudgetLines)
+          .where(eq(projectBudgetLines.applicationId, priorApplication.id))
+      : []
+    const priorByCostCode = new Map(
+      priorLines.map((line) => [
+        line.costCode,
+        {
+          totalCompletedStored: line.totalCosts,
+          retainageHeld: line.retainageHeld,
+        },
+      ])
+    )
+    const originalContractSum = revision.originalContractSumCents / 100
+    const netChanges = revision.approvedChangesCents / 100
+    const contractSumToDate = revision.revisedContractSumCents / 100
+    const previousCertificates =
+      priorApplication?.totalEarnedLessRetainage ?? 0
+    const priorCompletedStored =
+      priorApplication?.totalCompletedStoredToDate ?? 0
+    const priorRetainage = priorApplication?.retainageHeld ?? 0
+
+    await db.insert(projectBudgetApplications).values({
+      id: applicationId,
+      projectId,
+      sourceSystem: "compass_contract_budget",
+      sourceRecordId: revision.id,
+      applicationNumber: recordNumber,
+      periodTo,
+      status: "building",
+      originalContractSum,
+      netChanges,
+      contractSumToDate,
+      totalCompletedStoredToDate: priorCompletedStored,
+      retainageHeld: priorRetainage,
+      totalEarnedLessRetainage: previousCertificates,
+      previousCertificates,
+      currentPaymentDue: 0,
+      balanceToFinish: contractSumToDate - previousCertificates,
+      ownerVisible: false,
+      sourceUrl: safeHttpUrl(input.supportingPackageUrl),
+      budgetRevisionId: revision.id,
+      syncStatus: "compass_only",
+      lastSyncedAt: null,
+      createdAt: now,
+      updatedAt: now,
+    })
+
+    await db.insert(projectBudgetLines).values(
+      revisionLines.map((line) => {
+        const originalEstimate = line.originalEstimateCents / 100
+        const totalChanges = line.approvedChangeCents / 100
+        const adjustedEstimate = line.adjustedBudgetCents / 100
+        const prior = priorByCostCode.get(line.costCode)
+        const priorCosts = prior?.totalCompletedStored ?? 0
+        return {
+          id: crypto.randomUUID(),
+          projectId,
+          applicationId,
+          budgetRevisionLineId: line.id,
+          sourceSystem: "compass_contract_budget",
+          sourceRecordId: line.id,
+          sourceRecordNumber: line.costCode,
+          costCode: line.costCode,
+          csiDivision: line.divisionCode,
+          csiDivisionName: line.divisionName,
+          description: line.description,
+          notes: null,
+          originalEstimate,
+          priorChanges: totalChanges,
+          currentChanges: 0,
+          totalChanges,
+          adjustedEstimate,
+          previousWorkCompleted: priorCosts,
+          currentWorkCompleted: 0,
+          storedMaterials: 0,
+          priorCosts,
+          currentCosts: 0,
+          totalCosts: priorCosts,
+          percentComplete:
+            adjustedEstimate > 0
+              ? Math.round((priorCosts / adjustedEstimate) * 1_000) / 10
+              : 0,
+          balanceToFinish: adjustedEstimate - priorCosts,
+          retainageHeld: prior?.retainageHeld ?? 0,
+          vendorName: null,
+          ownerLabel: line.description,
+          ownerVisible: line.ownerVisible,
+          internalNotes: `Contract budget revision ${revision.revisionNumber}.`,
+          sortOrder: line.sortOrder,
+          syncStatus: "compass_only",
+          lastSyncedAt: null,
+          createdAt: now,
+          updatedAt: now,
+        }
+      })
+    )
 
     await db.insert(projectOperations).values({
       id,
       projectId,
       sourceSystem: "compass",
       sourceRecordType: "owner_pay_application",
+      sourceRecordId: applicationId,
       sourceRecordNumber: recordNumber,
       title: `${typeLabel("owner_pay_application")} ${recordNumber}`,
       description: cleanText(input.notes),
@@ -487,7 +1023,7 @@ export async function createProjectOwnerPayApplicationDraft(
       priority: "normal",
       assigneeType: "owner",
       dueDate: periodTo,
-      amount,
+      amount: 0,
       externalUrl: safeHttpUrl(input.supportingPackageUrl),
       sageJobId: project.sageJobId,
       sageJobNumber: project.sageJobNumber,
@@ -499,16 +1035,30 @@ export async function createProjectOwnerPayApplicationDraft(
         jobNumber: project.sageJobNumber,
         applicationNumber: recordNumber,
         periodTo,
-        amount,
+        amount: 0,
+        budgetRevisionId: revision.id,
+        budgetRevisionNumber: revision.revisionNumber,
+        originalContractSum,
+        netChanges,
+        contractSumToDate,
+        previousCertificates,
+        lineCount: revisionLines.length,
         notes: cleanText(input.notes),
         supportingPackageUrl: safeHttpUrl(input.supportingPackageUrl),
         format: "AIA_G702_G703_STYLE",
       }),
       syncDirection: "write",
-      syncStatus: "pending_sage",
+      // A draft is not a Sage write request. The reviewed G702/G703 snapshot
+      // is staged separately and still requires explicit write approval.
+      syncStatus: "compass_only",
       createdAt: now,
       updatedAt: now,
     })
+    await db
+      .update(projectBudgetApplications)
+      .set({ status: "draft", updatedAt: now })
+      .where(eq(projectBudgetApplications.id, applicationId))
+      .run()
 
     revalidateFinancialPaths(projectId)
     return { success: true, id }
