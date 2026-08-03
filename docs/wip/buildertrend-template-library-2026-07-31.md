@@ -93,13 +93,16 @@ bun scripts/build-buildertrend-template-capture-sql.mjs \
   --dry-run
 ```
 
-The capture import is idempotent and draft-only. It does not publish a version,
-mark a template verified, or make a template usable in a project. Replaying it
-can refresh draft content but cannot overwrite published version content or
-downgrade a verified template. Buildertrend rows with archive-prefixed names or
-archived/inactive/deleted source metadata are rejected before SQL is generated.
-Generated files intentionally omit explicit transaction statements because D1
-file execution supplies its own transaction boundary.
+The capture import is idempotent and draft-only unless
+`--publish-captured-schedules` is supplied. That guarded option publishes only
+schedule versions whose imported item and dependency counts exactly match the
+captured Buildertrend data, then marks those templates verified and active.
+Replaying the import can refresh draft content but cannot overwrite published
+version content or downgrade a verified template. Buildertrend rows with
+archive-prefixed names or archived/inactive/deleted source metadata are rejected
+before SQL is generated. Generated files intentionally omit explicit
+transaction statements because D1 file execution supplies its own transaction
+boundary.
 
 ## Capture Progress
 
@@ -107,29 +110,22 @@ The authenticated My Templates grid provided stable Buildertrend IDs, direct
 source links, schedule durations, and module counts for all 40 active records.
 The 27 archive-prefixed records remain excluded.
 
-`MEP - Rough & Top Out` is the first schedule pilot. Its draft capture contains
-the nine source schedule items and six finish-to-start dependency links shown in
-Buildertrend. The source uses a Monday-through-Friday workweek; items beginning
-May 30 are stored at a five-workday offset from the May 23 anchor.
+All 30 active schedule-bearing templates were captured on August 3, 2026. The
+capture contains 163 source schedule items with their Buildertrend IDs, titles,
+phases, durations, relative starts, display colors, and predecessor edges,
+including relationship type and signed lag. Buildertrend source colors are
+retained in the capture and mapped to the nearest Compass schedule color when
+the SQL is generated.
 
-Fields that were not exposed in the read-only grid remain deliberately pending
-review: display color, milestone state, assignee, owner visibility,
-subcontractor visibility, and notes. The capture generator uses conservative
-defaults and records this pending-field list in module provenance rather than
-guessing values.
+Fields that were not exposed consistently in Buildertrend remain deliberately
+conservative: milestone state, assignee, owner visibility, subcontractor
+visibility, and notes. They are recorded as pending field review in module
+provenance instead of being guessed. Schedule content itself can be published
+after the automated item, dependency, archive-exclusion, and cycle checks pass.
 
 ## Next Capture Pass
 
-For each of the remaining schedule-bearing inventory records:
-
-1. Capture schedule item IDs, titles, phases, durations, relative starts,
-   colors, milestones, visibility, assignee placeholders, and notes.
-2. Capture predecessor relationships, relationship types, and lag values.
-3. Validate the dependency graph and item count against Buildertrend.
-4. Review the fields Buildertrend does not expose in the summary grid.
-5. Publish version 1 and mark the template verified only after review.
-
-Schedule definitions are the first promotion target. Task/checklist templates
-follow next, then folders, specifications, and finish selections. Financial
-features remain definitions until their Sage mappings and approval behavior are
-explicitly reviewed.
+Schedule definitions are the first completed promotion target. Task/checklist
+templates follow next, then folders, specifications, and finish selections.
+Financial features remain definitions until their Sage mappings and approval
+behavior are explicitly reviewed.

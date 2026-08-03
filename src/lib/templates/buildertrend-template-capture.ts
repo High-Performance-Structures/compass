@@ -26,6 +26,12 @@ export type BuildertrendCapturedScheduleItem = {
   readonly startDate: string
   readonly workdays: number
   readonly phase: string
+  readonly displayColor: string
+  readonly isMilestone: boolean
+  readonly assigneePlaceholder: string | null
+  readonly ownerVisible: boolean
+  readonly subVendorVisible: boolean
+  readonly notes: string | null
 }
 
 export type BuildertrendCapturedScheduleDependency = {
@@ -120,6 +126,58 @@ function positiveInteger(
   }
   errors.push(`${path} must be a positive integer.`)
   return null
+}
+
+function integer(value: unknown, path: string, errors: string[]): number | null {
+  if (typeof value === "number" && Number.isInteger(value)) return value
+  errors.push(`${path} must be an integer.`)
+  return null
+}
+
+function optionalString(value: unknown, path: string, errors: string[]): string | null {
+  if (value === undefined || value === null || value === "") return null
+  if (typeof value === "string") return value.trim() || null
+  errors.push(`${path} must be a string or null.`)
+  return null
+}
+
+function booleanWithDefault(
+  value: unknown,
+  path: string,
+  errors: string[],
+  defaultValue = false
+): boolean {
+  if (value === undefined) return defaultValue
+  if (typeof value === "boolean") return value
+  errors.push(`${path} must be a boolean.`)
+  return defaultValue
+}
+
+const capturedDisplayColors = new Set([
+  "blue",
+  "green",
+  "orange",
+  "purple",
+  "red",
+  "yellow",
+  "teal",
+  "gray",
+])
+
+function displayColor(
+  value: unknown,
+  path: string,
+  errors: string[]
+): string {
+  if (value === undefined) return "blue"
+  if (
+    typeof value === "string" &&
+    (capturedDisplayColors.has(value) || /^#[0-9a-f]{6}$/i.test(value))
+  ) {
+    return value.toLowerCase()
+  }
+  errors.push(`${path} must be a Compass color or six-digit hex color.`)
+  return "blue"
 }
 
 function isIsoDate(value: string): boolean {
@@ -279,6 +337,32 @@ function parseSchedule(
       errors
     )
     const phase = requiredString(itemValue, "phase", itemPath, errors)
+    const capturedColor = displayColor(
+      itemValue.displayColor,
+      `${itemPath}.displayColor`,
+      errors
+    )
+    const isMilestone = booleanWithDefault(
+      itemValue.isMilestone,
+      `${itemPath}.isMilestone`,
+      errors
+    )
+    const assigneePlaceholder = optionalString(
+      itemValue.assigneePlaceholder,
+      `${itemPath}.assigneePlaceholder`,
+      errors
+    )
+    const ownerVisible = booleanWithDefault(
+      itemValue.ownerVisible,
+      `${itemPath}.ownerVisible`,
+      errors
+    )
+    const subVendorVisible = booleanWithDefault(
+      itemValue.subVendorVisible,
+      `${itemPath}.subVendorVisible`,
+      errors
+    )
+    const notes = optionalString(itemValue.notes, `${itemPath}.notes`, errors)
     if (startDate && !isIsoDate(startDate)) {
       errors.push(`${itemPath}.startDate must be an ISO date.`)
     }
@@ -302,7 +386,19 @@ function parseSchedule(
       return
     }
     itemIds.add(sourceItemId)
-    items.push({ sourceItemId, title, startDate, workdays, phase })
+    items.push({
+      sourceItemId,
+      title,
+      startDate,
+      workdays,
+      phase,
+      displayColor: capturedColor,
+      isMilestone,
+      assigneePlaceholder,
+      ownerVisible,
+      subVendorVisible,
+      notes,
+    })
   })
   if (items.length !== expectedItemCount) {
     errors.push(
@@ -332,7 +428,7 @@ function parseSchedule(
     )
     const type = dependencyType(dependencyValue.type)
     if (!type) errors.push(`${dependencyPath}.type is unsupported.`)
-    const lagDays = nonnegativeInteger(
+    const lagDays = integer(
       dependencyValue.lagDays,
       `${dependencyPath}.lagDays`,
       errors
@@ -554,6 +650,44 @@ function businessDayOffset(anchorDate: string, targetDate: string): number {
   return offset
 }
 
+const compassColorHex = {
+  blue: "#3b82f6",
+  green: "#22c55e",
+  orange: "#f97316",
+  purple: "#a855f7",
+  red: "#ef4444",
+  yellow: "#eab308",
+  teal: "#14b8a6",
+  gray: "#6b7280",
+} as const
+
+function hexChannels(value: string): readonly [number, number, number] {
+  return [
+    Number.parseInt(value.slice(1, 3), 16),
+    Number.parseInt(value.slice(3, 5), 16),
+    Number.parseInt(value.slice(5, 7), 16),
+  ]
+}
+
+function compassDisplayColor(value: string): string {
+  if (capturedDisplayColors.has(value)) return value
+  const [red, green, blue] = hexChannels(value)
+  let closest = "blue"
+  let distance = Number.POSITIVE_INFINITY
+  for (const [name, hex] of Object.entries(compassColorHex)) {
+    const [candidateRed, candidateGreen, candidateBlue] = hexChannels(hex)
+    const candidateDistance =
+      (red - candidateRed) ** 2 +
+      (green - candidateGreen) ** 2 +
+      (blue - candidateBlue) ** 2
+    if (candidateDistance < distance) {
+      closest = name
+      distance = candidateDistance
+    }
+  }
+  return closest
+}
+
 const moduleMappings: readonly {
   readonly type: string
   readonly key: keyof BuildertrendTemplateModuleCounts
@@ -586,6 +720,7 @@ export function buildBuildertrendTemplateCaptureSql(input: {
   readonly organizationId: string
   readonly inventory: BuildertrendTemplateInventory
   readonly capture: BuildertrendTemplateCapture
+  readonly publishCapturedSchedules?: boolean
 }): {
   readonly sql: string
   readonly capturedTemplateCount: number
@@ -724,7 +859,6 @@ export function buildBuildertrendTemplateCaptureSql(input: {
               scheduleDurationDays: captured.scheduleDurationDays,
               phases: captured.schedule?.phases ?? [],
               fieldReviewPending: [
-                "displayColor",
                 "milestone",
                 "assignee",
                 "ownerVisibility",
@@ -782,12 +916,12 @@ export function buildBuildertrendTemplateCaptureSql(input: {
             startOffsetWorkdays,
             item.workdays,
             sql(item.phase),
-            sql("blue"),
-            0,
-            sql(null),
-            0,
-            0,
-            sql(null),
+            sql(compassDisplayColor(item.displayColor)),
+            item.isMilestone ? 1 : 0,
+            sql(item.assigneePlaceholder),
+            item.ownerVisible ? 1 : 0,
+            item.subVendorVisible ? 1 : 0,
+            sql(item.notes),
             index,
           ].join(", ") +
           ` WHERE ${draftVersionGuard} ` +
@@ -795,6 +929,12 @@ export function buildBuildertrendTemplateCaptureSql(input: {
           `title=excluded.title, ` +
           `start_offset_workdays=excluded.start_offset_workdays, ` +
           `workdays=excluded.workdays, phase=excluded.phase, ` +
+          `display_color=excluded.display_color, ` +
+          `is_milestone=excluded.is_milestone, ` +
+          `assignee_placeholder=excluded.assignee_placeholder, ` +
+          `owner_visible=excluded.owner_visible, ` +
+          `sub_vendor_visible=excluded.sub_vendor_visible, ` +
+          `notes=excluded.notes, ` +
           `sort_order=excluded.sort_order WHERE ${draftVersionGuard};`
       )
     })
@@ -825,6 +965,27 @@ export function buildBuildertrendTemplateCaptureSql(input: {
           `DO UPDATE SET lag_days=excluded.lag_days WHERE ${draftVersionGuard};`
       )
     })
+    if (input.publishCapturedSchedules) {
+      const expectedItemCount = captured.schedule.items.length
+      const expectedDependencyCount = captured.schedule.dependencies.length
+      statements.push(
+        `UPDATE project_template_versions SET ` +
+          `status='published', ` +
+          `notes=${sql("Captured and count-verified from active Buildertrend template.")} ` +
+          `WHERE id=${sql(versionId)} AND status='draft' ` +
+          `AND (SELECT COUNT(*) FROM schedule_template_items ` +
+          `WHERE version_id=${sql(versionId)})=${expectedItemCount} ` +
+          `AND (SELECT COUNT(*) FROM schedule_template_dependencies ` +
+          `WHERE version_id=${sql(versionId)})=${expectedDependencyCount};`
+      )
+      statements.push(
+        `UPDATE project_templates SET lifecycle_status='active', ` +
+          `review_status='verified', updated_at=${sql(input.capture.capturedAt)} ` +
+          `WHERE id=${sql(templateId)} AND source_system='buildertrend' ` +
+          `AND EXISTS (SELECT 1 FROM project_template_versions ` +
+          `WHERE id=${sql(versionId)} AND status='published');`
+      )
+    }
   }
   return {
     sql: `${statements.join("\n")}\n`,

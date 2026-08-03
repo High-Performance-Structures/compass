@@ -1,77 +1,3842 @@
 {
-  "capturedAt": "2026-07-31T17:30:00.000Z",
+  "capturedAt": "2026-08-03T15:30:00.000Z",
   "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates",
   "expectedActiveCount": 40,
   "excludedArchivedCount": 27,
   "templates": [
-    { "name": "Concrete - Footer Assembly", "sourceTemplateId": "12581937", "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/12581937", "scheduleDurationDays": 6, "moduleCounts": { "tasks": 43, "scheduleItems": 8 } },
-    { "name": "Concrete - ICF Assembly", "sourceTemplateId": "12540389", "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/12540389", "scheduleDurationDays": 12, "moduleCounts": { "tasks": 59, "scheduleItems": 5 } },
-    { "name": "Concrete - LiteDeck Assembly", "sourceTemplateId": "12667545", "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/12667545", "scheduleDurationDays": 12, "moduleCounts": { "tasks": 50, "scheduleItems": 15 } },
-    { "name": "Concrete - Piers Assembly", "sourceTemplateId": "12858966", "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/12858966", "scheduleDurationDays": 5, "moduleCounts": { "tasks": 16, "scheduleItems": 5 } },
-    { "name": "Concrete - Slab Assembly", "sourceTemplateId": "12594475", "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/12594475", "scheduleDurationDays": 9, "moduleCounts": { "tasks": 36, "bidPackages": 1, "scheduleItems": 8 } },
-    { "name": "Design & Preconstruction", "sourceTemplateId": "32043577", "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/32043577", "scheduleDurationDays": 128, "moduleCounts": { "tasks": 48, "scheduleItems": 34 } },
-    { "name": "Drywall Installation", "sourceTemplateId": "30294726", "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/30294726", "scheduleDurationDays": 25, "moduleCounts": { "tasks": 28, "bidPackages": 1, "scheduleItems": 8, "selections": 3 } },
-    { "name": "Earthwork - Perimeter Drain", "sourceTemplateId": "13001090", "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/13001090", "scheduleDurationDays": 3, "moduleCounts": { "tasks": 4, "scheduleItems": 3 } },
-    { "name": "Earthwork - Post-Frost Wall Earthwork", "sourceTemplateId": "12650557", "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/12650557", "scheduleDurationDays": 2, "moduleCounts": { "tasks": 12, "bidPackages": 1, "scheduleItems": 4 } },
-    { "name": "Earthwork - Radon Systems", "sourceTemplateId": "42924180", "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/42924180", "scheduleDurationDays": 0, "moduleCounts": { "bidPackages": 1 } },
-    { "name": "Ext. Finishes - Manuf. Gutters", "sourceTemplateId": "12978732", "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/12978732", "scheduleDurationDays": 4, "moduleCounts": { "tasks": 17, "bidPackages": 1, "scheduleItems": 2, "selections": 2 } },
-    { "name": "Ext. Finishes - Painting/Staining", "sourceTemplateId": "36618977", "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/36618977", "scheduleDurationDays": 0, "moduleCounts": { "bidPackages": 1, "selections": 2 } },
-    { "name": "Ext. Finishes - Roofing", "sourceTemplateId": "12978716", "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/12978716", "scheduleDurationDays": 5, "moduleCounts": { "tasks": 14, "bidPackages": 1, "scheduleItems": 2, "selections": 103 } },
-    { "name": "Ext. Finishes - Siding", "sourceTemplateId": "30917204", "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/30917204", "scheduleDurationDays": 6, "moduleCounts": { "tasks": 29, "bidPackages": 1, "scheduleItems": 3, "selections": 4 } },
-    { "name": "Ext. Finishes - Stone", "sourceTemplateId": "37180847", "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/37180847", "scheduleDurationDays": 0, "moduleCounts": { "selections": 2 } },
-    { "name": "Ext. Finishes - Stucco", "sourceTemplateId": "12859981", "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/12859981", "scheduleDurationDays": 14, "moduleCounts": { "tasks": 48, "bidPackages": 1, "scheduleItems": 5, "selections": 4 } },
-    { "name": "Framing - Exterior Man Door Installation", "sourceTemplateId": "12650484", "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/12650484", "scheduleDurationDays": 3, "moduleCounts": { "tasks": 11, "bidPackages": 1, "scheduleItems": 2, "selections": 1 } },
-    { "name": "Framing - Exterior Wall Assembly", "sourceTemplateId": "12649292", "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/12649292", "scheduleDurationDays": 6, "moduleCounts": { "tasks": 16, "scheduleItems": 2 } },
-    { "name": "Framing - Fascia & Soffit Installation", "sourceTemplateId": "12819873", "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/12819873", "scheduleDurationDays": 3, "moduleCounts": { "tasks": 25, "scheduleItems": 3 } },
-    { "name": "Framing - Floor System Assembly", "sourceTemplateId": "12649495", "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/12649495", "scheduleDurationDays": 9, "moduleCounts": { "tasks": 24, "scheduleItems": 4 } },
-    { "name": "Framing - Interior Wall Assembly", "sourceTemplateId": "12646335", "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/12646335", "scheduleDurationDays": 5, "moduleCounts": { "tasks": 34, "bidPackages": 1, "scheduleItems": 2 } },
-    { "name": "Framing - Overhead Door Installation", "sourceTemplateId": "30919251", "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/30919251", "scheduleDurationDays": 3, "moduleCounts": { "tasks": 13, "bidPackages": 1, "scheduleItems": 2, "selections": 1 } },
-    { "name": "Framing - Quote Packages", "sourceTemplateId": "36478698", "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/36478698", "scheduleDurationDays": 0, "moduleCounts": { "bidPackages": 3 } },
-    { "name": "Framing - Roof w/ Trusses Assembly", "sourceTemplateId": "12650792", "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/12650792", "scheduleDurationDays": 12, "moduleCounts": { "tasks": 28, "scheduleItems": 5 } },
-    { "name": "Framing - Rough inspection w/ Draft & Firestop", "sourceTemplateId": "12978590", "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/12978590", "scheduleDurationDays": 2, "moduleCounts": { "tasks": 3, "scheduleItems": 2 } },
-    { "name": "Framing - Stair Installation", "sourceTemplateId": "12650713", "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/12650713", "scheduleDurationDays": 3, "moduleCounts": { "tasks": 10, "scheduleItems": 3 } },
-    { "name": "Framing - Window", "sourceTemplateId": "12650427", "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/12650427", "scheduleDurationDays": 4, "moduleCounts": { "tasks": 20, "bidPackages": 1, "scheduleItems": 2, "selections": 2 } },
-    { "name": "Insulation", "sourceTemplateId": "39644707", "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/39644707", "scheduleDurationDays": 0, "moduleCounts": { "bidPackages": 1 } },
-    { "name": "Int. Finishes - Architectural Woodwork", "sourceTemplateId": "12796241", "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/12796241", "scheduleDurationDays": 5, "moduleCounts": { "tasks": 19, "bidPackages": 2, "scheduleItems": 4, "selections": 5 } },
-    { "name": "Int. Finishes - Bath Hardware", "sourceTemplateId": "42948499", "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/42948499", "scheduleDurationDays": 0, "moduleCounts": { "selections": 1 } },
-    { "name": "Int. Finishes - Cabinetry/Countertops", "sourceTemplateId": "30907034", "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/30907034", "scheduleDurationDays": 18, "moduleCounts": { "tasks": 50, "bidPackages": 2, "scheduleItems": 6, "selections": 4 } },
-    { "name": "Int. Finishes - Flooring", "sourceTemplateId": "38452172", "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/38452172", "scheduleDurationDays": 0, "moduleCounts": { "bidPackages": 1, "selections": 3 } },
-    { "name": "Int. Finishes - Interior Doors", "sourceTemplateId": "28466146", "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/28466146", "scheduleDurationDays": 4, "moduleCounts": { "tasks": 5, "scheduleItems": 3, "selections": 4 } },
-    { "name": "Int. Finishes - Painting/Staining", "sourceTemplateId": "36619183", "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/36619183", "scheduleDurationDays": 0, "moduleCounts": { "bidPackages": 1, "selections": 8 } },
-    { "name": "Int. Finishes - Stain & Seal Concrete Floors", "sourceTemplateId": "12979213", "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/12979213", "scheduleDurationDays": 7, "moduleCounts": { "tasks": 7, "scheduleItems": 5 } },
-    { "name": "Int. Finishes - Tiling", "sourceTemplateId": "30914491", "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/30914491", "scheduleDurationDays": 7, "moduleCounts": { "tasks": 16, "bidPackages": 1, "scheduleItems": 3, "selections": 5 } },
-    { "name": "MEP - Fireplace Installation", "sourceTemplateId": "38452532", "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/38452532", "scheduleDurationDays": 0, "moduleCounts": { "selections": 1 } },
-    { "name": "MEP - Plumbing Base", "sourceTemplateId": "12650395", "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/12650395", "scheduleDurationDays": 6, "moduleCounts": { "tasks": 9, "bidPackages": 1, "scheduleItems": 4 } },
-    { "name": "MEP - Quotes", "sourceTemplateId": "36595931", "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/36595931", "scheduleDurationDays": 0, "moduleCounts": { "bidPackages": 3 } },
+    {
+      "name": "Concrete - Footer Assembly",
+      "sourceTemplateId": "12581937",
+      "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/12581937",
+      "scheduleDurationDays": 6,
+      "moduleCounts": {
+        "tasks": 43,
+        "scheduleItems": 8
+      },
+      "schedule": {
+        "sourceAnchorDate": "2022-04-04",
+        "phases": [
+          {
+            "sourcePhaseId": "12581937:phase:1",
+            "name": "UNASSIGNED"
+          }
+        ],
+        "items": [
+          {
+            "sourceItemId": "208672426",
+            "title": "Footer Form Board Delivery",
+            "startDate": "2022-04-04",
+            "workdays": 1,
+            "phase": "UNASSIGNED",
+            "displayColor": "#DDC817",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          },
+          {
+            "sourceItemId": "208671992",
+            "title": "Footer Pin",
+            "startDate": "2022-04-04",
+            "workdays": 1,
+            "phase": "UNASSIGNED",
+            "displayColor": "#ED2591",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          },
+          {
+            "sourceItemId": "208672972",
+            "title": "Footer Rebar Delivery",
+            "startDate": "2022-04-04",
+            "workdays": 1,
+            "phase": "UNASSIGNED",
+            "displayColor": "#DDC817",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          },
+          {
+            "sourceItemId": "140861853",
+            "title": "Footer Installation",
+            "startDate": "2022-04-05",
+            "workdays": 4,
+            "phase": "UNASSIGNED",
+            "displayColor": "#676767",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          },
+          {
+            "sourceItemId": "140861836",
+            "title": "Footer Layout",
+            "startDate": "2022-04-05",
+            "workdays": 1,
+            "phase": "UNASSIGNED",
+            "displayColor": "#676767",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          },
+          {
+            "sourceItemId": "140861986",
+            "title": "Building Department Footer Inspection",
+            "startDate": "2022-04-08",
+            "workdays": 1,
+            "phase": "UNASSIGNED",
+            "displayColor": "#ED2591",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          },
+          {
+            "sourceItemId": "140861868",
+            "title": "HPS QC & Pre-Pour Inspection",
+            "startDate": "2022-04-08",
+            "workdays": 1,
+            "phase": "UNASSIGNED",
+            "displayColor": "#2222DD",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          },
+          {
+            "sourceItemId": "140861994",
+            "title": "Footer Pour",
+            "startDate": "2022-04-11",
+            "workdays": 1,
+            "phase": "UNASSIGNED",
+            "displayColor": "#DD2222",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          }
+        ],
+        "dependencies": [
+          {
+            "predecessorSourceItemId": "140861836",
+            "successorSourceItemId": "140861853",
+            "type": "FS",
+            "lagDays": -1
+          },
+          {
+            "predecessorSourceItemId": "208672426",
+            "successorSourceItemId": "140861853",
+            "type": "FS",
+            "lagDays": 0
+          },
+          {
+            "predecessorSourceItemId": "208672972",
+            "successorSourceItemId": "140861853",
+            "type": "FS",
+            "lagDays": 0
+          },
+          {
+            "predecessorSourceItemId": "208671992",
+            "successorSourceItemId": "140861836",
+            "type": "FS",
+            "lagDays": 0
+          },
+          {
+            "predecessorSourceItemId": "140861853",
+            "successorSourceItemId": "140861986",
+            "type": "FS",
+            "lagDays": -1
+          },
+          {
+            "predecessorSourceItemId": "140861853",
+            "successorSourceItemId": "140861868",
+            "type": "FS",
+            "lagDays": -1
+          },
+          {
+            "predecessorSourceItemId": "140861986",
+            "successorSourceItemId": "140861994",
+            "type": "FS",
+            "lagDays": 0
+          }
+        ]
+      }
+    },
+    {
+      "name": "Concrete - ICF Assembly",
+      "sourceTemplateId": "12540389",
+      "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/12540389",
+      "scheduleDurationDays": 12,
+      "moduleCounts": {
+        "tasks": 59,
+        "scheduleItems": 5
+      },
+      "schedule": {
+        "sourceAnchorDate": "2022-03-30",
+        "phases": [
+          {
+            "sourcePhaseId": "12540389:phase:1",
+            "name": "UNASSIGNED"
+          }
+        ],
+        "items": [
+          {
+            "sourceItemId": "208674901",
+            "title": "ICF Delivery",
+            "startDate": "2022-03-30",
+            "workdays": 1,
+            "phase": "UNASSIGNED",
+            "displayColor": "#DDC817",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          },
+          {
+            "sourceItemId": "140375789",
+            "title": "(X) Level ICF Wall Stack",
+            "startDate": "2022-03-31",
+            "workdays": 10,
+            "phase": "UNASSIGNED",
+            "displayColor": "#7F7F7F",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          },
+          {
+            "sourceItemId": "140375833",
+            "title": "Building Department (X) Level ICF Wall Inspection",
+            "startDate": "2022-04-13",
+            "workdays": 1,
+            "phase": "UNASSIGNED",
+            "displayColor": "#ED2591",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          },
+          {
+            "sourceItemId": "140375796",
+            "title": "HPS (X) Level ICF Wall QC Inspection",
+            "startDate": "2022-04-13",
+            "workdays": 1,
+            "phase": "UNASSIGNED",
+            "displayColor": "#2222DD",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          },
+          {
+            "sourceItemId": "140859927",
+            "title": "(X) Level ICF Wall Pour",
+            "startDate": "2022-04-14",
+            "workdays": 1,
+            "phase": "UNASSIGNED",
+            "displayColor": "#DD2222",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          }
+        ],
+        "dependencies": [
+          {
+            "predecessorSourceItemId": "208674901",
+            "successorSourceItemId": "140375789",
+            "type": "FS",
+            "lagDays": 0
+          },
+          {
+            "predecessorSourceItemId": "140375789",
+            "successorSourceItemId": "140375833",
+            "type": "FS",
+            "lagDays": -1
+          },
+          {
+            "predecessorSourceItemId": "140375789",
+            "successorSourceItemId": "140375796",
+            "type": "FS",
+            "lagDays": -1
+          },
+          {
+            "predecessorSourceItemId": "140375833",
+            "successorSourceItemId": "140859927",
+            "type": "FS",
+            "lagDays": 0
+          }
+        ]
+      }
+    },
+    {
+      "name": "Concrete - LiteDeck Assembly",
+      "sourceTemplateId": "12667545",
+      "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/12667545",
+      "scheduleDurationDays": 12,
+      "moduleCounts": {
+        "tasks": 50,
+        "scheduleItems": 15
+      },
+      "schedule": {
+        "sourceAnchorDate": "2022-04-18",
+        "phases": [
+          {
+            "sourcePhaseId": "12667545:phase:1",
+            "name": "UNASSIGNED"
+          }
+        ],
+        "items": [
+          {
+            "sourceItemId": "141882543",
+            "title": "Build (X LEVEL) LiteDeck Temporary Structure",
+            "startDate": "2022-04-18",
+            "workdays": 4,
+            "phase": "UNASSIGNED",
+            "displayColor": "#A7A7A7",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          },
+          {
+            "sourceItemId": "141882532",
+            "title": "Set (X LEVEL) LiteDeck Base Forms",
+            "startDate": "2022-04-22",
+            "workdays": 1,
+            "phase": "UNASSIGNED",
+            "displayColor": "#A7A7A7",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          },
+          {
+            "sourceItemId": "141882567",
+            "title": "Install (X LEVEL) LiteDeck Reinforcing",
+            "startDate": "2022-04-25",
+            "workdays": 3,
+            "phase": "UNASSIGNED",
+            "displayColor": "#A7A7A7",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          },
+          {
+            "sourceItemId": "141977213",
+            "title": "Install (X)Level LiteDeck Permanent Support Posts",
+            "startDate": "2022-04-25",
+            "workdays": 2,
+            "phase": "UNASSIGNED",
+            "displayColor": "#A7A7A7",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          },
+          {
+            "sourceItemId": "141882555",
+            "title": "Set (X LEVEL) LiteDeck Electrical Chases",
+            "startDate": "2022-04-25",
+            "workdays": 1,
+            "phase": "UNASSIGNED",
+            "displayColor": "#D67029",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          },
+          {
+            "sourceItemId": "141983155",
+            "title": "Set (X LEVEL) LiteDeck HVAC Chases",
+            "startDate": "2022-04-25",
+            "workdays": 1,
+            "phase": "UNASSIGNED",
+            "displayColor": "#323232",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          },
+          {
+            "sourceItemId": "141882554",
+            "title": "Set (X LEVEL) LiteDeck Plumbing Chases",
+            "startDate": "2022-04-25",
+            "workdays": 1,
+            "phase": "UNASSIGNED",
+            "displayColor": "#436A8C",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          },
+          {
+            "sourceItemId": "141882557",
+            "title": "Set (X LEVEL) LiteDeck Top Hat",
+            "startDate": "2022-04-25",
+            "workdays": 1,
+            "phase": "UNASSIGNED",
+            "displayColor": "#A7A7A7",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          },
+          {
+            "sourceItemId": "141974023",
+            "title": "(X) Level LiteDeck Slab Radiant Installation",
+            "startDate": "2022-04-28",
+            "workdays": 2,
+            "phase": "UNASSIGNED",
+            "displayColor": "#AD5252",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          },
+          {
+            "sourceItemId": "141973904",
+            "title": "(X) Level LiteDeck Slab Reinforcing",
+            "startDate": "2022-04-28",
+            "workdays": 1,
+            "phase": "UNASSIGNED",
+            "displayColor": "#A7A7A7",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          },
+          {
+            "sourceItemId": "141978388",
+            "title": "Building Department (X) Level LiteDeck Inspection",
+            "startDate": "2022-04-28",
+            "workdays": 1,
+            "phase": "UNASSIGNED",
+            "displayColor": "#ED2591",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          },
+          {
+            "sourceItemId": "141977933",
+            "title": "Building Department (X) Level Radiant Inspection",
+            "startDate": "2022-05-02",
+            "workdays": 1,
+            "phase": "UNASSIGNED",
+            "displayColor": "#ED2591",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          },
+          {
+            "sourceItemId": "141974565",
+            "title": "HPS (X) Level LiteDeck Slab QC/Pre-Pour Inspection",
+            "startDate": "2022-05-02",
+            "workdays": 1,
+            "phase": "UNASSIGNED",
+            "displayColor": "#2222DD",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          },
+          {
+            "sourceItemId": "141981823",
+            "title": "(X) Level LiteDeck Pour",
+            "startDate": "2022-05-03",
+            "workdays": 1,
+            "phase": "UNASSIGNED",
+            "displayColor": "#DD2222",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          },
+          {
+            "sourceItemId": "141981848",
+            "title": "HPS (X) Level Flatwork QC Inspection",
+            "startDate": "2022-05-03",
+            "workdays": 1,
+            "phase": "UNASSIGNED",
+            "displayColor": "#2222DD",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          }
+        ],
+        "dependencies": [
+          {
+            "predecessorSourceItemId": "141882543",
+            "successorSourceItemId": "141882532",
+            "type": "FS",
+            "lagDays": 0
+          },
+          {
+            "predecessorSourceItemId": "141882557",
+            "successorSourceItemId": "141882567",
+            "type": "SS",
+            "lagDays": 0
+          },
+          {
+            "predecessorSourceItemId": "141882532",
+            "successorSourceItemId": "141977213",
+            "type": "FS",
+            "lagDays": 0
+          },
+          {
+            "predecessorSourceItemId": "141882532",
+            "successorSourceItemId": "141882555",
+            "type": "FS",
+            "lagDays": 0
+          },
+          {
+            "predecessorSourceItemId": "141882532",
+            "successorSourceItemId": "141983155",
+            "type": "FS",
+            "lagDays": 0
+          },
+          {
+            "predecessorSourceItemId": "141882532",
+            "successorSourceItemId": "141882554",
+            "type": "FS",
+            "lagDays": 0
+          },
+          {
+            "predecessorSourceItemId": "141882532",
+            "successorSourceItemId": "141882557",
+            "type": "FS",
+            "lagDays": 0
+          },
+          {
+            "predecessorSourceItemId": "141973904",
+            "successorSourceItemId": "141974023",
+            "type": "SS",
+            "lagDays": 0
+          },
+          {
+            "predecessorSourceItemId": "141882567",
+            "successorSourceItemId": "141973904",
+            "type": "FS",
+            "lagDays": 0
+          },
+          {
+            "predecessorSourceItemId": "141977213",
+            "successorSourceItemId": "141973904",
+            "type": "FS",
+            "lagDays": 0
+          },
+          {
+            "predecessorSourceItemId": "141882567",
+            "successorSourceItemId": "141978388",
+            "type": "FS",
+            "lagDays": 0
+          },
+          {
+            "predecessorSourceItemId": "141974023",
+            "successorSourceItemId": "141977933",
+            "type": "FS",
+            "lagDays": 0
+          },
+          {
+            "predecessorSourceItemId": "141974023",
+            "successorSourceItemId": "141974565",
+            "type": "FS",
+            "lagDays": 0
+          },
+          {
+            "predecessorSourceItemId": "141977933",
+            "successorSourceItemId": "141981823",
+            "type": "FS",
+            "lagDays": 0
+          },
+          {
+            "predecessorSourceItemId": "141978388",
+            "successorSourceItemId": "141981823",
+            "type": "FS",
+            "lagDays": 0
+          },
+          {
+            "predecessorSourceItemId": "141981823",
+            "successorSourceItemId": "141981848",
+            "type": "SS",
+            "lagDays": 0
+          }
+        ]
+      }
+    },
+    {
+      "name": "Concrete - Piers Assembly",
+      "sourceTemplateId": "12858966",
+      "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/12858966",
+      "scheduleDurationDays": 5,
+      "moduleCounts": {
+        "tasks": 16,
+        "scheduleItems": 5
+      },
+      "schedule": {
+        "sourceAnchorDate": "2022-05-10",
+        "phases": [
+          {
+            "sourcePhaseId": "12858966:phase:1",
+            "name": "Structure-Shell: Footings"
+          }
+        ],
+        "items": [
+          {
+            "sourceItemId": "143851212",
+            "title": "Dig Piers",
+            "startDate": "2022-05-10",
+            "workdays": 1,
+            "phase": "Structure-Shell: Footings",
+            "displayColor": "#442121",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          },
+          {
+            "sourceItemId": "143852801",
+            "title": "Form Piers",
+            "startDate": "2022-05-11",
+            "workdays": 2,
+            "phase": "Structure-Shell: Footings",
+            "displayColor": "#676767",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          },
+          {
+            "sourceItemId": "143853023",
+            "title": "Building Department Footing Inspection: Piers",
+            "startDate": "2022-05-13",
+            "workdays": 1,
+            "phase": "Structure-Shell: Footings",
+            "displayColor": "#ED2591",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          },
+          {
+            "sourceItemId": "143853005",
+            "title": "HPS Piers QC Inspection",
+            "startDate": "2022-05-13",
+            "workdays": 1,
+            "phase": "Structure-Shell: Footings",
+            "displayColor": "#2222DD",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          },
+          {
+            "sourceItemId": "143853032",
+            "title": "Pour Concrete Piers",
+            "startDate": "2022-05-16",
+            "workdays": 1,
+            "phase": "Structure-Shell: Footings",
+            "displayColor": "#DD2222",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          }
+        ],
+        "dependencies": [
+          {
+            "predecessorSourceItemId": "143851212",
+            "successorSourceItemId": "143852801",
+            "type": "FS",
+            "lagDays": 0
+          },
+          {
+            "predecessorSourceItemId": "143852801",
+            "successorSourceItemId": "143853023",
+            "type": "FS",
+            "lagDays": 0
+          },
+          {
+            "predecessorSourceItemId": "143852801",
+            "successorSourceItemId": "143853005",
+            "type": "FS",
+            "lagDays": 0
+          },
+          {
+            "predecessorSourceItemId": "143853023",
+            "successorSourceItemId": "143853032",
+            "type": "FS",
+            "lagDays": 0
+          }
+        ]
+      }
+    },
+    {
+      "name": "Concrete - Slab Assembly",
+      "sourceTemplateId": "12594475",
+      "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/12594475",
+      "scheduleDurationDays": 9,
+      "moduleCounts": {
+        "tasks": 36,
+        "bidPackages": 1,
+        "scheduleItems": 8
+      },
+      "schedule": {
+        "sourceAnchorDate": "2022-04-18",
+        "phases": [
+          {
+            "sourcePhaseId": "12594475:phase:1",
+            "name": "UNASSIGNED"
+          }
+        ],
+        "items": [
+          {
+            "sourceItemId": "141009929",
+            "title": "Radon Mitigation",
+            "startDate": "2022-04-18",
+            "workdays": 3,
+            "phase": "UNASSIGNED",
+            "displayColor": "#572A2A",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          },
+          {
+            "sourceItemId": "141008502",
+            "title": "Slab Final Grading",
+            "startDate": "2022-04-21",
+            "workdays": 2,
+            "phase": "UNASSIGNED",
+            "displayColor": "#442121",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          },
+          {
+            "sourceItemId": "141008787",
+            "title": "Base Rigid Insulation & Slab Reinforcing",
+            "startDate": "2022-04-22",
+            "workdays": 1,
+            "phase": "UNASSIGNED",
+            "displayColor": "#676767",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          },
+          {
+            "sourceItemId": "141008503",
+            "title": "Radiant Installation",
+            "startDate": "2022-04-25",
+            "workdays": 2,
+            "phase": "UNASSIGNED",
+            "displayColor": "#AD5252",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          },
+          {
+            "sourceItemId": "141220957",
+            "title": "Building Department Radiant Inspection",
+            "startDate": "2022-04-27",
+            "workdays": 1,
+            "phase": "UNASSIGNED",
+            "displayColor": "#ED2591",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          },
+          {
+            "sourceItemId": "141220943",
+            "title": "HPS Slab QC & Pre-Pour Inspection",
+            "startDate": "2022-04-27",
+            "workdays": 1,
+            "phase": "UNASSIGNED",
+            "displayColor": "#2222DD",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          },
+          {
+            "sourceItemId": "141223053",
+            "title": "HPS Slab Flatwork QC Inspection",
+            "startDate": "2022-04-28",
+            "workdays": 1,
+            "phase": "UNASSIGNED",
+            "displayColor": "#2222DD",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          },
+          {
+            "sourceItemId": "141008504",
+            "title": "Slab Pour",
+            "startDate": "2022-04-28",
+            "workdays": 1,
+            "phase": "UNASSIGNED",
+            "displayColor": "#DD2222",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          }
+        ],
+        "dependencies": [
+          {
+            "predecessorSourceItemId": "141009929",
+            "successorSourceItemId": "141008502",
+            "type": "FS",
+            "lagDays": 0
+          },
+          {
+            "predecessorSourceItemId": "141008502",
+            "successorSourceItemId": "141008787",
+            "type": "FS",
+            "lagDays": -1
+          },
+          {
+            "predecessorSourceItemId": "141008787",
+            "successorSourceItemId": "141008503",
+            "type": "FS",
+            "lagDays": 0
+          },
+          {
+            "predecessorSourceItemId": "141008503",
+            "successorSourceItemId": "141220957",
+            "type": "FS",
+            "lagDays": 0
+          },
+          {
+            "predecessorSourceItemId": "141008503",
+            "successorSourceItemId": "141220943",
+            "type": "FS",
+            "lagDays": 0
+          },
+          {
+            "predecessorSourceItemId": "141008504",
+            "successorSourceItemId": "141223053",
+            "type": "SS",
+            "lagDays": 0
+          },
+          {
+            "predecessorSourceItemId": "141220943",
+            "successorSourceItemId": "141008504",
+            "type": "FS",
+            "lagDays": 0
+          },
+          {
+            "predecessorSourceItemId": "141220957",
+            "successorSourceItemId": "141008504",
+            "type": "FS",
+            "lagDays": 0
+          }
+        ]
+      }
+    },
+    {
+      "name": "Design & Preconstruction",
+      "sourceTemplateId": "32043577",
+      "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/32043577",
+      "scheduleDurationDays": 128,
+      "moduleCounts": {
+        "tasks": 48,
+        "scheduleItems": 34
+      },
+      "schedule": {
+        "sourceAnchorDate": "2024-12-03",
+        "phases": [
+          {
+            "sourcePhaseId": "32043577:phase:1",
+            "name": "UNASSIGNED"
+          },
+          {
+            "sourcePhaseId": "32043577:phase:2",
+            "name": "Design & Pre-Construction"
+          }
+        ],
+        "items": [
+          {
+            "sourceItemId": "216505364",
+            "title": "Site Assessment",
+            "startDate": "2024-12-03",
+            "workdays": 1,
+            "phase": "UNASSIGNED",
+            "displayColor": "#FF9600",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          },
+          {
+            "sourceItemId": "216508142",
+            "title": "Loan Preapproval",
+            "startDate": "2024-12-04",
+            "workdays": 5,
+            "phase": "UNASSIGNED",
+            "displayColor": "#FF9600",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          },
+          {
+            "sourceItemId": "216505610",
+            "title": "Soils Test Drilling",
+            "startDate": "2024-12-04",
+            "workdays": 1,
+            "phase": "UNASSIGNED",
+            "displayColor": "#88AAC7",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          },
+          {
+            "sourceItemId": "216505715",
+            "title": "Soils Test Labs",
+            "startDate": "2024-12-04",
+            "workdays": 16,
+            "phase": "UNASSIGNED",
+            "displayColor": "#88AAC7",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          },
+          {
+            "sourceItemId": "216506440",
+            "title": "Preliminary Architectural Plan",
+            "startDate": "2024-12-11",
+            "workdays": 10,
+            "phase": "UNASSIGNED",
+            "displayColor": "#88AAC7",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          },
+          {
+            "sourceItemId": "216507112",
+            "title": "Prelim. Architectural Plan Owner Review & Feedback",
+            "startDate": "2024-12-25",
+            "workdays": 5,
+            "phase": "UNASSIGNED",
+            "displayColor": "#FF9600",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          },
+          {
+            "sourceItemId": "216507483",
+            "title": "Architectural Plan Revisions",
+            "startDate": "2025-01-01",
+            "workdays": 10,
+            "phase": "UNASSIGNED",
+            "displayColor": "#88AAC7",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          },
+          {
+            "sourceItemId": "216508885",
+            "title": "Architectural Revision Owner Review",
+            "startDate": "2025-01-15",
+            "workdays": 1,
+            "phase": "Design & Pre-Construction",
+            "displayColor": "#FF9600",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          },
+          {
+            "sourceItemId": "216508981",
+            "title": "Architectural Elevations",
+            "startDate": "2025-01-16",
+            "workdays": 10,
+            "phase": "Design & Pre-Construction",
+            "displayColor": "#88AAC7",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          },
+          {
+            "sourceItemId": "216516203",
+            "title": "Prepare Site Plan",
+            "startDate": "2025-01-16",
+            "workdays": 10,
+            "phase": "UNASSIGNED",
+            "displayColor": "#88AAC7",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          },
+          {
+            "sourceItemId": "216519242",
+            "title": "Electrical Infrastructure Design Site Meeting",
+            "startDate": "2025-01-23",
+            "workdays": 1,
+            "phase": "Design & Pre-Construction",
+            "displayColor": "#88AAC7",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          },
+          {
+            "sourceItemId": "216519285",
+            "title": "Well Design Site Meeting",
+            "startDate": "2025-01-23",
+            "workdays": 1,
+            "phase": "UNASSIGNED",
+            "displayColor": "#88AAC7",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          },
+          {
+            "sourceItemId": "216509035",
+            "title": "Architectural Elevation Review",
+            "startDate": "2025-01-30",
+            "workdays": 5,
+            "phase": "Design & Pre-Construction",
+            "displayColor": "#FF9600",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          },
+          {
+            "sourceItemId": "216509092",
+            "title": "Architectural Elevation Revisions",
+            "startDate": "2025-02-06",
+            "workdays": 5,
+            "phase": "Design & Pre-Construction",
+            "displayColor": "#88AAC7",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          },
+          {
+            "sourceItemId": "216509140",
+            "title": "Architectural Elevations Revisions Owner Review",
+            "startDate": "2025-02-13",
+            "workdays": 1,
+            "phase": "Design & Pre-Construction",
+            "displayColor": "#FF9600",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          },
+          {
+            "sourceItemId": "216510854",
+            "title": "Architectural Building Sections",
+            "startDate": "2025-02-14",
+            "workdays": 15,
+            "phase": "UNASSIGNED",
+            "displayColor": "#88AAC7",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          },
+          {
+            "sourceItemId": "216509543",
+            "title": "Assess & Release Preliminary Selections",
+            "startDate": "2025-02-14",
+            "workdays": 1,
+            "phase": "UNASSIGNED",
+            "displayColor": "#88AAC7",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          },
+          {
+            "sourceItemId": "216509333",
+            "title": "MEP Design Owner Meeting",
+            "startDate": "2025-02-14",
+            "workdays": 1,
+            "phase": "Design & Pre-Construction",
+            "displayColor": "#FF9600",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          },
+          {
+            "sourceItemId": "216509454",
+            "title": "MEP Plan Drawings",
+            "startDate": "2025-02-17",
+            "workdays": 15,
+            "phase": "Design & Pre-Construction",
+            "displayColor": "#88AAC7",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          },
+          {
+            "sourceItemId": "216509774",
+            "title": "Preliminary Owner Selections",
+            "startDate": "2025-02-17",
+            "workdays": 15,
+            "phase": "UNASSIGNED",
+            "displayColor": "#FF9600",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          },
+          {
+            "sourceItemId": "216510378",
+            "title": "Finish Schedules",
+            "startDate": "2025-03-10",
+            "workdays": 5,
+            "phase": "Design & Pre-Construction",
+            "displayColor": "#88AAC7",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          },
+          {
+            "sourceItemId": "216510675",
+            "title": "Final Architectural Owner Review",
+            "startDate": "2025-03-17",
+            "workdays": 5,
+            "phase": "UNASSIGNED",
+            "displayColor": "#FF9600",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          },
+          {
+            "sourceItemId": "216512066",
+            "title": "Architectural Design Bidding",
+            "startDate": "2025-03-24",
+            "workdays": 15,
+            "phase": "Design & Pre-Construction",
+            "displayColor": "#88AAC7",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          },
+          {
+            "sourceItemId": "216511345",
+            "title": "Architectural Design Takeoffs",
+            "startDate": "2025-03-24",
+            "workdays": 5,
+            "phase": "Design & Pre-Construction",
+            "displayColor": "#88AAC7",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          },
+          {
+            "sourceItemId": "216511498",
+            "title": "Prepare & Send Arch. Design Bid Packages",
+            "startDate": "2025-03-24",
+            "workdays": 1,
+            "phase": "Design & Pre-Construction",
+            "displayColor": "#88AAC7",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          },
+          {
+            "sourceItemId": "216518683",
+            "title": "Draft Construction Contracts",
+            "startDate": "2025-04-09",
+            "workdays": 5,
+            "phase": "UNASSIGNED",
+            "displayColor": "#88AAC7",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          },
+          {
+            "sourceItemId": "216512503",
+            "title": "Compile Design Development Estimate",
+            "startDate": "2025-04-14",
+            "workdays": 2,
+            "phase": "Design & Pre-Construction",
+            "displayColor": "#88AAC7",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          },
+          {
+            "sourceItemId": "216512780",
+            "title": "Design Development Budget Review",
+            "startDate": "2025-04-16",
+            "workdays": 1,
+            "phase": "Design & Pre-Construction",
+            "displayColor": "#FF9600",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          },
+          {
+            "sourceItemId": "216520602",
+            "title": "Energy Modeling & IECC Report",
+            "startDate": "2025-04-17",
+            "workdays": 20,
+            "phase": "UNASSIGNED",
+            "displayColor": "#88AAC7",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          },
+          {
+            "sourceItemId": "216512817",
+            "title": "Engineering & Structural Drawings",
+            "startDate": "2025-04-17",
+            "workdays": 30,
+            "phase": "Design & Pre-Construction",
+            "displayColor": "#88AAC7",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          },
+          {
+            "sourceItemId": "216519702",
+            "title": "Septic Design",
+            "startDate": "2025-04-17",
+            "workdays": 10,
+            "phase": "UNASSIGNED",
+            "displayColor": "#88AAC7",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          },
+          {
+            "sourceItemId": "216519684",
+            "title": "Well Permitting",
+            "startDate": "2025-04-17",
+            "workdays": 20,
+            "phase": "UNASSIGNED",
+            "displayColor": "#6F116F",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          },
+          {
+            "sourceItemId": "216519957",
+            "title": "Septic Permitting",
+            "startDate": "2025-05-01",
+            "workdays": 20,
+            "phase": "UNASSIGNED",
+            "displayColor": "#6F116F",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          },
+          {
+            "sourceItemId": "216520406",
+            "title": "Submit for Building Permit",
+            "startDate": "2025-05-29",
+            "workdays": 1,
+            "phase": "UNASSIGNED",
+            "displayColor": "#ED2591",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          }
+        ],
+        "dependencies": [
+          {
+            "predecessorSourceItemId": "216505364",
+            "successorSourceItemId": "216508142",
+            "type": "FS",
+            "lagDays": 0
+          },
+          {
+            "predecessorSourceItemId": "216505364",
+            "successorSourceItemId": "216505610",
+            "type": "FS",
+            "lagDays": 0
+          },
+          {
+            "predecessorSourceItemId": "216505610",
+            "successorSourceItemId": "216505715",
+            "type": "SS",
+            "lagDays": 0
+          },
+          {
+            "predecessorSourceItemId": "216505364",
+            "successorSourceItemId": "216506440",
+            "type": "FS",
+            "lagDays": 0
+          },
+          {
+            "predecessorSourceItemId": "216508142",
+            "successorSourceItemId": "216506440",
+            "type": "FS",
+            "lagDays": 0
+          },
+          {
+            "predecessorSourceItemId": "216506440",
+            "successorSourceItemId": "216507112",
+            "type": "FS",
+            "lagDays": 0
+          },
+          {
+            "predecessorSourceItemId": "216507112",
+            "successorSourceItemId": "216507483",
+            "type": "FS",
+            "lagDays": 0
+          },
+          {
+            "predecessorSourceItemId": "216507483",
+            "successorSourceItemId": "216508885",
+            "type": "FS",
+            "lagDays": 0
+          },
+          {
+            "predecessorSourceItemId": "216508885",
+            "successorSourceItemId": "216508981",
+            "type": "FS",
+            "lagDays": 0
+          },
+          {
+            "predecessorSourceItemId": "216508885",
+            "successorSourceItemId": "216516203",
+            "type": "FS",
+            "lagDays": 0
+          },
+          {
+            "predecessorSourceItemId": "216516203",
+            "successorSourceItemId": "216519242",
+            "type": "SS",
+            "lagDays": 5
+          },
+          {
+            "predecessorSourceItemId": "216516203",
+            "successorSourceItemId": "216519285",
+            "type": "SS",
+            "lagDays": 5
+          },
+          {
+            "predecessorSourceItemId": "216508981",
+            "successorSourceItemId": "216509035",
+            "type": "FS",
+            "lagDays": 0
+          },
+          {
+            "predecessorSourceItemId": "216509035",
+            "successorSourceItemId": "216509092",
+            "type": "FS",
+            "lagDays": 0
+          },
+          {
+            "predecessorSourceItemId": "216509092",
+            "successorSourceItemId": "216509140",
+            "type": "FS",
+            "lagDays": 0
+          },
+          {
+            "predecessorSourceItemId": "216509140",
+            "successorSourceItemId": "216510854",
+            "type": "FS",
+            "lagDays": 0
+          },
+          {
+            "predecessorSourceItemId": "216509140",
+            "successorSourceItemId": "216509543",
+            "type": "FS",
+            "lagDays": 0
+          },
+          {
+            "predecessorSourceItemId": "216509140",
+            "successorSourceItemId": "216509333",
+            "type": "FS",
+            "lagDays": 0
+          },
+          {
+            "predecessorSourceItemId": "216509333",
+            "successorSourceItemId": "216509454",
+            "type": "FS",
+            "lagDays": 0
+          },
+          {
+            "predecessorSourceItemId": "216509543",
+            "successorSourceItemId": "216509774",
+            "type": "FS",
+            "lagDays": 0
+          },
+          {
+            "predecessorSourceItemId": "216509774",
+            "successorSourceItemId": "216510378",
+            "type": "FS",
+            "lagDays": 0
+          },
+          {
+            "predecessorSourceItemId": "216509454",
+            "successorSourceItemId": "216510675",
+            "type": "FS",
+            "lagDays": 0
+          },
+          {
+            "predecessorSourceItemId": "216510378",
+            "successorSourceItemId": "216510675",
+            "type": "FS",
+            "lagDays": 0
+          },
+          {
+            "predecessorSourceItemId": "216510854",
+            "successorSourceItemId": "216510675",
+            "type": "FS",
+            "lagDays": 0
+          },
+          {
+            "predecessorSourceItemId": "216511498",
+            "successorSourceItemId": "216512066",
+            "type": "SS",
+            "lagDays": 0
+          },
+          {
+            "predecessorSourceItemId": "216505715",
+            "successorSourceItemId": "216511345",
+            "type": "FS",
+            "lagDays": 0
+          },
+          {
+            "predecessorSourceItemId": "216510675",
+            "successorSourceItemId": "216511345",
+            "type": "FS",
+            "lagDays": 0
+          },
+          {
+            "predecessorSourceItemId": "216510675",
+            "successorSourceItemId": "216511498",
+            "type": "FS",
+            "lagDays": 0
+          },
+          {
+            "predecessorSourceItemId": "216512503",
+            "successorSourceItemId": "216518683",
+            "type": "FS",
+            "lagDays": -5
+          },
+          {
+            "predecessorSourceItemId": "216511345",
+            "successorSourceItemId": "216512503",
+            "type": "FS",
+            "lagDays": 0
+          },
+          {
+            "predecessorSourceItemId": "216512066",
+            "successorSourceItemId": "216512503",
+            "type": "FS",
+            "lagDays": 0
+          },
+          {
+            "predecessorSourceItemId": "216512503",
+            "successorSourceItemId": "216512780",
+            "type": "FS",
+            "lagDays": 0
+          },
+          {
+            "predecessorSourceItemId": "216512780",
+            "successorSourceItemId": "216520602",
+            "type": "FS",
+            "lagDays": 0
+          },
+          {
+            "predecessorSourceItemId": "216512780",
+            "successorSourceItemId": "216512817",
+            "type": "FS",
+            "lagDays": 0
+          },
+          {
+            "predecessorSourceItemId": "216512780",
+            "successorSourceItemId": "216519702",
+            "type": "FS",
+            "lagDays": 0
+          },
+          {
+            "predecessorSourceItemId": "216512780",
+            "successorSourceItemId": "216519684",
+            "type": "FS",
+            "lagDays": 0
+          },
+          {
+            "predecessorSourceItemId": "216519702",
+            "successorSourceItemId": "216519957",
+            "type": "FS",
+            "lagDays": 0
+          },
+          {
+            "predecessorSourceItemId": "216512817",
+            "successorSourceItemId": "216520406",
+            "type": "FS",
+            "lagDays": 0
+          },
+          {
+            "predecessorSourceItemId": "216519684",
+            "successorSourceItemId": "216520406",
+            "type": "FS",
+            "lagDays": 0
+          },
+          {
+            "predecessorSourceItemId": "216519957",
+            "successorSourceItemId": "216520406",
+            "type": "FS",
+            "lagDays": 0
+          },
+          {
+            "predecessorSourceItemId": "216520602",
+            "successorSourceItemId": "216520406",
+            "type": "FS",
+            "lagDays": 0
+          }
+        ]
+      }
+    },
+    {
+      "name": "Drywall Installation",
+      "sourceTemplateId": "30294726",
+      "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/30294726",
+      "scheduleDurationDays": 25,
+      "moduleCounts": {
+        "tasks": 28,
+        "bidPackages": 1,
+        "scheduleItems": 8,
+        "selections": 3
+      },
+      "schedule": {
+        "sourceAnchorDate": "2023-06-27",
+        "phases": [
+          {
+            "sourcePhaseId": "30294726:phase:1",
+            "name": "UNASSIGNED"
+          },
+          {
+            "sourcePhaseId": "30294726:phase:2",
+            "name": "Insulation & Drywall"
+          }
+        ],
+        "items": [
+          {
+            "sourceItemId": "176749752",
+            "title": "Drywall Walkthrough",
+            "startDate": "2023-06-27",
+            "workdays": 1,
+            "phase": "UNASSIGNED",
+            "displayColor": "#6C824D",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          },
+          {
+            "sourceItemId": "176749614",
+            "title": "Stock Drywall",
+            "startDate": "2023-07-12",
+            "workdays": 1,
+            "phase": "UNASSIGNED",
+            "displayColor": "#6C824D",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          },
+          {
+            "sourceItemId": "176749615",
+            "title": "Hang Drywall",
+            "startDate": "2023-07-13",
+            "workdays": 1,
+            "phase": "UNASSIGNED",
+            "displayColor": "#6C824D",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          },
+          {
+            "sourceItemId": "176749616",
+            "title": "Tape & Compound",
+            "startDate": "2023-07-14",
+            "workdays": 9,
+            "phase": "UNASSIGNED",
+            "displayColor": "#6C824D",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          },
+          {
+            "sourceItemId": "176749617",
+            "title": "Sand Drywall",
+            "startDate": "2023-07-27",
+            "workdays": 1,
+            "phase": "UNASSIGNED",
+            "displayColor": "#6C824D",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          },
+          {
+            "sourceItemId": "176749618",
+            "title": "Texture",
+            "startDate": "2023-07-28",
+            "workdays": 1,
+            "phase": "UNASSIGNED",
+            "displayColor": "#6C824D",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          },
+          {
+            "sourceItemId": "176751862",
+            "title": "Sand Texture & Drywall Cleanup",
+            "startDate": "2023-07-31",
+            "workdays": 1,
+            "phase": "UNASSIGNED",
+            "displayColor": "#6C824D",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          },
+          {
+            "sourceItemId": "176749753",
+            "title": "HPS Drywall QC Inspection",
+            "startDate": "2023-08-01",
+            "workdays": 1,
+            "phase": "Insulation & Drywall",
+            "displayColor": "#2222DD",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          }
+        ],
+        "dependencies": [
+          {
+            "predecessorSourceItemId": "176749752",
+            "successorSourceItemId": "176749614",
+            "type": "FS",
+            "lagDays": 9
+          },
+          {
+            "predecessorSourceItemId": "176749614",
+            "successorSourceItemId": "176749615",
+            "type": "FS",
+            "lagDays": 0
+          },
+          {
+            "predecessorSourceItemId": "176749615",
+            "successorSourceItemId": "176749616",
+            "type": "FS",
+            "lagDays": 0
+          },
+          {
+            "predecessorSourceItemId": "176749616",
+            "successorSourceItemId": "176749617",
+            "type": "FS",
+            "lagDays": 0
+          },
+          {
+            "predecessorSourceItemId": "176749617",
+            "successorSourceItemId": "176749618",
+            "type": "FS",
+            "lagDays": 0
+          },
+          {
+            "predecessorSourceItemId": "176749618",
+            "successorSourceItemId": "176751862",
+            "type": "FS",
+            "lagDays": 0
+          },
+          {
+            "predecessorSourceItemId": "176751862",
+            "successorSourceItemId": "176749753",
+            "type": "FS",
+            "lagDays": 0
+          }
+        ]
+      }
+    },
+    {
+      "name": "Earthwork - Perimeter Drain",
+      "sourceTemplateId": "13001090",
+      "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/13001090",
+      "scheduleDurationDays": 3,
+      "moduleCounts": {
+        "tasks": 4,
+        "scheduleItems": 3
+      },
+      "schedule": {
+        "sourceAnchorDate": "2022-05-25",
+        "phases": [
+          {
+            "sourcePhaseId": "13001090:phase:1",
+            "name": "Structure-Shell: FDN"
+          }
+        ],
+        "items": [
+          {
+            "sourceItemId": "145341521",
+            "title": "Perimeter Drain Grading",
+            "startDate": "2022-05-25",
+            "workdays": 1,
+            "phase": "Structure-Shell: FDN",
+            "displayColor": "#442121",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          },
+          {
+            "sourceItemId": "145341568",
+            "title": "Perimeter Drain Installation",
+            "startDate": "2022-05-26",
+            "workdays": 2,
+            "phase": "Structure-Shell: FDN",
+            "displayColor": "#5283AD",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          },
+          {
+            "sourceItemId": "145342287",
+            "title": "Roll On Waterproofing",
+            "startDate": "2022-05-26",
+            "workdays": 1,
+            "phase": "Structure-Shell: FDN",
+            "displayColor": "#5283AD",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          }
+        ],
+        "dependencies": [
+          {
+            "predecessorSourceItemId": "145341521",
+            "successorSourceItemId": "145341568",
+            "type": "SS",
+            "lagDays": 0
+          },
+          {
+            "predecessorSourceItemId": "145342287",
+            "successorSourceItemId": "145341568",
+            "type": "SS",
+            "lagDays": 0
+          },
+          {
+            "predecessorSourceItemId": "145341521",
+            "successorSourceItemId": "145342287",
+            "type": "FS",
+            "lagDays": 0
+          }
+        ]
+      }
+    },
+    {
+      "name": "Earthwork - Post-Frost Wall Earthwork",
+      "sourceTemplateId": "12650557",
+      "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/12650557",
+      "scheduleDurationDays": 2,
+      "moduleCounts": {
+        "tasks": 12,
+        "bidPackages": 1,
+        "scheduleItems": 4
+      },
+      "schedule": {
+        "sourceAnchorDate": "2022-04-13",
+        "phases": [
+          {
+            "sourcePhaseId": "12650557:phase:1",
+            "name": "Structure-Shell: FDN"
+          },
+          {
+            "sourcePhaseId": "12650557:phase:2",
+            "name": "Base Infrastructure"
+          }
+        ],
+        "items": [
+          {
+            "sourceItemId": "141693118",
+            "title": "Backfill & Compact Frost Walls",
+            "startDate": "2022-04-13",
+            "workdays": 1,
+            "phase": "Structure-Shell: FDN",
+            "displayColor": "#442121",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          },
+          {
+            "sourceItemId": "141693661",
+            "title": "Grade for Exterior Entry Slabs",
+            "startDate": "2022-04-14",
+            "workdays": 1,
+            "phase": "Base Infrastructure",
+            "displayColor": "#442121",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          },
+          {
+            "sourceItemId": "141693829",
+            "title": "Rough Grade Interior Sub-Slab",
+            "startDate": "2022-04-14",
+            "workdays": 1,
+            "phase": "Base Infrastructure",
+            "displayColor": "#442121",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          },
+          {
+            "sourceItemId": "141693850",
+            "title": "Trench for Water/Sewer/Gas Tie-In",
+            "startDate": "2022-04-14",
+            "workdays": 1,
+            "phase": "Base Infrastructure",
+            "displayColor": "#442121",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          }
+        ],
+        "dependencies": [
+          {
+            "predecessorSourceItemId": "141693118",
+            "successorSourceItemId": "141693661",
+            "type": "FS",
+            "lagDays": 0
+          },
+          {
+            "predecessorSourceItemId": "141693118",
+            "successorSourceItemId": "141693829",
+            "type": "FS",
+            "lagDays": 0
+          },
+          {
+            "predecessorSourceItemId": "141693118",
+            "successorSourceItemId": "141693850",
+            "type": "FS",
+            "lagDays": 0
+          }
+        ]
+      }
+    },
+    {
+      "name": "Earthwork - Radon Systems",
+      "sourceTemplateId": "42924180",
+      "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/42924180",
+      "scheduleDurationDays": 0,
+      "moduleCounts": {
+        "bidPackages": 1
+      },
+      "schedule": null
+    },
+    {
+      "name": "Ext. Finishes - Manuf. Gutters",
+      "sourceTemplateId": "12978732",
+      "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/12978732",
+      "scheduleDurationDays": 4,
+      "moduleCounts": {
+        "tasks": 17,
+        "bidPackages": 1,
+        "scheduleItems": 2,
+        "selections": 2
+      },
+      "schedule": {
+        "sourceAnchorDate": "2022-05-23",
+        "phases": [
+          {
+            "sourcePhaseId": "12978732:phase:1",
+            "name": "Exterior Finish"
+          }
+        ],
+        "items": [
+          {
+            "sourceItemId": "145104838",
+            "title": "Manufactured Gutters & Downspouts",
+            "startDate": "2022-05-23",
+            "workdays": 3,
+            "phase": "Exterior Finish",
+            "displayColor": "#6C3815",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          },
+          {
+            "sourceItemId": "145111028",
+            "title": "HPS Manuf. Gutter & Downspout QC Inspection",
+            "startDate": "2022-05-26",
+            "workdays": 1,
+            "phase": "Exterior Finish",
+            "displayColor": "#2222DD",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          }
+        ],
+        "dependencies": [
+          {
+            "predecessorSourceItemId": "145104838",
+            "successorSourceItemId": "145111028",
+            "type": "FS",
+            "lagDays": 0
+          }
+        ]
+      }
+    },
+    {
+      "name": "Ext. Finishes - Painting/Staining",
+      "sourceTemplateId": "36618977",
+      "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/36618977",
+      "scheduleDurationDays": 0,
+      "moduleCounts": {
+        "bidPackages": 1,
+        "selections": 2
+      },
+      "schedule": null
+    },
+    {
+      "name": "Ext. Finishes - Roofing",
+      "sourceTemplateId": "12978716",
+      "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/12978716",
+      "scheduleDurationDays": 5,
+      "moduleCounts": {
+        "tasks": 14,
+        "bidPackages": 1,
+        "scheduleItems": 2,
+        "selections": 103
+      },
+      "schedule": {
+        "sourceAnchorDate": "2022-05-23",
+        "phases": [
+          {
+            "sourcePhaseId": "12978716:phase:1",
+            "name": "Exterior Finish"
+          }
+        ],
+        "items": [
+          {
+            "sourceItemId": "145104743",
+            "title": "(TYPE) Roofing Installation",
+            "startDate": "2022-05-23",
+            "workdays": 4,
+            "phase": "Exterior Finish",
+            "displayColor": "#AD5A21",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          },
+          {
+            "sourceItemId": "145110557",
+            "title": "HPS Roofing QC Inspection",
+            "startDate": "2022-05-27",
+            "workdays": 1,
+            "phase": "Exterior Finish",
+            "displayColor": "#2222DD",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          }
+        ],
+        "dependencies": [
+          {
+            "predecessorSourceItemId": "145104743",
+            "successorSourceItemId": "145110557",
+            "type": "FS",
+            "lagDays": 0
+          }
+        ]
+      }
+    },
+    {
+      "name": "Ext. Finishes - Siding",
+      "sourceTemplateId": "30917204",
+      "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/30917204",
+      "scheduleDurationDays": 6,
+      "moduleCounts": {
+        "tasks": 29,
+        "bidPackages": 1,
+        "scheduleItems": 3,
+        "selections": 4
+      },
+      "schedule": {
+        "sourceAnchorDate": "2023-08-22",
+        "phases": [
+          {
+            "sourcePhaseId": "30917204:phase:1",
+            "name": "UNASSIGNED"
+          }
+        ],
+        "items": [
+          {
+            "sourceItemId": "180238320",
+            "title": "Siding Material Delivery",
+            "startDate": "2023-08-22",
+            "workdays": 1,
+            "phase": "UNASSIGNED",
+            "displayColor": "#DDC817",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          },
+          {
+            "sourceItemId": "180238306",
+            "title": "Siding Installation",
+            "startDate": "2023-08-23",
+            "workdays": 4,
+            "phase": "UNASSIGNED",
+            "displayColor": "#6C3815",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          },
+          {
+            "sourceItemId": "180238656",
+            "title": "HPS Siding QC Inpsection",
+            "startDate": "2023-08-29",
+            "workdays": 1,
+            "phase": "UNASSIGNED",
+            "displayColor": "#2222DD",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          }
+        ],
+        "dependencies": [
+          {
+            "predecessorSourceItemId": "180238306",
+            "successorSourceItemId": "180238320",
+            "type": "SS",
+            "lagDays": -1
+          },
+          {
+            "predecessorSourceItemId": "180238306",
+            "successorSourceItemId": "180238656",
+            "type": "FS",
+            "lagDays": 0
+          }
+        ]
+      }
+    },
+    {
+      "name": "Ext. Finishes - Stone",
+      "sourceTemplateId": "37180847",
+      "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/37180847",
+      "scheduleDurationDays": 0,
+      "moduleCounts": {
+        "selections": 2
+      },
+      "schedule": null
+    },
+    {
+      "name": "Ext. Finishes - Stucco",
+      "sourceTemplateId": "12859981",
+      "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/12859981",
+      "scheduleDurationDays": 14,
+      "moduleCounts": {
+        "tasks": 48,
+        "bidPackages": 1,
+        "scheduleItems": 5,
+        "selections": 4
+      },
+      "schedule": {
+        "sourceAnchorDate": "2022-05-10",
+        "phases": [
+          {
+            "sourcePhaseId": "12859981:phase:1",
+            "name": "Exterior Finish"
+          }
+        ],
+        "items": [
+          {
+            "sourceItemId": "143866298",
+            "title": "Stucco Lath",
+            "startDate": "2022-05-10",
+            "workdays": 5,
+            "phase": "Exterior Finish",
+            "displayColor": "#6C3815",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          },
+          {
+            "sourceItemId": "143866561",
+            "title": "Building Dept. Stucco Lath Inspection",
+            "startDate": "2022-05-17",
+            "workdays": 1,
+            "phase": "Exterior Finish",
+            "displayColor": "#ED2591",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          },
+          {
+            "sourceItemId": "143866713",
+            "title": "Stucco Brown Coat",
+            "startDate": "2022-05-18",
+            "workdays": 1,
+            "phase": "Exterior Finish",
+            "displayColor": "#6C3815",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          },
+          {
+            "sourceItemId": "143866957",
+            "title": "Stucco Color Coat",
+            "startDate": "2022-05-26",
+            "workdays": 1,
+            "phase": "Exterior Finish",
+            "displayColor": "#6C3815",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          },
+          {
+            "sourceItemId": "143867153",
+            "title": "HPS Stucco QC Inspection",
+            "startDate": "2022-05-27",
+            "workdays": 1,
+            "phase": "Exterior Finish",
+            "displayColor": "#2222DD",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          }
+        ],
+        "dependencies": [
+          {
+            "predecessorSourceItemId": "143866298",
+            "successorSourceItemId": "143866561",
+            "type": "FS",
+            "lagDays": 0
+          },
+          {
+            "predecessorSourceItemId": "143866561",
+            "successorSourceItemId": "143866713",
+            "type": "FS",
+            "lagDays": 0
+          },
+          {
+            "predecessorSourceItemId": "143866713",
+            "successorSourceItemId": "143866957",
+            "type": "FS",
+            "lagDays": 5
+          },
+          {
+            "predecessorSourceItemId": "143866957",
+            "successorSourceItemId": "143867153",
+            "type": "FS",
+            "lagDays": 0
+          }
+        ]
+      }
+    },
+    {
+      "name": "Framing - Exterior Man Door Installation",
+      "sourceTemplateId": "12650484",
+      "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/12650484",
+      "scheduleDurationDays": 3,
+      "moduleCounts": {
+        "tasks": 11,
+        "bidPackages": 1,
+        "scheduleItems": 2,
+        "selections": 1
+      },
+      "schedule": {
+        "sourceAnchorDate": "2022-04-13",
+        "phases": [
+          {
+            "sourcePhaseId": "12650484:phase:1",
+            "name": "Rough: Frame"
+          }
+        ],
+        "items": [
+          {
+            "sourceItemId": "141692419",
+            "title": "Install (X) Level Exterior Man Doors",
+            "startDate": "2022-04-13",
+            "workdays": 2,
+            "phase": "Rough: Frame",
+            "displayColor": "#ABBE91",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          },
+          {
+            "sourceItemId": "141692914",
+            "title": "HPS (X) Level Exterior Man Door QC Inspection",
+            "startDate": "2022-04-15",
+            "workdays": 1,
+            "phase": "Rough: Frame",
+            "displayColor": "#2222DD",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          }
+        ],
+        "dependencies": [
+          {
+            "predecessorSourceItemId": "141692419",
+            "successorSourceItemId": "141692914",
+            "type": "FS",
+            "lagDays": 0
+          }
+        ]
+      }
+    },
+    {
+      "name": "Framing - Exterior Wall Assembly",
+      "sourceTemplateId": "12649292",
+      "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/12649292",
+      "scheduleDurationDays": 6,
+      "moduleCounts": {
+        "tasks": 16,
+        "scheduleItems": 2
+      },
+      "schedule": {
+        "sourceAnchorDate": "2022-04-13",
+        "phases": [
+          {
+            "sourcePhaseId": "12649292:phase:1",
+            "name": "UNASSIGNED"
+          }
+        ],
+        "items": [
+          {
+            "sourceItemId": "141675409",
+            "title": "X Level Exterior Framed Walls",
+            "startDate": "2022-04-13",
+            "workdays": 5,
+            "phase": "UNASSIGNED",
+            "displayColor": "#ABBE91",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          },
+          {
+            "sourceItemId": "141676547",
+            "title": "HPS X Room Exterior Framed Wall QC Inspection",
+            "startDate": "2022-04-20",
+            "workdays": 1,
+            "phase": "UNASSIGNED",
+            "displayColor": "#2222DD",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          }
+        ],
+        "dependencies": [
+          {
+            "predecessorSourceItemId": "141675409",
+            "successorSourceItemId": "141676547",
+            "type": "FS",
+            "lagDays": 0
+          }
+        ]
+      }
+    },
+    {
+      "name": "Framing - Fascia & Soffit Installation",
+      "sourceTemplateId": "12819873",
+      "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/12819873",
+      "scheduleDurationDays": 3,
+      "moduleCounts": {
+        "tasks": 25,
+        "scheduleItems": 3
+      },
+      "schedule": {
+        "sourceAnchorDate": "2022-05-04",
+        "phases": [
+          {
+            "sourcePhaseId": "12819873:phase:1",
+            "name": "Rough: Frame"
+          },
+          {
+            "sourcePhaseId": "12819873:phase:2",
+            "name": "Exterior Finish"
+          }
+        ],
+        "items": [
+          {
+            "sourceItemId": "143416707",
+            "title": "Install Fascia & Soffit",
+            "startDate": "2022-05-04",
+            "workdays": 2,
+            "phase": "Rough: Frame",
+            "displayColor": "#ABBE91",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          },
+          {
+            "sourceItemId": "143417168",
+            "title": "HPS Fascia & Soffit QC Inspection",
+            "startDate": "2022-05-06",
+            "workdays": 1,
+            "phase": "Rough: Frame",
+            "displayColor": "#2222DD",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          },
+          {
+            "sourceItemId": "143416713",
+            "title": "Paint Fascia & Soffit",
+            "startDate": "2022-05-06",
+            "workdays": 1,
+            "phase": "Exterior Finish",
+            "displayColor": "#6C3815",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          }
+        ],
+        "dependencies": [
+          {
+            "predecessorSourceItemId": "143416707",
+            "successorSourceItemId": "143417168",
+            "type": "FS",
+            "lagDays": 0
+          },
+          {
+            "predecessorSourceItemId": "143416707",
+            "successorSourceItemId": "143416713",
+            "type": "FS",
+            "lagDays": 0
+          }
+        ]
+      }
+    },
+    {
+      "name": "Framing - Floor System Assembly",
+      "sourceTemplateId": "12649495",
+      "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/12649495",
+      "scheduleDurationDays": 9,
+      "moduleCounts": {
+        "tasks": 24,
+        "scheduleItems": 4
+      },
+      "schedule": {
+        "sourceAnchorDate": "2022-04-13",
+        "phases": [
+          {
+            "sourcePhaseId": "12649495:phase:1",
+            "name": "UNASSIGNED"
+          }
+        ],
+        "items": [
+          {
+            "sourceItemId": "141677809",
+            "title": "X Level Floor System Framing",
+            "startDate": "2022-04-13",
+            "workdays": 6,
+            "phase": "UNASSIGNED",
+            "displayColor": "#ABBE91",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          },
+          {
+            "sourceItemId": "141680084",
+            "title": "(X) Level Floor Sheeting",
+            "startDate": "2022-04-21",
+            "workdays": 2,
+            "phase": "UNASSIGNED",
+            "displayColor": "#ABBE91",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          },
+          {
+            "sourceItemId": "141679645",
+            "title": "HPS (X) Level Floor Joist QC Inspection",
+            "startDate": "2022-04-21",
+            "workdays": 1,
+            "phase": "UNASSIGNED",
+            "displayColor": "#2222DD",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          },
+          {
+            "sourceItemId": "141680773",
+            "title": "HPS (X) Level Floor Framing QC Inspection",
+            "startDate": "2022-04-25",
+            "workdays": 1,
+            "phase": "UNASSIGNED",
+            "displayColor": "#2222DD",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          }
+        ],
+        "dependencies": [
+          {
+            "predecessorSourceItemId": "141679645",
+            "successorSourceItemId": "141680084",
+            "type": "SS",
+            "lagDays": 0
+          },
+          {
+            "predecessorSourceItemId": "141677809",
+            "successorSourceItemId": "141679645",
+            "type": "FS",
+            "lagDays": 0
+          },
+          {
+            "predecessorSourceItemId": "141680084",
+            "successorSourceItemId": "141680773",
+            "type": "FS",
+            "lagDays": 0
+          }
+        ]
+      }
+    },
+    {
+      "name": "Framing - Interior Wall Assembly",
+      "sourceTemplateId": "12646335",
+      "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/12646335",
+      "scheduleDurationDays": 5,
+      "moduleCounts": {
+        "tasks": 34,
+        "bidPackages": 1,
+        "scheduleItems": 2
+      },
+      "schedule": {
+        "sourceAnchorDate": "2022-04-13",
+        "phases": [
+          {
+            "sourcePhaseId": "12646335:phase:1",
+            "name": "Rough: Frame"
+          }
+        ],
+        "items": [
+          {
+            "sourceItemId": "141652402",
+            "title": "X Level Interior Wood Framed Walls",
+            "startDate": "2022-04-13",
+            "workdays": 4,
+            "phase": "Rough: Frame",
+            "displayColor": "#ABBE91",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          },
+          {
+            "sourceItemId": "141654663",
+            "title": "HPS X Interior Framed Wall QC Inspection",
+            "startDate": "2022-04-19",
+            "workdays": 1,
+            "phase": "Rough: Frame",
+            "displayColor": "#2222DD",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          }
+        ],
+        "dependencies": [
+          {
+            "predecessorSourceItemId": "141652402",
+            "successorSourceItemId": "141654663",
+            "type": "FS",
+            "lagDays": 0
+          }
+        ]
+      }
+    },
+    {
+      "name": "Framing - Overhead Door Installation",
+      "sourceTemplateId": "30919251",
+      "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/30919251",
+      "scheduleDurationDays": 3,
+      "moduleCounts": {
+        "tasks": 13,
+        "bidPackages": 1,
+        "scheduleItems": 2,
+        "selections": 1
+      },
+      "schedule": {
+        "sourceAnchorDate": "2023-08-23",
+        "phases": [
+          {
+            "sourcePhaseId": "30919251:phase:1",
+            "name": "Rough: Frame"
+          }
+        ],
+        "items": [
+          {
+            "sourceItemId": "180251869",
+            "title": "Overhead Door Installation",
+            "startDate": "2023-08-23",
+            "workdays": 2,
+            "phase": "Rough: Frame",
+            "displayColor": "#E39D6C",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          },
+          {
+            "sourceItemId": "180251891",
+            "title": "HPS Overhead Door QC Inspection",
+            "startDate": "2023-08-25",
+            "workdays": 1,
+            "phase": "Rough: Frame",
+            "displayColor": "#2222DD",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          }
+        ],
+        "dependencies": [
+          {
+            "predecessorSourceItemId": "180251869",
+            "successorSourceItemId": "180251891",
+            "type": "FS",
+            "lagDays": 0
+          }
+        ]
+      }
+    },
+    {
+      "name": "Framing - Quote Packages",
+      "sourceTemplateId": "36478698",
+      "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/36478698",
+      "scheduleDurationDays": 0,
+      "moduleCounts": {
+        "bidPackages": 3
+      },
+      "schedule": null
+    },
+    {
+      "name": "Framing - Roof w/ Trusses Assembly",
+      "sourceTemplateId": "12650792",
+      "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/12650792",
+      "scheduleDurationDays": 12,
+      "moduleCounts": {
+        "tasks": 28,
+        "scheduleItems": 5
+      },
+      "schedule": {
+        "sourceAnchorDate": "2022-04-13",
+        "phases": [
+          {
+            "sourcePhaseId": "12650792:phase:1",
+            "name": "Rough: Frame"
+          },
+          {
+            "sourcePhaseId": "12650792:phase:2",
+            "name": "UNASSIGNED"
+          }
+        ],
+        "items": [
+          {
+            "sourceItemId": "141696826",
+            "title": "(X) Level Truss Setting Prep",
+            "startDate": "2022-04-13",
+            "workdays": 1,
+            "phase": "Rough: Frame",
+            "displayColor": "#ABBE91",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          },
+          {
+            "sourceItemId": "141695529",
+            "title": "Set (X) Level Roof Trusses",
+            "startDate": "2022-04-14",
+            "workdays": 1,
+            "phase": "Rough: Frame",
+            "displayColor": "#ABBE91",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          },
+          {
+            "sourceItemId": "141696771",
+            "title": "(X) Level Rough Roof Framing",
+            "startDate": "2022-04-15",
+            "workdays": 5,
+            "phase": "Rough: Frame",
+            "displayColor": "#ABBE91",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          },
+          {
+            "sourceItemId": "141698217",
+            "title": "(X) Level Roof Sheeting",
+            "startDate": "2022-04-22",
+            "workdays": 4,
+            "phase": "Rough: Frame",
+            "displayColor": "#ABBE91",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          },
+          {
+            "sourceItemId": "180255949",
+            "title": "HPS Roof Framing QC Inpsection",
+            "startDate": "2022-04-28",
+            "workdays": 1,
+            "phase": "UNASSIGNED",
+            "displayColor": "#2222DD",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          }
+        ],
+        "dependencies": [
+          {
+            "predecessorSourceItemId": "141696826",
+            "successorSourceItemId": "141695529",
+            "type": "FS",
+            "lagDays": 0
+          },
+          {
+            "predecessorSourceItemId": "141695529",
+            "successorSourceItemId": "141696771",
+            "type": "FS",
+            "lagDays": 0
+          },
+          {
+            "predecessorSourceItemId": "141696771",
+            "successorSourceItemId": "141698217",
+            "type": "FS",
+            "lagDays": 0
+          },
+          {
+            "predecessorSourceItemId": "141696771",
+            "successorSourceItemId": "180255949",
+            "type": "FS",
+            "lagDays": 0
+          },
+          {
+            "predecessorSourceItemId": "141698217",
+            "successorSourceItemId": "180255949",
+            "type": "FS",
+            "lagDays": 0
+          }
+        ]
+      }
+    },
+    {
+      "name": "Framing - Rough inspection w/ Draft & Firestop",
+      "sourceTemplateId": "12978590",
+      "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/12978590",
+      "scheduleDurationDays": 2,
+      "moduleCounts": {
+        "tasks": 3,
+        "scheduleItems": 2
+      },
+      "schedule": {
+        "sourceAnchorDate": "2022-05-23",
+        "phases": [
+          {
+            "sourcePhaseId": "12978590:phase:1",
+            "name": "Rough: Frame"
+          },
+          {
+            "sourcePhaseId": "12978590:phase:2",
+            "name": "Rough: MEP"
+          }
+        ],
+        "items": [
+          {
+            "sourceItemId": "145103222",
+            "title": "Draft & Fire Stop",
+            "startDate": "2022-05-23",
+            "workdays": 1,
+            "phase": "Rough: Frame",
+            "displayColor": "#6C824D",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          },
+          {
+            "sourceItemId": "145103435",
+            "title": "Building Dept. Rough Frame Inspection",
+            "startDate": "2022-05-24",
+            "workdays": 1,
+            "phase": "Rough: MEP",
+            "displayColor": "#ED2591",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          }
+        ],
+        "dependencies": [
+          {
+            "predecessorSourceItemId": "145103222",
+            "successorSourceItemId": "145103435",
+            "type": "FS",
+            "lagDays": 0
+          }
+        ]
+      }
+    },
+    {
+      "name": "Framing - Stair Installation",
+      "sourceTemplateId": "12650713",
+      "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/12650713",
+      "scheduleDurationDays": 3,
+      "moduleCounts": {
+        "tasks": 10,
+        "scheduleItems": 3
+      },
+      "schedule": {
+        "sourceAnchorDate": "2022-04-13",
+        "phases": [
+          {
+            "sourcePhaseId": "12650713:phase:1",
+            "name": "Rough: Frame"
+          }
+        ],
+        "items": [
+          {
+            "sourceItemId": "141694608",
+            "title": "Frame & Sheet (X) Level Landing",
+            "startDate": "2022-04-13",
+            "workdays": 1,
+            "phase": "Rough: Frame",
+            "displayColor": "#ABBE91",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          },
+          {
+            "sourceItemId": "141695005",
+            "title": "Install (X) Level Stairs",
+            "startDate": "2022-04-14",
+            "workdays": 1,
+            "phase": "Rough: Frame",
+            "displayColor": "#ABBE91",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          },
+          {
+            "sourceItemId": "141695420",
+            "title": "HPS (X) Level Stair Installation QC Inspection",
+            "startDate": "2022-04-15",
+            "workdays": 1,
+            "phase": "Rough: Frame",
+            "displayColor": "#2222DD",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          }
+        ],
+        "dependencies": [
+          {
+            "predecessorSourceItemId": "141694608",
+            "successorSourceItemId": "141695005",
+            "type": "FS",
+            "lagDays": 0
+          },
+          {
+            "predecessorSourceItemId": "141695005",
+            "successorSourceItemId": "141695420",
+            "type": "FS",
+            "lagDays": 0
+          }
+        ]
+      }
+    },
+    {
+      "name": "Framing - Window",
+      "sourceTemplateId": "12650427",
+      "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/12650427",
+      "scheduleDurationDays": 4,
+      "moduleCounts": {
+        "tasks": 20,
+        "bidPackages": 1,
+        "scheduleItems": 2,
+        "selections": 2
+      },
+      "schedule": {
+        "sourceAnchorDate": "2022-04-13",
+        "phases": [
+          {
+            "sourcePhaseId": "12650427:phase:1",
+            "name": "Rough: Frame"
+          }
+        ],
+        "items": [
+          {
+            "sourceItemId": "141691840",
+            "title": "(X) Level Window Installation",
+            "startDate": "2022-04-13",
+            "workdays": 3,
+            "phase": "Rough: Frame",
+            "displayColor": "#ABBE91",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          },
+          {
+            "sourceItemId": "141691951",
+            "title": "HPS (X) Level Window Installation QC Inspection",
+            "startDate": "2022-04-18",
+            "workdays": 1,
+            "phase": "Rough: Frame",
+            "displayColor": "#2222DD",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          }
+        ],
+        "dependencies": [
+          {
+            "predecessorSourceItemId": "141691840",
+            "successorSourceItemId": "141691951",
+            "type": "FS",
+            "lagDays": 0
+          }
+        ]
+      }
+    },
+    {
+      "name": "Insulation",
+      "sourceTemplateId": "39644707",
+      "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/39644707",
+      "scheduleDurationDays": 0,
+      "moduleCounts": {
+        "bidPackages": 1
+      },
+      "schedule": null
+    },
+    {
+      "name": "Int. Finishes - Architectural Woodwork",
+      "sourceTemplateId": "12796241",
+      "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/12796241",
+      "scheduleDurationDays": 5,
+      "moduleCounts": {
+        "tasks": 19,
+        "bidPackages": 2,
+        "scheduleItems": 4,
+        "selections": 5
+      },
+      "schedule": {
+        "sourceAnchorDate": "2022-05-02",
+        "phases": [
+          {
+            "sourcePhaseId": "12796241:phase:1",
+            "name": "Interior Finish"
+          },
+          {
+            "sourcePhaseId": "12796241:phase:2",
+            "name": "UNASSIGNED"
+          }
+        ],
+        "items": [
+          {
+            "sourceItemId": "143157341",
+            "title": "Paint/Stain Architectural Woodwork",
+            "startDate": "2022-05-02",
+            "workdays": 1,
+            "phase": "Interior Finish",
+            "displayColor": "#008000",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          },
+          {
+            "sourceItemId": "180198338",
+            "title": "Architectural Woodwork",
+            "startDate": "2022-05-03",
+            "workdays": 2,
+            "phase": "UNASSIGNED",
+            "displayColor": "#008000",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          },
+          {
+            "sourceItemId": "143157501",
+            "title": "Baseboard & Casework Installation",
+            "startDate": "2022-05-03",
+            "workdays": 3,
+            "phase": "Interior Finish",
+            "displayColor": "#008000",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          },
+          {
+            "sourceItemId": "143408018",
+            "title": "HPS Millwork QC Inspection",
+            "startDate": "2022-05-06",
+            "workdays": 1,
+            "phase": "UNASSIGNED",
+            "displayColor": "#2222DD",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          }
+        ],
+        "dependencies": [
+          {
+            "predecessorSourceItemId": "143157341",
+            "successorSourceItemId": "180198338",
+            "type": "FS",
+            "lagDays": 0
+          },
+          {
+            "predecessorSourceItemId": "143157341",
+            "successorSourceItemId": "143157501",
+            "type": "FS",
+            "lagDays": 0
+          },
+          {
+            "predecessorSourceItemId": "143157501",
+            "successorSourceItemId": "143408018",
+            "type": "FS",
+            "lagDays": 0
+          }
+        ]
+      }
+    },
+    {
+      "name": "Int. Finishes - Bath Hardware",
+      "sourceTemplateId": "42948499",
+      "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/42948499",
+      "scheduleDurationDays": 0,
+      "moduleCounts": {
+        "selections": 1
+      },
+      "schedule": null
+    },
+    {
+      "name": "Int. Finishes - Cabinetry/Countertops",
+      "sourceTemplateId": "30907034",
+      "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/30907034",
+      "scheduleDurationDays": 18,
+      "moduleCounts": {
+        "tasks": 50,
+        "bidPackages": 2,
+        "scheduleItems": 6,
+        "selections": 4
+      },
+      "schedule": {
+        "sourceAnchorDate": "2023-08-22",
+        "phases": [
+          {
+            "sourcePhaseId": "30907034:phase:1",
+            "name": "UNASSIGNED"
+          }
+        ],
+        "items": [
+          {
+            "sourceItemId": "180199353",
+            "title": "Cabinet Delivery",
+            "startDate": "2023-08-22",
+            "workdays": 1,
+            "phase": "UNASSIGNED",
+            "displayColor": "#DDC817",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          },
+          {
+            "sourceItemId": "180199341",
+            "title": "Cabinetry Installation",
+            "startDate": "2023-08-23",
+            "workdays": 4,
+            "phase": "UNASSIGNED",
+            "displayColor": "#008000",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          },
+          {
+            "sourceItemId": "180199371",
+            "title": "Countertop Template",
+            "startDate": "2023-08-29",
+            "workdays": 1,
+            "phase": "UNASSIGNED",
+            "displayColor": "#ED2591",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          },
+          {
+            "sourceItemId": "180199855",
+            "title": "HPS Cabinetry Installation QC Inspection",
+            "startDate": "2023-08-29",
+            "workdays": 1,
+            "phase": "UNASSIGNED",
+            "displayColor": "#2222DD",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          },
+          {
+            "sourceItemId": "180199388",
+            "title": "Countertop Installation",
+            "startDate": "2023-09-13",
+            "workdays": 2,
+            "phase": "UNASSIGNED",
+            "displayColor": "#008000",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          },
+          {
+            "sourceItemId": "180199906",
+            "title": "HPS Countertop Installation QC Inspection",
+            "startDate": "2023-09-15",
+            "workdays": 1,
+            "phase": "UNASSIGNED",
+            "displayColor": "#2222DD",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          }
+        ],
+        "dependencies": [
+          {
+            "predecessorSourceItemId": "180199341",
+            "successorSourceItemId": "180199353",
+            "type": "SS",
+            "lagDays": -1
+          },
+          {
+            "predecessorSourceItemId": "180199341",
+            "successorSourceItemId": "180199371",
+            "type": "FS",
+            "lagDays": 0
+          },
+          {
+            "predecessorSourceItemId": "180199341",
+            "successorSourceItemId": "180199855",
+            "type": "FS",
+            "lagDays": 0
+          },
+          {
+            "predecessorSourceItemId": "180199371",
+            "successorSourceItemId": "180199388",
+            "type": "FS",
+            "lagDays": 9
+          },
+          {
+            "predecessorSourceItemId": "180199388",
+            "successorSourceItemId": "180199906",
+            "type": "FS",
+            "lagDays": 0
+          }
+        ]
+      }
+    },
+    {
+      "name": "Int. Finishes - Flooring",
+      "sourceTemplateId": "38452172",
+      "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/38452172",
+      "scheduleDurationDays": 0,
+      "moduleCounts": {
+        "bidPackages": 1,
+        "selections": 3
+      },
+      "schedule": null
+    },
+    {
+      "name": "Int. Finishes - Interior Doors",
+      "sourceTemplateId": "28466146",
+      "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/28466146",
+      "scheduleDurationDays": 4,
+      "moduleCounts": {
+        "tasks": 5,
+        "scheduleItems": 3,
+        "selections": 4
+      },
+      "schedule": {
+        "sourceAnchorDate": "2023-03-08",
+        "phases": [
+          {
+            "sourcePhaseId": "28466146:phase:1",
+            "name": "UNASSIGNED"
+          },
+          {
+            "sourcePhaseId": "28466146:phase:2",
+            "name": "Interior Finish"
+          }
+        ],
+        "items": [
+          {
+            "sourceItemId": "166641616",
+            "title": "Interior Door Delivery",
+            "startDate": "2023-03-08",
+            "workdays": 1,
+            "phase": "UNASSIGNED",
+            "displayColor": "#DDC817",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          },
+          {
+            "sourceItemId": "166641633",
+            "title": "Interior Door Installation",
+            "startDate": "2023-03-09",
+            "workdays": 2,
+            "phase": "UNASSIGNED",
+            "displayColor": "#008000",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          },
+          {
+            "sourceItemId": "180251529",
+            "title": "HPS Interior Door QC Inspection",
+            "startDate": "2023-03-13",
+            "workdays": 1,
+            "phase": "Interior Finish",
+            "displayColor": "#2222DD",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          }
+        ],
+        "dependencies": [
+          {
+            "predecessorSourceItemId": "166641616",
+            "successorSourceItemId": "166641633",
+            "type": "FS",
+            "lagDays": 0
+          },
+          {
+            "predecessorSourceItemId": "166641633",
+            "successorSourceItemId": "180251529",
+            "type": "FS",
+            "lagDays": 0
+          }
+        ]
+      }
+    },
+    {
+      "name": "Int. Finishes - Painting/Staining",
+      "sourceTemplateId": "36619183",
+      "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/36619183",
+      "scheduleDurationDays": 0,
+      "moduleCounts": {
+        "bidPackages": 1,
+        "selections": 8
+      },
+      "schedule": null
+    },
+    {
+      "name": "Int. Finishes - Stain & Seal Concrete Floors",
+      "sourceTemplateId": "12979213",
+      "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/12979213",
+      "scheduleDurationDays": 7,
+      "moduleCounts": {
+        "tasks": 7,
+        "scheduleItems": 5
+      },
+      "schedule": {
+        "sourceAnchorDate": "2022-05-23",
+        "phases": [
+          {
+            "sourcePhaseId": "12979213:phase:1",
+            "name": "Interior Finish"
+          }
+        ],
+        "items": [
+          {
+            "sourceItemId": "145114223",
+            "title": "Prep Floors",
+            "startDate": "2022-05-23",
+            "workdays": 1,
+            "phase": "Interior Finish",
+            "displayColor": "#008000",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          },
+          {
+            "sourceItemId": "145114248",
+            "title": "Stain Floors",
+            "startDate": "2022-05-24",
+            "workdays": 1,
+            "phase": "Interior Finish",
+            "displayColor": "#008000",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          },
+          {
+            "sourceItemId": "145114252",
+            "title": "Seal Floors",
+            "startDate": "2022-05-25",
+            "workdays": 3,
+            "phase": "Interior Finish",
+            "displayColor": "#008000",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          },
+          {
+            "sourceItemId": "145114287",
+            "title": "HPS Concrete Stain & Seal QC Inspection",
+            "startDate": "2022-05-30",
+            "workdays": 1,
+            "phase": "Interior Finish",
+            "displayColor": "#2222DD",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          },
+          {
+            "sourceItemId": "145114260",
+            "title": "Cover Floors",
+            "startDate": "2022-05-31",
+            "workdays": 1,
+            "phase": "Interior Finish",
+            "displayColor": "#008000",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          }
+        ],
+        "dependencies": [
+          {
+            "predecessorSourceItemId": "145114223",
+            "successorSourceItemId": "145114248",
+            "type": "FS",
+            "lagDays": 0
+          },
+          {
+            "predecessorSourceItemId": "145114248",
+            "successorSourceItemId": "145114252",
+            "type": "FS",
+            "lagDays": 0
+          },
+          {
+            "predecessorSourceItemId": "145114252",
+            "successorSourceItemId": "145114287",
+            "type": "FS",
+            "lagDays": 0
+          },
+          {
+            "predecessorSourceItemId": "145114252",
+            "successorSourceItemId": "145114260",
+            "type": "FS",
+            "lagDays": 1
+          }
+        ]
+      }
+    },
+    {
+      "name": "Int. Finishes - Tiling",
+      "sourceTemplateId": "30914491",
+      "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/30914491",
+      "scheduleDurationDays": 7,
+      "moduleCounts": {
+        "tasks": 16,
+        "bidPackages": 1,
+        "scheduleItems": 3,
+        "selections": 5
+      },
+      "schedule": {
+        "sourceAnchorDate": "2023-08-22",
+        "phases": [
+          {
+            "sourcePhaseId": "30914491:phase:1",
+            "name": "UNASSIGNED"
+          }
+        ],
+        "items": [
+          {
+            "sourceItemId": "180219816",
+            "title": "Tile Delivery",
+            "startDate": "2023-08-22",
+            "workdays": 1,
+            "phase": "UNASSIGNED",
+            "displayColor": "#DDC817",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          },
+          {
+            "sourceItemId": "180219733",
+            "title": "Tile",
+            "startDate": "2023-08-23",
+            "workdays": 5,
+            "phase": "UNASSIGNED",
+            "displayColor": "#008000",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          },
+          {
+            "sourceItemId": "180219926",
+            "title": "HPS Tile QC Inspection",
+            "startDate": "2023-08-30",
+            "workdays": 1,
+            "phase": "UNASSIGNED",
+            "displayColor": "#2222DD",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          }
+        ],
+        "dependencies": [
+          {
+            "predecessorSourceItemId": "180219733",
+            "successorSourceItemId": "180219816",
+            "type": "SS",
+            "lagDays": -1
+          },
+          {
+            "predecessorSourceItemId": "180219733",
+            "successorSourceItemId": "180219926",
+            "type": "FS",
+            "lagDays": 0
+          }
+        ]
+      }
+    },
+    {
+      "name": "MEP - Fireplace Installation",
+      "sourceTemplateId": "38452532",
+      "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/38452532",
+      "scheduleDurationDays": 0,
+      "moduleCounts": {
+        "selections": 1
+      },
+      "schedule": null
+    },
+    {
+      "name": "MEP - Plumbing Base",
+      "sourceTemplateId": "12650395",
+      "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/12650395",
+      "scheduleDurationDays": 6,
+      "moduleCounts": {
+        "tasks": 9,
+        "bidPackages": 1,
+        "scheduleItems": 4
+      },
+      "schedule": {
+        "sourceAnchorDate": "2022-04-13",
+        "phases": [
+          {
+            "sourcePhaseId": "12650395:phase:1",
+            "name": "Base Infrastructure"
+          }
+        ],
+        "items": [
+          {
+            "sourceItemId": "141691196",
+            "title": "Plumbing Base",
+            "startDate": "2022-04-13",
+            "workdays": 4,
+            "phase": "Base Infrastructure",
+            "displayColor": "#436A8C",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          },
+          {
+            "sourceItemId": "141694381",
+            "title": "Water Line Tie-In",
+            "startDate": "2022-04-13",
+            "workdays": 1,
+            "phase": "Base Infrastructure",
+            "displayColor": "#436A8C",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          },
+          {
+            "sourceItemId": "141691568",
+            "title": "HPS Plumbing Base QC Inspection",
+            "startDate": "2022-04-19",
+            "workdays": 1,
+            "phase": "Base Infrastructure",
+            "displayColor": "#2222DD",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          },
+          {
+            "sourceItemId": "141691620",
+            "title": "Building Department Plumbing Base Inspection",
+            "startDate": "2022-04-20",
+            "workdays": 1,
+            "phase": "Base Infrastructure",
+            "displayColor": "#ED2591",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          }
+        ],
+        "dependencies": [
+          {
+            "predecessorSourceItemId": "141691196",
+            "successorSourceItemId": "141694381",
+            "type": "SS",
+            "lagDays": 0
+          },
+          {
+            "predecessorSourceItemId": "141691196",
+            "successorSourceItemId": "141691568",
+            "type": "FS",
+            "lagDays": 0
+          },
+          {
+            "predecessorSourceItemId": "141691568",
+            "successorSourceItemId": "141691620",
+            "type": "FS",
+            "lagDays": 0
+          }
+        ]
+      }
+    },
+    {
+      "name": "MEP - Quotes",
+      "sourceTemplateId": "36595931",
+      "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/36595931",
+      "scheduleDurationDays": 0,
+      "moduleCounts": {
+        "bidPackages": 3
+      },
+      "schedule": null
+    },
     {
       "name": "MEP - Rough & Top Out",
       "sourceTemplateId": "12978371",
       "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/12978371",
       "scheduleDurationDays": 6,
-      "moduleCounts": { "tasks": 45, "bidPackages": 2, "scheduleItems": 9 },
+      "moduleCounts": {
+        "tasks": 45,
+        "bidPackages": 2,
+        "scheduleItems": 9
+      },
       "schedule": {
         "sourceAnchorDate": "2022-05-23",
         "phases": [
-          { "sourcePhaseId": "169703", "name": "ROUGH: MEP" }
+          {
+            "sourcePhaseId": "12978371:phase:1",
+            "name": "Rough: MEP"
+          }
         ],
         "items": [
-          { "sourceItemId": "145102245", "title": "Electrical - Rough", "startDate": "2022-05-23", "workdays": 5, "phase": "ROUGH: MEP" },
-          { "sourceItemId": "145102301", "title": "HVAC - Rough", "startDate": "2022-05-23", "workdays": 5, "phase": "ROUGH: MEP" },
-          { "sourceItemId": "145102188", "title": "Plumbing - Rough & Top Out", "startDate": "2022-05-23", "workdays": 5, "phase": "ROUGH: MEP" },
-          { "sourceItemId": "145102272", "title": "Building Dept. Electrical Rough Inspection", "startDate": "2022-05-30", "workdays": 1, "phase": "ROUGH: MEP" },
-          { "sourceItemId": "145103137", "title": "Building Dept. Mechanical Rough Inspection", "startDate": "2022-05-30", "workdays": 1, "phase": "ROUGH: MEP" },
-          { "sourceItemId": "145102234", "title": "Building Dept. Plumbing Rough & Top Out Inspection", "startDate": "2022-05-30", "workdays": 1, "phase": "ROUGH: MEP" },
-          { "sourceItemId": "145106242", "title": "HPS Electrical Rough QC Inspection", "startDate": "2022-05-30", "workdays": 1, "phase": "ROUGH: MEP" },
-          { "sourceItemId": "145106261", "title": "HPS HVAC Rough QC Inspection", "startDate": "2022-05-30", "workdays": 1, "phase": "ROUGH: MEP" },
-          { "sourceItemId": "145106199", "title": "HPS Rough & Top-Out Plumbing QC Inspection", "startDate": "2022-05-30", "workdays": 1, "phase": "ROUGH: MEP" }
+          {
+            "sourceItemId": "145102245",
+            "title": "Electrical - Rough",
+            "startDate": "2022-05-23",
+            "workdays": 5,
+            "phase": "Rough: MEP",
+            "displayColor": "#D67029",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          },
+          {
+            "sourceItemId": "145102301",
+            "title": "HVAC - Rough",
+            "startDate": "2022-05-23",
+            "workdays": 5,
+            "phase": "Rough: MEP",
+            "displayColor": "#72609F",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          },
+          {
+            "sourceItemId": "145102188",
+            "title": "Plumbing - Rough & Top Out",
+            "startDate": "2022-05-23",
+            "workdays": 5,
+            "phase": "Rough: MEP",
+            "displayColor": "#436A8C",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          },
+          {
+            "sourceItemId": "145102272",
+            "title": "Building Dept. Electrical Rough Inspection",
+            "startDate": "2022-05-30",
+            "workdays": 1,
+            "phase": "Rough: MEP",
+            "displayColor": "#ED2591",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          },
+          {
+            "sourceItemId": "145103137",
+            "title": "Building Dept. Mechanical Rough Inspection",
+            "startDate": "2022-05-30",
+            "workdays": 1,
+            "phase": "Rough: MEP",
+            "displayColor": "#ED2591",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          },
+          {
+            "sourceItemId": "145102234",
+            "title": "Building Dept. Plumbing Rough & Top Out Inspection",
+            "startDate": "2022-05-30",
+            "workdays": 1,
+            "phase": "Rough: MEP",
+            "displayColor": "#ED2591",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          },
+          {
+            "sourceItemId": "145106242",
+            "title": "HPS Electrical Rough QC Inspection",
+            "startDate": "2022-05-30",
+            "workdays": 1,
+            "phase": "Rough: MEP",
+            "displayColor": "#2222DD",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          },
+          {
+            "sourceItemId": "145106261",
+            "title": "HPS HVAC Rough QC Inspection",
+            "startDate": "2022-05-30",
+            "workdays": 1,
+            "phase": "Rough: MEP",
+            "displayColor": "#2222DD",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          },
+          {
+            "sourceItemId": "145106199",
+            "title": "HPS Rough & Top-Out Plumbing QC Inspection",
+            "startDate": "2022-05-30",
+            "workdays": 1,
+            "phase": "Rough: MEP",
+            "displayColor": "#2222DD",
+            "isMilestone": false,
+            "assigneePlaceholder": null,
+            "ownerVisible": false,
+            "subVendorVisible": false,
+            "notes": null
+          }
         ],
         "dependencies": [
-          { "predecessorSourceItemId": "145102245", "successorSourceItemId": "145102272", "type": "FS", "lagDays": 0 },
-          { "predecessorSourceItemId": "145102301", "successorSourceItemId": "145103137", "type": "FS", "lagDays": 0 },
-          { "predecessorSourceItemId": "145102188", "successorSourceItemId": "145102234", "type": "FS", "lagDays": 0 },
-          { "predecessorSourceItemId": "145102245", "successorSourceItemId": "145106242", "type": "FS", "lagDays": 0 },
-          { "predecessorSourceItemId": "145102301", "successorSourceItemId": "145106261", "type": "FS", "lagDays": 0 },
-          { "predecessorSourceItemId": "145102188", "successorSourceItemId": "145106199", "type": "FS", "lagDays": 0 }
+          {
+            "predecessorSourceItemId": "145102245",
+            "successorSourceItemId": "145102272",
+            "type": "FS",
+            "lagDays": 0
+          },
+          {
+            "predecessorSourceItemId": "145102301",
+            "successorSourceItemId": "145103137",
+            "type": "FS",
+            "lagDays": 0
+          },
+          {
+            "predecessorSourceItemId": "145102188",
+            "successorSourceItemId": "145102234",
+            "type": "FS",
+            "lagDays": 0
+          },
+          {
+            "predecessorSourceItemId": "145102245",
+            "successorSourceItemId": "145106242",
+            "type": "FS",
+            "lagDays": 0
+          },
+          {
+            "predecessorSourceItemId": "145102301",
+            "successorSourceItemId": "145106261",
+            "type": "FS",
+            "lagDays": 0
+          },
+          {
+            "predecessorSourceItemId": "145102188",
+            "successorSourceItemId": "145106199",
+            "type": "FS",
+            "lagDays": 0
+          }
         ]
       }
     }
