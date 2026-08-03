@@ -622,7 +622,13 @@ export function MessageComposer({
       }
     } catch (err) {
       setError(
-        err instanceof Error ? err.message : "Failed to send message",
+        err instanceof Error &&
+          err.message.includes("Server Action") &&
+          err.message.includes("was not found")
+          ? "Compass was updated while this page was open. Refresh the page and send again; your message is still in the composer."
+          : err instanceof Error
+            ? err.message
+            : "Failed to send message",
       )
     } finally {
       setIsSending(false)
