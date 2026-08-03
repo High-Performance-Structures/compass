@@ -115,6 +115,11 @@ Style & Conventions
 ---
 
 - Add brief code comments for tricky or non-obvious logic.
+- Any Compass feature that lets a user create and edit a record must also
+  provide a permission-appropriate delete action so the workflow is complete.
+  Consequential deletions must include clear confirmation, authorization,
+  dependency handling, and audit or recovery safeguards appropriate to the
+  record type.
 - Aim to keep files under ~700 LOC; guideline only (not a hard guardrail).
 Split/refactor when it improves clarity or testability.
 - **server actions** for all data mutations (`src/app/actions/`). return `{ success: true }` or `{ success: false; error: string }`. revalidate paths after writes. access D1 via `getCloudflareContext()`. see [docs/architecture/server-actions.md](docs/architecture/server-actions.md).
