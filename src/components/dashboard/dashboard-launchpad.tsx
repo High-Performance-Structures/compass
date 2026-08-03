@@ -28,7 +28,6 @@ import {
   IconPhotoEdit,
   IconPlus,
   IconReceipt,
-  IconSettings,
   IconSparkles,
   IconUserHeart,
   IconUsers,
@@ -46,6 +45,7 @@ import {
 } from "@/app/actions/presence"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { OfficeMaintenanceDrawer } from "@/components/projects/office-maintenance-drawer"
 import {
   Dialog,
   DialogContent,
@@ -1345,12 +1345,7 @@ export function DashboardLaunchpad({
 
         <div className="flex items-center gap-2 lg:justify-end">
           {canManageOfficeMaintenance ? (
-            <Button asChild variant="outline" size="sm">
-              <Link href="/dashboard/projects?manage=1">
-                <IconSettings className="size-4" />
-                Office maintenance
-              </Link>
-            </Button>
+            <OfficeMaintenanceDrawer projects={overview.projects} />
           ) : null}
           <CherishComposer />
           <TeamPulseDrawer overview={overview} />
