@@ -14,6 +14,7 @@ import {
   IconPaint,
   IconPlus,
   IconSettings,
+  IconTemplate,
   IconTool,
 } from "@tabler/icons-react"
 
@@ -334,7 +335,13 @@ function MaintenanceDrawer({
             <strong>{departmentNeeded}</strong>
           </div>
         </div>
-        <div className="px-4">
+        <div className="space-y-2 px-4">
+          <Button asChild variant="outline" className="w-full">
+            <Link href="/dashboard/templates">
+              <IconTemplate className="size-4" />
+              Open Template Library
+            </Link>
+          </Button>
           <Button asChild className="w-full">
             <Link href="/dashboard/projects?manage=1">
               Open advanced registry tools

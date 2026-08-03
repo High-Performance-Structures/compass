@@ -1,6 +1,7 @@
 import {
   index,
   integer,
+  real,
   sqliteTable,
   text,
   uniqueIndex,
@@ -167,6 +168,66 @@ export const scheduleTemplateDependencies = sqliteTable(
   ]
 )
 
+export const estimateTemplateDefaults = sqliteTable(
+  "estimate_template_defaults",
+  {
+    versionId: text("version_id")
+      .primaryKey()
+      .references(() => projectTemplateVersions.id, { onDelete: "cascade" }),
+    documentTitle: text("document_title")
+      .notNull()
+      .default("CA22 Construction Estimate"),
+    contractTerms: text("contract_terms"),
+    defaultMarkupRateBasisPoints: integer(
+      "default_markup_rate_basis_points"
+    )
+      .notNull()
+      .default(0),
+  }
+)
+
+export const estimateTemplateLines = sqliteTable(
+  "estimate_template_lines",
+  {
+    id: text("id").primaryKey(),
+    versionId: text("version_id")
+      .notNull()
+      .references(() => projectTemplateVersions.id, { onDelete: "cascade" }),
+    itemKey: text("item_key").notNull(),
+    divisionCode: text("division_code").notNull(),
+    divisionName: text("division_name").notNull(),
+    costCode: text("cost_code").notNull(),
+    costCodeName: text("cost_code_name").notNull(),
+    description: text("description").notNull(),
+    specifications: text("specifications"),
+    quantity: real("quantity").notNull().default(1),
+    unit: text("unit").notNull().default("LS"),
+    unitCostCents: integer("unit_cost_cents").notNull().default(0),
+    markupRateBasisPoints: integer("markup_rate_basis_points")
+      .notNull()
+      .default(0),
+    taxable: integer("taxable", { mode: "boolean" })
+      .notNull()
+      .default(false),
+    taxCode: text("tax_code"),
+    ownerVisible: integer("owner_visible", { mode: "boolean" })
+      .notNull()
+      .default(true),
+    sortOrder: integer("sort_order").notNull().default(0),
+  },
+  (table) => [
+    uniqueIndex("estimate_template_lines_version_key_unique").on(
+      table.versionId,
+      table.itemKey
+    ),
+    index("estimate_template_lines_version_order_idx").on(
+      table.versionId,
+      table.divisionCode,
+      table.sortOrder
+    ),
+  ]
+)
+
 export const projectTemplateApplications = sqliteTable(
   "project_template_applications",
   {
@@ -238,3 +299,6 @@ export type ProjectTemplateVersion = typeof projectTemplateVersions.$inferSelect
 export type ScheduleTemplateItem = typeof scheduleTemplateItems.$inferSelect
 export type ScheduleTemplateDependency =
   typeof scheduleTemplateDependencies.$inferSelect
+export type EstimateTemplateDefault =
+  typeof estimateTemplateDefaults.$inferSelect
+export type EstimateTemplateLine = typeof estimateTemplateLines.$inferSelect

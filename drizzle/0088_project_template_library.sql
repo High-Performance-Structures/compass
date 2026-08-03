@@ -1,4 +1,4 @@
--- Follows 0086_change_order_cost_lines.sql on main.
+-- Follows 0087_estimate_contract_budget_ledger.sql on main.
 CREATE TABLE `project_templates` (
   `id` text PRIMARY KEY NOT NULL,
   `organization_id` text NOT NULL,
@@ -95,6 +95,39 @@ CREATE TABLE `schedule_template_dependencies` (
 --> statement-breakpoint
 CREATE UNIQUE INDEX `schedule_template_dependencies_edge_unique` ON `schedule_template_dependencies` (`version_id`,`predecessor_item_id`,`successor_item_id`,`type`);
 --> statement-breakpoint
+CREATE TABLE `estimate_template_defaults` (
+  `version_id` text PRIMARY KEY NOT NULL,
+  `document_title` text DEFAULT 'CA22 Construction Estimate' NOT NULL,
+  `contract_terms` text,
+  `default_markup_rate_basis_points` integer DEFAULT 0 NOT NULL,
+  FOREIGN KEY (`version_id`) REFERENCES `project_template_versions`(`id`) ON UPDATE no action ON DELETE cascade
+);
+--> statement-breakpoint
+CREATE TABLE `estimate_template_lines` (
+  `id` text PRIMARY KEY NOT NULL,
+  `version_id` text NOT NULL,
+  `item_key` text NOT NULL,
+  `division_code` text NOT NULL,
+  `division_name` text NOT NULL,
+  `cost_code` text NOT NULL,
+  `cost_code_name` text NOT NULL,
+  `description` text NOT NULL,
+  `specifications` text,
+  `quantity` real DEFAULT 1 NOT NULL,
+  `unit` text DEFAULT 'LS' NOT NULL,
+  `unit_cost_cents` integer DEFAULT 0 NOT NULL,
+  `markup_rate_basis_points` integer DEFAULT 0 NOT NULL,
+  `taxable` integer DEFAULT false NOT NULL,
+  `tax_code` text,
+  `owner_visible` integer DEFAULT true NOT NULL,
+  `sort_order` integer DEFAULT 0 NOT NULL,
+  FOREIGN KEY (`version_id`) REFERENCES `project_template_versions`(`id`) ON UPDATE no action ON DELETE cascade
+);
+--> statement-breakpoint
+CREATE UNIQUE INDEX `estimate_template_lines_version_key_unique` ON `estimate_template_lines` (`version_id`,`item_key`);
+--> statement-breakpoint
+CREATE INDEX `estimate_template_lines_version_order_idx` ON `estimate_template_lines` (`version_id`,`division_code`,`sort_order`);
+--> statement-breakpoint
 CREATE TABLE `project_template_applications` (
   `id` text PRIMARY KEY NOT NULL,
   `organization_id` text NOT NULL,
@@ -133,3 +166,9 @@ CREATE TABLE `project_template_application_items` (
 CREATE UNIQUE INDEX `project_template_application_items_task_unique` ON `project_template_application_items` (`schedule_task_id`);
 --> statement-breakpoint
 CREATE UNIQUE INDEX `project_template_application_items_source_unique` ON `project_template_application_items` (`application_id`,`template_item_id`);
+--> statement-breakpoint
+ALTER TABLE `project_estimates` ADD `template_version_id` text REFERENCES `project_template_versions`(`id`) ON UPDATE no action ON DELETE set null;
+--> statement-breakpoint
+ALTER TABLE `project_estimates` ADD `template_application_id` text REFERENCES `project_template_applications`(`id`) ON UPDATE no action ON DELETE set null;
+--> statement-breakpoint
+ALTER TABLE `project_estimate_lines` ADD `template_line_id` text REFERENCES `estimate_template_lines`(`id`) ON UPDATE no action ON DELETE set null;

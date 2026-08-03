@@ -17,6 +17,7 @@ const CATEGORY_LABELS: Readonly<Record<ActivityCategory, string>> = {
   account: "Accounts",
   conversation: "Conversations",
   file: "Files",
+  financial: "Financial",
   presence: "Availability",
   schedule: "Schedule",
 }

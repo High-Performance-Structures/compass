@@ -41,6 +41,25 @@ linked to its application and template item for audit and duplicate review.
 - Template assignees remain placeholders until the project contact mapping
   workflow is completed.
 
+## Estimate Template Flow
+
+- Internal staff with budget-edit permission can create an estimate template
+  from **Office maintenance → Template Library**.
+- Estimate templates hold reusable CA22 document language, CSI divisions,
+  active Sage cost codes, scope descriptions, default quantities and costs,
+  markup, tax treatment, and owner visibility.
+- A template remains a draft until staff explicitly publish it. Published
+  versions are immutable; later editing starts a numbered draft revision.
+- The project Estimate page offers **Start from template** or **Start blank**.
+  Applying a template creates an independent project estimate draft and records
+  the exact template version used.
+- Taxable template lines may use a fixed active Sage tax code or inherit the
+  project tax entity selected when the estimate is created. Compass recalculates
+  markup and tax when it creates the project draft rather than copying stale
+  totals from the template.
+- Publishing or revising a master template never changes an existing project
+  estimate, accepted contract budget, change order, or pay application.
+
 ## Import Commands
 
 Validate the active inventory without producing SQL:

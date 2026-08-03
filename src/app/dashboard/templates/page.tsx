@@ -10,6 +10,10 @@ import {
 import { getProjectTemplateLibrary } from "@/app/actions/project-templates"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { EstimateTemplateCreateDialog } from "@/components/templates/estimate-template-create-dialog"
+import { getCurrentUser } from "@/lib/auth"
+import { can } from "@/lib/permissions"
+import { isInternalStaffRole } from "@/lib/user-roles"
 
 export const dynamic = "force-dynamic"
 
@@ -25,7 +29,13 @@ function reviewLabel(reviewStatus: string): string {
 }
 
 export default async function TemplateLibraryPage() {
-  const templates = await getProjectTemplateLibrary()
+  const [templates, user] = await Promise.all([
+    getProjectTemplateLibrary(),
+    getCurrentUser(),
+  ])
+  const canManageEstimateTemplates =
+    Boolean(user && isInternalStaffRole(user.role)) &&
+    can(user, "budget", "update")
   const readyCount = templates.filter(
     (template) =>
       template.lifecycleStatus === "active" &&
@@ -57,15 +67,18 @@ export default async function TemplateLibraryPage() {
               records until they are reviewed and applied.
             </p>
           </div>
-          <Button asChild variant="outline">
-            <Link href="/dashboard/schedule">
-              <IconArrowLeft className="mr-2 size-4" />
-              Back to schedules
-            </Link>
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            {canManageEstimateTemplates && <EstimateTemplateCreateDialog />}
+            <Button asChild variant="outline">
+              <Link href="/dashboard/schedule">
+                <IconArrowLeft className="mr-2 size-4" />
+                Back to schedules
+              </Link>
+            </Button>
+          </div>
         </div>
         <div className="mt-4 flex flex-wrap gap-x-6 gap-y-2 border-t pt-3 text-sm">
-          <span>{templates.length} active-source templates inventoried</span>
+          <span>{templates.length} templates in the library</span>
           <span className="text-muted-foreground">{inventoryCount} awaiting content capture</span>
           <span className="text-muted-foreground">{readyCount} verified and usable</span>
           <span className="font-medium text-amber-700 dark:text-amber-300">
@@ -117,7 +130,9 @@ export default async function TemplateLibraryPage() {
                               <Badge variant="outline">
                                 {template.templateKind === "project"
                                   ? "Project"
-                                  : "Assembly"}
+                                  : template.templateKind === "estimate"
+                                    ? "Estimate"
+                                    : "Assembly"}
                               </Badge>
                               {template.departmentCode && (
                                 <Badge variant="secondary">
@@ -126,8 +141,13 @@ export default async function TemplateLibraryPage() {
                               )}
                             </div>
                             <p className="mt-1 text-xs text-muted-foreground">
-                              {template.scheduleItemCount} schedule items ·{" "}
-                              {template.dependencyCount} dependencies
+                              {template.templateKind === "estimate"
+                                ? `${
+                                    template.modules.find(
+                                      (module) => module.moduleType === "estimate"
+                                    )?.sourceItemCount ?? 0
+                                  } estimate lines`
+                                : `${template.scheduleItemCount} schedule items · ${template.dependencyCount} dependencies`}
                               {template.currentVersionNumber
                                 ? ` · version ${template.currentVersionNumber}`
                                 : " · content capture pending"}
@@ -142,6 +162,13 @@ export default async function TemplateLibraryPage() {
                             {reviewLabel(template.reviewStatus)}
                           </div>
                           <div className="flex justify-end">
+                            {template.templateKind === "estimate" && (
+                              <Button asChild size="sm" variant="outline">
+                                <Link href={`/dashboard/templates/${template.id}`}>
+                                  Edit
+                                </Link>
+                              </Button>
+                            )}
                             {template.sourceUrl && (
                               <Button asChild size="sm" variant="ghost">
                                 <a
