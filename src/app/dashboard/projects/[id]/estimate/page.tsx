@@ -4,6 +4,7 @@ import Link from "next/link"
 import { IconArrowLeft, IconCalculator } from "@tabler/icons-react"
 
 import { getProjectEstimateWorkspace } from "@/app/actions/project-estimates"
+import { getPublishedEstimateTemplateOptions } from "@/app/actions/estimate-templates"
 import { ProjectContextSwitcher } from "@/components/projects/project-context-switcher"
 import { ProjectEstimateWorkspacePanel } from "@/components/projects/project-estimate-workspace"
 
@@ -15,7 +16,10 @@ export default async function ProjectEstimatePage({
   readonly searchParams: Promise<{ estimateId?: string }>
 }): Promise<React.ReactElement> {
   const [{ id }, query] = await Promise.all([params, searchParams])
-  const workspace = await getProjectEstimateWorkspace(id, query.estimateId)
+  const [workspace, estimateTemplates] = await Promise.all([
+    getProjectEstimateWorkspace(id, query.estimateId),
+    getPublishedEstimateTemplateOptions(),
+  ])
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto p-4 md:p-6">
@@ -34,7 +38,11 @@ export default async function ProjectEstimatePage({
         </div>
         <ProjectContextSwitcher currentProjectId={id} targetSection="estimate" placeholder="Switch estimate project..." className="w-full sm:w-[280px]" />
       </div>
-      <ProjectEstimateWorkspacePanel projectId={id} workspace={workspace} />
+      <ProjectEstimateWorkspacePanel
+        projectId={id}
+        workspace={workspace}
+        estimateTemplates={estimateTemplates}
+      />
     </div>
   )
 }

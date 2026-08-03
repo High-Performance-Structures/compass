@@ -10,8 +10,14 @@ import {
   IconReceiptTax,
   IconRefresh,
   IconSend,
+  IconTemplate,
   IconTrash,
 } from "@tabler/icons-react"
+
+import {
+  createProjectEstimateFromTemplate,
+  type EstimateTemplateOption,
+} from "@/app/actions/estimate-templates"
 
 import {
   addProjectEstimateBasisDocument,
@@ -115,14 +121,18 @@ function lineDraft(line: ProjectEstimateLineItem): LineDraft {
 export function ProjectEstimateWorkspacePanel({
   projectId,
   workspace,
+  estimateTemplates,
 }: {
   readonly projectId: string
   readonly workspace: ProjectEstimateWorkspace
+  readonly estimateTemplates: readonly EstimateTemplateOption[]
 }): React.ReactElement {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
   const [message, setMessage] = useState<string | null>(null)
   const [line, setLine] = useState<LineDraft>(EMPTY_LINE)
+  const [startTemplateId, setStartTemplateId] = useState("")
+  const [startTaxEntityId, setStartTaxEntityId] = useState("")
   const estimate = workspace.activeEstimate
   const editable =
     workspace.canEdit &&
@@ -155,6 +165,9 @@ export function ProjectEstimateWorkspacePanel({
       left[0].localeCompare(right[0])
     )
   }, [workspace.lines])
+  const selectedStartTemplate = estimateTemplates.find(
+    (template) => template.id === startTemplateId
+  )
 
   function finish(messageText: string): void {
     setMessage(messageText)
@@ -166,6 +179,23 @@ export function ProjectEstimateWorkspacePanel({
     startTransition(async () => {
       const result = await createProjectEstimateDraft(projectId)
       finish(result.success ? "Estimate draft created." : result.error)
+    })
+  }
+
+  function createEstimateFromTemplate(): void {
+    if (!startTemplateId) return
+    setMessage(null)
+    startTransition(async () => {
+      const result = await createProjectEstimateFromTemplate({
+        projectId,
+        templateId: startTemplateId,
+        defaultTaxEntityId: startTaxEntityId || null,
+      })
+      finish(
+        result.success
+          ? "Estimate draft created from the published template."
+          : result.error
+      )
     })
   }
 
@@ -322,15 +352,97 @@ export function ProjectEstimateWorkspacePanel({
       <section className="clarity-panel-strong p-6">
         <h2 className="text-lg font-semibold">Start the project estimate</h2>
         <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
-          Build the CA22 estimate by CSI division and Sage cost code. Acceptance
-          creates the original contract budget; later changes must come through
-          executed change orders.
+          Start with a reviewed company template or a blank CA22 estimate. The
+          resulting draft is independent and remains fully editable for this
+          project.
         </p>
         {workspace.canEdit && (
-          <Button className="mt-4" onClick={createEstimate} disabled={isPending}>
-            <IconPlus className="size-4" />
-            Create estimate
-          </Button>
+          <div className="mt-5 grid gap-5 lg:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] lg:items-stretch">
+            <div className="border-y py-4">
+              <div className="flex items-center gap-2">
+                <IconTemplate className="size-5 text-primary" />
+                <h3 className="font-medium">Start from template</h3>
+              </div>
+              <div className="mt-3 space-y-3">
+                <Select
+                  value={startTemplateId}
+                  onValueChange={setStartTemplateId}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Choose a published estimate template" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {estimateTemplates.map((template) => (
+                      <SelectItem key={template.id} value={template.id}>
+                        {template.name} · {template.lineCount} lines
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Select
+                  value={startTaxEntityId}
+                  onValueChange={setStartTaxEntityId}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Project Sage tax entity, if applicable" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {workspace.taxEntities.map((tax) => (
+                      <SelectItem key={tax.value} value={tax.value}>
+                        {tax.label} · {percent(tax.rateBasisPoints)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {selectedStartTemplate?.requiresProjectTaxEntity && (
+                  <p className="text-xs text-amber-700 dark:text-amber-300">
+                    This template contains taxable lines. Select the project’s
+                    Sage tax entity before creating the draft.
+                  </p>
+                )}
+                <Button
+                  onClick={createEstimateFromTemplate}
+                  disabled={
+                    !startTemplateId ||
+                    isPending ||
+                    Boolean(
+                      selectedStartTemplate?.requiresProjectTaxEntity &&
+                        !startTaxEntityId
+                    )
+                  }
+                >
+                  <IconTemplate className="size-4" />
+                  Create from template
+                </Button>
+                {estimateTemplates.length === 0 && (
+                  <p className="text-xs text-muted-foreground">
+                    No published estimate templates are available yet.
+                  </p>
+                )}
+              </div>
+            </div>
+            <div className="hidden items-center text-xs uppercase tracking-wide text-muted-foreground lg:flex">
+              or
+            </div>
+            <div className="border-y py-4">
+              <div className="flex items-center gap-2">
+                <IconPlus className="size-5 text-primary" />
+                <h3 className="font-medium">Start blank</h3>
+              </div>
+              <p className="mt-2 text-sm text-muted-foreground">
+                Build the CSI divisions and Sage cost-code lines manually.
+              </p>
+              <Button
+                className="mt-4"
+                variant="outline"
+                onClick={createEstimate}
+                disabled={isPending}
+              >
+                <IconPlus className="size-4" />
+                Create blank estimate
+              </Button>
+            </div>
+          </div>
         )}
       </section>
     )

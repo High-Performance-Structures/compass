@@ -13,6 +13,7 @@ import * as jarvisSchema from "./schema-jarvis"
 import * as sageSchema from "./schema-sage"
 import * as buildertrendSchema from "./schema-buildertrend"
 import * as estimatesSchema from "./schema-estimates"
+import * as templateSchema from "./schema-templates"
 
 const allSchemas = {
   ...schema,
@@ -29,6 +30,7 @@ const allSchemas = {
   ...sageSchema,
   ...buildertrendSchema,
   ...estimatesSchema,
+  ...templateSchema,
 }
 
 // Legacy function - kept for backwards compatibility

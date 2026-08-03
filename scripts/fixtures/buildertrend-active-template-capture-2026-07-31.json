@@ -1,0 +1,79 @@
+{
+  "capturedAt": "2026-07-31T17:30:00.000Z",
+  "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates",
+  "expectedActiveCount": 40,
+  "excludedArchivedCount": 27,
+  "templates": [
+    { "name": "Concrete - Footer Assembly", "sourceTemplateId": "12581937", "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/12581937", "scheduleDurationDays": 6, "moduleCounts": { "tasks": 43, "scheduleItems": 8 } },
+    { "name": "Concrete - ICF Assembly", "sourceTemplateId": "12540389", "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/12540389", "scheduleDurationDays": 12, "moduleCounts": { "tasks": 59, "scheduleItems": 5 } },
+    { "name": "Concrete - LiteDeck Assembly", "sourceTemplateId": "12667545", "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/12667545", "scheduleDurationDays": 12, "moduleCounts": { "tasks": 50, "scheduleItems": 15 } },
+    { "name": "Concrete - Piers Assembly", "sourceTemplateId": "12858966", "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/12858966", "scheduleDurationDays": 5, "moduleCounts": { "tasks": 16, "scheduleItems": 5 } },
+    { "name": "Concrete - Slab Assembly", "sourceTemplateId": "12594475", "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/12594475", "scheduleDurationDays": 9, "moduleCounts": { "tasks": 36, "bidPackages": 1, "scheduleItems": 8 } },
+    { "name": "Design & Preconstruction", "sourceTemplateId": "32043577", "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/32043577", "scheduleDurationDays": 128, "moduleCounts": { "tasks": 48, "scheduleItems": 34 } },
+    { "name": "Drywall Installation", "sourceTemplateId": "30294726", "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/30294726", "scheduleDurationDays": 25, "moduleCounts": { "tasks": 28, "bidPackages": 1, "scheduleItems": 8, "selections": 3 } },
+    { "name": "Earthwork - Perimeter Drain", "sourceTemplateId": "13001090", "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/13001090", "scheduleDurationDays": 3, "moduleCounts": { "tasks": 4, "scheduleItems": 3 } },
+    { "name": "Earthwork - Post-Frost Wall Earthwork", "sourceTemplateId": "12650557", "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/12650557", "scheduleDurationDays": 2, "moduleCounts": { "tasks": 12, "bidPackages": 1, "scheduleItems": 4 } },
+    { "name": "Earthwork - Radon Systems", "sourceTemplateId": "42924180", "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/42924180", "scheduleDurationDays": 0, "moduleCounts": { "bidPackages": 1 } },
+    { "name": "Ext. Finishes - Manuf. Gutters", "sourceTemplateId": "12978732", "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/12978732", "scheduleDurationDays": 4, "moduleCounts": { "tasks": 17, "bidPackages": 1, "scheduleItems": 2, "selections": 2 } },
+    { "name": "Ext. Finishes - Painting/Staining", "sourceTemplateId": "36618977", "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/36618977", "scheduleDurationDays": 0, "moduleCounts": { "bidPackages": 1, "selections": 2 } },
+    { "name": "Ext. Finishes - Roofing", "sourceTemplateId": "12978716", "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/12978716", "scheduleDurationDays": 5, "moduleCounts": { "tasks": 14, "bidPackages": 1, "scheduleItems": 2, "selections": 103 } },
+    { "name": "Ext. Finishes - Siding", "sourceTemplateId": "30917204", "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/30917204", "scheduleDurationDays": 6, "moduleCounts": { "tasks": 29, "bidPackages": 1, "scheduleItems": 3, "selections": 4 } },
+    { "name": "Ext. Finishes - Stone", "sourceTemplateId": "37180847", "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/37180847", "scheduleDurationDays": 0, "moduleCounts": { "selections": 2 } },
+    { "name": "Ext. Finishes - Stucco", "sourceTemplateId": "12859981", "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/12859981", "scheduleDurationDays": 14, "moduleCounts": { "tasks": 48, "bidPackages": 1, "scheduleItems": 5, "selections": 4 } },
+    { "name": "Framing - Exterior Man Door Installation", "sourceTemplateId": "12650484", "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/12650484", "scheduleDurationDays": 3, "moduleCounts": { "tasks": 11, "bidPackages": 1, "scheduleItems": 2, "selections": 1 } },
+    { "name": "Framing - Exterior Wall Assembly", "sourceTemplateId": "12649292", "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/12649292", "scheduleDurationDays": 6, "moduleCounts": { "tasks": 16, "scheduleItems": 2 } },
+    { "name": "Framing - Fascia & Soffit Installation", "sourceTemplateId": "12819873", "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/12819873", "scheduleDurationDays": 3, "moduleCounts": { "tasks": 25, "scheduleItems": 3 } },
+    { "name": "Framing - Floor System Assembly", "sourceTemplateId": "12649495", "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/12649495", "scheduleDurationDays": 9, "moduleCounts": { "tasks": 24, "scheduleItems": 4 } },
+    { "name": "Framing - Interior Wall Assembly", "sourceTemplateId": "12646335", "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/12646335", "scheduleDurationDays": 5, "moduleCounts": { "tasks": 34, "bidPackages": 1, "scheduleItems": 2 } },
+    { "name": "Framing - Overhead Door Installation", "sourceTemplateId": "30919251", "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/30919251", "scheduleDurationDays": 3, "moduleCounts": { "tasks": 13, "bidPackages": 1, "scheduleItems": 2, "selections": 1 } },
+    { "name": "Framing - Quote Packages", "sourceTemplateId": "36478698", "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/36478698", "scheduleDurationDays": 0, "moduleCounts": { "bidPackages": 3 } },
+    { "name": "Framing - Roof w/ Trusses Assembly", "sourceTemplateId": "12650792", "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/12650792", "scheduleDurationDays": 12, "moduleCounts": { "tasks": 28, "scheduleItems": 5 } },
+    { "name": "Framing - Rough inspection w/ Draft & Firestop", "sourceTemplateId": "12978590", "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/12978590", "scheduleDurationDays": 2, "moduleCounts": { "tasks": 3, "scheduleItems": 2 } },
+    { "name": "Framing - Stair Installation", "sourceTemplateId": "12650713", "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/12650713", "scheduleDurationDays": 3, "moduleCounts": { "tasks": 10, "scheduleItems": 3 } },
+    { "name": "Framing - Window", "sourceTemplateId": "12650427", "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/12650427", "scheduleDurationDays": 4, "moduleCounts": { "tasks": 20, "bidPackages": 1, "scheduleItems": 2, "selections": 2 } },
+    { "name": "Insulation", "sourceTemplateId": "39644707", "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/39644707", "scheduleDurationDays": 0, "moduleCounts": { "bidPackages": 1 } },
+    { "name": "Int. Finishes - Architectural Woodwork", "sourceTemplateId": "12796241", "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/12796241", "scheduleDurationDays": 5, "moduleCounts": { "tasks": 19, "bidPackages": 2, "scheduleItems": 4, "selections": 5 } },
+    { "name": "Int. Finishes - Bath Hardware", "sourceTemplateId": "42948499", "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/42948499", "scheduleDurationDays": 0, "moduleCounts": { "selections": 1 } },
+    { "name": "Int. Finishes - Cabinetry/Countertops", "sourceTemplateId": "30907034", "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/30907034", "scheduleDurationDays": 18, "moduleCounts": { "tasks": 50, "bidPackages": 2, "scheduleItems": 6, "selections": 4 } },
+    { "name": "Int. Finishes - Flooring", "sourceTemplateId": "38452172", "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/38452172", "scheduleDurationDays": 0, "moduleCounts": { "bidPackages": 1, "selections": 3 } },
+    { "name": "Int. Finishes - Interior Doors", "sourceTemplateId": "28466146", "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/28466146", "scheduleDurationDays": 4, "moduleCounts": { "tasks": 5, "scheduleItems": 3, "selections": 4 } },
+    { "name": "Int. Finishes - Painting/Staining", "sourceTemplateId": "36619183", "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/36619183", "scheduleDurationDays": 0, "moduleCounts": { "bidPackages": 1, "selections": 8 } },
+    { "name": "Int. Finishes - Stain & Seal Concrete Floors", "sourceTemplateId": "12979213", "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/12979213", "scheduleDurationDays": 7, "moduleCounts": { "tasks": 7, "scheduleItems": 5 } },
+    { "name": "Int. Finishes - Tiling", "sourceTemplateId": "30914491", "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/30914491", "scheduleDurationDays": 7, "moduleCounts": { "tasks": 16, "bidPackages": 1, "scheduleItems": 3, "selections": 5 } },
+    { "name": "MEP - Fireplace Installation", "sourceTemplateId": "38452532", "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/38452532", "scheduleDurationDays": 0, "moduleCounts": { "selections": 1 } },
+    { "name": "MEP - Plumbing Base", "sourceTemplateId": "12650395", "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/12650395", "scheduleDurationDays": 6, "moduleCounts": { "tasks": 9, "bidPackages": 1, "scheduleItems": 4 } },
+    { "name": "MEP - Quotes", "sourceTemplateId": "36595931", "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/36595931", "scheduleDurationDays": 0, "moduleCounts": { "bidPackages": 3 } },
+    {
+      "name": "MEP - Rough & Top Out",
+      "sourceTemplateId": "12978371",
+      "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/12978371",
+      "scheduleDurationDays": 6,
+      "moduleCounts": { "tasks": 45, "bidPackages": 2, "scheduleItems": 9 },
+      "schedule": {
+        "sourceAnchorDate": "2022-05-23",
+        "phases": [
+          { "sourcePhaseId": "169703", "name": "ROUGH: MEP" }
+        ],
+        "items": [
+          { "sourceItemId": "145102245", "title": "Electrical - Rough", "startDate": "2022-05-23", "workdays": 5, "phase": "ROUGH: MEP" },
+          { "sourceItemId": "145102301", "title": "HVAC - Rough", "startDate": "2022-05-23", "workdays": 5, "phase": "ROUGH: MEP" },
+          { "sourceItemId": "145102188", "title": "Plumbing - Rough & Top Out", "startDate": "2022-05-23", "workdays": 5, "phase": "ROUGH: MEP" },
+          { "sourceItemId": "145102272", "title": "Building Dept. Electrical Rough Inspection", "startDate": "2022-05-30", "workdays": 1, "phase": "ROUGH: MEP" },
+          { "sourceItemId": "145103137", "title": "Building Dept. Mechanical Rough Inspection", "startDate": "2022-05-30", "workdays": 1, "phase": "ROUGH: MEP" },
+          { "sourceItemId": "145102234", "title": "Building Dept. Plumbing Rough & Top Out Inspection", "startDate": "2022-05-30", "workdays": 1, "phase": "ROUGH: MEP" },
+          { "sourceItemId": "145106242", "title": "HPS Electrical Rough QC Inspection", "startDate": "2022-05-30", "workdays": 1, "phase": "ROUGH: MEP" },
+          { "sourceItemId": "145106261", "title": "HPS HVAC Rough QC Inspection", "startDate": "2022-05-30", "workdays": 1, "phase": "ROUGH: MEP" },
+          { "sourceItemId": "145106199", "title": "HPS Rough & Top-Out Plumbing QC Inspection", "startDate": "2022-05-30", "workdays": 1, "phase": "ROUGH: MEP" }
+        ],
+        "dependencies": [
+          { "predecessorSourceItemId": "145102245", "successorSourceItemId": "145102272", "type": "FS", "lagDays": 0 },
+          { "predecessorSourceItemId": "145102301", "successorSourceItemId": "145103137", "type": "FS", "lagDays": 0 },
+          { "predecessorSourceItemId": "145102188", "successorSourceItemId": "145102234", "type": "FS", "lagDays": 0 },
+          { "predecessorSourceItemId": "145102245", "successorSourceItemId": "145106242", "type": "FS", "lagDays": 0 },
+          { "predecessorSourceItemId": "145102301", "successorSourceItemId": "145106261", "type": "FS", "lagDays": 0 },
+          { "predecessorSourceItemId": "145102188", "successorSourceItemId": "145106199", "type": "FS", "lagDays": 0 }
+        ]
+      }
+    }
+  ]
+}

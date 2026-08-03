@@ -70,6 +70,7 @@ import {
   IconBookmark,
   IconTrash,
   IconSend,
+  IconTemplate,
 } from "@tabler/icons-react"
 import { toast } from "sonner"
 import { ScheduleListView } from "./schedule-list-view"
@@ -79,6 +80,7 @@ import { ScheduleMobileView } from "./schedule-mobile-view"
 import { WorkdayExceptionsView } from "./workday-exceptions-view"
 import { ScheduleBaselineView } from "./schedule-baseline-view"
 import { ScheduleItemFormDialog } from "./schedule-item-form-dialog"
+import { ScheduleTemplateDialog } from "./schedule-template-dialog"
 import { ProjectQuickSwitcher } from "@/components/projects/project-quick-switcher"
 import { ScheduleScopeSwitcher } from "./schedule-scope-switcher"
 import { OwnerScheduleVisibilityControl } from "./owner-schedule-visibility-control"
@@ -221,6 +223,7 @@ export function ScheduleView({
   const [baselinesOpen, setBaselinesOpen] = useState(false)
   const [exceptionsOpen, setExceptionsOpen] = useState(false)
   const [importDialogOpen, setImportDialogOpen] = useState(false)
+  const [templateDialogOpen, setTemplateDialogOpen] = useState(false)
   const [isImporting, setIsImporting] = useState(false)
   const [publicationStatus, setPublicationStatus] =
     useState<SchedulePublicationStatus | null>(initialPublicationStatus)
@@ -1073,6 +1076,19 @@ export function ScheduleView({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-48">
+              {projectId && (
+                <DropdownMenuItem onClick={() => setTemplateDialogOpen(true)}>
+                  <IconTemplate className="size-4 mr-2" />
+                  Add from template
+                </DropdownMenuItem>
+              )}
+              <DropdownMenuItem asChild>
+                <Link href="/dashboard/templates">
+                  <IconTemplate className="size-4 mr-2" />
+                  Template Library
+                </Link>
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
               <DropdownMenuItem onClick={handleExportCSV}>
                 <IconDownload className="size-4 mr-2" />
                 Export CSV
@@ -1147,20 +1163,27 @@ export function ScheduleView({
 
       {/* New schedule item dialog */}
       {projectId && (
-        <ScheduleItemFormDialog
-          open={taskFormOpen}
-          onOpenChange={setTaskFormOpen}
-          projectId={projectId}
-          editingTask={null}
-          allTasks={initialData.tasks.filter(
-            (task) => task.projectId === projectId
-          )}
-          dependencies={initialData.dependencies}
-          exceptions={initialData.exceptions.filter(
-            (exception) => exception.projectId === projectId
-          )}
-          assigneeOptions={assigneeOptions}
-        />
+        <>
+          <ScheduleItemFormDialog
+            open={taskFormOpen}
+            onOpenChange={setTaskFormOpen}
+            projectId={projectId}
+            editingTask={null}
+            allTasks={initialData.tasks.filter(
+              (task) => task.projectId === projectId
+            )}
+            dependencies={initialData.dependencies}
+            exceptions={initialData.exceptions.filter(
+              (exception) => exception.projectId === projectId
+            )}
+            assigneeOptions={assigneeOptions}
+          />
+          <ScheduleTemplateDialog
+            open={templateDialogOpen}
+            onOpenChange={setTemplateDialogOpen}
+            projectId={projectId}
+          />
+        </>
       )}
 
       {/* Import dialog */}

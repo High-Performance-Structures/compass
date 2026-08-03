@@ -8,6 +8,11 @@ import {
 } from "drizzle-orm/sqlite-core"
 
 import { organizations, projects, users } from "./schema"
+import {
+  estimateTemplateLines,
+  projectTemplateApplications,
+  projectTemplateVersions,
+} from "./schema-templates"
 
 export const sageTaxEntities = sqliteTable(
   "sage_tax_entities",
@@ -74,6 +79,14 @@ export const projectEstimates = sqliteTable(
     sourceWorkbookId: text("source_workbook_id"),
     sourceWorkbookUrl: text("source_workbook_url"),
     sourceRevision: text("source_revision"),
+    templateVersionId: text("template_version_id").references(
+      () => projectTemplateVersions.id,
+      { onDelete: "set null" }
+    ),
+    templateApplicationId: text("template_application_id").references(
+      () => projectTemplateApplications.id,
+      { onDelete: "set null" }
+    ),
     defaultTaxEntityId: text("default_tax_entity_id").references(
       () => sageTaxEntities.id,
       { onDelete: "set null" }
@@ -135,6 +148,10 @@ export const projectEstimateLines = sqliteTable(
     estimateId: text("estimate_id")
       .notNull()
       .references(() => projectEstimates.id, { onDelete: "cascade" }),
+    templateLineId: text("template_line_id").references(
+      () => estimateTemplateLines.id,
+      { onDelete: "set null" }
+    ),
     divisionCode: text("division_code").notNull(),
     divisionName: text("division_name").notNull(),
     costCode: text("cost_code").notNull(),
