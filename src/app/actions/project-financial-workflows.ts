@@ -19,6 +19,10 @@ import { requireAuth } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
 import { requireOrg } from "@/lib/org-scope"
 import { requirePermission } from "@/lib/permissions"
+import {
+  budgetPaymentBreakdown,
+  type BudgetPaymentBreakdown,
+} from "@/lib/project-budget-snapshot"
 
 export type ProjectFinancialWorkflowItem = {
   readonly id: string
@@ -29,6 +33,7 @@ export type ProjectFinancialWorkflowItem = {
   readonly companyName: string | null
   readonly status: string
   readonly amount: number | null
+  readonly paymentBreakdown: BudgetPaymentBreakdown | null
   readonly dueDate: string | null
   readonly syncStatus: string
   readonly sageWriteStatus: string
@@ -260,43 +265,58 @@ export async function getProjectFinancialWorkflowItems(
       .orderBy(asc(projectOperations.dueDate), asc(projectOperations.updatedAt)),
     db
       .select({
-        applicationNumber: projectBudgetApplications.applicationNumber,
+        id: projectBudgetApplications.id,
+        sourceRecordId: projectBudgetApplications.sourceRecordId,
+        totalEarnedLessRetainage:
+          projectBudgetApplications.totalEarnedLessRetainage,
+        previousCertificates: projectBudgetApplications.previousCertificates,
+        currentPaymentDue: projectBudgetApplications.currentPaymentDue,
         sourceUrl: projectBudgetApplications.sourceUrl,
       })
       .from(projectBudgetApplications)
       .where(eq(projectBudgetApplications.projectId, projectId)),
   ])
-  const applicationPackageUrls = new Map(
+  const applicationsBySourceId = new Map(
     applications.flatMap((application) => {
-      const url = safeHttpUrl(application.sourceUrl)
-      return url ? [[application.applicationNumber, url] as const] : []
+      const keys = [application.id, application.sourceRecordId].filter(
+        (value): value is string => Boolean(value)
+      )
+      return keys.map((key) => [key, application] as const)
     })
   )
 
-  return rows.map((row) => ({
-    id: row.id,
-    sourceRecordId: row.sourceRecordId,
-    type:
-      row.sourceRecordType === "vendor_bill" ||
-      row.sourceRecordType === "owner_pay_application"
-        ? row.sourceRecordType
-        : "rfq",
-    number: row.sourceRecordNumber,
-    title: row.title,
-    companyName: row.companyName,
-    status: row.status,
-    amount: row.amount,
-    dueDate: row.dueDate,
-    syncStatus: row.syncStatus,
-    sageWriteStatus: row.sageWriteStatus,
-    supportingPackageUrl:
-      safeHttpUrl(row.externalUrl) ??
-      (row.sourceRecordType === "owner_pay_application" &&
-      row.sourceRecordNumber
-        ? applicationPackageUrls.get(row.sourceRecordNumber) ?? null
-        : null),
-    updatedAt: row.updatedAt,
-  }))
+  return rows.map((row) => {
+    const application =
+      row.sourceRecordType === "owner_pay_application" && row.sourceRecordId
+        ? applicationsBySourceId.get(row.sourceRecordId) ?? null
+        : null
+    const paymentBreakdown = application
+      ? budgetPaymentBreakdown(application)
+      : null
+
+    return {
+      id: row.id,
+      sourceRecordId: row.sourceRecordId,
+      type:
+        row.sourceRecordType === "vendor_bill" ||
+        row.sourceRecordType === "owner_pay_application"
+          ? row.sourceRecordType
+          : "rfq",
+      number: row.sourceRecordNumber,
+      title: row.title,
+      companyName: row.companyName,
+      status: row.status,
+      amount: paymentBreakdown?.applicationTotal ?? row.amount,
+      paymentBreakdown,
+      dueDate: row.dueDate,
+      syncStatus: row.syncStatus,
+      sageWriteStatus: row.sageWriteStatus,
+      supportingPackageUrl:
+        safeHttpUrl(row.externalUrl) ??
+        safeHttpUrl(application?.sourceUrl ?? null),
+      updatedAt: row.updatedAt,
+    }
+  })
 }
 
 export async function getProjectOwnerPayApplicationDraft(
