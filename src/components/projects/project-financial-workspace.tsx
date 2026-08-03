@@ -409,7 +409,17 @@ export function ProjectFinancialWorkspace({
                           </Button>
                         )}
                     </div>
-                    <span>{money(item.amount)}</span>
+                    <div>
+                      <span>{money(item.amount)}</span>
+                      {item.paymentBreakdown &&
+                        item.paymentBreakdown.depositApplied > 0 && (
+                          <p className="mt-1 text-xs text-muted-foreground">
+                            {money(item.paymentBreakdown.currentPaymentDue)} due
+                            after {money(item.paymentBreakdown.depositApplied)}
+                            {" deposit"}
+                          </p>
+                        )}
+                    </div>
                     <span>{dateText(item.dueDate)}</span>
                     <div className="flex flex-wrap gap-2">
                       <Badge variant="outline">{item.status}</Badge>

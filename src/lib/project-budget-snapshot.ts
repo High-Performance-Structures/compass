@@ -25,6 +25,13 @@ export type BudgetPaymentBreakdown = {
   readonly depositApplied: number
 }
 
+type BudgetPaymentSource = Pick<
+  BudgetApplicationView,
+  | "totalEarnedLessRetainage"
+  | "previousCertificates"
+  | "currentPaymentDue"
+>
+
 export type BudgetLineView = {
   readonly id: string
   readonly sourceSystem: string
@@ -93,7 +100,7 @@ function currency(value: number): number {
 }
 
 export function budgetPaymentBreakdown(
-  application: BudgetApplicationView
+  application: BudgetPaymentSource
 ): BudgetPaymentBreakdown {
   const impliedDeposit = currency(
     application.totalEarnedLessRetainage -
