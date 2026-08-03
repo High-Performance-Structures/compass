@@ -28,6 +28,7 @@ import {
   IconPhotoEdit,
   IconPlus,
   IconReceipt,
+  IconSettings,
   IconSparkles,
   IconUserHeart,
   IconUsers,
@@ -1289,6 +1290,7 @@ export function DashboardLaunchpad({
   initialTeamAvailability,
   officeCalendarEvents,
   officeProjectId,
+  canManageOfficeMaintenance,
 }: {
   readonly overview: DashboardOverview
   readonly user: SidebarUser | null
@@ -1296,6 +1298,7 @@ export function DashboardLaunchpad({
   readonly initialTeamAvailability: readonly TeamAvailabilityMember[]
   readonly officeCalendarEvents: readonly DashboardOfficeEvent[]
   readonly officeProjectId: string | null
+  readonly canManageOfficeMaintenance: boolean
 }): React.ReactElement {
   const [mode, setMode] = useState<DashboardMode>("office")
   const [deskStatus, setDeskStatus] = useState<DeskStatus>(() =>
@@ -1341,6 +1344,14 @@ export function DashboardLaunchpad({
         </div>
 
         <div className="flex items-center gap-2 lg:justify-end">
+          {canManageOfficeMaintenance ? (
+            <Button asChild variant="outline" size="sm">
+              <Link href="/dashboard/projects?manage=1">
+                <IconSettings className="size-4" />
+                Office maintenance
+              </Link>
+            </Button>
+          ) : null}
           <CherishComposer />
           <TeamPulseDrawer overview={overview} />
         </div>
