@@ -103,6 +103,36 @@ export const projectTemplateModules = sqliteTable(
   ]
 )
 
+export const projectTemplateContentItems = sqliteTable(
+  "project_template_content_items",
+  {
+    id: text("id").primaryKey(),
+    versionId: text("version_id")
+      .notNull()
+      .references(() => projectTemplateVersions.id, { onDelete: "cascade" }),
+    moduleType: text("module_type").notNull(),
+    sourceItemId: text("source_item_id"),
+    parentSourceItemId: text("parent_source_item_id"),
+    title: text("title").notNull(),
+    category: text("category"),
+    description: text("description"),
+    sortOrder: integer("sort_order").notNull().default(0),
+    payloadJson: text("payload_json"),
+  },
+  (table) => [
+    uniqueIndex("project_template_content_version_module_source_unique").on(
+      table.versionId,
+      table.moduleType,
+      table.sourceItemId
+    ),
+    index("project_template_content_version_module_order_idx").on(
+      table.versionId,
+      table.moduleType,
+      table.sortOrder
+    ),
+  ]
+)
+
 export const scheduleTemplateItems = sqliteTable(
   "schedule_template_items",
   {

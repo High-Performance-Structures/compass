@@ -20,6 +20,8 @@ records. The foundation stores:
 - immutable numbered versions;
 - per-version module inventories;
 - relative schedule items and dependencies;
+- normalized task, selection, and bid-package content with the complete source
+  payload retained locally per item;
 - each project application and the generated schedule-item mappings.
 
 A Buildertrend inventory row begins as `inventory_only`. It cannot be applied
@@ -104,6 +106,26 @@ before SQL is generated. Generated files intentionally omit explicit
 transaction statements because D1 file execution supplies its own transaction
 boundary.
 
+After migration `0089_template_content_classification.sql` is applied, a
+count-verified content capture can be converted with:
+
+```bash
+bun scripts/build-buildertrend-template-content-sql.mjs \
+  --capture <buildertrend-template-content.json> \
+  --output <reviewed-content-import.sql>
+```
+
+The content importer rejects archived templates and rejects any task,
+selection, or bid-package module whose captured item count differs from the
+Buildertrend module count. Buildertrend URLs are removed recursively from both
+display content and stored payloads. Template source links are no longer
+exposed in Compass.
+
+Internal staff can classify templates by department (ORC, HPS, Nu-Tech, or
+Design) and category. Templates that have never been applied may be deleted;
+applied templates remain available to the audit trail and must be made inactive
+instead.
+
 ## Capture Progress
 
 The authenticated My Templates grid provided stable Buildertrend IDs, direct
@@ -123,9 +145,9 @@ visibility, and notes. They are recorded as pending field review in module
 provenance instead of being guessed. Schedule content itself can be published
 after the automated item, dependency, archive-exclusion, and cycle checks pass.
 
-## Next Capture Pass
+## Remaining Capture Gate
 
-Schedule definitions are the first completed promotion target. Task/checklist
-templates follow next, then folders, specifications, and finish selections.
-Financial features remain definitions until their Sage mappings and approval
-behavior are explicitly reviewed.
+Schedule definitions are complete. Task/checklist, selection-choice, and bid
+package content must pass exact module-count reconciliation before the content
+import is generated or applied. Financial features remain definitions until
+their Sage mappings and approval behavior are explicitly reviewed.

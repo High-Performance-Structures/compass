@@ -13,6 +13,7 @@ import {
 } from "@/db/schema"
 import {
   projectTemplateApplications,
+  projectTemplateContentItems,
   projectTemplateModules,
   projectTemplates,
   projectTemplateVersions,
@@ -41,7 +42,6 @@ export type ProjectTemplateLibraryItem = {
   readonly name: string
   readonly description: string | null
   readonly sourceSystem: string
-  readonly sourceUrl: string | null
   readonly templateKind: string
   readonly departmentCode: string | null
   readonly tradeCategory: string | null
@@ -53,6 +53,18 @@ export type ProjectTemplateLibraryItem = {
   readonly scheduleItemCount: number
   readonly dependencyCount: number
   readonly modules: readonly ProjectTemplateModuleSummary[]
+}
+
+export type ProjectTemplateContentItem = {
+  readonly id: string
+  readonly moduleType: string
+  readonly sourceItemId: string | null
+  readonly parentSourceItemId: string | null
+  readonly title: string
+  readonly category: string | null
+  readonly description: string | null
+  readonly sortOrder: number
+  readonly payloadJson: string | null
 }
 
 export type ProjectTemplateModuleSummary = {
@@ -243,7 +255,6 @@ export async function getProjectTemplateLibrary(): Promise<
       name: template.name,
       description: template.description,
       sourceSystem: template.sourceSystem,
-      sourceUrl: template.sourceUrl,
       templateKind: template.templateKind,
       departmentCode: template.departmentCode,
       tradeCategory: template.tradeCategory,
@@ -271,6 +282,35 @@ export async function getProjectTemplateLibrary(): Promise<
         : [],
     }
   })
+}
+
+export async function getProjectTemplateContent(
+  templateId: string
+): Promise<readonly ProjectTemplateContentItem[]> {
+  const library = await getProjectTemplateLibrary()
+  const template = library.find((candidate) => candidate.id === templateId)
+  if (!template?.currentVersionId) return []
+
+  const { env } = await getCloudflareContext()
+  const db = getDb(env.DB)
+  return db
+    .select({
+      id: projectTemplateContentItems.id,
+      moduleType: projectTemplateContentItems.moduleType,
+      sourceItemId: projectTemplateContentItems.sourceItemId,
+      parentSourceItemId: projectTemplateContentItems.parentSourceItemId,
+      title: projectTemplateContentItems.title,
+      category: projectTemplateContentItems.category,
+      description: projectTemplateContentItems.description,
+      sortOrder: projectTemplateContentItems.sortOrder,
+      payloadJson: projectTemplateContentItems.payloadJson,
+    })
+    .from(projectTemplateContentItems)
+    .where(eq(projectTemplateContentItems.versionId, template.currentVersionId))
+    .orderBy(
+      asc(projectTemplateContentItems.moduleType),
+      asc(projectTemplateContentItems.sortOrder)
+    )
 }
 
 export async function getProjectTemplatePreview(
@@ -606,5 +646,114 @@ export async function setProjectTemplateLifecycle(input: {
   } catch (error) {
     console.error("Unable to update template status", error)
     return { success: false, error: "Unable to update template status." }
+  }
+}
+
+const templateDepartments = new Set(["ORC", "HPS", "Nu-Tech", "Design"])
+
+export async function updateProjectTemplateClassification(input: {
+  readonly templateId: string
+  readonly department: string
+  readonly category: string
+}): Promise<ActionResult> {
+  try {
+    const user = await requireAuth()
+    if (isDemoUser(user.id)) return { success: false, error: "DEMO_READ_ONLY" }
+    requirePermission(user, "schedule", "update")
+    ensureInternalUser(user.role)
+    const organizationId = requireOrg(user)
+    const department = input.department.trim()
+    const category = input.category.trim()
+    if (!templateDepartments.has(department)) {
+      return { success: false, error: "Choose a valid template department." }
+    }
+    if (!category || category.length > 80) {
+      return { success: false, error: "Choose a valid template category." }
+    }
+
+    const { env } = await getCloudflareContext()
+    const db = getDb(env.DB)
+    const template = await db
+      .select({ id: projectTemplates.id })
+      .from(projectTemplates)
+      .where(
+        and(
+          eq(projectTemplates.id, input.templateId),
+          eq(projectTemplates.organizationId, organizationId)
+        )
+      )
+      .get()
+    if (!template) return { success: false, error: "Template not found." }
+
+    await db
+      .update(projectTemplates)
+      .set({
+        departmentCode: department,
+        tradeCategory: category,
+        updatedAt: new Date().toISOString(),
+      })
+      .where(eq(projectTemplates.id, template.id))
+    revalidatePath("/dashboard/templates")
+    revalidatePath(`/dashboard/templates/${template.id}`)
+    return { success: true }
+  } catch (error) {
+    console.error("Unable to update template classification", error)
+    return { success: false, error: "Unable to update template classification." }
+  }
+}
+
+export async function deleteProjectTemplate(input: {
+  readonly templateId: string
+}): Promise<ActionResult> {
+  try {
+    const user = await requireAuth()
+    if (isDemoUser(user.id)) return { success: false, error: "DEMO_READ_ONLY" }
+    requirePermission(user, "schedule", "update")
+    ensureInternalUser(user.role)
+    const organizationId = requireOrg(user)
+    const { env } = await getCloudflareContext()
+    const db = getDb(env.DB)
+    const template = await db
+      .select({ id: projectTemplates.id, name: projectTemplates.name })
+      .from(projectTemplates)
+      .where(
+        and(
+          eq(projectTemplates.id, input.templateId),
+          eq(projectTemplates.organizationId, organizationId)
+        )
+      )
+      .get()
+    if (!template) return { success: false, error: "Template not found." }
+
+    const application = await db
+      .select({ id: projectTemplateApplications.id })
+      .from(projectTemplateApplications)
+      .where(eq(projectTemplateApplications.templateId, template.id))
+      .limit(1)
+      .then((rows) => rows[0] ?? null)
+    if (application) {
+      return {
+        success: false,
+        error:
+          "This template has already been applied to a project and must be retained for the project audit trail. Set it inactive instead.",
+      }
+    }
+
+    await db.delete(projectTemplates).where(eq(projectTemplates.id, template.id))
+    await recordActivityEvent({
+      db,
+      organizationId,
+      actor: user,
+      category: "schedule",
+      action: "project_template.deleted",
+      entityType: "project_template",
+      entityId: template.id,
+      summary: `Deleted project template “${template.name}”.`,
+    })
+    revalidatePath("/dashboard/templates")
+    return { success: true }
+  } catch (error) {
+    console.error("Unable to delete template", error)
+    return { success: false, error: "Unable to delete the template." }
   }
 }
