@@ -14,7 +14,6 @@ import {
   IconPaint,
   IconPlus,
   IconSettings,
-  IconTemplate,
   IconTool,
 } from "@tabler/icons-react"
 
@@ -43,14 +42,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-  SheetTrigger,
-} from "@/components/ui/sheet"
+import { OfficeMaintenanceDrawer } from "@/components/projects/office-maintenance-drawer"
 import { cn } from "@/lib/utils"
 
 type DepartmentFilter = "ALL" | "O" | "H" | "N" | "D" | "OTHER"
@@ -297,62 +289,6 @@ function ProjectCard({
   )
 }
 
-function MaintenanceDrawer({
-  projects,
-}: {
-  readonly projects: readonly ProjectListItem[]
-}): React.ReactElement {
-  const cleanupCount = projects.filter((project) => statusForProject(project) === "all").length
-  const accountingLinked = projects.filter((project) => project.googleDriveFolderId !== null).length
-  const departmentNeeded = projects.filter((project) => departmentForProject(project) === "OTHER").length
-
-  return (
-    <Sheet>
-      <SheetTrigger asChild>
-        <Button variant="outline" size="sm">
-          <IconSettings className="size-4" />
-          Office maintenance
-        </Button>
-      </SheetTrigger>
-      <SheetContent className="w-full sm:max-w-md">
-        <SheetHeader>
-          <SheetTitle>Office maintenance</SheetTitle>
-          <SheetDescription>
-            Project registry cleanup and integration housekeeping.
-          </SheetDescription>
-        </SheetHeader>
-        <div className="divide-y border-y px-4">
-          <div className="flex items-center justify-between py-4 text-sm">
-            <span>Statuses needing cleanup</span>
-            <strong>{cleanupCount}</strong>
-          </div>
-          <div className="flex items-center justify-between py-4 text-sm">
-            <span>Drive-linked projects</span>
-            <strong>{accountingLinked}</strong>
-          </div>
-          <div className="flex items-center justify-between py-4 text-sm">
-            <span>Department assignment needed</span>
-            <strong>{departmentNeeded}</strong>
-          </div>
-        </div>
-        <div className="space-y-2 px-4">
-          <Button asChild variant="outline" className="w-full">
-            <Link href="/dashboard/templates">
-              <IconTemplate className="size-4" />
-              Open Template Library
-            </Link>
-          </Button>
-          <Button asChild className="w-full">
-            <Link href="/dashboard/projects?manage=1">
-              Open advanced registry tools
-            </Link>
-          </Button>
-        </div>
-      </SheetContent>
-    </Sheet>
-  )
-}
-
 function NewProjectDialog({
   activeDepartment,
 }: {
@@ -556,7 +492,9 @@ export function ProjectHubLaunchpad({
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          {canManageProjects ? <MaintenanceDrawer projects={projects} /> : null}
+          {canManageProjects ? (
+            <OfficeMaintenanceDrawer projects={projects} />
+          ) : null}
           {canManageProjects ? (
             <NewProjectDialog activeDepartment={department} />
           ) : null}
