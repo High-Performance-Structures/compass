@@ -13,7 +13,7 @@ async function fixture(path: string): Promise<unknown> {
 }
 
 describe("Buildertrend active template capture", () => {
-  it("captures stable metadata for 40 active templates and one pilot schedule", async () => {
+  it("captures all active Buildertrend schedule templates", async () => {
     const capture = parseBuildertrendTemplateCapture(
       await fixture(
         "scripts/fixtures/buildertrend-active-template-capture-2026-07-31.json"
@@ -38,6 +38,22 @@ describe("Buildertrend active template capture", () => {
     })
     expect(pilot?.schedule?.items).toHaveLength(9)
     expect(pilot?.schedule?.dependencies).toHaveLength(6)
+    expect(
+      capture.data.templates.filter((template) => template.schedule !== null)
+    ).toHaveLength(30)
+    expect(
+      capture.data.templates.reduce(
+        (count, template) => count + (template.schedule?.items.length ?? 0),
+        0
+      )
+    ).toBe(163)
+    expect(
+      capture.data.templates.reduce(
+        (count, template) =>
+          count + (template.schedule?.dependencies.length ?? 0),
+        0
+      )
+    ).toBe(144)
   })
 
   it("rejects archived source metadata even when the name is not prefixed", () => {
@@ -121,7 +137,72 @@ describe("Buildertrend active template capture", () => {
     expect(capture.errors.join(" ")).toContain("contains a cycle")
   })
 
-  it("builds draft-only SQL with the pilot schedule anchored by workdays", async () => {
+  it("preserves captured schedule fields and accepts negative predecessor lag", () => {
+    const capture = parseBuildertrendTemplateCapture({
+      capturedAt: "2026-08-03T15:00:00.000Z",
+      sourceUrl: "https://buildertrend.net/app/Templates/MyTemplates",
+      expectedActiveCount: 1,
+      excludedArchivedCount: 0,
+      templates: [
+        {
+          name: "Captured schedule",
+          sourceTemplateId: "123",
+          sourceUrl:
+            "https://buildertrend.net/app/Templates/MyTemplates/Template/123",
+          scheduleDurationDays: 2,
+          moduleCounts: { scheduleItems: 2 },
+          schedule: {
+            sourceAnchorDate: "2026-08-03",
+            phases: [{ sourcePhaseId: "1", name: "Concrete" }],
+            items: [
+              {
+                sourceItemId: "1",
+                title: "Layout",
+                startDate: "2026-08-03",
+                workdays: 1,
+                phase: "Concrete",
+                displayColor: "#dd2222",
+                isMilestone: false,
+                assigneePlaceholder: "Concrete crew",
+                ownerVisible: true,
+                subVendorVisible: true,
+                notes: "Buildertrend note",
+              },
+              {
+                sourceItemId: "2",
+                title: "Pour",
+                startDate: "2026-08-04",
+                workdays: 1,
+                phase: "Concrete",
+                displayColor: "green",
+              },
+            ],
+            dependencies: [
+              {
+                predecessorSourceItemId: "1",
+                successorSourceItemId: "2",
+                type: "FS",
+                lagDays: -1,
+              },
+            ],
+          },
+        },
+      ],
+    })
+
+    expect(capture.success).toBe(true)
+    if (!capture.success) return
+    expect(capture.data.templates[0]?.schedule?.items[0]).toMatchObject({
+      displayColor: "#dd2222",
+      assigneePlaceholder: "Concrete crew",
+      ownerVisible: true,
+      subVendorVisible: true,
+      notes: "Buildertrend note",
+    })
+    expect(capture.data.templates[0]?.schedule?.dependencies[0]?.lagDays).toBe(-1)
+  })
+
+  it("builds guarded SQL for all captured schedules", async () => {
     const inventory = parseBuildertrendTemplateInventory(
       await fixture(
         "scripts/fixtures/buildertrend-active-template-inventory-2026-07-31.json"
@@ -143,8 +224,8 @@ describe("Buildertrend active template capture", () => {
     })
 
     expect(build.capturedTemplateCount).toBe(40)
-    expect(build.capturedScheduleCount).toBe(1)
-    expect(build.capturedScheduleItemCount).toBe(9)
+    expect(build.capturedScheduleCount).toBe(30)
+    expect(build.capturedScheduleItemCount).toBe(163)
     expect(build.sql).toContain("schedule_captured")
     expect(build.sql).toContain("Building Dept. Electrical Rough Inspection")
     expect(build.sql).toContain(
@@ -158,6 +239,21 @@ describe("Buildertrend active template capture", () => {
     expect(build.sql).toContain(
       "WHEN project_templates.review_status='verified'"
     )
+
+    const publishBuild = buildBuildertrendTemplateCaptureSql({
+      organizationId: "org-test",
+      inventory: inventory.data,
+      capture: capture.data,
+      publishCapturedSchedules: true,
+    })
+    expect(publishBuild.sql).toContain("status='published'")
+    expect(publishBuild.sql).toContain(
+      "(SELECT COUNT(*) FROM schedule_template_items"
+    )
+    expect(publishBuild.sql).toContain(
+      "(SELECT COUNT(*) FROM schedule_template_dependencies"
+    )
+    expect(publishBuild.sql).toContain("review_status='verified'")
 
     expect(() =>
       buildBuildertrendTemplateCaptureSql({

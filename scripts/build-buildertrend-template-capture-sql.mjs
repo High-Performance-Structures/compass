@@ -24,6 +24,9 @@ async function main() {
   const organizationId = optionValue(argumentsList, "--organization-id")
   const output = optionValue(argumentsList, "--output")
   const dryRun = argumentsList.includes("--dry-run")
+  const publishCapturedSchedules = argumentsList.includes(
+    "--publish-captured-schedules"
+  )
   if (
     !inventoryPath ||
     !capturePath ||
@@ -33,7 +36,8 @@ async function main() {
     throw new Error(
       "Usage: bun scripts/build-buildertrend-template-capture-sql.mjs " +
         "--inventory <inventory.json> --capture <capture.json> " +
-        "--organization-id <org-id> [--output <import.sql>] [--dry-run]"
+        "--organization-id <org-id> [--output <import.sql>] [--dry-run] " +
+        "[--publish-captured-schedules]"
     )
   }
 
@@ -51,6 +55,7 @@ async function main() {
     organizationId,
     inventory: inventory.data,
     capture: capture.data,
+    publishCapturedSchedules,
   })
   if (!dryRun && output) await writeFile(output, build.sql, "utf8")
   console.log(
@@ -60,6 +65,7 @@ async function main() {
         capturedTemplateCount: build.capturedTemplateCount,
         capturedScheduleCount: build.capturedScheduleCount,
         capturedScheduleItemCount: build.capturedScheduleItemCount,
+        publishCapturedSchedules,
         excludedArchivedCount: capture.data.excludedArchivedCount,
         output: dryRun ? null : output,
       },
