@@ -1,7 +1,15 @@
 import type { NextConfig } from "next";
 
+const deploymentId =
+    process.env.NEXT_DEPLOYMENT_ID ??
+    process.env.WORKERS_CI_BUILD_UUID ??
+    (process.env.GITHUB_RUN_ID
+        ? `${process.env.GITHUB_RUN_ID}-${process.env.GITHUB_RUN_ATTEMPT ?? "1"}`
+        : undefined);
+
 const nextConfig: NextConfig = {
     allowedDevOrigins: ["127.0.0.1"],
+    deploymentId,
     transpilePackages: ["agent-core"],
     experimental: {
         proxyClientMaxBodySize: "100mb",
