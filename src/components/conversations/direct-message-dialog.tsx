@@ -10,15 +10,18 @@ import {
   listDirectMessageRecipients,
 } from "@/app/actions/conversations"
 import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
 import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import { cn } from "@/lib/utils"
 
 type DirectMessageRecipient = {
   readonly id: string
@@ -40,7 +43,8 @@ export function DirectMessageDialog({
   >([])
   const [query, setQuery] = React.useState("")
   const [loading, setLoading] = React.useState(false)
-  const [startingId, setStartingId] = React.useState<string | null>(null)
+  const [selectedIds, setSelectedIds] = React.useState<readonly string[]>([])
+  const [starting, setStarting] = React.useState(false)
 
   React.useEffect(() => {
     if (!open) return
@@ -60,6 +64,12 @@ export function DirectMessageDialog({
     }
   }, [open])
 
+  React.useEffect(() => {
+    if (open) return
+    setQuery("")
+    setSelectedIds([])
+  }, [open])
+
   const normalizedQuery = query.trim().toLocaleLowerCase()
   const filteredRecipients = recipients.filter((recipient) =>
     `${recipient.name} ${recipient.email}`
@@ -67,18 +77,31 @@ export function DirectMessageDialog({
       .includes(normalizedQuery)
   )
 
-  async function startMessage(recipientId: string): Promise<void> {
-    setStartingId(recipientId)
-    const result = await createDirectMessage(recipientId)
-    setStartingId(null)
-    if (!result.success || !result.data) {
-      toast.error(result.error ?? "Could not start the message.")
-      return
+  function toggleRecipient(recipientId: string, selected: boolean): void {
+    setSelectedIds((current) =>
+      selected
+        ? Array.from(new Set([...current, recipientId]))
+        : current.filter((id) => id !== recipientId)
+    )
+  }
+
+  async function startMessage(): Promise<void> {
+    if (selectedIds.length === 0) return
+    setStarting(true)
+    try {
+      const result = await createDirectMessage(selectedIds)
+      if (!result.success || !result.data) {
+        toast.error(result.error ?? "Could not start the conversation.")
+        return
+      }
+      onOpenChange(false)
+      router.push(`/dashboard/conversations/${result.data.channelId}`)
+      router.refresh()
+    } catch {
+      toast.error("Could not start the conversation.")
+    } finally {
+      setStarting(false)
     }
-    onOpenChange(false)
-    setQuery("")
-    router.push(`/dashboard/conversations/${result.data.channelId}`)
-    router.refresh()
   }
 
   return (
@@ -87,7 +110,7 @@ export function DirectMessageDialog({
         <DialogHeader>
           <DialogTitle>New direct message</DialogTitle>
           <DialogDescription>
-            Start a private conversation with an internal team member.
+            Select one or more internal team members for a private conversation.
           </DialogDescription>
         </DialogHeader>
         <div className="relative">
@@ -112,35 +135,60 @@ export function DirectMessageDialog({
                 No matching team members.
               </p>
             ) : (
-              filteredRecipients.map((recipient) => (
-                <Button
-                  key={recipient.id}
-                  type="button"
-                  variant="ghost"
-                  className="h-auto w-full justify-start gap-3 px-3 py-2 text-left"
-                  disabled={startingId !== null}
-                  onClick={() => void startMessage(recipient.id)}
-                >
-                  <span className="grid size-9 shrink-0 place-items-center rounded-full bg-primary/10 text-primary">
-                    {startingId === recipient.id ? (
-                      <IconLoader2 className="size-4 animate-spin" />
-                    ) : (
-                      <IconMessageCircle className="size-4" />
+              filteredRecipients.map((recipient) => {
+                const selected = selectedIds.includes(recipient.id)
+                return (
+                  <div
+                    key={recipient.id}
+                    className={cn(
+                      "flex cursor-pointer items-center gap-3 px-3 py-2 text-left hover:bg-accent has-[:disabled]:cursor-not-allowed has-[:disabled]:opacity-50",
+                      selected && "bg-accent"
                     )}
-                  </span>
-                  <span className="min-w-0">
-                    <span className="block truncate text-sm font-medium">
-                      {recipient.name}
+                    onClick={() => {
+                      if (!starting) toggleRecipient(recipient.id, !selected)
+                    }}
+                  >
+                    <span className="grid size-9 shrink-0 place-items-center rounded-full bg-primary/10 text-primary">
+                      <IconMessageCircle className="size-4" />
                     </span>
-                    <span className="block truncate text-xs text-muted-foreground">
-                      {recipient.email}
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm font-medium">
+                        {recipient.name}
+                      </span>
+                      <span className="block truncate text-xs text-muted-foreground">
+                        {recipient.email}
+                      </span>
                     </span>
-                  </span>
-                </Button>
-              ))
+                    <Checkbox
+                      checked={selected}
+                      disabled={starting}
+                      onClick={(event) => event.stopPropagation()}
+                      onCheckedChange={(checked) =>
+                        toggleRecipient(recipient.id, checked === true)
+                      }
+                      aria-label={`Include ${recipient.name}`}
+                    />
+                  </div>
+                )
+              })
             )}
           </div>
         </ScrollArea>
+        <DialogFooter className="items-center sm:justify-between">
+          <span className="text-sm text-muted-foreground">
+            {selectedIds.length === 0
+              ? "Choose at least one person"
+              : `${selectedIds.length} team member${selectedIds.length === 1 ? "" : "s"} selected`}
+          </span>
+          <Button
+            type="button"
+            disabled={selectedIds.length === 0 || starting}
+            onClick={() => void startMessage()}
+          >
+            {starting ? <IconLoader2 className="size-4 animate-spin" /> : null}
+            Start conversation
+          </Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   )
