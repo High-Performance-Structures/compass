@@ -1,3 +1,8 @@
+import {
+  formatTemplateChecklist,
+  groupTemplateChecklistItems,
+} from "@/lib/templates/template-checklist-hierarchy"
+
 export type ProjectTemplateContentDefinition = {
   readonly id: string
   readonly moduleType: string
@@ -129,11 +134,12 @@ export function buildProjectTemplateContentApplication(input: {
   readonly items: readonly ProjectTemplateContentDefinition[]
   readonly nextId: () => string
 }): ProjectTemplateContentApplication {
-  const sourceTitles: [string, string][] = []
-  for (const item of input.items) {
-    if (item.sourceItemId) sourceTitles.push([item.sourceItemId, item.title])
-  }
-  const sourceTitle = new Map(sourceTitles)
+  const taskGroups = groupTemplateChecklistItems(
+    input.items.filter((item) => item.moduleType === "tasks")
+  )
+  const taskGroupById = new Map(
+    taskGroups.map((group) => [group.task.id, group])
+  )
   const todos: InstantiatedTemplateTodo[] = []
   const selections: InstantiatedTemplateSelection[] = []
   const bidPackages: InstantiatedTemplateBidPackage[] = []
@@ -149,6 +155,38 @@ export function buildProjectTemplateContentApplication(input: {
       throw new Error("Every reusable template item needs a title.")
     }
     const payload = parsePayload(item.payloadJson)
+    if (item.moduleType === "tasks") {
+      if (item.parentSourceItemId) continue
+      const checklistItems = taskGroupById.get(item.id)?.checklistItems ?? []
+      const checklistProvenance = checklistItems.map((checklistItem) => ({
+        templateContentItemId: checklistItem.id,
+        sourceItemId: checklistItem.sourceItemId,
+        title: checklistItem.title,
+        description: checklistItem.description,
+        sortOrder: checklistItem.sortOrder,
+        payload: parsePayload(checklistItem.payloadJson),
+      }))
+      todos.push({
+        id: input.nextId(),
+        templateContentItemId: item.id,
+        title,
+        description: joinSections([
+          item.description,
+          formatTemplateChecklist(checklistItems),
+        ]),
+        sourceRecordId: sourceRecordId(input.applicationId, item.id),
+        sourcePayloadJson: JSON.stringify({
+          source: "project_template",
+          applicationId: input.applicationId,
+          templateContentItemId: item.id,
+          sourceItemId: item.sourceItemId,
+          parentSourceItemId: null,
+          payload,
+          checklistItems: checklistProvenance,
+        }),
+      })
+      continue
+    }
     const provenance = JSON.stringify({
       source: "project_template",
       applicationId: input.applicationId,
@@ -157,23 +195,6 @@ export function buildProjectTemplateContentApplication(input: {
       parentSourceItemId: item.parentSourceItemId,
       payload,
     })
-    if (item.moduleType === "tasks") {
-      const parentTitle = item.parentSourceItemId
-        ? sourceTitle.get(item.parentSourceItemId) ?? null
-        : null
-      todos.push({
-        id: input.nextId(),
-        templateContentItemId: item.id,
-        title,
-        description: joinSections([
-          item.description,
-          parentTitle ? `Template checklist: ${parentTitle}` : null,
-        ]),
-        sourceRecordId: sourceRecordId(input.applicationId, item.id),
-        sourcePayloadJson: provenance,
-      })
-      continue
-    }
     if (item.moduleType === "selections") {
       const category = item.category?.trim() || "Uncategorized"
       selections.push({
