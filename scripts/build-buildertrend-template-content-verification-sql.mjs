@@ -18,6 +18,10 @@ const releasePath = optionValue(args, "--release")
 const organizationId = optionValue(args, "--organization-id")
 const phase = optionValue(args, "--phase")
 const sourceTemplateId = optionValue(args, "--source-template-id")
+const verificationPartValue = optionValue(args, "--verification-part")
+const verificationPart = verificationPartValue === null
+  ? null
+  : Number.parseInt(verificationPartValue, 10)
 const outputPath = optionValue(args, "--output")
 if (!capturePath || !inventoryPath || !organizationId || !phase || !outputPath) {
   throw new Error(
@@ -25,7 +29,7 @@ if (!capturePath || !inventoryPath || !organizationId || !phase || !outputPath) 
       "--capture <capture.json> --inventory <inventory.json> " +
       "--organization-id <org-id> --phase <preflight|postflight> " +
       "--output <read-only-query.sql> [--release <release.json>] " +
-      "[--source-template-id <buildertrend-template-id>]"
+      "[--source-template-id <buildertrend-template-id>] [--verification-part <number>]"
   )
 }
 
@@ -66,6 +70,7 @@ const build = buildBuildertrendTemplateContentVerificationSql({
   inventory: scopedInventory,
   organizationId,
   phase,
+  verificationPart,
   excludedSourceTemplateIds: release?.excludedTemplates?.map(
     (template) => template.sourceTemplateId
   ) ?? [],
@@ -74,6 +79,8 @@ await writeFile(outputPath, build.sql, "utf8")
 console.log(JSON.stringify({
   phase: build.phase,
   readOnly: true,
+  verificationPart: build.verificationPart,
+  verificationPartCount: build.verificationPartCount,
   templateCount: build.templateCount,
   contentItemCount: build.contentItemCount,
   predecessorCount: build.predecessorCount,

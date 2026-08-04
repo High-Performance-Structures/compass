@@ -131,6 +131,8 @@ test("generates one read-only preflight and postflight statement with exact scop
       excludedSourceTemplateIds: release.excludedTemplates.map((template) => template.sourceTemplateId),
     })
     assert.equal(assertReadOnlyVerificationSql(build.sql), true)
+    assert.equal(build.verificationPart, null)
+    assert.equal(build.verificationPartCount, 3)
     assert.equal(build.templateCount, 3)
     assert.equal(build.contentItemCount, 165)
     assert.equal(build.predecessorCount, 17)
@@ -143,6 +145,17 @@ test("generates one read-only preflight and postflight statement with exact scop
       build.sql.replaceAll(/'(?:''|[^'])*'/g, "''"),
       /\b(?:INSERT|UPDATE|DELETE|CREATE|ALTER|DROP|PRAGMA|ATTACH)\b/i
     )
+    for (let verificationPart = 1; verificationPart <= build.verificationPartCount; verificationPart += 1) {
+      const part = buildBuildertrendTemplateContentVerificationSql({
+        capture,
+        inventory,
+        organizationId: "org-test",
+        phase,
+        verificationPart,
+      })
+      assert.equal(assertReadOnlyVerificationSql(part.sql), true)
+      assert.ok((part.sql.match(/UNION ALL/g) ?? []).length <= 6)
+    }
   }
 })
 
@@ -164,11 +177,14 @@ test("CLI scopes a D1-safe verification query to one reviewed template", async (
       "--organization-id", "org-test",
       "--phase", "preflight",
       "--source-template-id", "12581937",
+      "--verification-part", "1",
       "--output", outputPath,
     ])
     assert.deepEqual(JSON.parse(result.stdout), {
       phase: "preflight",
       readOnly: true,
+      verificationPart: 1,
+      verificationPartCount: 3,
       templateCount: 1,
       contentItemCount: 51,
       predecessorCount: 7,

@@ -85,14 +85,15 @@ bun scripts/build-buildertrend-template-content-verification-sql.mjs \
   --organization-id <organization-id> \
   --phase preflight \
   --source-template-id <buildertrend-template-id> \
+  --verification-part <1|2|3> \
   --output <preflight.sql>
 
 bunx wrangler d1 execute <database-name> --remote --file <preflight.sql> --json
 ```
 
-Run the query once for each release template; per-template queries remain under
-Cloudflare D1's compound-query limit. Proceed only when every query returns
-zero issue rows. Preflight requires one
+Run all three verification parts for each release template. The scoped parts
+remain under Cloudflare D1's compound-query limit. Proceed only when every
+query returns zero issue rows. Preflight requires one
 matching draft template and version per source ID, exact source module counts,
 no applications, and either zero content rows or a complete prior replay. A
 partial prior import is rejected.

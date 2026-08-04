@@ -277,6 +277,7 @@ export function buildBuildertrendTemplateContentVerificationSql({
   inventory,
   organizationId,
   phase,
+  verificationPart = null,
   excludedSourceTemplateIds = [],
 }) {
   assertCoverage(capture, inventory)
@@ -548,10 +549,38 @@ SELECT ${sql(phase)} AS phase, check_name, source_template_id, expected, actual
 FROM issues
 ORDER BY source_template_id, check_name;
 `
-  assertReadOnlyVerificationSql(sqlText)
+  const issuesStart = "  issues(check_name, source_template_id, expected, actual) AS (\n"
+  const finalSelect = `\n  )\nSELECT ${sql(phase)} AS phase`
+  const issuesStartIndex = sqlText.indexOf(issuesStart)
+  const finalSelectIndex = sqlText.indexOf(finalSelect, issuesStartIndex)
+  if (issuesStartIndex < 0 || finalSelectIndex < 0) {
+    throw new Error("Verification SQL issue clauses could not be located.")
+  }
+  const issueBodyStart = issuesStartIndex + issuesStart.length
+  const issueClauses = sqlText
+    .slice(issueBodyStart, finalSelectIndex)
+    .split("\n    UNION ALL\n")
+  const clausesPerPart = 7
+  const partCount = Math.ceil(issueClauses.length / clausesPerPart)
+  if (
+    verificationPart !== null &&
+    (!Number.isInteger(verificationPart) || verificationPart < 1 || verificationPart > partCount)
+  ) {
+    throw new Error(`Verification part must be an integer from 1 through ${partCount}.`)
+  }
+  const selectedSql = verificationPart === null
+    ? sqlText
+    : sqlText.slice(0, issueBodyStart) +
+      issueClauses
+        .slice((verificationPart - 1) * clausesPerPart, verificationPart * clausesPerPart)
+        .join("\n    UNION ALL\n") +
+      sqlText.slice(finalSelectIndex)
+  assertReadOnlyVerificationSql(selectedSql)
   return {
-    sql: sqlText,
+    sql: selectedSql,
     phase,
+    verificationPart,
+    verificationPartCount: partCount,
     organizationId: orgId,
     templateCount: expected.templates.length,
     contentItemCount: expected.items.length,
