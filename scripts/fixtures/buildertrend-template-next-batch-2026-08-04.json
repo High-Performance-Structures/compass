@@ -212,7 +212,7 @@
         "bidPackages": 0
       },
       "totalWorkItems": 51,
-      "workplanStatus": "pending",
+      "workplanStatus": "in_progress",
       "fragmentPath": "scripts/fixtures/buildertrend-template-content-next-batch/fragments/08-12581937.capture.json",
       "captureGates": {
         "tasks": {

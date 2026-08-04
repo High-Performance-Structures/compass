@@ -286,8 +286,20 @@
         "scheduleItems": 8
       },
       "totalWorkItems": 51,
-      "status": "pending",
-      "exceptions": []
+      "status": "in_progress",
+      "targetTemplateId": "45888967",
+      "capturedAt": "2026-08-04T19:17:22Z",
+      "capturedModuleCounts": {
+        "tasks": 43,
+        "bidPackages": 0,
+        "scheduleItems": 8,
+        "selections": 0,
+        "scheduleDurationDays": 6
+      },
+      "exceptions": [
+        "Buildertrend regenerated copied-record IDs.",
+        "Capture copy is prepared; task hierarchy review remains pending."
+      ]
     },
     {
       "sequence": 9,
