@@ -13,7 +13,8 @@ import { toast } from "sonner"
 
 import {
   deleteProjectTemplate,
-  updateProjectTemplateClassification,
+  publishCapturedProjectTemplate,
+  updateProjectTemplateCategory,
   type ProjectTemplateLibraryItem,
 } from "@/app/actions/project-templates"
 import {
@@ -38,7 +39,6 @@ import {
 } from "@/components/ui/select"
 import { EstimateTemplateCreateDialog } from "./estimate-template-create-dialog"
 
-export const TEMPLATE_DEPARTMENTS = ["ORC", "HPS", "Nu-Tech", "Design"] as const
 export const TEMPLATE_CATEGORIES = [
   "Concrete",
   "Preconstruction",
@@ -70,30 +70,18 @@ function reviewLabel(reviewStatus: string): string {
   }
 }
 
-function normalizedDepartment(value: string | null): string {
-  if (value === "D") return "Design"
-  if (value === "N") return "Nu-Tech"
-  if (value === "O") return "ORC"
-  if (value === "H") return "HPS"
-  return value ?? "ORC"
-}
-
-function ClassificationControls({
+function CategoryControl({
   template,
 }: {
   readonly template: ProjectTemplateLibraryItem
 }): React.ReactElement {
-  const [department, setDepartment] = useState(
-    normalizedDepartment(template.departmentCode)
-  )
   const [category, setCategory] = useState(template.tradeCategory ?? "Other")
   const [pending, startTransition] = useTransition()
 
-  function save(nextDepartment: string, nextCategory: string): void {
+  function save(nextCategory: string): void {
     startTransition(async () => {
-      const result = await updateProjectTemplateClassification({
+      const result = await updateProjectTemplateCategory({
         templateId: template.id,
-        department: nextDepartment,
         category: nextCategory,
       })
       if (!result.success) {
@@ -105,32 +93,13 @@ function ClassificationControls({
   }
 
   return (
-    <div className="grid gap-2 sm:grid-cols-2">
-      <Select
-        disabled={pending}
-        value={department}
-        onValueChange={(value) => {
-          setDepartment(value)
-          save(value, category)
-        }}
-      >
-        <SelectTrigger aria-label={`Department for ${template.name}`}>
-          <SelectValue placeholder="Department" />
-        </SelectTrigger>
-        <SelectContent>
-          {TEMPLATE_DEPARTMENTS.map((option) => (
-            <SelectItem key={option} value={option}>
-              {option}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+    <div>
       <Select
         disabled={pending}
         value={category}
         onValueChange={(value) => {
           setCategory(value)
-          save(department, value)
+          save(value)
         }}
       >
         <SelectTrigger aria-label={`Category for ${template.name}`}>
@@ -197,12 +166,64 @@ function DeleteTemplateButton({
   )
 }
 
+function PublishTemplateButton({
+  template,
+}: {
+  readonly template: ProjectTemplateLibraryItem
+}): React.ReactElement {
+  const [pending, startTransition] = useTransition()
+  const warningCount = template.modules.filter(
+    (module) => module.normalizationStatus === "captured_with_warnings"
+  ).length
+  return (
+    <AlertDialog>
+      <AlertDialogTrigger asChild>
+        <Button size="sm" variant="default">
+          <IconCircleCheck className="mr-2 size-4" />
+          Review and publish
+        </Button>
+      </AlertDialogTrigger>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Publish “{template.name}”?</AlertDialogTitle>
+          <AlertDialogDescription>
+            Compass will verify every captured module count before publishing.
+            {warningCount > 0
+              ? ` ${warningCount} module${warningCount === 1 ? " has" : "s have"} documented conversion warnings; review the template details before continuing.`
+              : " No conversion warnings were recorded."}
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel disabled={pending}>Keep as draft</AlertDialogCancel>
+          <AlertDialogAction
+            disabled={pending}
+            onClick={(event) => {
+              event.preventDefault()
+              startTransition(async () => {
+                const result = await publishCapturedProjectTemplate({
+                  templateId: template.id,
+                })
+                if (!result.success) {
+                  toast.error(result.error)
+                  return
+                }
+                toast.success("Template reviewed and published.")
+              })
+            }}
+          >
+            {pending ? "Publishing…" : "Publish template"}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  )
+}
+
 export function TemplateLibraryView({
   templates,
   canManage,
   canCreateEstimate,
 }: Props): React.ReactElement {
-  const [departmentFilter, setDepartmentFilter] = useState("all")
   const [categoryFilter, setCategoryFilter] = useState("all")
   const categories = useMemo(
     () =>
@@ -213,10 +234,8 @@ export function TemplateLibraryView({
   )
   const filtered = templates.filter(
     (template) =>
-      (departmentFilter === "all" ||
-        normalizedDepartment(template.departmentCode) === departmentFilter) &&
-      (categoryFilter === "all" ||
-        (template.tradeCategory ?? "Other") === categoryFilter)
+      categoryFilter === "all" ||
+      (template.tradeCategory ?? "Other") === categoryFilter
   )
   const readyCount = templates.filter(
     (template) =>
@@ -262,18 +281,7 @@ export function TemplateLibraryView({
       </header>
 
       <main className="flex-1 overflow-y-auto px-4 py-5 sm:px-6">
-        <div className="mb-5 grid gap-3 border-y py-3 sm:grid-cols-2 lg:max-w-2xl">
-          <Select value={departmentFilter} onValueChange={setDepartmentFilter}>
-            <SelectTrigger aria-label="Filter templates by department">
-              <SelectValue placeholder="All departments" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All departments</SelectItem>
-              {TEMPLATE_DEPARTMENTS.map((department) => (
-                <SelectItem key={department} value={department}>{department}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+        <div className="mb-5 border-y py-3 sm:max-w-sm">
           <Select value={categoryFilter} onValueChange={setCategoryFilter}>
             <SelectTrigger aria-label="Filter templates by category">
               <SelectValue placeholder="All categories" />
@@ -312,7 +320,7 @@ export function TemplateLibraryView({
                       <Badge variant="outline">
                         {template.templateKind === "project" ? "Project" : template.templateKind === "estimate" ? "Estimate" : "Assembly"}
                       </Badge>
-                      <Badge variant="secondary">{normalizedDepartment(template.departmentCode)}</Badge>
+                      <Badge variant="secondary">{template.tradeCategory ?? "Other"}</Badge>
                     </div>
                     <p className="mt-1 text-xs text-muted-foreground">
                       {template.scheduleItemCount} schedule items · {contentCount} stored source records
@@ -324,11 +332,16 @@ export function TemplateLibraryView({
                     </div>
                   </div>
                   {canManage ? (
-                    <ClassificationControls template={template} />
+                    <CategoryControl template={template} />
                   ) : (
                     <span className="text-sm text-muted-foreground">{template.tradeCategory ?? "Other"}</span>
                   )}
                   <div className="flex justify-end gap-1">
+                    {canManage &&
+                      template.reviewStatus === "content_captured" &&
+                      template.currentVersionStatus === "draft" && (
+                        <PublishTemplateButton template={template} />
+                      )}
                     <Button asChild size="sm" variant="outline">
                       <Link href={`/dashboard/templates/${template.id}`}>Open</Link>
                     </Button>

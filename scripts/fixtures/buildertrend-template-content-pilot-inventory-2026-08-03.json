@@ -1,0 +1,67 @@
+{
+  "capturedAt": "2026-08-04T04:47:25.671Z",
+  "expectedActiveCount": 6,
+  "excludedArchivedCount": 27,
+  "templates": [
+    {
+      "sourceTemplateId": "30294726",
+      "name": "Drywall Installation",
+      "moduleCounts": {
+        "tasks": 28,
+        "scheduleItems": 8,
+        "selections": 3,
+        "bidPackages": 1
+      }
+    },
+    {
+      "sourceTemplateId": "12978716",
+      "name": "Ext. Finishes - Roofing",
+      "moduleCounts": {
+        "tasks": 14,
+        "scheduleItems": 2,
+        "selections": 103,
+        "bidPackages": 1
+      }
+    },
+    {
+      "sourceTemplateId": "32043577",
+      "name": "Design & Preconstruction",
+      "moduleCounts": {
+        "tasks": 48,
+        "scheduleItems": 34,
+        "selections": 0,
+        "bidPackages": 0
+      }
+    },
+    {
+      "sourceTemplateId": "12667545",
+      "name": "Concrete - LiteDeck Assembly",
+      "moduleCounts": {
+        "tasks": 50,
+        "scheduleItems": 15,
+        "selections": 0,
+        "bidPackages": 0
+      }
+    },
+    {
+      "sourceTemplateId": "12540389",
+      "name": "Concrete - ICF Assembly",
+      "moduleCounts": {
+        "tasks": 59,
+        "scheduleItems": 5,
+        "selections": 0,
+        "bidPackages": 0
+      }
+    },
+    {
+      "sourceTemplateId": "30907034",
+      "name": "Int. Finishes - Cabinetry/Countertops",
+      "moduleCounts": {
+        "tasks": 50,
+        "scheduleItems": 6,
+        "selections": 4,
+        "bidPackages": 2
+      }
+    }
+  ]
+}

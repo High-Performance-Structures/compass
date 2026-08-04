@@ -5,6 +5,7 @@ import {
   parseBuildertrendTemplateCapture,
 } from "../src/lib/templates/buildertrend-template-capture"
 import { parseBuildertrendTemplateInventory } from "../src/lib/templates/buildertrend-template-inventory"
+import { buildBuildertrendTemplatePilot } from "./lib/buildertrend-template-pilot.mjs"
 
 function optionValue(argumentsList, option) {
   const index = argumentsList.indexOf(option)
@@ -23,6 +24,7 @@ async function main() {
   const capturePath = optionValue(argumentsList, "--capture")
   const organizationId = optionValue(argumentsList, "--organization-id")
   const output = optionValue(argumentsList, "--output")
+  const pilotManifestPath = optionValue(argumentsList, "--pilot-manifest")
   const dryRun = argumentsList.includes("--dry-run")
   const publishCapturedSchedules = argumentsList.includes(
     "--publish-captured-schedules"
@@ -34,20 +36,30 @@ async function main() {
     (!dryRun && !output)
   ) {
     throw new Error(
-      "Usage: bun scripts/build-buildertrend-template-capture-sql.mjs " +
+        "Usage: bun scripts/build-buildertrend-template-capture-sql.mjs " +
         "--inventory <inventory.json> --capture <capture.json> " +
         "--organization-id <org-id> [--output <import.sql>] [--dry-run] " +
-        "[--publish-captured-schedules]"
+        "[--publish-captured-schedules] [--pilot-manifest <reviewed-pilot.json>]"
     )
   }
 
-  const inventory = parseBuildertrendTemplateInventory(
-    await parseJsonFile(inventoryPath)
-  )
+  let inventoryValue = await parseJsonFile(inventoryPath)
+  let captureValue = await parseJsonFile(capturePath)
+  let pilot = null
+  if (pilotManifestPath) {
+    pilot = buildBuildertrendTemplatePilot({
+      inventory: inventoryValue,
+      capture: captureValue,
+      manifest: await parseJsonFile(pilotManifestPath),
+    })
+    inventoryValue = pilot.inventory
+    captureValue = pilot.capture
+  }
+  const inventory = parseBuildertrendTemplateInventory(inventoryValue)
   if (!inventory.success) {
     throw new Error(`Invalid template inventory:\n${inventory.errors.join("\n")}`)
   }
-  const capture = parseBuildertrendTemplateCapture(await parseJsonFile(capturePath))
+  const capture = parseBuildertrendTemplateCapture(captureValue)
   if (!capture.success) {
     throw new Error(`Invalid template capture:\n${capture.errors.join("\n")}`)
   }
@@ -66,6 +78,13 @@ async function main() {
         capturedScheduleCount: build.capturedScheduleCount,
         capturedScheduleItemCount: build.capturedScheduleItemCount,
         publishCapturedSchedules,
+        ...(pilot
+          ? {
+              pilotTemplateCount: pilot.capture.templates.length,
+              remainingActiveTemplatesUnverified:
+                pilot.remainingActiveTemplatesUnverified,
+            }
+          : {}),
         excludedArchivedCount: capture.data.excludedArchivedCount,
         output: dryRun ? null : output,
       },

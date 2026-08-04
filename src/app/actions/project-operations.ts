@@ -2562,6 +2562,53 @@ export async function restoreProjectTodo(
   return setProjectTodoStatus(projectId, todoId, "open", expectedUpdatedAt)
 }
 
+export async function deleteProjectTodo(
+  projectId: string,
+  todoId: string,
+  expectedUpdatedAt: string
+): Promise<ProjectTodoActionResult> {
+  try {
+    const { db, operation } = await findEditableProjectTodo(
+      projectId,
+      todoId,
+      expectedUpdatedAt
+    )
+    if (!isArchivedProjectTodoStatus(operation.status)) {
+      return {
+        success: false,
+        error: "Archive the to-do before deleting it permanently.",
+      }
+    }
+    const deletedRows = await db
+      .delete(projectOperations)
+      .where(
+        and(
+          eq(projectOperations.id, todoId),
+          eq(projectOperations.projectId, projectId),
+          eq(projectOperations.updatedAt, expectedUpdatedAt)
+        )
+      )
+      .returning({ id: projectOperations.id })
+    const deleted = deletedRows[0]
+    if (!deleted) {
+      return {
+        success: false,
+        error:
+          "This to-do changed while you were deleting it. Refresh and review the latest version.",
+      }
+    }
+
+    revalidateProjectTodoPaths(projectId)
+    return { success: true, id: deleted.id, updatedAt: expectedUpdatedAt }
+  } catch (error) {
+    return {
+      success: false,
+      error:
+        error instanceof Error ? error.message : "Failed to delete to-do",
+    }
+  }
+}
+
 export async function sendPurchaseOrderEmail(
   projectId: string,
   purchaseOrderId: string,

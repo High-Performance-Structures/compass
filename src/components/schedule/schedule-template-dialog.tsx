@@ -7,7 +7,7 @@ import { IconLoader2, IconTemplate } from "@tabler/icons-react"
 import { toast } from "sonner"
 
 import {
-  applyScheduleTemplate,
+  applyProjectTemplate,
   getProjectTemplateLibrary,
   type ProjectTemplateLibraryItem,
 } from "@/app/actions/project-templates"
@@ -95,7 +95,7 @@ export function ScheduleTemplateDialog({
   const handleApply = (): void => {
     if (!templateId || !anchorDate) return
     startApplying(async () => {
-      const result = await applyScheduleTemplate({
+      const result = await applyProjectTemplate({
         projectId,
         templateId,
         anchorDate,
@@ -105,7 +105,8 @@ export function ScheduleTemplateDialog({
         return
       }
       toast.success(
-        `Added ${result.itemCount} schedule items and ${result.dependencyCount} dependencies.`
+        `Added ${result.scheduleItemCount} schedule items, ${result.taskCount} to-dos, ` +
+          `${result.selectionCount} selections, and ${result.bidPackageCount} draft RFQs.`
       )
       setTemplateId("")
       onOpenChange(false)
@@ -117,10 +118,11 @@ export function ScheduleTemplateDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-xl">
         <DialogHeader>
-          <DialogTitle>Add schedule from template</DialogTitle>
+          <DialogTitle>Add project setup from template</DialogTitle>
           <DialogDescription>
             Choose a verified template and the date its first item should begin.
-            The new project items remain independently editable.
+            Schedule items, to-dos, finish selections, and draft RFQs are copied
+            into this project and remain independently editable.
           </DialogDescription>
         </DialogHeader>
 
@@ -202,7 +204,7 @@ export function ScheduleTemplateDialog({
             disabled={!selected || !anchorDate || isApplying}
           >
             {isApplying && <IconLoader2 className="mr-2 size-4 animate-spin" />}
-            Add to schedule
+            Add to project
           </Button>
         </DialogFooter>
       </DialogContent>

@@ -30,7 +30,6 @@ export function EstimateTemplateCreateDialog(): React.ReactElement {
       const result = await createEstimateTemplateDraft({
         name: String(formData.get("name") ?? ""),
         description: String(formData.get("description") ?? ""),
-        departmentCode: String(formData.get("departmentCode") ?? ""),
       })
       if (!result.success) {
         toast.error(result.error)
@@ -67,14 +66,6 @@ export function EstimateTemplateCreateDialog(): React.ReactElement {
                 name="name"
                 placeholder="Custom home construction estimate"
                 required
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="template-department">Department</Label>
-              <Input
-                id="template-department"
-                name="departmentCode"
-                placeholder="ORC, Design, HPS, or Nu-Tech"
               />
             </div>
             <div className="space-y-1.5">

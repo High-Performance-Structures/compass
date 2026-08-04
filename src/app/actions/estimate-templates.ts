@@ -36,7 +36,6 @@ export type EstimateTemplateOption = {
   readonly id: string
   readonly name: string
   readonly description: string | null
-  readonly departmentCode: string | null
   readonly versionNumber: number
   readonly lineCount: number
   readonly requiresProjectTaxEntity: boolean
@@ -65,7 +64,6 @@ export type EstimateTemplateEditor = {
   readonly id: string
   readonly name: string
   readonly description: string | null
-  readonly departmentCode: string | null
   readonly lifecycleStatus: string
   readonly reviewStatus: string
   readonly versionId: string
@@ -254,7 +252,6 @@ export async function getPublishedEstimateTemplateOptions(): Promise<
         id: template.id,
         name: template.name,
         description: template.description,
-        departmentCode: template.departmentCode,
         versionNumber: version.versionNumber,
         lineCount: lines.filter((line) => line.versionId === version.id).length,
         requiresProjectTaxEntity: lines.some(
@@ -323,7 +320,6 @@ export async function getEstimateTemplateEditor(
     id: template.id,
     name: template.name,
     description: template.description,
-    departmentCode: template.departmentCode,
     lifecycleStatus: template.lifecycleStatus,
     reviewStatus: template.reviewStatus,
     versionId: version.id,
@@ -374,7 +370,6 @@ export async function getEstimateTemplateEditor(
 export async function createEstimateTemplateDraft(input: {
   readonly name: string | null
   readonly description: string | null
-  readonly departmentCode: string | null
 }): Promise<ActionResult> {
   try {
     const access = await templateAccess("update")
@@ -385,9 +380,9 @@ export async function createEstimateTemplateDraft(input: {
       access.env.DB.prepare(
         `INSERT INTO project_templates (
           id, organization_id, source_system, source_key, name, description,
-          template_kind, department_code, trade_category, lifecycle_status,
+          template_kind, trade_category, lifecycle_status,
           review_status, current_version_number, created_by, created_at, updated_at
-        ) VALUES (?, ?, 'compass', ?, ?, ?, 'estimate', ?, 'Estimating',
+        ) VALUES (?, ?, 'compass', ?, ?, ?, 'estimate', 'Estimating',
           'draft', 'content_captured', 1, ?, ?, ?)`
       ).bind(
         id,
@@ -395,7 +390,6 @@ export async function createEstimateTemplateDraft(input: {
         `compass:${id}`,
         requiredText(input.name, "Template name"),
         cleanText(input.description),
-        cleanText(input.departmentCode),
         access.user.id,
         now,
         now
@@ -436,7 +430,6 @@ export async function updateEstimateTemplateDraft(input: {
   readonly templateId: string
   readonly name: string | null
   readonly description: string | null
-  readonly departmentCode: string | null
   readonly documentTitle: string | null
   readonly contractTerms: string | null
   readonly defaultMarkupPercent: number | null
@@ -452,7 +445,6 @@ export async function updateEstimateTemplateDraft(input: {
         .set({
           name: requiredText(input.name, "Template name"),
           description: cleanText(input.description),
-          departmentCode: cleanText(input.departmentCode),
           updatedAt: now,
         })
         .where(eq(projectTemplates.id, input.templateId)),

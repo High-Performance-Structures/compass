@@ -39,8 +39,8 @@ export default async function EstimateTemplatePage({
               <Badge variant="outline">
                 {preview.templateKind === "project" ? "Project" : "Assembly"}
               </Badge>
-              {preview.departmentCode && (
-                <Badge variant="secondary">{preview.departmentCode}</Badge>
+              {preview.tradeCategory && (
+                <Badge variant="secondary">{preview.tradeCategory}</Badge>
               )}
             </div>
             <p className="mt-1 text-sm text-muted-foreground">
@@ -68,6 +68,42 @@ export default async function EstimateTemplatePage({
                       <p className="text-xs text-muted-foreground">{item.phase}</p>
                     </div>
                     <p className="text-sm text-muted-foreground">{item.workdays} workday{item.workdays === 1 ? "" : "s"}</p>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+
+          {preview.modules.length > 0 && (
+            <section>
+              <div className="mb-2 border-b pb-2">
+                <h2 className="font-semibold">Capture review</h2>
+              </div>
+              <div className="divide-y border-y">
+                {preview.modules.map((module) => (
+                  <div
+                    key={module.moduleType}
+                    className="flex flex-wrap items-center justify-between gap-2 py-3"
+                  >
+                    <span className="capitalize">
+                      {module.moduleType.replaceAll("_", " ")}
+                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm text-muted-foreground">
+                        {module.sourceItemCount} source items
+                      </span>
+                      <Badge
+                        variant={
+                          module.normalizationStatus === "captured_with_warnings"
+                            ? "outline"
+                            : "secondary"
+                        }
+                      >
+                        {module.normalizationStatus === "captured_with_warnings"
+                          ? "Captured with warnings"
+                          : module.normalizationStatus.replaceAll("_", " ")}
+                      </Badge>
+                    </div>
                   </div>
                 ))}
               </div>

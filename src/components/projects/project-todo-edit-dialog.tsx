@@ -2,11 +2,17 @@
 
 import * as React from "react"
 import { useRouter } from "next/navigation"
-import { IconArchive, IconDeviceFloppy, IconRestore } from "@tabler/icons-react"
+import {
+  IconArchive,
+  IconDeviceFloppy,
+  IconRestore,
+  IconTrash,
+} from "@tabler/icons-react"
 
 import type { ProjectTaskAssigneeOption } from "@/app/actions/project-contacts"
 import {
   archiveProjectTodo,
+  deleteProjectTodo,
   restoreProjectTodo,
   updateProjectTodo,
   type ProjectOperationItem,
@@ -57,6 +63,7 @@ function cleanValue(value: string): string | null {
 
 function sourceLabel(item: ProjectOperationItem): string {
   if (item.sourceSystem === "buildertrend") return "Imported from Buildertrend"
+  if (item.sourceSystem === "compass_template") return "Created from a Compass template"
   if (item.sourceSystem === "compass") return "Created in Compass"
   if (item.sourceSystem === "sage") return "Imported from Sage"
   return `Imported from ${item.sourceSystem}`
@@ -138,6 +145,22 @@ export function ProjectTodoEditDialog({
   async function restore(): Promise<void> {
     setSaveState({ kind: "saving" })
     const result = await restoreProjectTodo(
+      projectId,
+      item.id,
+      item.updatedAt
+    )
+    if (!result.success) {
+      setSaveState({ kind: "error", message: result.error })
+      return
+    }
+
+    onOpenChange(false)
+    router.refresh()
+  }
+
+  async function remove(): Promise<void> {
+    setSaveState({ kind: "saving" })
+    const result = await deleteProjectTodo(
       projectId,
       item.id,
       item.updatedAt
@@ -321,15 +344,44 @@ export function ProjectTodoEditDialog({
 
           <div className="flex flex-col-reverse gap-3 border-t pt-4 sm:flex-row sm:items-center sm:justify-between">
             {archived ? (
-              <Button
-                type="button"
-                variant="outline"
-                onClick={restore}
-                disabled={saveState.kind === "saving"}
-              >
-                <IconRestore className="size-4" />
-                Restore to-do
-              </Button>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={restore}
+                  disabled={saveState.kind === "saving"}
+                >
+                  <IconRestore className="size-4" />
+                  Restore to-do
+                </Button>
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <Button
+                      type="button"
+                      variant="destructive"
+                      disabled={saveState.kind === "saving"}
+                    >
+                      <IconTrash className="size-4" />
+                      Delete
+                    </Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Delete this to-do permanently?</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        This cannot be undone. Any preserved import or template
+                        provenance for this to-do will also be removed.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>Keep to-do</AlertDialogCancel>
+                      <AlertDialogAction onClick={remove}>
+                        Delete permanently
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
+              </div>
             ) : (
               <AlertDialog>
                 <AlertDialogTrigger asChild>

@@ -1,6 +1,8 @@
 import { createHash } from "node:crypto"
 import { readFile, writeFile } from "node:fs/promises"
 
+import { buildBuildertrendTemplatePilot } from "./lib/buildertrend-template-pilot.mjs"
+
 function optionValue(args, option) {
   const index = args.indexOf(option)
   if (index < 0) return null
@@ -42,6 +44,56 @@ function assertItem(item, path) {
   }
 }
 
+function assertScheduleRelationships(items, path) {
+  const sourceItemIds = new Set(items.map((item) => item.sourceItemId))
+  const relationshipKeys = new Set()
+  for (const [itemIndex, item] of items.entries()) {
+    const itemPath = `${path}[${itemIndex}]`
+    if (!Array.isArray(item.predecessors)) {
+      throw new Error(`${itemPath}.predecessors must be an array.`)
+    }
+    for (const [predecessorIndex, predecessor] of item.predecessors.entries()) {
+      const predecessorPath = `${itemPath}.predecessors[${predecessorIndex}]`
+      if (!predecessor || typeof predecessor !== "object" || Array.isArray(predecessor)) {
+        throw new Error(`${predecessorPath} must be an object.`)
+      }
+      requireNonEmptyString(
+        predecessor.predecessorSourceItemId,
+        `${predecessorPath}.predecessorSourceItemId`
+      )
+      requireNonEmptyString(
+        predecessor.successorSourceItemId,
+        `${predecessorPath}.successorSourceItemId`
+      )
+      if (!sourceItemIds.has(predecessor.predecessorSourceItemId)) {
+        throw new Error(
+          `${predecessorPath}.predecessorSourceItemId does not identify a captured schedule item.`
+        )
+      }
+      if (predecessor.successorSourceItemId !== item.sourceItemId) {
+        throw new Error(
+          `${predecessorPath}.successorSourceItemId must match its schedule item.`
+        )
+      }
+      if (!["FS", "SS", "FF", "SF"].includes(predecessor.type)) {
+        throw new Error(`${predecessorPath}.type must be FS, SS, FF, or SF.`)
+      }
+      if (!Number.isInteger(predecessor.lagDays)) {
+        throw new Error(`${predecessorPath}.lagDays must be an integer.`)
+      }
+      const relationshipKey = [
+        predecessor.predecessorSourceItemId,
+        predecessor.successorSourceItemId,
+        predecessor.type,
+      ].join(":")
+      if (relationshipKeys.has(relationshipKey)) {
+        throw new Error(`${path} has duplicate predecessor relationship ${relationshipKey}.`)
+      }
+      relationshipKeys.add(relationshipKey)
+    }
+  }
+}
+
 function contentId(templateId, moduleType, sourceItemId) {
   const digest = createHash("sha256")
     .update(`${templateId}:${moduleType}:${sourceItemId}`)
@@ -52,6 +104,7 @@ function contentId(templateId, moduleType, sourceItemId) {
 
 const modules = [
   ["tasks", "tasks"],
+  ["scheduleItems", "schedule"],
   ["selections", "selections"],
   ["bidPackages", "bid_packages"],
 ]
@@ -90,7 +143,9 @@ function parseConversionExceptions(capture, capturedTemplatesById) {
       requireNonEmptyString(exception.sourceItemId, `${path}.sourceItemId`)
     }
     if (!moduleSourceKeys.has(exception.module)) {
-      throw new Error(`${path}.module must be one of tasks, selections, bidPackages.`)
+      throw new Error(
+        `${path}.module must be one of tasks, scheduleItems, selections, bidPackages.`
+      )
     }
 
     const template = capturedTemplatesById.get(exception.templateSourceTemplateId)
@@ -132,16 +187,27 @@ async function main() {
   const capturePath = optionValue(args, "--capture")
   const inventoryPath = optionValue(args, "--inventory")
   const outputPath = optionValue(args, "--output")
+  const pilotManifestPath = optionValue(args, "--pilot-manifest")
   const dryRun = args.includes("--dry-run")
   if (!capturePath || !inventoryPath || (!dryRun && !outputPath)) {
     throw new Error(
       "Usage: bun scripts/build-buildertrend-template-content-sql.mjs " +
         "--inventory <reviewed-inventory.json> --capture <content.json> " +
-        "[--output <import.sql>] [--dry-run]"
+        "[--output <import.sql>] [--dry-run] [--pilot-manifest <reviewed-pilot.json>]"
     )
   }
-  const capture = JSON.parse(await readFile(capturePath, "utf8"))
-  const inventory = JSON.parse(await readFile(inventoryPath, "utf8"))
+  let capture = JSON.parse(await readFile(capturePath, "utf8"))
+  let inventory = JSON.parse(await readFile(inventoryPath, "utf8"))
+  let pilot = null
+  if (pilotManifestPath) {
+    pilot = buildBuildertrendTemplatePilot({
+      inventory,
+      capture,
+      manifest: JSON.parse(await readFile(pilotManifestPath, "utf8")),
+    })
+    capture = pilot.capture
+    inventory = pilot.inventory
+  }
   if (!Array.isArray(capture.templates)) throw new Error("capture.templates must be an array.")
   if (!Array.isArray(inventory.templates)) {
     throw new Error("inventory.templates must be an array.")
@@ -219,7 +285,7 @@ async function main() {
   )
 
   const statements = ["PRAGMA foreign_keys=ON;"]
-  const totals = { tasks: 0, selections: 0, bidPackages: 0 }
+  const totals = { tasks: 0, scheduleItems: 0, selections: 0, bidPackages: 0 }
   for (const [templateIndex, template] of capture.templates.entries()) {
     if (!template || typeof template !== "object") {
       throw new Error(`templates[${templateIndex}] must be an object.`)
@@ -252,14 +318,28 @@ async function main() {
           `${template.name} ${sourceKey} count mismatch: expected ${expected}, captured ${items.length}.`
         )
       }
+      const sourceItemIds = new Set()
+      for (const [itemIndex, item] of items.entries()) {
+        assertItem(item, `templates[${templateIndex}].${sourceKey}[${itemIndex}]`)
+        if (sourceItemIds.has(item.sourceItemId)) {
+          throw new Error(
+            `${template.name} ${sourceKey} has duplicate sourceItemId ${item.sourceItemId}.`
+          )
+        }
+        sourceItemIds.add(item.sourceItemId)
+      }
+      if (sourceKey === "scheduleItems") {
+        assertScheduleRelationships(items, `templates[${templateIndex}].scheduleItems`)
+      }
       totals[sourceKey] += items.length
       const exceptions =
         exceptionsByTemplateModule.get(`${template.sourceTemplateId}:${sourceKey}`) ?? []
       statements.push(
-        `DELETE FROM project_template_content_items WHERE version_id=${sql(versionId)} AND module_type=${sql(moduleType)};`
+        `DELETE FROM project_template_content_items WHERE version_id=${sql(versionId)} ` +
+          `AND module_type=${sql(moduleType)} AND EXISTS (` +
+          `SELECT 1 FROM project_template_versions WHERE id=${sql(versionId)} AND status='draft');`
       )
       items.forEach((item, itemIndex) => {
-        assertItem(item, `templates[${templateIndex}].${sourceKey}[${itemIndex}]`)
         const itemExceptions = exceptions.filter(
           (exception) => exception.sourceItemId === item.sourceItemId
         )
@@ -275,7 +355,7 @@ async function main() {
           `INSERT INTO project_template_content_items (` +
             `id, version_id, module_type, source_item_id, parent_source_item_id, ` +
             `title, category, description, sort_order, payload_json` +
-            `) VALUES (` +
+          `) SELECT ` +
             [
               sql(contentId(template.sourceTemplateId, moduleType, item.sourceItemId)),
               sql(versionId),
@@ -288,7 +368,8 @@ async function main() {
               Number.isInteger(item.sortOrder) ? item.sortOrder : itemIndex,
               sql(JSON.stringify(payload)),
             ].join(", ") +
-            `);`
+            ` WHERE EXISTS (SELECT 1 FROM project_template_versions ` +
+            `WHERE id=${sql(versionId)} AND status='draft');`
         )
       })
       statements.push(
@@ -303,13 +384,19 @@ async function main() {
               conversionExceptions: exceptions,
             })
           )} ` +
-          `WHERE version_id=${sql(versionId)} AND module_type=${sql(moduleType)};`
+          `WHERE version_id=${sql(versionId)} AND module_type=${sql(moduleType)} ` +
+          `AND EXISTS (SELECT 1 FROM project_template_versions ` +
+          `WHERE id=${sql(versionId)} AND status='draft');`
       )
     }
     statements.push(
-      `UPDATE project_templates SET review_status='verified', lifecycle_status='active', ` +
+      `UPDATE project_templates SET ` +
+        `review_status=CASE WHEN review_status='verified' THEN review_status ELSE 'content_captured' END, ` +
+        `lifecycle_status=CASE WHEN review_status='verified' THEN lifecycle_status ELSE 'draft' END, ` +
         `source_url=NULL, updated_at=${sql(capture.capturedAt)} ` +
-        `WHERE source_system='buildertrend' AND source_template_id=${sql(template.sourceTemplateId)};`
+      `WHERE source_system='buildertrend' AND source_template_id=${sql(template.sourceTemplateId)} ` +
+        `AND EXISTS (SELECT 1 FROM project_template_versions ` +
+        `WHERE id=${sql(versionId)} AND status='draft');`
     )
   }
 
@@ -321,6 +408,13 @@ async function main() {
         templateCount: capture.templates.length,
         ...totals,
         excludedArchivedCount: capture.excludedArchivedCount ?? null,
+        ...(pilot
+          ? {
+              pilotTemplateCount: pilot.capture.templates.length,
+              remainingActiveTemplatesUnverified:
+                pilot.remainingActiveTemplatesUnverified,
+            }
+          : {}),
         output: dryRun ? null : outputPath,
       },
       null,

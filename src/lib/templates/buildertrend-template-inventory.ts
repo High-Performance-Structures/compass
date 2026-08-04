@@ -197,10 +197,11 @@ export function buildBuildertrendTemplateInventorySql(
         sql("buildertrend"),
         sql(sourceKey),
         sql(template.sourceTemplateId),
-        sql(template.sourceUrl ?? inventory.sourceUrl),
+        sql(null),
         sql(template.name),
         sql(template.templateKind),
-        sql(template.departmentCode),
+        // Department/branding is selected by the destination project, not the template.
+        sql(null),
         sql(template.tradeCategory),
         sql("draft"),
         sql("inventory_only"),
@@ -210,9 +211,9 @@ export function buildBuildertrendTemplateInventorySql(
       ].join(", ") +
       `) ON CONFLICT(organization_id, source_system, source_key) DO UPDATE SET ` +
       `source_template_id=excluded.source_template_id, ` +
-      `source_url=excluded.source_url, name=excluded.name, ` +
+      `source_url=NULL, name=excluded.name, ` +
       `template_kind=excluded.template_kind, ` +
-      `department_code=excluded.department_code, ` +
+      `department_code=project_templates.department_code, ` +
       `trade_category=excluded.trade_category, ` +
       `source_metadata_json=excluded.source_metadata_json, ` +
       `updated_at=excluded.updated_at;`

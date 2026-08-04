@@ -157,7 +157,6 @@ export function EstimateTemplateEditorPanel({
         templateId: editor.id,
         name: formText(formData, "name"),
         description: formText(formData, "description"),
-        departmentCode: formText(formData, "departmentCode"),
         documentTitle: formText(formData, "documentTitle"),
         contractTerms: formText(formData, "contractTerms"),
         defaultMarkupPercent: formNumber(formData, "defaultMarkupPercent"),
@@ -292,15 +291,6 @@ export function EstimateTemplateEditorPanel({
                   id="templateName"
                   name="name"
                   defaultValue={editor.name}
-                  disabled={!editable}
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="templateDepartment">Department</Label>
-                <Input
-                  id="templateDepartment"
-                  name="departmentCode"
-                  defaultValue={editor.departmentCode ?? ""}
                   disabled={!editable}
                 />
               </div>

@@ -83,7 +83,9 @@ bun scripts/build-buildertrend-template-inventory-sql.mjs \
 ```
 
 The expected dry-run result is 40 imported active-source rows and 27 excluded
-archived rows.
+archived rows. Apply this full inventory import before either pilot import so
+the 34 non-pilot active templates exist in Compass as `inventory_only` records.
+The pilot commands never create those 34 rows themselves.
 
 Capture stable Buildertrend IDs, module counts, and reviewed schedule content:
 
@@ -93,6 +95,19 @@ bun scripts/build-buildertrend-template-capture-sql.mjs \
   --capture scripts/fixtures/buildertrend-active-template-capture-2026-07-31.json \
   --organization-id <organization-id> \
   --dry-run
+```
+
+For the six-template pilot, add the reviewed allowlist. It imports only those
+six active templates, retains the 27 archived exclusions, and leaves the other
+34 active templates inventory-only and unverified:
+
+```bash
+bun scripts/build-buildertrend-template-capture-sql.mjs \
+  --inventory scripts/fixtures/buildertrend-active-template-inventory-2026-07-31.json \
+  --capture scripts/fixtures/buildertrend-active-template-capture-2026-07-31.json \
+  --pilot-manifest scripts/fixtures/buildertrend-template-pilot-2026-08-03.json \
+  --organization-id <organization-id> \
+  --output <reviewed-pilot-import.sql>
 ```
 
 The capture import is idempotent and draft-only unless
@@ -106,7 +121,10 @@ before SQL is generated. Generated files intentionally omit explicit
 transaction statements because D1 file execution supplies its own transaction
 boundary.
 
-After migration `0089_template_content_classification.sql` is applied, a
+Before deploying code that reads template content, apply migration
+`0089_template_content_classification.sql`; the template detail page queries
+that table unconditionally. The release order is: migrate `0089`, generate and
+review the import SQL, apply the import, then deploy the application code. A
 count-verified content capture can be converted with:
 
 ```bash
@@ -117,16 +135,29 @@ bun scripts/build-buildertrend-template-content-sql.mjs \
 ```
 
 The content importer requires exact coverage of all 40 reviewed active
-template IDs, rejects archived or unexpected templates, and rejects any task,
-selection, or bid-package module whose captured item count differs from the
-reviewed Buildertrend inventory. Buildertrend URLs are removed recursively from
-both display content and stored payloads. Template source links are no longer
-exposed in Compass.
+template IDs by default. With the same reviewed `--pilot-manifest`, it accepts
+only the six pilot IDs and leaves the other 34 active templates unverified. It
+rejects archived or unexpected templates, duplicate source item IDs within a
+module, and any task, schedule-item, selection, or bid-package module whose
+captured item count differs from the reviewed Buildertrend inventory. Schedule
+items are first-class captured content, including source IDs, phases,
+durations, visibility fields, colors, and predecessor relationships; they are
+not inferred from the inventory count. All content writes are draft-version
+guarded; published versions are immutable. Buildertrend URLs are removed
+recursively from both display content and stored payloads. Template source
+links are no longer exposed in Compass, including on an inventory replay.
 
-Internal staff can classify templates by department (ORC, HPS, Nu-Tech, or
-Design) and category. Templates that have never been applied may be deleted;
-applied templates remain available to the audit trail and must be made inactive
-instead.
+After import, internal staff opens each captured template in Compass, reviews
+its module totals and any documented conversion warnings, then uses **Review
+and publish** from the Template Library. Publication rechecks the stored task,
+schedule, selection, and bid-package counts against the reviewed source counts.
+Only a matching draft becomes verified, active, and available to apply to a
+project.
+
+Templates use functional categories. Department is assigned by the destination
+job or project when staff applies a template, not by the template import.
+Templates that have never been applied may be deleted; applied templates remain
+available to the audit trail and must be made inactive instead.
 
 ## Capture Progress
 
