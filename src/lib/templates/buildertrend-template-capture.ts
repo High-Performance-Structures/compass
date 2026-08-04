@@ -767,6 +767,7 @@ export function buildBuildertrendTemplateCaptureSql(input: {
     const templateSourceKey = sourceKey(captured.name)
     const templateId = `bt-${templateSourceKey}`
     const versionId = `bt-template-version:${captured.sourceTemplateId}:1`
+    const departmentCode = inventoryTemplate.departmentCode
     const scheduleCaptured = captured.schedule !== null
     if (scheduleCaptured) {
       capturedScheduleCount += 1
@@ -795,10 +796,10 @@ export function buildBuildertrendTemplateCaptureSql(input: {
           sql("buildertrend"),
           sql(templateSourceKey),
           sql(captured.sourceTemplateId),
-          sql(captured.sourceUrl),
+          sql(null),
           sql(captured.name),
           sql(inventoryTemplate.templateKind),
-          sql(inventoryTemplate.departmentCode),
+          sql(departmentCode),
           sql(inventoryTemplate.tradeCategory),
           sql("draft"),
           sql(scheduleCaptured ? "content_captured" : "inventory_only"),
@@ -809,9 +810,9 @@ export function buildBuildertrendTemplateCaptureSql(input: {
         ].join(", ") +
         `) ON CONFLICT(organization_id, source_system, source_key) DO UPDATE SET ` +
         `source_template_id=excluded.source_template_id, ` +
-        `source_url=excluded.source_url, name=excluded.name, ` +
+        `source_url=NULL, name=excluded.name, ` +
         `template_kind=excluded.template_kind, ` +
-        `department_code=excluded.department_code, ` +
+        `department_code=project_templates.department_code, ` +
         `trade_category=excluded.trade_category, ` +
         `review_status=CASE WHEN project_templates.review_status='verified' ` +
         `THEN project_templates.review_status ELSE excluded.review_status END, ` +

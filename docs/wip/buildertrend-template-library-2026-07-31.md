@@ -20,6 +20,8 @@ records. The foundation stores:
 - immutable numbered versions;
 - per-version module inventories;
 - relative schedule items and dependencies;
+- normalized task, selection, and bid-package content with the complete source
+  payload retained locally per item;
 - each project application and the generated schedule-item mappings.
 
 A Buildertrend inventory row begins as `inventory_only`. It cannot be applied
@@ -81,7 +83,9 @@ bun scripts/build-buildertrend-template-inventory-sql.mjs \
 ```
 
 The expected dry-run result is 40 imported active-source rows and 27 excluded
-archived rows.
+archived rows. Apply this full inventory import before either pilot import so
+the 34 non-pilot active templates exist in Compass as `inventory_only` records.
+The pilot commands never create those 34 rows themselves.
 
 Capture stable Buildertrend IDs, module counts, and reviewed schedule content:
 
@@ -91,6 +95,19 @@ bun scripts/build-buildertrend-template-capture-sql.mjs \
   --capture scripts/fixtures/buildertrend-active-template-capture-2026-07-31.json \
   --organization-id <organization-id> \
   --dry-run
+```
+
+For the six-template pilot, add the reviewed allowlist. It imports only those
+six active templates, retains the 27 archived exclusions, and leaves the other
+34 active templates inventory-only and unverified:
+
+```bash
+bun scripts/build-buildertrend-template-capture-sql.mjs \
+  --inventory scripts/fixtures/buildertrend-active-template-inventory-2026-07-31.json \
+  --capture scripts/fixtures/buildertrend-active-template-capture-2026-07-31.json \
+  --pilot-manifest scripts/fixtures/buildertrend-template-pilot-2026-08-03.json \
+  --organization-id <organization-id> \
+  --output <reviewed-pilot-import.sql>
 ```
 
 The capture import is idempotent and draft-only unless
@@ -103,6 +120,44 @@ archive-prefixed names or archived/inactive/deleted source metadata are rejected
 before SQL is generated. Generated files intentionally omit explicit
 transaction statements because D1 file execution supplies its own transaction
 boundary.
+
+Before deploying code that reads template content, apply migration
+`0089_template_content_classification.sql`; the template detail page queries
+that table unconditionally. The release order is: migrate `0089`, generate and
+review the import SQL, apply the import, then deploy the application code. A
+count-verified content capture can be converted with:
+
+```bash
+bun scripts/build-buildertrend-template-content-sql.mjs \
+  --inventory scripts/fixtures/buildertrend-active-template-capture-2026-07-31.json \
+  --capture <buildertrend-template-content.json> \
+  --output <reviewed-content-import.sql>
+```
+
+The content importer requires exact coverage of all 40 reviewed active
+template IDs by default. With the same reviewed `--pilot-manifest`, it accepts
+only the six pilot IDs and leaves the other 34 active templates unverified. It
+rejects archived or unexpected templates, duplicate source item IDs within a
+module, and any task, schedule-item, selection, or bid-package module whose
+captured item count differs from the reviewed Buildertrend inventory. Schedule
+items are first-class captured content, including source IDs, phases,
+durations, visibility fields, colors, and predecessor relationships; they are
+not inferred from the inventory count. All content writes are draft-version
+guarded; published versions are immutable. Buildertrend URLs are removed
+recursively from both display content and stored payloads. Template source
+links are no longer exposed in Compass, including on an inventory replay.
+
+After import, internal staff opens each captured template in Compass, reviews
+its module totals and any documented conversion warnings, then uses **Review
+and publish** from the Template Library. Publication rechecks the stored task,
+schedule, selection, and bid-package counts against the reviewed source counts.
+Only a matching draft becomes verified, active, and available to apply to a
+project.
+
+Templates use functional categories. Department is assigned by the destination
+job or project when staff applies a template, not by the template import.
+Templates that have never been applied may be deleted; applied templates remain
+available to the audit trail and must be made inactive instead.
 
 ## Capture Progress
 
@@ -123,9 +178,18 @@ visibility, and notes. They are recorded as pending field review in module
 provenance instead of being guessed. Schedule content itself can be published
 after the automated item, dependency, archive-exclusion, and cycle checks pass.
 
-## Next Capture Pass
+## Remaining Capture Gate
 
-Schedule definitions are the first completed promotion target. Task/checklist
-templates follow next, then folders, specifications, and finish selections.
-Financial features remain definitions until their Sage mappings and approval
-behavior are explicitly reviewed.
+Schedule definitions are complete. Task/checklist, selection-choice, and bid
+package content must pass exact module-count reconciliation before the content
+import is generated or applied. Financial features remain definitions until
+their Sage mappings and approval behavior are explicitly reviewed.
+
+Buildertrend does not expose a single spreadsheet export for a project
+template. In the authenticated template workspace, Bid Packages offers a
+template-scoped Excel export, Selections offers a print report, Schedule offers
+import/copy actions only, and the documented Tasks Excel action is not exposed
+in the template-scoped task list. A partial export must not be treated as a
+complete template capture. The remaining modules therefore require either a
+Buildertrend Data Entry/Support export or a count-reconciled authenticated
+capture before the verified Compass import can run.

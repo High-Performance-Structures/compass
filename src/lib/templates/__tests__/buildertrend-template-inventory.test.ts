@@ -66,5 +66,7 @@ describe("Buildertrend active template inventory", () => {
     expect(build.sql).toContain("Concrete - Footer Assembly")
     expect(build.sql).toContain("27 archived templates were excluded")
     expect(build.sql).not.toContain("ARCHIVE Sample Job")
+    expect(build.sql).toContain("NULL, 'Concrete - Footer Assembly'")
+    expect(build.sql).not.toContain("https://buildertrend.net/")
   })
 })

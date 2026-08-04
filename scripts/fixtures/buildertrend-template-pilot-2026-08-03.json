@@ -1,0 +1,23 @@
+{
+  "manifestVersion": 1,
+  "generatedAt": "2026-08-03",
+  "scope": {
+    "activeTemplatesInSource": 40,
+    "pilotTemplatesIncluded": 6,
+    "remainingActiveTemplatesUnverified": 34,
+    "archivedTemplatesExcluded": 27,
+    "archivedTemplatesIncluded": 0
+  },
+  "classificationPolicy": {
+    "functionalCategoryField": "tradeCategory",
+    "departmentPolicy": "destination-project-only"
+  },
+  "templates": [
+    { "sourceTemplateId": "30294726", "sourceName": "Drywall Installation", "tradeCategory": "Drywall" },
+    { "sourceTemplateId": "12978716", "sourceName": "Ext. Finishes - Roofing", "tradeCategory": "Exterior Finishes" },
+    { "sourceTemplateId": "32043577", "sourceName": "Design & Preconstruction", "tradeCategory": "Preconstruction" },
+    { "sourceTemplateId": "12667545", "sourceName": "Concrete - LiteDeck Assembly", "tradeCategory": "Concrete" },
+    { "sourceTemplateId": "12540389", "sourceName": "Concrete - ICF Assembly", "tradeCategory": "Concrete" },
+    { "sourceTemplateId": "30907034", "sourceName": "Int. Finishes - Cabinetry/Countertops", "tradeCategory": "Interior Finishes" }
+  ]
+}
