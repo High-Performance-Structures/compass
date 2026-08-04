@@ -2,6 +2,8 @@ import {
   formatTemplateChecklist,
   groupTemplateChecklistItems,
 } from "@/lib/templates/template-checklist-hierarchy"
+import { normalizeTemplateBidPackage } from "@/lib/templates/template-bid-package"
+import { buildTemplateSelectionHierarchy } from "@/lib/templates/template-selection-hierarchy"
 
 export type ProjectTemplateContentDefinition = {
   readonly id: string
@@ -35,6 +37,10 @@ export type InstantiatedTemplateSelection = {
   readonly costCode: string | null
   readonly status: string
   readonly notes: string | null
+  readonly choiceOptionsJson: string | null
+  readonly parentSelectionId: string | null
+  readonly parentChoiceValue: string | null
+  readonly selectionLevel: number
   readonly sortOrder: number
 }
 
@@ -100,22 +106,13 @@ function costCode(category: string | null): string | null {
 }
 
 function choiceNotes(payload: JsonObject): string | null {
-  const choices = objectArray(payload.choices).flatMap((choice) => {
-    const title = text(choice.title)
-    if (!title) return []
-    const description = text(choice.description)
-    return [`- ${title}${description ? `: ${description}` : ""}`]
-  })
   const attachments = objectArray(payload.attachments).flatMap((attachment) => {
     const fileName = text(attachment.fileName)
     return fileName ? [`- ${fileName}`] : []
   })
-  return joinSections([
-    choices.length ? `Template choices:\n${choices.join("\n")}` : null,
-    attachments.length
-      ? `Template attachment references:\n${attachments.join("\n")}`
-      : null,
-  ])
+  return attachments.length
+    ? `Template attachment references:\n${attachments.join("\n")}`
+    : null
 }
 
 function selectionStatus(value: unknown): string {
@@ -140,8 +137,23 @@ export function buildProjectTemplateContentApplication(input: {
   const taskGroupById = new Map(
     taskGroups.map((group) => [group.task.id, group])
   )
+  const selectionHierarchy = buildTemplateSelectionHierarchy(
+    input.items
+      .filter((item) => item.moduleType === "selections")
+      .map((item) => ({
+        id: item.id,
+        title: item.title,
+        payloadJson: item.payloadJson,
+        sortOrder: item.sortOrder,
+      }))
+  )
+  const hierarchyByItemId = new Map(
+    selectionHierarchy.map((item) => [item.itemId, item])
+  )
   const todos: InstantiatedTemplateTodo[] = []
-  const selections: InstantiatedTemplateSelection[] = []
+  const selections: (InstantiatedTemplateSelection & {
+    readonly parentTemplateContentItemId: string | null
+  })[] = []
   const bidPackages: InstantiatedTemplateBidPackage[] = []
 
   for (const item of input.items) {
@@ -197,6 +209,7 @@ export function buildProjectTemplateContentApplication(input: {
     })
     if (item.moduleType === "selections") {
       const category = item.category?.trim() || "Uncategorized"
+      const hierarchy = hierarchyByItemId.get(item.id)
       selections.push({
         id: input.nextId(),
         templateContentItemId: item.id,
@@ -208,24 +221,66 @@ export function buildProjectTemplateContentApplication(input: {
         costCode: costCode(category),
         status: selectionStatus(payload.status),
         notes: choiceNotes(payload),
+        choiceOptionsJson:
+          hierarchy && hierarchy.choiceOptions.length > 0
+            ? JSON.stringify(hierarchy.choiceOptions)
+            : null,
+        parentSelectionId: null,
+        parentTemplateContentItemId: hierarchy?.parentItemId ?? null,
+        parentChoiceValue: hierarchy?.parentChoiceValue ?? null,
+        selectionLevel: hierarchy?.level ?? 0,
         sortOrder: item.sortOrder,
       })
       continue
     }
     if (item.moduleType === "bid_packages") {
-      const primaryLine = objectArray(payload.lineItems)[0] ?? null
-      const primaryCostCode = text(primaryLine?.costCode)
+      const normalized = normalizeTemplateBidPackage({
+        title,
+        description: item.description,
+        payloadJson: item.payloadJson,
+      })
       bidPackages.push({
         id: input.nextId(),
         templateContentItemId: item.id,
         sourceRecordId: sourceRecordId(input.applicationId, item.id),
         title,
-        description: item.description,
-        costCode: costCode(primaryCostCode),
-        sourcePayloadJson: provenance,
+        description: normalized.overallScope,
+        costCode: normalized.primaryCostCode,
+        sourcePayloadJson: JSON.stringify({
+          source: "compass_template_rfq",
+          vendorCategory: normalized.vendorCategory,
+          scope: normalized.overallScope,
+          scopeItems: normalized.scopeItems,
+          documentLinks: normalized.documentLinks,
+          templateReview: normalized.templateReview,
+          templateProvenance: JSON.parse(provenance),
+        }),
       })
     }
   }
 
-  return { todos, selections, bidPackages }
+  const selectionIdByTemplateItemId = new Map(
+    selections.map((selection) => [selection.templateContentItemId, selection.id])
+  )
+  const resolvedSelections = selections.map((selection) => ({
+    id: selection.id,
+    templateContentItemId: selection.templateContentItemId,
+    sourceRecordId: selection.sourceRecordId,
+    roomName: selection.roomName,
+    category: selection.category,
+    name: selection.name,
+    description: selection.description,
+    costCode: selection.costCode,
+    status: selection.status,
+    notes: selection.notes,
+    choiceOptionsJson: selection.choiceOptionsJson,
+    parentSelectionId: selection.parentTemplateContentItemId
+      ? selectionIdByTemplateItemId.get(selection.parentTemplateContentItemId) ?? null
+      : null,
+    parentChoiceValue: selection.parentChoiceValue,
+    selectionLevel: selection.selectionLevel,
+    sortOrder: selection.sortOrder,
+  }))
+
+  return { todos, selections: resolvedSelections, bidPackages }
 }

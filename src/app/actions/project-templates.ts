@@ -654,10 +654,11 @@ export async function applyProjectTemplate(input: {
           `INSERT INTO project_finish_selections (
             id, project_id, source_system, source_record_id, room_name,
             category, name, description, cost_code, status, owner_visible,
-            owner_approved, notes, sort_order, sync_status, created_at,
-            updated_at
+            owner_approved, notes, choice_options_json, parent_selection_id,
+            parent_choice_value, selection_level, sort_order, sync_status,
+            created_at, updated_at
           ) VALUES (?, ?, 'compass_template', ?, ?, ?, ?, ?, ?, ?, 0, 0,
-            ?, ?, 'manual', ?, ?)`
+            ?, ?, ?, ?, ?, ?, 'manual', ?, ?)`
         ).bind(
           selection.id,
           input.projectId,
@@ -669,6 +670,10 @@ export async function applyProjectTemplate(input: {
           selection.costCode,
           selection.status,
           selection.notes,
+          selection.choiceOptionsJson,
+          selection.parentSelectionId,
+          selection.parentChoiceValue,
+          selection.selectionLevel,
           selection.sortOrder,
           now,
           now

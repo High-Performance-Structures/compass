@@ -10,8 +10,10 @@ import { getEstimateTemplateEditor } from "@/app/actions/estimate-templates"
 import { EstimateTemplateEditorPanel } from "@/components/templates/estimate-template-editor"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { normalizeTemplateBidPackage } from "@/lib/templates/template-bid-package"
 import { groupTemplateChecklistItems } from "@/lib/templates/template-checklist-hierarchy"
 import { resolveTemplateDetailId } from "@/lib/templates/template-detail-route"
+import { buildTemplateSelectionHierarchy } from "@/lib/templates/template-selection-hierarchy"
 
 export const dynamic = "force-dynamic"
 
@@ -173,6 +175,151 @@ export default async function EstimateTemplatePage({
                       </article>
                     ))}
                   </div>
+                </section>
+              )
+            }
+            if (moduleType === "bid_packages") {
+              return (
+                <section key={moduleType}>
+                  <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2 border-b pb-2">
+                    <h2 className="font-semibold">Bid packages → draft RFQs</h2>
+                    <span className="text-xs text-muted-foreground">
+                      {items.length} draft RFQ{items.length === 1 ? "" : "s"}
+                    </span>
+                  </div>
+                  <div className="divide-y border-y">
+                    {items.map((item) => {
+                      const normalized = normalizeTemplateBidPackage({
+                        title: item.title,
+                        description: item.description,
+                        payloadJson: item.payloadJson,
+                      })
+                      return (
+                        <article key={item.id} className="py-4">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <h3 className="font-medium">{item.title}</h3>
+                            <Badge variant="outline">Draft RFQ</Badge>
+                            {normalized.vendorCategory && (
+                              <Badge variant="secondary">
+                                {normalized.vendorCategory}
+                              </Badge>
+                            )}
+                          </div>
+                          {normalized.overallScope && (
+                            <p className="mt-3 whitespace-pre-wrap text-sm text-muted-foreground">
+                              {normalized.overallScope}
+                            </p>
+                          )}
+                          {normalized.scopeItems.length > 0 && (
+                            <div className="mt-4 overflow-x-auto border-y">
+                              <div className="grid min-w-[640px] grid-cols-[2rem_minmax(14rem,1fr)_7rem_minmax(10rem,.7fr)] gap-2 border-b py-2 text-xs font-medium text-muted-foreground">
+                                <span>#</span>
+                                <span>Scope</span>
+                                <span>Cost code</span>
+                                <span>Notes</span>
+                              </div>
+                              {normalized.scopeItems.map((line) => (
+                                <div
+                                  key={`${item.id}-${line.lineNumber}`}
+                                  className="grid min-w-[640px] grid-cols-[2rem_minmax(14rem,1fr)_7rem_minmax(10rem,.7fr)] gap-2 border-b py-2 text-sm last:border-b-0"
+                                >
+                                  <span>{line.lineNumber}</span>
+                                  <span>{line.description}</span>
+                                  <span>{line.costCode ?? "-"}</span>
+                                  <span className="text-muted-foreground">
+                                    {line.notes ?? "-"}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                          {normalized.templateReview && (
+                            <div className="mt-4 border-l-2 border-amber-500 px-3 py-2 text-sm">
+                              <p className="font-medium">Review before sending</p>
+                              {normalized.templateReview.unresolvedPlaceholders.length > 0 && (
+                                <p className="mt-1 text-muted-foreground">
+                                  Replace: {normalized.templateReview.unresolvedPlaceholders.join(", ")}
+                                </p>
+                              )}
+                              {normalized.templateReview.requiresDocumentPackage && (
+                                <p className="mt-1 text-muted-foreground">
+                                  Add the project plans/specifications package link.
+                                </p>
+                              )}
+                            </div>
+                          )}
+                        </article>
+                      )
+                    })}
+                  </div>
+                </section>
+              )
+            }
+            if (moduleType === "selections") {
+              const hierarchy = buildTemplateSelectionHierarchy(
+                items.map((item) => ({
+                  id: item.id,
+                  title: item.title,
+                  payloadJson: item.payloadJson,
+                  sortOrder: item.sortOrder,
+                }))
+              )
+              const itemById = new Map(items.map((item) => [item.id, item]))
+              const childrenByParent = new Map<string, typeof hierarchy>()
+              for (const relation of hierarchy) {
+                if (!relation.parentItemId) continue
+                const children = childrenByParent.get(relation.parentItemId) ?? []
+                childrenByParent.set(relation.parentItemId, [...children, relation])
+              }
+              const roots = hierarchy.filter((relation) => !relation.parentItemId)
+
+              function renderSelection(
+                relation: (typeof hierarchy)[number]
+              ): React.ReactNode {
+                const item = itemById.get(relation.itemId)
+                if (!item) return null
+                const children = childrenByParent.get(relation.itemId) ?? []
+                return (
+                  <li key={item.id} className="border-l-2 border-primary/30 pl-3">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="font-medium">{item.title}</span>
+                      {relation.parentChoiceValue && (
+                        <Badge variant="secondary">
+                          After {relation.parentChoiceValue}
+                        </Badge>
+                      )}
+                    </div>
+                    {relation.choiceOptions.length > 0 && (
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        Choose: {relation.choiceOptions.join(" · ")}
+                      </p>
+                    )}
+                    {children.length > 0 && (
+                      <details className="mt-2" open={relation.level === 0}>
+                        <summary className="cursor-pointer text-xs font-medium text-muted-foreground">
+                          {children.length} dependent selection
+                          {children.length === 1 ? "" : "s"}
+                        </summary>
+                        <ul className="mt-3 space-y-3">
+                          {children.map(renderSelection)}
+                        </ul>
+                      </details>
+                    )}
+                  </li>
+                )
+              }
+
+              return (
+                <section key={moduleType}>
+                  <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2 border-b pb-2">
+                    <h2 className="font-semibold">Finish selection hierarchy</h2>
+                    <span className="text-xs text-muted-foreground">
+                      {items.length} selections · dependent choices open as their parent is selected
+                    </span>
+                  </div>
+                  <ul className="space-y-4 border-y py-4">
+                    {roots.map(renderSelection)}
+                  </ul>
                 </section>
               )
             }

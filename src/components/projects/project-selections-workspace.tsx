@@ -299,6 +299,11 @@ function SelectionRow({
           <Badge variant="outline" className="h-5 px-1.5 text-[10px]">
             {sourceLabel(selection)}
           </Badge>
+          {selection.parentChoiceValue && (
+            <Badge variant="secondary" className="h-5 px-1.5 text-[10px]">
+              After {selection.parentChoiceValue}
+            </Badge>
+          )}
         </div>
         {selection.description && (
           <p className="mt-1 text-muted-foreground">{selection.description}</p>
@@ -399,6 +404,74 @@ function SelectionRow({
       )}
     </div>
   )
+}
+
+function SelectionTree({
+  costCodeMap,
+  options,
+  projectId,
+  selections,
+}: {
+  readonly costCodeMap: ReadonlyMap<string, CostCodeDisplay>
+  readonly options: ProjectSelectionOptions
+  readonly projectId: string
+  readonly selections: readonly ProjectSelectionItem[]
+}): React.ReactElement {
+  const selectionIds = new Set(selections.map((selection) => selection.id))
+  const childrenByParent = new Map<string, ProjectSelectionItem[]>()
+
+  for (const selection of selections) {
+    if (!selection.parentSelectionId || !selectionIds.has(selection.parentSelectionId)) {
+      continue
+    }
+    const children = childrenByParent.get(selection.parentSelectionId) ?? []
+    children.push(selection)
+    childrenByParent.set(selection.parentSelectionId, children)
+  }
+
+  const roots = selections.filter(
+    (selection) =>
+      !selection.parentSelectionId || !selectionIds.has(selection.parentSelectionId)
+  )
+
+  function renderSelection(
+    selection: ProjectSelectionItem,
+    level: number
+  ): React.ReactNode {
+    const children = childrenByParent.get(selection.id) ?? []
+    const visibleChildren = children.filter(
+      (child) =>
+        child.parentChoiceValue === null ||
+        child.parentChoiceValue === selection.colorFinish
+    )
+
+    return (
+      <React.Fragment key={selection.id}>
+        <div
+          className={level > 0 ? "border-l-2 border-primary/30" : undefined}
+          style={level > 0 ? { marginLeft: `${Math.min(level, 3) * 16}px` } : undefined}
+        >
+          <SelectionRow
+            costCodeMap={costCodeMap}
+            options={options}
+            projectId={projectId}
+            selection={selection}
+          />
+        </div>
+        {visibleChildren.map((child) => renderSelection(child, level + 1))}
+        {children.length > 0 && visibleChildren.length === 0 && (
+          <div
+            className="border-l-2 border-dashed border-muted-foreground/30 px-3 py-2 text-xs text-muted-foreground"
+            style={{ marginLeft: `${Math.min(level + 1, 3) * 16}px` }}
+          >
+            Choose an option above to reveal the related follow-up selections.
+          </div>
+        )}
+      </React.Fragment>
+    )
+  }
+
+  return <>{roots.map((selection) => renderSelection(selection, 0))}</>
 }
 
 function EmptyFilteredState({
@@ -675,15 +748,12 @@ export function ProjectSelectionsWorkspace({
                   />
                 </div>
               </div>
-              {room.selections.map((selection) => (
-                <SelectionRow
-                  key={selection.id}
-                  costCodeMap={costCodeMap}
-                  options={options}
-                  projectId={projectId}
-                  selection={selection}
-                />
-              ))}
+              <SelectionTree
+                costCodeMap={costCodeMap}
+                options={options}
+                projectId={projectId}
+                selections={room.selections}
+              />
             </section>
           ))}
         </div>
