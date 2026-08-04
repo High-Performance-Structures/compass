@@ -219,6 +219,61 @@ function templateFromDocument(document, path) {
   throw new Error(`${path} must identify exactly one template.`)
 }
 
+function validateTaskHierarchy(items, path) {
+  const tasksById = new Map(items.map((item) => [item.sourceItemId, item]))
+  for (const [index, task] of items.entries()) {
+    const parentId = task.parentSourceItemId
+    if (parentId === undefined || parentId === null) continue
+    const normalizedParentId = requiredString(parentId, `${path}[${index}].parentSourceItemId`)
+    if (normalizedParentId === task.sourceItemId) {
+      throw new Error(`${path}[${index}] cannot reference itself as parentSourceItemId.`)
+    }
+    if (!tasksById.has(normalizedParentId)) {
+      throw new Error(`${path}[${index}].parentSourceItemId ${normalizedParentId} is not in the same task fragment.`)
+    }
+  }
+
+  const complete = new Set()
+  for (const task of items) {
+    if (complete.has(task.sourceItemId)) continue
+    const currentPath = new Set()
+    let current = task
+    while (current) {
+      if (complete.has(current.sourceItemId)) break
+      if (currentPath.has(current.sourceItemId)) {
+        throw new Error(`${path} contains a parentSourceItemId cycle at ${current.sourceItemId}.`)
+      }
+      currentPath.add(current.sourceItemId)
+      const parentId = current.parentSourceItemId
+      current = typeof parentId === "string" ? tasksById.get(parentId) : undefined
+    }
+    for (const id of currentPath) complete.add(id)
+  }
+}
+
+function validateSelectionChoices(selection, path) {
+  if (selection.choices === undefined) return
+  if (!Array.isArray(selection.choices)) throw new Error(`${path}.choices must be an array.`)
+  const choiceIds = new Set()
+  for (const [index, choice] of selection.choices.entries()) {
+    if (!isRecord(choice)) throw new Error(`${path}.choices[${index}] must be an object.`)
+    const choiceId = requiredString(choice.sourceChoiceId, `${path}.choices[${index}].sourceChoiceId`)
+    requiredString(choice.title, `${path}.choices[${index}].title`)
+    if (choiceIds.has(choiceId)) throw new Error(`${path}.choices duplicates sourceChoiceId ${choiceId}.`)
+    choiceIds.add(choiceId)
+  }
+}
+
+function validateBidPackageLineItems(bidPackage, path) {
+  if (bidPackage.lineItems === undefined) return
+  if (!Array.isArray(bidPackage.lineItems)) throw new Error(`${path}.lineItems must be an array.`)
+  for (const [index, lineItem] of bidPackage.lineItems.entries()) {
+    if (!isRecord(lineItem)) throw new Error(`${path}.lineItems[${index}] must be an object.`)
+    requiredString(lineItem.title, `${path}.lineItems[${index}].title`)
+    requiredString(lineItem.costCode, `${path}.lineItems[${index}].costCode`)
+  }
+}
+
 export function validateBuildertrendNextBatchFragments({ manifest, documents }) {
   if (!isRecord(manifest) || !Array.isArray(manifest.templates)) {
     throw new Error("Next-batch manifest must contain templates.")
@@ -254,7 +309,14 @@ export function validateBuildertrendNextBatchFragments({ manifest, documents }) 
         requiredString(item.title, `${source}.${moduleName}[${index}].title`)
         if (itemIds.has(itemId)) throw new Error(`${source}.${moduleName} duplicates sourceItemId ${itemId}.`)
         itemIds.add(itemId)
+        if (moduleName === "selections") {
+          validateSelectionChoices(item, `${source}.${moduleName}[${index}]`)
+        }
+        if (moduleName === "bidPackages") {
+          validateBidPackageLineItems(item, `${source}.${moduleName}[${index}]`)
+        }
       }
+      if (moduleName === "tasks") validateTaskHierarchy(template[moduleName], `${source}.tasks`)
       current.add(moduleName)
     }
     if (template.scheduleItems !== undefined || template.schedule !== undefined) {
