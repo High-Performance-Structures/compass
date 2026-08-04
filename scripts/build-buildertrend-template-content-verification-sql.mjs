@@ -17,13 +17,15 @@ const inventoryPath = optionValue(args, "--inventory")
 const releasePath = optionValue(args, "--release")
 const organizationId = optionValue(args, "--organization-id")
 const phase = optionValue(args, "--phase")
+const sourceTemplateId = optionValue(args, "--source-template-id")
 const outputPath = optionValue(args, "--output")
 if (!capturePath || !inventoryPath || !organizationId || !phase || !outputPath) {
   throw new Error(
     "Usage: bun scripts/build-buildertrend-template-content-verification-sql.mjs " +
       "--capture <capture.json> --inventory <inventory.json> " +
       "--organization-id <org-id> --phase <preflight|postflight> " +
-      "--output <read-only-query.sql> [--release <release.json>]"
+      "--output <read-only-query.sql> [--release <release.json>] " +
+      "[--source-template-id <buildertrend-template-id>]"
   )
 }
 
@@ -32,9 +34,36 @@ const [capture, inventory, release] = await Promise.all([
   readFile(inventoryPath, "utf8").then(JSON.parse),
   releasePath ? readFile(releasePath, "utf8").then(JSON.parse) : null,
 ])
+const scopedCapture = sourceTemplateId
+  ? {
+      ...capture,
+      assembly: {
+        ...capture.assembly,
+        sourceTemplateIds: [sourceTemplateId],
+      },
+      templates: capture.templates.filter(
+        (template) => template.sourceTemplateId === sourceTemplateId
+      ),
+    }
+  : capture
+const scopedInventory = sourceTemplateId
+  ? {
+      ...inventory,
+      expectedActiveCount: 1,
+      templates: inventory.templates.filter(
+        (template) => template.sourceTemplateId === sourceTemplateId
+      ),
+    }
+  : inventory
+if (
+  sourceTemplateId &&
+  (scopedCapture.templates.length !== 1 || scopedInventory.templates.length !== 1)
+) {
+  throw new Error(`Source template ${sourceTemplateId} is not present in both verification inputs.`)
+}
 const build = buildBuildertrendTemplateContentVerificationSql({
-  capture,
-  inventory,
+  capture: scopedCapture,
+  inventory: scopedInventory,
   organizationId,
   phase,
   excludedSourceTemplateIds: release?.excludedTemplates?.map(
@@ -48,6 +77,8 @@ console.log(JSON.stringify({
   templateCount: build.templateCount,
   contentItemCount: build.contentItemCount,
   predecessorCount: build.predecessorCount,
+  reusableScheduleItemCount: build.reusableScheduleItemCount,
+  reusableDependencyCount: build.reusableDependencyCount,
   sourceTemplateIds: build.sourceTemplateIds,
   excludedSourceTemplateIds: build.excludedSourceTemplateIds,
   output: outputPath,

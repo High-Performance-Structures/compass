@@ -84,12 +84,15 @@ bun scripts/build-buildertrend-template-content-verification-sql.mjs \
   --release scripts/fixtures/buildertrend-template-content-next-batch-release-2026-08-04.json \
   --organization-id <organization-id> \
   --phase preflight \
+  --source-template-id <buildertrend-template-id> \
   --output <preflight.sql>
 
 bunx wrangler d1 execute <database-name> --remote --file <preflight.sql> --json
 ```
 
-Proceed only when the query returns zero issue rows. Preflight requires one
+Run the query once for each release template; per-template queries remain under
+Cloudflare D1's compound-query limit. Proceed only when every query returns
+zero issue rows. Preflight requires one
 matching draft template and version per source ID, exact source module counts,
 no applications, and either zero content rows or a complete prior replay. A
 partial prior import is rejected.

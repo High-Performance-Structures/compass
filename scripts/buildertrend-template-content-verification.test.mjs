@@ -146,6 +146,47 @@ test("generates one read-only preflight and postflight statement with exact scop
   }
 })
 
+test("CLI scopes a D1-safe verification query to one reviewed template", async () => {
+  const { capture, inventory } = await fixture()
+  const directory = await mkdtemp(join(tmpdir(), "compass-template-scoped-verification-"))
+  const capturePath = join(directory, "capture.json")
+  const inventoryPath = join(directory, "inventory.json")
+  const outputPath = join(directory, "preflight.sql")
+  try {
+    await Promise.all([
+      writeFile(capturePath, `${JSON.stringify(capture)}\n`),
+      writeFile(inventoryPath, `${JSON.stringify(inventory)}\n`),
+    ])
+    const result = await execFileAsync("bun", [
+      "scripts/build-buildertrend-template-content-verification-sql.mjs",
+      "--capture", capturePath,
+      "--inventory", inventoryPath,
+      "--organization-id", "org-test",
+      "--phase", "preflight",
+      "--source-template-id", "12581937",
+      "--output", outputPath,
+    ])
+    assert.deepEqual(JSON.parse(result.stdout), {
+      phase: "preflight",
+      readOnly: true,
+      templateCount: 1,
+      contentItemCount: 51,
+      predecessorCount: 7,
+      reusableScheduleItemCount: 8,
+      reusableDependencyCount: 7,
+      sourceTemplateIds: ["12581937"],
+      excludedSourceTemplateIds: [],
+      output: outputPath,
+    })
+    const sql = await readFile(outputPath, "utf8")
+    assert.equal(assertReadOnlyVerificationSql(sql), true)
+    assert.match(sql, /Concrete - Footer Assembly/)
+    assert.doesNotMatch(sql, /Ext\. Finishes - Stucco|MEP - Rough & Top Out/)
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
 test("preflight passes a fresh draft and postflight remains identical across two imports", async () => {
   const { release, capture, inventory } = await fixture()
   const directory = await mkdtemp(join(tmpdir(), "compass-template-verification-"))
