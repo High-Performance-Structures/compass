@@ -20,6 +20,7 @@ import { getCloudflareContext } from "@/lib/db"
 import { isDemoUser } from "@/lib/demo"
 import { requireOrg } from "@/lib/org-scope"
 import { requireFeaturePermission } from "@/lib/permission-enforcement"
+import { findTemplatePlaceholders } from "@/lib/templates/template-bid-package"
 import { notifyProjectAssignment } from "@/lib/notifications/events"
 import {
   PROJECT_TODO_RECORD_TYPES,
@@ -125,6 +126,10 @@ export type ProjectRfqItem = ProjectOperationItem & {
   readonly recipientEmail: string | null
   readonly scopeItems: readonly ProjectRfqScopeLineItem[]
   readonly documentLinks: readonly ProjectRfqDocumentLinkItem[]
+  readonly templateReview: {
+    readonly unresolvedPlaceholders: readonly string[]
+    readonly requiresDocumentPackage: boolean
+  } | null
 }
 
 export type NextScheduleItem = {
@@ -835,6 +840,23 @@ function parseRfqDocumentLinks(
     .filter((link) => link !== null)
 }
 
+function parseRfqTemplateReview(
+  payload: Record<string, unknown> | null
+): ProjectRfqItem["templateReview"] {
+  const value = payload?.templateReview
+  if (!isRecord(value)) return null
+  const rawPlaceholders = value.unresolvedPlaceholders
+  const unresolvedPlaceholders = Array.isArray(rawPlaceholders)
+    ? rawPlaceholders.filter(
+        (placeholder): placeholder is string => typeof placeholder === "string"
+      )
+    : []
+  const requiresDocumentPackage = value.requiresDocumentPackage === true
+  return unresolvedPlaceholders.length > 0 || requiresDocumentPackage
+    ? { unresolvedPlaceholders, requiresDocumentPackage }
+    : null
+}
+
 function toOperationItem(row: typeof projectOperations.$inferSelect): ProjectOperationItem {
   return {
     id: row.id,
@@ -882,6 +904,7 @@ function toRfqItem(
       stringValue(payload ?? {}, "recipientEmail") ?? recipientEmail,
     scopeItems: parseRfqScopeItems(payload, row.description),
     documentLinks: parseRfqDocumentLinks(payload),
+    templateReview: parseRfqTemplateReview(payload),
   }
 }
 
@@ -2092,6 +2115,25 @@ export async function updateRfqRequest(
       description ?? title
     )
     const documentLinks = normalizeRfqDocumentLinks(input.documentLinks)
+    const existingPayload = parseJsonRecord(existing[0].sagePayloadJson)
+    const existingTemplateReview = parseRfqTemplateReview(existingPayload)
+    const unresolvedPlaceholders = existingTemplateReview
+      ? findTemplatePlaceholders(
+          [
+            title,
+            description,
+            ...scopeItems.flatMap((line) => [line.description, line.notes]),
+          ]
+        )
+      : []
+    const templateReview = existingTemplateReview
+      ? {
+          unresolvedPlaceholders,
+          requiresDocumentPackage:
+            existingTemplateReview.requiresDocumentPackage &&
+            documentLinks.length === 0,
+        }
+      : null
     const primaryLine = scopeItems[0] ?? null
     const sourceRecordNumber =
       existing[0].sourceRecordNumber ??
@@ -2115,6 +2157,12 @@ export async function updateRfqRequest(
       scope: description,
       scopeItems,
       documentLinks,
+      templateReview:
+        templateReview &&
+        (templateReview.unresolvedPlaceholders.length > 0 ||
+          templateReview.requiresDocumentPackage)
+          ? templateReview
+          : null,
       sageRfp: {
         targetRecordType: "sage_rfp",
         linkStrategy: "external_document_links",

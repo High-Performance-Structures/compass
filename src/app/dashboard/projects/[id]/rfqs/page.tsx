@@ -219,7 +219,23 @@ function RfqCard({
       </div>
 
       {rfq.description && (
-        <p className="mt-3 text-sm text-muted-foreground">{rfq.description}</p>
+        <p className="mt-3 whitespace-pre-wrap text-sm text-muted-foreground">{rfq.description}</p>
+      )}
+
+      {rfq.templateReview && (
+        <div className="mt-3 border-l-2 border-amber-500 px-3 py-2 text-sm">
+          <p className="font-medium">Template RFQ needs project review</p>
+          {rfq.templateReview.unresolvedPlaceholders.length > 0 && (
+            <p className="mt-1 text-muted-foreground">
+              Replace: {rfq.templateReview.unresolvedPlaceholders.join(", ")}
+            </p>
+          )}
+          {rfq.templateReview.requiresDocumentPackage && (
+            <p className="mt-1 text-muted-foreground">
+              Add the project plans/specifications package. Sharing stays disabled until review is complete.
+            </p>
+          )}
+        </div>
       )}
 
       <div className="mt-3 flex flex-wrap gap-3 text-xs text-muted-foreground">

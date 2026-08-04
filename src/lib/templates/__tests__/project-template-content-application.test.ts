@@ -57,8 +57,13 @@ describe("buildProjectTemplateContentApplication", () => {
           description: "Scope of work",
           sortOrder: 4,
           payloadJson: JSON.stringify({
+            descriptionSections: ["Scope of Work", "Scope of work"],
             lineItems: [
-              { costCode: "09 29 00 - Gypsum Wallboard", quantity: 1 },
+              {
+                title: "Drywall labor and materials",
+                costCode: "09 29 00 - Gypsum Wallboard",
+                quantity: 1,
+              },
             ],
           }),
         },
@@ -86,18 +91,31 @@ describe("buildProjectTemplateContentApplication", () => {
         category: "09 29 00 - Gypsum Wallboard",
         costCode: "09 29 00",
         status: "needed",
-        notes:
-          "Template choices:\n- Hand Trowel\n- Knockdown\n\n" +
-          "Template attachment references:\n- Drywall Finish Specs.pdf",
+        choiceOptionsJson: JSON.stringify(["Hand Trowel", "Knockdown"]),
+        parentSelectionId: null,
+        parentChoiceValue: null,
+        selectionLevel: 0,
+        notes: "Template attachment references:\n- Drywall Finish Specs.pdf",
       }),
     ])
     expect(result.bidPackages).toEqual([
       expect.objectContaining({
         title: "Drywall bid",
-        description: "Scope of work",
+        description: "SCOPE OF WORK\nScope of work",
         costCode: "09 29 00",
       }),
     ])
+    expect(JSON.parse(result.bidPackages[0]?.sourcePayloadJson ?? "{}")).toMatchObject({
+      source: "compass_template_rfq",
+      vendorCategory: "Drywall / Gypsum",
+      scopeItems: [
+        {
+          lineNumber: 1,
+          description: "Drywall labor and materials",
+          costCode: "09 29 00",
+        },
+      ],
+    })
     expect(JSON.stringify(result)).not.toContain("department")
   })
 

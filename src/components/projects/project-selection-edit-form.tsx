@@ -115,6 +115,9 @@ export function ProjectSelectionEditForm({
   const [selectedRoomType, setSelectedRoomType] = React.useState(
     textValue(selection.roomType)
   )
+  const [selectedChoice, setSelectedChoice] = React.useState(
+    textValue(selection.colorFinish)
+  )
   const [division, setDivision] = React.useState(() =>
     initialDivision(selection, options)
   )
@@ -286,11 +289,29 @@ export function ProjectSelectionEditForm({
                 />
               </Field>
               <Field label="Color / finish">
-                <Input
-                  name="colorFinish"
-                  defaultValue={textValue(selection.colorFinish)}
-                  className={DOCUMENT_INPUT_CLASS}
-                />
+                {selection.choiceOptions.length > 0 ? (
+                  <>
+                    <Select value={selectedChoice} onValueChange={setSelectedChoice}>
+                      <SelectTrigger className={DOCUMENT_SELECT_CLASS}>
+                        <SelectValue placeholder="Choose an option" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {selection.choiceOptions.map((option) => (
+                          <SelectItem key={option} value={option}>
+                            {option}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <input type="hidden" name="colorFinish" value={selectedChoice} />
+                  </>
+                ) : (
+                  <Input
+                    name="colorFinish"
+                    defaultValue={textValue(selection.colorFinish)}
+                    className={DOCUMENT_INPUT_CLASS}
+                  />
+                )}
               </Field>
             </div>
 

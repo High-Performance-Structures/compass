@@ -46,6 +46,10 @@ export type ProjectSelectionItem = {
   readonly manufacturer: string | null
   readonly model: string | null
   readonly colorFinish: string | null
+  readonly choiceOptions: readonly string[]
+  readonly parentSelectionId: string | null
+  readonly parentChoiceValue: string | null
+  readonly selectionLevel: number
   readonly supplierName: string | null
   readonly productUrl: string | null
   readonly costCode: string | null
@@ -286,6 +290,19 @@ function changedNumberField(
   return { field: label, before: normalizedBefore, after: normalizedAfter }
 }
 
+function parseChoiceOptions(value: string | null): readonly string[] {
+  if (!value) return []
+  try {
+    const parsed: unknown = JSON.parse(value)
+    if (!Array.isArray(parsed)) return []
+    return parsed.filter(
+      (option): option is string => typeof option === "string" && option.trim().length > 0
+    )
+  } catch {
+    return []
+  }
+}
+
 function toSelectionItem(
   row: typeof projectFinishSelections.$inferSelect
 ): ProjectSelectionItem {
@@ -306,6 +323,10 @@ function toSelectionItem(
     manufacturer: row.manufacturer,
     model: row.model,
     colorFinish: row.colorFinish,
+    choiceOptions: parseChoiceOptions(row.choiceOptionsJson),
+    parentSelectionId: row.parentSelectionId,
+    parentChoiceValue: row.parentChoiceValue,
+    selectionLevel: row.selectionLevel,
     supplierName: row.supplierName,
     productUrl: row.productUrl,
     costCode: row.costCode,

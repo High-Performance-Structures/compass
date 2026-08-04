@@ -145,6 +145,7 @@ export function ProjectRfqShareActions({
   readonly rfq: ProjectRfqItem
 }): React.ReactElement {
   const [copied, setCopied] = React.useState<CopiedState>(null)
+  const requiresTemplateReview = rfq.templateReview !== null
 
   function absoluteUrl(): string {
     return new URL(rfqLink(projectId, rfq.id), window.location.origin).toString()
@@ -256,7 +257,7 @@ export function ProjectRfqShareActions({
         <IconPrinter className="size-4" />
         PDF
       </Button>
-      <Button type="button" variant="outline" size="sm" onClick={copyLink}>
+      <Button type="button" variant="outline" size="sm" onClick={copyLink} disabled={requiresTemplateReview}>
         {copied === "link" ? (
           <IconCheck className="size-4" />
         ) : (
@@ -264,7 +265,7 @@ export function ProjectRfqShareActions({
         )}
         Link
       </Button>
-      <Button type="button" variant="outline" size="sm" onClick={copyEmail}>
+      <Button type="button" variant="outline" size="sm" onClick={copyEmail} disabled={requiresTemplateReview}>
         {copied === "email" ? (
           <IconCheck className="size-4" />
         ) : (
@@ -272,7 +273,7 @@ export function ProjectRfqShareActions({
         )}
         Email
       </Button>
-      <Button type="button" variant="outline" size="sm" onClick={copyHtmlEmail}>
+      <Button type="button" variant="outline" size="sm" onClick={copyHtmlEmail} disabled={requiresTemplateReview}>
         {copied === "html" ? (
           <IconCheck className="size-4" />
         ) : (

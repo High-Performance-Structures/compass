@@ -503,6 +503,22 @@ export function ProjectRfqEditForm({
             <span className="text-muted-foreground">Compass RFQ</span>
           </div>
 
+          {rfq.templateReview && (
+            <div className="border-l-2 border-amber-500 px-3 py-2 text-sm">
+              <p className="font-medium">Complete the template review before sharing</p>
+              {rfq.templateReview.unresolvedPlaceholders.length > 0 && (
+                <p className="mt-1 text-muted-foreground">
+                  Replace: {rfq.templateReview.unresolvedPlaceholders.join(", ")}
+                </p>
+              )}
+              {rfq.templateReview.requiresDocumentPackage && (
+                <p className="mt-1 text-muted-foreground">
+                  Add the project plans/specifications package below.
+                </p>
+              )}
+            </div>
+          )}
+
           <div className="space-y-3">
             <Field label="RFQ title / scope">
               <Input
