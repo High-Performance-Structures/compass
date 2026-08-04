@@ -120,5 +120,26 @@
         { "sourceChoiceId": "45887090:selection:04:choice:04", "title": "Sahara", "status": "Unreleased", "price": 0, "attachmentCount": 1, "lineItems": [{ "title": "Sahara Texture", "costCode": "09 24 23", "quantity": 1, "unitPrice": 0 }] }
       ]
     }
+  ],
+  "bidPackages": [
+    {
+      "sourceItemId": "9601771",
+      "sourceBidPackageId": "9601771",
+      "title": "Stucco - (Project Address) (Est. Phase)",
+      "status": "Draft",
+      "allowMultipleApprovedBids": false,
+      "deadline": null,
+      "time": null,
+      "reminderLeadDays": 2,
+      "plansAndSpecs": false,
+      "pricingFormat": "Line Items",
+      "description": "Background\nHigh Performance Structures, Inc. dba Open Range Construction, Ltd. (ORC) will be building a custom home located at:\n(Project Street Address)\n(Project City), (Project State) (Project Zip Code)\nReference Documents\nPlease see the Buildertrend Documents folder titled \"(Estimate Phase) Bid Set\" for all necessary plans.\nSubmission of Bid\nBids for this project will be processed through Buildertrend, a construction management program. You do not need to become proficient with Buildertrend. You may also simply call or email your point of contact. You may submit your bid into Buildertrend or email it to your point of contact for entry. Should you choose to input your bid into Buildertrend, please also include a PDF version of your bid.\nFor assistance with submitting the bid or receiving bid documents, contact the (Estimator Title):\n(Estimator Name), (719) 900-8850 ext. (Estimator Extension)\n(Estimator Email Address)\nTimeline\nThe work is scheduled to start in (Build Season), (Build Year).\nScope of Work\nThe following CSI categories will be required for the construction of the project per the plans and specifications noted on the Plans and Specifications List. We will notify bidders of any changes or additions by sending out updates to said List.\nQuestions\nPlease direct any questions into the RFI section here on Buildertrend. This helps us as a builder keep questions organized and accessible to any of our staff provided an estimator is absent. This will help expedite provision of answers.\nSchedule\nPlease provide a schedule to complete each of the above items, in calendar days after the issuance of the purchase order and/or notice to proceed.\nContract and Insurance Requirements\nAll trade contractors will be required to complete a trade contractor agreement, provide proof of liability insurance and workman’s compensation insurance as applicable, with required limits prior to the release of any construction payments.",
+      "internalNotes": "",
+      "attachments": [],
+      "lineItems": [
+        { "title": "Acrylic Stucco Installation Labor & Materials", "costCode": "09 24 23 - Portland Cement Stucco", "costType": "Subcontractor", "quantity": 1, "unit": null },
+        { "title": "BUDGETARY OPTION: Elastomeric Stucco Upgrade", "costCode": "09 24 23 - Portland Cement Stucco", "costType": "None", "quantity": null, "unit": null }
+      ]
+    }
   ]
 }
