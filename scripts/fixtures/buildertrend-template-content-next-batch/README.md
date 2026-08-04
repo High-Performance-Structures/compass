@@ -46,7 +46,19 @@ combines those fragments with the already-reviewed schedule rows and
 dependencies. Concrete Footer (`12581937`) remains explicitly excluded until
 its browser task capture is complete.
 
+The guarded audit covers all 34 non-pilot active templates, not just the two
+release entries. At the current checkpoint it includes 2 structurally complete
+templates, excludes 32 incomplete active templates, and excludes all 27
+archived templates. There are zero additional structurally complete templates
+after Stucco/MEP. If another complete fragment appears, `--check` deliberately
+fails the release as stale until its identity, counts, and draft-only scope are
+reviewed in the release manifest. This is also how Concrete Footer becomes
+eligible once all 43 task rows have been captured; it is not permanently
+hard-coded out.
+
 ```bash
+bun scripts/assemble-buildertrend-template-next-batch-content.mjs --check
+
 bun scripts/assemble-buildertrend-template-next-batch-content.mjs \
   --capture-output <reviewed-capture.json> \
   --inventory-output <reviewed-inventory.json>
@@ -54,6 +66,7 @@ bun scripts/assemble-buildertrend-template-next-batch-content.mjs \
 bun scripts/build-buildertrend-template-next-batch-content-sql.mjs \
   --capture <reviewed-capture.json> \
   --inventory <reviewed-inventory.json> \
+  --release scripts/fixtures/buildertrend-template-content-next-batch-release-2026-08-04.json \
   --output <reviewed-import.sql>
 ```
 

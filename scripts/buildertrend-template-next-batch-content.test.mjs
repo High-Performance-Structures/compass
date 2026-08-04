@@ -1,6 +1,6 @@
 import assert from "node:assert/strict"
 import { execFile } from "node:child_process"
-import { mkdtemp, readFile, rm } from "node:fs/promises"
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import test from "node:test"
@@ -32,15 +32,68 @@ test("assembles only the two gate-complete templates with reviewed schedules", a
   assert.deepEqual(result.capture.assembly.sourceTemplateIds, ["12859981", "12978371"])
   assert.equal(result.capture.assembly.draftOnly, true)
   assert.equal(result.capture.assembly.publish, false)
+  assert.equal(result.capture.assembly.excludedIncompleteTemplateCount, 32)
+  assert.equal(result.capture.assembly.excludedArchivedTemplateCount, 27)
+  assert.equal(result.capture.assembly.eligibleAfterThisBatch, 0)
+  assert.equal(result.capture.templates.reduce((sum, item) => sum + item.tasks.length, 0), 93)
   assert.equal(result.capture.templates.reduce((sum, item) => sum + item.scheduleItems.length, 0), 14)
+  assert.equal(result.capture.templates.reduce((sum, item) => sum + (item.selections?.length ?? 0), 0), 4)
+  assert.equal(result.capture.templates.reduce((sum, item) => sum + (item.bidPackages?.length ?? 0), 0), 3)
   assert.equal(result.capture.templates.reduce(
     (sum, item) => sum + item.scheduleItems.flatMap((row) => row.predecessors).length,
     0
   ), 10)
+  assert.equal(result.inventory.expectedActiveCount, 2)
+  assert.equal(result.inventory.excludedArchivedCount, 27)
   assert.deepEqual(
     result.inventory.templates.map((template) => template.sourceTemplateId),
     ["12859981", "12978371"]
   )
+})
+
+test("keeps Concrete Footer excluded until its exact browser capture is reviewed", async () => {
+  const stale = await inputs()
+  stale.documents.push({
+    source: "08-12581937.capture.json",
+    document: {
+      sourceTemplateId: "12581937",
+      sourceName: "Concrete - Footer Assembly",
+      tasks: Array.from({ length: 43 }, (_, index) => ({
+        sourceItemId: `footer-task-${index + 1}`,
+        parentSourceItemId: null,
+        title: `Footer task ${index + 1}`,
+      })),
+    },
+  })
+  assert.throws(
+    () => assembleBuildertrendTemplateNextBatchContent(stale),
+    /scope is stale for the currently reviewed fragments/
+  )
+
+  const reviewed = structuredClone(stale)
+  const footer = reviewed.nextBatchManifest.templates.find(
+    (template) => template.sourceTemplateId === "12581937"
+  )
+  assert.ok(footer)
+  reviewed.release.scope.structurallyCompleteTemplatesIncluded = 3
+  reviewed.release.scope.incompleteTemplatesExcluded = 31
+  reviewed.release.templates.push({
+    sourceTemplateId: footer.sourceTemplateId,
+    sourceName: footer.sourceName,
+    workplanSequence: footer.workplanSequence,
+    moduleCounts: footer.moduleCounts,
+    fragmentPath: footer.fragmentPath,
+    browserCaptureGates: "complete",
+  })
+
+  const result = assembleBuildertrendTemplateNextBatchContent(reviewed)
+  assert.deepEqual(
+    result.capture.assembly.sourceTemplateIds,
+    ["12859981", "12978371", "12581937"]
+  )
+  assert.equal(result.capture.assembly.excludedIncompleteTemplateCount, 31)
+  assert.equal(result.capture.templates[2].tasks.length, 43)
+  assert.equal(result.capture.templates[2].scheduleItems.length, 8)
 })
 
 test("rejects partial capture, Concrete Footer, and publication requests", async () => {
@@ -60,7 +113,7 @@ test("rejects partial capture, Concrete Footer, and publication requests", async
   })
   assert.throws(
     () => assembleBuildertrendTemplateNextBatchContent(concrete),
-    /Concrete - Footer Assembly is partially captured/
+    /included templates do not match the structurally complete fragments/
   )
 
   const publish = await inputs()
@@ -103,6 +156,21 @@ test("builds SQL that remains draft-only and excludes Concrete Footer", async ()
     assert.match(sql, /bt-template-version:12978371:1/)
     assert.match(sql, /review_status='content_captured', lifecycle_status='draft'/)
     assert.doesNotMatch(sql, /12581937|status='published'|lifecycle_status='active'|review_status='verified'/)
+
+    const invalidRelease = join(directory, "invalid-release.json")
+    const release = JSON.parse(await readFile(paths.release, "utf8"))
+    release.scope.archivedTemplatesIncluded = 1
+    await writeFile(invalidRelease, JSON.stringify(release))
+    await assert.rejects(
+      () => execFileAsync("bun", [
+        "scripts/build-buildertrend-template-next-batch-content-sql.mjs",
+        "--capture", capture,
+        "--inventory", inventory,
+        "--release", invalidRelease,
+        "--dry-run",
+      ]),
+      /invalid reviewed scope/
+    )
   } finally {
     await rm(directory, { recursive: true, force: true })
   }

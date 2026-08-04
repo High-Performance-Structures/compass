@@ -3,31 +3,13 @@ import {
   buildBuildertrendTemplateContentInventory,
 } from "./buildertrend-template-content-pilot.mjs"
 import {
-  BROWSER_CAPTURE_MODULES,
-  validateBuildertrendNextBatchFragments,
+  validateBuildertrendNextDraftManifest,
 } from "./buildertrend-template-next-batch.mjs"
 
-export const NEXT_BATCH_CONTENT_IDS = ["12859981", "12978371"]
 export const INCOMPLETE_CONCRETE_FOOTER_ID = "12581937"
 
 function isRecord(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value)
-}
-
-function requiredString(value, path) {
-  if (typeof value !== "string" || !value.trim()) {
-    throw new Error(`${path} must be a non-empty string.`)
-  }
-  return value.trim()
-}
-
-function browserCaptureGateCount(templates) {
-  return templates.reduce(
-    (total, template) => total + BROWSER_CAPTURE_MODULES.filter(
-      (moduleName) => (template.moduleCounts[moduleName] ?? 0) > 0
-    ).length,
-    0
-  )
 }
 
 export function assembleBuildertrendTemplateNextBatchContent({
@@ -61,24 +43,16 @@ export function assembleBuildertrendTemplateNextBatchContent({
     throw new Error("Reviewed capture must retain all 40 active templates and exclude 27 archived templates.")
   }
 
-  const requestedIds = release.templates.map((template, index) =>
-    requiredString(template?.sourceTemplateId, `release.templates[${index}].sourceTemplateId`)
-  )
-  if (new Set(requestedIds).size !== requestedIds.length) {
-    throw new Error("Next-batch content release contains duplicate template IDs.")
-  }
-  if (JSON.stringify(requestedIds) !== JSON.stringify(NEXT_BATCH_CONTENT_IDS)) {
-    if (requestedIds.includes(INCOMPLETE_CONCRETE_FOOTER_ID)) {
-      throw new Error("Concrete - Footer Assembly is partially captured and cannot be released.")
-    }
-    throw new Error(
-      `Next-batch content release must contain only ${NEXT_BATCH_CONTENT_IDS.join(" and ")}.`
-    )
-  }
+  const validation = validateBuildertrendNextDraftManifest({
+    manifest: nextBatchManifest,
+    draftManifest: release,
+    documents,
+  })
+  const requestedIds = validation.entries.map((entry) => entry.sourceTemplateId)
   const concreteExclusion = release.excludedTemplates?.find(
     (template) => template?.sourceTemplateId === INCOMPLETE_CONCRETE_FOOTER_ID
   )
-  if (!concreteExclusion) {
+  if (!validation.summary.concreteFooterIncluded && !concreteExclusion) {
     throw new Error("Next-batch content release must explicitly exclude incomplete Concrete - Footer Assembly.")
   }
 
@@ -98,20 +72,6 @@ export function assembleBuildertrendTemplateNextBatchContent({
     }
     return reviewed
   })
-  const scopedManifest = {
-    browserCaptureGateCount: browserCaptureGateCount(selected),
-    templates: selected,
-  }
-  const status = validateBuildertrendNextBatchFragments({
-    manifest: scopedManifest,
-    documents,
-  })
-  if (!status.complete) {
-    const missing = status.missing
-      .map((item) => `${item.sourceName} ${item.module}`)
-      .join(", ")
-    throw new Error(`Next-batch template content is partially captured: ${missing}.`)
-  }
 
   const capture = assembleBuildertrendTemplateContentSubset({
     templateEntries: selected,
@@ -126,7 +86,12 @@ export function assembleBuildertrendTemplateNextBatchContent({
       publish: false,
       templateCount: selected.length,
       sourceTemplateIds: requestedIds,
-      browserCaptureGateCount: status.capturedGateCount,
+      browserCaptureGateCount: validation.status.capturedGateCount,
+      excludedIncompleteTemplateCount: validation.summary.excludedIncompleteTemplateCount,
+      excludedArchivedTemplateCount: validation.summary.excludedArchivedTemplateCount,
+      eligibleAfterThisBatch: validation.status.structurallyCompleteTemplateIds.filter(
+        (sourceTemplateId) => !requestedIds.includes(sourceTemplateId)
+      ).length,
     },
   })
   return {

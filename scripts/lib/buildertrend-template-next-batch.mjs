@@ -342,11 +342,96 @@ export function validateBuildertrendNextBatchFragments({ manifest, documents }) 
       }
     }
   }
+  const incompleteTemplateIds = new Set(missing.map((item) => item.sourceTemplateId))
+  const structurallyCompleteTemplateIds = manifest.templates
+    .filter((template) => !incompleteTemplateIds.has(template.sourceTemplateId))
+    .map((template) => template.sourceTemplateId)
   return {
     complete: missing.length === 0,
     capturedGateCount: manifest.browserCaptureGateCount - missing.length,
     remainingGateCount: missing.length,
     priorityRemainingGateCount: missing.filter((item) => item.wave === "priority-sequences-06-12").length,
+    structurallyCompleteTemplateIds,
+    incompleteTemplateCount: incompleteTemplateIds.size,
     missing,
+  }
+}
+
+export function validateBuildertrendNextDraftManifest({
+  manifest,
+  draftManifest,
+  documents,
+}) {
+  if (!isRecord(draftManifest) || !isRecord(draftManifest.scope) || !Array.isArray(draftManifest.templates)) {
+    throw new Error("Next draft manifest must contain scope and templates.")
+  }
+  const scope = draftManifest.scope
+  if (
+    scope.activeTemplatesInSource !== 40 ||
+    scope.completedPilotTemplatesExcluded !== 6 ||
+    scope.nonPilotCandidatesAudited !== 34 ||
+    !Number.isInteger(scope.structurallyCompleteTemplatesIncluded) ||
+    !Number.isInteger(scope.incompleteTemplatesExcluded) ||
+    scope.structurallyCompleteTemplatesIncluded + scope.incompleteTemplatesExcluded !== 34 ||
+    scope.archivedTemplatesExcluded !== 27 ||
+    scope.archivedTemplatesIncluded !== 0
+  ) {
+    throw new Error("Next draft manifest must preserve the reviewed 40/6/34/27 scope.")
+  }
+  if (
+    !isRecord(draftManifest.releasePolicy) ||
+    draftManifest.releasePolicy.lifecycleStatus !== "draft" ||
+    draftManifest.releasePolicy.versionStatus !== "draft" ||
+    draftManifest.releasePolicy.publishAllowed !== false
+  ) {
+    throw new Error("Next draft manifest must remain draft-only and unpublished.")
+  }
+
+  const status = validateBuildertrendNextBatchFragments({ manifest, documents })
+  if (
+    scope.structurallyCompleteTemplatesIncluded !== status.structurallyCompleteTemplateIds.length ||
+    scope.incompleteTemplatesExcluded !== status.incompleteTemplateCount
+  ) {
+    throw new Error("Next draft manifest scope is stale for the currently reviewed fragments.")
+  }
+  const expectedIds = status.structurallyCompleteTemplateIds
+  const declaredIds = draftManifest.templates.map((template, index) =>
+    requiredString(template?.sourceTemplateId, `draftManifest.templates[${index}].sourceTemplateId`)
+  )
+  if (new Set(declaredIds).size !== declaredIds.length) {
+    throw new Error("Next draft manifest duplicates a sourceTemplateId.")
+  }
+  if (JSON.stringify(declaredIds) !== JSON.stringify(expectedIds)) {
+    throw new Error(
+      "Next draft manifest is stale; its included templates do not match the structurally complete fragments."
+    )
+  }
+
+  const manifestById = new Map(manifest.templates.map((template) => [template.sourceTemplateId, template]))
+  const entries = draftManifest.templates.map((template, index) => {
+    const sourceTemplateId = declaredIds[index]
+    const sourceName = requiredString(template.sourceName, `draftManifest.templates[${index}].sourceName`)
+    const reviewed = manifestById.get(sourceTemplateId)
+    if (!reviewed || reviewed.sourceName !== sourceName) {
+      throw new Error(`Next draft manifest identity mismatch for ${sourceTemplateId}.`)
+    }
+    if (reviewed.workplanSequence !== template.workplanSequence) {
+      throw new Error(`Next draft manifest sequence mismatch for ${sourceTemplateId}.`)
+    }
+    if (JSON.stringify(reviewed.moduleCounts) !== JSON.stringify(template.moduleCounts)) {
+      throw new Error(`Next draft manifest module-count mismatch for ${sourceTemplateId}.`)
+    }
+    return { sourceTemplateId, sourceName }
+  })
+
+  return {
+    entries,
+    status,
+    summary: {
+      includedTemplateCount: entries.length,
+      excludedIncompleteTemplateCount: status.incompleteTemplateCount,
+      excludedArchivedTemplateCount: draftManifest.scope.archivedTemplatesExcluded,
+      concreteFooterIncluded: declaredIds.includes("12581937"),
+    },
   }
 }
