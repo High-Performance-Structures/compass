@@ -26,43 +26,44 @@ async function inputs() {
   return { release, nextBatchManifest, reviewedCapture, documents }
 }
 
-test("assembles only the two gate-complete templates with reviewed schedules", async () => {
+test("assembles the three gate-complete templates with reviewed schedules", async () => {
   const result = assembleBuildertrendTemplateNextBatchContent(await inputs())
 
-  assert.deepEqual(result.capture.assembly.sourceTemplateIds, ["12859981", "12978371"])
+  assert.deepEqual(result.capture.assembly.sourceTemplateIds, ["12859981", "12978371", "12581937"])
   assert.equal(result.capture.assembly.draftOnly, true)
   assert.equal(result.capture.assembly.publish, false)
-  assert.equal(result.capture.assembly.excludedIncompleteTemplateCount, 32)
+  assert.equal(result.capture.assembly.excludedIncompleteTemplateCount, 31)
   assert.equal(result.capture.assembly.excludedArchivedTemplateCount, 27)
   assert.equal(result.capture.assembly.eligibleAfterThisBatch, 0)
-  assert.equal(result.capture.templates.reduce((sum, item) => sum + item.tasks.length, 0), 93)
-  assert.equal(result.capture.templates.reduce((sum, item) => sum + item.scheduleItems.length, 0), 14)
+  assert.equal(result.capture.templates.reduce((sum, item) => sum + item.tasks.length, 0), 136)
+  assert.equal(result.capture.templates.reduce((sum, item) => sum + item.scheduleItems.length, 0), 22)
   assert.equal(result.capture.templates.reduce((sum, item) => sum + (item.selections?.length ?? 0), 0), 4)
   assert.equal(result.capture.templates.reduce((sum, item) => sum + (item.bidPackages?.length ?? 0), 0), 3)
   assert.equal(result.capture.templates.reduce(
     (sum, item) => sum + item.scheduleItems.flatMap((row) => row.predecessors).length,
     0
-  ), 10)
-  assert.equal(result.inventory.expectedActiveCount, 2)
+  ), 17)
+  assert.equal(result.inventory.expectedActiveCount, 3)
   assert.equal(result.inventory.excludedArchivedCount, 27)
   assert.deepEqual(
     result.inventory.templates.map((template) => template.sourceTemplateId),
-    ["12859981", "12978371"]
+    ["12859981", "12978371", "12581937"]
   )
 })
 
-test("keeps Concrete Footer excluded until its exact browser capture is reviewed", async () => {
+test("fails stale when the next complete template is not in the reviewed release", async () => {
   const stale = await inputs()
   stale.documents.push({
-    source: "08-12581937.capture.json",
+    source: "09-12594475.capture.json",
     document: {
-      sourceTemplateId: "12581937",
-      sourceName: "Concrete - Footer Assembly",
-      tasks: Array.from({ length: 43 }, (_, index) => ({
-        sourceItemId: `footer-task-${index + 1}`,
+      sourceTemplateId: "12594475",
+      sourceName: "Concrete - Slab Assembly",
+      tasks: Array.from({ length: 36 }, (_, index) => ({
+        sourceItemId: `slab-task-${index + 1}`,
         parentSourceItemId: null,
-        title: `Footer task ${index + 1}`,
+        title: `Slab task ${index + 1}`,
       })),
+      bidPackages: [{ sourceItemId: "slab-bid-1", title: "Slab bid" }],
     },
   })
   assert.throws(
@@ -71,32 +72,32 @@ test("keeps Concrete Footer excluded until its exact browser capture is reviewed
   )
 
   const reviewed = structuredClone(stale)
-  const footer = reviewed.nextBatchManifest.templates.find(
-    (template) => template.sourceTemplateId === "12581937"
+  const slab = reviewed.nextBatchManifest.templates.find(
+    (template) => template.sourceTemplateId === "12594475"
   )
-  assert.ok(footer)
-  reviewed.release.scope.structurallyCompleteTemplatesIncluded = 3
-  reviewed.release.scope.incompleteTemplatesExcluded = 31
+  assert.ok(slab)
+  reviewed.release.scope.structurallyCompleteTemplatesIncluded = 4
+  reviewed.release.scope.incompleteTemplatesExcluded = 30
   reviewed.release.templates.push({
-    sourceTemplateId: footer.sourceTemplateId,
-    sourceName: footer.sourceName,
-    workplanSequence: footer.workplanSequence,
-    moduleCounts: footer.moduleCounts,
-    fragmentPath: footer.fragmentPath,
+    sourceTemplateId: slab.sourceTemplateId,
+    sourceName: slab.sourceName,
+    workplanSequence: slab.workplanSequence,
+    moduleCounts: slab.moduleCounts,
+    fragmentPath: slab.fragmentPath,
     browserCaptureGates: "complete",
   })
 
   const result = assembleBuildertrendTemplateNextBatchContent(reviewed)
   assert.deepEqual(
     result.capture.assembly.sourceTemplateIds,
-    ["12859981", "12978371", "12581937"]
+    ["12859981", "12978371", "12581937", "12594475"]
   )
-  assert.equal(result.capture.assembly.excludedIncompleteTemplateCount, 31)
-  assert.equal(result.capture.templates[2].tasks.length, 43)
-  assert.equal(result.capture.templates[2].scheduleItems.length, 8)
+  assert.equal(result.capture.assembly.excludedIncompleteTemplateCount, 30)
+  assert.equal(result.capture.templates[3].tasks.length, 36)
+  assert.equal(result.capture.templates[3].scheduleItems.length, 8)
 })
 
-test("rejects partial capture, Concrete Footer, and publication requests", async () => {
+test("rejects partial capture, duplicate release scope, and publication requests", async () => {
   const partial = await inputs()
   partial.documents[0].document.tasks = partial.documents[0].document.tasks.slice(1)
   assert.throws(
@@ -113,7 +114,7 @@ test("rejects partial capture, Concrete Footer, and publication requests", async
   })
   assert.throws(
     () => assembleBuildertrendTemplateNextBatchContent(concrete),
-    /included templates do not match the structurally complete fragments/
+    /duplicates a sourceTemplateId/
   )
 
   const publish = await inputs()
@@ -124,7 +125,7 @@ test("rejects partial capture, Concrete Footer, and publication requests", async
   )
 })
 
-test("builds SQL that remains draft-only and excludes Concrete Footer", async () => {
+test("builds SQL that remains draft-only and includes Concrete Footer", async () => {
   const directory = await mkdtemp(join(tmpdir(), "compass-next-batch-content-"))
   const capture = join(directory, "capture.json")
   const inventory = join(directory, "inventory.json")
@@ -142,9 +143,9 @@ test("builds SQL that remains draft-only and excludes Concrete Footer", async ()
       "--output", output,
     ])
     assert.deepEqual(JSON.parse(result.stdout), {
-      templateCount: 2,
-      tasks: 93,
-      scheduleItems: 14,
+      templateCount: 3,
+      tasks: 136,
+      scheduleItems: 22,
       selections: 4,
       bidPackages: 3,
       excludedArchivedCount: 27,
@@ -154,8 +155,10 @@ test("builds SQL that remains draft-only and excludes Concrete Footer", async ()
     const sql = await readFile(output, "utf8")
     assert.match(sql, /bt-template-version:12859981:1/)
     assert.match(sql, /bt-template-version:12978371:1/)
+    assert.match(sql, /bt-template-version:12581937:1/)
+    assert.match(sql, /INSERT INTO schedule_template_items/)
     assert.match(sql, /review_status='content_captured', lifecycle_status='draft'/)
-    assert.doesNotMatch(sql, /12581937|status='published'|lifecycle_status='active'|review_status='verified'/)
+    assert.doesNotMatch(sql, /status='published'|lifecycle_status='active'|review_status='verified'/)
 
     const invalidRelease = join(directory, "invalid-release.json")
     const release = JSON.parse(await readFile(paths.release, "utf8"))

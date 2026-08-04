@@ -40,21 +40,18 @@ bun scripts/validate-buildertrend-template-next-batch.mjs --require-all-complete
 
 ## First guarded content release
 
-The release allowlist currently contains only Stucco (`12859981`) and MEP Rough
-& Top Out (`12978371`). Their browser gates are complete, and the assembler
-combines those fragments with the already-reviewed schedule rows and
-dependencies. Concrete Footer (`12581937`) remains explicitly excluded until
-its browser task capture is complete.
+The release allowlist contains Stucco (`12859981`), MEP Rough & Top Out
+(`12978371`), and Concrete Footer (`12581937`). Their browser gates are
+complete, and the assembler combines those fragments with the already-reviewed
+schedule rows and dependencies.
 
-The guarded audit covers all 34 non-pilot active templates, not just the two
-release entries. At the current checkpoint it includes 2 structurally complete
-templates, excludes 32 incomplete active templates, and excludes all 27
+The guarded audit covers all 34 non-pilot active templates, not just the three
+release entries. At the current checkpoint it includes 3 structurally complete
+templates, excludes 31 incomplete active templates, and excludes all 27
 archived templates. There are zero additional structurally complete templates
-after Stucco/MEP. If another complete fragment appears, `--check` deliberately
+after Stucco/MEP/Concrete Footer. If another complete fragment appears, `--check` deliberately
 fails the release as stale until its identity, counts, and draft-only scope are
-reviewed in the release manifest. This is also how Concrete Footer becomes
-eligible once all 43 task rows have been captured; it is not permanently
-hard-coded out.
+reviewed in the release manifest.
 
 ```bash
 bun scripts/assemble-buildertrend-template-next-batch-content.mjs --check
@@ -71,7 +68,7 @@ bun scripts/build-buildertrend-template-next-batch-content-sql.mjs \
 ```
 
 Both commands reject publish flags. The generated content SQL is guarded by
-draft version checks and leaves the two Compass templates in
+draft version checks and leaves any still-draft Compass templates in
 `content_captured` / `draft` state for staff review and later publication from
 the Template Library.
 
@@ -94,15 +91,16 @@ bunx wrangler d1 execute <database-name> --remote --file <preflight.sql> --json
 
 Proceed only when the query returns zero issue rows. Preflight requires one
 matching draft template and version per source ID, exact source module counts,
-no applications, no Concrete Footer content, and either zero content rows or a
-complete prior replay. A partial prior import is rejected.
+no applications, and either zero content rows or a complete prior replay. A
+partial prior import is rejected.
 
 After applying the reviewed import, generate and execute the same query with
-`--phase postflight`. Postflight requires exactly 114 content rows (93 tasks,
-14 schedule items, four selections, and three bid packages), ten schedule
-predecessor edges, exact deterministic source identities, valid JSON without
-Buildertrend URLs, draft versions, and `content_captured` / `draft` template
-state. Zero rows means the verification passed.
+`--phase postflight`. Postflight requires exactly 165 content rows (136 tasks,
+22 schedule items, four selections, and three bid packages), 22 reusable
+schedule rows, 17 schedule predecessor edges in both representations, exact
+deterministic source identities, valid JSON without Buildertrend URLs, draft
+versions, and `content_captured` / `draft` template state. Zero rows means the
+verification passed.
 
 For a production idempotency check, run the reviewed import a second time only
 after the first postflight returns zero rows, then rerun the same postflight.

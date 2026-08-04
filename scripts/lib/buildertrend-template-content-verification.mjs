@@ -92,6 +92,8 @@ function expectedRows(capture, inventory) {
   const modules = []
   const items = []
   const predecessors = []
+  const reusableScheduleItems = []
+  const reusableScheduleDependencies = []
   for (const [templateIndex, template] of capture.templates.entries()) {
     const sourceTemplateId = template.sourceTemplateId
     const inventoryTemplate = inventoryById.get(sourceTemplateId)
@@ -171,7 +173,24 @@ function expectedRows(capture, inventory) {
             ]
             predecessors.push(row)
             modulePredecessors.push(row)
+            reusableScheduleDependencies.push([
+              sourceTemplateId,
+              versionId,
+              `bt-template-dependency:${sourceTemplateId}:${predecessorSourceItemId}:${successorSourceItemId}:${relationshipType}`,
+              `bt-template-item:${sourceTemplateId}:${predecessorSourceItemId}`,
+              `bt-template-item:${sourceTemplateId}:${successorSourceItemId}`,
+              relationshipType,
+              predecessor.lagDays,
+            ])
           })
+          reusableScheduleItems.push([
+            sourceTemplateId,
+            versionId,
+            sourceItemId,
+            `bt-template-item:${sourceTemplateId}:${sourceItemId}`,
+            `buildertrend:${sourceItemId}`,
+            cleanText(title),
+          ])
         }
         items.push([
           sourceTemplateId,
@@ -198,9 +217,23 @@ function expectedRows(capture, inventory) {
         }
       }
     }
-    templates.push([sourceTemplateId, template.name, versionId, contentCount, predecessorCount])
+    templates.push([
+      sourceTemplateId,
+      template.name,
+      versionId,
+      contentCount,
+      template.scheduleItems?.length ?? 0,
+      predecessorCount,
+    ])
   }
-  return { templates, modules, items, predecessors }
+  return {
+    templates,
+    modules,
+    items,
+    predecessors,
+    reusableScheduleItems,
+    reusableScheduleDependencies,
+  }
 }
 
 function stripSqlStrings(sqlText) {
@@ -256,14 +289,18 @@ export function buildBuildertrendTemplateContentVerificationSql({
     return [id, `bt-template-version:${id}:1`]
   })
   const expectedTemplateIds = capture.templates.map((template) => template.sourceTemplateId)
-  const allowedReviewState = phase === "preflight"
-    ? "t.review_status IN ('inventory_only', 'content_captured')"
-    : "t.review_status='content_captured'"
+  const allowedTemplateState = phase === "preflight"
+    ? "((t.lifecycle_status='draft' AND t.review_status IN ('inventory_only', 'content_captured')) OR " +
+      "(t.lifecycle_status='active' AND t.review_status='verified'))"
+    : "((t.lifecycle_status='draft' AND t.review_status='content_captured') OR " +
+      "(t.lifecycle_status='active' AND t.review_status='verified'))"
   const contentCountRule = phase === "preflight"
-    ? "actual_count NOT IN (0, content_count)"
+    ? "actual_count <> content_count AND NOT (actual_count=0 AND EXISTS (" +
+      "SELECT 1 FROM project_template_versions v WHERE v.id=content_totals.version_id AND v.status='draft'))"
     : "actual_count <> content_count"
   const contentModuleRule = phase === "preflight"
-    ? "actual_count NOT IN (0, expected_count)"
+    ? "actual_count <> expected_count AND NOT (actual_count=0 AND EXISTS (" +
+      "SELECT 1 FROM project_template_versions v WHERE v.id=module_totals.version_id AND v.status='draft'))"
     : "actual_count <> expected_count"
   const itemCheckGuard = phase === "preflight"
     ? "AND (SELECT COUNT(*) FROM project_template_content_items c WHERE c.version_id=e.version_id) > 0"
@@ -277,8 +314,14 @@ export function buildBuildertrendTemplateContentVerificationSql({
   const itemCte = expected.items.length > 0
     ? values(expected.items)
     : "(NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL)"
+  const reusableScheduleItemCte = expected.reusableScheduleItems.length > 0
+    ? values(expected.reusableScheduleItems)
+    : "(NULL, NULL, NULL, NULL, NULL, NULL)"
+  const reusableScheduleDependencyCte = expected.reusableScheduleDependencies.length > 0
+    ? values(expected.reusableScheduleDependencies)
+    : "(NULL, NULL, NULL, NULL, NULL, NULL, NULL)"
   const sqlText = `WITH
-  expected_templates(source_template_id, name, version_id, content_count, predecessor_count) AS (
+  expected_templates(source_template_id, name, version_id, content_count, schedule_count, predecessor_count) AS (
     VALUES ${values(expected.templates)}
   ),
   expected_modules(source_template_id, version_id, module_type, expected_count, expected_status) AS (
@@ -289,6 +332,12 @@ export function buildBuildertrendTemplateContentVerificationSql({
   ),
   expected_predecessors(source_template_id, version_id, successor_item_id, predecessor_item_id, recorded_successor_item_id, relationship_type, lag_days) AS (
     VALUES ${predecessorCte}
+  ),
+  expected_reusable_schedule_items(source_template_id, version_id, source_item_id, item_id, item_key, title) AS (
+    VALUES ${reusableScheduleItemCte}
+  ),
+  expected_reusable_schedule_dependencies(source_template_id, version_id, dependency_id, predecessor_item_id, successor_item_id, relationship_type, lag_days) AS (
+    VALUES ${reusableScheduleDependencyCte}
   ),
   excluded_templates(source_template_id, version_id) AS (
     VALUES ${excludedCte}
@@ -319,7 +368,9 @@ export function buildBuildertrendTemplateContentVerificationSql({
           AND t.source_template_id=e.source_template_id AND t.name=e.name)
     UNION ALL
     SELECT 'template_draft_state', e.source_template_id,
-      ${sql(phase === "preflight" ? "draft / inventory_only-or-content_captured / version 1 / no source URL" : "draft / content_captured / version 1 / no source URL")},
+      ${sql(phase === "preflight"
+        ? "draft/inventory-or-content-captured or active/verified / version 1 / no source URL"
+        : "draft/content-captured or active/verified / version 1 / no source URL")},
       COALESCE((SELECT t.lifecycle_status || ' / ' || t.review_status || ' / version ' ||
         COALESCE(CAST(t.current_version_number AS TEXT), 'NULL') || ' / ' || COALESCE(t.source_url, 'NULL')
         FROM project_templates t WHERE t.organization_id=${sql(orgId)}
@@ -327,20 +378,24 @@ export function buildBuildertrendTemplateContentVerificationSql({
     FROM expected_templates e
     WHERE NOT EXISTS (SELECT 1 FROM project_templates t
       WHERE t.organization_id=${sql(orgId)} AND t.source_system='buildertrend'
-        AND t.source_template_id=e.source_template_id AND t.lifecycle_status='draft'
-        AND ${allowedReviewState} AND t.current_version_number=1 AND t.source_url IS NULL)
+        AND t.source_template_id=e.source_template_id
+        AND ${allowedTemplateState} AND t.current_version_number=1 AND t.source_url IS NULL)
     UNION ALL
-    SELECT 'draft_version', e.source_template_id, 'one draft version linked to target template', CAST((
+    SELECT 'version_state', e.source_template_id, 'one matching draft or published version linked to target template', CAST((
       SELECT COUNT(*) FROM project_template_versions v
       JOIN project_templates t ON t.id=v.template_id
-      WHERE v.id=e.version_id AND v.version_number=1 AND v.status='draft' AND t.organization_id=${sql(orgId)}
+      WHERE v.id=e.version_id AND v.version_number=1 AND t.organization_id=${sql(orgId)}
         AND t.source_system='buildertrend' AND t.source_template_id=e.source_template_id
+        AND ((v.status='draft' AND t.lifecycle_status='draft') OR
+          (v.status='published' AND t.lifecycle_status='active' AND t.review_status='verified'))
     ) AS TEXT)
     FROM expected_templates e
     WHERE (SELECT COUNT(*) FROM project_template_versions v
       JOIN project_templates t ON t.id=v.template_id
-      WHERE v.id=e.version_id AND v.version_number=1 AND v.status='draft' AND t.organization_id=${sql(orgId)}
-        AND t.source_system='buildertrend' AND t.source_template_id=e.source_template_id) <> 1
+      WHERE v.id=e.version_id AND v.version_number=1 AND t.organization_id=${sql(orgId)}
+        AND t.source_system='buildertrend' AND t.source_template_id=e.source_template_id
+        AND ((v.status='draft' AND t.lifecycle_status='draft') OR
+          (v.status='published' AND t.lifecycle_status='active' AND t.review_status='verified'))) <> 1
     UNION ALL
     SELECT 'module_source_count', e.source_template_id,
       e.module_type || ':' || CAST(e.expected_count AS TEXT),
@@ -358,7 +413,10 @@ export function buildBuildertrendTemplateContentVerificationSql({
     FROM expected_modules e
     WHERE NOT EXISTS (SELECT 1 FROM project_template_modules m WHERE m.version_id=e.version_id
       AND m.module_type=e.module_type AND ${phase === "preflight"
-        ? "m.normalization_status IN ('inventory_only', 'captured', 'captured_with_warnings')"
+        ? "((m.normalization_status IN ('inventory_only', 'captured', 'captured_with_warnings') AND EXISTS (" +
+          "SELECT 1 FROM project_template_versions v WHERE v.id=e.version_id AND v.status='draft')) OR " +
+          "(m.normalization_status=e.expected_status AND EXISTS (" +
+          "SELECT 1 FROM project_template_versions v WHERE v.id=e.version_id AND v.status='published')))"
         : "m.normalization_status=e.expected_status"})
     UNION ALL
     SELECT 'content_total', source_template_id, CAST(content_count AS TEXT), CAST(actual_count AS TEXT)
@@ -433,6 +491,59 @@ export function buildBuildertrendTemplateContentVerificationSql({
         AND e.lag_days=json_extract(predecessor.value, '$.lagDays'))
     GROUP BY t.source_template_id HAVING COUNT(*) > 0
     UNION ALL
+    SELECT 'reusable_schedule_total', e.source_template_id,
+      CAST(e.schedule_count AS TEXT), CAST((
+        SELECT COUNT(*) FROM schedule_template_items s WHERE s.version_id=e.version_id
+      ) AS TEXT)
+    FROM expected_templates e
+    WHERE ${phase === "preflight"
+      ? `(SELECT COUNT(*) FROM schedule_template_items s WHERE s.version_id=e.version_id) <> e.schedule_count AND NOT (` +
+        `(SELECT COUNT(*) FROM schedule_template_items s WHERE s.version_id=e.version_id)=0 AND EXISTS (` +
+        `SELECT 1 FROM project_template_versions v WHERE v.id=e.version_id AND v.status='draft'))`
+      : `(SELECT COUNT(*) FROM schedule_template_items s WHERE s.version_id=e.version_id) <> e.schedule_count`}
+    UNION ALL
+    SELECT 'reusable_schedule_identity', e.source_template_id, '0 mismatches', CAST(COUNT(*) AS TEXT)
+    FROM expected_reusable_schedule_items e
+    LEFT JOIN schedule_template_items s ON s.id=e.item_id AND s.version_id=e.version_id
+      AND s.source_item_id=e.source_item_id AND s.item_key=e.item_key AND s.title=e.title
+    WHERE e.source_template_id IS NOT NULL AND s.id IS NULL
+      ${phase === "preflight" ? "AND (SELECT COUNT(*) FROM schedule_template_items x WHERE x.version_id=e.version_id) > 0" : ""}
+    GROUP BY e.source_template_id HAVING COUNT(*) > 0
+    UNION ALL
+    SELECT 'unexpected_reusable_schedule_item', e.source_template_id, '0', CAST(COUNT(*) AS TEXT)
+    FROM expected_templates e
+    JOIN schedule_template_items s ON s.version_id=e.version_id
+    WHERE NOT EXISTS (SELECT 1 FROM expected_reusable_schedule_items x
+      WHERE x.item_id=s.id AND x.version_id=s.version_id)
+    GROUP BY e.source_template_id HAVING COUNT(*) > 0
+    UNION ALL
+    SELECT 'reusable_dependency_total', e.source_template_id,
+      CAST(e.predecessor_count AS TEXT), CAST((
+        SELECT COUNT(*) FROM schedule_template_dependencies d WHERE d.version_id=e.version_id
+      ) AS TEXT)
+    FROM expected_templates e
+    WHERE ${phase === "preflight"
+      ? `(SELECT COUNT(*) FROM schedule_template_dependencies d WHERE d.version_id=e.version_id) <> e.predecessor_count AND NOT (` +
+        `(SELECT COUNT(*) FROM schedule_template_dependencies d WHERE d.version_id=e.version_id)=0 AND EXISTS (` +
+        `SELECT 1 FROM project_template_versions v WHERE v.id=e.version_id AND v.status='draft'))`
+      : `(SELECT COUNT(*) FROM schedule_template_dependencies d WHERE d.version_id=e.version_id) <> e.predecessor_count`}
+    UNION ALL
+    SELECT 'reusable_dependency_identity', e.source_template_id, '0 mismatches', CAST(COUNT(*) AS TEXT)
+    FROM expected_reusable_schedule_dependencies e
+    LEFT JOIN schedule_template_dependencies d ON d.id=e.dependency_id AND d.version_id=e.version_id
+      AND d.predecessor_item_id=e.predecessor_item_id AND d.successor_item_id=e.successor_item_id
+      AND d.type=e.relationship_type AND d.lag_days=e.lag_days
+    WHERE e.source_template_id IS NOT NULL AND d.id IS NULL
+      ${phase === "preflight" ? "AND (SELECT COUNT(*) FROM schedule_template_dependencies x WHERE x.version_id=e.version_id) > 0" : ""}
+    GROUP BY e.source_template_id HAVING COUNT(*) > 0
+    UNION ALL
+    SELECT 'unexpected_reusable_dependency', e.source_template_id, '0', CAST(COUNT(*) AS TEXT)
+    FROM expected_templates e
+    JOIN schedule_template_dependencies d ON d.version_id=e.version_id
+    WHERE NOT EXISTS (SELECT 1 FROM expected_reusable_schedule_dependencies x
+      WHERE x.dependency_id=d.id AND x.version_id=d.version_id)
+    GROUP BY e.source_template_id HAVING COUNT(*) > 0
+    UNION ALL
     SELECT 'template_applications', e.source_template_id, '0', CAST(COUNT(*) AS TEXT)
     FROM expected_templates e
     JOIN project_template_applications a ON a.version_id=e.version_id
@@ -456,6 +567,8 @@ ORDER BY source_template_id, check_name;
     templateCount: expected.templates.length,
     contentItemCount: expected.items.length,
     predecessorCount: expected.predecessors.length,
+    reusableScheduleItemCount: expected.reusableScheduleItems.length,
+    reusableDependencyCount: expected.reusableScheduleDependencies.length,
     sourceTemplateIds: expectedTemplateIds,
     excludedSourceTemplateIds: excluded.map((row) => row[0]),
   }

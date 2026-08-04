@@ -7,8 +7,8 @@
     "activeTemplatesInSource": 40,
     "completedPilotTemplatesExcluded": 6,
     "nonPilotCandidatesAudited": 34,
-    "structurallyCompleteTemplatesIncluded": 2,
-    "incompleteTemplatesExcluded": 32,
+    "structurallyCompleteTemplatesIncluded": 3,
+    "incompleteTemplatesExcluded": 31,
     "archivedTemplatesExcluded": 27,
     "archivedTemplatesIncluded": 0
   },
@@ -45,13 +45,20 @@
       },
       "fragmentPath": "scripts/fixtures/buildertrend-template-content-next-batch/fragments/07-12978371.capture.json",
       "browserCaptureGates": "complete"
-    }
-  ],
-  "excludedTemplates": [
+    },
     {
       "sourceTemplateId": "12581937",
       "sourceName": "Concrete - Footer Assembly",
-      "reason": "Browser task capture is incomplete; reviewed schedule rows alone do not satisfy the release gate."
+      "workplanSequence": 8,
+      "moduleCounts": {
+        "tasks": 43,
+        "scheduleItems": 8,
+        "selections": 0,
+        "bidPackages": 0
+      },
+      "fragmentPath": "scripts/fixtures/buildertrend-template-content-next-batch/fragments/08-12581937.capture.json",
+      "browserCaptureGates": "complete"
     }
-  ]
+  ],
+  "excludedTemplates": []
 }

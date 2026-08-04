@@ -61,6 +61,20 @@ function schemaSql() {
       category TEXT, description TEXT, sort_order INTEGER NOT NULL, payload_json TEXT,
       UNIQUE(version_id, module_type, source_item_id)
     );
+    CREATE TABLE schedule_template_items (
+      id TEXT PRIMARY KEY, version_id TEXT NOT NULL, source_item_id TEXT,
+      item_key TEXT NOT NULL, title TEXT NOT NULL, start_offset_workdays INTEGER NOT NULL,
+      workdays INTEGER NOT NULL, phase TEXT NOT NULL, display_color TEXT NOT NULL,
+      is_milestone INTEGER NOT NULL, assignee_placeholder TEXT,
+      owner_visible INTEGER NOT NULL, sub_vendor_visible INTEGER NOT NULL,
+      notes TEXT, sort_order INTEGER NOT NULL,
+      UNIQUE(version_id, item_key)
+    );
+    CREATE TABLE schedule_template_dependencies (
+      id TEXT PRIMARY KEY, version_id TEXT NOT NULL, predecessor_item_id TEXT NOT NULL,
+      successor_item_id TEXT NOT NULL, type TEXT NOT NULL, lag_days INTEGER NOT NULL,
+      UNIQUE(version_id, predecessor_item_id, successor_item_id, type)
+    );
     CREATE TABLE project_template_applications (id TEXT PRIMARY KEY, version_id TEXT NOT NULL);
   `
 }
@@ -117,11 +131,13 @@ test("generates one read-only preflight and postflight statement with exact scop
       excludedSourceTemplateIds: release.excludedTemplates.map((template) => template.sourceTemplateId),
     })
     assert.equal(assertReadOnlyVerificationSql(build.sql), true)
-    assert.equal(build.templateCount, 2)
-    assert.equal(build.contentItemCount, 114)
-    assert.equal(build.predecessorCount, 10)
-    assert.deepEqual(build.sourceTemplateIds, ["12859981", "12978371"])
-    assert.deepEqual(build.excludedSourceTemplateIds, ["12581937"])
+    assert.equal(build.templateCount, 3)
+    assert.equal(build.contentItemCount, 165)
+    assert.equal(build.predecessorCount, 17)
+    assert.equal(build.reusableScheduleItemCount, 22)
+    assert.equal(build.reusableDependencyCount, 17)
+    assert.deepEqual(build.sourceTemplateIds, ["12859981", "12978371", "12581937"])
+    assert.deepEqual(build.excludedSourceTemplateIds, [])
     assert.match(build.sql, /SELECT 'excluded_template_content'/)
     assert.doesNotMatch(
       build.sql.replaceAll(/'(?:''|[^'])*'/g, "''"),
@@ -198,8 +214,75 @@ test("preflight passes a fresh draft and postflight remains identical across two
   }
 })
 
-test("postflight reports published state, partial content, and excluded Concrete content", async () => {
+test("verification accepts published templates while importing only the remaining draft", async () => {
   const { release, capture, inventory } = await fixture()
+  const directory = await mkdtemp(join(tmpdir(), "compass-template-mixed-state-"))
+  const database = join(directory, "verification.sqlite")
+  const capturePath = join(directory, "capture.json")
+  const inventoryPath = join(directory, "inventory.json")
+  const importPath = join(directory, "import.sql")
+  try {
+    await execFileAsync("sqlite3", [database, `${schemaSql()}\n${seedSql(capture, inventory)}`])
+    await Promise.all([
+      writeFile(capturePath, `${JSON.stringify(capture)}\n`),
+      writeFile(inventoryPath, `${JSON.stringify(inventory)}\n`),
+    ])
+    await execFileAsync("bun", [
+      "scripts/build-buildertrend-template-next-batch-content-sql.mjs",
+      "--capture", capturePath,
+      "--inventory", inventoryPath,
+      "--output", importPath,
+    ])
+    await applyFile(database, importPath)
+    await execFileAsync("sqlite3", [database, `
+      UPDATE project_templates SET lifecycle_status='active', review_status='verified'
+      WHERE source_template_id IN ('12859981', '12978371');
+      UPDATE project_template_versions SET status='published'
+      WHERE id IN ('bt-template-version:12859981:1', 'bt-template-version:12978371:1');
+      DELETE FROM schedule_template_dependencies WHERE version_id='bt-template-version:12581937:1';
+      DELETE FROM schedule_template_items WHERE version_id='bt-template-version:12581937:1';
+      DELETE FROM project_template_content_items WHERE version_id='bt-template-version:12581937:1';
+      UPDATE project_template_modules SET normalization_status='inventory_only'
+      WHERE version_id='bt-template-version:12581937:1';
+      UPDATE project_templates SET review_status='inventory_only'
+      WHERE source_template_id='12581937';
+    `])
+    const publishedBefore = await query(database, `
+      SELECT id, payload_json FROM project_template_content_items
+      WHERE version_id IN ('bt-template-version:12859981:1', 'bt-template-version:12978371:1')
+      ORDER BY id;
+    `)
+    const preflight = buildBuildertrendTemplateContentVerificationSql({
+      capture,
+      inventory,
+      organizationId: "org-test",
+      phase: "preflight",
+      excludedSourceTemplateIds: release.excludedTemplates.map((template) => template.sourceTemplateId),
+    })
+    assert.equal(await query(database, preflight.sql), "")
+
+    await applyFile(database, importPath)
+    const postflight = buildBuildertrendTemplateContentVerificationSql({
+      capture,
+      inventory,
+      organizationId: "org-test",
+      phase: "postflight",
+      excludedSourceTemplateIds: release.excludedTemplates.map((template) => template.sourceTemplateId),
+    })
+    assert.equal(await query(database, postflight.sql), "")
+    const publishedAfter = await query(database, `
+      SELECT id, payload_json FROM project_template_content_items
+      WHERE version_id IN ('bt-template-version:12859981:1', 'bt-template-version:12978371:1')
+      ORDER BY id;
+    `)
+    assert.equal(publishedAfter, publishedBefore)
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+test("postflight reports published state, partial content, and explicitly excluded content", async () => {
+  const { capture, inventory } = await fixture()
   const directory = await mkdtemp(join(tmpdir(), "compass-template-verification-"))
   const database = join(directory, "verification.sqlite")
   try {
@@ -212,8 +295,8 @@ test("postflight reports published state, partial content, and excluded Concrete
         'Partial', NULL, NULL, 0, '{}'
       );
       INSERT INTO project_template_content_items VALUES (
-        'footer', 'bt-template-version:12581937:1', 'tasks', 'footer', NULL,
-        'Footer', NULL, NULL, 0, '{}'
+        'slab', 'bt-template-version:12594475:1', 'tasks', 'slab', NULL,
+        'Slab', NULL, NULL, 0, '{}'
       );
     `])
     const postflight = buildBuildertrendTemplateContentVerificationSql({
@@ -221,10 +304,10 @@ test("postflight reports published state, partial content, and excluded Concrete
       inventory,
       organizationId: "org-test",
       phase: "postflight",
-      excludedSourceTemplateIds: release.excludedTemplates.map((template) => template.sourceTemplateId),
+      excludedSourceTemplateIds: ["12594475"],
     })
     const issues = JSON.parse(await query(database, postflight.sql))
-    assert.equal(issues.some((issue) => issue.check_name === "draft_version"), true)
+    assert.equal(issues.some((issue) => issue.check_name === "version_state"), true)
     assert.equal(issues.some((issue) => issue.check_name === "content_total"), true)
     assert.equal(issues.some((issue) => issue.check_name === "excluded_template_content"), true)
   } finally {
