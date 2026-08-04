@@ -40,8 +40,12 @@ function contentId(templateId, moduleType, sourceItemId) {
   return `bt-template-content:${digest}`
 }
 
-function values(rows) {
-  return rows.map((row) => `(${row.map(sql).join(", ")})`).join(",\n    ")
+function jsonRows(rows, columnCount) {
+  const columns = Array.from(
+    { length: columnCount },
+    (_, index) => `json_extract(value, '$[${index}]')`
+  ).join(", ")
+  return `SELECT ${columns} FROM json_each(${sql(JSON.stringify(rows))})`
 }
 
 function assertCoverage(capture, inventory) {
@@ -305,42 +309,27 @@ export function buildBuildertrendTemplateContentVerificationSql({
   const itemCheckGuard = phase === "preflight"
     ? "AND (SELECT COUNT(*) FROM project_template_content_items c WHERE c.version_id=e.version_id) > 0"
     : ""
-  const excludedCte = excluded.length > 0
-    ? values(excluded)
-    : "(NULL, NULL)"
-  const predecessorCte = expected.predecessors.length > 0
-    ? values(expected.predecessors)
-    : "(NULL, NULL, NULL, NULL, NULL, NULL, NULL)"
-  const itemCte = expected.items.length > 0
-    ? values(expected.items)
-    : "(NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL)"
-  const reusableScheduleItemCte = expected.reusableScheduleItems.length > 0
-    ? values(expected.reusableScheduleItems)
-    : "(NULL, NULL, NULL, NULL, NULL, NULL)"
-  const reusableScheduleDependencyCte = expected.reusableScheduleDependencies.length > 0
-    ? values(expected.reusableScheduleDependencies)
-    : "(NULL, NULL, NULL, NULL, NULL, NULL, NULL)"
   const sqlText = `WITH
   expected_templates(source_template_id, name, version_id, content_count, schedule_count, predecessor_count) AS (
-    VALUES ${values(expected.templates)}
+    ${jsonRows(expected.templates, 6)}
   ),
   expected_modules(source_template_id, version_id, module_type, expected_count, expected_status) AS (
-    VALUES ${values(expected.modules)}
+    ${jsonRows(expected.modules, 5)}
   ),
   expected_items(source_template_id, version_id, module_type, source_item_id, content_id, parent_source_item_id, title, sort_order) AS (
-    VALUES ${itemCte}
+    ${jsonRows(expected.items, 8)}
   ),
   expected_predecessors(source_template_id, version_id, successor_item_id, predecessor_item_id, recorded_successor_item_id, relationship_type, lag_days) AS (
-    VALUES ${predecessorCte}
+    ${jsonRows(expected.predecessors, 7)}
   ),
   expected_reusable_schedule_items(source_template_id, version_id, source_item_id, item_id, item_key, title) AS (
-    VALUES ${reusableScheduleItemCte}
+    ${jsonRows(expected.reusableScheduleItems, 6)}
   ),
   expected_reusable_schedule_dependencies(source_template_id, version_id, dependency_id, predecessor_item_id, successor_item_id, relationship_type, lag_days) AS (
-    VALUES ${reusableScheduleDependencyCte}
+    ${jsonRows(expected.reusableScheduleDependencies, 7)}
   ),
   excluded_templates(source_template_id, version_id) AS (
-    VALUES ${excludedCte}
+    ${jsonRows(excluded, 2)}
   ),
   content_totals AS (
     SELECT e.source_template_id, e.version_id, e.content_count,
