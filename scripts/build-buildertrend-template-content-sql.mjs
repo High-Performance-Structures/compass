@@ -102,6 +102,164 @@ function contentId(templateId, moduleType, sourceItemId) {
   return `bt-template-content:${digest}`
 }
 
+function reusableScheduleItemId(templateId, sourceItemId) {
+  return `bt-template-item:${templateId}:${sourceItemId}`
+}
+
+function businessDayOffset(anchorDate, targetDate) {
+  const anchor = new Date(`${anchorDate}T00:00:00Z`)
+  const target = new Date(`${targetDate}T00:00:00Z`)
+  if (Number.isNaN(anchor.getTime()) || Number.isNaN(target.getTime())) {
+    throw new Error("Reusable schedule dates must use YYYY-MM-DD values.")
+  }
+  if (target.getTime() < anchor.getTime()) {
+    throw new Error("Reusable schedule items cannot start before the source anchor date.")
+  }
+  let offset = 0
+  const cursor = new Date(anchor)
+  while (cursor.getTime() < target.getTime()) {
+    cursor.setUTCDate(cursor.getUTCDate() + 1)
+    const weekday = cursor.getUTCDay()
+    if (weekday !== 0 && weekday !== 6) offset += 1
+  }
+  return offset
+}
+
+const compassColorHex = {
+  blue: "#3b82f6",
+  green: "#22c55e",
+  orange: "#f97316",
+  purple: "#a855f7",
+  red: "#ef4444",
+  yellow: "#eab308",
+  teal: "#14b8a6",
+  gray: "#6b7280",
+}
+
+function hexChannels(value) {
+  return [
+    Number.parseInt(value.slice(1, 3), 16),
+    Number.parseInt(value.slice(3, 5), 16),
+    Number.parseInt(value.slice(5, 7), 16),
+  ]
+}
+
+function compassDisplayColor(value) {
+  if (Object.hasOwn(compassColorHex, value)) return value
+  if (typeof value !== "string" || !/^#[0-9a-f]{6}$/i.test(value)) return "blue"
+  const [red, green, blue] = hexChannels(value)
+  let closest = "blue"
+  let distance = Number.POSITIVE_INFINITY
+  for (const [name, hex] of Object.entries(compassColorHex)) {
+    const [candidateRed, candidateGreen, candidateBlue] = hexChannels(hex)
+    const candidateDistance =
+      (red - candidateRed) ** 2 +
+      (green - candidateGreen) ** 2 +
+      (blue - candidateBlue) ** 2
+    if (candidateDistance < distance) {
+      closest = name
+      distance = candidateDistance
+    }
+  }
+  return closest
+}
+
+function reusableScheduleStatements(template, versionId, items, path) {
+  // Publishing verifies both source-content and reusable-schedule counts. Rebuild
+  // the draft mirror from the same reviewed rows so those representations cannot drift.
+  const statements = [
+    `DELETE FROM schedule_template_dependencies WHERE version_id=${sql(versionId)} ` +
+      `AND EXISTS (SELECT 1 FROM project_template_versions ` +
+      `WHERE id=${sql(versionId)} AND status='draft');`,
+    `DELETE FROM schedule_template_items WHERE version_id=${sql(versionId)} ` +
+      `AND EXISTS (SELECT 1 FROM project_template_versions ` +
+      `WHERE id=${sql(versionId)} AND status='draft');`,
+  ]
+  if (items.length === 0) return statements
+  const anchorDate = template.schedule?.sourceAnchorDate
+  requireNonEmptyString(anchorDate, `${path}.schedule.sourceAnchorDate`)
+
+  items.forEach((item, itemIndex) => {
+    if (!Number.isInteger(item.workdays) || item.workdays < 0) {
+      throw new Error(`${path}.scheduleItems[${itemIndex}].workdays must be a non-negative integer.`)
+    }
+    requireNonEmptyString(item.startDate, `${path}.scheduleItems[${itemIndex}].startDate`)
+    const itemId = reusableScheduleItemId(template.sourceTemplateId, item.sourceItemId)
+    statements.push(
+      `INSERT INTO schedule_template_items (` +
+        `id, version_id, source_item_id, item_key, title, start_offset_workdays, ` +
+        `workdays, phase, display_color, is_milestone, assignee_placeholder, ` +
+        `owner_visible, sub_vendor_visible, notes, sort_order` +
+      `) SELECT ` +
+        [
+          sql(itemId),
+          sql(versionId),
+          sql(item.sourceItemId),
+          sql(`buildertrend:${item.sourceItemId}`),
+          sql(cleanText(item.title)),
+          businessDayOffset(anchorDate, item.startDate),
+          item.workdays,
+          sql(cleanText(item.phase ?? "Unassigned / General")),
+          sql(compassDisplayColor(item.displayColor)),
+          item.isMilestone === true ? 1 : 0,
+          sql(cleanText(item.assigneePlaceholder ?? null)),
+          item.ownerVisible === true ? 1 : 0,
+          item.subVendorVisible === true ? 1 : 0,
+          sql(cleanText(item.notes ?? null)),
+          Number.isInteger(item.sortOrder) ? item.sortOrder : itemIndex,
+        ].join(", ") +
+        ` WHERE EXISTS (SELECT 1 FROM project_template_versions ` +
+        `WHERE id=${sql(versionId)} AND status='draft') ` +
+        `ON CONFLICT(version_id, item_key) DO UPDATE SET ` +
+        `source_item_id=excluded.source_item_id, title=excluded.title, ` +
+        `start_offset_workdays=excluded.start_offset_workdays, workdays=excluded.workdays, ` +
+        `phase=excluded.phase, display_color=excluded.display_color, ` +
+        `is_milestone=excluded.is_milestone, assignee_placeholder=excluded.assignee_placeholder, ` +
+        `owner_visible=excluded.owner_visible, sub_vendor_visible=excluded.sub_vendor_visible, ` +
+        `notes=excluded.notes, sort_order=excluded.sort_order ` +
+        `WHERE EXISTS (SELECT 1 FROM project_template_versions ` +
+        `WHERE id=${sql(versionId)} AND status='draft');`
+    )
+  })
+
+  for (const item of items) {
+    for (const predecessor of item.predecessors) {
+      const predecessorItemId = reusableScheduleItemId(
+        template.sourceTemplateId,
+        predecessor.predecessorSourceItemId
+      )
+      const successorItemId = reusableScheduleItemId(
+        template.sourceTemplateId,
+        predecessor.successorSourceItemId
+      )
+      const dependencyId =
+        `bt-template-dependency:${template.sourceTemplateId}:` +
+        `${predecessor.predecessorSourceItemId}:${predecessor.successorSourceItemId}:` +
+        `${predecessor.type}`
+      statements.push(
+        `INSERT INTO schedule_template_dependencies (` +
+          `id, version_id, predecessor_item_id, successor_item_id, type, lag_days` +
+        `) SELECT ` +
+          [
+            sql(dependencyId),
+            sql(versionId),
+            sql(predecessorItemId),
+            sql(successorItemId),
+            sql(predecessor.type),
+            predecessor.lagDays,
+          ].join(", ") +
+          ` WHERE EXISTS (SELECT 1 FROM project_template_versions ` +
+          `WHERE id=${sql(versionId)} AND status='draft') ` +
+          `ON CONFLICT(version_id, predecessor_item_id, successor_item_id, type) ` +
+          `DO UPDATE SET lag_days=excluded.lag_days ` +
+          `WHERE EXISTS (SELECT 1 FROM project_template_versions ` +
+          `WHERE id=${sql(versionId)} AND status='draft');`
+      )
+    }
+  }
+  return statements
+}
+
 const modules = [
   ["tasks", "tasks"],
   ["scheduleItems", "schedule"],
@@ -332,6 +490,14 @@ async function main() {
       }
       if (sourceKey === "scheduleItems") {
         assertScheduleRelationships(items, `templates[${templateIndex}].scheduleItems`)
+        statements.push(
+          ...reusableScheduleStatements(
+            template,
+            versionId,
+            items,
+            `templates[${templateIndex}]`
+          )
+        )
       }
       totals[sourceKey] += items.length
       const exceptions =

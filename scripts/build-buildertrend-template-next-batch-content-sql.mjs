@@ -4,8 +4,6 @@ import { execFile } from "node:child_process"
 import { readFile } from "node:fs/promises"
 import { promisify } from "node:util"
 
-import { NEXT_BATCH_CONTENT_IDS } from "./lib/buildertrend-template-next-batch-content.mjs"
-
 const execFileAsync = promisify(execFile)
 
 function optionValue(args, option) {
@@ -21,18 +19,20 @@ if (args.some((argument) => argument.startsWith("--publish"))) {
 }
 const capturePath = optionValue(args, "--capture")
 const inventoryPath = optionValue(args, "--inventory")
+const releasePath = optionValue(args, "--release") ??
+  "scripts/fixtures/buildertrend-template-content-next-batch-release-2026-08-04.json"
 const outputPath = optionValue(args, "--output")
 const dryRun = args.includes("--dry-run")
 if (!capturePath || !inventoryPath || (!dryRun && !outputPath)) {
   throw new Error(
     "Usage: bun scripts/build-buildertrend-template-next-batch-content-sql.mjs " +
       "--capture <capture.json> --inventory <inventory.json> " +
-      "[--output <import.sql> | --dry-run]"
+      "[--release <reviewed-release.json>] [--output <import.sql> | --dry-run]"
   )
 }
 
-const [capture, inventory] = await Promise.all(
-  [capturePath, inventoryPath].map(async (path) => JSON.parse(await readFile(path, "utf8")))
+const [capture, inventory, release] = await Promise.all(
+  [capturePath, inventoryPath, releasePath].map(async (path) => JSON.parse(await readFile(path, "utf8")))
 )
 if (
   capture.assembly?.complete !== true ||
@@ -41,13 +41,39 @@ if (
 ) {
   throw new Error("Next-batch SQL requires a complete, draft-only assembled capture.")
 }
+if (
+  release.draftOnly !== true ||
+  release.publish !== false ||
+  release.releasePolicy?.lifecycleStatus !== "draft" ||
+  release.releasePolicy?.versionStatus !== "draft" ||
+  release.releasePolicy?.publishAllowed !== false ||
+  !Array.isArray(release.templates)
+) {
+  throw new Error("Next-batch SQL requires a reviewed, draft-only release manifest.")
+}
+const approvedIds = release.templates.map((template) => template.sourceTemplateId)
+if (
+  approvedIds.length === 0 ||
+  approvedIds.some((sourceTemplateId) => typeof sourceTemplateId !== "string" || !sourceTemplateId) ||
+  new Set(approvedIds).size !== approvedIds.length ||
+  release.scope?.structurallyCompleteTemplatesIncluded !== approvedIds.length ||
+  release.scope?.structurallyCompleteTemplatesIncluded + release.scope?.incompleteTemplatesExcluded !== 34 ||
+  release.scope?.archivedTemplatesExcluded !== 27 ||
+  release.scope?.archivedTemplatesIncluded !== 0
+) {
+  throw new Error("Next-batch SQL release manifest has an invalid reviewed scope.")
+}
 const capturedIds = capture.templates?.map((template) => template.sourceTemplateId)
 const inventoryIds = inventory.templates?.map((template) => template.sourceTemplateId)
 if (
-  JSON.stringify(capturedIds) !== JSON.stringify(NEXT_BATCH_CONTENT_IDS) ||
-  JSON.stringify(inventoryIds) !== JSON.stringify(NEXT_BATCH_CONTENT_IDS)
+  JSON.stringify(capturedIds) !== JSON.stringify(approvedIds) ||
+  JSON.stringify(inventoryIds) !== JSON.stringify(approvedIds) ||
+  JSON.stringify(capture.assembly.sourceTemplateIds) !== JSON.stringify(approvedIds)
 ) {
-  throw new Error("Next-batch SQL may import only the approved Stucco and MEP templates.")
+  throw new Error("Next-batch SQL may import only templates in the reviewed draft release manifest.")
+}
+if (capture.excludedArchivedCount !== 27 || inventory.excludedArchivedCount !== 27) {
+  throw new Error("Next-batch SQL requires all 27 archived templates to remain excluded.")
 }
 
 const command = [

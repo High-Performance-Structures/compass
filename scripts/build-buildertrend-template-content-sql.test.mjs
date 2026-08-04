@@ -27,6 +27,7 @@ const capture = {
     {
       sourceTemplateId: "template-1",
       name: "Foundation",
+      schedule: { sourceAnchorDate: "2026-08-03" },
       tasks: [{ sourceItemId: "task-1", title: "Form footers" }],
       scheduleItems: [
         {
@@ -44,13 +45,13 @@ const capture = {
   ],
 }
 
-async function runImport(inputCapture, { dryRun = false } = {}) {
+async function runImport(inputCapture, { dryRun = false, inputInventory = inventory } = {}) {
   const directory = await mkdtemp(join(tmpdir(), "compass-template-content-"))
   const inventoryPath = join(directory, "inventory.json")
   const capturePath = join(directory, "capture.json")
   const outputPath = join(directory, "import.sql")
   await Promise.all([
-    writeFile(inventoryPath, JSON.stringify(inventory)),
+    writeFile(inventoryPath, JSON.stringify(inputInventory)),
     writeFile(capturePath, JSON.stringify(inputCapture)),
   ])
   try {
@@ -204,6 +205,61 @@ test("rejects schedule predecessors that do not reference captured schedule item
   )
 })
 
+test("materializes all five reviewed Stucco schedule rows for the publish count gate", async () => {
+  const reviewedCapture = JSON.parse(await readFile(
+    "scripts/fixtures/buildertrend-active-template-capture-2026-07-31.json",
+    "utf8"
+  ))
+  const reviewedStucco = reviewedCapture.templates.find(
+    (template) => template.sourceTemplateId === "12859981"
+  )
+  assert.ok(reviewedStucco)
+  assert.equal(reviewedStucco.moduleCounts.scheduleItems, 5)
+  const predecessorsBySuccessor = new Map()
+  for (const predecessor of reviewedStucco.schedule.dependencies) {
+    const current = predecessorsBySuccessor.get(predecessor.successorSourceItemId) ?? []
+    current.push(predecessor)
+    predecessorsBySuccessor.set(predecessor.successorSourceItemId, current)
+  }
+  const scheduleItems = reviewedStucco.schedule.items.map((item) => ({
+    ...item,
+    predecessors: predecessorsBySuccessor.get(item.sourceItemId) ?? [],
+  }))
+  const stuccoCapture = {
+    capturedAt: reviewedCapture.capturedAt,
+    excludedArchivedCount: 27,
+    templates: [{
+      sourceTemplateId: reviewedStucco.sourceTemplateId,
+      name: reviewedStucco.name,
+      schedule: reviewedStucco.schedule,
+      tasks: [],
+      scheduleItems,
+      selections: [],
+      bidPackages: [],
+    }],
+  }
+  const stuccoInventory = {
+    expectedActiveCount: 1,
+    excludedArchivedCount: 27,
+    templates: [{
+      sourceTemplateId: reviewedStucco.sourceTemplateId,
+      name: reviewedStucco.name,
+      moduleCounts: { tasks: 0, scheduleItems: 5, selections: 0, bidPackages: 0 },
+    }],
+  }
+
+  const result = await runImport(stuccoCapture, { inputInventory: stuccoInventory })
+  assert.equal((result.sql.match(/INSERT INTO schedule_template_items/g) ?? []).length, 5)
+  assert.equal(
+    (result.sql.match(/INSERT INTO schedule_template_dependencies/g) ?? []).length,
+    4
+  )
+  assert.match(result.sql, /DELETE FROM schedule_template_items/)
+  assert.match(result.sql, /bt-template-item:12859981:143866298/)
+  assert.match(result.sql, /bt-template-item:12859981:143867153/)
+  assert.match(result.sql, /WHERE id='bt-template-version:12859981:1' AND status='draft'/)
+})
+
 test("converts the complete six-template pilot with exact counts and draft guards", async () => {
   const canonicalCapture = JSON.parse(
     await readFile(
@@ -246,6 +302,7 @@ test("converts the complete six-template pilot with exact counts and draft guard
       (sql.match(/INSERT INTO project_template_content_items/g) ?? []).length,
       433
     )
+    assert.equal((sql.match(/INSERT INTO schedule_template_items/g) ?? []).length, 70)
     assert.match(
       sql,
       /WHERE id='bt-template-version:30294726:1' AND status='draft'/
