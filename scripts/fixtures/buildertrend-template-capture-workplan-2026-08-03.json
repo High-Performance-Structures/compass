@@ -231,8 +231,20 @@
         "selections": 4
       },
       "totalWorkItems": 58,
-      "status": "pending",
-      "exceptions": []
+      "status": "completed_with_exceptions",
+      "targetTemplateId": "45887090",
+      "capturedAt": "2026-08-04T18:37:07.000Z",
+      "capturedModuleCounts": {
+        "tasks": 48,
+        "bidPackages": 1,
+        "scheduleItems": 5,
+        "selections": 4,
+        "scheduleDurationDays": 14
+      },
+      "exceptions": [
+        "Buildertrend regenerated copied-record IDs.",
+        "Selection-choice image indicators were captured; attachment bytes were not downloaded."
+      ]
     },
     {
       "sequence": 7,
@@ -247,8 +259,20 @@
         "scheduleItems": 9
       },
       "totalWorkItems": 56,
-      "status": "pending",
-      "exceptions": []
+      "status": "completed_with_exceptions",
+      "targetTemplateId": "45888336",
+      "capturedAt": "2026-08-04T18:59:09Z",
+      "capturedModuleCounts": {
+        "tasks": 45,
+        "bidPackages": 2,
+        "scheduleItems": 9,
+        "selections": 0,
+        "scheduleDurationDays": 6
+      },
+      "exceptions": [
+        "Buildertrend regenerated copied-record IDs.",
+        "Bid-package attachment file names were captured; attachment bytes were not downloaded."
+      ]
     },
     {
       "sequence": 8,
@@ -262,8 +286,20 @@
         "scheduleItems": 8
       },
       "totalWorkItems": 51,
-      "status": "pending",
-      "exceptions": []
+      "status": "in_progress",
+      "targetTemplateId": "45888967",
+      "capturedAt": "2026-08-04T19:17:22Z",
+      "capturedModuleCounts": {
+        "tasks": 43,
+        "bidPackages": 0,
+        "scheduleItems": 8,
+        "selections": 0,
+        "scheduleDurationDays": 6
+      },
+      "exceptions": [
+        "Buildertrend regenerated copied-record IDs.",
+        "Capture copy is prepared; task hierarchy review remains pending."
+      ]
     },
     {
       "sequence": 9,

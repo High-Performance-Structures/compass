@@ -6,6 +6,7 @@ import {
 } from "../src/lib/templates/buildertrend-template-capture"
 import { parseBuildertrendTemplateInventory } from "../src/lib/templates/buildertrend-template-inventory"
 import { buildBuildertrendTemplatePilot } from "./lib/buildertrend-template-pilot.mjs"
+import { buildBuildertrendTemplateScheduleScope } from "./lib/buildertrend-template-schedule-scope.mjs"
 
 function optionValue(argumentsList, option) {
   const index = argumentsList.indexOf(option)
@@ -25,6 +26,11 @@ async function main() {
   const organizationId = optionValue(argumentsList, "--organization-id")
   const output = optionValue(argumentsList, "--output")
   const pilotManifestPath = optionValue(argumentsList, "--pilot-manifest")
+  const scheduleScopeManifestPath = optionValue(
+    argumentsList,
+    "--schedule-scope-manifest"
+  )
+  const workplanPath = optionValue(argumentsList, "--workplan")
   const dryRun = argumentsList.includes("--dry-run")
   const publishCapturedSchedules = argumentsList.includes(
     "--publish-captured-schedules"
@@ -39,14 +45,37 @@ async function main() {
         "Usage: bun scripts/build-buildertrend-template-capture-sql.mjs " +
         "--inventory <inventory.json> --capture <capture.json> " +
         "--organization-id <org-id> [--output <import.sql>] [--dry-run] " +
-        "[--publish-captured-schedules] [--pilot-manifest <reviewed-pilot.json>]"
+        "[--publish-captured-schedules] [--pilot-manifest <reviewed-pilot.json>] " +
+        "[--schedule-scope-manifest <reviewed-nonpilot-schedules.json> " +
+        "--workplan <reviewed-workplan.json>]"
+    )
+  }
+  if (scheduleScopeManifestPath && (!pilotManifestPath || !workplanPath)) {
+    throw new Error(
+      "The non-pilot schedule scope requires --pilot-manifest and --workplan."
+    )
+  }
+  if (scheduleScopeManifestPath && publishCapturedSchedules) {
+    throw new Error(
+      "Non-pilot schedule scope is draft-import only; whole-template publishing remains gated."
     )
   }
 
   let inventoryValue = await parseJsonFile(inventoryPath)
   let captureValue = await parseJsonFile(capturePath)
   let pilot = null
-  if (pilotManifestPath) {
+  let scheduleScope = null
+  if (scheduleScopeManifestPath && pilotManifestPath && workplanPath) {
+    scheduleScope = buildBuildertrendTemplateScheduleScope({
+      inventory: inventoryValue,
+      capture: captureValue,
+      workplan: await parseJsonFile(workplanPath),
+      pilotManifest: await parseJsonFile(pilotManifestPath),
+      manifest: await parseJsonFile(scheduleScopeManifestPath),
+    })
+    inventoryValue = scheduleScope.inventory
+    captureValue = scheduleScope.capture
+  } else if (pilotManifestPath) {
     pilot = buildBuildertrendTemplatePilot({
       inventory: inventoryValue,
       capture: captureValue,
@@ -85,6 +114,7 @@ async function main() {
                 pilot.remainingActiveTemplatesUnverified,
             }
           : {}),
+        ...(scheduleScope ? scheduleScope.summary : {}),
         excludedArchivedCount: capture.data.excludedArchivedCount,
         output: dryRun ? null : output,
       },

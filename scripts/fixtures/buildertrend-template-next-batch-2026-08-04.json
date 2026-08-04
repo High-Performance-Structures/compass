@@ -1,0 +1,1114 @@
+{
+  "manifestVersion": 1,
+  "generatedAt": "2026-08-04",
+  "sourceWorkplan": "scripts/fixtures/buildertrend-template-capture-workplan-2026-08-03.json",
+  "completedPilotManifest": "scripts/fixtures/buildertrend-template-pilot-2026-08-03.json",
+  "scope": {
+    "activeTemplatesInSource": 40,
+    "completedPilotTemplatesExcluded": 6,
+    "remainingActiveTemplatesIncluded": 34,
+    "archivedTemplatesExcluded": 27,
+    "archivedTemplatesIncluded": 0
+  },
+  "capturePolicy": {
+    "classification": "Capture does not assign a department; the destination job supplies department context.",
+    "sourceMutation": "prohibited",
+    "contentFabrication": "prohibited",
+    "scheduleEvidence": "Reuse reviewed schedule rows and dependencies from the 40-template source capture."
+  },
+  "aggregateTotals": {
+    "tasks": 490,
+    "scheduleItems": 93,
+    "selections": 45,
+    "bidPackages": 26,
+    "browserCaptureRows": 561,
+    "totalWorkItems": 654
+  },
+  "browserCaptureGateCount": 59,
+  "waves": [
+    {
+      "id": "priority-sequences-06-12",
+      "name": "Next six non-pilot templates",
+      "workplanSequences": [
+        6,
+        7,
+        8,
+        9,
+        11,
+        12
+      ],
+      "templateCount": 6,
+      "browserCaptureGateCount": 13,
+      "totals": {
+        "tasks": 235,
+        "scheduleItems": 35,
+        "selections": 8,
+        "bidPackages": 6,
+        "browserCaptureRows": 249,
+        "totalWorkItems": 284
+      },
+      "sourceTemplateIds": [
+        "12859981",
+        "12978371",
+        "12581937",
+        "12594475",
+        "30917204",
+        "12646335"
+      ]
+    },
+    {
+      "id": "remaining-sequences-13-40",
+      "name": "Remaining non-pilot templates",
+      "workplanSequences": [
+        13,
+        14,
+        15,
+        16,
+        17,
+        18,
+        19,
+        20,
+        21,
+        22,
+        23,
+        24,
+        25,
+        26,
+        27,
+        28,
+        29,
+        30,
+        31,
+        32,
+        33,
+        34,
+        35,
+        36,
+        37,
+        38,
+        39,
+        40
+      ],
+      "templateCount": 28,
+      "browserCaptureGateCount": 46,
+      "totals": {
+        "tasks": 255,
+        "scheduleItems": 58,
+        "selections": 37,
+        "bidPackages": 20,
+        "browserCaptureRows": 312,
+        "totalWorkItems": 370
+      },
+      "sourceTemplateIds": [
+        "12650792",
+        "12796241",
+        "12819873",
+        "12649495",
+        "12650427",
+        "30914491",
+        "12978732",
+        "12858966",
+        "12649292",
+        "12650557",
+        "30919251",
+        "12650484",
+        "12650395",
+        "12650713",
+        "28466146",
+        "12979213",
+        "13001090",
+        "12978590",
+        "36619183",
+        "38452172",
+        "36618977",
+        "36478698",
+        "36595931",
+        "37180847",
+        "42924180",
+        "39644707",
+        "42948499",
+        "38452532"
+      ]
+    }
+  ],
+  "templates": [
+    {
+      "captureOrder": 1,
+      "workplanSequence": 6,
+      "sourceTemplateId": "12859981",
+      "sourceName": "Ext. Finishes - Stucco",
+      "temporaryBuildertrendTargetName": "BT Ext. Finishes - Stucco",
+      "wave": "priority-sequences-06-12",
+      "moduleCounts": {
+        "tasks": 48,
+        "scheduleItems": 5,
+        "selections": 4,
+        "bidPackages": 1
+      },
+      "totalWorkItems": 58,
+      "workplanStatus": "completed_with_exceptions",
+      "fragmentPath": "scripts/fixtures/buildertrend-template-content-next-batch/fragments/06-12859981.capture.json",
+      "captureGates": {
+        "tasks": {
+          "expectedCount": 48,
+          "evidence": "browser_fragment_required"
+        },
+        "scheduleItems": {
+          "expectedCount": 5,
+          "evidence": "reviewed_source_capture"
+        },
+        "selections": {
+          "expectedCount": 4,
+          "evidence": "browser_fragment_required"
+        },
+        "bidPackages": {
+          "expectedCount": 1,
+          "evidence": "browser_fragment_required"
+        }
+      }
+    },
+    {
+      "captureOrder": 2,
+      "workplanSequence": 7,
+      "sourceTemplateId": "12978371",
+      "sourceName": "MEP - Rough & Top Out",
+      "temporaryBuildertrendTargetName": "BT MEP - Rough & Top Out",
+      "wave": "priority-sequences-06-12",
+      "moduleCounts": {
+        "tasks": 45,
+        "scheduleItems": 9,
+        "selections": 0,
+        "bidPackages": 2
+      },
+      "totalWorkItems": 56,
+      "workplanStatus": "completed_with_exceptions",
+      "fragmentPath": "scripts/fixtures/buildertrend-template-content-next-batch/fragments/07-12978371.capture.json",
+      "captureGates": {
+        "tasks": {
+          "expectedCount": 45,
+          "evidence": "browser_fragment_required"
+        },
+        "scheduleItems": {
+          "expectedCount": 9,
+          "evidence": "reviewed_source_capture"
+        },
+        "bidPackages": {
+          "expectedCount": 2,
+          "evidence": "browser_fragment_required"
+        }
+      }
+    },
+    {
+      "captureOrder": 3,
+      "workplanSequence": 8,
+      "sourceTemplateId": "12581937",
+      "sourceName": "Concrete - Footer Assembly",
+      "temporaryBuildertrendTargetName": "BT Concrete - Footer Assembly",
+      "wave": "priority-sequences-06-12",
+      "moduleCounts": {
+        "tasks": 43,
+        "scheduleItems": 8,
+        "selections": 0,
+        "bidPackages": 0
+      },
+      "totalWorkItems": 51,
+      "workplanStatus": "in_progress",
+      "fragmentPath": "scripts/fixtures/buildertrend-template-content-next-batch/fragments/08-12581937.capture.json",
+      "captureGates": {
+        "tasks": {
+          "expectedCount": 43,
+          "evidence": "browser_fragment_required"
+        },
+        "scheduleItems": {
+          "expectedCount": 8,
+          "evidence": "reviewed_source_capture"
+        }
+      }
+    },
+    {
+      "captureOrder": 4,
+      "workplanSequence": 9,
+      "sourceTemplateId": "12594475",
+      "sourceName": "Concrete - Slab Assembly",
+      "temporaryBuildertrendTargetName": "BT Concrete - Slab Assembly",
+      "wave": "priority-sequences-06-12",
+      "moduleCounts": {
+        "tasks": 36,
+        "scheduleItems": 8,
+        "selections": 0,
+        "bidPackages": 1
+      },
+      "totalWorkItems": 45,
+      "workplanStatus": "pending",
+      "fragmentPath": "scripts/fixtures/buildertrend-template-content-next-batch/fragments/09-12594475.capture.json",
+      "captureGates": {
+        "tasks": {
+          "expectedCount": 36,
+          "evidence": "browser_fragment_required"
+        },
+        "scheduleItems": {
+          "expectedCount": 8,
+          "evidence": "reviewed_source_capture"
+        },
+        "bidPackages": {
+          "expectedCount": 1,
+          "evidence": "browser_fragment_required"
+        }
+      }
+    },
+    {
+      "captureOrder": 5,
+      "workplanSequence": 11,
+      "sourceTemplateId": "30917204",
+      "sourceName": "Ext. Finishes - Siding",
+      "temporaryBuildertrendTargetName": "BT Ext. Finishes - Siding",
+      "wave": "priority-sequences-06-12",
+      "moduleCounts": {
+        "tasks": 29,
+        "scheduleItems": 3,
+        "selections": 4,
+        "bidPackages": 1
+      },
+      "totalWorkItems": 37,
+      "workplanStatus": "pending",
+      "fragmentPath": "scripts/fixtures/buildertrend-template-content-next-batch/fragments/11-30917204.capture.json",
+      "captureGates": {
+        "tasks": {
+          "expectedCount": 29,
+          "evidence": "browser_fragment_required"
+        },
+        "scheduleItems": {
+          "expectedCount": 3,
+          "evidence": "reviewed_source_capture"
+        },
+        "selections": {
+          "expectedCount": 4,
+          "evidence": "browser_fragment_required"
+        },
+        "bidPackages": {
+          "expectedCount": 1,
+          "evidence": "browser_fragment_required"
+        }
+      }
+    },
+    {
+      "captureOrder": 6,
+      "workplanSequence": 12,
+      "sourceTemplateId": "12646335",
+      "sourceName": "Framing - Interior Wall Assembly",
+      "temporaryBuildertrendTargetName": "BT Framing - Interior Wall Assembly",
+      "wave": "priority-sequences-06-12",
+      "moduleCounts": {
+        "tasks": 34,
+        "scheduleItems": 2,
+        "selections": 0,
+        "bidPackages": 1
+      },
+      "totalWorkItems": 37,
+      "workplanStatus": "pending",
+      "fragmentPath": "scripts/fixtures/buildertrend-template-content-next-batch/fragments/12-12646335.capture.json",
+      "captureGates": {
+        "tasks": {
+          "expectedCount": 34,
+          "evidence": "browser_fragment_required"
+        },
+        "scheduleItems": {
+          "expectedCount": 2,
+          "evidence": "reviewed_source_capture"
+        },
+        "bidPackages": {
+          "expectedCount": 1,
+          "evidence": "browser_fragment_required"
+        }
+      }
+    },
+    {
+      "captureOrder": 7,
+      "workplanSequence": 13,
+      "sourceTemplateId": "12650792",
+      "sourceName": "Framing - Roof w/ Trusses Assembly",
+      "temporaryBuildertrendTargetName": "BT Framing - Roof w/ Trusses Assembly",
+      "wave": "remaining-sequences-13-40",
+      "moduleCounts": {
+        "tasks": 28,
+        "scheduleItems": 5,
+        "selections": 0,
+        "bidPackages": 0
+      },
+      "totalWorkItems": 33,
+      "workplanStatus": "pending",
+      "fragmentPath": "scripts/fixtures/buildertrend-template-content-next-batch/fragments/13-12650792.capture.json",
+      "captureGates": {
+        "tasks": {
+          "expectedCount": 28,
+          "evidence": "browser_fragment_required"
+        },
+        "scheduleItems": {
+          "expectedCount": 5,
+          "evidence": "reviewed_source_capture"
+        }
+      }
+    },
+    {
+      "captureOrder": 8,
+      "workplanSequence": 14,
+      "sourceTemplateId": "12796241",
+      "sourceName": "Int. Finishes - Architectural Woodwork",
+      "temporaryBuildertrendTargetName": "BT Int. Finishes - Architectural Woodwork",
+      "wave": "remaining-sequences-13-40",
+      "moduleCounts": {
+        "tasks": 19,
+        "scheduleItems": 4,
+        "selections": 5,
+        "bidPackages": 2
+      },
+      "totalWorkItems": 30,
+      "workplanStatus": "pending",
+      "fragmentPath": "scripts/fixtures/buildertrend-template-content-next-batch/fragments/14-12796241.capture.json",
+      "captureGates": {
+        "tasks": {
+          "expectedCount": 19,
+          "evidence": "browser_fragment_required"
+        },
+        "scheduleItems": {
+          "expectedCount": 4,
+          "evidence": "reviewed_source_capture"
+        },
+        "selections": {
+          "expectedCount": 5,
+          "evidence": "browser_fragment_required"
+        },
+        "bidPackages": {
+          "expectedCount": 2,
+          "evidence": "browser_fragment_required"
+        }
+      }
+    },
+    {
+      "captureOrder": 9,
+      "workplanSequence": 15,
+      "sourceTemplateId": "12819873",
+      "sourceName": "Framing - Fascia & Soffit Installation",
+      "temporaryBuildertrendTargetName": "BT Framing - Fascia & Soffit Installation",
+      "wave": "remaining-sequences-13-40",
+      "moduleCounts": {
+        "tasks": 25,
+        "scheduleItems": 3,
+        "selections": 0,
+        "bidPackages": 0
+      },
+      "totalWorkItems": 28,
+      "workplanStatus": "pending",
+      "fragmentPath": "scripts/fixtures/buildertrend-template-content-next-batch/fragments/15-12819873.capture.json",
+      "captureGates": {
+        "tasks": {
+          "expectedCount": 25,
+          "evidence": "browser_fragment_required"
+        },
+        "scheduleItems": {
+          "expectedCount": 3,
+          "evidence": "reviewed_source_capture"
+        }
+      }
+    },
+    {
+      "captureOrder": 10,
+      "workplanSequence": 16,
+      "sourceTemplateId": "12649495",
+      "sourceName": "Framing - Floor System Assembly",
+      "temporaryBuildertrendTargetName": "BT Framing - Floor System Assembly",
+      "wave": "remaining-sequences-13-40",
+      "moduleCounts": {
+        "tasks": 24,
+        "scheduleItems": 4,
+        "selections": 0,
+        "bidPackages": 0
+      },
+      "totalWorkItems": 28,
+      "workplanStatus": "pending",
+      "fragmentPath": "scripts/fixtures/buildertrend-template-content-next-batch/fragments/16-12649495.capture.json",
+      "captureGates": {
+        "tasks": {
+          "expectedCount": 24,
+          "evidence": "browser_fragment_required"
+        },
+        "scheduleItems": {
+          "expectedCount": 4,
+          "evidence": "reviewed_source_capture"
+        }
+      }
+    },
+    {
+      "captureOrder": 11,
+      "workplanSequence": 17,
+      "sourceTemplateId": "12650427",
+      "sourceName": "Framing - Window",
+      "temporaryBuildertrendTargetName": "BT Framing - Window",
+      "wave": "remaining-sequences-13-40",
+      "moduleCounts": {
+        "tasks": 20,
+        "scheduleItems": 2,
+        "selections": 2,
+        "bidPackages": 1
+      },
+      "totalWorkItems": 25,
+      "workplanStatus": "pending",
+      "fragmentPath": "scripts/fixtures/buildertrend-template-content-next-batch/fragments/17-12650427.capture.json",
+      "captureGates": {
+        "tasks": {
+          "expectedCount": 20,
+          "evidence": "browser_fragment_required"
+        },
+        "scheduleItems": {
+          "expectedCount": 2,
+          "evidence": "reviewed_source_capture"
+        },
+        "selections": {
+          "expectedCount": 2,
+          "evidence": "browser_fragment_required"
+        },
+        "bidPackages": {
+          "expectedCount": 1,
+          "evidence": "browser_fragment_required"
+        }
+      }
+    },
+    {
+      "captureOrder": 12,
+      "workplanSequence": 18,
+      "sourceTemplateId": "30914491",
+      "sourceName": "Int. Finishes - Tiling",
+      "temporaryBuildertrendTargetName": "BT Int. Finishes - Tiling",
+      "wave": "remaining-sequences-13-40",
+      "moduleCounts": {
+        "tasks": 16,
+        "scheduleItems": 3,
+        "selections": 5,
+        "bidPackages": 1
+      },
+      "totalWorkItems": 25,
+      "workplanStatus": "pending",
+      "fragmentPath": "scripts/fixtures/buildertrend-template-content-next-batch/fragments/18-30914491.capture.json",
+      "captureGates": {
+        "tasks": {
+          "expectedCount": 16,
+          "evidence": "browser_fragment_required"
+        },
+        "scheduleItems": {
+          "expectedCount": 3,
+          "evidence": "reviewed_source_capture"
+        },
+        "selections": {
+          "expectedCount": 5,
+          "evidence": "browser_fragment_required"
+        },
+        "bidPackages": {
+          "expectedCount": 1,
+          "evidence": "browser_fragment_required"
+        }
+      }
+    },
+    {
+      "captureOrder": 13,
+      "workplanSequence": 19,
+      "sourceTemplateId": "12978732",
+      "sourceName": "Ext. Finishes - Manuf. Gutters",
+      "temporaryBuildertrendTargetName": "BT Ext. Finishes - Manuf. Gutters",
+      "wave": "remaining-sequences-13-40",
+      "moduleCounts": {
+        "tasks": 17,
+        "scheduleItems": 2,
+        "selections": 2,
+        "bidPackages": 1
+      },
+      "totalWorkItems": 22,
+      "workplanStatus": "pending",
+      "fragmentPath": "scripts/fixtures/buildertrend-template-content-next-batch/fragments/19-12978732.capture.json",
+      "captureGates": {
+        "tasks": {
+          "expectedCount": 17,
+          "evidence": "browser_fragment_required"
+        },
+        "scheduleItems": {
+          "expectedCount": 2,
+          "evidence": "reviewed_source_capture"
+        },
+        "selections": {
+          "expectedCount": 2,
+          "evidence": "browser_fragment_required"
+        },
+        "bidPackages": {
+          "expectedCount": 1,
+          "evidence": "browser_fragment_required"
+        }
+      }
+    },
+    {
+      "captureOrder": 14,
+      "workplanSequence": 20,
+      "sourceTemplateId": "12858966",
+      "sourceName": "Concrete - Piers Assembly",
+      "temporaryBuildertrendTargetName": "BT Concrete - Piers Assembly",
+      "wave": "remaining-sequences-13-40",
+      "moduleCounts": {
+        "tasks": 16,
+        "scheduleItems": 5,
+        "selections": 0,
+        "bidPackages": 0
+      },
+      "totalWorkItems": 21,
+      "workplanStatus": "pending",
+      "fragmentPath": "scripts/fixtures/buildertrend-template-content-next-batch/fragments/20-12858966.capture.json",
+      "captureGates": {
+        "tasks": {
+          "expectedCount": 16,
+          "evidence": "browser_fragment_required"
+        },
+        "scheduleItems": {
+          "expectedCount": 5,
+          "evidence": "reviewed_source_capture"
+        }
+      }
+    },
+    {
+      "captureOrder": 15,
+      "workplanSequence": 21,
+      "sourceTemplateId": "12649292",
+      "sourceName": "Framing - Exterior Wall Assembly",
+      "temporaryBuildertrendTargetName": "BT Framing - Exterior Wall Assembly",
+      "wave": "remaining-sequences-13-40",
+      "moduleCounts": {
+        "tasks": 16,
+        "scheduleItems": 2,
+        "selections": 0,
+        "bidPackages": 0
+      },
+      "totalWorkItems": 18,
+      "workplanStatus": "pending",
+      "fragmentPath": "scripts/fixtures/buildertrend-template-content-next-batch/fragments/21-12649292.capture.json",
+      "captureGates": {
+        "tasks": {
+          "expectedCount": 16,
+          "evidence": "browser_fragment_required"
+        },
+        "scheduleItems": {
+          "expectedCount": 2,
+          "evidence": "reviewed_source_capture"
+        }
+      }
+    },
+    {
+      "captureOrder": 16,
+      "workplanSequence": 22,
+      "sourceTemplateId": "12650557",
+      "sourceName": "Earthwork - Post-Frost Wall Earthwork",
+      "temporaryBuildertrendTargetName": "BT Earthwork - Post-Frost Wall Earthwork",
+      "wave": "remaining-sequences-13-40",
+      "moduleCounts": {
+        "tasks": 12,
+        "scheduleItems": 4,
+        "selections": 0,
+        "bidPackages": 1
+      },
+      "totalWorkItems": 17,
+      "workplanStatus": "pending",
+      "fragmentPath": "scripts/fixtures/buildertrend-template-content-next-batch/fragments/22-12650557.capture.json",
+      "captureGates": {
+        "tasks": {
+          "expectedCount": 12,
+          "evidence": "browser_fragment_required"
+        },
+        "scheduleItems": {
+          "expectedCount": 4,
+          "evidence": "reviewed_source_capture"
+        },
+        "bidPackages": {
+          "expectedCount": 1,
+          "evidence": "browser_fragment_required"
+        }
+      }
+    },
+    {
+      "captureOrder": 17,
+      "workplanSequence": 23,
+      "sourceTemplateId": "30919251",
+      "sourceName": "Framing - Overhead Door Installation",
+      "temporaryBuildertrendTargetName": "BT Framing - Overhead Door Installation",
+      "wave": "remaining-sequences-13-40",
+      "moduleCounts": {
+        "tasks": 13,
+        "scheduleItems": 2,
+        "selections": 1,
+        "bidPackages": 1
+      },
+      "totalWorkItems": 17,
+      "workplanStatus": "pending",
+      "fragmentPath": "scripts/fixtures/buildertrend-template-content-next-batch/fragments/23-30919251.capture.json",
+      "captureGates": {
+        "tasks": {
+          "expectedCount": 13,
+          "evidence": "browser_fragment_required"
+        },
+        "scheduleItems": {
+          "expectedCount": 2,
+          "evidence": "reviewed_source_capture"
+        },
+        "selections": {
+          "expectedCount": 1,
+          "evidence": "browser_fragment_required"
+        },
+        "bidPackages": {
+          "expectedCount": 1,
+          "evidence": "browser_fragment_required"
+        }
+      }
+    },
+    {
+      "captureOrder": 18,
+      "workplanSequence": 24,
+      "sourceTemplateId": "12650484",
+      "sourceName": "Framing - Exterior Man Door Installation",
+      "temporaryBuildertrendTargetName": "BT Framing - Exterior Man Door Installation",
+      "wave": "remaining-sequences-13-40",
+      "moduleCounts": {
+        "tasks": 11,
+        "scheduleItems": 2,
+        "selections": 1,
+        "bidPackages": 1
+      },
+      "totalWorkItems": 15,
+      "workplanStatus": "pending",
+      "fragmentPath": "scripts/fixtures/buildertrend-template-content-next-batch/fragments/24-12650484.capture.json",
+      "captureGates": {
+        "tasks": {
+          "expectedCount": 11,
+          "evidence": "browser_fragment_required"
+        },
+        "scheduleItems": {
+          "expectedCount": 2,
+          "evidence": "reviewed_source_capture"
+        },
+        "selections": {
+          "expectedCount": 1,
+          "evidence": "browser_fragment_required"
+        },
+        "bidPackages": {
+          "expectedCount": 1,
+          "evidence": "browser_fragment_required"
+        }
+      }
+    },
+    {
+      "captureOrder": 19,
+      "workplanSequence": 25,
+      "sourceTemplateId": "12650395",
+      "sourceName": "MEP - Plumbing Base",
+      "temporaryBuildertrendTargetName": "BT MEP - Plumbing Base",
+      "wave": "remaining-sequences-13-40",
+      "moduleCounts": {
+        "tasks": 9,
+        "scheduleItems": 4,
+        "selections": 0,
+        "bidPackages": 1
+      },
+      "totalWorkItems": 14,
+      "workplanStatus": "pending",
+      "fragmentPath": "scripts/fixtures/buildertrend-template-content-next-batch/fragments/25-12650395.capture.json",
+      "captureGates": {
+        "tasks": {
+          "expectedCount": 9,
+          "evidence": "browser_fragment_required"
+        },
+        "scheduleItems": {
+          "expectedCount": 4,
+          "evidence": "reviewed_source_capture"
+        },
+        "bidPackages": {
+          "expectedCount": 1,
+          "evidence": "browser_fragment_required"
+        }
+      }
+    },
+    {
+      "captureOrder": 20,
+      "workplanSequence": 26,
+      "sourceTemplateId": "12650713",
+      "sourceName": "Framing - Stair Installation",
+      "temporaryBuildertrendTargetName": "BT Framing - Stair Installation",
+      "wave": "remaining-sequences-13-40",
+      "moduleCounts": {
+        "tasks": 10,
+        "scheduleItems": 3,
+        "selections": 0,
+        "bidPackages": 0
+      },
+      "totalWorkItems": 13,
+      "workplanStatus": "pending",
+      "fragmentPath": "scripts/fixtures/buildertrend-template-content-next-batch/fragments/26-12650713.capture.json",
+      "captureGates": {
+        "tasks": {
+          "expectedCount": 10,
+          "evidence": "browser_fragment_required"
+        },
+        "scheduleItems": {
+          "expectedCount": 3,
+          "evidence": "reviewed_source_capture"
+        }
+      }
+    },
+    {
+      "captureOrder": 21,
+      "workplanSequence": 27,
+      "sourceTemplateId": "28466146",
+      "sourceName": "Int. Finishes - Interior Doors",
+      "temporaryBuildertrendTargetName": "BT Int. Finishes - Interior Doors",
+      "wave": "remaining-sequences-13-40",
+      "moduleCounts": {
+        "tasks": 5,
+        "scheduleItems": 3,
+        "selections": 4,
+        "bidPackages": 0
+      },
+      "totalWorkItems": 12,
+      "workplanStatus": "pending",
+      "fragmentPath": "scripts/fixtures/buildertrend-template-content-next-batch/fragments/27-28466146.capture.json",
+      "captureGates": {
+        "tasks": {
+          "expectedCount": 5,
+          "evidence": "browser_fragment_required"
+        },
+        "scheduleItems": {
+          "expectedCount": 3,
+          "evidence": "reviewed_source_capture"
+        },
+        "selections": {
+          "expectedCount": 4,
+          "evidence": "browser_fragment_required"
+        }
+      }
+    },
+    {
+      "captureOrder": 22,
+      "workplanSequence": 28,
+      "sourceTemplateId": "12979213",
+      "sourceName": "Int. Finishes - Stain & Seal Concrete Floors",
+      "temporaryBuildertrendTargetName": "BT Int. Finishes - Stain & Seal Concrete Floors",
+      "wave": "remaining-sequences-13-40",
+      "moduleCounts": {
+        "tasks": 7,
+        "scheduleItems": 5,
+        "selections": 0,
+        "bidPackages": 0
+      },
+      "totalWorkItems": 12,
+      "workplanStatus": "pending",
+      "fragmentPath": "scripts/fixtures/buildertrend-template-content-next-batch/fragments/28-12979213.capture.json",
+      "captureGates": {
+        "tasks": {
+          "expectedCount": 7,
+          "evidence": "browser_fragment_required"
+        },
+        "scheduleItems": {
+          "expectedCount": 5,
+          "evidence": "reviewed_source_capture"
+        }
+      }
+    },
+    {
+      "captureOrder": 23,
+      "workplanSequence": 29,
+      "sourceTemplateId": "13001090",
+      "sourceName": "Earthwork - Perimeter Drain",
+      "temporaryBuildertrendTargetName": "BT Earthwork - Perimeter Drain",
+      "wave": "remaining-sequences-13-40",
+      "moduleCounts": {
+        "tasks": 4,
+        "scheduleItems": 3,
+        "selections": 0,
+        "bidPackages": 0
+      },
+      "totalWorkItems": 7,
+      "workplanStatus": "pending",
+      "fragmentPath": "scripts/fixtures/buildertrend-template-content-next-batch/fragments/29-13001090.capture.json",
+      "captureGates": {
+        "tasks": {
+          "expectedCount": 4,
+          "evidence": "browser_fragment_required"
+        },
+        "scheduleItems": {
+          "expectedCount": 3,
+          "evidence": "reviewed_source_capture"
+        }
+      }
+    },
+    {
+      "captureOrder": 24,
+      "workplanSequence": 30,
+      "sourceTemplateId": "12978590",
+      "sourceName": "Framing - Rough inspection w/ Draft & Firestop",
+      "temporaryBuildertrendTargetName": "BT Framing - Rough inspection w/ Draft & Firestop",
+      "wave": "remaining-sequences-13-40",
+      "moduleCounts": {
+        "tasks": 3,
+        "scheduleItems": 2,
+        "selections": 0,
+        "bidPackages": 0
+      },
+      "totalWorkItems": 5,
+      "workplanStatus": "pending",
+      "fragmentPath": "scripts/fixtures/buildertrend-template-content-next-batch/fragments/30-12978590.capture.json",
+      "captureGates": {
+        "tasks": {
+          "expectedCount": 3,
+          "evidence": "browser_fragment_required"
+        },
+        "scheduleItems": {
+          "expectedCount": 2,
+          "evidence": "reviewed_source_capture"
+        }
+      }
+    },
+    {
+      "captureOrder": 25,
+      "workplanSequence": 31,
+      "sourceTemplateId": "36619183",
+      "sourceName": "Int. Finishes - Painting/Staining",
+      "temporaryBuildertrendTargetName": "BT Int. Finishes - Painting/Staining",
+      "wave": "remaining-sequences-13-40",
+      "moduleCounts": {
+        "tasks": 0,
+        "scheduleItems": 0,
+        "selections": 8,
+        "bidPackages": 1
+      },
+      "totalWorkItems": 9,
+      "workplanStatus": "pending",
+      "fragmentPath": "scripts/fixtures/buildertrend-template-content-next-batch/fragments/31-36619183.capture.json",
+      "captureGates": {
+        "selections": {
+          "expectedCount": 8,
+          "evidence": "browser_fragment_required"
+        },
+        "bidPackages": {
+          "expectedCount": 1,
+          "evidence": "browser_fragment_required"
+        }
+      }
+    },
+    {
+      "captureOrder": 26,
+      "workplanSequence": 32,
+      "sourceTemplateId": "38452172",
+      "sourceName": "Int. Finishes - Flooring",
+      "temporaryBuildertrendTargetName": "BT Int. Finishes - Flooring",
+      "wave": "remaining-sequences-13-40",
+      "moduleCounts": {
+        "tasks": 0,
+        "scheduleItems": 0,
+        "selections": 3,
+        "bidPackages": 1
+      },
+      "totalWorkItems": 4,
+      "workplanStatus": "pending",
+      "fragmentPath": "scripts/fixtures/buildertrend-template-content-next-batch/fragments/32-38452172.capture.json",
+      "captureGates": {
+        "selections": {
+          "expectedCount": 3,
+          "evidence": "browser_fragment_required"
+        },
+        "bidPackages": {
+          "expectedCount": 1,
+          "evidence": "browser_fragment_required"
+        }
+      }
+    },
+    {
+      "captureOrder": 27,
+      "workplanSequence": 33,
+      "sourceTemplateId": "36618977",
+      "sourceName": "Ext. Finishes - Painting/Staining",
+      "temporaryBuildertrendTargetName": "BT Ext. Finishes - Painting/Staining",
+      "wave": "remaining-sequences-13-40",
+      "moduleCounts": {
+        "tasks": 0,
+        "scheduleItems": 0,
+        "selections": 2,
+        "bidPackages": 1
+      },
+      "totalWorkItems": 3,
+      "workplanStatus": "pending",
+      "fragmentPath": "scripts/fixtures/buildertrend-template-content-next-batch/fragments/33-36618977.capture.json",
+      "captureGates": {
+        "selections": {
+          "expectedCount": 2,
+          "evidence": "browser_fragment_required"
+        },
+        "bidPackages": {
+          "expectedCount": 1,
+          "evidence": "browser_fragment_required"
+        }
+      }
+    },
+    {
+      "captureOrder": 28,
+      "workplanSequence": 34,
+      "sourceTemplateId": "36478698",
+      "sourceName": "Framing - Quote Packages",
+      "temporaryBuildertrendTargetName": "BT Framing - Quote Packages",
+      "wave": "remaining-sequences-13-40",
+      "moduleCounts": {
+        "tasks": 0,
+        "scheduleItems": 0,
+        "selections": 0,
+        "bidPackages": 3
+      },
+      "totalWorkItems": 3,
+      "workplanStatus": "pending",
+      "fragmentPath": "scripts/fixtures/buildertrend-template-content-next-batch/fragments/34-36478698.capture.json",
+      "captureGates": {
+        "bidPackages": {
+          "expectedCount": 3,
+          "evidence": "browser_fragment_required"
+        }
+      }
+    },
+    {
+      "captureOrder": 29,
+      "workplanSequence": 35,
+      "sourceTemplateId": "36595931",
+      "sourceName": "MEP - Quotes",
+      "temporaryBuildertrendTargetName": "BT MEP - Quotes",
+      "wave": "remaining-sequences-13-40",
+      "moduleCounts": {
+        "tasks": 0,
+        "scheduleItems": 0,
+        "selections": 0,
+        "bidPackages": 3
+      },
+      "totalWorkItems": 3,
+      "workplanStatus": "pending",
+      "fragmentPath": "scripts/fixtures/buildertrend-template-content-next-batch/fragments/35-36595931.capture.json",
+      "captureGates": {
+        "bidPackages": {
+          "expectedCount": 3,
+          "evidence": "browser_fragment_required"
+        }
+      }
+    },
+    {
+      "captureOrder": 30,
+      "workplanSequence": 36,
+      "sourceTemplateId": "37180847",
+      "sourceName": "Ext. Finishes - Stone",
+      "temporaryBuildertrendTargetName": "BT Ext. Finishes - Stone",
+      "wave": "remaining-sequences-13-40",
+      "moduleCounts": {
+        "tasks": 0,
+        "scheduleItems": 0,
+        "selections": 2,
+        "bidPackages": 0
+      },
+      "totalWorkItems": 2,
+      "workplanStatus": "pending",
+      "fragmentPath": "scripts/fixtures/buildertrend-template-content-next-batch/fragments/36-37180847.capture.json",
+      "captureGates": {
+        "selections": {
+          "expectedCount": 2,
+          "evidence": "browser_fragment_required"
+        }
+      }
+    },
+    {
+      "captureOrder": 31,
+      "workplanSequence": 37,
+      "sourceTemplateId": "42924180",
+      "sourceName": "Earthwork - Radon Systems",
+      "temporaryBuildertrendTargetName": "BT Earthwork - Radon Systems",
+      "wave": "remaining-sequences-13-40",
+      "moduleCounts": {
+        "tasks": 0,
+        "scheduleItems": 0,
+        "selections": 0,
+        "bidPackages": 1
+      },
+      "totalWorkItems": 1,
+      "workplanStatus": "pending",
+      "fragmentPath": "scripts/fixtures/buildertrend-template-content-next-batch/fragments/37-42924180.capture.json",
+      "captureGates": {
+        "bidPackages": {
+          "expectedCount": 1,
+          "evidence": "browser_fragment_required"
+        }
+      }
+    },
+    {
+      "captureOrder": 32,
+      "workplanSequence": 38,
+      "sourceTemplateId": "39644707",
+      "sourceName": "Insulation",
+      "temporaryBuildertrendTargetName": "BT Insulation",
+      "wave": "remaining-sequences-13-40",
+      "moduleCounts": {
+        "tasks": 0,
+        "scheduleItems": 0,
+        "selections": 0,
+        "bidPackages": 1
+      },
+      "totalWorkItems": 1,
+      "workplanStatus": "pending",
+      "fragmentPath": "scripts/fixtures/buildertrend-template-content-next-batch/fragments/38-39644707.capture.json",
+      "captureGates": {
+        "bidPackages": {
+          "expectedCount": 1,
+          "evidence": "browser_fragment_required"
+        }
+      }
+    },
+    {
+      "captureOrder": 33,
+      "workplanSequence": 39,
+      "sourceTemplateId": "42948499",
+      "sourceName": "Int. Finishes - Bath Hardware",
+      "temporaryBuildertrendTargetName": "BT Int. Finishes - Bath Hardware",
+      "wave": "remaining-sequences-13-40",
+      "moduleCounts": {
+        "tasks": 0,
+        "scheduleItems": 0,
+        "selections": 1,
+        "bidPackages": 0
+      },
+      "totalWorkItems": 1,
+      "workplanStatus": "pending",
+      "fragmentPath": "scripts/fixtures/buildertrend-template-content-next-batch/fragments/39-42948499.capture.json",
+      "captureGates": {
+        "selections": {
+          "expectedCount": 1,
+          "evidence": "browser_fragment_required"
+        }
+      }
+    },
+    {
+      "captureOrder": 34,
+      "workplanSequence": 40,
+      "sourceTemplateId": "38452532",
+      "sourceName": "MEP - Fireplace Installation",
+      "temporaryBuildertrendTargetName": "BT MEP - Fireplace Installation",
+      "wave": "remaining-sequences-13-40",
+      "moduleCounts": {
+        "tasks": 0,
+        "scheduleItems": 0,
+        "selections": 1,
+        "bidPackages": 0
+      },
+      "totalWorkItems": 1,
+      "workplanStatus": "pending",
+      "fragmentPath": "scripts/fixtures/buildertrend-template-content-next-batch/fragments/40-38452532.capture.json",
+      "captureGates": {
+        "selections": {
+          "expectedCount": 1,
+          "evidence": "browser_fragment_required"
+        }
+      }
+    }
+  ]
+}
