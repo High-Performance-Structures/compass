@@ -132,7 +132,7 @@ test("generates one read-only preflight and postflight statement with exact scop
     })
     assert.equal(assertReadOnlyVerificationSql(build.sql), true)
     assert.equal(build.verificationPart, null)
-    assert.equal(build.verificationPartCount, 3)
+    assert.equal(build.verificationPartCount, 6)
     assert.equal(build.templateCount, 3)
     assert.equal(build.contentItemCount, 165)
     assert.equal(build.predecessorCount, 17)
@@ -154,7 +154,7 @@ test("generates one read-only preflight and postflight statement with exact scop
         verificationPart,
       })
       assert.equal(assertReadOnlyVerificationSql(part.sql), true)
-      assert.ok((part.sql.match(/UNION ALL/g) ?? []).length <= 6)
+      assert.ok((part.sql.match(/UNION ALL/g) ?? []).length <= 3)
     }
   }
 })
@@ -184,7 +184,7 @@ test("CLI scopes a D1-safe verification query to one reviewed template", async (
       phase: "preflight",
       readOnly: true,
       verificationPart: 1,
-      verificationPartCount: 3,
+      verificationPartCount: 6,
       templateCount: 1,
       contentItemCount: 51,
       predecessorCount: 7,

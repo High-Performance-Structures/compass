@@ -560,7 +560,7 @@ ORDER BY source_template_id, check_name;
   const issueClauses = sqlText
     .slice(issueBodyStart, finalSelectIndex)
     .split("\n    UNION ALL\n")
-  const clausesPerPart = 7
+  const clausesPerPart = 4
   const partCount = Math.ceil(issueClauses.length / clausesPerPart)
   if (
     verificationPart !== null &&
