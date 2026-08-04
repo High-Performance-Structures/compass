@@ -10,15 +10,22 @@ import { getEstimateTemplateEditor } from "@/app/actions/estimate-templates"
 import { EstimateTemplateEditorPanel } from "@/components/templates/estimate-template-editor"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { resolveTemplateDetailId } from "@/lib/templates/template-detail-route"
 
 export const dynamic = "force-dynamic"
 
 export default async function EstimateTemplatePage({
   params,
+  searchParams,
 }: {
   readonly params: Promise<{ id: string }>
+  readonly searchParams: Promise<{
+    readonly templateId?: string | readonly string[]
+  }>
 }): Promise<React.ReactElement> {
-  const { id } = await params
+  const [{ id: routeId }, query] = await Promise.all([params, searchParams])
+  const id = resolveTemplateDetailId(routeId, query.templateId)
+  if (!id) notFound()
   const preview = await getProjectTemplatePreview(id)
   if (!preview) notFound()
   if (preview.templateKind === "estimate") {

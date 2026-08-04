@@ -30,6 +30,7 @@ import {
 } from "@/components/ui/alert-dialog"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { templateDetailHref } from "@/lib/templates/template-detail-route"
 import {
   Select,
   SelectContent,
@@ -314,7 +315,7 @@ export function TemplateLibraryView({
                 <article key={template.id} className="grid gap-4 py-4 xl:grid-cols-[minmax(0,1fr)_24rem_auto] xl:items-center">
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
-                      <Link className="truncate font-medium hover:underline" href={`/dashboard/templates/${template.id}`}>
+                      <Link className="truncate font-medium hover:underline" href={templateDetailHref(template.id)}>
                         {template.name}
                       </Link>
                       <Badge variant="outline">
@@ -343,7 +344,7 @@ export function TemplateLibraryView({
                         <PublishTemplateButton template={template} />
                       )}
                     <Button asChild size="sm" variant="outline">
-                      <Link href={`/dashboard/templates/${template.id}`}>Open</Link>
+                      <Link href={templateDetailHref(template.id)}>Open</Link>
                     </Button>
                     {canManage && <DeleteTemplateButton template={template} />}
                   </div>
