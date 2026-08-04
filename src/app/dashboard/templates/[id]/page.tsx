@@ -10,6 +10,7 @@ import { getEstimateTemplateEditor } from "@/app/actions/estimate-templates"
 import { EstimateTemplateEditorPanel } from "@/components/templates/estimate-template-editor"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { groupTemplateChecklistItems } from "@/lib/templates/template-checklist-hierarchy"
 import { resolveTemplateDetailId } from "@/lib/templates/template-detail-route"
 
 export const dynamic = "force-dynamic"
@@ -119,6 +120,62 @@ export default async function EstimateTemplatePage({
 
           {moduleNames.map((moduleType) => {
             const items = content.filter((item) => item.moduleType === moduleType)
+            if (moduleType === "tasks") {
+              const taskGroups = groupTemplateChecklistItems(items)
+              const checklistItemCount = items.length - taskGroups.length
+              return (
+                <section key={moduleType}>
+                  <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2 border-b pb-2">
+                    <h2 className="font-semibold">Tasks and checklists</h2>
+                    <span className="text-xs text-muted-foreground">
+                      {taskGroups.length} tasks · {checklistItemCount} checklist items
+                    </span>
+                  </div>
+                  <div className="divide-y border-y">
+                    {taskGroups.map(({ task, checklistItems }) => (
+                      <article key={task.id} className="py-4">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <h3 className="font-medium">{task.title}</h3>
+                          {task.category && (
+                            <Badge variant="outline">{task.category}</Badge>
+                          )}
+                        </div>
+                        {task.description && (
+                          <p className="mt-1 whitespace-pre-wrap text-sm text-muted-foreground">
+                            {task.description}
+                          </p>
+                        )}
+                        {checklistItems.length > 0 && (
+                          <div className="mt-3 border-l-2 border-primary/40 pl-4">
+                            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                              Checklist · {checklistItems.length}
+                            </p>
+                            <ul className="mt-2 space-y-2">
+                              {checklistItems.map((checklistItem) => (
+                                <li
+                                  key={checklistItem.id}
+                                  className="grid grid-cols-[1rem_minmax(0,1fr)] gap-2 text-sm"
+                                >
+                                  <span aria-hidden="true">☐</span>
+                                  <div>
+                                    <p>{checklistItem.title}</p>
+                                    {checklistItem.description && (
+                                      <p className="mt-0.5 whitespace-pre-wrap text-xs text-muted-foreground">
+                                        {checklistItem.description}
+                                      </p>
+                                    )}
+                                  </div>
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                      </article>
+                    ))}
+                  </div>
+                </section>
+              )
+            }
             return (
               <section key={moduleType}>
                 <div className="mb-2 flex items-baseline justify-between border-b pb-2">

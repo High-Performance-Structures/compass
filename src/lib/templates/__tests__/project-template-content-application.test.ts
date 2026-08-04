@@ -65,11 +65,20 @@ describe("buildProjectTemplateContentApplication", () => {
       ],
     })
 
-    expect(result.todos).toHaveLength(2)
-    expect(result.todos[1]).toMatchObject({
-      title: "Check corner bead",
-      description: "Template checklist: Drywall QC Inspection",
-      sourceRecordId: "application-1:content-child",
+    expect(result.todos).toHaveLength(1)
+    expect(result.todos[0]).toMatchObject({
+      title: "Drywall QC Inspection",
+      description: "Checklist:\n☐ Check corner bead",
+      sourceRecordId: "application-1:content-parent",
+    })
+    expect(JSON.parse(result.todos[0]?.sourcePayloadJson ?? "{}")).toMatchObject({
+      checklistItems: [
+        {
+          templateContentItemId: "content-child",
+          sourceItemId: "task-child",
+          title: "Check corner bead",
+        },
+      ],
     })
     expect(result.selections).toEqual([
       expect.objectContaining({
@@ -140,5 +149,27 @@ describe("buildProjectTemplateContentApplication", () => {
         ],
       })
     ).toThrow("Template content has an invalid captured payload.")
+  })
+
+  it("fails instead of materializing a checklist item without its task", () => {
+    expect(() =>
+      buildProjectTemplateContentApplication({
+        applicationId: "application-4",
+        nextId: () => "created-task",
+        items: [
+          {
+            id: "orphan-content",
+            moduleType: "tasks",
+            sourceItemId: "orphan-source",
+            parentSourceItemId: "missing-parent",
+            title: "Orphan checklist item",
+            category: null,
+            description: null,
+            sortOrder: 0,
+            payloadJson: null,
+          },
+        ],
+      })
+    ).toThrow("Template checklist item references a missing parent task.")
   })
 })
