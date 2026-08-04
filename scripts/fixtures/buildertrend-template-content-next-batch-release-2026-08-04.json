@@ -1,0 +1,29 @@
+{
+  "releaseVersion": 1,
+  "generatedAt": "2026-08-04T19:00:00.000Z",
+  "sourceNextBatchManifest": "scripts/fixtures/buildertrend-template-next-batch-2026-08-04.json",
+  "sourceReviewedCapture": "scripts/fixtures/buildertrend-active-template-capture-2026-07-31.json",
+  "draftOnly": true,
+  "publish": false,
+  "templates": [
+    {
+      "sourceTemplateId": "12859981",
+      "sourceName": "Ext. Finishes - Stucco",
+      "fragmentPath": "scripts/fixtures/buildertrend-template-content-next-batch/fragments/06-12859981.capture.json",
+      "browserCaptureGates": "complete"
+    },
+    {
+      "sourceTemplateId": "12978371",
+      "sourceName": "MEP - Rough & Top Out",
+      "fragmentPath": "scripts/fixtures/buildertrend-template-content-next-batch/fragments/07-12978371.capture.json",
+      "browserCaptureGates": "complete"
+    }
+  ],
+  "excludedTemplates": [
+    {
+      "sourceTemplateId": "12581937",
+      "sourceName": "Concrete - Footer Assembly",
+      "reason": "Browser task capture is incomplete; reviewed schedule rows alone do not satisfy the release gate."
+    }
+  ]
+}

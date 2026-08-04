@@ -189,11 +189,13 @@ async function main() {
   const outputPath = optionValue(args, "--output")
   const pilotManifestPath = optionValue(args, "--pilot-manifest")
   const dryRun = args.includes("--dry-run")
+  const strictDraftOnly = args.includes("--strict-draft-only")
   if (!capturePath || !inventoryPath || (!dryRun && !outputPath)) {
     throw new Error(
       "Usage: bun scripts/build-buildertrend-template-content-sql.mjs " +
         "--inventory <reviewed-inventory.json> --capture <content.json> " +
-        "[--output <import.sql>] [--dry-run] [--pilot-manifest <reviewed-pilot.json>]"
+        "[--output <import.sql>] [--dry-run] [--pilot-manifest <reviewed-pilot.json>] " +
+        "[--strict-draft-only]"
     )
   }
   let capture = JSON.parse(await readFile(capturePath, "utf8"))
@@ -391,8 +393,10 @@ async function main() {
     }
     statements.push(
       `UPDATE project_templates SET ` +
-        `review_status=CASE WHEN review_status='verified' THEN review_status ELSE 'content_captured' END, ` +
-        `lifecycle_status=CASE WHEN review_status='verified' THEN lifecycle_status ELSE 'draft' END, ` +
+        (strictDraftOnly
+          ? `review_status='content_captured', lifecycle_status='draft', `
+          : `review_status=CASE WHEN review_status='verified' THEN review_status ELSE 'content_captured' END, ` +
+            `lifecycle_status=CASE WHEN review_status='verified' THEN lifecycle_status ELSE 'draft' END, `) +
         `source_url=NULL, updated_at=${sql(capture.capturedAt)} ` +
       `WHERE source_system='buildertrend' AND source_template_id=${sql(template.sourceTemplateId)} ` +
         `AND EXISTS (SELECT 1 FROM project_template_versions ` +
@@ -408,6 +412,7 @@ async function main() {
         templateCount: capture.templates.length,
         ...totals,
         excludedArchivedCount: capture.excludedArchivedCount ?? null,
+        ...(strictDraftOnly ? { draftOnly: true } : {}),
         ...(pilot
           ? {
               pilotTemplateCount: pilot.capture.templates.length,

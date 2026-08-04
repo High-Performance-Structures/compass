@@ -133,6 +133,156 @@ export async function readPilotContentFragments(directory) {
   return documents
 }
 
+export function assembleBuildertrendTemplateContentSubset({
+  templateEntries,
+  reviewedCapture,
+  documents,
+  excludedArchivedCount,
+  allowIncomplete = false,
+  capturedAt = new Date().toISOString(),
+  incompleteLabel = "Template content",
+  assemblyMetadata = {},
+}) {
+  if (!Array.isArray(templateEntries) || templateEntries.length === 0) {
+    throw new Error("Template content subset must contain at least one template.")
+  }
+  if (!isRecord(reviewedCapture) || !Array.isArray(reviewedCapture.templates)) {
+    throw new Error("Reviewed capture must contain templates.")
+  }
+
+  const reviewedById = new Map()
+  for (const [index, template] of reviewedCapture.templates.entries()) {
+    if (!isRecord(template)) throw new Error(`reviewedCapture.templates[${index}] must be an object.`)
+    const id = requiredString(template.sourceTemplateId, `reviewedCapture.templates[${index}].sourceTemplateId`)
+    if (reviewedById.has(id)) throw new Error(`Reviewed capture has duplicate sourceTemplateId ${id}.`)
+    if (/^archive/i.test(requiredString(template.name, `reviewedCapture.templates[${index}].name`))) {
+      throw new Error(`Archived reviewed template ${template.name} is not allowed.`)
+    }
+    reviewedById.set(id, template)
+  }
+
+  const contentById = new Map()
+  for (const [index, entry] of templateEntries.entries()) {
+    if (!isRecord(entry)) throw new Error(`templateEntries[${index}] must be an object.`)
+    const id = requiredString(entry.sourceTemplateId, `templateEntries[${index}].sourceTemplateId`)
+    const name = requiredString(entry.sourceName, `templateEntries[${index}].sourceName`)
+    const reviewed = reviewedById.get(id)
+    if (!reviewed || reviewed.name !== name) {
+      throw new Error(`Template content identity mismatch for ${id} (${name}).`)
+    }
+    if (contentById.has(id)) throw new Error(`Template content duplicates sourceTemplateId ${id}.`)
+    const moduleCounts = expectedModuleCounts(reviewed, `reviewed template ${id}`)
+    const seed = { sourceTemplateId: id, name, sourceName: name, moduleCounts }
+    // Browser fragments never recreate schedule data; the reviewed 40-template
+    // capture remains the sole source for schedule rows and dependencies.
+    const scheduleItems = reviewedScheduleItems(reviewed, `reviewed template ${id}`)
+    if (moduleCounts.scheduleItems > 0 && scheduleItems) {
+      seed.schedule = structuredClone(reviewed.schedule)
+      seed.scheduleItems = scheduleItems
+    }
+    contentById.set(id, seed)
+  }
+
+  const exceptions = []
+  const exceptionKeys = new Set()
+  for (const { source, document } of documents) {
+    const normalized = normalizeFragment(document, source)
+    if (!Array.isArray(normalized.conversionExceptions)) {
+      throw new Error(`${source}.conversionExceptions must be an array.`)
+    }
+    for (const [index, template] of normalized.templates.entries()) {
+      if (!isRecord(template)) throw new Error(`${source}.templates[${index}] must be an object.`)
+      const id = requiredString(template.sourceTemplateId, `${source}.templates[${index}].sourceTemplateId`)
+      const current = contentById.get(id)
+      if (!current) {
+        throw new Error(
+          `${source} contains non-pilot or archived template ${id} outside the approved content subset.`
+        )
+      }
+      const suppliedName = template.name ?? template.sourceName
+      if (suppliedName !== current.name) throw new Error(`${source} has an identity mismatch for ${id}.`)
+      if (template.moduleCounts !== undefined) {
+        const suppliedCounts = expectedModuleCounts(template, `${source}.templates[${index}]`)
+        if (JSON.stringify(suppliedCounts) !== JSON.stringify(current.moduleCounts)) {
+          throw new Error(`${source} has module-count metadata that conflicts with reviewed source ${id}.`)
+        }
+      }
+      contentById.set(id, mergeTemplate(current, template, `${source}.templates[${index}]`))
+    }
+    for (const [index, exception] of normalized.conversionExceptions.entries()) {
+      if (!isRecord(exception)) throw new Error(`${source}.conversionExceptions[${index}] must be an object.`)
+      const templateId = requiredString(
+        exception.templateSourceTemplateId,
+        `${source}.conversionExceptions[${index}].templateSourceTemplateId`
+      )
+      if (!contentById.has(templateId)) {
+        throw new Error(`${source} contains an exception outside the approved content subset: ${templateId}.`)
+      }
+      const key = JSON.stringify(exception)
+      if (!exceptionKeys.has(key)) {
+        exceptionKeys.add(key)
+        exceptions.push(structuredClone(exception))
+      }
+    }
+  }
+
+  const missing = []
+  const templates = []
+  const assembledById = new Map()
+  for (const entry of templateEntries) {
+    const template = contentById.get(entry.sourceTemplateId)
+    if (!template) throw new Error(`Template ${entry.sourceTemplateId} disappeared during assembly.`)
+    for (const moduleName of PILOT_MODULES) {
+      const items = moduleItems(template, moduleName)
+      const expected = template.moduleCounts[moduleName]
+      const actual = items?.length ?? 0
+      if (actual !== expected) {
+        missing.push({ sourceTemplateId: template.sourceTemplateId, name: template.name, module: moduleName, expected, actual })
+      } else if (items) {
+        assertUniqueSourceItemIds(items, `${template.name}.${moduleName}`)
+      }
+    }
+    templates.push(template)
+    assembledById.set(template.sourceTemplateId, template)
+  }
+  for (const [index, exception] of exceptions.entries()) {
+    const path = `conversionExceptions[${index}]`
+    const templateId = requiredString(exception.templateSourceTemplateId, `${path}.templateSourceTemplateId`)
+    const moduleName = requiredString(exception.module, `${path}.module`)
+    if (!PILOT_MODULES.includes(moduleName)) {
+      throw new Error(`${path}.module must be one of ${PILOT_MODULES.join(", ")}.`)
+    }
+    requiredString(exception.field, `${path}.field`)
+    requiredString(exception.loss, `${path}.loss`)
+    requiredString(exception.recoveryPlan, `${path}.recoveryPlan`)
+    if (!("sourceValue" in exception)) throw new Error(`${path}.sourceValue is required.`)
+    if (!("sourceItemId" in exception)) throw new Error(`${path}.sourceItemId is required; use null for module-level exceptions.`)
+    if (exception.sourceItemId !== null) {
+      const sourceItemId = requiredString(exception.sourceItemId, `${path}.sourceItemId`)
+      const template = assembledById.get(templateId)
+      const items = template ? moduleItems(template, moduleName) : null
+      if (!items?.some((item) => item.sourceItemId === sourceItemId)) {
+        throw new Error(`${path}.sourceItemId does not identify captured ${moduleName} content.`)
+      }
+    }
+  }
+  if (!allowIncomplete && missing.length > 0) {
+    const details = missing
+      .map((item) => `${item.name} ${item.module}: expected ${item.expected}, found ${item.actual}`)
+      .join("; ")
+    throw new Error(`${incompleteLabel} is incomplete: ${details}.`)
+  }
+
+  return {
+    fixtureVersion: 3,
+    capturedAt,
+    excludedArchivedCount,
+    conversionExceptions: exceptions,
+    templates,
+    assembly: { complete: missing.length === 0, ...assemblyMetadata, missing },
+  }
+}
+
 export function assembleBuildertrendTemplateContentPilot({
   manifest,
   reviewedCapture,
@@ -163,158 +313,27 @@ export function assembleBuildertrendTemplateContentPilot({
     throw new Error("Reviewed capture must retain all 40 active templates and exclude 27 archived templates.")
   }
 
-  const reviewedById = new Map()
-  for (const [index, template] of reviewedCapture.templates.entries()) {
-    if (!isRecord(template)) throw new Error(`reviewedCapture.templates[${index}] must be an object.`)
-    const id = requiredString(template.sourceTemplateId, `reviewedCapture.templates[${index}].sourceTemplateId`)
-    if (reviewedById.has(id)) throw new Error(`Reviewed capture has duplicate sourceTemplateId ${id}.`)
-    if (/^archive/i.test(requiredString(template.name, `reviewedCapture.templates[${index}].name`))) {
-      throw new Error(`Archived reviewed template ${template.name} is not allowed.`)
-    }
-    reviewedById.set(id, template)
-  }
-
-  const pilotById = new Map()
-  for (const [index, entry] of manifest.templates.entries()) {
-    if (!isRecord(entry)) throw new Error(`manifest.templates[${index}] must be an object.`)
-    const id = requiredString(entry.sourceTemplateId, `manifest.templates[${index}].sourceTemplateId`)
-    const name = requiredString(entry.sourceName, `manifest.templates[${index}].sourceName`)
-    const reviewed = reviewedById.get(id)
-    if (!reviewed || reviewed.name !== name) {
-      throw new Error(`Pilot manifest identity mismatch for ${id} (${name}).`)
-    }
-    if (pilotById.has(id)) throw new Error(`Pilot manifest duplicates sourceTemplateId ${id}.`)
-    const moduleCounts = expectedModuleCounts(reviewed, `reviewed template ${id}`)
-    const seed = {
-      sourceTemplateId: id,
-      name,
-      sourceName: name,
-      moduleCounts,
-    }
-    // Schedule data was already captured in the reviewed 40-template source fixture.
-    // Reuse that evidence instead of asking browser capture work to recreate it.
-    const scheduleItems = reviewedScheduleItems(reviewed, `reviewed template ${id}`)
-    if (moduleCounts.scheduleItems > 0 && scheduleItems) {
-      seed.schedule = structuredClone(reviewed.schedule)
-      seed.scheduleItems = scheduleItems
-    }
-    pilotById.set(id, seed)
-  }
-  if (pilotById.size !== scope.pilotTemplatesIncluded) {
-    throw new Error("Pilot manifest must contain exactly six unique templates.")
-  }
-
-  const exceptions = []
-  const exceptionKeys = new Set()
-  for (const { source, document } of documents) {
-    const normalized = normalizeFragment(document, source)
-    if (!Array.isArray(normalized.conversionExceptions)) {
-      throw new Error(`${source}.conversionExceptions must be an array.`)
-    }
-    for (const [index, template] of normalized.templates.entries()) {
-      if (!isRecord(template)) throw new Error(`${source}.templates[${index}] must be an object.`)
-      const id = requiredString(template.sourceTemplateId, `${source}.templates[${index}].sourceTemplateId`)
-      const current = pilotById.get(id)
-      if (!current) {
-        throw new Error(`${source} contains non-pilot or archived template ${id}.`)
-      }
-      const suppliedName = template.name ?? template.sourceName
-      if (suppliedName !== current.name) {
-        throw new Error(`${source} has an identity mismatch for ${id}.`)
-      }
-      if (template.moduleCounts !== undefined) {
-        const suppliedCounts = expectedModuleCounts(template, `${source}.templates[${index}]`)
-        if (JSON.stringify(suppliedCounts) !== JSON.stringify(current.moduleCounts)) {
-          throw new Error(`${source} has module-count metadata that conflicts with reviewed source ${id}.`)
-        }
-      }
-      pilotById.set(id, mergeTemplate(current, template, `${source}.templates[${index}]`))
-    }
-    for (const [index, exception] of normalized.conversionExceptions.entries()) {
-      if (!isRecord(exception)) throw new Error(`${source}.conversionExceptions[${index}] must be an object.`)
-      const templateId = requiredString(
-        exception.templateSourceTemplateId,
-        `${source}.conversionExceptions[${index}].templateSourceTemplateId`
-      )
-      if (!pilotById.has(templateId)) {
-        throw new Error(`${source} contains an exception for non-pilot or archived template ${templateId}.`)
-      }
-      const key = JSON.stringify(exception)
-      if (!exceptionKeys.has(key)) {
-        exceptionKeys.add(key)
-        exceptions.push(structuredClone(exception))
-      }
-    }
-  }
-
-  const missing = []
-  const templates = []
-  const assembledById = new Map()
-  for (const entry of manifest.templates) {
-    const template = pilotById.get(entry.sourceTemplateId)
-    if (!template) throw new Error(`Pilot template ${entry.sourceTemplateId} disappeared during assembly.`)
-    for (const moduleName of PILOT_MODULES) {
-      const items = moduleItems(template, moduleName)
-      const expected = template.moduleCounts[moduleName]
-      const actual = items?.length ?? 0
-      if (actual !== expected) {
-        missing.push({ sourceTemplateId: template.sourceTemplateId, name: template.name, module: moduleName, expected, actual })
-        continue
-      }
-      if (items) assertUniqueSourceItemIds(items, `${template.name}.${moduleName}`)
-    }
-    templates.push(template)
-    assembledById.set(template.sourceTemplateId, template)
-  }
-  for (const [index, exception] of exceptions.entries()) {
-    const path = `conversionExceptions[${index}]`
-    const templateId = requiredString(exception.templateSourceTemplateId, `${path}.templateSourceTemplateId`)
-    const moduleName = requiredString(exception.module, `${path}.module`)
-    if (!PILOT_MODULES.includes(moduleName)) {
-      throw new Error(`${path}.module must be one of ${PILOT_MODULES.join(", ")}.`)
-    }
-    requiredString(exception.field, `${path}.field`)
-    requiredString(exception.loss, `${path}.loss`)
-    requiredString(exception.recoveryPlan, `${path}.recoveryPlan`)
-    if (!("sourceValue" in exception)) throw new Error(`${path}.sourceValue is required.`)
-    if (!("sourceItemId" in exception)) throw new Error(`${path}.sourceItemId is required; use null for module-level exceptions.`)
-    if (exception.sourceItemId !== null) {
-      const sourceItemId = requiredString(exception.sourceItemId, `${path}.sourceItemId`)
-      const template = assembledById.get(templateId)
-      const items = template ? moduleItems(template, moduleName) : null
-      if (!items?.some((item) => item.sourceItemId === sourceItemId)) {
-        throw new Error(`${path}.sourceItemId does not identify captured ${moduleName} content.`)
-      }
-    }
-  }
-  if (!allowIncomplete && missing.length > 0) {
-    const details = missing
-      .map((item) => `${item.name} ${item.module}: expected ${item.expected}, found ${item.actual}`)
-      .join("; ")
-    throw new Error(`Six-template pilot content is incomplete: ${details}.`)
-  }
-
-  return {
-    fixtureVersion: 3,
-    capturedAt,
+  return assembleBuildertrendTemplateContentSubset({
+    templateEntries: manifest.templates,
+    reviewedCapture,
+    documents,
     excludedArchivedCount: scope.archivedTemplatesExcluded,
-    conversionExceptions: exceptions,
-    templates,
-    assembly: {
-      complete: missing.length === 0,
-      pilotTemplateCount: templates.length,
+    allowIncomplete,
+    capturedAt,
+    incompleteLabel: "Six-template pilot content",
+    assemblyMetadata: {
+      pilotTemplateCount: manifest.templates.length,
       remainingActiveTemplatesUnverified: scope.remainingActiveTemplatesUnverified,
-      missing,
     },
-  }
+  })
 }
 
-export function buildBuildertrendTemplateContentPilotInventory(capture) {
+export function buildBuildertrendTemplateContentInventory(capture, label = "Content") {
   if (!isRecord(capture) || !Array.isArray(capture.templates)) {
-    throw new Error("Assembled pilot capture must contain templates.")
+    throw new Error(`Assembled ${label.toLowerCase()} capture must contain templates.`)
   }
   if (!isRecord(capture.assembly) || capture.assembly.complete !== true) {
-    throw new Error("Pilot inventory cannot be emitted from an incomplete content capture.")
+    throw new Error(`${label} inventory cannot be emitted from an incomplete content capture.`)
   }
   return {
     capturedAt: capture.capturedAt,
@@ -329,6 +348,10 @@ export function buildBuildertrendTemplateContentPilotInventory(capture) {
       moduleCounts: expectedModuleCounts(template, `capture.templates[${index}]`),
     })),
   }
+}
+
+export function buildBuildertrendTemplateContentPilotInventory(capture) {
+  return buildBuildertrendTemplateContentInventory(capture, "Pilot")
 }
 
 export function pilotFragmentFileName(sourceTemplateId, sourceName) {
