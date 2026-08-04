@@ -111,14 +111,16 @@ count-verified content capture can be converted with:
 
 ```bash
 bun scripts/build-buildertrend-template-content-sql.mjs \
+  --inventory scripts/fixtures/buildertrend-active-template-capture-2026-07-31.json \
   --capture <buildertrend-template-content.json> \
   --output <reviewed-content-import.sql>
 ```
 
-The content importer rejects archived templates and rejects any task,
+The content importer requires exact coverage of all 40 reviewed active
+template IDs, rejects archived or unexpected templates, and rejects any task,
 selection, or bid-package module whose captured item count differs from the
-Buildertrend module count. Buildertrend URLs are removed recursively from both
-display content and stored payloads. Template source links are no longer
+reviewed Buildertrend inventory. Buildertrend URLs are removed recursively from
+both display content and stored payloads. Template source links are no longer
 exposed in Compass.
 
 Internal staff can classify templates by department (ORC, HPS, Nu-Tech, or
@@ -151,3 +153,12 @@ Schedule definitions are complete. Task/checklist, selection-choice, and bid
 package content must pass exact module-count reconciliation before the content
 import is generated or applied. Financial features remain definitions until
 their Sage mappings and approval behavior are explicitly reviewed.
+
+Buildertrend does not expose a single spreadsheet export for a project
+template. In the authenticated template workspace, Bid Packages offers a
+template-scoped Excel export, Selections offers a print report, Schedule offers
+import/copy actions only, and the documented Tasks Excel action is not exposed
+in the template-scoped task list. A partial export must not be treated as a
+complete template capture. The remaining modules therefore require either a
+Buildertrend Data Entry/Support export or a count-reconciled authenticated
+capture before the verified Compass import can run.

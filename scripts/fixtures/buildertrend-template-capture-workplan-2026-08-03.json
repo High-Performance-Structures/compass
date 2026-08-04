@@ -1,0 +1,775 @@
+{
+  "manifestVersion": 1,
+  "generatedAt": "2026-08-03",
+  "sourceCapture": {
+    "path": "scripts/fixtures/buildertrend-active-template-capture-2026-07-31.json",
+    "capturedAt": "2026-08-03T15:30:00.000Z",
+    "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates"
+  },
+  "scope": {
+    "activeTemplatesIncluded": 40,
+    "archivedTemplatesExcluded": 27,
+    "archivedTemplatesIncluded": 0,
+    "approach": "one source template per temporary Buildertrend target"
+  },
+  "status": "pending",
+  "aggregateTotals": {
+    "tasks": 739,
+    "scheduleItems": 163,
+    "selections": 155,
+    "bidPackages": 30,
+    "totalWorkItems": 1087
+  },
+  "processingBatches": [
+    {
+      "sequence": 1,
+      "id": "batch-01",
+      "name": "Schedule-rich and highest-value",
+      "intent": "Validate the schedule-bearing templates with the largest combined workload first.",
+      "ids": [
+        "12978716",
+        "32043577",
+        "12667545",
+        "12540389",
+        "30907034",
+        "12859981",
+        "12978371",
+        "12581937",
+        "12594475",
+        "30294726",
+        "30917204",
+        "12646335"
+      ],
+      "templateCount": 12
+    },
+    {
+      "sequence": 2,
+      "id": "batch-02",
+      "name": "Remaining schedule-bearing",
+      "intent": "Complete the remaining schedule templates using the same one-source-per-temporary-target procedure.",
+      "ids": [
+        "12650792",
+        "12796241",
+        "12819873",
+        "12649495",
+        "12650427",
+        "30914491",
+        "12978732",
+        "12858966",
+        "12649292",
+        "12650557",
+        "30919251",
+        "12650484",
+        "12650395",
+        "12650713",
+        "28466146",
+        "12979213",
+        "13001090",
+        "12978590"
+      ],
+      "templateCount": 18
+    },
+    {
+      "sequence": 3,
+      "id": "batch-03",
+      "name": "Module-rich without schedule",
+      "intent": "Capture bid-package and selection-heavy templates after the schedule work.",
+      "ids": [
+        "36619183",
+        "38452172",
+        "36618977",
+        "36478698",
+        "36595931",
+        "37180847",
+        "42924180",
+        "39644707",
+        "42948499",
+        "38452532"
+      ],
+      "templateCount": 10
+    }
+  ],
+  "templates": [
+    {
+      "sequence": 1,
+      "batchId": "batch-01",
+      "sourceTemplateId": "12978716",
+      "sourceName": "Ext. Finishes - Roofing",
+      "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/12978716",
+      "temporaryBuildertrendTargetName": "BT Ext. Finishes - Roofing",
+      "moduleCounts": {
+        "tasks": 14,
+        "bidPackages": 1,
+        "scheduleItems": 2,
+        "selections": 103
+      },
+      "totalWorkItems": 120,
+      "status": "completed_with_exceptions",
+      "targetTemplateId": "45876661",
+      "capturedAt": "2026-08-04T02:57:00.000Z",
+      "capturedModuleCounts": {
+        "tasks": 14,
+        "bidPackages": 1,
+        "scheduleItems": 2,
+        "selections": 103,
+        "scheduleDurationDays": 5
+      },
+      "exceptions": [
+        "Buildertrend regenerated copied-record IDs.",
+        "Buildertrend cleared Cost Type on 2 line items that had multiple Cost Types."
+      ]
+    },
+    {
+      "sequence": 2,
+      "batchId": "batch-01",
+      "sourceTemplateId": "32043577",
+      "sourceName": "Design & Preconstruction",
+      "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/32043577",
+      "temporaryBuildertrendTargetName": "BT Design & Preconstruction",
+      "moduleCounts": {
+        "tasks": 48,
+        "scheduleItems": 34
+      },
+      "totalWorkItems": 82,
+      "status": "completed_with_exceptions",
+      "targetTemplateId": "45876671",
+      "capturedAt": "2026-08-04T03:01:00.000Z",
+      "capturedModuleCounts": {
+        "tasks": 48,
+        "bidPackages": 0,
+        "scheduleItems": 34,
+        "selections": 0,
+        "scheduleDurationDays": 128
+      },
+      "exceptions": [
+        "Buildertrend regenerated copied-record IDs."
+      ]
+    },
+    {
+      "sequence": 3,
+      "batchId": "batch-01",
+      "sourceTemplateId": "12667545",
+      "sourceName": "Concrete - LiteDeck Assembly",
+      "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/12667545",
+      "temporaryBuildertrendTargetName": "BT Concrete - LiteDeck Assembly",
+      "moduleCounts": {
+        "tasks": 50,
+        "scheduleItems": 15
+      },
+      "totalWorkItems": 65,
+      "status": "completed_with_exceptions",
+      "targetTemplateId": "45876676",
+      "capturedAt": "2026-08-04T03:03:00.000Z",
+      "capturedModuleCounts": {
+        "tasks": 50,
+        "bidPackages": 0,
+        "scheduleItems": 15,
+        "selections": 0,
+        "scheduleDurationDays": 12
+      },
+      "exceptions": [
+        "Buildertrend regenerated copied-record IDs."
+      ]
+    },
+    {
+      "sequence": 4,
+      "batchId": "batch-01",
+      "sourceTemplateId": "12540389",
+      "sourceName": "Concrete - ICF Assembly",
+      "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/12540389",
+      "temporaryBuildertrendTargetName": "BT Concrete - ICF Assembly",
+      "moduleCounts": {
+        "tasks": 59,
+        "scheduleItems": 5
+      },
+      "totalWorkItems": 64,
+      "status": "completed_with_exceptions",
+      "targetTemplateId": "45876685",
+      "capturedAt": "2026-08-04T03:06:00.000Z",
+      "capturedModuleCounts": {
+        "tasks": 59,
+        "bidPackages": 0,
+        "scheduleItems": 5,
+        "selections": 0,
+        "scheduleDurationDays": 12
+      },
+      "exceptions": [
+        "Buildertrend regenerated copied-record IDs."
+      ]
+    },
+    {
+      "sequence": 5,
+      "batchId": "batch-01",
+      "sourceTemplateId": "30907034",
+      "sourceName": "Int. Finishes - Cabinetry/Countertops",
+      "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/30907034",
+      "temporaryBuildertrendTargetName": "BT Int. Finishes - Cabinetry/Countertops",
+      "moduleCounts": {
+        "tasks": 50,
+        "bidPackages": 2,
+        "scheduleItems": 6,
+        "selections": 4
+      },
+      "totalWorkItems": 62,
+      "status": "completed_with_exceptions",
+      "targetTemplateId": "45876692",
+      "capturedAt": "2026-08-04T03:10:00.000Z",
+      "capturedModuleCounts": {"tasks": 50, "bidPackages": 2, "scheduleItems": 6, "selections": 4, "scheduleDurationDays": 18},
+      "exceptions": ["Buildertrend regenerated copied-record IDs."]
+    },
+    {
+      "sequence": 6,
+      "batchId": "batch-01",
+      "sourceTemplateId": "12859981",
+      "sourceName": "Ext. Finishes - Stucco",
+      "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/12859981",
+      "temporaryBuildertrendTargetName": "BT Ext. Finishes - Stucco",
+      "moduleCounts": {
+        "tasks": 48,
+        "bidPackages": 1,
+        "scheduleItems": 5,
+        "selections": 4
+      },
+      "totalWorkItems": 58,
+      "status": "pending",
+      "exceptions": []
+    },
+    {
+      "sequence": 7,
+      "batchId": "batch-01",
+      "sourceTemplateId": "12978371",
+      "sourceName": "MEP - Rough & Top Out",
+      "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/12978371",
+      "temporaryBuildertrendTargetName": "BT MEP - Rough & Top Out",
+      "moduleCounts": {
+        "tasks": 45,
+        "bidPackages": 2,
+        "scheduleItems": 9
+      },
+      "totalWorkItems": 56,
+      "status": "pending",
+      "exceptions": []
+    },
+    {
+      "sequence": 8,
+      "batchId": "batch-01",
+      "sourceTemplateId": "12581937",
+      "sourceName": "Concrete - Footer Assembly",
+      "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/12581937",
+      "temporaryBuildertrendTargetName": "BT Concrete - Footer Assembly",
+      "moduleCounts": {
+        "tasks": 43,
+        "scheduleItems": 8
+      },
+      "totalWorkItems": 51,
+      "status": "pending",
+      "exceptions": []
+    },
+    {
+      "sequence": 9,
+      "batchId": "batch-01",
+      "sourceTemplateId": "12594475",
+      "sourceName": "Concrete - Slab Assembly",
+      "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/12594475",
+      "temporaryBuildertrendTargetName": "BT Concrete - Slab Assembly",
+      "moduleCounts": {
+        "tasks": 36,
+        "bidPackages": 1,
+        "scheduleItems": 8
+      },
+      "totalWorkItems": 45,
+      "status": "pending",
+      "exceptions": []
+    },
+    {
+      "sequence": 10,
+      "batchId": "batch-01",
+      "sourceTemplateId": "30294726",
+      "sourceName": "Drywall Installation",
+      "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/30294726",
+      "temporaryBuildertrendTargetName": "BT Drywall Installation",
+      "moduleCounts": {
+        "tasks": 28,
+        "bidPackages": 1,
+        "scheduleItems": 8,
+        "selections": 3
+      },
+      "totalWorkItems": 40,
+      "status": "completed_with_exceptions",
+      "targetTemplateId": "45876630",
+      "capturedAt": "2026-08-04T02:53:00.000Z",
+      "capturedModuleCounts": {
+        "tasks": 28,
+        "bidPackages": 1,
+        "scheduleItems": 8,
+        "selections": 3,
+        "scheduleDurationDays": 25
+      },
+      "exceptions": [
+        "Buildertrend regenerated copied-record IDs.",
+        "Buildertrend cleared Cost Type on 1 line item that had multiple Cost Types."
+      ]
+    },
+    {
+      "sequence": 11,
+      "batchId": "batch-01",
+      "sourceTemplateId": "30917204",
+      "sourceName": "Ext. Finishes - Siding",
+      "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/30917204",
+      "temporaryBuildertrendTargetName": "BT Ext. Finishes - Siding",
+      "moduleCounts": {
+        "tasks": 29,
+        "bidPackages": 1,
+        "scheduleItems": 3,
+        "selections": 4
+      },
+      "totalWorkItems": 37,
+      "status": "pending",
+      "exceptions": []
+    },
+    {
+      "sequence": 12,
+      "batchId": "batch-01",
+      "sourceTemplateId": "12646335",
+      "sourceName": "Framing - Interior Wall Assembly",
+      "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/12646335",
+      "temporaryBuildertrendTargetName": "BT Framing - Interior Wall Assembly",
+      "moduleCounts": {
+        "tasks": 34,
+        "bidPackages": 1,
+        "scheduleItems": 2
+      },
+      "totalWorkItems": 37,
+      "status": "pending",
+      "exceptions": []
+    },
+    {
+      "sequence": 13,
+      "batchId": "batch-02",
+      "sourceTemplateId": "12650792",
+      "sourceName": "Framing - Roof w/ Trusses Assembly",
+      "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/12650792",
+      "temporaryBuildertrendTargetName": "BT Framing - Roof w/ Trusses Assembly",
+      "moduleCounts": {
+        "tasks": 28,
+        "scheduleItems": 5
+      },
+      "totalWorkItems": 33,
+      "status": "pending",
+      "exceptions": []
+    },
+    {
+      "sequence": 14,
+      "batchId": "batch-02",
+      "sourceTemplateId": "12796241",
+      "sourceName": "Int. Finishes - Architectural Woodwork",
+      "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/12796241",
+      "temporaryBuildertrendTargetName": "BT Int. Finishes - Architectural Woodwork",
+      "moduleCounts": {
+        "tasks": 19,
+        "bidPackages": 2,
+        "scheduleItems": 4,
+        "selections": 5
+      },
+      "totalWorkItems": 30,
+      "status": "pending",
+      "exceptions": []
+    },
+    {
+      "sequence": 15,
+      "batchId": "batch-02",
+      "sourceTemplateId": "12819873",
+      "sourceName": "Framing - Fascia & Soffit Installation",
+      "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/12819873",
+      "temporaryBuildertrendTargetName": "BT Framing - Fascia & Soffit Installation",
+      "moduleCounts": {
+        "tasks": 25,
+        "scheduleItems": 3
+      },
+      "totalWorkItems": 28,
+      "status": "pending",
+      "exceptions": []
+    },
+    {
+      "sequence": 16,
+      "batchId": "batch-02",
+      "sourceTemplateId": "12649495",
+      "sourceName": "Framing - Floor System Assembly",
+      "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/12649495",
+      "temporaryBuildertrendTargetName": "BT Framing - Floor System Assembly",
+      "moduleCounts": {
+        "tasks": 24,
+        "scheduleItems": 4
+      },
+      "totalWorkItems": 28,
+      "status": "pending",
+      "exceptions": []
+    },
+    {
+      "sequence": 17,
+      "batchId": "batch-02",
+      "sourceTemplateId": "12650427",
+      "sourceName": "Framing - Window",
+      "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/12650427",
+      "temporaryBuildertrendTargetName": "BT Framing - Window",
+      "moduleCounts": {
+        "tasks": 20,
+        "bidPackages": 1,
+        "scheduleItems": 2,
+        "selections": 2
+      },
+      "totalWorkItems": 25,
+      "status": "pending",
+      "exceptions": []
+    },
+    {
+      "sequence": 18,
+      "batchId": "batch-02",
+      "sourceTemplateId": "30914491",
+      "sourceName": "Int. Finishes - Tiling",
+      "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/30914491",
+      "temporaryBuildertrendTargetName": "BT Int. Finishes - Tiling",
+      "moduleCounts": {
+        "tasks": 16,
+        "bidPackages": 1,
+        "scheduleItems": 3,
+        "selections": 5
+      },
+      "totalWorkItems": 25,
+      "status": "pending",
+      "exceptions": []
+    },
+    {
+      "sequence": 19,
+      "batchId": "batch-02",
+      "sourceTemplateId": "12978732",
+      "sourceName": "Ext. Finishes - Manuf. Gutters",
+      "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/12978732",
+      "temporaryBuildertrendTargetName": "BT Ext. Finishes - Manuf. Gutters",
+      "moduleCounts": {
+        "tasks": 17,
+        "bidPackages": 1,
+        "scheduleItems": 2,
+        "selections": 2
+      },
+      "totalWorkItems": 22,
+      "status": "pending",
+      "exceptions": []
+    },
+    {
+      "sequence": 20,
+      "batchId": "batch-02",
+      "sourceTemplateId": "12858966",
+      "sourceName": "Concrete - Piers Assembly",
+      "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/12858966",
+      "temporaryBuildertrendTargetName": "BT Concrete - Piers Assembly",
+      "moduleCounts": {
+        "tasks": 16,
+        "scheduleItems": 5
+      },
+      "totalWorkItems": 21,
+      "status": "pending",
+      "exceptions": []
+    },
+    {
+      "sequence": 21,
+      "batchId": "batch-02",
+      "sourceTemplateId": "12649292",
+      "sourceName": "Framing - Exterior Wall Assembly",
+      "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/12649292",
+      "temporaryBuildertrendTargetName": "BT Framing - Exterior Wall Assembly",
+      "moduleCounts": {
+        "tasks": 16,
+        "scheduleItems": 2
+      },
+      "totalWorkItems": 18,
+      "status": "pending",
+      "exceptions": []
+    },
+    {
+      "sequence": 22,
+      "batchId": "batch-02",
+      "sourceTemplateId": "12650557",
+      "sourceName": "Earthwork - Post-Frost Wall Earthwork",
+      "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/12650557",
+      "temporaryBuildertrendTargetName": "BT Earthwork - Post-Frost Wall Earthwork",
+      "moduleCounts": {
+        "tasks": 12,
+        "bidPackages": 1,
+        "scheduleItems": 4
+      },
+      "totalWorkItems": 17,
+      "status": "pending",
+      "exceptions": []
+    },
+    {
+      "sequence": 23,
+      "batchId": "batch-02",
+      "sourceTemplateId": "30919251",
+      "sourceName": "Framing - Overhead Door Installation",
+      "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/30919251",
+      "temporaryBuildertrendTargetName": "BT Framing - Overhead Door Installation",
+      "moduleCounts": {
+        "tasks": 13,
+        "bidPackages": 1,
+        "scheduleItems": 2,
+        "selections": 1
+      },
+      "totalWorkItems": 17,
+      "status": "pending",
+      "exceptions": []
+    },
+    {
+      "sequence": 24,
+      "batchId": "batch-02",
+      "sourceTemplateId": "12650484",
+      "sourceName": "Framing - Exterior Man Door Installation",
+      "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/12650484",
+      "temporaryBuildertrendTargetName": "BT Framing - Exterior Man Door Installation",
+      "moduleCounts": {
+        "tasks": 11,
+        "bidPackages": 1,
+        "scheduleItems": 2,
+        "selections": 1
+      },
+      "totalWorkItems": 15,
+      "status": "pending",
+      "exceptions": []
+    },
+    {
+      "sequence": 25,
+      "batchId": "batch-02",
+      "sourceTemplateId": "12650395",
+      "sourceName": "MEP - Plumbing Base",
+      "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/12650395",
+      "temporaryBuildertrendTargetName": "BT MEP - Plumbing Base",
+      "moduleCounts": {
+        "tasks": 9,
+        "bidPackages": 1,
+        "scheduleItems": 4
+      },
+      "totalWorkItems": 14,
+      "status": "pending",
+      "exceptions": []
+    },
+    {
+      "sequence": 26,
+      "batchId": "batch-02",
+      "sourceTemplateId": "12650713",
+      "sourceName": "Framing - Stair Installation",
+      "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/12650713",
+      "temporaryBuildertrendTargetName": "BT Framing - Stair Installation",
+      "moduleCounts": {
+        "tasks": 10,
+        "scheduleItems": 3
+      },
+      "totalWorkItems": 13,
+      "status": "pending",
+      "exceptions": []
+    },
+    {
+      "sequence": 27,
+      "batchId": "batch-02",
+      "sourceTemplateId": "28466146",
+      "sourceName": "Int. Finishes - Interior Doors",
+      "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/28466146",
+      "temporaryBuildertrendTargetName": "BT Int. Finishes - Interior Doors",
+      "moduleCounts": {
+        "tasks": 5,
+        "scheduleItems": 3,
+        "selections": 4
+      },
+      "totalWorkItems": 12,
+      "status": "pending",
+      "exceptions": []
+    },
+    {
+      "sequence": 28,
+      "batchId": "batch-02",
+      "sourceTemplateId": "12979213",
+      "sourceName": "Int. Finishes - Stain & Seal Concrete Floors",
+      "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/12979213",
+      "temporaryBuildertrendTargetName": "BT Int. Finishes - Stain & Seal Concrete Floors",
+      "moduleCounts": {
+        "tasks": 7,
+        "scheduleItems": 5
+      },
+      "totalWorkItems": 12,
+      "status": "pending",
+      "exceptions": []
+    },
+    {
+      "sequence": 29,
+      "batchId": "batch-02",
+      "sourceTemplateId": "13001090",
+      "sourceName": "Earthwork - Perimeter Drain",
+      "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/13001090",
+      "temporaryBuildertrendTargetName": "BT Earthwork - Perimeter Drain",
+      "moduleCounts": {
+        "tasks": 4,
+        "scheduleItems": 3
+      },
+      "totalWorkItems": 7,
+      "status": "pending",
+      "exceptions": []
+    },
+    {
+      "sequence": 30,
+      "batchId": "batch-02",
+      "sourceTemplateId": "12978590",
+      "sourceName": "Framing - Rough inspection w/ Draft & Firestop",
+      "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/12978590",
+      "temporaryBuildertrendTargetName": "BT Framing - Rough inspection w/ Draft & Firestop",
+      "moduleCounts": {
+        "tasks": 3,
+        "scheduleItems": 2
+      },
+      "totalWorkItems": 5,
+      "status": "pending",
+      "exceptions": []
+    },
+    {
+      "sequence": 31,
+      "batchId": "batch-03",
+      "sourceTemplateId": "36619183",
+      "sourceName": "Int. Finishes - Painting/Staining",
+      "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/36619183",
+      "temporaryBuildertrendTargetName": "BT Int. Finishes - Painting/Staining",
+      "moduleCounts": {
+        "bidPackages": 1,
+        "selections": 8
+      },
+      "totalWorkItems": 9,
+      "status": "pending",
+      "exceptions": []
+    },
+    {
+      "sequence": 32,
+      "batchId": "batch-03",
+      "sourceTemplateId": "38452172",
+      "sourceName": "Int. Finishes - Flooring",
+      "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/38452172",
+      "temporaryBuildertrendTargetName": "BT Int. Finishes - Flooring",
+      "moduleCounts": {
+        "bidPackages": 1,
+        "selections": 3
+      },
+      "totalWorkItems": 4,
+      "status": "pending",
+      "exceptions": []
+    },
+    {
+      "sequence": 33,
+      "batchId": "batch-03",
+      "sourceTemplateId": "36618977",
+      "sourceName": "Ext. Finishes - Painting/Staining",
+      "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/36618977",
+      "temporaryBuildertrendTargetName": "BT Ext. Finishes - Painting/Staining",
+      "moduleCounts": {
+        "bidPackages": 1,
+        "selections": 2
+      },
+      "totalWorkItems": 3,
+      "status": "pending",
+      "exceptions": []
+    },
+    {
+      "sequence": 34,
+      "batchId": "batch-03",
+      "sourceTemplateId": "36478698",
+      "sourceName": "Framing - Quote Packages",
+      "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/36478698",
+      "temporaryBuildertrendTargetName": "BT Framing - Quote Packages",
+      "moduleCounts": {
+        "bidPackages": 3
+      },
+      "totalWorkItems": 3,
+      "status": "pending",
+      "exceptions": []
+    },
+    {
+      "sequence": 35,
+      "batchId": "batch-03",
+      "sourceTemplateId": "36595931",
+      "sourceName": "MEP - Quotes",
+      "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/36595931",
+      "temporaryBuildertrendTargetName": "BT MEP - Quotes",
+      "moduleCounts": {
+        "bidPackages": 3
+      },
+      "totalWorkItems": 3,
+      "status": "pending",
+      "exceptions": []
+    },
+    {
+      "sequence": 36,
+      "batchId": "batch-03",
+      "sourceTemplateId": "37180847",
+      "sourceName": "Ext. Finishes - Stone",
+      "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/37180847",
+      "temporaryBuildertrendTargetName": "BT Ext. Finishes - Stone",
+      "moduleCounts": {
+        "selections": 2
+      },
+      "totalWorkItems": 2,
+      "status": "pending",
+      "exceptions": []
+    },
+    {
+      "sequence": 37,
+      "batchId": "batch-03",
+      "sourceTemplateId": "42924180",
+      "sourceName": "Earthwork - Radon Systems",
+      "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/42924180",
+      "temporaryBuildertrendTargetName": "BT Earthwork - Radon Systems",
+      "moduleCounts": {
+        "bidPackages": 1
+      },
+      "totalWorkItems": 1,
+      "status": "pending",
+      "exceptions": []
+    },
+    {
+      "sequence": 38,
+      "batchId": "batch-03",
+      "sourceTemplateId": "39644707",
+      "sourceName": "Insulation",
+      "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/39644707",
+      "temporaryBuildertrendTargetName": "BT Insulation",
+      "moduleCounts": {
+        "bidPackages": 1
+      },
+      "totalWorkItems": 1,
+      "status": "pending",
+      "exceptions": []
+    },
+    {
+      "sequence": 39,
+      "batchId": "batch-03",
+      "sourceTemplateId": "42948499",
+      "sourceName": "Int. Finishes - Bath Hardware",
+      "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/42948499",
+      "temporaryBuildertrendTargetName": "BT Int. Finishes - Bath Hardware",
+      "moduleCounts": {
+        "selections": 1
+      },
+      "totalWorkItems": 1,
+      "status": "pending",
+      "exceptions": []
+    },
+    {
+      "sequence": 40,
+      "batchId": "batch-03",
+      "sourceTemplateId": "38452532",
+      "sourceName": "MEP - Fireplace Installation",
+      "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/38452532",
+      "temporaryBuildertrendTargetName": "BT MEP - Fireplace Installation",
+      "moduleCounts": {
+        "selections": 1
+      },
+      "totalWorkItems": 1,
+      "status": "pending",
+      "exceptions": []
+    }
+  ]
+}

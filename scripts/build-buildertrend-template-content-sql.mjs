@@ -50,19 +50,173 @@ function contentId(templateId, moduleType, sourceItemId) {
   return `bt-template-content:${digest}`
 }
 
+const modules = [
+  ["tasks", "tasks"],
+  ["selections", "selections"],
+  ["bidPackages", "bid_packages"],
+]
+
+function requireNonEmptyString(value, path) {
+  if (typeof value !== "string" || !value.trim()) {
+    throw new Error(`${path} must be a non-empty string.`)
+  }
+}
+
+function parseConversionExceptions(capture, capturedTemplatesById) {
+  if (capture.conversionExceptions === undefined) return new Map()
+  if (!Array.isArray(capture.conversionExceptions)) {
+    throw new Error("capture.conversionExceptions must be an array.")
+  }
+
+  const moduleSourceKeys = new Set(modules.map(([sourceKey]) => sourceKey))
+  const exceptionsByTemplateModule = new Map()
+  for (const [exceptionIndex, exception] of capture.conversionExceptions.entries()) {
+    const path = `capture.conversionExceptions[${exceptionIndex}]`
+    if (!exception || typeof exception !== "object" || Array.isArray(exception)) {
+      throw new Error(`${path} must be an object.`)
+    }
+    requireNonEmptyString(exception.templateSourceTemplateId, `${path}.templateSourceTemplateId`)
+    requireNonEmptyString(exception.module, `${path}.module`)
+    requireNonEmptyString(exception.field, `${path}.field`)
+    requireNonEmptyString(exception.loss, `${path}.loss`)
+    requireNonEmptyString(exception.recoveryPlan, `${path}.recoveryPlan`)
+    if (!("sourceValue" in exception)) {
+      throw new Error(`${path}.sourceValue is required.`)
+    }
+    if (!("sourceItemId" in exception)) {
+      throw new Error(`${path}.sourceItemId is required; use null for a module-level exception.`)
+    }
+    if (exception.sourceItemId !== null) {
+      requireNonEmptyString(exception.sourceItemId, `${path}.sourceItemId`)
+    }
+    if (!moduleSourceKeys.has(exception.module)) {
+      throw new Error(`${path}.module must be one of tasks, selections, bidPackages.`)
+    }
+
+    const template = capturedTemplatesById.get(exception.templateSourceTemplateId)
+    if (!template) {
+      throw new Error(`${path}.templateSourceTemplateId does not identify a captured template.`)
+    }
+    const items = template[exception.module] ?? []
+    if (!Array.isArray(items)) {
+      throw new Error(`${path}.module does not identify an item array on its template.`)
+    }
+    if (
+      exception.sourceItemId !== null &&
+      !items.some((item) => item?.sourceItemId === exception.sourceItemId)
+    ) {
+      throw new Error(
+        `${path}.sourceItemId does not identify a captured ${exception.module} item.`
+      )
+    }
+
+    const normalized = {
+      templateSourceTemplateId: exception.templateSourceTemplateId,
+      module: exception.module,
+      sourceItemId: exception.sourceItemId,
+      field: exception.field,
+      sourceValue: exception.sourceValue,
+      loss: exception.loss,
+      recoveryPlan: exception.recoveryPlan,
+    }
+    const key = `${exception.templateSourceTemplateId}:${exception.module}`
+    const current = exceptionsByTemplateModule.get(key) ?? []
+    current.push(normalized)
+    exceptionsByTemplateModule.set(key, current)
+  }
+  return exceptionsByTemplateModule
+}
+
 async function main() {
   const args = process.argv.slice(2)
   const capturePath = optionValue(args, "--capture")
+  const inventoryPath = optionValue(args, "--inventory")
   const outputPath = optionValue(args, "--output")
   const dryRun = args.includes("--dry-run")
-  if (!capturePath || (!dryRun && !outputPath)) {
+  if (!capturePath || !inventoryPath || (!dryRun && !outputPath)) {
     throw new Error(
       "Usage: bun scripts/build-buildertrend-template-content-sql.mjs " +
-        "--capture <content.json> [--output <import.sql>] [--dry-run]"
+        "--inventory <reviewed-inventory.json> --capture <content.json> " +
+        "[--output <import.sql>] [--dry-run]"
     )
   }
   const capture = JSON.parse(await readFile(capturePath, "utf8"))
+  const inventory = JSON.parse(await readFile(inventoryPath, "utf8"))
   if (!Array.isArray(capture.templates)) throw new Error("capture.templates must be an array.")
+  if (!Array.isArray(inventory.templates)) {
+    throw new Error("inventory.templates must be an array.")
+  }
+
+  const expectedActiveCount = Number(inventory.expectedActiveCount)
+  if (!Number.isInteger(expectedActiveCount) || expectedActiveCount <= 0) {
+    throw new Error("inventory.expectedActiveCount must be a positive integer.")
+  }
+  if (inventory.templates.length !== expectedActiveCount) {
+    throw new Error(
+      `Inventory count mismatch: expected ${expectedActiveCount}, found ${inventory.templates.length}.`
+    )
+  }
+
+  const inventoryById = new Map()
+  for (const [templateIndex, template] of inventory.templates.entries()) {
+    if (!template || typeof template !== "object") {
+      throw new Error(`inventory.templates[${templateIndex}] must be an object.`)
+    }
+    if (typeof template.sourceTemplateId !== "string" || !template.sourceTemplateId) {
+      throw new Error(
+        `inventory.templates[${templateIndex}].sourceTemplateId is required.`
+      )
+    }
+    if (typeof template.name !== "string" || !template.name) {
+      throw new Error(`inventory.templates[${templateIndex}].name is required.`)
+    }
+    if (/^archive/i.test(template.name)) {
+      throw new Error(`Archived inventory template “${template.name}” is not allowed.`)
+    }
+    if (inventoryById.has(template.sourceTemplateId)) {
+      throw new Error(`Duplicate inventory template ID ${template.sourceTemplateId}.`)
+    }
+    inventoryById.set(template.sourceTemplateId, template)
+  }
+
+  const capturedIds = new Set()
+  const capturedTemplatesById = new Map()
+  for (const [templateIndex, template] of capture.templates.entries()) {
+    if (!template || typeof template !== "object") {
+      throw new Error(`templates[${templateIndex}] must be an object.`)
+    }
+    if (typeof template.sourceTemplateId !== "string" || !template.sourceTemplateId) {
+      throw new Error(`templates[${templateIndex}].sourceTemplateId is required.`)
+    }
+    if (capturedIds.has(template.sourceTemplateId)) {
+      throw new Error(`Duplicate captured template ID ${template.sourceTemplateId}.`)
+    }
+    capturedIds.add(template.sourceTemplateId)
+    capturedTemplatesById.set(template.sourceTemplateId, template)
+  }
+  const missingIds = [...inventoryById.keys()].filter((id) => !capturedIds.has(id))
+  const unexpectedIds = [...capturedIds].filter((id) => !inventoryById.has(id))
+  if (missingIds.length > 0 || unexpectedIds.length > 0) {
+    throw new Error(
+      `Template coverage mismatch: missing [${missingIds.join(", ")}], ` +
+        `unexpected [${unexpectedIds.join(", ")}].`
+    )
+  }
+  if (capture.templates.length !== expectedActiveCount) {
+    throw new Error(
+      `Content capture count mismatch: expected ${expectedActiveCount}, found ${capture.templates.length}.`
+    )
+  }
+  if (capture.excludedArchivedCount !== inventory.excludedArchivedCount) {
+    throw new Error(
+      `Archived exclusion mismatch: expected ${inventory.excludedArchivedCount}, ` +
+        `received ${capture.excludedArchivedCount}.`
+    )
+  }
+  const exceptionsByTemplateModule = parseConversionExceptions(
+    capture,
+    capturedTemplatesById
+  )
 
   const statements = ["PRAGMA foreign_keys=ON;"]
   const totals = { tasks: 0, selections: 0, bidPackages: 0 }
@@ -79,30 +233,41 @@ async function main() {
     if (/^archive/i.test(template.name)) {
       throw new Error(`Archived template “${template.name}” cannot be imported.`)
     }
+    const inventoryTemplate = inventoryById.get(template.sourceTemplateId)
+    if (!inventoryTemplate || inventoryTemplate.name !== template.name) {
+      throw new Error(
+        `Template identity mismatch for ${template.sourceTemplateId}: ` +
+          `expected “${inventoryTemplate?.name ?? "unknown"}”, received “${template.name}”.`
+      )
+    }
     const versionId = `bt-template-version:${template.sourceTemplateId}:1`
-    const modules = [
-      ["tasks", "tasks"],
-      ["selections", "selections"],
-      ["bidPackages", "bid_packages"],
-    ]
     for (const [sourceKey, moduleType] of modules) {
       const items = template[sourceKey] ?? []
       if (!Array.isArray(items)) {
         throw new Error(`templates[${templateIndex}].${sourceKey} must be an array.`)
       }
-      const expected = Number(template.moduleCounts?.[sourceKey] ?? 0)
+      const expected = Number(inventoryTemplate.moduleCounts?.[sourceKey] ?? 0)
       if (items.length !== expected) {
         throw new Error(
           `${template.name} ${sourceKey} count mismatch: expected ${expected}, captured ${items.length}.`
         )
       }
       totals[sourceKey] += items.length
+      const exceptions =
+        exceptionsByTemplateModule.get(`${template.sourceTemplateId}:${sourceKey}`) ?? []
       statements.push(
         `DELETE FROM project_template_content_items WHERE version_id=${sql(versionId)} AND module_type=${sql(moduleType)};`
       )
       items.forEach((item, itemIndex) => {
         assertItem(item, `templates[${templateIndex}].${sourceKey}[${itemIndex}]`)
+        const itemExceptions = exceptions.filter(
+          (exception) => exception.sourceItemId === item.sourceItemId
+        )
         const cleaned = cleanPayload(item)
+        const payload =
+          itemExceptions.length > 0
+            ? { ...cleaned, conversionExceptions: itemExceptions }
+            : cleaned
         const description = cleanText(
           item.description ?? item.detail?.fullText ?? item.detail?.description ?? null
         )
@@ -121,15 +286,23 @@ async function main() {
               sql(cleanText(item.category ?? item.tags ?? null)),
               sql(description),
               Number.isInteger(item.sortOrder) ? item.sortOrder : itemIndex,
-              sql(JSON.stringify(cleaned)),
+              sql(JSON.stringify(payload)),
             ].join(", ") +
             `);`
         )
       })
       statements.push(
         `UPDATE project_template_modules SET ` +
-          `normalization_status='captured', ` +
-          `source_payload_json=${sql(JSON.stringify({ sourceItemCount: items.length, capturedAt: capture.capturedAt }))} ` +
+          `normalization_status=${sql(
+            exceptions.length > 0 ? "captured_with_warnings" : "captured"
+          )}, ` +
+          `source_payload_json=${sql(
+            JSON.stringify({
+              sourceItemCount: items.length,
+              capturedAt: capture.capturedAt,
+              conversionExceptions: exceptions,
+            })
+          )} ` +
           `WHERE version_id=${sql(versionId)} AND module_type=${sql(moduleType)};`
       )
     }
