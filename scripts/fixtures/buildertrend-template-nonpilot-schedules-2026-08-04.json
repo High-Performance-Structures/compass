@@ -1,0 +1,59 @@
+{
+  "fixtureVersion": 1,
+  "reviewedAt": "2026-08-04T18:03:10.000Z",
+  "scope": {
+    "activeTemplatesInSource": 40,
+    "pilotTemplatesExcluded": 6,
+    "nonPilotTemplatesIncluded": 34,
+    "scheduleBearingTemplatesIncluded": 24,
+    "scheduleItemsIncluded": 93,
+    "scheduleDependenciesIncluded": 70,
+    "archivedTemplatesExcluded": 27,
+    "archivedTemplatesIncluded": 0
+  },
+  "classificationPolicy": {
+    "functionalCategoryField": "tradeCategory",
+    "departmentSource": "destinationProject"
+  },
+  "releasePolicy": {
+    "scheduleContent": "draft_import_only",
+    "gatedModules": ["tasks", "selections", "bid_packages"],
+    "wholeTemplateVerificationAllowed": false
+  },
+  "templates": [
+    {"sourceTemplateId":"12581937","sourceName":"Concrete - Footer Assembly","tradeCategory":"Concrete","scheduleItemCount":8,"scheduleDependencyCount":7},
+    {"sourceTemplateId":"12858966","sourceName":"Concrete - Piers Assembly","tradeCategory":"Concrete","scheduleItemCount":5,"scheduleDependencyCount":4},
+    {"sourceTemplateId":"12594475","sourceName":"Concrete - Slab Assembly","tradeCategory":"Concrete","scheduleItemCount":8,"scheduleDependencyCount":8},
+    {"sourceTemplateId":"13001090","sourceName":"Earthwork - Perimeter Drain","tradeCategory":"Earthwork","scheduleItemCount":3,"scheduleDependencyCount":3},
+    {"sourceTemplateId":"12650557","sourceName":"Earthwork - Post-Frost Wall Earthwork","tradeCategory":"Earthwork","scheduleItemCount":4,"scheduleDependencyCount":3},
+    {"sourceTemplateId":"42924180","sourceName":"Earthwork - Radon Systems","tradeCategory":"Earthwork","scheduleItemCount":0,"scheduleDependencyCount":0},
+    {"sourceTemplateId":"12978732","sourceName":"Ext. Finishes - Manuf. Gutters","tradeCategory":"Exterior Finishes","scheduleItemCount":2,"scheduleDependencyCount":1},
+    {"sourceTemplateId":"36618977","sourceName":"Ext. Finishes - Painting/Staining","tradeCategory":"Exterior Finishes","scheduleItemCount":0,"scheduleDependencyCount":0},
+    {"sourceTemplateId":"30917204","sourceName":"Ext. Finishes - Siding","tradeCategory":"Exterior Finishes","scheduleItemCount":3,"scheduleDependencyCount":2},
+    {"sourceTemplateId":"37180847","sourceName":"Ext. Finishes - Stone","tradeCategory":"Exterior Finishes","scheduleItemCount":0,"scheduleDependencyCount":0},
+    {"sourceTemplateId":"12859981","sourceName":"Ext. Finishes - Stucco","tradeCategory":"Exterior Finishes","scheduleItemCount":5,"scheduleDependencyCount":4},
+    {"sourceTemplateId":"12650484","sourceName":"Framing - Exterior Man Door Installation","tradeCategory":"Framing","scheduleItemCount":2,"scheduleDependencyCount":1},
+    {"sourceTemplateId":"12649292","sourceName":"Framing - Exterior Wall Assembly","tradeCategory":"Framing","scheduleItemCount":2,"scheduleDependencyCount":1},
+    {"sourceTemplateId":"12819873","sourceName":"Framing - Fascia & Soffit Installation","tradeCategory":"Framing","scheduleItemCount":3,"scheduleDependencyCount":2},
+    {"sourceTemplateId":"12649495","sourceName":"Framing - Floor System Assembly","tradeCategory":"Framing","scheduleItemCount":4,"scheduleDependencyCount":3},
+    {"sourceTemplateId":"12646335","sourceName":"Framing - Interior Wall Assembly","tradeCategory":"Framing","scheduleItemCount":2,"scheduleDependencyCount":1},
+    {"sourceTemplateId":"30919251","sourceName":"Framing - Overhead Door Installation","tradeCategory":"Framing","scheduleItemCount":2,"scheduleDependencyCount":1},
+    {"sourceTemplateId":"36478698","sourceName":"Framing - Quote Packages","tradeCategory":"Framing","scheduleItemCount":0,"scheduleDependencyCount":0},
+    {"sourceTemplateId":"12650792","sourceName":"Framing - Roof w/ Trusses Assembly","tradeCategory":"Framing","scheduleItemCount":5,"scheduleDependencyCount":5},
+    {"sourceTemplateId":"12978590","sourceName":"Framing - Rough inspection w/ Draft & Firestop","tradeCategory":"Framing","scheduleItemCount":2,"scheduleDependencyCount":1},
+    {"sourceTemplateId":"12650713","sourceName":"Framing - Stair Installation","tradeCategory":"Framing","scheduleItemCount":3,"scheduleDependencyCount":2},
+    {"sourceTemplateId":"12650427","sourceName":"Framing - Window","tradeCategory":"Framing","scheduleItemCount":2,"scheduleDependencyCount":1},
+    {"sourceTemplateId":"39644707","sourceName":"Insulation","tradeCategory":"Insulation","scheduleItemCount":0,"scheduleDependencyCount":0},
+    {"sourceTemplateId":"12796241","sourceName":"Int. Finishes - Architectural Woodwork","tradeCategory":"Interior Finishes","scheduleItemCount":4,"scheduleDependencyCount":3},
+    {"sourceTemplateId":"42948499","sourceName":"Int. Finishes - Bath Hardware","tradeCategory":"Interior Finishes","scheduleItemCount":0,"scheduleDependencyCount":0},
+    {"sourceTemplateId":"38452172","sourceName":"Int. Finishes - Flooring","tradeCategory":"Interior Finishes","scheduleItemCount":0,"scheduleDependencyCount":0},
+    {"sourceTemplateId":"28466146","sourceName":"Int. Finishes - Interior Doors","tradeCategory":"Interior Finishes","scheduleItemCount":3,"scheduleDependencyCount":2},
+    {"sourceTemplateId":"36619183","sourceName":"Int. Finishes - Painting/Staining","tradeCategory":"Interior Finishes","scheduleItemCount":0,"scheduleDependencyCount":0},
+    {"sourceTemplateId":"12979213","sourceName":"Int. Finishes - Stain & Seal Concrete Floors","tradeCategory":"Interior Finishes","scheduleItemCount":5,"scheduleDependencyCount":4},
+    {"sourceTemplateId":"30914491","sourceName":"Int. Finishes - Tiling","tradeCategory":"Interior Finishes","scheduleItemCount":3,"scheduleDependencyCount":2},
+    {"sourceTemplateId":"38452532","sourceName":"MEP - Fireplace Installation","tradeCategory":"MEP","scheduleItemCount":0,"scheduleDependencyCount":0},
+    {"sourceTemplateId":"12650395","sourceName":"MEP - Plumbing Base","tradeCategory":"MEP","scheduleItemCount":4,"scheduleDependencyCount":3},
+    {"sourceTemplateId":"36595931","sourceName":"MEP - Quotes","tradeCategory":"MEP","scheduleItemCount":0,"scheduleDependencyCount":0},
+    {"sourceTemplateId":"12978371","sourceName":"MEP - Rough & Top Out","tradeCategory":"MEP","scheduleItemCount":9,"scheduleDependencyCount":6}
+  ]
+}

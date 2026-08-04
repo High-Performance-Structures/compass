@@ -178,6 +178,49 @@ visibility, and notes. They are recorded as pending field review in module
 provenance instead of being guessed. Schedule content itself can be published
 after the automated item, dependency, archive-exclusion, and cycle checks pass.
 
+### Non-pilot schedule import
+
+The reviewed complement of the six-template pilot is recorded in
+`buildertrend-template-nonpilot-schedules-2026-08-04.json`. It contains all 34
+non-pilot active templates: 24 have reviewed schedules totaling 93 items and 70
+dependencies; the remaining 10 have zero schedule items. The scope validator
+reconciles every identity and schedule count against both the 40-template
+capture and the workplan. It also preserves the 27 archived exclusions.
+
+Generate the independent schedule import only after the full 40-template
+inventory import has been applied:
+
+```bash
+bun scripts/build-buildertrend-template-capture-sql.mjs \
+  --inventory scripts/fixtures/buildertrend-active-template-inventory-2026-07-31.json \
+  --capture scripts/fixtures/buildertrend-active-template-capture-2026-07-31.json \
+  --pilot-manifest scripts/fixtures/buildertrend-template-pilot-2026-08-03.json \
+  --schedule-scope-manifest scripts/fixtures/buildertrend-template-nonpilot-schedules-2026-08-04.json \
+  --workplan scripts/fixtures/buildertrend-template-capture-workplan-2026-08-03.json \
+  --organization-id <organization-id> \
+  --output <reviewed-nonpilot-schedules.sql>
+```
+
+This path is intentionally draft-only. It imports schedule definitions and
+records all task, selection, and bid-package modules as `inventory_only`. The
+command rejects `--publish-captured-schedules`, because that existing flag
+publishes and verifies the whole template rather than only its schedule module.
+
+Safe release sequence:
+
+1. Apply the full 40-template inventory SQL and verify that 27 archived records
+   remain excluded.
+2. Generate the non-pilot schedule SQL and verify the reported totals are 34
+   templates, 24 schedule-bearing templates, 93 items, and 70 dependencies.
+3. Review the generated SQL; it must not contain a published version or an
+   active/verified template transition.
+4. Apply the reviewed SQL to D1. Replaying the file is safe while the versions
+   remain drafts; published versions are protected by the draft guards.
+5. Verify the 93 schedule items and 70 dependency rows, and confirm task,
+   selection, and bid-package modules remain `inventory_only`.
+6. Publish no non-pilot template until a module-scoped publication state is
+   implemented or the remaining content modules pass their reviewed gates.
+
 ## Remaining Capture Gate
 
 Schedule definitions are complete. Task/checklist, selection-choice, and bid
