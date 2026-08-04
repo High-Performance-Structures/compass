@@ -133,12 +133,15 @@ test("generates one read-only preflight and postflight statement with exact scop
     assert.equal(assertReadOnlyVerificationSql(build.sql), true)
     assert.equal(build.verificationPart, null)
     assert.equal(build.verificationPartCount, 6)
-    assert.equal(build.templateCount, 3)
-    assert.equal(build.contentItemCount, 165)
-    assert.equal(build.predecessorCount, 17)
-    assert.equal(build.reusableScheduleItemCount, 22)
-    assert.equal(build.reusableDependencyCount, 17)
-    assert.deepEqual(build.sourceTemplateIds, ["12859981", "12978371", "12581937"])
+    assert.equal(build.templateCount, 4)
+    assert.equal(build.contentItemCount, 210)
+    assert.equal(build.predecessorCount, 25)
+    assert.equal(build.reusableScheduleItemCount, 30)
+    assert.equal(build.reusableDependencyCount, 25)
+    assert.deepEqual(
+      build.sourceTemplateIds,
+      ["12859981", "12978371", "12581937", "12594475"]
+    )
     assert.deepEqual(build.excludedSourceTemplateIds, [])
     assert.match(build.sql, /SELECT 'excluded_template_content'/)
     assert.doesNotMatch(
@@ -197,7 +200,7 @@ test("CLI scopes a D1-safe verification query to one reviewed template", async (
     const sql = await readFile(outputPath, "utf8")
     assert.equal(assertReadOnlyVerificationSql(sql), true)
     assert.match(sql, /Concrete - Footer Assembly/)
-    assert.doesNotMatch(sql, /Ext\. Finishes - Stucco|MEP - Rough & Top Out/)
+    assert.doesNotMatch(sql, /Ext\. Finishes - Stucco|MEP - Rough & Top Out|Concrete - Slab Assembly/)
   } finally {
     await rm(directory, { recursive: true, force: true })
   }
@@ -352,8 +355,8 @@ test("postflight reports published state, partial content, and explicitly exclud
         'Partial', NULL, NULL, 0, '{}'
       );
       INSERT INTO project_template_content_items VALUES (
-        'slab', 'bt-template-version:12594475:1', 'tasks', 'slab', NULL,
-        'Slab', NULL, NULL, 0, '{}'
+        'siding', 'bt-template-version:30917204:1', 'tasks', 'siding', NULL,
+        'Siding', NULL, NULL, 0, '{}'
       );
     `])
     const postflight = buildBuildertrendTemplateContentVerificationSql({
@@ -361,7 +364,7 @@ test("postflight reports published state, partial content, and explicitly exclud
       inventory,
       organizationId: "org-test",
       phase: "postflight",
-      excludedSourceTemplateIds: ["12594475"],
+      excludedSourceTemplateIds: ["30917204"],
     })
     const issues = JSON.parse(await query(database, postflight.sql))
     assert.equal(issues.some((issue) => issue.check_name === "version_state"), true)

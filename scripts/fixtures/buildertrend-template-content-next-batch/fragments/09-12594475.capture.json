@@ -1,0 +1,88 @@
+{
+  "sourceTemplateId": "12594475",
+  "sourceName": "Concrete - Slab Assembly",
+  "capturedAt": "2026-08-04T23:10:00.000Z",
+  "captureNotes": [
+    "Captured read-only from the authenticated Buildertrend source template Concrete - Slab Assembly.",
+    "All three subtask groups were expanded before capture.",
+    "Buildertrend row IDs, displayed order, and parent-child checklist relationships were captured exactly.",
+    "The single draft bid package includes its two line-item specifications, CSI cost codes, cost type, unit, description, and internal notes.",
+    "The reviewed source capture remains the sole source for the eight schedule rows and eight dependencies."
+  ],
+  "tasks": [
+    { "sourceItemId": "75705647", "parentSourceItemId": null, "title": "Final Grading Complete", "sortOrder": 1 },
+    { "sourceItemId": "75705903", "parentSourceItemId": "75705647", "title": "Final Grade @ Correct Elevation", "sortOrder": 1 },
+    { "sourceItemId": "75705907", "parentSourceItemId": "75705647", "title": "Final Grade @ Correct Slope", "sortOrder": 2 },
+    { "sourceItemId": "75705652", "parentSourceItemId": null, "title": "Install Slab Reinforcing", "sortOrder": 2 },
+    { "sourceItemId": "75705655", "parentSourceItemId": null, "title": "Install Base Rigid Insulation", "sortOrder": 3 },
+    { "sourceItemId": "75705658", "parentSourceItemId": null, "title": "Install Radiant Tubing", "sortOrder": 4 },
+    { "sourceItemId": "75705661", "parentSourceItemId": null, "title": "Install Radiant Manifold", "sortOrder": 5 },
+    { "sourceItemId": "75705665", "parentSourceItemId": null, "title": "Pressurize Radiant Lines to 60psi", "sortOrder": 6 },
+    { "sourceItemId": "75705668", "parentSourceItemId": null, "title": "Passed Radiant Inspection", "sortOrder": 7 },
+    { "sourceItemId": "75705671", "parentSourceItemId": null, "title": "Slab Poured", "sortOrder": 8 },
+    { "sourceItemId": "75705673", "parentSourceItemId": null, "title": "Order (x) level Slab Concrete", "sortOrder": 9 },
+    { "sourceItemId": "75705676", "parentSourceItemId": null, "title": "Update Concrete Order with Field Takeoffs", "sortOrder": 10 },
+    { "sourceItemId": "75705678", "parentSourceItemId": null, "title": "Pull Slab Concrete Field Takeoffs", "sortOrder": 11 },
+    { "sourceItemId": "75705682", "parentSourceItemId": null, "title": "HPS (x) Level Slab QC & Pre-Pour Inspection", "sortOrder": 12 },
+    { "sourceItemId": "75705909", "parentSourceItemId": "75705682", "title": "Slab is Flat", "sortOrder": 1 },
+    { "sourceItemId": "75705911", "parentSourceItemId": "75705682", "title": "No Dips", "sortOrder": 2 },
+    { "sourceItemId": "75705913", "parentSourceItemId": "75705682", "title": "Radiant Lines Pressurized to 60 psi", "sortOrder": 3 },
+    { "sourceItemId": "75705915", "parentSourceItemId": "75705682", "title": "Rigid Insulation in Stagger Pattern", "sortOrder": 4 },
+    { "sourceItemId": "75705917", "parentSourceItemId": "75705682", "title": "Rigid Insulation Taped", "sortOrder": 5 },
+    { "sourceItemId": "75705918", "parentSourceItemId": "75705682", "title": "Slab Reinforcing Installed", "sortOrder": 6 },
+    { "sourceItemId": "75705919", "parentSourceItemId": "75705682", "title": "Slab at Correct Elevation", "sortOrder": 7 },
+    { "sourceItemId": "75705684", "parentSourceItemId": null, "title": "HPS Flatwork QC Inspection", "sortOrder": 13 },
+    { "sourceItemId": "75705920", "parentSourceItemId": "75705684", "title": "Stamping Correct Pattern", "sortOrder": 1 },
+    { "sourceItemId": "75705922", "parentSourceItemId": "75705684", "title": "Stamping Correct Location", "sortOrder": 2 },
+    { "sourceItemId": "75705924", "parentSourceItemId": "75705684", "title": "Expansion Joints", "sortOrder": 3 },
+    { "sourceItemId": "75705926", "parentSourceItemId": "75705684", "title": "No Weather Damage", "sortOrder": 4 },
+    { "sourceItemId": "75705927", "parentSourceItemId": "75705684", "title": "No Low Spots", "sortOrder": 5 },
+    { "sourceItemId": "75705929", "parentSourceItemId": "75705684", "title": "No Water Standing", "sortOrder": 6 },
+    { "sourceItemId": "75705931", "parentSourceItemId": "75705684", "title": "No Settling", "sortOrder": 7 },
+    { "sourceItemId": "75705933", "parentSourceItemId": "75705684", "title": "No Heaving", "sortOrder": 8 },
+    { "sourceItemId": "75705935", "parentSourceItemId": "75705684", "title": "Separating of Stoops, Steps, Garage Floor, Etc.", "sortOrder": 9 },
+    { "sourceItemId": "75705937", "parentSourceItemId": "75705684", "title": "Pitch to Drain", "sortOrder": 10 },
+    { "sourceItemId": "75705939", "parentSourceItemId": "75705684", "title": "Jobsite Clean Up Satisfactory", "sortOrder": 11 },
+    { "sourceItemId": "75705941", "parentSourceItemId": "75705684", "title": "OK to Pay", "sortOrder": 12 },
+    { "sourceItemId": "75705686", "parentSourceItemId": null, "title": "Schedule Flatwork Crew", "sortOrder": 14 },
+    { "sourceItemId": "75705691", "parentSourceItemId": null, "title": "Schedule Concrete Pump", "sortOrder": 15 }
+  ],
+  "selections": [],
+  "bidPackages": [
+    {
+      "sourceItemId": "10290610",
+      "sourceBidPackageId": "10290610",
+      "title": "Flat Work - (Project Address) (Estimate Phase)",
+      "status": "Draft",
+      "allowMultipleApprovedBids": false,
+      "deadline": null,
+      "time": null,
+      "reminderLeadDays": 2,
+      "plansAndSpecs": false,
+      "pricingFormat": "Line Items",
+      "description": "Background\nHigh Performance Structures, Inc. dba Open Range Construction, Ltd. (ORC) will be building a (Project Type) located at:\n(Project Address)\nReference Documents\nPlease see the Buildertrend Documents folder titled \"(Est. Phase) Bid Set\" for all necessary plans.\nSubmission of Bid\nBids for this project will be processed through Buildertrend, a construction management program. You do not need to become proficient with Buildertrend. You may also simply call or email your point of contact. You may submit your bid into Buildertrend or email it to your point of contact for entry. Should you choose to input your bid into Buildertrend, please also include a PDF version of your bid.\nFor assistance with submitting the bid or receiving bid documents, contact the (Estimator Title):\n(Estimator), (719) 900-8850 ext. (Estimator Ext)\n(Estimator Email Address)\nTimeline\nThe work is scheduled to start in (Season), (Year).\nScope of Work\nThe following CSI categories will be required for the construction of the project per the plans and specifications noted on the Plans and Specifications List. We will notify bidders of any changes or additions by sending out updates to said List.\nSchedule\nPlease provide a schedule to complete each of the above items, in calendar days after the issuance of the purchase order and/or notice to proceed.\nContract and Insurance Requirements\nAll trade contractors will be required to complete a trade contractor agreement, provide proof of liability insurance and workman’s compensation insurance as applicable, with required limits prior to the release of any construction payments.",
+      "internalNotes": "Please Input the SQFT into the QTY Line & notate how many CUYD of Concrete in the description along with the type of finish (Broom for exterior, slick for interior)",
+      "attachments": [],
+      "lineItems": [
+        {
+          "sourceLineItemId": "17860313",
+          "title": "(X Area) Interior Slab Flatwork Finish Labor",
+          "costCode": "03 35 00 - Concrete Finishing",
+          "costType": "Subcontractor",
+          "quantity": null,
+          "unit": "SQFT",
+          "description": "Concrete CUYD: (X) CUYD, Finish: Slick"
+        },
+        {
+          "sourceLineItemId": "17860314",
+          "title": "(X Area) Exterior Slab Flatwork Finish Labor",
+          "costCode": "32 13 13 - Concrete Paving",
+          "costType": "Subcontractor",
+          "quantity": null,
+          "unit": "SQFT",
+          "description": "Concrete CUYD: (X) CUYD; Finish: Broom"
+        }
+      ]
+    }
+  ]
+}

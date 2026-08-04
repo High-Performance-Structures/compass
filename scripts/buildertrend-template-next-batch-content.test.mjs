@@ -26,75 +26,94 @@ async function inputs() {
   return { release, nextBatchManifest, reviewedCapture, documents }
 }
 
-test("assembles the three gate-complete templates with reviewed schedules", async () => {
+test("assembles the four gate-complete templates with reviewed schedules", async () => {
   const result = assembleBuildertrendTemplateNextBatchContent(await inputs())
 
-  assert.deepEqual(result.capture.assembly.sourceTemplateIds, ["12859981", "12978371", "12581937"])
-  assert.equal(result.capture.assembly.draftOnly, true)
-  assert.equal(result.capture.assembly.publish, false)
-  assert.equal(result.capture.assembly.excludedIncompleteTemplateCount, 31)
-  assert.equal(result.capture.assembly.excludedArchivedTemplateCount, 27)
-  assert.equal(result.capture.assembly.eligibleAfterThisBatch, 0)
-  assert.equal(result.capture.templates.reduce((sum, item) => sum + item.tasks.length, 0), 136)
-  assert.equal(result.capture.templates.reduce((sum, item) => sum + item.scheduleItems.length, 0), 22)
-  assert.equal(result.capture.templates.reduce((sum, item) => sum + (item.selections?.length ?? 0), 0), 4)
-  assert.equal(result.capture.templates.reduce((sum, item) => sum + (item.bidPackages?.length ?? 0), 0), 3)
-  assert.equal(result.capture.templates.reduce(
-    (sum, item) => sum + item.scheduleItems.flatMap((row) => row.predecessors).length,
-    0
-  ), 17)
-  assert.equal(result.inventory.expectedActiveCount, 3)
-  assert.equal(result.inventory.excludedArchivedCount, 27)
-  assert.deepEqual(
-    result.inventory.templates.map((template) => template.sourceTemplateId),
-    ["12859981", "12978371", "12581937"]
-  )
-})
-
-test("fails stale when the next complete template is not in the reviewed release", async () => {
-  const stale = await inputs()
-  stale.documents.push({
-    source: "09-12594475.capture.json",
-    document: {
-      sourceTemplateId: "12594475",
-      sourceName: "Concrete - Slab Assembly",
-      tasks: Array.from({ length: 36 }, (_, index) => ({
-        sourceItemId: `slab-task-${index + 1}`,
-        parentSourceItemId: null,
-        title: `Slab task ${index + 1}`,
-      })),
-      bidPackages: [{ sourceItemId: "slab-bid-1", title: "Slab bid" }],
-    },
-  })
-  assert.throws(
-    () => assembleBuildertrendTemplateNextBatchContent(stale),
-    /scope is stale for the currently reviewed fragments/
-  )
-
-  const reviewed = structuredClone(stale)
-  const slab = reviewed.nextBatchManifest.templates.find(
-    (template) => template.sourceTemplateId === "12594475"
-  )
-  assert.ok(slab)
-  reviewed.release.scope.structurallyCompleteTemplatesIncluded = 4
-  reviewed.release.scope.incompleteTemplatesExcluded = 30
-  reviewed.release.templates.push({
-    sourceTemplateId: slab.sourceTemplateId,
-    sourceName: slab.sourceName,
-    workplanSequence: slab.workplanSequence,
-    moduleCounts: slab.moduleCounts,
-    fragmentPath: slab.fragmentPath,
-    browserCaptureGates: "complete",
-  })
-
-  const result = assembleBuildertrendTemplateNextBatchContent(reviewed)
   assert.deepEqual(
     result.capture.assembly.sourceTemplateIds,
     ["12859981", "12978371", "12581937", "12594475"]
   )
+  assert.equal(result.capture.assembly.draftOnly, true)
+  assert.equal(result.capture.assembly.publish, false)
   assert.equal(result.capture.assembly.excludedIncompleteTemplateCount, 30)
-  assert.equal(result.capture.templates[3].tasks.length, 36)
-  assert.equal(result.capture.templates[3].scheduleItems.length, 8)
+  assert.equal(result.capture.assembly.excludedArchivedTemplateCount, 27)
+  assert.equal(result.capture.assembly.eligibleAfterThisBatch, 0)
+  assert.equal(result.capture.templates.reduce((sum, item) => sum + item.tasks.length, 0), 172)
+  assert.equal(result.capture.templates.reduce((sum, item) => sum + item.scheduleItems.length, 0), 30)
+  assert.equal(result.capture.templates.reduce((sum, item) => sum + (item.selections?.length ?? 0), 0), 4)
+  assert.equal(result.capture.templates.reduce((sum, item) => sum + (item.bidPackages?.length ?? 0), 0), 4)
+  assert.equal(result.capture.templates.reduce(
+    (sum, item) => sum + item.scheduleItems.flatMap((row) => row.predecessors).length,
+    0
+  ), 25)
+  assert.equal(result.inventory.expectedActiveCount, 4)
+  assert.equal(result.inventory.excludedArchivedCount, 27)
+  assert.deepEqual(
+    result.inventory.templates.map((template) => template.sourceTemplateId),
+    ["12859981", "12978371", "12581937", "12594475"]
+  )
+})
+
+test("preserves the reviewed Concrete Slab checklist, schedule, and bid specifications", async () => {
+  const result = assembleBuildertrendTemplateNextBatchContent(await inputs())
+  const slab = result.capture.templates.find((template) => template.sourceTemplateId === "12594475")
+  assert.ok(slab)
+  assert.equal(slab.tasks.length, 36)
+  assert.equal(slab.tasks.filter((task) => task.parentSourceItemId === null).length, 15)
+  assert.equal(slab.tasks.filter((task) => task.parentSourceItemId !== null).length, 21)
+  assert.deepEqual(
+    slab.tasks.filter((task) => task.parentSourceItemId === "75705647").map((task) => task.title),
+    ["Final Grade @ Correct Elevation", "Final Grade @ Correct Slope"]
+  )
+  assert.deepEqual(
+    slab.tasks.filter((task) => task.parentSourceItemId === "75705682").map((task) => task.title),
+    [
+      "Slab is Flat",
+      "No Dips",
+      "Radiant Lines Pressurized to 60 psi",
+      "Rigid Insulation in Stagger Pattern",
+      "Rigid Insulation Taped",
+      "Slab Reinforcing Installed",
+      "Slab at Correct Elevation",
+    ]
+  )
+  assert.equal(slab.tasks.filter((task) => task.parentSourceItemId === "75705684").length, 12)
+  assert.equal(slab.scheduleItems.length, 8)
+  assert.equal(slab.scheduleItems.flatMap((item) => item.predecessors).length, 8)
+
+  assert.equal(slab.bidPackages.length, 1)
+  const bidPackage = slab.bidPackages[0]
+  assert.equal(bidPackage.sourceBidPackageId, "10290610")
+  assert.equal(bidPackage.title, "Flat Work - (Project Address) (Estimate Phase)")
+  assert.equal(bidPackage.status, "Draft")
+  assert.equal(bidPackage.pricingFormat, "Line Items")
+  assert.match(bidPackage.description, /Contract and Insurance Requirements/)
+  assert.match(bidPackage.internalNotes, /Input the SQFT into the QTY Line/)
+  assert.deepEqual(
+    bidPackage.lineItems.map((item) => ({
+      sourceLineItemId: item.sourceLineItemId,
+      costCode: item.costCode,
+      costType: item.costType,
+      unit: item.unit,
+      description: item.description,
+    })),
+    [
+      {
+        sourceLineItemId: "17860313",
+        costCode: "03 35 00 - Concrete Finishing",
+        costType: "Subcontractor",
+        unit: "SQFT",
+        description: "Concrete CUYD: (X) CUYD, Finish: Slick",
+      },
+      {
+        sourceLineItemId: "17860314",
+        costCode: "32 13 13 - Concrete Paving",
+        costType: "Subcontractor",
+        unit: "SQFT",
+        description: "Concrete CUYD: (X) CUYD; Finish: Broom",
+      },
+    ]
+  )
 })
 
 test("rejects partial capture, duplicate release scope, and publication requests", async () => {
@@ -125,7 +144,7 @@ test("rejects partial capture, duplicate release scope, and publication requests
   )
 })
 
-test("builds SQL that remains draft-only and includes Concrete Footer", async () => {
+test("builds SQL that remains draft-only and includes Concrete Slab", async () => {
   const directory = await mkdtemp(join(tmpdir(), "compass-next-batch-content-"))
   const capture = join(directory, "capture.json")
   const inventory = join(directory, "inventory.json")
@@ -143,11 +162,11 @@ test("builds SQL that remains draft-only and includes Concrete Footer", async ()
       "--output", output,
     ])
     assert.deepEqual(JSON.parse(result.stdout), {
-      templateCount: 3,
-      tasks: 136,
-      scheduleItems: 22,
+      templateCount: 4,
+      tasks: 172,
+      scheduleItems: 30,
       selections: 4,
-      bidPackages: 3,
+      bidPackages: 4,
       excludedArchivedCount: 27,
       draftOnly: true,
       output,
@@ -156,6 +175,7 @@ test("builds SQL that remains draft-only and includes Concrete Footer", async ()
     assert.match(sql, /bt-template-version:12859981:1/)
     assert.match(sql, /bt-template-version:12978371:1/)
     assert.match(sql, /bt-template-version:12581937:1/)
+    assert.match(sql, /bt-template-version:12594475:1/)
     assert.match(sql, /INSERT INTO schedule_template_items/)
     assert.match(sql, /review_status='content_captured', lifecycle_status='draft'/)
     assert.doesNotMatch(sql, /status='published'|lifecycle_status='active'|review_status='verified'/)
