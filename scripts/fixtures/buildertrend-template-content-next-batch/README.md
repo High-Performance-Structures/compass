@@ -74,3 +74,38 @@ Both commands reject publish flags. The generated content SQL is guarded by
 draft version checks and leaves the two Compass templates in
 `content_captured` / `draft` state for staff review and later publication from
 the Template Library.
+
+## Read-only production verification
+
+Generate the preflight query before applying an import. The generator does not
+connect to D1 and emits exactly one read-only `WITH ... SELECT` statement:
+
+```bash
+bun scripts/build-buildertrend-template-content-verification-sql.mjs \
+  --capture <reviewed-capture.json> \
+  --inventory <reviewed-inventory.json> \
+  --release scripts/fixtures/buildertrend-template-content-next-batch-release-2026-08-04.json \
+  --organization-id <organization-id> \
+  --phase preflight \
+  --output <preflight.sql>
+
+bunx wrangler d1 execute <database-name> --remote --file <preflight.sql> --json
+```
+
+Proceed only when the query returns zero issue rows. Preflight requires one
+matching draft template and version per source ID, exact source module counts,
+no applications, no Concrete Footer content, and either zero content rows or a
+complete prior replay. A partial prior import is rejected.
+
+After applying the reviewed import, generate and execute the same query with
+`--phase postflight`. Postflight requires exactly 114 content rows (93 tasks,
+14 schedule items, four selections, and three bid packages), ten schedule
+predecessor edges, exact deterministic source identities, valid JSON without
+Buildertrend URLs, draft versions, and `content_captured` / `draft` template
+state. Zero rows means the verification passed.
+
+For a production idempotency check, run the reviewed import a second time only
+after the first postflight returns zero rows, then rerun the same postflight.
+It must again return zero rows. The automated regression test performs this
+two-pass comparison against a temporary SQLite database and verifies that the
+complete content snapshot is byte-for-byte unchanged.
