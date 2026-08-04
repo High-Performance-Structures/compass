@@ -37,3 +37,27 @@ browser-capture modules are present:
 bun scripts/validate-buildertrend-template-next-batch.mjs --require-priority-complete
 bun scripts/validate-buildertrend-template-next-batch.mjs --require-all-complete
 ```
+
+## First guarded content release
+
+The release allowlist currently contains only Stucco (`12859981`) and MEP Rough
+& Top Out (`12978371`). Their browser gates are complete, and the assembler
+combines those fragments with the already-reviewed schedule rows and
+dependencies. Concrete Footer (`12581937`) remains explicitly excluded until
+its browser task capture is complete.
+
+```bash
+bun scripts/assemble-buildertrend-template-next-batch-content.mjs \
+  --capture-output <reviewed-capture.json> \
+  --inventory-output <reviewed-inventory.json>
+
+bun scripts/build-buildertrend-template-next-batch-content-sql.mjs \
+  --capture <reviewed-capture.json> \
+  --inventory <reviewed-inventory.json> \
+  --output <reviewed-import.sql>
+```
+
+Both commands reject publish flags. The generated content SQL is guarded by
+draft version checks and leaves the two Compass templates in
+`content_captured` / `draft` state for staff review and later publication from
+the Template Library.
