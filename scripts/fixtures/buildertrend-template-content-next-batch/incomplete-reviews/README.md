@@ -82,3 +82,14 @@ The canonical reviewed capture preserves the three schedule items and three
 dependencies. Perimeter Drain remains release-ineligible until all four task
 rows are captured with their native identities, displayed ordering, and exact
 parent-child hierarchy.
+
+## Ext. Finishes - Painting/Staining (`36618977`)
+
+The reviewed active-template inventory reports two selections and one bid
+package, with no tasks or schedule items. Authenticated module capture remains
+pending until the preceding template releases the shared browser session.
+
+Exterior Painting/Staining remains excluded from release until both selections
+and the bid package are captured with exact native identities, choice and line
+item content, cost codes, Cost Types, attachment evidence, and any copy
+warnings. No source values may be inferred while this audit remains pending.
