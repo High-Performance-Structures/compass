@@ -22,10 +22,10 @@ async function readJson(path) {
   return JSON.parse(await readFile(path, "utf8"))
 }
 
-test("records Radon Systems as a fail-closed pending bid-package capture", async () => {
+test("records the authenticated Radon Systems checkpoint as fail-closed", async () => {
   const review = await readJson(paths.review)
 
-  assert.equal(review.reviewStatus, "pending_browser_capture")
+  assert.equal(review.reviewStatus, "incomplete")
   assert.equal(review.releaseEligible, false)
   assert.equal(review.template.sourceTemplateId, radonTemplateId)
   assert.equal(review.template.sourceName, "Earthwork - Radon Systems")
@@ -40,7 +40,7 @@ test("records Radon Systems as a fail-closed pending bid-package capture", async
       module: "bidPackages",
       expectedCount: 1,
       capturedCount: 0,
-      status: "pending",
+      status: "incomplete",
       releaseBlocker: "Recover the bid package native identity, status, specifications, line items, cost codes, Cost Types, quantities, units, linked plans and specifications, and any Buildertrend copy warnings from an authenticated supported view or export.",
     },
   ])
@@ -48,9 +48,18 @@ test("records Radon Systems as a fail-closed pending bid-package capture", async
   assert.deepEqual(review.template.selections, [])
   assert.deepEqual(review.template.bidPackages, [])
   assert.deepEqual(review.conversionExceptions, [])
+  assert.equal(review.template.captureNotes.length, 4)
+  assert.equal(
+    review.template.captureNotes.some((note) => note.includes("entity-42924180")),
+    true
+  )
+  assert.equal(
+    review.template.captureNotes.some((note) => note.includes("previously selected MEP - Quotes context")),
+    true
+  )
 })
 
-test("keeps the pending Radon Systems audit out of fragment discovery and release assembly", async () => {
+test("keeps the incomplete Radon Systems audit out of fragment discovery and release assembly", async () => {
   const [release, nextBatchManifest, reviewedCapture, documents] = await Promise.all([
     readJson(paths.release),
     readJson(paths.manifest),

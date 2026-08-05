@@ -1,14 +1,16 @@
 {
-  "reviewStatus": "pending_browser_capture",
+  "reviewStatus": "incomplete",
   "releaseEligible": false,
   "template": {
     "sourceTemplateId": "42924180",
     "sourceName": "Earthwork - Radon Systems",
     "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/42924180",
-    "preparedAt": "2026-08-05",
+    "capturedAt": "2026-08-05T10:16:31Z",
     "captureNotes": [
-      "The canonical reviewed Buildertrend inventory reports one bid package and no task, schedule, or selection modules for this active template.",
-      "No Buildertrend browser evidence has been captured for this preparation checkpoint. The bid package must remain excluded from Compass release assembly until its native identity and complete source content are reviewed."
+      "The authenticated Buildertrend My Templates grid exposed source row entity-42924180 with the exact source link /app/Templates/MyTemplates/Template/42924180, one bid package, a zero-day schedule, and no task, schedule-item, or selection counts.",
+      "Opening that visible source link confirmed the Template Information dialog name Earthwork - Radon Systems; the source template was not edited.",
+      "Buildertrend's template context picker returned no result for both Radon and the exact full source name, so the bid-package module could not be opened in a verified Radon Systems context.",
+      "No bid-package value from the previously selected MEP - Quotes context was retained. The Radon Systems bid package remains excluded until its complete source content is reachable."
     ],
     "sourceInventory": {
       "tasks": 0,
@@ -21,7 +23,7 @@
         "module": "bidPackages",
         "expectedCount": 1,
         "capturedCount": 0,
-        "status": "pending",
+        "status": "incomplete",
         "releaseBlocker": "Recover the bid package native identity, status, specifications, line items, cost codes, Cost Types, quantities, units, linked plans and specifications, and any Buildertrend copy warnings from an authenticated supported view or export."
       }
     ],

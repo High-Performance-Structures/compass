@@ -139,9 +139,13 @@ this audit-only directory and cannot enter release discovery.
 
 ## Earthwork - Radon Systems (`42924180`)
 
-The reviewed source inventory reports one bid package and no tasks, schedule
-items, or selections. The preparation checkpoint deliberately contains no
-Buildertrend-derived bid content. It remains excluded until the bid package is
-captured from an authenticated supported view or export with its native
-identity, specifications, line items, cost codes, Cost Types, quantities,
-units, linked plans and specifications, and any copy warnings preserved.
+The authenticated My Templates grid confirms source row `entity-42924180`, one
+bid package, a zero-day schedule, and no task, schedule-item, or selection
+counts. Its visible source link also opened the exact Radon Systems settings
+dialog without editing it. Buildertrend's template context picker did not
+return the source for either `Radon` or its exact full name, so the package was
+not opened and no record from the previously selected template was retained.
+It remains excluded until the bid package is captured from an authenticated
+supported view or export with its native identity, specifications, line items,
+cost codes, Cost Types, quantities, units, linked plans and specifications,
+and any copy warnings preserved.
