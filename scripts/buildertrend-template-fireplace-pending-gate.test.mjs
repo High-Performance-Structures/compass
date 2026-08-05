@@ -13,6 +13,7 @@ const fireplaceTemplateId = "38452532"
 const expectedFragmentPath =
   "scripts/fixtures/buildertrend-template-content-next-batch/fragments/40-38452532.capture.json"
 const paths = {
+  review: "scripts/fixtures/buildertrend-template-content-next-batch/incomplete-reviews/40-38452532.capture-review.json",
   fragments: "scripts/fixtures/buildertrend-template-content-next-batch/fragments",
   release: "scripts/fixtures/buildertrend-template-content-next-batch-release-2026-08-04.json",
   manifest: "scripts/fixtures/buildertrend-template-next-batch-2026-08-04.json",
@@ -80,7 +81,39 @@ test("keeps Fireplace Installation behind its exact one-selection capture gate",
   assert.equal(reviewedTemplate.schedule, null)
 })
 
-test("excludes pending Fireplace Installation content from fragment discovery and release assembly", async () => {
+test("preserves the authenticated Fireplace Installation checkpoint as a fail-closed audit", async () => {
+  const review = await readJson(paths.review)
+
+  assert.equal(review.reviewStatus, "incomplete")
+  assert.equal(review.releaseEligible, false)
+  assert.equal(review.template.sourceTemplateId, fireplaceTemplateId)
+  assert.equal(review.template.capturedAt, "2026-08-05T10:47:09Z")
+  assert.deepEqual(review.template.sourceInventory, {
+    tasks: 0,
+    scheduleDuration: "0 Days",
+    scheduleItems: 0,
+    selections: 1,
+    bidPackages: 0,
+  })
+  assert.deepEqual(
+    review.template.browserModuleGates.map((gate) => ({
+      module: gate.module,
+      expectedCount: gate.expectedCount,
+      capturedCount: gate.capturedCount,
+      status: gate.status,
+    })),
+    [
+      { module: "selections", expectedCount: 1, capturedCount: 0, status: "incomplete" },
+    ]
+  )
+  assert.equal(review.template.browserModuleGates[0].releaseBlocker.length > 0, true)
+  assert.deepEqual(review.template.tasks, [])
+  assert.deepEqual(review.template.selections, [])
+  assert.deepEqual(review.template.bidPackages, [])
+  assert.deepEqual(review.conversionExceptions, [])
+})
+
+test("excludes incomplete Fireplace Installation content from fragment discovery and release assembly", async () => {
   const [release, nextBatchManifest, reviewedCapture, documents] = await Promise.all([
     readJson(paths.release),
     readJson(paths.manifest),
@@ -92,6 +125,7 @@ test("excludes pending Fireplace Installation content from fragment discovery an
     documents.some(({ source }) => source.endsWith("40-38452532.capture.json")),
     false
   )
+  assert.equal(documents.some(({ source }) => source.includes("incomplete-reviews")), false)
   assert.equal(
     release.templates.some(
       (template) => template.sourceTemplateId === fireplaceTemplateId

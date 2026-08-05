@@ -174,3 +174,14 @@ internal notes, individual choice descriptions, six indicated attachment
 filenames, and durable attachment bytes were not exposed during the bounded
 capture. Those values must be recovered without inference before the audit can
 move into the active fragments directory or the release allowlist.
+## MEP - Fireplace Installation (`38452532`)
+
+The authenticated My Templates row reports one selection and no other content
+modules. The exact source row opened and verified the Fireplace Installation
+template edit dialog, but Buildertrend left the global working context pinned
+to Bath Hardware. A bounded visible job-picker search did not expose the
+Fireplace template, so no unrelated selection detail was retained.
+
+Fireplace Installation remains blocked until its one selection is captured
+with the exact native identity, metadata, choices, choice ordering,
+descriptions, prices, attachments, and any hierarchy exposed by Buildertrend.
