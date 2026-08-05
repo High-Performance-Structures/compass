@@ -85,9 +85,12 @@ parent-child hierarchy.
 
 ## Ext. Finishes - Painting/Staining (`36618977`)
 
-The reviewed active-template inventory reports two selections and one bid
-package, with no tasks or schedule items. Authenticated module capture remains
-pending until the preceding template releases the shared browser session.
+The authenticated My Templates inventory reports two selections and one bid
+package, with no tasks or schedule items. The exact source row was selected,
+but Buildertrend kept the global job-picker and module context pinned to the
+previously selected Flooring template. A bounded visible job-picker search did
+not expose the Exterior Painting/Staining source, so no unrelated module data
+was retained.
 
 Exterior Painting/Staining remains excluded from release until both selections
 and the bid package are captured with exact native identities, choice and line

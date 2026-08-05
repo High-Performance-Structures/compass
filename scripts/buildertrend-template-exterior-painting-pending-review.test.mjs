@@ -22,13 +22,13 @@ async function readJson(path) {
   return JSON.parse(await readFile(path, "utf8"))
 }
 
-test("preserves the Exterior Painting/Staining browser gates as a fail-closed pending audit", async () => {
+test("preserves the Exterior Painting/Staining browser gates as a fail-closed audit", async () => {
   const review = await readJson(paths.review)
 
   assert.equal(review.reviewStatus, "incomplete")
   assert.equal(review.releaseEligible, false)
   assert.equal(review.template.sourceTemplateId, exteriorPaintingTemplateId)
-  assert.equal(review.template.capturedAt, null)
+  assert.equal(review.template.capturedAt, "2026-08-05T09:10:10Z")
   assert.deepEqual(review.template.sourceInventory, {
     tasks: 0,
     scheduleDuration: "0 Days",
@@ -44,8 +44,8 @@ test("preserves the Exterior Painting/Staining browser gates as a fail-closed pe
       status: gate.status,
     })),
     [
-      { module: "selections", expectedCount: 2, capturedCount: 0, status: "pending" },
-      { module: "bidPackages", expectedCount: 1, capturedCount: 0, status: "pending" },
+      { module: "selections", expectedCount: 2, capturedCount: 0, status: "incomplete" },
+      { module: "bidPackages", expectedCount: 1, capturedCount: 0, status: "incomplete" },
     ]
   )
   assert.equal(review.template.browserModuleGates.every((gate) => gate.releaseBlocker.length > 0), true)
@@ -55,7 +55,7 @@ test("preserves the Exterior Painting/Staining browser gates as a fail-closed pe
   assert.deepEqual(review.conversionExceptions, [])
 })
 
-test("keeps the pending Exterior Painting/Staining audit out of fragment discovery and release", async () => {
+test("keeps the incomplete Exterior Painting/Staining audit out of fragment discovery and release", async () => {
   const [release, nextBatchManifest, reviewedCapture, documents] = await Promise.all([
     readJson(paths.release),
     readJson(paths.manifest),
