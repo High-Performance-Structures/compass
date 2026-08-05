@@ -1,0 +1,32 @@
+{
+  "reviewStatus": "pending",
+  "releaseEligible": false,
+  "template": {
+    "sourceTemplateId": "36595931",
+    "sourceName": "MEP - Quotes",
+    "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/36595931",
+    "temporaryBuildertrendTargetName": "BT MEP - Quotes",
+    "captureNotes": [
+      "The reviewed Buildertrend inventory identifies three bid packages and no task, schedule, or selection modules for this source template.",
+      "This checkpoint was prepared without opening or modifying Buildertrend. It records the exact fail-closed gate that must be satisfied by a later authenticated read-only capture.",
+      "No bid-package identity, specification, line item, cost code, Cost Type, quantity, unit, attachment, or copy-warning value is inferred from another template."
+    ],
+    "sourceInventory": {
+      "tasks": 0,
+      "scheduleItems": 0,
+      "selections": 0,
+      "bidPackages": 3
+    },
+    "browserModuleGates": [
+      {
+        "module": "bidPackages",
+        "expectedCount": 3,
+        "capturedCount": 0,
+        "status": "pending",
+        "releaseBlocker": "Recover all three bid packages with native package and line-item identities, status, specifications, ordering, cost codes, Cost Types, quantities, units, attachments, and any Buildertrend copy warnings before promoting this review to an active fragment."
+      }
+    ],
+    "bidPackages": []
+  },
+  "conversionExceptions": []
+}

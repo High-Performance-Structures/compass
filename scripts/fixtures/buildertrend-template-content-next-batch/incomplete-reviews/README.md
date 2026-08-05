@@ -111,3 +111,15 @@ descriptions were not opened and the Truss Pack package's Plans and Specs
 subpanel was not inspected before the browser lease ended. Those fields must be
 recovered without inference before the checkpoint can move into the active
 fragments directory or become eligible for the reviewed release allowlist.
+
+## MEP - Quotes (`36595931`)
+
+The reviewed source inventory reports three bid packages and no task, schedule,
+or selection content. Its pending review was prepared without opening or
+modifying Buildertrend and is therefore an explicit capture plan rather than
+source-detail evidence.
+
+MEP Quotes remains blocked until all three bid packages are captured with
+native package and line-item identities, complete specifications and ordering,
+cost codes, Cost Types, quantities, units, attachments, and any Buildertrend
+copy warnings. No values may be inferred from related MEP templates.
