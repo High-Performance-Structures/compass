@@ -26,32 +26,169 @@ async function inputs() {
   return { release, nextBatchManifest, reviewedCapture, documents }
 }
 
-test("assembles the four gate-complete templates with reviewed schedules", async () => {
+test("assembles the five gate-complete templates with reviewed schedules", async () => {
   const result = assembleBuildertrendTemplateNextBatchContent(await inputs())
 
   assert.deepEqual(
     result.capture.assembly.sourceTemplateIds,
-    ["12859981", "12978371", "12581937", "12594475"]
+    ["12859981", "12978371", "12581937", "12594475", "30917204"]
   )
   assert.equal(result.capture.assembly.draftOnly, true)
   assert.equal(result.capture.assembly.publish, false)
-  assert.equal(result.capture.assembly.excludedIncompleteTemplateCount, 30)
+  assert.equal(result.capture.assembly.excludedIncompleteTemplateCount, 29)
   assert.equal(result.capture.assembly.excludedArchivedTemplateCount, 27)
   assert.equal(result.capture.assembly.eligibleAfterThisBatch, 0)
-  assert.equal(result.capture.templates.reduce((sum, item) => sum + item.tasks.length, 0), 172)
-  assert.equal(result.capture.templates.reduce((sum, item) => sum + item.scheduleItems.length, 0), 30)
-  assert.equal(result.capture.templates.reduce((sum, item) => sum + (item.selections?.length ?? 0), 0), 4)
-  assert.equal(result.capture.templates.reduce((sum, item) => sum + (item.bidPackages?.length ?? 0), 0), 4)
+  assert.equal(result.capture.templates.reduce((sum, item) => sum + item.tasks.length, 0), 201)
+  assert.equal(result.capture.templates.reduce((sum, item) => sum + item.scheduleItems.length, 0), 33)
+  assert.equal(result.capture.templates.reduce((sum, item) => sum + (item.selections?.length ?? 0), 0), 8)
+  assert.equal(result.capture.templates.reduce((sum, item) => sum + (item.bidPackages?.length ?? 0), 0), 5)
   assert.equal(result.capture.templates.reduce(
     (sum, item) => sum + item.scheduleItems.flatMap((row) => row.predecessors).length,
     0
-  ), 25)
-  assert.equal(result.inventory.expectedActiveCount, 4)
+  ), 27)
+  assert.equal(result.inventory.expectedActiveCount, 5)
   assert.equal(result.inventory.excludedArchivedCount, 27)
   assert.deepEqual(
     result.inventory.templates.map((template) => template.sourceTemplateId),
-    ["12859981", "12978371", "12581937", "12594475"]
+    ["12859981", "12978371", "12581937", "12594475", "30917204"]
   )
+})
+
+test("preserves the reviewed Siding hierarchy, selections, bid package, and copy warnings", async () => {
+  const result = assembleBuildertrendTemplateNextBatchContent(await inputs())
+  const siding = result.capture.templates.find((template) => template.sourceTemplateId === "30917204")
+  assert.ok(siding)
+  assert.equal(siding.tasks.length, 29)
+  assert.equal(siding.tasks.filter((task) => task.parentSourceItemId === null).length, 3)
+  assert.deepEqual(
+    siding.tasks.filter((task) => task.parentSourceItemId === "180199031").map((task) => task.title),
+    [
+      "Level Horizontally",
+      "Level Vertically",
+      "Joints Blocked & Butt Joints Caulked or Concealed w/ Batten Strips",
+      "Nails Recessed & Caulked",
+      "Drip Cap",
+      "Corner Detailing",
+      "Wedges",
+      "Chinking completed",
+      "No Gouges",
+      "No Cracks",
+      "No Breaking",
+      "No Exposed Underlayment",
+      "No Buckles or Ripples",
+      "No Dents",
+      "No Chips",
+      "No Scratches",
+      "No Loose Siding",
+      "No Shrinking",
+      "No Twists",
+      "No Bows",
+      "No Knots Falling Out (Wood Siding)",
+      "No Splits @ Nails",
+      "Lap on Bevel Siding",
+      "No Delamination",
+      "Jobsite Cleanup Satisfactory",
+      "OK to Pay",
+    ]
+  )
+  assert.deepEqual(
+    siding.tasks.filter((task) => task.parentSourceItemId === "180199031").map((task) => task.sortOrder),
+    Array.from({ length: 26 }, (_, index) => index + 1)
+  )
+
+  assert.equal(siding.selections.length, 4)
+  const sidingType = siding.selections.find((selection) => selection.sourceSelectionId === "63637592")
+  assert.ok(sidingType)
+  assert.equal(sidingType.allowMultipleSelectedChoices, false)
+  assert.equal(sidingType.choiceOrdering, "Auto")
+  assert.deepEqual(
+    sidingType.choices.map((choice) => ({
+      sourceChoiceId: choice.sourceChoiceId,
+      title: choice.title,
+      attachment: choice.attachments[0].fileName,
+    })),
+    [
+      { sourceChoiceId: "262674474", title: "Composite Siding", attachment: "bardage-composite-eternit.jpg" },
+      { sourceChoiceId: "262674473", title: "Fiber Cement", attachment: "james-hardie-siding-calgary.jpg" },
+      { sourceChoiceId: "262674472", title: "LP SmartSide", attachment: "LP SmartSide.jpg" },
+      { sourceChoiceId: "262674476", title: "Metal Siding", attachment: "Metal Siding.jpg" },
+      { sourceChoiceId: "262674475", title: "Natural Wood Siding", attachment: "Natural wood siding.jpg" },
+      { sourceChoiceId: "262674471", title: "Vinyl Siding", attachment: "Vinyl siding.jpg" },
+    ]
+  )
+  assert.match(
+    siding.selections.find((selection) => selection.sourceSelectionId === "63637593").description,
+    /select your primary color/
+  )
+  assert.match(
+    siding.selections.find((selection) => selection.sourceSelectionId === "63637594").description,
+    /secondary accent color/
+  )
+  assert.match(
+    siding.selections.find((selection) => selection.sourceSelectionId === "63637595").description,
+    /siding trim at corners and around openings/
+  )
+
+  assert.equal(siding.bidPackages.length, 1)
+  const bidPackage = siding.bidPackages[0]
+  assert.equal(bidPackage.sourceBidPackageId, "13414442")
+  assert.equal(bidPackage.title, "Siding - (Proj. Address) (Est. Phase)")
+  assert.equal(bidPackage.pricingFormat, "Line Items")
+  assert.deepEqual(
+    bidPackage.lineItems.map((lineItem) => ({
+      title: lineItem.title,
+      costCode: lineItem.costCode,
+      costType: lineItem.costType,
+    })),
+    [
+      {
+        title: "Metal Siding Installation Labor & Misc. Materials",
+        costCode: "07 46 19 - Steel Siding",
+        costType: "None",
+      },
+      {
+        title: "Metal Siding Materials",
+        costCode: "07 46 19 - Steel Siding",
+        costType: "Material",
+      },
+      {
+        title: "Hardie Siding Installation Labor & Misc. Materials",
+        costCode: "07 46 46 - Fiber-Cement Siding",
+        costType: "None",
+      },
+      {
+        title: "Hardie Siding Materials",
+        costCode: "07 46 46 - Fiber-Cement Siding",
+        costType: "Material",
+      },
+    ]
+  )
+
+  assert.equal(siding.scheduleItems.length, 3)
+  assert.equal(siding.scheduleItems.find((item) => item.sourceItemId === "180238656").title, "HPS Siding QC Inpsection")
+  assert.deepEqual(
+    siding.scheduleItems.flatMap((item) => item.predecessors).map((dependency) => ({
+      predecessorSourceItemId: dependency.predecessorSourceItemId,
+      successorSourceItemId: dependency.successorSourceItemId,
+      type: dependency.type,
+      lagDays: dependency.lagDays,
+    })),
+    [
+      { predecessorSourceItemId: "180238306", successorSourceItemId: "180238320", type: "SS", lagDays: -1 },
+      { predecessorSourceItemId: "180238306", successorSourceItemId: "180238656", type: "FS", lagDays: 0 },
+    ]
+  )
+
+  const sidingExceptions = result.capture.conversionExceptions.filter(
+    (exception) => exception.templateSourceTemplateId === "30917204"
+  )
+  assert.equal(sidingExceptions.length, 2)
+  assert.deepEqual(sidingExceptions.map((exception) => exception.field), [
+    "lineItems.multipleCostTypes[0]",
+    "lineItems.multipleCostTypes[1]",
+  ])
+  assert.equal(sidingExceptions.every((exception) => exception.sourceItemId === null), true)
+  assert.equal(sidingExceptions.every((exception) => /do not infer/.test(exception.recoveryPlan)), true)
 })
 
 test("preserves the reviewed Concrete Slab checklist, schedule, and bid specifications", async () => {
@@ -144,7 +281,7 @@ test("rejects partial capture, duplicate release scope, and publication requests
   )
 })
 
-test("builds SQL that remains draft-only and includes Concrete Slab", async () => {
+test("builds SQL that remains draft-only and includes Concrete Slab and Siding", async () => {
   const directory = await mkdtemp(join(tmpdir(), "compass-next-batch-content-"))
   const capture = join(directory, "capture.json")
   const inventory = join(directory, "inventory.json")
@@ -162,11 +299,11 @@ test("builds SQL that remains draft-only and includes Concrete Slab", async () =
       "--output", output,
     ])
     assert.deepEqual(JSON.parse(result.stdout), {
-      templateCount: 4,
-      tasks: 172,
-      scheduleItems: 30,
-      selections: 4,
-      bidPackages: 4,
+      templateCount: 5,
+      tasks: 201,
+      scheduleItems: 33,
+      selections: 8,
+      bidPackages: 5,
       excludedArchivedCount: 27,
       draftOnly: true,
       output,
@@ -176,6 +313,7 @@ test("builds SQL that remains draft-only and includes Concrete Slab", async () =
     assert.match(sql, /bt-template-version:12978371:1/)
     assert.match(sql, /bt-template-version:12581937:1/)
     assert.match(sql, /bt-template-version:12594475:1/)
+    assert.match(sql, /bt-template-version:30917204:1/)
     assert.match(sql, /INSERT INTO schedule_template_items/)
     assert.match(sql, /review_status='content_captured', lifecycle_status='draft'/)
     assert.doesNotMatch(sql, /status='published'|lifecycle_status='active'|review_status='verified'/)

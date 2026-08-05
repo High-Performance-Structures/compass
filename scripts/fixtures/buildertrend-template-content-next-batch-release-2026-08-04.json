@@ -7,8 +7,8 @@
     "activeTemplatesInSource": 40,
     "completedPilotTemplatesExcluded": 6,
     "nonPilotCandidatesAudited": 34,
-    "structurallyCompleteTemplatesIncluded": 4,
-    "incompleteTemplatesExcluded": 30,
+    "structurallyCompleteTemplatesIncluded": 5,
+    "incompleteTemplatesExcluded": 29,
     "archivedTemplatesExcluded": 27,
     "archivedTemplatesIncluded": 0
   },
@@ -70,6 +70,19 @@
         "bidPackages": 1
       },
       "fragmentPath": "scripts/fixtures/buildertrend-template-content-next-batch/fragments/09-12594475.capture.json",
+      "browserCaptureGates": "complete"
+    },
+    {
+      "sourceTemplateId": "30917204",
+      "sourceName": "Ext. Finishes - Siding",
+      "workplanSequence": 11,
+      "moduleCounts": {
+        "tasks": 29,
+        "scheduleItems": 3,
+        "selections": 4,
+        "bidPackages": 1
+      },
+      "fragmentPath": "scripts/fixtures/buildertrend-template-content-next-batch/fragments/11-30917204.capture.json",
       "browserCaptureGates": "complete"
     }
   ],

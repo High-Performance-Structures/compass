@@ -133,14 +133,14 @@ test("generates one read-only preflight and postflight statement with exact scop
     assert.equal(assertReadOnlyVerificationSql(build.sql), true)
     assert.equal(build.verificationPart, null)
     assert.equal(build.verificationPartCount, 6)
-    assert.equal(build.templateCount, 4)
-    assert.equal(build.contentItemCount, 210)
-    assert.equal(build.predecessorCount, 25)
-    assert.equal(build.reusableScheduleItemCount, 30)
-    assert.equal(build.reusableDependencyCount, 25)
+    assert.equal(build.templateCount, 5)
+    assert.equal(build.contentItemCount, 247)
+    assert.equal(build.predecessorCount, 27)
+    assert.equal(build.reusableScheduleItemCount, 33)
+    assert.equal(build.reusableDependencyCount, 27)
     assert.deepEqual(
       build.sourceTemplateIds,
-      ["12859981", "12978371", "12581937", "12594475"]
+      ["12859981", "12978371", "12581937", "12594475", "30917204"]
     )
     assert.deepEqual(build.excludedSourceTemplateIds, [])
     assert.match(build.sql, /SELECT 'excluded_template_content'/)
@@ -355,8 +355,8 @@ test("postflight reports published state, partial content, and explicitly exclud
         'Partial', NULL, NULL, 0, '{}'
       );
       INSERT INTO project_template_content_items VALUES (
-        'siding', 'bt-template-version:30917204:1', 'tasks', 'siding', NULL,
-        'Siding', NULL, NULL, 0, '{}'
+        'stone', 'bt-template-version:37180847:1', 'tasks', 'stone', NULL,
+        'Stone', NULL, NULL, 0, '{}'
       );
     `])
     const postflight = buildBuildertrendTemplateContentVerificationSql({
@@ -364,7 +364,7 @@ test("postflight reports published state, partial content, and explicitly exclud
       inventory,
       organizationId: "org-test",
       phase: "postflight",
-      excludedSourceTemplateIds: ["30917204"],
+      excludedSourceTemplateIds: ["37180847"],
     })
     const issues = JSON.parse(await query(database, postflight.sql))
     assert.equal(issues.some((issue) => issue.check_name === "version_state"), true)
