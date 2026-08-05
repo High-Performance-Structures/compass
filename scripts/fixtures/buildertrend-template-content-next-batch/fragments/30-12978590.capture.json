@@ -1,0 +1,18 @@
+{
+  "sourceTemplateId": "12978590",
+  "sourceName": "Framing - Rough inspection w/ Draft & Firestop",
+  "capturedAt": "2026-08-05T07:45:00.000Z",
+  "captureNotes": [
+    "Captured read-only from the authenticated Buildertrend source template after the active template context was explicitly switched and verified as source 12978590 through the visible My Templates job picker.",
+    "All three native Buildertrend task row IDs, displayed ordering, and root-level hierarchy were captured exactly from the source All Tasks grid.",
+    "The source task grid showed three independent root tasks and no checklist children.",
+    "The reviewed source capture remains the sole source for the two schedule rows and one dependency; schedule data is not duplicated in this fragment."
+  ],
+  "tasks": [
+    { "sourceItemId": "75717818", "parentSourceItemId": null, "title": "Draft & Fire Stop Complete", "sortOrder": 1 },
+    { "sourceItemId": "75717822", "parentSourceItemId": null, "title": "Call In Building Dept. Rough Frame Inspection", "sortOrder": 2 },
+    { "sourceItemId": "75717824", "parentSourceItemId": null, "title": "Passed Building Dept. Rough Frame Inspection", "sortOrder": 3 }
+  ],
+  "selections": [],
+  "bidPackages": []
+}

@@ -1,0 +1,47 @@
+{
+  "reviewStatus": "incomplete",
+  "releaseEligible": false,
+  "template": {
+    "sourceTemplateId": "38452532",
+    "sourceName": "MEP - Fireplace Installation",
+    "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/38452532",
+    "capturedAt": "2026-08-05T12:25:49Z",
+    "captureNotes": [
+      "The authenticated Buildertrend My Templates row for source 38452532 reported one selection, with zero tasks and a zero-day schedule containing no schedule items.",
+      "The exact source row and its visible /app/Templates/MyTemplates/Template/38452532 link were selected from page two of My Templates. The link opened the source Template edit dialog and verified the exact template name, but did not switch the global working context from Int. Finishes - Bath Hardware template 42948499.",
+      "A bounded visible job-picker search for the exact Fireplace template name returned no results, so the selection detail could not be opened from a verified Fireplace context.",
+      "A second bounded authenticated pass opened My Templates in a clean claimed tab, navigated visibly to page two, and again verified row entity-38452532, the exact source link, zero-day schedule, and selection count of one.",
+      "The second pass searched the visible template picker for Fireplace; Buildertrend returned no results and retained an unrelated selected-template context.",
+      "Clicking the exact Fireplace row's cell-selectionCount produced no navigation, dialog, or context change, confirming that the displayed count is not a supported selection-detail route in this view.",
+      "The Template edit dialog was closed without changes. No temporary template copy was created and no source or copied Buildertrend record was mutated.",
+      "No selection native ID, choice, description, price, attachment, hierarchy, or copy-warning value from the unrelated Bath Hardware context was retained or inferred."
+    ],
+    "sourceInventory": {
+      "tasks": 0,
+      "scheduleDuration": "0 Days",
+      "scheduleItems": 0,
+      "selections": 1,
+      "bidPackages": 0
+    },
+    "browserModuleGates": [
+      {
+        "module": "selections",
+        "expectedCount": 1,
+        "capturedCount": 0,
+        "status": "incomplete",
+        "releaseBlocker": "Recover the selection native ID, metadata, choices, choice ordering, descriptions, prices, attachment evidence, and any hierarchy from the authenticated Fireplace Installation template."
+      }
+    ],
+    "reviewedScheduleReference": {
+      "path": "scripts/fixtures/buildertrend-active-template-capture-2026-07-31.json",
+      "sourceTemplateId": "38452532",
+      "scheduleItemCount": 0,
+      "dependencyCount": 0,
+      "note": "The reviewed source capture records no schedule for this template; browser fragments must not invent or duplicate schedule rows."
+    },
+    "tasks": [],
+    "selections": [],
+    "bidPackages": []
+  },
+  "conversionExceptions": []
+}

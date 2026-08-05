@@ -40,3 +40,124 @@ The canonical reviewed capture preserves the two schedule items and their one
 dependency. Window remains blocked until all three browser modules are
 captured with exact native identities, hierarchy, choices, bid specifications,
 cost codes, Cost Types, and any copy warnings.
+
+A second authenticated retry reconfirmed the original source row and opened its
+Template Information dialog. It preserved Monday-through-Friday workdays,
+Include Allowances enabled, and No Tax as source settings. Closing that dialog
+left the job picker scoped to Framing - Quote Packages, so the retry again
+stopped without retaining any unrelated task, selection, or bid content.
+
+## Ext. Finishes - Manuf. Gutters (`12978732`)
+
+The authenticated source inventory reports 17 tasks, two selections, one bid
+package, two specifications, and two schedule items over four days. Direct
+source routing remained scoped to the previously selected Tiling template
+during the first bounded capture. The authorized temporary-copy menu was
+opened, but no copy form was submitted and no temporary Buildertrend template
+was created.
+
+A second authenticated retry navigated only through the visible My Templates
+list, opened the exact source row, and verified the source URL and Template
+Information dialog. It preserved Maroon as the job color, Monday through
+Friday as work days, Include Allowances enabled, and No Tax as the default tax
+rate. The active job-picker context nevertheless remained Framing - Quote
+Packages, and an exact job-picker search returned no Gutters result. The retry
+therefore stopped without retaining any unrelated module content.
+
+The canonical reviewed capture preserves the two schedule items and their one
+dependency. Manufactured Gutters remains blocked until all three browser
+modules are captured with exact native identities, hierarchy, choices, bid
+specifications, cost codes, Cost Types, attachment evidence, and any copy
+warnings.
+
+## MEP - Plumbing Base (`12650395`)
+
+The authenticated My Templates inventory preserves nine tasks, one bid
+package, and four schedule items over six days. The exact source row opened
+only the template-information drawer, whose visible secondary actions were
+Print and Delete template. A bounded job-picker search did not expose Plumbing
+Base, so no direct or guessed module-context URL was substituted. The task and
+bid-package gates remain empty and release-ineligible until their exact native
+identities and content are recovered from an authenticated supported source.
+
+The canonical reviewed capture preserves the four schedule items and three
+dependencies. Those schedule rows are referenced rather than duplicated in a
+future browser fragment.
+
+## Earthwork - Perimeter Drain (`13001090`)
+
+The authenticated source row reports four tasks and three schedule items over
+three days. Its visible source link resolved to the exact template URL, but the
+active Buildertrend context remained pinned to the previously selected Stain &
+Seal Concrete Floors template. The template-picker search returned no
+Perimeter Drain result, so no unrelated task content was retained and the task
+gate remains empty.
+
+The canonical reviewed capture preserves the three schedule items and three
+dependencies. Perimeter Drain remains release-ineligible until all four task
+rows are captured with their native identities, displayed ordering, and exact
+parent-child hierarchy.
+
+## Ext. Finishes - Painting/Staining (`36618977`)
+
+The authenticated My Templates inventory reports two selections and one bid
+package, with no tasks or schedule items. The exact source row was selected,
+but Buildertrend kept the global job-picker and module context pinned to the
+previously selected Flooring template. A bounded visible job-picker search did
+not expose the Exterior Painting/Staining source, so no unrelated module data
+was retained.
+
+Exterior Painting/Staining remains excluded from release until both selections
+and the bid package are captured with exact native identities, choice and line
+item content, cost codes, Cost Types, attachment evidence, and any copy
+warnings. No source values may be inferred while this audit remains pending.
+
+## Ext. Finishes - Stone (`37180847`)
+
+The authenticated source inventory reports two selections and no task,
+schedule-item, or bid-package content. The exact Stone row and source route
+were verified through visible My Templates UI, but Buildertrend kept the active
+job-picker context scoped to MEP - Quotes during the bounded capture. No
+content from that unrelated template was retained.
+
+Stone remains blocked until both selections are captured with exact native
+identities, hierarchy, choices, choice ordering, descriptions, prices,
+attachment evidence, and any copy warnings. The incomplete checkpoint stays in
+this audit-only directory and cannot enter release discovery.
+
+## Earthwork - Radon Systems (`42924180`)
+
+The authenticated My Templates grid confirms source row `entity-42924180`, one
+bid package, a zero-day schedule, and no task, schedule-item, or selection
+counts. Its visible source link also opened the exact Radon Systems settings
+dialog without editing it. Buildertrend's template context picker did not
+return the source for either `Radon` or its exact full name, so the package was
+not opened and no record from the previously selected template was retained.
+It remains excluded until the bid package is captured from an authenticated
+supported view or export with its native identity, specifications, line items,
+cost codes, Cost Types, quantities, units, linked plans and specifications,
+and any copy warnings preserved.
+
+## Insulation (`39644707`)
+
+The authenticated source row and detail identify Insulation and report exactly
+one bid package with no schedule or other content modules. The bid-package
+count was not navigable, while Buildertrend's job-picker module context remained
+pinned to an unrelated selected template during the bounded capture. No row
+from that unrelated context was retained.
+
+Insulation remains blocked until its bid package is captured with the exact
+native identity, status, specifications, line items, cost codes, Cost Types,
+quantities, units, attachment evidence, and any copy warnings.
+
+## MEP - Fireplace Installation (`38452532`)
+
+The authenticated My Templates row reports one selection and no other content
+modules. The exact source row opened and verified the Fireplace Installation
+template edit dialog, but Buildertrend left the global working context pinned
+to Bath Hardware. A bounded visible job-picker search did not expose the
+Fireplace template, so no unrelated selection detail was retained.
+
+Fireplace Installation remains blocked until its one selection is captured
+with the exact native identity, metadata, choices, choice ordering,
+descriptions, prices, attachments, and any hierarchy exposed by Buildertrend.

@@ -69,7 +69,7 @@ console.log(JSON.stringify({
   excludedArchivedTemplateCount: result.capture.assembly.excludedArchivedTemplateCount,
   eligibleAfterThisBatch: result.capture.assembly.eligibleAfterThisBatch,
   scheduleItemCount: result.capture.templates.reduce(
-    (total, template) => total + template.scheduleItems.length,
+    (total, template) => total + (template.scheduleItems?.length ?? 0),
     0
   ),
   captureOutput: captureOutputPath,

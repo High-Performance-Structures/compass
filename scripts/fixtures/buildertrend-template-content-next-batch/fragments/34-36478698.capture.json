@@ -1,0 +1,82 @@
+{
+    "sourceTemplateId": "36478698",
+    "sourceName": "Framing - Quote Packages",
+    "capturedAt": "2026-08-05T11:18:59Z",
+    "captureNotes": [
+      "The authenticated Buildertrend job picker selected Framing - Quote Packages with source template 36478698 through the visible My Templates interface.",
+      "The Selected Template summary and Bid Packages list both reported exactly three bid packages and no tasks, schedule items, or selections.",
+      "All three native package IDs, titles, statuses, pricing settings, shared package descriptions, 14 native line-item IDs, displayed ordering, titles, descriptions, cost codes, Cost Types, quantities, units, and empty attachment sections were captured.",
+      "All three packages explicitly reported no linked Plans and no linked Specs.",
+      "Each of the 14 native line-item detail rows was opened and its exact source description was recorded; Buildertrend displayed an empty description for the two Truss Pack lines."
+    ],
+    "bidPackages": [
+      {
+        "sourceItemId": "10393689",
+        "sourceBidPackageId": "10393689",
+        "title": "Framing - (Project Address) (Estimate Phase)",
+        "status": "Draft",
+        "allowMultipleApprovedBids": false,
+        "deadline": null,
+        "time": null,
+        "linkToSchedule": false,
+        "reminderLeadDays": 2,
+        "plansAndSpecs": false,
+        "pricingFormat": "Line Items",
+        "description": "Background\nHigh Performance Structures, Inc. dba Open Range Construction, Ltd. (ORC) will be building a custom home located at:\n\n(Project Street Address)\n(Project City), (Project State) (Project Zip Code)\n\nReference Documents\nPlease see the Buildertrend Documents folder titled \"(Estimate Phase) Bid Set\" for all necessary plans.\n\nSubmission of Bid\nBids for this project will be processed through Buildertrend, a construction management program. You do not need to become proficient with Buildertrend. You may also simply call or email your point of contact. You may submit your bid into Buildertrend or email it to your point of contact for entry. Should you choose to input your bid into Buildertrend, please also include a PDF version of your bid.\n\nFor assistance with submitting the bid or receiving bid documents, contact the (Estimator Title):\n\n(Estimator Name), (719) 900-8850 ext. (Estimator Extension)\n(Estimator Email Address)\n\nTimeline\nThe work is scheduled to start in (Build Season), (Build Year).\n\nScope of Work\nThe following CSI categories will be required for the construction of the project per the plans and specifications noted on the Plans and Specifications List. We will notify bidders of any changes or additions by sending out updates to said List.\n\nQuestions\nPlease direct any questions into the RFI section here on Buildertrend. This helps us as a builder keep questions organized and accessible to any of our staff provided an estimator is absent. This will help expedite provision of answers.\n\nSchedule\nPlease provide a schedule to complete each of the above items, in calendar days after the issuance of the purchase order and/or notice to proceed.\n\nContract and Insurance Requirements\nAll trade contractors will be required to complete a trade contractor agreement, provide proof of liability insurance and workman’s compensation insurance as applicable, with required limits prior to the release of any construction payments.",
+        "internalNotes": "",
+        "attachments": [],
+        "lineItems": [
+          { "sourceLineItemId": "17932064", "title": "Interior Wall Framing Labor", "description": "Please provide all necessary labor and installation miscellaneous materials (such as fasteners) for the interior wall framing assemblies.", "costCode": "06 11 00 - Wood Framing", "costType": "Subcontractor", "quantity": null, "unit": null },
+          { "sourceLineItemId": "17932065", "title": "Exterior Deck Framing Labor", "description": "Please include all necessary labor & miscellaneous materials (such as fasteners, etc) for all exterior deck framing assemblies.", "costCode": "06 15 00 - Wood Decking", "costType": "Subcontractor", "quantity": null, "unit": null },
+          { "sourceLineItemId": "17932066", "title": "Floor System Framing Labor", "description": "Please include all necessary labor & miscellaneous installation materials (such as fasteners, etc.) for the framing of all floor assemblies.", "costCode": "06 15 13 - Wood Floor Decking", "costType": "Subcontractor", "quantity": null, "unit": null },
+          { "sourceLineItemId": "17932067", "title": "Roof Framing Labor", "description": "Please include all necessary roof framing labor & miscellaneous installation materials (such as fasteners, etc). for framing of all roof assemblies.", "costCode": "06 15 16 - Wood Roof Decking", "costType": "Subcontractor", "quantity": null, "unit": null },
+          { "sourceLineItemId": "17932068", "title": "Exterior Door Installation Labor", "description": "Please include all necessary labor & miscellaneous installation materials (such as fasteners, shims, etc.) for the installation of all exterior doors.", "costCode": "08 00 00 - Openings", "costType": "Subcontractor", "quantity": null, "unit": null },
+          { "sourceLineItemId": "17932069", "title": "Window Installation Labor", "description": "Please include all necessary labor & fasteners for the installation of all windows.", "costCode": "08 50 00 - Windows", "costType": "Subcontractor", "quantity": null, "unit": null }
+        ]
+      },
+      {
+        "sourceItemId": "10393709",
+        "sourceBidPackageId": "10393709",
+        "title": "Framing Pack - (Project Address) (Estimate Phase)",
+        "status": "Draft",
+        "allowMultipleApprovedBids": false,
+        "deadline": null,
+        "time": null,
+        "linkToSchedule": false,
+        "reminderLeadDays": 2,
+        "plansAndSpecs": false,
+        "pricingFormat": "Line Items",
+        "description": "Background\nHigh Performance Structures, Inc. dba Open Range Construction, Ltd. (ORC) will be building a custom home located at:\n\n(Project Street Address)\n(Project City), (Project State) (Project Zip Code)\n\nReference Documents\nPlease see the Buildertrend Documents folder titled \"(Estimate Phase) Bid Set\" for all necessary plans.\n\nSubmission of Bid\nBids for this project will be processed through Buildertrend, a construction management program. You do not need to become proficient with Buildertrend. You may also simply call or email your point of contact. You may submit your bid into Buildertrend or email it to your point of contact for entry. Should you choose to input your bid into Buildertrend, please also include a PDF version of your bid.\n\nFor assistance with submitting the bid or receiving bid documents, contact the (Estimator Title):\n\n(Estimator Name), (719) 900-8850 ext. (Estimator Extension)\n(Estimator Email Address)\n\nTimeline\nThe work is scheduled to start in (Build Season), (Build Year).\n\nScope of Work\nThe following CSI categories will be required for the construction of the project per the plans and specifications noted on the Plans and Specifications List. We will notify bidders of any changes or additions by sending out updates to said List.\n\nQuestions\nPlease direct any questions into the RFI section here on Buildertrend. This helps us as a builder keep questions organized and accessible to any of our staff provided an estimator is absent. This will help expedite provision of answers.\n\nSchedule\nPlease provide a schedule to complete each of the above items, in calendar days after the issuance of the purchase order and/or notice to proceed.\n\nContract and Insurance Requirements\nAll trade contractors will be required to complete a trade contractor agreement, provide proof of liability insurance and workman’s compensation insurance as applicable, with required limits prior to the release of any construction payments.",
+        "internalNotes": "",
+        "attachments": [],
+        "lineItems": [
+          { "sourceLineItemId": "17932109", "title": "Interior & Exterior Wall Framing Materials", "description": "Please include all necessary materials including backout for the interior and exterior wall framing.", "costCode": "06 11 00 - Wood Framing", "costType": "Material", "quantity": 1, "unit": null },
+          { "sourceLineItemId": "17932110", "title": "Exterior Deck Framing Materials", "description": "Please include all necessary materials for the framing of the exterior deck. Please exclude decking and see the line below for decking materials.", "costCode": "06 15 00 - Wood Decking", "costType": "Material", "quantity": 1, "unit": null },
+          { "sourceLineItemId": "17932111", "title": "Floor System Framing Labor", "description": "Please include all necessary framing materials to frame the interior floor system.", "costCode": "06 15 13 - Wood Floor Decking", "costType": "Material", "quantity": 1, "unit": null },
+          { "sourceLineItemId": "17932112", "title": "Roof Framing Material", "description": "Roof Framing Materials See Breakout Attachment", "costCode": "06 15 16 - Wood Roof Decking", "costType": "Material", "quantity": 1, "unit": null },
+          { "sourceLineItemId": "21064291", "title": "Soffit & Fascia Materials", "description": "Please include all necessary materials for soffit & fascia. Please include (Grade, ie. Hardie, LP) materials.", "costCode": "06 46 29 - Wood Fascia & Soffit", "costType": "Material", "quantity": 1, "unit": null },
+          { "sourceLineItemId": "17932115", "title": "Deliveries", "description": "Please include the cost of delivery per trip.", "costCode": "06 00 00 - Wood, Plastics, Comp", "costType": "Other", "quantity": 1, "unit": "EA" }
+        ]
+      },
+      {
+        "sourceItemId": "10393691",
+        "sourceBidPackageId": "10393691",
+        "title": "Truss Pack - (Project Address) (Estimate Phase)",
+        "status": "Draft",
+        "allowMultipleApprovedBids": false,
+        "deadline": null,
+        "time": null,
+        "linkToSchedule": false,
+        "reminderLeadDays": 2,
+        "plansAndSpecs": false,
+        "pricingFormat": "Line Items",
+        "description": "Background\nHigh Performance Structures, Inc. dba Open Range Construction, Ltd. (ORC) will be building a custom home located at:\n\n(Project Street Address)\n(Project City), (Project State) (Project Zip Code)\n\nReference Documents\nPlease see the Buildertrend Documents folder titled \"(Estimate Phase) Bid Set\" for all necessary plans.\n\nSubmission of Bid\nBids for this project will be processed through Buildertrend, a construction management program. You do not need to become proficient with Buildertrend. You may also simply call or email your point of contact. You may submit your bid into Buildertrend or email it to your point of contact for entry. Should you choose to input your bid into Buildertrend, please also include a PDF version of your bid.\n\nFor assistance with submitting the bid or receiving bid documents, contact the (Estimator Title):\n\n(Estimator Name), (719) 900-8850 ext. (Estimator Extension)\n(Estimator Email Address)\n\nTimeline\nThe work is scheduled to start in (Build Season), (Build Year).\n\nScope of Work\nThe following CSI categories will be required for the construction of the project per the plans and specifications noted on the Plans and Specifications List. We will notify bidders of any changes or additions by sending out updates to said List.\n\nQuestions\nPlease direct any questions into the RFI section here on Buildertrend. This helps us as a builder keep questions organized and accessible to any of our staff provided an estimator is absent. This will help expedite provision of answers.\n\nSchedule\nPlease provide a schedule to complete each of the above items, in calendar days after the issuance of the purchase order and/or notice to proceed.\n\nContract and Insurance Requirements\nAll trade contractors will be required to complete a trade contractor agreement, provide proof of liability insurance and workman’s compensation insurance as applicable, with required limits prior to the release of any construction payments.",
+        "internalNotes": "",
+        "attachments": [],
+        "lineItems": [
+          { "sourceLineItemId": "17932113", "title": "Truss Package", "description": "", "costCode": "06 17 53 - Shop Wood Trusses", "costType": "Material", "quantity": 1, "unit": null },
+          { "sourceLineItemId": "17932114", "title": "Delivery", "description": "", "costCode": "06 17 53 - Shop Wood Trusses", "costType": "Material", "quantity": 1, "unit": null }
+        ]
+      }
+    ]
+}

@@ -9,9 +9,9 @@ import {
   assembleBuildertrendTemplateNextBatchContent,
 } from "./lib/buildertrend-template-next-batch-content.mjs"
 
-const windowTemplateId = "12650427"
+const guttersTemplateId = "12978732"
 const paths = {
-  review: "scripts/fixtures/buildertrend-template-content-next-batch/incomplete-reviews/17-12650427.capture-review.json",
+  review: "scripts/fixtures/buildertrend-template-content-next-batch/incomplete-reviews/19-12978732.capture-review.json",
   fragments: "scripts/fixtures/buildertrend-template-content-next-batch/fragments",
   release: "scripts/fixtures/buildertrend-template-content-next-batch-release-2026-08-04.json",
   manifest: "scripts/fixtures/buildertrend-template-next-batch-2026-08-04.json",
@@ -22,34 +22,28 @@ async function readJson(path) {
   return JSON.parse(await readFile(path, "utf8"))
 }
 
-test("preserves the exact Window checkpoint as a fail-closed audit", async () => {
+test("preserves the exact Manufactured Gutters checkpoint as a fail-closed audit", async () => {
   const review = await readJson(paths.review)
 
   assert.equal(review.reviewStatus, "incomplete")
   assert.equal(review.releaseEligible, false)
-  assert.equal(review.template.sourceTemplateId, windowTemplateId)
-  assert.equal(review.template.copiedTargetTemplateId, "45894046")
-  assert.equal(review.template.copiedTargetName, "BT Framing - Window")
+  assert.equal(review.template.sourceTemplateId, guttersTemplateId)
+  assert.equal("copiedTargetTemplateId" in review.template, false)
+  assert.equal("copiedTargetName" in review.template, false)
   assert.deepEqual(review.template.sourceInventory, {
-    tasks: 20,
+    tasks: 17,
     scheduleDuration: "4 Days",
     scheduleItems: 2,
     selections: 2,
     bidPackages: 1,
+    specifications: 2,
   })
-  assert.deepEqual(review.template.sourceSettingsCheckpoint, {
-    templateName: "Framing - Window",
+  assert.deepEqual(review.template.sourceSettings, {
+    jobColor: "Maroon",
     workDays: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"],
     includeAllowances: true,
     defaultTaxRate: "No Tax",
-    internalNotesVisible: false,
-    subVendorNotesVisible: false,
-    note: "These values were read from the authenticated source Template Information dialog; they do not satisfy any content-module gate.",
   })
-  assert.equal(
-    review.template.captureNotes.some((note) => note.includes("Framing - Quote Packages")),
-    true
-  )
   assert.deepEqual(
     review.template.browserModuleGates.map((gate) => ({
       module: gate.module,
@@ -58,7 +52,7 @@ test("preserves the exact Window checkpoint as a fail-closed audit", async () =>
       status: gate.status,
     })),
     [
-      { module: "tasks", expectedCount: 20, capturedCount: 0, status: "incomplete" },
+      { module: "tasks", expectedCount: 17, capturedCount: 0, status: "incomplete" },
       { module: "selections", expectedCount: 2, capturedCount: 0, status: "incomplete" },
       { module: "bidPackages", expectedCount: 1, capturedCount: 0, status: "incomplete" },
     ]
@@ -70,7 +64,7 @@ test("preserves the exact Window checkpoint as a fail-closed audit", async () =>
   assert.deepEqual(review.conversionExceptions, [])
 })
 
-test("keeps the incomplete Window audit out of discovery and preserves reviewed schedule truth", async () => {
+test("keeps the incomplete Manufactured Gutters audit out of release and preserves schedule truth", async () => {
   const [release, nextBatchManifest, reviewedCapture, documents] = await Promise.all([
     readJson(paths.release),
     readJson(paths.manifest),
@@ -80,7 +74,7 @@ test("keeps the incomplete Window audit out of discovery and preserves reviewed 
 
   assert.equal(documents.some(({ source }) => source.includes("incomplete-reviews")), false)
   assert.equal(
-    release.templates.some((template) => template.sourceTemplateId === windowTemplateId),
+    release.templates.some((template) => template.sourceTemplateId === guttersTemplateId),
     false
   )
 
@@ -91,16 +85,20 @@ test("keeps the incomplete Window audit out of discovery and preserves reviewed 
     documents,
   })
   assert.equal(
-    result.capture.templates.some((template) => template.sourceTemplateId === windowTemplateId),
+    result.capture.templates.some((template) => template.sourceTemplateId === guttersTemplateId),
     false
   )
+  assert.equal(result.capture.assembly.draftOnly, true)
+  assert.equal(result.capture.assembly.publish, false)
+  assert.equal(result.capture.assembly.templateCount, 24)
+  assert.equal(result.capture.assembly.excludedIncompleteTemplateCount, 10)
 
-  const reviewedWindow = reviewedCapture.templates.find(
-    (template) => template.sourceTemplateId === windowTemplateId
+  const reviewedGutters = reviewedCapture.templates.find(
+    (template) => template.sourceTemplateId === guttersTemplateId
   )
-  assert.ok(reviewedWindow)
+  assert.ok(reviewedGutters)
   assert.deepEqual(
-    reviewedWindow.schedule.items.map((item) => ({
+    reviewedGutters.schedule.items.map((item) => ({
       sourceItemId: item.sourceItemId,
       title: item.title,
       startDate: item.startDate,
@@ -110,27 +108,27 @@ test("keeps the incomplete Window audit out of discovery and preserves reviewed 
     })),
     [
       {
-        sourceItemId: "141691840",
-        title: "(X) Level Window Installation",
-        startDate: "2022-04-13",
+        sourceItemId: "145104838",
+        title: "Manufactured Gutters & Downspouts",
+        startDate: "2022-05-23",
         workdays: 3,
-        phase: "Rough: Frame",
-        displayColor: "#ABBE91",
+        phase: "Exterior Finish",
+        displayColor: "#6C3815",
       },
       {
-        sourceItemId: "141691951",
-        title: "HPS (X) Level Window Installation QC Inspection",
-        startDate: "2022-04-18",
+        sourceItemId: "145111028",
+        title: "HPS Manuf. Gutter & Downspout QC Inspection",
+        startDate: "2022-05-26",
         workdays: 1,
-        phase: "Rough: Frame",
+        phase: "Exterior Finish",
         displayColor: "#2222DD",
       },
     ]
   )
-  assert.deepEqual(reviewedWindow.schedule.dependencies, [
+  assert.deepEqual(reviewedGutters.schedule.dependencies, [
     {
-      predecessorSourceItemId: "141691840",
-      successorSourceItemId: "141691951",
+      predecessorSourceItemId: "145104838",
+      successorSourceItemId: "145111028",
       type: "FS",
       lagDays: 0,
     },

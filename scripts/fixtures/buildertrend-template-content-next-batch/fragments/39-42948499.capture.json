@@ -1,0 +1,43 @@
+{
+  "template": {
+    "sourceTemplateId": "42948499",
+    "sourceName": "Int. Finishes - Bath Hardware",
+    "capturedAt": "2026-08-05T10:45:00Z",
+    "captureNotes": [
+      "Captured directly from the authenticated Buildertrend source template without creating or mutating a temporary template.",
+      "The visible My Templates picker and Selected Template view verified zero tasks, zero schedule items, zero bid packages, and exactly one selection.",
+      "The Bathroom Add Ons selection and all seven native choices preserve exact source identities, displayed order, statuses, prices, selection settings, descriptions, and attachment counts.",
+      "The selection public instructions, internal notes, and all seven choice descriptions were verified blank through their source rich-text editor bodies.",
+      "All six source attachment filenames were captured from the corresponding choice-detail dialogs; None - Owner Scope has no attachment."
+    ],
+    "tasks": [],
+    "selections": [
+      {
+        "sourceItemId": "59585706",
+        "sourceSelectionId": "59585706",
+        "title": "Bathroom Add Ons",
+        "category": "10 00 00 - Specialties",
+        "location": "Powder Room",
+        "status": "Unreleased",
+        "allowance": 0,
+        "deadline": null,
+        "description": "",
+        "internalNotes": "",
+        "requireClientSelection": false,
+        "allowMultipleSelectedChoices": true,
+        "choiceOrdering": "Manual",
+        "choices": [
+          { "sourceChoiceId": "240860708", "title": "Bathroom Mirror", "status": "Unreleased", "price": 0, "description": "", "attachmentCount": 1, "attachments": [{ "fileName": "bathroom mirror.jpg" }] },
+          { "sourceChoiceId": "240860706", "title": "Recessed Medicine Cabinet With Mirror", "status": "Unreleased", "price": 0, "description": "", "attachmentCount": 1, "attachments": [{ "fileName": "recessed medicine cabinet w-mirror.jpg" }] },
+          { "sourceChoiceId": "240860707", "title": "Recessed Medicine Cabinet Without Mirror", "status": "Unreleased", "price": 0, "description": "", "attachmentCount": 1, "attachments": [{ "fileName": "medicine cabinet without mirror.jpg" }] },
+          { "sourceChoiceId": "240860704", "title": "Single towel Bar", "status": "Unreleased", "price": 0, "description": "", "attachmentCount": 1, "attachments": [{ "fileName": "single towel bar.jpg" }] },
+          { "sourceChoiceId": "240860705", "title": "Two Towel Bars", "status": "Unreleased", "price": 0, "description": "", "attachmentCount": 1, "attachments": [{ "fileName": "two towel bars.jpg" }] },
+          { "sourceChoiceId": "240860709", "title": "Toilet Paper Holder", "status": "Unreleased", "price": 0, "description": "", "attachmentCount": 1, "attachments": [{ "fileName": "toilet paper holder.jpg" }] },
+          { "sourceChoiceId": "240860710", "title": "None - Owner Scope", "status": "Unreleased", "price": 0, "description": "", "attachmentCount": 0, "attachments": [] }
+        ]
+      }
+    ],
+    "bidPackages": []
+  },
+  "conversionExceptions": []
+}

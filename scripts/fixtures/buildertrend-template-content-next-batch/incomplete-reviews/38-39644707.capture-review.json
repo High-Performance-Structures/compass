@@ -1,0 +1,42 @@
+{
+  "reviewStatus": "incomplete",
+  "releaseEligible": false,
+  "template": {
+    "sourceTemplateId": "39644707",
+    "sourceName": "Insulation",
+    "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/39644707",
+    "capturedAt": "2026-08-05T10:28:25Z",
+    "captureNotes": [
+      "The authenticated Buildertrend My Templates row for source 39644707 reported exactly one bid package, zero schedule days, and no other template-content modules.",
+      "The exact source was opened through its visible My Templates row, and the source detail visibly confirmed Template Name Insulation.",
+      "The bid-package count cell displayed 1 but did not navigate. After the source detail closed, Buildertrend kept the job-picker module context pinned to the previously selected MEP - Quotes template 36595931.",
+      "No bid package, specification, line item, cost code, Cost Type, quantity, unit, or attachment value from the unrelated MEP - Quotes context was retained or inferred.",
+      "No temporary copy was created and no copy-warning dialog was reached. This does not establish that the source would copy without conversion loss."
+    ],
+    "sourceInventory": {
+      "scheduleDuration": "0 Days",
+      "scheduleItems": 0,
+      "bidPackages": 1
+    },
+    "browserModuleGates": [
+      {
+        "module": "bidPackages",
+        "expectedCount": 1,
+        "capturedCount": 0,
+        "status": "incomplete",
+        "releaseBlocker": "Recover the Insulation bid package native identity, status, specifications, line items, cost codes, Cost Types, quantities, units, attachment evidence, and any copy warnings from the exact source or a verified temporary copy."
+      }
+    ],
+    "reviewedScheduleReference": {
+      "path": "scripts/fixtures/buildertrend-active-template-capture-2026-07-31.json",
+      "sourceTemplateId": "39644707",
+      "scheduleItemCount": 0,
+      "dependencyCount": 0,
+      "note": "The reviewed source capture records schedule=null; browser fragments must not invent schedule rows."
+    },
+    "tasks": [],
+    "selections": [],
+    "bidPackages": []
+  },
+  "conversionExceptions": []
+}

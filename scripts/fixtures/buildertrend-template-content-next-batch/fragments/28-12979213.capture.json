@@ -1,0 +1,23 @@
+{
+  "sourceTemplateId": "12979213",
+  "sourceName": "Int. Finishes - Stain & Seal Concrete Floors",
+  "capturedAt": "2026-08-05T07:39:05Z",
+  "captureNotes": [
+    "Captured read-only from the authenticated Buildertrend source template through My Templates and the All Tasks grid.",
+    "Buildertrend task row IDs, displayed order, and root-level hierarchy were captured exactly.",
+    "All seven captured tasks are root tasks; the source grid exposes no child checklist rows.",
+    "The reviewed template inventory reports zero selections and zero bid packages.",
+    "The reviewed source capture remains the sole source for the five schedule rows and four dependencies."
+  ],
+  "tasks": [
+    { "sourceItemId": "75719048", "parentSourceItemId": null, "title": "1st Mop", "sortOrder": 1 },
+    { "sourceItemId": "75719049", "parentSourceItemId": null, "title": "2nd Mop", "sortOrder": 2 },
+    { "sourceItemId": "75719050", "parentSourceItemId": null, "title": "Floors Cleaned and Ready for Stain", "sortOrder": 3 },
+    { "sourceItemId": "75719051", "parentSourceItemId": null, "title": "Stain Concrete Floors", "sortOrder": 4 },
+    { "sourceItemId": "75719052", "parentSourceItemId": null, "title": "Seal 1st Coat", "sortOrder": 5 },
+    { "sourceItemId": "75719053", "parentSourceItemId": null, "title": "Seal 2nd Coat", "sortOrder": 6 },
+    { "sourceItemId": "75719054", "parentSourceItemId": null, "title": "Floors Covered with Ramboard", "sortOrder": 7 }
+  ],
+  "selections": [],
+  "bidPackages": []
+}

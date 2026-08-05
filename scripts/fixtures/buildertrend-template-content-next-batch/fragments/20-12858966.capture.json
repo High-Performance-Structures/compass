@@ -1,0 +1,31 @@
+{
+  "sourceTemplateId": "12858966",
+  "sourceName": "Concrete - Piers Assembly",
+  "capturedAt": "2026-08-05T04:52:00.000Z",
+  "captureNotes": [
+    "Captured read-only from the authenticated Buildertrend source template Concrete - Piers Assembly after the active template context was explicitly verified as source 12858966.",
+    "The single checklist group was expanded before capture.",
+    "All 16 native Buildertrend row IDs, displayed ordering, and parent-child relationships were captured exactly from the source task grid.",
+    "The reviewed source capture remains the sole source for the five schedule rows and four dependencies; schedule data is not duplicated in this fragment."
+  ],
+  "tasks": [
+    { "sourceItemId": "75715160", "parentSourceItemId": null, "title": "Dig (X LOCATION) Pier", "sortOrder": 1 },
+    { "sourceItemId": "75715161", "parentSourceItemId": null, "title": "Set (X LOCATION) Piers Sonotube", "sortOrder": 2 },
+    { "sourceItemId": "75715162", "parentSourceItemId": null, "title": "Place (X LOCATION) Pier Vertical Reinforcing", "sortOrder": 3 },
+    { "sourceItemId": "75715163", "parentSourceItemId": null, "title": "Place (X LOCATION) Pier Reinforcing Ties", "sortOrder": 4 },
+    { "sourceItemId": "75715164", "parentSourceItemId": null, "title": "Pass Building Department Footing: Piers Inspection", "sortOrder": 5 },
+    { "sourceItemId": "75715165", "parentSourceItemId": null, "title": "Pour Piers", "sortOrder": 6 },
+    { "sourceItemId": "75715166", "parentSourceItemId": null, "title": "Order Piers Estimated Concrete", "sortOrder": 7 },
+    { "sourceItemId": "75715167", "parentSourceItemId": null, "title": "Update Concrete Order with Field Takeoffs", "sortOrder": 8 },
+    { "sourceItemId": "75715168", "parentSourceItemId": null, "title": "Pull Piers Concrete Takeoffs", "sortOrder": 9 },
+    { "sourceItemId": "75715169", "parentSourceItemId": null, "title": "HPS Piers QC & Pre-Pour Inspection", "sortOrder": 10 },
+    { "sourceItemId": "75715323", "parentSourceItemId": "75715169", "title": "All Piers Level", "sortOrder": 1 },
+    { "sourceItemId": "75715324", "parentSourceItemId": "75715169", "title": "Rebar Correct In All Piers", "sortOrder": 2 },
+    { "sourceItemId": "75715325", "parentSourceItemId": "75715169", "title": "Embeds Ready", "sortOrder": 3 },
+    { "sourceItemId": "75715326", "parentSourceItemId": "75715169", "title": "Permit/plans on site", "sortOrder": 4 },
+    { "sourceItemId": "75715170", "parentSourceItemId": null, "title": "Request Piers Engineer/BD Inspection", "sortOrder": 11 },
+    { "sourceItemId": "75715171", "parentSourceItemId": null, "title": "Schedule Concrete Pump", "sortOrder": 12 }
+  ],
+  "selections": [],
+  "bidPackages": []
+}

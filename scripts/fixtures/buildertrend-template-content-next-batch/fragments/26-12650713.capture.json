@@ -1,0 +1,25 @@
+{
+  "sourceTemplateId": "12650713",
+  "sourceName": "Framing - Stair Installation",
+  "capturedAt": "2026-08-05T06:40:00.000Z",
+  "captureNotes": [
+    "Captured read-only from the authenticated Buildertrend source template Framing - Stair Installation after the active template context was explicitly verified as source 12650713 through the visible My Templates job picker.",
+    "The single checklist group was expanded before capture.",
+    "All ten native Buildertrend row IDs, displayed ordering, and parent-child relationships were captured exactly from the source task grid.",
+    "The reviewed source capture remains the sole source for the three schedule rows and two dependencies; schedule data is not duplicated in this fragment."
+  ],
+  "tasks": [
+    { "sourceItemId": "75710961", "parentSourceItemId": null, "title": "Frame Landing", "sortOrder": 1 },
+    { "sourceItemId": "75710962", "parentSourceItemId": null, "title": "Sheet Landing", "sortOrder": 2 },
+    { "sourceItemId": "75710963", "parentSourceItemId": null, "title": "Set (X) Level Upper Stair System", "sortOrder": 3 },
+    { "sourceItemId": "75710964", "parentSourceItemId": null, "title": "Set (X) Level Lower Stair System", "sortOrder": 4 },
+    { "sourceItemId": "75710965", "parentSourceItemId": null, "title": "HPS (X) Level Stair Installation QC Inspection", "sortOrder": 5 },
+    { "sourceItemId": "75711038", "parentSourceItemId": "75710965", "title": "Upper Stairs Hung Correctly", "sortOrder": 1 },
+    { "sourceItemId": "75711039", "parentSourceItemId": "75710965", "title": "Upper Stairs Straps/Hangers Nailed Off", "sortOrder": 2 },
+    { "sourceItemId": "75711040", "parentSourceItemId": "75710965", "title": "Lower Stairs Hunger Correctly", "sortOrder": 3 },
+    { "sourceItemId": "75711041", "parentSourceItemId": "75710965", "title": "Lower Stairs Straps/Hangers Nailed Off", "sortOrder": 4 },
+    { "sourceItemId": "75711042", "parentSourceItemId": "75710965", "title": "Min. 6'8\" Head Clearance Per Code (Measure from front edge of tread to a line parallel to stair rim)", "sortOrder": 5 }
+  ],
+  "selections": [],
+  "bidPackages": []
+}

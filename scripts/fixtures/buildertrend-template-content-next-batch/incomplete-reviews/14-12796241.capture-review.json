@@ -6,10 +6,11 @@
     "sourceName": "Int. Finishes - Architectural Woodwork",
     "copiedTargetTemplateId": "45893750",
     "copiedTargetName": "BT Int. Finishes - Architectural Woodwork",
-    "capturedAt": "2026-08-05T02:40:00.000Z",
+    "capturedAt": "2026-08-05T11:40:00.000Z",
     "captureNotes": [
       "Buildertrend's source inventory and copy workflow both report 19 tasks, but authenticated All Tasks views for source 12796241 and copy 45893750 each render exactly 18 non-deleted task rows.",
       "The active and original task grids both terminate at Add task after the same 18 level-0 rows; the deleted-task view reports No tasks found.",
+      "A targeted authenticated retry selected source 12796241 through the visible My Templates job picker and again rendered exactly the same 18 rows. Opening the active filter controls showed no applied status value and exposed no additional completed, hidden, or nested task record.",
       "All five selections were recovered from List view with Expand all. Hierarchy view rendered only four of the five records and omitted Stain Grade Trim Wood Species.",
       "Selection choice attachment counts were visible in Buildertrend, but durable filenames and file bytes were not exposed in this capture.",
       "Buildertrend reported three source bid-package line items with multiple Cost Types and cleared those assignments during the copy. The source rows and original values were not exposed, so no affected row or Cost Type was inferred."
@@ -20,7 +21,7 @@
       "expectedCount": 19,
       "capturedCount": 18,
       "missingCount": 1,
-      "reason": "The missing task is not exposed by the authenticated source or copied-template All Tasks, deleted-task, hierarchy, filter, pagination, or related-action views.",
+      "reason": "The missing task is not exposed by the authenticated source or copied-template All Tasks, deleted-task, hierarchy, filter, pagination, or related-action views. A second visible My Templates source pass on 2026-08-05 again returned only the same 18 task titles and no recoverable native record.",
       "releaseBlocker": "Recover one additional source task with a native ID and title from a supported Buildertrend view or export before moving this file into the active fragments directory."
     },
     "reviewedScheduleReference": {

@@ -1,0 +1,50 @@
+{
+  "reviewStatus": "incomplete",
+  "releaseEligible": false,
+  "template": {
+    "sourceTemplateId": "36618977",
+    "sourceName": "Ext. Finishes - Painting/Staining",
+    "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/36618977",
+    "capturedAt": "2026-08-05T09:10:10Z",
+    "captureNotes": [
+      "The authenticated Buildertrend My Templates row for source 36618977 reported two selections and one bid package, with zero tasks and a zero-day schedule containing no schedule items.",
+      "The exact source row and its visible /app/Templates/MyTemplates/Template/36618977 link were selected from page two of My Templates. The detail route resolved, but Buildertrend kept the global job-picker and module context pinned to Int. Finishes - Flooring template 38452172.",
+      "A bounded visible job-picker search for Painting returned no template results, so no selection or bid module was opened from the unverified context.",
+      "No selection, choice, bid specification, cost-code, Cost Type, attachment, or copy-warning value from the unrelated Flooring context was retained or inferred."
+    ],
+    "sourceInventory": {
+      "tasks": 0,
+      "scheduleDuration": "0 Days",
+      "scheduleItems": 0,
+      "selections": 2,
+      "bidPackages": 1
+    },
+    "browserModuleGates": [
+      {
+        "module": "selections",
+        "expectedCount": 2,
+        "capturedCount": 0,
+        "status": "incomplete",
+        "releaseBlocker": "Recover both selection native IDs, metadata, choices, choice ordering, descriptions, prices, and attachment evidence from the authenticated Exterior Painting/Staining template."
+      },
+      {
+        "module": "bidPackages",
+        "expectedCount": 1,
+        "capturedCount": 0,
+        "status": "incomplete",
+        "releaseBlocker": "Recover the bid package native identity, status, specifications, line items, cost codes, Cost Types, quantities, units, attachment evidence, and any copy warnings."
+      }
+    ],
+    "reviewedScheduleReference": {
+      "path": "scripts/fixtures/buildertrend-active-template-capture-2026-07-31.json",
+      "sourceTemplateId": "36618977",
+      "scheduleItemCount": 0,
+      "dependencyCount": 0,
+      "note": "The reviewed source capture records no schedule for this template; browser fragments must not invent or duplicate schedule rows."
+    },
+    "tasks": [],
+    "selections": [],
+    "bidPackages": []
+  },
+  "conversionExceptions": []
+}

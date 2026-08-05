@@ -1,0 +1,44 @@
+{
+  "reviewStatus": "incomplete",
+  "releaseEligible": false,
+  "template": {
+    "sourceTemplateId": "13001090",
+    "sourceName": "Earthwork - Perimeter Drain",
+    "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/13001090",
+    "capturedAt": "2026-08-05T07:45:40Z",
+    "captureNotes": [
+      "The authenticated Buildertrend My Templates row for source 13001090 reported four tasks and a three-day schedule with three schedule items; no selection or bid-package counts were present.",
+      "The visible source-row link resolved to the exact Perimeter Drain source URL, but Buildertrend kept the active Selected Template and task context pinned to the previously selected Int. Finishes - Stain & Seal Concrete Floors template 12979213.",
+      "The authenticated template-picker search returned no Perimeter Drain result, so the bounded supported switch was stopped without opening any unrelated task rows. No task identity, hierarchy, title, description, assignment, or attachment value was inferred.",
+      "The three reviewed schedule items and three dependencies remain canonical in the 40-template source capture and must not be duplicated in a browser fragment.",
+      "Earthwork - Perimeter Drain remains release-ineligible until all four task rows are recovered from an authenticated supported Buildertrend view or export."
+    ],
+    "sourceInventory": {
+      "tasks": 4,
+      "scheduleDuration": "3 Days",
+      "scheduleItems": 3,
+      "selections": 0,
+      "bidPackages": 0
+    },
+    "browserModuleGates": [
+      {
+        "module": "tasks",
+        "expectedCount": 4,
+        "capturedCount": 0,
+        "status": "incomplete",
+        "releaseBlocker": "Recover all four native task IDs, titles, displayed ordering, and parent-child relationships from the Earthwork - Perimeter Drain source or a verified temporary copy."
+      }
+    ],
+    "reviewedScheduleReference": {
+      "path": "scripts/fixtures/buildertrend-active-template-capture-2026-07-31.json",
+      "sourceTemplateId": "13001090",
+      "scheduleItemCount": 3,
+      "dependencyCount": 3,
+      "note": "The reviewed source capture remains the canonical schedule record; browser fragments do not duplicate schedule rows."
+    },
+    "tasks": [],
+    "selections": [],
+    "bidPackages": []
+  },
+  "conversionExceptions": []
+}

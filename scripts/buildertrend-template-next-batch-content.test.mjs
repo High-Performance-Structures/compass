@@ -26,31 +26,31 @@ async function inputs() {
   return { release, nextBatchManifest, reviewedCapture, documents }
 }
 
-test("assembles the ten gate-complete templates with reviewed schedules", async () => {
+test("assembles the twenty-four gate-complete templates with reviewed schedules", async () => {
   const result = assembleBuildertrendTemplateNextBatchContent(await inputs())
 
   assert.deepEqual(
     result.capture.assembly.sourceTemplateIds,
-    ["12859981", "12978371", "12581937", "12594475", "30917204", "12646335", "12650792", "12819873", "12649495", "30914491"]
+    ["12859981", "12978371", "12581937", "12594475", "30917204", "12646335", "12650792", "12819873", "12649495", "30914491", "12858966", "12649292", "12650557", "30919251", "12650484", "12650713", "28466146", "12979213", "12978590", "36619183", "38452172", "36478698", "36595931", "42948499"]
   )
   assert.equal(result.capture.assembly.draftOnly, true)
   assert.equal(result.capture.assembly.publish, false)
-  assert.equal(result.capture.assembly.excludedIncompleteTemplateCount, 24)
+  assert.equal(result.capture.assembly.excludedIncompleteTemplateCount, 10)
   assert.equal(result.capture.assembly.excludedArchivedTemplateCount, 27)
   assert.equal(result.capture.assembly.eligibleAfterThisBatch, 0)
-  assert.equal(result.capture.templates.reduce((sum, item) => sum + item.tasks.length, 0), 328)
-  assert.equal(result.capture.templates.reduce((sum, item) => sum + item.scheduleItems.length, 0), 50)
-  assert.equal(result.capture.templates.reduce((sum, item) => sum + (item.selections?.length ?? 0), 0), 13)
-  assert.equal(result.capture.templates.reduce((sum, item) => sum + (item.bidPackages?.length ?? 0), 0), 7)
+  assert.equal(result.capture.templates.reduce((sum, item) => sum + item.tasks.length, 0), 421)
+  assert.equal(result.capture.templates.reduce((sum, item) => sum + (item.scheduleItems?.length ?? 0), 0), 78)
+  assert.equal(result.capture.templates.reduce((sum, item) => sum + (item.selections?.length ?? 0), 0), 31)
+  assert.equal(result.capture.templates.reduce((sum, item) => sum + (item.bidPackages?.length ?? 0), 0), 18)
   assert.equal(result.capture.templates.reduce(
-    (sum, item) => sum + item.scheduleItems.flatMap((row) => row.predecessors).length,
+    (sum, item) => sum + (item.scheduleItems ?? []).flatMap((row) => row.predecessors).length,
     0
-  ), 40)
-  assert.equal(result.inventory.expectedActiveCount, 10)
+  ), 59)
+  assert.equal(result.inventory.expectedActiveCount, 24)
   assert.equal(result.inventory.excludedArchivedCount, 27)
   assert.deepEqual(
     result.inventory.templates.map((template) => template.sourceTemplateId),
-    ["12859981", "12978371", "12581937", "12594475", "30917204", "12646335", "12650792", "12819873", "12649495", "30914491"]
+    ["12859981", "12978371", "12581937", "12594475", "30917204", "12646335", "12650792", "12819873", "12649495", "30914491", "12858966", "12649292", "12650557", "30919251", "12650484", "12650713", "28466146", "12979213", "12978590", "36619183", "38452172", "36478698", "36595931", "42948499"]
   )
 })
 
@@ -654,17 +654,257 @@ test("preserves Tiling checklist, selections, bid specification, and reviewed sc
   assert.equal(tilingExceptions.every((exception) => /do not/.test(exception.recoveryPlan)), true)
 })
 
-test("fails stale when a newly complete template is not in the reviewed release", async () => {
+test("preserves exact Piers task identities, hierarchy, schedule, and dependencies", async () => {
+  const result = assembleBuildertrendTemplateNextBatchContent(await inputs())
+  const piers = result.capture.templates.find(
+    (template) => template.sourceTemplateId === "12858966"
+  )
+  assert.ok(piers)
+  assert.deepEqual(
+    piers.tasks.map((task) => ({
+      sourceItemId: task.sourceItemId,
+      parentSourceItemId: task.parentSourceItemId,
+      title: task.title,
+      sortOrder: task.sortOrder,
+    })),
+    [
+      { sourceItemId: "75715160", parentSourceItemId: null, title: "Dig (X LOCATION) Pier", sortOrder: 1 },
+      { sourceItemId: "75715161", parentSourceItemId: null, title: "Set (X LOCATION) Piers Sonotube", sortOrder: 2 },
+      { sourceItemId: "75715162", parentSourceItemId: null, title: "Place (X LOCATION) Pier Vertical Reinforcing", sortOrder: 3 },
+      { sourceItemId: "75715163", parentSourceItemId: null, title: "Place (X LOCATION) Pier Reinforcing Ties", sortOrder: 4 },
+      { sourceItemId: "75715164", parentSourceItemId: null, title: "Pass Building Department Footing: Piers Inspection", sortOrder: 5 },
+      { sourceItemId: "75715165", parentSourceItemId: null, title: "Pour Piers", sortOrder: 6 },
+      { sourceItemId: "75715166", parentSourceItemId: null, title: "Order Piers Estimated Concrete", sortOrder: 7 },
+      { sourceItemId: "75715167", parentSourceItemId: null, title: "Update Concrete Order with Field Takeoffs", sortOrder: 8 },
+      { sourceItemId: "75715168", parentSourceItemId: null, title: "Pull Piers Concrete Takeoffs", sortOrder: 9 },
+      { sourceItemId: "75715169", parentSourceItemId: null, title: "HPS Piers QC & Pre-Pour Inspection", sortOrder: 10 },
+      { sourceItemId: "75715323", parentSourceItemId: "75715169", title: "All Piers Level", sortOrder: 1 },
+      { sourceItemId: "75715324", parentSourceItemId: "75715169", title: "Rebar Correct In All Piers", sortOrder: 2 },
+      { sourceItemId: "75715325", parentSourceItemId: "75715169", title: "Embeds Ready", sortOrder: 3 },
+      { sourceItemId: "75715326", parentSourceItemId: "75715169", title: "Permit/plans on site", sortOrder: 4 },
+      { sourceItemId: "75715170", parentSourceItemId: null, title: "Request Piers Engineer/BD Inspection", sortOrder: 11 },
+      { sourceItemId: "75715171", parentSourceItemId: null, title: "Schedule Concrete Pump", sortOrder: 12 },
+    ]
+  )
+  assert.deepEqual(
+    piers.scheduleItems.map((item) => ({
+      sourceItemId: item.sourceItemId,
+      title: item.title,
+      startDate: item.startDate,
+      workdays: item.workdays,
+      phase: item.phase,
+      displayColor: item.displayColor,
+    })),
+    [
+      { sourceItemId: "143851212", title: "Dig Piers", startDate: "2022-05-10", workdays: 1, phase: "Structure-Shell: Footings", displayColor: "#442121" },
+      { sourceItemId: "143852801", title: "Form Piers", startDate: "2022-05-11", workdays: 2, phase: "Structure-Shell: Footings", displayColor: "#676767" },
+      { sourceItemId: "143853023", title: "Building Department Footing Inspection: Piers", startDate: "2022-05-13", workdays: 1, phase: "Structure-Shell: Footings", displayColor: "#ED2591" },
+      { sourceItemId: "143853005", title: "HPS Piers QC Inspection", startDate: "2022-05-13", workdays: 1, phase: "Structure-Shell: Footings", displayColor: "#2222DD" },
+      { sourceItemId: "143853032", title: "Pour Concrete Piers", startDate: "2022-05-16", workdays: 1, phase: "Structure-Shell: Footings", displayColor: "#DD2222" },
+    ]
+  )
+  assert.deepEqual(
+    piers.scheduleItems.flatMap((item) => item.predecessors).map((dependency) => ({
+      predecessorSourceItemId: dependency.predecessorSourceItemId,
+      successorSourceItemId: dependency.successorSourceItemId,
+      type: dependency.type,
+      lagDays: dependency.lagDays,
+    })),
+    [
+      { predecessorSourceItemId: "143851212", successorSourceItemId: "143852801", type: "FS", lagDays: 0 },
+      { predecessorSourceItemId: "143852801", successorSourceItemId: "143853023", type: "FS", lagDays: 0 },
+      { predecessorSourceItemId: "143852801", successorSourceItemId: "143853005", type: "FS", lagDays: 0 },
+      { predecessorSourceItemId: "143853023", successorSourceItemId: "143853032", type: "FS", lagDays: 0 },
+    ]
+  )
+})
+
+test("preserves Exterior Wall task hierarchy and reviewed schedule graph", async () => {
+  const result = assembleBuildertrendTemplateNextBatchContent(await inputs())
+  const exteriorWall = result.capture.templates.find(
+    (template) => template.sourceTemplateId === "12649292"
+  )
+  assert.ok(exteriorWall)
+  assert.equal(exteriorWall.tasks.length, 16)
+  assert.deepEqual(
+    exteriorWall.tasks.filter((task) => task.parentSourceItemId === null).map((task) => ({
+      sourceItemId: task.sourceItemId,
+      title: task.title,
+      sortOrder: task.sortOrder,
+    })),
+    [
+      { sourceItemId: "75707377", title: "Layout X Level Exterior Wood Framed Walls", sortOrder: 1 },
+      { sourceItemId: "75707378", title: "Build X Room Exterior Framed Walls", sortOrder: 2 },
+      { sourceItemId: "75707379", title: "Set X Room Exterior Framed Walls", sortOrder: 3 },
+      { sourceItemId: "75707380", title: "HPS (X Room) Exterior Wall Framed Wall", sortOrder: 4 },
+    ]
+  )
+  assert.deepEqual(
+    exteriorWall.tasks.filter((task) => task.parentSourceItemId === "75707379").map((task) => ({
+      sourceItemId: task.sourceItemId,
+      title: task.title,
+      sortOrder: task.sortOrder,
+    })),
+    [
+      { sourceItemId: "75707542", title: "Glue", sortOrder: 1 },
+      { sourceItemId: "75707553", title: "DO NOT GLUE AT DOOR OPENINGS", sortOrder: 2 },
+      { sourceItemId: "75707555", title: "Set Exterior Walls", sortOrder: 3 },
+    ]
+  )
+  assert.deepEqual(
+    exteriorWall.tasks.filter((task) => task.parentSourceItemId === "75707380").map((task) => task.title),
+    [
+      "Structural Headers Correct",
+      "Flitch Plate Correct",
+      "Jacks or Liners Correct",
+      "Exterior Sheathing Correct",
+      "Walls Plumb",
+      "Stud Spacing Correct",
+      "Plates Correct",
+      "Jobsite Cleanup Satisfactory",
+      "OK to Pay",
+    ]
+  )
+  assert.deepEqual(
+    exteriorWall.scheduleItems.map((item) => ({
+      sourceItemId: item.sourceItemId,
+      title: item.title,
+      startDate: item.startDate,
+      workdays: item.workdays,
+      phase: item.phase,
+      displayColor: item.displayColor,
+    })),
+    [
+      { sourceItemId: "141675409", title: "X Level Exterior Framed Walls", startDate: "2022-04-13", workdays: 5, phase: "UNASSIGNED", displayColor: "#ABBE91" },
+      { sourceItemId: "141676547", title: "HPS X Room Exterior Framed Wall QC Inspection", startDate: "2022-04-20", workdays: 1, phase: "UNASSIGNED", displayColor: "#2222DD" },
+    ]
+  )
+  assert.deepEqual(
+    exteriorWall.scheduleItems.flatMap((item) => item.predecessors).map((dependency) => ({
+      predecessorSourceItemId: dependency.predecessorSourceItemId,
+      successorSourceItemId: dependency.successorSourceItemId,
+      type: dependency.type,
+      lagDays: dependency.lagDays,
+    })),
+    [
+      { predecessorSourceItemId: "141675409", successorSourceItemId: "141676547", type: "FS", lagDays: 0 },
+    ]
+  )
+})
+
+test("preserves Post-Frost earthwork checklists, fill-material bid specifications, and schedule graph", async () => {
+  const result = assembleBuildertrendTemplateNextBatchContent(await inputs())
+  const postFrost = result.capture.templates.find(
+    (template) => template.sourceTemplateId === "12650557"
+  )
+  assert.ok(postFrost)
+  assert.equal(postFrost.tasks.length, 12)
+  assert.deepEqual(
+    postFrost.tasks.filter((task) => task.parentSourceItemId === null).map((task) => ({
+      sourceItemId: task.sourceItemId,
+      title: task.title,
+      sortOrder: task.sortOrder,
+    })),
+    [
+      { sourceItemId: "75710600", title: "Frost Walls Backfilled & Compacted", sortOrder: 1 },
+      { sourceItemId: "75710602", title: "Mark Exterior Slab Elevations", sortOrder: 2 },
+      { sourceItemId: "75710603", title: "Snap Lines for Exterior Slab Elevations", sortOrder: 3 },
+      { sourceItemId: "75710605", title: "Grade To Elevations", sortOrder: 4 },
+      { sourceItemId: "75710607", title: "Mark Interior Sub-Slab Grade Elevations", sortOrder: 5 },
+      { sourceItemId: "75710609", title: "Snap Lines for Interior Sub-Slab Grade", sortOrder: 6 },
+      { sourceItemId: "75710611", title: "Grade to Elevation", sortOrder: 7 },
+      { sourceItemId: "75710613", title: "Trench for Water-Line Tie-In Complete", sortOrder: 8 },
+      { sourceItemId: "75710615", title: "Trench for Sewer Line Tie-In Complete", sortOrder: 9 },
+      { sourceItemId: "75710617", title: "Trench Gas Line Tie-in Complete", sortOrder: 10 },
+    ]
+  )
+  assert.deepEqual(
+    postFrost.tasks.filter((task) => task.parentSourceItemId !== null).map((task) => ({
+      sourceItemId: task.sourceItemId,
+      parentSourceItemId: task.parentSourceItemId,
+      title: task.title,
+      sortOrder: task.sortOrder,
+    })),
+    [
+      { sourceItemId: "75710710", parentSourceItemId: "75710605", title: "Grade is Level to 1/8\" Tolerance", sortOrder: 1 },
+      { sourceItemId: "75710711", parentSourceItemId: "75710611", title: "Grade Level Through-out to 1/8\" tolerance", sortOrder: 1 },
+    ]
+  )
+
+  assert.equal(postFrost.bidPackages.length, 1)
+  const bid = postFrost.bidPackages[0]
+  assert.equal(bid.sourceBidPackageId, "10290501")
+  assert.equal(bid.title, "Fill Material - (Project Address) (Estimate Phase)")
+  assert.equal(bid.status, "Draft")
+  assert.equal(bid.allowMultipleApprovedBids, false)
+  assert.equal(bid.linkToSchedule, false)
+  assert.equal(bid.pricingFormat, "Line Items")
+  assert.deepEqual(bid.attachments, [])
+  assert.match(bid.description, /Contract and Insurance Requirements/)
+  assert.equal(
+    bid.internalNotes,
+    "Please input the # of Tons necessary and allow delivery contractors to fill in delivery qty. For Teller county area check from Houchin, Van Egmond, and Mule Creek. For El Paso county check with Pioneer sand & gravel."
+  )
+  assert.deepEqual(
+    bid.lineItems.map((item) => ({
+      sourceLineItemId: item.sourceLineItemId,
+      title: item.title,
+      costCode: item.costCode,
+      costType: item.costType,
+      quantity: item.quantity,
+      unit: item.unit,
+      description: item.description,
+    })),
+    [
+      { sourceLineItemId: "17744559", title: "Structural Fill Material", costCode: "31 23 23.13 - Backfill", costType: "Material", quantity: 1, unit: "Tons", description: "Please Include compactable, structural fill material." },
+      { sourceLineItemId: "17744577", title: "Structural Fill Delivery", costCode: "31 23 23.13 - Backfill", costType: "Subcontractor", quantity: 0, unit: "Loads", description: "" },
+      { sourceLineItemId: "17744578", title: "Site Fill", costCode: "31 23 23.13 - Backfill", costType: "Material", quantity: 1, unit: "Tons", description: "Please include non-structural site fill material." },
+      { sourceLineItemId: "17744579", title: "Site Fill Delivery", costCode: "31 23 23.13 - Backfill", costType: "Subcontractor", quantity: 0, unit: "Loads", description: "" },
+    ]
+  )
+
+  assert.deepEqual(
+    postFrost.scheduleItems.map((item) => ({
+      sourceItemId: item.sourceItemId,
+      title: item.title,
+      startDate: item.startDate,
+      workdays: item.workdays,
+      phase: item.phase,
+      displayColor: item.displayColor,
+    })),
+    [
+      { sourceItemId: "141693118", title: "Backfill & Compact Frost Walls", startDate: "2022-04-13", workdays: 1, phase: "Structure-Shell: FDN", displayColor: "#442121" },
+      { sourceItemId: "141693661", title: "Grade for Exterior Entry Slabs", startDate: "2022-04-14", workdays: 1, phase: "Base Infrastructure", displayColor: "#442121" },
+      { sourceItemId: "141693829", title: "Rough Grade Interior Sub-Slab", startDate: "2022-04-14", workdays: 1, phase: "Base Infrastructure", displayColor: "#442121" },
+      { sourceItemId: "141693850", title: "Trench for Water/Sewer/Gas Tie-In", startDate: "2022-04-14", workdays: 1, phase: "Base Infrastructure", displayColor: "#442121" },
+    ]
+  )
+  assert.deepEqual(
+    postFrost.scheduleItems.flatMap((item) => item.predecessors).map((dependency) => ({
+      predecessorSourceItemId: dependency.predecessorSourceItemId,
+      successorSourceItemId: dependency.successorSourceItemId,
+      type: dependency.type,
+      lagDays: dependency.lagDays,
+    })),
+    [
+      { predecessorSourceItemId: "141693118", successorSourceItemId: "141693661", type: "FS", lagDays: 0 },
+      { predecessorSourceItemId: "141693118", successorSourceItemId: "141693829", type: "FS", lagDays: 0 },
+      { predecessorSourceItemId: "141693118", successorSourceItemId: "141693850", type: "FS", lagDays: 0 },
+    ]
+  )
+})
+
+test("fails stale when the next complete template is not in the reviewed release", async () => {
   const stale = await inputs()
   stale.documents.push({
-    source: "20-12858966.capture.json",
+    source: "29-13001090.capture.json",
     document: {
-      sourceTemplateId: "12858966",
-      sourceName: "Concrete - Piers Assembly",
-      tasks: Array.from({ length: 16 }, (_, index) => ({
-        sourceItemId: `pier-task-${index + 1}`,
+      sourceTemplateId: "13001090",
+      sourceName: "Earthwork - Perimeter Drain",
+      tasks: Array.from({ length: 4 }, (_, index) => ({
+        sourceItemId: `perimeter-drain-task-${index + 1}`,
         parentSourceItemId: null,
-        title: `Pier task ${index + 1}`,
+        title: `Perimeter drain task ${index + 1}`,
       })),
     },
   })
@@ -674,29 +914,33 @@ test("fails stale when a newly complete template is not in the reviewed release"
   )
 
   const reviewed = structuredClone(stale)
-  const piers = reviewed.nextBatchManifest.templates.find(
-    (template) => template.sourceTemplateId === "12858966"
+  const perimeterDrain = reviewed.nextBatchManifest.templates.find(
+    (template) => template.sourceTemplateId === "13001090"
   )
-  assert.ok(piers)
-  reviewed.release.scope.structurallyCompleteTemplatesIncluded = 11
-  reviewed.release.scope.incompleteTemplatesExcluded = 23
-  reviewed.release.templates.push({
-    sourceTemplateId: piers.sourceTemplateId,
-    sourceName: piers.sourceName,
-    workplanSequence: piers.workplanSequence,
-    moduleCounts: piers.moduleCounts,
-    fragmentPath: piers.fragmentPath,
+  assert.ok(perimeterDrain)
+  reviewed.release.scope.structurallyCompleteTemplatesIncluded = 25
+  reviewed.release.scope.incompleteTemplatesExcluded = 9
+  reviewed.release.templates.splice(18, 0, {
+    sourceTemplateId: perimeterDrain.sourceTemplateId,
+    sourceName: perimeterDrain.sourceName,
+    workplanSequence: perimeterDrain.workplanSequence,
+    moduleCounts: perimeterDrain.moduleCounts,
+    fragmentPath: perimeterDrain.fragmentPath,
     browserCaptureGates: "complete",
   })
 
   const result = assembleBuildertrendTemplateNextBatchContent(reviewed)
   assert.deepEqual(
     result.capture.assembly.sourceTemplateIds,
-    ["12859981", "12978371", "12581937", "12594475", "30917204", "12646335", "12650792", "12819873", "12649495", "30914491", "12858966"]
+    ["12859981", "12978371", "12581937", "12594475", "30917204", "12646335", "12650792", "12819873", "12649495", "30914491", "12858966", "12649292", "12650557", "30919251", "12650484", "12650713", "28466146", "12979213", "13001090", "12978590", "36619183", "38452172", "36478698", "36595931", "42948499"]
   )
-  assert.equal(result.capture.assembly.excludedIncompleteTemplateCount, 23)
-  assert.equal(result.capture.templates[10].tasks.length, 16)
-  assert.equal(result.capture.templates[10].scheduleItems.length, 5)
+  assert.equal(result.capture.assembly.excludedIncompleteTemplateCount, 9)
+  const releasedPerimeterDrain = result.capture.templates.find(
+    (template) => template.sourceTemplateId === "13001090"
+  )
+  assert.ok(releasedPerimeterDrain)
+  assert.equal(releasedPerimeterDrain.tasks.length, 4)
+  assert.equal(releasedPerimeterDrain.scheduleItems.length, 3)
 })
 
 test("rejects partial capture, duplicate release scope, and publication requests", async () => {
@@ -745,11 +989,11 @@ test("builds SQL that remains draft-only and includes every released template", 
       "--output", output,
     ])
     assert.deepEqual(JSON.parse(result.stdout), {
-      templateCount: 10,
-      tasks: 328,
-      scheduleItems: 50,
-      selections: 13,
-      bidPackages: 7,
+      templateCount: 24,
+      tasks: 421,
+      scheduleItems: 78,
+      selections: 31,
+      bidPackages: 18,
       excludedArchivedCount: 27,
       draftOnly: true,
       output,
@@ -765,6 +1009,20 @@ test("builds SQL that remains draft-only and includes every released template", 
     assert.match(sql, /bt-template-version:12819873:1/)
     assert.match(sql, /bt-template-version:12649495:1/)
     assert.match(sql, /bt-template-version:30914491:1/)
+    assert.match(sql, /bt-template-version:12858966:1/)
+    assert.match(sql, /bt-template-version:12649292:1/)
+    assert.match(sql, /bt-template-version:12650557:1/)
+    assert.match(sql, /bt-template-version:30919251:1/)
+    assert.match(sql, /bt-template-version:12650484:1/)
+    assert.match(sql, /bt-template-version:12650713:1/)
+    assert.match(sql, /bt-template-version:28466146:1/)
+    assert.match(sql, /bt-template-version:12979213:1/)
+    assert.match(sql, /bt-template-version:12978590:1/)
+    assert.match(sql, /bt-template-version:36619183:1/)
+    assert.match(sql, /bt-template-version:38452172:1/)
+    assert.match(sql, /bt-template-version:36478698:1/)
+    assert.match(sql, /bt-template-version:36595931:1/)
+    assert.match(sql, /bt-template-version:42948499:1/)
     assert.match(sql, /INSERT INTO schedule_template_items/)
     assert.match(sql, /review_status='content_captured', lifecycle_status='draft'/)
     assert.doesNotMatch(sql, /status='published'|lifecycle_status='active'|review_status='verified'/)

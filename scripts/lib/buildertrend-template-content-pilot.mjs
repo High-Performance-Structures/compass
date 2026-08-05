@@ -173,6 +173,11 @@ export function assembleBuildertrendTemplateContentSubset({
     if (contentById.has(id)) throw new Error(`Template content duplicates sourceTemplateId ${id}.`)
     const moduleCounts = expectedModuleCounts(reviewed, `reviewed template ${id}`)
     const seed = { sourceTemplateId: id, name, sourceName: name, moduleCounts }
+    // Preserve a stable output shape even when the source inventory says a
+    // module is empty and no browser fragment needs to carry that module.
+    for (const moduleName of PILOT_MODULES) {
+      if (moduleCounts[moduleName] === 0) seed[moduleName] = []
+    }
     // Browser fragments never recreate schedule data; the reviewed 40-template
     // capture remains the sole source for schedule rows and dependencies.
     const scheduleItems = reviewedScheduleItems(reviewed, `reviewed template ${id}`)

@@ -1,0 +1,236 @@
+{
+  "sourceTemplateId": "36595931",
+  "sourceName": "MEP - Quotes",
+  "capturedAt": "2026-08-05T11:45:00Z",
+  "captureNotes": [
+    "The source was selected through the authenticated Buildertrend My Templates page and the job picker verified exact template context 36595931 before Bid Packages was opened.",
+    "The source list contains exactly three bid packages: Electrical 10427367, HVAC 10427813, and Plumbing 10427674.",
+    "All three package editors were captured completely, including exact settings, package specifications, native line-item IDs and ordering, descriptions, cost codes, Cost Types, quantities, units, internal notes, and attachment state.",
+    "Electrical, HVAC, and Plumbing explicitly reported no linked Plans and no linked Specs and had empty package attachment sections.",
+    "Buildertrend displayed an em dash for every captured line-item unit; each normalized unit is therefore null."
+  ],
+  "bidPackages": [
+      {
+        "sourceItemId": "10427367",
+        "sourceBidPackageId": "10427367",
+        "title": "Electrical - (Project Address) (Estimate Phase)",
+        "status": "Draft",
+        "allowMultipleApprovedBids": false,
+        "deadline": null,
+        "time": null,
+        "linkToSchedule": false,
+        "reminderLeadDays": 2,
+        "plansAndSpecs": false,
+        "linkedPlanCount": 0,
+        "linkedSpecCount": 0,
+        "pricingFormat": "Line Items",
+        "description": "Background\nHigh Performance Structures, Inc. dba Open Range Construction, Ltd. (ORC) will be building a custom (Project type, ie. home, office, etc.) located at:\n(Project Street Address)\n(Project City), (Project State) (Project Zip Code)\nReference Documents\nPlease see the Buildertrend Documents folder titled \"(Estimate Phase) Bid Set\" for all necessary plans.\nSubmission of Bid\nBids for this project will be processed through Buildertrend, a construction management program. You do not need to become proficient with Buildertrend. You may also simply call or email your point of contact. You may submit your bid into Buildertrend or email it to your point of contact for entry. Should you choose to input your bid into Buildertrend, please also include a PDF version of your bid.\nFor assistance with submitting the bid or receiving bid documents, contact the (Estimator Title):\n(Estimator Name), (719) 900-8850 ext. (Estimator Extension)\n(Estimator Email Address)\nTimeline\nThe work is scheduled to start in (Build Season), (Build Year).\nScope of Work\nThe following CSI categories will be required for the construction of the project per the plans and specifications noted on the Plans and Specifications List. We will notify bidders of any changes or additions by sending out updates to said List.\nQuestions\nPlease direct any questions into the RFI section here on Buildertrend. This helps us as a builder keep questions organized and accessible to any of our staff provided an estimator is absent. This will help expedite provision of answers.\nSchedule\nPlease provide a schedule to complete each of the above items, in calendar days after the issuance of the purchase order and/or notice to proceed.\nContract and Insurance Requirements\nAll trade contractors will be required to complete a trade contractor agreement, provide proof of liability insurance and workman’s compensation insurance as applicable, with required limits prior to the release of any construction payments.",
+        "internalNotes": "",
+        "attachments": [],
+        "lineItems": [
+          {
+            "sourceLineItemId": "17993185",
+            "title": "Temporary Electricity Labor & Materials",
+            "description": "Please quote the run and inspections for temporary electricity assemblies. Trench by others.",
+            "costCode": "01 51 13 - Temp Electricity",
+            "costType": "Subcontractor",
+            "quantity": 1,
+            "unit": null
+          },
+          {
+            "sourceLineItemId": "17993186",
+            "title": "Electrical Rough Labor & Materials",
+            "description": "Please include all necessary labor and materials for the basic rough in of electrical assemblies.",
+            "costCode": "26 00 00 - Electrical",
+            "costType": "Subcontractor",
+            "quantity": 1,
+            "unit": null
+          },
+          {
+            "sourceLineItemId": "17993574",
+            "title": "Electrical Trim & Fixtures Installation Labor & Materials",
+            "description": "Please include all necessary labor & materials for the installation of a electrical trim & fixtures.\n\nFixtures Supplied by others.",
+            "costCode": "26 00 00 - Electrical",
+            "costType": "Subcontractor",
+            "quantity": 1,
+            "unit": null
+          },
+          {
+            "sourceLineItemId": "17993187",
+            "title": "Under Cabinet Lighting Budgetary Option Labor & Materials",
+            "description": "Please include all necessary labor & materials for installation of under cabinet lighting.",
+            "costCode": "26 00 00 - Electrical",
+            "costType": "Subcontractor",
+            "quantity": 1,
+            "unit": null
+          },
+          {
+            "sourceLineItemId": "17993188",
+            "title": "Low-Volt Electrical Labor & Materials",
+            "description": "Please include all necessary labor and materials for low-volt electrical assemblies. (COAX, Cat5, speaker wire, etc.). Please see electrical plan for details, if none were provided please spec standards.",
+            "costCode": "27 10 00 - Structured Cabling",
+            "costType": "Subcontractor",
+            "quantity": 1,
+            "unit": null
+          },
+          {
+            "sourceLineItemId": "17993423",
+            "title": "Electrical Underground Labor & Materials",
+            "description": "Please include all necessary labor & materials for the permanent electrical service run from municipal end or off grid system to structure.",
+            "costCode": "33 71 19 - Elec Underground",
+            "costType": "Subcontractor",
+            "quantity": 1,
+            "unit": null
+          }
+        ]
+      },
+      {
+        "sourceItemId": "10427813",
+        "sourceBidPackageId": "10427813",
+        "title": "HVAC - (Project Address) (Estimate Phase)",
+        "status": "Draft",
+        "allowMultipleApprovedBids": false,
+        "deadline": null,
+        "time": null,
+        "linkToSchedule": false,
+        "reminderLeadDays": 2,
+        "plansAndSpecs": false,
+        "linkedPlanCount": 0,
+        "linkedSpecCount": 0,
+        "pricingFormat": "Line Items",
+        "description": "Background\nHigh Performance Structures, Inc. dba Open Range Construction, Ltd. (ORC) will be building a custom (Project type, ie. home, office, etc.) located at:\n(Project Street Address)\n(Project City), (Project State) (Project Zip Code)\nReference Documents\nPlease see the Buildertrend Documents folder titled \"(Estimate Phase) Bid Set\" for all necessary plans.\nSubmission of Bid\nBids for this project will be processed through Buildertrend, a construction management program. You do not need to become proficient with Buildertrend. You may also simply call or email your point of contact. You may submit your bid into Buildertrend or email it to your point of contact for entry. Should you choose to input your bid into Buildertrend, please also include a PDF version of your bid.\nFor assistance with submitting the bid or receiving bid documents, contact the (Estimator Title):\n(Estimator Name), (719) 900-8850 ext. (Estimator Extension)\n(Estimator Email Address)\nTimeline\nThe work is scheduled to start in (Build Season), (Build Year).\nScope of Work\nThe following CSI categories will be required for the construction of the project per the plans and specifications noted on the Plans and Specifications List. We will notify bidders of any changes or additions by sending out updates to said List.\nQuestions\nPlease direct any questions into the RFI section here on Buildertrend. This helps us as a builder keep questions organized and accessible to any of our staff provided an estimator is absent. This will help expedite provision of answers.\nSchedule\nPlease provide a schedule to complete each of the above items, in calendar days after the issuance of the purchase order and/or notice to proceed.\nContract and Insurance Requirements\nAll trade contractors will be required to complete a trade contractor agreement, provide proof of liability insurance and workman’s compensation insurance as applicable, with required limits prior to the release of any construction payments.",
+        "internalNotes": "Estimator, please not to remove any of the following that do not apply. If we are doing radiant floor heating, we are very likely not going to do forced air heating.",
+        "attachments": [],
+        "lineItems": [
+          {
+            "sourceLineItemId": "17993912",
+            "title": "HVAC Rough Labor & Materials",
+            "description": "Please include all necessary labor & materials for the rough in HVAC assemblies.",
+            "costCode": "23 00 00 - HVAC",
+            "costType": "Subcontractor",
+            "quantity": 1,
+            "unit": null
+          },
+          {
+            "sourceLineItemId": "17993913",
+            "title": "HVAC Trim & Controls Labor & Materials",
+            "description": "Please include all necessary labor & materials for the installation of HVAC trim & controls.",
+            "costCode": "23 00 00 - HVAC",
+            "costType": "Subcontractor",
+            "quantity": 1,
+            "unit": null
+          },
+          {
+            "sourceLineItemId": "17993914",
+            "title": "ERV Labor & Materials",
+            "description": "Please include all necessary labor & materials for the installation of a whole house ERV system. Please also include ERV units.",
+            "costCode": "23 31 00 - HVAC Ducts and Casin",
+            "costType": "Subcontractor",
+            "quantity": 1,
+            "unit": null
+          },
+          {
+            "sourceLineItemId": "17993915",
+            "title": "Inside Gas Labor & Materials",
+            "description": "Please include all necessary labor & materials for the installation of inside natural gas/LP assemblies.",
+            "costCode": "23 11 23 - Natural Gas Piping",
+            "costType": "Subcontractor",
+            "quantity": 1,
+            "unit": null
+          },
+          {
+            "sourceLineItemId": "17993916",
+            "title": "Forced-Air Heating Assembly Labor & Materials",
+            "description": "Please include all necessary labor & materials for the installation of a whole house forced-air heating system.",
+            "costCode": "23 54 00 - Furnace",
+            "costType": "Subcontractor",
+            "quantity": 1,
+            "unit": null
+          },
+          {
+            "sourceLineItemId": "17993917",
+            "title": "Central Conditioning Assembly Labor & Materials",
+            "description": "Please include all necessary labor & materials for the installation of a central air conditioning system.",
+            "costCode": "23 70 00 - Central Air Conditio",
+            "costType": "Subcontractor",
+            "quantity": 1,
+            "unit": null
+          },
+          {
+            "sourceLineItemId": "17993918",
+            "title": "Radiant Floor Heating Assembly Labor & Materials",
+            "description": "Please include all necessary labor & materials for the installation of a radiant floor heating assembly. Please spec a combi boiler to pair with hot water provision in plumbing assemblies.",
+            "costCode": "23 83 00 - Radiant Heating Unit",
+            "costType": "Subcontractor",
+            "quantity": 1,
+            "unit": null
+          },
+          {
+            "sourceLineItemId": "17993919",
+            "title": "HVAC Budgetary Option: Whole House Humidifier",
+            "description": "Please include all necessary labor & materials for the installation of a whole house humidifier.",
+            "costCode": "23 00 00 - HVAC",
+            "costType": "Subcontractor",
+            "quantity": 1,
+            "unit": null
+          },
+          {
+            "sourceLineItemId": "17993920",
+            "title": "HVAC Budgetary Option: Kitchen Hood Vent",
+            "description": "Please include all necessary labor & materials for the installation of a kitchen hood vent, including hood element.",
+            "costCode": "23 31 00 - HVAC Ducts and Casin",
+            "costType": "Subcontractor",
+            "quantity": 1,
+            "unit": null
+          }
+        ]
+      },
+      {
+        "sourceItemId": "10427674",
+        "sourceBidPackageId": "10427674",
+        "title": "Plumbing - (Project Address) (Estimate Phase)",
+        "status": "Draft",
+        "allowMultipleApprovedBids": false,
+        "deadline": null,
+        "time": null,
+        "linkToSchedule": false,
+        "reminderLeadDays": 2,
+        "plansAndSpecs": false,
+        "linkedPlanCount": 0,
+        "linkedSpecCount": 0,
+        "pricingFormat": "Line Items",
+        "description": "Background\nHigh Performance Structures, Inc. dba Open Range Construction, Ltd. (ORC) will be building a custom (Project Type, ie. home, office building, etc.) located at:\n(Project Street Address)\n(Project City), (Project State) (Project Zip)\nReference Documents\nPlease see the Buildertrend Documents folder titled \"Construction Documents\" for all necessary plans.\nSubmission of Bid\nBids for this project will be processed through Buildertrend, a construction management program. You do not need to become proficient with Buildertrend. You may also simply call or email your point of contact. You may submit your bid into Buildertrend or email it to your point of contact for entry. Should you choose to input your bid into Buildertrend, please also include a PDF version of your bid.\nFor assistance with submitting the bid or receiving bid documents, contact the (Estimator Title):\n(Estimator Name), (719) 900-8850 ext. (Estimator Extension)\n(Estimator Email)\nTimeline\nThe work is scheduled to start in (Build Season), (Build Year).\nScope of Work\nThe following CSI categories will be required for the construction of the project per the plans and specifications noted on the Plans and Specifications List. We will notify bidders of any changes or additions by sending out updates to said List.\nSchedule\nPlease provide a schedule to complete each of the above items, in calendar days after the issuance of the purchase order and/or notice to proceed.\nContract and Insurance Requirements\nAll trade contractors will be required to complete a trade contractor agreement, provide proof of liability insurance and workman’s compensation insurance as applicable, with required limits prior to the release of any construction payments.",
+        "internalNotes": "",
+        "attachments": [],
+        "lineItems": [
+          {
+            "sourceLineItemId": "17993676",
+            "title": "Base Plumbing Labor & Materials",
+            "description": "Please include all necessary labor & materials for base plumbing assemblies.",
+            "costCode": "22 00 00 - Plumbing",
+            "costType": "Subcontractor",
+            "quantity": 1,
+            "unit": null
+          },
+          {
+            "sourceLineItemId": "17993677",
+            "title": "Rough & Top-Out Plumbing Labor & Materials",
+            "description": "Please include all necessary labor & materials for rough & top-outplumbing",
+            "costCode": "22 00 00 - Plumbing",
+            "costType": "Subcontractor",
+            "quantity": 1,
+            "unit": null
+          },
+          {
+            "sourceLineItemId": "17993678",
+            "title": "Trim Plumbing & Fixture Installation Labor & Materials",
+            "description": "Please include all necessary labor & misc installation materials for trim plumbing & fixtures installation.\n\nFixtures provided by others.",
+            "costCode": "22 00 00 - Plumbing",
+            "costType": "Subcontractor",
+            "quantity": 1,
+            "unit": null
+          }
+        ]
+      }
+    ]
+}

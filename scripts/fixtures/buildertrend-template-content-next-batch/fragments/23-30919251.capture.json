@@ -1,0 +1,85 @@
+{
+  "sourceTemplateId": "30919251",
+  "sourceName": "Framing - Overhead Door Installation",
+  "capturedAt": "2026-08-05T05:20:00.000Z",
+  "captureNotes": [
+    "Captured read-only from the authenticated Buildertrend source template Framing - Overhead Door Installation selected through the visible My Templates job picker.",
+    "The sole checklist group was expanded before capture; all 13 native task row IDs, displayed order, and parent-child relationships were captured exactly.",
+    "The Garage Door selection contains no choices and preserves its public instruction exactly.",
+    "The bid package contains two line items whose three visible Cost Types are preserved in displayed order.",
+    "The bid package has no linked plans, linked specifications, or attachments.",
+    "The reviewed source capture remains the sole source for the two schedule rows and one dependency."
+  ],
+  "tasks": [
+    { "sourceItemId": "75811777", "parentSourceItemId": null, "title": "HPS Overhead Door QC Inspection", "sortOrder": 1 },
+    { "sourceItemId": "75811895", "parentSourceItemId": "75811777", "title": "Weather Stripping Installed Properly", "sortOrder": 1 },
+    { "sourceItemId": "75811896", "parentSourceItemId": "75811777", "title": "Doors Open, Close & Lock Properly", "sortOrder": 2 },
+    { "sourceItemId": "75811897", "parentSourceItemId": "75811777", "title": "No Dents", "sortOrder": 3 },
+    { "sourceItemId": "75811898", "parentSourceItemId": "75811777", "title": "No Damage", "sortOrder": 4 },
+    { "sourceItemId": "75811899", "parentSourceItemId": "75811777", "title": "Bottom Fits tight to the floor", "sortOrder": 5 },
+    { "sourceItemId": "75811900", "parentSourceItemId": "75811777", "title": "Does not allow snow/water entry", "sortOrder": 6 },
+    { "sourceItemId": "75811913", "parentSourceItemId": "75811777", "title": "Fits tightly @ top & sides", "sortOrder": 7 },
+    { "sourceItemId": "75811915", "parentSourceItemId": "75811777", "title": "No Sag", "sortOrder": 8 },
+    { "sourceItemId": "75811916", "parentSourceItemId": "75811777", "title": "No Splits in Door Panel(s)", "sortOrder": 9 },
+    { "sourceItemId": "75811918", "parentSourceItemId": "75811777", "title": "Windows in good condition", "sortOrder": 10 },
+    { "sourceItemId": "75811920", "parentSourceItemId": "75811777", "title": "Jobsite Cleanup Satisfactory", "sortOrder": 11 },
+    { "sourceItemId": "75811922", "parentSourceItemId": "75811777", "title": "OK to Pay", "sortOrder": 12 }
+  ],
+  "selections": [
+    {
+      "sourceItemId": "44753269",
+      "sourceSelectionId": "44753269",
+      "title": "Garage Door",
+      "category": "08 33 23 - Overhead Coiling Door",
+      "location": "Exterior",
+      "status": "Unreleased",
+      "allowance": 0,
+      "deadline": null,
+      "description": "Please Visit https://www.haascreate.com/create/17087 to create your garage door and upload your selection for us to estimate!",
+      "internalNotes": "",
+      "requireClientSelection": false,
+      "allowMultipleSelectedChoices": false,
+      "choiceOrdering": "Auto",
+      "choices": []
+    }
+  ],
+  "bidPackages": [
+    {
+      "sourceItemId": "9601774",
+      "sourceBidPackageId": "9601774",
+      "title": "Garage Doors - (Project Address) (Estimate Phase)",
+      "status": "Draft",
+      "allowMultipleApprovedBids": false,
+      "deadline": null,
+      "time": null,
+      "linkToSchedule": false,
+      "reminderLeadDays": 2,
+      "plansAndSpecs": false,
+      "linkedPlanCount": 0,
+      "linkedSpecCount": 0,
+      "pricingFormat": "Line Items",
+      "description": "Background\nHigh Performance Structures, Inc. dba Open Range Construction, Ltd. (ORC) will be building a (Project Type) located at:\n\n(Project Address)\nReference Documents\nPlease see the Buildertrend Documents folder titled \"(Est. Phase) Bid Set\" for all necessary plans.\n\nSubmission of Bid\nBids for this project will be processed through Buildertrend, a construction management program. You do not need to become proficient with Buildertrend. You may also simply call or email your point of contact. You may submit your bid into Buildertrend or email it to your point of contact for entry. Should you choose to input your bid into Buildertrend, please also include a PDF version of your bid.\n\nFor assistance with submitting the bid or receiving bid documents, contact the (Estimator Title):\n\n(Estimator), (719) 900-8850 ext. (Estimator Ext)\n(Estimator Email Address)\n\nTimeline\nThe work is scheduled to start in (Season), (Year).\n\n\nScope of Work\nThe following CSI categories will be required for the construction of the project per the plans and specifications noted on the Plans and Specifications List. We will notify bidders of any changes or additions by sending out updates to said List.\n\nSchedule\nPlease provide a schedule to complete each of the above items, in calendar days after the issuance of the purchase order and/or notice to proceed.\n\n\nContract and Insurance Requirements\nAll trade contractors will be required to complete a trade contractor agreement, provide proof of liability insurance and workman’s compensation insurance as applicable, with required limits prior to the release of any construction payments.",
+      "internalNotes": "",
+      "attachments": [],
+      "lineItems": [
+        {
+          "sourceLineItemId": "16491568",
+          "title": "Garage Door Installation Labor & Materials",
+          "costCode": "08 36 00 - Panel Doors",
+          "costType": "Labor, Material, Subcontractor",
+          "quantity": 1,
+          "unit": null,
+          "description": "Please Spec (Garage Door Type). (Low Head Room Track?)"
+        },
+        {
+          "sourceLineItemId": "16491569",
+          "title": "Garage Door Opener Labor & Materials",
+          "costCode": "08 36 00 - Panel Doors",
+          "costType": "Labor, Material, Subcontractor",
+          "quantity": 1,
+          "unit": null
+        }
+      ]
+    }
+  ]
+}

@@ -1,14 +1,14 @@
 {
   "releaseVersion": 1,
-  "generatedAt": "2026-08-05T02:07:14.000Z",
+  "generatedAt": "2026-08-05T11:45:00.000Z",
   "sourceNextBatchManifest": "scripts/fixtures/buildertrend-template-next-batch-2026-08-04.json",
   "sourceReviewedCapture": "scripts/fixtures/buildertrend-active-template-capture-2026-07-31.json",
   "scope": {
     "activeTemplatesInSource": 40,
     "completedPilotTemplatesExcluded": 6,
     "nonPilotCandidatesAudited": 34,
-    "structurallyCompleteTemplatesIncluded": 10,
-    "incompleteTemplatesExcluded": 24,
+    "structurallyCompleteTemplatesIncluded": 24,
+    "incompleteTemplatesExcluded": 10,
     "archivedTemplatesExcluded": 27,
     "archivedTemplatesIncluded": 0
   },
@@ -148,6 +148,188 @@
         "bidPackages": 1
       },
       "fragmentPath": "scripts/fixtures/buildertrend-template-content-next-batch/fragments/18-30914491.capture.json",
+      "browserCaptureGates": "complete"
+    },
+    {
+      "sourceTemplateId": "12858966",
+      "sourceName": "Concrete - Piers Assembly",
+      "workplanSequence": 20,
+      "moduleCounts": {
+        "tasks": 16,
+        "scheduleItems": 5,
+        "selections": 0,
+        "bidPackages": 0
+      },
+      "fragmentPath": "scripts/fixtures/buildertrend-template-content-next-batch/fragments/20-12858966.capture.json",
+      "browserCaptureGates": "complete"
+    },
+    {
+      "sourceTemplateId": "12649292",
+      "sourceName": "Framing - Exterior Wall Assembly",
+      "workplanSequence": 21,
+      "moduleCounts": {
+        "tasks": 16,
+        "scheduleItems": 2,
+        "selections": 0,
+        "bidPackages": 0
+      },
+      "fragmentPath": "scripts/fixtures/buildertrend-template-content-next-batch/fragments/21-12649292.capture.json",
+      "browserCaptureGates": "complete"
+    },
+    {
+      "sourceTemplateId": "12650557",
+      "sourceName": "Earthwork - Post-Frost Wall Earthwork",
+      "workplanSequence": 22,
+      "moduleCounts": {
+        "tasks": 12,
+        "scheduleItems": 4,
+        "selections": 0,
+        "bidPackages": 1
+      },
+      "fragmentPath": "scripts/fixtures/buildertrend-template-content-next-batch/fragments/22-12650557.capture.json",
+      "browserCaptureGates": "complete"
+    },
+    {
+      "sourceTemplateId": "30919251",
+      "sourceName": "Framing - Overhead Door Installation",
+      "workplanSequence": 23,
+      "moduleCounts": {
+        "tasks": 13,
+        "scheduleItems": 2,
+        "selections": 1,
+        "bidPackages": 1
+      },
+      "fragmentPath": "scripts/fixtures/buildertrend-template-content-next-batch/fragments/23-30919251.capture.json",
+      "browserCaptureGates": "complete"
+    },
+    {
+      "sourceTemplateId": "12650484",
+      "sourceName": "Framing - Exterior Man Door Installation",
+      "workplanSequence": 24,
+      "moduleCounts": {
+        "tasks": 11,
+        "scheduleItems": 2,
+        "selections": 1,
+        "bidPackages": 1
+      },
+      "fragmentPath": "scripts/fixtures/buildertrend-template-content-next-batch/fragments/24-12650484.capture.json",
+      "browserCaptureGates": "complete"
+    },
+    {
+      "sourceTemplateId": "12650713",
+      "sourceName": "Framing - Stair Installation",
+      "workplanSequence": 26,
+      "moduleCounts": {
+        "tasks": 10,
+        "scheduleItems": 3,
+        "selections": 0,
+        "bidPackages": 0
+      },
+      "fragmentPath": "scripts/fixtures/buildertrend-template-content-next-batch/fragments/26-12650713.capture.json",
+      "browserCaptureGates": "complete"
+    },
+    {
+      "sourceTemplateId": "28466146",
+      "sourceName": "Int. Finishes - Interior Doors",
+      "workplanSequence": 27,
+      "moduleCounts": {
+        "tasks": 5,
+        "scheduleItems": 3,
+        "selections": 4,
+        "bidPackages": 0
+      },
+      "fragmentPath": "scripts/fixtures/buildertrend-template-content-next-batch/fragments/27-28466146.capture.json",
+      "browserCaptureGates": "complete"
+    },
+    {
+      "sourceTemplateId": "12979213",
+      "sourceName": "Int. Finishes - Stain & Seal Concrete Floors",
+      "workplanSequence": 28,
+      "moduleCounts": {
+        "tasks": 7,
+        "scheduleItems": 5,
+        "selections": 0,
+        "bidPackages": 0
+      },
+      "fragmentPath": "scripts/fixtures/buildertrend-template-content-next-batch/fragments/28-12979213.capture.json",
+      "browserCaptureGates": "complete"
+    },
+    {
+      "sourceTemplateId": "12978590",
+      "sourceName": "Framing - Rough inspection w/ Draft & Firestop",
+      "workplanSequence": 30,
+      "moduleCounts": {
+        "tasks": 3,
+        "scheduleItems": 2,
+        "selections": 0,
+        "bidPackages": 0
+      },
+      "fragmentPath": "scripts/fixtures/buildertrend-template-content-next-batch/fragments/30-12978590.capture.json",
+      "browserCaptureGates": "complete"
+    },
+    {
+      "sourceTemplateId": "36619183",
+      "sourceName": "Int. Finishes - Painting/Staining",
+      "workplanSequence": 31,
+      "moduleCounts": {
+        "tasks": 0,
+        "scheduleItems": 0,
+        "selections": 8,
+        "bidPackages": 1
+      },
+      "fragmentPath": "scripts/fixtures/buildertrend-template-content-next-batch/fragments/31-36619183.capture.json",
+      "browserCaptureGates": "complete"
+    },
+    {
+      "sourceTemplateId": "38452172",
+      "sourceName": "Int. Finishes - Flooring",
+      "workplanSequence": 32,
+      "moduleCounts": {
+        "tasks": 0,
+        "scheduleItems": 0,
+        "selections": 3,
+        "bidPackages": 1
+      },
+      "fragmentPath": "scripts/fixtures/buildertrend-template-content-next-batch/fragments/32-38452172.capture.json",
+      "browserCaptureGates": "complete"
+    },
+    {
+      "sourceTemplateId": "36478698",
+      "sourceName": "Framing - Quote Packages",
+      "workplanSequence": 34,
+      "moduleCounts": {
+        "tasks": 0,
+        "scheduleItems": 0,
+        "selections": 0,
+        "bidPackages": 3
+      },
+      "fragmentPath": "scripts/fixtures/buildertrend-template-content-next-batch/fragments/34-36478698.capture.json",
+      "browserCaptureGates": "complete"
+    },
+    {
+      "sourceTemplateId": "36595931",
+      "sourceName": "MEP - Quotes",
+      "workplanSequence": 35,
+      "moduleCounts": {
+        "tasks": 0,
+        "scheduleItems": 0,
+        "selections": 0,
+        "bidPackages": 3
+      },
+      "fragmentPath": "scripts/fixtures/buildertrend-template-content-next-batch/fragments/35-36595931.capture.json",
+      "browserCaptureGates": "complete"
+    },
+    {
+      "sourceTemplateId": "42948499",
+      "sourceName": "Int. Finishes - Bath Hardware",
+      "workplanSequence": 39,
+      "moduleCounts": {
+        "tasks": 0,
+        "scheduleItems": 0,
+        "selections": 1,
+        "bidPackages": 0
+      },
+      "fragmentPath": "scripts/fixtures/buildertrend-template-content-next-batch/fragments/39-42948499.capture.json",
       "browserCaptureGates": "complete"
     }
   ],
