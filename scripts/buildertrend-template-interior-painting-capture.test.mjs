@@ -126,7 +126,7 @@ test("preserves the Interior Painting bid package and releases only a guarded dr
   )
   assert.ok(painting)
   assert.equal(painting.tasks.length, 0)
-  assert.equal("scheduleItems" in painting, false)
+  assert.equal(painting.scheduleItems.length, 0)
   assert.equal(painting.selections.length, 8)
   assert.equal(painting.bidPackages.length, 1)
 
@@ -179,6 +179,6 @@ test("preserves the Interior Painting bid package and releases only a guarded dr
 
   assert.equal(result.capture.assembly.draftOnly, true)
   assert.equal(result.capture.assembly.publish, false)
-  assert.equal(result.capture.assembly.templateCount, 20)
-  assert.equal(result.capture.assembly.excludedIncompleteTemplateCount, 14)
+  assert.equal(result.capture.assembly.templateCount, 21)
+  assert.equal(result.capture.assembly.excludedIncompleteTemplateCount, 13)
 })

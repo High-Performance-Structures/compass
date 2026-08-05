@@ -7,9 +7,9 @@ Do not create placeholder content and do not mutate the Buildertrend sources.
 The deterministic manifest is
 `scripts/fixtures/buildertrend-template-next-batch-2026-08-04.json`. Its current
 reviewed release covers workplan sequences 6–13, 15–16, 18, 20–24, 26–28,
-and 30–31,
+and 30–32,
 excluding sequence 10 because Drywall was already completed in the pilot and
-sequences 14, 17, 19, 25, 29, and 32–40 because their captures remain
+sequences 14, 17, 19, 25, 29, and 33–40 because their captures remain
 incomplete:
 
 1. Ext. Finishes - Stucco (`12859981`)
@@ -32,6 +32,7 @@ incomplete:
 18. Int. Finishes - Stain & Seal Concrete Floors (`12979213`)
 19. Framing - Rough inspection w/ Draft & Firestop (`12978590`)
 20. Int. Finishes - Painting/Staining (`36619183`)
+21. Int. Finishes - Flooring (`38452172`)
 
 Place capture files under `fragments/` using the exact `fragmentPath` from the
 manifest. A fragment must identify one template and may contain one or more of
@@ -72,14 +73,16 @@ Framing Floor System Assembly (`12649495`), Interior Finishes Tiling
 Overhead Door Installation (`30919251`), and Framing Exterior Man Door
 Installation (`12650484`), Framing Stair Installation (`12650713`), Interior
 Doors (`28466146`), Stain & Seal Concrete Floors (`12979213`), Rough Inspection
-with Draft & Firestop (`12978590`), and Interior Painting/Staining (`36619183`).
+with Draft & Firestop (`12978590`), Interior Painting/Staining (`36619183`),
+and Interior Finishes Flooring (`38452172`).
 Their browser gates are complete, and the assembler combines those fragments
 with the already-reviewed schedule rows and
 dependencies.
 
-The guarded audit covers all 34 non-pilot active templates, not just the twenty
-release entries. At the current checkpoint it includes 20 structurally complete
-templates, excludes 14 incomplete active templates, and excludes all 27
+The guarded audit covers all 34 non-pilot active templates, not just the
+twenty-one release entries. At the current checkpoint it includes 21
+structurally complete templates, excludes 13 incomplete active templates, and
+excludes all 27
 archived templates. There are zero additional structurally complete templates
 after this reviewed release. If another complete fragment appears, `--check`
 deliberately fails the release as stale until its identity, counts, and
@@ -116,6 +119,9 @@ Interior Painting/Staining likewise preserves one verified attachment filename
 and explicit counts for two additional source attachments whose filenames and
 bytes were not exposed; those missing values remain a fail-closed conversion
 exception and must not be inferred.
+Flooring retains one explicit conversion exception
+for the filenames of seven verified choice attachments; the choice identities,
+descriptions, ordering, status, price, and attachment counts are preserved.
 
 ## Read-only production verification
 
@@ -144,8 +150,8 @@ no applications, and either zero content rows or a complete prior replay. A
 partial prior import is rejected.
 
 After applying the reviewed import, generate and execute the same query with
-`--phase postflight`. Postflight requires exactly 537 content rows (421 tasks,
-78 schedule items, 27 selections, and 11 bid packages), 78 reusable
+`--phase postflight`. Postflight requires exactly 541 content rows (421 tasks,
+78 schedule items, 30 selections, and 12 bid packages), 78 reusable
 schedule rows, 59 schedule predecessor edges in both representations, exact
 deterministic source identities, valid JSON without Buildertrend URLs, draft
 versions, and `content_captured` / `draft` template state. Zero rows means the

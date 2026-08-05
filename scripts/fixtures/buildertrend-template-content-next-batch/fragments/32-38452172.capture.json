@@ -1,0 +1,216 @@
+{
+  "template": {
+    "sourceTemplateId": "38452172",
+    "sourceName": "Int. Finishes - Flooring",
+    "capturedAt": "2026-08-05T08:51:38Z",
+    "captureNotes": [
+      "Captured directly from the authenticated Buildertrend source template after selecting source 38452172 through the visible My Templates job picker; no source or temporary template was created or mutated.",
+      "All three selections and nine native choice IDs, titles, displayed order, statuses, prices, descriptions, client-selection settings, choice ordering, and attachment counts were verified in the source selection details.",
+      "Seven Flooring Type choices each displayed one attachment, but Buildertrend did not expose their filenames in the bounded source capture. The verified counts remain preserved and the missing filenames are an explicit conversion exception.",
+      "The single bid package, five native line-item identities, line descriptions, cost codes, Cost Types, quantities, pricing policy, complete bid description, and internal note were captured exactly.",
+      "The bid package displayed no linked plans, no linked specifications, and no attachments."
+    ],
+    "selections": [
+      {
+        "sourceItemId": "53867143",
+        "sourceSelectionId": "53867143",
+        "title": "Flooring Type",
+        "category": "09 60 00 - Flooring",
+        "location": "Unassigned",
+        "status": "Unreleased",
+        "allowance": 0,
+        "deadline": null,
+        "description": "",
+        "internalNotes": "",
+        "requireClientSelection": false,
+        "allowMultipleSelectedChoices": false,
+        "choiceOrdering": "Auto",
+        "choices": [
+          {
+            "sourceChoiceId": "211681334",
+            "title": "Carpet",
+            "status": "Unreleased",
+            "price": 0,
+            "description": "Visit the Arlun website for carpet styles.",
+            "attachmentCount": 1
+          },
+          {
+            "sourceChoiceId": "211681333",
+            "title": "Hardwood (Engineered or Solid)",
+            "status": "Unreleased",
+            "price": 0,
+            "description": "Visit the Arlun website to view hardwood flooring options.",
+            "attachmentCount": 1
+          },
+          {
+            "sourceChoiceId": "211681332",
+            "title": "Luxury Vinyl Tile and Plank",
+            "status": "Unreleased",
+            "price": 0,
+            "description": "Visit the Arlun website to see options for stone, tile and wood looks.",
+            "attachmentCount": 1
+          },
+          {
+            "sourceChoiceId": "211682778",
+            "title": "Raw Concrete",
+            "status": "Unreleased",
+            "price": 0,
+            "description": "",
+            "attachmentCount": 1
+          },
+          {
+            "sourceChoiceId": "211681330",
+            "title": "Stained Concrete",
+            "status": "Unreleased",
+            "price": 0,
+            "description": "",
+            "attachmentCount": 1
+          },
+          {
+            "sourceChoiceId": "211681331",
+            "title": "Stamped and Stained Concrete",
+            "status": "Unreleased",
+            "price": 0,
+            "description": "Visit the proinestamps website to see sample stamp patterns.",
+            "attachmentCount": 1
+          },
+          {
+            "sourceChoiceId": "211681329",
+            "title": "Tile",
+            "status": "Unreleased",
+            "price": 0,
+            "description": "Please visit the Arlun website to view tile styles.",
+            "attachmentCount": 1
+          }
+        ]
+      },
+      {
+        "sourceItemId": "53867162",
+        "sourceSelectionId": "53867162",
+        "title": "Stain Concrete Floors Wax Finish",
+        "category": "09 60 00 - Flooring",
+        "location": "Unassigned",
+        "status": "Unreleased",
+        "allowance": 0,
+        "deadline": null,
+        "description": "",
+        "internalNotes": "",
+        "requireClientSelection": false,
+        "allowMultipleSelectedChoices": false,
+        "choiceOrdering": "Auto",
+        "choices": [
+          {
+            "sourceChoiceId": "211681416",
+            "title": "Gloss Finish",
+            "status": "Unreleased",
+            "price": 0,
+            "description": "Reflective floor finish",
+            "attachmentCount": 0
+          },
+          {
+            "sourceChoiceId": "211681403",
+            "title": "Matte Finish",
+            "status": "Unreleased",
+            "price": 0,
+            "description": "Unreflective concrete finish",
+            "attachmentCount": 0
+          }
+        ]
+      },
+      {
+        "sourceItemId": "53867154",
+        "sourceSelectionId": "53867154",
+        "title": "Stained Concrete Floor Color",
+        "category": "09 60 00 - Flooring",
+        "location": "Unassigned",
+        "status": "Unreleased",
+        "allowance": 0,
+        "deadline": null,
+        "description": "For color choices, please visit https://prosoco.com/product/gemtone-stain/, and please select as many as you would like to have samples to choose from in the home",
+        "internalNotes": "",
+        "requireClientSelection": false,
+        "allowMultipleSelectedChoices": false,
+        "choiceOrdering": "Auto",
+        "choices": []
+      }
+    ],
+    "bidPackages": [
+      {
+        "sourceItemId": "11233112",
+        "sourceBidPackageId": "11233112",
+        "title": "Flooring - (Proj. St Address) (Estimate Phase)",
+        "status": "Draft",
+        "allowMultipleApprovedBids": false,
+        "deadline": null,
+        "time": null,
+        "linkToSchedule": false,
+        "reminderLeadDays": 5,
+        "plansAndSpecs": false,
+        "linkedPlanCount": 0,
+        "linkedSpecCount": 0,
+        "pricingFormat": "Line Items",
+        "description": "Background\nHigh Performance Structures, Inc., dba Open Range Construction, Ltd. (ORC) will be building a (Project Type) located at:\n(Project Address)\nReference Documents\nPlease find the bid set of drawings located in Buildertrend within Files > Documents > Estimates > (Estimate Phase) Bid Set in addition to any specifications attached to this bid package.\nSubmission of Bid\nBids for this project will be processed through Buildertrend, a construction management program. You do not need to become proficient with Buildertrend. You may also simply call or email your point of contact. You may submit your bid into Buildertrend or email it to your point of contact for entry. Should you choose to input your bid into Buildertrend, please also include a PDF version of your bid.\nFor assistance with submitting the bid or receiving bid documents, contact the (Estimator Title):\n(Estimator), (719) 900-8850 ext. (Estimator Ext)\n(Estimator Email Address)\nTimeline\nThe work is scheduled to start in (Season), (Year).\nScope of Work\nThe following CSI categories will be required for the construction of the project per the plans and specifications noted on the Plans and Specifications List. We will notify bidders of any changes or additions by sending out updates to said List.\nSchedule\nPlease provide a schedule to complete each of the above items in calendar days after the issuance of the purchase order and/or notice to proceed.\nContract and Insurance Requirements\nAll trade contractors will be required to complete a trade contractor agreement and provide proof of liability insurance and workman’s compensation insurance as applicable, with required limits, prior to the release of any construction payments.",
+        "internalNotes": "Estimator, this bid package includes all options. Please remove undesired options and attach a print of your takeoffs.",
+        "attachments": [],
+        "lineItems": [
+          {
+            "sourceLineItemId": "19487649",
+            "title": "Tile Flooring Installation Labor & Materials",
+            "description": "Please include all necessary labor & materials (including tile) for the installation of tile flooring as per the attached takeoffs or selections in Buildertrend. Please include (Tile Brand) (Size) (Tile Product) tiling.",
+            "costCode": "09 30 00 - Tiling",
+            "costType": "Subcontractor",
+            "quantity": 1,
+            "unit": null
+          },
+          {
+            "sourceLineItemId": "19487650",
+            "title": "Hardwood Flooring Installation Labor & Materials",
+            "description": "Please include all necessary labor & materials (including hardwood) for the installation of hardwood flooring as per the attached takeoffs or selections in Buildertrend. Please spec (Brand) (Size) (Wood Product)",
+            "costCode": "09 64 00 - Wood Flooring",
+            "costType": "Subcontractor",
+            "quantity": 1,
+            "unit": null
+          },
+          {
+            "sourceLineItemId": "19487651",
+            "title": "Carpet Installation Labor & Materials",
+            "description": "Please include all necessary labor & materials for the installation of carpet flooring as per the attached takeoffs or selections in Buildertrend. Please spec (Brand) (Carpet Style)",
+            "costCode": "09 64 00 - Wood Flooring",
+            "costType": "Subcontractor",
+            "quantity": 1,
+            "unit": null
+          },
+          {
+            "sourceLineItemId": "19487652",
+            "title": "Vinyl Flooring Installation Labor & Materials",
+            "description": "Please include all necessary labor & materials (including vinyl materials) for the installation of vinyl flooring as per the attached takeoffs or selections in Buildertrend. Please spec (Brand) (Vinyl Style).",
+            "costCode": "09 65 00 - Resilient Flooring",
+            "costType": "Subcontractor",
+            "quantity": 1,
+            "unit": null
+          },
+          {
+            "sourceLineItemId": "19487653",
+            "title": "LVP/T Flooring Installation Labor & Materials",
+            "description": "Please include all necessary labor & materials (including LVP/T) for the installation of LVP/T flooring as per the attached takeoffs or selections in Buildertrend. Please spec (Brand) (Size) (LVP/T Product)",
+            "costCode": "09 68 00 - Carpeting",
+            "costType": "Subcontractor",
+            "quantity": 1,
+            "unit": null
+          }
+        ]
+      }
+    ]
+  },
+  "conversionExceptions": [
+    {
+      "templateSourceTemplateId": "38452172",
+      "module": "selections",
+      "sourceItemId": "53867143",
+      "field": "choices.attachments.fileName",
+      "sourceValue": "Each of the seven Flooring Type choices displayed one attachment, but the bounded authenticated source capture did not expose any attachment filename.",
+      "loss": "Seven attachment filenames and durable attachment bytes were unavailable and were omitted; the verified attachmentCount remains one on every Flooring Type choice.",
+      "recoveryPlan": "Recover the seven exact filenames and attachment bytes from a supported Buildertrend export or a later authenticated detail capture before publishing this draft; do not derive filenames from choice titles."
+    }
+  ]
+}

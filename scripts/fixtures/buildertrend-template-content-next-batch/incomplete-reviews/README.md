@@ -82,15 +82,3 @@ The canonical reviewed capture preserves the three schedule items and three
 dependencies. Perimeter Drain remains release-ineligible until all four task
 rows are captured with their native identities, displayed ordering, and exact
 parent-child hierarchy.
-
-## Int. Finishes - Flooring (`38452172`)
-
-The reviewed source inventory reports three selections and one bid package,
-with no tasks or schedule items. Authenticated module capture has not started,
-so the pending review deliberately contains no source content beyond those
-inventory counts.
-
-Flooring remains blocked until all three selections and the bid package are
-captured with exact native identities, selection hierarchy and choices, bid
-specifications and line items, cost codes, Cost Types, attachment evidence,
-and any copy warnings.
