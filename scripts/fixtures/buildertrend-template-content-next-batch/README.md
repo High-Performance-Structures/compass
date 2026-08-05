@@ -73,9 +73,10 @@ draft version checks and leaves any still-draft Compass templates in
 `content_captured` / `draft` state for staff review and later publication from
 the Template Library. Siding also retains two explicit module-level conversion
 exceptions because Buildertrend cleared multiple Cost Type assignments on two
-unidentified bid rows while copying the source. Those rows and values must be
-recovered from the source or a supported export before production import; the
-copied values must not be used to infer them.
+unidentified bid rows while copying the source. The draft may be imported for
+staff review, but those rows and values must be recovered from the source or a
+supported export before publication or production use; the copied values must
+not be used to infer them.
 
 ## Read-only production verification
 
