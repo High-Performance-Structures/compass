@@ -13,7 +13,6 @@ const bathHardwareTemplateId = "42948499"
 const expectedFragmentPath =
   "scripts/fixtures/buildertrend-template-content-next-batch/fragments/39-42948499.capture.json"
 const paths = {
-  review: "scripts/fixtures/buildertrend-template-content-next-batch/incomplete-reviews/39-42948499.capture-review.json",
   fragments: "scripts/fixtures/buildertrend-template-content-next-batch/fragments",
   release: "scripts/fixtures/buildertrend-template-content-next-batch-release-2026-08-04.json",
   manifest: "scripts/fixtures/buildertrend-template-next-batch-2026-08-04.json",
@@ -81,33 +80,14 @@ test("keeps Bath Hardware behind its exact one-selection capture gate", async ()
   assert.equal(reviewedTemplate.schedule, null)
 })
 
-test("preserves the authenticated Bath Hardware checkpoint without inventing missing selection metadata", async () => {
-  const review = await readJson(paths.review)
+test("preserves complete Bath Hardware selection metadata and source attachment filenames", async () => {
+  const fragment = await readJson(expectedFragmentPath)
 
-  assert.equal(review.reviewStatus, "incomplete")
-  assert.equal(review.releaseEligible, false)
-  assert.equal(review.template.sourceTemplateId, bathHardwareTemplateId)
-  assert.deepEqual(review.template.sourceInventory, {
-    tasks: 0,
-    scheduleItems: 0,
-    selections: 1,
-    bidPackages: 0,
-  })
-  assert.deepEqual(review.template.browserModuleGates, [
-    {
-      module: "selections",
-      expectedCount: 1,
-      capturedCount: 1,
-      releaseReadyCount: 0,
-      status: "incomplete",
-      releaseBlocker: "Recover or verify the exact selection public instructions and internal notes, each choice description, all six indicated attachment filenames, and durable attachment bytes before moving this audit into the active fragments directory.",
-    },
-  ])
-
-  assert.deepEqual(review.template.tasks, [])
-  assert.deepEqual(review.template.bidPackages, [])
-  assert.equal(review.template.selections.length, 1)
-  assert.deepEqual(review.template.selections[0], {
+  assert.equal(fragment.template.sourceTemplateId, bathHardwareTemplateId)
+  assert.deepEqual(fragment.template.tasks, [])
+  assert.deepEqual(fragment.template.bidPackages, [])
+  assert.equal(fragment.template.selections.length, 1)
+  assert.deepEqual(fragment.template.selections[0], {
     sourceItemId: "59585706",
     sourceSelectionId: "59585706",
     title: "Bathroom Add Ons",
@@ -116,33 +96,25 @@ test("preserves the authenticated Bath Hardware checkpoint without inventing mis
     status: "Unreleased",
     allowance: 0,
     deadline: null,
+    description: "",
+    internalNotes: "",
     requireClientSelection: false,
     allowMultipleSelectedChoices: true,
     choiceOrdering: "Manual",
     choices: [
-      { sourceChoiceId: "240860708", title: "Bathroom Mirror", status: "Unreleased", price: 0, attachmentCount: 1 },
-      { sourceChoiceId: "240860706", title: "Recessed Medicine Cabinet With Mirror", status: "Unreleased", price: 0, attachmentCount: 1 },
-      { sourceChoiceId: "240860707", title: "Recessed Medicine Cabinet Without Mirror", status: "Unreleased", price: 0, attachmentCount: 1 },
-      { sourceChoiceId: "240860704", title: "Single towel Bar", status: "Unreleased", price: 0, attachmentCount: 1 },
-      { sourceChoiceId: "240860705", title: "Two Towel Bars", status: "Unreleased", price: 0, attachmentCount: 1 },
-      { sourceChoiceId: "240860709", title: "Toilet Paper Holder", status: "Unreleased", price: 0, attachmentCount: 1 },
-      { sourceChoiceId: "240860710", title: "None - Owner Scope", status: "Unreleased", price: 0, attachmentCount: 0 },
+      { sourceChoiceId: "240860708", title: "Bathroom Mirror", status: "Unreleased", price: 0, description: "", attachmentCount: 1, attachments: [{ fileName: "bathroom mirror.jpg" }] },
+      { sourceChoiceId: "240860706", title: "Recessed Medicine Cabinet With Mirror", status: "Unreleased", price: 0, description: "", attachmentCount: 1, attachments: [{ fileName: "recessed medicine cabinet w-mirror.jpg" }] },
+      { sourceChoiceId: "240860707", title: "Recessed Medicine Cabinet Without Mirror", status: "Unreleased", price: 0, description: "", attachmentCount: 1, attachments: [{ fileName: "medicine cabinet without mirror.jpg" }] },
+      { sourceChoiceId: "240860704", title: "Single towel Bar", status: "Unreleased", price: 0, description: "", attachmentCount: 1, attachments: [{ fileName: "single towel bar.jpg" }] },
+      { sourceChoiceId: "240860705", title: "Two Towel Bars", status: "Unreleased", price: 0, description: "", attachmentCount: 1, attachments: [{ fileName: "two towel bars.jpg" }] },
+      { sourceChoiceId: "240860709", title: "Toilet Paper Holder", status: "Unreleased", price: 0, description: "", attachmentCount: 1, attachments: [{ fileName: "toilet paper holder.jpg" }] },
+      { sourceChoiceId: "240860710", title: "None - Owner Scope", status: "Unreleased", price: 0, description: "", attachmentCount: 0, attachments: [] },
     ],
   })
-  assert.equal(review.conversionExceptions.length, 3)
-  assert.equal(
-    review.conversionExceptions.every(
-      (exception) =>
-        exception.templateSourceTemplateId === bathHardwareTemplateId &&
-        exception.module === "selections" &&
-        exception.sourceItemId === "59585706" &&
-        /do not infer|do not derive/.test(exception.recoveryPlan)
-    ),
-    true
-  )
+  assert.deepEqual(fragment.conversionExceptions, [])
 })
 
-test("excludes pending Bath Hardware content from fragment discovery and release assembly", async () => {
+test("includes complete Bath Hardware content in the guarded draft-only release", async () => {
   const [release, nextBatchManifest, reviewedCapture, documents] = await Promise.all([
     readJson(paths.release),
     readJson(paths.manifest),
@@ -152,13 +124,13 @@ test("excludes pending Bath Hardware content from fragment discovery and release
 
   assert.equal(
     documents.some(({ source }) => source.endsWith("39-42948499.capture.json")),
-    false
+    true
   )
   assert.equal(
     release.templates.some(
       (template) => template.sourceTemplateId === bathHardwareTemplateId
     ),
-    false
+    true
   )
 
   const result = assembleBuildertrendTemplateNextBatchContent({
@@ -171,10 +143,10 @@ test("excludes pending Bath Hardware content from fragment discovery and release
     result.capture.templates.some(
       (template) => template.sourceTemplateId === bathHardwareTemplateId
     ),
-    false
+    true
   )
   assert.equal(result.capture.assembly.draftOnly, true)
   assert.equal(result.capture.assembly.publish, false)
-  assert.equal(result.capture.assembly.templateCount, 21)
-  assert.equal(result.capture.assembly.excludedIncompleteTemplateCount, 13)
+  assert.equal(result.capture.assembly.templateCount, 22)
+  assert.equal(result.capture.assembly.excludedIncompleteTemplateCount, 12)
 })

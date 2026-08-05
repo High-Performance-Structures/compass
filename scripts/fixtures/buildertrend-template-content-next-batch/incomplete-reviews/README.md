@@ -162,18 +162,6 @@ Insulation remains blocked until its bid package is captured with the exact
 native identity, status, specifications, line items, cost codes, Cost Types,
 quantities, units, attachment evidence, and any copy warnings.
 
-## Int. Finishes - Bath Hardware (`42948499`)
-
-The authenticated source picker and Selected Template view confirm zero tasks,
-zero schedule items, zero bid packages, and exactly one selection. The partial
-checkpoint preserves Bathroom Add Ons (`59585706`) and all seven native choice
-IDs, titles, displayed order, statuses, prices, and attachment counts.
-
-Bath Hardware remains blocked because the source public instructions and
-internal notes, individual choice descriptions, six indicated attachment
-filenames, and durable attachment bytes were not exposed during the bounded
-capture. Those values must be recovered without inference before the audit can
-move into the active fragments directory or the release allowlist.
 ## MEP - Fireplace Installation (`38452532`)
 
 The authenticated My Templates row reports one selection and no other content

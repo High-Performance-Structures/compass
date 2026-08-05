@@ -1,14 +1,14 @@
 {
   "releaseVersion": 1,
-  "generatedAt": "2026-08-05T08:51:38.000Z",
+  "generatedAt": "2026-08-05T10:45:00.000Z",
   "sourceNextBatchManifest": "scripts/fixtures/buildertrend-template-next-batch-2026-08-04.json",
   "sourceReviewedCapture": "scripts/fixtures/buildertrend-active-template-capture-2026-07-31.json",
   "scope": {
     "activeTemplatesInSource": 40,
     "completedPilotTemplatesExcluded": 6,
     "nonPilotCandidatesAudited": 34,
-    "structurallyCompleteTemplatesIncluded": 21,
-    "incompleteTemplatesExcluded": 13,
+    "structurallyCompleteTemplatesIncluded": 22,
+    "incompleteTemplatesExcluded": 12,
     "archivedTemplatesExcluded": 27,
     "archivedTemplatesIncluded": 0
   },
@@ -291,6 +291,19 @@
         "bidPackages": 1
       },
       "fragmentPath": "scripts/fixtures/buildertrend-template-content-next-batch/fragments/32-38452172.capture.json",
+      "browserCaptureGates": "complete"
+    },
+    {
+      "sourceTemplateId": "42948499",
+      "sourceName": "Int. Finishes - Bath Hardware",
+      "workplanSequence": 39,
+      "moduleCounts": {
+        "tasks": 0,
+        "scheduleItems": 0,
+        "selections": 1,
+        "bidPackages": 0
+      },
+      "fragmentPath": "scripts/fixtures/buildertrend-template-content-next-batch/fragments/39-42948499.capture.json",
       "browserCaptureGates": "complete"
     }
   ],

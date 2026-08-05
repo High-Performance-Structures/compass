@@ -147,6 +147,6 @@ test("excludes incomplete Fireplace Installation content from fragment discovery
   )
   assert.equal(result.capture.assembly.draftOnly, true)
   assert.equal(result.capture.assembly.publish, false)
-  assert.equal(result.capture.assembly.templateCount, 21)
-  assert.equal(result.capture.assembly.excludedIncompleteTemplateCount, 13)
+  assert.equal(result.capture.assembly.templateCount, 22)
+  assert.equal(result.capture.assembly.excludedIncompleteTemplateCount, 12)
 })

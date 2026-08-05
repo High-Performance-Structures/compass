@@ -157,8 +157,8 @@ test("includes the gate-complete Flooring fragment in draft-only release assembl
     readPilotContentFragments(paths.fragments),
   ])
 
-  assert.equal(release.scope.structurallyCompleteTemplatesIncluded, 21)
-  assert.equal(release.scope.incompleteTemplatesExcluded, 13)
+  assert.equal(release.scope.structurallyCompleteTemplatesIncluded, 22)
+  assert.equal(release.scope.incompleteTemplatesExcluded, 12)
   assert.equal(
     release.templates.some((template) =>
       template.sourceTemplateId === flooringTemplateId &&
@@ -184,5 +184,5 @@ test("includes the gate-complete Flooring fragment in draft-only release assembl
   assert.equal(flooring.bidPackages.length, 1)
   assert.equal(result.capture.assembly.draftOnly, true)
   assert.equal(result.capture.assembly.publish, false)
-  assert.equal(result.capture.assembly.excludedIncompleteTemplateCount, 13)
+  assert.equal(result.capture.assembly.excludedIncompleteTemplateCount, 12)
 })
