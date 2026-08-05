@@ -1,0 +1,40 @@
+{
+  "sourceTemplateId": "12649495",
+  "sourceName": "Framing - Floor System Assembly",
+  "capturedAt": "2026-08-05T01:36:37Z",
+  "captureNotes": [
+    "Captured directly from the authenticated Buildertrend source template All Tasks grid.",
+    "All five checklist groups were expanded before capture.",
+    "Buildertrend task row IDs, displayed order, and parent-child checklist relationships were captured exactly.",
+    "The reviewed template inventory reports zero selections and zero bid packages.",
+    "The reviewed source capture remains the sole source for the four schedule rows and three dependencies."
+  ],
+  "tasks": [
+    { "sourceItemId": "75707940", "parentSourceItemId": null, "title": "Set X Level Ledger Boards", "sortOrder": 1 },
+    { "sourceItemId": "75708102", "parentSourceItemId": "75707940", "title": "(Direction) Wall", "sortOrder": 1 },
+    { "sourceItemId": "75708103", "parentSourceItemId": "75707940", "title": "ICFVL - (C)W", "sortOrder": 2 },
+    { "sourceItemId": "75707941", "parentSourceItemId": null, "title": "Install (Type) Joist Hangers", "sortOrder": 2 },
+    { "sourceItemId": "75708104", "parentSourceItemId": "75707941", "title": "(TYPE) Mount on (Direction) Wall/Beam", "sortOrder": 1 },
+    { "sourceItemId": "75707942", "parentSourceItemId": null, "title": "Set (X) Beams", "sortOrder": 3 },
+    { "sourceItemId": "75707943", "parentSourceItemId": null, "title": "Set Stair Support Beams", "sortOrder": 4 },
+    { "sourceItemId": "75707944", "parentSourceItemId": null, "title": "Set (TYPE) Joists", "sortOrder": 5 },
+    { "sourceItemId": "75707945", "parentSourceItemId": null, "title": "Install (TYPE) Beam Hangers", "sortOrder": 6 },
+    { "sourceItemId": "75708105", "parentSourceItemId": "75707945", "title": "Install on (Direction) Wall For (Beam)", "sortOrder": 1 },
+    { "sourceItemId": "75707946", "parentSourceItemId": null, "title": "Sheet (X) Level Floor System", "sortOrder": 7 },
+    { "sourceItemId": "75707947", "parentSourceItemId": null, "title": "HPS (x) Level Floor Joist QC Inspection", "sortOrder": 8 },
+    { "sourceItemId": "75708106", "parentSourceItemId": "75707947", "title": "Joist Spacing Correct", "sortOrder": 1 },
+    { "sourceItemId": "75708107", "parentSourceItemId": "75707947", "title": "Joists Level", "sortOrder": 2 },
+    { "sourceItemId": "75708108", "parentSourceItemId": "75707947", "title": "Installed Correctly w/ Hangers", "sortOrder": 3 },
+    { "sourceItemId": "75708109", "parentSourceItemId": "75707947", "title": "Jobsite Cleanup Satisfactory", "sortOrder": 4 },
+    { "sourceItemId": "75708110", "parentSourceItemId": "75707947", "title": "OK to Pay", "sortOrder": 5 },
+    { "sourceItemId": "75707948", "parentSourceItemId": null, "title": "HPS (x) level Floor system Framing QC Inspection", "sortOrder": 9 },
+    { "sourceItemId": "75708111", "parentSourceItemId": "75707948", "title": "No Squeaking", "sortOrder": 1 },
+    { "sourceItemId": "75708112", "parentSourceItemId": "75707948", "title": "No Crowned Floor joists", "sortOrder": 2 },
+    { "sourceItemId": "75708113", "parentSourceItemId": "75707948", "title": "Floors Even", "sortOrder": 3 },
+    { "sourceItemId": "75708114", "parentSourceItemId": "75707948", "title": "Floors Level", "sortOrder": 4 },
+    { "sourceItemId": "75708115", "parentSourceItemId": "75707948", "title": "Jobsite Cleanup Satisfactory", "sortOrder": 5 },
+    { "sourceItemId": "75708116", "parentSourceItemId": "75707948", "title": "OK to Pay", "sortOrder": 6 }
+  ],
+  "selections": [],
+  "bidPackages": []
+}
