@@ -54,3 +54,15 @@ dependency. Manufactured Gutters remains blocked until all three browser
 modules are captured with exact native identities, hierarchy, choices, bid
 specifications, cost codes, Cost Types, attachment evidence, and any copy
 warnings.
+
+## MEP - Plumbing Base (`12650395`)
+
+The reviewed source inventory preserves nine tasks, one bid package, and four
+schedule items over six days. This prepared checkpoint does not claim a
+Buildertrend browser capture: the task and bid-package gates remain empty and
+release-ineligible until their exact native identities and content are
+recovered from an authenticated supported source.
+
+The canonical reviewed capture preserves the four schedule items and three
+dependencies. Those schedule rows are referenced rather than duplicated in a
+future browser fragment.

@@ -1,0 +1,50 @@
+{
+  "reviewStatus": "incomplete",
+  "releaseEligible": false,
+  "template": {
+    "sourceTemplateId": "12650395",
+    "sourceName": "MEP - Plumbing Base",
+    "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/12650395",
+    "preparedAt": "2026-08-04T00:00:00Z",
+    "captureNotes": [
+      "The reviewed active-template inventory records nine tasks, one bid package, and four schedule items over six days for Buildertrend source 12650395.",
+      "This checkpoint was prepared without opening Buildertrend. It preserves repository-reviewed inventory and schedule evidence only; no task or bid-package identity, hierarchy, specification, cost code, Cost Type, quantity, unit, or attachment value was inferred.",
+      "The four reviewed schedule items and three dependencies remain canonical in the 40-template source capture and must not be duplicated in a browser fragment.",
+      "Plumbing Base remains release-ineligible until all nine task rows and the bid package are recovered from an authenticated supported Buildertrend view or export."
+    ],
+    "sourceInventory": {
+      "tasks": 9,
+      "scheduleDuration": "6 Days",
+      "scheduleItems": 4,
+      "selections": 0,
+      "bidPackages": 1
+    },
+    "browserModuleGates": [
+      {
+        "module": "tasks",
+        "expectedCount": 9,
+        "capturedCount": 0,
+        "status": "incomplete",
+        "releaseBlocker": "Recover all nine native task IDs, titles, displayed ordering, and parent-child relationships from the Plumbing Base source or a verified temporary copy."
+      },
+      {
+        "module": "bidPackages",
+        "expectedCount": 1,
+        "capturedCount": 0,
+        "status": "incomplete",
+        "releaseBlocker": "Recover the bid package native identity, status, specifications, line items, cost codes, Cost Types, quantities, units, attachment evidence, and any copy warnings."
+      }
+    ],
+    "reviewedScheduleReference": {
+      "path": "scripts/fixtures/buildertrend-active-template-capture-2026-07-31.json",
+      "sourceTemplateId": "12650395",
+      "scheduleItemCount": 4,
+      "dependencyCount": 3,
+      "note": "The reviewed source capture remains the canonical schedule record; browser fragments do not duplicate schedule rows."
+    },
+    "tasks": [],
+    "selections": [],
+    "bidPackages": []
+  },
+  "conversionExceptions": []
+}
