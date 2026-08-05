@@ -34,7 +34,7 @@ test("preserves Architectural Woodwork evidence as an incomplete audit", async (
     expectedCount: 19,
     capturedCount: 18,
     missingCount: 1,
-    reason: "The missing task is not exposed by the authenticated source or copied-template All Tasks, deleted-task, hierarchy, filter, pagination, or related-action views.",
+    reason: "The missing task is not exposed by the authenticated source or copied-template All Tasks, deleted-task, hierarchy, filter, pagination, or related-action views. A second visible My Templates source pass on 2026-08-05 again returned only the same 18 task titles and no recoverable native record.",
     releaseBlocker: "Recover one additional source task with a native ID and title from a supported Buildertrend view or export before moving this file into the active fragments directory.",
   })
   assert.deepEqual(review.template.reviewedScheduleReference, {
