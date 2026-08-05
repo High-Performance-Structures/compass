@@ -126,11 +126,13 @@ detail values may be inferred from Electrical or related MEP templates.
 
 ## Ext. Finishes - Stone (`37180847`)
 
-The canonical reviewed inventory reports two selections and no task, schedule,
-or bid-package content. Browser capture has not started, so this checkpoint is
-pending and contains no copied or inferred selection data.
+The authenticated source inventory reports two selections and no task,
+schedule-item, or bid-package content. The exact Stone row and source route
+were verified through visible My Templates UI, but Buildertrend kept the active
+job-picker context scoped to MEP - Quotes during the bounded capture. No
+content from that unrelated template was retained.
 
 Stone remains blocked until both selections are captured with exact native
 identities, hierarchy, choices, choice ordering, descriptions, prices,
-attachment evidence, and any copy warnings. The pending checkpoint stays in
+attachment evidence, and any copy warnings. The incomplete checkpoint stays in
 this audit-only directory and cannot enter release discovery.

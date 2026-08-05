@@ -1,14 +1,16 @@
 {
-  "reviewStatus": "pending",
+  "reviewStatus": "incomplete",
   "releaseEligible": false,
   "template": {
     "sourceTemplateId": "37180847",
     "sourceName": "Ext. Finishes - Stone",
     "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/37180847",
+    "capturedAt": "2026-08-05T10:03:53Z",
     "captureNotes": [
-      "The canonical reviewed Buildertrend inventory reports two selections and no task, schedule, or bid-package content for source template 37180847.",
-      "Browser capture has not started. No Buildertrend view, temporary copy, or unrelated active template context was used to populate this checkpoint.",
-      "No selection identity, hierarchy, choice, description, price, attachment, or conversion value has been inferred."
+      "The authenticated Buildertrend My Templates row for source 37180847 reported two selections, zero schedule days, and no task, schedule-item, or bid-package count.",
+      "The exact Ext. Finishes - Stone row and /app/Templates/MyTemplates/Template/37180847 route were verified through visible My Templates UI; the route exposed Stone Template Information but did not switch the active job-picker context from MEP - Quotes.",
+      "A bounded visible-picker search and filter reset did not expose Stone as a selectable job-picker result, so no MEP - Quotes selection or bid content was retained.",
+      "No temporary Buildertrend template was created. No selection identity, hierarchy, choice, description, price, attachment, or conversion value has been inferred."
     ],
     "sourceInventory": {
       "tasks": 0,
@@ -22,7 +24,7 @@
         "module": "selections",
         "expectedCount": 2,
         "capturedCount": 0,
-        "status": "pending",
+        "status": "incomplete",
         "releaseBlocker": "Recover both selection native IDs, metadata, hierarchy, choices, choice ordering, descriptions, prices, attachment evidence, and any copy warnings from a supported Buildertrend view or export."
       }
     ],

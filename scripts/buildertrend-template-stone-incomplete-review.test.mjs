@@ -22,10 +22,10 @@ async function readJson(path) {
   return JSON.parse(await readFile(path, "utf8"))
 }
 
-test("preserves Stone as a fail-closed pending capture", async () => {
+test("preserves the authenticated Stone checkpoint as a fail-closed audit", async () => {
   const review = await readJson(paths.review)
 
-  assert.equal(review.reviewStatus, "pending")
+  assert.equal(review.reviewStatus, "incomplete")
   assert.equal(review.releaseEligible, false)
   assert.equal(review.template.sourceTemplateId, stoneTemplateId)
   assert.equal("copiedTargetTemplateId" in review.template, false)
@@ -42,7 +42,7 @@ test("preserves Stone as a fail-closed pending capture", async () => {
       module: "selections",
       expectedCount: 2,
       capturedCount: 0,
-      status: "pending",
+      status: "incomplete",
       releaseBlocker: "Recover both selection native IDs, metadata, hierarchy, choices, choice ordering, descriptions, prices, attachment evidence, and any copy warnings from a supported Buildertrend view or export.",
     },
   ])
@@ -52,7 +52,7 @@ test("preserves Stone as a fail-closed pending capture", async () => {
   assert.deepEqual(review.conversionExceptions, [])
 })
 
-test("excludes the pending Stone checkpoint from release assembly", async () => {
+test("excludes the incomplete Stone checkpoint from release assembly", async () => {
   const [release, nextBatchManifest, reviewedCapture, documents] = await Promise.all([
     readJson(paths.release),
     readJson(paths.manifest),
