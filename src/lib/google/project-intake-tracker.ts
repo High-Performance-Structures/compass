@@ -25,6 +25,20 @@ export type ProjectTrackerLayout = {
   readonly projectNumberColumn: number
 }
 
+const PROJECT_TRACKER_SHEET_NAMES = ["Master List", "Highlight Project"] as const
+
+export function findProjectTrackerSheetTitle(
+  sheetTitles: readonly string[]
+): string | null {
+  for (const preferred of PROJECT_TRACKER_SHEET_NAMES) {
+    const match = sheetTitles.find(
+      (title) => title.trim().toLowerCase() === preferred.toLowerCase()
+    )
+    if (match) return match
+  }
+  return null
+}
+
 function cellText(value: unknown): string {
   if (typeof value === "string") return value.trim()
   if (typeof value === "number" && Number.isFinite(value)) return String(value)

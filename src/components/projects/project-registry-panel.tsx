@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import { useRouter } from "next/navigation"
 import {
   IconBrandTelegram,
   IconCalendar,
@@ -17,6 +18,7 @@ import {
   updateProjectRegistry,
   type ProjectRegistry,
 } from "@/app/actions/project-registry"
+import { provisionProjectDriveFolder } from "@/app/actions/projects"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -151,8 +153,10 @@ export function ProjectRegistryPanel({
   readonly projectId: string
   readonly registry: ProjectRegistry | null
 }): React.ReactElement {
+  const router = useRouter()
   const [message, setMessage] = React.useState<string | null>(null)
   const [isSaving, setIsSaving] = React.useState(false)
+  const [isProvisioningDrive, setIsProvisioningDrive] = React.useState(false)
   const [isEditing, setIsEditing] = React.useState(false)
 
   if (!registry) {
@@ -181,6 +185,23 @@ export function ProjectRegistryPanel({
     )
   }
 
+  async function retryDriveSetup(): Promise<void> {
+    setIsProvisioningDrive(true)
+    setMessage(null)
+    const result = await provisionProjectDriveFolder(projectId)
+    setIsProvisioningDrive(false)
+    if (!result.success) {
+      setMessage(`Could not provision Drive: ${result.error}`)
+      return
+    }
+    setMessage(
+      result.createdRoot
+        ? "Project Drive folder created and linked."
+        : "Existing project Drive folder found and linked."
+    )
+    router.refresh()
+  }
+
   const mappedCount = connectionCount(registry)
   const telegramId = telegramChatId(registry)
   const links = mappedLinks(registry)
@@ -203,6 +224,22 @@ export function ProjectRegistryPanel({
             <Badge variant={mappedCount > 0 ? "secondary" : "outline"}>
               {mappedCount} mapped
             </Badge>
+            {!registry.project.googleDriveFolderId && (
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={retryDriveSetup}
+                disabled={isProvisioningDrive}
+              >
+                {isProvisioningDrive ? (
+                  <IconRefresh className="size-4 animate-spin" />
+                ) : (
+                  <IconFolder className="size-4" />
+                )}
+                Retry Drive setup
+              </Button>
+            )}
             <Button
               type="button"
               size="sm"
@@ -214,6 +251,11 @@ export function ProjectRegistryPanel({
             </Button>
           </div>
         </div>
+        {message && (
+          <p className="mt-3 rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground">
+            {message}
+          </p>
+        )}
       </section>
     )
   }

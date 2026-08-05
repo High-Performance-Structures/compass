@@ -3,7 +3,6 @@
 import { useRef, useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
 import {
-  IconArrowRight,
   IconBuilding,
   IconCheck,
   IconDatabase,
@@ -94,33 +93,44 @@ export function ProjectIntakeDrawer({
     event.preventDefault()
     const formData = new FormData(event.currentTarget)
     startTransition(async () => {
-      const result = await createProjectIntake({
-        department,
-        projectName: fieldValue(formData, "projectName") ?? "",
-        clientName: fieldValue(formData, "clientName"),
-        companyName: fieldValue(formData, "companyName"),
-        clientFirstName: fieldValue(formData, "clientFirstName"),
-        clientLastName: fieldValue(formData, "clientLastName"),
-        contactPhone: fieldValue(formData, "contactPhone"),
-        contactEmail: fieldValue(formData, "contactEmail"),
-        streetNumber: fieldValue(formData, "streetNumber"),
-        streetName: fieldValue(formData, "streetName"),
-        cityStateZip: fieldValue(formData, "cityStateZip"),
-        billingAddress: fieldValue(formData, "billingAddress"),
-        assignedTo: fieldValue(formData, "assignedTo"),
-        referredBy: fieldValue(formData, "referredBy"),
-        notes: fieldValue(formData, "notes"),
-      })
-      if (!result.success) {
-        toast.error(result.error)
-        return
+      try {
+        const result = await createProjectIntake({
+          department,
+          projectName: fieldValue(formData, "projectName") ?? "",
+          clientName: fieldValue(formData, "clientName"),
+          companyName: fieldValue(formData, "companyName"),
+          clientFirstName: fieldValue(formData, "clientFirstName"),
+          clientLastName: fieldValue(formData, "clientLastName"),
+          contactPhone: fieldValue(formData, "contactPhone"),
+          contactEmail: fieldValue(formData, "contactEmail"),
+          streetNumber: fieldValue(formData, "streetNumber"),
+          streetName: fieldValue(formData, "streetName"),
+          cityStateZip: fieldValue(formData, "cityStateZip"),
+          billingAddress: fieldValue(formData, "billingAddress"),
+          assignedTo: fieldValue(formData, "assignedTo"),
+          referredBy: fieldValue(formData, "referredBy"),
+          notes: fieldValue(formData, "notes"),
+        })
+        if (!result.success) {
+          toast.error(result.error)
+          return
+        }
+        if (result.warning) toast.warning(result.warning)
+        else {
+          toast.success(
+            `${result.projectNumber} created with Project Lead Tracking, Drive, and Sage review staged.`
+          )
+        }
+        formRef.current?.reset()
+        setOpen(false)
+        router.push(`/dashboard/projects/${result.id}`)
+        router.refresh()
+      } catch (error) {
+        console.error("Project intake request failed", error)
+        toast.error(
+          "Compass could not submit this project. Your entries are still here; refresh Compass before trying again."
+        )
       }
-      if (result.warning) toast.warning(result.warning)
-      else toast.success(`${result.projectNumber} created in Compass and Project Lead Tracking.`)
-      formRef.current?.reset()
-      setOpen(false)
-      router.push(`/dashboard/projects/${result.id}`)
-      router.refresh()
     })
   }
 
@@ -145,7 +155,7 @@ export function ProjectIntakeDrawer({
             <IconDatabase className="size-4" />
             <AlertTitle>One intake, both systems</AlertTitle>
             <AlertDescription>
-              Compass assigns the next department project number. Drive and Sage setup remain visibly staged until their integrations finish.
+              Compass assigns the next department project number, provisions the department Drive folder, and stages Sage review.
             </AlertDescription>
           </Alert>
 
@@ -261,7 +271,7 @@ export function ProjectIntakeDrawer({
           <div className="grid gap-2 border-y py-4 text-sm sm:grid-cols-3">
             <span className="flex items-center gap-2"><IconCheck className="size-4 text-emerald-700" /> Compass registry</span>
             <span className="flex items-center gap-2"><IconCheck className="size-4 text-emerald-700" /> Project Lead Tracking</span>
-            <span className="flex items-center gap-2 text-muted-foreground"><IconArrowRight className="size-4" /> Drive and Sage staging</span>
+            <span className="flex items-center gap-2"><IconCheck className="size-4 text-emerald-700" /> Drive folder + Sage review</span>
           </div>
 
           <SheetFooter className="px-0">
