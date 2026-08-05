@@ -22,6 +22,10 @@ export type GoogleSpreadsheetMetadata = {
   readonly sheets: readonly GoogleSheetMetadata[]
 }
 
+export type GoogleSheetAppendResult = {
+  readonly updatedRange: string | null
+}
+
 function isObjectRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value)
 }
@@ -127,5 +131,44 @@ export class SheetsClient {
       return []
     }
     return payload.values.filter(Array.isArray)
+  }
+
+  async appendValues(
+    userEmail: string,
+    input: {
+      readonly spreadsheetId: string
+      readonly range: string
+      readonly values: ReadonlyArray<ReadonlyArray<unknown>>
+    }
+  ): Promise<GoogleSheetAppendResult> {
+    const token = await getAccessToken(this.serviceAccountKey, userEmail)
+    const params = new URLSearchParams({
+      // Intake text is browser supplied. RAW prevents spreadsheet formula
+      // execution while preserving the visible strings staff entered.
+      valueInputOption: "RAW",
+      insertDataOption: "INSERT_ROWS",
+    })
+    const range = encodeURIComponent(input.range)
+    const response = await fetch(
+      `${GOOGLE_SHEETS_API}/${input.spreadsheetId}/values/${range}:append?${params.toString()}`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ values: input.values }),
+      }
+    )
+
+    if (!response.ok) {
+      const body = await response.text()
+      throw new Error(
+        `Google Sheets API error (${response.status}): ${body.slice(0, 500)}`
+      )
+    }
+    const payload = objectValue(await response.json())
+    const updates = objectValue(payload?.updates)
+    return { updatedRange: stringValue(updates?.updatedRange) }
   }
 }

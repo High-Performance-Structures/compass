@@ -11,19 +11,21 @@ import {
   IconLayoutCards,
   IconList,
   IconPaint,
-  IconPlus,
   IconSettings,
   IconTool,
 } from "@tabler/icons-react"
 
 import type { DashboardOverview } from "@/app/actions/dashboard-overview"
-import type { ProjectListItem } from "@/app/actions/projects"
+import type {
+  ProjectIntakeAssignee,
+  ProjectListItem,
+} from "@/app/actions/projects"
 import { useActiveProject } from "@/components/project-list-provider"
+import { ProjectIntakeDrawer } from "@/components/projects/project-intake-drawer"
 import { ProjectQuickSwitcher } from "@/components/projects/project-quick-switcher"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { OfficeMaintenanceDrawer } from "@/components/projects/office-maintenance-drawer"
-import { openHpsProjectManagerWorkWindow } from "@/lib/google/project-manager-app"
 import { cn } from "@/lib/utils"
 
 type DepartmentFilter = "ALL" | "O" | "H" | "N" | "D" | "OTHER"
@@ -252,27 +254,16 @@ function ProjectCard({
   )
 }
 
-function NewProjectButton(): React.ReactElement {
-  return (
-    <Button
-      type="button"
-      size="sm"
-      onClick={() => openHpsProjectManagerWorkWindow()}
-    >
-      <IconPlus className="size-4" />
-      New project
-    </Button>
-  )
-}
-
 export function ProjectHubLaunchpad({
   projects,
   overview,
   canManageProjects,
+  intakeAssignees,
 }: {
   readonly projects: readonly ProjectListItem[]
   readonly overview: DashboardOverview
   readonly canManageProjects: boolean
+  readonly intakeAssignees: readonly ProjectIntakeAssignee[]
 }): React.ReactElement {
   const { activeProjectId } = useActiveProject()
   const [department, setDepartment] = useState<DepartmentFilter>("ALL")
@@ -329,7 +320,7 @@ export function ProjectHubLaunchpad({
             <OfficeMaintenanceDrawer projects={projects} />
           ) : null}
           {canManageProjects ? (
-            <NewProjectButton />
+            <ProjectIntakeDrawer assignees={intakeAssignees} />
           ) : null}
         </div>
       </header>
