@@ -5,10 +5,12 @@
     "sourceTemplateId": "12650395",
     "sourceName": "MEP - Plumbing Base",
     "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/12650395",
-    "preparedAt": "2026-08-04T00:00:00Z",
+    "capturedAt": "2026-08-05T06:33:51Z",
     "captureNotes": [
-      "The reviewed active-template inventory records nine tasks, one bid package, and four schedule items over six days for Buildertrend source 12650395.",
-      "This checkpoint was prepared without opening Buildertrend. It preserves repository-reviewed inventory and schedule evidence only; no task or bid-package identity, hierarchy, specification, cost code, Cost Type, quantity, unit, or attachment value was inferred.",
+      "The authenticated Buildertrend My Templates row for source 12650395 reported nine tasks, one bid package, and four schedule items over six days.",
+      "The exact visible MEP - Plumbing Base row opened the source template-information drawer. Its supported secondary actions were Print and Delete template; neither action selects the template as the active module context.",
+      "A bounded job-picker search did not expose Plumbing Base. Per the capture guardrail, no direct or guessed JobPickerActions URL was substituted after the visible-UI path failed.",
+      "No task or bid-package identity, hierarchy, specification, cost code, Cost Type, quantity, unit, or attachment value was inferred.",
       "The four reviewed schedule items and three dependencies remain canonical in the 40-template source capture and must not be duplicated in a browser fragment.",
       "Plumbing Base remains release-ineligible until all nine task rows and the bid package are recovered from an authenticated supported Buildertrend view or export."
     ],

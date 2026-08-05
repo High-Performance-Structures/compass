@@ -57,11 +57,13 @@ warnings.
 
 ## MEP - Plumbing Base (`12650395`)
 
-The reviewed source inventory preserves nine tasks, one bid package, and four
-schedule items over six days. This prepared checkpoint does not claim a
-Buildertrend browser capture: the task and bid-package gates remain empty and
-release-ineligible until their exact native identities and content are
-recovered from an authenticated supported source.
+The authenticated My Templates inventory preserves nine tasks, one bid
+package, and four schedule items over six days. The exact source row opened
+only the template-information drawer, whose visible secondary actions were
+Print and Delete template. A bounded job-picker search did not expose Plumbing
+Base, so no direct or guessed module-context URL was substituted. The task and
+bid-package gates remain empty and release-ineligible until their exact native
+identities and content are recovered from an authenticated supported source.
 
 The canonical reviewed capture preserves the four schedule items and three
 dependencies. Those schedule rows are referenced rather than duplicated in a

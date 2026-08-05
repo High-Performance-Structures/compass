@@ -22,12 +22,14 @@ async function readJson(path) {
   return JSON.parse(await readFile(path, "utf8"))
 }
 
-test("preserves the Plumbing Base capture gate without inventing browser evidence", async () => {
+test("preserves the authenticated Plumbing Base checkpoint without inventing module evidence", async () => {
   const review = await readJson(paths.review)
 
   assert.equal(review.reviewStatus, "incomplete")
   assert.equal(review.releaseEligible, false)
   assert.equal(review.template.sourceTemplateId, plumbingBaseTemplateId)
+  assert.equal(review.template.capturedAt, "2026-08-05T06:33:51Z")
+  assert.equal("preparedAt" in review.template, false)
   assert.equal("copiedTargetTemplateId" in review.template, false)
   assert.equal("copiedTargetName" in review.template, false)
   assert.deepEqual(review.template.sourceInventory, {
@@ -54,6 +56,10 @@ test("preserves the Plumbing Base capture gate without inventing browser evidenc
   assert.deepEqual(review.template.selections, [])
   assert.deepEqual(review.template.bidPackages, [])
   assert.deepEqual(review.conversionExceptions, [])
+  assert.equal(
+    review.template.captureNotes.some((note) => note.includes("JobPickerActions")),
+    true
+  )
 })
 
 test("keeps incomplete Plumbing Base out of release and preserves canonical schedule truth", async () => {
