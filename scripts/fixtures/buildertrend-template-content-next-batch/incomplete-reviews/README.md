@@ -82,3 +82,16 @@ The canonical reviewed capture preserves the three schedule items and three
 dependencies. Perimeter Drain remains release-ineligible until all four task
 rows are captured with their native identities, displayed ordering, and exact
 parent-child hierarchy.
+
+## Int. Finishes - Painting/Staining (`36619183`)
+
+The reviewed source inventory reports eight selections and one bid package,
+with no task or schedule content. Authenticated module capture is queued behind
+the preceding serialized template review so Buildertrend's selected-template
+context cannot leak unrelated rows into this record.
+
+Interior Painting/Staining remains blocked until all eight selections and the
+bid package are captured with exact native identities, hierarchical choices,
+ordering, specifications, cost codes, Cost Types, pricing, attachment evidence,
+and any copy warnings. This pending record contains no inferred content and is
+not discovered by the release assembler.
