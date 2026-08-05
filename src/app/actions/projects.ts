@@ -18,20 +18,29 @@ import { requireAuth } from "@/lib/auth"
 import { decrypt } from "@/lib/crypto"
 import { recordActivityEvent } from "@/lib/activity-log"
 import { SheetsClient } from "@/lib/google/client/sheets-client"
+import { DriveClient } from "@/lib/google/client/drive-client"
 import {
   getGoogleConfig,
   getGoogleCryptoSalt,
   parseServiceAccountKey,
 } from "@/lib/google/config"
 import {
+  buildProjectDriveFolderName,
+  provisionProjectDriveFolder as provisionGoogleProjectDriveFolder,
+} from "@/lib/google/project-drive-provisioning"
+import {
   allocateProjectNumber,
   buildProjectTrackerRow,
+  findProjectTrackerSheetTitle,
   locateProjectTrackerLayout,
   type ProjectIntakeDepartment,
   type ProjectIntakeTrackerInput,
 } from "@/lib/google/project-intake-tracker"
 import { requireOrg } from "@/lib/org-scope"
-import { requirePermission } from "@/lib/permissions"
+import {
+  canManageProjectRegistry,
+  requirePermission,
+} from "@/lib/permissions"
 import { canUseOrganizationProjectScopeRole } from "@/lib/user-roles"
 
 export type ProjectStatusValue =
@@ -95,13 +104,14 @@ export type CreateProjectIntakeResult =
       readonly id: string
       readonly projectNumber: string
       readonly trackerStatus: "written" | "pending"
+      readonly driveStatus: "provisioned" | "pending"
+      readonly sageStatus: "staged"
       readonly warning: string | null
     }
   | { readonly success: false; readonly error: string }
 
 const PROJECT_LEAD_TRACKING_SPREADSHEET_ID =
   "15DPCjDK9a4b3pkNB7ZdSFtJsSN1q2CyajNUBb40aRkE"
-const PROJECT_LEAD_TRACKING_SHEET = "Highlight Project"
 
 function cleanText(value: string | null): string | null {
   const trimmed = value?.trim() ?? ""
@@ -193,11 +203,15 @@ function intakeClientName(input: CreateProjectIntakeInput): string | null {
   return contact || cleanText(input.companyName)
 }
 
-async function projectTrackerClient(input: {
+type ProjectWorkspaceClients = {
+  readonly sheets: SheetsClient
+  readonly drive: DriveClient
+}
+
+async function projectWorkspaceClients(input: {
   readonly environment: CloudflareEnv
   readonly organizationId: string
-  readonly googleEmail: string
-}): Promise<SheetsClient> {
+}): Promise<ProjectWorkspaceClients> {
   const db = getDb(input.environment.DB)
   const authRows = await db
     .select()
@@ -213,7 +227,37 @@ async function projectTrackerClient(input: {
     config.encryptionKey,
     getGoogleCryptoSalt()
   )
-  return new SheetsClient(parseServiceAccountKey(keyJson))
+  const serviceAccountKey = parseServiceAccountKey(keyJson)
+  return {
+    sheets: new SheetsClient(serviceAccountKey),
+    drive: new DriveClient({ serviceAccountKey }),
+  }
+}
+
+function appendWarning(current: string | null, next: string): string {
+  return current ? `${current} ${next}` : next
+}
+
+function projectDepartment(projectNumber: string | null): ProjectIntakeDepartment | null {
+  return normalizedIntakeDepartment(projectNumber?.slice(0, 1) ?? null)
+}
+
+function metadataFolderName(metadata: string | null): string | null {
+  if (!metadata) return null
+  try {
+    const parsed: unknown = JSON.parse(metadata)
+    if (
+      typeof parsed === "object" &&
+      parsed !== null &&
+      "folderName" in parsed &&
+      typeof parsed.folderName === "string"
+    ) {
+      return cleanText(parsed.folderName)
+    }
+  } catch {
+    return null
+  }
+  return null
 }
 
 export async function getProjectIntakeAssignees(): Promise<
@@ -275,24 +319,28 @@ export async function createProjectIntake(
       return { success: false, error: "Choose ORC, HPS, Nu-Tech, or Design." }
     }
     const intakeDate = new Date().toISOString().slice(0, 10)
-    const client = await projectTrackerClient({
+    const googleClients = await projectWorkspaceClients({
       environment: env,
       organizationId,
-      googleEmail: user.googleEmail ?? user.email,
     })
-    const metadata = await client.getSpreadsheetMetadata(
-      user.googleEmail ?? user.email,
+    const googleEmail = user.googleEmail ?? user.email
+    const metadata = await googleClients.sheets.getSpreadsheetMetadata(
+      googleEmail,
       PROJECT_LEAD_TRACKING_SPREADSHEET_ID
     )
-    if (!metadata.sheets.some((sheet) => sheet.title === PROJECT_LEAD_TRACKING_SHEET)) {
+    const trackerSheet = findProjectTrackerSheetTitle(
+      metadata.sheets.map((sheet) => sheet.title)
+    )
+    if (!trackerSheet) {
       return {
         success: false,
-        error: `The ${PROJECT_LEAD_TRACKING_SHEET} sheet is missing from Project Lead Tracking.`,
+        error:
+          "Project Lead Tracking is missing its Master List sheet. No project was created.",
       }
     }
-    const trackerRows = await client.getValues(user.googleEmail ?? user.email, {
+    const trackerRows = await googleClients.sheets.getValues(googleEmail, {
       spreadsheetId: PROJECT_LEAD_TRACKING_SPREADSHEET_ID,
-      range: quotedSheetRange(PROJECT_LEAD_TRACKING_SHEET, "A:AZ"),
+      range: quotedSheetRange(trackerSheet, "A:AZ"),
     })
     const layout = locateProjectTrackerLayout(trackerRows)
     if (!layout) {
@@ -349,6 +397,9 @@ export async function createProjectIntake(
     const projectId = `proj-${slugPart(projectNumber)}-${crypto.randomUUID().slice(0, 8)}`
     const operationId = crypto.randomUUID()
     const trackerLinkId = crypto.randomUUID()
+    const driveLinkId = crypto.randomUUID()
+    const sageLinkId = crypto.randomUUID()
+    const sageOperationId = crypto.randomUUID()
     const trackerProject: ProjectIntakeTrackerInput = {
       ...input,
       department,
@@ -359,6 +410,22 @@ export async function createProjectIntake(
       layout,
       project: trackerProject,
       projectNumber,
+    })
+    const driveFolderName = buildProjectDriveFolderName({
+      projectNumber,
+      projectName,
+      streetNumber: input.streetNumber,
+      streetName: input.streetName,
+    })
+    const sagePayload = JSON.stringify({
+      source: "compass_project_intake",
+      projectId,
+      projectNumber,
+      department,
+      projectName,
+      clientName: intakeClientName(input),
+      address: joinedAddress(input),
+      assignedTo: cleanText(input.assignedTo),
     })
 
     try {
@@ -402,6 +469,40 @@ export async function createProjectIntake(
           updatedAt: now,
         }),
         db.insert(projectExternalLinks).values({
+          id: driveLinkId,
+          projectId,
+          system: "google_drive",
+          label: "Project Drive folder",
+          externalId: null,
+          externalNumber: null,
+          externalUrl: null,
+          syncDirection: "read_write",
+          syncStatus: "pending",
+          metadata: JSON.stringify({
+            department,
+            folderName: driveFolderName,
+          }),
+          createdAt: now,
+          updatedAt: now,
+        }),
+        db.insert(projectExternalLinks).values({
+          id: sageLinkId,
+          projectId,
+          system: "sage",
+          label: "Sage job",
+          externalId: null,
+          externalNumber: projectNumber,
+          externalUrl: null,
+          syncDirection: "bidirectional",
+          syncStatus: "unmapped",
+          metadata: JSON.stringify({
+            pendingProjectNumber: projectNumber,
+            source: "compass_project_intake",
+          }),
+          createdAt: now,
+          updatedAt: now,
+        }),
+        db.insert(projectExternalLinks).values({
           id: trackerLinkId,
           projectId,
           system: "google_project_lead_tracking",
@@ -414,7 +515,7 @@ export async function createProjectIntake(
           // Retain the exact row only while the handoff is pending so a later
           // reconciliation does not need to reconstruct discarded form fields.
           metadata: JSON.stringify({
-            sheet: PROJECT_LEAD_TRACKING_SHEET,
+            sheet: trackerSheet,
             headers: layout.headers,
             row: trackerRow,
           }),
@@ -442,6 +543,29 @@ export async function createProjectIntake(
           createdAt: now,
           updatedAt: now,
         }),
+        db.insert(projectOperations).values({
+          id: sageOperationId,
+          projectId,
+          sourceSystem: "compass_project_intake",
+          sourceRecordType: "sage_project_handoff",
+          sourceRecordId: projectNumber,
+          sourceRecordNumber: projectNumber,
+          title: `${projectNumber} Sage project handoff`,
+          description:
+            "Review this Compass project intake, then create or match the Sage job.",
+          status: "needs_review",
+          priority: "high",
+          assigneeType: "internal",
+          assigneeName: cleanText(input.assignedTo),
+          companyName: intakeClientName(input),
+          externalUrl: null,
+          sageWriteStatus: "needs_review",
+          sagePayloadJson: sagePayload,
+          syncDirection: "write",
+          syncStatus: "pending_sage",
+          createdAt: now,
+          updatedAt: now,
+        }),
       ])
     } catch (error) {
       if (isProjectSequenceConflict(error)) {
@@ -457,10 +581,10 @@ export async function createProjectIntake(
     let trackerStatus: "written" | "pending" = "written"
     let warning: string | null = null
     try {
-      const appended = await client.appendValues(user.googleEmail ?? user.email, {
+      const appended = await googleClients.sheets.appendValues(googleEmail, {
         spreadsheetId: PROJECT_LEAD_TRACKING_SPREADSHEET_ID,
         range: quotedSheetRange(
-          PROJECT_LEAD_TRACKING_SHEET,
+          trackerSheet,
           `A${layout.headerRowNumber}:AZ`
         ),
         values: [trackerRow],
@@ -474,7 +598,7 @@ export async function createProjectIntake(
               syncStatus: "mapped",
               lastSyncedAt: syncedAt,
               metadata: JSON.stringify({
-                sheet: PROJECT_LEAD_TRACKING_SHEET,
+                sheet: trackerSheet,
                 updatedRange: appended.updatedRange,
               }),
               updatedAt: syncedAt,
@@ -493,15 +617,74 @@ export async function createProjectIntake(
       } catch (error) {
         // The Google write already succeeded. Preserve that truth so a retry
         // can reconcile by project number instead of appending a duplicate row.
-        warning =
+        warning = appendWarning(
+          warning,
           "Project Lead Tracking was updated, but Compass could not save its sync receipt. The project is safe to use; do not resend the intake."
+        )
         console.error("Unable to save the Project Lead Tracking receipt", error)
       }
     } catch (error) {
       trackerStatus = "pending"
-      warning =
+      warning = appendWarning(
+        warning,
         "The Compass project and number were saved, but Project Lead Tracking is pending and recorded for follow-up. Do not recreate the project."
+      )
       console.error("Unable to append the new project to Project Lead Tracking", error)
+    }
+
+    let driveStatus: "provisioned" | "pending" = "provisioned"
+    try {
+      const drive = await provisionGoogleProjectDriveFolder(
+        googleClients.drive,
+        googleEmail,
+        { department, folderName: driveFolderName }
+      )
+      const syncedAt = new Date().toISOString()
+      try {
+        await db.batch([
+          db
+            .update(projects)
+            .set({
+              googleDriveFolderId: drive.folderId,
+              updatedAt: syncedAt,
+            })
+            .where(eq(projects.id, projectId)),
+          db
+            .update(projectExternalLinks)
+            .set({
+              externalId: drive.folderId,
+              externalUrl: drive.folderUrl,
+              syncStatus: "mapped",
+              lastSyncedAt: syncedAt,
+              metadata: JSON.stringify({
+                department,
+                folderName: drive.folderName,
+                parentFolderId: drive.parentFolderId,
+                childFolderNames: drive.childFolderNames,
+              }),
+              updatedAt: syncedAt,
+            })
+            .where(eq(projectExternalLinks.id, driveLinkId)),
+          db
+            .update(projectOperations)
+            .set({ externalUrl: drive.folderUrl, updatedAt: syncedAt })
+            .where(eq(projectOperations.id, sageOperationId)),
+        ])
+      } catch (error) {
+        driveStatus = "pending"
+        warning = appendWarning(
+          warning,
+          "The Drive folder was created, but Compass could not save its link. Use Retry Drive setup in the Project Registry; it will reuse the folder."
+        )
+        console.error("Unable to save the project Drive receipt", error)
+      }
+    } catch (error) {
+      driveStatus = "pending"
+      warning = appendWarning(
+        warning,
+        "Google Drive setup is pending. The Compass project is safe to use; retry Drive setup from the Project Registry."
+      )
+      console.error("Unable to provision the project Drive folder", error)
     }
 
     await recordActivityEvent({
@@ -514,16 +697,201 @@ export async function createProjectIntake(
       entityType: "project",
       entityId: projectId,
       summary: `Created ${projectNumber} — ${projectName}.`,
-      metadata: { department, trackerStatus },
+      metadata: { department, trackerStatus, driveStatus, sageStatus: "staged" },
     })
     revalidatePath("/dashboard/projects")
     revalidatePath(`/dashboard/projects/${projectId}`)
     revalidatePath("/dashboard")
-    return { success: true, id: projectId, projectNumber, trackerStatus, warning }
+    return {
+      success: true,
+      id: projectId,
+      projectNumber,
+      trackerStatus,
+      driveStatus,
+      sageStatus: "staged",
+      warning,
+    }
   } catch (error) {
     return {
       success: false,
       error: error instanceof Error ? error.message : "Failed to create project",
+    }
+  }
+}
+
+export type ProvisionProjectDriveResult =
+  | {
+      readonly success: true
+      readonly folderId: string
+      readonly folderUrl: string
+      readonly createdRoot: boolean
+      readonly createdChildCount: number
+    }
+  | { readonly success: false; readonly error: string }
+
+export async function provisionProjectDriveFolder(
+  projectId: string
+): Promise<ProvisionProjectDriveResult> {
+  try {
+    const user = await requireAuth()
+    requirePermission(user, "project", "update")
+    requirePermission(user, "document", "create")
+    if (!canManageProjectRegistry(user)) {
+      return {
+        success: false,
+        error: "Permission denied: project registry is admin-only",
+      }
+    }
+    const organizationId = requireOrg(user)
+    const { env } = await getCloudflareContext()
+    if (!env?.DB) return { success: false, error: "D1 not available" }
+    const db = getDb(env.DB)
+    const [project] = await db
+      .select({
+        id: projects.id,
+        projectNumber: projects.projectNumber,
+        name: projects.name,
+        googleDriveFolderId: projects.googleDriveFolderId,
+      })
+      .from(projects)
+      .where(
+        and(
+          eq(projects.id, projectId),
+          eq(projects.organizationId, organizationId)
+        )
+      )
+      .limit(1)
+    if (!project) return { success: false, error: "Project not found" }
+    if (project.googleDriveFolderId) {
+      return {
+        success: true,
+        folderId: project.googleDriveFolderId,
+        folderUrl: `https://drive.google.com/drive/folders/${project.googleDriveFolderId}`,
+        createdRoot: false,
+        createdChildCount: 0,
+      }
+    }
+
+    const department = projectDepartment(project.projectNumber)
+    if (!department || !project.projectNumber) {
+      return {
+        success: false,
+        error: "Set an O, H, N, or D project number before provisioning Drive.",
+      }
+    }
+    const [driveLink] = await db
+      .select({
+        id: projectExternalLinks.id,
+        metadata: projectExternalLinks.metadata,
+      })
+      .from(projectExternalLinks)
+      .where(
+        and(
+          eq(projectExternalLinks.projectId, projectId),
+          eq(projectExternalLinks.system, "google_drive")
+        )
+      )
+      .limit(1)
+    const folderName =
+      metadataFolderName(driveLink?.metadata ?? null) ??
+      buildProjectDriveFolderName({
+        projectNumber: project.projectNumber,
+        projectName: project.name,
+        streetNumber: null,
+        streetName: null,
+      })
+    const googleClients = await projectWorkspaceClients({
+      environment: env,
+      organizationId,
+    })
+    const drive = await provisionGoogleProjectDriveFolder(
+      googleClients.drive,
+      user.googleEmail ?? user.email,
+      { department, folderName }
+    )
+    const now = new Date().toISOString()
+    const linkValues = {
+      label: "Project Drive folder",
+      externalId: drive.folderId,
+      externalNumber: null,
+      externalUrl: drive.folderUrl,
+      syncDirection: "read_write",
+      syncStatus: "mapped",
+      lastSyncedAt: now,
+      metadata: JSON.stringify({
+        department,
+        folderName: drive.folderName,
+        parentFolderId: drive.parentFolderId,
+        childFolderNames: drive.childFolderNames,
+      }),
+      updatedAt: now,
+    }
+    const projectUpdate = db
+      .update(projects)
+      .set({ googleDriveFolderId: drive.folderId, updatedAt: now })
+      .where(eq(projects.id, projectId))
+    const sageOperationUpdate = db
+      .update(projectOperations)
+      .set({ externalUrl: drive.folderUrl, updatedAt: now })
+      .where(
+        and(
+          eq(projectOperations.projectId, projectId),
+          eq(projectOperations.sourceRecordType, "sage_project_handoff")
+        )
+      )
+    if (driveLink) {
+      await db.batch([
+        projectUpdate,
+        sageOperationUpdate,
+        db
+          .update(projectExternalLinks)
+          .set(linkValues)
+          .where(eq(projectExternalLinks.id, driveLink.id)),
+      ])
+    } else {
+      await db.batch([
+        projectUpdate,
+        sageOperationUpdate,
+        db.insert(projectExternalLinks).values({
+          id: crypto.randomUUID(),
+          projectId,
+          system: "google_drive",
+          createdAt: now,
+          ...linkValues,
+        }),
+      ])
+    }
+    await recordActivityEvent({
+      db,
+      organizationId,
+      projectId,
+      actor: user,
+      category: "file",
+      action: "project.drive_provisioned",
+      entityType: "project",
+      entityId: projectId,
+      summary: `Provisioned the Drive folder for ${project.projectNumber}.`,
+      metadata: {
+        folderId: drive.folderId,
+        createdRoot: drive.createdRoot,
+        createdChildCount: drive.createdChildCount,
+      },
+    })
+    revalidatePath(`/dashboard/projects/${projectId}`)
+    revalidatePath("/dashboard/projects")
+    revalidatePath("/dashboard/files")
+    return {
+      success: true,
+      folderId: drive.folderId,
+      folderUrl: drive.folderUrl,
+      createdRoot: drive.createdRoot,
+      createdChildCount: drive.createdChildCount,
+    }
+  } catch (error) {
+    return {
+      success: false,
+      error:
+        error instanceof Error ? error.message : "Failed to provision Drive",
     }
   }
 }

@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest"
 import {
   allocateProjectNumber,
   buildProjectTrackerRow,
+  findProjectTrackerSheetTitle,
   locateProjectTrackerLayout,
   type ProjectIntakeTrackerInput,
 } from "@/lib/google/project-intake-tracker"
@@ -27,6 +28,15 @@ const PROJECT: ProjectIntakeTrackerInput = {
 }
 
 describe("Google Project Lead Tracking intake", () => {
+  it("uses the current Master List tab and keeps the former tab name compatible", () => {
+    expect(
+      findProjectTrackerSheetTitle(["Stats", "Master List", "Parameters"])
+    ).toBe("Master List")
+    expect(findProjectTrackerSheetTitle(["Highlight Project"])).toBe(
+      "Highlight Project"
+    )
+  })
+
   it("locates a shifted tracker header and allocates the next department number", () => {
     const rows = [
       ["Project Lead Tracking"],
