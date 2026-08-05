@@ -155,6 +155,6 @@ test("excludes pending Insulation content from fragment discovery and release as
   )
   assert.equal(result.capture.assembly.draftOnly, true)
   assert.equal(result.capture.assembly.publish, false)
-  assert.equal(result.capture.assembly.templateCount, 10)
-  assert.equal(result.capture.assembly.excludedIncompleteTemplateCount, 24)
+  assert.equal(result.capture.assembly.templateCount, 21)
+  assert.equal(result.capture.assembly.excludedIncompleteTemplateCount, 13)
 })
