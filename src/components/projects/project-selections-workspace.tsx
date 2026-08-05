@@ -16,6 +16,7 @@ import {
   type ProjectSelectionsSummary,
 } from "@/app/actions/project-selections"
 import { ProjectSelectionCreateForm } from "@/components/projects/project-selection-create-form"
+import { ProjectFinishScheduleImportSheet } from "@/components/projects/project-finish-schedule-import-sheet"
 import { ProjectSelectionDeleteButton } from "@/components/projects/project-selection-delete-button"
 import { ProjectSelectionEditForm } from "@/components/projects/project-selection-edit-form"
 import { ProjectSelectionShareActions } from "@/components/projects/project-selection-share-actions"
@@ -507,8 +508,9 @@ function EmptySelectionsState({
       <p className="mt-1 text-sm text-muted-foreground">
         Add the first room-based selection or import a finish schedule workbook.
       </p>
-      <div className="mt-5 flex justify-center">
+      <div className="mt-5 flex flex-wrap justify-center gap-2">
         <ProjectSelectionCreateForm projectId={projectId} options={options} />
+        <ProjectFinishScheduleImportSheet projectId={projectId} />
       </div>
     </div>
   )
@@ -710,7 +712,10 @@ export function ProjectSelectionsWorkspace({
           projectLabel={projectLabel}
           summary={filteredSummary}
         />
-        <ProjectSelectionCreateForm projectId={projectId} options={options} />
+        <div className="flex flex-wrap gap-2">
+          <ProjectFinishScheduleImportSheet projectId={projectId} />
+          <ProjectSelectionCreateForm projectId={projectId} options={options} />
+        </div>
       </div>
 
       {filteredSummary.rooms.length === 0 ? (

@@ -13,10 +13,24 @@ import {
   projects,
   sageCostCodes,
 } from "@/db/schema"
+import { googleAuth } from "@/db/schema-google"
 import { requireAuth } from "@/lib/auth"
+import { decrypt } from "@/lib/crypto"
 import { getCloudflareContext } from "@/lib/db"
+import { spreadsheetIdFromUrl } from "@/lib/financials/project-totals-import"
+import { SheetsClient } from "@/lib/google/client/sheets-client"
+import {
+  getGoogleConfig,
+  getGoogleCryptoSalt,
+  parseServiceAccountKey,
+} from "@/lib/google/config"
 import { requireOrg } from "@/lib/org-scope"
 import { requireFeaturePermission } from "@/lib/permission-enforcement"
+import {
+  normalizeProjectNumber,
+  parseFinishScheduleWorkbook,
+  type ParsedFinishSchedule,
+} from "@/lib/selections/google-finish-schedule-import"
 
 export type ProjectSelectionStatus =
   | "needed"
@@ -137,6 +151,36 @@ type ActionResult =
   | { readonly success: true; readonly id?: string }
   | { readonly success: false; readonly error: string }
 
+export type ProjectFinishScheduleImportPreview = {
+  readonly workbookId: string
+  readonly workbookTitle: string
+  readonly workbookProjectNumber: string | null
+  readonly compassProjectNumber: string | null
+  readonly projectMatch: "match" | "mismatch" | "unknown"
+  readonly roomCount: number
+  readonly selectionCount: number
+  readonly warnings: readonly string[]
+}
+
+export type ProjectFinishScheduleImportResult =
+  | {
+      readonly success: true
+      readonly preview: ProjectFinishScheduleImportPreview
+    }
+  | { readonly success: false; readonly error: string }
+
+export type ApplyProjectFinishScheduleImportResult =
+  | {
+      readonly success: true
+      readonly createdCount: number
+      readonly updatedCount: number
+      readonly removedCount: number
+      readonly conflictCount: number
+      readonly staleCount: number
+      readonly roomCount: number
+    }
+  | { readonly success: false; readonly error: string }
+
 const PROJECT_SELECTION_STATUSES: readonly ProjectSelectionStatus[] = [
   "needed",
   "proposed",
@@ -227,6 +271,193 @@ async function verifyProjectAccess(
   }
 
   return db
+}
+
+type FinishScheduleImportAccess = {
+  readonly db: ReturnType<typeof getDb>
+  readonly organizationId: string
+  readonly projectNumber: string | null
+  readonly googleEmail: string
+  readonly client: SheetsClient
+}
+
+async function finishScheduleImportAccess(
+  projectId: string
+): Promise<FinishScheduleImportAccess> {
+  const user = await requireAuth()
+  await requireFeaturePermission(user, "finish-selections", "update")
+  const organizationId = requireOrg(user)
+  const { env } = await getCloudflareContext()
+  const db = getDb(env.DB)
+  const projectRows = await db
+    .select({ projectNumber: projects.projectNumber })
+    .from(projects)
+    .where(
+      and(
+        eq(projects.id, projectId),
+        eq(projects.organizationId, organizationId)
+      )
+    )
+    .limit(1)
+  const project = projectRows[0]
+  if (!project) throw new Error("Project not found")
+
+  const authRows = await db
+    .select()
+    .from(googleAuth)
+    .where(eq(googleAuth.organizationId, organizationId))
+    .limit(1)
+  const auth = authRows[0]
+  if (!auth) throw new Error("Google Workspace service account is not connected.")
+
+  const config = getGoogleConfig(env)
+  const keyJson = await decrypt(
+    auth.serviceAccountKeyEncrypted,
+    config.encryptionKey,
+    getGoogleCryptoSalt()
+  )
+  return {
+    db,
+    organizationId,
+    projectNumber: project.projectNumber,
+    googleEmail: user.googleEmail ?? user.email,
+    client: new SheetsClient(parseServiceAccountKey(keyJson)),
+  }
+}
+
+type LoadedFinishSchedule = {
+  readonly workbookId: string
+  readonly workbookTitle: string
+  readonly parsed: ParsedFinishSchedule
+}
+
+function quotedSheetRange(sheetTitle: string, range: string): string {
+  return `'${sheetTitle.replace(/'/g, "''")}'!${range}`
+}
+
+async function loadFinishSchedule(
+  access: FinishScheduleImportAccess,
+  workbookUrl: string
+): Promise<LoadedFinishSchedule> {
+  const workbookId = spreadsheetIdFromUrl(workbookUrl)
+  if (!workbookId) throw new Error("Enter a valid Google Sheets workbook URL.")
+  const metadata = await access.client.getSpreadsheetMetadata(
+    access.googleEmail,
+    workbookId
+  )
+  const coverSheet = metadata.sheets.find(
+    (sheet) => sheet.title.trim().toLowerCase() === "cover page"
+  )
+  const roomMetadata = metadata.sheets.filter((sheet) => {
+    const title = sheet.title.trim().toLowerCase()
+    return !sheet.hidden && title !== "cover page" && title !== "_validation"
+  })
+  const coverPageRows = coverSheet
+    ? await access.client.getValues(access.googleEmail, {
+        spreadsheetId: workbookId,
+        range: quotedSheetRange(coverSheet.title, "A:K"),
+        valueRenderOption: "UNFORMATTED_VALUE",
+      })
+    : []
+  const roomSheets = []
+  for (const sheet of roomMetadata) {
+    const values = await access.client.getValues(access.googleEmail, {
+      spreadsheetId: workbookId,
+      range: quotedSheetRange(sheet.title, "A:G"),
+      valueRenderOption: "UNFORMATTED_VALUE",
+    })
+    roomSheets.push({
+      sheetId: sheet.sheetId,
+      title: sheet.title,
+      index: sheet.index,
+      values,
+    })
+  }
+
+  return {
+    workbookId,
+    workbookTitle: metadata.title,
+    parsed: parseFinishScheduleWorkbook({ coverPageRows, roomSheets }),
+  }
+}
+
+function finishSchedulePreview(
+  loaded: LoadedFinishSchedule,
+  compassProjectNumber: string | null
+): ProjectFinishScheduleImportPreview {
+  const workbookProjectNumber = loaded.parsed.projectNumber
+  const normalizedWorkbook = normalizeProjectNumber(workbookProjectNumber)
+  const normalizedCompass = normalizeProjectNumber(compassProjectNumber)
+  const projectMatch =
+    !normalizedWorkbook || !normalizedCompass
+      ? "unknown"
+      : normalizedWorkbook === normalizedCompass
+        ? "match"
+        : "mismatch"
+  const warnings = [...loaded.parsed.warnings]
+  if (projectMatch === "mismatch") {
+    warnings.push(
+      `Workbook project ${workbookProjectNumber ?? "unknown"} does not match Compass project ${compassProjectNumber ?? "unknown"}.`
+    )
+  }
+  if (projectMatch === "unknown") {
+    warnings.push("The workbook and Compass project numbers could not both be verified.")
+  }
+  return {
+    workbookId: loaded.workbookId,
+    workbookTitle: loaded.workbookTitle,
+    workbookProjectNumber,
+    compassProjectNumber,
+    projectMatch,
+    roomCount: loaded.parsed.rooms.length,
+    selectionCount: loaded.parsed.selections.length,
+    warnings,
+  }
+}
+
+type ImportedSelectionSourceValues = {
+  readonly sourceSheetName: string
+  readonly roomName: string
+  readonly roomType: string | null
+  readonly category: string
+  readonly name: string
+  readonly description: string | null
+  readonly quantity: number | null
+  readonly manufacturer: string | null
+  readonly model: string | null
+  readonly colorFinish: string | null
+  readonly notes: string | null
+  readonly sortOrder: number
+  readonly lastSyncedAt: string
+  readonly updatedAt: string
+}
+
+function importedSelectionIdentity(input: {
+  readonly sourceSheetName: string | null
+  readonly category: string
+  readonly name: string
+}): string {
+  return [input.sourceSheetName ?? "", input.category, input.name]
+    .map((value) => value.trim().toLowerCase().replace(/[^a-z0-9]+/g, " "))
+    .join("|")
+}
+
+function importedSourceChanged(
+  existing: typeof projectFinishSelections.$inferSelect,
+  incoming: ImportedSelectionSourceValues
+): boolean {
+  return (
+    existing.roomName !== incoming.roomName ||
+    existing.roomType !== incoming.roomType ||
+    existing.category !== incoming.category ||
+    existing.name !== incoming.name ||
+    existing.description !== incoming.description ||
+    existing.quantity !== incoming.quantity ||
+    existing.manufacturer !== incoming.manufacturer ||
+    existing.model !== incoming.model ||
+    existing.colorFinish !== incoming.colorFinish ||
+    existing.notes !== incoming.notes
+  )
 }
 
 function cleanText(value: string | null): string | null {
@@ -456,6 +687,278 @@ export async function getProjectSelections(
   ])
 
   return summarizeSelections(roomRows, selectionRows.map(toSelectionItem))
+}
+
+export async function previewProjectFinishScheduleImport(
+  projectId: string,
+  workbookUrl: string
+): Promise<ProjectFinishScheduleImportResult> {
+  try {
+    const access = await finishScheduleImportAccess(projectId)
+    const loaded = await loadFinishSchedule(access, workbookUrl)
+    return {
+      success: true,
+      preview: finishSchedulePreview(loaded, access.projectNumber),
+    }
+  } catch (error) {
+    return {
+      success: false,
+      error:
+        error instanceof Error
+          ? error.message
+          : "Unable to preview the finish schedule workbook.",
+    }
+  }
+}
+
+export async function importProjectFinishSchedule(
+  projectId: string,
+  workbookUrl: string
+): Promise<ApplyProjectFinishScheduleImportResult> {
+  try {
+    const access = await finishScheduleImportAccess(projectId)
+    const loaded = await loadFinishSchedule(access, workbookUrl)
+    const preview = finishSchedulePreview(loaded, access.projectNumber)
+    if (preview.projectMatch !== "match") {
+      throw new Error(
+        preview.projectMatch === "mismatch"
+          ? `This workbook belongs to ${preview.workbookProjectNumber ?? "another project"}, not ${preview.compassProjectNumber ?? "this Compass project"}.`
+          : "Add matching project numbers to the workbook and Compass before importing."
+      )
+    }
+    if (loaded.parsed.selections.length === 0) {
+      throw new Error("The workbook contains no finish selections to import.")
+    }
+
+    const now = new Date().toISOString()
+    const existingRooms = await access.db
+      .select()
+      .from(projectFinishSelectionRooms)
+      .where(
+        and(
+          eq(projectFinishSelectionRooms.projectId, projectId),
+          eq(projectFinishSelectionRooms.sourceSystem, "google_sheets"),
+          eq(projectFinishSelectionRooms.sourceWorkbookId, loaded.workbookId)
+        )
+      )
+    const roomsBySheetId = new Map(
+      existingRooms
+        .filter((room) => room.sourceSheetId !== null)
+        .map((room) => [room.sourceSheetId, room])
+    )
+    const importedSheetIds = new Set(
+      loaded.parsed.rooms.map((room) => String(room.sheetId))
+    )
+    for (const room of loaded.parsed.rooms) {
+      const sourceSheetId = String(room.sheetId)
+      const existing = roomsBySheetId.get(sourceSheetId)
+      if (existing) {
+        await access.db
+          .update(projectFinishSelectionRooms)
+          .set({
+            sourceSheetName: room.sheetName,
+            roomName: room.roomName,
+            roomType: room.roomType,
+            sortOrder: room.sortOrder,
+            active: true,
+            updatedAt: now,
+          })
+          .where(eq(projectFinishSelectionRooms.id, existing.id))
+      } else {
+        await access.db.insert(projectFinishSelectionRooms).values({
+          id: crypto.randomUUID(),
+          projectId,
+          sourceSystem: "google_sheets",
+          sourceWorkbookId: loaded.workbookId,
+          sourceSheetId,
+          sourceSheetName: room.sheetName,
+          roomName: room.roomName,
+          roomType: room.roomType,
+          sortOrder: room.sortOrder,
+          active: true,
+          createdAt: now,
+          updatedAt: now,
+        })
+      }
+    }
+    for (const staleRoom of existingRooms) {
+      if (
+        staleRoom.sourceSheetId !== null &&
+        importedSheetIds.has(staleRoom.sourceSheetId)
+      ) {
+        continue
+      }
+      await access.db
+        .update(projectFinishSelectionRooms)
+        .set({ active: false, updatedAt: now })
+        .where(eq(projectFinishSelectionRooms.id, staleRoom.id))
+    }
+
+    const existingSelections = await access.db
+      .select()
+      .from(projectFinishSelections)
+      .where(
+        and(
+          eq(projectFinishSelections.projectId, projectId),
+          eq(projectFinishSelections.sourceSystem, "google_sheets"),
+          eq(projectFinishSelections.sourceWorkbookId, loaded.workbookId)
+        )
+      )
+    const selectionsBySourceRecordId = new Map(
+      existingSelections
+        .filter((selection) => selection.sourceRecordId !== null)
+        .map((selection) => [selection.sourceRecordId, selection])
+    )
+    const selectionsByIdentity = new Map<
+      string,
+      (typeof projectFinishSelections.$inferSelect)[]
+    >()
+    for (const selection of existingSelections) {
+      const identity = importedSelectionIdentity(selection)
+      const matches = selectionsByIdentity.get(identity) ?? []
+      matches.push(selection)
+      selectionsByIdentity.set(identity, matches)
+    }
+    const incomingSelectionIdentities = new Set(
+      loaded.parsed.selections.map((selection) =>
+        importedSelectionIdentity({
+          sourceSheetName: selection.sheetName,
+          category: selection.category,
+          name: selection.name,
+        })
+      )
+    )
+    const usedSelectionIds = new Set<string>()
+    let createdCount = 0
+    let updatedCount = 0
+    let removedCount = 0
+    let conflictCount = 0
+
+    for (const selection of loaded.parsed.selections) {
+      const sourceRecordId = `${loaded.workbookId}:${selection.sheetId}:${selection.sourceRowNumber}`
+      const identity = importedSelectionIdentity({
+        sourceSheetName: selection.sheetName,
+        category: selection.category,
+        name: selection.name,
+      })
+      const exactMatch = selectionsBySourceRecordId.get(sourceRecordId)
+      const exactIdentity = exactMatch
+        ? importedSelectionIdentity(exactMatch)
+        : null
+      const stableMatch = (selectionsByIdentity.get(identity) ?? []).find(
+        (candidate) => !usedSelectionIds.has(candidate.id)
+      )
+      const unusedExactMatch =
+        exactMatch && !usedSelectionIds.has(exactMatch.id) ? exactMatch : null
+      // A semantic match at another row indicates an insertion/deletion/reorder.
+      // If no such match exists and the old identity disappeared, this row was renamed in place.
+      const existing =
+        unusedExactMatch && exactIdentity === identity
+          ? unusedExactMatch
+          : stableMatch ??
+            (unusedExactMatch &&
+            exactIdentity !== null &&
+            !incomingSelectionIdentities.has(exactIdentity)
+              ? unusedExactMatch
+              : null)
+      const sourceValues: ImportedSelectionSourceValues = {
+        sourceSheetName: selection.sheetName,
+        roomName: selection.roomName,
+        roomType: selection.roomType,
+        category: selection.category,
+        name: selection.name,
+        description: selection.description,
+        quantity: selection.quantity,
+        manufacturer: selection.manufacturer,
+        model: selection.model,
+        colorFinish: selection.colorFinish,
+        notes: selection.notes,
+        sortOrder: selection.sortOrder,
+        lastSyncedAt: now,
+        updatedAt: now,
+      }
+      if (!existing) {
+        await access.db.insert(projectFinishSelections).values({
+          id: crypto.randomUUID(),
+          projectId,
+          sourceSystem: "google_sheets",
+          sourceRecordId,
+          sourceWorkbookId: loaded.workbookId,
+          ...sourceValues,
+          status: "needed",
+          ownerVisible: false,
+          ownerApproved: false,
+          syncStatus: "imported",
+          createdAt: now,
+        })
+        createdCount += 1
+        continue
+      }
+      usedSelectionIds.add(existing.id)
+      if (existing.syncStatus !== "imported") {
+        conflictCount += 1
+        continue
+      }
+      const approvalNeedsReview =
+        (existing.ownerApproved || existing.status === "approved") &&
+        importedSourceChanged(existing, sourceValues)
+      await access.db
+        .update(projectFinishSelections)
+        .set({
+          ...sourceValues,
+          sourceRecordId,
+          status: approvalNeedsReview ? "owner_review" : existing.status,
+          ownerApproved: approvalNeedsReview ? false : existing.ownerApproved,
+          approvedBy: approvalNeedsReview ? null : existing.approvedBy,
+          approvedAt: approvalNeedsReview ? null : existing.approvedAt,
+          syncStatus: approvalNeedsReview
+            ? "selection_change_review"
+            : "imported",
+        })
+        .where(eq(projectFinishSelections.id, existing.id))
+      updatedCount += 1
+      if (approvalNeedsReview) conflictCount += 1
+    }
+
+    const staleSelections = existingSelections.filter(
+      (selection) => !usedSelectionIds.has(selection.id)
+    )
+    for (const stale of staleSelections) {
+      const canRemoveUntouchedSourceRow =
+        stale.syncStatus === "imported" &&
+        !stale.ownerApproved &&
+        stale.status === "needed"
+      if (!canRemoveUntouchedSourceRow) {
+        conflictCount += 1
+        continue
+      }
+      await access.db
+        .delete(projectFinishSelections)
+        .where(eq(projectFinishSelections.id, stale.id))
+      removedCount += 1
+    }
+    const staleCount = staleSelections.length - removedCount
+
+    revalidatePath(`/dashboard/projects/${projectId}/selections`)
+    revalidatePath(`/dashboard/projects/${projectId}`)
+    return {
+      success: true,
+      createdCount,
+      updatedCount,
+      removedCount,
+      conflictCount,
+      staleCount,
+      roomCount: loaded.parsed.rooms.length,
+    }
+  } catch (error) {
+    return {
+      success: false,
+      error:
+        error instanceof Error
+          ? error.message
+          : "Unable to import the finish schedule workbook.",
+    }
+  }
 }
 
 function optionFromLabel(label: string): ProjectSelectionOption {
@@ -895,7 +1398,9 @@ export async function updateProjectSelection(
         syncStatus:
           existing.status === "approved" && changes.length > 0
             ? "selection_change_review"
-            : existing.syncStatus,
+            : existing.sourceSystem === "google_sheets" && changes.length > 0
+              ? "manual_edit"
+              : existing.syncStatus,
         updatedAt: now,
       })
       .where(
