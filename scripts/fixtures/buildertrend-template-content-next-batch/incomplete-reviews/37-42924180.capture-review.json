@@ -1,0 +1,33 @@
+{
+  "reviewStatus": "pending_browser_capture",
+  "releaseEligible": false,
+  "template": {
+    "sourceTemplateId": "42924180",
+    "sourceName": "Earthwork - Radon Systems",
+    "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/42924180",
+    "preparedAt": "2026-08-05",
+    "captureNotes": [
+      "The canonical reviewed Buildertrend inventory reports one bid package and no task, schedule, or selection modules for this active template.",
+      "No Buildertrend browser evidence has been captured for this preparation checkpoint. The bid package must remain excluded from Compass release assembly until its native identity and complete source content are reviewed."
+    ],
+    "sourceInventory": {
+      "tasks": 0,
+      "scheduleItems": 0,
+      "selections": 0,
+      "bidPackages": 1
+    },
+    "browserModuleGates": [
+      {
+        "module": "bidPackages",
+        "expectedCount": 1,
+        "capturedCount": 0,
+        "status": "pending",
+        "releaseBlocker": "Recover the bid package native identity, status, specifications, line items, cost codes, Cost Types, quantities, units, linked plans and specifications, and any Buildertrend copy warnings from an authenticated supported view or export."
+      }
+    ],
+    "tasks": [],
+    "selections": [],
+    "bidPackages": []
+  },
+  "conversionExceptions": []
+}

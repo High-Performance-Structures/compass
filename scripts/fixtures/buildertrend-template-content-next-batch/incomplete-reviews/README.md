@@ -136,3 +136,12 @@ Stone remains blocked until both selections are captured with exact native
 identities, hierarchy, choices, choice ordering, descriptions, prices,
 attachment evidence, and any copy warnings. The incomplete checkpoint stays in
 this audit-only directory and cannot enter release discovery.
+
+## Earthwork - Radon Systems (`42924180`)
+
+The reviewed source inventory reports one bid package and no tasks, schedule
+items, or selections. The preparation checkpoint deliberately contains no
+Buildertrend-derived bid content. It remains excluded until the bid package is
+captured from an authenticated supported view or export with its native
+identity, specifications, line items, cost codes, Cost Types, quantities,
+units, linked plans and specifications, and any copy warnings preserved.
