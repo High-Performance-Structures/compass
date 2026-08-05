@@ -40,17 +40,3 @@ The canonical reviewed capture preserves the two schedule items and their one
 dependency. Window remains blocked until all three browser modules are
 captured with exact native identities, hierarchy, choices, bid specifications,
 cost codes, Cost Types, and any copy warnings.
-
-## Concrete - Piers Assembly (`12858966`)
-
-The authenticated source inventory and source settings both report 16 tasks
-and five schedule items over five work days, with no selections or bid
-packages. Direct source and job-picker routing left Buildertrend's active
-module context on an unrelated template, so no unrelated task content was
-retained. The temporary-copy form resolved the exact Piers source and counts,
-but the bounded attempt ended before submission; no temporary template was
-created and the source was not edited.
-
-The canonical reviewed capture preserves the five schedule items and four
-dependencies. Piers remains blocked until all 16 task rows are recovered with
-their native identities, displayed ordering, and exact parent-child hierarchy.

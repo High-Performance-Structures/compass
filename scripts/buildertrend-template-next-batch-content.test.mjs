@@ -1,6 +1,6 @@
 import assert from "node:assert/strict"
 import { execFile } from "node:child_process"
-import { access, mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import test from "node:test"
@@ -26,31 +26,31 @@ async function inputs() {
   return { release, nextBatchManifest, reviewedCapture, documents }
 }
 
-test("assembles the ten gate-complete templates with reviewed schedules", async () => {
+test("assembles the eleven gate-complete templates with reviewed schedules", async () => {
   const result = assembleBuildertrendTemplateNextBatchContent(await inputs())
 
   assert.deepEqual(
     result.capture.assembly.sourceTemplateIds,
-    ["12859981", "12978371", "12581937", "12594475", "30917204", "12646335", "12650792", "12819873", "12649495", "30914491"]
+    ["12859981", "12978371", "12581937", "12594475", "30917204", "12646335", "12650792", "12819873", "12649495", "30914491", "12858966"]
   )
   assert.equal(result.capture.assembly.draftOnly, true)
   assert.equal(result.capture.assembly.publish, false)
-  assert.equal(result.capture.assembly.excludedIncompleteTemplateCount, 24)
+  assert.equal(result.capture.assembly.excludedIncompleteTemplateCount, 23)
   assert.equal(result.capture.assembly.excludedArchivedTemplateCount, 27)
   assert.equal(result.capture.assembly.eligibleAfterThisBatch, 0)
-  assert.equal(result.capture.templates.reduce((sum, item) => sum + item.tasks.length, 0), 328)
-  assert.equal(result.capture.templates.reduce((sum, item) => sum + item.scheduleItems.length, 0), 50)
+  assert.equal(result.capture.templates.reduce((sum, item) => sum + item.tasks.length, 0), 344)
+  assert.equal(result.capture.templates.reduce((sum, item) => sum + item.scheduleItems.length, 0), 55)
   assert.equal(result.capture.templates.reduce((sum, item) => sum + (item.selections?.length ?? 0), 0), 13)
   assert.equal(result.capture.templates.reduce((sum, item) => sum + (item.bidPackages?.length ?? 0), 0), 7)
   assert.equal(result.capture.templates.reduce(
     (sum, item) => sum + item.scheduleItems.flatMap((row) => row.predecessors).length,
     0
-  ), 40)
-  assert.equal(result.inventory.expectedActiveCount, 10)
+  ), 44)
+  assert.equal(result.inventory.expectedActiveCount, 11)
   assert.equal(result.inventory.excludedArchivedCount, 27)
   assert.deepEqual(
     result.inventory.templates.map((template) => template.sourceTemplateId),
-    ["12859981", "12978371", "12581937", "12594475", "30917204", "12646335", "12650792", "12819873", "12649495", "30914491"]
+    ["12859981", "12978371", "12581937", "12594475", "30917204", "12646335", "12650792", "12819873", "12649495", "30914491", "12858966"]
   )
 })
 
@@ -654,17 +654,82 @@ test("preserves Tiling checklist, selections, bid specification, and reviewed sc
   assert.equal(tilingExceptions.every((exception) => /do not/.test(exception.recoveryPlan)), true)
 })
 
+test("preserves exact Piers task identities, hierarchy, schedule, and dependencies", async () => {
+  const result = assembleBuildertrendTemplateNextBatchContent(await inputs())
+  const piers = result.capture.templates.find(
+    (template) => template.sourceTemplateId === "12858966"
+  )
+  assert.ok(piers)
+  assert.deepEqual(
+    piers.tasks.map((task) => ({
+      sourceItemId: task.sourceItemId,
+      parentSourceItemId: task.parentSourceItemId,
+      title: task.title,
+      sortOrder: task.sortOrder,
+    })),
+    [
+      { sourceItemId: "75715160", parentSourceItemId: null, title: "Dig (X LOCATION) Pier", sortOrder: 1 },
+      { sourceItemId: "75715161", parentSourceItemId: null, title: "Set (X LOCATION) Piers Sonotube", sortOrder: 2 },
+      { sourceItemId: "75715162", parentSourceItemId: null, title: "Place (X LOCATION) Pier Vertical Reinforcing", sortOrder: 3 },
+      { sourceItemId: "75715163", parentSourceItemId: null, title: "Place (X LOCATION) Pier Reinforcing Ties", sortOrder: 4 },
+      { sourceItemId: "75715164", parentSourceItemId: null, title: "Pass Building Department Footing: Piers Inspection", sortOrder: 5 },
+      { sourceItemId: "75715165", parentSourceItemId: null, title: "Pour Piers", sortOrder: 6 },
+      { sourceItemId: "75715166", parentSourceItemId: null, title: "Order Piers Estimated Concrete", sortOrder: 7 },
+      { sourceItemId: "75715167", parentSourceItemId: null, title: "Update Concrete Order with Field Takeoffs", sortOrder: 8 },
+      { sourceItemId: "75715168", parentSourceItemId: null, title: "Pull Piers Concrete Takeoffs", sortOrder: 9 },
+      { sourceItemId: "75715169", parentSourceItemId: null, title: "HPS Piers QC & Pre-Pour Inspection", sortOrder: 10 },
+      { sourceItemId: "75715323", parentSourceItemId: "75715169", title: "All Piers Level", sortOrder: 1 },
+      { sourceItemId: "75715324", parentSourceItemId: "75715169", title: "Rebar Correct In All Piers", sortOrder: 2 },
+      { sourceItemId: "75715325", parentSourceItemId: "75715169", title: "Embeds Ready", sortOrder: 3 },
+      { sourceItemId: "75715326", parentSourceItemId: "75715169", title: "Permit/plans on site", sortOrder: 4 },
+      { sourceItemId: "75715170", parentSourceItemId: null, title: "Request Piers Engineer/BD Inspection", sortOrder: 11 },
+      { sourceItemId: "75715171", parentSourceItemId: null, title: "Schedule Concrete Pump", sortOrder: 12 },
+    ]
+  )
+  assert.deepEqual(
+    piers.scheduleItems.map((item) => ({
+      sourceItemId: item.sourceItemId,
+      title: item.title,
+      startDate: item.startDate,
+      workdays: item.workdays,
+      phase: item.phase,
+      displayColor: item.displayColor,
+    })),
+    [
+      { sourceItemId: "143851212", title: "Dig Piers", startDate: "2022-05-10", workdays: 1, phase: "Structure-Shell: Footings", displayColor: "#442121" },
+      { sourceItemId: "143852801", title: "Form Piers", startDate: "2022-05-11", workdays: 2, phase: "Structure-Shell: Footings", displayColor: "#676767" },
+      { sourceItemId: "143853023", title: "Building Department Footing Inspection: Piers", startDate: "2022-05-13", workdays: 1, phase: "Structure-Shell: Footings", displayColor: "#ED2591" },
+      { sourceItemId: "143853005", title: "HPS Piers QC Inspection", startDate: "2022-05-13", workdays: 1, phase: "Structure-Shell: Footings", displayColor: "#2222DD" },
+      { sourceItemId: "143853032", title: "Pour Concrete Piers", startDate: "2022-05-16", workdays: 1, phase: "Structure-Shell: Footings", displayColor: "#DD2222" },
+    ]
+  )
+  assert.deepEqual(
+    piers.scheduleItems.flatMap((item) => item.predecessors).map((dependency) => ({
+      predecessorSourceItemId: dependency.predecessorSourceItemId,
+      successorSourceItemId: dependency.successorSourceItemId,
+      type: dependency.type,
+      lagDays: dependency.lagDays,
+    })),
+    [
+      { predecessorSourceItemId: "143851212", successorSourceItemId: "143852801", type: "FS", lagDays: 0 },
+      { predecessorSourceItemId: "143852801", successorSourceItemId: "143853023", type: "FS", lagDays: 0 },
+      { predecessorSourceItemId: "143852801", successorSourceItemId: "143853005", type: "FS", lagDays: 0 },
+      { predecessorSourceItemId: "143853023", successorSourceItemId: "143853032", type: "FS", lagDays: 0 },
+    ]
+  )
+})
+
 test("fails stale when a newly complete template is not in the reviewed release", async () => {
   const stale = await inputs()
   stale.documents.push({
-    source: "20-12858966.capture.json",
+    source: "21-12649292.capture.json",
     document: {
-      sourceTemplateId: "12858966",
-      sourceName: "Concrete - Piers Assembly",
+      sourceTemplateId: "12649292",
+      sourceName: "Framing - Exterior Wall Assembly",
       tasks: Array.from({ length: 16 }, (_, index) => ({
-        sourceItemId: `pier-task-${index + 1}`,
+        sourceItemId: `exterior-wall-task-${index + 1}`,
         parentSourceItemId: null,
-        title: `Pier task ${index + 1}`,
+        title: `Exterior wall task ${index + 1}`,
       })),
     },
   })
@@ -674,61 +739,29 @@ test("fails stale when a newly complete template is not in the reviewed release"
   )
 
   const reviewed = structuredClone(stale)
-  const piers = reviewed.nextBatchManifest.templates.find(
-    (template) => template.sourceTemplateId === "12858966"
+  const exteriorWall = reviewed.nextBatchManifest.templates.find(
+    (template) => template.sourceTemplateId === "12649292"
   )
-  assert.ok(piers)
-  reviewed.release.scope.structurallyCompleteTemplatesIncluded = 11
-  reviewed.release.scope.incompleteTemplatesExcluded = 23
+  assert.ok(exteriorWall)
+  reviewed.release.scope.structurallyCompleteTemplatesIncluded = 12
+  reviewed.release.scope.incompleteTemplatesExcluded = 22
   reviewed.release.templates.push({
-    sourceTemplateId: piers.sourceTemplateId,
-    sourceName: piers.sourceName,
-    workplanSequence: piers.workplanSequence,
-    moduleCounts: piers.moduleCounts,
-    fragmentPath: piers.fragmentPath,
+    sourceTemplateId: exteriorWall.sourceTemplateId,
+    sourceName: exteriorWall.sourceName,
+    workplanSequence: exteriorWall.workplanSequence,
+    moduleCounts: exteriorWall.moduleCounts,
+    fragmentPath: exteriorWall.fragmentPath,
     browserCaptureGates: "complete",
   })
 
   const result = assembleBuildertrendTemplateNextBatchContent(reviewed)
   assert.deepEqual(
     result.capture.assembly.sourceTemplateIds,
-    ["12859981", "12978371", "12581937", "12594475", "30917204", "12646335", "12650792", "12819873", "12649495", "30914491", "12858966"]
+    ["12859981", "12978371", "12581937", "12594475", "30917204", "12646335", "12650792", "12819873", "12649495", "30914491", "12858966", "12649292"]
   )
-  assert.equal(result.capture.assembly.excludedIncompleteTemplateCount, 23)
-  assert.equal(result.capture.templates[10].tasks.length, 16)
-  assert.equal(result.capture.templates[10].scheduleItems.length, 5)
-})
-
-test("keeps incomplete Piers evidence outside the reviewed release", async () => {
-  const auditPath = "scripts/fixtures/buildertrend-template-content-next-batch/incomplete-reviews/20-12858966.capture-review.json"
-  const fragmentPath = "scripts/fixtures/buildertrend-template-content-next-batch/fragments/20-12858966.capture.json"
-  const [audit, release] = await Promise.all([
-    readFile(auditPath, "utf8").then(JSON.parse),
-    readFile(paths.release, "utf8").then(JSON.parse),
-  ])
-
-  assert.equal(audit.reviewStatus, "incomplete")
-  assert.equal(audit.releaseEligible, false)
-  assert.deepEqual(audit.template.sourceInventory, {
-    tasks: 16,
-    scheduleDuration: "5 Days",
-    scheduleItems: 5,
-    selections: 0,
-    bidPackages: 0,
-  })
-  assert.deepEqual(audit.template.browserModuleGates, [{
-    module: "tasks",
-    expectedCount: 16,
-    capturedCount: 0,
-    status: "incomplete",
-    releaseBlocker: "Recover all 16 native task IDs, titles, displayed ordering, and parent-child relationships from the Piers source or a verified temporary copy. Do not infer the hierarchy from the schedule or another concrete template.",
-  }])
-  assert.deepEqual(audit.template.tasks, [])
-  assert.equal(
-    release.templates.some((template) => template.sourceTemplateId === "12858966"),
-    false
-  )
-  await assert.rejects(() => access(fragmentPath), /ENOENT/)
+  assert.equal(result.capture.assembly.excludedIncompleteTemplateCount, 22)
+  assert.equal(result.capture.templates[11].tasks.length, 16)
+  assert.equal(result.capture.templates[11].scheduleItems.length, 2)
 })
 
 test("rejects partial capture, duplicate release scope, and publication requests", async () => {
@@ -777,9 +810,9 @@ test("builds SQL that remains draft-only and includes every released template", 
       "--output", output,
     ])
     assert.deepEqual(JSON.parse(result.stdout), {
-      templateCount: 10,
-      tasks: 328,
-      scheduleItems: 50,
+      templateCount: 11,
+      tasks: 344,
+      scheduleItems: 55,
       selections: 13,
       bidPackages: 7,
       excludedArchivedCount: 27,
@@ -797,6 +830,7 @@ test("builds SQL that remains draft-only and includes every released template", 
     assert.match(sql, /bt-template-version:12819873:1/)
     assert.match(sql, /bt-template-version:12649495:1/)
     assert.match(sql, /bt-template-version:30914491:1/)
+    assert.match(sql, /bt-template-version:12858966:1/)
     assert.match(sql, /INSERT INTO schedule_template_items/)
     assert.match(sql, /review_status='content_captured', lifecycle_status='draft'/)
     assert.doesNotMatch(sql, /status='published'|lifecycle_status='active'|review_status='verified'/)
