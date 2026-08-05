@@ -40,3 +40,16 @@ The canonical reviewed capture preserves the two schedule items and their one
 dependency. Window remains blocked until all three browser modules are
 captured with exact native identities, hierarchy, choices, bid specifications,
 cost codes, Cost Types, and any copy warnings.
+
+## Framing - Exterior Man Door Installation (`12650484`)
+
+The reviewed source inventory reports 11 tasks, one selection, one bid package,
+and two schedule items over three work days. This checkpoint was prepared before
+the authenticated Buildertrend module capture and deliberately retains no
+browser-derived task, selection, or bid-package rows.
+
+The canonical reviewed capture preserves the two schedule items and their one
+dependency. Exterior Man Door remains blocked until all three browser modules
+are captured from the exact source context with native identities, hierarchy,
+selection choices, bid specifications, cost codes, Cost Types, and any copy
+warnings.
