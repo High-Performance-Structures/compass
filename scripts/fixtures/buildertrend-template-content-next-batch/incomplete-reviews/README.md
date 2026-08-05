@@ -68,3 +68,16 @@ identities and content are recovered from an authenticated supported source.
 The canonical reviewed capture preserves the four schedule items and three
 dependencies. Those schedule rows are referenced rather than duplicated in a
 future browser fragment.
+
+## Int. Finishes - Interior Doors (`28466146`)
+
+The reviewed source inventory preserves five tasks, four selections, and three
+schedule items over four days. This prepared checkpoint does not claim a
+Buildertrend browser capture: the task and selection gates remain empty and
+release-ineligible until their exact native identities, hierarchy, choices,
+prices, descriptions, and attachment evidence are recovered from an
+authenticated supported source.
+
+The canonical reviewed capture preserves the three schedule items and two
+dependencies. Those schedule rows are referenced rather than duplicated in a
+future browser fragment.
