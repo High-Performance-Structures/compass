@@ -1,0 +1,40 @@
+{
+  "reviewStatus": "pending",
+  "releaseEligible": false,
+  "template": {
+    "sourceTemplateId": "36478698",
+    "sourceName": "Framing - Quote Packages",
+    "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/36478698",
+    "capturedAt": null,
+    "captureNotes": [
+      "This fail-closed checkpoint was prepared from the reviewed active-template inventory and deterministic next-batch manifest only.",
+      "The reviewed inventory reports exactly three bid packages and no task, schedule, or selection module for this source template.",
+      "No Buildertrend module row was opened or captured while this checkpoint was prepared. Native bid-package identities and contents remain pending authenticated review.",
+      "No title, specification, line item, cost code, Cost Type, quantity, unit, attachment, or copy-warning value may be inferred to satisfy the pending gate."
+    ],
+    "sourceInventory": {
+      "tasks": 0,
+      "scheduleItems": 0,
+      "selections": 0,
+      "bidPackages": 3
+    },
+    "browserModuleGates": [
+      {
+        "module": "bidPackages",
+        "expectedCount": 3,
+        "capturedCount": 0,
+        "status": "pending",
+        "releaseBlocker": "Recover all three bid packages with exact native identities, displayed ordering, status, specifications, line items, cost codes, Cost Types, quantities, units, attachment evidence, and any copy warnings from an authenticated Buildertrend view or supported export."
+      }
+    ],
+    "reviewedScheduleReference": {
+      "path": "scripts/fixtures/buildertrend-active-template-capture-2026-07-31.json",
+      "sourceTemplateId": "36478698",
+      "scheduleItemCount": 0,
+      "dependencyCount": 0,
+      "note": "The reviewed source capture reports no schedule module for this template; browser fragments must not invent one."
+    },
+    "bidPackages": []
+  },
+  "conversionExceptions": []
+}

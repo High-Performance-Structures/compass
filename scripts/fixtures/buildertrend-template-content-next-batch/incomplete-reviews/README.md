@@ -96,3 +96,15 @@ Exterior Painting/Staining remains excluded from release until both selections
 and the bid package are captured with exact native identities, choice and line
 item content, cost codes, Cost Types, attachment evidence, and any copy
 warnings. No source values may be inferred while this audit remains pending.
+
+## Framing - Quote Packages (`36478698`)
+
+The reviewed source inventory reports three bid packages and no tasks, schedule
+items, or selections. A fail-closed checkpoint is prepared before authenticated
+module capture begins; it contains no copied or inferred bid-package content.
+
+Framing Quote Packages remains blocked until all three packages are captured
+with their native identities, displayed ordering, status, specifications, line
+items, cost codes, Cost Types, quantities, units, attachment evidence, and any
+copy warnings. Only then may the checkpoint move into the active fragments
+directory and become eligible for the reviewed release allowlist.
