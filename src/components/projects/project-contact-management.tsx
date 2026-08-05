@@ -46,7 +46,10 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
+  SelectSeparator,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
@@ -60,18 +63,34 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet"
 import { Textarea } from "@/components/ui/textarea"
+import { PROJECT_WORKFLOW_ROLE_LENSES } from "@/lib/project-workflow-roles"
 import { cn } from "@/lib/utils"
 
-function contactTypeLabel(type: ProjectContactType): string {
+const CUSTOM_PROJECT_ROLE_VALUE = "custom-project-role"
+const EXTERNAL_PROJECT_ROLES = [
+  "Owner / Client",
+  "Subcontractor",
+  "Supplier",
+] as const
+const PROJECT_ROLE_LABELS = [
+  ...PROJECT_WORKFLOW_ROLE_LENSES.map((role) => role.label),
+  ...EXTERNAL_PROJECT_ROLES,
+] as const
+
+function isPresetProjectRole(value: string): boolean {
+  return PROJECT_ROLE_LABELS.some((role) => role === value)
+}
+
+function defaultProjectRole(type: ProjectContactType): string {
   switch (type) {
     case "owner":
-      return "Owner / customer"
+      return "Owner / Client"
     case "supplier":
       return "Supplier"
     case "subcontractor":
       return "Subcontractor"
     case "internal":
-      return "Internal team"
+      return ""
   }
 }
 
@@ -245,6 +264,9 @@ export function ProjectContactEditor({
   const [open, setOpen] = useState(false)
   const [directoryOpenKey, setDirectoryOpenKey] = useState<string | null>(null)
   const [input, setInput] = useState(() => initialInput(projectId, contact))
+  const [customRoleSelected, setCustomRoleSelected] = useState(
+    () => Boolean(contact?.role && !isPresetProjectRole(contact.role))
+  )
   const [isPending, startTransition] = useTransition()
   const isEditing = contact !== null
   const selectedDirectory = directoryOptions.find(
@@ -265,11 +287,16 @@ export function ProjectContactEditor({
     if (nextOpen) {
       setInput(initialInput(projectId, contact))
       setDirectoryOpenKey(null)
+      setCustomRoleSelected(
+        Boolean(contact?.role && !isPresetProjectRole(contact.role))
+      )
     }
   }
 
   function applyDirectoryOption(option: ProjectContactDirectoryOption): void {
+    const projectRole = defaultProjectRole(option.suggestedContactType)
     setDirectoryOpenKey(`${option.sourceType}:${option.id}`)
+    setCustomRoleSelected(false)
     setInput((current) => ({
       ...current,
       directorySourceType: option.sourceType,
@@ -279,7 +306,7 @@ export function ProjectContactEditor({
       companyName: option.companyName ?? "",
       email: option.email ?? "",
       phone: option.phone ?? "",
-      role: contactTypeLabel(option.suggestedContactType),
+      role: projectRole,
       ownerPortalVisible:
         option.suggestedContactType === "internal" || current.ownerPortalVisible,
       subVendorPortalVisible:
@@ -397,12 +424,58 @@ export function ProjectContactEditor({
               </div>
               <div className="grid gap-2">
                 <Label htmlFor="project-contact-role">Project role</Label>
-                <Input
-                  id="project-contact-role"
-                  value={input.role}
-                  onChange={(event) => updateInput("role", event.target.value)}
-                  placeholder="Owner, Project Administrator, Electrician..."
-                />
+                <Select
+                  value={
+                    customRoleSelected
+                      ? CUSTOM_PROJECT_ROLE_VALUE
+                      : input.role
+                  }
+                  onValueChange={(value) => {
+                    if (value === CUSTOM_PROJECT_ROLE_VALUE) {
+                      setCustomRoleSelected(true)
+                      if (isPresetProjectRole(input.role)) updateInput("role", "")
+                      return
+                    }
+                    setCustomRoleSelected(false)
+                    updateInput("role", value)
+                  }}
+                >
+                  <SelectTrigger id="project-contact-role" className="w-full">
+                    <SelectValue placeholder="Choose a project role..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectGroup>
+                      <SelectLabel>Project team</SelectLabel>
+                      {PROJECT_WORKFLOW_ROLE_LENSES.map((role) => (
+                        <SelectItem key={role.id} value={role.label}>
+                          {role.label}
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
+                    <SelectSeparator />
+                    <SelectGroup>
+                      <SelectLabel>External</SelectLabel>
+                      {EXTERNAL_PROJECT_ROLES.map((role) => (
+                        <SelectItem key={role} value={role}>
+                          {role}
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
+                    <SelectSeparator />
+                    <SelectItem value={CUSTOM_PROJECT_ROLE_VALUE}>
+                      Other / custom role...
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+                {customRoleSelected && (
+                  <Input
+                    id="project-contact-custom-role"
+                    value={input.role}
+                    onChange={(event) => updateInput("role", event.target.value)}
+                    placeholder="Enter the project role..."
+                    aria-label="Custom project role"
+                  />
+                )}
               </div>
               <div className="grid gap-2">
                 <Label htmlFor="project-contact-trade">Trade / scope</Label>
