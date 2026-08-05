@@ -23,3 +23,10 @@ All 41 choices displayed one attachment, but the bounded source pass did not
 expose choice descriptions, attachment filenames, or durable attachment bytes.
 Those fields remain explicit conversion exceptions and must be recovered
 without inference before publishing this draft.
+
+## Framing - Rough inspection w/ Draft & Firestop (`12978590`)
+
+The reviewed fragment preserves all three native task IDs as independent root
+tasks in their displayed order. The canonical reviewed source capture supplies
+the two schedule items and one dependency without duplicating those rows in
+the fragment.

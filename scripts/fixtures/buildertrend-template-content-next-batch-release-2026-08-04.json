@@ -1,14 +1,14 @@
 {
   "releaseVersion": 1,
-  "generatedAt": "2026-08-05T07:39:05Z",
+  "generatedAt": "2026-08-05T07:45:00.000Z",
   "sourceNextBatchManifest": "scripts/fixtures/buildertrend-template-next-batch-2026-08-04.json",
   "sourceReviewedCapture": "scripts/fixtures/buildertrend-active-template-capture-2026-07-31.json",
   "scope": {
     "activeTemplatesInSource": 40,
     "completedPilotTemplatesExcluded": 6,
     "nonPilotCandidatesAudited": 34,
-    "structurallyCompleteTemplatesIncluded": 18,
-    "incompleteTemplatesExcluded": 16,
+    "structurallyCompleteTemplatesIncluded": 19,
+    "incompleteTemplatesExcluded": 15,
     "archivedTemplatesExcluded": 27,
     "archivedTemplatesIncluded": 0
   },
@@ -252,6 +252,19 @@
         "bidPackages": 0
       },
       "fragmentPath": "scripts/fixtures/buildertrend-template-content-next-batch/fragments/28-12979213.capture.json",
+      "browserCaptureGates": "complete"
+    },
+    {
+      "sourceTemplateId": "12978590",
+      "sourceName": "Framing - Rough inspection w/ Draft & Firestop",
+      "workplanSequence": 30,
+      "moduleCounts": {
+        "tasks": 3,
+        "scheduleItems": 2,
+        "selections": 0,
+        "bidPackages": 0
+      },
+      "fragmentPath": "scripts/fixtures/buildertrend-template-content-next-batch/fragments/30-12978590.capture.json",
       "browserCaptureGates": "complete"
     }
   ],
