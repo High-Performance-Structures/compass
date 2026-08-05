@@ -25,6 +25,11 @@ non-empty titles. Never put `schedule` or `scheduleItems` in these fragments;
 those 93 rows and their dependencies are already preserved in the reviewed
 40-template source capture.
 
+Partially recovered source evidence belongs in `incomplete-reviews/`, not
+`fragments/`. The assembler does not discover that sibling directory and the
+release allowlist must not reference its files. See the directory README for
+the evidence-preservation and promotion gates.
+
 Check progress without treating missing source content as valid:
 
 ```bash
