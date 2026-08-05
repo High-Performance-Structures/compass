@@ -1,0 +1,57 @@
+{
+  "reviewStatus": "pending_browser_capture",
+  "releaseEligible": false,
+  "template": {
+    "sourceTemplateId": "30919251",
+    "sourceName": "Framing - Overhead Door Installation",
+    "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/30919251",
+    "preparedAt": "2026-08-04T00:00:00.000Z",
+    "captureNotes": [
+      "This record is a browser-quiet capture plan derived only from the reviewed active-template inventory and next-batch manifest.",
+      "No Buildertrend page was opened or modified while preparing this plan.",
+      "The record is excluded from fragment discovery and cannot enter a release until all browser-required module gates are complete.",
+      "The reviewed source capture remains the sole source for the two schedule rows and one dependency."
+    ],
+    "sourceInventory": {
+      "tasks": 13,
+      "scheduleDuration": "3 Days",
+      "scheduleItems": 2,
+      "selections": 1,
+      "bidPackages": 1
+    },
+    "browserModuleGates": [
+      {
+        "module": "tasks",
+        "expectedCount": 13,
+        "capturedCount": 0,
+        "status": "pending",
+        "releaseBlocker": "Recover all 13 native task IDs, exact titles, displayed ordering, and parent-child checklist relationships from the authenticated Overhead Door source template."
+      },
+      {
+        "module": "selections",
+        "expectedCount": 1,
+        "capturedCount": 0,
+        "status": "pending",
+        "releaseBlocker": "Recover the selection native identity, metadata, choice hierarchy and ordering, descriptions, prices, and attachment evidence."
+      },
+      {
+        "module": "bidPackages",
+        "expectedCount": 1,
+        "capturedCount": 0,
+        "status": "pending",
+        "releaseBlocker": "Recover the bid package native identity, status, specifications, line items, cost codes, Cost Types, quantities, units, and any conversion warnings."
+      }
+    ],
+    "reviewedScheduleReference": {
+      "path": "scripts/fixtures/buildertrend-active-template-capture-2026-07-31.json",
+      "sourceTemplateId": "30919251",
+      "scheduleItemCount": 2,
+      "dependencyCount": 1,
+      "note": "The reviewed source capture remains the canonical schedule record; browser fragments do not duplicate schedule rows."
+    },
+    "tasks": [],
+    "selections": [],
+    "bidPackages": []
+  },
+  "conversionExceptions": []
+}
