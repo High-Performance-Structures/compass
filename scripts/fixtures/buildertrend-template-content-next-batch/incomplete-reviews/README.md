@@ -115,11 +115,11 @@ fragments directory or become eligible for the reviewed release allowlist.
 ## MEP - Quotes (`36595931`)
 
 The reviewed source inventory reports three bid packages and no task, schedule,
-or selection content. Its pending review was prepared without opening or
-modifying Buildertrend and is therefore an explicit capture plan rather than
-source-detail evidence.
+or selection content. An authenticated bounded pass preserved all three package
+identities and completely captured Electrical, including its six native line
+items, descriptions, cost codes, Cost Types, quantities, units, package
+specifications, settings, linked-plan/spec state, and empty attachments.
 
-MEP Quotes remains blocked until all three bid packages are captured with
-native package and line-item identities, complete specifications and ordering,
-cost codes, Cost Types, quantities, units, attachments, and any Buildertrend
-copy warnings. No values may be inferred from related MEP templates.
+MEP Quotes remains blocked until HVAC and Plumbing are captured to the same
+standard. Their exact package identities are preserved in the audit, but no
+detail values may be inferred from Electrical or related MEP templates.

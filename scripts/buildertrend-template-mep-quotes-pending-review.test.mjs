@@ -22,10 +22,10 @@ async function readJson(path) {
   return JSON.parse(await readFile(path, "utf8"))
 }
 
-test("records MEP Quotes as a fail-closed pending browser capture", async () => {
+test("preserves the bounded MEP Quotes capture as a fail-closed audit", async () => {
   const review = await readJson(paths.review)
 
-  assert.equal(review.reviewStatus, "pending")
+  assert.equal(review.reviewStatus, "incomplete")
   assert.equal(review.releaseEligible, false)
   assert.equal(review.template.sourceTemplateId, mepQuotesTemplateId)
   assert.equal(review.template.sourceName, "MEP - Quotes")
@@ -47,17 +47,68 @@ test("records MEP Quotes as a fail-closed pending browser capture", async () => 
       {
         module: "bidPackages",
         expectedCount: 3,
-        capturedCount: 0,
-        status: "pending",
+        capturedCount: 1,
+        status: "incomplete",
       },
     ]
   )
   assert.equal(review.template.browserModuleGates[0].releaseBlocker.length > 0, true)
-  assert.deepEqual(review.template.bidPackages, [])
+  assert.deepEqual(review.template.packageIndex, [
+    {
+      sourceBidPackageId: "10427367",
+      title: "Electrical - (Project Address) (Estimate Phase)",
+      detailStatus: "captured",
+    },
+    {
+      sourceBidPackageId: "10427813",
+      title: "HVAC - (Project Address) (Estimate Phase)",
+      detailStatus: "incomplete",
+    },
+    {
+      sourceBidPackageId: "10427674",
+      title: "Plumbing - (Project Address) (Estimate Phase)",
+      detailStatus: "incomplete",
+    },
+  ])
+  assert.equal(review.template.bidPackages.length, 1)
+  const [electrical] = review.template.bidPackages
+  assert.equal(electrical.sourceBidPackageId, "10427367")
+  assert.equal(electrical.title, "Electrical - (Project Address) (Estimate Phase)")
+  assert.equal(electrical.status, "Draft")
+  assert.equal(electrical.allowMultipleApprovedBids, false)
+  assert.equal(electrical.deadline, null)
+  assert.equal(electrical.time, null)
+  assert.equal(electrical.reminderLeadDays, 2)
+  assert.equal(electrical.plansAndSpecs, false)
+  assert.equal(electrical.linkedPlanCount, 0)
+  assert.equal(electrical.linkedSpecCount, 0)
+  assert.equal(electrical.pricingFormat, "Line Items")
+  assert.equal(electrical.internalNotes, "")
+  assert.deepEqual(electrical.attachments, [])
+  assert.match(electrical.description, /Contract and Insurance Requirements/)
+  assert.deepEqual(
+    electrical.lineItems.map((line) => [
+      line.sourceLineItemId,
+      line.title,
+      line.costCode,
+      line.costType,
+      line.quantity,
+      line.unit,
+    ]),
+    [
+      ["17993185", "Temporary Electricity Labor & Materials", "01 51 13 - Temp Electricity", "Subcontractor", 1, null],
+      ["17993186", "Electrical Rough Labor & Materials", "26 00 00 - Electrical", "Subcontractor", 1, null],
+      ["17993574", "Electrical Trim & Fixtures Installation Labor & Materials", "26 00 00 - Electrical", "Subcontractor", 1, null],
+      ["17993187", "Under Cabinet Lighting Budgetary Option Labor & Materials", "26 00 00 - Electrical", "Subcontractor", 1, null],
+      ["17993188", "Low-Volt Electrical Labor & Materials", "27 10 00 - Structured Cabling", "Subcontractor", 1, null],
+      ["17993423", "Electrical Underground Labor & Materials", "33 71 19 - Elec Underground", "Subcontractor", 1, null],
+    ]
+  )
+  assert.equal(electrical.lineItems.every((line) => line.description.length > 0), true)
   assert.deepEqual(review.conversionExceptions, [])
 })
 
-test("excludes the pending MEP Quotes audit from fragment discovery and release assembly", async () => {
+test("excludes the incomplete MEP Quotes audit from fragment discovery and release assembly", async () => {
   const [release, nextBatchManifest, reviewedCapture, documents] = await Promise.all([
     readJson(paths.release),
     readJson(paths.manifest),
