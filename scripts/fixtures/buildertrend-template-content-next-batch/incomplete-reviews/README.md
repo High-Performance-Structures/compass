@@ -82,3 +82,15 @@ The canonical reviewed capture preserves the three schedule items and three
 dependencies. Perimeter Drain remains release-ineligible until all four task
 rows are captured with their native identities, displayed ordering, and exact
 parent-child hierarchy.
+
+## Int. Finishes - Stain & Seal Concrete Floors (`12979213`)
+
+The reviewed source inventory preserves seven tasks and five schedule items
+over seven days. This prepared checkpoint does not claim a Buildertrend browser
+capture: the task gate remains empty and release-ineligible until the exact
+native task identities, displayed order, and parent-child relationships are
+recovered from an authenticated supported source.
+
+The canonical reviewed capture preserves the five schedule items and four
+dependencies. Those schedule rows are referenced rather than duplicated in a
+future browser fragment.

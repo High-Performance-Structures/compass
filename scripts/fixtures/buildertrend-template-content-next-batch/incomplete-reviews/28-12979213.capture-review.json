@@ -1,0 +1,43 @@
+{
+  "reviewStatus": "incomplete",
+  "releaseEligible": false,
+  "template": {
+    "sourceTemplateId": "12979213",
+    "sourceName": "Int. Finishes - Stain & Seal Concrete Floors",
+    "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/12979213",
+    "preparedAt": "2026-08-04T00:00:00Z",
+    "captureNotes": [
+      "The reviewed active-template inventory records seven tasks and five schedule items over seven days for Buildertrend source 12979213.",
+      "This checkpoint was prepared without opening Buildertrend. It preserves repository-reviewed inventory and schedule evidence only; no task identity, hierarchy, title, description, assignment, or attachment value was inferred.",
+      "The five reviewed schedule items and four dependencies remain canonical in the 40-template source capture and must not be duplicated in a browser fragment.",
+      "Stain & Seal Concrete Floors remains release-ineligible until all seven task rows are recovered from an authenticated supported Buildertrend view or export."
+    ],
+    "sourceInventory": {
+      "tasks": 7,
+      "scheduleDuration": "7 Days",
+      "scheduleItems": 5,
+      "selections": 0,
+      "bidPackages": 0
+    },
+    "browserModuleGates": [
+      {
+        "module": "tasks",
+        "expectedCount": 7,
+        "capturedCount": 0,
+        "status": "incomplete",
+        "releaseBlocker": "Recover all seven native task IDs, titles, displayed ordering, and parent-child relationships from the Stain & Seal Concrete Floors source or a verified temporary copy."
+      }
+    ],
+    "reviewedScheduleReference": {
+      "path": "scripts/fixtures/buildertrend-active-template-capture-2026-07-31.json",
+      "sourceTemplateId": "12979213",
+      "scheduleItemCount": 5,
+      "dependencyCount": 4,
+      "note": "The reviewed source capture remains the canonical schedule record; browser fragments do not duplicate schedule rows."
+    },
+    "tasks": [],
+    "selections": [],
+    "bidPackages": []
+  },
+  "conversionExceptions": []
+}
