@@ -1,0 +1,83 @@
+{
+  "sourceTemplateId": "12650557",
+  "sourceName": "Earthwork - Post-Frost Wall Earthwork",
+  "capturedAt": "2026-08-05T05:09:00Z",
+  "captureNotes": [
+    "Captured read-only from the authenticated Buildertrend source template after selecting it through the visible Templates job picker.",
+    "The source identity was verified in both the All Tasks and Bids modules as Earthwork - Post-Frost Wall Earthwork with source template ID 12650557.",
+    "Both native task checklists were expanded before capture; source task IDs, displayed order, and parent-child relationships were preserved exactly.",
+    "The single source bid package, four line-item IDs, cost codes, cost types, quantities, units, specifications, pricing policy, and empty attachment list were captured exactly.",
+    "The reviewed source capture remains the sole source for the four schedule rows and three dependencies."
+  ],
+  "tasks": [
+    { "sourceItemId": "75710600", "parentSourceItemId": null, "title": "Frost Walls Backfilled & Compacted", "sortOrder": 1 },
+    { "sourceItemId": "75710602", "parentSourceItemId": null, "title": "Mark Exterior Slab Elevations", "sortOrder": 2 },
+    { "sourceItemId": "75710603", "parentSourceItemId": null, "title": "Snap Lines for Exterior Slab Elevations", "sortOrder": 3 },
+    { "sourceItemId": "75710605", "parentSourceItemId": null, "title": "Grade To Elevations", "sortOrder": 4 },
+    { "sourceItemId": "75710710", "parentSourceItemId": "75710605", "title": "Grade is Level to 1/8\" Tolerance", "sortOrder": 1 },
+    { "sourceItemId": "75710607", "parentSourceItemId": null, "title": "Mark Interior Sub-Slab Grade Elevations", "sortOrder": 5 },
+    { "sourceItemId": "75710609", "parentSourceItemId": null, "title": "Snap Lines for Interior Sub-Slab Grade", "sortOrder": 6 },
+    { "sourceItemId": "75710611", "parentSourceItemId": null, "title": "Grade to Elevation", "sortOrder": 7 },
+    { "sourceItemId": "75710711", "parentSourceItemId": "75710611", "title": "Grade Level Through-out to 1/8\" tolerance", "sortOrder": 1 },
+    { "sourceItemId": "75710613", "parentSourceItemId": null, "title": "Trench for Water-Line Tie-In Complete", "sortOrder": 8 },
+    { "sourceItemId": "75710615", "parentSourceItemId": null, "title": "Trench for Sewer Line Tie-In Complete", "sortOrder": 9 },
+    { "sourceItemId": "75710617", "parentSourceItemId": null, "title": "Trench Gas Line Tie-in Complete", "sortOrder": 10 }
+  ],
+  "selections": [],
+  "bidPackages": [
+    {
+      "sourceItemId": "10290501",
+      "sourceBidPackageId": "10290501",
+      "title": "Fill Material - (Project Address) (Estimate Phase)",
+      "status": "Draft",
+      "allowMultipleApprovedBids": false,
+      "deadline": null,
+      "time": null,
+      "linkToSchedule": false,
+      "reminderLeadDays": 2,
+      "plansAndSpecs": false,
+      "pricingFormat": "Line Items",
+      "description": "Background\nHigh Performance Structures, Inc. dba Open Range Construction, Ltd. (ORC) will be building a (Project Type) located at:\n(Project Address)\nReference Documents\nPlease see the Buildertrend Documents folder titled \"(Est. Phase) Bid Set\" for all necessary plans.\nSubmission of Bid\nBids for this project will be processed through Buildertrend, a construction management program. You do not need to become proficient with Buildertrend. You may also simply call or email your point of contact. You may submit your bid into Buildertrend or email it to your point of contact for entry. Should you choose to input your bid into Buildertrend, please also include a PDF version of your bid.\nFor assistance with submitting the bid or receiving bid documents, contact the (Estimator Title):\n(Estimator), (719) 900-8850 ext. (Estimator Ext)\n(Estimator Email Address)\nTimeline\nThe work is scheduled to start in (Season), (Year).\nScope of Work\nThe following CSI categories will be required for the construction of the project per the plans and specifications noted on the Plans and Specifications List. We will notify bidders of any changes or additions by sending out updates to said List.\nSchedule\nPlease provide a schedule to complete each of the above items, in calendar days after the issuance of the purchase order and/or notice to proceed.\nContract and Insurance Requirements\nAll trade contractors will be required to complete a trade contractor agreement, provide proof of liability insurance and workman’s compensation insurance as applicable, with required limits prior to the release of any construction payments.",
+      "internalNotes": "Please input the # of Tons necessary and allow delivery contractors to fill in delivery qty. For Teller county area check from Houchin, Van Egmond, and Mule Creek. For El Paso county check with Pioneer sand & gravel.",
+      "attachments": [],
+      "lineItems": [
+        {
+          "sourceLineItemId": "17744559",
+          "title": "Structural Fill Material",
+          "costCode": "31 23 23.13 - Backfill",
+          "costType": "Material",
+          "quantity": 1,
+          "unit": "Tons",
+          "description": "Please Include compactable, structural fill material."
+        },
+        {
+          "sourceLineItemId": "17744577",
+          "title": "Structural Fill Delivery",
+          "costCode": "31 23 23.13 - Backfill",
+          "costType": "Subcontractor",
+          "quantity": 0,
+          "unit": "Loads",
+          "description": ""
+        },
+        {
+          "sourceLineItemId": "17744578",
+          "title": "Site Fill",
+          "costCode": "31 23 23.13 - Backfill",
+          "costType": "Material",
+          "quantity": 1,
+          "unit": "Tons",
+          "description": "Please include non-structural site fill material."
+        },
+        {
+          "sourceLineItemId": "17744579",
+          "title": "Site Fill Delivery",
+          "costCode": "31 23 23.13 - Backfill",
+          "costType": "Subcontractor",
+          "quantity": 0,
+          "unit": "Loads",
+          "description": ""
+        }
+      ]
+    }
+  ]
+}

@@ -6,7 +6,7 @@ Do not create placeholder content and do not mutate the Buildertrend sources.
 
 The deterministic manifest is
 `scripts/fixtures/buildertrend-template-next-batch-2026-08-04.json`. Its current
-reviewed release covers workplan sequences 6–13, 15–16, 18, and 20–21,
+reviewed release covers workplan sequences 6–13, 15–16, 18, and 20–22,
 excluding sequence 10 because Drywall was already completed in the pilot and
 sequences 14 and 17 because their captures remain incomplete:
 
@@ -22,6 +22,7 @@ sequences 14 and 17 because their captures remain incomplete:
 10. Int. Finishes - Tiling (`30914491`)
 11. Concrete - Piers Assembly (`12858966`)
 12. Framing - Exterior Wall Assembly (`12649292`)
+13. Earthwork - Post-Frost Wall Earthwork (`12650557`)
 
 Place capture files under `fragments/` using the exact `fragmentPath` from the
 manifest. A fragment must identify one template and may contain one or more of
@@ -58,14 +59,14 @@ Siding (`30917204`), Framing Interior Wall (`12646335`), Framing Roof w/
 Trusses (`12650792`), Framing Fascia & Soffit Installation (`12819873`),
 Framing Floor System Assembly (`12649495`), Interior Finishes Tiling
 (`30914491`), Concrete Piers (`12858966`), and Framing Exterior Wall Assembly
-(`12649292`).
+(`12649292`), and Earthwork Post-Frost Wall Earthwork (`12650557`).
 Their browser gates are complete, and the assembler combines those fragments
 with the already-reviewed schedule rows and
 dependencies.
 
-The guarded audit covers all 34 non-pilot active templates, not just the twelve
-release entries. At the current checkpoint it includes 12 structurally complete
-templates, excludes 22 incomplete active templates, and excludes all 27
+The guarded audit covers all 34 non-pilot active templates, not just the thirteen
+release entries. At the current checkpoint it includes 13 structurally complete
+templates, excludes 21 incomplete active templates, and excludes all 27
 archived templates. There are zero additional structurally complete templates
 after this reviewed release. If another complete fragment appears, `--check`
 deliberately fails the release as stale until its identity, counts, and
@@ -126,9 +127,9 @@ no applications, and either zero content rows or a complete prior replay. A
 partial prior import is rejected.
 
 After applying the reviewed import, generate and execute the same query with
-`--phase postflight`. Postflight requires exactly 437 content rows (360 tasks,
-57 schedule items, 13 selections, and seven bid packages), 57 reusable
-schedule rows, 45 schedule predecessor edges in both representations, exact
+`--phase postflight`. Postflight requires exactly 454 content rows (372 tasks,
+61 schedule items, 13 selections, and eight bid packages), 61 reusable
+schedule rows, 48 schedule predecessor edges in both representations, exact
 deterministic source identities, valid JSON without Buildertrend URLs, draft
 versions, and `content_captured` / `draft` template state. Zero rows means the
 verification passed.
