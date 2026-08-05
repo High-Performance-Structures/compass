@@ -26,31 +26,31 @@ async function inputs() {
   return { release, nextBatchManifest, reviewedCapture, documents }
 }
 
-test("assembles the nine gate-complete templates with reviewed schedules", async () => {
+test("assembles the ten gate-complete templates with reviewed schedules", async () => {
   const result = assembleBuildertrendTemplateNextBatchContent(await inputs())
 
   assert.deepEqual(
     result.capture.assembly.sourceTemplateIds,
-    ["12859981", "12978371", "12581937", "12594475", "30917204", "12646335", "12650792", "12819873", "12649495"]
+    ["12859981", "12978371", "12581937", "12594475", "30917204", "12646335", "12650792", "12819873", "12649495", "30914491"]
   )
   assert.equal(result.capture.assembly.draftOnly, true)
   assert.equal(result.capture.assembly.publish, false)
-  assert.equal(result.capture.assembly.excludedIncompleteTemplateCount, 25)
+  assert.equal(result.capture.assembly.excludedIncompleteTemplateCount, 24)
   assert.equal(result.capture.assembly.excludedArchivedTemplateCount, 27)
   assert.equal(result.capture.assembly.eligibleAfterThisBatch, 0)
-  assert.equal(result.capture.templates.reduce((sum, item) => sum + item.tasks.length, 0), 312)
-  assert.equal(result.capture.templates.reduce((sum, item) => sum + item.scheduleItems.length, 0), 47)
-  assert.equal(result.capture.templates.reduce((sum, item) => sum + (item.selections?.length ?? 0), 0), 8)
-  assert.equal(result.capture.templates.reduce((sum, item) => sum + (item.bidPackages?.length ?? 0), 0), 6)
+  assert.equal(result.capture.templates.reduce((sum, item) => sum + item.tasks.length, 0), 328)
+  assert.equal(result.capture.templates.reduce((sum, item) => sum + item.scheduleItems.length, 0), 50)
+  assert.equal(result.capture.templates.reduce((sum, item) => sum + (item.selections?.length ?? 0), 0), 13)
+  assert.equal(result.capture.templates.reduce((sum, item) => sum + (item.bidPackages?.length ?? 0), 0), 7)
   assert.equal(result.capture.templates.reduce(
     (sum, item) => sum + item.scheduleItems.flatMap((row) => row.predecessors).length,
     0
-  ), 38)
-  assert.equal(result.inventory.expectedActiveCount, 9)
+  ), 40)
+  assert.equal(result.inventory.expectedActiveCount, 10)
   assert.equal(result.inventory.excludedArchivedCount, 27)
   assert.deepEqual(
     result.inventory.templates.map((template) => template.sourceTemplateId),
-    ["12859981", "12978371", "12581937", "12594475", "30917204", "12646335", "12650792", "12819873", "12649495"]
+    ["12859981", "12978371", "12581937", "12594475", "30917204", "12646335", "12650792", "12819873", "12649495", "30914491"]
   )
 })
 
@@ -484,58 +484,141 @@ test("preserves Floor System task hierarchy and reviewed schedule graph", async 
   assert.equal(floor.tasks.filter((task) => task.parentSourceItemId === null).length, 9)
   assert.equal(floor.tasks.filter((task) => task.parentSourceItemId !== null).length, 15)
   assert.deepEqual(
-    floor.tasks.filter((task) => task.parentSourceItemId === null).map((task) => ({
-      sourceItemId: task.sourceItemId,
-      title: task.title,
-      sortOrder: task.sortOrder,
-    })),
-    [
-      { sourceItemId: "75707940", title: "Set X Level Ledger Boards", sortOrder: 1 },
-      { sourceItemId: "75707941", title: "Install (Type) Joist Hangers", sortOrder: 2 },
-      { sourceItemId: "75707942", title: "Set (X) Beams", sortOrder: 3 },
-      { sourceItemId: "75707943", title: "Set Stair Support Beams", sortOrder: 4 },
-      { sourceItemId: "75707944", title: "Set (TYPE) Joists", sortOrder: 5 },
-      { sourceItemId: "75707945", title: "Install (TYPE) Beam Hangers", sortOrder: 6 },
-      { sourceItemId: "75707946", title: "Sheet (X) Level Floor System", sortOrder: 7 },
-      { sourceItemId: "75707947", title: "HPS (x) Level Floor Joist QC Inspection", sortOrder: 8 },
-      { sourceItemId: "75707948", title: "HPS (x) level Floor system Framing QC Inspection", sortOrder: 9 },
-    ]
-  )
-  assert.deepEqual(
-    floor.tasks.filter((task) => task.parentSourceItemId === "75707940").map((task) => ({
-      sourceItemId: task.sourceItemId,
-      title: task.title,
-      sortOrder: task.sortOrder,
-    })),
-    [
-      { sourceItemId: "75708102", title: "(Direction) Wall", sortOrder: 1 },
-      { sourceItemId: "75708103", title: "ICFVL - (C)W", sortOrder: 2 },
-    ]
+    floor.tasks.filter((task) => task.parentSourceItemId === null).map((task) => task.sourceItemId),
+    ["75707940", "75707941", "75707942", "75707943", "75707944", "75707945", "75707946", "75707947", "75707948"]
   )
   assert.deepEqual(
     floor.tasks.filter((task) => task.parentSourceItemId === "75707947").map((task) => task.title),
+    ["Joist Spacing Correct", "Joists Level", "Installed Correctly w/ Hangers", "Jobsite Cleanup Satisfactory", "OK to Pay"]
+  )
+  assert.deepEqual(
+    floor.scheduleItems.map((item) => item.sourceItemId),
+    ["141677809", "141680084", "141679645", "141680773"]
+  )
+  assert.deepEqual(
+    floor.scheduleItems.flatMap((item) => item.predecessors).map((dependency) => [
+      dependency.predecessorSourceItemId,
+      dependency.successorSourceItemId,
+      dependency.type,
+      dependency.lagDays,
+    ]),
     [
-      "Joist Spacing Correct",
-      "Joists Level",
-      "Installed Correctly w/ Hangers",
-      "Jobsite Cleanup Satisfactory",
-      "OK to Pay",
+      ["141679645", "141680084", "SS", 0],
+      ["141677809", "141679645", "FS", 0],
+      ["141680084", "141680773", "FS", 0],
+    ]
+  )
+})
+
+test("preserves Tiling checklist, selections, bid specification, and reviewed schedule graph", async () => {
+  const result = assembleBuildertrendTemplateNextBatchContent(await inputs())
+  const tiling = result.capture.templates.find(
+    (template) => template.sourceTemplateId === "30914491"
+  )
+  assert.ok(tiling)
+  assert.equal(tiling.tasks.length, 16)
+  assert.deepEqual(
+    tiling.tasks.filter((task) => task.parentSourceItemId === null).map((task) => ({
+      sourceItemId: task.sourceItemId,
+      title: task.title,
+      sortOrder: task.sortOrder,
+    })),
+    [
+      { sourceItemId: "75810249", title: "HPS (x area) Tile QC Inspection", sortOrder: 1 },
+      { sourceItemId: "75810250", title: "Ceramic Tile Installation Complete", sortOrder: 2 },
+      { sourceItemId: "75810251", title: "Verify Ceramic Tile Lead Times", sortOrder: 3 },
+      { sourceItemId: "75810252", title: "Tile Received and Stored", sortOrder: 4 },
+      { sourceItemId: "75810253", title: "Stage Tile for Installer", sortOrder: 5 },
     ]
   )
   assert.deepEqual(
-    floor.tasks.filter((task) => task.parentSourceItemId === "75707948").map((task) => task.title),
+    tiling.tasks.filter((task) => task.parentSourceItemId === "75810249").map((task) => task.title),
     [
-      "No Squeaking",
-      "No Crowned Floor joists",
-      "Floors Even",
-      "Floors Level",
-      "Jobsite Cleanup Satisfactory",
-      "OK to Pay",
+      "Colors Match",
+      "No Cracks",
+      "No Broken Tiles",
+      "No Scratches",
+      "No Chips",
+      "No Gouges",
+      "No Nicks",
+      "Grouted Properly",
+      "No Cracks in Grout",
+      "No Discoloration in Grout",
+      "No Uncemented Tiles",
     ]
   )
 
   assert.deepEqual(
-    floor.scheduleItems.map((item) => ({
+    tiling.selections.map((selection) => ({
+      sourceSelectionId: selection.sourceSelectionId,
+      title: selection.title,
+      category: selection.category,
+      location: selection.location,
+      choiceCount: selection.choices.length,
+    })),
+    [
+      { sourceSelectionId: "58772646", title: "Bath Surround Add Ons", category: "06 41 00 - Architectural Wood Casework", location: "Unassigned", choiceCount: 5 },
+      { sourceSelectionId: "44740313", title: "Bath Surround Tile Patterns", category: "09 30 00 - Tiling", location: "Master Bath", choiceCount: 5 },
+      { sourceSelectionId: "53868242", title: "Shower Pan Tile", category: "09 30 00 - Tiling", location: "Unassigned", choiceCount: 0 },
+      { sourceSelectionId: "44740441", title: "Shower Surround Tile", category: "09 30 00 - Tiling", location: "Unassigned", choiceCount: 0 },
+      { sourceSelectionId: "53868233", title: "Tile Backsplash at Countertop/Vanity (If Desired)", category: "09 30 00 - Tiling", location: "Unassigned", choiceCount: 0 },
+    ]
+  )
+  assert.deepEqual(
+    tiling.selections[0].choices.map((choice) => [choice.sourceChoiceId, choice.title]),
+    [
+      ["236393277", "Corner Bath/Shower Shelf"],
+      ["236393275", "One Wall Niche (Shelf)"],
+      ["236393273", "Safety/Grab Bar"],
+      ["236393274", "Soap Dish"],
+      ["236393276", "Two Bath Surround Wall Niches (Shelves)"],
+    ]
+  )
+  assert.deepEqual(
+    tiling.selections[1].choices.map((choice) => [choice.sourceChoiceId, choice.title]),
+    [
+      ["170341816", "Brick Layout With No Design Band"],
+      ["170341814", "Diamond Layout With No Design Band"],
+      ["170341815", "Diamond Layout With One Design Band"],
+      ["170341812", "Straight Lay No Design Band"],
+      ["170341813", "Straight Lay With One Design Band"],
+    ]
+  )
+  assert.equal(tiling.selections.flatMap((selection) => selection.choices).every(
+    (choice) => choice.status === "Unreleased" && choice.price === 0 && choice.attachmentCount === 1
+  ), true)
+  assert.equal(tiling.selections[0].choices[0].attachments[0].fileName, "Corner shower shelf.jpg")
+
+  assert.equal(tiling.bidPackages.length, 1)
+  assert.deepEqual(tiling.bidPackages[0], {
+    sourceItemId: "9601783",
+    sourceBidPackageId: "9601783",
+    title: "Tile - 11913 Hillcrest Rd Final Cost Estimate",
+    status: "Draft",
+    allowMultipleApprovedBids: false,
+    deadline: null,
+    time: null,
+    linkToSchedule: false,
+    reminderLeadDays: 2,
+    plansAndSpecs: false,
+    pricingFormat: "Line Items",
+    description: "",
+    internalNotes: "",
+    attachments: [
+      { fileName: "StrucPlans_11913 Hillcrest Road_2024-02-09 stamped.pdf" },
+      { fileName: "RAINEY_CDS_1-29-2024.pdf" },
+    ],
+    lineItems: [{
+      title: "Shower Wrap Installation Labor & Misc Materials",
+      costCode: "09 30 00 - Tiling",
+      costType: "Labor, Subcontractor",
+      quantity: 1,
+      unit: null,
+    }],
+  })
+
+  assert.deepEqual(
+    tiling.scheduleItems.map((item) => ({
       sourceItemId: item.sourceItemId,
       title: item.title,
       startDate: item.startDate,
@@ -544,25 +627,31 @@ test("preserves Floor System task hierarchy and reviewed schedule graph", async 
       displayColor: item.displayColor,
     })),
     [
-      { sourceItemId: "141677809", title: "X Level Floor System Framing", startDate: "2022-04-13", workdays: 6, phase: "UNASSIGNED", displayColor: "#ABBE91" },
-      { sourceItemId: "141680084", title: "(X) Level Floor Sheeting", startDate: "2022-04-21", workdays: 2, phase: "UNASSIGNED", displayColor: "#ABBE91" },
-      { sourceItemId: "141679645", title: "HPS (X) Level Floor Joist QC Inspection", startDate: "2022-04-21", workdays: 1, phase: "UNASSIGNED", displayColor: "#2222DD" },
-      { sourceItemId: "141680773", title: "HPS (X) Level Floor Framing QC Inspection", startDate: "2022-04-25", workdays: 1, phase: "UNASSIGNED", displayColor: "#2222DD" },
+      { sourceItemId: "180219816", title: "Tile Delivery", startDate: "2023-08-22", workdays: 1, phase: "UNASSIGNED", displayColor: "#DDC817" },
+      { sourceItemId: "180219733", title: "Tile", startDate: "2023-08-23", workdays: 5, phase: "UNASSIGNED", displayColor: "#008000" },
+      { sourceItemId: "180219926", title: "HPS Tile QC Inspection", startDate: "2023-08-30", workdays: 1, phase: "UNASSIGNED", displayColor: "#2222DD" },
     ]
   )
   assert.deepEqual(
-    floor.scheduleItems.flatMap((item) => item.predecessors).map((dependency) => ({
+    tiling.scheduleItems.flatMap((item) => item.predecessors).map((dependency) => ({
       predecessorSourceItemId: dependency.predecessorSourceItemId,
       successorSourceItemId: dependency.successorSourceItemId,
       type: dependency.type,
       lagDays: dependency.lagDays,
     })),
     [
-      { predecessorSourceItemId: "141679645", successorSourceItemId: "141680084", type: "SS", lagDays: 0 },
-      { predecessorSourceItemId: "141677809", successorSourceItemId: "141679645", type: "FS", lagDays: 0 },
-      { predecessorSourceItemId: "141680084", successorSourceItemId: "141680773", type: "FS", lagDays: 0 },
+      { predecessorSourceItemId: "180219733", successorSourceItemId: "180219816", type: "SS", lagDays: -1 },
+      { predecessorSourceItemId: "180219733", successorSourceItemId: "180219926", type: "FS", lagDays: 0 },
     ]
   )
+  const tilingExceptions = result.capture.conversionExceptions.filter(
+    (exception) => exception.templateSourceTemplateId === "30914491"
+  )
+  assert.deepEqual(tilingExceptions.map((exception) => exception.field), [
+    "choices.description",
+    "choices.attachments.fileName",
+  ])
+  assert.equal(tilingExceptions.every((exception) => /do not/.test(exception.recoveryPlan)), true)
 })
 
 test("fails stale when a newly complete template is not in the reviewed release", async () => {
@@ -589,8 +678,8 @@ test("fails stale when a newly complete template is not in the reviewed release"
     (template) => template.sourceTemplateId === "12858966"
   )
   assert.ok(piers)
-  reviewed.release.scope.structurallyCompleteTemplatesIncluded = 10
-  reviewed.release.scope.incompleteTemplatesExcluded = 24
+  reviewed.release.scope.structurallyCompleteTemplatesIncluded = 11
+  reviewed.release.scope.incompleteTemplatesExcluded = 23
   reviewed.release.templates.push({
     sourceTemplateId: piers.sourceTemplateId,
     sourceName: piers.sourceName,
@@ -603,11 +692,11 @@ test("fails stale when a newly complete template is not in the reviewed release"
   const result = assembleBuildertrendTemplateNextBatchContent(reviewed)
   assert.deepEqual(
     result.capture.assembly.sourceTemplateIds,
-    ["12859981", "12978371", "12581937", "12594475", "30917204", "12646335", "12650792", "12819873", "12649495", "12858966"]
+    ["12859981", "12978371", "12581937", "12594475", "30917204", "12646335", "12650792", "12819873", "12649495", "30914491", "12858966"]
   )
-  assert.equal(result.capture.assembly.excludedIncompleteTemplateCount, 24)
-  assert.equal(result.capture.templates[9].tasks.length, 16)
-  assert.equal(result.capture.templates[9].scheduleItems.length, 5)
+  assert.equal(result.capture.assembly.excludedIncompleteTemplateCount, 23)
+  assert.equal(result.capture.templates[10].tasks.length, 16)
+  assert.equal(result.capture.templates[10].scheduleItems.length, 5)
 })
 
 test("rejects partial capture, duplicate release scope, and publication requests", async () => {
@@ -656,11 +745,11 @@ test("builds SQL that remains draft-only and includes every released template", 
       "--output", output,
     ])
     assert.deepEqual(JSON.parse(result.stdout), {
-      templateCount: 9,
-      tasks: 312,
-      scheduleItems: 47,
-      selections: 8,
-      bidPackages: 6,
+      templateCount: 10,
+      tasks: 328,
+      scheduleItems: 50,
+      selections: 13,
+      bidPackages: 7,
       excludedArchivedCount: 27,
       draftOnly: true,
       output,
@@ -675,6 +764,7 @@ test("builds SQL that remains draft-only and includes every released template", 
     assert.match(sql, /bt-template-version:12650792:1/)
     assert.match(sql, /bt-template-version:12819873:1/)
     assert.match(sql, /bt-template-version:12649495:1/)
+    assert.match(sql, /bt-template-version:30914491:1/)
     assert.match(sql, /INSERT INTO schedule_template_items/)
     assert.match(sql, /review_status='content_captured', lifecycle_status='draft'/)
     assert.doesNotMatch(sql, /status='published'|lifecycle_status='active'|review_status='verified'/)

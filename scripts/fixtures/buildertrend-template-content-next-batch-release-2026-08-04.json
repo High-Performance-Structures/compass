@@ -1,14 +1,14 @@
 {
   "releaseVersion": 1,
-  "generatedAt": "2026-08-05T01:36:37.000Z",
+  "generatedAt": "2026-08-05T02:07:14.000Z",
   "sourceNextBatchManifest": "scripts/fixtures/buildertrend-template-next-batch-2026-08-04.json",
   "sourceReviewedCapture": "scripts/fixtures/buildertrend-active-template-capture-2026-07-31.json",
   "scope": {
     "activeTemplatesInSource": 40,
     "completedPilotTemplatesExcluded": 6,
     "nonPilotCandidatesAudited": 34,
-    "structurallyCompleteTemplatesIncluded": 9,
-    "incompleteTemplatesExcluded": 25,
+    "structurallyCompleteTemplatesIncluded": 10,
+    "incompleteTemplatesExcluded": 24,
     "archivedTemplatesExcluded": 27,
     "archivedTemplatesIncluded": 0
   },
@@ -135,6 +135,19 @@
         "bidPackages": 0
       },
       "fragmentPath": "scripts/fixtures/buildertrend-template-content-next-batch/fragments/16-12649495.capture.json",
+      "browserCaptureGates": "complete"
+    },
+    {
+      "sourceTemplateId": "30914491",
+      "sourceName": "Int. Finishes - Tiling",
+      "workplanSequence": 18,
+      "moduleCounts": {
+        "tasks": 16,
+        "scheduleItems": 3,
+        "selections": 5,
+        "bidPackages": 1
+      },
+      "fragmentPath": "scripts/fixtures/buildertrend-template-content-next-batch/fragments/18-30914491.capture.json",
       "browserCaptureGates": "complete"
     }
   ],
