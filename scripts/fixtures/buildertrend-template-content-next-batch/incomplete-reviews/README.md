@@ -27,3 +27,16 @@ Its four schedule items and three dependencies remain in the canonical
 reviewed 40-template source capture and are referenced rather than duplicated.
 Architectural Woodwork remains blocked until the nineteenth task and the three
 affected source Cost Type assignments can be recovered without inference.
+
+## Framing - Window (`12650427`)
+
+The authenticated source inventory reports 20 tasks, two selections, one bid
+package, and two schedule items over four days. A temporary copy was created as
+Buildertrend template `45894046`, but module navigation remained scoped to an
+unrelated previously selected template. No task, selection, or bid row from
+that unrelated context was retained.
+
+The canonical reviewed capture preserves the two schedule items and their one
+dependency. Window remains blocked until all three browser modules are
+captured with exact native identities, hierarchy, choices, bid specifications,
+cost codes, Cost Types, and any copy warnings.
