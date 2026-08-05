@@ -133,14 +133,14 @@ test("generates one read-only preflight and postflight statement with exact scop
     assert.equal(assertReadOnlyVerificationSql(build.sql), true)
     assert.equal(build.verificationPart, null)
     assert.equal(build.verificationPartCount, 6)
-    assert.equal(build.templateCount, 13)
-    assert.equal(build.contentItemCount, 454)
-    assert.equal(build.predecessorCount, 48)
-    assert.equal(build.reusableScheduleItemCount, 61)
-    assert.equal(build.reusableDependencyCount, 48)
+    assert.equal(build.templateCount, 14)
+    assert.equal(build.contentItemCount, 471)
+    assert.equal(build.predecessorCount, 49)
+    assert.equal(build.reusableScheduleItemCount, 63)
+    assert.equal(build.reusableDependencyCount, 49)
     assert.deepEqual(
       build.sourceTemplateIds,
-      ["12859981", "12978371", "12581937", "12594475", "30917204", "12646335", "12650792", "12819873", "12649495", "30914491", "12858966", "12649292", "12650557"]
+      ["12859981", "12978371", "12581937", "12594475", "30917204", "12646335", "12650792", "12819873", "12649495", "30914491", "12858966", "12649292", "12650557", "30919251"]
     )
     assert.deepEqual(build.excludedSourceTemplateIds, [])
     assert.match(build.sql, /SELECT 'excluded_template_content'/)

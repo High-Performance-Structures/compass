@@ -40,12 +40,3 @@ The canonical reviewed capture preserves the two schedule items and their one
 dependency. Window remains blocked until all three browser modules are
 captured with exact native identities, hierarchy, choices, bid specifications,
 cost codes, Cost Types, and any copy warnings.
-
-## Framing - Overhead Door Installation (`30919251`)
-
-The browser-quiet capture plan records the reviewed source inventory of 13
-tasks, one selection, one bid package, and two canonical schedule items. It
-does not contain or imply any browser-captured source content. The template
-remains blocked until the task, selection, and bid-package modules are captured
-with exact native identities, hierarchy, metadata, line items, and conversion
-warnings.
