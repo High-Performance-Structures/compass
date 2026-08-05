@@ -1,0 +1,81 @@
+{
+  "sourceTemplateId": "12650484",
+  "sourceName": "Framing - Exterior Man Door Installation",
+  "capturedAt": "2026-08-05T06:20:00.000Z",
+  "captureNotes": [
+    "Captured read-only from the exact authenticated Buildertrend source template Framing - Exterior Man Door Installation.",
+    "All checklist rows were expanded before capture; native Buildertrend row IDs, displayed order, and parent-child relationships were preserved exactly.",
+    "The selection has no predefined choices and retains its external Therma-Tru reference as public instructions.",
+    "The single draft bid package preserves its two native line-item identities, CSI cost codes, Cost Types, quantities, and specifications.",
+    "Buildertrend showed no linked plans, linked specifications, attachments, or copy-conversion warnings for this source template.",
+    "The reviewed source capture remains the sole source for the two schedule rows and one dependency."
+  ],
+  "tasks": [
+    { "sourceItemId": "75709576", "parentSourceItemId": null, "title": "Install (X) Level (Direction) Wall Man Door", "sortOrder": 1 },
+    { "sourceItemId": "75709577", "parentSourceItemId": null, "title": "HPS (X) Level Exterior Man Door QC Inspection", "sortOrder": 2 },
+    { "sourceItemId": "75709671", "parentSourceItemId": "75709577", "title": "All Doors Installed Properly", "sortOrder": 1 },
+    { "sourceItemId": "75709672", "parentSourceItemId": "75709577", "title": "All Screws & Nails Recessed for Caulking", "sortOrder": 2 },
+    { "sourceItemId": "75709673", "parentSourceItemId": "75709577", "title": "All Doors Open/Close Properly", "sortOrder": 3 },
+    { "sourceItemId": "75709674", "parentSourceItemId": "75709577", "title": "All Doors Level", "sortOrder": 4 },
+    { "sourceItemId": "75709675", "parentSourceItemId": "75709577", "title": "All Doors Plumb", "sortOrder": 5 },
+    { "sourceItemId": "75709676", "parentSourceItemId": "75709577", "title": "All Doors Foamed/Insulated Around Edges (If Necessary)", "sortOrder": 6 },
+    { "sourceItemId": "75709677", "parentSourceItemId": "75709577", "title": "No Damage on Any Doors", "sortOrder": 7 },
+    { "sourceItemId": "75709678", "parentSourceItemId": "75709577", "title": "Jobsite Cleanup Satisfactory", "sortOrder": 8 },
+    { "sourceItemId": "75709679", "parentSourceItemId": "75709577", "title": "OK to Pay", "sortOrder": 9 }
+  ],
+  "selections": [
+    {
+      "sourceItemId": "44854674",
+      "sourceSelectionId": "44854674",
+      "title": "Exterior Man Doors",
+      "category": "08 11 00 - Exterior Doors",
+      "location": "Unassigned",
+      "status": "Unreleased",
+      "allowance": 0,
+      "deadline": null,
+      "description": "Please input as a selection the door you would like to use, if you need a place to start, please visit https://www.thermatru.com/ for potential door options.",
+      "internalNotes": "",
+      "requireClientSelection": false,
+      "allowMultipleSelectedChoices": false,
+      "choiceOrdering": "Auto",
+      "choices": []
+    }
+  ],
+  "bidPackages": [
+    {
+      "sourceItemId": "9601770",
+      "sourceBidPackageId": "9601770",
+      "title": "Ext Doors - (Project Address) (Est. Phase)",
+      "status": "Draft",
+      "allowMultipleApprovedBids": false,
+      "deadline": null,
+      "time": null,
+      "reminderLeadDays": 2,
+      "plansAndSpecs": false,
+      "pricingFormat": "Line Items",
+      "description": "Background\nHigh Performance Structures, Inc. dba Open Range Construction, Ltd. (ORC) will be building a (Project Type) located at:\n(Project Address)\nReference Documents\nPlease see the Buildertrend Documents folder titled \"Construction Documents\" for all necessary plans.\nSubmission of Bid\nBids for this project will be processed through Buildertrend, a construction management program. You do not need to become proficient with Buildertrend. You may also simply call or email your point of contact. You may submit your bid into Buildertrend or email it to your point of contact for entry. Should you choose to input your bid into Buildertrend, please also include a PDF version of your bid.\nFor assistance with submitting the bid or receiving bid documents, contact the (Estimator Title):\n(Estimator Name), (719) 900-8850 ext. (Estimator ext.)\n(Estimator Email Address)\nTimeline\nThe work is scheduled to start in (Season), (Year).\nScope of Work\nThe following CSI categories will be required for the construction of the project per the plans and specifications noted on the Plans and Specifications List. We will notify bidders of any changes or additions by sending out updates to said List.\nSchedule\nPlease provide a schedule to complete each of the above items, in calendar days after the issuance of the purchase order and/or notice to proceed.\nContract and Insurance Requirements\nAll trade contractors will be required to complete a trade contractor agreement, provide proof of liability insurance and workman’s compensation insurance as applicable, with required limits prior to the release of any construction payments.",
+      "internalNotes": "",
+      "attachments": [],
+      "lineItems": [
+        {
+          "sourceLineItemId": "16491556",
+          "title": "Sliding Glass Doors",
+          "costCode": "08 32 00 - Sliding Glass Doors",
+          "costType": "Material",
+          "quantity": 1,
+          "unit": null,
+          "description": ""
+        },
+        {
+          "sourceLineItemId": "16491557",
+          "title": "Entry Man Doors",
+          "costCode": "08 00 00 - Openings",
+          "costType": "Material",
+          "quantity": null,
+          "unit": null,
+          "description": "Please Spec, Therma-Tru Door or Equivalent."
+        }
+      ]
+    }
+  ]
+}

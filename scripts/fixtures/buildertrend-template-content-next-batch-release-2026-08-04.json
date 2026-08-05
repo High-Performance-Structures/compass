@@ -7,8 +7,8 @@
     "activeTemplatesInSource": 40,
     "completedPilotTemplatesExcluded": 6,
     "nonPilotCandidatesAudited": 34,
-    "structurallyCompleteTemplatesIncluded": 14,
-    "incompleteTemplatesExcluded": 20,
+    "structurallyCompleteTemplatesIncluded": 15,
+    "incompleteTemplatesExcluded": 19,
     "archivedTemplatesExcluded": 27,
     "archivedTemplatesIncluded": 0
   },
@@ -200,6 +200,19 @@
         "bidPackages": 1
       },
       "fragmentPath": "scripts/fixtures/buildertrend-template-content-next-batch/fragments/23-30919251.capture.json",
+      "browserCaptureGates": "complete"
+    },
+    {
+      "sourceTemplateId": "12650484",
+      "sourceName": "Framing - Exterior Man Door Installation",
+      "workplanSequence": 24,
+      "moduleCounts": {
+        "tasks": 11,
+        "scheduleItems": 2,
+        "selections": 1,
+        "bidPackages": 1
+      },
+      "fragmentPath": "scripts/fixtures/buildertrend-template-content-next-batch/fragments/24-12650484.capture.json",
       "browserCaptureGates": "complete"
     }
   ],
