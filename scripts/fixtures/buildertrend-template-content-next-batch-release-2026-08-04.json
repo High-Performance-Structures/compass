@@ -1,14 +1,14 @@
 {
   "releaseVersion": 1,
-  "generatedAt": "2026-08-05T00:40:00.000Z",
+  "generatedAt": "2026-08-05T01:08:59.000Z",
   "sourceNextBatchManifest": "scripts/fixtures/buildertrend-template-next-batch-2026-08-04.json",
   "sourceReviewedCapture": "scripts/fixtures/buildertrend-active-template-capture-2026-07-31.json",
   "scope": {
     "activeTemplatesInSource": 40,
     "completedPilotTemplatesExcluded": 6,
     "nonPilotCandidatesAudited": 34,
-    "structurallyCompleteTemplatesIncluded": 7,
-    "incompleteTemplatesExcluded": 27,
+    "structurallyCompleteTemplatesIncluded": 8,
+    "incompleteTemplatesExcluded": 26,
     "archivedTemplatesExcluded": 27,
     "archivedTemplatesIncluded": 0
   },
@@ -109,6 +109,19 @@
         "bidPackages": 0
       },
       "fragmentPath": "scripts/fixtures/buildertrend-template-content-next-batch/fragments/13-12650792.capture.json",
+      "browserCaptureGates": "complete"
+    },
+    {
+      "sourceTemplateId": "12819873",
+      "sourceName": "Framing - Fascia & Soffit Installation",
+      "workplanSequence": 15,
+      "moduleCounts": {
+        "tasks": 25,
+        "scheduleItems": 3,
+        "selections": 0,
+        "bidPackages": 0
+      },
+      "fragmentPath": "scripts/fixtures/buildertrend-template-content-next-batch/fragments/15-12819873.capture.json",
       "browserCaptureGates": "complete"
     }
   ],

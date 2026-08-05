@@ -26,31 +26,31 @@ async function inputs() {
   return { release, nextBatchManifest, reviewedCapture, documents }
 }
 
-test("assembles the seven gate-complete priority templates with reviewed schedules", async () => {
+test("assembles the eight gate-complete templates with reviewed schedules", async () => {
   const result = assembleBuildertrendTemplateNextBatchContent(await inputs())
 
   assert.deepEqual(
     result.capture.assembly.sourceTemplateIds,
-    ["12859981", "12978371", "12581937", "12594475", "30917204", "12646335", "12650792"]
+    ["12859981", "12978371", "12581937", "12594475", "30917204", "12646335", "12650792", "12819873"]
   )
   assert.equal(result.capture.assembly.draftOnly, true)
   assert.equal(result.capture.assembly.publish, false)
-  assert.equal(result.capture.assembly.excludedIncompleteTemplateCount, 27)
+  assert.equal(result.capture.assembly.excludedIncompleteTemplateCount, 26)
   assert.equal(result.capture.assembly.excludedArchivedTemplateCount, 27)
   assert.equal(result.capture.assembly.eligibleAfterThisBatch, 0)
-  assert.equal(result.capture.templates.reduce((sum, item) => sum + item.tasks.length, 0), 263)
-  assert.equal(result.capture.templates.reduce((sum, item) => sum + item.scheduleItems.length, 0), 40)
+  assert.equal(result.capture.templates.reduce((sum, item) => sum + item.tasks.length, 0), 288)
+  assert.equal(result.capture.templates.reduce((sum, item) => sum + item.scheduleItems.length, 0), 43)
   assert.equal(result.capture.templates.reduce((sum, item) => sum + (item.selections?.length ?? 0), 0), 8)
   assert.equal(result.capture.templates.reduce((sum, item) => sum + (item.bidPackages?.length ?? 0), 0), 6)
   assert.equal(result.capture.templates.reduce(
     (sum, item) => sum + item.scheduleItems.flatMap((row) => row.predecessors).length,
     0
-  ), 33)
-  assert.equal(result.inventory.expectedActiveCount, 7)
+  ), 35)
+  assert.equal(result.inventory.expectedActiveCount, 8)
   assert.equal(result.inventory.excludedArchivedCount, 27)
   assert.deepEqual(
     result.inventory.templates.map((template) => template.sourceTemplateId),
-    ["12859981", "12978371", "12581937", "12594475", "30917204", "12646335", "12650792"]
+    ["12859981", "12978371", "12581937", "12594475", "30917204", "12646335", "12650792", "12819873"]
   )
 })
 
@@ -390,17 +390,101 @@ test("preserves Roof Trusses checklist hierarchy and reviewed schedule graph", a
   )
 })
 
+test("preserves Fascia and Soffit checklist hierarchy and reviewed schedule graph", async () => {
+  const result = assembleBuildertrendTemplateNextBatchContent(await inputs())
+  const fascia = result.capture.templates.find(
+    (template) => template.sourceTemplateId === "12819873"
+  )
+  assert.ok(fascia)
+  assert.equal(fascia.tasks.length, 25)
+  assert.equal(fascia.tasks.filter((task) => task.parentSourceItemId === null).length, 7)
+  assert.equal(fascia.tasks.filter((task) => task.parentSourceItemId !== null).length, 18)
+  assert.deepEqual(
+    fascia.tasks.filter((task) => task.parentSourceItemId === null).map((task) => ({
+      sourceItemId: task.sourceItemId,
+      title: task.title,
+      sortOrder: task.sortOrder,
+    })),
+    [
+      { sourceItemId: "75714140", title: "Install (X Direction) Wall Soffit Ribbon", sortOrder: 1 },
+      { sourceItemId: "75714141", title: "Install (X Direction) Wall Soffit", sortOrder: 2 },
+      { sourceItemId: "75714142", title: "Install (X Direction) Fascia", sortOrder: 3 },
+      { sourceItemId: "75714143", title: "Paint (X Direction) Wall Soffit", sortOrder: 4 },
+      { sourceItemId: "75714145", title: "Paint (X Direction) Wall Fascia", sortOrder: 5 },
+      { sourceItemId: "75714147", title: "HPS Soffit & Fascia QC Inspection", sortOrder: 6 },
+      { sourceItemId: "75714149", title: "HPS Soffit & Fascia QC Inpsection", sortOrder: 7 },
+    ]
+  )
+  assert.deepEqual(
+    fascia.tasks.filter((task) => task.parentSourceItemId === "75714147").map((task) => task.title),
+    [
+      "All Installed Properly",
+      "No Large Gaps",
+      "No Cracks",
+      "Caulked",
+      "Vented (as necessary)",
+      "Nail/Screws Recessed & Caulked",
+      "Ready to Paint",
+      "Jobsite Cleanup Satisfactory",
+      "OK to Pay",
+    ]
+  )
+  assert.deepEqual(
+    fascia.tasks.filter((task) => task.parentSourceItemId === "75714149").map((task) => task.title),
+    [
+      "All Soffits & Fascia Boards Installed Properly",
+      'No Large Gaps (1/8" or greater)',
+      "No cracks",
+      "No Sagging",
+      "Caulked",
+      "Vented (as necessary)",
+      "Nail/Screws Recessed and Caulked",
+      "Jobsite Cleanup Satisfactory",
+      "OK to Pay",
+    ]
+  )
+
+  assert.equal(fascia.scheduleItems.length, 3)
+  assert.deepEqual(
+    fascia.scheduleItems.map((item) => ({
+      sourceItemId: item.sourceItemId,
+      title: item.title,
+      startDate: item.startDate,
+      workdays: item.workdays,
+      phase: item.phase,
+      displayColor: item.displayColor,
+    })),
+    [
+      { sourceItemId: "143416707", title: "Install Fascia & Soffit", startDate: "2022-05-04", workdays: 2, phase: "Rough: Frame", displayColor: "#ABBE91" },
+      { sourceItemId: "143417168", title: "HPS Fascia & Soffit QC Inspection", startDate: "2022-05-06", workdays: 1, phase: "Rough: Frame", displayColor: "#2222DD" },
+      { sourceItemId: "143416713", title: "Paint Fascia & Soffit", startDate: "2022-05-06", workdays: 1, phase: "Exterior Finish", displayColor: "#6C3815" },
+    ]
+  )
+  assert.deepEqual(
+    fascia.scheduleItems.flatMap((item) => item.predecessors).map((dependency) => ({
+      predecessorSourceItemId: dependency.predecessorSourceItemId,
+      successorSourceItemId: dependency.successorSourceItemId,
+      type: dependency.type,
+      lagDays: dependency.lagDays,
+    })),
+    [
+      { predecessorSourceItemId: "143416707", successorSourceItemId: "143417168", type: "FS", lagDays: 0 },
+      { predecessorSourceItemId: "143416707", successorSourceItemId: "143416713", type: "FS", lagDays: 0 },
+    ]
+  )
+})
+
 test("fails stale when a newly complete template is not in the reviewed release", async () => {
   const stale = await inputs()
   stale.documents.push({
-    source: "15-12819873.capture.json",
+    source: "16-12649495.capture.json",
     document: {
-      sourceTemplateId: "12819873",
-      sourceName: "Framing - Fascia & Soffit Installation",
-      tasks: Array.from({ length: 25 }, (_, index) => ({
-        sourceItemId: `fascia-task-${index + 1}`,
+      sourceTemplateId: "12649495",
+      sourceName: "Framing - Floor System Assembly",
+      tasks: Array.from({ length: 24 }, (_, index) => ({
+        sourceItemId: `floor-task-${index + 1}`,
         parentSourceItemId: null,
-        title: `Fascia task ${index + 1}`,
+        title: `Floor task ${index + 1}`,
       })),
     },
   })
@@ -410,29 +494,29 @@ test("fails stale when a newly complete template is not in the reviewed release"
   )
 
   const reviewed = structuredClone(stale)
-  const fascia = reviewed.nextBatchManifest.templates.find(
-    (template) => template.sourceTemplateId === "12819873"
+  const floor = reviewed.nextBatchManifest.templates.find(
+    (template) => template.sourceTemplateId === "12649495"
   )
-  assert.ok(fascia)
-  reviewed.release.scope.structurallyCompleteTemplatesIncluded = 8
-  reviewed.release.scope.incompleteTemplatesExcluded = 26
+  assert.ok(floor)
+  reviewed.release.scope.structurallyCompleteTemplatesIncluded = 9
+  reviewed.release.scope.incompleteTemplatesExcluded = 25
   reviewed.release.templates.push({
-    sourceTemplateId: fascia.sourceTemplateId,
-    sourceName: fascia.sourceName,
-    workplanSequence: fascia.workplanSequence,
-    moduleCounts: fascia.moduleCounts,
-    fragmentPath: fascia.fragmentPath,
+    sourceTemplateId: floor.sourceTemplateId,
+    sourceName: floor.sourceName,
+    workplanSequence: floor.workplanSequence,
+    moduleCounts: floor.moduleCounts,
+    fragmentPath: floor.fragmentPath,
     browserCaptureGates: "complete",
   })
 
   const result = assembleBuildertrendTemplateNextBatchContent(reviewed)
   assert.deepEqual(
     result.capture.assembly.sourceTemplateIds,
-    ["12859981", "12978371", "12581937", "12594475", "30917204", "12646335", "12650792", "12819873"]
+    ["12859981", "12978371", "12581937", "12594475", "30917204", "12646335", "12650792", "12819873", "12649495"]
   )
-  assert.equal(result.capture.assembly.excludedIncompleteTemplateCount, 26)
-  assert.equal(result.capture.templates[7].tasks.length, 25)
-  assert.equal(result.capture.templates[7].scheduleItems.length, 3)
+  assert.equal(result.capture.assembly.excludedIncompleteTemplateCount, 25)
+  assert.equal(result.capture.templates[8].tasks.length, 24)
+  assert.equal(result.capture.templates[8].scheduleItems.length, 4)
 })
 
 test("rejects partial capture, duplicate release scope, and publication requests", async () => {
@@ -481,9 +565,9 @@ test("builds SQL that remains draft-only and includes every released template", 
       "--output", output,
     ])
     assert.deepEqual(JSON.parse(result.stdout), {
-      templateCount: 7,
-      tasks: 263,
-      scheduleItems: 40,
+      templateCount: 8,
+      tasks: 288,
+      scheduleItems: 43,
       selections: 8,
       bidPackages: 6,
       excludedArchivedCount: 27,
@@ -498,6 +582,7 @@ test("builds SQL that remains draft-only and includes every released template", 
     assert.match(sql, /bt-template-version:30917204:1/)
     assert.match(sql, /bt-template-version:12646335:1/)
     assert.match(sql, /bt-template-version:12650792:1/)
+    assert.match(sql, /bt-template-version:12819873:1/)
     assert.match(sql, /INSERT INTO schedule_template_items/)
     assert.match(sql, /review_status='content_captured', lifecycle_status='draft'/)
     assert.doesNotMatch(sql, /status='published'|lifecycle_status='active'|review_status='verified'/)
