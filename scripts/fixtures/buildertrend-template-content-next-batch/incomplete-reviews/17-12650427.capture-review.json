@@ -8,12 +8,30 @@
     "copiedTargetTemplateId": "45894046",
     "copiedTargetName": "BT Framing - Window",
     "capturedAt": "2026-08-05T01:52:29Z",
+    "lastRetryAt": "2026-08-05T10:18:00Z",
     "captureNotes": [
       "The authenticated Buildertrend My Templates row for source 12650427 reported 20 tasks, one bid package, a four-day schedule with two schedule items, and two selections.",
       "The authorized temporary capture copy BT Framing - Window was created successfully as template 45894046; the source template was not edited.",
       "Buildertrend module navigation remained scoped to the previously selected Floor System template 12649495, so no task, selection, or bid row from that unrelated context was retained.",
-      "No copy-warning dialog was observed before the capture stopped. Because the copied bid package was not inspected, this does not establish that the source copied without conversion loss."
+      "No copy-warning dialog was observed before the capture stopped. Because the copied bid package was not inspected, this does not establish that the source copied without conversion loss.",
+      "A bounded authenticated retry selected the exact original Framing - Window row through the visible My Templates page and independently reconfirmed source template 12650427 and its inventory counts.",
+      "The retry opened only the source Template Information route-modal. Closing it returned to My Templates while the active job-picker context remained Framing - Quote Packages, so no task, selection, or bid module was opened and no unrelated row was retained."
     ],
+    "sourceSettingsCheckpoint": {
+      "templateName": "Framing - Window",
+      "workDays": [
+        "Monday",
+        "Tuesday",
+        "Wednesday",
+        "Thursday",
+        "Friday"
+      ],
+      "includeAllowances": true,
+      "defaultTaxRate": "No Tax",
+      "internalNotesVisible": false,
+      "subVendorNotesVisible": false,
+      "note": "These values were read from the authenticated source Template Information dialog; they do not satisfy any content-module gate."
+    },
     "sourceInventory": {
       "tasks": 20,
       "scheduleDuration": "4 Days",

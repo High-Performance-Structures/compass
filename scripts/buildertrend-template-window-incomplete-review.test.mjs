@@ -37,6 +37,19 @@ test("preserves the exact Window checkpoint as a fail-closed audit", async () =>
     selections: 2,
     bidPackages: 1,
   })
+  assert.deepEqual(review.template.sourceSettingsCheckpoint, {
+    templateName: "Framing - Window",
+    workDays: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"],
+    includeAllowances: true,
+    defaultTaxRate: "No Tax",
+    internalNotesVisible: false,
+    subVendorNotesVisible: false,
+    note: "These values were read from the authenticated source Template Information dialog; they do not satisfy any content-module gate.",
+  })
+  assert.equal(
+    review.template.captureNotes.some((note) => note.includes("Framing - Quote Packages")),
+    true
+  )
   assert.deepEqual(
     review.template.browserModuleGates.map((gate) => ({
       module: gate.module,

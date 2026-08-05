@@ -41,6 +41,12 @@ dependency. Window remains blocked until all three browser modules are
 captured with exact native identities, hierarchy, choices, bid specifications,
 cost codes, Cost Types, and any copy warnings.
 
+A second authenticated retry reconfirmed the original source row and opened its
+Template Information dialog. It preserved Monday-through-Friday workdays,
+Include Allowances enabled, and No Tax as source settings. Closing that dialog
+left the job picker scoped to Framing - Quote Packages, so the retry again
+stopped without retaining any unrelated task, selection, or bid content.
+
 ## Ext. Finishes - Manuf. Gutters (`12978732`)
 
 The authenticated source inventory reports 17 tasks, two selections, one bid
