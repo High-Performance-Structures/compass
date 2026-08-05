@@ -1,0 +1,33 @@
+{
+  "sourceTemplateId": "12649292",
+  "sourceName": "Framing - Exterior Wall Assembly",
+  "capturedAt": "2026-08-05T05:05:00Z",
+  "captureNotes": [
+    "Captured directly from the authenticated Buildertrend source template All Tasks grid after selecting the exact template through the visible My Templates interface.",
+    "The template heading, selected-template context, and source template ID 12649292 were verified before retaining evidence.",
+    "Both checklist groups were expanded before capture.",
+    "All 16 Buildertrend task row IDs, displayed ordering, and parent-child checklist relationships were captured exactly.",
+    "The reviewed template inventory reports zero selections and zero bid packages.",
+    "The reviewed source capture remains the sole source for the two schedule rows and one dependency."
+  ],
+  "tasks": [
+    { "sourceItemId": "75707377", "parentSourceItemId": null, "title": "Layout X Level Exterior Wood Framed Walls", "sortOrder": 1 },
+    { "sourceItemId": "75707378", "parentSourceItemId": null, "title": "Build X Room Exterior Framed Walls", "sortOrder": 2 },
+    { "sourceItemId": "75707379", "parentSourceItemId": null, "title": "Set X Room Exterior Framed Walls", "sortOrder": 3 },
+    { "sourceItemId": "75707542", "parentSourceItemId": "75707379", "title": "Glue", "sortOrder": 1 },
+    { "sourceItemId": "75707553", "parentSourceItemId": "75707379", "title": "DO NOT GLUE AT DOOR OPENINGS", "sortOrder": 2 },
+    { "sourceItemId": "75707555", "parentSourceItemId": "75707379", "title": "Set Exterior Walls", "sortOrder": 3 },
+    { "sourceItemId": "75707380", "parentSourceItemId": null, "title": "HPS (X Room) Exterior Wall Framed Wall", "sortOrder": 4 },
+    { "sourceItemId": "75707557", "parentSourceItemId": "75707380", "title": "Structural Headers Correct", "sortOrder": 1 },
+    { "sourceItemId": "75707559", "parentSourceItemId": "75707380", "title": "Flitch Plate Correct", "sortOrder": 2 },
+    { "sourceItemId": "75707561", "parentSourceItemId": "75707380", "title": "Jacks or Liners Correct", "sortOrder": 3 },
+    { "sourceItemId": "75707563", "parentSourceItemId": "75707380", "title": "Exterior Sheathing Correct", "sortOrder": 4 },
+    { "sourceItemId": "75707566", "parentSourceItemId": "75707380", "title": "Walls Plumb", "sortOrder": 5 },
+    { "sourceItemId": "75707567", "parentSourceItemId": "75707380", "title": "Stud Spacing Correct", "sortOrder": 6 },
+    { "sourceItemId": "75707568", "parentSourceItemId": "75707380", "title": "Plates Correct", "sortOrder": 7 },
+    { "sourceItemId": "75707569", "parentSourceItemId": "75707380", "title": "Jobsite Cleanup Satisfactory", "sortOrder": 8 },
+    { "sourceItemId": "75707570", "parentSourceItemId": "75707380", "title": "OK to Pay", "sortOrder": 9 }
+  ],
+  "selections": [],
+  "bidPackages": []
+}

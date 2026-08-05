@@ -26,31 +26,31 @@ async function inputs() {
   return { release, nextBatchManifest, reviewedCapture, documents }
 }
 
-test("assembles the eleven gate-complete templates with reviewed schedules", async () => {
+test("assembles the twelve gate-complete templates with reviewed schedules", async () => {
   const result = assembleBuildertrendTemplateNextBatchContent(await inputs())
 
   assert.deepEqual(
     result.capture.assembly.sourceTemplateIds,
-    ["12859981", "12978371", "12581937", "12594475", "30917204", "12646335", "12650792", "12819873", "12649495", "30914491", "12858966"]
+    ["12859981", "12978371", "12581937", "12594475", "30917204", "12646335", "12650792", "12819873", "12649495", "30914491", "12858966", "12649292"]
   )
   assert.equal(result.capture.assembly.draftOnly, true)
   assert.equal(result.capture.assembly.publish, false)
-  assert.equal(result.capture.assembly.excludedIncompleteTemplateCount, 23)
+  assert.equal(result.capture.assembly.excludedIncompleteTemplateCount, 22)
   assert.equal(result.capture.assembly.excludedArchivedTemplateCount, 27)
   assert.equal(result.capture.assembly.eligibleAfterThisBatch, 0)
-  assert.equal(result.capture.templates.reduce((sum, item) => sum + item.tasks.length, 0), 344)
-  assert.equal(result.capture.templates.reduce((sum, item) => sum + item.scheduleItems.length, 0), 55)
+  assert.equal(result.capture.templates.reduce((sum, item) => sum + item.tasks.length, 0), 360)
+  assert.equal(result.capture.templates.reduce((sum, item) => sum + item.scheduleItems.length, 0), 57)
   assert.equal(result.capture.templates.reduce((sum, item) => sum + (item.selections?.length ?? 0), 0), 13)
   assert.equal(result.capture.templates.reduce((sum, item) => sum + (item.bidPackages?.length ?? 0), 0), 7)
   assert.equal(result.capture.templates.reduce(
     (sum, item) => sum + item.scheduleItems.flatMap((row) => row.predecessors).length,
     0
-  ), 44)
-  assert.equal(result.inventory.expectedActiveCount, 11)
+  ), 45)
+  assert.equal(result.inventory.expectedActiveCount, 12)
   assert.equal(result.inventory.excludedArchivedCount, 27)
   assert.deepEqual(
     result.inventory.templates.map((template) => template.sourceTemplateId),
-    ["12859981", "12978371", "12581937", "12594475", "30917204", "12646335", "12650792", "12819873", "12649495", "30914491", "12858966"]
+    ["12859981", "12978371", "12581937", "12594475", "30917204", "12646335", "12650792", "12819873", "12649495", "30914491", "12858966", "12649292"]
   )
 })
 
@@ -719,17 +719,90 @@ test("preserves exact Piers task identities, hierarchy, schedule, and dependenci
   )
 })
 
+test("preserves Exterior Wall task hierarchy and reviewed schedule graph", async () => {
+  const result = assembleBuildertrendTemplateNextBatchContent(await inputs())
+  const exteriorWall = result.capture.templates.find(
+    (template) => template.sourceTemplateId === "12649292"
+  )
+  assert.ok(exteriorWall)
+  assert.equal(exteriorWall.tasks.length, 16)
+  assert.deepEqual(
+    exteriorWall.tasks.filter((task) => task.parentSourceItemId === null).map((task) => ({
+      sourceItemId: task.sourceItemId,
+      title: task.title,
+      sortOrder: task.sortOrder,
+    })),
+    [
+      { sourceItemId: "75707377", title: "Layout X Level Exterior Wood Framed Walls", sortOrder: 1 },
+      { sourceItemId: "75707378", title: "Build X Room Exterior Framed Walls", sortOrder: 2 },
+      { sourceItemId: "75707379", title: "Set X Room Exterior Framed Walls", sortOrder: 3 },
+      { sourceItemId: "75707380", title: "HPS (X Room) Exterior Wall Framed Wall", sortOrder: 4 },
+    ]
+  )
+  assert.deepEqual(
+    exteriorWall.tasks.filter((task) => task.parentSourceItemId === "75707379").map((task) => ({
+      sourceItemId: task.sourceItemId,
+      title: task.title,
+      sortOrder: task.sortOrder,
+    })),
+    [
+      { sourceItemId: "75707542", title: "Glue", sortOrder: 1 },
+      { sourceItemId: "75707553", title: "DO NOT GLUE AT DOOR OPENINGS", sortOrder: 2 },
+      { sourceItemId: "75707555", title: "Set Exterior Walls", sortOrder: 3 },
+    ]
+  )
+  assert.deepEqual(
+    exteriorWall.tasks.filter((task) => task.parentSourceItemId === "75707380").map((task) => task.title),
+    [
+      "Structural Headers Correct",
+      "Flitch Plate Correct",
+      "Jacks or Liners Correct",
+      "Exterior Sheathing Correct",
+      "Walls Plumb",
+      "Stud Spacing Correct",
+      "Plates Correct",
+      "Jobsite Cleanup Satisfactory",
+      "OK to Pay",
+    ]
+  )
+  assert.deepEqual(
+    exteriorWall.scheduleItems.map((item) => ({
+      sourceItemId: item.sourceItemId,
+      title: item.title,
+      startDate: item.startDate,
+      workdays: item.workdays,
+      phase: item.phase,
+      displayColor: item.displayColor,
+    })),
+    [
+      { sourceItemId: "141675409", title: "X Level Exterior Framed Walls", startDate: "2022-04-13", workdays: 5, phase: "UNASSIGNED", displayColor: "#ABBE91" },
+      { sourceItemId: "141676547", title: "HPS X Room Exterior Framed Wall QC Inspection", startDate: "2022-04-20", workdays: 1, phase: "UNASSIGNED", displayColor: "#2222DD" },
+    ]
+  )
+  assert.deepEqual(
+    exteriorWall.scheduleItems.flatMap((item) => item.predecessors).map((dependency) => ({
+      predecessorSourceItemId: dependency.predecessorSourceItemId,
+      successorSourceItemId: dependency.successorSourceItemId,
+      type: dependency.type,
+      lagDays: dependency.lagDays,
+    })),
+    [
+      { predecessorSourceItemId: "141675409", successorSourceItemId: "141676547", type: "FS", lagDays: 0 },
+    ]
+  )
+})
+
 test("fails stale when a newly complete template is not in the reviewed release", async () => {
   const stale = await inputs()
   stale.documents.push({
-    source: "21-12649292.capture.json",
+    source: "26-12650713.capture.json",
     document: {
-      sourceTemplateId: "12649292",
-      sourceName: "Framing - Exterior Wall Assembly",
-      tasks: Array.from({ length: 16 }, (_, index) => ({
-        sourceItemId: `exterior-wall-task-${index + 1}`,
+      sourceTemplateId: "12650713",
+      sourceName: "Framing - Stair Installation",
+      tasks: Array.from({ length: 10 }, (_, index) => ({
+        sourceItemId: `stair-task-${index + 1}`,
         parentSourceItemId: null,
-        title: `Exterior wall task ${index + 1}`,
+        title: `Stair task ${index + 1}`,
       })),
     },
   })
@@ -739,29 +812,33 @@ test("fails stale when a newly complete template is not in the reviewed release"
   )
 
   const reviewed = structuredClone(stale)
-  const exteriorWall = reviewed.nextBatchManifest.templates.find(
-    (template) => template.sourceTemplateId === "12649292"
+  const stair = reviewed.nextBatchManifest.templates.find(
+    (template) => template.sourceTemplateId === "12650713"
   )
-  assert.ok(exteriorWall)
-  reviewed.release.scope.structurallyCompleteTemplatesIncluded = 12
-  reviewed.release.scope.incompleteTemplatesExcluded = 22
+  assert.ok(stair)
+  reviewed.release.scope.structurallyCompleteTemplatesIncluded = 13
+  reviewed.release.scope.incompleteTemplatesExcluded = 21
   reviewed.release.templates.push({
-    sourceTemplateId: exteriorWall.sourceTemplateId,
-    sourceName: exteriorWall.sourceName,
-    workplanSequence: exteriorWall.workplanSequence,
-    moduleCounts: exteriorWall.moduleCounts,
-    fragmentPath: exteriorWall.fragmentPath,
+    sourceTemplateId: stair.sourceTemplateId,
+    sourceName: stair.sourceName,
+    workplanSequence: stair.workplanSequence,
+    moduleCounts: stair.moduleCounts,
+    fragmentPath: stair.fragmentPath,
     browserCaptureGates: "complete",
   })
 
   const result = assembleBuildertrendTemplateNextBatchContent(reviewed)
   assert.deepEqual(
     result.capture.assembly.sourceTemplateIds,
-    ["12859981", "12978371", "12581937", "12594475", "30917204", "12646335", "12650792", "12819873", "12649495", "30914491", "12858966", "12649292"]
+    ["12859981", "12978371", "12581937", "12594475", "30917204", "12646335", "12650792", "12819873", "12649495", "30914491", "12858966", "12649292", "12650713"]
   )
-  assert.equal(result.capture.assembly.excludedIncompleteTemplateCount, 22)
-  assert.equal(result.capture.templates[11].tasks.length, 16)
-  assert.equal(result.capture.templates[11].scheduleItems.length, 2)
+  assert.equal(result.capture.assembly.excludedIncompleteTemplateCount, 21)
+  const releasedStair = result.capture.templates.find(
+    (template) => template.sourceTemplateId === "12650713"
+  )
+  assert.ok(releasedStair)
+  assert.equal(releasedStair.tasks.length, 10)
+  assert.equal(releasedStair.scheduleItems.length, 3)
 })
 
 test("rejects partial capture, duplicate release scope, and publication requests", async () => {
@@ -810,9 +887,9 @@ test("builds SQL that remains draft-only and includes every released template", 
       "--output", output,
     ])
     assert.deepEqual(JSON.parse(result.stdout), {
-      templateCount: 11,
-      tasks: 344,
-      scheduleItems: 55,
+      templateCount: 12,
+      tasks: 360,
+      scheduleItems: 57,
       selections: 13,
       bidPackages: 7,
       excludedArchivedCount: 27,
@@ -831,6 +908,7 @@ test("builds SQL that remains draft-only and includes every released template", 
     assert.match(sql, /bt-template-version:12649495:1/)
     assert.match(sql, /bt-template-version:30914491:1/)
     assert.match(sql, /bt-template-version:12858966:1/)
+    assert.match(sql, /bt-template-version:12649292:1/)
     assert.match(sql, /INSERT INTO schedule_template_items/)
     assert.match(sql, /review_status='content_captured', lifecycle_status='draft'/)
     assert.doesNotMatch(sql, /status='published'|lifecycle_status='active'|review_status='verified'/)
