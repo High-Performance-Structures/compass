@@ -123,3 +123,14 @@ specifications, settings, linked-plan/spec state, and empty attachments.
 MEP Quotes remains blocked until HVAC and Plumbing are captured to the same
 standard. Their exact package identities are preserved in the audit, but no
 detail values may be inferred from Electrical or related MEP templates.
+
+## Ext. Finishes - Stone (`37180847`)
+
+The canonical reviewed inventory reports two selections and no task, schedule,
+or bid-package content. Browser capture has not started, so this checkpoint is
+pending and contains no copied or inferred selection data.
+
+Stone remains blocked until both selections are captured with exact native
+identities, hierarchy, choices, choice ordering, descriptions, prices,
+attachment evidence, and any copy warnings. The pending checkpoint stays in
+this audit-only directory and cannot enter release discovery.

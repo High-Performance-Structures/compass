@@ -1,0 +1,41 @@
+{
+  "reviewStatus": "pending",
+  "releaseEligible": false,
+  "template": {
+    "sourceTemplateId": "37180847",
+    "sourceName": "Ext. Finishes - Stone",
+    "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/37180847",
+    "captureNotes": [
+      "The canonical reviewed Buildertrend inventory reports two selections and no task, schedule, or bid-package content for source template 37180847.",
+      "Browser capture has not started. No Buildertrend view, temporary copy, or unrelated active template context was used to populate this checkpoint.",
+      "No selection identity, hierarchy, choice, description, price, attachment, or conversion value has been inferred."
+    ],
+    "sourceInventory": {
+      "tasks": 0,
+      "scheduleDuration": "0 Days",
+      "scheduleItems": 0,
+      "selections": 2,
+      "bidPackages": 0
+    },
+    "browserModuleGates": [
+      {
+        "module": "selections",
+        "expectedCount": 2,
+        "capturedCount": 0,
+        "status": "pending",
+        "releaseBlocker": "Recover both selection native IDs, metadata, hierarchy, choices, choice ordering, descriptions, prices, attachment evidence, and any copy warnings from a supported Buildertrend view or export."
+      }
+    ],
+    "reviewedInventoryReference": {
+      "path": "scripts/fixtures/buildertrend-active-template-capture-2026-07-31.json",
+      "sourceTemplateId": "37180847",
+      "scheduleItemCount": 0,
+      "dependencyCount": 0,
+      "note": "The reviewed source inventory is canonical; this pending browser checkpoint does not synthesize schedule content."
+    },
+    "tasks": [],
+    "selections": [],
+    "bidPackages": []
+  },
+  "conversionExceptions": []
+}
