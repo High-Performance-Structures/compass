@@ -28,8 +28,17 @@ test("preserves the Perimeter Drain capture gate without inventing browser evide
   assert.equal(review.reviewStatus, "incomplete")
   assert.equal(review.releaseEligible, false)
   assert.equal(review.template.sourceTemplateId, perimeterDrainTemplateId)
+  assert.equal(review.template.capturedAt, "2026-08-05T07:45:40Z")
   assert.equal("copiedTargetTemplateId" in review.template, false)
   assert.equal("copiedTargetName" in review.template, false)
+  assert.equal(
+    review.template.captureNotes.some((note) => note.includes("previously selected Int. Finishes - Stain & Seal Concrete Floors template 12979213")),
+    true
+  )
+  assert.equal(
+    review.template.captureNotes.some((note) => note.includes("No task identity, hierarchy, title, description, assignment, or attachment value was inferred")),
+    true
+  )
   assert.deepEqual(review.template.sourceInventory, {
     tasks: 4,
     scheduleDuration: "3 Days",

@@ -71,12 +71,14 @@ future browser fragment.
 
 ## Earthwork - Perimeter Drain (`13001090`)
 
-The reviewed source inventory preserves four tasks and three schedule items
-over three days. This prepared checkpoint does not claim a Buildertrend browser
-capture: the task gate remains empty and release-ineligible until the exact
-native task identities, displayed order, and parent-child relationships are
-recovered from an authenticated supported source.
+The authenticated source row reports four tasks and three schedule items over
+three days. Its visible source link resolved to the exact template URL, but the
+active Buildertrend context remained pinned to the previously selected Stain &
+Seal Concrete Floors template. The template-picker search returned no
+Perimeter Drain result, so no unrelated task content was retained and the task
+gate remains empty.
 
 The canonical reviewed capture preserves the three schedule items and three
-dependencies. Those schedule rows are referenced rather than duplicated in a
-future browser fragment.
+dependencies. Perimeter Drain remains release-ineligible until all four task
+rows are captured with their native identities, displayed ordering, and exact
+parent-child hierarchy.

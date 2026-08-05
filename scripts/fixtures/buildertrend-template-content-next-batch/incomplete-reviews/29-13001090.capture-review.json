@@ -5,10 +5,11 @@
     "sourceTemplateId": "13001090",
     "sourceName": "Earthwork - Perimeter Drain",
     "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/13001090",
-    "preparedAt": "2026-08-04T00:00:00Z",
+    "capturedAt": "2026-08-05T07:45:40Z",
     "captureNotes": [
-      "The reviewed active-template inventory records four tasks and three schedule items over three days for Buildertrend source 13001090.",
-      "This checkpoint was prepared without opening Buildertrend. It preserves repository-reviewed inventory and schedule evidence only; no task identity, hierarchy, title, description, assignment, or attachment value was inferred.",
+      "The authenticated Buildertrend My Templates row for source 13001090 reported four tasks and a three-day schedule with three schedule items; no selection or bid-package counts were present.",
+      "The visible source-row link resolved to the exact Perimeter Drain source URL, but Buildertrend kept the active Selected Template and task context pinned to the previously selected Int. Finishes - Stain & Seal Concrete Floors template 12979213.",
+      "The authenticated template-picker search returned no Perimeter Drain result, so the bounded supported switch was stopped without opening any unrelated task rows. No task identity, hierarchy, title, description, assignment, or attachment value was inferred.",
       "The three reviewed schedule items and three dependencies remain canonical in the 40-template source capture and must not be duplicated in a browser fragment.",
       "Earthwork - Perimeter Drain remains release-ineligible until all four task rows are recovered from an authenticated supported Buildertrend view or export."
     ],
