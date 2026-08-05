@@ -97,21 +97,6 @@ and the bid package are captured with exact native identities, choice and line
 item content, cost codes, Cost Types, attachment evidence, and any copy
 warnings. No source values may be inferred while this audit remains pending.
 
-## Framing - Quote Packages (`36478698`)
-
-The reviewed source inventory reports three bid packages and no tasks, schedule
-items, or selections. Authenticated source capture recovered all three native
-package IDs, their shared package descriptions, 14 native line-item IDs and
-displayed fields, and confirmed that all three attachment sections are empty.
-The first two packages also explicitly report no linked Plans and no linked
-Specs.
-
-Framing Quote Packages remains blocked because the 14 collapsed line-item
-descriptions were not opened and the Truss Pack package's Plans and Specs
-subpanel was not inspected before the browser lease ended. Those fields must be
-recovered without inference before the checkpoint can move into the active
-fragments directory or become eligible for the reviewed release allowlist.
-
 ## MEP - Quotes (`36595931`)
 
 The reviewed source inventory reports three bid packages and no task, schedule,
