@@ -1,0 +1,154 @@
+{
+  "template": {
+    "sourceTemplateId": "30914491",
+    "sourceName": "Int. Finishes - Tiling",
+    "capturedAt": "2026-08-05T02:07:14Z",
+    "captureNotes": [
+      "Captured directly from the authenticated Buildertrend source template without creating or mutating a temporary template.",
+      "The All Tasks grid was expanded before capture; source task IDs, displayed order, and checklist hierarchy were preserved exactly.",
+      "All five selections and ten native choice IDs, titles, displayed order, statuses, prices, and attachment counts were verified in the source list.",
+      "Buildertrend exposed the first choice attachment filename, but the remaining choice-detail modals did not load within the bounded capture pass. Their filenames and all choice descriptions remain explicit conversion exceptions and were not inferred.",
+      "The single source bid package, line-item specification, cost code, cost types, pricing policy, and two attachment filenames were captured exactly."
+    ],
+    "tasks": [
+      { "sourceItemId": "75810249", "parentSourceItemId": null, "title": "HPS (x area) Tile QC Inspection", "sortOrder": 1 },
+      { "sourceItemId": "75810292", "parentSourceItemId": "75810249", "title": "Colors Match", "sortOrder": 1 },
+      { "sourceItemId": "75810293", "parentSourceItemId": "75810249", "title": "No Cracks", "sortOrder": 2 },
+      { "sourceItemId": "75810294", "parentSourceItemId": "75810249", "title": "No Broken Tiles", "sortOrder": 3 },
+      { "sourceItemId": "75810295", "parentSourceItemId": "75810249", "title": "No Scratches", "sortOrder": 4 },
+      { "sourceItemId": "75810296", "parentSourceItemId": "75810249", "title": "No Chips", "sortOrder": 5 },
+      { "sourceItemId": "75810297", "parentSourceItemId": "75810249", "title": "No Gouges", "sortOrder": 6 },
+      { "sourceItemId": "75810298", "parentSourceItemId": "75810249", "title": "No Nicks", "sortOrder": 7 },
+      { "sourceItemId": "75810299", "parentSourceItemId": "75810249", "title": "Grouted Properly", "sortOrder": 8 },
+      { "sourceItemId": "75810300", "parentSourceItemId": "75810249", "title": "No Cracks in Grout", "sortOrder": 9 },
+      { "sourceItemId": "75810301", "parentSourceItemId": "75810249", "title": "No Discoloration in Grout", "sortOrder": 10 },
+      { "sourceItemId": "75810302", "parentSourceItemId": "75810249", "title": "No Uncemented Tiles", "sortOrder": 11 },
+      { "sourceItemId": "75810250", "parentSourceItemId": null, "title": "Ceramic Tile Installation Complete", "sortOrder": 2 },
+      { "sourceItemId": "75810251", "parentSourceItemId": null, "title": "Verify Ceramic Tile Lead Times", "sortOrder": 3 },
+      { "sourceItemId": "75810252", "parentSourceItemId": null, "title": "Tile Received and Stored", "sortOrder": 4 },
+      { "sourceItemId": "75810253", "parentSourceItemId": null, "title": "Stage Tile for Installer", "sortOrder": 5 }
+    ],
+    "selections": [
+      {
+        "sourceItemId": "58772646",
+        "sourceSelectionId": "58772646",
+        "title": "Bath Surround Add Ons",
+        "category": "06 41 00 - Architectural Wood Casework",
+        "location": "Unassigned",
+        "status": "Unreleased",
+        "allowance": 0,
+        "deadline": null,
+        "requireClientSelection": false,
+        "allowMultipleSelectedChoices": true,
+        "choiceOrdering": "Auto",
+        "choices": [
+          { "sourceChoiceId": "236393277", "title": "Corner Bath/Shower Shelf", "status": "Unreleased", "price": 0, "attachmentCount": 1, "attachments": [{ "fileName": "Corner shower shelf.jpg" }] },
+          { "sourceChoiceId": "236393275", "title": "One Wall Niche (Shelf)", "status": "Unreleased", "price": 0, "attachmentCount": 1 },
+          { "sourceChoiceId": "236393273", "title": "Safety/Grab Bar", "status": "Unreleased", "price": 0, "attachmentCount": 1 },
+          { "sourceChoiceId": "236393274", "title": "Soap Dish", "status": "Unreleased", "price": 0, "attachmentCount": 1 },
+          { "sourceChoiceId": "236393276", "title": "Two Bath Surround Wall Niches (Shelves)", "status": "Unreleased", "price": 0, "attachmentCount": 1 }
+        ]
+      },
+      {
+        "sourceItemId": "44740313",
+        "sourceSelectionId": "44740313",
+        "title": "Bath Surround Tile Patterns",
+        "category": "09 30 00 - Tiling",
+        "location": "Master Bath",
+        "status": "Unreleased",
+        "allowance": 0,
+        "deadline": null,
+        "choices": [
+          { "sourceChoiceId": "170341816", "title": "Brick Layout With No Design Band", "status": "Unreleased", "price": 0, "attachmentCount": 1 },
+          { "sourceChoiceId": "170341814", "title": "Diamond Layout With No Design Band", "status": "Unreleased", "price": 0, "attachmentCount": 1 },
+          { "sourceChoiceId": "170341815", "title": "Diamond Layout With One Design Band", "status": "Unreleased", "price": 0, "attachmentCount": 1 },
+          { "sourceChoiceId": "170341812", "title": "Straight Lay No Design Band", "status": "Unreleased", "price": 0, "attachmentCount": 1 },
+          { "sourceChoiceId": "170341813", "title": "Straight Lay With One Design Band", "status": "Unreleased", "price": 0, "attachmentCount": 1 }
+        ]
+      },
+      {
+        "sourceItemId": "53868242",
+        "sourceSelectionId": "53868242",
+        "title": "Shower Pan Tile",
+        "category": "09 30 00 - Tiling",
+        "location": "Unassigned",
+        "status": "Unreleased",
+        "allowance": 0,
+        "deadline": null,
+        "choices": []
+      },
+      {
+        "sourceItemId": "44740441",
+        "sourceSelectionId": "44740441",
+        "title": "Shower Surround Tile",
+        "category": "09 30 00 - Tiling",
+        "location": "Unassigned",
+        "status": "Unreleased",
+        "allowance": 0,
+        "deadline": null,
+        "choices": []
+      },
+      {
+        "sourceItemId": "53868233",
+        "sourceSelectionId": "53868233",
+        "title": "Tile Backsplash at Countertop/Vanity (If Desired)",
+        "category": "09 30 00 - Tiling",
+        "location": "Unassigned",
+        "status": "Unreleased",
+        "allowance": 0,
+        "deadline": null,
+        "choices": []
+      }
+    ],
+    "bidPackages": [
+      {
+        "sourceItemId": "9601783",
+        "sourceBidPackageId": "9601783",
+        "title": "Tile - 11913 Hillcrest Rd Final Cost Estimate",
+        "status": "Draft",
+        "allowMultipleApprovedBids": false,
+        "deadline": null,
+        "time": null,
+        "linkToSchedule": false,
+        "reminderLeadDays": 2,
+        "plansAndSpecs": false,
+        "pricingFormat": "Line Items",
+        "description": "",
+        "internalNotes": "",
+        "attachments": [
+          { "fileName": "StrucPlans_11913 Hillcrest Road_2024-02-09 stamped.pdf" },
+          { "fileName": "RAINEY_CDS_1-29-2024.pdf" }
+        ],
+        "lineItems": [
+          {
+            "title": "Shower Wrap Installation Labor & Misc Materials",
+            "costCode": "09 30 00 - Tiling",
+            "costType": "Labor, Subcontractor",
+            "quantity": 1,
+            "unit": null
+          }
+        ]
+      }
+    ]
+  },
+  "conversionExceptions": [
+    {
+      "templateSourceTemplateId": "30914491",
+      "module": "selections",
+      "sourceItemId": null,
+      "field": "choices.description",
+      "sourceValue": "Buildertrend displayed a Description control for the choices, but the choice-detail modals did not expose the stored description values during the bounded authenticated capture.",
+      "loss": "Choice descriptions could not be distinguished from blank values and therefore were omitted instead of being recorded as empty.",
+      "recoveryPlan": "Recover the exact description values from a supported Buildertrend export or a later authenticated detail capture before publishing this draft; do not infer blank descriptions."
+    },
+    {
+      "templateSourceTemplateId": "30914491",
+      "module": "selections",
+      "sourceItemId": null,
+      "field": "choices.attachments.fileName",
+      "sourceValue": "Each of the ten choices displayed one attachment; only Corner shower shelf.jpg exposed its filename in the bounded authenticated detail capture.",
+      "loss": "Nine attachment filenames and all durable attachment bytes were unavailable and were omitted; the verified attachmentCount remains one on every choice.",
+      "recoveryPlan": "Recover the nine exact filenames and attachment bytes from a supported Buildertrend export or a later authenticated detail capture before publishing this draft; do not derive filenames from choice titles."
+    }
+  ]
+}

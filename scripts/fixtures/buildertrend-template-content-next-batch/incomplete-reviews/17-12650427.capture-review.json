@@ -1,0 +1,59 @@
+{
+  "reviewStatus": "incomplete",
+  "releaseEligible": false,
+  "template": {
+    "sourceTemplateId": "12650427",
+    "sourceName": "Framing - Window",
+    "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/12650427",
+    "copiedTargetTemplateId": "45894046",
+    "copiedTargetName": "BT Framing - Window",
+    "capturedAt": "2026-08-05T01:52:29Z",
+    "captureNotes": [
+      "The authenticated Buildertrend My Templates row for source 12650427 reported 20 tasks, one bid package, a four-day schedule with two schedule items, and two selections.",
+      "The authorized temporary capture copy BT Framing - Window was created successfully as template 45894046; the source template was not edited.",
+      "Buildertrend module navigation remained scoped to the previously selected Floor System template 12649495, so no task, selection, or bid row from that unrelated context was retained.",
+      "No copy-warning dialog was observed before the capture stopped. Because the copied bid package was not inspected, this does not establish that the source copied without conversion loss."
+    ],
+    "sourceInventory": {
+      "tasks": 20,
+      "scheduleDuration": "4 Days",
+      "scheduleItems": 2,
+      "selections": 2,
+      "bidPackages": 1
+    },
+    "browserModuleGates": [
+      {
+        "module": "tasks",
+        "expectedCount": 20,
+        "capturedCount": 0,
+        "status": "incomplete",
+        "releaseBlocker": "Recover all 20 native task IDs, titles, displayed ordering, and parent-child relationships from the Window source or its verified copy."
+      },
+      {
+        "module": "selections",
+        "expectedCount": 2,
+        "capturedCount": 0,
+        "status": "incomplete",
+        "releaseBlocker": "Recover both selection native IDs, metadata, choices, choice ordering, descriptions, prices, and attachment evidence."
+      },
+      {
+        "module": "bidPackages",
+        "expectedCount": 1,
+        "capturedCount": 0,
+        "status": "incomplete",
+        "releaseBlocker": "Recover the bid package native identity, status, specifications, line items, cost codes, Cost Types, quantities, units, and any copy warnings."
+      }
+    ],
+    "reviewedScheduleReference": {
+      "path": "scripts/fixtures/buildertrend-active-template-capture-2026-07-31.json",
+      "sourceTemplateId": "12650427",
+      "scheduleItemCount": 2,
+      "dependencyCount": 1,
+      "note": "The reviewed source capture remains the canonical schedule record; browser fragments do not duplicate schedule rows."
+    },
+    "tasks": [],
+    "selections": [],
+    "bidPackages": []
+  },
+  "conversionExceptions": []
+}
