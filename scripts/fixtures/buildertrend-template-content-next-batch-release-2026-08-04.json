@@ -1,14 +1,14 @@
 {
   "releaseVersion": 1,
-  "generatedAt": "2026-08-05T06:50:00.000Z",
+  "generatedAt": "2026-08-05T07:39:05Z",
   "sourceNextBatchManifest": "scripts/fixtures/buildertrend-template-next-batch-2026-08-04.json",
   "sourceReviewedCapture": "scripts/fixtures/buildertrend-active-template-capture-2026-07-31.json",
   "scope": {
     "activeTemplatesInSource": 40,
     "completedPilotTemplatesExcluded": 6,
     "nonPilotCandidatesAudited": 34,
-    "structurallyCompleteTemplatesIncluded": 17,
-    "incompleteTemplatesExcluded": 17,
+    "structurallyCompleteTemplatesIncluded": 18,
+    "incompleteTemplatesExcluded": 16,
     "archivedTemplatesExcluded": 27,
     "archivedTemplatesIncluded": 0
   },
@@ -239,6 +239,19 @@
         "bidPackages": 0
       },
       "fragmentPath": "scripts/fixtures/buildertrend-template-content-next-batch/fragments/27-28466146.capture.json",
+      "browserCaptureGates": "complete"
+    },
+    {
+      "sourceTemplateId": "12979213",
+      "sourceName": "Int. Finishes - Stain & Seal Concrete Floors",
+      "workplanSequence": 28,
+      "moduleCounts": {
+        "tasks": 7,
+        "scheduleItems": 5,
+        "selections": 0,
+        "bidPackages": 0
+      },
+      "fragmentPath": "scripts/fixtures/buildertrend-template-content-next-batch/fragments/28-12979213.capture.json",
       "browserCaptureGates": "complete"
     }
   ],
