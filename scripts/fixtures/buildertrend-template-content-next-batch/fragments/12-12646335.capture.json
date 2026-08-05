@@ -1,0 +1,123 @@
+{
+  "sourceTemplateId": "12646335",
+  "sourceName": "Framing - Interior Wall Assembly",
+  "copiedTargetTemplateId": "45893424",
+  "capturedAt": "2026-08-05T00:13:22Z",
+  "captureNotes": [
+    "Captured from the authenticated Buildertrend copy BT Framing - Interior Wall Assembly.",
+    "All five checklist groups were expanded before capture.",
+    "Buildertrend task row IDs, displayed order, and parent-child checklist relationships were captured exactly.",
+    "The bid package description, six line-item descriptions, cost codes, and cost types were captured from the authenticated bid-package editor.",
+    "The copied template contains no selections and the bid package contains no attachments."
+  ],
+  "tasks": [
+    { "sourceItemId": "180199175", "parentSourceItemId": null, "title": "Layout X Level Interior Wood Framed Walls", "sortOrder": 1 },
+    { "sourceItemId": "180199181", "parentSourceItemId": "180199175", "title": "Do NOT use Red Chalk line if on Concrete floors.", "sortOrder": 1 },
+    { "sourceItemId": "180199176", "parentSourceItemId": null, "title": "Build X Room Walls", "sortOrder": 2 },
+    { "sourceItemId": "180199177", "parentSourceItemId": null, "title": "Set X Room Interior Floated Walls", "sortOrder": 3 },
+    { "sourceItemId": "180199182", "parentSourceItemId": "180199177", "title": "Glue", "sortOrder": 1 },
+    { "sourceItemId": "180199183", "parentSourceItemId": "180199177", "title": "DO NOT GLUE AT DOOR OPENINGS", "sortOrder": 2 },
+    { "sourceItemId": "180199184", "parentSourceItemId": "180199177", "title": "Set Floated Wall Base Plate", "sortOrder": 3 },
+    { "sourceItemId": "180199185", "parentSourceItemId": "180199177", "title": "Set Wall", "sortOrder": 4 },
+    { "sourceItemId": "180199186", "parentSourceItemId": "180199177", "title": "Floated Wall Spikes", "sortOrder": 5 },
+    { "sourceItemId": "180199178", "parentSourceItemId": null, "title": "Set X Room Interior Standard Walls", "sortOrder": 4 },
+    { "sourceItemId": "180199187", "parentSourceItemId": "180199178", "title": "Glue", "sortOrder": 1 },
+    { "sourceItemId": "180199188", "parentSourceItemId": "180199178", "title": "DO NOT GLUE AT DOOR OPENINGS", "sortOrder": 2 },
+    { "sourceItemId": "180199189", "parentSourceItemId": "180199178", "title": "Set Standard Walls", "sortOrder": 3 },
+    { "sourceItemId": "180199179", "parentSourceItemId": null, "title": "HPS (X Room) Interior Standard Framed Wall QC Inspection", "sortOrder": 5 },
+    { "sourceItemId": "180199190", "parentSourceItemId": "180199179", "title": "Walls Plumb", "sortOrder": 1 },
+    { "sourceItemId": "180199191", "parentSourceItemId": "180199179", "title": "Stud Spacing Correct", "sortOrder": 2 },
+    { "sourceItemId": "180199192", "parentSourceItemId": "180199179", "title": "Plates Installed Correctly", "sortOrder": 3 },
+    { "sourceItemId": "180199193", "parentSourceItemId": "180199179", "title": "No Visible Chalk Layout", "sortOrder": 4 },
+    { "sourceItemId": "180199194", "parentSourceItemId": "180199179", "title": "Doorways Cut out Properly w/ No Glue on Subfloor", "sortOrder": 5 },
+    { "sourceItemId": "180199195", "parentSourceItemId": "180199179", "title": "Doorways Proper Sizes", "sortOrder": 6 },
+    { "sourceItemId": "180199196", "parentSourceItemId": "180199179", "title": "Jobsite Cleanup Satisfactory", "sortOrder": 7 },
+    { "sourceItemId": "180199197", "parentSourceItemId": "180199179", "title": "OK to Pay", "sortOrder": 8 },
+    { "sourceItemId": "180199180", "parentSourceItemId": null, "title": "HPS (X Room) Interior Floated Framed Wall QC Inspection", "sortOrder": 6 },
+    { "sourceItemId": "180199198", "parentSourceItemId": "180199180", "title": "Walls Floated Properly", "sortOrder": 1 },
+    { "sourceItemId": "180199199", "parentSourceItemId": "180199180", "title": "Walls Plumb", "sortOrder": 2 },
+    { "sourceItemId": "180199200", "parentSourceItemId": "180199180", "title": "Stud Spacing Correct", "sortOrder": 3 },
+    { "sourceItemId": "180199201", "parentSourceItemId": "180199180", "title": "Floated Wall Base Plate Correctly Set", "sortOrder": 4 },
+    { "sourceItemId": "180199202", "parentSourceItemId": "180199180", "title": "Wall Baseplate Set Correctly", "sortOrder": 5 },
+    { "sourceItemId": "180199203", "parentSourceItemId": "180199180", "title": "Wall Top Plate Set Correctly", "sortOrder": 6 },
+    { "sourceItemId": "180199204", "parentSourceItemId": "180199180", "title": "No Visible Chalk", "sortOrder": 7 },
+    { "sourceItemId": "180199205", "parentSourceItemId": "180199180", "title": "Doorways Cutout Properly with No Glue on Subfloor", "sortOrder": 8 },
+    { "sourceItemId": "180199206", "parentSourceItemId": "180199180", "title": "Doorways Properly Sized", "sortOrder": 9 },
+    { "sourceItemId": "180199207", "parentSourceItemId": "180199180", "title": "Jobsite Cleanup Satisfactory", "sortOrder": 10 },
+    { "sourceItemId": "180199208", "parentSourceItemId": "180199180", "title": "OK to Pay", "sortOrder": 11 }
+  ],
+  "selections": [],
+  "bidPackages": [
+    {
+      "sourceItemId": "13414443",
+      "sourceBidPackageId": "13414443",
+      "title": "Framing - (Project Address) (Estimate Phase)",
+      "status": "Draft",
+      "allowMultipleApprovedBids": false,
+      "deadline": null,
+      "time": null,
+      "reminderLeadDays": 2,
+      "plansAndSpecs": false,
+      "pricingFormat": "Line Items",
+      "description": "Background\nHigh Performance Structures, Inc. dba Open Range Construction, Ltd. (ORC) will be building a (Project Type) located at:\n(Project Address)\nReference Documents\nPlease see the Buildertrend Documents folder titled \"(Est. Phase) Bid Set\" for all necessary plans.\nSubmission of Bid\nBids for this project will be processed through Buildertrend, a construction management program. You do not need to become proficient with Buildertrend. You may also simply call or email your point of contact. You may submit your bid into Buildertrend or email it to your point of contact for entry. Should you choose to input your bid into Buildertrend, please also include a PDF version of your bid.\nFor assistance with submitting the bid or receiving bid documents, contact the (Estimator Title):\n(Estimator), (719) 900-8850 ext. (Estimator Ext)\n(Estimator Email Address)\nTimeline\nThe work is scheduled to start in (Season), (Year).\nScope of Work\nThe following CSI categories will be required for the construction of the project per the plans and specifications noted on the Plans and Specifications List. We will notify bidders of any changes or additions by sending out updates to said List.\nSchedule\nPlease provide a schedule to complete each of the above items, in calendar days after the issuance of the purchase order and/or notice to proceed.\nContract and Insurance Requirements\nAll trade contractors will be required to complete a trade contractor agreement, provide proof of liability insurance and workman’s compensation insurance as applicable, with required limits prior to the release of any construction payments.",
+      "internalNotes": "",
+      "attachments": [],
+      "lineItems": [
+        {
+          "sourceLineItemId": "23494886",
+          "title": "Interior Wall Framing Labor",
+          "description": "Please provide all necessary labor and installation miscellaneous materials (such as fasteners) for the interior wall framing assemblies.",
+          "costCode": "06 11 00 - Wood Framing",
+          "costType": "Subcontractor",
+          "quantity": null,
+          "unit": null
+        },
+        {
+          "sourceLineItemId": "23494887",
+          "title": "Exterior Deck Framing Labor",
+          "description": "Please include all necessary labor & miscellaneous materials (such as fasteners, etc) for all exterior deck framing assemblies.",
+          "costCode": "06 15 00 - Wood Decking",
+          "costType": "Subcontractor",
+          "quantity": null,
+          "unit": null
+        },
+        {
+          "sourceLineItemId": "23494888",
+          "title": "Floor System Framing Labor",
+          "description": "Please include all necessary labor & miscellaneous installation materials (such as fasteners, etc.) for the framing of all floor assemblies.",
+          "costCode": "06 15 13 - Wood Floor Decking",
+          "costType": "Subcontractor",
+          "quantity": null,
+          "unit": null
+        },
+        {
+          "sourceLineItemId": "23494889",
+          "title": "Roof Framing Labor",
+          "description": "Please include all necessary roof framing labor & miscellaneous installation materials (such as fasteners, etc). for framing of all roof assemblies.",
+          "costCode": "06 15 16 - Wood Roof Decking",
+          "costType": "Subcontractor",
+          "quantity": null,
+          "unit": null
+        },
+        {
+          "sourceLineItemId": "23494890",
+          "title": "Exterior Door Installation Labor",
+          "description": "Please include all necessary labor & miscellaneous installation materials (such as fasteners, shims, etc.) for the installation of all exterior doors.",
+          "costCode": "08 00 00 - Openings",
+          "costType": "Subcontractor",
+          "quantity": null,
+          "unit": null
+        },
+        {
+          "sourceLineItemId": "23494891",
+          "title": "Window Installation Labor",
+          "description": "Please include all necessary labor & fasteners for the installation of all windows.",
+          "costCode": "08 50 00 - Windows",
+          "costType": "Subcontractor",
+          "quantity": null,
+          "unit": null
+        }
+      ]
+    }
+  ]
+}

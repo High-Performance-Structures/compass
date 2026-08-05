@@ -41,17 +41,18 @@ bun scripts/validate-buildertrend-template-next-batch.mjs --require-all-complete
 ## First guarded content release
 
 The release allowlist contains Stucco (`12859981`), MEP Rough & Top Out
-(`12978371`), and Concrete Footer (`12581937`). Their browser gates are
-complete, and the assembler combines those fragments with the already-reviewed
-schedule rows and dependencies.
+(`12978371`), Concrete Footer (`12581937`), Concrete Slab (`12594475`),
+Siding (`30917204`), and Framing Interior Wall (`12646335`). Their browser
+gates are complete, and the assembler combines those fragments with the
+already-reviewed schedule rows and dependencies.
 
-The guarded audit covers all 34 non-pilot active templates, not just the three
-release entries. At the current checkpoint it includes 3 structurally complete
-templates, excludes 31 incomplete active templates, and excludes all 27
+The guarded audit covers all 34 non-pilot active templates, not just the six
+release entries. At the current checkpoint it includes 6 structurally complete
+templates, excludes 28 incomplete active templates, and excludes all 27
 archived templates. There are zero additional structurally complete templates
-after Stucco/MEP/Concrete Footer. If another complete fragment appears, `--check` deliberately
-fails the release as stale until its identity, counts, and draft-only scope are
-reviewed in the release manifest.
+after this priority wave. If another complete fragment appears, `--check`
+deliberately fails the release as stale until its identity, counts, and
+draft-only scope are reviewed in the release manifest.
 
 ```bash
 bun scripts/assemble-buildertrend-template-next-batch-content.mjs --check
@@ -70,7 +71,12 @@ bun scripts/build-buildertrend-template-next-batch-content-sql.mjs \
 Both commands reject publish flags. The generated content SQL is guarded by
 draft version checks and leaves any still-draft Compass templates in
 `content_captured` / `draft` state for staff review and later publication from
-the Template Library.
+the Template Library. Siding also retains two explicit module-level conversion
+exceptions because Buildertrend cleared multiple Cost Type assignments on two
+unidentified bid rows while copying the source. The draft may be imported for
+staff review, but those rows and values must be recovered from the source or a
+supported export before publication or production use; the copied values must
+not be used to infer them.
 
 ## Read-only production verification
 
@@ -99,9 +105,9 @@ no applications, and either zero content rows or a complete prior replay. A
 partial prior import is rejected.
 
 After applying the reviewed import, generate and execute the same query with
-`--phase postflight`. Postflight requires exactly 165 content rows (136 tasks,
-22 schedule items, four selections, and three bid packages), 22 reusable
-schedule rows, 17 schedule predecessor edges in both representations, exact
+`--phase postflight`. Postflight requires exactly 284 content rows (235 tasks,
+35 schedule items, eight selections, and six bid packages), 35 reusable
+schedule rows, 28 schedule predecessor edges in both representations, exact
 deterministic source identities, valid JSON without Buildertrend URLs, draft
 versions, and `content_captured` / `draft` template state. Zero rows means the
 verification passed.

@@ -7,8 +7,8 @@
     "activeTemplatesInSource": 40,
     "completedPilotTemplatesExcluded": 6,
     "nonPilotCandidatesAudited": 34,
-    "structurallyCompleteTemplatesIncluded": 3,
-    "incompleteTemplatesExcluded": 31,
+    "structurallyCompleteTemplatesIncluded": 6,
+    "incompleteTemplatesExcluded": 28,
     "archivedTemplatesExcluded": 27,
     "archivedTemplatesIncluded": 0
   },
@@ -57,6 +57,45 @@
         "bidPackages": 0
       },
       "fragmentPath": "scripts/fixtures/buildertrend-template-content-next-batch/fragments/08-12581937.capture.json",
+      "browserCaptureGates": "complete"
+    },
+    {
+      "sourceTemplateId": "12594475",
+      "sourceName": "Concrete - Slab Assembly",
+      "workplanSequence": 9,
+      "moduleCounts": {
+        "tasks": 36,
+        "scheduleItems": 8,
+        "selections": 0,
+        "bidPackages": 1
+      },
+      "fragmentPath": "scripts/fixtures/buildertrend-template-content-next-batch/fragments/09-12594475.capture.json",
+      "browserCaptureGates": "complete"
+    },
+    {
+      "sourceTemplateId": "30917204",
+      "sourceName": "Ext. Finishes - Siding",
+      "workplanSequence": 11,
+      "moduleCounts": {
+        "tasks": 29,
+        "scheduleItems": 3,
+        "selections": 4,
+        "bidPackages": 1
+      },
+      "fragmentPath": "scripts/fixtures/buildertrend-template-content-next-batch/fragments/11-30917204.capture.json",
+      "browserCaptureGates": "complete"
+    },
+    {
+      "sourceTemplateId": "12646335",
+      "sourceName": "Framing - Interior Wall Assembly",
+      "workplanSequence": 12,
+      "moduleCounts": {
+        "tasks": 34,
+        "scheduleItems": 2,
+        "selections": 0,
+        "bidPackages": 1
+      },
+      "fragmentPath": "scripts/fixtures/buildertrend-template-content-next-batch/fragments/12-12646335.capture.json",
       "browserCaptureGates": "complete"
     }
   ],
