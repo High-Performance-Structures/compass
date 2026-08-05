@@ -3,7 +3,10 @@ export const dynamic = "force-dynamic"
 import { and, asc, eq, inArray } from "drizzle-orm"
 
 import { getDashboardOverview } from "@/app/actions/dashboard-overview"
-import { getProjects } from "@/app/actions/projects"
+import {
+  getProjectIntakeAssignees,
+  getProjects,
+} from "@/app/actions/projects"
 import { getDb } from "@/db"
 import { projectExternalLinks, projects } from "@/db/schema"
 import { ProjectsHub } from "@/components/projects/projects-hub"
@@ -48,10 +51,11 @@ export default async function ProjectsPage({
     params.status !== undefined
 
   if (!showRegistry) {
-    const [projectList, overview, currentUser] = await Promise.all([
+    const [projectList, overview, currentUser, intakeAssignees] = await Promise.all([
       getProjects(),
       getDashboardOverview(),
       getCurrentUser(),
+      getProjectIntakeAssignees(),
     ])
 
     return (
@@ -59,6 +63,7 @@ export default async function ProjectsPage({
         projects={projectList}
         overview={overview}
         canManageProjects={canManageProjectRegistry(currentUser)}
+        intakeAssignees={intakeAssignees}
       />
     )
   }

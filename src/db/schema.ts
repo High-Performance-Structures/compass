@@ -396,6 +396,34 @@ export const projects = sqliteTable("projects", {
   updatedAt: text("updated_at"),
 })
 
+export const projectNumberReservations = sqliteTable(
+  "project_number_reservations",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    department: text("department").notNull(),
+    sequence: integer("sequence").notNull(),
+    projectNumber: text("project_number").notNull(),
+    createdAt: text("created_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("project_number_reservations_org_department_sequence_unique").on(
+      table.organizationId,
+      table.department,
+      table.sequence
+    ),
+    uniqueIndex("project_number_reservations_org_number_unique").on(
+      table.organizationId,
+      table.projectNumber
+    ),
+  ]
+)
+
 export const activityEvents = sqliteTable(
   "activity_events",
   {
