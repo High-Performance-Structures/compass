@@ -1,0 +1,94 @@
+{
+  "reviewStatus": "incomplete",
+  "releaseEligible": false,
+  "template": {
+    "sourceTemplateId": "42948499",
+    "sourceName": "Int. Finishes - Bath Hardware",
+    "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/42948499",
+    "capturedAt": "2026-08-05T10:15:00Z",
+    "captureNotes": [
+      "The source template was selected through the authenticated visible My Templates picker; Selected Template verified zero tasks, zero schedule items, and exactly one selection.",
+      "The Bathroom Add Ons selection and all seven native choice IDs, titles, displayed order, statuses, prices, and attachment counts were captured from the source List and Selection Details views.",
+      "The bounded capture ended after source context and list metadata were secured so the shared Buildertrend browser could be released promptly.",
+      "The selection rich-text values, individual choice descriptions, attachment filenames, and attachment bytes were not exposed before release and were not inferred."
+    ],
+    "sourceInventory": {
+      "tasks": 0,
+      "scheduleItems": 0,
+      "selections": 1,
+      "bidPackages": 0
+    },
+    "browserModuleGates": [
+      {
+        "module": "selections",
+        "expectedCount": 1,
+        "capturedCount": 1,
+        "releaseReadyCount": 0,
+        "status": "incomplete",
+        "releaseBlocker": "Recover or verify the exact selection public instructions and internal notes, each choice description, all six indicated attachment filenames, and durable attachment bytes before moving this audit into the active fragments directory."
+      }
+    ],
+    "reviewedScheduleReference": {
+      "path": "scripts/fixtures/buildertrend-active-template-capture-2026-07-31.json",
+      "sourceTemplateId": "42948499",
+      "scheduleItemCount": 0,
+      "dependencyCount": 0,
+      "note": "The reviewed source capture confirms this template has no schedule; browser fragments do not synthesize schedule rows."
+    },
+    "tasks": [],
+    "selections": [
+      {
+        "sourceItemId": "59585706",
+        "sourceSelectionId": "59585706",
+        "title": "Bathroom Add Ons",
+        "category": "10 00 00 - Specialties",
+        "location": "Powder Room",
+        "status": "Unreleased",
+        "allowance": 0,
+        "deadline": null,
+        "requireClientSelection": false,
+        "allowMultipleSelectedChoices": true,
+        "choiceOrdering": "Manual",
+        "choices": [
+          { "sourceChoiceId": "240860708", "title": "Bathroom Mirror", "status": "Unreleased", "price": 0, "attachmentCount": 1 },
+          { "sourceChoiceId": "240860706", "title": "Recessed Medicine Cabinet With Mirror", "status": "Unreleased", "price": 0, "attachmentCount": 1 },
+          { "sourceChoiceId": "240860707", "title": "Recessed Medicine Cabinet Without Mirror", "status": "Unreleased", "price": 0, "attachmentCount": 1 },
+          { "sourceChoiceId": "240860704", "title": "Single towel Bar", "status": "Unreleased", "price": 0, "attachmentCount": 1 },
+          { "sourceChoiceId": "240860705", "title": "Two Towel Bars", "status": "Unreleased", "price": 0, "attachmentCount": 1 },
+          { "sourceChoiceId": "240860709", "title": "Toilet Paper Holder", "status": "Unreleased", "price": 0, "attachmentCount": 1 },
+          { "sourceChoiceId": "240860710", "title": "None - Owner Scope", "status": "Unreleased", "price": 0, "attachmentCount": 0 }
+        ]
+      }
+    ],
+    "bidPackages": []
+  },
+  "conversionExceptions": [
+    {
+      "templateSourceTemplateId": "42948499",
+      "module": "selections",
+      "sourceItemId": "59585706",
+      "field": "description,internalNotes",
+      "sourceValue": "Buildertrend displayed Public Instructions and Internal Notes editors, but their stored values were not exposed during the bounded authenticated capture.",
+      "loss": "Stored rich-text values could not be distinguished from blank values and therefore were omitted instead of being recorded as empty.",
+      "recoveryPlan": "Recover the exact rich-text values from a supported Buildertrend export or later authenticated detail capture; do not infer blank values."
+    },
+    {
+      "templateSourceTemplateId": "42948499",
+      "module": "selections",
+      "sourceItemId": "59585706",
+      "field": "choices.description",
+      "sourceValue": "The seven native choices were visible, but their individual detail descriptions were not inspected before the bounded capture released Buildertrend.",
+      "loss": "Choice descriptions could not be distinguished from blank values and therefore were omitted instead of being recorded as empty.",
+      "recoveryPlan": "Recover every exact choice description from a supported Buildertrend export or later authenticated detail capture; do not infer blank descriptions."
+    },
+    {
+      "templateSourceTemplateId": "42948499",
+      "module": "selections",
+      "sourceItemId": "59585706",
+      "field": "choices.attachments.fileName,choices.attachments.bytes",
+      "sourceValue": "Six choices displayed one attachment each; Buildertrend did not expose their filenames or durable bytes in the bounded source list capture.",
+      "loss": "Six attachment filenames and all durable attachment bytes were unavailable and omitted; the verified attachmentCount remains one on each affected choice.",
+      "recoveryPlan": "Recover the six exact filenames and attachment bytes from a supported Buildertrend export or later authenticated detail capture; do not derive filenames from choice titles."
+    }
+  ]
+}
