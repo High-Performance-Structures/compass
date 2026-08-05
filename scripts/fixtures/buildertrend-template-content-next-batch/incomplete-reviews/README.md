@@ -149,3 +149,15 @@ It remains excluded until the bid package is captured from an authenticated
 supported view or export with its native identity, specifications, line items,
 cost codes, Cost Types, quantities, units, linked plans and specifications,
 and any copy warnings preserved.
+
+## Insulation (`39644707`)
+
+The authenticated source row and detail identify Insulation and report exactly
+one bid package with no schedule or other content modules. The bid-package
+count was not navigable, while Buildertrend's job-picker module context remained
+pinned to an unrelated selected template during the bounded capture. No row
+from that unrelated context was retained.
+
+Insulation remains blocked until its bid package is captured with the exact
+native identity, status, specifications, line items, cost codes, Cost Types,
+quantities, units, attachment evidence, and any copy warnings.
