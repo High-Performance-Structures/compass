@@ -1,0 +1,145 @@
+{
+  "template": {
+    "sourceTemplateId": "28466146",
+    "sourceName": "Int. Finishes - Interior Doors",
+    "capturedAt": "2026-08-05T06:50:00Z",
+    "captureNotes": [
+      "Captured directly from the authenticated Buildertrend source template without creating or mutating a temporary template.",
+      "The Tasks grid exposed five root tasks; source task IDs and displayed order were preserved exactly.",
+      "All four selections and 41 native choice IDs, literal titles, displayed order, statuses, prices, and attachment counts were verified in the source list.",
+      "Every choice displayed one attachment, but the bounded source pass did not expose choice descriptions, attachment filenames, or durable attachment bytes. Those fields remain explicit conversion exceptions and were not inferred.",
+      "The three reviewed schedule items and two dependencies remain canonical in the 40-template source capture and are not duplicated in this browser fragment."
+    ],
+    "tasks": [
+      { "sourceItemId": "75738494", "parentSourceItemId": null, "title": "RFQ Updated Interior Door Package", "sortOrder": 1 },
+      { "sourceItemId": "75738495", "parentSourceItemId": null, "title": "Order Interior Door Package", "sortOrder": 2 },
+      { "sourceItemId": "75738497", "parentSourceItemId": null, "title": "Store Interior Doors in Storage Container or House", "sortOrder": 3 },
+      { "sourceItemId": "75738499", "parentSourceItemId": null, "title": "Interior Doors Installed", "sortOrder": 4 },
+      { "sourceItemId": "75738500", "parentSourceItemId": null, "title": "Verify Door Style & Finishes with Owner", "sortOrder": 5 }
+    ],
+    "selections": [
+      {
+        "sourceItemId": "42314323",
+        "sourceSelectionId": "42314323",
+        "title": "Interior Door Style",
+        "category": "08 00 00 - Openings",
+        "location": "Interior",
+        "status": "Unreleased",
+        "allowance": 0,
+        "deadline": null,
+        "requireClientSelection": false,
+        "allowMultipleSelectedChoices": false,
+        "choiceOrdering": "Auto",
+        "choices": [
+          { "sourceChoiceId": "160297157", "title": "\"Avalon Textured\"", "status": "Unreleased", "price": 0, "attachmentCount": 1 },
+          { "sourceChoiceId": "160297158", "title": "\"Birkdale Smooth\"", "status": "Unreleased", "price": 0, "attachmentCount": 1 },
+          { "sourceChoiceId": "160297159", "title": "\"Caiman Smooth\"", "status": "Unreleased", "price": 0, "attachmentCount": 1 },
+          { "sourceChoiceId": "160297160", "title": "\"Cambridge Smooth\"", "status": "Unreleased", "price": 0, "attachmentCount": 1 },
+          { "sourceChoiceId": "160297161", "title": "\"Camden Textured\"", "status": "Unreleased", "price": 0, "attachmentCount": 1 },
+          { "sourceChoiceId": "160297162", "title": "\"Cashal Smooth\"", "status": "Unreleased", "price": 0, "attachmentCount": 1 },
+          { "sourceChoiceId": "160297163", "title": "\"Colonist\"", "status": "Unreleased", "price": 0, "attachmentCount": 1 },
+          { "sourceChoiceId": "160297164", "title": "\"Conmore Smooth\"", "status": "Unreleased", "price": 0, "attachmentCount": 1 },
+          { "sourceChoiceId": "160297165", "title": "\"Continental Smooth\"", "status": "Unreleased", "price": 0, "attachmentCount": 1 },
+          { "sourceChoiceId": "160297166", "title": "\"Corvado Smooth\"", "status": "Unreleased", "price": 0, "attachmentCount": 1 },
+          { "sourceChoiceId": "160297167", "title": "\"Coventry Smooth\"", "status": "Unreleased", "price": 0, "attachmentCount": 1 },
+          { "sourceChoiceId": "160297168", "title": "\"Craftsman III Smooth\"", "status": "Unreleased", "price": 0, "attachmentCount": 1 },
+          { "sourceChoiceId": "160297169", "title": "\"Madison Smooth\"", "status": "Unreleased", "price": 0, "attachmentCount": 1 },
+          { "sourceChoiceId": "160297170", "title": "\"Monroe Smooth\"", "status": "Unreleased", "price": 0, "attachmentCount": 1 },
+          { "sourceChoiceId": "160297171", "title": "\"Princeton Smooth\"", "status": "Unreleased", "price": 0, "attachmentCount": 1 },
+          { "sourceChoiceId": "160297172", "title": "\"Rockport Smooth\"", "status": "Unreleased", "price": 0, "attachmentCount": 1 },
+          { "sourceChoiceId": "160297173", "title": "\"Santa Fe Smooth\"", "status": "Unreleased", "price": 0, "attachmentCount": 1 }
+        ]
+      },
+      {
+        "sourceItemId": "41215280",
+        "sourceSelectionId": "41215280",
+        "title": "Interior Door Style",
+        "category": "08 00 00 - Openings",
+        "location": "Interior",
+        "status": "Unreleased",
+        "allowance": 0,
+        "deadline": null,
+        "requireClientSelection": false,
+        "allowMultipleSelectedChoices": false,
+        "choiceOrdering": "Auto",
+        "choices": [
+          { "sourceChoiceId": "156171929", "title": "\"Avalon Textured\"", "status": "Unreleased", "price": 0, "attachmentCount": 1 },
+          { "sourceChoiceId": "156171934", "title": "\"Birkdale Smooth\"", "status": "Unreleased", "price": 0, "attachmentCount": 1 },
+          { "sourceChoiceId": "156171938", "title": "\"Caiman Smooth\"", "status": "Unreleased", "price": 0, "attachmentCount": 1 },
+          { "sourceChoiceId": "156171944", "title": "\"Cambridge Smooth\"", "status": "Unreleased", "price": 0, "attachmentCount": 1 },
+          { "sourceChoiceId": "156171950", "title": "\"Camden Textured\"", "status": "Unreleased", "price": 0, "attachmentCount": 1 },
+          { "sourceChoiceId": "156171970", "title": "\"Cashal Smooth\"", "status": "Unreleased", "price": 0, "attachmentCount": 1 },
+          { "sourceChoiceId": "156171972", "title": "\"Colonist\"", "status": "Unreleased", "price": 0, "attachmentCount": 1 },
+          { "sourceChoiceId": "156171993", "title": "\"Conmore Smooth\"", "status": "Unreleased", "price": 0, "attachmentCount": 1 },
+          { "sourceChoiceId": "156171998", "title": "\"Continental Smooth\"", "status": "Unreleased", "price": 0, "attachmentCount": 1 },
+          { "sourceChoiceId": "156172002", "title": "\"Corvado Smooth\"", "status": "Unreleased", "price": 0, "attachmentCount": 1 },
+          { "sourceChoiceId": "156172317", "title": "\"Coventry Smooth\"", "status": "Unreleased", "price": 0, "attachmentCount": 1 },
+          { "sourceChoiceId": "156172322", "title": "\"Craftsman III Smooth\"", "status": "Unreleased", "price": 0, "attachmentCount": 1 },
+          { "sourceChoiceId": "156172323", "title": "\"Madison Smooth\"", "status": "Unreleased", "price": 0, "attachmentCount": 1 },
+          { "sourceChoiceId": "156172328", "title": "\"Monroe Smooth\"", "status": "Unreleased", "price": 0, "attachmentCount": 1 },
+          { "sourceChoiceId": "156172333", "title": "\"Princeton Smooth\"", "status": "Unreleased", "price": 0, "attachmentCount": 1 },
+          { "sourceChoiceId": "156172335", "title": "\"Rockport Smooth\"", "status": "Unreleased", "price": 0, "attachmentCount": 1 },
+          { "sourceChoiceId": "156172341", "title": "\"Santa Fe Smooth\"", "status": "Unreleased", "price": 0, "attachmentCount": 1 }
+        ]
+      },
+      {
+        "sourceItemId": "41215891",
+        "sourceSelectionId": "41215891",
+        "title": "Interior Door Wood Species for Stain Grade Doors",
+        "category": "08 00 00 - Openings",
+        "location": "Interior",
+        "status": "Unreleased",
+        "allowance": 0,
+        "deadline": null,
+        "requireClientSelection": false,
+        "allowMultipleSelectedChoices": false,
+        "choiceOrdering": "Auto",
+        "choices": [
+          { "sourceChoiceId": "156174601", "title": "Birchwood", "status": "Unreleased", "price": 0, "attachmentCount": 1 },
+          { "sourceChoiceId": "156174603", "title": "Clear Alder", "status": "Unreleased", "price": 0, "attachmentCount": 1 },
+          { "sourceChoiceId": "156174857", "title": "Clear Pine", "status": "Unreleased", "price": 0, "attachmentCount": 1 },
+          { "sourceChoiceId": "156174860", "title": "Knotty Alder", "status": "Unreleased", "price": 0, "attachmentCount": 1 },
+          { "sourceChoiceId": "156174862", "title": "Knotty Pine", "status": "Unreleased", "price": 0, "attachmentCount": 1 }
+        ]
+      },
+      {
+        "sourceItemId": "42314324",
+        "sourceSelectionId": "42314324",
+        "title": "Interior Doors Paint or Stain Grade",
+        "category": "08 00 00 - Openings",
+        "location": "Interior",
+        "status": "Unreleased",
+        "allowance": 0,
+        "deadline": null,
+        "requireClientSelection": false,
+        "allowMultipleSelectedChoices": false,
+        "choiceOrdering": "Auto",
+        "choices": [
+          { "sourceChoiceId": "160297174", "title": "Paint Grade", "status": "Unreleased", "price": 0, "attachmentCount": 1 },
+          { "sourceChoiceId": "160297175", "title": "Stain Grade", "status": "Unreleased", "price": 0, "attachmentCount": 1 }
+        ]
+      }
+    ],
+    "bidPackages": []
+  },
+  "conversionExceptions": [
+    {
+      "templateSourceTemplateId": "28466146",
+      "module": "selections",
+      "sourceItemId": null,
+      "field": "choices.description",
+      "sourceValue": "Buildertrend exposed all 41 choice identities, literal titles, displayed order, statuses, prices, and attachment counts, but did not expose stored choice description values during the bounded authenticated source capture.",
+      "loss": "Choice descriptions could not be distinguished from blank values and therefore were omitted instead of being recorded as empty.",
+      "recoveryPlan": "Recover the exact description values from a supported Buildertrend export or a later authenticated detail capture before publishing this draft; do not infer blank descriptions."
+    },
+    {
+      "templateSourceTemplateId": "28466146",
+      "module": "selections",
+      "sourceItemId": null,
+      "field": "choices.attachments.fileName",
+      "sourceValue": "Each of the 41 choices displayed one attachment; the source list and bounded detail pass did not expose filenames.",
+      "loss": "All 41 attachment filenames and all durable attachment bytes were unavailable and were omitted; the verified attachmentCount remains one on every choice.",
+      "recoveryPlan": "Recover the exact filenames and attachment bytes from a supported Buildertrend export or a later authenticated detail capture before publishing this draft; do not derive filenames from choice titles."
+    }
+  ]
+}

@@ -13,3 +13,13 @@ Framing - Stair Installation (`12650713`) preserves all ten native task IDs in
 their displayed order. Five checklist rows remain children of the HPS stair
 installation QC inspection task. Its three schedule rows and two dependencies
 continue to come exclusively from the canonical reviewed source capture.
+
+Int. Finishes - Interior Doors (`28466146`) preserves five root tasks and four
+selections with 41 exact native choice identities, literal titles, displayed
+order, statuses, prices, and attachment counts. Its three schedule items and
+two dependencies remain canonical in the reviewed source capture.
+
+All 41 choices displayed one attachment, but the bounded source pass did not
+expose choice descriptions, attachment filenames, or durable attachment bytes.
+Those fields remain explicit conversion exceptions and must be recovered
+without inference before publishing this draft.
