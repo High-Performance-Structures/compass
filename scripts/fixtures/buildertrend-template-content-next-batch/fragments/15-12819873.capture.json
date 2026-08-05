@@ -1,0 +1,40 @@
+{
+  "sourceTemplateId": "12819873",
+  "sourceName": "Framing - Fascia & Soffit Installation",
+  "capturedAt": "2026-08-05T01:08:59Z",
+  "captureNotes": [
+    "Captured directly from the authenticated Buildertrend source template All Tasks grid.",
+    "Both checklist groups were expanded before capture.",
+    "Buildertrend task row IDs, displayed order, and parent-child checklist relationships were captured exactly.",
+    "The reviewed template inventory reports zero selections and zero bid packages."
+  ],
+  "tasks": [
+    { "sourceItemId": "75714140", "parentSourceItemId": null, "title": "Install (X Direction) Wall Soffit Ribbon", "sortOrder": 1 },
+    { "sourceItemId": "75714141", "parentSourceItemId": null, "title": "Install (X Direction) Wall Soffit", "sortOrder": 2 },
+    { "sourceItemId": "75714142", "parentSourceItemId": null, "title": "Install (X Direction) Fascia", "sortOrder": 3 },
+    { "sourceItemId": "75714143", "parentSourceItemId": null, "title": "Paint (X Direction) Wall Soffit", "sortOrder": 4 },
+    { "sourceItemId": "75714145", "parentSourceItemId": null, "title": "Paint (X Direction) Wall Fascia", "sortOrder": 5 },
+    { "sourceItemId": "75714147", "parentSourceItemId": null, "title": "HPS Soffit & Fascia QC Inspection", "sortOrder": 6 },
+    { "sourceItemId": "75714455", "parentSourceItemId": "75714147", "title": "All Installed Properly", "sortOrder": 1 },
+    { "sourceItemId": "75714459", "parentSourceItemId": "75714147", "title": "No Large Gaps", "sortOrder": 2 },
+    { "sourceItemId": "75714461", "parentSourceItemId": "75714147", "title": "No Cracks", "sortOrder": 3 },
+    { "sourceItemId": "75714463", "parentSourceItemId": "75714147", "title": "Caulked", "sortOrder": 4 },
+    { "sourceItemId": "75714465", "parentSourceItemId": "75714147", "title": "Vented (as necessary)", "sortOrder": 5 },
+    { "sourceItemId": "75714467", "parentSourceItemId": "75714147", "title": "Nail/Screws Recessed & Caulked", "sortOrder": 6 },
+    { "sourceItemId": "75714469", "parentSourceItemId": "75714147", "title": "Ready to Paint", "sortOrder": 7 },
+    { "sourceItemId": "75714471", "parentSourceItemId": "75714147", "title": "Jobsite Cleanup Satisfactory", "sortOrder": 8 },
+    { "sourceItemId": "75714473", "parentSourceItemId": "75714147", "title": "OK to Pay", "sortOrder": 9 },
+    { "sourceItemId": "75714149", "parentSourceItemId": null, "title": "HPS Soffit & Fascia QC Inpsection", "sortOrder": 7 },
+    { "sourceItemId": "75714475", "parentSourceItemId": "75714149", "title": "All Soffits & Fascia Boards Installed Properly", "sortOrder": 1 },
+    { "sourceItemId": "75714477", "parentSourceItemId": "75714149", "title": "No Large Gaps (1/8\" or greater)", "sortOrder": 2 },
+    { "sourceItemId": "75714479", "parentSourceItemId": "75714149", "title": "No cracks", "sortOrder": 3 },
+    { "sourceItemId": "75714481", "parentSourceItemId": "75714149", "title": "No Sagging", "sortOrder": 4 },
+    { "sourceItemId": "75714483", "parentSourceItemId": "75714149", "title": "Caulked", "sortOrder": 5 },
+    { "sourceItemId": "75714485", "parentSourceItemId": "75714149", "title": "Vented (as necessary)", "sortOrder": 6 },
+    { "sourceItemId": "75714487", "parentSourceItemId": "75714149", "title": "Nail/Screws Recessed and Caulked", "sortOrder": 7 },
+    { "sourceItemId": "75714490", "parentSourceItemId": "75714149", "title": "Jobsite Cleanup Satisfactory", "sortOrder": 8 },
+    { "sourceItemId": "75714492", "parentSourceItemId": "75714149", "title": "OK to Pay", "sortOrder": 9 }
+  ],
+  "selections": [],
+  "bidPackages": []
+}
