@@ -1,53 +1,15 @@
 {
-  "reviewStatus": "incomplete",
-  "releaseEligible": false,
-  "template": {
-    "sourceTemplateId": "36595931",
-    "sourceName": "MEP - Quotes",
-    "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/36595931",
-    "temporaryBuildertrendTargetName": "BT MEP - Quotes",
-    "capturedAt": "2026-08-05T11:30:13Z",
-    "captureNotes": [
-      "The source was selected through the authenticated Buildertrend My Templates page and the job picker verified exact template context 36595931 before Bid Packages was opened.",
-      "The source list contains exactly three bid packages: Electrical 10427367, HVAC 10427813, and Plumbing 10427674.",
-      "The Electrical package was captured completely from its authenticated editor, including all six native line-item IDs, descriptions, cost codes, Cost Types, quantities, units, package specifications, settings, and attachment state.",
-      "Electrical has no linked plans, no linked specifications, no package attachments, and no internal notes. Buildertrend displays an em dash for every unit; the normalized unit is therefore null.",
-      "A targeted second pass captured the HVAC editor settings, shared package specifications, all nine native line-item IDs and descriptions, cost codes, Cost Types, quantities, units, internal note, attachment state, and the empty Plans tab.",
-      "The browser was released before the HVAC Specs tab could be verified and before Plumbing was opened. HVAC therefore remains partial and Plumbing remains blocked; neither missing state is inferred from Electrical or any other template."
-    ],
-    "sourceInventory": {
-      "tasks": 0,
-      "scheduleItems": 0,
-      "selections": 0,
-      "bidPackages": 3
-    },
-    "browserModuleGates": [
-      {
-        "module": "bidPackages",
-        "expectedCount": 3,
-        "capturedCount": 1,
-        "status": "incomplete",
-        "releaseBlocker": "Verify the HVAC 10427813 Specs tab, then recover the full Plumbing 10427674 package editor, including settings, specifications, native line-item identities and ordering, descriptions, cost codes, Cost Types, quantities, units, linked plans/specs, attachments, internal notes, and any Buildertrend warnings."
-      }
-    ],
-    "packageIndex": [
-      {
-        "sourceBidPackageId": "10427367",
-        "title": "Electrical - (Project Address) (Estimate Phase)",
-        "detailStatus": "captured"
-      },
-      {
-        "sourceBidPackageId": "10427813",
-        "title": "HVAC - (Project Address) (Estimate Phase)",
-        "detailStatus": "partial"
-      },
-      {
-        "sourceBidPackageId": "10427674",
-        "title": "Plumbing - (Project Address) (Estimate Phase)",
-        "detailStatus": "incomplete"
-      }
-    ],
-    "bidPackages": [
+  "sourceTemplateId": "36595931",
+  "sourceName": "MEP - Quotes",
+  "capturedAt": "2026-08-05T11:45:00Z",
+  "captureNotes": [
+    "The source was selected through the authenticated Buildertrend My Templates page and the job picker verified exact template context 36595931 before Bid Packages was opened.",
+    "The source list contains exactly three bid packages: Electrical 10427367, HVAC 10427813, and Plumbing 10427674.",
+    "All three package editors were captured completely, including exact settings, package specifications, native line-item IDs and ordering, descriptions, cost codes, Cost Types, quantities, units, internal notes, and attachment state.",
+    "Electrical, HVAC, and Plumbing explicitly reported no linked Plans and no linked Specs and had empty package attachment sections.",
+    "Buildertrend displayed an em dash for every captured line-item unit; each normalized unit is therefore null."
+  ],
+  "bidPackages": [
       {
         "sourceItemId": "10427367",
         "sourceBidPackageId": "10427367",
@@ -56,6 +18,7 @@
         "allowMultipleApprovedBids": false,
         "deadline": null,
         "time": null,
+        "linkToSchedule": false,
         "reminderLeadDays": 2,
         "plansAndSpecs": false,
         "linkedPlanCount": 0,
@@ -129,17 +92,15 @@
         "allowMultipleApprovedBids": false,
         "deadline": null,
         "time": null,
+        "linkToSchedule": false,
         "reminderLeadDays": 2,
-        "plansAndSpecs": null,
+        "plansAndSpecs": false,
         "linkedPlanCount": 0,
-        "linkedSpecCount": null,
+        "linkedSpecCount": 0,
         "pricingFormat": "Line Items",
         "description": "Background\nHigh Performance Structures, Inc. dba Open Range Construction, Ltd. (ORC) will be building a custom (Project type, ie. home, office, etc.) located at:\n(Project Street Address)\n(Project City), (Project State) (Project Zip Code)\nReference Documents\nPlease see the Buildertrend Documents folder titled \"(Estimate Phase) Bid Set\" for all necessary plans.\nSubmission of Bid\nBids for this project will be processed through Buildertrend, a construction management program. You do not need to become proficient with Buildertrend. You may also simply call or email your point of contact. You may submit your bid into Buildertrend or email it to your point of contact for entry. Should you choose to input your bid into Buildertrend, please also include a PDF version of your bid.\nFor assistance with submitting the bid or receiving bid documents, contact the (Estimator Title):\n(Estimator Name), (719) 900-8850 ext. (Estimator Extension)\n(Estimator Email Address)\nTimeline\nThe work is scheduled to start in (Build Season), (Build Year).\nScope of Work\nThe following CSI categories will be required for the construction of the project per the plans and specifications noted on the Plans and Specifications List. We will notify bidders of any changes or additions by sending out updates to said List.\nQuestions\nPlease direct any questions into the RFI section here on Buildertrend. This helps us as a builder keep questions organized and accessible to any of our staff provided an estimator is absent. This will help expedite provision of answers.\nSchedule\nPlease provide a schedule to complete each of the above items, in calendar days after the issuance of the purchase order and/or notice to proceed.\nContract and Insurance Requirements\nAll trade contractors will be required to complete a trade contractor agreement, provide proof of liability insurance and workman’s compensation insurance as applicable, with required limits prior to the release of any construction payments.",
         "internalNotes": "Estimator, please not to remove any of the following that do not apply. If we are doing radiant floor heating, we are very likely not going to do forced air heating.",
         "attachments": [],
-        "captureLimitations": [
-          "The Plans tab was verified empty, but the Specs tab was not opened before the bounded browser pass ended."
-        ],
         "lineItems": [
           {
             "sourceLineItemId": "17993912",
@@ -223,8 +184,53 @@
             "unit": null
           }
         ]
+      },
+      {
+        "sourceItemId": "10427674",
+        "sourceBidPackageId": "10427674",
+        "title": "Plumbing - (Project Address) (Estimate Phase)",
+        "status": "Draft",
+        "allowMultipleApprovedBids": false,
+        "deadline": null,
+        "time": null,
+        "linkToSchedule": false,
+        "reminderLeadDays": 2,
+        "plansAndSpecs": false,
+        "linkedPlanCount": 0,
+        "linkedSpecCount": 0,
+        "pricingFormat": "Line Items",
+        "description": "Background\nHigh Performance Structures, Inc. dba Open Range Construction, Ltd. (ORC) will be building a custom (Project Type, ie. home, office building, etc.) located at:\n(Project Street Address)\n(Project City), (Project State) (Project Zip)\nReference Documents\nPlease see the Buildertrend Documents folder titled \"Construction Documents\" for all necessary plans.\nSubmission of Bid\nBids for this project will be processed through Buildertrend, a construction management program. You do not need to become proficient with Buildertrend. You may also simply call or email your point of contact. You may submit your bid into Buildertrend or email it to your point of contact for entry. Should you choose to input your bid into Buildertrend, please also include a PDF version of your bid.\nFor assistance with submitting the bid or receiving bid documents, contact the (Estimator Title):\n(Estimator Name), (719) 900-8850 ext. (Estimator Extension)\n(Estimator Email)\nTimeline\nThe work is scheduled to start in (Build Season), (Build Year).\nScope of Work\nThe following CSI categories will be required for the construction of the project per the plans and specifications noted on the Plans and Specifications List. We will notify bidders of any changes or additions by sending out updates to said List.\nSchedule\nPlease provide a schedule to complete each of the above items, in calendar days after the issuance of the purchase order and/or notice to proceed.\nContract and Insurance Requirements\nAll trade contractors will be required to complete a trade contractor agreement, provide proof of liability insurance and workman’s compensation insurance as applicable, with required limits prior to the release of any construction payments.",
+        "internalNotes": "",
+        "attachments": [],
+        "lineItems": [
+          {
+            "sourceLineItemId": "17993676",
+            "title": "Base Plumbing Labor & Materials",
+            "description": "Please include all necessary labor & materials for base plumbing assemblies.",
+            "costCode": "22 00 00 - Plumbing",
+            "costType": "Subcontractor",
+            "quantity": 1,
+            "unit": null
+          },
+          {
+            "sourceLineItemId": "17993677",
+            "title": "Rough & Top-Out Plumbing Labor & Materials",
+            "description": "Please include all necessary labor & materials for rough & top-outplumbing",
+            "costCode": "22 00 00 - Plumbing",
+            "costType": "Subcontractor",
+            "quantity": 1,
+            "unit": null
+          },
+          {
+            "sourceLineItemId": "17993678",
+            "title": "Trim Plumbing & Fixture Installation Labor & Materials",
+            "description": "Please include all necessary labor & misc installation materials for trim plumbing & fixtures installation.\n\nFixtures provided by others.",
+            "costCode": "22 00 00 - Plumbing",
+            "costType": "Subcontractor",
+            "quantity": 1,
+            "unit": null
+          }
+        ]
       }
     ]
-  },
-  "conversionExceptions": []
 }

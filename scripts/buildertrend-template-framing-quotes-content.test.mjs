@@ -120,8 +120,8 @@ test("includes Framing Quote Packages in the complete draft-only release", async
   assert.equal(template.scheduleItems.length, 0)
   assert.equal(template.selections.length, 0)
   assert.equal(template.bidPackages.length, 3)
-  assert.equal(result.capture.assembly.templateCount, 23)
-  assert.equal(result.capture.assembly.excludedIncompleteTemplateCount, 11)
+  assert.equal(result.capture.assembly.templateCount, 24)
+  assert.equal(result.capture.assembly.excludedIncompleteTemplateCount, 10)
   assert.equal(result.capture.assembly.draftOnly, true)
   assert.equal(result.capture.assembly.publish, false)
 

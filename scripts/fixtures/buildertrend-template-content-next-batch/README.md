@@ -7,9 +7,9 @@ Do not create placeholder content and do not mutate the Buildertrend sources.
 The deterministic manifest is
 `scripts/fixtures/buildertrend-template-next-batch-2026-08-04.json`. Its current
 reviewed release covers workplan sequences 6–13, 15–16, 18, 20–24, 26–28,
-30–32, 34, and 39,
+30–32, 34–35, and 39,
 excluding sequence 10 because Drywall was already completed in the pilot and
-sequences 14, 17, 19, 25, 29, 33, 35–38, and 40 because their captures remain
+sequences 14, 17, 19, 25, 29, 33, 36–38, and 40 because their captures remain
 incomplete; sequence 40 has a fail-closed partial checkpoint:
 
 1. Ext. Finishes - Stucco (`12859981`)
@@ -34,7 +34,8 @@ incomplete; sequence 40 has a fail-closed partial checkpoint:
 20. Int. Finishes - Painting/Staining (`36619183`)
 21. Int. Finishes - Flooring (`38452172`)
 22. Framing - Quote Packages (`36478698`)
-23. Int. Finishes - Bath Hardware (`42948499`)
+23. MEP - Quotes (`36595931`)
+24. Int. Finishes - Bath Hardware (`42948499`)
 
 Place capture files under `fragments/` using the exact `fragmentPath` from the
 manifest. A fragment must identify one template and may contain one or more of
@@ -77,14 +78,14 @@ Installation (`12650484`), Framing Stair Installation (`12650713`), Interior
 Doors (`28466146`), Stain & Seal Concrete Floors (`12979213`), Rough Inspection
 with Draft & Firestop (`12978590`), Interior Painting/Staining (`36619183`),
 Interior Finishes Flooring (`38452172`), Framing Quote Packages (`36478698`),
-and Interior Finishes Bath Hardware (`42948499`).
+MEP Quotes (`36595931`), and Interior Finishes Bath Hardware (`42948499`).
 Their browser gates are complete, and the assembler combines those fragments
 with the already-reviewed schedule rows and
 dependencies.
 
 The guarded audit covers all 34 non-pilot active templates, not just the
-twenty-three release entries. At the current checkpoint it includes 23
-structurally complete templates, excludes 11 incomplete active templates, and
+twenty-four release entries. At the current checkpoint it includes 24
+structurally complete templates, excludes 10 incomplete active templates, and
 excludes all 27
 archived templates. There are zero additional structurally complete templates
 after this reviewed release. If another complete fragment appears, `--check`

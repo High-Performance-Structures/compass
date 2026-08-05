@@ -112,20 +112,6 @@ and the bid package are captured with exact native identities, choice and line
 item content, cost codes, Cost Types, attachment evidence, and any copy
 warnings. No source values may be inferred while this audit remains pending.
 
-## MEP - Quotes (`36595931`)
-
-The reviewed source inventory reports three bid packages and no task, schedule,
-or selection content. An authenticated bounded pass preserved all three package
-identities and completely captured Electrical, including its six native line
-items, descriptions, cost codes, Cost Types, quantities, units, package
-specifications, settings, linked-plan/spec state, and empty attachments. A
-targeted second pass also captured HVAC settings, specifications, all nine
-native line items, its internal note, empty attachments, and empty Plans tab.
-
-MEP Quotes remains blocked until HVAC's Specs tab is verified and Plumbing is
-captured to the same standard. The remaining state may not be inferred from
-Electrical, HVAC, or related MEP templates.
-
 ## Ext. Finishes - Stone (`37180847`)
 
 The authenticated source inventory reports two selections and no task,

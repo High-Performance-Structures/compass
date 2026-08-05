@@ -147,6 +147,6 @@ test("includes complete Bath Hardware content in the guarded draft-only release"
   )
   assert.equal(result.capture.assembly.draftOnly, true)
   assert.equal(result.capture.assembly.publish, false)
-  assert.equal(result.capture.assembly.templateCount, 23)
-  assert.equal(result.capture.assembly.excludedIncompleteTemplateCount, 11)
+  assert.equal(result.capture.assembly.templateCount, 24)
+  assert.equal(result.capture.assembly.excludedIncompleteTemplateCount, 10)
 })
