@@ -36,6 +36,13 @@ test("preserves the exact Manufactured Gutters checkpoint as a fail-closed audit
     scheduleItems: 2,
     selections: 2,
     bidPackages: 1,
+    specifications: 2,
+  })
+  assert.deepEqual(review.template.sourceSettings, {
+    jobColor: "Maroon",
+    workDays: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"],
+    includeAllowances: true,
+    defaultTaxRate: "No Tax",
   })
   assert.deepEqual(
     review.template.browserModuleGates.map((gate) => ({

@@ -5,10 +5,14 @@
     "sourceTemplateId": "12978732",
     "sourceName": "Ext. Finishes - Manuf. Gutters",
     "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/12978732",
-    "capturedAt": "2026-08-05T03:30:42Z",
+    "capturedAt": "2026-08-05T12:04:57Z",
     "captureNotes": [
-      "The authenticated Buildertrend My Templates row for source 12978732 reported 17 tasks, one bid package, a four-day schedule with two schedule items, and two selections.",
+      "The authenticated Buildertrend My Templates row for source 12978732 reported 17 tasks, one bid package, a four-day schedule with two schedule items, two selections, and two specifications.",
       "Direct navigation and a bounded row-selection retry resolved to the source-template URL, but Buildertrend kept the active module context pinned to the previously selected Int. Finishes - Tiling template 30914491.",
+      "A second authenticated retry started from the visible My Templates list, advanced to page two, and opened the exact Ext. Finishes - Manuf. Gutters row without substituting a source ID into a route.",
+      "That visible row selection resolved to /app/Templates/MyTemplates/Template/12978732 and opened the exact source Template Information dialog, while the active job-picker context remained Framing - Quote Packages.",
+      "The source dialog exposed Maroon as the job color, Monday through Friday as work days, Include Allowances enabled, and No Tax as the default tax rate.",
+      "An exact job-picker search for Ext. Finishes - Manuf. Gutters returned no result, so the retry stopped rather than opening Tasks, Selections, or Bid Packages under the unrelated Framing - Quote Packages context.",
       "The authorized temporary-copy menu was opened to From a Template, but no copy form was submitted and no temporary Buildertrend template was created.",
       "No task, selection, or bid row from the unrelated Tiling context was retained. No source hierarchy, choice, bid specification, cost-code, Cost Type, or attachment value was inferred.",
       "No copy-warning dialog was reached before the bounded capture stopped. This does not establish that the source would copy without conversion loss."
@@ -18,7 +22,20 @@
       "scheduleDuration": "4 Days",
       "scheduleItems": 2,
       "selections": 2,
-      "bidPackages": 1
+      "bidPackages": 1,
+      "specifications": 2
+    },
+    "sourceSettings": {
+      "jobColor": "Maroon",
+      "workDays": [
+        "Monday",
+        "Tuesday",
+        "Wednesday",
+        "Thursday",
+        "Friday"
+      ],
+      "includeAllowances": true,
+      "defaultTaxRate": "No Tax"
     },
     "browserModuleGates": [
       {

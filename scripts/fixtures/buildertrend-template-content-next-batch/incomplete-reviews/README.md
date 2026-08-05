@@ -50,10 +50,19 @@ stopped without retaining any unrelated task, selection, or bid content.
 ## Ext. Finishes - Manuf. Gutters (`12978732`)
 
 The authenticated source inventory reports 17 tasks, two selections, one bid
-package, and two schedule items over four days. Direct source routing remained
-scoped to the previously selected Tiling template during the bounded capture.
-The authorized temporary-copy menu was opened, but no copy form was submitted
-and no temporary Buildertrend template was created.
+package, two specifications, and two schedule items over four days. Direct
+source routing remained scoped to the previously selected Tiling template
+during the first bounded capture. The authorized temporary-copy menu was
+opened, but no copy form was submitted and no temporary Buildertrend template
+was created.
+
+A second authenticated retry navigated only through the visible My Templates
+list, opened the exact source row, and verified the source URL and Template
+Information dialog. It preserved Maroon as the job color, Monday through
+Friday as work days, Include Allowances enabled, and No Tax as the default tax
+rate. The active job-picker context nevertheless remained Framing - Quote
+Packages, and an exact job-picker search returned no Gutters result. The retry
+therefore stopped without retaining any unrelated module content.
 
 The canonical reviewed capture preserves the two schedule items and their one
 dependency. Manufactured Gutters remains blocked until all three browser
