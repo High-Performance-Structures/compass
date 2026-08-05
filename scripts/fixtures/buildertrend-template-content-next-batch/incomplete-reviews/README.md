@@ -103,11 +103,13 @@ The reviewed source inventory reports three bid packages and no task, schedule,
 or selection content. An authenticated bounded pass preserved all three package
 identities and completely captured Electrical, including its six native line
 items, descriptions, cost codes, Cost Types, quantities, units, package
-specifications, settings, linked-plan/spec state, and empty attachments.
+specifications, settings, linked-plan/spec state, and empty attachments. A
+targeted second pass also captured HVAC settings, specifications, all nine
+native line items, its internal note, empty attachments, and empty Plans tab.
 
-MEP Quotes remains blocked until HVAC and Plumbing are captured to the same
-standard. Their exact package identities are preserved in the audit, but no
-detail values may be inferred from Electrical or related MEP templates.
+MEP Quotes remains blocked until HVAC's Specs tab is verified and Plumbing is
+captured to the same standard. The remaining state may not be inferred from
+Electrical, HVAC, or related MEP templates.
 
 ## Ext. Finishes - Stone (`37180847`)
 

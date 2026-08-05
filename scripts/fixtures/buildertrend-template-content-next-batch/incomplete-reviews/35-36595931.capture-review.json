@@ -6,13 +6,14 @@
     "sourceName": "MEP - Quotes",
     "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/36595931",
     "temporaryBuildertrendTargetName": "BT MEP - Quotes",
-    "capturedAt": "2026-08-05T09:18:00Z",
+    "capturedAt": "2026-08-05T11:30:13Z",
     "captureNotes": [
       "The source was selected through the authenticated Buildertrend My Templates page and the job picker verified exact template context 36595931 before Bid Packages was opened.",
       "The source list contains exactly three bid packages: Electrical 10427367, HVAC 10427813, and Plumbing 10427674.",
       "The Electrical package was captured completely from its authenticated editor, including all six native line-item IDs, descriptions, cost codes, Cost Types, quantities, units, package specifications, settings, and attachment state.",
       "Electrical has no linked plans, no linked specifications, no package attachments, and no internal notes. Buildertrend displays an em dash for every unit; the normalized unit is therefore null.",
-      "The bounded browser pass ended after Electrical. HVAC and Plumbing package identities are preserved, but their detail fields remain blocked and are not inferred from Electrical or any other template."
+      "A targeted second pass captured the HVAC editor settings, shared package specifications, all nine native line-item IDs and descriptions, cost codes, Cost Types, quantities, units, internal note, attachment state, and the empty Plans tab.",
+      "The browser was released before the HVAC Specs tab could be verified and before Plumbing was opened. HVAC therefore remains partial and Plumbing remains blocked; neither missing state is inferred from Electrical or any other template."
     ],
     "sourceInventory": {
       "tasks": 0,
@@ -26,7 +27,7 @@
         "expectedCount": 3,
         "capturedCount": 1,
         "status": "incomplete",
-        "releaseBlocker": "Recover the full HVAC 10427813 and Plumbing 10427674 package editors, including settings, specifications, native line-item identities and ordering, descriptions, cost codes, Cost Types, quantities, units, linked plans/specs, attachments, and any Buildertrend warnings."
+        "releaseBlocker": "Verify the HVAC 10427813 Specs tab, then recover the full Plumbing 10427674 package editor, including settings, specifications, native line-item identities and ordering, descriptions, cost codes, Cost Types, quantities, units, linked plans/specs, attachments, internal notes, and any Buildertrend warnings."
       }
     ],
     "packageIndex": [
@@ -38,7 +39,7 @@
       {
         "sourceBidPackageId": "10427813",
         "title": "HVAC - (Project Address) (Estimate Phase)",
-        "detailStatus": "incomplete"
+        "detailStatus": "partial"
       },
       {
         "sourceBidPackageId": "10427674",
@@ -114,6 +115,109 @@
             "title": "Electrical Underground Labor & Materials",
             "description": "Please include all necessary labor & materials for the permanent electrical service run from municipal end or off grid system to structure.",
             "costCode": "33 71 19 - Elec Underground",
+            "costType": "Subcontractor",
+            "quantity": 1,
+            "unit": null
+          }
+        ]
+      },
+      {
+        "sourceItemId": "10427813",
+        "sourceBidPackageId": "10427813",
+        "title": "HVAC - (Project Address) (Estimate Phase)",
+        "status": "Draft",
+        "allowMultipleApprovedBids": false,
+        "deadline": null,
+        "time": null,
+        "reminderLeadDays": 2,
+        "plansAndSpecs": null,
+        "linkedPlanCount": 0,
+        "linkedSpecCount": null,
+        "pricingFormat": "Line Items",
+        "description": "Background\nHigh Performance Structures, Inc. dba Open Range Construction, Ltd. (ORC) will be building a custom (Project type, ie. home, office, etc.) located at:\n(Project Street Address)\n(Project City), (Project State) (Project Zip Code)\nReference Documents\nPlease see the Buildertrend Documents folder titled \"(Estimate Phase) Bid Set\" for all necessary plans.\nSubmission of Bid\nBids for this project will be processed through Buildertrend, a construction management program. You do not need to become proficient with Buildertrend. You may also simply call or email your point of contact. You may submit your bid into Buildertrend or email it to your point of contact for entry. Should you choose to input your bid into Buildertrend, please also include a PDF version of your bid.\nFor assistance with submitting the bid or receiving bid documents, contact the (Estimator Title):\n(Estimator Name), (719) 900-8850 ext. (Estimator Extension)\n(Estimator Email Address)\nTimeline\nThe work is scheduled to start in (Build Season), (Build Year).\nScope of Work\nThe following CSI categories will be required for the construction of the project per the plans and specifications noted on the Plans and Specifications List. We will notify bidders of any changes or additions by sending out updates to said List.\nQuestions\nPlease direct any questions into the RFI section here on Buildertrend. This helps us as a builder keep questions organized and accessible to any of our staff provided an estimator is absent. This will help expedite provision of answers.\nSchedule\nPlease provide a schedule to complete each of the above items, in calendar days after the issuance of the purchase order and/or notice to proceed.\nContract and Insurance Requirements\nAll trade contractors will be required to complete a trade contractor agreement, provide proof of liability insurance and workman’s compensation insurance as applicable, with required limits prior to the release of any construction payments.",
+        "internalNotes": "Estimator, please not to remove any of the following that do not apply. If we are doing radiant floor heating, we are very likely not going to do forced air heating.",
+        "attachments": [],
+        "captureLimitations": [
+          "The Plans tab was verified empty, but the Specs tab was not opened before the bounded browser pass ended."
+        ],
+        "lineItems": [
+          {
+            "sourceLineItemId": "17993912",
+            "title": "HVAC Rough Labor & Materials",
+            "description": "Please include all necessary labor & materials for the rough in HVAC assemblies.",
+            "costCode": "23 00 00 - HVAC",
+            "costType": "Subcontractor",
+            "quantity": 1,
+            "unit": null
+          },
+          {
+            "sourceLineItemId": "17993913",
+            "title": "HVAC Trim & Controls Labor & Materials",
+            "description": "Please include all necessary labor & materials for the installation of HVAC trim & controls.",
+            "costCode": "23 00 00 - HVAC",
+            "costType": "Subcontractor",
+            "quantity": 1,
+            "unit": null
+          },
+          {
+            "sourceLineItemId": "17993914",
+            "title": "ERV Labor & Materials",
+            "description": "Please include all necessary labor & materials for the installation of a whole house ERV system. Please also include ERV units.",
+            "costCode": "23 31 00 - HVAC Ducts and Casin",
+            "costType": "Subcontractor",
+            "quantity": 1,
+            "unit": null
+          },
+          {
+            "sourceLineItemId": "17993915",
+            "title": "Inside Gas Labor & Materials",
+            "description": "Please include all necessary labor & materials for the installation of inside natural gas/LP assemblies.",
+            "costCode": "23 11 23 - Natural Gas Piping",
+            "costType": "Subcontractor",
+            "quantity": 1,
+            "unit": null
+          },
+          {
+            "sourceLineItemId": "17993916",
+            "title": "Forced-Air Heating Assembly Labor & Materials",
+            "description": "Please include all necessary labor & materials for the installation of a whole house forced-air heating system.",
+            "costCode": "23 54 00 - Furnace",
+            "costType": "Subcontractor",
+            "quantity": 1,
+            "unit": null
+          },
+          {
+            "sourceLineItemId": "17993917",
+            "title": "Central Conditioning Assembly Labor & Materials",
+            "description": "Please include all necessary labor & materials for the installation of a central air conditioning system.",
+            "costCode": "23 70 00 - Central Air Conditio",
+            "costType": "Subcontractor",
+            "quantity": 1,
+            "unit": null
+          },
+          {
+            "sourceLineItemId": "17993918",
+            "title": "Radiant Floor Heating Assembly Labor & Materials",
+            "description": "Please include all necessary labor & materials for the installation of a radiant floor heating assembly. Please spec a combi boiler to pair with hot water provision in plumbing assemblies.",
+            "costCode": "23 83 00 - Radiant Heating Unit",
+            "costType": "Subcontractor",
+            "quantity": 1,
+            "unit": null
+          },
+          {
+            "sourceLineItemId": "17993919",
+            "title": "HVAC Budgetary Option: Whole House Humidifier",
+            "description": "Please include all necessary labor & materials for the installation of a whole house humidifier.",
+            "costCode": "23 00 00 - HVAC",
+            "costType": "Subcontractor",
+            "quantity": 1,
+            "unit": null
+          },
+          {
+            "sourceLineItemId": "17993920",
+            "title": "HVAC Budgetary Option: Kitchen Hood Vent",
+            "description": "Please include all necessary labor & materials for the installation of a kitchen hood vent, including hood element.",
+            "costCode": "23 31 00 - HVAC Ducts and Casin",
             "costType": "Subcontractor",
             "quantity": 1,
             "unit": null

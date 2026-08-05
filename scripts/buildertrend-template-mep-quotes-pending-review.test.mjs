@@ -62,7 +62,7 @@ test("preserves the bounded MEP Quotes capture as a fail-closed audit", async ()
     {
       sourceBidPackageId: "10427813",
       title: "HVAC - (Project Address) (Estimate Phase)",
-      detailStatus: "incomplete",
+      detailStatus: "partial",
     },
     {
       sourceBidPackageId: "10427674",
@@ -70,8 +70,8 @@ test("preserves the bounded MEP Quotes capture as a fail-closed audit", async ()
       detailStatus: "incomplete",
     },
   ])
-  assert.equal(review.template.bidPackages.length, 1)
-  const [electrical] = review.template.bidPackages
+  assert.equal(review.template.bidPackages.length, 2)
+  const [electrical, hvac] = review.template.bidPackages
   assert.equal(electrical.sourceBidPackageId, "10427367")
   assert.equal(electrical.title, "Electrical - (Project Address) (Estimate Phase)")
   assert.equal(electrical.status, "Draft")
@@ -105,6 +105,46 @@ test("preserves the bounded MEP Quotes capture as a fail-closed audit", async ()
     ]
   )
   assert.equal(electrical.lineItems.every((line) => line.description.length > 0), true)
+
+  assert.equal(hvac.sourceBidPackageId, "10427813")
+  assert.equal(hvac.title, "HVAC - (Project Address) (Estimate Phase)")
+  assert.equal(hvac.status, "Draft")
+  assert.equal(hvac.allowMultipleApprovedBids, false)
+  assert.equal(hvac.deadline, null)
+  assert.equal(hvac.time, null)
+  assert.equal(hvac.reminderLeadDays, 2)
+  assert.equal(hvac.plansAndSpecs, null)
+  assert.equal(hvac.linkedPlanCount, 0)
+  assert.equal(hvac.linkedSpecCount, null)
+  assert.equal(hvac.pricingFormat, "Line Items")
+  assert.deepEqual(hvac.attachments, [])
+  assert.match(hvac.internalNotes, /radiant floor heating/)
+  assert.match(hvac.description, /Contract and Insurance Requirements/)
+  assert.deepEqual(hvac.captureLimitations, [
+    "The Plans tab was verified empty, but the Specs tab was not opened before the bounded browser pass ended.",
+  ])
+  assert.deepEqual(
+    hvac.lineItems.map((line) => [
+      line.sourceLineItemId,
+      line.title,
+      line.costCode,
+      line.costType,
+      line.quantity,
+      line.unit,
+    ]),
+    [
+      ["17993912", "HVAC Rough Labor & Materials", "23 00 00 - HVAC", "Subcontractor", 1, null],
+      ["17993913", "HVAC Trim & Controls Labor & Materials", "23 00 00 - HVAC", "Subcontractor", 1, null],
+      ["17993914", "ERV Labor & Materials", "23 31 00 - HVAC Ducts and Casin", "Subcontractor", 1, null],
+      ["17993915", "Inside Gas Labor & Materials", "23 11 23 - Natural Gas Piping", "Subcontractor", 1, null],
+      ["17993916", "Forced-Air Heating Assembly Labor & Materials", "23 54 00 - Furnace", "Subcontractor", 1, null],
+      ["17993917", "Central Conditioning Assembly Labor & Materials", "23 70 00 - Central Air Conditio", "Subcontractor", 1, null],
+      ["17993918", "Radiant Floor Heating Assembly Labor & Materials", "23 83 00 - Radiant Heating Unit", "Subcontractor", 1, null],
+      ["17993919", "HVAC Budgetary Option: Whole House Humidifier", "23 00 00 - HVAC", "Subcontractor", 1, null],
+      ["17993920", "HVAC Budgetary Option: Kitchen Hood Vent", "23 31 00 - HVAC Ducts and Casin", "Subcontractor", 1, null],
+    ]
+  )
+  assert.equal(hvac.lineItems.every((line) => line.description.length > 0), true)
   assert.deepEqual(review.conversionExceptions, [])
 })
 
