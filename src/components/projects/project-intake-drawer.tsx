@@ -118,7 +118,7 @@ export function ProjectIntakeDrawer({
         if (result.warning) toast.warning(result.warning)
         else {
           toast.success(
-            `${result.projectNumber} created with Project Lead Tracking, Drive, and Sage review staged.`
+            `${result.projectNumber} created in Compass, Project Registry, the department tracker, Drive, and Sage review.`
           )
         }
         formRef.current?.reset()
@@ -146,7 +146,7 @@ export function ProjectIntakeDrawer({
         <SheetHeader className="border-b px-5 py-4 text-left">
           <SheetTitle>New Project</SheetTitle>
           <SheetDescription>
-            Create the Compass project and update the existing Project Lead Tracking register in one step.
+            Create the Compass project and update the Developer Project Registry and department tracker in one step.
           </SheetDescription>
         </SheetHeader>
 
@@ -270,7 +270,7 @@ export function ProjectIntakeDrawer({
 
           <div className="grid gap-2 border-y py-4 text-sm sm:grid-cols-3">
             <span className="flex items-center gap-2"><IconCheck className="size-4 text-emerald-700" /> Compass registry</span>
-            <span className="flex items-center gap-2"><IconCheck className="size-4 text-emerald-700" /> Project Lead Tracking</span>
+            <span className="flex items-center gap-2"><IconCheck className="size-4 text-emerald-700" /> Project Registry + department tracker</span>
             <span className="flex items-center gap-2"><IconCheck className="size-4 text-emerald-700" /> Drive folder + Sage review</span>
           </div>
 

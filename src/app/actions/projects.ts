@@ -30,11 +30,15 @@ import {
 } from "@/lib/google/project-drive-provisioning"
 import {
   allocateProjectNumber,
-  buildProjectTrackerRow,
-  findProjectTrackerSheetTitle,
+  buildDepartmentTrackerRow,
+  buildProjectRegistryRow,
+  departmentTrackingDestination,
   locateProjectTrackerLayout,
+  PROJECT_REGISTRY_DESTINATION,
+  projectRowNumber,
   type ProjectIntakeDepartment,
   type ProjectIntakeTrackerInput,
+  type ProjectTrackerLayout,
 } from "@/lib/google/project-intake-tracker"
 import { requireOrg } from "@/lib/org-scope"
 import {
@@ -110,9 +114,6 @@ export type CreateProjectIntakeResult =
     }
   | { readonly success: false; readonly error: string }
 
-const PROJECT_LEAD_TRACKING_SPREADSHEET_ID =
-  "15DPCjDK9a4b3pkNB7ZdSFtJsSN1q2CyajNUBb40aRkE"
-
 function cleanText(value: string | null): string | null {
   const trimmed = value?.trim() ?? ""
   return trimmed.length > 0 ? trimmed : null
@@ -183,6 +184,49 @@ function isProjectStatusValue(value: string): value is ProjectStatusValue {
 
 function quotedSheetRange(sheetTitle: string, range: string): string {
   return `'${sheetTitle.replace(/'/g, "''")}'!${range}`
+}
+
+function spreadsheetUrl(spreadsheetId: string): string {
+  return `https://docs.google.com/spreadsheets/d/${spreadsheetId}`
+}
+
+async function appendProjectRowIfMissing(input: {
+  readonly sheets: SheetsClient
+  readonly googleEmail: string
+  readonly spreadsheetId: string
+  readonly sheetTitle: string
+  readonly rows: ReadonlyArray<ReadonlyArray<unknown>>
+  readonly layout: ProjectTrackerLayout
+  readonly projectNumber: string
+  readonly row: readonly string[]
+}): Promise<{ readonly updatedRange: string; readonly alreadyPresent: boolean }> {
+  const existingRow = projectRowNumber(
+    input.rows,
+    input.layout,
+    input.projectNumber
+  )
+  if (existingRow !== null) {
+    return {
+      updatedRange: quotedSheetRange(
+        input.sheetTitle,
+        `A${existingRow}:${String.fromCharCode(64 + Math.min(input.layout.headers.length, 26))}${existingRow}`
+      ),
+      alreadyPresent: true,
+    }
+  }
+  const appended = await input.sheets.appendValues(input.googleEmail, {
+    spreadsheetId: input.spreadsheetId,
+    range: quotedSheetRange(
+      input.sheetTitle,
+      `A${input.layout.headerRowNumber}:AZ`
+    ),
+    values: [input.row],
+  })
+  return {
+    updatedRange:
+      appended.updatedRange ?? quotedSheetRange(input.sheetTitle, "A:AZ"),
+    alreadyPresent: false,
+  }
 }
 
 function joinedAddress(input: CreateProjectIntakeInput): string | null {
@@ -324,29 +368,24 @@ export async function createProjectIntake(
       organizationId,
     })
     const googleEmail = user.googleEmail ?? user.email
-    const metadata = await googleClients.sheets.getSpreadsheetMetadata(
-      googleEmail,
-      PROJECT_LEAD_TRACKING_SPREADSHEET_ID
-    )
-    const trackerSheet = findProjectTrackerSheetTitle(
-      metadata.sheets.map((sheet) => sheet.title)
-    )
-    if (!trackerSheet) {
+    const departmentDestination = departmentTrackingDestination(department)
+    const [registryRows, departmentRows] = await Promise.all([
+      googleClients.sheets.getValues(googleEmail, {
+        spreadsheetId: PROJECT_REGISTRY_DESTINATION.spreadsheetId,
+        range: quotedSheetRange(PROJECT_REGISTRY_DESTINATION.sheetTitle, "A:Z"),
+      }),
+      googleClients.sheets.getValues(googleEmail, {
+        spreadsheetId: departmentDestination.spreadsheetId,
+        range: quotedSheetRange(departmentDestination.sheetTitle, "A:AZ"),
+      }),
+    ])
+    const registryLayout = locateProjectTrackerLayout(registryRows)
+    const departmentLayout = locateProjectTrackerLayout(departmentRows)
+    if (!registryLayout || !departmentLayout) {
       return {
         success: false,
         error:
-          "Project Lead Tracking is missing its Master List sheet. No project was created.",
-      }
-    }
-    const trackerRows = await googleClients.sheets.getValues(googleEmail, {
-      spreadsheetId: PROJECT_LEAD_TRACKING_SPREADSHEET_ID,
-      range: quotedSheetRange(trackerSheet, "A:AZ"),
-    })
-    const layout = locateProjectTrackerLayout(trackerRows)
-    if (!layout) {
-      return {
-        success: false,
-        error: "The Project Lead Tracking header row could not be identified.",
+          "The Developer Project Registry or department Tracker headers could not be identified. No project was created.",
       }
     }
     const reservations = await db
@@ -365,11 +404,15 @@ export async function createProjectIntake(
     const projectNumber = allocateProjectNumber({
       department,
       streetNumber: input.streetNumber,
-      rows: trackerRows,
-      layout,
+      rows: registryRows,
+      layout: registryLayout,
       reservedProjectNumbers: reservations.map(
         (reservation) => reservation.projectNumber
       ).concat(
+        departmentRows.slice(departmentLayout.headerRowNumber).flatMap((row) => {
+          const value = row[departmentLayout.projectNumberColumn]
+          return typeof value === "string" && value.trim() ? [value] : []
+        }),
         compassProjectNumbers.flatMap((project) =>
           project.projectNumber ? [project.projectNumber] : []
         )
@@ -396,7 +439,8 @@ export async function createProjectIntake(
     const now = new Date().toISOString()
     const projectId = `proj-${slugPart(projectNumber)}-${crypto.randomUUID().slice(0, 8)}`
     const operationId = crypto.randomUUID()
-    const trackerLinkId = crypto.randomUUID()
+    const registryLinkId = crypto.randomUUID()
+    const departmentTrackerLinkId = crypto.randomUUID()
     const driveLinkId = crypto.randomUUID()
     const sageLinkId = crypto.randomUUID()
     const sageOperationId = crypto.randomUUID()
@@ -406,11 +450,6 @@ export async function createProjectIntake(
       projectName,
       intakeDate,
     }
-    const trackerRow = buildProjectTrackerRow({
-      layout,
-      project: trackerProject,
-      projectNumber,
-    })
     const driveFolderName = buildProjectDriveFolderName({
       projectNumber,
       projectName,
@@ -503,21 +542,38 @@ export async function createProjectIntake(
           updatedAt: now,
         }),
         db.insert(projectExternalLinks).values({
-          id: trackerLinkId,
+          id: registryLinkId,
           projectId,
-          system: "google_project_lead_tracking",
-          label: "Project Lead Tracking",
-          externalId: PROJECT_LEAD_TRACKING_SPREADSHEET_ID,
+          system: "google_project_registry",
+          label: PROJECT_REGISTRY_DESTINATION.workbookTitle,
+          externalId: PROJECT_REGISTRY_DESTINATION.spreadsheetId,
           externalNumber: projectNumber,
-          externalUrl: `https://docs.google.com/spreadsheets/d/${PROJECT_LEAD_TRACKING_SPREADSHEET_ID}`,
+          externalUrl: spreadsheetUrl(
+            PROJECT_REGISTRY_DESTINATION.spreadsheetId
+          ),
           syncDirection: "bidirectional",
           syncStatus: "pending",
-          // Retain the exact row only while the handoff is pending so a later
-          // reconciliation does not need to reconstruct discarded form fields.
           metadata: JSON.stringify({
-            sheet: trackerSheet,
-            headers: layout.headers,
-            row: trackerRow,
+            sheet: PROJECT_REGISTRY_DESTINATION.sheetTitle,
+            projectNumber,
+          }),
+          createdAt: now,
+          updatedAt: now,
+        }),
+        db.insert(projectExternalLinks).values({
+          id: departmentTrackerLinkId,
+          projectId,
+          system: "google_department_tracker",
+          label: departmentDestination.workbookTitle,
+          externalId: departmentDestination.spreadsheetId,
+          externalNumber: projectNumber,
+          externalUrl: spreadsheetUrl(departmentDestination.spreadsheetId),
+          syncDirection: "bidirectional",
+          syncStatus: "pending",
+          metadata: JSON.stringify({
+            sheet: departmentDestination.sheetTitle,
+            department,
+            projectNumber,
           }),
           createdAt: now,
           updatedAt: now,
@@ -525,18 +581,20 @@ export async function createProjectIntake(
         db.insert(projectOperations).values({
           id: operationId,
           projectId,
-          sourceSystem: "google_project_lead_tracking",
+          sourceSystem: "google_developer_project_tracking",
           sourceRecordType: "project_intake",
-          sourceRecordId: PROJECT_LEAD_TRACKING_SPREADSHEET_ID,
+          sourceRecordId: PROJECT_REGISTRY_DESTINATION.spreadsheetId,
           sourceRecordNumber: projectNumber,
-          title: `Write ${projectNumber} to Project Lead Tracking`,
+          title: `Write ${projectNumber} to Developer project trackers`,
           description:
-            "Compass project intake and its Project Lead Tracking handoff.",
+            `Write Compass intake to Project Registry and ${departmentDestination.workbookTitle}.`,
           status: "open",
           priority: "high",
           assigneeName: cleanText(input.assignedTo),
           companyName: cleanText(input.companyName),
-          externalUrl: `https://docs.google.com/spreadsheets/d/${PROJECT_LEAD_TRACKING_SPREADSHEET_ID}`,
+          externalUrl: spreadsheetUrl(
+            PROJECT_REGISTRY_DESTINATION.spreadsheetId
+          ),
           sageWriteStatus: "not_ready",
           syncDirection: "bidirectional",
           syncStatus: "pending",
@@ -578,67 +636,16 @@ export async function createProjectIntake(
       throw error
     }
 
-    let trackerStatus: "written" | "pending" = "written"
     let warning: string | null = null
-    try {
-      const appended = await googleClients.sheets.appendValues(googleEmail, {
-        spreadsheetId: PROJECT_LEAD_TRACKING_SPREADSHEET_ID,
-        range: quotedSheetRange(
-          trackerSheet,
-          `A${layout.headerRowNumber}:AZ`
-        ),
-        values: [trackerRow],
-      })
-      const syncedAt = new Date().toISOString()
-      try {
-        await db.batch([
-          db
-            .update(projectExternalLinks)
-            .set({
-              syncStatus: "mapped",
-              lastSyncedAt: syncedAt,
-              metadata: JSON.stringify({
-                sheet: trackerSheet,
-                updatedRange: appended.updatedRange,
-              }),
-              updatedAt: syncedAt,
-            })
-            .where(eq(projectExternalLinks.id, trackerLinkId)),
-          db
-            .update(projectOperations)
-            .set({
-              status: "completed",
-              syncStatus: "mapped",
-              lastSyncedAt: syncedAt,
-              updatedAt: syncedAt,
-            })
-            .where(eq(projectOperations.id, operationId)),
-        ])
-      } catch (error) {
-        // The Google write already succeeded. Preserve that truth so a retry
-        // can reconcile by project number instead of appending a duplicate row.
-        warning = appendWarning(
-          warning,
-          "Project Lead Tracking was updated, but Compass could not save its sync receipt. The project is safe to use; do not resend the intake."
-        )
-        console.error("Unable to save the Project Lead Tracking receipt", error)
-      }
-    } catch (error) {
-      trackerStatus = "pending"
-      warning = appendWarning(
-        warning,
-        "The Compass project and number were saved, but Project Lead Tracking is pending and recorded for follow-up. Do not recreate the project."
-      )
-      console.error("Unable to append the new project to Project Lead Tracking", error)
-    }
-
     let driveStatus: "provisioned" | "pending" = "provisioned"
+    let projectDriveUrl: string | null = null
     try {
       const drive = await provisionGoogleProjectDriveFolder(
         googleClients.drive,
         googleEmail,
         { department, folderName: driveFolderName }
       )
+      projectDriveUrl = drive.folderUrl
       const syncedAt = new Date().toISOString()
       try {
         await db.batch([
@@ -685,6 +692,116 @@ export async function createProjectIntake(
         "Google Drive setup is pending. The Compass project is safe to use; retry Drive setup from the Project Registry."
       )
       console.error("Unable to provision the project Drive folder", error)
+    }
+
+    const registryRow = buildProjectRegistryRow({
+      layout: registryLayout,
+      project: trackerProject,
+      projectNumber,
+      driveFolderUrl: projectDriveUrl,
+      departmentTrackerUrl: spreadsheetUrl(
+        departmentDestination.spreadsheetId
+      ),
+      createdBy: user.displayName ?? user.email,
+    })
+    const departmentRow = buildDepartmentTrackerRow({
+      layout: departmentLayout,
+      project: trackerProject,
+      projectNumber,
+      driveFolderUrl: projectDriveUrl,
+    })
+    let registryWrite: Awaited<ReturnType<typeof appendProjectRowIfMissing>> | null =
+      null
+    let departmentWrite: Awaited<ReturnType<typeof appendProjectRowIfMissing>> | null =
+      null
+    try {
+      registryWrite = await appendProjectRowIfMissing({
+        sheets: googleClients.sheets,
+        googleEmail,
+        spreadsheetId: PROJECT_REGISTRY_DESTINATION.spreadsheetId,
+        sheetTitle: PROJECT_REGISTRY_DESTINATION.sheetTitle,
+        rows: registryRows,
+        layout: registryLayout,
+        projectNumber,
+        row: registryRow,
+      })
+    } catch (error) {
+      warning = appendWarning(
+        warning,
+        "The Compass project is safe, but the Developer Project Registry write is pending. Do not recreate the project."
+      )
+      console.error("Unable to write the Developer Project Registry", error)
+    }
+    try {
+      departmentWrite = await appendProjectRowIfMissing({
+        sheets: googleClients.sheets,
+        googleEmail,
+        spreadsheetId: departmentDestination.spreadsheetId,
+        sheetTitle: departmentDestination.sheetTitle,
+        rows: departmentRows,
+        layout: departmentLayout,
+        projectNumber,
+        row: departmentRow,
+      })
+    } catch (error) {
+      warning = appendWarning(
+        warning,
+        `The Compass project is safe, but the ${departmentDestination.workbookTitle} write is pending. Do not recreate the project.`
+      )
+      console.error(
+        `Unable to write ${departmentDestination.workbookTitle}`,
+        error
+      )
+    }
+    const trackerStatus: "written" | "pending" =
+      registryWrite && departmentWrite ? "written" : "pending"
+    const trackingSyncedAt = new Date().toISOString()
+    try {
+      await db.batch([
+        db
+          .update(projectExternalLinks)
+          .set({
+            syncStatus: registryWrite ? "mapped" : "pending",
+            lastSyncedAt: registryWrite ? trackingSyncedAt : null,
+            metadata: JSON.stringify({
+              sheet: PROJECT_REGISTRY_DESTINATION.sheetTitle,
+              updatedRange: registryWrite?.updatedRange ?? null,
+              alreadyPresent: registryWrite?.alreadyPresent ?? false,
+            }),
+            updatedAt: trackingSyncedAt,
+          })
+          .where(eq(projectExternalLinks.id, registryLinkId)),
+        db
+          .update(projectExternalLinks)
+          .set({
+            syncStatus: departmentWrite ? "mapped" : "pending",
+            lastSyncedAt: departmentWrite ? trackingSyncedAt : null,
+            metadata: JSON.stringify({
+              sheet: departmentDestination.sheetTitle,
+              department,
+              updatedRange: departmentWrite?.updatedRange ?? null,
+              alreadyPresent: departmentWrite?.alreadyPresent ?? false,
+            }),
+            updatedAt: trackingSyncedAt,
+          })
+          .where(eq(projectExternalLinks.id, departmentTrackerLinkId)),
+        db
+          .update(projectOperations)
+          .set({
+            status: trackerStatus === "written" ? "completed" : "open",
+            syncStatus: trackerStatus === "written" ? "mapped" : "pending",
+            lastSyncedAt:
+              trackerStatus === "written" ? trackingSyncedAt : null,
+            updatedAt: trackingSyncedAt,
+          })
+          .where(eq(projectOperations.id, operationId)),
+      ])
+    } catch (error) {
+      warning = appendWarning(
+        warning,
+        "Google tracking rows were handled, but Compass could not save every sync receipt. Reconcile by project number; do not resend the intake."
+      )
+      console.error("Unable to save Developer tracker receipts", error)
     }
 
     await recordActivityEvent({

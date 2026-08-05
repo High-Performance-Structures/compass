@@ -2,8 +2,9 @@ import { describe, expect, it } from "vitest"
 
 import {
   allocateProjectNumber,
-  buildProjectTrackerRow,
-  findProjectTrackerSheetTitle,
+  buildDepartmentTrackerRow,
+  buildProjectRegistryRow,
+  departmentTrackingDestination,
   locateProjectTrackerLayout,
   type ProjectIntakeTrackerInput,
 } from "@/lib/google/project-intake-tracker"
@@ -27,16 +28,7 @@ const PROJECT: ProjectIntakeTrackerInput = {
   intakeDate: "2026-08-05",
 }
 
-describe("Google Project Lead Tracking intake", () => {
-  it("uses the current Master List tab and keeps the former tab name compatible", () => {
-    expect(
-      findProjectTrackerSheetTitle(["Stats", "Master List", "Parameters"])
-    ).toBe("Master List")
-    expect(findProjectTrackerSheetTitle(["Highlight Project"])).toBe(
-      "Highlight Project"
-    )
-  })
-
+describe("Google Developer-folder project tracking intake", () => {
   it("locates a shifted tracker header and allocates the next department number", () => {
     const rows = [
       ["Project Lead Tracking"],
@@ -59,38 +51,6 @@ describe("Google Project Lead Tracking intake", () => {
         layout,
       })
     ).toBe("O-211-33A")
-  })
-
-  it("maps values by header name so tracker column moves remain safe", () => {
-    const layout = locateProjectTrackerLayout([
-      [
-        "Notes",
-        "CLIENT FIRST NAME",
-        "ACTIVE PROJECTS",
-        "PROJECT NUMBER",
-        "CONTACT EMAIL",
-        "ASSIGNED TO",
-        "INTAKE DATE",
-      ],
-    ])
-    expect(layout).not.toBeNull()
-    if (!layout) return
-
-    expect(
-      buildProjectTrackerRow({
-        layout,
-        project: PROJECT,
-        projectNumber: "O-211-33A",
-      })
-    ).toEqual([
-      "Call before site visit",
-      "Dan",
-      "Mitchell Residence",
-      "O-211-33A",
-      "dan@example.com",
-      "Wes Jones",
-      "2026-08-05",
-    ])
   })
 
   it("uses a safe street placeholder when a lead has no street number yet", () => {
@@ -124,5 +84,133 @@ describe("Google Project Lead Tracking intake", () => {
         reservedProjectNumbers: ["O-211-33", "H-995-20"],
       })
     ).toBe("O-212-55")
+  })
+
+  it("allocates from the Developer Project Registry Project ID column", () => {
+    const rows = [
+      ["Project ID", "Division", "Sequence"],
+      ["H-430-1900", "HPS", 430],
+      ["H-431-00", "HPS", 431],
+    ]
+    const layout = locateProjectTrackerLayout(rows)
+    expect(layout).not.toBeNull()
+    if (!layout) return
+
+    expect(
+      allocateProjectNumber({
+        department: "H",
+        streetNumber: "3295",
+        rows,
+        layout,
+      })
+    ).toBe("H-432-3295")
+  })
+
+  it("maps the Project Registry and HPS Tracker live headers", () => {
+    const hpsProject: ProjectIntakeTrackerInput = {
+      ...PROJECT,
+      department: "H",
+      projectName: "Thompson Residence",
+      clientName: "Scott and Farrell Thompson",
+      companyName: null,
+      clientFirstName: "Scott",
+      clientLastName: "Thompson",
+      streetNumber: "3295",
+      streetName: "Little Turkey Creek Rd.",
+      cityStateZip: "Colorado Springs, CO 80926",
+      assignedTo: "Martine Vogel",
+    }
+    const registryLayout = locateProjectTrackerLayout([
+      [
+        "Project ID",
+        "Division",
+        "Sequence",
+        "Street Number / Code",
+        "Folder Link",
+        "Lead Tracker Link",
+        "Status",
+      ],
+    ])
+    const trackerLayout = locateProjectTrackerLayout([
+      [
+        "Project ID",
+        "Builder / GC",
+        "Contact Person",
+        "Estimator",
+        "Quote Status",
+        "Folder Link",
+        "Project Address",
+      ],
+    ])
+    expect(registryLayout).not.toBeNull()
+    expect(trackerLayout).not.toBeNull()
+    if (!registryLayout || !trackerLayout) return
+
+    const destination = departmentTrackingDestination("H")
+    expect(
+      buildProjectRegistryRow({
+        layout: registryLayout,
+        project: hpsProject,
+        projectNumber: "H-432-3295",
+        driveFolderUrl: "https://drive.google.com/drive/folders/folder-id",
+        departmentTrackerUrl: `https://docs.google.com/spreadsheets/d/${destination.spreadsheetId}`,
+        createdBy: "Martine Vogel",
+      })
+    ).toEqual([
+      "H-432-3295",
+      "HPS",
+      "432",
+      "3295",
+      "https://drive.google.com/drive/folders/folder-id",
+      `https://docs.google.com/spreadsheets/d/${destination.spreadsheetId}`,
+      "I - Intake",
+    ])
+    expect(
+      buildDepartmentTrackerRow({
+        layout: trackerLayout,
+        project: hpsProject,
+        projectNumber: "H-432-3295",
+        driveFolderUrl: "https://drive.google.com/drive/folders/folder-id",
+      })
+    ).toEqual([
+      "H-432-3295",
+      "Scott and Farrell Thompson",
+      "Scott and Farrell Thompson",
+      "Martine Vogel",
+      "I - Intake",
+      "https://drive.google.com/drive/folders/folder-id",
+      "3295 Little Turkey Creek Rd., Colorado Springs, CO 80926",
+    ])
+  })
+
+  it("keeps Project Number header compatibility without dropping the identifier", () => {
+    const registryLayout = locateProjectTrackerLayout([
+      ["Project Number", "Division"],
+    ])
+    const trackerLayout = locateProjectTrackerLayout([
+      ["Project Number", "Client"],
+    ])
+    expect(registryLayout).not.toBeNull()
+    expect(trackerLayout).not.toBeNull()
+    if (!registryLayout || !trackerLayout) return
+
+    expect(
+      buildProjectRegistryRow({
+        layout: registryLayout,
+        project: PROJECT,
+        projectNumber: "O-211-33A",
+        driveFolderUrl: null,
+        departmentTrackerUrl: "https://example.invalid/tracker",
+        createdBy: "Martine Vogel",
+      })[0]
+    ).toBe("O-211-33A")
+    expect(
+      buildDepartmentTrackerRow({
+        layout: trackerLayout,
+        project: PROJECT,
+        projectNumber: "O-211-33A",
+        driveFolderUrl: null,
+      })[0]
+    ).toBe("O-211-33A")
   })
 })
