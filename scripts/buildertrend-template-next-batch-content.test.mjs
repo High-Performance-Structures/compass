@@ -26,31 +26,31 @@ async function inputs() {
   return { release, nextBatchManifest, reviewedCapture, documents }
 }
 
-test("assembles the six gate-complete priority templates with reviewed schedules", async () => {
+test("assembles the seven gate-complete priority templates with reviewed schedules", async () => {
   const result = assembleBuildertrendTemplateNextBatchContent(await inputs())
 
   assert.deepEqual(
     result.capture.assembly.sourceTemplateIds,
-    ["12859981", "12978371", "12581937", "12594475", "30917204", "12646335"]
+    ["12859981", "12978371", "12581937", "12594475", "30917204", "12646335", "12650792"]
   )
   assert.equal(result.capture.assembly.draftOnly, true)
   assert.equal(result.capture.assembly.publish, false)
-  assert.equal(result.capture.assembly.excludedIncompleteTemplateCount, 28)
+  assert.equal(result.capture.assembly.excludedIncompleteTemplateCount, 27)
   assert.equal(result.capture.assembly.excludedArchivedTemplateCount, 27)
   assert.equal(result.capture.assembly.eligibleAfterThisBatch, 0)
-  assert.equal(result.capture.templates.reduce((sum, item) => sum + item.tasks.length, 0), 235)
-  assert.equal(result.capture.templates.reduce((sum, item) => sum + item.scheduleItems.length, 0), 35)
+  assert.equal(result.capture.templates.reduce((sum, item) => sum + item.tasks.length, 0), 263)
+  assert.equal(result.capture.templates.reduce((sum, item) => sum + item.scheduleItems.length, 0), 40)
   assert.equal(result.capture.templates.reduce((sum, item) => sum + (item.selections?.length ?? 0), 0), 8)
   assert.equal(result.capture.templates.reduce((sum, item) => sum + (item.bidPackages?.length ?? 0), 0), 6)
   assert.equal(result.capture.templates.reduce(
     (sum, item) => sum + item.scheduleItems.flatMap((row) => row.predecessors).length,
     0
-  ), 28)
-  assert.equal(result.inventory.expectedActiveCount, 6)
+  ), 33)
+  assert.equal(result.inventory.expectedActiveCount, 7)
   assert.equal(result.inventory.excludedArchivedCount, 27)
   assert.deepEqual(
     result.inventory.templates.map((template) => template.sourceTemplateId),
-    ["12859981", "12978371", "12581937", "12594475", "30917204", "12646335"]
+    ["12859981", "12978371", "12581937", "12594475", "30917204", "12646335", "12650792"]
   )
 })
 
@@ -299,17 +299,108 @@ test("preserves Interior Wall checklist, bid specifications, and reviewed depend
   assert.equal(bid.lineItems.every((item) => item.description.length > 0), true)
 })
 
+test("preserves Roof Trusses checklist hierarchy and reviewed schedule graph", async () => {
+  const result = assembleBuildertrendTemplateNextBatchContent(await inputs())
+  const roof = result.capture.templates.find(
+    (template) => template.sourceTemplateId === "12650792"
+  )
+  assert.ok(roof)
+  assert.equal(roof.tasks.length, 28)
+  assert.equal(roof.tasks.filter((task) => task.parentSourceItemId === null).length, 12)
+  assert.equal(roof.tasks.filter((task) => task.parentSourceItemId !== null).length, 16)
+  assert.deepEqual(
+    roof.tasks.filter((task) => task.parentSourceItemId === null).map((task) => ({
+      sourceItemId: task.sourceItemId,
+      title: task.title,
+      sortOrder: task.sortOrder,
+    })),
+    [
+      { sourceItemId: "75711450", title: "Cut (X) Level Roof Truss Blocking", sortOrder: 1 },
+      { sourceItemId: "75711451", title: "(X) Level Roof Truss Layout", sortOrder: 2 },
+      { sourceItemId: "75711452", title: "Set (X) Level Roof Trusses", sortOrder: 3 },
+      { sourceItemId: "75711453", title: "(X) Level Roof Roll/Fire Blocking", sortOrder: 4 },
+      { sourceItemId: "75711454", title: "Sheet (X) Level Gable End Trusses", sortOrder: 5 },
+      { sourceItemId: "75711455", title: "(X) Level Wall Framing Nailers", sortOrder: 6 },
+      { sourceItemId: "75711456", title: "(X) Level (TYPE) Hurricane Ties", sortOrder: 7 },
+      { sourceItemId: "75711457", title: "(X) Level Roof Backout", sortOrder: 8 },
+      { sourceItemId: "75711458", title: "(X) Level Roof Tie-Ins", sortOrder: 9 },
+      { sourceItemId: "75711459", title: "(X) Level Roof Sub-Fascia Installed", sortOrder: 10 },
+      { sourceItemId: "75711460", title: "Sheet (X) Level Roof", sortOrder: 11 },
+      { sourceItemId: "75711461", title: "HPS Roof Framing QC Inspection", sortOrder: 12 },
+    ]
+  )
+  assert.deepEqual(
+    roof.tasks.filter((task) => task.parentSourceItemId === "75711456").map((task) => ({
+      sourceItemId: task.sourceItemId,
+      title: task.title,
+      sortOrder: task.sortOrder,
+    })),
+    [
+      { sourceItemId: "75711763", title: "(Direction) Wall Hurricane Ties", sortOrder: 1 },
+      { sourceItemId: "75711764", title: "(Direction) Wall Hurricane Ties", sortOrder: 2 },
+    ]
+  )
+  assert.deepEqual(
+    roof.tasks.filter((task) => task.parentSourceItemId === "75711461").map((task) => task.title),
+    [
+      "Trusses @ Correct Spacing",
+      "All Trusses In Correct Spots According to Layout",
+      "All Ties/Hold Downs in correct spots",
+      "No Truss Lift",
+      "Roof Decking/Sheathing Complete and Correct",
+      "Roofline/Pitch Correct",
+      "No Cracked Trusses",
+      "Jobsite Cleanup Satisfactory",
+      "OK to Pay",
+    ]
+  )
+
+  assert.equal(roof.scheduleItems.length, 5)
+  assert.deepEqual(
+    roof.scheduleItems.map((item) => ({
+      sourceItemId: item.sourceItemId,
+      title: item.title,
+      startDate: item.startDate,
+      workdays: item.workdays,
+      phase: item.phase,
+      displayColor: item.displayColor,
+    })),
+    [
+      { sourceItemId: "141696826", title: "(X) Level Truss Setting Prep", startDate: "2022-04-13", workdays: 1, phase: "Rough: Frame", displayColor: "#ABBE91" },
+      { sourceItemId: "141695529", title: "Set (X) Level Roof Trusses", startDate: "2022-04-14", workdays: 1, phase: "Rough: Frame", displayColor: "#ABBE91" },
+      { sourceItemId: "141696771", title: "(X) Level Rough Roof Framing", startDate: "2022-04-15", workdays: 5, phase: "Rough: Frame", displayColor: "#ABBE91" },
+      { sourceItemId: "141698217", title: "(X) Level Roof Sheeting", startDate: "2022-04-22", workdays: 4, phase: "Rough: Frame", displayColor: "#ABBE91" },
+      { sourceItemId: "180255949", title: "HPS Roof Framing QC Inpsection", startDate: "2022-04-28", workdays: 1, phase: "UNASSIGNED", displayColor: "#2222DD" },
+    ]
+  )
+  assert.deepEqual(
+    roof.scheduleItems.flatMap((item) => item.predecessors).map((dependency) => ({
+      predecessorSourceItemId: dependency.predecessorSourceItemId,
+      successorSourceItemId: dependency.successorSourceItemId,
+      type: dependency.type,
+      lagDays: dependency.lagDays,
+    })),
+    [
+      { predecessorSourceItemId: "141696826", successorSourceItemId: "141695529", type: "FS", lagDays: 0 },
+      { predecessorSourceItemId: "141695529", successorSourceItemId: "141696771", type: "FS", lagDays: 0 },
+      { predecessorSourceItemId: "141696771", successorSourceItemId: "141698217", type: "FS", lagDays: 0 },
+      { predecessorSourceItemId: "141696771", successorSourceItemId: "180255949", type: "FS", lagDays: 0 },
+      { predecessorSourceItemId: "141698217", successorSourceItemId: "180255949", type: "FS", lagDays: 0 },
+    ]
+  )
+})
+
 test("fails stale when a newly complete template is not in the reviewed release", async () => {
   const stale = await inputs()
   stale.documents.push({
-    source: "13-12650792.capture.json",
+    source: "15-12819873.capture.json",
     document: {
-      sourceTemplateId: "12650792",
-      sourceName: "Framing - Roof w/ Trusses Assembly",
-      tasks: Array.from({ length: 28 }, (_, index) => ({
-        sourceItemId: `roof-task-${index + 1}`,
+      sourceTemplateId: "12819873",
+      sourceName: "Framing - Fascia & Soffit Installation",
+      tasks: Array.from({ length: 25 }, (_, index) => ({
+        sourceItemId: `fascia-task-${index + 1}`,
         parentSourceItemId: null,
-        title: `Roof task ${index + 1}`,
+        title: `Fascia task ${index + 1}`,
       })),
     },
   })
@@ -319,29 +410,29 @@ test("fails stale when a newly complete template is not in the reviewed release"
   )
 
   const reviewed = structuredClone(stale)
-  const roof = reviewed.nextBatchManifest.templates.find(
-    (template) => template.sourceTemplateId === "12650792"
+  const fascia = reviewed.nextBatchManifest.templates.find(
+    (template) => template.sourceTemplateId === "12819873"
   )
-  assert.ok(roof)
-  reviewed.release.scope.structurallyCompleteTemplatesIncluded = 7
-  reviewed.release.scope.incompleteTemplatesExcluded = 27
+  assert.ok(fascia)
+  reviewed.release.scope.structurallyCompleteTemplatesIncluded = 8
+  reviewed.release.scope.incompleteTemplatesExcluded = 26
   reviewed.release.templates.push({
-    sourceTemplateId: roof.sourceTemplateId,
-    sourceName: roof.sourceName,
-    workplanSequence: roof.workplanSequence,
-    moduleCounts: roof.moduleCounts,
-    fragmentPath: roof.fragmentPath,
+    sourceTemplateId: fascia.sourceTemplateId,
+    sourceName: fascia.sourceName,
+    workplanSequence: fascia.workplanSequence,
+    moduleCounts: fascia.moduleCounts,
+    fragmentPath: fascia.fragmentPath,
     browserCaptureGates: "complete",
   })
 
   const result = assembleBuildertrendTemplateNextBatchContent(reviewed)
   assert.deepEqual(
     result.capture.assembly.sourceTemplateIds,
-    ["12859981", "12978371", "12581937", "12594475", "30917204", "12646335", "12650792"]
+    ["12859981", "12978371", "12581937", "12594475", "30917204", "12646335", "12650792", "12819873"]
   )
-  assert.equal(result.capture.assembly.excludedIncompleteTemplateCount, 27)
-  assert.equal(result.capture.templates[6].tasks.length, 28)
-  assert.equal(result.capture.templates[6].scheduleItems.length, 5)
+  assert.equal(result.capture.assembly.excludedIncompleteTemplateCount, 26)
+  assert.equal(result.capture.templates[7].tasks.length, 25)
+  assert.equal(result.capture.templates[7].scheduleItems.length, 3)
 })
 
 test("rejects partial capture, duplicate release scope, and publication requests", async () => {
@@ -390,9 +481,9 @@ test("builds SQL that remains draft-only and includes every released template", 
       "--output", output,
     ])
     assert.deepEqual(JSON.parse(result.stdout), {
-      templateCount: 6,
-      tasks: 235,
-      scheduleItems: 35,
+      templateCount: 7,
+      tasks: 263,
+      scheduleItems: 40,
       selections: 8,
       bidPackages: 6,
       excludedArchivedCount: 27,
@@ -406,6 +497,7 @@ test("builds SQL that remains draft-only and includes every released template", 
     assert.match(sql, /bt-template-version:12594475:1/)
     assert.match(sql, /bt-template-version:30917204:1/)
     assert.match(sql, /bt-template-version:12646335:1/)
+    assert.match(sql, /bt-template-version:12650792:1/)
     assert.match(sql, /INSERT INTO schedule_template_items/)
     assert.match(sql, /review_status='content_captured', lifecycle_status='draft'/)
     assert.doesNotMatch(sql, /status='published'|lifecycle_status='active'|review_status='verified'/)
