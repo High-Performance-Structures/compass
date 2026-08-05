@@ -26,31 +26,31 @@ async function inputs() {
   return { release, nextBatchManifest, reviewedCapture, documents }
 }
 
-test("assembles the fifteen gate-complete templates with reviewed schedules", async () => {
+test("assembles the sixteen gate-complete templates with reviewed schedules", async () => {
   const result = assembleBuildertrendTemplateNextBatchContent(await inputs())
 
   assert.deepEqual(
     result.capture.assembly.sourceTemplateIds,
-    ["12859981", "12978371", "12581937", "12594475", "30917204", "12646335", "12650792", "12819873", "12649495", "30914491", "12858966", "12649292", "12650557", "30919251", "12650484"]
+    ["12859981", "12978371", "12581937", "12594475", "30917204", "12646335", "12650792", "12819873", "12649495", "30914491", "12858966", "12649292", "12650557", "30919251", "12650484", "12650713"]
   )
   assert.equal(result.capture.assembly.draftOnly, true)
   assert.equal(result.capture.assembly.publish, false)
-  assert.equal(result.capture.assembly.excludedIncompleteTemplateCount, 19)
+  assert.equal(result.capture.assembly.excludedIncompleteTemplateCount, 18)
   assert.equal(result.capture.assembly.excludedArchivedTemplateCount, 27)
   assert.equal(result.capture.assembly.eligibleAfterThisBatch, 0)
-  assert.equal(result.capture.templates.reduce((sum, item) => sum + item.tasks.length, 0), 396)
-  assert.equal(result.capture.templates.reduce((sum, item) => sum + item.scheduleItems.length, 0), 65)
+  assert.equal(result.capture.templates.reduce((sum, item) => sum + item.tasks.length, 0), 406)
+  assert.equal(result.capture.templates.reduce((sum, item) => sum + item.scheduleItems.length, 0), 68)
   assert.equal(result.capture.templates.reduce((sum, item) => sum + (item.selections?.length ?? 0), 0), 15)
   assert.equal(result.capture.templates.reduce((sum, item) => sum + (item.bidPackages?.length ?? 0), 0), 10)
   assert.equal(result.capture.templates.reduce(
     (sum, item) => sum + item.scheduleItems.flatMap((row) => row.predecessors).length,
     0
-  ), 50)
-  assert.equal(result.inventory.expectedActiveCount, 15)
+  ), 52)
+  assert.equal(result.inventory.expectedActiveCount, 16)
   assert.equal(result.inventory.excludedArchivedCount, 27)
   assert.deepEqual(
     result.inventory.templates.map((template) => template.sourceTemplateId),
-    ["12859981", "12978371", "12581937", "12594475", "30917204", "12646335", "12650792", "12819873", "12649495", "30914491", "12858966", "12649292", "12650557", "30919251", "12650484"]
+    ["12859981", "12978371", "12581937", "12594475", "30917204", "12646335", "12650792", "12819873", "12649495", "30914491", "12858966", "12649292", "12650557", "30919251", "12650484", "12650713"]
   )
 })
 
@@ -894,17 +894,17 @@ test("preserves Post-Frost earthwork checklists, fill-material bid specification
   )
 })
 
-test("fails stale when a newly complete template is not in the reviewed release", async () => {
+test("fails stale when the next complete template is not in the reviewed release", async () => {
   const stale = await inputs()
   stale.documents.push({
-    source: "26-12650713.capture.json",
+    source: "28-12979213.capture.json",
     document: {
-      sourceTemplateId: "12650713",
-      sourceName: "Framing - Stair Installation",
-      tasks: Array.from({ length: 10 }, (_, index) => ({
-        sourceItemId: `stair-task-${index + 1}`,
+      sourceTemplateId: "12979213",
+      sourceName: "Int. Finishes - Stain & Seal Concrete Floors",
+      tasks: Array.from({ length: 7 }, (_, index) => ({
+        sourceItemId: `stain-seal-task-${index + 1}`,
         parentSourceItemId: null,
-        title: `Stair task ${index + 1}`,
+        title: `Stain and seal task ${index + 1}`,
       })),
     },
   })
@@ -914,33 +914,33 @@ test("fails stale when a newly complete template is not in the reviewed release"
   )
 
   const reviewed = structuredClone(stale)
-  const stair = reviewed.nextBatchManifest.templates.find(
-    (template) => template.sourceTemplateId === "12650713"
+  const stainSeal = reviewed.nextBatchManifest.templates.find(
+    (template) => template.sourceTemplateId === "12979213"
   )
-  assert.ok(stair)
-  reviewed.release.scope.structurallyCompleteTemplatesIncluded = 16
-  reviewed.release.scope.incompleteTemplatesExcluded = 18
+  assert.ok(stainSeal)
+  reviewed.release.scope.structurallyCompleteTemplatesIncluded = 17
+  reviewed.release.scope.incompleteTemplatesExcluded = 17
   reviewed.release.templates.push({
-    sourceTemplateId: stair.sourceTemplateId,
-    sourceName: stair.sourceName,
-    workplanSequence: stair.workplanSequence,
-    moduleCounts: stair.moduleCounts,
-    fragmentPath: stair.fragmentPath,
+    sourceTemplateId: stainSeal.sourceTemplateId,
+    sourceName: stainSeal.sourceName,
+    workplanSequence: stainSeal.workplanSequence,
+    moduleCounts: stainSeal.moduleCounts,
+    fragmentPath: stainSeal.fragmentPath,
     browserCaptureGates: "complete",
   })
 
   const result = assembleBuildertrendTemplateNextBatchContent(reviewed)
   assert.deepEqual(
     result.capture.assembly.sourceTemplateIds,
-    ["12859981", "12978371", "12581937", "12594475", "30917204", "12646335", "12650792", "12819873", "12649495", "30914491", "12858966", "12649292", "12650557", "30919251", "12650484", "12650713"]
+    ["12859981", "12978371", "12581937", "12594475", "30917204", "12646335", "12650792", "12819873", "12649495", "30914491", "12858966", "12649292", "12650557", "30919251", "12650484", "12650713", "12979213"]
   )
-  assert.equal(result.capture.assembly.excludedIncompleteTemplateCount, 18)
-  const releasedStair = result.capture.templates.find(
-    (template) => template.sourceTemplateId === "12650713"
+  assert.equal(result.capture.assembly.excludedIncompleteTemplateCount, 17)
+  const releasedStainSeal = result.capture.templates.find(
+    (template) => template.sourceTemplateId === "12979213"
   )
-  assert.ok(releasedStair)
-  assert.equal(releasedStair.tasks.length, 10)
-  assert.equal(releasedStair.scheduleItems.length, 3)
+  assert.ok(releasedStainSeal)
+  assert.equal(releasedStainSeal.tasks.length, 7)
+  assert.equal(releasedStainSeal.scheduleItems.length, 5)
 })
 
 test("rejects partial capture, duplicate release scope, and publication requests", async () => {
@@ -989,9 +989,9 @@ test("builds SQL that remains draft-only and includes every released template", 
       "--output", output,
     ])
     assert.deepEqual(JSON.parse(result.stdout), {
-      templateCount: 15,
-      tasks: 396,
-      scheduleItems: 65,
+      templateCount: 16,
+      tasks: 406,
+      scheduleItems: 68,
       selections: 15,
       bidPackages: 10,
       excludedArchivedCount: 27,
@@ -1014,6 +1014,7 @@ test("builds SQL that remains draft-only and includes every released template", 
     assert.match(sql, /bt-template-version:12650557:1/)
     assert.match(sql, /bt-template-version:30919251:1/)
     assert.match(sql, /bt-template-version:12650484:1/)
+    assert.match(sql, /bt-template-version:12650713:1/)
     assert.match(sql, /INSERT INTO schedule_template_items/)
     assert.match(sql, /review_status='content_captured', lifecycle_status='draft'/)
     assert.doesNotMatch(sql, /status='published'|lifecycle_status='active'|review_status='verified'/)
