@@ -40,3 +40,17 @@ The canonical reviewed capture preserves the two schedule items and their one
 dependency. Window remains blocked until all three browser modules are
 captured with exact native identities, hierarchy, choices, bid specifications,
 cost codes, Cost Types, and any copy warnings.
+
+## Ext. Finishes - Manuf. Gutters (`12978732`)
+
+The authenticated source inventory reports 17 tasks, two selections, one bid
+package, and two schedule items over four days. Direct source routing remained
+scoped to the previously selected Tiling template during the bounded capture.
+The authorized temporary-copy menu was opened, but no copy form was submitted
+and no temporary Buildertrend template was created.
+
+The canonical reviewed capture preserves the two schedule items and their one
+dependency. Manufactured Gutters remains blocked until all three browser
+modules are captured with exact native identities, hierarchy, choices, bid
+specifications, cost codes, Cost Types, attachment evidence, and any copy
+warnings.
