@@ -168,7 +168,7 @@ Initial behavior:
 The prior Google Site plan called for Apps Script around:
 
 - project intake form to folder creation
-- automatic numbering from Project Lead Tracking
+- automatic numbering from the Developer-folder Project Registry
 - tracker updates on submit
 - installable form-submit triggers
 - insurance expiration alerts
@@ -188,7 +188,9 @@ Apps Script access still depends on Google Admin OAuth scopes. The known require
 Current Compass bridge endpoints:
 
 - `/api/google/project-manager-handoff` is the dedicated HPS Project Manager receiver. It creates or updates the Compass project, maps the Drive folder, and stages Sage job review.
+- Compass-native project intake must dual-write the `________Developer` Project Registry and the matching department tracker. The legacy `Project Lead Tracking` workbook is prohibited as a destination for new records.
 - Project Manager handoffs should use the active tracker spreadsheets in the `________Developer` Google Drive folder: ORC Tracker, HPS Tracker, Nu-Tech Tracker, and Design Tracker. ORC and Design currently expose a full `Address` column; HPS and Nu-Tech expose `Project Address`. Compass accepts those raw tracker headers directly, plus normalized names such as `address`, `projectAddress`, and `jobsiteAddress`.
+- The Developer folder also contains the protected `Copy of Contract Package Template`, `Finish Schedule Form Responses`, and `Finish Schedule Generator` workflow assets. Generated finish schedules must carry a project number and remain discoverable from the matching Compass project; reconciliation should report response rows or generated workbooks without a Compass mapping.
 - When a tracker or script sends split address fields, Compass also accepts `streetAddress`, `addressLine1`, `city`, `state`, `zip`, the Project Manager form names `streetNum`, `streetName`, and `cityState`, and raw sheet headers such as `PROJECT STREET NUMBER`, `PROJECT STREET NAME`, and `City, State Zip`. Zip code is captured when it is included in `Address`/`Project Address`/`City, State Zip` or sent separately as `zip`/`zipCode`; older rows that only contain city should be cleaned up or flagged as incomplete address data. Compass composes those fields into `projects.address` and will not erase an existing address when a later handoff omits address data.
 - `/api/google/script-handoff` is the generic receiver for the remaining Google scripts. The first target scripts are HPS Project Intake Automation, Nu-Tech PO Order Manager, and the Design-owned Finish Schedule Generator. Each request must include a bearer token and a project number so Compass can attach the handoff to the correct project.
 
