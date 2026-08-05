@@ -83,8 +83,8 @@ test("keeps the incomplete Manufactured Gutters audit out of release and preserv
   )
   assert.equal(result.capture.assembly.draftOnly, true)
   assert.equal(result.capture.assembly.publish, false)
-  assert.equal(result.capture.assembly.templateCount, 18)
-  assert.equal(result.capture.assembly.excludedIncompleteTemplateCount, 16)
+  assert.equal(result.capture.assembly.templateCount, 19)
+  assert.equal(result.capture.assembly.excludedIncompleteTemplateCount, 15)
 
   const reviewedGutters = reviewedCapture.templates.find(
     (template) => template.sourceTemplateId === guttersTemplateId
