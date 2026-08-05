@@ -10,7 +10,7 @@ reviewed release covers workplan sequences 6–13, 15–16, 18, 20–24, 26–28
 and 30–32,
 excluding sequence 10 because Drywall was already completed in the pilot and
 sequences 14, 17, 19, 25, 29, and 33–40 because their captures remain
-incomplete; sequences 34 and 39 have fail-closed partial checkpoints:
+incomplete; sequences 34, 39, and 40 have fail-closed partial checkpoints:
 
 1. Ext. Finishes - Stucco (`12859981`)
 2. MEP - Rough & Top Out (`12978371`)
@@ -126,6 +126,11 @@ Bath Hardware remains an audit-only partial checkpoint: its one selection and
 seven native choices are preserved, but source rich text, choice descriptions,
 six attachment filenames, and durable attachment bytes remain unverified and
 must not be inferred or promoted into the release allowlist.
+Fireplace Installation also remains audit-only: its exact source row and
+one-selection inventory are verified, but Buildertrend did not expose the
+selection detail from a verified Fireplace context. Its native selection ID,
+choices, metadata, hierarchy, prices, and attachments must be recovered without
+inference before release.
 
 ## Read-only production verification
 
