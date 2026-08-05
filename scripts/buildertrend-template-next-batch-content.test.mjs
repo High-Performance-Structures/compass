@@ -1,6 +1,6 @@
 import assert from "node:assert/strict"
 import { execFile } from "node:child_process"
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
+import { access, mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import test from "node:test"
@@ -697,6 +697,38 @@ test("fails stale when a newly complete template is not in the reviewed release"
   assert.equal(result.capture.assembly.excludedIncompleteTemplateCount, 23)
   assert.equal(result.capture.templates[10].tasks.length, 16)
   assert.equal(result.capture.templates[10].scheduleItems.length, 5)
+})
+
+test("keeps incomplete Piers evidence outside the reviewed release", async () => {
+  const auditPath = "scripts/fixtures/buildertrend-template-content-next-batch/incomplete-reviews/20-12858966.capture-review.json"
+  const fragmentPath = "scripts/fixtures/buildertrend-template-content-next-batch/fragments/20-12858966.capture.json"
+  const [audit, release] = await Promise.all([
+    readFile(auditPath, "utf8").then(JSON.parse),
+    readFile(paths.release, "utf8").then(JSON.parse),
+  ])
+
+  assert.equal(audit.reviewStatus, "incomplete")
+  assert.equal(audit.releaseEligible, false)
+  assert.deepEqual(audit.template.sourceInventory, {
+    tasks: 16,
+    scheduleDuration: "5 Days",
+    scheduleItems: 5,
+    selections: 0,
+    bidPackages: 0,
+  })
+  assert.deepEqual(audit.template.browserModuleGates, [{
+    module: "tasks",
+    expectedCount: 16,
+    capturedCount: 0,
+    status: "incomplete",
+    releaseBlocker: "Recover all 16 native task IDs, titles, displayed ordering, and parent-child relationships from the Piers source or a verified temporary copy. Do not infer the hierarchy from the schedule or another concrete template.",
+  }])
+  assert.deepEqual(audit.template.tasks, [])
+  assert.equal(
+    release.templates.some((template) => template.sourceTemplateId === "12858966"),
+    false
+  )
+  await assert.rejects(() => access(fragmentPath), /ENOENT/)
 })
 
 test("rejects partial capture, duplicate release scope, and publication requests", async () => {

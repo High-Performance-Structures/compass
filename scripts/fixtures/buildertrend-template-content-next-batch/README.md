@@ -7,8 +7,8 @@ Do not create placeholder content and do not mutate the Buildertrend sources.
 The deterministic manifest is
 `scripts/fixtures/buildertrend-template-next-batch-2026-08-04.json`. Its current
 reviewed release covers workplan sequences 6–13, 15–16, and 18, excluding
-sequence 10 because Drywall was already completed in the pilot and sequences 14
-and 17 because their captures remain incomplete:
+sequence 10 because Drywall was already completed in the pilot and sequences
+14, 17, and 20 because their captures remain incomplete:
 
 1. Ext. Finishes - Stucco (`12859981`)
 2. MEP - Rough & Top Out (`12978371`)
