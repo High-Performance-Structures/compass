@@ -5,11 +5,14 @@
     "sourceTemplateId": "38452532",
     "sourceName": "MEP - Fireplace Installation",
     "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/38452532",
-    "capturedAt": "2026-08-05T10:47:09Z",
+    "capturedAt": "2026-08-05T12:25:49Z",
     "captureNotes": [
       "The authenticated Buildertrend My Templates row for source 38452532 reported one selection, with zero tasks and a zero-day schedule containing no schedule items.",
       "The exact source row and its visible /app/Templates/MyTemplates/Template/38452532 link were selected from page two of My Templates. The link opened the source Template edit dialog and verified the exact template name, but did not switch the global working context from Int. Finishes - Bath Hardware template 42948499.",
       "A bounded visible job-picker search for the exact Fireplace template name returned no results, so the selection detail could not be opened from a verified Fireplace context.",
+      "A second bounded authenticated pass opened My Templates in a clean claimed tab, navigated visibly to page two, and again verified row entity-38452532, the exact source link, zero-day schedule, and selection count of one.",
+      "The second pass searched the visible template picker for Fireplace; Buildertrend returned no results and retained an unrelated selected-template context.",
+      "Clicking the exact Fireplace row's cell-selectionCount produced no navigation, dialog, or context change, confirming that the displayed count is not a supported selection-detail route in this view.",
       "The Template edit dialog was closed without changes. No temporary template copy was created and no source or copied Buildertrend record was mutated.",
       "No selection native ID, choice, description, price, attachment, hierarchy, or copy-warning value from the unrelated Bath Hardware context was retained or inferred."
     ],

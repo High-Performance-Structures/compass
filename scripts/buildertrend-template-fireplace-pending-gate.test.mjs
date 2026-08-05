@@ -87,7 +87,19 @@ test("preserves the authenticated Fireplace Installation checkpoint as a fail-cl
   assert.equal(review.reviewStatus, "incomplete")
   assert.equal(review.releaseEligible, false)
   assert.equal(review.template.sourceTemplateId, fireplaceTemplateId)
-  assert.equal(review.template.capturedAt, "2026-08-05T10:47:09Z")
+  assert.equal(review.template.capturedAt, "2026-08-05T12:25:49Z")
+  assert.equal(
+    review.template.captureNotes.some((note) =>
+      note.includes("row entity-38452532") && note.includes("selection count of one")
+    ),
+    true
+  )
+  assert.equal(
+    review.template.captureNotes.some((note) =>
+      note.includes("cell-selectionCount") && note.includes("no navigation")
+    ),
+    true
+  )
   assert.deepEqual(review.template.sourceInventory, {
     tasks: 0,
     scheduleDuration: "0 Days",
