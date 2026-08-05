@@ -1,0 +1,272 @@
+{
+  "template": {
+    "sourceTemplateId": "36619183",
+    "sourceName": "Int. Finishes - Painting/Staining",
+    "capturedAt": "2026-08-05T08:21:40Z",
+    "captureNotes": [
+      "Captured directly from authenticated Buildertrend source template 36619183 after selecting it through the visible My Templates interface; no temporary template was created or mutated.",
+      "All eight selections, their native IDs, displayed order, configuration, descriptions, locations, and five native choices were captured exactly.",
+      "The Quantity of Colors choice order is Manual; the other seven selection choice-order settings are Auto. All selections use a single zero-dollar allowance and do not require client selection or allow multiple selected choices.",
+      "The single bid package, three line-item specifications, cost codes, Cost Types, quantities, pricing policy, full package description, and lack of linked Plans, Specs, or package attachments were captured exactly.",
+      "Three choices displayed one attachment each. Buildertrend exposed Interior Painting One-Color.png for One-Color; the other two filenames and all durable attachment bytes were unavailable in the bounded capture and were not inferred."
+    ],
+    "tasks": [],
+    "selections": [
+      {
+        "sourceItemId": "58364152",
+        "sourceSelectionId": "58364152",
+        "title": "Paint Color",
+        "category": "09 91 23 - Interior Painting",
+        "location": "Interior",
+        "status": "Unreleased",
+        "allowance": 0,
+        "deadline": null,
+        "description": "Please visit https://www.sherwin-williams.com/ to select the color you would like to use throughout the home.",
+        "requireClientSelection": false,
+        "allowMultipleSelectedChoices": false,
+        "choiceOrdering": "Auto",
+        "locked": true,
+        "visibility": "Viewing / Price Requests Only",
+        "installerCount": 4,
+        "subVendorCount": 5,
+        "choices": []
+      },
+      {
+        "sourceItemId": "58363712",
+        "sourceSelectionId": "58363712",
+        "title": "Quantity of Colors",
+        "category": "09 91 23 - Interior Painting",
+        "location": "Interior",
+        "status": "Unreleased",
+        "allowance": 0,
+        "deadline": null,
+        "description": "The number of different colors used for the interior painting of the home. Most common during new construction are, one color where trim (if using paint grade trim), interior doors (if installing paint grade doors), walls and ceilings are all the same color throughout the home, two-color where walls and ceilings are one color and paint grade doors, trim and any other architectural woodwork are a second color, and three-color where walls are one color, ceilings are another color, and interior paint grade trim, doors and architectural woodwork are a third color.\n\nDuring Pre-Construction Planning, the only item we ask to be selected is the quantity of colors as this impacts pricing. Colors themselves may be selected up to two weeks before completion of the interior painting.\n\nFurther customization is available, but it continues to increase in cost for painting the more colors that are added.",
+        "requireClientSelection": false,
+        "allowMultipleSelectedChoices": false,
+        "choiceOrdering": "Manual",
+        "locked": false,
+        "visibility": "Viewing / Price Requests Only",
+        "installerCount": 4,
+        "subVendorCount": 5,
+        "choices": [
+          {
+            "sourceChoiceId": "234167396",
+            "title": "One-Color",
+            "status": "Unreleased",
+            "price": 0,
+            "description": "$ One color to be used throughout the home for walls, ceilings, and paint-grade interior doors and trim. Colors shown in the image are not the selected colors but are for representation of the single color throughout.",
+            "attachmentCount": 1,
+            "attachments": [{ "fileName": "Interior Painting One-Color.png" }],
+            "dependentSelectionCount": 1
+          },
+          {
+            "sourceChoiceId": "234167432",
+            "title": "Two-Color",
+            "status": "Unreleased",
+            "price": 0,
+            "description": "$$ Two colors to be used throughout the home.One color for walls and ceilings, and a second color for paint-grade interior doors and trim. Colors shown in the image are not the selected colors but are for representation of the use of two colors throughout.",
+            "attachmentCount": 1,
+            "dependentSelectionCount": 2
+          },
+          {
+            "sourceChoiceId": "234167997",
+            "title": "Three-Color",
+            "status": "Unreleased",
+            "price": 0,
+            "description": "$$$ Three colors to be used throughout the home.One color for walls, a second color for ceilings, and a third color for paint-grade interior doors and trim. Colors shown in the image are not the selected colors, but are fort he representation of the use of three colors throughout.",
+            "attachmentCount": 1,
+            "dependentSelectionCount": 3
+          },
+          {
+            "sourceChoiceId": "234168039",
+            "title": "More Than Three-Colors",
+            "status": "Unreleased",
+            "price": 0,
+            "description": "$$$$+ This option is for the use of more than three colors throughout the home. The more colors one adds the higher the expected price.",
+            "attachmentCount": 0,
+            "dependentSelectionCount": 1
+          }
+        ]
+      },
+      {
+        "sourceItemId": "58364611",
+        "sourceSelectionId": "58364611",
+        "title": "Schedule a Meeting with Your Project Manager",
+        "category": "09 91 23 - Interior Painting",
+        "location": "Unassigned",
+        "status": "Unreleased",
+        "allowance": 0,
+        "deadline": null,
+        "description": "For more than three colors to be used throughout your home, please schedule a meeting with your Project Manager to review the colors and locations throughout your home.",
+        "requireClientSelection": false,
+        "allowMultipleSelectedChoices": false,
+        "choiceOrdering": "Auto",
+        "locked": true,
+        "visibility": "Viewing / Price Requests Only",
+        "installerCount": 4,
+        "subVendorCount": 5,
+        "choices": [
+          {
+            "sourceChoiceId": "234169811",
+            "title": "Schedule a Meeting for More than Three-Colors",
+            "status": "Unreleased",
+            "price": 0,
+            "description": "",
+            "attachmentCount": 0,
+            "dependentSelectionCount": 0
+          }
+        ]
+      },
+      {
+        "sourceItemId": "58364544",
+        "sourceSelectionId": "58364544",
+        "title": "Three-Color: Ceilings",
+        "category": "09 91 23 - Interior Painting",
+        "location": "Ceiling Throughout",
+        "status": "Unreleased",
+        "allowance": 0,
+        "deadline": null,
+        "description": "Please visit https://www.sherwin-williams.com/ to select the color you would like to use for the ceilings throughout your home and add it as an option here.",
+        "requireClientSelection": false,
+        "allowMultipleSelectedChoices": false,
+        "choiceOrdering": "Auto",
+        "locked": true,
+        "visibility": "Viewing / Price Requests Only",
+        "installerCount": 4,
+        "subVendorCount": 5,
+        "choices": []
+      },
+      {
+        "sourceItemId": "58364599",
+        "sourceSelectionId": "58364599",
+        "title": "Three-Color: Paint-Grade Baseboards, Doors & Trim",
+        "category": "09 91 23 - Interior Painting",
+        "location": "Paint-Grade Doors, Baseboards & Trim",
+        "status": "Unreleased",
+        "allowance": 0,
+        "deadline": null,
+        "description": "Please visit https://www.sherwin-williams.com/ to select the color you would like to use for the paint-grade interior baseboards, doors, and trim for your home and add it here.",
+        "requireClientSelection": false,
+        "allowMultipleSelectedChoices": false,
+        "choiceOrdering": "Auto",
+        "locked": true,
+        "visibility": "Viewing / Price Requests Only",
+        "installerCount": 4,
+        "subVendorCount": 5,
+        "choices": []
+      },
+      {
+        "sourceItemId": "58364335",
+        "sourceSelectionId": "58364335",
+        "title": "Three-Color: Walls",
+        "category": "09 91 23 - Interior Painting",
+        "location": "Interior Walls Throughout",
+        "status": "Unreleased",
+        "allowance": 0,
+        "deadline": null,
+        "description": "Please visit https://www.sherwin-williams.com/ to select the color you would like to use for the interior walls throughout your home. Please add it as option.",
+        "requireClientSelection": false,
+        "allowMultipleSelectedChoices": false,
+        "choiceOrdering": "Auto",
+        "locked": true,
+        "visibility": "Viewing / Price Requests Only",
+        "installerCount": 4,
+        "subVendorCount": 5,
+        "choices": []
+      },
+      {
+        "sourceItemId": "58364298",
+        "sourceSelectionId": "58364298",
+        "title": "Two-Color: Paint Grade Baseboards, Doors & Trim",
+        "category": "09 91 23 - Interior Painting",
+        "location": "Interior Base Boards, Doors & Trim",
+        "status": "Unreleased",
+        "allowance": 0,
+        "deadline": null,
+        "description": "Please visit https://www.sherwin-williams.com/ to select the color you would like to use for the paint-grade interior baseboards, doors, and trim in your home and add the color as a selection that you would like.",
+        "requireClientSelection": false,
+        "allowMultipleSelectedChoices": false,
+        "choiceOrdering": "Auto",
+        "locked": true,
+        "visibility": "Viewing / Price Requests Only",
+        "installerCount": 4,
+        "subVendorCount": 5,
+        "choices": []
+      },
+      {
+        "sourceItemId": "58364165",
+        "sourceSelectionId": "58364165",
+        "title": "Two-Color: Walls & Ceiling Color",
+        "category": "09 91 23 - Interior Painting",
+        "location": "Interior Walls & Ceilings",
+        "status": "Unreleased",
+        "allowance": 0,
+        "deadline": null,
+        "description": "Please visit https://www.sherwin-williams.com/ to select the color you would like to use for walls and ceilings throughout your home and upload the choice you would like.",
+        "requireClientSelection": false,
+        "allowMultipleSelectedChoices": false,
+        "choiceOrdering": "Auto",
+        "locked": true,
+        "visibility": "Viewing / Price Requests Only",
+        "installerCount": 4,
+        "subVendorCount": 5,
+        "choices": []
+      }
+    ],
+    "bidPackages": [
+      {
+        "sourceItemId": "10431886",
+        "sourceBidPackageId": "10431886",
+        "title": "Int. Paint/Stain - (Project Add.) (Estimate Phase)",
+        "status": "Draft",
+        "allowMultipleApprovedBids": false,
+        "deadline": null,
+        "time": null,
+        "linkToSchedule": false,
+        "reminderLeadDays": 2,
+        "plansAndSpecs": false,
+        "pricingFormat": "Line Items",
+        "description": "Background\nHigh Performance Structures, Inc. dba Open Range Construction, Ltd. (ORC) will be building a custom home located at:\n(Project Street Address)\n(Project City), (Project State) (Project Zip Code)\nReference Documents\nPlease see the Buildertrend Documents folder titled \"(Estimate Phase) Bid Set\" for all necessary plans.\nSubmission of Bid\nBids for this project will be processed through Buildertrend, a construction management program. You do not need to become proficient with Buildertrend. You may also simply call or email your point of contact. You may submit your bid into Buildertrend or email it to your point of contact for entry. Should you choose to input your bid into Buildertrend, please also include a PDF version of your bid.\nFor assistance with submitting the bid or receiving bid documents, contact the (Estimator Title):\n(Estimator Name), (719) 900-8850 ext. (Estimator Extension)\n(Estimator Email Address)\nTimeline\nThe work is scheduled to start in (Build Season), (Build Year).\nScope of Work\nThe following CSI categories will be required for the construction of the project per the plans and specifications noted on the Plans and Specifications List. We will notify bidders of any changes or additions by sending out updates to said List.\nQuestions\nPlease direct any questions into the RFI section here on Buildertrend. This helps us as a builder keep questions organized and accessible to any of our staff provided an estimator is absent. This will help expedite provision of answers.\nSchedule\nPlease provide a schedule to complete each of the above items, in calendar days after the issuance of the purchase order and/or notice to proceed.\nContract and Insurance Requirements\nAll trade contractors will be required to complete a trade contractor agreement, provide proof of liability insurance and workman’s compensation insurance as applicable, with required limits prior to the release of any construction payments.",
+        "internalNotes": "",
+        "attachments": [],
+        "lineItems": [
+          {
+            "title": "Covering & Masking Labor & Materials",
+            "costCode": "01 76 00 - Protecting Installed",
+            "costType": "Subcontractor",
+            "quantity": 1,
+            "unit": null,
+            "description": "Please include all necessary labor & materials to mask off and cover installed construction as necessary to prevent overspray/stain from coming into contact with installed construction."
+          },
+          {
+            "title": "Interior Painting Labor & Materials",
+            "costCode": "09 91 23 - Interior Painting",
+            "costType": "Subcontractor",
+            "quantity": 1,
+            "unit": null,
+            "description": "Please include all necessary labor & materials (including paint) for the completion of painting interior non-stained members, including but not limited to (1) Color for walls, (1) color for ceilings, and (1) Color for paint-grade trim and paint-grade doors."
+          },
+          {
+            "title": "Interior Staining Labor & Materials",
+            "costCode": "09 93 23 - Int. Stain & Finish",
+            "costType": "Subcontractor",
+            "quantity": 1,
+            "unit": null,
+            "description": "Please include all necessary labor & materials (including stain) to stain and finish interior stained members including but not limited to, stain-grade trim, T&G ceilings (as applicable), Shiplap wainscots (as applicable), interior timber finish members, stain-grade doors, etc."
+          }
+        ]
+      }
+    ]
+  },
+  "conversionExceptions": [
+    {
+      "templateSourceTemplateId": "36619183",
+      "module": "selections",
+      "sourceItemId": null,
+      "field": "choices.attachments.fileName",
+      "sourceValue": "One-Color, Two-Color, and Three-Color each displayed one attachment. Only One-Color exposed the filename Interior Painting One-Color.png during the bounded authenticated capture.",
+      "loss": "The Two-Color and Three-Color attachment filenames and all durable attachment bytes were unavailable and omitted; their verified attachmentCount remains one.",
+      "recoveryPlan": "Recover the two exact filenames and all attachment bytes from a supported Buildertrend export or a later authenticated detail capture before publishing this draft; do not infer filenames from choice titles."
+    }
+  ]
+}

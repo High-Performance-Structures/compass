@@ -1,14 +1,14 @@
 {
   "releaseVersion": 1,
-  "generatedAt": "2026-08-05T07:45:00.000Z",
+  "generatedAt": "2026-08-05T08:21:40.000Z",
   "sourceNextBatchManifest": "scripts/fixtures/buildertrend-template-next-batch-2026-08-04.json",
   "sourceReviewedCapture": "scripts/fixtures/buildertrend-active-template-capture-2026-07-31.json",
   "scope": {
     "activeTemplatesInSource": 40,
     "completedPilotTemplatesExcluded": 6,
     "nonPilotCandidatesAudited": 34,
-    "structurallyCompleteTemplatesIncluded": 19,
-    "incompleteTemplatesExcluded": 15,
+    "structurallyCompleteTemplatesIncluded": 20,
+    "incompleteTemplatesExcluded": 14,
     "archivedTemplatesExcluded": 27,
     "archivedTemplatesIncluded": 0
   },
@@ -265,6 +265,19 @@
         "bidPackages": 0
       },
       "fragmentPath": "scripts/fixtures/buildertrend-template-content-next-batch/fragments/30-12978590.capture.json",
+      "browserCaptureGates": "complete"
+    },
+    {
+      "sourceTemplateId": "36619183",
+      "sourceName": "Int. Finishes - Painting/Staining",
+      "workplanSequence": 31,
+      "moduleCounts": {
+        "tasks": 0,
+        "scheduleItems": 0,
+        "selections": 8,
+        "bidPackages": 1
+      },
+      "fragmentPath": "scripts/fixtures/buildertrend-template-content-next-batch/fragments/31-36619183.capture.json",
       "browserCaptureGates": "complete"
     }
   ],
