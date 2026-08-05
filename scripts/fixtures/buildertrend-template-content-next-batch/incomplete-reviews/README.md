@@ -68,3 +68,15 @@ identities and content are recovered from an authenticated supported source.
 The canonical reviewed capture preserves the four schedule items and three
 dependencies. Those schedule rows are referenced rather than duplicated in a
 future browser fragment.
+
+## Earthwork - Perimeter Drain (`13001090`)
+
+The reviewed source inventory preserves four tasks and three schedule items
+over three days. This prepared checkpoint does not claim a Buildertrend browser
+capture: the task gate remains empty and release-ineligible until the exact
+native task identities, displayed order, and parent-child relationships are
+recovered from an authenticated supported source.
+
+The canonical reviewed capture preserves the three schedule items and three
+dependencies. Those schedule rows are referenced rather than duplicated in a
+future browser fragment.

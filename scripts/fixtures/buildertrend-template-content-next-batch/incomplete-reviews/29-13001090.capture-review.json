@@ -1,0 +1,43 @@
+{
+  "reviewStatus": "incomplete",
+  "releaseEligible": false,
+  "template": {
+    "sourceTemplateId": "13001090",
+    "sourceName": "Earthwork - Perimeter Drain",
+    "sourceUrl": "https://buildertrend.net/app/Templates/MyTemplates/Template/13001090",
+    "preparedAt": "2026-08-04T00:00:00Z",
+    "captureNotes": [
+      "The reviewed active-template inventory records four tasks and three schedule items over three days for Buildertrend source 13001090.",
+      "This checkpoint was prepared without opening Buildertrend. It preserves repository-reviewed inventory and schedule evidence only; no task identity, hierarchy, title, description, assignment, or attachment value was inferred.",
+      "The three reviewed schedule items and three dependencies remain canonical in the 40-template source capture and must not be duplicated in a browser fragment.",
+      "Earthwork - Perimeter Drain remains release-ineligible until all four task rows are recovered from an authenticated supported Buildertrend view or export."
+    ],
+    "sourceInventory": {
+      "tasks": 4,
+      "scheduleDuration": "3 Days",
+      "scheduleItems": 3,
+      "selections": 0,
+      "bidPackages": 0
+    },
+    "browserModuleGates": [
+      {
+        "module": "tasks",
+        "expectedCount": 4,
+        "capturedCount": 0,
+        "status": "incomplete",
+        "releaseBlocker": "Recover all four native task IDs, titles, displayed ordering, and parent-child relationships from the Earthwork - Perimeter Drain source or a verified temporary copy."
+      }
+    ],
+    "reviewedScheduleReference": {
+      "path": "scripts/fixtures/buildertrend-active-template-capture-2026-07-31.json",
+      "sourceTemplateId": "13001090",
+      "scheduleItemCount": 3,
+      "dependencyCount": 3,
+      "note": "The reviewed source capture remains the canonical schedule record; browser fragments do not duplicate schedule rows."
+    },
+    "tasks": [],
+    "selections": [],
+    "bidPackages": []
+  },
+  "conversionExceptions": []
+}
