@@ -26,31 +26,31 @@ async function inputs() {
   return { release, nextBatchManifest, reviewedCapture, documents }
 }
 
-test("assembles the five gate-complete templates with reviewed schedules", async () => {
+test("assembles the six gate-complete priority templates with reviewed schedules", async () => {
   const result = assembleBuildertrendTemplateNextBatchContent(await inputs())
 
   assert.deepEqual(
     result.capture.assembly.sourceTemplateIds,
-    ["12859981", "12978371", "12581937", "12594475", "30917204"]
+    ["12859981", "12978371", "12581937", "12594475", "30917204", "12646335"]
   )
   assert.equal(result.capture.assembly.draftOnly, true)
   assert.equal(result.capture.assembly.publish, false)
-  assert.equal(result.capture.assembly.excludedIncompleteTemplateCount, 29)
+  assert.equal(result.capture.assembly.excludedIncompleteTemplateCount, 28)
   assert.equal(result.capture.assembly.excludedArchivedTemplateCount, 27)
   assert.equal(result.capture.assembly.eligibleAfterThisBatch, 0)
-  assert.equal(result.capture.templates.reduce((sum, item) => sum + item.tasks.length, 0), 201)
-  assert.equal(result.capture.templates.reduce((sum, item) => sum + item.scheduleItems.length, 0), 33)
+  assert.equal(result.capture.templates.reduce((sum, item) => sum + item.tasks.length, 0), 235)
+  assert.equal(result.capture.templates.reduce((sum, item) => sum + item.scheduleItems.length, 0), 35)
   assert.equal(result.capture.templates.reduce((sum, item) => sum + (item.selections?.length ?? 0), 0), 8)
-  assert.equal(result.capture.templates.reduce((sum, item) => sum + (item.bidPackages?.length ?? 0), 0), 5)
+  assert.equal(result.capture.templates.reduce((sum, item) => sum + (item.bidPackages?.length ?? 0), 0), 6)
   assert.equal(result.capture.templates.reduce(
     (sum, item) => sum + item.scheduleItems.flatMap((row) => row.predecessors).length,
     0
-  ), 27)
-  assert.equal(result.inventory.expectedActiveCount, 5)
+  ), 28)
+  assert.equal(result.inventory.expectedActiveCount, 6)
   assert.equal(result.inventory.excludedArchivedCount, 27)
   assert.deepEqual(
     result.inventory.templates.map((template) => template.sourceTemplateId),
-    ["12859981", "12978371", "12581937", "12594475", "30917204"]
+    ["12859981", "12978371", "12581937", "12594475", "30917204", "12646335"]
   )
 })
 
@@ -253,6 +253,97 @@ test("preserves the reviewed Concrete Slab checklist, schedule, and bid specific
   )
 })
 
+test("preserves Interior Wall checklist, bid specifications, and reviewed dependency", async () => {
+  const result = assembleBuildertrendTemplateNextBatchContent(await inputs())
+  const interiorWall = result.capture.templates.find(
+    (template) => template.sourceTemplateId === "12646335"
+  )
+  assert.ok(interiorWall)
+  assert.equal(interiorWall.tasks.length, 34)
+  assert.equal(interiorWall.tasks.filter((task) => task.parentSourceItemId === null).length, 6)
+  assert.equal(interiorWall.tasks.filter((task) => task.parentSourceItemId !== null).length, 28)
+
+  const taskIds = new Set(interiorWall.tasks.map((task) => task.sourceItemId))
+  for (const task of interiorWall.tasks) {
+    if (task.parentSourceItemId !== null) assert.equal(taskIds.has(task.parentSourceItemId), true)
+  }
+
+  assert.equal(interiorWall.scheduleItems.length, 2)
+  assert.deepEqual(interiorWall.scheduleItems[1].predecessors, [{
+    predecessorSourceItemId: "141652402",
+    successorSourceItemId: "141654663",
+    type: "FS",
+    lagDays: 0,
+  }])
+
+  assert.equal(interiorWall.bidPackages.length, 1)
+  const bid = interiorWall.bidPackages[0]
+  assert.equal(bid.sourceBidPackageId, "13414443")
+  assert.equal(bid.description.includes("Contract and Insurance Requirements"), true)
+  assert.deepEqual(
+    bid.lineItems.map((item) => item.sourceLineItemId),
+    ["23494886", "23494887", "23494888", "23494889", "23494890", "23494891"]
+  )
+  assert.deepEqual(
+    bid.lineItems.map((item) => item.costCode),
+    [
+      "06 11 00 - Wood Framing",
+      "06 15 00 - Wood Decking",
+      "06 15 13 - Wood Floor Decking",
+      "06 15 16 - Wood Roof Decking",
+      "08 00 00 - Openings",
+      "08 50 00 - Windows",
+    ]
+  )
+  assert.equal(bid.lineItems.every((item) => item.costType === "Subcontractor"), true)
+  assert.equal(bid.lineItems.every((item) => item.description.length > 0), true)
+})
+
+test("fails stale when a newly complete template is not in the reviewed release", async () => {
+  const stale = await inputs()
+  stale.documents.push({
+    source: "13-12650792.capture.json",
+    document: {
+      sourceTemplateId: "12650792",
+      sourceName: "Framing - Roof w/ Trusses Assembly",
+      tasks: Array.from({ length: 28 }, (_, index) => ({
+        sourceItemId: `roof-task-${index + 1}`,
+        parentSourceItemId: null,
+        title: `Roof task ${index + 1}`,
+      })),
+    },
+  })
+  assert.throws(
+    () => assembleBuildertrendTemplateNextBatchContent(stale),
+    /scope is stale for the currently reviewed fragments/
+  )
+
+  const reviewed = structuredClone(stale)
+  const roof = reviewed.nextBatchManifest.templates.find(
+    (template) => template.sourceTemplateId === "12650792"
+  )
+  assert.ok(roof)
+  reviewed.release.scope.structurallyCompleteTemplatesIncluded = 7
+  reviewed.release.scope.incompleteTemplatesExcluded = 27
+  reviewed.release.templates.push({
+    sourceTemplateId: roof.sourceTemplateId,
+    sourceName: roof.sourceName,
+    workplanSequence: roof.workplanSequence,
+    moduleCounts: roof.moduleCounts,
+    fragmentPath: roof.fragmentPath,
+    browserCaptureGates: "complete",
+  })
+
+  const result = assembleBuildertrendTemplateNextBatchContent(reviewed)
+  assert.deepEqual(
+    result.capture.assembly.sourceTemplateIds,
+    ["12859981", "12978371", "12581937", "12594475", "30917204", "12646335", "12650792"]
+  )
+  assert.equal(result.capture.assembly.excludedIncompleteTemplateCount, 27)
+  assert.equal(result.capture.templates[6].tasks.length, 28)
+  assert.equal(result.capture.templates[6].scheduleItems.length, 5)
+})
+
 test("rejects partial capture, duplicate release scope, and publication requests", async () => {
   const partial = await inputs()
   partial.documents[0].document.tasks = partial.documents[0].document.tasks.slice(1)
@@ -281,7 +372,7 @@ test("rejects partial capture, duplicate release scope, and publication requests
   )
 })
 
-test("builds SQL that remains draft-only and includes Concrete Slab and Siding", async () => {
+test("builds SQL that remains draft-only and includes every released template", async () => {
   const directory = await mkdtemp(join(tmpdir(), "compass-next-batch-content-"))
   const capture = join(directory, "capture.json")
   const inventory = join(directory, "inventory.json")
@@ -299,11 +390,11 @@ test("builds SQL that remains draft-only and includes Concrete Slab and Siding",
       "--output", output,
     ])
     assert.deepEqual(JSON.parse(result.stdout), {
-      templateCount: 5,
-      tasks: 201,
-      scheduleItems: 33,
+      templateCount: 6,
+      tasks: 235,
+      scheduleItems: 35,
       selections: 8,
-      bidPackages: 5,
+      bidPackages: 6,
       excludedArchivedCount: 27,
       draftOnly: true,
       output,
@@ -314,6 +405,7 @@ test("builds SQL that remains draft-only and includes Concrete Slab and Siding",
     assert.match(sql, /bt-template-version:12581937:1/)
     assert.match(sql, /bt-template-version:12594475:1/)
     assert.match(sql, /bt-template-version:30917204:1/)
+    assert.match(sql, /bt-template-version:12646335:1/)
     assert.match(sql, /INSERT INTO schedule_template_items/)
     assert.match(sql, /review_status='content_captured', lifecycle_status='draft'/)
     assert.doesNotMatch(sql, /status='published'|lifecycle_status='active'|review_status='verified'/)

@@ -7,8 +7,8 @@
     "activeTemplatesInSource": 40,
     "completedPilotTemplatesExcluded": 6,
     "nonPilotCandidatesAudited": 34,
-    "structurallyCompleteTemplatesIncluded": 5,
-    "incompleteTemplatesExcluded": 29,
+    "structurallyCompleteTemplatesIncluded": 6,
+    "incompleteTemplatesExcluded": 28,
     "archivedTemplatesExcluded": 27,
     "archivedTemplatesIncluded": 0
   },
@@ -83,6 +83,19 @@
         "bidPackages": 1
       },
       "fragmentPath": "scripts/fixtures/buildertrend-template-content-next-batch/fragments/11-30917204.capture.json",
+      "browserCaptureGates": "complete"
+    },
+    {
+      "sourceTemplateId": "12646335",
+      "sourceName": "Framing - Interior Wall Assembly",
+      "workplanSequence": 12,
+      "moduleCounts": {
+        "tasks": 34,
+        "scheduleItems": 2,
+        "selections": 0,
+        "bidPackages": 1
+      },
+      "fragmentPath": "scripts/fixtures/buildertrend-template-content-next-batch/fragments/12-12646335.capture.json",
       "browserCaptureGates": "complete"
     }
   ],
