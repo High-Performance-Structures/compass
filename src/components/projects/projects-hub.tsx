@@ -45,6 +45,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import {
+  CONFIGURED_HPS_PROJECT_MANAGER_WEB_APP_URL,
+  HPS_PROJECT_MANAGER_WEB_APP_URL,
+  openHpsProjectManagerWorkWindow,
+} from "@/lib/google/project-manager-app"
 import { cn } from "@/lib/utils"
 
 type DepartmentId = "O" | "H" | "N" | "D" | "UNASSIGNED"
@@ -183,15 +188,6 @@ const PROJECT_STATUS_OPTIONS: readonly ProjectStatusOption[] = [
 const HPS_PROJECT_MANAGER_EDITOR_URL =
   "https://script.google.com/d/1NzKjO6r_WS5optIHxwGxB5mby3PX0TSHhctU73xZIFtWXXgLueksPN-s/edit"
 
-const DEFAULT_HPS_PROJECT_MANAGER_WEB_APP_URL =
-  "https://script.google.com/a/macros/hps-colorado.com/s/AKfycbyeCqsdObrPp91LRmpEHSLZ8xdGerw7ExF2mFSSzYkxGnTrliv9OvHsYOFXicnVC5nQ/exec"
-
-const CONFIGURED_HPS_PROJECT_MANAGER_WEB_APP_URL =
-  process.env.NEXT_PUBLIC_HPS_PROJECT_MANAGER_WEB_APP_URL ?? ""
-
-const HPS_PROJECT_MANAGER_WEB_APP_URL =
-  CONFIGURED_HPS_PROJECT_MANAGER_WEB_APP_URL ||
-  DEFAULT_HPS_PROJECT_MANAGER_WEB_APP_URL
 const DASHBOARD_MODE_STORAGE_KEY = "compass-dashboard-workspace-mode"
 
 const DEPARTMENT_TOOLS: readonly (DepartmentTool & {
@@ -226,18 +222,6 @@ const DEPARTMENT_TOOLS: readonly (DepartmentTool & {
     href: "/dashboard/automations",
   },
 ]
-
-function openProjectManagerWorkWindow(appUrl: string): void {
-  const projectManagerWindow = window.open(
-    appUrl,
-    "hps-project-manager",
-    "popup=yes,width=1180,height=860,menubar=no,toolbar=yes,location=yes,status=no,scrollbars=yes,resizable=yes"
-  )
-
-  if (projectManagerWindow) {
-    projectManagerWindow.focus()
-  }
-}
 
 function storedDashboardDeveloperMode(canUseDeveloperMode: boolean): boolean {
   if (!canUseDeveloperMode) return false
@@ -1022,7 +1006,7 @@ function ProjectManagerEmbedDialog({
   readonly onUrlInputChange: (value: string) => void
 }): React.ReactElement {
   const handleOpenDetachedWindow = React.useCallback(() => {
-    openProjectManagerWorkWindow(appUrl)
+    openHpsProjectManagerWorkWindow(window, appUrl)
   }, [appUrl])
 
   return (
@@ -1363,7 +1347,7 @@ export function ProjectsHub({
       : groups.find((group) => group.id === activeDepartment) ?? null
 
   function openProjectManager(): void {
-    openProjectManagerWorkWindow(projectManagerAppUrl)
+    openHpsProjectManagerWorkWindow(window, projectManagerAppUrl)
   }
 
   function openProjectManagerDetails(): void {

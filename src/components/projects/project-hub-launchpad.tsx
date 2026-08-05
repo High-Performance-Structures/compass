@@ -1,9 +1,8 @@
 "use client"
 
-import { useMemo, useState, useTransition } from "react"
+import { useMemo, useState } from "react"
 import Image from "next/image"
 import Link from "next/link"
-import { useRouter } from "next/navigation"
 import {
   IconAlertTriangle,
   IconBuilding,
@@ -18,35 +17,16 @@ import {
 } from "@tabler/icons-react"
 
 import type { DashboardOverview } from "@/app/actions/dashboard-overview"
-import {
-  createProjectShell,
-  type ProjectListItem,
-} from "@/app/actions/projects"
+import type { ProjectListItem } from "@/app/actions/projects"
 import { useActiveProject } from "@/components/project-list-provider"
 import { ProjectQuickSwitcher } from "@/components/projects/project-quick-switcher"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog"
-import { Input } from "@/components/ui/input"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
 import { OfficeMaintenanceDrawer } from "@/components/projects/office-maintenance-drawer"
+import { openHpsProjectManagerWorkWindow } from "@/lib/google/project-manager-app"
 import { cn } from "@/lib/utils"
 
 type DepartmentFilter = "ALL" | "O" | "H" | "N" | "D" | "OTHER"
-type NewProjectDepartment = "O" | "H" | "N" | "D" | "UNASSIGNED"
 type StatusFilter = "active" | "warranty" | "complete" | "all"
 type ProjectLayout = "cards" | "list"
 
@@ -81,23 +61,6 @@ function departmentForProject(project: ProjectListItem): DepartmentFilter {
     return prefix
   }
   return "OTHER"
-}
-
-function isNewProjectDepartment(value: string): value is NewProjectDepartment {
-  return (
-    value === "O" ||
-    value === "H" ||
-    value === "N" ||
-    value === "D" ||
-    value === "UNASSIGNED"
-  )
-}
-
-function formText(formData: FormData, name: string): string | null {
-  const value = formData.get(name)
-  if (typeof value !== "string") return null
-  const trimmed = value.trim()
-  return trimmed.length > 0 ? trimmed : null
 }
 
 function statusForProject(project: ProjectListItem): StatusFilter {
@@ -289,146 +252,16 @@ function ProjectCard({
   )
 }
 
-function NewProjectDialog({
-  activeDepartment,
-}: {
-  readonly activeDepartment: DepartmentFilter
-}): React.ReactElement {
-  const router = useRouter()
-  const [open, setOpen] = useState(false)
-  const [department, setDepartment] = useState<NewProjectDepartment>(
-    isNewProjectDepartment(activeDepartment) ? activeDepartment : "O"
-  )
-  const [status, setStatus] = useState("OPEN")
-  const [message, setMessage] = useState<string | null>(null)
-  const [isPending, startTransition] = useTransition()
-
-  function handleOpenChange(nextOpen: boolean): void {
-    if (nextOpen && isNewProjectDepartment(activeDepartment)) {
-      setDepartment(activeDepartment)
-    }
-    setMessage(null)
-    setOpen(nextOpen)
-  }
-
-  function handleSubmit(event: React.FormEvent<HTMLFormElement>): void {
-    event.preventDefault()
-    const formData = new FormData(event.currentTarget)
-    const name = formText(formData, "name")
-    if (!name) {
-      setMessage("Project name is required.")
-      return
-    }
-
-    startTransition(async () => {
-      setMessage(null)
-      const result = await createProjectShell({
-        projectNumber: formText(formData, "projectNumber"),
-        name,
-        department,
-        clientName: formText(formData, "clientName"),
-        address: formText(formData, "address"),
-        status,
-      })
-
-      if (!result.success) {
-        setMessage(result.error)
-        return
-      }
-
-      setOpen(false)
-      router.push(`/dashboard/projects/${result.id}`)
-      router.refresh()
-    })
-  }
-
+function NewProjectButton(): React.ReactElement {
   return (
-    <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogTrigger asChild>
-        <Button size="sm">
-          <IconPlus className="size-4" />
-          New project
-        </Button>
-      </DialogTrigger>
-      <DialogContent className="sm:max-w-xl">
-        <DialogHeader>
-          <DialogTitle>Create project</DialogTitle>
-          <DialogDescription>
-            Start the Compass project shell. Integration IDs can be added later
-            in advanced registry tools.
-          </DialogDescription>
-        </DialogHeader>
-        <form className="space-y-4" onSubmit={handleSubmit}>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <label className="space-y-1.5 text-sm font-medium">
-              Project name
-              <Input name="name" required placeholder="Loeffler Residence" />
-            </label>
-            <label className="space-y-1.5 text-sm font-medium">
-              Project number
-              <Input name="projectNumber" placeholder="O-202-595" />
-            </label>
-            <label className="space-y-1.5 text-sm font-medium">
-              Department
-              <Select
-                value={department}
-                onValueChange={(value) => {
-                  if (isNewProjectDepartment(value)) setDepartment(value)
-                }}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="O">ORC</SelectItem>
-                  <SelectItem value="H">HPS</SelectItem>
-                  <SelectItem value="N">Nu-Tech</SelectItem>
-                  <SelectItem value="D">Design</SelectItem>
-                  <SelectItem value="UNASSIGNED">Unassigned</SelectItem>
-                </SelectContent>
-              </Select>
-            </label>
-            <label className="space-y-1.5 text-sm font-medium">
-              Status
-              <Select value={status} onValueChange={setStatus}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="OPEN">Active</SelectItem>
-                  <SelectItem value="LEAD">Lead</SelectItem>
-                  <SelectItem value="WARRANTY">Warranty</SelectItem>
-                </SelectContent>
-              </Select>
-            </label>
-            <label className="space-y-1.5 text-sm font-medium">
-              Client
-              <Input name="clientName" placeholder="Client name" />
-            </label>
-            <label className="space-y-1.5 text-sm font-medium">
-              Address
-              <Input name="address" placeholder="Job site address" />
-            </label>
-          </div>
-          {message ? (
-            <p className="text-sm text-destructive">{message}</p>
-          ) : null}
-          <div className="flex justify-end gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => setOpen(false)}
-              disabled={isPending}
-            >
-              Cancel
-            </Button>
-            <Button type="submit" disabled={isPending}>
-              {isPending ? "Creating..." : "Create project"}
-            </Button>
-          </div>
-        </form>
-      </DialogContent>
-    </Dialog>
+    <Button
+      type="button"
+      size="sm"
+      onClick={() => openHpsProjectManagerWorkWindow()}
+    >
+      <IconPlus className="size-4" />
+      New project
+    </Button>
   )
 }
 
@@ -496,7 +329,7 @@ export function ProjectHubLaunchpad({
             <OfficeMaintenanceDrawer projects={projects} />
           ) : null}
           {canManageProjects ? (
-            <NewProjectDialog activeDepartment={department} />
+            <NewProjectButton />
           ) : null}
         </div>
       </header>
