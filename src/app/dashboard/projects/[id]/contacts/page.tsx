@@ -9,7 +9,9 @@ import {
 import Link from "next/link"
 
 import {
+  getProjectContactDirectoryOptions,
   getProjectContactsSummary,
+  type ProjectContactDirectoryOption,
   type ProjectContactsSummary,
 } from "@/app/actions/project-contacts"
 import { getProjects } from "@/app/actions/projects"
@@ -28,6 +30,8 @@ export default async function ProjectContactsPage({
   const { id } = await params
 
   let contacts: ProjectContactsSummary | null = null
+  let directoryOptions: readonly ProjectContactDirectoryOption[] = []
+  let canManageContacts = false
   let projectLabel = "This project"
 
   try {
@@ -44,6 +48,14 @@ export default async function ProjectContactsPage({
     }
   } catch (error) {
     console.warn("Project contacts unavailable", error)
+  }
+
+  try {
+    directoryOptions = await getProjectContactDirectoryOptions(id)
+    canManageContacts = true
+  } catch {
+    // Read-only project users may view allowed contacts without receiving the
+    // organization-wide directory or any editing controls.
   }
 
   return (
@@ -93,6 +105,7 @@ export default async function ProjectContactsPage({
           projectLabel={projectLabel}
           summary={contacts}
           showOpenLink={false}
+          directoryOptions={canManageContacts ? directoryOptions : undefined}
         />
       </div>
 
@@ -101,6 +114,7 @@ export default async function ProjectContactsPage({
           projectId={id}
           projectLabel={projectLabel}
           summary={contacts}
+          directoryOptions={canManageContacts ? directoryOptions : undefined}
         />
       )}
     </div>

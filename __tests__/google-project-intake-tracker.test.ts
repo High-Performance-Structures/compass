@@ -138,6 +138,7 @@ describe("Google Developer-folder project tracking intake", () => {
         "Contact Person",
         "Estimator",
         "Quote Status",
+        "Update Status",
         "Folder Link",
         "Project Address",
       ],
@@ -176,11 +177,41 @@ describe("Google Developer-folder project tracking intake", () => {
       "H-432-3295",
       "Scott and Farrell Thompson",
       "Scott and Farrell Thompson",
-      "Martine Vogel",
+      "Martine",
       "I - Intake",
+      "Current",
       "https://drive.google.com/drive/folders/folder-id",
       "3295 Little Turkey Creek Rd., Colorado Springs, CO 80926",
     ])
+  })
+
+  it("uses each live tracker staff and update-status validation value", () => {
+    const hpsLayout = locateProjectTrackerLayout([
+      ["Project ID", "Estimator", "Update Status"],
+    ])
+    const orcLayout = locateProjectTrackerLayout([
+      ["Project ID", "Assigned To", "Update Status"],
+    ])
+    expect(hpsLayout).not.toBeNull()
+    expect(orcLayout).not.toBeNull()
+    if (!hpsLayout || !orcLayout) return
+
+    expect(
+      buildDepartmentTrackerRow({
+        layout: hpsLayout,
+        project: { ...PROJECT, department: "H", assignedTo: "Martine Vogel" },
+        projectNumber: "H-432-3295",
+        driveFolderUrl: null,
+      })
+    ).toEqual(["H-432-3295", "Martine", "Current"])
+    expect(
+      buildDepartmentTrackerRow({
+        layout: orcLayout,
+        project: { ...PROJECT, department: "O", assignedTo: "Wesley Jones" },
+        projectNumber: "O-211-33A",
+        driveFolderUrl: null,
+      })
+    ).toEqual(["O-211-33A", "Wes", "Weekly"])
   })
 
   it("keeps Project Number header compatibility without dropping the identifier", () => {

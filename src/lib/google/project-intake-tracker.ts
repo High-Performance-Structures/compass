@@ -175,6 +175,36 @@ function sequenceFromProjectNumber(projectNumber: string): string {
   return projectNumber.match(/^[A-Z]-(\d+)-/i)?.[1] ?? ""
 }
 
+const TRACKER_STAFF_LABELS: Readonly<Record<string, string>> = {
+  "martine vogel": "Martine",
+  martine: "Martine",
+  "daniel vogel": "Dan",
+  "dan vogel": "Dan",
+  daniel: "Dan",
+  dan: "Dan",
+  "sarah cowman": "Sarah",
+  sarah: "Sarah",
+  "stanley platt": "Stanley",
+  stanley: "Stanley",
+  "sylvi vogel": "Sylvi",
+  sylvi: "Sylvi",
+  "cassandra rodriguez-v": "Cassandra",
+  cassandra: "Cassandra",
+  "wesley jones": "Wes",
+  "wes jones": "Wes",
+  wesley: "Wes",
+  wes: "Wes",
+  "rebekah jones": "Rebekah",
+  rebekah: "Rebekah",
+  "isabel araguz": "Isabel",
+  isabel: "Isabel",
+}
+
+function trackerStaffName(value: string | null): string {
+  const staffName = cellText(value)
+  return TRACKER_STAFF_LABELS[staffName.toLowerCase()] ?? staffName
+}
+
 export function buildProjectRegistryRow(input: {
   readonly layout: ProjectTrackerLayout
   readonly project: ProjectIntakeTrackerInput
@@ -227,31 +257,31 @@ export function buildDepartmentTrackerRow(input: {
     "billing address": cellText(project.billingAddress),
     "client id": "",
     "project address": address,
-    "update status": "Weekly",
+    "update status": project.department === "O" ? "Weekly" : "Current",
   }
   const departmentValues: Readonly<Record<ProjectIntakeDepartment, Record<string, string>>> = {
     H: {
       "builder gc": company || client || "Homeowner",
       "contact person": client,
-      estimator: cellText(project.assignedTo),
+      estimator: trackerStaffName(project.assignedTo),
       "quote status": "I - Intake",
     },
     O: {
       client,
       address,
-      "assigned to": cellText(project.assignedTo),
+      "assigned to": trackerStaffName(project.assignedTo),
       "lead status": "I - Intake",
     },
     N: {
       customer: client || company,
-      "assigned to": cellText(project.assignedTo),
+      "assigned to": trackerStaffName(project.assignedTo),
       "quote status": "I - Intake",
       "order status": "I - Intake",
     },
     D: {
       client,
       address,
-      "assigned designer": cellText(project.assignedTo),
+      "assigned designer": trackerStaffName(project.assignedTo),
       "proposal status": "I - Intake",
     },
   }
