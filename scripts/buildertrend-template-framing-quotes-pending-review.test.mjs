@@ -22,13 +22,13 @@ async function readJson(path) {
   return JSON.parse(await readFile(path, "utf8"))
 }
 
-test("keeps Framing Quote Packages fail closed while its three bid packages are pending", async () => {
+test("preserves the exact partial Framing Quote Packages capture as a fail-closed audit", async () => {
   const review = await readJson(paths.review)
 
-  assert.equal(review.reviewStatus, "pending")
+  assert.equal(review.reviewStatus, "incomplete")
   assert.equal(review.releaseEligible, false)
   assert.equal(review.template.sourceTemplateId, framingQuotesTemplateId)
-  assert.equal(review.template.capturedAt, null)
+  assert.equal(typeof review.template.capturedAt, "string")
   assert.deepEqual(review.template.sourceInventory, {
     tasks: 0,
     scheduleItems: 0,
@@ -43,15 +43,73 @@ test("keeps Framing Quote Packages fail closed while its three bid packages are 
       status: gate.status,
     })),
     [
-      { module: "bidPackages", expectedCount: 3, capturedCount: 0, status: "pending" },
+      { module: "bidPackages", expectedCount: 3, capturedCount: 3, status: "incomplete" },
     ]
   )
   assert.equal(review.template.browserModuleGates[0].releaseBlocker.length > 0, true)
-  assert.deepEqual(review.template.bidPackages, [])
-  assert.deepEqual(review.conversionExceptions, [])
+  assert.deepEqual(
+    review.template.bidPackages.map((bidPackage) => [
+      bidPackage.sourceBidPackageId,
+      bidPackage.title,
+      bidPackage.lineItems.length,
+      bidPackage.plansAndSpecs,
+    ]),
+    [
+      ["10393689", "Framing - (Project Address) (Estimate Phase)", 6, false],
+      ["10393709", "Framing Pack - (Project Address) (Estimate Phase)", 6, false],
+      ["10393691", "Truss Pack - (Project Address) (Estimate Phase)", 2, null],
+    ]
+  )
+  assert.deepEqual(
+    review.template.bidPackages.flatMap((bidPackage) =>
+      bidPackage.lineItems.map((lineItem) => lineItem.sourceLineItemId)
+    ),
+    [
+      "17932064",
+      "17932065",
+      "17932066",
+      "17932067",
+      "17932068",
+      "17932069",
+      "17932109",
+      "17932110",
+      "17932111",
+      "17932112",
+      "21064291",
+      "17932115",
+      "17932113",
+      "17932114",
+    ]
+  )
+  assert.equal(
+    review.template.bidPackages.every(
+      (bidPackage) =>
+        bidPackage.status === "Draft" &&
+        bidPackage.pricingFormat === "Line Items" &&
+        bidPackage.allowMultipleApprovedBids === false &&
+        bidPackage.attachments.length === 0 &&
+        bidPackage.description.includes("Contract and Insurance Requirements")
+    ),
+    true
+  )
+  assert.equal(
+    review.template.bidPackages.flatMap((bidPackage) => bidPackage.lineItems)
+      .every((lineItem) => lineItem.description === null),
+    true
+  )
+  assert.deepEqual(
+    review.conversionExceptions.map((exception) => [
+      exception.sourceItemId,
+      exception.field,
+    ]),
+    [
+      [null, "lineItems.description"],
+      ["10393691", "plansAndSpecs"],
+    ]
+  )
 })
 
-test("excludes the pending Framing Quote Packages checkpoint from fragment discovery and release assembly", async () => {
+test("excludes the incomplete Framing Quote Packages checkpoint from discovery and release", async () => {
   const [release, nextBatchManifest, reviewedCapture, documents] = await Promise.all([
     readJson(paths.release),
     readJson(paths.manifest),

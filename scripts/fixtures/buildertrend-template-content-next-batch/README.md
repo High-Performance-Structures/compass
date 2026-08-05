@@ -10,7 +10,7 @@ reviewed release covers workplan sequences 6–13, 15–16, 18, 20–24, 26–28
 and 30–32,
 excluding sequence 10 because Drywall was already completed in the pilot and
 sequences 14, 17, 19, 25, 29, and 33–40 because their captures remain
-incomplete:
+incomplete; sequence 34 has a fail-closed partial checkpoint:
 
 1. Ext. Finishes - Stucco (`12859981`)
 2. MEP - Rough & Top Out (`12978371`)

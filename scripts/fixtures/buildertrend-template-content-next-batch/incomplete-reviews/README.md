@@ -100,11 +100,14 @@ warnings. No source values may be inferred while this audit remains pending.
 ## Framing - Quote Packages (`36478698`)
 
 The reviewed source inventory reports three bid packages and no tasks, schedule
-items, or selections. A fail-closed checkpoint is prepared before authenticated
-module capture begins; it contains no copied or inferred bid-package content.
+items, or selections. Authenticated source capture recovered all three native
+package IDs, their shared package descriptions, 14 native line-item IDs and
+displayed fields, and confirmed that all three attachment sections are empty.
+The first two packages also explicitly report no linked Plans and no linked
+Specs.
 
-Framing Quote Packages remains blocked until all three packages are captured
-with their native identities, displayed ordering, status, specifications, line
-items, cost codes, Cost Types, quantities, units, attachment evidence, and any
-copy warnings. Only then may the checkpoint move into the active fragments
-directory and become eligible for the reviewed release allowlist.
+Framing Quote Packages remains blocked because the 14 collapsed line-item
+descriptions were not opened and the Truss Pack package's Plans and Specs
+subpanel was not inspected before the browser lease ended. Those fields must be
+recovered without inference before the checkpoint can move into the active
+fragments directory or become eligible for the reviewed release allowlist.
