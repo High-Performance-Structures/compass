@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache"
 
 import { getDb } from "@/db"
 import {
+  customers,
   organizationMembers,
   projectAccessInvitations,
   projectContacts,
@@ -162,6 +163,44 @@ export type AddTaskAssigneeContactResult =
   | { readonly success: true; readonly contact: ProjectTaskAssigneeOption }
   | { readonly success: false; readonly error: string }
 
+export type ProjectContactDirectorySource = "customer" | "vendor" | "team"
+
+export type ProjectContactDirectoryOption = {
+  readonly id: string
+  readonly sourceType: ProjectContactDirectorySource
+  readonly displayName: string
+  readonly companyName: string | null
+  readonly email: string | null
+  readonly phone: string | null
+  readonly suggestedContactType: ProjectContactType
+}
+
+export type ProjectContactMutationInput = {
+  readonly projectId: string
+  readonly contactId: string | null
+  readonly directorySourceType: ProjectContactDirectorySource | null
+  readonly directorySourceId: string | null
+  readonly contactType: ProjectContactType
+  readonly displayName: string
+  readonly companyName: string
+  readonly role: string
+  readonly trade: string
+  readonly csiDivision: string
+  readonly csiDivisionName: string
+  readonly primaryCostCode: string
+  readonly email: string
+  readonly phone: string
+  readonly notes: string
+  readonly ownerPortalVisible: boolean
+  readonly subVendorPortalVisible: boolean
+  readonly internalVisible: boolean
+  readonly primaryContact: boolean
+}
+
+export type ProjectContactMutationResult =
+  | { readonly success: true; readonly contactId: string }
+  | { readonly success: false; readonly error: string }
+
 const CONTACT_TYPES: readonly ProjectContactType[] = [
   "owner",
   "supplier",
@@ -194,6 +233,15 @@ function toWritableContactType(value: string): ProjectContactType {
   if (value === "supplier") return "supplier"
   if (value === "internal") return "internal"
   return "subcontractor"
+}
+
+function nullableInput(value: string): string | null {
+  const trimmed = value.trim()
+  return trimmed.length > 0 ? trimmed : null
+}
+
+function validContactType(value: string): value is ProjectContactType {
+  return CONTACT_TYPES.some((contactType) => contactType === value)
 }
 
 function vendorCategoryToContactType(category: string): ProjectContactType {
@@ -613,6 +661,560 @@ export async function getProjectContactsSummary(
     groups: buildGroups(allContacts),
     csiGroups: buildCsiGroups(allContacts),
     allContacts,
+  }
+}
+
+export async function getProjectContactDirectoryOptions(
+  projectId: string
+): Promise<readonly ProjectContactDirectoryOption[]> {
+  const user = await requireAuth()
+  await requireFeaturePermission(user, "project-contacts", "update")
+  const orgId = requireOrg(user)
+  // The picker exposes organization-wide customer, vendor, and staff details,
+  // so project read access alone is intentionally insufficient.
+  const db = await verifyProjectAccess(projectId, "update")
+
+  const existingRows = await db
+    .select({
+      sourceEntityType: projectContacts.sourceEntityType,
+      sourceEntityId: projectContacts.sourceEntityId,
+    })
+    .from(projectContacts)
+    .where(
+      and(eq(projectContacts.projectId, projectId), eq(projectContacts.active, true))
+    )
+  const existingSources = new Set(
+    existingRows
+      .filter(
+        (row) => row.sourceEntityId !== null && row.sourceEntityId.length > 0
+      )
+      .map((row) => `${row.sourceEntityType}:${row.sourceEntityId}`)
+  )
+
+  const [customerRows, vendorRows, teamRows] = await Promise.all([
+    db
+      .select({
+        id: customers.id,
+        name: customers.name,
+        company: customers.company,
+        email: customers.email,
+        phone: customers.phone,
+      })
+      .from(customers)
+      .where(eq(customers.organizationId, orgId)),
+    db
+      .select({
+        id: vendors.id,
+        name: vendors.name,
+        category: vendors.category,
+        email: vendors.email,
+        phone: vendors.phone,
+      })
+      .from(vendors)
+      .where(
+        and(
+          eq(vendors.organizationId, orgId),
+          eq(vendors.directoryStatus, "active")
+        )
+      ),
+    db
+      .select({
+        id: users.id,
+        email: users.email,
+        displayName: users.displayName,
+        firstName: users.firstName,
+        lastName: users.lastName,
+      })
+      .from(organizationMembers)
+      .innerJoin(users, eq(users.id, organizationMembers.userId))
+      .where(
+        and(
+          eq(organizationMembers.organizationId, orgId),
+          eq(users.isActive, true)
+        )
+      ),
+  ])
+
+  const customerOptions: ProjectContactDirectoryOption[] = customerRows
+    .filter((row) => !existingSources.has(`customer:${row.id}`))
+    .map((row) => ({
+      id: row.id,
+      sourceType: "customer",
+      displayName: row.name,
+      companyName: row.company,
+      email: row.email,
+      phone: row.phone,
+      suggestedContactType: "owner",
+    }))
+  const vendorOptions: ProjectContactDirectoryOption[] = vendorRows
+    .filter(
+      (row) =>
+        isDirectoryAssignable(row.category) &&
+        !existingSources.has(`vendor:${row.id}`)
+    )
+    .map((row) => ({
+      id: row.id,
+      sourceType: "vendor",
+      displayName: row.name,
+      companyName: row.name,
+      email: row.email,
+      phone: row.phone,
+      suggestedContactType: vendorCategoryToContactType(row.category),
+    }))
+  const teamOptions: ProjectContactDirectoryOption[] = teamRows
+    .filter((row) => !existingSources.has(`user:${row.id}`))
+    .map((row) => {
+      const fullName = [row.firstName, row.lastName]
+        .filter((part): part is string => part !== null && part.trim().length > 0)
+        .join(" ")
+      return {
+        id: row.id,
+        sourceType: "team",
+        displayName: row.displayName?.trim() || fullName || row.email,
+        companyName: null,
+        email: row.email,
+        phone: null,
+        suggestedContactType: "internal",
+      }
+    })
+
+  return [...customerOptions, ...vendorOptions, ...teamOptions].sort((left, right) =>
+    left.displayName.localeCompare(right.displayName)
+  )
+}
+
+export async function saveProjectContact(
+  input: ProjectContactMutationInput
+): Promise<ProjectContactMutationResult> {
+  try {
+    const user = await requireAuth()
+    if (isDemoUser(user.id)) return { success: false, error: "DEMO_READ_ONLY" }
+    await requireFeaturePermission(user, "project-contacts", "update")
+    if (!input.projectId.trim()) {
+      return { success: false, error: "Project is required" }
+    }
+    if (!input.displayName.trim()) {
+      return { success: false, error: "Contact name is required" }
+    }
+    if (!validContactType(input.contactType)) {
+      return { success: false, error: "Choose a valid contact type" }
+    }
+
+    const orgId = requireOrg(user)
+    const db = await verifyProjectAccess(input.projectId, "update")
+    const now = new Date().toISOString()
+    let contactId = input.contactId
+    let sourceSystem = "compass"
+    let sourceRecordId: string | null = null
+    let sourceEntityType = "manual"
+    let sourceEntityId: string | null = null
+    let syncStatus = "manual"
+
+    if (!contactId && input.directorySourceType && input.directorySourceId) {
+      sourceRecordId = input.directorySourceId
+      sourceEntityId = input.directorySourceId
+
+      if (input.directorySourceType === "customer") {
+        const [directoryRecord] = await db
+          .select({ id: customers.id })
+          .from(customers)
+          .where(
+            and(
+              eq(customers.id, input.directorySourceId),
+              eq(customers.organizationId, orgId)
+            )
+          )
+          .limit(1)
+        if (!directoryRecord) {
+          return { success: false, error: "Customer directory record not found" }
+        }
+        sourceSystem = "customer_directory"
+        sourceEntityType = "customer"
+      } else if (input.directorySourceType === "vendor") {
+        const [directoryRecord] = await db
+          .select({ id: vendors.id, syncStatus: vendors.syncStatus })
+          .from(vendors)
+          .where(
+            and(
+              eq(vendors.id, input.directorySourceId),
+              eq(vendors.organizationId, orgId),
+              eq(vendors.directoryStatus, "active")
+            )
+          )
+          .limit(1)
+        if (!directoryRecord) {
+          return { success: false, error: "Vendor directory record not found" }
+        }
+        sourceSystem = "global_directory"
+        sourceEntityType = "vendor"
+        syncStatus = directoryRecord.syncStatus
+      } else {
+        const [directoryRecord] = await db
+          .select({ id: users.id })
+          .from(organizationMembers)
+          .innerJoin(users, eq(users.id, organizationMembers.userId))
+          .where(
+            and(
+              eq(organizationMembers.organizationId, orgId),
+              eq(users.id, input.directorySourceId),
+              eq(users.isActive, true)
+            )
+          )
+          .limit(1)
+        if (!directoryRecord) {
+          return { success: false, error: "Team directory record not found" }
+        }
+        sourceSystem = "organization_directory"
+        sourceEntityType = "user"
+      }
+
+      const [existingContact] = await db
+        .select({ id: projectContacts.id, active: projectContacts.active })
+        .from(projectContacts)
+        .where(
+          and(
+            eq(projectContacts.projectId, input.projectId),
+            eq(projectContacts.sourceEntityType, sourceEntityType),
+            eq(projectContacts.sourceEntityId, input.directorySourceId)
+          )
+        )
+        .limit(1)
+      if (existingContact?.active) {
+        return { success: false, error: "This contact is already on the project" }
+      }
+      if (existingContact) contactId = existingContact.id
+    }
+
+    const contactValues = {
+      contactType: input.contactType,
+      displayName: input.displayName.trim(),
+      companyName: nullableInput(input.companyName),
+      role: nullableInput(input.role),
+      trade: nullableInput(input.trade),
+      csiDivision: nullableInput(input.csiDivision),
+      csiDivisionName: nullableInput(input.csiDivisionName),
+      primaryCostCode: nullableInput(input.primaryCostCode),
+      email: nullableInput(input.email),
+      phone: nullableInput(input.phone),
+      notes: nullableInput(input.notes),
+      ownerPortalVisible: input.ownerPortalVisible,
+      subVendorPortalVisible: input.subVendorPortalVisible,
+      internalVisible: input.internalVisible,
+      primaryContact: input.primaryContact,
+      active: true,
+      updatedAt: now,
+    }
+
+    if (contactId) {
+      const [existingContact] = await db
+        .select({
+          id: projectContacts.id,
+          email: projectContacts.email,
+          sourceEntityType: projectContacts.sourceEntityType,
+          sourceEntityId: projectContacts.sourceEntityId,
+        })
+        .from(projectContacts)
+        .where(
+          and(
+            eq(projectContacts.id, contactId),
+            eq(projectContacts.projectId, input.projectId)
+          )
+        )
+        .limit(1)
+      if (!existingContact) {
+        return { success: false, error: "Project contact not found" }
+      }
+      const existingEmail = existingContact.email?.trim().toLowerCase() ?? ""
+      const updatedEmail = nullableInput(input.email)?.toLowerCase() ?? ""
+      if (existingEmail !== updatedEmail) {
+        const [invitationRows, organizationUserRows] = await Promise.all([
+          db
+            .select({ status: projectAccessInvitations.status })
+            .from(projectAccessInvitations)
+            .where(
+              and(
+                eq(projectAccessInvitations.projectId, input.projectId),
+                eq(projectAccessInvitations.projectContactId, contactId)
+              )
+            ),
+          db
+            .select({ id: users.id, email: users.email })
+            .from(organizationMembers)
+            .innerJoin(users, eq(users.id, organizationMembers.userId))
+            .where(eq(organizationMembers.organizationId, orgId)),
+        ])
+        const linkedUserIds = new Set<string>()
+        if (
+          existingContact.sourceEntityType === "user" &&
+          existingContact.sourceEntityId
+        ) {
+          linkedUserIds.add(existingContact.sourceEntityId)
+        }
+        if (existingEmail) {
+          for (const organizationUser of organizationUserRows) {
+            if (organizationUser.email.trim().toLowerCase() === existingEmail) {
+              linkedUserIds.add(organizationUser.id)
+            }
+          }
+        }
+        const linkedUserIdList = Array.from(linkedUserIds)
+        const linkedMembership =
+          linkedUserIdList.length > 0
+            ? await db
+                .select({ id: projectMembers.id })
+                .from(projectMembers)
+                .where(
+                  and(
+                    eq(projectMembers.projectId, input.projectId),
+                    inArray(projectMembers.userId, linkedUserIdList)
+                  )
+                )
+                .limit(1)
+            : []
+        const hasActiveInvitation = invitationRows.some((invitation) =>
+          ["sent", "accepted"].includes(invitation.status)
+        )
+        if (hasActiveInvitation || linkedMembership.length > 0) {
+          return {
+            success: false,
+            error:
+              "This contact has Compass access. Remove the contact from the project, then add the correct person so access is revoked safely.",
+          }
+        }
+      }
+      if (input.primaryContact) {
+        await db
+          .update(projectContacts)
+          .set({ primaryContact: false, updatedAt: now })
+          .where(
+            and(
+              eq(projectContacts.projectId, input.projectId),
+              eq(projectContacts.contactType, input.contactType)
+            )
+          )
+      }
+      await db
+        .update(projectContacts)
+        .set(contactValues)
+        .where(
+          and(
+            eq(projectContacts.id, contactId),
+            eq(projectContacts.projectId, input.projectId)
+          )
+        )
+    } else {
+      contactId = crypto.randomUUID()
+      if (input.primaryContact) {
+        await db
+          .update(projectContacts)
+          .set({ primaryContact: false, updatedAt: now })
+          .where(
+            and(
+              eq(projectContacts.projectId, input.projectId),
+              eq(projectContacts.contactType, input.contactType)
+            )
+          )
+      }
+      await db.insert(projectContacts).values({
+        id: contactId,
+        projectId: input.projectId,
+        sourceSystem,
+        sourceRecordId,
+        sourceEntityType,
+        sourceEntityId,
+        sortOrder: 800,
+        syncStatus,
+        lastSyncedAt: null,
+        createdAt: now,
+        ...contactValues,
+      })
+    }
+
+    revalidateContactPaths(input.projectId)
+    return { success: true, contactId }
+  } catch (error) {
+    console.error("Failed to save project contact", error)
+    return { success: false, error: "Failed to save project contact" }
+  }
+}
+
+export async function removeProjectContact(
+  projectId: string,
+  contactId: string
+): Promise<ProjectContactMutationResult> {
+  try {
+    const user = await requireAuth()
+    if (isDemoUser(user.id)) return { success: false, error: "DEMO_READ_ONLY" }
+    await requireFeaturePermission(user, "project-contacts", "update")
+    const orgId = requireOrg(user)
+    const db = await verifyProjectAccess(projectId, "update")
+    const [contact] = await db
+      .select({
+        id: projectContacts.id,
+        sourceEntityType: projectContacts.sourceEntityType,
+        sourceEntityId: projectContacts.sourceEntityId,
+        email: projectContacts.email,
+      })
+      .from(projectContacts)
+      .where(
+        and(
+          eq(projectContacts.id, contactId),
+          eq(projectContacts.projectId, projectId),
+          eq(projectContacts.active, true)
+        )
+      )
+      .limit(1)
+    if (!contact) return { success: false, error: "Project contact not found" }
+
+    const invitationRows = await db
+      .select({ acceptedBy: projectAccessInvitations.acceptedBy })
+      .from(projectAccessInvitations)
+      .where(
+        and(
+          eq(projectAccessInvitations.projectId, projectId),
+          eq(projectAccessInvitations.projectContactId, contactId)
+        )
+      )
+    const memberUserIds = new Set(
+      invitationRows
+        .map((invitation) => invitation.acceptedBy)
+        .filter((acceptedBy): acceptedBy is string => acceptedBy !== null)
+    )
+    if (contact.sourceEntityType === "user" && contact.sourceEntityId) {
+      memberUserIds.add(contact.sourceEntityId)
+    }
+    const organizationUsers = await db
+      .select({ id: users.id, email: users.email })
+      .from(organizationMembers)
+      .innerJoin(users, eq(users.id, organizationMembers.userId))
+      .where(eq(organizationMembers.organizationId, orgId))
+    if (contact.email) {
+      const contactEmail = contact.email.trim().toLowerCase()
+      for (const organizationUser of organizationUsers) {
+        if (organizationUser.email.trim().toLowerCase() === contactEmail) {
+          memberUserIds.add(organizationUser.id)
+        }
+      }
+    }
+
+    const now = new Date().toISOString()
+    await db
+      .update(projectContacts)
+      .set({
+        active: false,
+        ownerPortalVisible: false,
+        subVendorPortalVisible: false,
+        internalVisible: false,
+        primaryContact: false,
+        updatedAt: now,
+      })
+      .where(
+        and(eq(projectContacts.id, contactId), eq(projectContacts.projectId, projectId))
+      )
+    await db
+      .update(projectContactSourceLinks)
+      .set({
+        projectContactId: null,
+        matchStatus: "review",
+        matchConfidence: 0,
+        matchReason: "Project contact was removed in Compass and needs reassignment.",
+        updatedAt: now,
+      })
+      .where(
+        and(
+          eq(projectContactSourceLinks.projectId, projectId),
+          eq(projectContactSourceLinks.projectContactId, contactId)
+        )
+      )
+    await db
+      .update(projectAccessInvitations)
+      .set({ status: "revoked", updatedAt: now })
+      .where(
+        and(
+          eq(projectAccessInvitations.projectId, projectId),
+          eq(projectAccessInvitations.projectContactId, contactId)
+        )
+      )
+    const projectMemberIds = Array.from(memberUserIds)
+    if (projectMemberIds.length > 0) {
+      // One person can have multiple project-contact roles. Preserve access
+      // whenever another active contact or invitation still grants it.
+      const [remainingContacts, remainingInvitations] = await Promise.all([
+        db
+          .select({
+            sourceEntityType: projectContacts.sourceEntityType,
+            sourceEntityId: projectContacts.sourceEntityId,
+            email: projectContacts.email,
+          })
+          .from(projectContacts)
+          .where(
+            and(
+              eq(projectContacts.projectId, projectId),
+              eq(projectContacts.active, true)
+            )
+          ),
+        db
+          .select({
+            acceptedBy: projectAccessInvitations.acceptedBy,
+            email: projectAccessInvitations.email,
+            status: projectAccessInvitations.status,
+          })
+          .from(projectAccessInvitations)
+          .where(eq(projectAccessInvitations.projectId, projectId)),
+      ])
+      const remainingUserIds = new Set(
+        remainingContacts
+          .filter(
+            (remainingContact) =>
+              remainingContact.sourceEntityType === "user" &&
+              remainingContact.sourceEntityId !== null
+          )
+          .map((remainingContact) => remainingContact.sourceEntityId)
+          .filter((userId): userId is string => userId !== null)
+      )
+      const remainingEmails = new Set(
+        remainingContacts
+          .map((remainingContact) =>
+            remainingContact.email?.trim().toLowerCase() ?? ""
+          )
+          .filter((email) => email.length > 0)
+      )
+      for (const invitation of remainingInvitations) {
+        if (invitation.status !== "accepted") continue
+        if (invitation.acceptedBy) remainingUserIds.add(invitation.acceptedBy)
+        const invitationEmail = invitation.email.trim().toLowerCase()
+        if (invitationEmail) remainingEmails.add(invitationEmail)
+      }
+      const organizationEmailByUserId = new Map(
+        organizationUsers.map((organizationUser) => [
+          organizationUser.id,
+          organizationUser.email.trim().toLowerCase(),
+        ])
+      )
+      const removableMemberIds = projectMemberIds.filter((userId) => {
+        const email = organizationEmailByUserId.get(userId)
+        return (
+          !remainingUserIds.has(userId) &&
+          (!email || !remainingEmails.has(email))
+        )
+      })
+      if (removableMemberIds.length > 0) {
+        await db
+          .delete(projectMembers)
+          .where(
+            and(
+              eq(projectMembers.projectId, projectId),
+              inArray(projectMembers.userId, removableMemberIds)
+            )
+          )
+      }
+    }
+
+    revalidateContactPaths(projectId)
+    return { success: true, contactId }
+  } catch (error) {
+    console.error("Failed to remove project contact", error)
+    return { success: false, error: "Failed to remove project contact" }
   }
 }
 

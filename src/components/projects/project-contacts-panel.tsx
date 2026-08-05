@@ -12,9 +12,11 @@ import {
 import Link from "next/link"
 
 import type {
+  ProjectContactDirectoryOption,
   ProjectContactItem,
   ProjectContactsSummary,
 } from "@/app/actions/project-contacts"
+import { ProjectContactEditor } from "@/components/projects/project-contact-management"
 import { ProjectContactInviteButton } from "@/components/projects/project-contact-invite-button"
 import { ProjectContactInviteLauncher } from "@/components/projects/project-contact-invite-launcher"
 import { Badge } from "@/components/ui/badge"
@@ -122,11 +124,13 @@ function ContactCard({
   projectId,
   projectLabel,
   compact = false,
+  directoryOptions,
 }: {
   readonly contact: ProjectContactItem
   readonly projectId: string
   readonly projectLabel: string
   readonly compact?: boolean
+  readonly directoryOptions?: readonly ProjectContactDirectoryOption[]
 }): React.ReactElement {
   return (
     <article className="rounded-md border bg-background p-3">
@@ -150,7 +154,16 @@ function ContactCard({
             </p>
           )}
         </div>
-        <Badge variant="outline">{visibilityLabel(contact)}</Badge>
+        <div className="flex items-center gap-2">
+          <Badge variant="outline">{visibilityLabel(contact)}</Badge>
+          {directoryOptions && (
+            <ProjectContactEditor
+              projectId={projectId}
+              contact={contact}
+              directoryOptions={directoryOptions}
+            />
+          )}
+        </div>
       </div>
 
       {!compact && (
@@ -197,11 +210,13 @@ export function ProjectContactsPanel({
   projectLabel = "This project",
   summary,
   showOpenLink = true,
+  directoryOptions,
 }: {
   readonly projectId: string
   readonly projectLabel?: string
   readonly summary: ProjectContactsSummary | null
   readonly showOpenLink?: boolean
+  readonly directoryOptions?: readonly ProjectContactDirectoryOption[]
 }): React.ReactElement {
   if (!summary) {
     return (
@@ -234,6 +249,12 @@ export function ProjectContactsPanel({
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          {directoryOptions && (
+            <ProjectContactEditor
+              projectId={projectId}
+              directoryOptions={directoryOptions}
+            />
+          )}
           {!showOpenLink && (
             <ProjectContactInviteLauncher
               projectId={projectId}
@@ -318,6 +339,7 @@ export function ProjectContactsPanel({
               projectId={projectId}
               projectLabel={projectLabel}
               compact
+              directoryOptions={directoryOptions}
             />
           ))}
         </div>
@@ -342,10 +364,12 @@ export function ProjectContactsDirectory({
   projectId,
   projectLabel,
   summary,
+  directoryOptions,
 }: {
   readonly projectId: string
   readonly projectLabel: string
   readonly summary: ProjectContactsSummary
+  readonly directoryOptions?: readonly ProjectContactDirectoryOption[]
 }): React.ReactElement {
   const displayGroups = buildDisplayGroups(summary.allContacts)
 
@@ -368,6 +392,7 @@ export function ProjectContactsDirectory({
                   contact={contact}
                   projectId={projectId}
                   projectLabel={projectLabel}
+                  directoryOptions={directoryOptions}
                 />
               ))}
             </div>
