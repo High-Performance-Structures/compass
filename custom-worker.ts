@@ -55,6 +55,24 @@ async function syncInboundEmail(env: CloudflareEnv): Promise<void> {
   if (!response.ok) {
     throw new Error(`Inbound email sync failed with ${response.status}`)
   }
+  const payload: unknown = await response.json()
+  if (typeof payload !== "object" || payload === null) {
+    throw new Error("Inbound email sync returned an invalid response")
+  }
+  const summaries = Reflect.get(payload, "summaries")
+  if (!Array.isArray(summaries)) {
+    throw new Error("Inbound email sync returned no summaries")
+  }
+  const errors = summaries.flatMap((summary) => {
+    if (typeof summary !== "object" || summary === null) return []
+    const value = Reflect.get(summary, "errors")
+    return Array.isArray(value)
+      ? value.filter((error): error is string => typeof error === "string")
+      : []
+  })
+  if (errors.length > 0) {
+    throw new Error(`Inbound email sync reported: ${errors.join("; ")}`)
+  }
 }
 
 export default {
