@@ -3,6 +3,7 @@ import "server-only"
 import { and, eq, inArray, or, sql } from "drizzle-orm"
 
 import type { getDb } from "@/db"
+import { recordActivityEvent } from "@/lib/activity-log"
 import {
   dailyLogs,
   organizationMembers,
@@ -58,6 +59,41 @@ function candidateBody(candidate: InboundCandidate): string {
 
 function senderLabel(candidate: InboundCandidate): string {
   return candidate.fromName?.trim() || candidate.fromAddress
+}
+
+function emailActor(candidate: InboundCandidate): {
+  readonly id: null
+  readonly email: string
+  readonly displayName: string | null
+  readonly firstName: null
+  readonly lastName: null
+  readonly role: "project_email"
+} {
+  return {
+    id: null,
+    email: candidate.fromAddress,
+    displayName: candidate.fromName,
+    firstName: null,
+    lastName: null,
+    role: "project_email",
+  }
+}
+
+function destinationLabel(destination: ProjectEmailDestination): string {
+  if (destination === "rfi") return "RFI"
+  if (destination === "rfq") return "RFQ draft"
+  if (destination === "change_order") return "change-order draft"
+  if (destination === "delivery") return "delivery to-do"
+  if (destination === "todo") return "to-do"
+  return "daily log"
+}
+
+function destinationEntityType(destination: ProjectEmailDestination): string {
+  if (destination === "rfi") return "rfi"
+  if (destination === "rfq") return "rfq"
+  if (destination === "change_order") return "change_order"
+  if (destination === "daily_log") return "daily_log"
+  return "todo"
 }
 
 async function senderCanEmailProject(input: {
@@ -418,6 +454,25 @@ export async function routeProjectInboundEmail(input: {
   })
   const destination = projectEmailDestination(input.candidate.subject)
   if (!senderAllowed || !destination) {
+    await recordActivityEvent({
+      db: input.db,
+      id: `project-email-review-${input.candidate.gmailMessageId}`,
+      organizationId: input.organizationId,
+      projectId,
+      actor: emailActor(input.candidate),
+      category: "email",
+      action: "project_email.needs_review",
+      entityType: "project_email",
+      entityId: input.candidate.gmailMessageId,
+      summary: senderAllowed
+        ? `Project email from ${senderLabel(input.candidate)} is awaiting routing review.`
+        : `Project email from an unrecognized sender (${input.candidate.fromAddress}) is awaiting review.`,
+      metadata: {
+        senderAuthorized: senderAllowed,
+        subjectTagged: destination !== null,
+      },
+      createdAt: input.candidate.receivedAt,
+    })
     return { kind: "needs_review", projectId }
   }
 
@@ -428,6 +483,27 @@ export async function routeProjectInboundEmail(input: {
     candidate: input.candidate,
     destination,
     now: new Date().toISOString(),
+  })
+  const title =
+    projectEmailTitle(input.candidate.subject) || input.candidate.subject
+  await recordActivityEvent({
+    db: input.db,
+    id: `project-email-routed-${input.candidate.gmailMessageId}`,
+    organizationId: input.organizationId,
+    projectId,
+    actor: emailActor(input.candidate),
+    category: "email",
+    action: "project_email.routed",
+    entityType: destinationEntityType(destination),
+    entityId: routed.id,
+    summary:
+      `Routed project email from ${senderLabel(input.candidate)} to ` +
+      `${destinationLabel(destination)}: “${title}”.`,
+    metadata: {
+      destination,
+      senderAuthorized: true,
+    },
+    createdAt: input.candidate.receivedAt,
   })
   return {
     kind: "routed",
