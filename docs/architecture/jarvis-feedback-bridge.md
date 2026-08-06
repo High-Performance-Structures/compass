@@ -223,7 +223,9 @@ through Hermes's existing send adapters, posts Compass-conversation replies
 through the signed reply endpoint, and acknowledges Ask Jarvis/widget events
 after their Compass-native receipt or notification is available. Its local
 delivery ledger prevents a service restart from sending the same external
-update twice before acknowledgement.
+update twice before acknowledgement. The notifier service runs with Hermes's
+virtual-environment Python so those send adapters use the same dependencies as
+the Hermes gateway.
 
 Both private relay services post a signed heartbeat to
 `POST /api/integrations/jarvis/health` at least once per minute. The protected
