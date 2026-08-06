@@ -7,23 +7,27 @@ import {
   taskDependencies,
   workdayExceptions,
   projects,
+  projectOperations,
   organizationMembers,
   projectAccessInvitations,
-  users,
+  users
 } from "@/db/schema"
+import {
+  projectTemplateContentItems,
+  projectTemplates,
+  projectTemplateVersions,
+  scheduleTemplateItems
+} from "@/db/schema-templates"
 import { eq, asc, and, inArray } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { calculateEndDate } from "@/lib/schedule/business-days"
 import { findCriticalPath } from "@/lib/schedule/critical-path"
 import {
   wouldCreateCycle,
-  wouldDependencyUpdateCreateCycle,
+  wouldDependencyUpdateCreateCycle
 } from "@/lib/schedule/dependency-validation"
 import { propagateDates } from "@/lib/schedule/propagate-dates"
-import {
-  effectivePercentComplete,
-  normalizeScheduleProgress,
-} from "@/lib/schedule/progress"
+import { effectivePercentComplete, normalizeScheduleProgress } from "@/lib/schedule/progress"
 import { newScheduleConfirmationState } from "@/lib/schedule/confirmation"
 import { requireAuth } from "@/lib/auth"
 import { requireOrg } from "@/lib/org-scope"
@@ -35,9 +39,10 @@ import { requirePermission } from "@/lib/permissions"
 import { isInternalStaffRole } from "@/lib/user-roles"
 import { recordActivityEvent } from "@/lib/activity-log"
 import {
-  isOwnerScheduleView,
-  type OwnerScheduleView,
-} from "@/lib/schedule/owner-visibility"
+  formatTemplateChecklist,
+  groupTemplateChecklistItems
+} from "@/lib/templates/template-checklist-hierarchy"
+import { isOwnerScheduleView, type OwnerScheduleView } from "@/lib/schedule/owner-visibility"
 import type {
   TaskStatus,
   DependencyType,
@@ -46,7 +51,7 @@ import type {
   ScheduleData,
   ScopedScheduleData,
   WorkdayExceptionData,
-  WorkdayExceptionType,
+  WorkdayExceptionType
 } from "@/lib/schedule/types"
 
 function revalidateSchedulePaths(projectId: string): void {
@@ -81,8 +86,100 @@ async function fetchExceptions(
     ...r,
     type: r.type as WorkdayExceptionType,
     category: r.category as ExceptionCategory,
-    recurrence: r.recurrence as ExceptionRecurrence,
+    recurrence: r.recurrence as ExceptionRecurrence
   }))
+}
+
+type ScheduleTemplateLinkedTodo = {
+  readonly templateContentItemId: string
+  readonly sourceItemId: string | null
+  readonly title: string
+  readonly description: string | null
+  readonly checklistItems: readonly {
+    readonly templateContentItemId: string
+    readonly sourceItemId: string | null
+    readonly title: string
+    readonly description: string | null
+    readonly sortOrder: number
+  }[]
+}
+
+type ScheduleTemplateItemImport = {
+  readonly templateId: string
+  readonly templateName: string
+  readonly versionId: string
+  readonly scheduleTemplateItemId: string
+  readonly linkedTodos: readonly ScheduleTemplateLinkedTodo[]
+}
+
+function joinedDescription(parts: readonly (string | null)[]): string | null {
+  const content = parts.flatMap((part) => {
+    const cleaned = part?.trim()
+    return cleaned ? [cleaned] : []
+  })
+  return content.length > 0 ? content.join("\n\n") : null
+}
+
+async function loadScheduleTemplateItemImport(
+  db: ReturnType<typeof getDb>,
+  organizationId: string,
+  templateItemId: string
+): Promise<ScheduleTemplateItemImport | null> {
+  const rows = await db
+    .select({
+      templateId: projectTemplates.id,
+      templateName: projectTemplates.name,
+      versionId: projectTemplateVersions.id,
+      scheduleTemplateItemId: scheduleTemplateItems.id
+    })
+    .from(scheduleTemplateItems)
+    .innerJoin(
+      projectTemplateVersions,
+      eq(projectTemplateVersions.id, scheduleTemplateItems.versionId)
+    )
+    .innerJoin(projectTemplates, eq(projectTemplates.id, projectTemplateVersions.templateId))
+    .where(
+      and(
+        eq(scheduleTemplateItems.id, templateItemId),
+        eq(projectTemplates.organizationId, organizationId),
+        eq(projectTemplates.lifecycleStatus, "active"),
+        eq(projectTemplates.reviewStatus, "verified"),
+        eq(projectTemplateVersions.status, "published"),
+        eq(projectTemplateVersions.versionNumber, projectTemplates.currentVersionNumber)
+      )
+    )
+    .limit(1)
+  const selected = rows[0]
+  if (!selected) return null
+
+  const taskItems = await db
+    .select()
+    .from(projectTemplateContentItems)
+    .where(
+      and(
+        eq(projectTemplateContentItems.versionId, selected.versionId),
+        eq(projectTemplateContentItems.moduleType, "tasks")
+      )
+    )
+    .orderBy(asc(projectTemplateContentItems.sortOrder))
+  const linkedTodos = groupTemplateChecklistItems(taskItems).map((group) => ({
+    templateContentItemId: group.task.id,
+    sourceItemId: group.task.sourceItemId,
+    title: group.task.title.trim(),
+    description: joinedDescription([
+      group.task.description,
+      formatTemplateChecklist(group.checklistItems)
+    ]),
+    checklistItems: group.checklistItems.map((item) => ({
+      templateContentItemId: item.id,
+      sourceItemId: item.sourceItemId,
+      title: item.title,
+      description: item.description,
+      sortOrder: item.sortOrder
+    }))
+  }))
+
+  return { ...selected, linkedTodos }
 }
 
 async function resolveAssignedUserId(
@@ -98,10 +195,7 @@ async function resolveAssignedUserId(
     const member = await db
       .select({ userId: users.id })
       .from(users)
-      .innerJoin(
-        organizationMembers,
-        eq(organizationMembers.userId, users.id)
-      )
+      .innerJoin(organizationMembers, eq(organizationMembers.userId, users.id))
       .where(
         and(
           eq(users.id, userId),
@@ -133,9 +227,7 @@ async function resolveAssignedUserId(
   return null
 }
 
-export async function getSchedule(
-  projectId: string
-): Promise<ScheduleData> {
+export async function getSchedule(projectId: string): Promise<ScheduleData> {
   const user = await requireAuth()
   requirePermission(user, "schedule", "read")
   const orgId = requireOrg(user)
@@ -168,9 +260,7 @@ export async function getSchedule(
   const exceptions = await fetchExceptions(db, projectId)
 
   const taskIds = new Set(tasks.map((t) => t.id))
-  const projectDeps = deps.filter(
-    (d) => taskIds.has(d.predecessorId) && taskIds.has(d.successorId)
-  )
+  const projectDeps = deps.filter((d) => taskIds.has(d.predecessorId) && taskIds.has(d.successorId))
 
   return {
     tasks: tasks.map((t) => {
@@ -179,20 +269,18 @@ export async function getSchedule(
         ...t,
         status,
         phase: t.phase,
-        percentComplete: effectivePercentComplete(status, t.percentComplete),
+        percentComplete: effectivePercentComplete(status, t.percentComplete)
       }
     }),
     dependencies: projectDeps.map((d) => ({
       ...d,
-      type: d.type as DependencyType,
+      type: d.type as DependencyType
     })),
-    exceptions,
+    exceptions
   }
 }
 
-export async function getOwnerScheduleView(
-  projectId: string
-): Promise<OwnerScheduleView> {
+export async function getOwnerScheduleView(projectId: string): Promise<OwnerScheduleView> {
   const user = await requireAuth()
   requirePermission(user, "schedule", "read")
   const orgId = requireOrg(user)
@@ -206,24 +294,17 @@ export async function getOwnerScheduleView(
   const project = await db
     .select({ ownerScheduleView: projects.ownerScheduleView })
     .from(projects)
-    .where(
-      and(eq(projects.id, projectId), eq(projects.organizationId, orgId))
-    )
+    .where(and(eq(projects.id, projectId), eq(projects.organizationId, orgId)))
     .get()
 
   if (!project) throw new Error("Project not found or access denied")
-  return isOwnerScheduleView(project.ownerScheduleView)
-    ? project.ownerScheduleView
-    : "items"
+  return isOwnerScheduleView(project.ownerScheduleView) ? project.ownerScheduleView : "items"
 }
 
 export async function updateOwnerScheduleView(
   projectId: string,
   ownerScheduleView: string
-): Promise<
-  | { readonly success: true }
-  | { readonly success: false; readonly error: string }
-> {
+): Promise<{ readonly success: true } | { readonly success: false; readonly error: string }> {
   try {
     const user = await requireAuth()
     if (isDemoUser(user.id)) {
@@ -233,7 +314,7 @@ export async function updateOwnerScheduleView(
     if (!isInternalStaffRole(user.role)) {
       return {
         success: false,
-        error: "Only internal project staff can change owner schedule access.",
+        error: "Only internal project staff can change owner schedule access."
       }
     }
     if (!isOwnerScheduleView(ownerScheduleView)) {
@@ -246,9 +327,7 @@ export async function updateOwnerScheduleView(
     const existing = await db
       .select({ id: projects.id })
       .from(projects)
-      .where(
-        and(eq(projects.id, projectId), eq(projects.organizationId, orgId))
-      )
+      .where(and(eq(projects.id, projectId), eq(projects.organizationId, orgId)))
       .get()
 
     if (!existing) {
@@ -259,7 +338,7 @@ export async function updateOwnerScheduleView(
       .update(projects)
       .set({
         ownerScheduleView,
-        updatedAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
       })
       .where(eq(projects.id, projectId))
 
@@ -275,17 +354,14 @@ export async function updateOwnerScheduleView(
       summary:
         ownerScheduleView === "phases"
           ? "Changed the owner schedule to phase-only visibility."
-          : "Changed the owner schedule to item-level visibility.",
+          : "Changed the owner schedule to item-level visibility."
     })
     revalidateOwnerSchedulePaths(projectId)
     return { success: true }
   } catch (error) {
     return {
       success: false,
-      error:
-        error instanceof Error
-          ? error.message
-          : "Unable to update the owner schedule view.",
+      error: error instanceof Error ? error.message : "Unable to update the owner schedule view."
     }
   }
 }
@@ -298,9 +374,7 @@ export async function getScopedSchedule(
   const orgId = requireOrg(user)
   const accessibleProjects = await getProjects()
   const requestedIds = new Set(
-    requestedProjectIds
-      ?.map((projectId) => projectId.trim())
-      .filter(Boolean) ?? []
+    requestedProjectIds?.map((projectId) => projectId.trim()).filter(Boolean) ?? []
   )
   const selectedProjects =
     requestedIds.size === 0
@@ -313,9 +387,9 @@ export async function getScopedSchedule(
     projectNumber: project.projectNumber,
     department: projectDepartment({
       projectId: project.id,
-      projectNumber: project.projectNumber,
+      projectNumber: project.projectNumber
     }),
-    color: projectScheduleColor(project.id),
+    color: projectScheduleColor(project.id)
   }))
 
   if (scopedProjects.length === 0) {
@@ -323,7 +397,7 @@ export async function getScopedSchedule(
       projects: [],
       tasks: [],
       dependencies: [],
-      exceptions: [],
+      exceptions: []
     }
   }
 
@@ -336,28 +410,19 @@ export async function getScopedSchedule(
         db
           .select({ id: projects.id })
           .from(projects)
-          .where(
-            and(
-              eq(projects.organizationId, orgId),
-              inArray(projects.id, projectIdChunk)
-            )
-          )
+          .where(and(eq(projects.organizationId, orgId), inArray(projects.id, projectIdChunk)))
       )
     )
   ).flat()
-  const verifiedProjectIds = new Set(
-    verifiedProjects.map((project) => project.id)
-  )
-  const safeProjectIds = projectIds.filter((projectId) =>
-    verifiedProjectIds.has(projectId)
-  )
+  const verifiedProjectIds = new Set(verifiedProjects.map((project) => project.id))
+  const safeProjectIds = projectIds.filter((projectId) => verifiedProjectIds.has(projectId))
 
   if (safeProjectIds.length === 0) {
     return {
       projects: [],
       tasks: [],
       dependencies: [],
-      exceptions: [],
+      exceptions: []
     }
   }
 
@@ -382,7 +447,7 @@ export async function getScopedSchedule(
           .from(workdayExceptions)
           .where(inArray(workdayExceptions.projectId, projectIdChunk))
       )
-    ),
+    )
   ])
   const tasks = taskChunks
     .flat()
@@ -397,46 +462,37 @@ export async function getScopedSchedule(
   const dependencies = (
     await Promise.all(
       chunkValues(taskIds, 50).map((taskIdChunk) =>
-        db
-          .select()
-          .from(taskDependencies)
-          .where(inArray(taskDependencies.successorId, taskIdChunk))
+        db.select().from(taskDependencies).where(inArray(taskDependencies.successorId, taskIdChunk))
       )
     )
   ).flat()
   const taskIdSet = new Set(taskIds)
 
   return {
-    projects: scopedProjects.filter((project) =>
-      verifiedProjectIds.has(project.id)
-    ),
+    projects: scopedProjects.filter((project) => verifiedProjectIds.has(project.id)),
     tasks: tasks.map((task) => {
       const status = task.status as TaskStatus
       return {
         ...task,
         status,
-        percentComplete: effectivePercentComplete(
-          status,
-          task.percentComplete
-        ),
+        percentComplete: effectivePercentComplete(status, task.percentComplete)
       }
     }),
     dependencies: dependencies
       .filter(
         (dependency) =>
-          taskIdSet.has(dependency.predecessorId) &&
-          taskIdSet.has(dependency.successorId)
+          taskIdSet.has(dependency.predecessorId) && taskIdSet.has(dependency.successorId)
       )
       .map((dependency) => ({
         ...dependency,
-        type: dependency.type as DependencyType,
+        type: dependency.type as DependencyType
       })),
     exceptions: exceptions.map((exception) => ({
       ...exception,
       type: exception.type as WorkdayExceptionType,
       category: exception.category as ExceptionCategory,
-      recurrence: exception.recurrence as ExceptionRecurrence,
-    })),
+      recurrence: exception.recurrence as ExceptionRecurrence
+    }))
   }
 }
 
@@ -456,9 +512,14 @@ export async function createTask(
     ownerVisible?: boolean
     subVendorVisible?: boolean
     confirmationRequired?: boolean
+    templateScheduleItemId?: string | null
   }
 ): Promise<
-  | { readonly success: true; readonly taskId: string }
+  | {
+      readonly success: true
+      readonly taskId: string
+      readonly linkedTodoCount: number
+    }
   | { readonly success: false; readonly error: string }
 > {
   try {
@@ -483,10 +544,18 @@ export async function createTask(
       return { success: false, error: "Project not found or access denied" }
     }
 
+    const templateImport = data.templateScheduleItemId
+      ? await loadScheduleTemplateItemImport(db, orgId, data.templateScheduleItemId)
+      : null
+    if (data.templateScheduleItemId && !templateImport) {
+      return {
+        success: false,
+        error: "That published template schedule item is no longer available."
+      }
+    }
+
     const exceptions = await fetchExceptions(db, projectId)
-    const endDate = calculateEndDate(
-      data.startDate, data.workdays, exceptions
-    )
+    const endDate = calculateEndDate(data.startDate, data.workdays, exceptions)
     const now = new Date().toISOString()
 
     const existing = await db
@@ -495,28 +564,18 @@ export async function createTask(
       .where(eq(scheduleTasks.projectId, projectId))
       .orderBy(asc(scheduleTasks.sortOrder))
 
-    const nextOrder = existing.length > 0
-      ? existing[existing.length - 1].sortOrder + 1
-      : 0
+    const nextOrder = existing.length > 0 ? existing[existing.length - 1].sortOrder + 1 : 0
 
     const id = crypto.randomUUID()
-    const assignedUserId = await resolveAssignedUserId(
-      db,
-      orgId,
-      projectId,
-      data.assignedOptionId
-    )
+    const assignedUserId = await resolveAssignedUserId(db, orgId, projectId, data.assignedOptionId)
     const confirmationRequired = data.confirmationRequired ?? false
     const confirmation = newScheduleConfirmationState({
       required: confirmationRequired,
       assignedUserId,
-      now,
+      now
     })
-    const progress = normalizeScheduleProgress(
-      data.status ?? "PENDING",
-      data.percentComplete ?? 0
-    )
-    await db.insert(scheduleTasks).values({
+    const progress = normalizeScheduleProgress(data.status ?? "PENDING", data.percentComplete ?? 0)
+    const scheduleTaskRow: typeof scheduleTasks.$inferInsert = {
       id,
       projectId,
       title: data.title,
@@ -538,8 +597,47 @@ export async function createTask(
       confirmationRequestedAt: confirmation.requestedAt,
       sortOrder: nextOrder,
       createdAt: now,
-      updatedAt: now,
-    })
+      updatedAt: now
+    }
+    const linkedTodoRows: (typeof projectOperations.$inferInsert)[] =
+      templateImport?.linkedTodos.map((todo) => ({
+        id: crypto.randomUUID(),
+        projectId,
+        sourceSystem: "compass_template",
+        sourceRecordType: "schedule_task",
+        sourceRecordId: id,
+        title: todo.title,
+        description: todo.description,
+        status: "open",
+        priority: "normal",
+        assigneeType: "internal",
+        startDate: data.startDate,
+        dueDate: endDate,
+        sageWriteStatus: "not_ready",
+        sagePayloadJson: JSON.stringify({
+          source: "project_template_schedule_item",
+          templateId: templateImport.templateId,
+          templateName: templateImport.templateName,
+          versionId: templateImport.versionId,
+          scheduleTemplateItemId: templateImport.scheduleTemplateItemId,
+          templateContentItemId: todo.templateContentItemId,
+          sourceItemId: todo.sourceItemId,
+          checklistItems: todo.checklistItems
+        }),
+        syncDirection: "write",
+        syncStatus: "compass_only",
+        createdAt: now,
+        updatedAt: now
+      })) ?? []
+
+    if (linkedTodoRows.length > 0) {
+      await db.batch([
+        db.insert(scheduleTasks).values(scheduleTaskRow),
+        db.insert(projectOperations).values(linkedTodoRows)
+      ])
+    } else {
+      await db.insert(scheduleTasks).values(scheduleTaskRow)
+    }
 
     await recordActivityEvent({
       db,
@@ -551,11 +649,27 @@ export async function createTask(
       entityType: "schedule_item",
       entityId: id,
       summary: `Created schedule item “${data.title}”.`,
+      metadata: templateImport
+        ? {
+            templateId: templateImport.templateId,
+            templateName: templateImport.templateName,
+            scheduleTemplateItemId: templateImport.scheduleTemplateItemId,
+            linkedTodoCount: linkedTodoRows.length
+          }
+        : undefined
     })
 
     await recalcCriticalPath(db, projectId)
     revalidateSchedulePaths(projectId)
-    return { success: true, taskId: id }
+    if (linkedTodoRows.length > 0) {
+      revalidatePath(`/dashboard/projects/${projectId}/todos`)
+      revalidatePath("/dashboard")
+    }
+    return {
+      success: true,
+      taskId: id,
+      linkedTodoCount: linkedTodoRows.length
+    }
   } catch (error) {
     console.error("Failed to create task:", error)
     return { success: false, error: "Failed to create schedule item" }
@@ -620,22 +734,14 @@ export async function updateTask(
     )
     const assignedUserId =
       data.assignedOptionId !== undefined
-        ? await resolveAssignedUserId(
-            db,
-            orgId,
-            task.projectId,
-            data.assignedOptionId
-          )
+        ? await resolveAssignedUserId(db, orgId, task.projectId, data.assignedOptionId)
         : data.assignedTo === null
           ? null
           : task.assignedUserId
     const assignmentChanged =
-      (data.assignedTo !== undefined &&
-        data.assignedTo !== task.assignedTo) ||
-      (data.assignedOptionId !== undefined &&
-        assignedUserId !== task.assignedUserId)
-    const confirmationRequired =
-      data.confirmationRequired ?? task.confirmationRequired
+      (data.assignedTo !== undefined && data.assignedTo !== task.assignedTo) ||
+      (data.assignedOptionId !== undefined && assignedUserId !== task.assignedUserId)
+    const confirmationRequired = data.confirmationRequired ?? task.confirmationRequired
     const resetConfirmation =
       assignmentChanged ||
       (data.confirmationRequired !== undefined &&
@@ -644,7 +750,7 @@ export async function updateTask(
     const confirmation = newScheduleConfirmationState({
       required: confirmationRequired,
       assignedUserId,
-      now,
+      now
     })
 
     await db
@@ -658,33 +764,33 @@ export async function updateTask(
         ...(data.displayColor && { displayColor: data.displayColor }),
         status: progress.status,
         ...(data.isMilestone !== undefined && {
-          isMilestone: data.isMilestone,
+          isMilestone: data.isMilestone
         }),
         percentComplete: progress.percentComplete,
         ...(data.assignedTo !== undefined && {
-          assignedTo: data.assignedTo,
+          assignedTo: data.assignedTo
         }),
         ...(data.assignedOptionId !== undefined || data.assignedTo === null
           ? { assignedUserId }
           : {}),
         ...(data.ownerVisible !== undefined && {
-          ownerVisible: data.ownerVisible,
+          ownerVisible: data.ownerVisible
         }),
         ...(data.subVendorVisible !== undefined && {
-          subVendorVisible: data.subVendorVisible,
+          subVendorVisible: data.subVendorVisible
         }),
         ...(data.confirmationRequired !== undefined && {
-          confirmationRequired,
+          confirmationRequired
         }),
         ...(resetConfirmation
           ? {
               confirmationStatus: confirmation.status,
               confirmationRequestedAt: confirmation.requestedAt,
               confirmationRespondedAt: null,
-              reminderSentAt: null,
+              reminderSentAt: null
             }
           : {}),
-        updatedAt: now,
+        updatedAt: now
       })
       .where(eq(scheduleTasks.id, taskId))
 
@@ -697,7 +803,7 @@ export async function updateTask(
       action: "schedule.item_updated",
       entityType: "schedule_item",
       entityId: taskId,
-      summary: `Updated schedule item “${data.title ?? task.title}”.`,
+      summary: `Updated schedule item “${data.title ?? task.title}”.`
     })
 
     // propagate date changes to downstream tasks
@@ -708,14 +814,10 @@ export async function updateTask(
       percentComplete: progress.percentComplete,
       startDate,
       workdays,
-      endDateCalculated: endDate,
+      endDateCalculated: endDate
     }
-    const allTasks = schedule.tasks.map((t) =>
-      t.id === taskId ? updatedTask : t
-    )
-    const { updatedTasks } = propagateDates(
-      taskId, allTasks, schedule.dependencies, exceptions
-    )
+    const allTasks = schedule.tasks.map((t) => (t.id === taskId ? updatedTask : t))
+    const { updatedTasks } = propagateDates(taskId, allTasks, schedule.dependencies, exceptions)
 
     for (const [id, dates] of updatedTasks) {
       await db
@@ -723,7 +825,7 @@ export async function updateTask(
         .set({
           startDate: dates.startDate,
           endDateCalculated: dates.endDateCalculated,
-          updatedAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
         })
         .where(eq(scheduleTasks.id, id))
     }
@@ -737,9 +839,7 @@ export async function updateTask(
   }
 }
 
-export async function deleteTask(
-  taskId: string
-): Promise<{ success: boolean; error?: string }> {
+export async function deleteTask(taskId: string): Promise<{ success: boolean; error?: string }> {
   try {
     const user = await requireAuth()
     if (isDemoUser(user.id)) {
@@ -780,7 +880,7 @@ export async function deleteTask(
       action: "schedule.item_deleted",
       entityType: "schedule_item",
       entityId: taskId,
-      summary: `Deleted schedule item “${task.title}”.`,
+      summary: `Deleted schedule item “${task.title}”.`
     })
     await recalcCriticalPath(db, task.projectId)
     revalidateSchedulePaths(task.projectId)
@@ -810,7 +910,7 @@ export async function completeScheduleTasks(
     if (ids.length > 200) {
       return {
         success: false,
-        error: "Update no more than 200 schedule items at a time",
+        error: "Update no more than 200 schedule items at a time"
       }
     }
 
@@ -829,17 +929,12 @@ export async function completeScheduleTasks(
     const matchingTasks = await db
       .select({ id: scheduleTasks.id })
       .from(scheduleTasks)
-      .where(
-        and(
-          eq(scheduleTasks.projectId, projectId),
-          inArray(scheduleTasks.id, ids)
-        )
-      )
+      .where(and(eq(scheduleTasks.projectId, projectId), inArray(scheduleTasks.id, ids)))
 
     if (matchingTasks.length !== ids.length) {
       return {
         success: false,
-        error: "One or more schedule items could not be found",
+        error: "One or more schedule items could not be found"
       }
     }
 
@@ -848,14 +943,9 @@ export async function completeScheduleTasks(
       .set({
         status: "COMPLETE",
         percentComplete: 100,
-        updatedAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
       })
-      .where(
-        and(
-          eq(scheduleTasks.projectId, projectId),
-          inArray(scheduleTasks.id, ids)
-        )
-      )
+      .where(and(eq(scheduleTasks.projectId, projectId), inArray(scheduleTasks.id, ids)))
 
     await recordActivityEvent({
       db,
@@ -866,7 +956,7 @@ export async function completeScheduleTasks(
       action: "schedule.items_completed",
       entityType: "schedule_item_batch",
       summary: `Marked ${ids.length} schedule ${ids.length === 1 ? "item" : "items"} complete.`,
-      metadata: { itemCount: ids.length },
+      metadata: { itemCount: ids.length }
     })
     await recalcCriticalPath(db, projectId)
     revalidateSchedulePaths(projectId)
@@ -881,10 +971,7 @@ export async function assignScheduleTasks(
   projectId: string,
   taskIds: readonly string[],
   assignedTo: string | null
-): Promise<
-  | { readonly success: true }
-  | { readonly success: false; readonly error: string }
-> {
+): Promise<{ readonly success: true } | { readonly success: false; readonly error: string }> {
   try {
     const user = await requireAuth()
     if (isDemoUser(user.id)) {
@@ -900,7 +987,7 @@ export async function assignScheduleTasks(
     if (ids.length > 200) {
       return {
         success: false,
-        error: "Update no more than 200 schedule items at a time",
+        error: "Update no more than 200 schedule items at a time"
       }
     }
 
@@ -919,20 +1006,15 @@ export async function assignScheduleTasks(
     const matchingTasks = await db
       .select({
         id: scheduleTasks.id,
-        confirmationRequired: scheduleTasks.confirmationRequired,
+        confirmationRequired: scheduleTasks.confirmationRequired
       })
       .from(scheduleTasks)
-      .where(
-        and(
-          eq(scheduleTasks.projectId, projectId),
-          inArray(scheduleTasks.id, ids)
-        )
-      )
+      .where(and(eq(scheduleTasks.projectId, projectId), inArray(scheduleTasks.id, ids)))
 
     if (matchingTasks.length !== ids.length) {
       return {
         success: false,
-        error: "One or more schedule items could not be found",
+        error: "One or more schedule items could not be found"
       }
     }
 
@@ -943,20 +1025,13 @@ export async function assignScheduleTasks(
         .set({
           assignedTo: assignedTo?.trim() || null,
           assignedUserId: null,
-          confirmationStatus: task.confirmationRequired
-            ? "unavailable"
-            : "not_requested",
+          confirmationStatus: task.confirmationRequired ? "unavailable" : "not_requested",
           confirmationRequestedAt: task.confirmationRequired ? now : null,
           confirmationRespondedAt: null,
           reminderSentAt: null,
-          updatedAt: now,
+          updatedAt: now
         })
-        .where(
-          and(
-            eq(scheduleTasks.id, task.id),
-            eq(scheduleTasks.projectId, projectId)
-          )
-        )
+        .where(and(eq(scheduleTasks.id, task.id), eq(scheduleTasks.projectId, projectId)))
     }
 
     await recordActivityEvent({
@@ -970,7 +1045,7 @@ export async function assignScheduleTasks(
       summary: assignedTo?.trim()
         ? `Assigned ${ids.length} schedule ${ids.length === 1 ? "item" : "items"} to ${assignedTo.trim()}.`
         : `Cleared the assignee from ${ids.length} schedule ${ids.length === 1 ? "item" : "items"}.`,
-      metadata: { itemCount: ids.length },
+      metadata: { itemCount: ids.length }
     })
     revalidateSchedulePaths(projectId)
     return { success: true }
@@ -999,7 +1074,7 @@ export async function deleteScheduleTasks(
     if (ids.length > 200) {
       return {
         success: false,
-        error: "Delete no more than 200 schedule items at a time",
+        error: "Delete no more than 200 schedule items at a time"
       }
     }
 
@@ -1018,28 +1093,18 @@ export async function deleteScheduleTasks(
     const matchingTasks = await db
       .select({ id: scheduleTasks.id })
       .from(scheduleTasks)
-      .where(
-        and(
-          eq(scheduleTasks.projectId, projectId),
-          inArray(scheduleTasks.id, ids)
-        )
-      )
+      .where(and(eq(scheduleTasks.projectId, projectId), inArray(scheduleTasks.id, ids)))
 
     if (matchingTasks.length !== ids.length) {
       return {
         success: false,
-        error: "One or more schedule items could not be found",
+        error: "One or more schedule items could not be found"
       }
     }
 
     await db
       .delete(scheduleTasks)
-      .where(
-        and(
-          eq(scheduleTasks.projectId, projectId),
-          inArray(scheduleTasks.id, ids)
-        )
-      )
+      .where(and(eq(scheduleTasks.projectId, projectId), inArray(scheduleTasks.id, ids)))
 
     await recordActivityEvent({
       db,
@@ -1050,7 +1115,7 @@ export async function deleteScheduleTasks(
       action: "schedule.items_deleted",
       entityType: "schedule_item_batch",
       summary: `Deleted ${ids.length} schedule ${ids.length === 1 ? "item" : "items"}.`,
-      metadata: { itemCount: ids.length },
+      metadata: { itemCount: ids.length }
     })
     await recalcCriticalPath(db, projectId)
     revalidateSchedulePaths(projectId)
@@ -1087,18 +1152,18 @@ export async function reorderTasks(
       return { success: false, error: "Project not found or access denied" }
     }
 
-    const uniqueItems = [...new Map(
-      items
-        .filter((item) => item.id.trim().length > 0)
-        .map((item) => [item.id, item])
-    ).values()]
+    const uniqueItems = [
+      ...new Map(
+        items.filter((item) => item.id.trim().length > 0).map((item) => [item.id, item])
+      ).values()
+    ]
     if (uniqueItems.length === 0) {
       return { success: false, error: "Select schedule items to reorder" }
     }
     if (uniqueItems.length > 500) {
       return {
         success: false,
-        error: "Reorder no more than 500 schedule items at a time",
+        error: "Reorder no more than 500 schedule items at a time"
       }
     }
     const matchingTasks = await db
@@ -1116,7 +1181,7 @@ export async function reorderTasks(
     if (matchingTasks.length !== uniqueItems.length) {
       return {
         success: false,
-        error: "One or more schedule items do not belong to this project",
+        error: "One or more schedule items do not belong to this project"
       }
     }
 
@@ -1124,12 +1189,7 @@ export async function reorderTasks(
       await db
         .update(scheduleTasks)
         .set({ sortOrder: item.sortOrder })
-        .where(
-          and(
-            eq(scheduleTasks.id, item.id),
-            eq(scheduleTasks.projectId, projectId)
-          )
-        )
+        .where(and(eq(scheduleTasks.id, item.id), eq(scheduleTasks.projectId, projectId)))
     }
 
     await recordActivityEvent({
@@ -1142,7 +1202,7 @@ export async function reorderTasks(
       entityType: "project_schedule",
       entityId: projectId,
       summary: `Reordered ${uniqueItems.length} schedule ${uniqueItems.length === 1 ? "item" : "items"}.`,
-      metadata: { itemCount: uniqueItems.length },
+      metadata: { itemCount: uniqueItems.length }
     })
     revalidateSchedulePaths(projectId)
     return { success: true }
@@ -1158,10 +1218,7 @@ export async function createDependency(data: {
   type: DependencyType
   lagDays: number
   projectId: string
-}): Promise<
-  | { readonly success: true }
-  | { readonly success: false; readonly error: string }
-> {
+}): Promise<{ readonly success: true } | { readonly success: false; readonly error: string }> {
   try {
     const user = await requireAuth()
     if (isDemoUser(user.id)) {
@@ -1187,7 +1244,7 @@ export async function createDependency(data: {
     if (data.predecessorId === data.successorId) {
       return {
         success: false,
-        error: "A schedule item cannot depend on itself",
+        error: "A schedule item cannot depend on itself"
       }
     }
 
@@ -1210,7 +1267,7 @@ export async function createDependency(data: {
     ) {
       return {
         success: false,
-        error: "Both schedule items must belong to this project",
+        error: "Both schedule items must belong to this project"
       }
     }
 
@@ -1228,7 +1285,7 @@ export async function createDependency(data: {
     if (duplicate) {
       return {
         success: false,
-        error: "That dependency already exists",
+        error: "That dependency already exists"
       }
     }
 
@@ -1244,7 +1301,7 @@ export async function createDependency(data: {
       predecessorId: data.predecessorId,
       successorId: data.successorId,
       type: data.type,
-      lagDays: data.lagDays,
+      lagDays: data.lagDays
     })
 
     // propagate dates from predecessor
@@ -1262,7 +1319,7 @@ export async function createDependency(data: {
         .set({
           startDate: dates.startDate,
           endDateCalculated: dates.endDateCalculated,
-          updatedAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
         })
         .where(eq(scheduleTasks.id, id))
     }
@@ -1279,8 +1336,8 @@ export async function createDependency(data: {
       metadata: {
         affectedItemCount: updatedTasks.size,
         relationship: data.type,
-        lagDays: data.lagDays,
-      },
+        lagDays: data.lagDays
+      }
     })
     await recalcCriticalPath(db, data.projectId)
     revalidateSchedulePaths(data.projectId)
@@ -1298,10 +1355,7 @@ export async function updateDependency(data: {
   type: DependencyType
   lagDays: number
   projectId: string
-}): Promise<
-  | { readonly success: true }
-  | { readonly success: false; readonly error: string }
-> {
+}): Promise<{ readonly success: true } | { readonly success: false; readonly error: string }> {
   try {
     const user = await requireAuth()
     if (isDemoUser(user.id)) {
@@ -1315,12 +1369,7 @@ export async function updateDependency(data: {
     const [project] = await db
       .select({ id: projects.id })
       .from(projects)
-      .where(
-        and(
-          eq(projects.id, data.projectId),
-          eq(projects.organizationId, orgId)
-        )
-      )
+      .where(and(eq(projects.id, data.projectId), eq(projects.organizationId, orgId)))
       .limit(1)
 
     if (!project) {
@@ -1329,7 +1378,7 @@ export async function updateDependency(data: {
     if (data.predecessorId === data.successorId) {
       return {
         success: false,
-        error: "A schedule item cannot depend on itself",
+        error: "A schedule item cannot depend on itself"
       }
     }
 
@@ -1342,13 +1391,10 @@ export async function updateDependency(data: {
     if (!currentDependency) {
       return { success: false, error: "Dependency not found" }
     }
-    if (
-      !taskIds.has(data.predecessorId) ||
-      !taskIds.has(data.successorId)
-    ) {
+    if (!taskIds.has(data.predecessorId) || !taskIds.has(data.successorId)) {
       return {
         success: false,
-        error: "Both schedule items must belong to this project",
+        error: "Both schedule items must belong to this project"
       }
     }
 
@@ -1380,7 +1426,7 @@ export async function updateDependency(data: {
       predecessorId: data.predecessorId,
       successorId: data.successorId,
       type: data.type,
-      lagDays: data.lagDays,
+      lagDays: data.lagDays
     }
     const recalculated = propagateDates(
       data.predecessorId,
@@ -1394,13 +1440,7 @@ export async function updateDependency(data: {
         `UPDATE task_dependencies
          SET predecessor_id = ?, successor_id = ?, type = ?, lag_days = ?
          WHERE id = ?`
-      ).bind(
-        data.predecessorId,
-        data.successorId,
-        data.type,
-        data.lagDays,
-        data.dependencyId
-      ),
+      ).bind(data.predecessorId, data.successorId, data.type, data.lagDays, data.dependencyId)
     ]
 
     for (const [taskId, dates] of recalculated.updatedTasks) {
@@ -1409,13 +1449,7 @@ export async function updateDependency(data: {
           `UPDATE schedule_tasks
            SET start_date = ?, end_date_calculated = ?, updated_at = ?
            WHERE id = ? AND project_id = ?`
-        ).bind(
-          dates.startDate,
-          dates.endDateCalculated,
-          updatedAt,
-          taskId,
-          data.projectId
-        )
+        ).bind(dates.startDate, dates.endDateCalculated, updatedAt, taskId, data.projectId)
       )
     }
 
@@ -1437,8 +1471,8 @@ export async function updateDependency(data: {
       metadata: {
         affectedItemCount: recalculated.updatedTasks.size,
         relationship: data.type,
-        lagDays: data.lagDays,
-      },
+        lagDays: data.lagDays
+      }
     })
     await recalcCriticalPath(db, data.projectId)
     revalidateSchedulePaths(data.projectId)
@@ -1493,13 +1527,10 @@ export async function deleteDependency(
           .where(eq(scheduleTasks.projectId, projectId))
       ).map((task) => task.id)
     )
-    if (
-      !taskIds.has(dependency.predecessorId) ||
-      !taskIds.has(dependency.successorId)
-    ) {
+    if (!taskIds.has(dependency.predecessorId) || !taskIds.has(dependency.successorId)) {
       return {
         success: false,
-        error: "Dependency does not belong to this project",
+        error: "Dependency does not belong to this project"
       }
     }
 
@@ -1513,7 +1544,7 @@ export async function deleteDependency(
       action: "schedule.dependency_deleted",
       entityType: "schedule_dependency",
       entityId: depId,
-      summary: "Removed a schedule dependency.",
+      summary: "Removed a schedule dependency."
     })
     await recalcCriticalPath(db, projectId)
     revalidateSchedulePaths(projectId)
@@ -1563,7 +1594,7 @@ export async function updateTaskStatus(
       .set({
         status,
         percentComplete: effectivePercentComplete(status, task.percentComplete),
-        updatedAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
       })
       .where(eq(scheduleTasks.id, taskId))
 
@@ -1577,7 +1608,7 @@ export async function updateTaskStatus(
       entityType: "schedule_item",
       entityId: taskId,
       summary: `Changed “${task.title}” to ${status.toLowerCase().replace("_", " ")}.`,
-      metadata: { status },
+      metadata: { status }
     })
     revalidateSchedulePaths(task.projectId)
     return { success: true }
@@ -1588,20 +1619,12 @@ export async function updateTaskStatus(
 }
 
 // recalculates critical path and updates all tasks
-async function recalcCriticalPath(
-  db: ReturnType<typeof getDb>,
-  projectId: string
-) {
-  const tasks = await db
-    .select()
-    .from(scheduleTasks)
-    .where(eq(scheduleTasks.projectId, projectId))
+async function recalcCriticalPath(db: ReturnType<typeof getDb>, projectId: string) {
+  const tasks = await db.select().from(scheduleTasks).where(eq(scheduleTasks.projectId, projectId))
 
   const deps = await db.select().from(taskDependencies)
   const taskIds = new Set(tasks.map((t) => t.id))
-  const projectDeps = deps.filter(
-    (d) => taskIds.has(d.predecessorId) && taskIds.has(d.successorId)
-  )
+  const projectDeps = deps.filter((d) => taskIds.has(d.predecessorId) && taskIds.has(d.successorId))
 
   const criticalSet = findCriticalPath(
     tasks.map((t) => ({ ...t, status: t.status as TaskStatus })),

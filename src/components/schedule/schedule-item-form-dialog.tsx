@@ -5,39 +5,28 @@ import { useEffect, useMemo, useState } from "react"
 import { useForm } from "react-hook-form"
 import { z } from "zod"
 import { zodResolver } from "@hookform/resolvers/zod"
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import {
   Form,
   FormControl,
   FormField,
   FormItem,
   FormLabel,
-  FormMessage,
+  FormMessage
 } from "@/components/ui/form"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Calendar } from "@/components/ui/calendar"
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover"
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import {
   IconCalendar,
   IconPlus,
   IconTrash,
   IconChevronDown,
   IconChevronRight,
+  IconLoader2,
+  IconTemplate
 } from "@tabler/icons-react"
 import { format, parseISO } from "date-fns"
 import { Slider } from "@/components/ui/slider"
@@ -46,7 +35,7 @@ import {
   SelectContent,
   SelectItem,
   SelectTrigger,
-  SelectValue,
+  SelectValue
 } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
 import { Button } from "@/components/ui/button"
@@ -55,7 +44,7 @@ import {
   updateTask,
   createDependency,
   updateDependency,
-  deleteDependency,
+  deleteDependency
 } from "@/app/actions/schedule"
 import { sendScheduleTaskReminder } from "@/app/actions/schedule-confirmations"
 import { calculateEndDate } from "@/lib/schedule/business-days"
@@ -63,13 +52,10 @@ import type {
   ScheduleTaskData,
   TaskDependencyData,
   DependencyType,
-  WorkdayExceptionData,
+  WorkdayExceptionData
 } from "@/lib/schedule/types"
 import { PHASE_ORDER, PHASE_LABELS, getPhaseColor } from "@/lib/schedule/phase-colors"
-import {
-  DEFAULT_DISPLAY_COLOR,
-  DISPLAY_COLOR_OPTIONS,
-} from "@/lib/schedule/appearance"
+import { DEFAULT_DISPLAY_COLOR, DISPLAY_COLOR_OPTIONS } from "@/lib/schedule/appearance"
 import { STATUS_OPTIONS } from "@/lib/schedule/types"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
@@ -77,17 +63,21 @@ import { cn } from "@/lib/utils"
 import type { ProjectTaskAssigneeOption } from "@/app/actions/project-contacts"
 import { ProjectAssigneePicker } from "@/components/projects/project-assignee-picker"
 import { ScheduleItemLinks } from "@/components/schedule/schedule-item-links"
+import {
+  getScheduleTemplateImportOptions,
+  type ScheduleTemplateImportGroup
+} from "@/app/actions/template-import-options"
 
 const phases = PHASE_ORDER.map((value) => ({
   value,
-  label: PHASE_LABELS[value],
+  label: PHASE_LABELS[value]
 }))
 
 const DEPENDENCY_TYPES: readonly { value: DependencyType; label: string }[] = [
   { value: "FS", label: "Finish-to-Start" },
   { value: "SS", label: "Start-to-Start" },
   { value: "FF", label: "Finish-to-Finish" },
-  { value: "SF", label: "Start-to-Finish" },
+  { value: "SF", label: "Start-to-Finish" }
 ]
 
 const scheduleItemSchema = z.object({
@@ -103,7 +93,7 @@ const scheduleItemSchema = z.object({
   ownerVisible: z.boolean(),
   subVendorVisible: z.boolean(),
   confirmationRequired: z.boolean(),
-  notes: z.string(),
+  notes: z.string()
 })
 
 type ScheduleItemFormValues = z.infer<typeof scheduleItemSchema>
@@ -133,19 +123,23 @@ export function ScheduleItemFormDialog({
   allTasks = [],
   dependencies = [],
   exceptions = [],
-  assigneeOptions = [],
+  assigneeOptions = []
 }: ScheduleItemFormDialogProps) {
   const router = useRouter()
   const isEditing = !!editingTask
   const [detailsOpen, setDetailsOpen] = useState(false)
-  const [pendingPredecessors, setPendingPredecessors] = useState<
-    PendingPredecessor[]
-  >([])
+  const [pendingPredecessors, setPendingPredecessors] = useState<PendingPredecessor[]>([])
   const [existingPredecessorEdits, setExistingPredecessorEdits] = useState<
     Record<string, PendingPredecessor>
   >({})
   const [assignedOptionId, setAssignedOptionId] = useState<string | null>(null)
   const [sendingReminder, setSendingReminder] = useState(false)
+  const [templateGroups, setTemplateGroups] = useState<
+    readonly ScheduleTemplateImportGroup[] | null
+  >(null)
+  const [templateLoading, setTemplateLoading] = useState(false)
+  const [selectedTemplateId, setSelectedTemplateId] = useState("")
+  const [selectedTemplateItemId, setSelectedTemplateItemId] = useState("")
 
   const existingPredecessors = useMemo(() => {
     if (!editingTask) return []
@@ -171,11 +165,35 @@ export function ScheduleItemFormDialog({
       ownerVisible: true,
       subVendorVisible: false,
       confirmationRequired: false,
-      notes: "",
-    },
+      notes: ""
+    }
   })
 
   useEffect(() => {
+    if (!open || isEditing || templateGroups !== null) return
+    let cancelled = false
+    setTemplateLoading(true)
+    void getScheduleTemplateImportOptions()
+      .then((groups) => {
+        if (!cancelled) setTemplateGroups(groups)
+      })
+      .catch((error: unknown) => {
+        console.error("Unable to load schedule template options", error)
+        if (!cancelled) {
+          setTemplateGroups([])
+          toast.error("Unable to load published schedule templates.")
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setTemplateLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [isEditing, open, templateGroups])
+
+  useEffect(() => {
+    if (!open) return
     if (editingTask) {
       form.reset({
         title: editingTask.title,
@@ -190,13 +208,12 @@ export function ScheduleItemFormDialog({
         ownerVisible: editingTask.ownerVisible ?? true,
         subVendorVisible: editingTask.subVendorVisible ?? false,
         confirmationRequired: editingTask.confirmationRequired ?? false,
-        notes: "",
+        notes: ""
       })
       setAssignedOptionId(
         assigneeOptions.find(
           (option) =>
-            option.name.trim().toLowerCase() ===
-            (editingTask.assignedTo ?? "").trim().toLowerCase()
+            option.name.trim().toLowerCase() === (editingTask.assignedTo ?? "").trim().toLowerCase()
         )?.id ?? null
       )
       // expand details when editing since they likely want to see everything
@@ -215,13 +232,15 @@ export function ScheduleItemFormDialog({
         ownerVisible: true,
         subVendorVisible: false,
         confirmationRequired: false,
-        notes: "",
+        notes: ""
       })
       setAssignedOptionId(null)
       setDetailsOpen(false)
+      setSelectedTemplateId("")
+      setSelectedTemplateItemId("")
     }
     setPendingPredecessors([])
-  }, [assigneeOptions, editingTask, form])
+  }, [assigneeOptions, editingTask, form, open])
 
   useEffect(() => {
     if (!editingTask) {
@@ -238,8 +257,8 @@ export function ScheduleItemFormDialog({
             {
               taskId: dependency.predecessorId,
               type: dependency.type,
-              lagDays: dependency.lagDays,
-            },
+              lagDays: dependency.lagDays
+            }
           ])
       )
     )
@@ -251,6 +270,45 @@ export function ScheduleItemFormDialog({
   const watchedDisplayColor = form.watch("displayColor")
   const watchedStatus = form.watch("status")
   const watchedPercent = form.watch("percentComplete")
+  const selectedTemplateGroup = useMemo(
+    () => templateGroups?.find((group) => group.templateId === selectedTemplateId) ?? null,
+    [selectedTemplateId, templateGroups]
+  )
+
+  function applyTemplateScheduleItem(templateItemId: string): void {
+    setSelectedTemplateItemId(templateItemId)
+    const item = selectedTemplateGroup?.scheduleItems.find(
+      (candidate) => candidate.id === templateItemId
+    )
+    if (!item) return
+    form.setValue("title", item.title, { shouldDirty: true })
+    form.setValue("workdays", item.workdays, { shouldDirty: true })
+    form.setValue("phase", item.phase, { shouldDirty: true })
+    form.setValue("displayColor", item.displayColor, { shouldDirty: true })
+    form.setValue("isMilestone", item.isMilestone, { shouldDirty: true })
+    form.setValue("assignedTo", item.assignedTo ?? "", { shouldDirty: true })
+    form.setValue("ownerVisible", item.ownerVisible, { shouldDirty: true })
+    form.setValue("subVendorVisible", item.subVendorVisible, {
+      shouldDirty: true
+    })
+    setAssignedOptionId(null)
+  }
+
+  function chooseTemplate(templateId: string): void {
+    setSelectedTemplateId(templateId)
+    setSelectedTemplateItemId("")
+    form.setValue("title", "", { shouldDirty: true })
+    form.setValue("workdays", 5, { shouldDirty: true })
+    form.setValue("phase", "preconstruction", { shouldDirty: true })
+    form.setValue("displayColor", DEFAULT_DISPLAY_COLOR, {
+      shouldDirty: true
+    })
+    form.setValue("isMilestone", false, { shouldDirty: true })
+    form.setValue("assignedTo", "", { shouldDirty: true })
+    form.setValue("ownerVisible", true, { shouldDirty: true })
+    form.setValue("subVendorVisible", false, { shouldDirty: true })
+    setAssignedOptionId(null)
+  }
 
   const calculatedEnd = useMemo(() => {
     if (!watchedStart || !watchedWorkdays || watchedWorkdays < 1) return ""
@@ -261,11 +319,12 @@ export function ScheduleItemFormDialog({
     const { notes, ...taskValues } = values
     void notes
     let savedTaskId: string
+    let linkedTodoCount = 0
     if (isEditing) {
       const result = await updateTask(editingTask.id, {
         ...taskValues,
         assignedTo: taskValues.assignedTo || null,
-        assignedOptionId,
+        assignedOptionId
       })
       if (!result.success) {
         toast.error(result.error)
@@ -277,12 +336,14 @@ export function ScheduleItemFormDialog({
         ...taskValues,
         assignedTo: taskValues.assignedTo || undefined,
         assignedOptionId,
+        templateScheduleItemId: selectedTemplateItemId || null
       })
       if (!result.success) {
         toast.error(result.error)
         return
       }
       savedTaskId = result.taskId
+      linkedTodoCount = result.linkedTodoCount
     }
 
     const dependencyErrors: string[] = []
@@ -303,7 +364,7 @@ export function ScheduleItemFormDialog({
         successorId: savedTaskId,
         type: edit.type,
         lagDays: edit.lagDays,
-        projectId,
+        projectId
       })
       if (!dependencyResult.success) {
         dependencyErrors.push(dependencyResult.error)
@@ -317,7 +378,7 @@ export function ScheduleItemFormDialog({
           successorId: savedTaskId,
           type: predecessor.type,
           lagDays: predecessor.lagDays,
-          projectId,
+          projectId
         })
         if (!dependencyResult.success) {
           dependencyErrors.push(dependencyResult.error)
@@ -334,14 +395,18 @@ export function ScheduleItemFormDialog({
       )
       return
     }
+    if (linkedTodoCount > 0) {
+      toast.success(
+        `Schedule item created with ${linkedTodoCount} linked to-do${
+          linkedTodoCount === 1 ? "" : "s"
+        }.`
+      )
+    }
     onOpenChange(false)
   }
 
   const addPendingPredecessor = () => {
-    setPendingPredecessors((prev) => [
-      ...prev,
-      { taskId: "", type: "FS", lagDays: 0 },
-    ])
+    setPendingPredecessors((prev) => [...prev, { taskId: "", type: "FS", lagDays: 0 }])
   }
 
   const removePendingPredecessor = (index: number) => {
@@ -377,13 +442,12 @@ export function ScheduleItemFormDialog({
       if (!existing) return current
       return {
         ...current,
-        [dependencyId]: { ...existing, [field]: value },
+        [dependencyId]: { ...existing, [field]: value }
       }
     })
   }
 
-  const hasPredecessors =
-    existingPredecessors.length > 0 || pendingPredecessors.length > 0
+  const hasPredecessors = existingPredecessors.length > 0 || pendingPredecessors.length > 0
 
   async function handleSendReminder(): Promise<void> {
     if (!editingTask) return
@@ -408,12 +472,77 @@ export function ScheduleItemFormDialog({
         </DialogHeader>
 
         <Form {...form}>
-          <form
-            onSubmit={form.handleSubmit(onSubmit)}
-            className="flex flex-col flex-1 min-h-0"
-          >
+          <form onSubmit={form.handleSubmit(onSubmit)} className="flex flex-col flex-1 min-h-0">
             <div className="overflow-y-auto flex-1 min-h-0 px-5 pb-4 space-y-4">
               {/* === ESSENTIAL FIELDS === */}
+
+              {!isEditing && (
+                <section className="border-y bg-muted/20 py-3">
+                  <div className="mb-2 flex items-center gap-2 text-xs font-medium">
+                    <IconTemplate className="size-4" />
+                    Import from a published template
+                  </div>
+                  {templateLoading ? (
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                      <IconLoader2 className="size-3.5 animate-spin" />
+                      Loading template schedule items…
+                    </div>
+                  ) : templateGroups?.length === 0 ? (
+                    <p className="text-xs text-muted-foreground">
+                      No published templates contain reusable schedule items.
+                    </p>
+                  ) : (
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      <Select value={selectedTemplateId} onValueChange={chooseTemplate}>
+                        <SelectTrigger aria-label="Choose schedule template">
+                          <SelectValue placeholder="Choose template" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {(templateGroups ?? []).map((group) => (
+                            <SelectItem key={group.templateId} value={group.templateId}>
+                              {group.templateName}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <Select
+                        value={selectedTemplateItemId}
+                        onValueChange={applyTemplateScheduleItem}
+                        disabled={!selectedTemplateGroup}
+                      >
+                        <SelectTrigger aria-label="Choose template schedule item">
+                          <SelectValue placeholder="Choose schedule item" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {(selectedTemplateGroup?.scheduleItems ?? []).map((item) => (
+                            <SelectItem key={item.id} value={item.id}>
+                              {item.title}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
+                  {selectedTemplateGroup && selectedTemplateItemId && (
+                    <div className="mt-2 text-xs text-muted-foreground">
+                      {selectedTemplateGroup.linkedTodos.length > 0 ? (
+                        <>
+                          This will also create and link {selectedTemplateGroup.linkedTodos.length}{" "}
+                          template to-do
+                          {selectedTemplateGroup.linkedTodos.length === 1 ? "" : "s"}
+                          {selectedTemplateGroup.linkedTodos.some(
+                            (todo) => todo.checklistItemCount > 0
+                          )
+                            ? ", preserving their checklists."
+                            : "."}
+                        </>
+                      ) : (
+                        "This template does not include any to-dos to link."
+                      )}
+                    </div>
+                  )}
+                </section>
+              )}
 
               {/* Title */}
               <FormField
@@ -458,9 +587,7 @@ export function ScheduleItemFormDialog({
               </div>
 
               <div className="flex items-center gap-2">
-                <span className="text-[11px] text-muted-foreground font-medium">
-                  Display color
-                </span>
+                <span className="text-[11px] text-muted-foreground font-medium">Display color</span>
                 <div className="flex items-center gap-1.5" aria-label="Display color">
                   {DISPLAY_COLOR_OPTIONS.map((color) => {
                     const selected = watchedDisplayColor === color.value
@@ -512,9 +639,7 @@ export function ScheduleItemFormDialog({
                         <PopoverContent className="w-auto p-0" align="start">
                           <Calendar
                             mode="single"
-                            selected={
-                              field.value ? parseISO(field.value) : undefined
-                            }
+                            selected={field.value ? parseISO(field.value) : undefined}
                             onSelect={(date) => {
                               if (date) {
                                 field.onChange(format(date, "yyyy-MM-dd"))
@@ -543,17 +668,13 @@ export function ScheduleItemFormDialog({
                             min={1}
                             className="h-9 text-center"
                             value={field.value}
-                            onChange={(e) =>
-                              field.onChange(Number(e.target.value) || 0)
-                            }
+                            onChange={(e) => field.onChange(Number(e.target.value) || 0)}
                             onBlur={field.onBlur}
                             ref={field.ref}
                             name={field.name}
                           />
                         </FormControl>
-                        <span className="text-[11px] text-muted-foreground shrink-0">
-                          d
-                        </span>
+                        <span className="text-[11px] text-muted-foreground shrink-0">d</span>
                       </div>
                       <FormMessage />
                     </FormItem>
@@ -565,9 +686,7 @@ export function ScheduleItemFormDialog({
                     End
                   </FormLabel>
                   <div className="flex items-center h-9 px-3 rounded-md bg-muted/40 text-sm text-muted-foreground tabular-nums">
-                    {calculatedEnd
-                      ? format(parseISO(calculatedEnd), "MMM d, yyyy")
-                      : "\u2014"}
+                    {calculatedEnd ? format(parseISO(calculatedEnd), "MMM d, yyyy") : "\u2014"}
                   </div>
                 </FormItem>
               </div>
@@ -586,9 +705,7 @@ export function ScheduleItemFormDialog({
                     )}
                     Details
                     {!detailsOpen && (isEditing || hasPredecessors) && (
-                      <span className="text-[10px] text-primary ml-1">
-                        (has data)
-                      </span>
+                      <span className="text-[10px] text-primary ml-1">(has data)</span>
                     )}
                   </button>
                 </CollapsibleTrigger>
@@ -609,7 +726,7 @@ export function ScheduleItemFormDialog({
                               field.onChange(status)
                               if (status === "COMPLETE") {
                                 form.setValue("percentComplete", 100, {
-                                  shouldDirty: true,
+                                  shouldDirty: true
                                 })
                               } else if (watchedPercent >= 100) {
                                 form.setValue(
@@ -654,7 +771,7 @@ export function ScheduleItemFormDialog({
                               setAssignedOptionId(option?.id ?? null)
                               if (option?.contactType === "owner") {
                                 form.setValue("ownerVisible", true, {
-                                  shouldDirty: true,
+                                  shouldDirty: true
                                 })
                               }
                               if (
@@ -662,7 +779,7 @@ export function ScheduleItemFormDialog({
                                 option?.contactType === "supplier"
                               ) {
                                 form.setValue("subVendorVisible", true, {
-                                  shouldDirty: true,
+                                  shouldDirty: true
                                 })
                               }
                             }}
@@ -678,10 +795,7 @@ export function ScheduleItemFormDialog({
                       render={({ field }) => (
                         <FormItem className="flex items-center gap-2 pb-0.5">
                           <FormControl>
-                            <Switch
-                              checked={field.value}
-                              onCheckedChange={field.onChange}
-                            />
+                            <Switch checked={field.value} onCheckedChange={field.onChange} />
                           </FormControl>
                           <FormLabel className="!mt-0 text-[11px] text-muted-foreground font-medium">
                             Milestone
@@ -711,17 +825,12 @@ export function ScheduleItemFormDialog({
                                 field.onChange(value)
                                 if (value === 100 && watchedStatus !== "COMPLETE") {
                                   form.setValue("status", "COMPLETE", {
-                                    shouldDirty: true,
+                                    shouldDirty: true
                                   })
-                                } else if (
-                                  value < 100 &&
-                                  watchedStatus === "COMPLETE"
-                                ) {
-                                  form.setValue(
-                                    "status",
-                                    value > 0 ? "IN_PROGRESS" : "PENDING",
-                                    { shouldDirty: true }
-                                  )
+                                } else if (value < 100 && watchedStatus === "COMPLETE") {
+                                  form.setValue("status", value > 0 ? "IN_PROGRESS" : "PENDING", {
+                                    shouldDirty: true
+                                  })
                                 }
                               }}
                               className="flex-1"
@@ -736,12 +845,10 @@ export function ScheduleItemFormDialog({
                   />
 
                   <div className="border-t pt-4">
-                    <p className="text-xs font-medium">
-                      Audience &amp; commitment
-                    </p>
+                    <p className="text-xs font-medium">Audience &amp; commitment</p>
                     <p className="mt-1 text-[11px] text-muted-foreground">
-                      Visibility changes reach project workspaces only after the
-                      schedule is published.
+                      Visibility changes reach project workspaces only after the schedule is
+                      published.
                     </p>
                     <div className="mt-3 grid gap-3 sm:grid-cols-3">
                       <FormField
@@ -749,14 +856,9 @@ export function ScheduleItemFormDialog({
                         name="ownerVisible"
                         render={({ field }) => (
                           <FormItem className="flex items-center justify-between gap-3 border px-3 py-2">
-                            <FormLabel className="!mt-0 text-xs">
-                              Owner can view
-                            </FormLabel>
+                            <FormLabel className="!mt-0 text-xs">Owner can view</FormLabel>
                             <FormControl>
-                              <Switch
-                                checked={field.value}
-                                onCheckedChange={field.onChange}
-                              />
+                              <Switch checked={field.value} onCheckedChange={field.onChange} />
                             </FormControl>
                           </FormItem>
                         )}
@@ -766,14 +868,9 @@ export function ScheduleItemFormDialog({
                         name="subVendorVisible"
                         render={({ field }) => (
                           <FormItem className="flex items-center justify-between gap-3 border px-3 py-2">
-                            <FormLabel className="!mt-0 text-xs">
-                              Subs can view
-                            </FormLabel>
+                            <FormLabel className="!mt-0 text-xs">Subs can view</FormLabel>
                             <FormControl>
-                              <Switch
-                                checked={field.value}
-                                onCheckedChange={field.onChange}
-                              />
+                              <Switch checked={field.value} onCheckedChange={field.onChange} />
                             </FormControl>
                           </FormItem>
                         )}
@@ -783,14 +880,9 @@ export function ScheduleItemFormDialog({
                         name="confirmationRequired"
                         render={({ field }) => (
                           <FormItem className="flex items-center justify-between gap-3 border px-3 py-2">
-                            <FormLabel className="!mt-0 text-xs">
-                              Require confirmation
-                            </FormLabel>
+                            <FormLabel className="!mt-0 text-xs">Require confirmation</FormLabel>
                             <FormControl>
-                              <Switch
-                                checked={field.value}
-                                onCheckedChange={field.onChange}
-                              />
+                              <Switch checked={field.value} onCheckedChange={field.onChange} />
                             </FormControl>
                           </FormItem>
                         )}
@@ -831,7 +923,7 @@ export function ScheduleItemFormDialog({
                       const edit = existingPredecessorEdits[dep.id] ?? {
                         taskId: dep.predecessorId,
                         type: dep.type,
-                        lagDays: dep.lagDays,
+                        lagDays: dep.lagDays
                       }
                       return (
                         <div
@@ -841,11 +933,7 @@ export function ScheduleItemFormDialog({
                           <Select
                             value={edit.taskId}
                             onValueChange={(value) =>
-                              updateExistingPredecessor(
-                                dep.id,
-                                "taskId",
-                                value
-                              )
+                              updateExistingPredecessor(dep.id, "taskId", value)
                             }
                           >
                             <SelectTrigger
@@ -870,11 +958,7 @@ export function ScheduleItemFormDialog({
                               <Select
                                 value={edit.type}
                                 onValueChange={(value) =>
-                                  updateExistingPredecessor(
-                                    dep.id,
-                                    "type",
-                                    value
-                                  )
+                                  updateExistingPredecessor(dep.id, "type", value)
                                 }
                               >
                                 <SelectTrigger
@@ -936,9 +1020,7 @@ export function ScheduleItemFormDialog({
                       >
                         <Select
                           value={pred.taskId}
-                          onValueChange={(val) =>
-                            updatePendingPredecessor(idx, "taskId", val)
-                          }
+                          onValueChange={(val) => updatePendingPredecessor(idx, "taskId", val)}
                         >
                           <SelectTrigger
                             className="h-9 w-full min-w-0 text-xs [&_[data-slot=select-value]]:truncate"
@@ -961,9 +1043,7 @@ export function ScheduleItemFormDialog({
                             </span>
                             <Select
                               value={pred.type}
-                              onValueChange={(val) =>
-                                updatePendingPredecessor(idx, "type", val)
-                              }
+                              onValueChange={(val) => updatePendingPredecessor(idx, "type", val)}
                             >
                               <SelectTrigger
                                 className="h-9 w-full min-w-0 text-xs [&_[data-slot=select-value]]:truncate"
@@ -1026,12 +1106,11 @@ export function ScheduleItemFormDialog({
                       </Button>
                     )}
 
-                    {availableTasks.length === 0 &&
-                      existingPredecessors.length === 0 && (
-                        <p className="text-[11px] text-muted-foreground/60">
-                          No other schedule items to link as predecessors.
-                        </p>
-                      )}
+                    {availableTasks.length === 0 && existingPredecessors.length === 0 && (
+                      <p className="text-[11px] text-muted-foreground/60">
+                        No other schedule items to link as predecessors.
+                      </p>
+                    )}
                   </div>
 
                   {/* Notes */}
@@ -1059,12 +1138,7 @@ export function ScheduleItemFormDialog({
 
             {/* Footer */}
             <div className="flex justify-end gap-2 px-5 py-3 border-t shrink-0">
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                onClick={() => onOpenChange(false)}
-              >
+              <Button type="button" variant="ghost" size="sm" onClick={() => onOpenChange(false)}>
                 Cancel
               </Button>
               <Button type="submit" size="sm">
