@@ -191,11 +191,15 @@ def telegram_delivery_target(payload: dict[str, Any]) -> str | None:
         return None
     if re.fullmatch(r"-?\d+", actor_id):
         return f"telegram:{actor_id}"
-    if re.fullmatch(
-        r"telegram:(?:-?\d+|[A-Za-z][A-Za-z0-9_]{4,31})",
-        actor_id,
-    ):
+    if re.fullmatch(r"telegram:-?\d+", actor_id):
         return actor_id
+    username_match = re.fullmatch(
+        r"telegram:@?([A-Za-z][A-Za-z0-9_]{4,31})",
+        actor_id,
+    )
+    if username_match:
+        # Hermes expects Telegram usernames in Bot API form, including the @.
+        return f"telegram:@{username_match.group(1)}"
     return None
 
 
