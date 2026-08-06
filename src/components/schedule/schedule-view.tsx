@@ -81,6 +81,7 @@ import { WorkdayExceptionsView } from "./workday-exceptions-view"
 import { ScheduleBaselineView } from "./schedule-baseline-view"
 import { ScheduleItemFormDialog } from "./schedule-item-form-dialog"
 import { ScheduleTemplateDialog } from "./schedule-template-dialog"
+import { ScheduleTemplateBulkImportDialog } from "./schedule-template-bulk-import-dialog"
 import { ProjectQuickSwitcher } from "@/components/projects/project-quick-switcher"
 import { ScheduleScopeSwitcher } from "./schedule-scope-switcher"
 import { OwnerScheduleVisibilityControl } from "./owner-schedule-visibility-control"
@@ -224,6 +225,7 @@ export function ScheduleView({
   const [exceptionsOpen, setExceptionsOpen] = useState(false)
   const [importDialogOpen, setImportDialogOpen] = useState(false)
   const [templateDialogOpen, setTemplateDialogOpen] = useState(false)
+  const [bulkTemplateDialogOpen, setBulkTemplateDialogOpen] = useState(false)
   const [isImporting, setIsImporting] = useState(false)
   const [publicationStatus, setPublicationStatus] =
     useState<SchedulePublicationStatus | null>(initialPublicationStatus)
@@ -1077,10 +1079,16 @@ export function ScheduleView({
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-48">
               {projectId && (
-                <DropdownMenuItem onClick={() => setTemplateDialogOpen(true)}>
-                  <IconTemplate className="size-4 mr-2" />
-                  Add from template
-                </DropdownMenuItem>
+                <>
+                  <DropdownMenuItem onClick={() => setBulkTemplateDialogOpen(true)}>
+                    <IconTemplate className="size-4 mr-2" />
+                    Import schedule items
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setTemplateDialogOpen(true)}>
+                    <IconTemplate className="size-4 mr-2" />
+                    Add full project setup
+                  </DropdownMenuItem>
+                </>
               )}
               <DropdownMenuItem asChild>
                 <Link href="/dashboard/templates">
@@ -1177,6 +1185,15 @@ export function ScheduleView({
               (exception) => exception.projectId === projectId
             )}
             assigneeOptions={assigneeOptions}
+            onBulkTemplateImport={() => {
+              setTaskFormOpen(false)
+              setBulkTemplateDialogOpen(true)
+            }}
+          />
+          <ScheduleTemplateBulkImportDialog
+            open={bulkTemplateDialogOpen}
+            onOpenChange={setBulkTemplateDialogOpen}
+            projectId={projectId}
           />
           <ScheduleTemplateDialog
             open={templateDialogOpen}

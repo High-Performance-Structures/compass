@@ -31,6 +31,7 @@ export type ScheduleTemplateImportTodo = {
 export type ScheduleTemplateImportItem = {
   readonly id: string
   readonly title: string
+  readonly startOffsetWorkdays: number
   readonly workdays: number
   readonly phase: string
   readonly displayColor: string
@@ -38,6 +39,7 @@ export type ScheduleTemplateImportItem = {
   readonly assignedTo: string | null
   readonly ownerVisible: boolean
   readonly subVendorVisible: boolean
+  readonly sortOrder: number
 }
 
 export type ScheduleTemplateImportGroup = {
@@ -150,6 +152,7 @@ export async function getScheduleTemplateImportOptions(): Promise<
         scheduleItems: items.map((item) => ({
           id: item.id,
           title: item.title,
+          startOffsetWorkdays: item.startOffsetWorkdays,
           workdays: item.workdays,
           phase: resolveTemplateSchedulePhase({
             capturedPhase: item.phase,
@@ -159,7 +162,8 @@ export async function getScheduleTemplateImportOptions(): Promise<
           isMilestone: item.isMilestone,
           assignedTo: item.assigneePlaceholder,
           ownerVisible: item.ownerVisible,
-          subVendorVisible: item.subVendorVisible
+          subVendorVisible: item.subVendorVisible,
+          sortOrder: item.sortOrder
         })),
         linkedTodos: todoGroups.map((group) => ({
           id: group.task.id,
