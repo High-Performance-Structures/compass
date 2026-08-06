@@ -34,6 +34,7 @@ import {
   rfiMatchesStatusFilter,
   type RfiStatusFilter,
 } from "@/lib/rfis/status"
+import { buildRfiContactOptions } from "@/lib/rfis/contact-options"
 import { cn } from "@/lib/utils"
 import { redirectIfFeaturePermissionDenied } from "@/lib/permission-redirect"
 
@@ -193,13 +194,7 @@ export default async function ProjectRfisPage({
       contact.displayName,
     ])
   )
-  const peopleOptions = unique(
-    contacts.map((contact) =>
-      contact.companyName && contact.companyName !== contact.displayName
-        ? `${contact.displayName} - ${contact.companyName}`
-        : contact.displayName
-    )
-  )
+  const peopleOptions = buildRfiContactOptions(taskAssignees)
 
   return (
     <div className="flex-1 space-y-6 p-4 pt-6 sm:p-6 md:p-8">

@@ -25,12 +25,16 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet"
 import { Textarea } from "@/components/ui/textarea"
+import {
+  RFI_CONTACT_GROUPS,
+  type RfiContactOption,
+} from "@/lib/rfis/contact-options"
 
 type ProjectRfiCreateFormProps = {
   readonly projectId: string
   readonly projectDriveFolderId: string | null
   readonly companyOrTradeOptions: readonly string[]
-  readonly peopleOptions: readonly string[]
+  readonly peopleOptions: readonly RfiContactOption[]
 }
 
 const DOCUMENT_INPUT_CLASS =
@@ -272,11 +276,21 @@ export function ProjectRfiCreateForm({
                 className={DOCUMENT_SELECT_CLASS}
               >
                 <option value="">Choose project contact</option>
-                {peopleOptions.map((option) => (
-                  <option key={option} value={option}>
-                    {option}
-                  </option>
-                ))}
+                {RFI_CONTACT_GROUPS.map((group) => {
+                  const options = peopleOptions.filter(
+                    (option) => option.group === group.value
+                  )
+                  if (options.length === 0) return null
+                  return (
+                    <optgroup key={group.value} label={group.label}>
+                      {options.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </optgroup>
+                  )
+                })}
               </select>
               <Input
                 name="assignedToNameCustom"
@@ -294,11 +308,21 @@ export function ProjectRfiCreateForm({
                 className={DOCUMENT_SELECT_CLASS}
               >
                 <option value="">Choose project contact</option>
-                {peopleOptions.map((option) => (
-                  <option key={option} value={option}>
-                    {option}
-                  </option>
-                ))}
+                {RFI_CONTACT_GROUPS.map((group) => {
+                  const options = peopleOptions.filter(
+                    (option) => option.group === group.value
+                  )
+                  if (options.length === 0) return null
+                  return (
+                    <optgroup key={group.value} label={group.label}>
+                      {options.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </optgroup>
+                  )
+                })}
               </select>
               <Input
                 name="requesterNameCustom"
