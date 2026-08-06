@@ -329,6 +329,7 @@ async function importCandidate(input: {
   if (duplicate && !retryMisclassifiedReply) return "duplicate"
 
   const projectRoute = await routeProjectInboundEmail({
+    env: input.env,
     db: input.db,
     organizationId: input.organizationId,
     candidate: input.candidate,
