@@ -45,4 +45,17 @@ describe("RFI contact options", () => {
     expect(result).toHaveLength(1)
     expect(result[0]?.label).toBe("Sylvi Vogel")
   })
+
+  it("includes the project client when owner contact rows are missing", () => {
+    const result = buildRfiContactOptions(
+      [{ label: "Wes Jones", contactType: "internal" }],
+      "David and Katie Squires"
+    )
+
+    expect(result).toContainEqual({
+      value: "David and Katie Squires",
+      label: "David and Katie Squires",
+      group: "owner",
+    })
+  })
 })

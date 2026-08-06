@@ -33,21 +33,28 @@ function rfiContactGroup(value: string): RfiContactGroup {
 }
 
 export function buildRfiContactOptions(
-  candidates: readonly RfiContactCandidate[]
+  candidates: readonly RfiContactCandidate[],
+  projectOwnerName?: string | null
 ): readonly RfiContactOption[] {
   const options = new Map<string, RfiContactOption>()
 
-  for (const candidate of candidates) {
+  function addCandidate(candidate: RfiContactCandidate): void {
     const label = candidate.label.trim()
-    if (!label) continue
+    if (!label) return
     const key = label.toLocaleLowerCase()
-    if (options.has(key)) continue
+    if (options.has(key)) return
     options.set(key, {
       value: label,
       label,
       group: rfiContactGroup(candidate.contactType),
     })
   }
+
+  for (const candidate of candidates) addCandidate(candidate)
+
+  // Imported projects can have an owner on the project record before their
+  // project-contact rows are reconciled. Keep that owner reachable from RFIs.
+  addCandidate({ label: projectOwnerName ?? "", contactType: "owner" })
 
   const groupOrder = new Map(
     RFI_CONTACT_GROUPS.map((group, index) => [group.value, index])
