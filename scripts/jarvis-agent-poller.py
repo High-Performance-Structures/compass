@@ -20,11 +20,13 @@ from typing import Any
 MAX_RESPONSE_BYTES = 64 * 1024
 MAX_COMPASS_CONTEXT_CHARACTERS = 14_000
 PULL_TARGET = "/api/integrations/jarvis/events?limit=1&eventType=agent.prompt"
+HEALTH_TARGET = "/api/integrations/jarvis/health"
 FEEDBACK_CONFIRMATION_QUESTION = (
     "Would you like me to file this with the Compass Feedback Desk?"
 )
 LOGGER = logging.getLogger("compass-jarvis-agent-poller")
 RUNNING = True
+LAST_HEARTBEAT_AT = 0.0
 
 BASE_SYSTEM_PROMPT = """
 You are Jarvis inside HPS Compass. Provide concise, practical basic assistance
@@ -167,6 +169,26 @@ def compass_request(
         ) from error
     except (TimeoutError, urllib.error.URLError) as error:
         raise RetryableError("Compass request failed") from error
+
+
+def heartbeat(status: str, error: str | None = None) -> None:
+    global LAST_HEARTBEAT_AT
+    now = time.time()
+    if status == "healthy" and now - LAST_HEARTBEAT_AT < 60:
+        return
+    try:
+        compass_request(
+            "POST",
+            HEALTH_TARGET,
+            {
+                "serviceName": "jarvis-agent-poller",
+                "status": status,
+                "error": error[:2_000] if error else None,
+            },
+        )
+        LAST_HEARTBEAT_AT = now
+    except Exception:
+        LOGGER.debug("Could not record poller heartbeat", exc_info=True)
 
 
 def load_compass_skill() -> str:
@@ -780,6 +802,7 @@ def run() -> None:
             )
             if not isinstance(events, list):
                 raise RuntimeError("Compass pull response has no events")
+            heartbeat("healthy")
             if not events:
                 time.sleep(poll_seconds)
                 continue
@@ -819,10 +842,12 @@ def run() -> None:
                         "Agent event failed: %s",
                         event_id,
                     )
-        except RetryableError:
+        except RetryableError as error:
+            heartbeat("failed", str(error))
             LOGGER.warning("Bridge temporarily unavailable")
             time.sleep(5)
-        except Exception:
+        except Exception as error:
+            heartbeat("failed", str(error))
             LOGGER.exception("Agent poll cycle failed")
             time.sleep(5)
 

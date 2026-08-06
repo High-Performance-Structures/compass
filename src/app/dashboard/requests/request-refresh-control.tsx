@@ -4,13 +4,18 @@ import { useCallback, useEffect, useRef, useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
 import { IconRefresh } from "@tabler/icons-react"
 
-import { refreshMyFeedbackRequests } from "@/app/actions/feedback-requests"
+import {
+  refreshMyFeedbackRequests,
+  type FeedbackRequestScope,
+} from "@/app/actions/feedback-requests"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 
 const REFRESH_INTERVAL_MILLISECONDS = 60_000
 
-export function RequestRefreshControl() {
+export function RequestRefreshControl({
+  scope = "mine",
+}: Readonly<{ scope?: FeedbackRequestScope }>) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
   const [lastCheckedAt, setLastCheckedAt] = useState<Date | null>(null)
@@ -21,13 +26,13 @@ export function RequestRefreshControl() {
     if (now - lastRefreshStartedAt.current < 5_000) return
     lastRefreshStartedAt.current = now
     startTransition(async () => {
-      const result = await refreshMyFeedbackRequests()
+      const result = await refreshMyFeedbackRequests(scope)
       if (result.success) {
         setLastCheckedAt(new Date(result.checkedAt))
         router.refresh()
       }
     })
-  }, [router])
+  }, [router, scope])
 
   useEffect(() => {
     refresh()

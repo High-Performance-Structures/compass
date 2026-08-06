@@ -26,10 +26,16 @@ function formatDate(value: string): string {
 
 export default async function RequestDetailPage({
   params,
+  searchParams,
 }: {
   readonly params: Promise<{ readonly id: string }>
+  readonly searchParams: Promise<{ readonly scope?: string }>
 }) {
   const { id } = await params
+  const query = await searchParams
+  const backHref = query.scope === "all"
+    ? "/dashboard/requests?scope=all"
+    : "/dashboard/requests"
   const result = await getMyFeedbackRequest(id)
   if (!result.success) notFound()
   const request = result.data
@@ -38,7 +44,7 @@ export default async function RequestDetailPage({
     <div className="mx-auto flex w-full max-w-4xl flex-col gap-6 p-4 md:p-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <Button variant="ghost" size="sm" asChild>
-          <Link href="/dashboard/requests">
+          <Link href={backHref}>
             <IconArrowLeft className="size-4" />
             All requests
           </Link>
@@ -61,6 +67,10 @@ export default async function RequestDetailPage({
         </h1>
         <p className="mt-2 text-sm text-muted-foreground">
           Submitted {formatDate(request.createdAt)} · Last updated {formatDate(request.updatedAt)}
+        </p>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Owner: {request.assignedToName ?? "Awaiting assignment"}
+          {request.slaTargetAt ? ` · Response target ${formatDate(request.slaTargetAt)}` : ""}
         </p>
       </div>
 

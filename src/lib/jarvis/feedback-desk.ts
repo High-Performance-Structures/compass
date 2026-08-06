@@ -5,6 +5,7 @@ import {
   jarvisBridgeEvents,
   type FeedbackDeskItem,
 } from "@/db/schema-jarvis"
+import { feedbackSlaTarget } from "@/lib/jarvis/feedback-lifecycle"
 
 type CompassDb = ReturnType<typeof getDb>
 
@@ -50,6 +51,7 @@ type CreateFeedbackDeskItemInput = {
   readonly messageId?: string | null
   readonly threadId?: string | null
   readonly githubIssueUrl?: string | null
+  readonly historicalImport?: boolean
   readonly metadata?: Readonly<Record<string, unknown>>
 }
 
@@ -132,6 +134,7 @@ export async function enqueueFeedbackDeskItem(
       metadata: input.metadata
         ? JSON.stringify(input.metadata)
         : null,
+      slaTargetAt: feedbackSlaTarget("normal"),
       createdAt: now,
       updatedAt: now,
     })
@@ -151,6 +154,10 @@ export async function enqueueFeedbackDeskItem(
   if (!item) {
     throw new Error("Failed to create feedback desk item")
   }
+
+  // Backfills should restore the durable record without replaying old intake
+  // or receipt notifications as if the request had just been submitted.
+  if (input.historicalImport) return item
 
   const payload = {
     schemaVersion: 1,

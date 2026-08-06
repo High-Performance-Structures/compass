@@ -24,8 +24,10 @@ PULL_TARGET = (
     "/api/integrations/jarvis/events"
     "?limit=20&eventType=feedback.status_changed"
 )
+HEALTH_TARGET = "/api/integrations/jarvis/health"
 LOGGER = logging.getLogger("compass-jarvis-feedback-notifier")
 RUNNING = True
+LAST_HEARTBEAT_AT = 0.0
 
 
 class RetryableError(RuntimeError):
@@ -121,6 +123,26 @@ def compass_request(
         return json.loads(raw)
     except json.JSONDecodeError as error:
         raise RuntimeError("Compass returned invalid JSON") from error
+
+
+def heartbeat(status: str, error: str | None = None) -> None:
+    global LAST_HEARTBEAT_AT
+    now = time.time()
+    if status == "healthy" and now - LAST_HEARTBEAT_AT < 60:
+        return
+    try:
+        compass_request(
+            "POST",
+            HEALTH_TARGET,
+            {
+                "serviceName": "jarvis-feedback-notifier",
+                "status": status,
+                "error": error[:2_000] if error else None,
+            },
+        )
+        LAST_HEARTBEAT_AT = now
+    except Exception:
+        LOGGER.debug("Could not record notifier heartbeat", exc_info=True)
 
 
 def acknowledge(
@@ -330,6 +352,7 @@ def run() -> None:
             )
             if not isinstance(events, list):
                 raise RuntimeError("Compass pull response has no events")
+            heartbeat("healthy")
             if not events:
                 time.sleep(poll_seconds)
                 continue
@@ -370,10 +393,12 @@ def run() -> None:
                         "Feedback delivery failed: %s",
                         event_id,
                     )
-        except RetryableError:
+        except RetryableError as error:
+            heartbeat("failed", str(error))
             LOGGER.warning("Bridge temporarily unavailable")
             time.sleep(5)
-        except Exception:
+        except Exception as error:
+            heartbeat("failed", str(error))
             LOGGER.exception("Feedback poll cycle failed")
             time.sleep(5)
 

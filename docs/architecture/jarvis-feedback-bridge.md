@@ -124,8 +124,11 @@ Feedback Desk's protected record and bridge payloads.
 GitHub issue and privacy boundary
 ---
 
-Every Feedback Desk item is mirrored to a GitHub issue and added to the
-`Compass Development & Feedback` GitHub Project. GitHub is deliberately a
+New Feedback Desk submissions are mirrored to a GitHub issue and added to the
+`Compass Development & Feedback` GitHub Project. Recovered historical requests
+without an existing link remain in an administrative preview until an
+administrator either maps existing work or explicitly approves creation of a
+new issue. GitHub is deliberately a
 minimal engineering tracker, not the system of record for a request. Its
 title and body contain only the request kind and an opaque `CFD-<UUID>`
 correlation reference. They never contain the submitted title or message,
@@ -136,15 +139,15 @@ The corresponding request content, source provenance, requester identity,
 and reply target stay in Compass D1 and the signed private bridge. Configure
 `GITHUB_FEEDBACK_PROJECT_ID` with the node ID of the `Compass Development &
 Feedback` Project for deterministic project insertion. When it is absent,
-Compass attempts a title lookup among the token owner's projects and logs a
+Compass attempts a title lookup among the repository organization's projects and logs a
 configuration error rather than exporting private data.
 
 The prior feedback-widget issue formatter included the optional reporter name
 and email in GitHub issue bodies. It has been removed: new widget submissions
 now use the same sanitized export as Telegram, Jarvis email, and Compass
-conversation feedback. Any historical issue created by the former formatter
-must be edited in GitHub to remove the reporter line before the issue is
-shared further.
+conversation feedback. Scheduled reconciliation rewrites linked legacy widget
+issues to the private-correlation format and records `privacy_scrubbed_at`; it
+never copies private request content back to GitHub.
 
 Guest policy
 ---
@@ -221,6 +224,12 @@ through the signed reply endpoint, and acknowledges Ask Jarvis/widget events
 after their Compass-native receipt or notification is available. Its local
 delivery ledger prevents a service restart from sending the same external
 update twice before acknowledgement.
+
+Both private relay services post a signed heartbeat to
+`POST /api/integrations/jarvis/health` at least once per minute. The protected
+Feedback Desk shows heartbeat age, last failure, and pending/processing/failed
+bridge counts. A missing heartbeat is an operational failure even when the
+process manager still reports the service as running.
 
 ### Acknowledge an event
 
@@ -345,9 +354,36 @@ updates only through email, and Compass updates only to the stored Compass
 thread/request. Cross-channel delivery requires a separate product decision.
 
 The notification links to `/dashboard/requests`, where authenticated users
-see only requests matching their organization and account email. GitHub
-remains the developer record and is not required for staff to follow a
-request.
+see only requests matching their organization and account email. Users in the
+`developer`, `admin`, and `secondary_admin` roles also receive a protected
+My requests / All requests filter for organization-wide investigation. Only
+administrators can mutate the organization-wide desk at
+`/dashboard/requests/manage`.
+
+Scheduled reconciliation and administration
+---
+
+Cloudflare invokes the custom OpenNext worker every ten minutes. Its scheduled
+handler signs a service-binding request to
+`POST /api/operations/feedback/reconcile`; the endpoint accepts no public or
+cookie-based authentication. Each run:
+
+1. recovers legacy feedback-widget rows and confirmed Ask Jarvis reports;
+2. repairs existing GitHub links and creates missing issues only after
+   administrative approval;
+3. imports GitHub Project status and closing pull-request links;
+4. emits the normal private requester notifications for meaningful changes;
+5. backfills SLA targets and scrubs linked legacy widget issues; and
+6. stores run counts and reconciler health for the administrative dashboard.
+
+Administrators can run the same idempotent operation with **Reconcile now**.
+The GitHub link preview shows recovered requests that need review. Administrators
+can map an existing issue or pull request, or approve a new issue before the next
+reconciliation. They can also assign an active internal organization member,
+set priority and status, and add a requester-facing explanation. SLA
+targets are four hours for urgent, 24 hours for high, 72 hours for normal, and
+seven days for low priority. Existing requests are measured from their
+original submission time; resolved requests are never reported overdue.
 
 ### Reply to a Compass assistance request
 
@@ -410,7 +446,7 @@ other channel members when a message is stored.
 Rollout checklist
 ---
 
-1. Apply migration `0065_jarvis_feedback_bridge.sql`.
+1. Apply migrations through `0093_feedback_github_creation_approval.sql`.
 2. Create an active Jarvis service user in Compass.
 3. Add that user to the organization and `compass-feedback` channel.
 4. Configure the three `JARVIS_*` secrets/variables in Cloudflare.
@@ -428,6 +464,14 @@ Rollout checklist
 13. Start the requester lifecycle notifier, submit one test request per
     enabled source, and confirm each receipt returns only through its original
     source.
+14. Deploy the custom worker and confirm the `*/10 * * * *` trigger is listed.
+15. Run **Reconcile now** and confirm missing historical links appear in the
+    GitHub review preview without creating issues.
+16. Map known existing work, approve one genuinely untracked request, run
+    **Reconcile now** again, and verify only that approved issue was created.
+17. Verify the maintenance summary and three healthy service cards, and inspect
+    a legacy GitHub issue to confirm that its body contains only the opaque
+    `CFD-<UUID>` reference.
 
 The bundled bridge helper includes a `configure` command for step 5. It
 generates the HMAC key on the private runtime and returns only RSA-encrypted

@@ -1,13 +1,15 @@
-import { eq } from "drizzle-orm"
-
 import type { getDb } from "@/db"
-import { feedbackDeskItems, jarvisBridgeEvents, type FeedbackDeskItem } from "@/db/schema-jarvis"
+import { type FeedbackDeskItem } from "@/db/schema-jarvis"
 import { getJarvisEnvValue } from "@/lib/jarvis/auth"
 import {
   GITHUB_FEEDBACK_PROJECT_TITLE,
   feedbackReference,
 } from "@/lib/jarvis/feedback-github-content"
-import { feedbackStatusLabel, type FeedbackDeskStatus } from "@/lib/jarvis/feedback-lifecycle"
+import {
+  knownFeedbackStatus,
+  type FeedbackDeskStatus,
+} from "@/lib/jarvis/feedback-lifecycle"
+import { applyFeedbackLifecycleUpdate } from "@/lib/jarvis/feedback-status-update"
 
 type CompassDb = ReturnType<typeof getDb>
 type GithubProjectState = Readonly<{
@@ -16,6 +18,7 @@ type GithubProjectState = Readonly<{
   issueUrl: string
   issueState: string
   projectStatus: string | null
+  pullRequestUrl: string | null
 }>
 
 function objectValue(value: unknown): Record<string, unknown> | null {
@@ -61,6 +64,12 @@ function projectStatesFromGraphql(value: unknown): readonly GithubProjectState[]
       issueUrl,
       issueState: stringValue(content, "state") ?? "OPEN",
       projectStatus: projectStatusFromFieldValues(projectItem?.fieldValues),
+      pullRequestUrl: (() => {
+        const pullRequests = objectValue(content?.closedByPullRequestsReferences)?.nodes
+        if (!Array.isArray(pullRequests)) return null
+        const latest = pullRequests.at(-1)
+        return stringValue(objectValue(latest), "url")
+      })(),
     })
   }
   return results
@@ -136,7 +145,17 @@ async function githubProjectStates(env: CloudflareEnv): Promise<readonly GithubP
             ... on ProjectV2 {
               items(first: 100) {
                 nodes {
-                  content { ... on Issue { id title url state } }
+                  content {
+                    ... on Issue {
+                      id
+                      title
+                      url
+                      state
+                      closedByPullRequestsReferences(first: 10) {
+                        nodes { url }
+                      }
+                    }
+                  }
                   fieldValues(first: 20) {
                     nodes {
                       ... on ProjectV2ItemFieldSingleSelectValue {
@@ -182,46 +201,28 @@ export async function syncFeedbackDeskItemsFromGithub(
         : undefined
     if (!state) continue
     const nextStatus = feedbackStatusFromGithub(state.projectStatus, state.issueState)
-    const needsLink = item.githubIssueNodeId === null
+    const needsLink =
+      item.githubIssueNodeId !== state.issueNodeId ||
+      item.githubIssueUrl !== state.issueUrl
     const needsStatus = nextStatus !== null && nextStatus !== item.status
-    if (!needsLink && !needsStatus) continue
+    const needsPullRequest =
+      state.pullRequestUrl !== null &&
+      state.pullRequestUrl !== item.githubDraftPullRequestUrl
+    if (!needsLink && !needsStatus && !needsPullRequest) continue
 
-    const now = new Date().toISOString()
     const message = state.projectStatus
       ? `The Feedback Desk moved this request to ${state.projectStatus}.`
       : `The linked GitHub issue is now ${state.issueState.toLowerCase()}.`
-    await db.update(feedbackDeskItems).set({
-      status: nextStatus ?? item.status,
+    await applyFeedbackLifecycleUpdate(db, item, {
+      status: nextStatus ?? knownFeedbackStatus(item.status),
+      message,
       githubIssueNodeId: state.issueNodeId,
       githubIssueUrl: state.issueUrl,
-      updatedAt: now,
+      draftPullRequestUrl: state.pullRequestUrl ?? undefined,
+      actorSource: "github",
+      idempotencyKey:
+        `github-status:${item.id}:${nextStatus ?? item.status}:${state.projectStatus ?? state.issueState}`,
     })
-      .where(eq(feedbackDeskItems.id, item.id))
-    if (needsStatus && nextStatus) await db.insert(jarvisBridgeEvents).values({
-      id: crypto.randomUUID(),
-      organizationId: item.organizationId,
-      direction: "inbound",
-      source: "github",
-      eventType: "feedback.status_updated",
-      status: "completed",
-      idempotencyKey: `github-status:${item.id}:${nextStatus}:${state.projectStatus ?? state.issueState}`,
-      feedbackDeskItemId: item.id,
-      payload: JSON.stringify({
-        source: "github-project",
-        projectStatus: state.projectStatus,
-        issueState: state.issueState,
-      }),
-      result: JSON.stringify({
-        status: nextStatus,
-        label: feedbackStatusLabel(nextStatus),
-        message,
-        updatedAt: now,
-      }),
-      availableAt: now,
-      completedAt: now,
-      createdAt: now,
-      updatedAt: now,
-    }).onConflictDoNothing()
     updatedCount += 1
   }
   return updatedCount
