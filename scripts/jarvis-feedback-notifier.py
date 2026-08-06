@@ -185,6 +185,20 @@ def external_actor_id(payload: dict[str, Any]) -> str | None:
     return value.strip() if isinstance(value, str) and value.strip() else None
 
 
+def telegram_delivery_target(payload: dict[str, Any]) -> str | None:
+    actor_id = external_actor_id(payload)
+    if actor_id is None:
+        return None
+    if re.fullmatch(r"-?\d+", actor_id):
+        return f"telegram:{actor_id}"
+    if re.fullmatch(
+        r"telegram:(?:-?\d+|[A-Za-z][A-Za-z0-9_]{4,31})",
+        actor_id,
+    ):
+        return actor_id
+    return None
+
+
 def reporter_email(payload: dict[str, Any]) -> str | None:
     value = reporter_object(payload).get("email")
     if not isinstance(value, str):
@@ -266,10 +280,10 @@ def deliver_event(event: dict[str, Any]) -> bool:
 
     message = message_text(payload)
     if source == "telegram":
-        target = external_actor_id(payload)
-        if target is None or not re.fullmatch(r"-?\d+", target):
+        target = telegram_delivery_target(payload)
+        if target is None:
             raise RuntimeError("Telegram feedback has no valid reply target")
-        send_via_hermes(f"telegram:{target}", message)
+        send_via_hermes(target, message)
         return True
     if source == "jarvis-email":
         target = reporter_email(payload)

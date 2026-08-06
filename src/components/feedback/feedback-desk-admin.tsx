@@ -28,6 +28,7 @@ import {
 import {
   FEEDBACK_DESK_STATUSES,
   FEEDBACK_PRIORITIES,
+  feedbackIsResolved,
   feedbackStatusLabel,
   knownFeedbackPriority,
   knownFeedbackStatus,
@@ -122,8 +123,15 @@ function RequestEditor({
             {!item.githubIssueUrl && item.githubIssueCreationApprovedAt && (
               <Badge>New GitHub issue approved</Badge>
             )}
-            {!item.githubIssueUrl && !item.githubIssueCreationApprovedAt && (
+            {!item.githubIssueUrl &&
+              !item.githubIssueCreationApprovedAt &&
+              !feedbackIsResolved(item.status) && (
               <Badge variant="outline">GitHub review needed</Badge>
+            )}
+            {!item.githubIssueUrl &&
+              !item.githubIssueCreationApprovedAt &&
+              feedbackIsResolved(item.status) && (
+              <Badge variant="outline">No GitHub issue required</Badge>
             )}
             <Badge variant="secondary">{item.kind}</Badge>
           </div>
@@ -194,7 +202,7 @@ function RequestEditor({
             />
           </label>
         </div>
-        {!item.githubIssueUrl && (
+        {!item.githubIssueUrl && !feedbackIsResolved(item.status) && (
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-dashed p-3">
             <p className="max-w-3xl text-xs text-muted-foreground">
               If this work already exists, paste its GitHub issue or pull request above and save.
@@ -258,10 +266,16 @@ export function FeedbackDeskAdmin({ overview }: Readonly<{
   const overdue = openItems.filter((item) => item.overdue).length
   const unassigned = openItems.filter((item) => !item.assignedToUserId).length
   const githubReviewNeeded = overview.items.filter(
-    (item) => !item.githubIssueUrl && !item.githubIssueCreationApprovedAt,
+    (item) =>
+      !item.githubIssueUrl &&
+      !item.githubIssueCreationApprovedAt &&
+      !feedbackIsResolved(item.status),
   ).length
   const githubCreationApproved = overview.items.filter(
-    (item) => !item.githubIssueUrl && item.githubIssueCreationApprovedAt,
+    (item) =>
+      !item.githubIssueUrl &&
+      item.githubIssueCreationApprovedAt &&
+      !feedbackIsResolved(item.status),
   ).length
 
   function reconcile(): void {

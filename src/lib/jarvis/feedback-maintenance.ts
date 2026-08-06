@@ -21,7 +21,10 @@ import {
 import { linkFeedbackDeskItemToGithub } from "@/lib/jarvis/feedback-github"
 import { githubFeedbackIssueContent } from "@/lib/jarvis/feedback-github-content"
 import { syncFeedbackDeskItemsFromGithub } from "@/lib/jarvis/feedback-github-sync"
-import { feedbackSlaTarget } from "@/lib/jarvis/feedback-lifecycle"
+import {
+  feedbackIsResolved,
+  feedbackSlaTarget,
+} from "@/lib/jarvis/feedback-lifecycle"
 
 type CompassDb = ReturnType<typeof getDb>
 
@@ -39,11 +42,12 @@ export type FeedbackMaintenanceResult = Readonly<{
 export function feedbackGithubLinkAction(
   item: Pick<
     FeedbackDeskItem,
-    "githubIssueUrl" | "githubIssueCreationApprovedAt"
+    "githubIssueUrl" | "githubIssueCreationApprovedAt" | "status"
   >,
-): "repair" | "create" | "review" {
+): "repair" | "create" | "review" | "skip" {
   if (item.githubIssueUrl) return "repair"
   if (item.githubIssueCreationApprovedAt) return "create"
+  if (feedbackIsResolved(item.status)) return "skip"
   return "review"
 }
 
@@ -306,6 +310,7 @@ export async function runFeedbackMaintenance(
         missingLinkReviewCount += 1
         continue
       }
+      if (action === "skip") continue
       const link = await linkFeedbackDeskItemToGithub(db, env, item)
       if (link) linkedCount += 1
       else failedCount += 1
