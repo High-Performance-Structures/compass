@@ -631,9 +631,12 @@ export async function createTask(
       })) ?? []
 
     if (linkedTodoRows.length > 0) {
+      // Keep each to-do in its own prepared statement. D1 limits the number of
+      // bound values in one statement, so a multi-row insert fails for larger
+      // templates even though the surrounding batch is otherwise valid.
       await db.batch([
         db.insert(scheduleTasks).values(scheduleTaskRow),
-        db.insert(projectOperations).values(linkedTodoRows)
+        ...linkedTodoRows.map((todoRow) => db.insert(projectOperations).values(todoRow))
       ])
     } else {
       await db.insert(scheduleTasks).values(scheduleTaskRow)
