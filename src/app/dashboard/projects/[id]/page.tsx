@@ -44,6 +44,7 @@ import {
   type ProjectRfiSummary,
 } from "@/app/actions/project-rfis"
 import { ProjectActionsMenu } from "@/components/projects/project-actions-menu"
+import { ProjectEmailAddressCard } from "@/components/projects/project-email-address-card"
 import { ProjectWorkspaceShell } from "@/components/projects/project-workspace-shell"
 import {
   allowedWorkflowRoleIds,
@@ -342,6 +343,10 @@ export default async function ProjectSummaryPage({
             {project?.clientName && <> &middot; {project.clientName}</>}
             {project?.projectManager && <> &middot; {project.projectManager}</>}
           </p>
+        </div>
+
+        <div className="mb-4 sm:mb-5">
+          <ProjectEmailAddressCard projectId={id} compact />
         </div>
 
         <section className="mb-4 grid grid-cols-2 gap-x-5 gap-y-3 border-y py-3 sm:mb-5 lg:grid-cols-4">
