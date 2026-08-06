@@ -42,6 +42,7 @@ import {
   formatTemplateChecklist,
   groupTemplateChecklistItems
 } from "@/lib/templates/template-checklist-hierarchy"
+import { selectTemplateTodos } from "@/lib/templates/template-todo-selection"
 import { isOwnerScheduleView, type OwnerScheduleView } from "@/lib/schedule/owner-visibility"
 import type {
   TaskStatus,
@@ -513,6 +514,7 @@ export async function createTask(
     subVendorVisible?: boolean
     confirmationRequired?: boolean
     templateScheduleItemId?: string | null
+    templateTodoIds?: readonly string[]
   }
 ): Promise<
   | {
@@ -551,6 +553,22 @@ export async function createTask(
       return {
         success: false,
         error: "That published template schedule item is no longer available."
+      }
+    }
+    if (!templateImport && (data.templateTodoIds?.length ?? 0) > 0) {
+      return {
+        success: false,
+        error: "Choose a published template schedule item before adding template to-dos."
+      }
+    }
+    const todoSelection = selectTemplateTodos(
+      templateImport?.linkedTodos ?? [],
+      data.templateTodoIds ?? []
+    )
+    if (todoSelection.missingIds.length > 0) {
+      return {
+        success: false,
+        error: "One or more selected template to-dos are no longer available."
       }
     }
 
@@ -599,36 +617,37 @@ export async function createTask(
       createdAt: now,
       updatedAt: now
     }
-    const linkedTodoRows: (typeof projectOperations.$inferInsert)[] =
-      templateImport?.linkedTodos.map((todo) => ({
-        id: crypto.randomUUID(),
-        projectId,
-        sourceSystem: "compass_template",
-        sourceRecordType: "schedule_task",
-        sourceRecordId: id,
-        title: todo.title,
-        description: todo.description,
-        status: "open",
-        priority: "normal",
-        assigneeType: "internal",
-        startDate: data.startDate,
-        dueDate: endDate,
-        sageWriteStatus: "not_ready",
-        sagePayloadJson: JSON.stringify({
-          source: "project_template_schedule_item",
-          templateId: templateImport.templateId,
-          templateName: templateImport.templateName,
-          versionId: templateImport.versionId,
-          scheduleTemplateItemId: templateImport.scheduleTemplateItemId,
-          templateContentItemId: todo.templateContentItemId,
-          sourceItemId: todo.sourceItemId,
-          checklistItems: todo.checklistItems
-        }),
-        syncDirection: "write",
-        syncStatus: "compass_only",
-        createdAt: now,
-        updatedAt: now
-      })) ?? []
+    const linkedTodoRows: (typeof projectOperations.$inferInsert)[] = templateImport
+      ? todoSelection.selected.map((todo) => ({
+          id: crypto.randomUUID(),
+          projectId,
+          sourceSystem: "compass_template",
+          sourceRecordType: "schedule_task",
+          sourceRecordId: id,
+          title: todo.title,
+          description: todo.description,
+          status: "open",
+          priority: "normal",
+          assigneeType: "internal",
+          startDate: data.startDate,
+          dueDate: endDate,
+          sageWriteStatus: "not_ready",
+          sagePayloadJson: JSON.stringify({
+            source: "project_template_schedule_item",
+            templateId: templateImport.templateId,
+            templateName: templateImport.templateName,
+            versionId: templateImport.versionId,
+            scheduleTemplateItemId: templateImport.scheduleTemplateItemId,
+            templateContentItemId: todo.templateContentItemId,
+            sourceItemId: todo.sourceItemId,
+            checklistItems: todo.checklistItems
+          }),
+          syncDirection: "write",
+          syncStatus: "compass_only",
+          createdAt: now,
+          updatedAt: now
+        }))
+      : []
 
     if (linkedTodoRows.length > 0) {
       // Keep each to-do in its own prepared statement. D1 limits the number of

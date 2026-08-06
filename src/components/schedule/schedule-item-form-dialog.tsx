@@ -38,6 +38,7 @@ import {
   SelectValue
 } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Button } from "@/components/ui/button"
 import {
   createTask,
@@ -140,6 +141,8 @@ export function ScheduleItemFormDialog({
   const [templateLoading, setTemplateLoading] = useState(false)
   const [selectedTemplateId, setSelectedTemplateId] = useState("")
   const [selectedTemplateItemId, setSelectedTemplateItemId] = useState("")
+  const [selectedTemplateTodoIds, setSelectedTemplateTodoIds] = useState<readonly string[]>([])
+  const [templateTodosOpen, setTemplateTodosOpen] = useState(false)
 
   const existingPredecessors = useMemo(() => {
     if (!editingTask) return []
@@ -238,6 +241,8 @@ export function ScheduleItemFormDialog({
       setDetailsOpen(false)
       setSelectedTemplateId("")
       setSelectedTemplateItemId("")
+      setSelectedTemplateTodoIds([])
+      setTemplateTodosOpen(false)
     }
     setPendingPredecessors([])
   }, [assigneeOptions, editingTask, form, open])
@@ -277,6 +282,8 @@ export function ScheduleItemFormDialog({
 
   function applyTemplateScheduleItem(templateItemId: string): void {
     setSelectedTemplateItemId(templateItemId)
+    setSelectedTemplateTodoIds([])
+    setTemplateTodosOpen(false)
     const item = selectedTemplateGroup?.scheduleItems.find(
       (candidate) => candidate.id === templateItemId
     )
@@ -297,6 +304,8 @@ export function ScheduleItemFormDialog({
   function chooseTemplate(templateId: string): void {
     setSelectedTemplateId(templateId)
     setSelectedTemplateItemId("")
+    setSelectedTemplateTodoIds([])
+    setTemplateTodosOpen(false)
     form.setValue("title", "", { shouldDirty: true })
     form.setValue("workdays", 5, { shouldDirty: true })
     form.setValue("phase", "preconstruction", { shouldDirty: true })
@@ -314,6 +323,16 @@ export function ScheduleItemFormDialog({
     if (!watchedStart || !watchedWorkdays || watchedWorkdays < 1) return ""
     return calculateEndDate(watchedStart, watchedWorkdays, exceptions)
   }, [exceptions, watchedStart, watchedWorkdays])
+
+  function toggleTemplateTodo(todoId: string, selected: boolean): void {
+    setSelectedTemplateTodoIds((current) =>
+      selected
+        ? current.includes(todoId)
+          ? current
+          : [...current, todoId]
+        : current.filter((id) => id !== todoId)
+    )
+  }
 
   async function onSubmit(values: ScheduleItemFormValues) {
     const { notes, ...taskValues } = values
@@ -336,7 +355,8 @@ export function ScheduleItemFormDialog({
         ...taskValues,
         assignedTo: taskValues.assignedTo || undefined,
         assignedOptionId,
-        templateScheduleItemId: selectedTemplateItemId || null
+        templateScheduleItemId: selectedTemplateItemId || null,
+        templateTodoIds: selectedTemplateTodoIds
       })
       if (!result.success) {
         toast.error(result.error)
@@ -524,20 +544,86 @@ export function ScheduleItemFormDialog({
                     </div>
                   )}
                   {selectedTemplateGroup && selectedTemplateItemId && (
-                    <div className="mt-2 text-xs text-muted-foreground">
+                    <div className="mt-3 border-t pt-3">
                       {selectedTemplateGroup.linkedTodos.length > 0 ? (
-                        <>
-                          This will also create and link {selectedTemplateGroup.linkedTodos.length}{" "}
-                          template to-do
-                          {selectedTemplateGroup.linkedTodos.length === 1 ? "" : "s"}
-                          {selectedTemplateGroup.linkedTodos.some(
-                            (todo) => todo.checklistItemCount > 0
-                          )
-                            ? ", preserving their checklists."
-                            : "."}
-                        </>
+                        <Collapsible open={templateTodosOpen} onOpenChange={setTemplateTodosOpen}>
+                          <div className="flex items-center justify-between gap-3">
+                            <div>
+                              <p className="text-xs font-medium">Optional template to-dos</p>
+                              <p className="mt-0.5 text-[11px] text-muted-foreground">
+                                {selectedTemplateTodoIds.length} of{" "}
+                                {selectedTemplateGroup.linkedTodos.length} selected · none are added
+                                unless selected
+                              </p>
+                            </div>
+                            <CollapsibleTrigger asChild>
+                              <Button type="button" variant="outline" size="sm" className="h-8">
+                                Choose to-dos
+                                {templateTodosOpen ? (
+                                  <IconChevronDown className="ml-1 size-3.5" />
+                                ) : (
+                                  <IconChevronRight className="ml-1 size-3.5" />
+                                )}
+                              </Button>
+                            </CollapsibleTrigger>
+                          </div>
+                          <CollapsibleContent className="mt-3 border-y">
+                            <div className="flex items-center justify-end gap-1 border-b py-1">
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                className="h-7 px-2 text-xs"
+                                onClick={() =>
+                                  setSelectedTemplateTodoIds(
+                                    selectedTemplateGroup.linkedTodos.map((todo) => todo.id)
+                                  )
+                                }
+                              >
+                                Select all
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                className="h-7 px-2 text-xs"
+                                disabled={selectedTemplateTodoIds.length === 0}
+                                onClick={() => setSelectedTemplateTodoIds([])}
+                              >
+                                Clear
+                              </Button>
+                            </div>
+                            <div className="max-h-52 divide-y overflow-y-auto">
+                              {selectedTemplateGroup.linkedTodos.map((todo) => (
+                                <label
+                                  key={todo.id}
+                                  className="flex cursor-pointer items-start gap-3 py-2.5"
+                                >
+                                  <Checkbox
+                                    checked={selectedTemplateTodoIds.includes(todo.id)}
+                                    onCheckedChange={(value) =>
+                                      toggleTemplateTodo(todo.id, value === true)
+                                    }
+                                    aria-label={`Include ${todo.title}`}
+                                  />
+                                  <span className="min-w-0 flex-1">
+                                    <span className="block text-xs font-medium">{todo.title}</span>
+                                    {todo.checklistItemCount > 0 && (
+                                      <span className="mt-0.5 block text-[11px] text-muted-foreground">
+                                        Includes {todo.checklistItemCount} checklist item
+                                        {todo.checklistItemCount === 1 ? "" : "s"}
+                                      </span>
+                                    )}
+                                  </span>
+                                </label>
+                              ))}
+                            </div>
+                          </CollapsibleContent>
+                        </Collapsible>
                       ) : (
-                        "This template does not include any to-dos to link."
+                        <p className="text-xs text-muted-foreground">
+                          This template does not include any to-dos.
+                        </p>
                       )}
                     </div>
                   )}
@@ -1137,13 +1223,27 @@ export function ScheduleItemFormDialog({
             </div>
 
             {/* Footer */}
-            <div className="flex justify-end gap-2 px-5 py-3 border-t shrink-0">
-              <Button type="button" variant="ghost" size="sm" onClick={() => onOpenChange(false)}>
-                Cancel
-              </Button>
-              <Button type="submit" size="sm">
-                {isEditing ? "Save" : "Create"}
-              </Button>
+            <div className="flex items-center justify-between gap-3 px-5 py-3 border-t shrink-0">
+              <p className="text-[11px] text-muted-foreground">
+                {!isEditing && selectedTemplateItemId
+                  ? `1 schedule item + ${selectedTemplateTodoIds.length} to-do${
+                      selectedTemplateTodoIds.length === 1 ? "" : "s"
+                    }`
+                  : null}
+              </p>
+              <div className="flex justify-end gap-2">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => onOpenChange(false)}
+                >
+                  Cancel
+                </Button>
+                <Button type="submit" size="sm">
+                  {isEditing ? "Save" : "Create"}
+                </Button>
+              </div>
             </div>
           </form>
         </Form>
