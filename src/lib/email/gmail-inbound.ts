@@ -30,6 +30,7 @@ import {
   type InboundCandidate,
 } from "@/lib/email/gmail-message-parser"
 import { replyMailboxEmail } from "@/lib/email/reply-tracking"
+import { isReplyMessage } from "@/lib/email/reply-detection"
 import { canonicalRfiStatus } from "@/lib/rfis/status"
 
 type Db = ReturnType<typeof getDb>
@@ -293,27 +294,16 @@ async function insertInboundAudit(input: {
       receivedAt: input.candidate.receivedAt,
       importedAt: input.importedAt,
     })
-    .onConflictDoNothing({ target: inboundEmails.gmailMessageId })
-}
-
-async function isReplyThreadCreator(input: {
-  readonly db: Db
-  readonly createdBy: string | null
-  readonly fromAddress: string
-}): Promise<boolean> {
-  if (!input.createdBy) return false
-  const creator = await input.db
-    .select({ email: users.email, googleEmail: users.googleEmail })
-    .from(users)
-    .where(eq(users.id, input.createdBy))
-    .limit(1)
-    .then((rows) => rows[0] ?? null)
-  if (!creator) return false
-
-  const from = input.fromAddress.trim().toLowerCase()
-  return [creator.email, creator.googleEmail]
-    .filter((email): email is string => email !== null)
-    .some((email) => email.trim().toLowerCase() === from)
+    .onConflictDoUpdate({
+      target: inboundEmails.gmailMessageId,
+      set: {
+        projectId: input.projectId,
+        replyThreadId: input.replyThreadId,
+        matchedStatus: input.matchedStatus,
+        postedMessageId: input.postedMessageId,
+        importedAt: input.importedAt,
+      },
+    })
 }
 
 async function importCandidate(input: {
@@ -325,11 +315,17 @@ async function importCandidate(input: {
   "duplicate" | "ignored_outbound" | "needs_review" | "other_org" | "posted"
 > {
   const [duplicate] = await input.db
-    .select({ id: inboundEmails.id })
+    .select({
+      id: inboundEmails.id,
+      matchedStatus: inboundEmails.matchedStatus,
+    })
     .from(inboundEmails)
     .where(eq(inboundEmails.gmailMessageId, input.candidate.gmailMessageId))
     .limit(1)
-  if (duplicate) return "duplicate"
+  const retryMisclassifiedReply =
+    duplicate?.matchedStatus === "ignored_outbound" &&
+    isReplyMessage(input.candidate)
+  if (duplicate && !retryMisclassifiedReply) return "duplicate"
 
   const replyThread = input.candidate.token
     ? await input.db
@@ -345,14 +341,9 @@ async function importCandidate(input: {
     return "other_org"
   }
 
-  if (
-    replyThread &&
-    (await isReplyThreadCreator({
-      db: input.db,
-      createdBy: replyThread.createdBy,
-      fromAddress: input.candidate.fromAddress,
-    }))
-  ) {
+  // The generated mailto CCs Compass, so the original message also lands in
+  // this mailbox with the tracking token. Only replies should enter Compass.
+  if (replyThread && !isReplyMessage(input.candidate)) {
     await insertInboundAudit({
       db: input.db,
       organizationId: input.organizationId,
