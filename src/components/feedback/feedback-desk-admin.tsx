@@ -3,11 +3,16 @@
 import { useState, useTransition } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { IconExternalLink, IconRefresh } from "@tabler/icons-react"
+import {
+  IconBrandGithub,
+  IconExternalLink,
+  IconRefresh,
+} from "@tabler/icons-react"
 import { toast } from "sonner"
 
 import {
   runFeedbackAdminMaintenance,
+  setFeedbackGithubIssueCreationApproval,
   updateFeedbackAdminItem,
   type FeedbackAdminOverview,
 } from "@/app/actions/feedback-admin"
@@ -45,6 +50,7 @@ function RequestEditor({
 }>) {
   const router = useRouter()
   const [pending, startTransition] = useTransition()
+  const [approvalPending, startApprovalTransition] = useTransition()
   const [status, setStatus] = useState(knownFeedbackStatus(item.status))
   const [priority, setPriority] = useState(knownFeedbackPriority(item.priority))
   const [assignee, setAssignee] = useState(item.assignedToUserId ?? "")
@@ -81,6 +87,25 @@ function RequestEditor({
     })
   }
 
+  function setGithubCreationApproval(approved: boolean): void {
+    startApprovalTransition(async () => {
+      const result = await setFeedbackGithubIssueCreationApproval({
+        id: item.id,
+        approved,
+      })
+      if (!result.success) {
+        toast.error(result.error ?? "GitHub approval update failed")
+        return
+      }
+      toast.success(
+        approved
+          ? "New GitHub issue approved; run reconciliation when ready"
+          : "New GitHub issue approval removed",
+      )
+      router.refresh()
+    })
+  }
+
   return (
     <Card className={item.overdue ? "border-destructive/60" : undefined}>
       <CardHeader className="gap-2">
@@ -94,6 +119,12 @@ function RequestEditor({
           <div className="flex flex-wrap gap-2">
             {item.overdue && <Badge variant="destructive">SLA overdue</Badge>}
             {!item.assignedToUserId && <Badge variant="outline">Unassigned</Badge>}
+            {!item.githubIssueUrl && item.githubIssueCreationApprovedAt && (
+              <Badge>New GitHub issue approved</Badge>
+            )}
+            {!item.githubIssueUrl && !item.githubIssueCreationApprovedAt && (
+              <Badge variant="outline">GitHub review needed</Badge>
+            )}
             <Badge variant="secondary">{item.kind}</Badge>
           </div>
         </div>
@@ -163,6 +194,27 @@ function RequestEditor({
             />
           </label>
         </div>
+        {!item.githubIssueUrl && (
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-dashed p-3">
+            <p className="max-w-3xl text-xs text-muted-foreground">
+              If this work already exists, paste its GitHub issue or pull request above and save.
+              Approve a new issue only when the request is genuinely untracked.
+            </p>
+            <Button
+              size="sm"
+              variant={item.githubIssueCreationApprovedAt ? "outline" : "secondary"}
+              disabled={approvalPending}
+              onClick={() => setGithubCreationApproval(!item.githubIssueCreationApprovedAt)}
+            >
+              <IconBrandGithub />
+              {approvalPending
+                ? "Updating..."
+                : item.githubIssueCreationApprovedAt
+                  ? "Remove issue approval"
+                  : "Approve new issue"}
+            </Button>
+          </div>
+        )}
         <label className="block space-y-1 text-xs font-medium">
           Requester update (optional)
           <textarea
@@ -205,6 +257,12 @@ export function FeedbackDeskAdmin({ overview }: Readonly<{
   )
   const overdue = openItems.filter((item) => item.overdue).length
   const unassigned = openItems.filter((item) => !item.assignedToUserId).length
+  const githubReviewNeeded = overview.items.filter(
+    (item) => !item.githubIssueUrl && !item.githubIssueCreationApprovedAt,
+  ).length
+  const githubCreationApproved = overview.items.filter(
+    (item) => !item.githubIssueUrl && item.githubIssueCreationApprovedAt,
+  ).length
 
   function reconcile(): void {
     startTransition(async () => {
@@ -240,6 +298,19 @@ export function FeedbackDeskAdmin({ overview }: Readonly<{
         <Card><CardHeader><CardDescription>SLA overdue</CardDescription><CardTitle>{overdue}</CardTitle></CardHeader></Card>
         <Card><CardHeader><CardDescription>Failed bridge events</CardDescription><CardTitle>{overview.bridge.failed}</CardTitle></CardHeader></Card>
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">GitHub link preview</CardTitle>
+          <CardDescription>
+            {githubReviewNeeded} request{githubReviewNeeded === 1 ? "" : "s"} need review · {githubCreationApproved} approved for new issue creation
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="text-sm text-muted-foreground">
+          Reconciliation will synchronize existing links, but it will not create a missing
+          GitHub issue until an administrator approves that request below.
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>

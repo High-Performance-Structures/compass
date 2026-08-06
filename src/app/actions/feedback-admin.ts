@@ -72,6 +72,8 @@ export type FeedbackAdminOverview = Readonly<{
     slaTargetAt: string | null
     overdue: boolean
     githubIssueUrl: string | null
+    githubIssueCreationApprovedAt: string | null
+    githubIssueCreationApprovedBy: string | null
     githubDraftPullRequestUrl: string | null
     privacyScrubbedAt: string | null
     createdAt: string
@@ -159,6 +161,8 @@ export async function getFeedbackAdminOverview(): Promise<FeedbackAdminOverviewR
           slaTargetAt: item.slaTargetAt,
           overdue: feedbackIsOverdue(item.status, item.slaTargetAt),
           githubIssueUrl: item.githubIssueUrl,
+          githubIssueCreationApprovedAt: item.githubIssueCreationApprovedAt,
+          githubIssueCreationApprovedBy: item.githubIssueCreationApprovedBy,
           githubDraftPullRequestUrl: item.githubDraftPullRequestUrl,
           privacyScrubbedAt: item.privacyScrubbedAt,
           createdAt: item.createdAt,
@@ -207,6 +211,48 @@ export async function getFeedbackAdminOverview(): Promise<FeedbackAdminOverviewR
     return {
       success: false,
       error: error instanceof Error ? error.message : "Failed to load Feedback Desk",
+    }
+  }
+}
+
+export async function setFeedbackGithubIssueCreationApproval(
+  input: Readonly<{ id: string; approved: boolean }>,
+): Promise<Readonly<{ success: boolean; error?: string }>> {
+  try {
+    const parsed = z.object({
+      id: z.string().min(1),
+      approved: z.boolean(),
+    }).parse(input)
+    const admin = await requireFeedbackAdmin()
+    const { env } = await getCloudflareContext()
+    const db = getDb(env.DB)
+    const item = await db.select({
+      id: feedbackDeskItems.id,
+      githubIssueUrl: feedbackDeskItems.githubIssueUrl,
+    }).from(feedbackDeskItems).where(and(
+      eq(feedbackDeskItems.id, parsed.id),
+      eq(feedbackDeskItems.organizationId, admin.organizationId),
+    )).get()
+    if (!item) return { success: false, error: "Feedback request not found" }
+    if (item.githubIssueUrl) {
+      return { success: false, error: "This request already has a GitHub issue" }
+    }
+    const now = new Date().toISOString()
+    await db.update(feedbackDeskItems).set({
+      githubIssueCreationApprovedAt: parsed.approved ? now : null,
+      githubIssueCreationApprovedBy: parsed.approved ? admin.id : null,
+      updatedAt: now,
+    }).where(and(
+      eq(feedbackDeskItems.id, item.id),
+      eq(feedbackDeskItems.organizationId, admin.organizationId),
+    ))
+    revalidatePath("/dashboard/requests")
+    revalidatePath("/dashboard/requests/manage")
+    return { success: true }
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Approval update failed",
     }
   }
 }

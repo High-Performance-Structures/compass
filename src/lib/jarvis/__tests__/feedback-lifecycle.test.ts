@@ -12,6 +12,7 @@ import {
   knownFeedbackPriority,
   knownFeedbackStatus,
 } from "@/lib/jarvis/feedback-lifecycle"
+import { feedbackGithubLinkAction } from "@/lib/jarvis/feedback-maintenance"
 
 describe("Feedback Desk lifecycle", () => {
   it("uses staff-facing labels for every visible lifecycle state", () => {
@@ -104,5 +105,20 @@ describe("Feedback Desk lifecycle", () => {
   it("normalizes unexpected stored lifecycle values safely", () => {
     expect(knownFeedbackStatus("unexpected")).toBe("new")
     expect(knownFeedbackPriority("unexpected")).toBe("normal")
+  })
+
+  it("requires review before creating a missing historical GitHub issue", () => {
+    expect(feedbackGithubLinkAction({
+      githubIssueUrl: null,
+      githubIssueCreationApprovedAt: null,
+    })).toBe("review")
+    expect(feedbackGithubLinkAction({
+      githubIssueUrl: null,
+      githubIssueCreationApprovedAt: "2026-08-05T12:00:00.000Z",
+    })).toBe("create")
+    expect(feedbackGithubLinkAction({
+      githubIssueUrl: "https://github.com/example/compass/issues/1",
+      githubIssueCreationApprovedAt: null,
+    })).toBe("repair")
   })
 })

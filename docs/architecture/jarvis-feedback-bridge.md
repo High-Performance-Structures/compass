@@ -124,8 +124,11 @@ Feedback Desk's protected record and bridge payloads.
 GitHub issue and privacy boundary
 ---
 
-Every Feedback Desk item is mirrored to a GitHub issue and added to the
-`Compass Development & Feedback` GitHub Project. GitHub is deliberately a
+New Feedback Desk submissions are mirrored to a GitHub issue and added to the
+`Compass Development & Feedback` GitHub Project. Recovered historical requests
+without an existing link remain in an administrative preview until an
+administrator either maps existing work or explicitly approves creation of a
+new issue. GitHub is deliberately a
 minimal engineering tracker, not the system of record for a request. Its
 title and body contain only the request kind and an opaque `CFD-<UUID>`
 correlation reference. They never contain the submitted title or message,
@@ -366,15 +369,18 @@ handler signs a service-binding request to
 cookie-based authentication. Each run:
 
 1. recovers legacy feedback-widget rows and confirmed Ask Jarvis reports;
-2. creates or repairs opaque GitHub issue links and project membership;
+2. repairs existing GitHub links and creates missing issues only after
+   administrative approval;
 3. imports GitHub Project status and closing pull-request links;
 4. emits the normal private requester notifications for meaningful changes;
 5. backfills SLA targets and scrubs linked legacy widget issues; and
 6. stores run counts and reconciler health for the administrative dashboard.
 
 Administrators can run the same idempotent operation with **Reconcile now**.
-They can assign an active internal organization member, set priority and
-status, attach issue/PR links, and add a requester-facing explanation. SLA
+The GitHub link preview shows recovered requests that need review. Administrators
+can map an existing issue or pull request, or approve a new issue before the next
+reconciliation. They can also assign an active internal organization member,
+set priority and status, and add a requester-facing explanation. SLA
 targets are four hours for urgent, 24 hours for high, 72 hours for normal, and
 seven days for low priority. Existing requests are measured from their
 original submission time; resolved requests are never reported overdue.
@@ -440,7 +446,7 @@ other channel members when a message is stored.
 Rollout checklist
 ---
 
-1. Apply migrations through `0092_feedback_lifecycle_operations.sql`.
+1. Apply migrations through `0093_feedback_github_creation_approval.sql`.
 2. Create an active Jarvis service user in Compass.
 3. Add that user to the organization and `compass-feedback` channel.
 4. Configure the three `JARVIS_*` secrets/variables in Cloudflare.
@@ -459,9 +465,13 @@ Rollout checklist
     enabled source, and confirm each receipt returns only through its original
     source.
 14. Deploy the custom worker and confirm the `*/10 * * * *` trigger is listed.
-15. Run **Reconcile now**, verify the maintenance summary and three healthy
-    service cards, and inspect a legacy GitHub issue to confirm that its body
-    contains only the opaque `CFD-<UUID>` reference.
+15. Run **Reconcile now** and confirm missing historical links appear in the
+    GitHub review preview without creating issues.
+16. Map known existing work, approve one genuinely untracked request, run
+    **Reconcile now** again, and verify only that approved issue was created.
+17. Verify the maintenance summary and three healthy service cards, and inspect
+    a legacy GitHub issue to confirm that its body contains only the opaque
+    `CFD-<UUID>` reference.
 
 The bundled bridge helper includes a `configure` command for step 5. It
 generates the HMAC key on the private runtime and returns only RSA-encrypted

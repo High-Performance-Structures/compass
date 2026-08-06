@@ -21,7 +21,6 @@ import {
   type FeedbackTimelineEntry,
 } from "@/lib/jarvis/feedback-timeline"
 import { syncFeedbackDeskItemsFromGithub } from "@/lib/jarvis/feedback-github-sync"
-import { linkFeedbackDeskItemToGithub } from "@/lib/jarvis/feedback-github"
 import { requireOrg } from "@/lib/org-scope"
 import { canManageUserAccessRole } from "@/lib/user-roles"
 
@@ -119,7 +118,6 @@ const requestSelection = {
 
 async function recoverConfirmedFeedbackRequests(
   db: ReturnType<typeof getDb>,
-  env: CloudflareEnv,
   input: Readonly<{
     userId: string
     organizationId: string
@@ -162,7 +160,7 @@ async function recoverConfirmedFeedbackRequests(
     const report = confirmedFeedbackReportFromPayload(event.payload)
     if (!report) continue
     const candidate = feedbackCandidateFromReport(report)
-    const item = await enqueueFeedbackDeskItem(db, {
+    await enqueueFeedbackDeskItem(db, {
       organizationId: input.organizationId,
       source: "ask-jarvis",
       sourceId: event.id,
@@ -171,6 +169,7 @@ async function recoverConfirmedFeedbackRequests(
       description: candidate.description,
       reporterName: input.reporterName,
       reporterEmail: input.reporterEmail,
+      historicalImport: true,
       metadata: {
         externalActorId: input.userId,
         confirmationEventId: event.id,
@@ -178,7 +177,6 @@ async function recoverConfirmedFeedbackRequests(
         confirmedAt: event.createdAt,
       },
     })
-    await linkFeedbackDeskItemToGithub(db, env, item)
     existingSourceIds.add(event.id)
     recoveredCount += 1
   }
@@ -298,7 +296,7 @@ export async function refreshMyFeedbackRequests(
     const { email, googleEmail } = normalizedUserEmails(user)
     const { env } = await getCloudflareContext()
     const db = getDb(env.DB)
-    const recoveredCount = await recoverConfirmedFeedbackRequests(db, env, {
+    const recoveredCount = await recoverConfirmedFeedbackRequests(db, {
       userId: user.id,
       organizationId,
       reporterName: user.displayName,

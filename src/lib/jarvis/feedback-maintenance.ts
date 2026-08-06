@@ -29,11 +29,23 @@ export type FeedbackMaintenanceResult = Readonly<{
   processedCount: number
   recoveredCount: number
   linkedCount: number
+  missingLinkReviewCount: number
   syncedCount: number
   scrubbedCount: number
   slaBackfilledCount: number
   failedCount: number
 }>
+
+export function feedbackGithubLinkAction(
+  item: Pick<
+    FeedbackDeskItem,
+    "githubIssueUrl" | "githubIssueCreationApprovedAt"
+  >,
+): "repair" | "create" | "review" {
+  if (item.githubIssueUrl) return "repair"
+  if (item.githubIssueCreationApprovedAt) return "create"
+  return "review"
+}
 
 function objectValue(value: unknown): Record<string, unknown> | null {
   return typeof value === "object" && value !== null
@@ -99,6 +111,7 @@ async function recoverLegacyFeedback(
       reporterName: row.name,
       reporterEmail: row.email?.trim().toLowerCase() ?? null,
       githubIssueUrl: row.githubIssueUrl,
+      historicalImport: true,
       metadata: {
         legacyFeedback: true,
         recoveredAt: new Date().toISOString(),
@@ -147,6 +160,7 @@ async function recoverConfirmedPrompts(
       description: candidate.description,
       reporterName: reporter.name,
       reporterEmail: reporter.email,
+      historicalImport: true,
       metadata: {
         externalActorId: reporter.userId,
         confirmationEventId: event.id,
@@ -285,7 +299,13 @@ export async function runFeedbackMaintenance(
       ),
     )).orderBy(feedbackDeskItems.createdAt).limit(250)
     let linkedCount = 0
+    let missingLinkReviewCount = 0
     for (const item of items) {
+      const action = feedbackGithubLinkAction(item)
+      if (action === "review") {
+        missingLinkReviewCount += 1
+        continue
+      }
       const link = await linkFeedbackDeskItemToGithub(db, env, item)
       if (link) linkedCount += 1
       else failedCount += 1
@@ -318,6 +338,7 @@ export async function runFeedbackMaintenance(
       processedCount: allItems.length,
       recoveredCount,
       linkedCount,
+      missingLinkReviewCount,
       syncedCount,
       scrubbedCount: privacy.scrubbed,
       slaBackfilledCount,

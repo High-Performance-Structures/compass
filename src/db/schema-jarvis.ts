@@ -25,6 +25,8 @@ export const feedbackDeskItems = sqliteTable(
     threadId: text("thread_id"),
     githubIssueUrl: text("github_issue_url"),
     githubIssueNodeId: text("github_issue_node_id"),
+    githubIssueCreationApprovedAt: text("github_issue_creation_approved_at"),
+    githubIssueCreationApprovedBy: text("github_issue_creation_approved_by"),
     githubDraftPullRequestUrl: text("github_draft_pull_request_url"),
     assignedToUserId: text("assigned_to_user_id"),
     assignedToName: text("assigned_to_name"),
@@ -52,6 +54,11 @@ export const feedbackDeskItems = sqliteTable(
       table.organizationId,
       table.assignedToUserId,
       table.slaTargetAt,
+    ),
+    index("feedback_desk_github_review_idx").on(
+      table.organizationId,
+      table.githubIssueUrl,
+      table.githubIssueCreationApprovedAt,
     ),
   ],
 )
