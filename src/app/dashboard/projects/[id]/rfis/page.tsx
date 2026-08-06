@@ -1,8 +1,6 @@
 import Link from "next/link"
-import { redirect } from "next/navigation"
 import {
   IconArrowLeft,
-  IconCircleCheck,
   IconClock,
   IconMessageQuestion,
 } from "@tabler/icons-react"
@@ -10,7 +8,6 @@ import {
 import {
   getProjectRfiInboundEmails,
   getProjectRfis,
-  updateProjectRfi,
 } from "@/app/actions/project-rfis"
 import {
   getProjectContactsSummary,
@@ -24,11 +21,11 @@ import {
   type ProjectRfiEmailRecipientOption,
 } from "@/components/projects/project-rfi-communication-actions"
 import { ProjectRfiDeleteButton } from "@/components/projects/project-rfi-delete-button"
+import { ProjectRfiResponseComposer } from "@/components/projects/project-rfi-response-composer"
 import { ProjectTaskCreateButton } from "@/components/projects/project-task-create-button"
 import { ProjectQuickSwitcher } from "@/components/projects/project-quick-switcher"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Textarea } from "@/components/ui/textarea"
 import {
   canonicalRfiStatus,
   compareRfisForQueue,
@@ -39,16 +36,6 @@ import {
 } from "@/lib/rfis/status"
 import { cn } from "@/lib/utils"
 import { redirectIfFeaturePermissionDenied } from "@/lib/permission-redirect"
-
-function readFormText(formData: FormData, name: string): string {
-  const value = formData.get(name)
-  return typeof value === "string" ? value : ""
-}
-
-function cleanFormText(formData: FormData, name: string): string | null {
-  const value = readFormText(formData, name).trim()
-  return value.length > 0 ? value : null
-}
 
 function formatDate(value: string | null): string {
   if (!value) return "No due date"
@@ -213,26 +200,6 @@ export default async function ProjectRfisPage({
         : contact.displayName
     )
   )
-
-  async function updateRfiAction(formData: FormData): Promise<void> {
-    "use server"
-
-    const result = await updateProjectRfi(
-      id,
-      readFormText(formData, "rfiId"),
-      {
-        answer: cleanFormText(formData, "answer"),
-        status: readFormText(formData, "status"),
-        audience: readFormText(formData, "audience"),
-      }
-    )
-
-    if (!result.success) {
-      throw new Error(result.error)
-    }
-
-    redirect(`/dashboard/projects/${id}/rfis`)
-  }
 
   return (
     <div className="flex-1 space-y-6 p-4 pt-6 sm:p-6 md:p-8">
@@ -456,41 +423,12 @@ export default async function ProjectRfisPage({
                   </div>
                 ) : null}
 
-                <form action={updateRfiAction} className="mt-4 space-y-3">
-                  <input type="hidden" name="rfiId" value={rfi.id} />
-                  <Textarea
-                    name="answer"
-                    defaultValue=""
-                    placeholder="Add a response, decision, follow-up question, or next step"
-                  />
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_1fr_auto]">
-                    <select
-                      name="status"
-                      defaultValue={canonicalStatus}
-                      className="h-9 rounded-md border bg-background px-3 text-sm"
-                    >
-                      <option value="new">New</option>
-                      <option value="in_progress">In progress</option>
-                      <option value="info_needed">Additional information needed</option>
-                      <option value="complete">Complete</option>
-                      <option value="void">Void</option>
-                    </select>
-                    <select
-                      name="audience"
-                      defaultValue={rfi.audience}
-                      className="h-9 rounded-md border bg-background px-3 text-sm"
-                    >
-                      <option value="internal">Internal only</option>
-                      <option value="sub_vendor">Sub/vendor visible</option>
-                      <option value="owner">Owner visible</option>
-                      <option value="public">Owner and sub/vendor visible</option>
-                    </select>
-                    <Button type="submit" variant="outline">
-                      <IconCircleCheck className="size-4" />
-                      Save
-                    </Button>
-                  </div>
-                </form>
+                <ProjectRfiResponseComposer
+                  projectId={id}
+                  rfiId={rfi.id}
+                  status={canonicalStatus}
+                  audience={rfi.audience}
+                />
               </article>
             )
           })

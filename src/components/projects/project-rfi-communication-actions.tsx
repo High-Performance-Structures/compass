@@ -1,8 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { IconMail, IconMessageCircle, IconLoader2 } from "@tabler/icons-react"
-import Link from "next/link"
+import { IconMail, IconLoader2 } from "@tabler/icons-react"
 import { toast } from "sonner"
 
 import { createProjectRfiEmailDraft } from "@/app/actions/project-rfis"
@@ -83,12 +82,6 @@ export function ProjectRfiCommunicationActions({
 
   return (
     <>
-      <Button asChild type="button" size="sm" variant="outline">
-        <Link href={`/dashboard/conversations?projectId=${encodeURIComponent(projectId)}`}>
-          <IconMessageCircle className="size-4" />
-          Conversation
-        </Link>
-      </Button>
       <Button type="button" size="sm" variant="outline" onClick={openEmailDialog}>
         <IconMail className="size-4" />
         Email
@@ -100,7 +93,8 @@ export function ProjectRfiCommunicationActions({
             <DialogTitle>Email {rfiNumber}</DialogTitle>
             <DialogDescription>
               Opens your default email app. Compass is automatically copied so
-              replies can return to this RFI and its project conversation.
+              replies can return to this RFI. Use the response area on the RFI
+              for Compass messages and @mentions.
             </DialogDescription>
           </DialogHeader>
 

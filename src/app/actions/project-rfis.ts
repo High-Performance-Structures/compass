@@ -117,6 +117,7 @@ export type UpdateProjectRfiInput = {
   readonly answer: string | null
   readonly status: string
   readonly audience: string
+  readonly mentionedUserIds?: readonly string[]
 }
 
 export type ProjectRfiEmailDraftResult =
@@ -552,6 +553,7 @@ export async function updateProjectRfi(
         status,
         requesterName: existing.requesterName,
         assignedToName: existing.assignedToName,
+        mentionedUserIds: input.mentionedUserIds,
         updatedBy: user,
       })
     } catch (notificationError) {
@@ -634,7 +636,7 @@ export async function createProjectRfiEmailDraft(
         "",
         `Open in Compass: ${appOrigin(env)}/dashboard/projects/${encodeURIComponent(projectId)}/rfis?item=${encodeURIComponent(rfi.id)}`,
         "",
-        "Please keep Compass in CC (or use Reply All) so the response stays attached to this RFI and the project conversation.",
+        "Please keep Compass in CC (or use Reply All) so the response stays attached to this RFI.",
       ].join("\n"),
     })
 

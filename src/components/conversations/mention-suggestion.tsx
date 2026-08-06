@@ -186,15 +186,20 @@ const MentionList = React.forwardRef<
 
 MentionList.displayName = "MentionList"
 
-export function createMentionSuggestion(organizationId: string) {
+export function createMentionSuggestion(
+  organizationId: string,
+  options: { readonly peopleOnly?: boolean } = {}
+) {
   return {
     items: async ({ query }: { query: string }) => {
       // static entries
-      const staticItems: MentionItem[] = [
-        { id: "channel", label: "channel", type: "group" },
-        { id: "here", label: "here", type: "group" },
-        { id: "compass-agent", label: "Compass", type: "agent" },
-      ]
+      const staticItems: MentionItem[] = options.peopleOnly
+        ? []
+        : [
+            { id: "channel", label: "channel", type: "group" },
+            { id: "here", label: "here", type: "group" },
+            { id: "compass-agent", label: "Compass", type: "agent" },
+          ]
 
       // fetch users
       const usersResult = await searchMentionableUsers(query)

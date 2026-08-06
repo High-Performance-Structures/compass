@@ -13,6 +13,20 @@ describe("trackedMailtoHref", () => {
 
     expect(href).toContain("mailto:owner%40example.com")
     expect(href).toContain("cc=jarvis%2Bcmp-token%40hps-colorado.com")
-    expect(href).toContain("subject=%5BRFI-4%5D+Roof+framing")
+    expect(href).toContain("subject=%5BRFI-4%5D%20Roof%20framing")
+    expect(href).not.toContain("+")
+  })
+
+  it("percent-encodes spaces and line breaks for default mail apps", () => {
+    const href = trackedMailtoHref({
+      to: ["owner@example.com"],
+      cc: "jarvis@example.com",
+      subject: "RFI follow up",
+      body: "First line\n\nSecond line",
+    })
+
+    expect(href).toContain("subject=RFI%20follow%20up")
+    expect(href).toContain("body=First%20line%0A%0ASecond%20line")
+    expect(href).not.toContain("+")
   })
 })

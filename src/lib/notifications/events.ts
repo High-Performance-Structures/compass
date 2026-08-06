@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm"
+import { and, eq, inArray } from "drizzle-orm"
 
 import { getDb } from "@/db"
 import {
@@ -45,6 +45,7 @@ type RfiUpdatedNotificationInput = {
   readonly status: string
   readonly requesterName: string | null
   readonly assignedToName: string | null
+  readonly mentionedUserIds?: readonly string[]
   readonly updatedBy: AuthUser
 }
 
@@ -286,15 +287,49 @@ export async function notifyRfiUpdated(
 ): Promise<void> {
   const { env } = await getCloudflareContext()
   const db = getDb(env.DB)
-  const recipients = (
-    await projectAssignmentRecipients(
-      db,
-      input.organizationId,
-      input.projectId,
-      [input.requesterName, input.assignedToName]
+  const assignmentRecipients = await projectAssignmentRecipients(
+    db,
+    input.organizationId,
+    input.projectId,
+    [input.requesterName, input.assignedToName]
+  )
+  const recipients = new Map<string, NotificationRecipientInput>()
+  for (const recipient of assignmentRecipients) {
+    if (recipient.userId !== input.updatedBy.id) {
+      recipients.set(recipient.userId, recipient)
+    }
+  }
+  const mentionedUserIds = Array.from(
+    new Set(
+      (input.mentionedUserIds ?? []).filter(
+        (userId) => userId.length > 0 && userId !== input.updatedBy.id
+      )
     )
-  ).filter((recipient) => recipient.userId !== input.updatedBy.id)
-  if (recipients.length === 0) return
+  )
+  if (mentionedUserIds.length > 0) {
+    const mentionedUsers = await db
+      .select({
+        userId: users.id,
+        email: users.email,
+        googleEmail: users.googleEmail,
+      })
+      .from(users)
+      .innerJoin(
+        organizationMembers,
+        and(
+          eq(organizationMembers.userId, users.id),
+          eq(organizationMembers.organizationId, input.organizationId)
+        )
+      )
+      .where(and(inArray(users.id, mentionedUserIds), eq(users.isActive, true)))
+    for (const mentionedUser of mentionedUsers) {
+      recipients.set(mentionedUser.userId, {
+        userId: mentionedUser.userId,
+        email: mentionedUser.googleEmail?.trim() || mentionedUser.email,
+      })
+    }
+  }
+  if (recipients.size === 0) return
 
   await createNotificationEvent({
     organizationId: input.organizationId,
@@ -304,11 +339,11 @@ export async function notifyRfiUpdated(
     sourceId: input.rfiId,
     title: `${input.rfiNumber}: ${input.subject}`,
     body: `${input.updatedBy.displayName ?? input.updatedBy.email} updated this RFI to ${input.status.replace(/_/g, " ")}.`,
-    href: `/dashboard/projects/${input.projectId}/rfis`,
+    href: `/dashboard/projects/${input.projectId}/rfis?item=${encodeURIComponent(input.rfiId)}#rfi-${encodeURIComponent(input.rfiId)}`,
     priority: "normal",
     audience: "participants",
     createdBy: input.updatedBy.id,
-    recipients,
+    recipients: Array.from(recipients.values()),
     delivery: {
       inApp: true,
       email: true,
