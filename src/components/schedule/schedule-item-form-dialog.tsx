@@ -64,10 +64,11 @@ import { cn } from "@/lib/utils"
 import type { ProjectTaskAssigneeOption } from "@/app/actions/project-contacts"
 import { ProjectAssigneePicker } from "@/components/projects/project-assignee-picker"
 import { ScheduleItemLinks } from "@/components/schedule/schedule-item-links"
+import type { ScheduleTemplateImportGroup } from "@/app/actions/template-import-options"
 import {
-  getScheduleTemplateImportOptions,
-  type ScheduleTemplateImportGroup
-} from "@/app/actions/template-import-options"
+  clearScheduleTemplateImportOptions,
+  loadScheduleTemplateImportOptions
+} from "@/components/schedule/schedule-template-import-options-client"
 
 const phases = PHASE_ORDER.map((value) => ({
   value,
@@ -141,6 +142,8 @@ export function ScheduleItemFormDialog({
     readonly ScheduleTemplateImportGroup[] | null
   >(null)
   const [templateLoading, setTemplateLoading] = useState(false)
+  const [templateLoadError, setTemplateLoadError] = useState(false)
+  const [templateLoadAttempt, setTemplateLoadAttempt] = useState(0)
   const [selectedTemplateId, setSelectedTemplateId] = useState("")
   const [selectedTemplateItemId, setSelectedTemplateItemId] = useState("")
   const [selectedTemplateTodoIds, setSelectedTemplateTodoIds] = useState<readonly string[]>([])
@@ -178,14 +181,16 @@ export function ScheduleItemFormDialog({
     if (!open || isEditing || templateGroups !== null) return
     let cancelled = false
     setTemplateLoading(true)
-    void getScheduleTemplateImportOptions()
+    setTemplateLoadError(false)
+    void loadScheduleTemplateImportOptions()
       .then((groups) => {
         if (!cancelled) setTemplateGroups(groups)
       })
       .catch((error: unknown) => {
         console.error("Unable to load schedule template options", error)
         if (!cancelled) {
-          setTemplateGroups([])
+          setTemplateGroups(null)
+          setTemplateLoadError(true)
           toast.error("Unable to load published schedule templates.")
         }
       })
@@ -195,7 +200,7 @@ export function ScheduleItemFormDialog({
     return () => {
       cancelled = true
     }
-  }, [isEditing, open, templateGroups])
+  }, [isEditing, open, templateGroups, templateLoadAttempt])
 
   useEffect(() => {
     if (!open) return
@@ -521,6 +526,24 @@ export function ScheduleItemFormDialog({
                     <div className="flex items-center gap-2 text-xs text-muted-foreground">
                       <IconLoader2 className="size-3.5 animate-spin" />
                       Loading template schedule items…
+                    </div>
+                  ) : templateLoadError ? (
+                    <div className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
+                      <span>Compass could not load the published templates.</span>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="h-7 px-2 text-xs"
+                        onClick={() => {
+                          clearScheduleTemplateImportOptions()
+                          setTemplateLoadError(false)
+                          setTemplateGroups(null)
+                          setTemplateLoadAttempt((attempt) => attempt + 1)
+                        }}
+                      >
+                        Retry
+                      </Button>
                     </div>
                   ) : templateGroups?.length === 0 ? (
                     <p className="text-xs text-muted-foreground">

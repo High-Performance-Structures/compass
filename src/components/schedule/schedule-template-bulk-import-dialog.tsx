@@ -6,10 +6,11 @@ import { IconLoader2, IconTemplate } from "@tabler/icons-react"
 import { toast } from "sonner"
 
 import { importScheduleTemplateItems } from "@/app/actions/schedule"
+import type { ScheduleTemplateImportGroup } from "@/app/actions/template-import-options"
 import {
-  getScheduleTemplateImportOptions,
-  type ScheduleTemplateImportGroup
-} from "@/app/actions/template-import-options"
+  clearScheduleTemplateImportOptions,
+  loadScheduleTemplateImportOptions
+} from "@/components/schedule/schedule-template-import-options-client"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import {
@@ -62,8 +63,8 @@ export function ScheduleTemplateBulkImportDialog({
 }: ScheduleTemplateBulkImportDialogProps) {
   const router = useRouter()
   const [templateGroups, setTemplateGroups] = useState<
-    readonly ScheduleTemplateImportGroup[]
-  >([])
+    readonly ScheduleTemplateImportGroup[] | null
+  >(null)
   const [templateId, setTemplateId] = useState("")
   const [anchorDate, setAnchorDate] = useState(localDateValue)
   const [selectedItemIds, setSelectedItemIds] = useState<readonly string[]>([])
@@ -71,19 +72,26 @@ export function ScheduleTemplateBulkImportDialog({
     Readonly<Record<string, string>>
   >({})
   const [loading, setLoading] = useState(false)
+  const [loadError, setLoadError] = useState(false)
+  const [loadAttempt, setLoadAttempt] = useState(0)
   const [isImporting, startImporting] = useTransition()
 
   useEffect(() => {
     if (!open) return
     let cancelled = false
     setLoading(true)
-    void getScheduleTemplateImportOptions()
+    setLoadError(false)
+    void loadScheduleTemplateImportOptions()
       .then((groups) => {
         if (!cancelled) setTemplateGroups(groups)
       })
       .catch((error: unknown) => {
         console.error("Unable to load schedule template options", error)
-        if (!cancelled) toast.error("Unable to load published schedule templates.")
+        if (!cancelled) {
+          setTemplateGroups(null)
+          setLoadError(true)
+          toast.error("Unable to load published schedule templates.")
+        }
       })
       .finally(() => {
         if (!cancelled) setLoading(false)
@@ -91,7 +99,7 @@ export function ScheduleTemplateBulkImportDialog({
     return () => {
       cancelled = true
     }
-  }, [open])
+  }, [loadAttempt, open])
 
   useEffect(() => {
     if (open) return
@@ -101,7 +109,7 @@ export function ScheduleTemplateBulkImportDialog({
   }, [open])
 
   const selectedGroup = useMemo(
-    () => templateGroups.find((group) => group.templateId === templateId) ?? null,
+    () => templateGroups?.find((group) => group.templateId === templateId) ?? null,
     [templateGroups, templateId]
   )
   const selectedItemIdSet = useMemo(
@@ -215,7 +223,23 @@ export function ScheduleTemplateBulkImportDialog({
               <IconLoader2 className="mr-2 size-4 animate-spin" />
               Loading published templates…
             </div>
-          ) : templateGroups.length === 0 ? (
+          ) : loadError ? (
+            <div className="flex min-h-40 flex-col items-center justify-center gap-3 text-center text-sm text-muted-foreground">
+              <p>Compass could not load the published templates.</p>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  clearScheduleTemplateImportOptions()
+                  setLoadError(false)
+                  setTemplateGroups(null)
+                  setLoadAttempt((attempt) => attempt + 1)
+                }}
+              >
+                Retry
+              </Button>
+            </div>
+          ) : templateGroups?.length === 0 ? (
             <div className="flex min-h-40 items-center justify-center gap-3 text-sm text-muted-foreground">
               <IconTemplate className="size-5" />
               No published templates contain reusable schedule items.
@@ -230,7 +254,7 @@ export function ScheduleTemplateBulkImportDialog({
                       <SelectValue placeholder="Choose a published template" />
                     </SelectTrigger>
                     <SelectContent>
-                      {templateGroups.map((group) => (
+                      {templateGroups?.map((group) => (
                         <SelectItem key={group.templateId} value={group.templateId}>
                           {group.templateName}
                         </SelectItem>
