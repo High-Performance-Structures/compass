@@ -111,14 +111,27 @@ describe("Feedback Desk lifecycle", () => {
     expect(feedbackGithubLinkAction({
       githubIssueUrl: null,
       githubIssueCreationApprovedAt: null,
+      status: "new",
     })).toBe("review")
     expect(feedbackGithubLinkAction({
       githubIssueUrl: null,
       githubIssueCreationApprovedAt: "2026-08-05T12:00:00.000Z",
+      status: "new",
     })).toBe("create")
     expect(feedbackGithubLinkAction({
       githubIssueUrl: "https://github.com/example/compass/issues/1",
       githubIssueCreationApprovedAt: null,
+      status: "closed",
     })).toBe("repair")
+    expect(feedbackGithubLinkAction({
+      githubIssueUrl: null,
+      githubIssueCreationApprovedAt: null,
+      status: "deployed",
+    })).toBe("skip")
+    expect(feedbackGithubLinkAction({
+      githubIssueUrl: null,
+      githubIssueCreationApprovedAt: null,
+      status: "closed",
+    })).toBe("skip")
   })
 })

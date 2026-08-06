@@ -48,6 +48,28 @@ class RoutingTests(unittest.TestCase):
             "Your request was received.",
         )
 
+    def test_telegram_accepts_an_existing_prefixed_username(self) -> None:
+        event = {
+            "id": "event-telegram-username",
+            "eventType": "feedback.status_changed",
+            "source": "telegram",
+            "payload": {
+                "message": "Your request was closed.",
+                "reporter": {
+                    "externalActorId": "telegram:martinevogel"
+                },
+            },
+        }
+
+        with patch.object(MODULE, "send_via_hermes") as sender:
+            requires_ack = MODULE.deliver_event(event)
+
+        self.assertTrue(requires_ack)
+        sender.assert_called_once_with(
+            "telegram:martinevogel",
+            "Your request was closed.",
+        )
+
     def test_email_uses_the_original_sender_address(self) -> None:
         event = {
             "id": "event-2",
