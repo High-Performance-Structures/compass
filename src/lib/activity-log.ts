@@ -5,6 +5,7 @@ export const ACTIVITY_CATEGORIES = [
   "access",
   "account",
   "conversation",
+  "email",
   "file",
   "financial",
   "presence",
@@ -14,7 +15,7 @@ export const ACTIVITY_CATEGORIES = [
 export type ActivityCategory = (typeof ACTIVITY_CATEGORIES)[number]
 
 export type ActivityActor = {
-  readonly id: string
+  readonly id: string | null
   readonly email: string
   readonly displayName: string | null
   readonly firstName: string | null
@@ -26,6 +27,7 @@ type ActivityDb = ReturnType<typeof getDb>
 
 type RecordActivityInput = {
   readonly db: ActivityDb
+  readonly id?: string
   readonly organizationId: string
   readonly projectId?: string | null
   readonly actor: ActivityActor
@@ -61,7 +63,7 @@ export async function recordActivityEvent(
     await input.db
       .insert(activityEvents)
       .values({
-        id: crypto.randomUUID(),
+        id: input.id ?? crypto.randomUUID(),
         organizationId: input.organizationId,
         projectId: input.projectId ?? null,
         actorUserId: input.actor.id,
