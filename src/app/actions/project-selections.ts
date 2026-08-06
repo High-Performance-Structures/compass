@@ -11,26 +11,29 @@ import {
   projectFinishSelections,
   projectOperations,
   projects,
-  sageCostCodes,
+  sageCostCodes
 } from "@/db/schema"
 import { googleAuth } from "@/db/schema-google"
+import {
+  projectTemplateContentItems,
+  projectTemplates,
+  projectTemplateVersions
+} from "@/db/schema-templates"
 import { requireAuth } from "@/lib/auth"
 import { decrypt } from "@/lib/crypto"
 import { getCloudflareContext } from "@/lib/db"
 import { spreadsheetIdFromUrl } from "@/lib/financials/project-totals-import"
 import { SheetsClient } from "@/lib/google/client/sheets-client"
-import {
-  getGoogleConfig,
-  getGoogleCryptoSalt,
-  parseServiceAccountKey,
-} from "@/lib/google/config"
+import { getGoogleConfig, getGoogleCryptoSalt, parseServiceAccountKey } from "@/lib/google/config"
 import { requireOrg } from "@/lib/org-scope"
 import { requireFeaturePermission } from "@/lib/permission-enforcement"
 import {
   normalizeProjectNumber,
   parseFinishScheduleWorkbook,
-  type ParsedFinishSchedule,
+  type ParsedFinishSchedule
 } from "@/lib/selections/google-finish-schedule-import"
+import { buildProjectTemplateContentApplication } from "@/lib/templates/project-template-content-application"
+import { parseTemplateChoiceOptions } from "@/lib/templates/template-creation-import"
 
 export type ProjectSelectionStatus =
   | "needed"
@@ -141,6 +144,9 @@ export type CreateProjectSelectionInput = {
   readonly phaseCode: string | null
   readonly status: string | null
   readonly notes: string | null
+  readonly templateId?: string | null
+  readonly templateContentItemId?: string | null
+  readonly choiceOptions?: readonly string[]
 }
 
 export type UpdateProjectSelectionInput = CreateProjectSelectionInput & {
@@ -191,7 +197,7 @@ const PROJECT_SELECTION_STATUSES: readonly ProjectSelectionStatus[] = [
   "ordered",
   "installed",
   "unavailable",
-  "deferred",
+  "deferred"
 ]
 
 const ROOM_TYPE_OPTIONS: readonly string[] = [
@@ -222,7 +228,7 @@ const ROOM_TYPE_OPTIONS: readonly string[] = [
   "Pool / Spa",
   "Sauna / Wellness",
   "Outdoor Kitchen",
-  "Other",
+  "Other"
 ]
 
 const MANUFACTURER_OPTIONS: readonly string[] = [
@@ -245,7 +251,7 @@ const MANUFACTURER_OPTIONS: readonly string[] = [
   "Andersen Windows",
   "Marvin Windows",
   "James Hardie",
-  "Custom (see notes)",
+  "Custom (see notes)"
 ]
 
 const EXCLUDED_SELECTION_COST_DIVISIONS = new Set(["00", "01", "02"])
@@ -281,9 +287,7 @@ type FinishScheduleImportAccess = {
   readonly client: SheetsClient
 }
 
-async function finishScheduleImportAccess(
-  projectId: string
-): Promise<FinishScheduleImportAccess> {
+async function finishScheduleImportAccess(projectId: string): Promise<FinishScheduleImportAccess> {
   const user = await requireAuth()
   await requireFeaturePermission(user, "finish-selections", "update")
   const organizationId = requireOrg(user)
@@ -292,12 +296,7 @@ async function finishScheduleImportAccess(
   const projectRows = await db
     .select({ projectNumber: projects.projectNumber })
     .from(projects)
-    .where(
-      and(
-        eq(projects.id, projectId),
-        eq(projects.organizationId, organizationId)
-      )
-    )
+    .where(and(eq(projects.id, projectId), eq(projects.organizationId, organizationId)))
     .limit(1)
   const project = projectRows[0]
   if (!project) throw new Error("Project not found")
@@ -321,7 +320,7 @@ async function finishScheduleImportAccess(
     organizationId,
     projectNumber: project.projectNumber,
     googleEmail: user.googleEmail ?? user.email,
-    client: new SheetsClient(parseServiceAccountKey(keyJson)),
+    client: new SheetsClient(parseServiceAccountKey(keyJson))
   }
 }
 
@@ -341,10 +340,7 @@ async function loadFinishSchedule(
 ): Promise<LoadedFinishSchedule> {
   const workbookId = spreadsheetIdFromUrl(workbookUrl)
   if (!workbookId) throw new Error("Enter a valid Google Sheets workbook URL.")
-  const metadata = await access.client.getSpreadsheetMetadata(
-    access.googleEmail,
-    workbookId
-  )
+  const metadata = await access.client.getSpreadsheetMetadata(access.googleEmail, workbookId)
   const coverSheet = metadata.sheets.find(
     (sheet) => sheet.title.trim().toLowerCase() === "cover page"
   )
@@ -356,7 +352,7 @@ async function loadFinishSchedule(
     ? await access.client.getValues(access.googleEmail, {
         spreadsheetId: workbookId,
         range: quotedSheetRange(coverSheet.title, "A:K"),
-        valueRenderOption: "UNFORMATTED_VALUE",
+        valueRenderOption: "UNFORMATTED_VALUE"
       })
     : []
   const roomSheets = []
@@ -364,20 +360,20 @@ async function loadFinishSchedule(
     const values = await access.client.getValues(access.googleEmail, {
       spreadsheetId: workbookId,
       range: quotedSheetRange(sheet.title, "A:G"),
-      valueRenderOption: "UNFORMATTED_VALUE",
+      valueRenderOption: "UNFORMATTED_VALUE"
     })
     roomSheets.push({
       sheetId: sheet.sheetId,
       title: sheet.title,
       index: sheet.index,
-      values,
+      values
     })
   }
 
   return {
     workbookId,
     workbookTitle: metadata.title,
-    parsed: parseFinishScheduleWorkbook({ coverPageRows, roomSheets }),
+    parsed: parseFinishScheduleWorkbook({ coverPageRows, roomSheets })
   }
 }
 
@@ -411,7 +407,7 @@ function finishSchedulePreview(
     projectMatch,
     roomCount: loaded.parsed.rooms.length,
     selectionCount: loaded.parsed.selections.length,
-    warnings,
+    warnings
   }
 }
 
@@ -438,7 +434,12 @@ function importedSelectionIdentity(input: {
   readonly name: string
 }): string {
   return [input.sourceSheetName ?? "", input.category, input.name]
-    .map((value) => value.trim().toLowerCase().replace(/[^a-z0-9]+/g, " "))
+    .map((value) =>
+      value
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, " ")
+    )
     .join("|")
 }
 
@@ -491,6 +492,91 @@ function parseQuantity(value: string | null): number | null {
   return parsed
 }
 
+function normalizedChoiceOptions(values: readonly string[] | undefined): readonly string[] {
+  if (!values) return []
+  const unique = new Set<string>()
+  for (const value of values) {
+    const cleaned = value.trim()
+    if (!cleaned) continue
+    if (cleaned.length > 200) {
+      throw new Error("Template selection choices must be 200 characters or less.")
+    }
+    unique.add(cleaned)
+  }
+  if (unique.size > 200) {
+    throw new Error("A finish selection may have no more than 200 choices.")
+  }
+  return [...unique]
+}
+
+type PublishedTemplateSelection = {
+  readonly templateId: string
+  readonly templateContentItemId: string
+  readonly choiceOptions: readonly string[]
+}
+
+async function loadPublishedTemplateSelection(
+  db: ReturnType<typeof getDb>,
+  organizationId: string,
+  templateId: string,
+  templateContentItemId: string
+): Promise<PublishedTemplateSelection | null> {
+  const matches = await db
+    .select({
+      templateId: projectTemplates.id,
+      versionId: projectTemplateVersions.id,
+      templateContentItemId: projectTemplateContentItems.id
+    })
+    .from(projectTemplateContentItems)
+    .innerJoin(
+      projectTemplateVersions,
+      eq(projectTemplateVersions.id, projectTemplateContentItems.versionId)
+    )
+    .innerJoin(projectTemplates, eq(projectTemplates.id, projectTemplateVersions.templateId))
+    .where(
+      and(
+        eq(projectTemplates.id, templateId),
+        eq(projectTemplates.organizationId, organizationId),
+        eq(projectTemplates.lifecycleStatus, "active"),
+        eq(projectTemplates.reviewStatus, "verified"),
+        eq(projectTemplateVersions.status, "published"),
+        eq(projectTemplateVersions.versionNumber, projectTemplates.currentVersionNumber),
+        eq(projectTemplateContentItems.id, templateContentItemId),
+        eq(projectTemplateContentItems.moduleType, "selections")
+      )
+    )
+    .limit(1)
+  const match = matches[0]
+  if (!match) return null
+
+  const versionItems = await db
+    .select()
+    .from(projectTemplateContentItems)
+    .where(
+      and(
+        eq(projectTemplateContentItems.versionId, match.versionId),
+        eq(projectTemplateContentItems.moduleType, "selections")
+      )
+    )
+    .orderBy(asc(projectTemplateContentItems.sortOrder))
+  let nextId = 0
+  const build = buildProjectTemplateContentApplication({
+    applicationId: `selection-create:${templateContentItemId}`,
+    items: versionItems,
+    nextId: () => `selection-create:${nextId++}`
+  })
+  const selection = build.selections.find(
+    (candidate) => candidate.templateContentItemId === templateContentItemId
+  )
+  if (!selection) return null
+
+  return {
+    templateId: match.templateId,
+    templateContentItemId: match.templateContentItemId,
+    choiceOptions: parseTemplateChoiceOptions(selection.choiceOptionsJson)
+  }
+}
+
 function normalizedNumberText(value: number | null): string {
   return value === null ? "" : String(value)
 }
@@ -503,7 +589,11 @@ function changedTextField(
   label: string,
   before: string | null,
   after: string | null
-): { readonly field: string; readonly before: string; readonly after: string } | null {
+): {
+  readonly field: string
+  readonly before: string
+  readonly after: string
+} | null {
   const normalizedBefore = normalizedText(before)
   const normalizedAfter = normalizedText(after)
   if (normalizedBefore === normalizedAfter) return null
@@ -514,7 +604,11 @@ function changedNumberField(
   label: string,
   before: number | null,
   after: number | null
-): { readonly field: string; readonly before: string; readonly after: string } | null {
+): {
+  readonly field: string
+  readonly before: string
+  readonly after: string
+} | null {
   const normalizedBefore = normalizedNumberText(before)
   const normalizedAfter = normalizedNumberText(after)
   if (normalizedBefore === normalizedAfter) return null
@@ -534,9 +628,7 @@ function parseChoiceOptions(value: string | null): readonly string[] {
   }
 }
 
-function toSelectionItem(
-  row: typeof projectFinishSelections.$inferSelect
-): ProjectSelectionItem {
+function toSelectionItem(row: typeof projectFinishSelections.$inferSelect): ProjectSelectionItem {
   const status = isSelectionStatus(row.status) ? row.status : "needed"
   return {
     id: row.id,
@@ -569,7 +661,7 @@ function toSelectionItem(
     purchaseOrderOperationId: row.purchaseOrderOperationId,
     notes: row.notes,
     syncStatus: row.syncStatus,
-    updatedAt: row.updatedAt,
+    updatedAt: row.updatedAt
   }
 }
 
@@ -577,9 +669,12 @@ function summarizeSelections(
   roomRows: readonly (typeof projectFinishSelectionRooms.$inferSelect)[],
   selections: readonly ProjectSelectionItem[]
 ): ProjectSelectionsSummary {
-  const roomMap = new Map<string, ProjectSelectionRoom & {
-    readonly selections: ProjectSelectionItem[]
-  }>()
+  const roomMap = new Map<
+    string,
+    ProjectSelectionRoom & {
+      readonly selections: ProjectSelectionItem[]
+    }
+  >()
 
   for (const room of roomRows) {
     roomMap.set(room.roomName, {
@@ -593,7 +688,7 @@ function summarizeSelections(
       roomType: room.roomType,
       sortOrder: room.sortOrder,
       selectionCount: 0,
-      selections: [],
+      selections: []
     })
   }
 
@@ -615,14 +710,14 @@ function summarizeSelections(
       roomType: selection.roomType,
       sortOrder: roomMap.size + 1_000,
       selectionCount: 0,
-      selections: [selection],
+      selections: [selection]
     })
   }
 
   const rooms = Array.from(roomMap.values())
     .map((room) => ({
       ...room,
-      selectionCount: room.selections.length,
+      selectionCount: room.selections.length
     }))
     .sort((left, right) => {
       if (left.sortOrder !== right.sortOrder) {
@@ -635,30 +730,23 @@ function summarizeSelections(
     totalCount: selections.length,
     roomCount: rooms.length,
     sourceWorkbookCount: new Set(
-      rooms
-        .map((room) => room.sourceWorkbookId)
-        .filter((value): value is string => Boolean(value))
+      rooms.map((room) => room.sourceWorkbookId).filter((value): value is string => Boolean(value))
     ).size,
     needsDecisionCount: selections.filter((selection) =>
-      ["needed", "proposed", "owner_review", "unavailable"].includes(
-        selection.status
-      )
+      ["needed", "proposed", "owner_review", "unavailable"].includes(selection.status)
     ).length,
-    approvedCount: selections.filter((selection) => selection.status === "approved")
-      .length,
+    approvedCount: selections.filter((selection) => selection.status === "approved").length,
     pricingCount: selections.filter((selection) =>
       ["pricing", "rfq_sent"].includes(selection.status)
     ).length,
     orderedCount: selections.filter((selection) =>
       ["ordered", "installed"].includes(selection.status)
     ).length,
-    rooms,
+    rooms
   }
 }
 
-export async function getProjectSelections(
-  projectId: string
-): Promise<ProjectSelectionsSummary> {
+export async function getProjectSelections(projectId: string): Promise<ProjectSelectionsSummary> {
   const db = await verifyProjectAccess(projectId, "read")
   const [roomRows, selectionRows] = await Promise.all([
     db
@@ -683,7 +771,7 @@ export async function getProjectSelections(
         asc(projectFinishSelections.category),
         asc(projectFinishSelections.sortOrder),
         asc(projectFinishSelections.name)
-      ),
+      )
   ])
 
   return summarizeSelections(roomRows, selectionRows.map(toSelectionItem))
@@ -698,15 +786,13 @@ export async function previewProjectFinishScheduleImport(
     const loaded = await loadFinishSchedule(access, workbookUrl)
     return {
       success: true,
-      preview: finishSchedulePreview(loaded, access.projectNumber),
+      preview: finishSchedulePreview(loaded, access.projectNumber)
     }
   } catch (error) {
     return {
       success: false,
       error:
-        error instanceof Error
-          ? error.message
-          : "Unable to preview the finish schedule workbook.",
+        error instanceof Error ? error.message : "Unable to preview the finish schedule workbook."
     }
   }
 }
@@ -746,9 +832,7 @@ export async function importProjectFinishSchedule(
         .filter((room) => room.sourceSheetId !== null)
         .map((room) => [room.sourceSheetId, room])
     )
-    const importedSheetIds = new Set(
-      loaded.parsed.rooms.map((room) => String(room.sheetId))
-    )
+    const importedSheetIds = new Set(loaded.parsed.rooms.map((room) => String(room.sheetId)))
     for (const room of loaded.parsed.rooms) {
       const sourceSheetId = String(room.sheetId)
       const existing = roomsBySheetId.get(sourceSheetId)
@@ -761,7 +845,7 @@ export async function importProjectFinishSchedule(
             roomType: room.roomType,
             sortOrder: room.sortOrder,
             active: true,
-            updatedAt: now,
+            updatedAt: now
           })
           .where(eq(projectFinishSelectionRooms.id, existing.id))
       } else {
@@ -777,15 +861,12 @@ export async function importProjectFinishSchedule(
           sortOrder: room.sortOrder,
           active: true,
           createdAt: now,
-          updatedAt: now,
+          updatedAt: now
         })
       }
     }
     for (const staleRoom of existingRooms) {
-      if (
-        staleRoom.sourceSheetId !== null &&
-        importedSheetIds.has(staleRoom.sourceSheetId)
-      ) {
+      if (staleRoom.sourceSheetId !== null && importedSheetIds.has(staleRoom.sourceSheetId)) {
         continue
       }
       await access.db
@@ -809,10 +890,7 @@ export async function importProjectFinishSchedule(
         .filter((selection) => selection.sourceRecordId !== null)
         .map((selection) => [selection.sourceRecordId, selection])
     )
-    const selectionsByIdentity = new Map<
-      string,
-      (typeof projectFinishSelections.$inferSelect)[]
-    >()
+    const selectionsByIdentity = new Map<string, (typeof projectFinishSelections.$inferSelect)[]>()
     for (const selection of existingSelections) {
       const identity = importedSelectionIdentity(selection)
       const matches = selectionsByIdentity.get(identity) ?? []
@@ -824,7 +902,7 @@ export async function importProjectFinishSchedule(
         importedSelectionIdentity({
           sourceSheetName: selection.sheetName,
           category: selection.category,
-          name: selection.name,
+          name: selection.name
         })
       )
     )
@@ -839,12 +917,10 @@ export async function importProjectFinishSchedule(
       const identity = importedSelectionIdentity({
         sourceSheetName: selection.sheetName,
         category: selection.category,
-        name: selection.name,
+        name: selection.name
       })
       const exactMatch = selectionsBySourceRecordId.get(sourceRecordId)
-      const exactIdentity = exactMatch
-        ? importedSelectionIdentity(exactMatch)
-        : null
+      const exactIdentity = exactMatch ? importedSelectionIdentity(exactMatch) : null
       const stableMatch = (selectionsByIdentity.get(identity) ?? []).find(
         (candidate) => !usedSelectionIds.has(candidate.id)
       )
@@ -855,12 +931,12 @@ export async function importProjectFinishSchedule(
       const existing =
         unusedExactMatch && exactIdentity === identity
           ? unusedExactMatch
-          : stableMatch ??
+          : (stableMatch ??
             (unusedExactMatch &&
             exactIdentity !== null &&
             !incomingSelectionIdentities.has(exactIdentity)
               ? unusedExactMatch
-              : null)
+              : null))
       const sourceValues: ImportedSelectionSourceValues = {
         sourceSheetName: selection.sheetName,
         roomName: selection.roomName,
@@ -875,7 +951,7 @@ export async function importProjectFinishSchedule(
         notes: selection.notes,
         sortOrder: selection.sortOrder,
         lastSyncedAt: now,
-        updatedAt: now,
+        updatedAt: now
       }
       if (!existing) {
         await access.db.insert(projectFinishSelections).values({
@@ -889,7 +965,7 @@ export async function importProjectFinishSchedule(
           ownerVisible: false,
           ownerApproved: false,
           syncStatus: "imported",
-          createdAt: now,
+          createdAt: now
         })
         createdCount += 1
         continue
@@ -911,9 +987,7 @@ export async function importProjectFinishSchedule(
           ownerApproved: approvalNeedsReview ? false : existing.ownerApproved,
           approvedBy: approvalNeedsReview ? null : existing.approvedBy,
           approvedAt: approvalNeedsReview ? null : existing.approvedAt,
-          syncStatus: approvalNeedsReview
-            ? "selection_change_review"
-            : "imported",
+          syncStatus: approvalNeedsReview ? "selection_change_review" : "imported"
         })
         .where(eq(projectFinishSelections.id, existing.id))
       updatedCount += 1
@@ -925,9 +999,7 @@ export async function importProjectFinishSchedule(
     )
     for (const stale of staleSelections) {
       const canRemoveUntouchedSourceRow =
-        stale.syncStatus === "imported" &&
-        !stale.ownerApproved &&
-        stale.status === "needed"
+        stale.syncStatus === "imported" && !stale.ownerApproved && stale.status === "needed"
       if (!canRemoveUntouchedSourceRow) {
         conflictCount += 1
         continue
@@ -948,15 +1020,13 @@ export async function importProjectFinishSchedule(
       removedCount,
       conflictCount,
       staleCount,
-      roomCount: loaded.parsed.rooms.length,
+      roomCount: loaded.parsed.rooms.length
     }
   } catch (error) {
     return {
       success: false,
       error:
-        error instanceof Error
-          ? error.message
-          : "Unable to import the finish schedule workbook.",
+        error instanceof Error ? error.message : "Unable to import the finish schedule workbook."
     }
   }
 }
@@ -1008,7 +1078,7 @@ export async function getProjectSelectionOptions(
         description: sageCostCodes.description,
         displayLabel: sageCostCodes.displayLabel,
         divisionCode: sageCostCodes.divisionCode,
-        divisionDisplayLabel: sageCostCodes.divisionDisplayLabel,
+        divisionDisplayLabel: sageCostCodes.divisionDisplayLabel
       })
       .from(sageCostCodes)
       .where(eq(sageCostCodes.active, true))
@@ -1018,7 +1088,7 @@ export async function getProjectSelectionOptions(
         costCode: projectBudgetLines.costCode,
         description: projectBudgetLines.description,
         csiDivision: projectBudgetLines.csiDivision,
-        csiDivisionName: projectBudgetLines.csiDivisionName,
+        csiDivisionName: projectBudgetLines.csiDivisionName
       })
       .from(projectBudgetLines)
       .where(eq(projectBudgetLines.projectId, projectId))
@@ -1030,7 +1100,7 @@ export async function getProjectSelectionOptions(
         contactType: projectContacts.contactType,
         csiDivision: projectContacts.csiDivision,
         csiDivisionName: projectContacts.csiDivisionName,
-        primaryCostCode: projectContacts.primaryCostCode,
+        primaryCostCode: projectContacts.primaryCostCode
       })
       .from(projectContacts)
       .where(and(eq(projectContacts.projectId, projectId), eq(projectContacts.active, true)))
@@ -1040,10 +1110,10 @@ export async function getProjectSelectionOptions(
         manufacturer: projectFinishSelections.manufacturer,
         supplierName: projectFinishSelections.supplierName,
         costCode: projectFinishSelections.costCode,
-        category: projectFinishSelections.category,
+        category: projectFinishSelections.category
       })
       .from(projectFinishSelections)
-      .where(eq(projectFinishSelections.projectId, projectId)),
+      .where(eq(projectFinishSelections.projectId, projectId))
   ])
 
   const divisionMap = new Map<string, ProjectSelectionOption>()
@@ -1055,7 +1125,7 @@ export async function getProjectSelectionOptions(
     if (row.divisionCode && row.divisionDisplayLabel) {
       divisionMap.set(row.divisionCode, {
         value: row.divisionCode,
-        label: row.divisionDisplayLabel,
+        label: row.divisionDisplayLabel
       })
     }
 
@@ -1066,7 +1136,7 @@ export async function getProjectSelectionOptions(
       divisionCode: row.divisionCode,
       divisionLabel: row.divisionDisplayLabel,
       source: "sage",
-      needsSageReview: false,
+      needsSageReview: false
     })
   }
 
@@ -1076,7 +1146,7 @@ export async function getProjectSelectionOptions(
     if (row.csiDivision && row.csiDivisionName) {
       divisionMap.set(row.csiDivision, {
         value: row.csiDivision,
-        label: divisionLabel(row.csiDivision, row.csiDivisionName),
+        label: divisionLabel(row.csiDivision, row.csiDivisionName)
       })
     }
     if (!costCodeMap.has(row.costCode)) {
@@ -1087,23 +1157,20 @@ export async function getProjectSelectionOptions(
         divisionCode: row.csiDivision,
         divisionLabel: divisionLabel(row.csiDivision, row.csiDivisionName),
         source: "project_budget",
-        needsSageReview: true,
+        needsSageReview: true
       })
     }
   }
 
   for (const row of contactRows) {
-    if (
-      row.csiDivision &&
-      EXCLUDED_SELECTION_COST_DIVISIONS.has(row.csiDivision)
-    ) {
+    if (row.csiDivision && EXCLUDED_SELECTION_COST_DIVISIONS.has(row.csiDivision)) {
       continue
     }
 
     if (row.csiDivision && row.csiDivisionName) {
       divisionMap.set(row.csiDivision, {
         value: row.csiDivision,
-        label: divisionLabel(row.csiDivision, row.csiDivisionName),
+        label: divisionLabel(row.csiDivision, row.csiDivisionName)
       })
     }
   }
@@ -1118,7 +1185,7 @@ export async function getProjectSelectionOptions(
     if (!divisionMap.has(divisionCode)) {
       divisionMap.set(divisionCode, {
         value: divisionCode,
-        label: existingDivisionLabel,
+        label: existingDivisionLabel
       })
     }
 
@@ -1134,7 +1201,7 @@ export async function getProjectSelectionOptions(
         divisionCode,
         divisionLabel: existingDivisionLabel,
         source: "selection",
-        needsSageReview: true,
+        needsSageReview: true
       })
     }
   }
@@ -1144,7 +1211,7 @@ export async function getProjectSelectionOptions(
     ...contactRows
       .filter((row) => row.contactType === "supplier")
       .flatMap((row) => [row.companyName, row.displayName]),
-    ...selectionRows.flatMap((row) => [row.manufacturer, row.supplierName]),
+    ...selectionRows.flatMap((row) => [row.manufacturer, row.supplierName])
   ].filter((value): value is string => Boolean(value))
 
   return {
@@ -1155,7 +1222,7 @@ export async function getProjectSelectionOptions(
     ),
     costCodes: Array.from(costCodeMap.values()).sort((left, right) =>
       left.label.localeCompare(right.label)
-    ),
+    )
   }
 }
 
@@ -1200,12 +1267,12 @@ export async function requestSelectionCostCodeSageReview(
         sageWriteStatus: "needs_review",
         sagePayloadJson: JSON.stringify({
           source: "compass_finish_selection",
-          requestedCostCode: cleanedCostCode,
+          requestedCostCode: cleanedCostCode
         }),
         syncDirection: "write",
         syncStatus: "needs_review",
         createdAt: now,
-        updatedAt: now,
+        updatedAt: now
       })
     }
 
@@ -1213,7 +1280,7 @@ export async function requestSelectionCostCodeSageReview(
       .update(projectFinishSelections)
       .set({
         syncStatus: "needs_sage_review",
-        updatedAt: now,
+        updatedAt: now
       })
       .where(
         and(
@@ -1228,10 +1295,7 @@ export async function requestSelectionCostCodeSageReview(
   } catch (error) {
     return {
       success: false,
-      error:
-        error instanceof Error
-          ? error.message
-          : "Failed to request Sage cost code review",
+      error: error instanceof Error ? error.message : "Failed to request Sage cost code review"
     }
   }
 }
@@ -1241,11 +1305,33 @@ export async function createProjectSelection(
   input: CreateProjectSelectionInput
 ): Promise<ActionResult> {
   try {
+    const user = await requireAuth()
+    const organizationId = requireOrg(user)
     const db = await verifyProjectAccess(projectId, "update")
     const now = new Date().toISOString()
     const id = crypto.randomUUID()
     const roomName = requiredText(input.roomName, "Room")
     const roomType = cleanText(input.roomType)
+    const templateId = cleanText(input.templateId ?? null)
+    const templateContentItemId = cleanText(input.templateContentItemId ?? null)
+    if (Boolean(templateId) !== Boolean(templateContentItemId)) {
+      throw new Error("Choose both a template and one of its finish selections.")
+    }
+    const templateSelection =
+      templateId && templateContentItemId
+        ? await loadPublishedTemplateSelection(
+            db,
+            organizationId,
+            templateId,
+            templateContentItemId
+          )
+        : null
+    if (templateId && templateContentItemId && !templateSelection) {
+      throw new Error("That published template finish selection is no longer available.")
+    }
+    const choiceOptions = normalizedChoiceOptions(
+      templateSelection?.choiceOptions ?? input.choiceOptions
+    )
 
     await db
       .insert(projectFinishSelectionRooms)
@@ -1260,14 +1346,17 @@ export async function createProjectSelection(
         roomType,
         sortOrder: 1_000,
         createdAt: now,
-        updatedAt: now,
+        updatedAt: now
       })
       .onConflictDoNothing()
 
     await db.insert(projectFinishSelections).values({
       id,
       projectId,
-      sourceSystem: "compass",
+      sourceSystem: templateSelection ? "compass_template" : "compass",
+      sourceRecordId: templateSelection
+        ? `${templateSelection.templateId}:${templateSelection.templateContentItemId}`
+        : null,
       roomName,
       roomType,
       category: cleanText(input.category) ?? "Uncategorized",
@@ -1277,6 +1366,7 @@ export async function createProjectSelection(
       manufacturer: cleanText(input.manufacturer),
       model: cleanText(input.model),
       colorFinish: cleanText(input.colorFinish),
+      choiceOptionsJson: choiceOptions.length > 0 ? JSON.stringify(choiceOptions) : null,
       supplierName: cleanText(input.supplierName),
       productUrl: cleanText(input.productUrl),
       costCode: cleanText(input.costCode),
@@ -1285,7 +1375,7 @@ export async function createProjectSelection(
       notes: cleanText(input.notes),
       syncStatus: "manual",
       createdAt: now,
-      updatedAt: now,
+      updatedAt: now
     })
 
     revalidatePath(`/dashboard/projects/${projectId}/selections`)
@@ -1294,8 +1384,7 @@ export async function createProjectSelection(
   } catch (error) {
     return {
       success: false,
-      error:
-        error instanceof Error ? error.message : "Failed to create selection",
+      error: error instanceof Error ? error.message : "Failed to create selection"
     }
   }
 }
@@ -1355,7 +1444,7 @@ export async function updateProjectSelection(
       changedTextField("Cost code", existing.costCode, costCode),
       changedTextField("Phase", existing.phaseCode, phaseCode),
       changedTextField("Status", existing.status, status),
-      changedTextField("Notes", existing.notes, notes),
+      changedTextField("Notes", existing.notes, notes)
     ].filter((change) => change !== null)
 
     await db
@@ -1371,7 +1460,7 @@ export async function updateProjectSelection(
         roomType,
         sortOrder: 1_000,
         createdAt: now,
-        updatedAt: now,
+        updatedAt: now
       })
       .onConflictDoNothing()
 
@@ -1401,7 +1490,7 @@ export async function updateProjectSelection(
             : existing.sourceSystem === "google_sheets" && changes.length > 0
               ? "manual_edit"
               : existing.syncStatus,
-        updatedAt: now,
+        updatedAt: now
       })
       .where(
         and(
@@ -1419,7 +1508,7 @@ export async function updateProjectSelection(
         .select({
           projectManager: projects.projectManager,
           sageJobId: projects.sageJobId,
-          sageJobNumber: projects.sageJobNumber,
+          sageJobNumber: projects.sageJobNumber
         })
         .from(projects)
         .where(eq(projects.id, projectId))
@@ -1434,7 +1523,7 @@ export async function updateProjectSelection(
               "staff_task",
               "subcontractor_task",
               "supplier_task",
-              "schedule_task",
+              "schedule_task"
             ])
           )
         )
@@ -1443,7 +1532,7 @@ export async function updateProjectSelection(
         selectionId,
         selectionName: existing.name,
         changeReason,
-        changes,
+        changes
       }
 
       await db.insert(projectOperations).values({
@@ -1465,7 +1554,7 @@ export async function updateProjectSelection(
         syncDirection: "write",
         syncStatus: "compass_only",
         createdAt: now,
-        updatedAt: now,
+        updatedAt: now
       })
 
       await db.insert(projectOperations).values({
@@ -1486,7 +1575,7 @@ export async function updateProjectSelection(
         syncDirection: "write",
         syncStatus: "needs_review",
         createdAt: now,
-        updatedAt: now,
+        updatedAt: now
       })
 
       await db.insert(projectOperations).values({
@@ -1511,12 +1600,12 @@ export async function updateProjectSelection(
         sagePayloadJson: JSON.stringify({
           ...payload,
           taskRole: "project_manager",
-          linkedChangeOrderReviewId: changeOrderReviewId,
+          linkedChangeOrderReviewId: changeOrderReviewId
         }),
         syncDirection: "write",
         syncStatus: "compass_only",
         createdAt: now,
-        updatedAt: now,
+        updatedAt: now
       })
 
       await db.insert(projectOperations).values({
@@ -1541,12 +1630,12 @@ export async function updateProjectSelection(
         sagePayloadJson: JSON.stringify({
           ...payload,
           taskRole: "project_administrator",
-          linkedChangeLogId: logId,
+          linkedChangeLogId: logId
         }),
         syncDirection: "write",
         syncStatus: "compass_only",
         createdAt: now,
-        updatedAt: now,
+        updatedAt: now
       })
     }
 
@@ -1556,8 +1645,7 @@ export async function updateProjectSelection(
   } catch (error) {
     return {
       success: false,
-      error:
-        error instanceof Error ? error.message : "Failed to update selection",
+      error: error instanceof Error ? error.message : "Failed to update selection"
     }
   }
 }
@@ -1599,7 +1687,7 @@ export async function updateProjectSelectionStatus(
           status === "unavailable" && existing.status !== "unavailable"
             ? "selection_change_review"
             : existing.syncStatus,
-        updatedAt: now,
+        updatedAt: now
       })
       .where(
         and(
@@ -1616,7 +1704,7 @@ export async function updateProjectSelectionStatus(
         .select({
           projectManager: projects.projectManager,
           sageJobId: projects.sageJobId,
-          sageJobNumber: projects.sageJobNumber,
+          sageJobNumber: projects.sageJobNumber
         })
         .from(projects)
         .where(eq(projects.id, projectId))
@@ -1631,7 +1719,7 @@ export async function updateProjectSelectionStatus(
               "staff_task",
               "subcontractor_task",
               "supplier_task",
-              "schedule_task",
+              "schedule_task"
             ])
           )
         )
@@ -1644,8 +1732,8 @@ export async function updateProjectSelectionStatus(
         requiredFollowUp: [
           "Confirm product availability issue.",
           "Ask owner to select an alternate.",
-          "Review RFQ, PO, schedule, and change-order impact.",
-        ],
+          "Review RFQ, PO, schedule, and change-order impact."
+        ]
       }
 
       await db.insert(projectOperations).values({
@@ -1666,7 +1754,7 @@ export async function updateProjectSelectionStatus(
         syncDirection: "write",
         syncStatus: "needs_review",
         createdAt: now,
-        updatedAt: now,
+        updatedAt: now
       })
 
       await db.insert(projectOperations).values({
@@ -1691,12 +1779,12 @@ export async function updateProjectSelectionStatus(
         sagePayloadJson: JSON.stringify({
           ...payload,
           taskRole: "project_manager",
-          linkedUnavailableReviewId: reviewId,
+          linkedUnavailableReviewId: reviewId
         }),
         syncDirection: "write",
         syncStatus: "compass_only",
         createdAt: now,
-        updatedAt: now,
+        updatedAt: now
       })
 
       await db.insert(projectOperations).values({
@@ -1721,12 +1809,12 @@ export async function updateProjectSelectionStatus(
         sagePayloadJson: JSON.stringify({
           ...payload,
           taskRole: "project_administrator",
-          linkedUnavailableReviewId: reviewId,
+          linkedUnavailableReviewId: reviewId
         }),
         syncDirection: "write",
         syncStatus: "compass_only",
         createdAt: now,
-        updatedAt: now,
+        updatedAt: now
       })
     }
 
@@ -1736,8 +1824,7 @@ export async function updateProjectSelectionStatus(
   } catch (error) {
     return {
       success: false,
-      error:
-        error instanceof Error ? error.message : "Failed to update selection",
+      error: error instanceof Error ? error.message : "Failed to update selection"
     }
   }
 }
@@ -1752,7 +1839,7 @@ export async function deleteProjectSelection(
       .select({
         id: projectFinishSelections.id,
         status: projectFinishSelections.status,
-        ownerApproved: projectFinishSelections.ownerApproved,
+        ownerApproved: projectFinishSelections.ownerApproved
       })
       .from(projectFinishSelections)
       .where(
@@ -1771,7 +1858,7 @@ export async function deleteProjectSelection(
       return {
         success: false,
         error:
-          "Approved selections cannot be deleted. Change the selection status or create a change review instead.",
+          "Approved selections cannot be deleted. Change the selection status or create a change review instead."
       }
     }
 
@@ -1791,8 +1878,7 @@ export async function deleteProjectSelection(
   } catch (error) {
     return {
       success: false,
-      error:
-        error instanceof Error ? error.message : "Failed to delete selection",
+      error: error instanceof Error ? error.message : "Failed to delete selection"
     }
   }
 }

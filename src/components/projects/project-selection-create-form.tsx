@@ -2,12 +2,12 @@
 
 import * as React from "react"
 import { useRouter } from "next/navigation"
-import { IconCheck, IconPalette, IconPlus } from "@tabler/icons-react"
+import { IconCheck, IconLoader2, IconPalette, IconPlus, IconTemplate } from "@tabler/icons-react"
 
 import {
   createProjectSelection,
   type ProjectSelectionOptions,
-  type ProjectSelectionStatus,
+  type ProjectSelectionStatus
 } from "@/app/actions/project-selections"
 import { ProjectSelectionComboboxInput } from "@/components/projects/project-selection-combobox-input"
 import { Button } from "@/components/ui/button"
@@ -17,7 +17,7 @@ import {
   SelectContent,
   SelectItem,
   SelectTrigger,
-  SelectValue,
+  SelectValue
 } from "@/components/ui/select"
 import {
   Sheet,
@@ -25,9 +25,13 @@ import {
   SheetDescription,
   SheetHeader,
   SheetTitle,
-  SheetTrigger,
+  SheetTrigger
 } from "@/components/ui/sheet"
 import { Textarea } from "@/components/ui/textarea"
+import {
+  getFinishSelectionTemplateImportOptions,
+  type FinishSelectionTemplateImportGroup
+} from "@/app/actions/template-import-options"
 
 type FormState =
   | { readonly kind: "idle" }
@@ -48,13 +52,12 @@ const STATUS_OPTIONS: readonly {
   { value: "ordered", label: "Ordered" },
   { value: "installed", label: "Installed" },
   { value: "unavailable", label: "Unavailable" },
-  { value: "deferred", label: "Deferred" },
+  { value: "deferred", label: "Deferred" }
 ]
 
 const DOCUMENT_INPUT_CLASS =
   "rounded-none border-x-0 border-t-0 px-0 shadow-none focus-visible:border-foreground focus-visible:ring-0"
-const DOCUMENT_SELECT_CLASS =
-  "w-full rounded-none border-x-0 border-t-0 px-0 shadow-none"
+const DOCUMENT_SELECT_CLASS = "w-full rounded-none border-x-0 border-t-0 px-0 shadow-none"
 const DOCUMENT_TEXTAREA_CLASS =
   "rounded-none border-x-0 border-t-0 px-0 shadow-none focus-visible:border-foreground focus-visible:ring-0"
 
@@ -65,7 +68,7 @@ function fieldValue(formData: FormData, name: string): string | null {
 
 function Field({
   label,
-  children,
+  children
 }: {
   readonly label: string
   readonly children: React.ReactNode
@@ -84,7 +87,7 @@ export function ProjectSelectionCreateForm({
   roomName = "",
   roomType = "",
   triggerLabel = "New Selection",
-  triggerVariant = "default",
+  triggerVariant = "default"
 }: {
   readonly projectId: string
   readonly options: ProjectSelectionOptions
@@ -96,10 +99,16 @@ export function ProjectSelectionCreateForm({
   const router = useRouter()
   const [open, setOpen] = React.useState(false)
   const [status, setStatus] = React.useState<FormState>({ kind: "idle" })
-  const [selectionStatus, setSelectionStatus] =
-    React.useState<ProjectSelectionStatus>("needed")
+  const [selectionStatus, setSelectionStatus] = React.useState<ProjectSelectionStatus>("needed")
   const [selectedRoomType, setSelectedRoomType] = React.useState(roomType)
   const [division, setDivision] = React.useState("all")
+  const [templateGroups, setTemplateGroups] = React.useState<
+    readonly FinishSelectionTemplateImportGroup[] | null
+  >(null)
+  const [templateLoading, setTemplateLoading] = React.useState(false)
+  const [selectedTemplateId, setSelectedTemplateId] = React.useState("")
+  const [selectedTemplateSelectionId, setSelectedTemplateSelectionId] = React.useState("")
+  const [templateCostCode, setTemplateCostCode] = React.useState("")
   const formRef = React.useRef<HTMLFormElement | null>(null)
   const costCodeOptions = React.useMemo(
     () =>
@@ -108,17 +117,81 @@ export function ProjectSelectionCreateForm({
         : options.costCodes,
     [division, options.costCodes]
   )
+  const selectedTemplateGroup = React.useMemo(
+    () => templateGroups?.find((group) => group.templateId === selectedTemplateId) ?? null,
+    [selectedTemplateId, templateGroups]
+  )
+  const selectedTemplateSelection = React.useMemo(
+    () =>
+      selectedTemplateGroup?.selections.find(
+        (selection) => selection.id === selectedTemplateSelectionId
+      ) ?? null,
+    [selectedTemplateGroup, selectedTemplateSelectionId]
+  )
+
+  React.useEffect(() => {
+    if (!open || templateGroups !== null) return
+    let cancelled = false
+    setTemplateLoading(true)
+    void getFinishSelectionTemplateImportOptions()
+      .then((groups) => {
+        if (!cancelled) setTemplateGroups(groups)
+      })
+      .catch((error: unknown) => {
+        console.error("Unable to load finish selection templates", error)
+        if (!cancelled) {
+          setTemplateGroups([])
+          setStatus({
+            kind: "error",
+            message: "Unable to load published finish selection templates."
+          })
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setTemplateLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [open, templateGroups])
+
+  function setFormFieldValue(name: string, value: string): void {
+    const field = formRef.current?.elements.namedItem(name)
+    if (field instanceof HTMLInputElement || field instanceof HTMLTextAreaElement) {
+      field.value = value
+    }
+  }
+
+  function applyTemplateSelection(selectionId: string): void {
+    setSelectedTemplateSelectionId(selectionId)
+    const selection = selectedTemplateGroup?.selections.find(
+      (candidate) => candidate.id === selectionId
+    )
+    if (!selection) return
+    if (!roomName) {
+      const roomField = formRef.current?.elements.namedItem("roomName")
+      if (roomField instanceof HTMLInputElement && !roomField.value.trim()) {
+        roomField.value = selection.roomName
+      }
+    }
+    setFormFieldValue("category", selection.category)
+    setFormFieldValue("name", selection.title)
+    setFormFieldValue("description", selection.description ?? "")
+    setFormFieldValue("notes", selection.notes ?? "")
+    setTemplateCostCode(selection.costCode ?? "")
+  }
 
   function resetDraft(): void {
     formRef.current?.reset()
     setSelectionStatus("needed")
     setSelectedRoomType(roomType)
     setDivision("all")
+    setSelectedTemplateId("")
+    setSelectedTemplateSelectionId("")
+    setTemplateCostCode("")
   }
 
-  async function submitSelection(
-    event: React.FormEvent<HTMLFormElement>
-  ): Promise<void> {
+  async function submitSelection(event: React.FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault()
     setStatus({ kind: "saving" })
     const formData = new FormData(event.currentTarget)
@@ -138,6 +211,9 @@ export function ProjectSelectionCreateForm({
       phaseCode: fieldValue(formData, "phaseCode"),
       status: selectionStatus,
       notes: fieldValue(formData, "notes"),
+      templateId: selectedTemplateGroup?.templateId ?? null,
+      templateContentItemId: selectedTemplateSelection?.id ?? null,
+      choiceOptions: selectedTemplateSelection?.choiceOptions ?? []
     })
 
     if (!result.success) {
@@ -169,16 +245,81 @@ export function ProjectSelectionCreateForm({
         <SheetHeader className="border-b px-5 py-4">
           <SheetTitle>Add Finish Selection</SheetTitle>
           <SheetDescription>
-            Capture one selection with room context, product detail, and
-            Sage-ready cost coding.
+            Capture one selection with room context, product detail, and Sage-ready cost coding.
           </SheetDescription>
         </SheetHeader>
 
-        <form
-          ref={formRef}
-          onSubmit={submitSelection}
-          className="space-y-4 px-5 pb-6"
-        >
+        <form ref={formRef} onSubmit={submitSelection} className="space-y-4 px-5 pb-6">
+          <section className="border-y bg-muted/20 py-3">
+            <div className="mb-2 flex items-center gap-2 text-xs font-medium">
+              <IconTemplate className="size-4" />
+              Import choices from a published template
+            </div>
+            {templateLoading ? (
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <IconLoader2 className="size-3.5 animate-spin" />
+                Loading finish selection choices…
+              </div>
+            ) : templateGroups?.length === 0 ? (
+              <p className="text-xs text-muted-foreground">
+                No published templates contain reusable finish choices.
+              </p>
+            ) : (
+              <div className="grid gap-2 sm:grid-cols-2">
+                <Select
+                  value={selectedTemplateId}
+                  onValueChange={(value) => {
+                    setSelectedTemplateId(value)
+                    setSelectedTemplateSelectionId("")
+                    setTemplateCostCode("")
+                  }}
+                >
+                  <SelectTrigger aria-label="Choose finish selection template">
+                    <SelectValue placeholder="Choose template" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {(templateGroups ?? []).map((group) => (
+                      <SelectItem key={group.templateId} value={group.templateId}>
+                        {group.templateName}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Select
+                  value={selectedTemplateSelectionId}
+                  onValueChange={applyTemplateSelection}
+                  disabled={!selectedTemplateGroup}
+                >
+                  <SelectTrigger aria-label="Choose template finish selection">
+                    <SelectValue placeholder="Choose selection" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {(selectedTemplateGroup?.selections ?? []).map((selection) => (
+                      <SelectItem key={selection.id} value={selection.id}>
+                        {selection.title}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+            {selectedTemplateSelection && (
+              <div className="mt-3">
+                <p className="text-xs text-muted-foreground">
+                  These choices will be available to the client after the selection is made
+                  owner-visible.
+                </p>
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {selectedTemplateSelection.choiceOptions.map((choice) => (
+                    <span key={choice} className="border px-2 py-1 text-xs text-muted-foreground">
+                      {choice}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+          </section>
+
           <div className="flex flex-wrap items-center justify-between gap-3 border-b py-3 text-sm">
             <span className="font-medium">
               {roomName ? `${roomName} selection` : "Selection draft"}
@@ -201,10 +342,7 @@ export function ProjectSelectionCreateForm({
                 />
               </Field>
               <Field label="Room type">
-                <Select
-                  value={selectedRoomType}
-                  onValueChange={setSelectedRoomType}
-                >
+                <Select value={selectedRoomType} onValueChange={setSelectedRoomType}>
                   <SelectTrigger className={DOCUMENT_SELECT_CLASS}>
                     <SelectValue placeholder="Select room type" />
                   </SelectTrigger>
@@ -216,19 +354,13 @@ export function ProjectSelectionCreateForm({
                     ))}
                   </SelectContent>
                 </Select>
-                <input
-                  type="hidden"
-                  name="roomType"
-                  value={selectedRoomType}
-                />
+                <input type="hidden" name="roomType" value={selectedRoomType} />
               </Field>
               <Field label="Status">
                 <Select
                   value={selectionStatus}
                   onValueChange={(value) => {
-                    const next = STATUS_OPTIONS.find(
-                      (option) => option.value === value
-                    )
+                    const next = STATUS_OPTIONS.find((option) => option.value === value)
                     if (next) setSelectionStatus(next.value)
                   }}
                 >
@@ -257,11 +389,7 @@ export function ProjectSelectionCreateForm({
 
             <div className="grid gap-3 sm:grid-cols-[minmax(0,.65fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)]">
               <Field label="Qty">
-                <Input
-                  name="quantity"
-                  inputMode="decimal"
-                  className={DOCUMENT_INPUT_CLASS}
-                />
+                <Input name="quantity" inputMode="decimal" className={DOCUMENT_INPUT_CLASS} />
               </Field>
               <Field label="Manufacturer">
                 <ProjectSelectionComboboxInput
@@ -314,11 +442,13 @@ export function ProjectSelectionCreateForm({
               </Field>
               <Field label="Cost code">
                 <ProjectSelectionComboboxInput
+                  key={`selection-cost-code-${templateCostCode}`}
                   id="selection-cost-code"
                   name="costCode"
                   options={costCodeOptions}
                   placeholder="Search cost code"
                   emptyMessage="No cost codes in this division."
+                  defaultValue={templateCostCode}
                 />
               </Field>
               <Field label="Phase">
@@ -339,10 +469,7 @@ export function ProjectSelectionCreateForm({
               <Input name="description" className={DOCUMENT_INPUT_CLASS} />
             </Field>
             <Field label="Notes">
-              <Textarea
-                name="notes"
-                className={`min-h-24 ${DOCUMENT_TEXTAREA_CLASS}`}
-              />
+              <Textarea name="notes" className={`min-h-24 ${DOCUMENT_TEXTAREA_CLASS}`} />
             </Field>
           </div>
 
