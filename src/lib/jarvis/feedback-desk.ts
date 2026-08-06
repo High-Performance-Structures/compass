@@ -5,6 +5,7 @@ import {
   jarvisBridgeEvents,
   type FeedbackDeskItem,
 } from "@/db/schema-jarvis"
+import { feedbackSlaTarget } from "@/lib/jarvis/feedback-lifecycle"
 
 type CompassDb = ReturnType<typeof getDb>
 
@@ -132,6 +133,7 @@ export async function enqueueFeedbackDeskItem(
       metadata: input.metadata
         ? JSON.stringify(input.metadata)
         : null,
+      slaTargetAt: feedbackSlaTarget("normal"),
       createdAt: now,
       updatedAt: now,
     })

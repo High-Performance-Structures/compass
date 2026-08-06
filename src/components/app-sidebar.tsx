@@ -137,6 +137,12 @@ const NAV_MAIN = [
     icon: IconMessageReport,
   },
   {
+    title: "Feedback Desk",
+    url: "/dashboard/requests/manage",
+    icon: IconMessageReport,
+    adminOnly: true,
+  },
+  {
     title: "Files",
     url: "/dashboard/files",
     icon: IconFiles,
@@ -167,10 +173,12 @@ function SidebarNav({
   projects,
   canUseFieldDesk,
   canViewActivity,
+  canManageFeedback,
 }: {
   projects: ReadonlyArray<ProjectListItem>
   readonly canUseFieldDesk: boolean
   readonly canViewActivity: boolean
+  readonly canManageFeedback: boolean
 }) {
   const pathname = usePathname()
   const { state } = useSidebar()
@@ -203,7 +211,9 @@ function SidebarNav({
       : item
   )
   const navMain = NAV_MAIN.filter(
-    (item) => !item.internalOnly || canViewActivity
+    (item) =>
+      (!item.internalOnly || canViewActivity) &&
+      (!item.adminOnly || canManageFeedback)
   ).map((item) =>
     typeof item.projectPath === "string"
       ? {
@@ -256,6 +266,7 @@ export function AppSidebar({
   activeOrgName = null,
   canUseFieldDesk = false,
   canViewActivity = false,
+  canManageFeedback = false,
   ...props
 }: React.ComponentProps<typeof Sidebar> & {
   readonly projects?: ReadonlyArray<ProjectListItem>
@@ -264,6 +275,7 @@ export function AppSidebar({
   readonly activeOrgName?: string | null
   readonly canUseFieldDesk?: boolean
   readonly canViewActivity?: boolean
+  readonly canManageFeedback?: boolean
 }) {
   const { isMobile } = useSidebar()
   const { channelId } = useVoiceState()
@@ -278,6 +290,7 @@ export function AppSidebar({
           projects={projects}
           canUseFieldDesk={canUseFieldDesk}
           canViewActivity={canViewActivity}
+          canManageFeedback={canManageFeedback}
         />
       </SidebarContent>
       <SidebarFooter className="border-t border-sidebar-border/60">

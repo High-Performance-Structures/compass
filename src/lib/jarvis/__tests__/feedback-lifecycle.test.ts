@@ -7,6 +7,10 @@ import {
   feedbackRequesterUpdateKind,
   feedbackStatusMessage,
   feedbackStatusUsesEmail,
+  feedbackIsOverdue,
+  feedbackSlaTarget,
+  knownFeedbackPriority,
+  knownFeedbackStatus,
 } from "@/lib/jarvis/feedback-lifecycle"
 
 describe("Feedback Desk lifecycle", () => {
@@ -81,5 +85,24 @@ describe("Feedback Desk lifecycle", () => {
         "https://github.com/High-Performance-Structures/compass/pull/43",
       ),
     ).toBe("draft_pull_request_updated")
+  })
+
+  it("sets tighter response targets for higher priorities", () => {
+    const start = new Date("2026-08-05T12:00:00.000Z")
+    expect(feedbackSlaTarget("urgent", start)).toBe("2026-08-05T16:00:00.000Z")
+    expect(feedbackSlaTarget("normal", start)).toBe("2026-08-08T12:00:00.000Z")
+    expect(feedbackSlaTarget("low", start)).toBe("2026-08-12T12:00:00.000Z")
+  })
+
+  it("flags overdue open work but never resolved work", () => {
+    const now = new Date("2026-08-05T12:00:00.000Z")
+    expect(feedbackIsOverdue("in_progress", "2026-08-05T11:59:59.000Z", now)).toBe(true)
+    expect(feedbackIsOverdue("deployed", "2026-08-05T11:59:59.000Z", now)).toBe(false)
+    expect(feedbackIsOverdue("new", null, now)).toBe(false)
+  })
+
+  it("normalizes unexpected stored lifecycle values safely", () => {
+    expect(knownFeedbackStatus("unexpected")).toBe("new")
+    expect(knownFeedbackPriority("unexpected")).toBe("normal")
   })
 })

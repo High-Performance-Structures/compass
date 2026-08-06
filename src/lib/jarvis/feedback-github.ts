@@ -22,12 +22,18 @@ type GitHubFeedbackConfig = Readonly<{
 type GitHubIssueResponse = Readonly<{
   html_url?: unknown
   node_id?: unknown
+  state?: unknown
 }>
 
 type GraphqlResponse = Readonly<{
   errors?: ReadonlyArray<Readonly<{ message?: unknown }>>
   data?: Readonly<{
     viewer?: Readonly<{
+      projectsV2?: Readonly<{
+        nodes?: ReadonlyArray<Readonly<{ id?: unknown; title?: unknown }>>
+      }>
+    }>
+    organization?: Readonly<{
       projectsV2?: Readonly<{
         nodes?: ReadonlyArray<Readonly<{ id?: unknown; title?: unknown }>>
       }>
@@ -81,14 +87,14 @@ async function feedbackProjectId(
 
   const result = await githubGraphql(
     config,
-    `query FeedbackProject($first: Int!) {
-      viewer {
+    `query FeedbackProject($owner: String!, $first: Int!) {
+      organization(login: $owner) {
         projectsV2(first: $first) { nodes { id title } }
       }
     }`,
-    { first: 100 },
+    { owner: config.repo.split("/")[0] ?? "", first: 100 },
   )
-  const projects = result?.data?.viewer?.projectsV2?.nodes ?? []
+  const projects = result?.data?.organization?.projectsV2?.nodes ?? []
   const matchingProject = projects.find(
     (project) => project.title === GITHUB_FEEDBACK_PROJECT_TITLE,
   )
@@ -137,8 +143,34 @@ export async function linkFeedbackDeskItemToGithub(
   if (!config) return null
 
   if (item.githubIssueUrl) {
-    if (item.githubIssueNodeId) {
-      await addIssueToFeedbackProject(config, item.githubIssueNodeId)
+    let nodeId = item.githubIssueNodeId
+    if (!nodeId) {
+      const match = item.githubIssueUrl.match(
+        /^https:\/\/github\.com\/([^/]+\/[^/]+)\/issues\/(\d+)(?:\/|$)/,
+      )
+      if (match?.[1] === config.repo && match[2]) {
+        try {
+          const response = await fetch(
+            `https://api.github.com/repos/${config.repo}/issues/${match[2]}`,
+            { headers: githubHeaders(config.token) },
+          )
+          if (response.ok) {
+            const issue = await response.json() as GitHubIssueResponse
+            if (typeof issue.node_id === "string") {
+              nodeId = issue.node_id
+              await db.update(feedbackDeskItems).set({
+                githubIssueNodeId: nodeId,
+                updatedAt: new Date().toISOString(),
+              }).where(eq(feedbackDeskItems.id, item.id))
+            }
+          }
+        } catch {
+          // The next maintenance run will retry this safe lookup.
+        }
+      }
+    }
+    if (nodeId) {
+      await addIssueToFeedbackProject(config, nodeId)
     }
     return item.githubIssueUrl
   }

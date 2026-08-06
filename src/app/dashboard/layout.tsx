@@ -34,6 +34,7 @@ import {
   canUseAskCompass,
   canUseFieldDesk,
   canUseOfficeTalk,
+  canManageUserAccess,
 } from "@/lib/permissions"
 import { isInternalStaffRole } from "@/lib/user-roles"
 
@@ -60,6 +61,7 @@ export default async function DashboardLayout({
     ? isInternalStaffRole(authUser.role)
     : false
   const canUseDirectMessages = canViewActivity
+  const canManageFeedback = canManageUserAccess(authUser)
   const offlineScopeKey =
     authUser?.organizationId && authUser.id
       ? `${authUser.organizationId}:${authUser.id}`
@@ -97,6 +99,7 @@ export default async function DashboardLayout({
           activeOrgName={activeOrgName}
           canUseFieldDesk={canUseCompassFieldDesk}
           canViewActivity={canViewActivity}
+          canManageFeedback={canManageFeedback}
         />
         <SidebarInset className="overflow-hidden">
           <DesktopOfflineBanner />

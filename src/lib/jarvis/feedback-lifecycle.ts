@@ -12,6 +12,17 @@ export const FEEDBACK_DESK_STATUSES = [
 export type FeedbackDeskStatus =
   (typeof FEEDBACK_DESK_STATUSES)[number]
 
+export const FEEDBACK_PRIORITIES = ["low", "normal", "high", "urgent"] as const
+export type FeedbackPriority = (typeof FEEDBACK_PRIORITIES)[number]
+
+export function knownFeedbackStatus(value: string): FeedbackDeskStatus {
+  return FEEDBACK_DESK_STATUSES.find((status) => status === value) ?? "new"
+}
+
+export function knownFeedbackPriority(value: string): FeedbackPriority {
+  return FEEDBACK_PRIORITIES.find((priority) => priority === value) ?? "normal"
+}
+
 export type FeedbackStaffStage =
   | "submitted"
   | "triaged"
@@ -122,5 +133,42 @@ export function feedbackStatusUsesEmail(
     status === "needs_info" ||
     status === "testing" ||
     status === "deployed"
+  )
+}
+
+const SLA_HOURS_BY_PRIORITY = {
+  low: 168,
+  normal: 72,
+  high: 24,
+  urgent: 4,
+} as const
+
+export function feedbackSlaTarget(
+  priority: string,
+  from = new Date(),
+): string {
+  const hours =
+    priority === "urgent" ||
+    priority === "high" ||
+    priority === "normal" ||
+    priority === "low"
+      ? SLA_HOURS_BY_PRIORITY[priority]
+      : SLA_HOURS_BY_PRIORITY.normal
+  return new Date(from.getTime() + hours * 60 * 60 * 1_000).toISOString()
+}
+
+export function feedbackIsResolved(status: string): boolean {
+  return status === "deployed" || status === "closed"
+}
+
+export function feedbackIsOverdue(
+  status: string,
+  slaTargetAt: string | null,
+  now = new Date(),
+): boolean {
+  return (
+    !feedbackIsResolved(status) &&
+    slaTargetAt !== null &&
+    new Date(slaTargetAt).getTime() < now.getTime()
   )
 }

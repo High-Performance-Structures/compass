@@ -21,7 +21,11 @@ import {
   type FeedbackTimelineEntry,
 } from "@/lib/jarvis/feedback-timeline"
 import { syncFeedbackDeskItemsFromGithub } from "@/lib/jarvis/feedback-github-sync"
+import { linkFeedbackDeskItemToGithub } from "@/lib/jarvis/feedback-github"
 import { requireOrg } from "@/lib/org-scope"
+import { canManageUserAccessRole } from "@/lib/user-roles"
+
+export type FeedbackRequestScope = "mine" | "all"
 
 export type MyFeedbackRequest = {
   readonly id: string
@@ -30,8 +34,12 @@ export type MyFeedbackRequest = {
   readonly priority: string
   readonly title: string
   readonly description: string
+  readonly reporterName: string | null
   readonly githubIssueUrl: string | null
   readonly githubDraftPullRequestUrl: string | null
+  readonly assignedToName: string | null
+  readonly slaTargetAt: string | null
+  readonly lastRequesterUpdateAt: string | null
   readonly createdAt: string
   readonly updatedAt: string
 }
@@ -44,6 +52,8 @@ type MyFeedbackRequestsResult =
   | {
       readonly success: true
       readonly data: readonly MyFeedbackRequest[]
+      readonly scope: FeedbackRequestScope
+      readonly canViewAll: boolean
     }
   | { readonly success: false; readonly error: string }
 
@@ -96,15 +106,20 @@ const requestSelection = {
   priority: feedbackDeskItems.priority,
   title: feedbackDeskItems.title,
   description: feedbackDeskItems.description,
+  reporterName: feedbackDeskItems.reporterName,
   githubIssueUrl: feedbackDeskItems.githubIssueUrl,
   githubDraftPullRequestUrl:
     feedbackDeskItems.githubDraftPullRequestUrl,
+  assignedToName: feedbackDeskItems.assignedToName,
+  slaTargetAt: feedbackDeskItems.slaTargetAt,
+  lastRequesterUpdateAt: feedbackDeskItems.lastRequesterUpdateAt,
   createdAt: feedbackDeskItems.createdAt,
   updatedAt: feedbackDeskItems.updatedAt,
 }
 
 async function recoverConfirmedFeedbackRequests(
   db: ReturnType<typeof getDb>,
+  env: CloudflareEnv,
   input: Readonly<{
     userId: string
     organizationId: string
@@ -147,7 +162,7 @@ async function recoverConfirmedFeedbackRequests(
     const report = confirmedFeedbackReportFromPayload(event.payload)
     if (!report) continue
     const candidate = feedbackCandidateFromReport(report)
-    await enqueueFeedbackDeskItem(db, {
+    const item = await enqueueFeedbackDeskItem(db, {
       organizationId: input.organizationId,
       source: "ask-jarvis",
       sourceId: event.id,
@@ -163,13 +178,20 @@ async function recoverConfirmedFeedbackRequests(
         confirmedAt: event.createdAt,
       },
     })
+    await linkFeedbackDeskItemToGithub(db, env, item)
     existingSourceIds.add(event.id)
     recoveredCount += 1
   }
   return recoveredCount
 }
 
-export async function getMyFeedbackRequests(): Promise<MyFeedbackRequestsResult> {
+function canViewAllRequests(role: string): boolean {
+  return role === "developer" || canManageUserAccessRole(role)
+}
+
+export async function getMyFeedbackRequests(
+  scope: FeedbackRequestScope = "mine",
+): Promise<MyFeedbackRequestsResult> {
   try {
     const user = await requireAuth()
     const organizationId = requireOrg(user)
@@ -177,19 +199,28 @@ export async function getMyFeedbackRequests(): Promise<MyFeedbackRequestsResult>
     const db = getDb(env.DB)
     const { email, googleEmail } = normalizedUserEmails(user)
 
+    const canViewAll = canViewAllRequests(user.role)
+    const viewAll = scope === "all" && canViewAll
     const rows = await db
       .select(requestSelection)
       .from(feedbackDeskItems)
       .where(
         and(
           eq(feedbackDeskItems.organizationId, organizationId),
-          reporterFilter(user.id, email, googleEmail)
+          viewAll
+            ? sql`1 = 1`
+            : reporterFilter(user.id, email, googleEmail)
         )
       )
       .orderBy(desc(feedbackDeskItems.updatedAt))
       .limit(100)
 
-    return { success: true, data: rows }
+    return {
+      success: true,
+      data: rows,
+      scope: viewAll ? "all" : "mine",
+      canViewAll,
+    }
   } catch (error) {
     return {
       success: false,
@@ -217,7 +248,9 @@ export async function getMyFeedbackRequest(
         and(
           eq(feedbackDeskItems.id, requestId),
           eq(feedbackDeskItems.organizationId, organizationId),
-          reporterFilter(user.id, email, googleEmail),
+          canViewAllRequests(user.role)
+            ? sql`1 = 1`
+            : reporterFilter(user.id, email, googleEmail),
         ),
       )
       .get()
@@ -256,26 +289,31 @@ export async function getMyFeedbackRequest(
   }
 }
 
-export async function refreshMyFeedbackRequests(): Promise<FeedbackRefreshResult> {
+export async function refreshMyFeedbackRequests(
+  scope: FeedbackRequestScope = "mine",
+): Promise<FeedbackRefreshResult> {
   try {
     const user = await requireAuth()
     const organizationId = requireOrg(user)
     const { email, googleEmail } = normalizedUserEmails(user)
     const { env } = await getCloudflareContext()
     const db = getDb(env.DB)
-    const recoveredCount = await recoverConfirmedFeedbackRequests(db, {
+    const recoveredCount = await recoverConfirmedFeedbackRequests(db, env, {
       userId: user.id,
       organizationId,
       reporterName: user.displayName,
       reporterEmail: email,
     })
+    const viewAll = scope === "all" && canViewAllRequests(user.role)
     const rows = await db
       .select()
       .from(feedbackDeskItems)
       .where(
         and(
           eq(feedbackDeskItems.organizationId, organizationId),
-          reporterFilter(user.id, email, googleEmail),
+          viewAll
+            ? sql`1 = 1`
+            : reporterFilter(user.id, email, googleEmail),
         ),
       )
       .orderBy(desc(feedbackDeskItems.updatedAt))
