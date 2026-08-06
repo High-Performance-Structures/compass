@@ -1,7 +1,7 @@
 "use server"
 
 import { getCloudflareContext } from "@/lib/db"
-import { eq, and, sql, ne } from "drizzle-orm"
+import { eq, and, sql, ne, inArray } from "drizzle-orm"
 import { getDb } from "@/db"
 import {
   channels,
@@ -18,20 +18,10 @@ import { revalidatePath } from "next/cache"
 import { requireOrg } from "@/lib/org-scope"
 import { isDemoUser } from "@/lib/demo"
 import { isInternalStaffRole } from "@/lib/user-roles"
-
-async function directChannelId(
-  organizationId: string,
-  firstUserId: string,
-  secondUserId: string
-): Promise<string> {
-  const participants = [firstUserId, secondUserId].sort().join(":")
-  const bytes = new TextEncoder().encode(`${organizationId}:${participants}`)
-  const digest = await crypto.subtle.digest("SHA-256", bytes)
-  const hash = Array.from(new Uint8Array(digest))
-    .map((byte) => byte.toString(16).padStart(2, "0"))
-    .join("")
-  return `direct-${hash.slice(0, 32)}`
-}
+import {
+  directChannelId,
+  directParticipantIds,
+} from "@/lib/conversations/direct-channel"
 
 async function ensureChannelMember(
   db: ReturnType<typeof getDb>,
@@ -134,7 +124,7 @@ export async function listDirectMessageRecipients() {
   }
 }
 
-export async function createDirectMessage(targetUserId: string) {
+export async function createDirectMessage(targetUserIds: readonly string[]) {
   try {
     const user = await getCurrentUser()
     if (!user || !isInternalStaffRole(user.role)) {
@@ -143,14 +133,20 @@ export async function createDirectMessage(targetUserId: string) {
     if (isDemoUser(user.id)) {
       return { success: false, error: "DEMO_READ_ONLY" }
     }
-    if (targetUserId === user.id) {
-      return { success: false, error: "Choose another team member" }
+    const requestedTargetIds = Array.from(
+      new Set(targetUserIds.filter((targetUserId) => targetUserId !== user.id))
+    )
+    if (requestedTargetIds.length === 0) {
+      return { success: false, error: "Choose at least one team member" }
+    }
+    if (requestedTargetIds.length > 20) {
+      return { success: false, error: "Choose no more than 20 team members" }
     }
 
     const organizationId = requireOrg(user)
     const { env } = await getCloudflareContext()
     const db = getDb(env.DB)
-    const target = await db
+    const targets = await db
       .select({
         id: users.id,
         name: users.displayName,
@@ -165,18 +161,19 @@ export async function createDirectMessage(targetUserId: string) {
           eq(organizationMembers.organizationId, organizationId)
         )
       )
-      .where(and(eq(users.id, targetUserId), eq(users.isActive, true)))
-      .get()
+      .where(
+        and(inArray(users.id, requestedTargetIds), eq(users.isActive, true))
+      )
 
-    if (!target || !isInternalStaffRole(target.role)) {
-      return { success: false, error: "Team member not found" }
+    if (
+      targets.length !== requestedTargetIds.length ||
+      targets.some((target) => !isInternalStaffRole(target.role))
+    ) {
+      return { success: false, error: "One or more team members were not found" }
     }
 
-    const channelId = await directChannelId(
-      organizationId,
-      user.id,
-      target.id
-    )
+    const participantIds = directParticipantIds(user.id, requestedTargetIds)
+    const channelId = await directChannelId(organizationId, participantIds)
     const now = new Date().toISOString()
     const existingChannel = await db
       .select({ id: channels.id })
@@ -185,11 +182,18 @@ export async function createDirectMessage(targetUserId: string) {
       .get()
 
     if (!existingChannel) {
+      const participantNames = [
+        user.displayName ?? user.email,
+        ...targets.map((target) => target.name ?? target.email),
+      ].sort((first, second) => first.localeCompare(second))
       await db.insert(channels).values({
         id: channelId,
-        name: `${user.displayName ?? user.email} · ${target.name ?? target.email}`,
+        name: participantNames.join(" · "),
         type: "text",
-        description: "Private direct message",
+        description:
+          participantIds.length === 2
+            ? "Private direct message"
+            : "Private group message",
         organizationId,
         projectId: null,
         categoryId: null,
@@ -203,8 +207,9 @@ export async function createDirectMessage(targetUserId: string) {
       })
     }
 
-    await ensureChannelMember(db, channelId, user.id, now)
-    await ensureChannelMember(db, channelId, target.id, now)
+    for (const participantId of participantIds) {
+      await ensureChannelMember(db, channelId, participantId, now)
+    }
 
     revalidatePath("/dashboard/conversations")
     return { success: true, data: { channelId } }

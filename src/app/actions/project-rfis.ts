@@ -1,10 +1,16 @@
 "use server"
 
-import { and, asc, eq } from "drizzle-orm"
+import { and, asc, desc, eq } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
 import { getDb } from "@/db"
-import { projectRfiAttachments, projectRfis, projects } from "@/db/schema"
+import {
+  emailReplyThreads,
+  inboundEmails,
+  projectRfiAttachments,
+  projectRfis,
+  projects,
+} from "@/db/schema"
 import {
   notifyRfiCreated,
   notifyRfiUpdated,
@@ -12,8 +18,15 @@ import {
 import { requireAuth } from "@/lib/auth"
 import type { AuthUser } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
+import { trackedMailtoHref } from "@/lib/email/mailto"
+import {
+  appendReplyTokenText,
+  createEmailReplyThread,
+} from "@/lib/email/reply-tracking"
 import { requireOrg } from "@/lib/org-scope"
 import { requireFeaturePermission } from "@/lib/permission-enforcement"
+import { appendRfiCommunication } from "@/lib/rfis/communication"
+import { isInternalStaffRole } from "@/lib/user-roles"
 import {
   validRfiAudience,
   validRfiPriority,
@@ -27,6 +40,15 @@ export type ProjectRfiAttachmentItem = {
   readonly fileSize: number
   readonly storageUrl: string | null
   readonly storageStatus: string
+}
+
+export type ProjectRfiInboundEmailItem = {
+  readonly id: string
+  readonly rfiId: string
+  readonly from: string
+  readonly subject: string
+  readonly body: string
+  readonly receivedAt: string
 }
 
 export type ProjectRfiItem = {
@@ -64,6 +86,7 @@ type ProjectRfiActionResult =
 
 type ProjectUpdateContext = {
   readonly db: ReturnType<typeof getDb>
+  readonly env: unknown
   readonly user: AuthUser
   readonly orgId: string
   readonly projectNumber: string | null
@@ -95,6 +118,14 @@ export type UpdateProjectRfiInput = {
   readonly status: string
   readonly audience: string
 }
+
+export type ProjectRfiEmailDraftResult =
+  | {
+      readonly success: true
+      readonly href: string
+      readonly trackingAddress: string
+    }
+  | { readonly success: false; readonly error: string }
 
 async function verifyProjectAccess(
   projectId: string
@@ -146,7 +177,7 @@ async function getProjectUpdateContext(
     throw new Error("Project not found")
   }
 
-  return { db, user, orgId, projectNumber: existing[0].projectNumber }
+  return { db, env, user, orgId, projectNumber: existing[0].projectNumber }
 }
 
 function cleanText(value: string | null): string | null {
@@ -305,6 +336,49 @@ export async function getProjectRfis(
   return rows.map((row) => toRfiItem(row, attachmentsByRfi.get(row.id) ?? []))
 }
 
+export async function getProjectRfiInboundEmails(
+  projectId: string
+): Promise<readonly ProjectRfiInboundEmailItem[]> {
+  const user = await requireAuth()
+  await requireFeaturePermission(user, "rfis", "read")
+  if (!isInternalStaffRole(user.role)) return []
+  const db = await verifyProjectAccess(projectId)
+  const rows = await db
+    .select({
+      id: inboundEmails.id,
+      rfiId: emailReplyThreads.sourceId,
+      fromAddress: inboundEmails.fromAddress,
+      fromName: inboundEmails.fromName,
+      subject: inboundEmails.subject,
+      textBody: inboundEmails.textBody,
+      snippet: inboundEmails.snippet,
+      receivedAt: inboundEmails.receivedAt,
+    })
+    .from(inboundEmails)
+    .innerJoin(
+      emailReplyThreads,
+      eq(emailReplyThreads.id, inboundEmails.replyThreadId)
+    )
+    .where(
+      and(
+        eq(inboundEmails.projectId, projectId),
+        eq(inboundEmails.matchedStatus, "posted"),
+        eq(emailReplyThreads.sourceType, "rfi")
+      )
+    )
+    .orderBy(desc(inboundEmails.receivedAt))
+
+  return rows.map((row) => ({
+    id: row.id,
+    rfiId: row.rfiId,
+    from: row.fromName ?? row.fromAddress,
+    subject: row.subject,
+    body:
+      row.textBody?.trim() || row.snippet?.trim() || "Email reply received.",
+    receivedAt: row.receivedAt,
+  }))
+}
+
 export async function createProjectRfi(
   projectId: string,
   input: CreateProjectRfiInput
@@ -411,6 +485,8 @@ export async function updateProjectRfi(
       .select({
         rfiNumber: projectRfis.rfiNumber,
         subject: projectRfis.subject,
+        answer: projectRfis.answer,
+        answeredAt: projectRfis.answeredAt,
         requesterName: projectRfis.requesterName,
         assignedToName: projectRfis.assignedToName,
       })
@@ -428,7 +504,15 @@ export async function updateProjectRfi(
     }
 
     const now = new Date().toISOString()
-    const answer = cleanText(input.answer)
+    const response = cleanText(input.answer)
+    const answer = response
+      ? appendRfiCommunication({
+          existing: existing.answer,
+          message: response,
+          author: user.displayName ?? user.email,
+          occurredAt: now,
+        })
+      : existing.answer
     const requestedStatus = validRfiStatus(input.status)
     const audience = validRfiAudience(input.audience)
     if (!requestedStatus) {
@@ -438,14 +522,17 @@ export async function updateProjectRfi(
       return { success: false, error: "Please choose a valid RFI audience." }
     }
     const status =
-      answer && requestedStatus === "new" ? "in_progress" : requestedStatus
+      response && requestedStatus === "new" ? "in_progress" : requestedStatus
     await db
       .update(projectRfis)
       .set({
         answer,
         status,
         audience,
-        answeredAt: status === "complete" ? now : null,
+        answeredAt:
+          response || status === "complete"
+            ? existing.answeredAt ?? now
+            : existing.answeredAt,
         updatedAt: now,
       })
       .where(and(eq(projectRfis.id, rfiId), eq(projectRfis.projectId, projectId)))
@@ -476,6 +563,96 @@ export async function updateProjectRfi(
     return {
       success: false,
       error: error instanceof Error ? error.message : "Failed to update RFI",
+    }
+  }
+}
+
+function validEmail(value: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)
+}
+
+function appOrigin(env: unknown): string {
+  if (typeof env === "object" && env !== null) {
+    const value = Reflect.get(env, "NEXT_PUBLIC_APP_URL")
+    if (typeof value === "string" && value.trim()) return value.replace(/\/$/, "")
+  }
+  return "https://compass.openrangeconstruction.ltd"
+}
+
+export async function createProjectRfiEmailDraft(
+  projectId: string,
+  rfiId: string,
+  recipientEmails: readonly string[]
+): Promise<ProjectRfiEmailDraftResult> {
+  try {
+    const { db, env, user, orgId, projectNumber } =
+      await getProjectUpdateContext(projectId)
+    const to = Array.from(
+      new Set(recipientEmails.map((email) => email.trim().toLowerCase()))
+    ).filter(validEmail)
+    if (to.length === 0) {
+      return { success: false, error: "Choose at least one email recipient." }
+    }
+    if (to.length > 20) {
+      return { success: false, error: "Choose no more than 20 recipients." }
+    }
+
+    const rfi = await db
+      .select({
+        id: projectRfis.id,
+        rfiNumber: projectRfis.rfiNumber,
+        subject: projectRfis.subject,
+        question: projectRfis.question,
+      })
+      .from(projectRfis)
+      .where(
+        and(eq(projectRfis.id, rfiId), eq(projectRfis.projectId, projectId))
+      )
+      .limit(1)
+      .then((rows) => rows[0] ?? null)
+    if (!rfi) return { success: false, error: "RFI not found." }
+
+    const subject = `[${rfi.rfiNumber}] ${rfi.subject}`
+    const thread = await createEmailReplyThread({
+      env,
+      db,
+      organizationId: orgId,
+      projectId,
+      sourceType: "rfi",
+      sourceId: rfi.id,
+      sourceNumber: rfi.rfiNumber,
+      subject,
+      createdBy: user.id,
+    })
+    const body = appendReplyTokenText({
+      token: thread.token,
+      body: [
+        `${projectNumber ?? "Project"} RFI ${rfi.rfiNumber}`,
+        rfi.subject,
+        "",
+        rfi.question,
+        "",
+        `Open in Compass: ${appOrigin(env)}/dashboard/projects/${encodeURIComponent(projectId)}/rfis?item=${encodeURIComponent(rfi.id)}`,
+        "",
+        "Please keep Compass in CC (or use Reply All) so the response stays attached to this RFI and the project conversation.",
+      ].join("\n"),
+    })
+
+    return {
+      success: true,
+      href: trackedMailtoHref({
+        to,
+        cc: thread.replyToAddress,
+        subject,
+        body,
+      }),
+      trackingAddress: thread.replyToAddress,
+    }
+  } catch (error) {
+    return {
+      success: false,
+      error:
+        error instanceof Error ? error.message : "Unable to prepare RFI email.",
     }
   }
 }

@@ -7,6 +7,7 @@ import {
 } from "./src/lib/jarvis/auth"
 
 const RECONCILE_TARGET = "/api/operations/feedback/reconcile"
+const EMAIL_SYNC_TARGET = "/api/email/gmail-sync"
 
 async function reconcile(env: CloudflareEnv): Promise<void> {
   const body = JSON.stringify({ source: "cron" })
@@ -39,9 +40,26 @@ async function reconcile(env: CloudflareEnv): Promise<void> {
   }
 }
 
+async function syncInboundEmail(env: CloudflareEnv): Promise<void> {
+  const secret = getJarvisEnvValue(env, "COMPASS_EMAIL_SYNC_SECRET")
+  if (!secret) throw new Error("COMPASS_EMAIL_SYNC_SECRET is required")
+  const worker = env.WORKER_SELF_REFERENCE
+  if (!worker) throw new Error("WORKER_SELF_REFERENCE is required")
+  const response = await worker.fetch(
+    `https://compass.internal${EMAIL_SYNC_TARGET}`,
+    {
+      method: "POST",
+      headers: { Authorization: `Bearer ${secret}` },
+    },
+  )
+  if (!response.ok) {
+    throw new Error(`Inbound email sync failed with ${response.status}`)
+  }
+}
+
 export default {
   fetch: worker.fetch,
   async scheduled(_controller, env, ctx): Promise<void> {
-    ctx.waitUntil(reconcile(env))
+    ctx.waitUntil(Promise.all([reconcile(env), syncInboundEmail(env)]).then(() => undefined))
   },
 } satisfies ExportedHandler<CloudflareEnv>

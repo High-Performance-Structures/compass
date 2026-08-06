@@ -20,7 +20,12 @@ export type CompassEmailInput = {
   readonly db: ReturnType<typeof getDb>
   readonly organizationId: string | null
   readonly to: readonly string[]
+  readonly cc?: readonly string[]
   readonly replyTo?: string
+  readonly headers?: readonly {
+    readonly name: string
+    readonly value: string
+  }[]
   readonly subject: string
   readonly text: string
   readonly html?: string
@@ -33,7 +38,10 @@ export type CompassEmailDeliveryResult = {
   readonly error: string | null
 }
 
-const GMAIL_SEND_SCOPE = "https://www.googleapis.com/auth/gmail.send"
+export const COMPASS_GMAIL_SEND_SCOPE =
+  "https://www.googleapis.com/auth/gmail.send"
+export const COMPASS_GMAIL_READONLY_SCOPE =
+  "https://www.googleapis.com/auth/gmail.readonly"
 const DEFAULT_COMPASS_EMAIL_FROM = "Compass <compass@hps-colorado.com>"
 const DEFAULT_COMPASS_GMAIL_USER = "compass@hps-colorado.com"
 
@@ -56,11 +64,17 @@ function googleConfigEnv(env: unknown): Record<string, string | undefined> {
   for (const [key, value] of Object.entries(env)) {
     if (typeof value === "string") values[key] = value
   }
+
   return values
 }
 
 function escapeHeader(value: string): string {
   return value.replace(/[\r\n]+/g, " ").trim()
+}
+
+function safeHeaderName(value: string): string | null {
+  const name = value.trim()
+  return /^[A-Za-z0-9-]+$/.test(name) ? name : null
 }
 
 function extractEmailAddress(value: string): string {
@@ -71,23 +85,42 @@ function extractEmailAddress(value: string): string {
 function base64urlString(value: string): string {
   const bytes = new TextEncoder().encode(value)
   let binary = ""
-  for (const byte of bytes) binary += String.fromCharCode(byte)
+  for (const byte of bytes) {
+    binary += String.fromCharCode(byte)
+  }
   return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "")
+}
+
+function mimeBoundary(): string {
+  return `compass-${crypto.randomUUID()}`
 }
 
 function buildMimeMessage(input: {
   readonly from: string
   readonly to: readonly string[]
+  readonly cc: readonly string[]
   readonly replyTo: string | null
+  readonly headers: readonly {
+    readonly name: string
+    readonly value: string
+  }[]
   readonly subject: string
   readonly text: string
   readonly html: string | null
 }): string {
+  const customHeaders = input.headers
+    .map((header) => {
+      const name = safeHeaderName(header.name)
+      return name ? `${name}: ${escapeHeader(header.value)}` : null
+    })
+    .filter((line): line is string => line !== null)
   const headers = [
     `From: ${escapeHeader(input.from)}`,
     `To: ${input.to.map(escapeHeader).join(", ")}`,
+    input.cc.length > 0 ? `Cc: ${input.cc.map(escapeHeader).join(", ")}` : null,
     input.replyTo ? `Reply-To: ${escapeHeader(input.replyTo)}` : null,
     `Subject: ${escapeHeader(input.subject)}`,
+    ...customHeaders,
     "MIME-Version: 1.0",
   ].filter((line): line is string => line !== null)
 
@@ -101,7 +134,7 @@ function buildMimeMessage(input: {
     ].join("\r\n")
   }
 
-  const boundary = `compass-${crypto.randomUUID()}`
+  const boundary = mimeBoundary()
   return [
     ...headers,
     `Content-Type: multipart/alternative; boundary="${boundary}"`,
@@ -129,48 +162,94 @@ function providerMessageId(value: unknown): string | null {
   return typeof messageId === "string" ? messageId : null
 }
 
-async function sendGmail(
-  input: CompassEmailInput
-): Promise<CompassEmailDeliveryResult> {
+async function getGoogleServiceAccountKey(input: {
+  readonly env: unknown
+  readonly db: ReturnType<typeof getDb>
+  readonly organizationId: string | null
+}): Promise<string | null> {
   const config = getGoogleConfig(googleConfigEnv(input.env))
-  const rows = input.organizationId
-    ? await input.db
+  const query = input.organizationId
+    ? input.db
         .select()
         .from(googleAuth)
         .where(eq(googleAuth.organizationId, input.organizationId))
         .limit(1)
-    : await input.db.select().from(googleAuth).limit(1)
-  const row = rows[0]
-  if (!row) {
-    return {
-      status: "pending_provider",
-      provider: "gmail",
-      providerMessageId: null,
-      error: "Google Workspace service account is not connected.",
-    }
-  }
+    : input.db.select().from(googleAuth).limit(1)
+  const row = await query.then((rows) => rows[0] ?? null)
+  if (!row) return null
 
-  const keyJson = await decrypt(
+  return decrypt(
     row.serviceAccountKeyEncrypted,
     config.encryptionKey,
     getGoogleCryptoSalt()
   )
+}
+
+export async function getCompassGmailAccessToken(input: {
+  readonly env: unknown
+  readonly db: ReturnType<typeof getDb>
+  readonly organizationId: string | null
+  readonly scopes: readonly string[]
+  readonly sender?: string
+}): Promise<
+  | { readonly success: true; readonly accessToken: string; readonly sender: string }
+  | { readonly success: false; readonly error: string }
+> {
+  const keyJson = await getGoogleServiceAccountKey(input)
+  if (!keyJson) {
+    return {
+      success: false,
+      error: "Google Workspace service account is not connected.",
+    }
+  }
+
   const from =
     envString(input.env, "COMPASS_EMAIL_FROM") ?? DEFAULT_COMPASS_EMAIL_FROM
   const sender =
+    input.sender ??
     envString(input.env, "COMPASS_GMAIL_SENDER") ??
     extractEmailAddress(from) ??
     DEFAULT_COMPASS_GMAIL_USER
   const serviceAccountKey = parseServiceAccountKey(keyJson)
-  const jwt = await createServiceAccountJWT(serviceAccountKey, sender, [
-    GMAIL_SEND_SCOPE,
-  ])
+  const jwt = await createServiceAccountJWT(
+    serviceAccountKey,
+    sender,
+    input.scopes
+  )
   const token = await exchangeJWTForAccessToken(jwt)
+
+  return {
+    success: true,
+    accessToken: token.access_token,
+    sender,
+  }
+}
+
+async function sendGmail(input: CompassEmailInput): Promise<CompassEmailDeliveryResult> {
+  const access = await getCompassGmailAccessToken({
+    env: input.env,
+    db: input.db,
+    organizationId: input.organizationId,
+    scopes: [COMPASS_GMAIL_SEND_SCOPE],
+  })
+  if (!access.success) {
+    return {
+      status: "pending_provider",
+      provider: "gmail",
+      providerMessageId: null,
+      error: access.error,
+    }
+  }
+
+  const from =
+    envString(input.env, "COMPASS_EMAIL_FROM") ?? DEFAULT_COMPASS_EMAIL_FROM
   const raw = base64urlString(
     buildMimeMessage({
       from,
       to: input.to,
+      cc: input.cc ?? [],
       replyTo: input.replyTo ?? null,
+      headers: input.headers ?? [],
       subject: input.subject,
       text: input.text,
       html: input.html ?? null,
@@ -182,7 +261,7 @@ async function sendGmail(
     {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${token.access_token}`,
+        Authorization: `Bearer ${access.accessToken}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({ raw }),
@@ -217,22 +296,32 @@ async function sendResend(
     }
   }
 
+  const requestBody: Record<string, unknown> = {
+    from:
+      envString(input.env, "COMPASS_EMAIL_FROM") ?? DEFAULT_COMPASS_EMAIL_FROM,
+    to: input.to,
+    subject: input.subject,
+    text: input.text,
+  }
+  if (input.html) requestBody.html = input.html
+  if (input.cc && input.cc.length > 0) requestBody.cc = input.cc
+  if (input.replyTo) requestBody.reply_to = input.replyTo
+  if (input.headers && input.headers.length > 0) {
+    const headers: Record<string, string> = {}
+    for (const header of input.headers) {
+      const name = safeHeaderName(header.name)
+      if (name) headers[name] = header.value
+    }
+    requestBody.headers = headers
+  }
+
   const response = await fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: {
       Authorization: `Bearer ${apiKey}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({
-      from:
-        envString(input.env, "COMPASS_EMAIL_FROM") ??
-        DEFAULT_COMPASS_EMAIL_FROM,
-      to: input.to,
-      reply_to: input.replyTo,
-      subject: input.subject,
-      text: input.text,
-      html: input.html,
-    }),
+    body: JSON.stringify(requestBody),
   })
   const responseText = await response.text()
   let id: string | null = null
@@ -255,7 +344,10 @@ export async function sendCompassEmail(
 ): Promise<CompassEmailDeliveryResult> {
   const preferredProvider =
     envString(input.env, "COMPASS_EMAIL_PROVIDER") ?? "gmail"
-  if (preferredProvider === "resend") return sendResend(input)
+
+  if (preferredProvider === "resend") {
+    return sendResend(input)
+  }
 
   const gmailDelivery = await sendGmail(input)
   if (gmailDelivery.status === "sent") return gmailDelivery
