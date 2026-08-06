@@ -194,7 +194,10 @@ export default async function ProjectRfisPage({
       contact.displayName,
     ])
   )
-  const peopleOptions = buildRfiContactOptions(taskAssignees)
+  const peopleOptions = buildRfiContactOptions(
+    taskAssignees,
+    project?.clientName
+  )
 
   return (
     <div className="flex-1 space-y-6 p-4 pt-6 sm:p-6 md:p-8">
