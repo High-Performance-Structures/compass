@@ -108,6 +108,7 @@ interface ScheduleItemFormDialogProps {
   dependencies?: readonly TaskDependencyData[]
   exceptions?: readonly WorkdayExceptionData[]
   assigneeOptions?: readonly ProjectTaskAssigneeOption[]
+  onBulkTemplateImport?: () => void
 }
 
 interface PendingPredecessor {
@@ -124,7 +125,8 @@ export function ScheduleItemFormDialog({
   allTasks = [],
   dependencies = [],
   exceptions = [],
-  assigneeOptions = []
+  assigneeOptions = [],
+  onBulkTemplateImport
 }: ScheduleItemFormDialogProps) {
   const router = useRouter()
   const isEditing = !!editingTask
@@ -498,9 +500,22 @@ export function ScheduleItemFormDialog({
 
               {!isEditing && (
                 <section className="border-y bg-muted/20 py-3">
-                  <div className="mb-2 flex items-center gap-2 text-xs font-medium">
-                    <IconTemplate className="size-4" />
-                    Import from a published template
+                  <div className="mb-2 flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-2 text-xs font-medium">
+                      <IconTemplate className="size-4" />
+                      Import from a published template
+                    </div>
+                    {onBulkTemplateImport && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 px-2 text-xs"
+                        onClick={onBulkTemplateImport}
+                      >
+                        Import several
+                      </Button>
+                    )}
                   </div>
                   {templateLoading ? (
                     <div className="flex items-center gap-2 text-xs text-muted-foreground">
