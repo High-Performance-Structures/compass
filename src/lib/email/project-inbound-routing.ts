@@ -25,6 +25,10 @@ import {
   projectIdFromInboundAddress,
   type ProjectEmailDestination,
 } from "@/lib/email/project-address"
+import {
+  sameTrustedInternalEmailMailbox,
+  trustedInternalEmailDomains,
+} from "@/lib/email/internal-email-alias"
 import { PROJECT_TODO_RECORD_TYPES } from "@/lib/project-todos"
 
 type Db = ReturnType<typeof getDb>
@@ -97,6 +101,7 @@ function destinationEntityType(destination: ProjectEmailDestination): string {
 }
 
 async function senderCanEmailProject(input: {
+  readonly env: unknown
   readonly db: Db
   readonly organizationId: string
   readonly projectId: string
@@ -136,7 +141,39 @@ async function senderCanEmailProject(input: {
       )
     )
     .limit(1)
-  return Boolean(member)
+  if (member) return true
+
+  // Staff commonly use parallel company-domain aliases (for example,
+  // firstname@hps-colorado.com and firstname@openrangeconstruction.com).
+  // Accept only matching mailboxes across explicitly trusted internal domains.
+  const trustedDomains = trustedInternalEmailDomains(input.env)
+  const activeMembers = await input.db
+    .select({
+      email: users.email,
+      googleEmail: users.googleEmail,
+    })
+    .from(users)
+    .innerJoin(
+      organizationMembers,
+      eq(organizationMembers.userId, users.id)
+    )
+    .where(
+      and(
+        eq(organizationMembers.organizationId, input.organizationId),
+        eq(users.isActive, true)
+      )
+    )
+  return activeMembers.some((activeMember) =>
+    [activeMember.email, activeMember.googleEmail].some(
+      (memberEmail) =>
+        memberEmail !== null &&
+        sameTrustedInternalEmailMailbox({
+          senderEmail: email,
+          memberEmail,
+          trustedDomains,
+        })
+    )
+  )
 }
 
 function rfiNumber(input: {
@@ -425,6 +462,7 @@ async function routeDestination(input: {
 }
 
 export async function routeProjectInboundEmail(input: {
+  readonly env: unknown
   readonly db: Db
   readonly organizationId: string
   readonly candidate: InboundCandidate
@@ -447,6 +485,7 @@ export async function routeProjectInboundEmail(input: {
   }
 
   const senderAllowed = await senderCanEmailProject({
+    env: input.env,
     db: input.db,
     organizationId: input.organizationId,
     projectId,
