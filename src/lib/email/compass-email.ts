@@ -190,6 +190,7 @@ export async function getCompassGmailAccessToken(input: {
   readonly db: ReturnType<typeof getDb>
   readonly organizationId: string | null
   readonly scopes: readonly string[]
+  readonly sender?: string
 }): Promise<
   | { readonly success: true; readonly accessToken: string; readonly sender: string }
   | { readonly success: false; readonly error: string }
@@ -205,6 +206,7 @@ export async function getCompassGmailAccessToken(input: {
   const from =
     envString(input.env, "COMPASS_EMAIL_FROM") ?? DEFAULT_COMPASS_EMAIL_FROM
   const sender =
+    input.sender ??
     envString(input.env, "COMPASS_GMAIL_SENDER") ??
     extractEmailAddress(from) ??
     DEFAULT_COMPASS_GMAIL_USER

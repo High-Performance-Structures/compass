@@ -7,13 +7,22 @@ import {
   IconMessageQuestion,
 } from "@tabler/icons-react"
 
-import { getProjectRfis, updateProjectRfi } from "@/app/actions/project-rfis"
+import {
+  getProjectRfiInboundEmails,
+  getProjectRfis,
+  updateProjectRfi,
+} from "@/app/actions/project-rfis"
 import {
   getProjectContactsSummary,
   getProjectTaskAssigneeOptions,
+  type ProjectContactItem,
 } from "@/app/actions/project-contacts"
 import { getProjects } from "@/app/actions/projects"
 import { ProjectRfiCreateForm } from "@/components/projects/project-rfi-create-form"
+import {
+  ProjectRfiCommunicationActions,
+  type ProjectRfiEmailRecipientOption,
+} from "@/components/projects/project-rfi-communication-actions"
 import { ProjectRfiDeleteButton } from "@/components/projects/project-rfi-delete-button"
 import { ProjectTaskCreateButton } from "@/components/projects/project-task-create-button"
 import { ProjectQuickSwitcher } from "@/components/projects/project-quick-switcher"
@@ -50,6 +59,16 @@ function formatDate(value: string | null): string {
   })
 }
 
+function formatDateTime(value: string): string {
+  return new Date(value).toLocaleString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  })
+}
+
 function label(value: string): string {
   return value
     .split("_")
@@ -69,6 +88,52 @@ function unique(values: readonly (string | null | undefined)[]): readonly string
 
 function rfiTaskTitle(subject: string): string {
   return `Follow up RFI: ${subject}`
+}
+
+function normalizedMatchValue(value: string | null): string {
+  return value?.trim().toLocaleLowerCase() ?? ""
+}
+
+function rfiEmailRecipients(
+  rfi: {
+    readonly requesterName: string | null
+    readonly assignedToName: string | null
+    readonly companyName: string | null
+  },
+  contacts: readonly ProjectContactItem[]
+): readonly ProjectRfiEmailRecipientOption[] {
+  const targets = [rfi.requesterName, rfi.assignedToName, rfi.companyName]
+    .map(normalizedMatchValue)
+    .filter(Boolean)
+  const byEmail = new Map<string, ProjectRfiEmailRecipientOption>()
+
+  for (const contact of contacts) {
+    const email = contact.email?.trim().toLocaleLowerCase() ?? ""
+    if (!email) continue
+    const contactValues = [contact.displayName, contact.companyName]
+      .map(normalizedMatchValue)
+      .filter(Boolean)
+    const recommended = targets.some((target) =>
+      contactValues.some(
+        (candidate) => target.includes(candidate) || candidate.includes(target)
+      )
+    )
+    const label =
+      contact.companyName && contact.companyName !== contact.displayName
+        ? `${contact.displayName} - ${contact.companyName}`
+        : contact.displayName
+    const existing = byEmail.get(email)
+    if (!existing || (!existing.recommended && recommended)) {
+      byEmail.set(email, { email, label, recommended })
+    }
+  }
+
+  return Array.from(byEmail.values()).sort((first, second) => {
+    if (first.recommended !== second.recommended) {
+      return first.recommended ? -1 : 1
+    }
+    return first.label.localeCompare(second.label)
+  })
 }
 
 const RFI_FILTERS: readonly {
@@ -104,12 +169,13 @@ export default async function ProjectRfisPage({
     ? query.item[0] ?? null
     : query.item ?? null
   const statusFilter = parseRfiStatusFilter(query.status)
-  const [projects, rfis, contactsSummary, taskAssigneeOptions] =
+  const [projects, rfis, contactsSummary, taskAssigneeOptions, inboundEmails] =
     await Promise.all([
       getProjects(),
       getProjectRfis(id),
       getProjectContactsSummary(id, "internal"),
       getProjectTaskAssigneeOptions(id),
+      getProjectRfiInboundEmails(id),
     ]).catch((error: unknown) => {
       redirectIfFeaturePermissionDenied(error)
       throw error
@@ -126,6 +192,12 @@ export default async function ProjectRfisPage({
     .filter((rfi) => rfiMatchesStatusFilter(rfi.status, statusFilter))
     .sort(compareRfisForQueue)
   const contacts = contactsSummary.allContacts
+  const inboundEmailsByRfi = new Map(
+    rfis.map((rfi) => [
+      rfi.id,
+      inboundEmails.filter((email) => email.rfiId === rfi.id),
+    ])
+  )
   const companyOrTradeOptions = unique(
     contacts.flatMap((contact) => [
       contact.companyName,
@@ -302,6 +374,12 @@ export default async function ProjectRfisPage({
                       }
                       assigneeOptions={taskAssignees}
                     />
+                    <ProjectRfiCommunicationActions
+                      projectId={id}
+                      rfiId={rfi.id}
+                      rfiNumber={rfi.rfiNumber}
+                      recipientOptions={rfiEmailRecipients(rfi, contacts)}
+                    />
                   </div>
                 </div>
                 <p className="mt-3 text-sm text-muted-foreground">{rfi.question}</p>
@@ -346,12 +424,44 @@ export default async function ProjectRfisPage({
                   </div>
                 )}
 
+                {(inboundEmailsByRfi.get(rfi.id) ?? []).length > 0 ? (
+                  <div className="mt-3 border-l-2 border-l-brand-nutech-gold bg-muted/20 px-3 py-2">
+                    <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                      Email replies · Internal review
+                    </p>
+                    <div className="mt-2 space-y-3">
+                      {(inboundEmailsByRfi.get(rfi.id) ?? []).map((email) => (
+                        <div key={email.id} className="border-t pt-2 first:border-t-0 first:pt-0">
+                          <div className="flex flex-wrap justify-between gap-2 text-xs text-muted-foreground">
+                            <span>{email.from}</span>
+                            <span>{formatDateTime(email.receivedAt)}</span>
+                          </div>
+                          <p className="mt-1 text-sm font-medium">{email.subject}</p>
+                          <p className="mt-1 whitespace-pre-wrap text-sm">{email.body}</p>
+                        </div>
+                      ))}
+                    </div>
+                    <p className="mt-2 text-xs text-muted-foreground">
+                      These replies remain internal until staff adds an approved response below.
+                    </p>
+                  </div>
+                ) : null}
+
+                {rfi.answer ? (
+                  <div className="mt-4 border-l-2 border-l-brand-hps-primary bg-muted/20 px-3 py-2">
+                    <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                      Communication history
+                    </p>
+                    <p className="mt-2 whitespace-pre-wrap text-sm">{rfi.answer}</p>
+                  </div>
+                ) : null}
+
                 <form action={updateRfiAction} className="mt-4 space-y-3">
                   <input type="hidden" name="rfiId" value={rfi.id} />
                   <Textarea
                     name="answer"
-                    defaultValue={rfi.answer ?? ""}
-                    placeholder="Response, decision, additional question, or next step"
+                    defaultValue=""
+                    placeholder="Add a response, decision, follow-up question, or next step"
                   />
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_1fr_auto]">
                     <select

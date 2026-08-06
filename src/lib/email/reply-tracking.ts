@@ -34,13 +34,17 @@ export function createReplyToken(): string {
   return `cmp-${crypto.randomUUID().replace(/-/g, "").slice(0, 18)}`
 }
 
+export function replyMailboxEmail(env: unknown): string {
+  const mailbox = envString(env, "COMPASS_REPLY_MAILBOX") ?? DEFAULT_REPLY_MAILBOX
+  const parts = splitEmailAddress(mailbox) ?? splitEmailAddress(DEFAULT_REPLY_MAILBOX)
+  return parts ? `${parts.localPart}@${parts.domain}` : DEFAULT_REPLY_MAILBOX
+}
+
 export function trackedReplyAddress(input: {
   readonly env: unknown
   readonly token: string
 }): string {
-  const mailbox =
-    envString(input.env, "COMPASS_REPLY_MAILBOX") ?? DEFAULT_REPLY_MAILBOX
-  const parts = splitEmailAddress(mailbox) ?? splitEmailAddress(DEFAULT_REPLY_MAILBOX)
+  const parts = splitEmailAddress(replyMailboxEmail(input.env))
   if (!parts) return DEFAULT_REPLY_MAILBOX
 
   return `Compass <${parts.localPart}+${input.token}@${parts.domain}>`
