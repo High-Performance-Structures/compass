@@ -79,5 +79,19 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     summaries.push({ organizationId, ...summary })
   }
 
+  console.log(
+    "[gmail-sync]",
+    JSON.stringify(
+      summaries.map((summary) => ({
+        organizationId: summary.organizationId,
+        scanned: summary.scanned,
+        imported: summary.imported,
+        posted: summary.posted,
+        needsReview: summary.needsReview,
+        errors: summary.errors,
+      }))
+    )
+  )
+
   return NextResponse.json({ success: true, summaries })
 }

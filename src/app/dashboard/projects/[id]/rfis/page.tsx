@@ -21,6 +21,7 @@ import {
   type ProjectRfiEmailRecipientOption,
 } from "@/components/projects/project-rfi-communication-actions"
 import { ProjectRfiDeleteButton } from "@/components/projects/project-rfi-delete-button"
+import { ProjectRfiEmailSyncButton } from "@/components/projects/project-rfi-email-sync-button"
 import { ProjectRfiResponseComposer } from "@/components/projects/project-rfi-response-composer"
 import { ProjectTaskCreateButton } from "@/components/projects/project-task-create-button"
 import { ProjectQuickSwitcher } from "@/components/projects/project-quick-switcher"
@@ -240,12 +241,15 @@ export default async function ProjectRfisPage({
               Track questions, assignments, due dates, visibility, and responses.
             </p>
           </div>
-          <ProjectRfiCreateForm
-            projectId={id}
-            projectDriveFolderId={project?.googleDriveFolderId ?? null}
-            companyOrTradeOptions={companyOrTradeOptions}
-            peopleOptions={peopleOptions}
-          />
+          <div className="flex flex-wrap items-center gap-2">
+            <ProjectRfiEmailSyncButton />
+            <ProjectRfiCreateForm
+              projectId={id}
+              projectDriveFolderId={project?.googleDriveFolderId ?? null}
+              companyOrTradeOptions={companyOrTradeOptions}
+              peopleOptions={peopleOptions}
+            />
+          </div>
         </div>
 
         <div className="flex flex-wrap items-center justify-between gap-3">
