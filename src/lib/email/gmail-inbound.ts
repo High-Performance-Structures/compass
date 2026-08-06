@@ -31,6 +31,7 @@ import {
 } from "@/lib/email/gmail-message-parser"
 import { replyMailboxEmail } from "@/lib/email/reply-tracking"
 import { isReplyMessage } from "@/lib/email/reply-detection"
+import { routeProjectInboundEmail } from "@/lib/email/project-inbound-routing"
 import { canonicalRfiStatus } from "@/lib/rfis/status"
 
 type Db = ReturnType<typeof getDb>
@@ -327,6 +328,39 @@ async function importCandidate(input: {
     isReplyMessage(input.candidate)
   if (duplicate && !retryMisclassifiedReply) return "duplicate"
 
+  const projectRoute = await routeProjectInboundEmail({
+    db: input.db,
+    organizationId: input.organizationId,
+    candidate: input.candidate,
+  })
+  if (projectRoute.kind === "other_organization") return "other_org"
+  if (projectRoute.kind === "needs_review") {
+    await insertInboundAudit({
+      db: input.db,
+      organizationId: input.organizationId,
+      projectId: projectRoute.projectId,
+      replyThreadId: null,
+      candidate: input.candidate,
+      matchedStatus: "needs_review",
+      postedMessageId: null,
+      importedAt: new Date().toISOString(),
+    })
+    return "needs_review"
+  }
+  if (projectRoute.kind === "routed") {
+    await insertInboundAudit({
+      db: input.db,
+      organizationId: input.organizationId,
+      projectId: projectRoute.projectId,
+      replyThreadId: null,
+      candidate: input.candidate,
+      matchedStatus: projectRoute.matchedStatus,
+      postedMessageId: projectRoute.entityId,
+      importedAt: new Date().toISOString(),
+    })
+    return "posted"
+  }
+
   const replyThread = input.candidate.token
     ? await input.db
         .select()
@@ -554,7 +588,8 @@ export async function syncGmailInboundReplies(input: {
   }
 
   const query =
-    envString(input.env, "COMPASS_GMAIL_INBOUND_QUERY") ?? "newer_than:30d cmp-"
+    envString(input.env, "COMPASS_GMAIL_INBOUND_QUERY") ??
+    'newer_than:30d {cmp- "jarvis+project-"}'
   const maxResults = parsePositiveInt(
     envString(input.env, "COMPASS_GMAIL_INBOUND_MAX_RESULTS"),
     25

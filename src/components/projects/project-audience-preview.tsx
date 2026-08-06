@@ -32,6 +32,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { OwnerCoverPhotoControl } from "@/components/projects/owner-cover-photo-control"
+import { ProjectEmailAddressCard } from "@/components/projects/project-email-address-card"
 import { ProjectAudiencePhotoGallery } from "@/components/projects/project-audience-photo-gallery"
 import { ProjectAudiencePreviewShell } from "@/components/projects/project-audience-preview-shell"
 import { ProjectAudienceSchedule } from "@/components/projects/project-audience-schedule"
@@ -535,6 +536,10 @@ function OwnerProjectPreview({
         </div>
         )}
 
+        {section === "overview" && (
+          <ProjectEmailAddressCard projectId={data.project.id} />
+        )}
+
         {(section === "overview" || section === "updates") && (
         <section
           className={
@@ -793,6 +798,10 @@ export function ProjectAudiencePreview({
             workspaceLabel="Partner project home"
             editable={false}
           />
+        )}
+
+        {section === "overview" && (
+          <ProjectEmailAddressCard projectId={data.project.id} />
         )}
 
         {section === "overview" && (
