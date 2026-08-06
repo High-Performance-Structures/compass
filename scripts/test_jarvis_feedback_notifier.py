@@ -66,7 +66,7 @@ class RoutingTests(unittest.TestCase):
 
         self.assertTrue(requires_ack)
         sender.assert_called_once_with(
-            "telegram:martinevogel",
+            "telegram:@martinevogel",
             "Your request was closed.",
         )
 
