@@ -6,6 +6,10 @@ const MIME_BY_EXTENSION: Readonly<Record<string, string>> = {
   jpeg: "image/jpeg",
   jpg: "image/jpeg",
   png: "image/png",
+  m4v: "video/mp4",
+  mov: "video/quicktime",
+  mp4: "video/mp4",
+  "3gp": "video/3gpp",
   webp: "image/webp",
 }
 
@@ -47,6 +51,10 @@ function imageMimeTypeFromBytes(data: Uint8Array): string | null {
   }
   if (bytesMatch(data, 4, [0x66, 0x74, 0x79, 0x70])) {
     const brand = String.fromCharCode(...data.slice(8, 12)).toLowerCase()
+    if (["isom", "iso2", "mp41", "mp42", "m4v "].includes(brand)) {
+      return "video/mp4"
+    }
+    if (brand === "qt  ") return "video/quicktime"
     if (brand === "avif" || brand === "avis") return "image/avif"
     if (["heic", "heix", "hevc", "hevx"].includes(brand)) return "image/heic"
     if (["heif", "heim", "heis", "mif1", "msf1"].includes(brand)) {
@@ -75,6 +83,8 @@ export function gotoAttachmentMimeType(input: {
     mimeTypeFromName(input.fileName) ??
     (input.declaredType.trim().toLowerCase() === "image"
       ? "image/jpeg"
+      : input.declaredType.trim().toLowerCase() === "video"
+        ? "video/mp4"
       : "application/octet-stream")
   )
 }

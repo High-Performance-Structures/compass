@@ -604,6 +604,112 @@ export const gotoInboundSettings = sqliteTable(
 export type GotoInboundSetting = typeof gotoInboundSettings.$inferSelect
 export type NewGotoInboundSetting = typeof gotoInboundSettings.$inferInsert
 
+export const projectVideos = sqliteTable(
+  "project_videos",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    title: text("title").notNull(),
+    description: text("description"),
+    department: text("department").notNull(),
+    youtubeChannelKey: text("youtube_channel_key").notNull(),
+    compassAudience: text("compass_audience").notNull().default("staff"),
+    youtubePrivacy: text("youtube_privacy").notNull().default("private"),
+    publishStatus: text("publish_status").notNull().default("pending_review"),
+    sourceSystem: text("source_system").notNull(),
+    sourceExternalId: text("source_external_id").notNull(),
+    sourceFileName: text("source_file_name").notNull(),
+    sourceMimeType: text("source_mime_type").notNull(),
+    sourceFileSize: integer("source_file_size").notNull().default(0),
+    driveFileId: text("drive_file_id").notNull(),
+    driveUrl: text("drive_url"),
+    linkedEntityType: text("linked_entity_type"),
+    linkedEntityId: text("linked_entity_id"),
+    youtubeVideoId: text("youtube_video_id"),
+    youtubeUrl: text("youtube_url"),
+    youtubeUploadSessionUrl: text("youtube_upload_session_url"),
+    uploadError: text("upload_error"),
+    submittedByName: text("submitted_by_name"),
+    submittedByEmail: text("submitted_by_email"),
+    reviewedBy: text("reviewed_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    reviewedAt: text("reviewed_at"),
+    publishedAt: text("published_at"),
+    archivedAt: text("archived_at"),
+    deletedAt: text("deleted_at"),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("project_videos_source_unique").on(
+      table.sourceSystem,
+      table.sourceExternalId
+    ),
+    index("project_videos_project_created_idx").on(
+      table.projectId,
+      table.createdAt
+    ),
+    index("project_videos_org_status_idx").on(
+      table.organizationId,
+      table.publishStatus,
+      table.createdAt
+    ),
+  ]
+)
+
+export type ProjectVideo = typeof projectVideos.$inferSelect
+export type NewProjectVideo = typeof projectVideos.$inferInsert
+
+export const youtubeChannelConnections = sqliteTable(
+  "youtube_channel_connections",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    channelKey: text("channel_key").notNull(),
+    channelId: text("channel_id").notNull(),
+    channelTitle: text("channel_title").notNull(),
+    googleAccountEmail: text("google_account_email").notNull(),
+    refreshTokenEncrypted: text("refresh_token_encrypted").notNull(),
+    grantedScopes: text("granted_scopes").notNull(),
+    status: text("status").notNull().default("connected"),
+    connectedBy: text("connected_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    connectedAt: text("connected_at").notNull(),
+    lastUploadAt: text("last_upload_at"),
+    lastError: text("last_error"),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("youtube_channel_connections_org_key_unique").on(
+      table.organizationId,
+      table.channelKey
+    ),
+    uniqueIndex("youtube_channel_connections_org_channel_unique").on(
+      table.organizationId,
+      table.channelId
+    ),
+    index("youtube_channel_connections_org_status_idx").on(
+      table.organizationId,
+      table.status
+    ),
+  ]
+)
+
+export type YoutubeChannelConnection =
+  typeof youtubeChannelConnections.$inferSelect
+export type NewYoutubeChannelConnection =
+  typeof youtubeChannelConnections.$inferInsert
+
 export const scheduleSavedViews = sqliteTable(
   "schedule_saved_views",
   {

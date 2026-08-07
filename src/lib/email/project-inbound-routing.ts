@@ -13,6 +13,7 @@ import {
   projectChangeOrders,
   projectOperations,
   projectRfis,
+  projectVideos,
   projects,
   users,
 } from "@/db/schema"
@@ -31,6 +32,8 @@ import {
   trustedInternalEmailDomains,
 } from "@/lib/email/internal-email-alias"
 import { storeDailyLogEmailAttachments } from "@/lib/email/project-email-attachments"
+import { storeProjectVideoAttachment } from "@/lib/email/project-video-attachments"
+import { projectDepartment } from "@/lib/project-branding"
 import { PROJECT_TODO_RECORD_TYPES } from "@/lib/project-todos"
 
 type Db = ReturnType<typeof getDb>
@@ -66,6 +69,7 @@ export type ProjectInboundRouteResult =
         | "routed_daily_log"
         | "routed_rfq"
         | "routed_change_order"
+        | "routed_video"
     }
 
 function candidateBody(candidate: InboundCandidate): string {
@@ -118,6 +122,7 @@ function destinationLabel(destination: ProjectEmailDestination): string {
   if (destination === "change_order") return "change-order draft"
   if (destination === "delivery") return "delivery to-do"
   if (destination === "todo") return "to-do"
+  if (destination === "video") return "video review"
   return "daily log"
 }
 
@@ -126,6 +131,7 @@ function destinationEntityType(destination: ProjectEmailDestination): string {
   if (destination === "rfq") return "rfq"
   if (destination === "change_order") return "change_order"
   if (destination === "daily_log") return "daily_log"
+  if (destination === "video") return "project_video"
   return "todo"
 }
 
@@ -483,6 +489,131 @@ async function routeDailyLog(input: {
   return { id, status: "routed_daily_log" }
 }
 
+function isVideoAttachment(attachment: InboundCandidate["attachments"][number]): boolean {
+  return (
+    attachment.mimeType.startsWith("video/") ||
+    /\.(?:3gp|m4v|mov|mp4|webm)$/i.test(attachment.fileName)
+  )
+}
+
+function youtubeChannelForDepartment(
+  department: "O" | "H" | "N" | "D"
+): "orc" | "hps" | "nutech" {
+  if (department === "H") return "hps"
+  if (department === "N") return "nutech"
+  return "orc"
+}
+
+async function routeVideo(input: {
+  readonly env: unknown
+  readonly db: Db
+  readonly organizationId: string
+  readonly projectId: string
+  readonly projectNumber: string | null
+  readonly candidate: InboundCandidate
+  readonly now: string
+  readonly source: ProjectInboundSource
+}): Promise<{ readonly id: string; readonly status: "routed_video" }> {
+  const attachment = input.candidate.attachments.find(isVideoAttachment)
+  if (!attachment) {
+    throw new Error("A [Video] message must include a video attachment.")
+  }
+  const sourceExternalId =
+    `${input.candidate.gmailMessageId}:` +
+    (attachment.attachmentId ?? attachment.fileName)
+  const [existing] = await input.db
+    .select({ id: projectVideos.id })
+    .from(projectVideos)
+    .where(
+      and(
+        eq(projectVideos.sourceSystem, input.source.sourceSystem),
+        eq(projectVideos.sourceExternalId, sourceExternalId)
+      )
+    )
+    .limit(1)
+  if (existing) return { id: existing.id, status: "routed_video" }
+
+  const stored = await storeProjectVideoAttachment({
+    env: input.env,
+    db: input.db,
+    organizationId: input.organizationId,
+    projectId: input.projectId,
+    attachment,
+  })
+  const department = projectDepartment({
+    projectId: input.projectId,
+    projectNumber: input.projectNumber,
+  })
+  const id = `${input.source.idPrefix}-video-${input.candidate.gmailMessageId}`
+  const dailyLogId =
+    `${input.source.idPrefix}-video-log-${input.candidate.gmailMessageId}`
+  const title =
+    projectEmailTitle(input.candidate.subject) ||
+    attachment.fileName.replace(/\.[^.]+$/, "") ||
+    "Project video"
+  const videoInsert = input.db.insert(projectVideos).values({
+    id,
+    organizationId: input.organizationId,
+    projectId: input.projectId,
+    title,
+    description: candidateBody(input.candidate),
+    department,
+    youtubeChannelKey: youtubeChannelForDepartment(department),
+    compassAudience: "staff",
+    youtubePrivacy: "private",
+    publishStatus: "pending_review",
+    sourceSystem: input.source.sourceSystem,
+    sourceExternalId,
+    sourceFileName: stored.fileName,
+    sourceMimeType: stored.mimeType,
+    sourceFileSize: stored.fileSize,
+    driveFileId: stored.driveFileId,
+    driveUrl: stored.driveUrl,
+    linkedEntityType: "daily_log",
+    linkedEntityId: dailyLogId,
+    youtubeVideoId: null,
+    youtubeUrl: null,
+    youtubeUploadSessionUrl: null,
+    uploadError: null,
+    submittedByName: senderLabel(input.candidate),
+    submittedByEmail: input.candidate.fromAddress,
+    reviewedBy: null,
+    reviewedAt: null,
+    publishedAt: null,
+    archivedAt: null,
+    deletedAt: null,
+    createdAt: input.now,
+    updatedAt: input.now,
+  }).onConflictDoNothing({
+    target: [projectVideos.sourceSystem, projectVideos.sourceExternalId],
+  })
+
+  const dailyLogInsert = input.db
+    .insert(dailyLogs)
+    .values({
+      id: dailyLogId,
+      projectId: input.projectId,
+      authorId: null,
+      sourceSystem: input.source.sourceSystem,
+      sourceExternalId: `${input.candidate.gmailMessageId}:video`,
+      logDate: input.candidate.receivedAt.slice(0, 10),
+      workCompleted: title,
+      notes:
+        `Video submitted by ${senderLabel(input.candidate)} for staff review. ` +
+        "The share link will appear here after publication.",
+      isClientVisible: false,
+      reviewStatus: "needs_review",
+      syncStatus: "pending",
+      createdAt: input.now,
+      updatedAt: input.now,
+    })
+    .onConflictDoNothing({ target: dailyLogs.id })
+
+  await input.db.batch([videoInsert, dailyLogInsert])
+
+  return { id, status: "routed_video" }
+}
+
 async function routeDestination(input: {
   readonly env: unknown
   readonly db: Db
@@ -501,6 +632,7 @@ async function routeDestination(input: {
     | "routed_daily_log"
     | "routed_rfq"
     | "routed_change_order"
+    | "routed_video"
 }> {
   if (input.destination === "rfi") return routeRfi(input)
   if (input.destination === "rfq") return routeRfq(input)
@@ -509,6 +641,7 @@ async function routeDestination(input: {
   if (input.destination === "delivery") {
     return routeTodo({ ...input, delivery: true })
   }
+  if (input.destination === "video") return routeVideo(input)
   return routeDailyLog(input)
 }
 
