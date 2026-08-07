@@ -573,6 +573,36 @@ export const scheduleSavedViews = sqliteTable(
 export type ScheduleSavedView = typeof scheduleSavedViews.$inferSelect
 export type NewScheduleSavedView = typeof scheduleSavedViews.$inferInsert
 
+export const schedulePhaseOptions = sqliteTable(
+  "schedule_phase_options",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    normalizedName: text("normalized_name").notNull(),
+    createdBy: text("created_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("schedule_phase_options_org_name_unique").on(
+      table.organizationId,
+      table.normalizedName
+    ),
+    index("schedule_phase_options_org_name_idx").on(
+      table.organizationId,
+      table.name
+    ),
+  ]
+)
+
+export type SchedulePhaseOption = typeof schedulePhaseOptions.$inferSelect
+export type NewSchedulePhaseOption = typeof schedulePhaseOptions.$inferInsert
+
 export const projectExternalLinks = sqliteTable("project_external_links", {
   id: text("id").primaryKey(),
   projectId: text("project_id")

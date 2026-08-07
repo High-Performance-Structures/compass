@@ -47,6 +47,12 @@ import {
   updateDependency,
   deleteDependency
 } from "@/app/actions/schedule"
+import {
+  deleteSchedulePhaseOption,
+  getSchedulePhaseOptions,
+  saveSchedulePhaseOption,
+  type ReusableSchedulePhaseOption,
+} from "@/app/actions/schedule-phases"
 import { sendScheduleTaskReminder } from "@/app/actions/schedule-confirmations"
 import { calculateEndDate } from "@/lib/schedule/business-days"
 import type {
@@ -55,7 +61,7 @@ import type {
   DependencyType,
   WorkdayExceptionData
 } from "@/lib/schedule/types"
-import { PHASE_ORDER, PHASE_LABELS, getPhaseColor } from "@/lib/schedule/phase-colors"
+import { PHASE_ORDER, PHASE_LABELS } from "@/lib/schedule/phase-colors"
 import { DEFAULT_DISPLAY_COLOR, DISPLAY_COLOR_OPTIONS } from "@/lib/schedule/appearance"
 import { STATUS_OPTIONS } from "@/lib/schedule/types"
 import { useRouter } from "next/navigation"
@@ -70,10 +76,14 @@ import {
   loadScheduleTemplateImportOptions
 } from "@/components/schedule/schedule-template-import-options-client"
 
-const phases = PHASE_ORDER.map((value) => ({
+const defaultPhaseOptions: readonly ReusableSchedulePhaseOption[] = PHASE_ORDER.map((value) => ({
+  id: null,
   value,
-  label: PHASE_LABELS[value]
+  label: PHASE_LABELS[value],
+  source: "default"
 }))
+
+const CUSTOM_PHASE_VALUE = "__custom_phase__"
 
 const DEPENDENCY_TYPES: readonly { value: DependencyType; label: string }[] = [
   { value: "FS", label: "Finish-to-Start" },
@@ -86,7 +96,7 @@ const scheduleItemSchema = z.object({
   title: z.string().min(1, "Title is required"),
   startDate: z.string().min(1, "Start date is required"),
   workdays: z.number().min(1, "Must be at least 1 day"),
-  phase: z.string().min(1, "Phase is required"),
+  phase: z.string().trim().min(1, "Phase is required"),
   displayColor: z.string(),
   status: z.enum(["PENDING", "IN_PROGRESS", "COMPLETE", "BLOCKED"]),
   isMilestone: z.boolean(),
@@ -148,6 +158,13 @@ export function ScheduleItemFormDialog({
   const [selectedTemplateItemId, setSelectedTemplateItemId] = useState("")
   const [selectedTemplateTodoIds, setSelectedTemplateTodoIds] = useState<readonly string[]>([])
   const [templateTodosOpen, setTemplateTodosOpen] = useState(false)
+  const [phaseOptions, setPhaseOptions] = useState<
+    readonly ReusableSchedulePhaseOption[]
+  >(defaultPhaseOptions)
+  const [phaseOptionsLoading, setPhaseOptionsLoading] = useState(false)
+  const [customPhaseMode, setCustomPhaseMode] = useState(false)
+  const [customPhaseName, setCustomPhaseName] = useState("")
+  const [saveCustomPhase, setSaveCustomPhase] = useState(true)
 
   const existingPredecessors = useMemo(() => {
     if (!editingTask) return []
@@ -204,6 +221,29 @@ export function ScheduleItemFormDialog({
 
   useEffect(() => {
     if (!open) return
+    let cancelled = false
+    setPhaseOptionsLoading(true)
+    void getSchedulePhaseOptions(projectId)
+      .then((options) => {
+        if (!cancelled) setPhaseOptions(options)
+      })
+      .catch((error: unknown) => {
+        console.error("Unable to load reusable schedule phases", error)
+        if (!cancelled) {
+          setPhaseOptions(defaultPhaseOptions)
+          toast.error("Unable to load saved phases. Compass defaults are available.")
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setPhaseOptionsLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [open, projectId])
+
+  useEffect(() => {
+    if (!open) return
     if (editingTask) {
       form.reset({
         title: editingTask.title,
@@ -251,6 +291,9 @@ export function ScheduleItemFormDialog({
       setSelectedTemplateTodoIds([])
       setTemplateTodosOpen(false)
     }
+    setCustomPhaseMode(false)
+    setCustomPhaseName("")
+    setSaveCustomPhase(true)
     setPendingPredecessors([])
   }, [assigneeOptions, editingTask, form, open])
 
@@ -342,7 +385,28 @@ export function ScheduleItemFormDialog({
   }
 
   async function onSubmit(values: ScheduleItemFormValues) {
-    const { notes, ...taskValues } = values
+    let submittedPhase = values.phase
+    if (customPhaseMode && saveCustomPhase) {
+      const phaseResult = await saveSchedulePhaseOption({
+        projectId,
+        name: values.phase,
+      })
+      if (!phaseResult.success) {
+        toast.error(phaseResult.error)
+        return
+      }
+      submittedPhase = phaseResult.option.value
+      setPhaseOptions((current) => {
+        const withoutDuplicate = current.filter(
+          (option) =>
+            option.value.trim().toLocaleLowerCase() !==
+            phaseResult.option.value.trim().toLocaleLowerCase()
+        )
+        return [...withoutDuplicate, phaseResult.option]
+      })
+    }
+    const { notes, ...valuesWithoutNotes } = values
+    const taskValues = { ...valuesWithoutNotes, phase: submittedPhase }
     void notes
     let savedTaskId: string
     let linkedTodoCount = 0
@@ -430,6 +494,34 @@ export function ScheduleItemFormDialog({
       )
     }
     onOpenChange(false)
+  }
+
+  async function removeSelectedSavedPhase(): Promise<void> {
+    const selected = phaseOptions.find(
+      (option) => option.value === watchedPhase && option.source === "saved"
+    )
+    if (!selected?.id) return
+    if (
+      !window.confirm(
+        `Remove “${selected.label}” from the reusable phase catalog? Existing schedule items and templates will not change.`
+      )
+    ) {
+      return
+    }
+    const result = await deleteSchedulePhaseOption({
+      projectId,
+      optionId: selected.id,
+    })
+    if (!result.success) {
+      toast.error(result.error)
+      return
+    }
+    setPhaseOptions((current) =>
+      current.filter((option) => option.id !== selected.id)
+    )
+    toast.success(
+      "Removed from the reusable catalog. It may still appear where it is already in use."
+    )
   }
 
   const addPendingPredecessor = () => {
@@ -687,28 +779,100 @@ export function ScheduleItemFormDialog({
                 )}
               />
 
-              {/* Phase pills */}
-              <div className="flex flex-wrap gap-1.5">
-                {phases.map((p) => {
-                  const colors = getPhaseColor(p.value)
-                  const isSelected = watchedPhase === p.value
-                  return (
-                    <button
-                      key={p.value}
-                      type="button"
-                      className={cn(
-                        "px-2.5 py-1 rounded-md text-xs font-medium transition-all",
-                        isSelected
-                          ? `${colors.badge} ring-1 ring-current/20`
-                          : "bg-muted/50 text-muted-foreground hover:bg-muted"
-                      )}
-                      onClick={() => form.setValue("phase", p.value)}
-                    >
-                      {p.label}
-                    </button>
+              <FormField
+                control={form.control}
+                name="phase"
+                render={({ field }) => {
+                  const selectedSavedPhase = phaseOptions.find(
+                    (option) =>
+                      option.value === field.value && option.source === "saved"
                   )
-                })}
-              </div>
+                  return (
+                    <FormItem>
+                      <FormLabel className="text-[11px] font-medium text-muted-foreground">
+                        Phase
+                      </FormLabel>
+                      <div className="flex items-center gap-2">
+                        <Select
+                          value={customPhaseMode ? CUSTOM_PHASE_VALUE : field.value}
+                          onValueChange={(value) => {
+                            if (value === CUSTOM_PHASE_VALUE) {
+                              setCustomPhaseMode(true)
+                              setCustomPhaseName("")
+                              setSaveCustomPhase(true)
+                              field.onChange("")
+                              return
+                            }
+                            setCustomPhaseMode(false)
+                            setCustomPhaseName("")
+                            field.onChange(value)
+                          }}
+                        >
+                          <FormControl>
+                            <SelectTrigger className="h-9 flex-1">
+                              <SelectValue
+                                placeholder={
+                                  phaseOptionsLoading ? "Loading phases…" : "Choose phase"
+                                }
+                              />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            {phaseOptions.map((option) => (
+                              <SelectItem key={`${option.source}-${option.value}`} value={option.value}>
+                                {option.label}
+                              </SelectItem>
+                            ))}
+                            <SelectItem value={CUSTOM_PHASE_VALUE}>
+                              + Add custom phase…
+                            </SelectItem>
+                          </SelectContent>
+                        </Select>
+                        {selectedSavedPhase?.id && !customPhaseMode && (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="size-9 shrink-0 text-muted-foreground"
+                            title="Remove from reusable phases"
+                            aria-label={`Remove ${selectedSavedPhase.label} from reusable phases`}
+                            onClick={() => void removeSelectedSavedPhase()}
+                          >
+                            <IconTrash className="size-4" />
+                          </Button>
+                        )}
+                      </div>
+                      {customPhaseMode && (
+                        <div className="space-y-2 rounded-md border bg-muted/20 p-3">
+                          <Input
+                            value={customPhaseName}
+                            maxLength={100}
+                            placeholder="Custom phase name"
+                            autoFocus
+                            onChange={(event) => {
+                              const value = event.currentTarget.value
+                              setCustomPhaseName(value)
+                              field.onChange(value)
+                            }}
+                          />
+                          <label className="flex items-start gap-2 text-xs text-muted-foreground">
+                            <Checkbox
+                              checked={saveCustomPhase}
+                              onCheckedChange={(checked) =>
+                                setSaveCustomPhase(checked === true)
+                              }
+                            />
+                            <span>
+                              Save to the reusable phase list for future schedules and templates
+                            </span>
+                          </label>
+                        </div>
+                      )}
+                      <FormMessage />
+                    </FormItem>
+                  )
+                }}
+              />
 
               <div className="flex items-center gap-2">
                 <span className="text-[11px] text-muted-foreground font-medium">Display color</span>
