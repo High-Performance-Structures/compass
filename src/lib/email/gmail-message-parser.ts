@@ -1,5 +1,3 @@
-import "server-only"
-
 type GmailHeader = {
   readonly name: string
   readonly value: string
@@ -7,12 +5,23 @@ type GmailHeader = {
 
 type GmailBody = {
   readonly data?: string
+  readonly attachmentId?: string
+  readonly size?: number
 }
 
 type GmailPart = {
   readonly mimeType?: string
+  readonly filename?: string
   readonly body?: GmailBody
   readonly parts?: readonly GmailPart[]
+}
+
+export type InboundAttachment = {
+  readonly attachmentId: string | null
+  readonly fileName: string
+  readonly mimeType: string
+  readonly size: number | null
+  readonly data: Uint8Array | null
 }
 
 export type GmailMessage = {
@@ -40,6 +49,7 @@ export type InboundCandidate = {
   readonly htmlBody: string | null
   readonly snippet: string | null
   readonly receivedAt: string
+  readonly attachments: readonly InboundAttachment[]
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -54,7 +64,7 @@ export function isGmailMessage(value: unknown): value is GmailMessage {
   )
 }
 
-function base64UrlDecode(data: string): string {
+export function base64UrlDecodeBytes(data: string): Uint8Array {
   const normalized = data.replace(/-/g, "+").replace(/_/g, "/")
   const padded = normalized.padEnd(
     normalized.length + ((4 - (normalized.length % 4)) % 4),
@@ -65,7 +75,11 @@ function base64UrlDecode(data: string): string {
   for (let index = 0; index < binary.length; index += 1) {
     bytes[index] = binary.charCodeAt(index)
   }
-  return new TextDecoder().decode(bytes)
+  return bytes
+}
+
+function base64UrlDecode(data: string): string {
+  return new TextDecoder().decode(base64UrlDecodeBytes(data))
 }
 
 function headersByName(headers: readonly GmailHeader[]): Map<string, string> {
@@ -86,7 +100,7 @@ function collectBodies(part: GmailPart | undefined): {
   const text = childBodies.flatMap((child) => child.text)
   const html = childBodies.flatMap((child) => child.html)
 
-  if (part.body?.data) {
+  if (part.body?.data && !part.filename?.trim()) {
     try {
       const decoded = base64UrlDecode(part.body.data)
       if (part.mimeType === "text/html") {
@@ -101,6 +115,37 @@ function collectBodies(part: GmailPart | undefined): {
   }
 
   return { text, html }
+}
+
+function collectAttachments(
+  part: GmailPart | undefined
+): readonly InboundAttachment[] {
+  if (!part) return []
+  const childAttachments = (part.parts ?? []).flatMap(collectAttachments)
+  const fileName = part.filename?.trim() ?? ""
+  if (fileName.length === 0) return childAttachments
+
+  let data: Uint8Array | null = null
+  if (part.body?.data) {
+    try {
+      data = base64UrlDecodeBytes(part.body.data)
+    } catch {
+      data = null
+    }
+  }
+  return [
+    ...childAttachments,
+    {
+      attachmentId: part.body?.attachmentId ?? null,
+      fileName,
+      mimeType: part.mimeType?.trim() || "application/octet-stream",
+      size:
+        typeof part.body?.size === "number" && part.body.size >= 0
+          ? part.body.size
+          : null,
+      data,
+    },
+  ]
 }
 
 export function stripHtml(html: string): string {
@@ -187,5 +232,6 @@ export function candidateFromMessage(message: GmailMessage): InboundCandidate {
     htmlBody: htmlBody.length > 0 ? htmlBody : null,
     snippet: message.snippet ?? null,
     receivedAt: messageDate(message.internalDate),
+    attachments: collectAttachments(message.payload),
   }
 }
