@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest"
 
 import {
+  accountKeyFromScimIdentityByName,
   accountKeysFromScimIdentity,
   describeScimIdentityShape,
 } from "@/lib/goto/account-discovery"
@@ -80,5 +81,35 @@ describe("accountKeysFromScimIdentity", () => {
     )
     expect(shape).not.toContain("private@example.com")
     expect(shape).not.toContain("secret-account-key")
+  })
+})
+
+describe("accountKeyFromScimIdentityByName", () => {
+  it("matches a named account in GoTo's SCIM extension", () => {
+    expect(
+      accountKeyFromScimIdentityByName(
+        {
+          "urn:scim:schemas:extension:getgo:1.0": {
+            accounts: [
+              { value: "account-1", display: "Another Company" },
+              {
+                value: "account-2",
+                display: "Open Range Construction, Ltd.",
+              },
+            ],
+          },
+        },
+        "Open Range Construction Ltd"
+      )
+    ).toBe("account-2")
+  })
+
+  it("does not guess when the configured account name is absent", () => {
+    expect(
+      accountKeyFromScimIdentityByName(
+        { accounts: [{ key: "account-1", name: "Another Company" }] },
+        "Open Range Construction, Ltd."
+      )
+    ).toBeNull()
   })
 })
