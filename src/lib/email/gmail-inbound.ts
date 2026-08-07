@@ -23,6 +23,7 @@ import {
   getCompassGmailAccessToken,
 } from "@/lib/email/compass-email"
 import {
+  base64UrlDecodeBytes,
   candidateFromMessage,
   escapeHtml,
   isGmailMessage,
@@ -75,6 +76,17 @@ function isGmailListResponse(value: unknown): value is {
   return (
     (messagesValue === undefined || Array.isArray(messagesValue)) &&
     (nextPageToken === undefined || typeof nextPageToken === "string")
+  )
+}
+
+function isGmailAttachmentResponse(value: unknown): value is {
+  readonly data: string
+  readonly size?: number
+} {
+  return (
+    isRecord(value) &&
+    typeof value.data === "string" &&
+    (value.size === undefined || typeof value.size === "number")
   )
 }
 
@@ -563,6 +575,35 @@ async function fetchJson(input: {
   return JSON.parse(text)
 }
 
+async function hydrateCandidateAttachments(input: {
+  readonly candidate: InboundCandidate
+  readonly accessToken: string
+}): Promise<InboundCandidate> {
+  const attachments = await Promise.all(
+    input.candidate.attachments.map(async (attachment) => {
+      if (attachment.data || !attachment.attachmentId) return attachment
+      const attachmentUrl = new URL(
+        `https://gmail.googleapis.com/gmail/v1/users/me/messages/${input.candidate.gmailMessageId}/attachments/${attachment.attachmentId}`
+      )
+      const response = await fetchJson({
+        url: attachmentUrl.toString(),
+        accessToken: input.accessToken,
+      })
+      if (!isGmailAttachmentResponse(response)) {
+        throw new Error(
+          `Gmail returned an unexpected attachment for ${attachment.fileName}.`
+        )
+      }
+      return {
+        ...attachment,
+        size: attachment.size ?? response.size ?? null,
+        data: base64UrlDecodeBytes(response.data),
+      }
+    })
+  )
+  return { ...input.candidate, attachments }
+}
+
 export async function syncGmailInboundReplies(input: {
   readonly env: unknown
   readonly db: Db
@@ -649,11 +690,34 @@ export async function syncGmailInboundReplies(input: {
           throw new Error(`Gmail returned an unexpected message for ${id}.`)
         }
 
+        const candidateWithoutAttachmentData = candidateFromMessage(messageResponse)
+        const [existingInbound] = await input.db
+          .select({ matchedStatus: inboundEmails.matchedStatus })
+          .from(inboundEmails)
+          .where(
+            eq(
+              inboundEmails.gmailMessageId,
+              candidateWithoutAttachmentData.gmailMessageId
+            )
+          )
+          .limit(1)
+        const retryMisclassifiedReply =
+          existingInbound?.matchedStatus === "ignored_outbound" &&
+          isReplyMessage(candidateWithoutAttachmentData)
+        if (existingInbound && !retryMisclassifiedReply) {
+          skippedDuplicates += 1
+          continue
+        }
+
+        const candidate = await hydrateCandidateAttachments({
+          candidate: candidateWithoutAttachmentData,
+          accessToken: access.accessToken,
+        })
         const result = await importCandidate({
           env: input.env,
           db: input.db,
           organizationId: input.organizationId,
-          candidate: candidateFromMessage(messageResponse),
+          candidate,
         })
 
         if (result === "duplicate") {

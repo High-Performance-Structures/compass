@@ -26,6 +26,7 @@ describe("project inbound email addressing", () => {
     ["[TASK] Confirm delivery", "todo"],
     ["[DELIVERY] Windows arriving Friday", "delivery"],
     ["[DAILY LOG] Site progress", "daily_log"],
+    ["[Daily Log] Site progress", "daily_log"],
   ] as const)("routes %s", (subject, destination) => {
     expect(projectEmailDestination(subject)).toBe(destination)
   })

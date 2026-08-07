@@ -29,6 +29,7 @@ import {
   sameTrustedInternalEmailMailbox,
   trustedInternalEmailDomains,
 } from "@/lib/email/internal-email-alias"
+import { storeDailyLogEmailAttachments } from "@/lib/email/project-email-attachments"
 import { PROJECT_TODO_RECORD_TYPES } from "@/lib/project-todos"
 
 type Db = ReturnType<typeof getDb>
@@ -53,12 +54,22 @@ export type ProjectInboundRouteResult =
     }
 
 function candidateBody(candidate: InboundCandidate): string {
-  return (
+  const body = (
     candidate.textBody?.trim() ||
     (candidate.htmlBody ? stripHtml(candidate.htmlBody) : "") ||
     candidate.snippet?.trim() ||
     "(No message body.)"
   )
+  if (candidate.attachments.length === 0) return body
+
+  const attachmentLabels = new Set(
+    candidate.attachments.map((attachment) => `[${attachment.fileName}]`)
+  )
+  return body
+    .split("\n")
+    .filter((line) => !attachmentLabels.has(line.trim()))
+    .join("\n")
+    .trim()
 }
 
 function senderLabel(candidate: InboundCandidate): string {
@@ -399,7 +410,9 @@ async function routeChangeOrder(input: {
 }
 
 async function routeDailyLog(input: {
+  readonly env: unknown
   readonly db: Db
+  readonly organizationId: string
   readonly projectId: string
   readonly candidate: InboundCandidate
   readonly now: string
@@ -432,11 +445,23 @@ async function routeDailyLog(input: {
     })
     .onConflictDoNothing({ target: dailyLogs.id })
 
+  await storeDailyLogEmailAttachments({
+    env: input.env,
+    db: input.db,
+    organizationId: input.organizationId,
+    projectId: input.projectId,
+    dailyLogId: id,
+    candidate: input.candidate,
+    now: input.now,
+  })
+
   return { id, status: "routed_daily_log" }
 }
 
 async function routeDestination(input: {
+  readonly env: unknown
   readonly db: Db
+  readonly organizationId: string
   readonly projectId: string
   readonly projectNumber: string | null
   readonly candidate: InboundCandidate
@@ -516,7 +541,9 @@ export async function routeProjectInboundEmail(input: {
   }
 
   const routed = await routeDestination({
+    env: input.env,
     db: input.db,
+    organizationId: input.organizationId,
     projectId,
     projectNumber: project.projectNumber,
     candidate: input.candidate,
@@ -537,10 +564,16 @@ export async function routeProjectInboundEmail(input: {
     entityId: routed.id,
     summary:
       `Routed project email from ${senderLabel(input.candidate)} to ` +
-      `${destinationLabel(destination)}: “${title}”.`,
+      `${destinationLabel(destination)}: “${title}”.` +
+      (input.candidate.attachments.length > 0
+        ? ` Stored ${input.candidate.attachments.length} attached ${
+            input.candidate.attachments.length === 1 ? "file" : "files"
+          }.`
+        : ""),
     metadata: {
       destination,
       senderAuthorized: true,
+      attachmentCount: input.candidate.attachments.length,
     },
     createdAt: input.candidate.receivedAt,
   })
