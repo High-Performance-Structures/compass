@@ -33,4 +33,9 @@ describe("middleware public routes", () => {
       isPublicPath("/api/integrations/sage/pay-applications/requests/extra")
     ).toBe(false)
   })
+
+  it("allows the secret-protected GoTo webhook through WorkOS middleware", () => {
+    expect(isPublicPath("/api/integrations/goto/inbound")).toBe(true)
+    expect(isPublicPath("/api/integrations/goto/setup")).toBe(false)
+  })
 })

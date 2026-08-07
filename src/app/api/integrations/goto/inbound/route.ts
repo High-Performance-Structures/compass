@@ -14,6 +14,36 @@ import {
 const MAX_WEBHOOK_BODY_BYTES = 256 * 1024
 const MAX_EVENTS_PER_MINUTE = 120
 
+function isAuthorizedWebhook(request: Request, secret: string): boolean {
+  const suppliedSecret = new URL(request.url).searchParams.get("secret")
+  return constantTimeSecretMatch(secret, suppliedSecret)
+}
+
+async function validateWebhookProbe(request: Request): Promise<Response> {
+  const { env } = await getCloudflareContext()
+  const config = gotoWebhookConfig(env)
+  if (!config) {
+    return Response.json(
+      { error: "GoTo inbound messaging is not configured" },
+      { status: 503 }
+    )
+  }
+  if (!isAuthorizedWebhook(request, config.secret)) {
+    return Response.json({ error: "Unauthorized" }, { status: 401 })
+  }
+  return new Response(null, { status: 200 })
+}
+
+// GoTo probes the callback with OPTIONS and GET while creating a notification
+// channel. Keep both methods secret-protected and answer before the 2s limit.
+export async function OPTIONS(request: Request): Promise<Response> {
+  return validateWebhookProbe(request)
+}
+
+export async function GET(request: Request): Promise<Response> {
+  return validateWebhookProbe(request)
+}
+
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message.slice(0, 2_000) : "Unknown error"
 }
@@ -36,8 +66,7 @@ export async function POST(request: Request): Promise<Response> {
     return Response.json({ error: "GoTo inbound messaging is not configured" }, { status: 503 })
   }
 
-  const suppliedSecret = new URL(request.url).searchParams.get("secret")
-  if (!constantTimeSecretMatch(config.secret, suppliedSecret)) {
+  if (!isAuthorizedWebhook(request, config.secret)) {
     return Response.json({ error: "Unauthorized" }, { status: 401 })
   }
 
