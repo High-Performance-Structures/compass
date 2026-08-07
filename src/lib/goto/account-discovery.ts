@@ -23,6 +23,9 @@ function accountKey(value: unknown): string | null {
     stringField(value, "account_key") ??
     stringField(value, "accountId") ??
     stringField(value, "account_id") ??
+    // GoTo's getgo:1.0 SCIM extension represents accounts as
+    // { value: <account key>, display, entitlements } objects.
+    stringField(value, "value") ??
     stringField(value, "id")
   )
 }
