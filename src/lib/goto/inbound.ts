@@ -10,6 +10,7 @@ import type {
 } from "@/lib/email/gmail-message-parser"
 import { projectInboundEmailAddress } from "@/lib/email/project-address"
 import { routeProjectInboundSms } from "@/lib/email/project-inbound-routing"
+import { gotoAttachmentMimeType } from "@/lib/goto/mime-type"
 import type { GotoInboundMessage } from "@/lib/goto/notification-parser"
 import { getGotoAccessToken } from "@/lib/notifications/create-event"
 import {
@@ -94,10 +95,16 @@ async function downloadAttachments(input: {
     if (actualBytes > MAX_PHOTO_UPLOAD_BATCH_BYTES) {
       throw new Error("Text attachments exceed the 90 MB batch limit.")
     }
+    const mimeType = gotoAttachmentMimeType({
+      declaredType: attachment.contentType,
+      responseType: response.headers.get("content-type"),
+      fileName: attachment.name,
+      data,
+    })
     attachments.push({
       attachmentId: attachment.attachmentId,
       fileName: attachment.name,
-      mimeType: attachment.contentType,
+      mimeType,
       size: data.byteLength,
       data,
     })
