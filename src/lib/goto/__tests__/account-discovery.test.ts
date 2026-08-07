@@ -25,6 +25,14 @@ describe("accountKeysFromScimIdentity", () => {
     ).toEqual(["31416"])
   })
 
+  it("supports GoTo account arrays containing identifiers directly", () => {
+    expect(
+      accountKeysFromScimIdentity({
+        Accounts: ["account-1", 31416, { id: "account-2" }],
+      })
+    ).toEqual(["account-1", "31416", "account-2"])
+  })
+
   it("does not confuse the SCIM user id for an account key", () => {
     expect(accountKeysFromScimIdentity({ id: "user-key" })).toEqual([])
   })
