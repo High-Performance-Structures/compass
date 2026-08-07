@@ -28,6 +28,22 @@ describe("accountKeysFromScimIdentity", () => {
     ).toEqual(["31416"])
   })
 
+  it("reads account values from GoTo's getgo 1.0 SCIM extension", () => {
+    expect(
+      accountKeysFromScimIdentity({
+        "urn:scim:schemas:extension:getgo:1.0": {
+          accounts: [
+            {
+              value: "account-1",
+              display: "Primary account",
+              entitlements: ["messaging"],
+            },
+          ],
+        },
+      })
+    ).toEqual(["account-1"])
+  })
+
   it("supports GoTo account arrays containing identifiers directly", () => {
     expect(
       accountKeysFromScimIdentity({
