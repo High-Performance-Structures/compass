@@ -1,16 +1,16 @@
 import "server-only"
 
+import { YOUTUBE_OAUTH_SCOPES } from "@/lib/google/youtube-oauth-scopes"
+
+export {
+  YOUTUBE_OAUTH_SCOPES,
+  hasRequiredYoutubeScopes,
+} from "@/lib/google/youtube-oauth-scopes"
+
 const GOOGLE_AUTHORIZATION_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
 const YOUTUBE_API = "https://www.googleapis.com/youtube/v3"
 const YOUTUBE_UPLOAD_API = "https://www.googleapis.com/upload/youtube/v3"
-
-export const YOUTUBE_OAUTH_SCOPES = [
-  "openid",
-  "email",
-  "https://www.googleapis.com/auth/youtube.readonly",
-  "https://www.googleapis.com/auth/youtube.upload",
-] as const
 
 export const YOUTUBE_CHANNEL_KEYS = ["orc", "hps", "nutech"] as const
 export type YoutubeChannelKey = (typeof YOUTUBE_CHANNEL_KEYS)[number]
@@ -82,11 +82,6 @@ export function getYoutubeOAuthConfig(
     tokenEncryptionKey,
     redirectUri: new URL("/api/google/youtube/callback", redirectOrigin).toString(),
   }
-}
-
-export function hasRequiredYoutubeScopes(scopes: readonly string[]): boolean {
-  const granted = new Set(scopes)
-  return YOUTUBE_OAUTH_SCOPES.every((scope) => granted.has(scope))
 }
 
 export function youtubeTokenSalt(
