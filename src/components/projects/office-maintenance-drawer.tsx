@@ -1,7 +1,9 @@
 "use client"
 
 import Link from "next/link"
+import { useState } from "react"
 import { IconSettings, IconTemplate } from "@tabler/icons-react"
+import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
 import {
@@ -46,11 +48,20 @@ function needsDepartment(projectNumber: string | null): boolean {
   return prefix !== "O" && prefix !== "H" && prefix !== "N" && prefix !== "D"
 }
 
+function setupError(value: unknown): string | null {
+  if (typeof value !== "object" || value === null || !("error" in value)) {
+    return null
+  }
+  return typeof value.error === "string" ? value.error : null
+}
+
 export function OfficeMaintenanceDrawer({
   projects,
 }: {
   readonly projects: readonly OfficeMaintenanceProject[]
 }): React.ReactElement {
+  const [isConnectingGoto, setIsConnectingGoto] = useState(false)
+  const [isGotoConnected, setIsGotoConnected] = useState(false)
   const statusCleanupCount = projects.filter((project) =>
     statusNeedsCleanup(project.status)
   ).length
@@ -60,6 +71,27 @@ export function OfficeMaintenanceDrawer({
   const departmentNeededCount = projects.filter((project) =>
     needsDepartment(project.projectNumber)
   ).length
+
+  async function connectGotoMessaging(): Promise<void> {
+    setIsConnectingGoto(true)
+    try {
+      const response = await fetch("/api/integrations/goto/setup", {
+        method: "POST",
+        credentials: "same-origin",
+      })
+      const result: unknown = await response.json()
+      if (!response.ok) {
+        toast.error(setupError(result) ?? "Could not connect GoTo messaging.")
+        return
+      }
+      setIsGotoConnected(true)
+      toast.success("GoTo messaging is connected to Compass.")
+    } catch {
+      toast.error("Could not connect GoTo messaging.")
+    } finally {
+      setIsConnectingGoto(false)
+    }
+  }
 
   return (
     <Sheet>
@@ -91,6 +123,27 @@ export function OfficeMaintenanceDrawer({
           </div>
         </div>
         <div className="space-y-2 px-4">
+          <div className="space-y-2 border p-3">
+            <div>
+              <p className="text-sm font-medium">GoTo text routing</p>
+              <p className="text-xs text-muted-foreground">
+                Connect inbound staff and project texts to Compass activities.
+              </p>
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              className="w-full"
+              disabled={isConnectingGoto || isGotoConnected}
+              onClick={connectGotoMessaging}
+            >
+              {isGotoConnected
+                ? "GoTo messaging connected"
+                : isConnectingGoto
+                  ? "Connecting GoTo…"
+                  : "Connect GoTo messaging"}
+            </Button>
+          </div>
           <Button asChild variant="outline" className="w-full">
             <Link href="/dashboard/templates">
               <IconTemplate className="size-4" />
