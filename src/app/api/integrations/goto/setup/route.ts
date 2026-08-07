@@ -5,6 +5,7 @@ import { getDb } from "@/db"
 import { gotoInboundSettings } from "@/db/schema"
 import { getCurrentUser } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
+import { gotoSmsOwnerNumbers, normalizeSmsPhoneNumber } from "@/lib/goto/numbers"
 import { gotoWebhookConfig } from "@/lib/goto/webhook-security"
 import { getGotoAccessToken } from "@/lib/notifications/create-event"
 import { requireOrg } from "@/lib/org-scope"
@@ -20,6 +21,38 @@ function stringField(value: unknown, key: string): string | null {
   if (typeof field === "string" && field.trim().length > 0) return field.trim()
   if (typeof field === "number" && Number.isFinite(field)) return String(field)
   return null
+}
+
+function accountKeyFromUserAccounts(
+  value: unknown,
+  ownerNumbers: readonly string[]
+): string | null {
+  if (!isRecord(value) || !Array.isArray(value.items)) return null
+  const accounts = value.items.flatMap((item) => {
+    const accountKey = stringField(item, "accountKey")
+    if (!accountKey || !isRecord(item)) return []
+    const outboundPhoneNumbers = Array.isArray(item.outboundPhoneNumbers)
+      ? item.outboundPhoneNumbers.flatMap((phone) => {
+          const number = stringField(phone, "number")
+          return number ? [normalizeSmsPhoneNumber(number)] : []
+        })
+      : []
+    return [{ accountKey, outboundPhoneNumbers }]
+  })
+  const matchingKeys = [
+    ...new Set(
+      accounts
+        .filter((account) =>
+          account.outboundPhoneNumbers.some((number) =>
+            ownerNumbers.includes(number)
+          )
+        )
+        .map((account) => account.accountKey)
+    ),
+  ]
+  if (matchingKeys.length === 1) return matchingKeys[0] ?? null
+  const allKeys = [...new Set(accounts.map((account) => account.accountKey))]
+  return allKeys.length === 1 ? allKeys[0] ?? null : null
 }
 
 async function responseValue(response: Response): Promise<unknown> {
@@ -74,14 +107,33 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ success: false, error: token.error }, { status: 502 })
   }
   const authHeaders = { Authorization: `Bearer ${token.accessToken}` }
-  const meResponse = await fetch("https://api.getgo.com/admin/rest/v1/me", {
-    headers: authHeaders,
-  })
-  const me = await responseValue(meResponse)
-  const accountKey = stringField(me, "accountKey")
+  let accountKey = token.accountKey
+  if (!accountKey) {
+    // The Admin /me endpoint requires an additional identity scope. The Users
+    // endpoint uses the existing phone-system scope and exposes account keys.
+    const meResponse = await fetch("https://api.goto.com/users/v1/me", {
+      headers: authHeaders,
+    })
+    if (!meResponse.ok) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: `GoTo account discovery failed (${meResponse.status}). Verify the users.v1.lines.read scope.`,
+        },
+        { status: 502 }
+      )
+    }
+    accountKey = accountKeyFromUserAccounts(
+      await responseValue(meResponse),
+      gotoSmsOwnerNumbers(env)
+    )
+  }
   if (!accountKey) {
     return NextResponse.json(
-      { success: false, error: "GoTo account key was not available to the configured administrator" },
+      {
+        success: false,
+        error: "GoTo account key could not be matched to a configured Compass text number",
+      },
       { status: 502 }
     )
   }

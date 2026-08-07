@@ -114,7 +114,11 @@ type SmsDeliveryResult = {
 }
 
 type GotoAccessTokenResult =
-  | { readonly success: true; readonly accessToken: string }
+  | {
+      readonly success: true
+      readonly accessToken: string
+      readonly accountKey: string | null
+    }
   | { readonly success: false; readonly error: string }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -127,6 +131,16 @@ function envString(env: unknown, key: string): string | null {
   return typeof value === "string" && value.trim().length > 0
     ? value
     : process.env[key] ?? null
+}
+
+function gotoAccountKey(value: Record<string, unknown>): string | null {
+  const field = value.account_key ?? value.accountKey
+  if (typeof field === "string" && field.trim().length > 0) {
+    return field.trim()
+  }
+  return typeof field === "number" && Number.isFinite(field)
+    ? String(field)
+    : null
 }
 
 export function isMissingNotificationTableError(
@@ -358,7 +372,11 @@ export async function getGotoAccessToken(
   try {
     const parsed: unknown = JSON.parse(responseText)
     if (isRecord(parsed) && typeof parsed.access_token === "string") {
-      return { success: true, accessToken: parsed.access_token }
+      return {
+        success: true,
+        accessToken: parsed.access_token,
+        accountKey: gotoAccountKey(parsed),
+      }
     }
   } catch {
     return { success: false, error: "GoTo token response was not JSON" }
