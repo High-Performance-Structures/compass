@@ -36,6 +36,17 @@ describe("accountKeysFromScimIdentity", () => {
     ).toEqual(["account-1", "31416", "account-2"])
   })
 
+  it("supports account and organization objects inside SCIM extensions", () => {
+    expect(
+      accountKeysFromScimIdentity({
+        extension: {
+          account: { key: "account-1" },
+          organization: { id: "account-2" },
+        },
+      })
+    ).toEqual(["account-1", "account-2"])
+  })
+
   it("does not confuse the SCIM user id for an account key", () => {
     expect(accountKeysFromScimIdentity({ id: "user-key" })).toEqual([])
   })
@@ -48,6 +59,9 @@ describe("accountKeysFromScimIdentity", () => {
 
     expect(shape).toContain("userName:string")
     expect(shape).toContain("extension.accountKeys[]:string")
+    expect(shape.indexOf("extension.accountKeys[]:string")).toBeLessThan(
+      shape.indexOf("userName:string")
+    )
     expect(shape).not.toContain("private@example.com")
     expect(shape).not.toContain("secret-account-key")
   })
