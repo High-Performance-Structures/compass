@@ -45,6 +45,13 @@ function collectAccountKeys(value: unknown): readonly string[] {
         return keyValue ? [keyValue] : []
       })
     }
+    if (
+      (normalizedKey.includes("account") || normalizedKey === "organization") &&
+      isRecord(field)
+    ) {
+      const keyValue = accountKey(field)
+      if (keyValue) return [keyValue]
+    }
     return Array.isArray(field) || isRecord(field)
       ? collectAccountKeys(field)
       : []
@@ -78,5 +85,12 @@ function collectShapePaths(
 
 /** Returns field paths and types only, never SCIM values or identifiers. */
 export function describeScimIdentityShape(value: unknown): string {
-  return collectShapePaths(value, "", 0).slice(0, 80).join(", ")
+  return [...collectShapePaths(value, "", 0)]
+    .sort((left, right) => {
+      const leftRelevant = /account|organization/i.test(left) ? 0 : 1
+      const rightRelevant = /account|organization/i.test(right) ? 0 : 1
+      return leftRelevant - rightRelevant
+    })
+    .slice(0, 80)
+    .join(", ")
 }
