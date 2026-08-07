@@ -55,6 +55,7 @@ import {
 } from "@/lib/daily-logs/print-selection"
 import {
   photoLinkHref,
+  projectInternalPhotoUrl,
   resolvePhotoImageSource,
 } from "@/lib/photo-sources"
 import {
@@ -427,11 +428,16 @@ function DailyLogFields({
 
 function DailyLogPhotoThumb({
   photo,
+  projectId,
 }: {
   readonly photo: ProjectDailyLogPhoto
+  readonly projectId: string
 }): React.ReactElement {
   const [imageFailed, setImageFailed] = React.useState(false)
-  const resolvedImage = resolvePhotoImageSource(photo)
+  const resolvedImage = resolvePhotoImageSource({
+    ...photo,
+    thumbnailUrl: projectInternalPhotoUrl(projectId, photo.id),
+  })
   const imageSrc = imageFailed ? null : resolvedImage.src
 
   if (imageSrc !== null) {
@@ -462,8 +468,10 @@ function DailyLogPhotoThumb({
 
 function PhotoStrip({
   log,
+  projectId,
 }: {
   readonly log: ProjectDailyLogItem
+  readonly projectId: string
 }): React.ReactElement | null {
   if (log.photos.length === 0) return null
 
@@ -482,9 +490,7 @@ function PhotoStrip({
       </div>
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-6">
         {log.photos.slice(0, 6).map((photo) => {
-          const href = photoLinkHref(photo.driveUrl, {
-            allowExternalSource: true,
-          })
+          const href = photoLinkHref(projectInternalPhotoUrl(projectId, photo.id))
           return (
             <a
               key={photo.id}
@@ -496,7 +502,7 @@ function PhotoStrip({
                 href ? "cursor-pointer" : "cursor-default"
               )}
             >
-              <DailyLogPhotoThumb photo={photo} />
+              <DailyLogPhotoThumb photo={photo} projectId={projectId} />
               <div className="absolute inset-x-0 bottom-0 bg-background/85 px-2 py-1 text-[11px]">
                 {photo.ownerVisible ? "Owner visible" : statusLabel(photo.reviewStatus)}
               </div>
@@ -1731,7 +1737,7 @@ export function ProjectDailyLogWorkspace({
                 </div>
               )}
 
-              <PhotoStrip log={log} />
+              <PhotoStrip log={log} projectId={workspace.project.id} />
                   </>
                 )
               })()}
@@ -1768,7 +1774,10 @@ export function ProjectDailyLogWorkspace({
                   key={photo.id}
                   className="relative aspect-[4/3] overflow-hidden rounded-md border bg-muted"
                 >
-                  <DailyLogPhotoThumb photo={photo} />
+                  <DailyLogPhotoThumb
+                    photo={photo}
+                    projectId={workspace.project.id}
+                  />
                 </div>
               ))}
             </div>

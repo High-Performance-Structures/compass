@@ -544,6 +544,66 @@ export const activityEvents = sqliteTable(
 export type ActivityEvent = typeof activityEvents.$inferSelect
 export type NewActivityEvent = typeof activityEvents.$inferInsert
 
+export const gotoInboundEvents = sqliteTable(
+  "goto_inbound_events",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    projectId: text("project_id").references(() => projects.id, {
+      onDelete: "set null",
+    }),
+    messageId: text("message_id").notNull(),
+    accountKey: text("account_key").notNull(),
+    ownerTouchpoint: text("owner_touchpoint").notNull(),
+    senderPhone: text("sender_phone").notNull(),
+    status: text("status").notNull().default("received"),
+    error: text("error"),
+    receivedAt: text("received_at").notNull(),
+    processedAt: text("processed_at"),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("goto_inbound_events_message_unique").on(table.messageId),
+    index("goto_inbound_events_org_status_idx").on(
+      table.organizationId,
+      table.status,
+      table.receivedAt
+    ),
+  ]
+)
+
+export type GotoInboundEvent = typeof gotoInboundEvents.$inferSelect
+export type NewGotoInboundEvent = typeof gotoInboundEvents.$inferInsert
+
+export const gotoInboundSettings = sqliteTable(
+  "goto_inbound_settings",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    accountKey: text("account_key").notNull(),
+    channelId: text("channel_id").notNull(),
+    channelNickname: text("channel_nickname").notNull(),
+    subscriptionId: text("subscription_id"),
+    configuredBy: text("configured_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("goto_inbound_settings_org_unique").on(table.organizationId),
+    uniqueIndex("goto_inbound_settings_account_unique").on(table.accountKey),
+  ]
+)
+
+export type GotoInboundSetting = typeof gotoInboundSettings.$inferSelect
+export type NewGotoInboundSetting = typeof gotoInboundSettings.$inferInsert
+
 export const scheduleSavedViews = sqliteTable(
   "schedule_saved_views",
   {

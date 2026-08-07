@@ -20,6 +20,10 @@ import {
 import { requireAuth } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
 import {
+  gotoSenderNumberForProject,
+  normalizeSmsPhoneNumber,
+} from "@/lib/goto/numbers"
+import {
   resolveNotificationDelivery,
   type NotificationDelivery,
 } from "@/lib/notifications/delivery"
@@ -112,10 +116,6 @@ type SmsDeliveryResult = {
 type GotoAccessTokenResult =
   | { readonly success: true; readonly accessToken: string }
   | { readonly success: false; readonly error: string }
-
-const DEFAULT_GOTO_ORC_FROM_NUMBER = "+17196308767"
-const DEFAULT_GOTO_NUTECH_FROM_NUMBER = "+17196860770"
-const DEFAULT_GOTO_HPS_FROM_NUMBER = "+17199008850"
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null
@@ -304,47 +304,6 @@ function toBasicAuthToken(clientId: string, clientSecret: string): string {
   return btoa(`${clientId}:${clientSecret}`)
 }
 
-function normalizeSmsPhoneNumber(value: string): string {
-  const trimmed = value.trim()
-  if (trimmed.startsWith("+")) {
-    return `+${trimmed.replace(/\D/g, "")}`
-  }
-
-  const digits = trimmed.replace(/\D/g, "")
-  if (digits.length === 10) return `+1${digits}`
-  if (digits.length === 11 && digits.startsWith("1")) return `+${digits}`
-  return `+${digits}`
-}
-
-function gotoSenderNumberForProject(
-  env: unknown,
-  projectNumber: string | null
-): string {
-  const prefix = projectNumber?.trim().charAt(0).toUpperCase()
-  if (prefix === "N") {
-    return normalizeSmsPhoneNumber(
-      envString(env, "GOTO_SMS_NUTECH_FROM_NUMBER") ??
-        DEFAULT_GOTO_NUTECH_FROM_NUMBER
-    )
-  }
-  if (prefix === "H") {
-    return normalizeSmsPhoneNumber(
-      envString(env, "GOTO_SMS_HPS_FROM_NUMBER") ??
-        DEFAULT_GOTO_HPS_FROM_NUMBER
-    )
-  }
-  if (prefix === "O" || prefix === "D") {
-    return normalizeSmsPhoneNumber(
-      envString(env, "GOTO_SMS_ORC_FROM_NUMBER") ??
-        DEFAULT_GOTO_ORC_FROM_NUMBER
-    )
-  }
-  return normalizeSmsPhoneNumber(
-    envString(env, "GOTO_SMS_FROM_NUMBER") ??
-      DEFAULT_GOTO_ORC_FROM_NUMBER
-  )
-}
-
 function notificationSmsBody(title: string, body: string): string {
   const message = `${title}\n${body}\nReply STOP to opt out.`.trim()
   return message.length > 1000
@@ -362,7 +321,7 @@ function extractProviderMessageId(value: unknown): string | null {
   return typeof firstMessage.id === "string" ? firstMessage.id : null
 }
 
-async function getGotoAccessToken(
+export async function getGotoAccessToken(
   env: unknown
 ): Promise<GotoAccessTokenResult> {
   const pat = envString(env, "GOTO_SMS_ACCESS_TOKEN")

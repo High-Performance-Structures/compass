@@ -66,10 +66,6 @@ export async function GET(
     const user = await requireAuth()
     const { id: projectId, photoId } = await params
     const audience = audienceValue(request.nextUrl.searchParams.get("audience"))
-    if (audience === null) {
-      return new Response("Photo audience is required", { status: 400 })
-    }
-
     const { env } = await getCloudflareContext()
     const db = getDb(env.DB)
     const project = await assertProjectAccess(db, user, projectId)
@@ -79,6 +75,9 @@ export async function GET(
 
     const viewerIsInternal = isInternalStaffRole(user.role)
     if (!viewerIsInternal) {
+      if (audience === null) {
+        return new Response("Photo not found", { status: 404 })
+      }
       const [membership] = await db
         .select({ role: projectMembers.role })
         .from(projectMembers)
@@ -112,17 +111,22 @@ export async function GET(
       })
       .from(dailyLogPhotos)
       .where(
-        and(
-          eq(dailyLogPhotos.id, photoId),
-          eq(dailyLogPhotos.projectId, projectId),
-          eq(dailyLogPhotos.reviewStatus, "approved"),
-          visibility
-        )
+        viewerIsInternal
+          ? and(
+              eq(dailyLogPhotos.id, photoId),
+              eq(dailyLogPhotos.projectId, projectId)
+            )
+          : and(
+              eq(dailyLogPhotos.id, photoId),
+              eq(dailyLogPhotos.projectId, projectId),
+              eq(dailyLogPhotos.reviewStatus, "approved"),
+              visibility
+            )
       )
       .limit(1)
     if (
       !photo?.driveFileId ||
-      photo.mimeType?.startsWith("image/") !== true
+      !photo.mimeType
     ) {
       return new Response("Photo not found", { status: 404 })
     }
@@ -165,7 +169,7 @@ export async function GET(
     return new Response(response.body, {
       headers: {
         "Content-Type": photo.mimeType,
-        "Content-Disposition": `inline; filename="${safeFileName(photo.fileName)}"`,
+        "Content-Disposition": `${photo.mimeType.startsWith("image/") ? "inline" : "attachment"}; filename="${safeFileName(photo.fileName)}"`,
         "Cache-Control": "private, max-age=300",
         "X-Content-Type-Options": "nosniff",
       },

@@ -52,6 +52,7 @@ import {
 import { ProjectContextSwitcher } from "@/components/projects/project-context-switcher"
 import {
   photoLinkHref,
+  projectInternalPhotoUrl,
   resolvePhotoImageSource,
 } from "@/lib/photo-sources"
 import { adjacentPhoto } from "@/lib/photos/carousel"
@@ -882,10 +883,15 @@ export function ProjectPhotoReview({
           )}
           {filteredPhotos.map((photo) => {
             const selected = selectedSet.has(photo.id)
-            const href = photoLinkHref(photo.driveUrl, {
-              allowExternalSource: true,
+            const internalUrl = projectInternalPhotoUrl(
+              library.project.id,
+              photo.id
+            )
+            const href = photoLinkHref(internalUrl)
+            const resolvedImage = resolvePhotoImageSource({
+              ...photo,
+              thumbnailUrl: internalUrl,
             })
-            const resolvedImage = resolvePhotoImageSource(photo)
             const imageSrc = failedImageSet.has(photo.id)
               ? null
               : resolvedImage.src
@@ -1040,7 +1046,13 @@ export function ProjectPhotoReview({
           <DialogContent className="max-h-[92vh] overflow-hidden p-0 sm:max-w-5xl">
             {previewPhoto &&
               (() => {
-                const resolvedImage = resolvePhotoImageSource(previewPhoto)
+                const resolvedImage = resolvePhotoImageSource({
+                  ...previewPhoto,
+                  thumbnailUrl: projectInternalPhotoUrl(
+                    library.project.id,
+                    previewPhoto.id
+                  ),
+                })
                 const imageSrc = failedImageSet.has(previewPhoto.id)
                   ? null
                   : resolvedImage.src

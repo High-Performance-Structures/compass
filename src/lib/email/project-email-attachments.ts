@@ -113,6 +113,8 @@ export async function storeDailyLogEmailAttachments(input: {
   readonly dailyLogId: string
   readonly candidate: InboundCandidate
   readonly now: string
+  readonly sourceSystem?: string
+  readonly idPrefix?: string
 }): Promise<number> {
   if (input.candidate.attachments.length === 0) return 0
 
@@ -199,7 +201,7 @@ export async function storeDailyLogEmailAttachments(input: {
       throw new Error(`Gmail did not return data for ${attachment.fileName}.`)
     }
     const photoId =
-      `email-photo-${input.candidate.gmailMessageId}-${index + 1}`
+      `${input.idPrefix ?? "email"}-photo-${input.candidate.gmailMessageId}-${index + 1}`
     const [existing] = await input.db
       .select({ id: dailyLogPhotos.id })
       .from(dailyLogPhotos)
@@ -221,7 +223,7 @@ export async function storeDailyLogEmailAttachments(input: {
       projectId: input.projectId,
       dailyLogId: input.dailyLogId,
       uploadedBy: null,
-      sourceSystem: "email",
+      sourceSystem: input.sourceSystem ?? "email",
       sourceExternalId:
         `${input.candidate.gmailMessageId}:` +
         (attachment.attachmentId ?? String(index + 1)),
