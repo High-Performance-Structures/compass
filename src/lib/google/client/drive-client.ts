@@ -253,6 +253,9 @@ export class DriveClient {
             Authorization: `Bearer ${token}`,
             "Content-Type": "application/json",
             "X-Upload-Content-Type": options.mimeType,
+            ...(options.size === undefined
+              ? {}
+              : { "X-Upload-Content-Length": String(options.size) }),
           },
           body: JSON.stringify(metadata),
         }
