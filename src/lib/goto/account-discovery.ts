@@ -34,7 +34,12 @@ function collectAccountKeys(value: unknown): readonly string[] {
   if (!isRecord(value)) return []
 
   return Object.entries(value).flatMap(([key, field]) => {
-    if (key.toLowerCase() === "accounts" && Array.isArray(field)) {
+    const normalizedKey = key.toLowerCase().replace(/[^a-z0-9]/g, "")
+    if (normalizedKey === "accountkey") {
+      const keyValue = accountKey(field)
+      return keyValue ? [keyValue] : []
+    }
+    if (normalizedKey.includes("account") && Array.isArray(field)) {
       return field.flatMap((account) => {
         const keyValue = accountKey(account)
         return keyValue ? [keyValue] : []
@@ -52,4 +57,26 @@ function collectAccountKeys(value: unknown): readonly string[] {
  */
 export function accountKeysFromScimIdentity(value: unknown): readonly string[] {
   return [...new Set(collectAccountKeys(value))]
+}
+
+function collectShapePaths(
+  value: unknown,
+  path: string,
+  depth: number
+): readonly string[] {
+  if (depth > 5) return [`${path}:…`]
+  if (Array.isArray(value)) {
+    if (value.length === 0) return [`${path}:array(empty)`]
+    return collectShapePaths(value[0], `${path}[]`, depth + 1)
+  }
+  if (!isRecord(value)) return [`${path}:${typeof value}`]
+
+  return Object.entries(value).flatMap(([key, field]) =>
+    collectShapePaths(field, path ? `${path}.${key}` : key, depth + 1)
+  )
+}
+
+/** Returns field paths and types only, never SCIM values or identifiers. */
+export function describeScimIdentityShape(value: unknown): string {
+  return collectShapePaths(value, "", 0).slice(0, 80).join(", ")
 }
