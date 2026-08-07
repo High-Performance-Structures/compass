@@ -11,10 +11,19 @@ function stringField(value: unknown, key: string): string | null {
 }
 
 function accountKey(value: unknown): string | null {
+  if (typeof value === "string" && value.trim().length > 0) {
+    return value.trim()
+  }
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return String(value)
+  }
   return (
     stringField(value, "key") ??
     stringField(value, "accountKey") ??
-    stringField(value, "account_key")
+    stringField(value, "account_key") ??
+    stringField(value, "accountId") ??
+    stringField(value, "account_id") ??
+    stringField(value, "id")
   )
 }
 
@@ -25,7 +34,7 @@ function collectAccountKeys(value: unknown): readonly string[] {
   if (!isRecord(value)) return []
 
   return Object.entries(value).flatMap(([key, field]) => {
-    if (key === "accounts" && Array.isArray(field)) {
+    if (key.toLowerCase() === "accounts" && Array.isArray(field)) {
       return field.flatMap((account) => {
         const keyValue = accountKey(account)
         return keyValue ? [keyValue] : []
