@@ -2,10 +2,17 @@ import { describe, expect, it } from "vitest"
 
 import {
   projectAudiencePhotoUrl,
+  projectInternalPhotoUrl,
   resolvePhotoImageSource,
 } from "@/lib/photo-sources"
 
 describe("project audience photo sources", () => {
+  it("builds an authenticated internal Compass photo URL", () => {
+    expect(projectInternalPhotoUrl("proj-o-210", "photo 1")).toBe(
+      "/api/projects/proj-o-210/photos/photo%201"
+    )
+  })
+
   it("builds an audience-scoped URL without exposing the Drive file ID", () => {
     const url = projectAudiencePhotoUrl(
       "proj/o-170",

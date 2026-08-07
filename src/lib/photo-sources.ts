@@ -45,6 +45,13 @@ export function projectAudiencePhotoUrl(
   return `/api/projects/${encodeURIComponent(projectId)}/photos/${encodeURIComponent(photoId)}?audience=${audience}`
 }
 
+export function projectInternalPhotoUrl(
+  projectId: string,
+  photoId: string
+): string {
+  return `/api/projects/${encodeURIComponent(projectId)}/photos/${encodeURIComponent(photoId)}`
+}
+
 export function isLegacyExternalPhotoUrl(value: string): boolean {
   if (!isHttpUrl(value)) return false
 

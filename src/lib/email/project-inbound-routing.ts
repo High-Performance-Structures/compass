@@ -6,6 +6,7 @@ import type { getDb } from "@/db"
 import { recordActivityEvent } from "@/lib/activity-log"
 import {
   dailyLogs,
+  notificationPreferences,
   organizationMembers,
   projectContacts,
   projectChangeOrderHistory,
@@ -33,6 +34,20 @@ import { storeDailyLogEmailAttachments } from "@/lib/email/project-email-attachm
 import { PROJECT_TODO_RECORD_TYPES } from "@/lib/project-todos"
 
 type Db = ReturnType<typeof getDb>
+
+export type ProjectInboundSource = {
+  readonly kind: "email" | "goto_sms"
+  readonly idPrefix: "email" | "sms"
+  readonly sourceSystem: "email" | "goto_sms"
+  readonly label: "Email" | "Text message"
+}
+
+const EMAIL_SOURCE: ProjectInboundSource = {
+  kind: "email",
+  idPrefix: "email",
+  sourceSystem: "email",
+  label: "Email",
+}
 
 export type ProjectInboundRouteResult =
   | { readonly kind: "not_project_email" }
@@ -76,13 +91,16 @@ function senderLabel(candidate: InboundCandidate): string {
   return candidate.fromName?.trim() || candidate.fromAddress
 }
 
-function emailActor(candidate: InboundCandidate): {
+function inboundActor(
+  candidate: InboundCandidate,
+  source: ProjectInboundSource
+): {
   readonly id: null
   readonly email: string
   readonly displayName: string | null
   readonly firstName: null
   readonly lastName: null
-  readonly role: "project_email"
+  readonly role: string
 } {
   return {
     id: null,
@@ -90,7 +108,7 @@ function emailActor(candidate: InboundCandidate): {
     displayName: candidate.fromName,
     firstName: null,
     lastName: null,
-    role: "project_email",
+    role: source.kind === "email" ? "project_email" : "project_sms",
   }
 }
 
@@ -205,8 +223,9 @@ async function routeRfi(input: {
   readonly projectNumber: string | null
   readonly candidate: InboundCandidate
   readonly now: string
+  readonly source: ProjectInboundSource
 }): Promise<{ readonly id: string; readonly status: "routed_rfi" }> {
-  const id = `email-rfi-${input.candidate.gmailMessageId}`
+  const id = `${input.source.idPrefix}-rfi-${input.candidate.gmailMessageId}`
   const existing = await input.db
     .select({ id: projectRfis.id })
     .from(projectRfis)
@@ -220,7 +239,7 @@ async function routeRfi(input: {
     .values({
       id,
       projectId: input.projectId,
-      sourceSystem: "email",
+      sourceSystem: input.source.sourceSystem,
       sourceRecordId: input.candidate.gmailMessageId,
       rfiNumber: rfiNumber({
         projectNumber: input.projectNumber,
@@ -248,8 +267,9 @@ async function routeTodo(input: {
   readonly candidate: InboundCandidate
   readonly delivery?: boolean
   readonly now: string
+  readonly source: ProjectInboundSource
 }): Promise<{ readonly id: string; readonly status: "routed_todo" }> {
-  const id = `email-todo-${input.candidate.gmailMessageId}`
+  const id = `${input.source.idPrefix}-todo-${input.candidate.gmailMessageId}`
   const existing = await input.db
     .select({ id: projectOperations.id })
     .from(projectOperations)
@@ -271,7 +291,7 @@ async function routeTodo(input: {
     .values({
       id,
       projectId: input.projectId,
-      sourceSystem: "email",
+      sourceSystem: input.source.sourceSystem,
       sourceRecordType: "staff_task",
       sourceRecordId: input.candidate.gmailMessageId,
       sourceRecordNumber: `TASK-${String(existing.length + 1).padStart(3, "0")}`,
@@ -297,8 +317,9 @@ async function routeRfq(input: {
   readonly projectNumber: string | null
   readonly candidate: InboundCandidate
   readonly now: string
+  readonly source: ProjectInboundSource
 }): Promise<{ readonly id: string; readonly status: "routed_rfq" }> {
-  const id = `email-rfq-${input.candidate.gmailMessageId}`
+  const id = `${input.source.idPrefix}-rfq-${input.candidate.gmailMessageId}`
   const existing = await input.db
     .select({ id: projectOperations.id })
     .from(projectOperations)
@@ -318,7 +339,7 @@ async function routeRfq(input: {
     .values({
       id,
       projectId: input.projectId,
-      sourceSystem: "email",
+      sourceSystem: input.source.sourceSystem,
       sourceRecordType: "rfq",
       sourceRecordId: input.candidate.gmailMessageId,
       sourceRecordNumber:
@@ -345,8 +366,9 @@ async function routeChangeOrder(input: {
   readonly projectNumber: string | null
   readonly candidate: InboundCandidate
   readonly now: string
+  readonly source: ProjectInboundSource
 }): Promise<{ readonly id: string; readonly status: "routed_change_order" }> {
-  const id = `email-change-order-${input.candidate.gmailMessageId}`
+  const id = `${input.source.idPrefix}-change-order-${input.candidate.gmailMessageId}`
   const existing = await input.db
     .select({ id: projectChangeOrders.id })
     .from(projectChangeOrders)
@@ -372,10 +394,10 @@ async function routeChangeOrder(input: {
       // the sender's owner/sub role and chooses an external audience.
       requesterType: "internal",
       requesterName: senderLabel(input.candidate),
-      sourceType: "email_request",
+      sourceType: `${input.source.sourceSystem}_request`,
       sourceRecordId: input.candidate.gmailMessageId,
       internalNotes:
-        "Created from the project email address; review before submitting.",
+        `Created from a project ${input.source.label.toLowerCase()}; review before submitting.`,
       foxitStatus: "not_started",
       sageStatus: "not_ready",
       createdBy: null,
@@ -388,7 +410,7 @@ async function routeChangeOrder(input: {
   await input.db
     .insert(projectChangeOrderHistory)
     .values({
-      id: `email-change-order-history-${input.candidate.gmailMessageId}`,
+      id: `${input.source.idPrefix}-change-order-history-${input.candidate.gmailMessageId}`,
       projectId: input.projectId,
       changeOrderId: id,
       eventType: "created",
@@ -397,9 +419,9 @@ async function routeChangeOrder(input: {
       actorUserId: null,
       actorName: senderLabel(input.candidate),
       actorRole: "internal",
-      note: "Created from the project email address for staff review.",
+      note: `Created from a project ${input.source.label.toLowerCase()} for staff review.`,
       metadataJson: JSON.stringify({
-        source: "project_email",
+        source: input.source.sourceSystem,
         gmailMessageId: input.candidate.gmailMessageId,
       }),
       createdAt: input.now,
@@ -416,11 +438,12 @@ async function routeDailyLog(input: {
   readonly projectId: string
   readonly candidate: InboundCandidate
   readonly now: string
+  readonly source: ProjectInboundSource
 }): Promise<{ readonly id: string; readonly status: "routed_daily_log" }> {
-  const id = `email-daily-log-${input.candidate.gmailMessageId}`
+  const id = `${input.source.idPrefix}-daily-log-${input.candidate.gmailMessageId}`
   const title = projectEmailTitle(input.candidate.subject)
   const sourceNote = [
-    `Email from ${senderLabel(input.candidate)} <${input.candidate.fromAddress}>`,
+    `${input.source.label} from ${senderLabel(input.candidate)} <${input.candidate.fromAddress}>`,
     title.length > 0 ? `Subject: ${title}` : null,
   ]
     .filter((line): line is string => line !== null)
@@ -432,7 +455,7 @@ async function routeDailyLog(input: {
       id,
       projectId: input.projectId,
       authorId: null,
-      sourceSystem: "email",
+      sourceSystem: input.source.sourceSystem,
       sourceExternalId: input.candidate.gmailMessageId,
       logDate: input.candidate.receivedAt.slice(0, 10),
       workCompleted: candidateBody(input.candidate),
@@ -453,6 +476,8 @@ async function routeDailyLog(input: {
     dailyLogId: id,
     candidate: input.candidate,
     now: input.now,
+    sourceSystem: input.source.sourceSystem,
+    idPrefix: input.source.idPrefix,
   })
 
   return { id, status: "routed_daily_log" }
@@ -467,6 +492,7 @@ async function routeDestination(input: {
   readonly candidate: InboundCandidate
   readonly destination: ProjectEmailDestination
   readonly now: string
+  readonly source: ProjectInboundSource
 }): Promise<{
   readonly id: string
   readonly status:
@@ -486,15 +512,15 @@ async function routeDestination(input: {
   return routeDailyLog(input)
 }
 
-export async function routeProjectInboundEmail(input: {
+async function routeVerifiedProjectInboundMessage(input: {
   readonly env: unknown
   readonly db: Db
   readonly organizationId: string
+  readonly projectId: string
   readonly candidate: InboundCandidate
+  readonly source: ProjectInboundSource
 }): Promise<ProjectInboundRouteResult> {
-  const projectId = projectIdFromInboundAddress(input.candidate.toAddress)
-  if (!projectId) return { kind: "not_project_email" }
-
+  const projectId = input.projectId
   const [project] = await input.db
     .select({
       id: projects.id,
@@ -509,30 +535,21 @@ export async function routeProjectInboundEmail(input: {
     return { kind: "other_organization" }
   }
 
-  const senderAllowed = await senderCanEmailProject({
-    env: input.env,
-    db: input.db,
-    organizationId: input.organizationId,
-    projectId,
-    senderEmail: input.candidate.fromAddress,
-  })
   const destination = projectEmailDestination(input.candidate.subject)
-  if (!senderAllowed || !destination) {
+  if (!destination) {
     await recordActivityEvent({
       db: input.db,
-      id: `project-email-review-${input.candidate.gmailMessageId}`,
+      id: `project-${input.source.idPrefix}-review-${input.candidate.gmailMessageId}`,
       organizationId: input.organizationId,
       projectId,
-      actor: emailActor(input.candidate),
-      category: "email",
-      action: "project_email.needs_review",
-      entityType: "project_email",
+      actor: inboundActor(input.candidate, input.source),
+      category: input.source.kind === "email" ? "email" : "conversation",
+      action: `project_${input.source.sourceSystem}.needs_review`,
+      entityType: `project_${input.source.sourceSystem}`,
       entityId: input.candidate.gmailMessageId,
-      summary: senderAllowed
-        ? `Project email from ${senderLabel(input.candidate)} is awaiting routing review.`
-        : `Project email from an unrecognized sender (${input.candidate.fromAddress}) is awaiting review.`,
+      summary: `Project ${input.source.label.toLowerCase()} from ${senderLabel(input.candidate)} is awaiting routing review.`,
       metadata: {
-        senderAuthorized: senderAllowed,
+        senderAuthorized: true,
         subjectTagged: destination !== null,
       },
       createdAt: input.candidate.receivedAt,
@@ -549,21 +566,22 @@ export async function routeProjectInboundEmail(input: {
     candidate: input.candidate,
     destination,
     now: new Date().toISOString(),
+    source: input.source,
   })
   const title =
     projectEmailTitle(input.candidate.subject) || input.candidate.subject
   await recordActivityEvent({
     db: input.db,
-    id: `project-email-routed-${input.candidate.gmailMessageId}`,
+    id: `project-${input.source.idPrefix}-routed-${input.candidate.gmailMessageId}`,
     organizationId: input.organizationId,
     projectId,
-    actor: emailActor(input.candidate),
-    category: "email",
-    action: "project_email.routed",
+    actor: inboundActor(input.candidate, input.source),
+    category: input.source.kind === "email" ? "email" : "conversation",
+    action: `project_${input.source.sourceSystem}.routed`,
     entityType: destinationEntityType(destination),
     entityId: routed.id,
     summary:
-      `Routed project email from ${senderLabel(input.candidate)} to ` +
+      `Routed project ${input.source.label.toLowerCase()} from ${senderLabel(input.candidate)} to ` +
       `${destinationLabel(destination)}: “${title}”.` +
       (input.candidate.attachments.length > 0
         ? ` Stored ${input.candidate.attachments.length} attached ${
@@ -583,4 +601,162 @@ export async function routeProjectInboundEmail(input: {
     entityId: routed.id,
     matchedStatus: routed.status,
   }
+}
+
+export async function routeProjectInboundEmail(input: {
+  readonly env: unknown
+  readonly db: Db
+  readonly organizationId: string
+  readonly candidate: InboundCandidate
+}): Promise<ProjectInboundRouteResult> {
+  const projectId = projectIdFromInboundAddress(input.candidate.toAddress)
+  if (!projectId) return { kind: "not_project_email" }
+
+  const senderAllowed = await senderCanEmailProject({
+    env: input.env,
+    db: input.db,
+    organizationId: input.organizationId,
+    projectId,
+    senderEmail: input.candidate.fromAddress,
+  })
+  if (!senderAllowed) {
+    await recordActivityEvent({
+      db: input.db,
+      id: `project-email-review-${input.candidate.gmailMessageId}`,
+      organizationId: input.organizationId,
+      projectId,
+      actor: inboundActor(input.candidate, EMAIL_SOURCE),
+      category: "email",
+      action: "project_email.needs_review",
+      entityType: "project_email",
+      entityId: input.candidate.gmailMessageId,
+      summary: `Project email from an unrecognized sender (${input.candidate.fromAddress}) is awaiting review.`,
+      metadata: { senderAuthorized: false, subjectTagged: false },
+      createdAt: input.candidate.receivedAt,
+    })
+    return { kind: "needs_review", projectId }
+  }
+
+  return routeVerifiedProjectInboundMessage({
+    ...input,
+    projectId,
+    source: EMAIL_SOURCE,
+  })
+}
+
+function normalizedPhone(value: string): string {
+  const digits = value.replace(/\D/g, "")
+  if (digits.length === 10) return `1${digits}`
+  return digits
+}
+
+async function verifiedSmsCandidate(input: {
+  readonly db: Db
+  readonly organizationId: string
+  readonly projectId: string
+  readonly senderPhone: string
+  readonly candidate: InboundCandidate
+}): Promise<InboundCandidate | null> {
+  const senderPhone = normalizedPhone(input.senderPhone)
+  const internal = await input.db
+    .select({
+      email: users.email,
+      displayName: users.displayName,
+      firstName: users.firstName,
+      lastName: users.lastName,
+      phone: notificationPreferences.smsPhoneNumber,
+    })
+    .from(notificationPreferences)
+    .innerJoin(users, eq(users.id, notificationPreferences.userId))
+    .innerJoin(
+      organizationMembers,
+      eq(organizationMembers.userId, users.id)
+    )
+    .where(
+      and(
+        eq(organizationMembers.organizationId, input.organizationId),
+        eq(users.isActive, true),
+        eq(notificationPreferences.smsConsentAccepted, true)
+      )
+    )
+  const member = internal.find(
+    (item) => item.phone !== null && normalizedPhone(item.phone) === senderPhone
+  )
+  if (member) {
+    const name =
+      member.displayName ??
+      ([member.firstName, member.lastName].filter(Boolean).join(" ").trim() ||
+        null)
+    return { ...input.candidate, fromAddress: member.email, fromName: name }
+  }
+
+  const contacts = await input.db
+    .select({
+      email: projectContacts.email,
+      displayName: projectContacts.displayName,
+      phone: projectContacts.phone,
+    })
+    .from(projectContacts)
+    .where(
+      and(
+        eq(projectContacts.projectId, input.projectId),
+        eq(projectContacts.active, true)
+      )
+    )
+  const contact = contacts.find(
+    (item) => item.phone !== null && normalizedPhone(item.phone) === senderPhone
+  )
+  if (!contact) return null
+  return {
+    ...input.candidate,
+    fromAddress: contact.email ?? `sms:${input.senderPhone}`,
+    fromName: contact.displayName,
+  }
+}
+
+export async function routeProjectInboundSms(input: {
+  readonly env: unknown
+  readonly db: Db
+  readonly organizationId: string
+  readonly projectId: string
+  readonly senderPhone: string
+  readonly candidate: InboundCandidate
+}): Promise<ProjectInboundRouteResult> {
+  const verifiedCandidate = await verifiedSmsCandidate(input)
+  if (!verifiedCandidate) {
+    await recordActivityEvent({
+      db: input.db,
+      id: `project-sms-review-${input.candidate.gmailMessageId}`,
+      organizationId: input.organizationId,
+      projectId: input.projectId,
+      actor: inboundActor(input.candidate, {
+        kind: "goto_sms",
+        idPrefix: "sms",
+        sourceSystem: "goto_sms",
+        label: "Text message",
+      }),
+      category: "conversation",
+      action: "project_goto_sms.needs_review",
+      entityType: "project_goto_sms",
+      entityId: input.candidate.gmailMessageId,
+      summary: `Text message from unrecognized number ${input.senderPhone} is awaiting review.`,
+      metadata: { senderAuthorized: false, subjectTagged: false },
+      createdAt: input.candidate.receivedAt,
+    })
+    return { kind: "needs_review", projectId: input.projectId }
+  }
+
+  return routeVerifiedProjectInboundMessage({
+    env: input.env,
+    db: input.db,
+    organizationId: input.organizationId,
+    projectId: input.projectId,
+    candidate: verifiedCandidate,
+    source: {
+      kind: "goto_sms",
+      idPrefix: "sms",
+      sourceSystem: "goto_sms",
+      label: "Text message",
+    },
+  })
 }
