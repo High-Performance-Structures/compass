@@ -6,6 +6,7 @@ import { gotoInboundSettings } from "@/db/schema"
 import { getCurrentUser } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
 import {
+  accountKeyFromScimIdentityByName,
   accountKeysFromScimIdentity,
   describeScimIdentityShape,
 } from "@/lib/goto/account-discovery"
@@ -25,6 +26,11 @@ function stringField(value: unknown, key: string): string | null {
   if (typeof field === "string" && field.trim().length > 0) return field.trim()
   if (typeof field === "number" && Number.isFinite(field)) return String(field)
   return null
+}
+
+function environmentString(env: unknown, key: string): string | null {
+  if (!isRecord(env)) return process.env[key] ?? null
+  return stringField(env, key) ?? process.env[key] ?? null
 }
 
 function accountKeyFromUserAccounts(
@@ -128,14 +134,26 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       if (scimAccountKeys.length === 1) {
         accountKey = scimAccountKeys[0] ?? null
       } else if (scimAccountKeys.length > 1) {
-        return NextResponse.json(
-          {
-            success: false,
-            error:
-              "GoTo returned multiple accounts. Add users.v1.read to the token so Compass can match the configured text number.",
-          },
-          { status: 502 }
+        const preferredAccountName = environmentString(
+          env,
+          "GOTO_SMS_ACCOUNT_NAME"
         )
+        if (preferredAccountName) {
+          accountKey = accountKeyFromScimIdentityByName(
+            scimIdentity,
+            preferredAccountName
+          )
+        }
+        if (!accountKey) {
+          return NextResponse.json(
+            {
+              success: false,
+              error:
+                "GoTo returned multiple accounts and none matched the configured Compass account name.",
+            },
+            { status: 502 }
+          )
+        }
       } else {
         scimShape = describeScimIdentityShape(scimIdentity).slice(0, 500)
         console.warn("GoTo SCIM identity did not expose an account key", {

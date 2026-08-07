@@ -30,6 +30,58 @@ function accountKey(value: unknown): string | null {
   )
 }
 
+type ScimAccount = {
+  readonly key: string
+  readonly displayName: string | null
+}
+
+function accountDisplayName(value: unknown): string | null {
+  return (
+    stringField(value, "display") ??
+    stringField(value, "name") ??
+    stringField(value, "accountName") ??
+    stringField(value, "account_name") ??
+    stringField(value, "organizationName") ??
+    stringField(value, "organization_name")
+  )
+}
+
+function collectAccounts(value: unknown): readonly ScimAccount[] {
+  if (!isRecord(value)) return []
+
+  return Object.entries(value).flatMap(([key, field]) => {
+    const normalizedKey = key.toLowerCase().replace(/[^a-z0-9]/g, "")
+    if (normalizedKey.includes("account") && Array.isArray(field)) {
+      return field.flatMap((candidate) => {
+        const keyValue = accountKey(candidate)
+        return keyValue
+          ? [{ key: keyValue, displayName: accountDisplayName(candidate) }]
+          : []
+      })
+    }
+    return isRecord(field) ? collectAccounts(field) : []
+  })
+}
+
+function normalizedAccountName(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]/g, "")
+}
+
+/** Selects one SCIM account by its human-readable organization name. */
+export function accountKeyFromScimIdentityByName(
+  value: unknown,
+  preferredName: string
+): string | null {
+  const expected = normalizedAccountName(preferredName)
+  const matches = collectAccounts(value).filter(
+    (account) =>
+      account.displayName !== null &&
+      normalizedAccountName(account.displayName) === expected
+  )
+  const keys = [...new Set(matches.map((account) => account.key))]
+  return keys.length === 1 ? keys[0] ?? null : null
+}
+
 function collectAccountKeys(value: unknown): readonly string[] {
   if (Array.isArray(value)) {
     return value.flatMap((item) => collectAccountKeys(item))
