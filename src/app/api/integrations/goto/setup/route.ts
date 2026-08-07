@@ -5,6 +5,7 @@ import { getDb } from "@/db"
 import { gotoInboundSettings } from "@/db/schema"
 import { getCurrentUser } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
+import { accountKeysFromScimIdentity } from "@/lib/goto/account-discovery"
 import { gotoSmsOwnerNumbers, normalizeSmsPhoneNumber } from "@/lib/goto/numbers"
 import { gotoWebhookConfig } from "@/lib/goto/webhook-security"
 import { getGotoAccessToken } from "@/lib/notifications/create-event"
@@ -108,9 +109,37 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   }
   const authHeaders = { Authorization: `Bearer ${token.accessToken}` }
   let accountKey = token.accountKey
+  let scimStatus: number | null = null
   if (!accountKey) {
-    // The Admin /me endpoint requires an additional identity scope. The Users
-    // endpoint uses the existing phone-system scope and exposes account keys.
+    // Modern GoTo token responses omit account_key. GoTo documents SCIM /me as
+    // the scope-free replacement; account keys live inside its accounts array.
+    const scimResponse = await fetch(
+      "https://api.getgo.com/identity/v1/Users/me",
+      { headers: { ...authHeaders, Accept: "application/json" } }
+    )
+    scimStatus = scimResponse.status
+    if (scimResponse.ok) {
+      const scimAccountKeys = accountKeysFromScimIdentity(
+        await responseValue(scimResponse)
+      )
+      if (scimAccountKeys.length === 1) {
+        accountKey = scimAccountKeys[0] ?? null
+      } else if (scimAccountKeys.length > 1) {
+        return NextResponse.json(
+          {
+            success: false,
+            error:
+              "GoTo returned multiple accounts. Add users.v1.read to the token so Compass can match the configured text number.",
+          },
+          { status: 502 }
+        )
+      }
+    }
+  }
+  if (!accountKey) {
+    // Scoped tokens can be matched to the configured Compass number through
+    // GoTo Connect /me. Older PATs may not carry users.v1.read, so this remains
+    // a compatibility fallback after the scope-free SCIM endpoint.
     const meResponse = await fetch("https://api.goto.com/users/v1/me", {
       headers: authHeaders,
     })
@@ -118,7 +147,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       return NextResponse.json(
         {
           success: false,
-          error: `GoTo account discovery failed (${meResponse.status}). Verify the users.v1.lines.read scope.`,
+          error: `GoTo account discovery failed (SCIM ${scimStatus ?? "unavailable"}; Users ${meResponse.status}). Verify the GoTo PAT and its users.v1.read scope.`,
         },
         { status: 502 }
       )
