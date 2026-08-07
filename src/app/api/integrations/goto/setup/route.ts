@@ -5,7 +5,10 @@ import { getDb } from "@/db"
 import { gotoInboundSettings } from "@/db/schema"
 import { getCurrentUser } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
-import { accountKeysFromScimIdentity } from "@/lib/goto/account-discovery"
+import {
+  accountKeysFromScimIdentity,
+  describeScimIdentityShape,
+} from "@/lib/goto/account-discovery"
 import { gotoSmsOwnerNumbers, normalizeSmsPhoneNumber } from "@/lib/goto/numbers"
 import { gotoWebhookConfig } from "@/lib/goto/webhook-security"
 import { getGotoAccessToken } from "@/lib/notifications/create-event"
@@ -119,9 +122,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     )
     scimStatus = scimResponse.status
     if (scimResponse.ok) {
-      const scimAccountKeys = accountKeysFromScimIdentity(
-        await responseValue(scimResponse)
-      )
+      const scimIdentity = await responseValue(scimResponse)
+      const scimAccountKeys = accountKeysFromScimIdentity(scimIdentity)
       if (scimAccountKeys.length === 1) {
         accountKey = scimAccountKeys[0] ?? null
       } else if (scimAccountKeys.length > 1) {
@@ -133,6 +135,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
           },
           { status: 502 }
         )
+      } else {
+        console.warn("GoTo SCIM identity did not expose an account key", {
+          shape: describeScimIdentityShape(scimIdentity),
+        })
       }
     }
   }

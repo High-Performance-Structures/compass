@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest"
 
-import { accountKeysFromScimIdentity } from "@/lib/goto/account-discovery"
+import {
+  accountKeysFromScimIdentity,
+  describeScimIdentityShape,
+} from "@/lib/goto/account-discovery"
 
 describe("accountKeysFromScimIdentity", () => {
   it("reads the account keys from the SCIM accounts array", () => {
@@ -35,5 +38,17 @@ describe("accountKeysFromScimIdentity", () => {
 
   it("does not confuse the SCIM user id for an account key", () => {
     expect(accountKeysFromScimIdentity({ id: "user-key" })).toEqual([])
+  })
+
+  it("reports only field paths and types for safe diagnostics", () => {
+    const shape = describeScimIdentityShape({
+      userName: "private@example.com",
+      extension: { accountKeys: ["secret-account-key"] },
+    })
+
+    expect(shape).toContain("userName:string")
+    expect(shape).toContain("extension.accountKeys[]:string")
+    expect(shape).not.toContain("private@example.com")
+    expect(shape).not.toContain("secret-account-key")
   })
 })
