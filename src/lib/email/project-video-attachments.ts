@@ -29,6 +29,10 @@ export type StoredProjectVideoFile = {
   readonly mimeType: string
 }
 
+export type ProjectVideoUploadSession = {
+  readonly uploadUrl: string
+}
+
 async function driveClient(input: {
   readonly env: unknown
   readonly db: Db
@@ -194,6 +198,82 @@ export async function storeProjectVideoAttachment(input: {
     driveUrl: file.webViewLink ?? null,
     fileName: file.name,
     fileSize: Number(file.size ?? data.byteLength),
+    mimeType: file.mimeType,
+  }
+}
+
+export async function initiateProjectVideoWebsiteUpload(input: {
+  readonly env: unknown
+  readonly db: Db
+  readonly organizationId: string
+  readonly projectId: string
+  readonly fileName: string
+  readonly mimeType: string
+  readonly fileSize: number
+}): Promise<ProjectVideoUploadSession> {
+  const projectFolderId = await projectFolder({
+    db: input.db,
+    projectId: input.projectId,
+  })
+  const drive = await driveClient({
+    env: input.env,
+    db: input.db,
+    organizationId: input.organizationId,
+  })
+  const videoFolderId = await resolveVideoFolder({
+    client: drive.client,
+    googleEmail: drive.googleEmail,
+    projectFolderId,
+    sharedDriveId: drive.sharedDriveId,
+  })
+  const uploadUrl = await drive.client.initiateResumableUpload(
+    drive.googleEmail,
+    {
+      name: safeFileName(input.fileName),
+      mimeType: input.mimeType,
+      parentId: videoFolderId,
+      driveId: drive.sharedDriveId ?? undefined,
+      size: input.fileSize,
+    }
+  )
+  return { uploadUrl }
+}
+
+export async function verifyProjectVideoWebsiteUpload(input: {
+  readonly env: unknown
+  readonly db: Db
+  readonly organizationId: string
+  readonly projectId: string
+  readonly driveFileId: string
+}): Promise<StoredProjectVideoFile> {
+  const projectFolderId = await projectFolder({
+    db: input.db,
+    projectId: input.projectId,
+  })
+  const drive = await driveClient({
+    env: input.env,
+    db: input.db,
+    organizationId: input.organizationId,
+  })
+  const videoFolderId = await resolveVideoFolder({
+    client: drive.client,
+    googleEmail: drive.googleEmail,
+    projectFolderId,
+    sharedDriveId: drive.sharedDriveId,
+  })
+  const file = await drive.client.getFile(drive.googleEmail, input.driveFileId)
+  if (file.trashed || !file.parents?.includes(videoFolderId)) {
+    throw new Error("The uploaded video is not in this project's Videos folder.")
+  }
+  const fileSize = Number(file.size ?? 0)
+  if (!Number.isFinite(fileSize) || fileSize <= 0) {
+    throw new Error("Google Drive did not report a valid video size.")
+  }
+  return {
+    driveFileId: file.id,
+    driveUrl: file.webViewLink ?? null,
+    fileName: file.name,
+    fileSize,
     mimeType: file.mimeType,
   }
 }

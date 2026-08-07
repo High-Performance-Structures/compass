@@ -20,6 +20,7 @@ import {
   type ProjectVideoItem,
   type ProjectVideoWorkspace,
 } from "@/app/actions/project-videos"
+import { ProjectVideoUpload } from "@/components/projects/project-video-upload"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -314,6 +315,11 @@ export function ProjectVideoReview({
           </p>
         </div>
       </div>
+
+      <ProjectVideoUpload
+        projectId={workspace.project.id}
+        projectNumber={workspace.project.projectNumber}
+      />
 
       <section className="border-border mt-5 border-b pb-5">
         <h2 className="text-sm font-semibold">YouTube channels</h2>

@@ -77,6 +77,7 @@ export type UploadOptions = {
   readonly parentId?: string
   readonly mimeType: string
   readonly driveId?: string
+  readonly size?: number
 }
 
 export type UploadFileOptions = UploadOptions & {

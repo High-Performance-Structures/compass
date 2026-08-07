@@ -34,6 +34,7 @@ import {
 import { storeDailyLogEmailAttachments } from "@/lib/email/project-email-attachments"
 import { storeProjectVideoAttachment } from "@/lib/email/project-video-attachments"
 import { projectDepartment } from "@/lib/project-branding"
+import { youtubeChannelForDepartment } from "@/lib/videos/channel-routing"
 import { PROJECT_TODO_RECORD_TYPES } from "@/lib/project-todos"
 
 type Db = ReturnType<typeof getDb>
@@ -494,14 +495,6 @@ function isVideoAttachment(attachment: InboundCandidate["attachments"][number]):
     attachment.mimeType.startsWith("video/") ||
     /\.(?:3gp|m4v|mov|mp4|webm)$/i.test(attachment.fileName)
   )
-}
-
-function youtubeChannelForDepartment(
-  department: "O" | "H" | "N" | "D"
-): "orc" | "hps" | "nutech" {
-  if (department === "H") return "hps"
-  if (department === "N") return "nutech"
-  return "orc"
 }
 
 async function routeVideo(input: {
