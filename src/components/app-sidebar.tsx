@@ -22,6 +22,7 @@ import {
   IconReceipt,
   IconShoppingCart,
   IconShoppingCartQuestion,
+  IconVideo,
 } from "@tabler/icons-react"
 import { usePathname } from "next/navigation"
 
@@ -96,6 +97,12 @@ const NAV_MAIN = [
     url: "/dashboard/projects",
     icon: IconPhoto,
     projectPath: "/photos",
+  },
+  {
+    title: "Videos",
+    url: "/dashboard/projects",
+    icon: IconVideo,
+    projectPath: "/videos",
   },
   {
     title: "Selections",

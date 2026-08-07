@@ -8,6 +8,7 @@ export const PROJECT_EMAIL_SUBJECT_TAGS = [
   { tag: "[TO-DO]", destination: "To-Do" },
   { tag: "[DELIVERY]", destination: "Delivery To-Do" },
   { tag: "[DAILY LOG]", destination: "Daily Log" },
+  { tag: "[VIDEO]", destination: "Project Video" },
 ] as const
 
 export type ProjectEmailDestination =
@@ -17,6 +18,7 @@ export type ProjectEmailDestination =
   | "todo"
   | "delivery"
   | "daily_log"
+  | "video"
 
 function splitEmailAddress(email: string): {
   readonly localPart: string
@@ -57,11 +59,12 @@ export function projectEmailDestination(
   if (/^\[(?:daily log|daily-log|log)\](?:\s|:|-|$)/i.test(normalized)) {
     return "daily_log"
   }
+  if (/^\[video\](?:\s|:|-|$)/i.test(normalized)) return "video"
   return null
 }
 
 export function projectEmailTitle(subject: string): string {
   return subject
-    .replace(/^\[(?:rfi|rfq|change order|to-do|todo|task|delivery|daily log|daily-log|log)\]\s*(?::|-)?\s*/i, "")
+    .replace(/^\[(?:rfi|rfq|change order|to-do|todo|task|delivery|daily log|daily-log|log|video)\]\s*(?::|-)?\s*/i, "")
     .trim()
 }

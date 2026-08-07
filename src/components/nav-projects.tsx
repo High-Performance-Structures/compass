@@ -20,6 +20,7 @@ import {
   IconShoppingCart,
   IconShoppingCartQuestion,
   IconUsers,
+  IconVideo,
 } from "@tabler/icons-react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
@@ -44,6 +45,7 @@ type ProjectSectionKey =
   | "owner-updates"
   | "daily-logs"
   | "photos"
+  | "videos"
   | "selections"
   | "rfis"
   | "rfqs"
@@ -105,6 +107,12 @@ const PROJECT_SECTION_ITEMS: readonly ProjectSectionItem[] = [
     hrefSuffix: "photos",
     icon: IconPhoto,
     section: "photos",
+  },
+  {
+    title: "Videos",
+    hrefSuffix: "videos",
+    icon: IconVideo,
+    section: "videos",
   },
   {
     title: "Selections",
@@ -217,6 +225,7 @@ function activeProjectSection(pathname: string | null): ProjectSectionKey {
     case "estimate":
     case "owner-updates":
     case "photos":
+    case "videos":
     case "selections":
     case "purchase-orders":
     case "rfqs":

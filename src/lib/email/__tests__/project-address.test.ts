@@ -27,6 +27,7 @@ describe("project inbound email addressing", () => {
     ["[DELIVERY] Windows arriving Friday", "delivery"],
     ["[DAILY LOG] Site progress", "daily_log"],
     ["[Daily Log] Site progress", "daily_log"],
+    ["[VIDEO] Railing stain demonstration", "video"],
   ] as const)("routes %s", (subject, destination) => {
     expect(projectEmailDestination(subject)).toBe(destination)
   })
@@ -38,6 +39,12 @@ describe("project inbound email addressing", () => {
   it("removes the routing tag from the record title", () => {
     expect(projectEmailTitle("[RFI] Missing roof detail")).toBe(
       "Missing roof detail"
+    )
+  })
+
+  it("removes the video routing tag from the record title", () => {
+    expect(projectEmailTitle("[Video] Railing stain demonstration")).toBe(
+      "Railing stain demonstration"
     )
   })
 })

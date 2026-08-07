@@ -298,7 +298,8 @@ export class DriveClient {
 
   async downloadFile(
     userEmail: string,
-    fileId: string
+    fileId: string,
+    options?: { readonly range?: string }
   ): Promise<Response> {
     const token = await this.getToken(userEmail)
     const params = new URLSearchParams({
@@ -306,10 +307,14 @@ export class DriveClient {
       supportsAllDrives: "true",
     })
 
+    const headers: Record<string, string> = {
+      Authorization: `Bearer ${token}`,
+    }
+    if (options?.range) headers.Range = options.range
     return fetch(
       `${GOOGLE_DRIVE_API}/files/${fileId}?${params.toString()}`,
       {
-        headers: { Authorization: `Bearer ${token}` },
+        headers,
       }
     )
   }
