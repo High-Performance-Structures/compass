@@ -113,6 +113,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const authHeaders = { Authorization: `Bearer ${token.accessToken}` }
   let accountKey = token.accountKey
   let scimStatus: number | null = null
+  let scimShape: string | null = null
   if (!accountKey) {
     // Modern GoTo token responses omit account_key. GoTo documents SCIM /me as
     // the scope-free replacement; account keys live inside its accounts array.
@@ -136,8 +137,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
           { status: 502 }
         )
       } else {
+        scimShape = describeScimIdentityShape(scimIdentity).slice(0, 500)
         console.warn("GoTo SCIM identity did not expose an account key", {
-          shape: describeScimIdentityShape(scimIdentity),
+          shape: scimShape,
         })
       }
     }
@@ -153,7 +155,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       return NextResponse.json(
         {
           success: false,
-          error: `GoTo account discovery failed (SCIM ${scimStatus ?? "unavailable"}; Users ${meResponse.status}). Verify the GoTo PAT and its users.v1.read scope.`,
+          error: `GoTo account discovery failed (SCIM ${scimStatus ?? "unavailable"}; Users ${meResponse.status}). SCIM fields: ${scimShape ?? "unavailable"}`,
         },
         { status: 502 }
       )
