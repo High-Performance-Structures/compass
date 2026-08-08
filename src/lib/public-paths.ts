@@ -7,6 +7,8 @@ const publicPaths = [
   "/invite",
   "/callback",
   "/demo",
+  "/privacy",
+  "/terms",
   "/manifest.json",
 ]
 
