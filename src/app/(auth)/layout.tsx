@@ -34,9 +34,15 @@ export default function AuthLayout({
         </Card>
 
         {/* footer */}
-        <p className="text-center text-xs text-muted-foreground mt-4">
-          High Performance Structures
-        </p>
+        <div className="text-muted-foreground mt-4 flex items-center justify-center gap-3 text-xs">
+          <span>High Performance Structures</span>
+          <a href="/privacy" className="underline underline-offset-4">
+            Privacy
+          </a>
+          <a href="/terms" className="underline underline-offset-4">
+            Terms
+          </a>
+        </div>
       </div>
       <Toaster position="bottom-right" />
     </div>

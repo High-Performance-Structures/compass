@@ -15,6 +15,7 @@ import { toast } from "sonner"
 import {
   archiveProjectVideo,
   deleteProjectVideo,
+  disconnectYoutubeChannel,
   publishProjectVideo,
   updateProjectVideoReview,
   type ProjectVideoItem,
@@ -61,14 +62,22 @@ function audiencePrivacy(value: string): string {
   return "Private on YouTube"
 }
 
+function staffAudiencePrivacy(auditApproved: boolean): string {
+  return auditApproved
+    ? "Unlisted on YouTube — Compass distributes the link to authorized users"
+    : "Private on YouTube until Google approves the Compass API audit"
+}
+
 function VideoReviewCard({
   projectId,
   video,
   channelConnected,
+  youtubeAuditApproved,
 }: {
   readonly projectId: string
   readonly video: ProjectVideoItem
   readonly channelConnected: boolean
+  readonly youtubeAuditApproved: boolean
 }): React.ReactElement {
   const router = useRouter()
   const [title, setTitle] = React.useState(video.title)
@@ -171,7 +180,9 @@ function VideoReviewCard({
               </SelectContent>
             </Select>
             <p className="text-muted-foreground text-xs">
-              {audiencePrivacy(audience)}
+              {audience === "staff"
+                ? staffAudiencePrivacy(youtubeAuditApproved)
+                : audiencePrivacy(audience)}
             </p>
           </div>
           <div className="bg-muted/45 px-3 py-2 text-sm">
@@ -293,6 +304,8 @@ export function ProjectVideoReview({
 }: {
   readonly workspace: ProjectVideoWorkspace
 }): React.ReactElement {
+  const router = useRouter()
+  const [channelPending, startTransition] = React.useTransition()
   const connectedKeys = new Set(
     workspace.channels
       .filter((channel) => channel.status === "connected")
@@ -328,20 +341,59 @@ export function ProjectVideoReview({
             const connection = workspace.channels.find(
               (item) => item.channelKey === channel.key && item.status === "connected"
             )
+            if (!connection) {
+              return (
+                <Button key={channel.key} asChild size="sm" variant="outline">
+                  <Link
+                    href={
+                      `/api/google/youtube/connect?channel=${channel.key}` +
+                      `&project=${encodeURIComponent(workspace.project.id)}`
+                    }
+                  >
+                    <IconBrandYoutube /> Connect {channel.label}
+                  </Link>
+                </Button>
+              )
+            }
             return (
-              <Button key={channel.key} asChild size="sm" variant="outline">
-                <Link
-                  href={
-                    `/api/google/youtube/connect?channel=${channel.key}` +
-                    `&project=${encodeURIComponent(workspace.project.id)}`
-                  }
+              <div key={channel.key} className="flex items-center gap-1">
+                <Badge variant="outline">
+                  <IconBrandYoutube /> {channel.label}: {connection.channelTitle}
+                </Badge>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  disabled={channelPending}
+                  onClick={() => {
+                    if (
+                      !window.confirm(
+                        `Disconnect ${connection.channelTitle} from Compass?`
+                      )
+                    ) {
+                      return
+                    }
+                    startTransition(async () => {
+                      const result = await disconnectYoutubeChannel({
+                        projectId: workspace.project.id,
+                        channelKey: channel.key,
+                      })
+                      if (!result.success) {
+                        toast.error(result.error)
+                        return
+                      }
+                      toast.success(
+                        result.revoked
+                          ? "YouTube access revoked and connection removed."
+                          : "Connection removed. Also review Google Account permissions."
+                      )
+                      router.refresh()
+                    })
+                  }}
                 >
-                  <IconBrandYoutube />
-                  {connection
-                    ? `${channel.label}: ${connection.channelTitle}`
-                    : `Connect ${channel.label}`}
-                </Link>
-              </Button>
+                  Disconnect
+                </Button>
+              </div>
             )
           })}
         </div>
@@ -364,6 +416,7 @@ export function ProjectVideoReview({
               projectId={workspace.project.id}
               video={video}
               channelConnected={connectedKeys.has(video.youtubeChannelKey)}
+              youtubeAuditApproved={workspace.youtubeAuditApproved}
             />
           ))
         )}
