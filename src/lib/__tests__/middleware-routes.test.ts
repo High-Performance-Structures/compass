@@ -2,6 +2,11 @@ import { describe, expect, it } from "vitest"
 import { isPublicPath } from "@/lib/public-paths"
 
 describe("middleware public routes", () => {
+  it("keeps legal and compliance disclosures public", () => {
+    expect(isPublicPath("/privacy")).toBe(true)
+    expect(isPublicPath("/terms")).toBe(true)
+  })
+
   it("allows the HMAC-authenticated Jarvis bridge through WorkOS middleware", () => {
     expect(isPublicPath("/api/integrations/jarvis/events")).toBe(true)
     expect(
