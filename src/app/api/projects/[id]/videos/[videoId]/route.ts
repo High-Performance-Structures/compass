@@ -72,6 +72,7 @@ export async function GET(
         audience: projectVideos.compassAudience,
         publishStatus: projectVideos.publishStatus,
         youtubeUrl: projectVideos.youtubeUrl,
+        youtubePrivacy: projectVideos.youtubePrivacy,
       })
       .from(projectVideos)
       .where(
@@ -90,7 +91,11 @@ export async function GET(
     // YouTube's published copy is transcoded for reliable browser audio/video.
     // Keep this authenticated Compass URL stable so existing Daily Log links
     // also benefit from the compatible playback copy.
-    if (video.publishStatus === "published" && video.youtubeUrl) {
+    if (
+      video.publishStatus === "published" &&
+      video.youtubeUrl &&
+      video.youtubePrivacy !== "private"
+    ) {
       return Response.redirect(video.youtubeUrl, 302)
     }
     const response = await downloadProjectVideoFile({
