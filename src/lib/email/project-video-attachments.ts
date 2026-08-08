@@ -17,6 +17,7 @@ import { MAX_PHOTO_UPLOAD_FILE_BYTES } from "@/lib/photos/upload-limits"
 
 const GOOGLE_FOLDER_MIME_TYPE = "application/vnd.google-apps.folder"
 const VIDEO_FOLDER_NAME = "Videos"
+const WEBSITE_UPLOAD_PROPERTY = "compassUploadId"
 const DEFAULT_COMPASS_GOOGLE_UPLOAD_USER = "compass@hps-colorado.com"
 
 type Db = ReturnType<typeof getDb>
@@ -31,6 +32,7 @@ export type StoredProjectVideoFile = {
 
 export type ProjectVideoUploadSession = {
   readonly uploadUrl: string
+  readonly uploadToken: string
 }
 
 async function driveClient(input: {
@@ -226,6 +228,7 @@ export async function initiateProjectVideoWebsiteUpload(input: {
     projectFolderId,
     sharedDriveId: drive.sharedDriveId,
   })
+  const uploadToken = crypto.randomUUID()
   const uploadUrl = await drive.client.initiateResumableUpload(
     drive.googleEmail,
     {
@@ -234,9 +237,53 @@ export async function initiateProjectVideoWebsiteUpload(input: {
       parentId: videoFolderId,
       driveId: drive.sharedDriveId ?? undefined,
       size: input.fileSize,
+      appProperties: { [WEBSITE_UPLOAD_PROPERTY]: uploadToken },
     }
   )
-  return { uploadUrl }
+  return { uploadUrl, uploadToken }
+}
+
+export async function findProjectVideoWebsiteUpload(input: {
+  readonly env: unknown
+  readonly db: Db
+  readonly organizationId: string
+  readonly projectId: string
+  readonly uploadToken: string
+}): Promise<StoredProjectVideoFile | null> {
+  const projectFolderId = await projectFolder({
+    db: input.db,
+    projectId: input.projectId,
+  })
+  const drive = await driveClient({
+    env: input.env,
+    db: input.db,
+    organizationId: input.organizationId,
+  })
+  const videoFolderId = await resolveVideoFolder({
+    client: drive.client,
+    googleEmail: drive.googleEmail,
+    projectFolderId,
+    sharedDriveId: drive.sharedDriveId,
+  })
+  const files = await drive.client.listFiles(drive.googleEmail, {
+    folderId: videoFolderId,
+    driveId: drive.sharedDriveId ?? undefined,
+    pageSize: 2,
+    query:
+      `appProperties has { key='${WEBSITE_UPLOAD_PROPERTY}' and ` +
+      `value='${escapeDriveQueryValue(input.uploadToken)}' }`,
+  })
+  const file = files.files[0]
+  if (!file) return null
+  const fileSize = Number(file.size ?? 0)
+  if (!Number.isFinite(fileSize) || fileSize <= 0) return null
+  return {
+    driveFileId: file.id,
+    driveUrl: file.webViewLink ?? null,
+    fileName: file.name,
+    fileSize,
+    mimeType: file.mimeType,
+  }
 }
 
 export async function verifyProjectVideoWebsiteUpload(input: {

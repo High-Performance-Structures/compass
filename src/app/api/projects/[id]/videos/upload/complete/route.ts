@@ -7,7 +7,10 @@ import { dailyLogs, projects, projectVideos } from "@/db/schema"
 import { activityActorName, recordActivityEvent } from "@/lib/activity-log"
 import { requireAuth } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
-import { verifyProjectVideoWebsiteUpload } from "@/lib/email/project-video-attachments"
+import {
+  findProjectVideoWebsiteUpload,
+  verifyProjectVideoWebsiteUpload,
+} from "@/lib/email/project-video-attachments"
 import { requireOrg } from "@/lib/org-scope"
 import { requireFeaturePermission } from "@/lib/permission-enforcement"
 import { projectDepartment } from "@/lib/project-branding"
@@ -61,13 +64,20 @@ export async function POST(
       )
     }
     const driveFileId = textValue(body.driveFileId)
+    const uploadToken = textValue(body.uploadToken)
     const title = textValue(body.title)
     const description = textValue(body.description)
     const audience = audienceValue(body.compassAudience)
     const addToDailyLog = body.addToDailyLog !== false
-    if (!driveFileId) {
+    if (!driveFileId && !uploadToken) {
       return NextResponse.json(
-        { success: false, error: "Google Drive did not return the uploaded file." },
+        { success: false, error: "Google Drive upload details are missing." },
+        { status: 400 }
+      )
+    }
+    if (uploadToken.length > 128) {
+      return NextResponse.json(
+        { success: false, error: "Google Drive upload details are invalid." },
         { status: 400 }
       )
     }
@@ -116,13 +126,30 @@ export async function POST(
       )
     }
 
-    const source = await verifyProjectVideoWebsiteUpload({
-      env,
-      db,
-      organizationId,
-      projectId,
-      driveFileId,
-    })
+    const source = driveFileId
+      ? await verifyProjectVideoWebsiteUpload({
+          env,
+          db,
+          organizationId,
+          projectId,
+          driveFileId,
+        })
+      : await findProjectVideoWebsiteUpload({
+          env,
+          db,
+          organizationId,
+          projectId,
+          uploadToken,
+        })
+    if (!source) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Google Drive is still finishing this upload.",
+        },
+        { status: 409, headers: { "Retry-After": "2" } }
+      )
+    }
     if (!isProjectVideoFile({ fileName: source.fileName, mimeType: source.mimeType })) {
       return NextResponse.json(
         { success: false, error: "The uploaded file is not a supported video." },

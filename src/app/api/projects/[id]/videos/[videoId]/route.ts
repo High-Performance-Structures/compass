@@ -71,6 +71,7 @@ export async function GET(
         mimeType: projectVideos.sourceMimeType,
         audience: projectVideos.compassAudience,
         publishStatus: projectVideos.publishStatus,
+        youtubeUrl: projectVideos.youtubeUrl,
       })
       .from(projectVideos)
       .where(
@@ -85,6 +86,12 @@ export async function GET(
       (video.audience === requestedAudience || video.audience === "public")
     if (!video || (!internal && !allowedExternally)) {
       return new Response("Video not found", { status: 404 })
+    }
+    // YouTube's published copy is transcoded for reliable browser audio/video.
+    // Keep this authenticated Compass URL stable so existing Daily Log links
+    // also benefit from the compatible playback copy.
+    if (video.publishStatus === "published" && video.youtubeUrl) {
+      return Response.redirect(video.youtubeUrl, 302)
     }
     const response = await downloadProjectVideoFile({
       env,

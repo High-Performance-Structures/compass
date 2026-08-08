@@ -78,6 +78,7 @@ export type UploadOptions = {
   readonly mimeType: string
   readonly driveId?: string
   readonly size?: number
+  readonly appProperties?: Readonly<Record<string, string>>
 }
 
 export type UploadFileOptions = UploadOptions & {

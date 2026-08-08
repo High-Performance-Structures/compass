@@ -99,7 +99,12 @@ export async function POST(
       fileSize,
     })
     return NextResponse.json(
-      { success: true, uploadUrl: session.uploadUrl, mimeType },
+      {
+        success: true,
+        uploadUrl: session.uploadUrl,
+        uploadToken: session.uploadToken,
+        mimeType,
+      },
       { headers: { "Cache-Control": "no-store" } }
     )
   } catch (error) {
