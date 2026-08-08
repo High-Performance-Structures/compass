@@ -25,6 +25,10 @@ import {
   MAX_PROJECT_VIDEO_UPLOAD_BYTES,
   PROJECT_VIDEO_UPLOAD_LIMIT_LABEL,
 } from "@/lib/videos/upload-limits"
+import {
+  shouldAttemptBrowserUploadRecovery,
+  VIDEO_UPLOAD_COMPLETION_RETRY_DELAYS_MS,
+} from "@/lib/videos/upload-recovery"
 
 type UploadStage = "idle" | "starting" | "uploading" | "saving"
 
@@ -63,14 +67,16 @@ function uploadToGoogleDrive(input: {
   readonly mimeType: string
   readonly onProgress: (value: number) => void
   readonly onRequest: (request: XMLHttpRequest | null) => void
-}): Promise<string> {
+}): Promise<string | null> {
   return new Promise((resolve, reject) => {
     const request = new XMLHttpRequest()
+    let uploadedBytes = 0
     input.onRequest(request)
     request.open("PUT", input.uploadUrl)
     request.setRequestHeader("Content-Type", input.mimeType)
     request.upload.addEventListener("progress", (event) => {
       if (!event.lengthComputable) return
+      uploadedBytes = event.loaded
       input.onProgress(Math.round((event.loaded / event.total) * 100))
     })
     request.addEventListener("load", () => {
@@ -95,6 +101,16 @@ function uploadToGoogleDrive(input: {
     })
     request.addEventListener("error", () => {
       input.onRequest(null)
+      if (
+        shouldAttemptBrowserUploadRecovery({
+          uploadedBytes,
+          fileSize: input.file.size,
+        })
+      ) {
+        input.onProgress(100)
+        resolve(null)
+        return
+      }
       reject(new Error("The video upload was interrupted. Please try again."))
     })
     request.addEventListener("abort", () => {
@@ -102,6 +118,12 @@ function uploadToGoogleDrive(input: {
       reject(new Error("Video upload cancelled."))
     })
     request.send(input.file)
+  })
+}
+
+async function wait(value: number): Promise<void> {
+  await new Promise<void>((resolve) => {
+    window.setTimeout(resolve, value)
   })
 }
 
@@ -179,6 +201,7 @@ export function ProjectVideoUpload({
         !startResponse.ok ||
         startBody.success !== true ||
         typeof startBody.uploadUrl !== "string" ||
+        typeof startBody.uploadToken !== "string" ||
         typeof startBody.mimeType !== "string"
       ) {
         throw new Error(
@@ -198,24 +221,46 @@ export function ProjectVideoUpload({
       })
 
       setStage("saving")
-      const completeResponse = await fetch(
-        `/api/projects/${encodeURIComponent(projectId)}/videos/upload/complete`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            driveFileId,
-            title: normalizedTitle,
-            description: description.trim(),
-            compassAudience: audience,
-            addToDailyLog,
-          }),
+      let saved = false
+      let completionError = "Compass could not save the uploaded video."
+      for (
+        let attempt = 0;
+        attempt <= VIDEO_UPLOAD_COMPLETION_RETRY_DELAYS_MS.length;
+        attempt += 1
+      ) {
+        const completeResponse = await fetch(
+          `/api/projects/${encodeURIComponent(projectId)}/videos/upload/complete`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              driveFileId,
+              uploadToken: startBody.uploadToken,
+              title: normalizedTitle,
+              description: description.trim(),
+              compassAudience: audience,
+              addToDailyLog,
+            }),
+          }
+        )
+        const completeBody = await responseBody(completeResponse)
+        if (completeResponse.ok && completeBody.success === true) {
+          saved = true
+          break
         }
-      )
-      const completeBody = await responseBody(completeResponse)
-      if (!completeResponse.ok || completeBody.success !== true) {
+        completionError = responseError(
+          completeBody,
+          "Compass could not save the uploaded video."
+        )
+        const retryDelay = VIDEO_UPLOAD_COMPLETION_RETRY_DELAYS_MS[attempt]
+        if (completeResponse.status !== 409 || retryDelay === undefined) break
+        await wait(retryDelay)
+      }
+      if (!saved) {
         throw new Error(
-          responseError(completeBody, "Compass could not save the uploaded video.")
+          driveFileId === null && completionError.includes("still finishing")
+            ? "The video upload was interrupted. Please try again."
+            : completionError
         )
       }
       toast.success("Video uploaded. Review and publish it below.")

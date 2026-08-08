@@ -238,6 +238,9 @@ export class DriveClient {
       } else if (options.driveId) {
         metadata.parents = [options.driveId]
       }
+      if (options.appProperties) {
+        metadata.appProperties = options.appProperties
+      }
 
       const params = new URLSearchParams({
         uploadType: "resumable",
