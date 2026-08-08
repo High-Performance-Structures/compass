@@ -1122,15 +1122,26 @@ export default function Home(): React.JSX.Element {
 				>
 					&copy; 2026 Compass
 				</span>
-				<span
+				<div
 					className={
-						"text-[10px] uppercase " +
-						"tracking-[0.15em] " +
-						"text-[#E8E4DC]/25"
+						"flex items-center gap-4 text-[10px] " +
+						"uppercase tracking-[0.15em] text-[#E8E4DC]/35"
 					}
 				>
-					Open Source (MIT)
-				</span>
+					<Link
+						href="/privacy"
+						className="transition-colors hover:text-[#E8E4DC]/70"
+					>
+						Privacy
+					</Link>
+					<Link
+						href="/terms"
+						className="transition-colors hover:text-[#E8E4DC]/70"
+					>
+						Terms
+					</Link>
+					<span>Open Source (MIT)</span>
+				</div>
 			</footer>
 		</div>
 	);

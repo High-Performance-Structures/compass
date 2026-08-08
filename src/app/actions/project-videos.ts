@@ -24,6 +24,10 @@ import {
 } from "@/lib/google/youtube"
 import { requireOrg } from "@/lib/org-scope"
 import { requireFeaturePermission } from "@/lib/permission-enforcement"
+import {
+  isYoutubeApiAuditApproved,
+  youtubePrivacyForAudience,
+} from "@/lib/videos/youtube-audit"
 
 export type ProjectVideoAudience = "staff" | "owner" | "sub_vendor" | "public"
 
@@ -61,6 +65,7 @@ export type ProjectVideoWorkspace = {
     readonly channelTitle: string
     readonly status: string
   }[]
+  readonly youtubeAuditApproved: boolean
 }
 
 type VideoActionResult =
@@ -102,16 +107,11 @@ function audience(value: string): ProjectVideoAudience | null {
   }
 }
 
-function youtubePrivacy(value: ProjectVideoAudience): "private" | "unlisted" | "public" {
-  if (value === "staff") return "private"
-  if (value === "public") return "public"
-  return "unlisted"
-}
-
 export async function getProjectVideoWorkspace(
   projectId: string
 ): Promise<ProjectVideoWorkspace> {
   const db = await projectVideoDb(projectId, "read")
+  const { env } = await getCloudflareContext()
   const [project] = await db
     .select({
       id: projects.id,
@@ -173,6 +173,7 @@ export async function getProjectVideoWorkspace(
     },
     videos,
     channels,
+    youtubeAuditApproved: isYoutubeApiAuditApproved(env),
   }
 }
 
@@ -213,6 +214,7 @@ export async function updateProjectVideoReview(input: {
       return { success: false, error: "Video description cannot exceed 5,000 characters." }
     }
     const user = await requireAuth()
+    const { env } = await getCloudflareContext()
     const now = new Date().toISOString()
     await db
       .update(projectVideos)
@@ -220,7 +222,10 @@ export async function updateProjectVideoReview(input: {
         title,
         description: description.length > 0 ? description : null,
         compassAudience: normalizedAudience,
-        youtubePrivacy: youtubePrivacy(normalizedAudience),
+        youtubePrivacy: youtubePrivacyForAudience({
+          audience: normalizedAudience,
+          auditApproved: isYoutubeApiAuditApproved(env),
+        }),
         publishStatus: "ready_for_upload",
         reviewedBy: user.id,
         reviewedAt: now,
@@ -241,6 +246,72 @@ export async function updateProjectVideoReview(input: {
     return {
       success: false,
       error: error instanceof Error ? error.message : "Could not save video review.",
+    }
+  }
+}
+
+export async function disconnectYoutubeChannel(input: {
+  readonly projectId: string
+  readonly channelKey: string
+}): Promise<
+  | { readonly success: true; readonly revoked: boolean }
+  | { readonly success: false; readonly error: string }
+> {
+  try {
+    const user = await requireAuth()
+    const organizationId = requireOrg(user)
+    const db = await projectVideoDb(input.projectId, "update")
+    const channelKey = youtubeChannelKey(input.channelKey)
+    if (!channelKey) {
+      return { success: false, error: "YouTube channel is invalid." }
+    }
+    const [connection] = await db
+      .select()
+      .from(youtubeChannelConnections)
+      .where(
+        and(
+          eq(youtubeChannelConnections.organizationId, organizationId),
+          eq(youtubeChannelConnections.channelKey, channelKey)
+        )
+      )
+      .limit(1)
+    if (!connection) return { success: true, revoked: true }
+
+    const { env } = await getCloudflareContext()
+    const config = getYoutubeOAuthConfig(
+      env,
+      "https://compass.openrangeconstruction.ltd"
+    )
+    let revoked = false
+    try {
+      const refreshToken = await decrypt(
+        connection.refreshTokenEncrypted,
+        config.tokenEncryptionKey,
+        youtubeTokenSalt(organizationId, channelKey)
+      )
+      const response = await fetch("https://oauth2.googleapis.com/revoke", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({ token: refreshToken }),
+      })
+      revoked = response.ok
+    } catch {
+      revoked = false
+    }
+
+    await db
+      .delete(youtubeChannelConnections)
+      .where(eq(youtubeChannelConnections.id, connection.id))
+      .run()
+    revalidatePath(`/dashboard/projects/${input.projectId}/videos`)
+    return { success: true, revoked }
+  } catch (error) {
+    return {
+      success: false,
+      error:
+        error instanceof Error
+          ? error.message
+          : "YouTube channel could not be disconnected.",
     }
   }
 }

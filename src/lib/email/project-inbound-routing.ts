@@ -35,6 +35,10 @@ import { storeDailyLogEmailAttachments } from "@/lib/email/project-email-attachm
 import { storeProjectVideoAttachment } from "@/lib/email/project-video-attachments"
 import { projectDepartment } from "@/lib/project-branding"
 import { youtubeChannelForDepartment } from "@/lib/videos/channel-routing"
+import {
+  isYoutubeApiAuditApproved,
+  youtubePrivacyForAudience,
+} from "@/lib/videos/youtube-audit"
 import { PROJECT_TODO_RECORD_TYPES } from "@/lib/project-todos"
 
 type Db = ReturnType<typeof getDb>
@@ -553,7 +557,10 @@ async function routeVideo(input: {
     department,
     youtubeChannelKey: youtubeChannelForDepartment(department),
     compassAudience: "staff",
-    youtubePrivacy: "private",
+    youtubePrivacy: youtubePrivacyForAudience({
+      audience: "staff",
+      auditApproved: isYoutubeApiAuditApproved(input.env),
+    }),
     publishStatus: "pending_review",
     sourceSystem: input.source.sourceSystem,
     sourceExternalId,
