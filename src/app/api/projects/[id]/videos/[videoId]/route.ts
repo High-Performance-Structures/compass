@@ -94,6 +94,7 @@ export async function GET(
     if (
       video.publishStatus === "published" &&
       video.youtubeUrl &&
+      video.audience !== "staff" &&
       video.youtubePrivacy !== "private"
     ) {
       return Response.redirect(video.youtubeUrl, 302)
