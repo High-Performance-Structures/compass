@@ -77,6 +77,10 @@ import { cn } from "@/lib/utils"
 
 type LogFilter = "all" | "needs_review" | "approved" | "owner_visible"
 
+type FileUploadResult =
+  | { readonly success: true }
+  | { readonly success: false; readonly error: string }
+
 const NO_PHASE_VALUE = "unassigned"
 
 type DailyLogDraft = {
@@ -887,6 +891,66 @@ export function ProjectDailyLogWorkspace({
     setUploadMessage(null)
   }
 
+  async function uploadDailyLogFile(
+    log: ProjectDailyLogItem,
+    file: File
+  ): Promise<FileUploadResult> {
+    const formData = new FormData()
+    formData.append("files", file)
+    formData.set("dailyLogId", log.id)
+    formData.set("caption", uploadCaption)
+    formData.set("capturedDate", log.logDate)
+    formData.set("photoKind", "progress")
+    formData.set("schedulePhase", uploadPhase)
+    formData.set("ownerVisible", String(uploadOwnerVisible))
+    formData.set("subVendorVisible", String(uploadSubVendorVisible))
+
+    try {
+      const response = await fetch(
+        `/api/projects/${workspace.project.id}/photos/upload`,
+        {
+          method: "POST",
+          body: formData,
+        }
+      )
+      const responseText = await response.text()
+      let result: unknown = null
+      try {
+        result = JSON.parse(responseText)
+      } catch {
+        // A platform-level upload rejection can return a non-JSON response.
+      }
+
+      if (
+        response.ok &&
+        typeof result === "object" &&
+        result !== null &&
+        "success" in result &&
+        result.success === true
+      ) {
+        return { success: true }
+      }
+
+      const error =
+        response.status === 413
+          ? `The file is too large. ${PHOTO_UPLOAD_LIMIT_LABEL}`
+          : typeof result === "object" &&
+              result !== null &&
+              "error" in result &&
+              typeof result.error === "string"
+            ? result.error
+            : responseText.trim().length > 0
+              ? `Upload failed (${response.status}): ${responseText.trim()}`
+              : `Upload failed (${response.status}).`
+      return { success: false, error }
+    } catch {
+      return {
+        success: false,
+        error: "The upload connection was interrupted.",
+      }
+    }
+  }
+
   async function uploadDailyLogFiles(log: ProjectDailyLogItem): Promise<void> {
     if (uploadFiles.length === 0) {
       setUploadMessage("Choose at least one photo or document.")
@@ -920,45 +984,32 @@ export function ProjectDailyLogWorkspace({
     setUploadMessage(null)
 
     try {
-      const formData = new FormData()
-      for (const file of uploadFiles) {
-        formData.append("files", file)
-      }
-      formData.set("dailyLogId", log.id)
-      formData.set("caption", uploadCaption)
-      formData.set("capturedDate", log.logDate)
-      formData.set("photoKind", "progress")
-      formData.set("schedulePhase", uploadPhase)
-      formData.set("ownerVisible", String(uploadOwnerVisible))
-      formData.set("subVendorVisible", String(uploadSubVendorVisible))
+      const failedFiles: File[] = []
+      const failureMessages: string[] = []
+      let uploadedCount = 0
 
-      const response = await fetch(
-        `/api/projects/${workspace.project.id}/photos/upload`,
-        {
-          method: "POST",
-          body: formData,
-        }
-      )
-      const responseText = await response.text()
-      let result: unknown = null
-      try {
-        result = JSON.parse(responseText)
-      } catch {
-        // A platform-level upload rejection can return a non-JSON response.
-      }
-
-      if (
-        typeof result === "object" &&
-        result !== null &&
-        "success" in result &&
-        result.success === true
-      ) {
-        const uploadedCount =
-          "uploadedCount" in result && typeof result.uploadedCount === "number"
-            ? result.uploadedCount
-            : uploadFiles.length
+      for (const [index, file] of uploadFiles.entries()) {
         setUploadMessage(
-          `Uploaded ${uploadedCount} file${
+          `Uploading ${index + 1} of ${uploadFiles.length}: ${file.name}`
+        )
+
+        // Keep each request short so a mobile interruption cannot strand the
+        // remainder of a multi-photo selection after the first Drive upload.
+        const result = await uploadDailyLogFile(log, file)
+        if (result.success) {
+          uploadedCount += 1
+        } else {
+          failedFiles.push(file)
+          failureMessages.push(`${file.name}: ${result.error}`)
+        }
+      }
+
+      setUploadFiles(failedFiles)
+      if (uploadedCount > 0) router.refresh()
+
+      if (failedFiles.length === 0) {
+        setUploadMessage(
+          `Uploaded all ${uploadedCount} file${
             uploadedCount === 1 ? "" : "s"
           } to Google Drive.`
         )
@@ -967,22 +1018,14 @@ export function ProjectDailyLogWorkspace({
         setUploadPhase(NO_PHASE_VALUE)
         setUploadOwnerVisible(false)
         setUploadSubVendorVisible(false)
-        router.refresh()
         return
       }
 
-      const error =
-        response.status === 413
-          ? `The upload is too large. ${PHOTO_UPLOAD_LIMIT_LABEL}`
-          : typeof result === "object" &&
-              result !== null &&
-              "error" in result &&
-              typeof result.error === "string"
-            ? result.error
-            : responseText.trim().length > 0
-              ? `Upload failed (${response.status}): ${responseText.trim()}`
-              : `Upload failed (${response.status}).`
-      setUploadMessage(error)
+      const summary =
+        uploadedCount === 0
+          ? `No files uploaded. ${failedFiles.length} can be retried.`
+          : `Uploaded ${uploadedCount} of ${uploadFiles.length}. ${failedFiles.length} can be retried.`
+      setUploadMessage(`${summary} ${failureMessages.join(" ")}`)
     } catch {
       setUploadMessage(
         `Upload did not reach Compass. Check your connection and try fewer or smaller files. ${PHOTO_UPLOAD_LIMIT_LABEL}`
