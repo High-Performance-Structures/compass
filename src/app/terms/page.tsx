@@ -21,8 +21,10 @@ export default function TermsPage(): React.ReactElement {
         </h1>
         <p className="text-muted-foreground mt-4 leading-7">
           These terms govern authorized use of Compass, a construction
-          project-management service operated for Open Range Construction, Ltd.
-          and affiliated operating departments.
+          project-management service operated by High Performance Structures
+          Inc. dba Open Range Construction, Ltd. for its operating departments,
+          including Open Range Construction, High Performance Structures,
+          Nu-Tech, and Design.
         </p>
 
         <section className="mt-10 space-y-4">
@@ -137,6 +139,11 @@ export default function TermsPage(): React.ReactElement {
               Privacy Policy
             </Link>{" "}
             for information about data use, revocation, and deletion.
+          </p>
+          <p className="text-muted-foreground text-sm">
+            High Performance Structures Inc. dba Open Range Construction, Ltd.
+            <br />
+            660 Chipmunk Dr., Woodland Park, CO 80863
           </p>
         </section>
       </article>
