@@ -207,6 +207,58 @@ test.describe("usable Compass areas", () => {
     }
   })
 
+  test("Schedule keeps controls compact and gives views a scrollable workspace", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 640, height: 700 })
+    const path = "/dashboard/projects/e2e-project-001/schedule?view=list"
+    const response = await page.goto(path)
+    await expectHealthyNavigation(page, response, "/dashboard/projects/e2e-project-001/schedule")
+
+    const scrollRegion = page.locator(
+      '[data-dashboard-scroll-region="schedule"]:visible'
+    )
+    await expect(scrollRegion).toHaveCSS("overflow-y", "auto")
+
+    const controls = page.locator("[data-schedule-controls]:visible")
+    await expect(controls).toBeVisible()
+    const controlHeight = await controls.evaluate((element) => element.clientHeight)
+    expect(controlHeight).toBeLessThanOrEqual(40)
+    await expect(controls).toHaveCSS("overflow-x", "auto")
+
+    const projectSwitcher = page.getByRole("combobox", {
+      name: "Switch project",
+    })
+    await expect(projectSwitcher).toBeVisible()
+    expect(
+      await projectSwitcher.evaluate((element) => {
+        const row = element.closest("[data-schedule-controls]")
+        if (!row) return false
+        const rowBounds = row.getBoundingClientRect()
+        const controlBounds = element.getBoundingClientRect()
+        return (
+          controlBounds.top >= rowBounds.top &&
+          controlBounds.bottom <= rowBounds.bottom
+        )
+      })
+    ).toBe(true)
+
+    const listActions = page.locator("[data-schedule-list-actions]:visible")
+    await expect(listActions).toBeVisible()
+    await expect(listActions).toHaveCSS("border-top-width", "0px")
+    await expect(listActions).toHaveCSS("padding-top", "0px")
+
+    const workspace = page.locator("[data-schedule-workspace]:visible")
+    await expect(workspace).toBeVisible()
+    const workspaceHeight = await workspace.evaluate((element) => element.clientHeight)
+    expect(workspaceHeight).toBeGreaterThanOrEqual(460)
+    expect(
+      await scrollRegion.evaluate(
+        (element) => element.scrollHeight > element.clientHeight
+      )
+    ).toBe(true)
+  })
+
   test("project conversation replies enable the explicit send action", async ({
     page,
   }) => {

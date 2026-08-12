@@ -183,7 +183,7 @@ export default async function SchedulePage({
         : null
 
     return (
-      <div className="flex min-h-0 flex-1 flex-col px-4 py-2">
+      <div className="flex min-h-full flex-col px-3 py-2 sm:px-4 lg:px-6">
         <ScheduleView
           projectId={scope.kind === "project" ? primaryProject?.id ?? null : null}
           projectName={

@@ -647,8 +647,11 @@ export function ScheduleView({
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <div className="mb-2 flex min-w-0 flex-nowrap items-center gap-2 overflow-x-auto pb-1">
+    <div className="flex min-h-full flex-col" data-schedule-workspace>
+      <div
+        className="mb-1 flex h-8 shrink-0 min-w-0 flex-nowrap items-center gap-1 overflow-x-auto"
+        data-schedule-controls
+      >
         <nav className="flex shrink-0 items-center gap-1.5 text-sm">
           <Link
             href={
@@ -685,7 +688,7 @@ export function ScheduleView({
                 currentProjectId={projectId}
                 targetSection="schedule"
                 placeholder="Switch schedule project..."
-                className="w-full sm:w-[300px]"
+                className="h-8 w-full sm:w-[300px]"
               />
               <Button asChild variant="outline" size="sm" className="h-8">
                 <Link href="/dashboard/schedule?mode=projects&scope=all&view=gantt">
@@ -742,23 +745,24 @@ export function ScheduleView({
       </div>
 
       {projectId && publicationStatus && (
-        <div className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-1 border-y py-2 text-xs">
-          <span className="font-medium">
-            External schedule:
-            {" "}
+        <div
+          className="mb-1 flex h-8 shrink-0 min-w-0 flex-nowrap items-center gap-2 overflow-x-auto text-xs"
+          data-schedule-publication-controls
+        >
+          <span className="shrink-0 text-muted-foreground">
             {publicationStatus.hasPublishedSchedule
               ? `Published ${new Date(
                   publicationStatus.publishedAt ?? ""
                 ).toLocaleString()}`
-              : "Not yet published"}
+              : "Not published"}
           </span>
           {publicationStatus.hasUnpublishedChanges && (
-            <span className="text-amber-700 dark:text-amber-300">
+            <span className="shrink-0 text-amber-700 dark:text-amber-300">
               Unpublished changes
             </span>
           )}
           <Button
-            className="ml-auto h-7"
+            className="ml-auto h-7 shrink-0 px-2 text-xs"
             size="sm"
             variant={
               publicationStatus.hasUnpublishedChanges
@@ -767,14 +771,14 @@ export function ScheduleView({
             }
             onClick={() => setPublishOpen(true)}
           >
-            <IconSend className="mr-1.5 size-3.5" />
-            Publish schedule
+            <IconSend className="mr-1 size-3.5" />
+            Publish
           </Button>
         </div>
       )}
 
       {/* Action bar: search, filters, overflow */}
-      <div className="mb-2 flex min-w-0 flex-nowrap items-center gap-2 overflow-x-auto pb-1 print:hidden">
+      <div className="mb-1 flex h-8 shrink-0 min-w-0 flex-nowrap items-center gap-1.5 overflow-x-auto print:hidden">
         {/* Search */}
         <div className="relative min-w-0 flex-1 sm:flex-none sm:w-52">
           <IconSearch className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground pointer-events-none" />
@@ -1122,8 +1126,12 @@ export function ScheduleView({
         </div>
       </div>
 
-      {/* View content */}
-      <div className="flex flex-col flex-1 min-h-0">
+      {/* The schedule is a document-scrolling workspace: preserve a useful view height
+          after the compact toolbars, then let the dashboard scroll region carry it. */}
+      <div
+        className="flex min-h-[34rem] flex-1 flex-col"
+        data-schedule-view-content
+      >
         {view === "calendar" && (
           isMobile && !globalMode ? (
             <ScheduleMobileView
