@@ -21,8 +21,6 @@ import {
 } from "date-fns"
 import {
   IconCalendar,
-  IconChevronLeft,
-  IconChevronRight,
   IconList,
 } from "@tabler/icons-react"
 
@@ -34,6 +32,15 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { cn } from "@/lib/utils"
 import { useScheduleDisplayPalette } from "@/hooks/use-schedule-display-palette"
 import { getScheduleItemDisplayColor } from "@/lib/schedule/appearance"
@@ -227,75 +234,57 @@ export function ScheduleCalendarView({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="mb-2 flex flex-wrap items-center gap-2">
-        {mode !== "agenda" && (
-          <>
+      <div className="mb-1 flex h-8 shrink-0 items-center">
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
             <Button
-              type="button"
-              variant="outline"
+              aria-label="Calendar controls"
+              className="h-8 px-2 text-xs"
               size="sm"
-              onClick={() => setCurrentDate(new Date())}
-              className="h-8 text-xs"
+              variant="outline"
             >
-              Today
+              <IconCalendar className="size-3.5" />
+              <span className="ml-1.5 capitalize">{mode}</span>
             </Button>
-            <div className="flex items-center">
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                className="size-8"
-                onClick={() => navigate(-1)}
-                aria-label={`Previous ${mode}`}
-              >
-                <IconChevronLeft className="size-4" />
-              </Button>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                className="size-8"
-                onClick={() => navigate(1)}
-                aria-label={`Next ${mode}`}
-              >
-                <IconChevronRight className="size-4" />
-              </Button>
-            </div>
-          </>
-        )}
-        <h2 className="min-w-[180px] text-sm font-medium">
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start">
+            {mode !== "agenda" && (
+              <>
+                <DropdownMenuItem onClick={() => setCurrentDate(new Date())}>
+                  Today
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => navigate(-1)}>
+                  Previous {mode}
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => navigate(1)}>
+                  Next {mode}
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+              </>
+            )}
+            <DropdownMenuRadioGroup
+              value={mode}
+              onValueChange={(value) => setMode(value as CalendarMode)}
+            >
+              {(
+                [
+                  ["month", "Month", IconCalendar],
+                  ["week", "Week", IconCalendar],
+                  ["day", "Day", IconCalendar],
+                  ["agenda", "Agenda", IconList],
+                ] as const
+              ).map(([value, label, Icon]) => (
+                <DropdownMenuRadioItem key={value} value={value}>
+                  <Icon className="mr-2 size-4" />
+                  {label}
+                </DropdownMenuRadioItem>
+              ))}
+            </DropdownMenuRadioGroup>
+          </DropdownMenuContent>
+        </DropdownMenu>
+        <h2 className="ml-2 truncate text-sm font-medium">
           {dateRangeLabel(mode, currentDate)}
         </h2>
-        <div
-          className="ml-auto inline-flex overflow-hidden rounded-md border"
-          role="group"
-          aria-label="Schedule calendar view"
-        >
-          {(
-            [
-              ["month", "Month", IconCalendar],
-              ["week", "Week", IconCalendar],
-              ["day", "Day", IconCalendar],
-              ["agenda", "Agenda", IconList],
-            ] as const
-          ).map(([value, label, Icon]) => (
-            <Button
-              key={value}
-              type="button"
-              size="sm"
-              variant="ghost"
-              className={cn(
-                "h-8 rounded-none border-r px-2.5 text-xs last:border-r-0",
-                mode === value && "bg-secondary text-secondary-foreground"
-              )}
-              onClick={() => setMode(value)}
-              aria-pressed={mode === value}
-            >
-              <Icon className="size-3.5" />
-              <span className="hidden sm:inline">{label}</span>
-            </Button>
-          ))}
-        </div>
       </div>
 
       {mode === "month" && (

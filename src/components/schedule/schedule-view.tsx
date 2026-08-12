@@ -9,7 +9,6 @@ import {
 } from "react"
 import Link from "next/link"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
-import { cn } from "@/lib/utils"
 import { useIsMobile } from "@/hooks/use-mobile"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
@@ -40,6 +39,8 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
@@ -651,6 +652,7 @@ export function ScheduleView({
       <div
         className="mb-1 flex h-8 shrink-0 min-w-0 flex-nowrap items-center gap-1 overflow-x-auto"
         data-schedule-controls
+        data-schedule-toolbar
       >
         <nav className="flex shrink-0 items-center gap-1.5 text-sm">
           <Link
@@ -705,27 +707,42 @@ export function ScheduleView({
             />
           )}
 
-          {/* View switcher */}
-          <div className={cn(
-            "flex items-center rounded-lg border bg-muted/40 p-0.5",
-            isMobile ? "gap-0" : "gap-0",
-          )}>
-            {VIEW_OPTIONS.map(({ value, icon: Icon, label }) => (
-              <button
-                key={value}
-                onClick={() => setView(value)}
-                className={cn(
-                  "flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium transition-all",
-                  view === value
-                    ? "bg-background text-foreground shadow-sm"
-                    : "text-muted-foreground hover:text-foreground"
-                )}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                aria-label="Schedule view"
+                className="h-8 shrink-0 px-2 text-xs"
+                size="sm"
+                variant="outline"
               >
-                <Icon className="size-3.5" />
-                {!isMobile && <span>{label}</span>}
-              </button>
-            ))}
-          </div>
+                {(() => {
+                  const activeView = VIEW_OPTIONS.find(
+                    (option) => option.value === view
+                  )
+                  const ActiveIcon = activeView?.icon ?? IconCalendar
+                  return (
+                    <>
+                      <ActiveIcon className="size-3.5" />
+                      <span className="ml-1.5">{activeView?.label}</span>
+                    </>
+                  )
+                })()}
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuRadioGroup
+                value={view}
+                onValueChange={(value) => setView(value as View)}
+              >
+                {VIEW_OPTIONS.map(({ value, icon: Icon, label }) => (
+                  <DropdownMenuRadioItem key={value} value={value}>
+                    <Icon className="mr-2 size-4" />
+                    {label}
+                  </DropdownMenuRadioItem>
+                ))}
+              </DropdownMenuRadioGroup>
+            </DropdownMenuContent>
+          </DropdownMenu>
 
           <Button
             size="sm"
