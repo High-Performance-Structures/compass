@@ -33,6 +33,7 @@ import {
   knownFeedbackPriority,
   knownFeedbackStatus,
 } from "@/lib/jarvis/feedback-lifecycle"
+import { feedbackOperationsSummary } from "@/lib/jarvis/feedback-operations-summary"
 
 function formatDate(value: string | null): string {
   if (!value) return "Never"
@@ -246,7 +247,7 @@ function RequestEditor({
               </Link>
             )}
             <Button size="sm" disabled={pending} onClick={save}>
-              {pending ? "Saving..." : "Save and notify"}
+              {pending ? "Saving..." : "Save / Queue update"}
             </Button>
           </div>
         </div>
@@ -265,6 +266,10 @@ export function FeedbackDeskAdmin({ overview }: Readonly<{
   )
   const overdue = openItems.filter((item) => item.overdue).length
   const unassigned = openItems.filter((item) => !item.assignedToUserId).length
+  const operations = feedbackOperationsSummary({
+    bridgeFailedEvents: overview.bridge.failed,
+    items: overview.items,
+  })
   const githubReviewNeeded = overview.items.filter(
     (item) =>
       !item.githubIssueUrl &&
@@ -312,6 +317,32 @@ export function FeedbackDeskAdmin({ overview }: Readonly<{
         <Card><CardHeader><CardDescription>SLA overdue</CardDescription><CardTitle>{overdue}</CardTitle></CardHeader></Card>
         <Card><CardHeader><CardDescription>Failed bridge events</CardDescription><CardTitle>{overview.bridge.failed}</CardTitle></CardHeader></Card>
       </div>
+
+      <Card className={operations.needsAttention ? "border-destructive/60" : undefined}>
+        <CardHeader className="gap-2">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <CardTitle className="text-base">Operations queue</CardTitle>
+            <Badge variant={operations.needsAttention ? "destructive" : "secondary"}>
+              {operations.needsAttention ? "Action required" : "Current"}
+            </Badge>
+          </div>
+          <CardDescription>{operations.attentionMessage}</CardDescription>
+        </CardHeader>
+        <CardContent className="grid gap-3 md:grid-cols-2">
+          <div className="rounded-md border p-3">
+            <p className="text-sm font-medium">Bug workflow</p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {operations.openBugs} open bug{operations.openBugs === 1 ? "" : "s"}. Routine bugs can continue through protected triage and review without waiting for a leadership decision.
+            </p>
+          </div>
+          <div className="rounded-md border p-3">
+            <p className="text-sm font-medium">Feature decision queue</p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {operations.featureDecisionMessage}
+            </p>
+          </div>
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>
