@@ -247,7 +247,7 @@ function RequestEditor({
               </Link>
             )}
             <Button size="sm" disabled={pending} onClick={save}>
-              {pending ? "Saving..." : "Save and notify"}
+              {pending ? "Saving..." : "Save / Queue update"}
             </Button>
           </div>
         </div>
