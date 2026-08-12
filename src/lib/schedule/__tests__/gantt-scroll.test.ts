@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest"
 import {
+  clampGanttScrollOffset,
   centeredGanttRowScrollTop,
   centeredTimelineScrollLeft,
   dominantScrollAxis,
@@ -35,6 +36,12 @@ describe("Gantt dominant-axis scrolling", () => {
     expect(normalizeWheelDelta(2, 1, 500)).toBe(32)
     expect(normalizeWheelDelta(-1, 2, 500)).toBe(-500)
     expect(normalizeWheelDelta(24, 0, 500)).toBe(24)
+  })
+
+  it("keeps the Gantt scroll position within the resized viewport", () => {
+    expect(clampGanttScrollOffset(1_200, 2_000, 1_000)).toBe(1_000)
+    expect(clampGanttScrollOffset(-20, 2_000, 1_000)).toBe(0)
+    expect(clampGanttScrollOffset(500, 600, 800)).toBe(0)
   })
 
   it("maps independently sized scroll panes to the same relative row", () => {

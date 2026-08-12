@@ -6,6 +6,7 @@ import {
   IconActivity,
   IconCalendarStats,
   IconClipboardCheck,
+  IconTimeline,
   IconClipboardText,
   IconFiles,
   IconFileDollar,
@@ -61,6 +62,16 @@ const PERSISTENT_NAV = [
     url: "/dashboard/schedule?kind=task",
     icon: IconClipboardCheck,
   },
+  {
+    title: "Work Calendar",
+    url: "/dashboard/schedule",
+    icon: IconCalendarStats,
+  },
+  {
+    title: "Schedule",
+    url: "/dashboard/schedule?mode=projects&scope=all&view=gantt",
+    icon: IconTimeline,
+  },
 ]
 
 const NAV_MAIN = [
@@ -74,11 +85,6 @@ const NAV_MAIN = [
     title: "Projects",
     url: "/dashboard/projects",
     icon: IconFolder,
-  },
-  {
-    title: "Work Calendar",
-    url: "/dashboard/schedule",
-    icon: IconCalendarStats,
   },
   {
     title: "Owner Updates",

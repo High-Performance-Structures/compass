@@ -647,10 +647,9 @@ export function ScheduleView({
   }
 
   return (
-    <div className="flex flex-col flex-1 min-h-0">
-      {/* Header: breadcrumb + project switcher + view toggle + new task */}
-      <div className="mb-3 flex flex-col gap-2 lg:flex-row lg:items-center">
-        <nav className="flex min-w-0 items-center gap-1.5 text-sm">
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div className="mb-2 flex min-w-0 flex-nowrap items-center gap-2 overflow-x-auto pb-1">
+        <nav className="flex shrink-0 items-center gap-1.5 text-sm">
           <Link
             href={
               globalMode || !projectId
@@ -667,7 +666,7 @@ export function ScheduleView({
           </span>
         </nav>
 
-        <div className="flex flex-wrap items-center gap-2 lg:ml-auto lg:justify-end">
+        <div className="ml-auto flex shrink-0 items-center gap-2">
           {globalMode && scope ? (
             <>
               <Button asChild variant="outline" size="sm" className="h-8">
@@ -775,7 +774,7 @@ export function ScheduleView({
       )}
 
       {/* Action bar: search, filters, overflow */}
-      <div className="mb-3 flex flex-wrap items-center gap-2 print:hidden">
+      <div className="mb-2 flex min-w-0 flex-nowrap items-center gap-2 overflow-x-auto pb-1 print:hidden">
         {/* Search */}
         <div className="relative min-w-0 flex-1 sm:flex-none sm:w-52">
           <IconSearch className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground pointer-events-none" />

@@ -101,7 +101,7 @@ export default async function SchedulePage({
   }
 
   return (
-    <div className="px-4 py-2 flex flex-col flex-1 min-h-0">
+    <div className="flex min-h-0 flex-1 flex-col px-4 py-2 sm:px-6">
       <ScheduleView
         projectId={id}
         projectName={projectName}
