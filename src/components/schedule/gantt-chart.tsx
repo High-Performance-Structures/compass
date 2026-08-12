@@ -6,6 +6,7 @@ import type { DisplayColorPalette } from "@/lib/schedule/appearance"
 import { getScheduleItemClasses } from "@/lib/schedule/appearance"
 import {
   dominantScrollAxis,
+  clampGanttScrollOffset,
   lockWheelToDominantAxis,
   normalizeWheelDelta,
   paddingToIncludeDate,
@@ -528,6 +529,48 @@ export function GanttChart({
       ganttRef.current.change_view_mode(viewMode)
     }
   }, [viewMode, loaded])
+
+  useEffect(() => {
+    const wrapper = wrapperRef.current
+    const container = ganttContainerRef.current
+    if (!wrapper || !container || !loaded || typeof ResizeObserver === "undefined") {
+      return
+    }
+
+    let frameId: number | null = null
+    let observedWidth: number | null = null
+    const reconcileAfterResize = (): void => {
+      frameId = requestAnimationFrame(() => {
+        frameId = null
+        const activeContainer = ganttContainerRef.current
+        if (!activeContainer) return
+        activeContainer.scrollLeft = clampGanttScrollOffset(
+          activeContainer.scrollLeft,
+          activeContainer.scrollWidth,
+          activeContainer.clientWidth
+        )
+        activeContainer.scrollTop = clampGanttScrollOffset(
+          activeContainer.scrollTop,
+          activeContainer.scrollHeight,
+          activeContainer.clientHeight
+        )
+        activeContainer.dispatchEvent(new Event("scroll"))
+      })
+    }
+
+    const resizeObserver = new ResizeObserver(([entry]) => {
+      const width = entry?.contentRect.width
+      if (width === undefined || width === observedWidth) return
+      observedWidth = width
+      if (frameId !== null) cancelAnimationFrame(frameId)
+      reconcileAfterResize()
+    })
+    resizeObserver.observe(wrapper)
+    return () => {
+      resizeObserver.disconnect()
+      if (frameId !== null) cancelAnimationFrame(frameId)
+    }
+  }, [loaded])
 
   if (tasks.length === 0) {
     return (

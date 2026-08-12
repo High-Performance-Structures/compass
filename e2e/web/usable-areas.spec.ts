@@ -187,24 +187,139 @@ test.describe("usable Compass areas", () => {
   test("schedule switches between calendar, list, and Gantt", async ({
     page,
   }) => {
-    await page.goto("/dashboard/projects")
-    const projectId = await findProjectId(page)
-    if (!projectId) {
-      test.skip(true, "The deployed demo has no read-only project fixture")
-      return
-    }
-    const schedulePath = `/dashboard/projects/${projectId}/schedule`
+    const schedulePath = "/dashboard/projects/e2e-project-001/schedule"
     const response = await page.goto(schedulePath)
     await expectHealthyNavigation(page, response, schedulePath)
 
-    for (const view of ["Calendar", "List", "Gantt"]) {
+    for (const view of ["Calendar", "List", "Gantt"] as const) {
       await test.step(view, async () => {
-        const switcher = page.locator("button").filter({ hasText: view }).first()
-        await expect(switcher).toBeVisible()
-        await switcher.click()
+        await page.getByRole("button", { name: "Schedule view" }).click()
+        const option = page.getByRole("menuitemradio", { name: view })
+        await expect(option).toBeVisible()
+        await option.click()
+        await page.waitForURL(
+          (url) => url.searchParams.get("view") === view.toLowerCase()
+        )
         await expect(page.locator("body")).not.toContainText(applicationErrorText)
       })
     }
+  })
+
+  test("Schedule keeps controls compact and gives views a scrollable workspace", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 640, height: 700 })
+    const path = "/dashboard/projects/e2e-project-001/schedule?view=list"
+    const response = await page.goto(path)
+    await expectHealthyNavigation(page, response, "/dashboard/projects/e2e-project-001/schedule")
+
+    const scrollRegion = page.locator(
+      '[data-dashboard-scroll-region="schedule"]:visible'
+    )
+    await expect(scrollRegion).toHaveCSS("overflow-y", "auto")
+
+    const controls = page.locator("[data-schedule-controls]:visible")
+    await expect(controls).toBeVisible()
+    const controlHeight = await controls.evaluate((element) => element.clientHeight)
+    expect(controlHeight).toBeLessThanOrEqual(40)
+    await expect(controls).toHaveCSS("overflow-x", "auto")
+
+    const projectSwitcher = page.getByRole("combobox", {
+      name: "Switch project",
+    })
+    await expect(projectSwitcher).toBeVisible()
+    expect(
+      await projectSwitcher.evaluate((element) => {
+        const row = element.closest("[data-schedule-controls]")
+        if (!row) return false
+        const rowBounds = row.getBoundingClientRect()
+        const controlBounds = element.getBoundingClientRect()
+        return (
+          controlBounds.top >= rowBounds.top &&
+          controlBounds.bottom <= rowBounds.bottom
+        )
+      })
+    ).toBe(true)
+
+    const listActions = page.locator("[data-schedule-list-actions]:visible")
+    await expect(listActions).toBeVisible()
+    await expect(listActions).toHaveCSS("border-top-width", "0px")
+    await expect(listActions).toHaveCSS("padding-top", "0px")
+
+    const workspace = page.locator("[data-schedule-workspace]:visible")
+    await expect(workspace).toBeVisible()
+    const workspaceHeight = await workspace.evaluate((element) => element.clientHeight)
+    expect(workspaceHeight).toBeGreaterThanOrEqual(460)
+    expect(
+      await scrollRegion.evaluate(
+        (element) => element.scrollHeight > element.clientHeight
+      )
+    ).toBe(true)
+  })
+
+  test("Schedule puts view choices and Gantt controls in compact menus", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 640, height: 700 })
+    const path = "/dashboard/projects/e2e-project-001/schedule?view=list"
+    const response = await page.goto(path)
+    await expectHealthyNavigation(page, response, "/dashboard/projects/e2e-project-001/schedule")
+
+    const toolbar = page.locator("[data-schedule-toolbar]:visible")
+    await expect(toolbar).toBeVisible()
+    expect(
+      await toolbar.evaluate((element) => element.clientHeight)
+    ).toBeLessThanOrEqual(40)
+
+    await page.getByRole("button", { name: "Schedule view" }).click()
+    await expect(
+      page.getByRole("menuitemradio", { name: "Calendar" })
+    ).toBeVisible()
+    await expect(
+      page.getByRole("menuitemradio", { name: "List" })
+    ).toBeChecked()
+    await page.getByRole("menuitemradio", { name: "Gantt" }).click()
+    await page.waitForURL(
+      (url) =>
+        url.searchParams.get("view") === "gantt" && url.searchParams.has("order")
+    )
+    await expect(page.getByRole("button", { name: "Gantt controls" })).toBeVisible()
+
+    await page.getByRole("button", { name: "Gantt controls" }).click()
+    await expect(
+      page.getByRole("menuitemradio", { name: "Day", exact: true })
+    ).toBeVisible()
+    await expect(
+      page.getByRole("menuitemradio", { name: "Week" })
+    ).toBeChecked()
+    await expect(
+      page.getByRole("menuitemradio", { name: "Month" })
+    ).toBeVisible()
+    await expect(
+      page.getByRole("menuitemradio", { name: "Year" })
+    ).toBeVisible()
+    await expect(page.getByRole("menuitem", { name: "Today" })).toBeVisible()
+    await page.keyboard.press("Escape")
+  })
+
+  test("Schedule Calendar controls use one compact menu", async ({ page }) => {
+    await page.setViewportSize({ width: 980, height: 700 })
+    const response = await page.goto(
+      "/dashboard/projects/e2e-project-001/schedule?view=calendar"
+    )
+    await expectHealthyNavigation(
+      page,
+      response,
+      "/dashboard/projects/e2e-project-001/schedule"
+    )
+
+    await page.getByRole("button", { name: "Calendar controls" }).click()
+    await expect(
+      page.getByRole("menuitemradio", { name: "Month", exact: true })
+    ).toBeChecked()
+    await expect(
+      page.getByRole("menuitemradio", { name: "Agenda" })
+    ).toBeVisible()
   })
 
   test("project conversation replies enable the explicit send action", async ({

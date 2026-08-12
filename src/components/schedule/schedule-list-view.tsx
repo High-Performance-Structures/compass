@@ -552,11 +552,15 @@ export function ScheduleListView({
   }, [focusTaskId, localTasks, table])
 
   return (
-    <div className="flex flex-col flex-1 min-h-0">
-      <div className="mb-2 flex flex-wrap items-center gap-2 border-y py-2">
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div
+        className="mb-1 flex h-8 shrink-0 min-w-0 flex-nowrap items-center gap-1 overflow-x-auto"
+        data-schedule-list-actions
+      >
         <Button
           size="sm"
           variant="outline"
+          className="h-7 shrink-0 px-2 text-xs"
           onClick={() => setDepDialogOpen(true)}
           disabled={!projectId || localTasks.length < 2}
           title={
@@ -636,7 +640,7 @@ export function ScheduleListView({
         )}
       </div>
 
-      <div className="rounded-md border flex-1 overflow-x-auto -mx-2 sm:mx-0">
+      <div className="rounded-md border flex-1 min-h-[30rem] overflow-x-auto -mx-2 sm:mx-0">
         <div className="inline-block min-w-full align-middle">
           <Table>
             <TableHeader>

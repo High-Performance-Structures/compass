@@ -11,10 +11,11 @@ export function MainContent({
   const pathname = usePathname()
   const isConversations = pathname?.startsWith("/dashboard/conversations")
   const isSchedule = pathname?.includes("/schedule")
-  const needsFixedHeight = isConversations || isSchedule
+  const needsFixedHeight = isConversations
 
   return (
     <div
+      data-dashboard-scroll-region={isSchedule ? "schedule" : undefined}
       {...rest}
       className={cn(
         "flex flex-col overflow-x-hidden min-w-0 min-h-0",

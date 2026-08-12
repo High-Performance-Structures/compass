@@ -45,6 +45,17 @@ export function normalizeWheelDelta(
   return delta
 }
 
+export function clampGanttScrollOffset(
+  previousOffset: number,
+  scrollSize: number,
+  clientSize: number
+): number {
+  return Math.max(
+    0,
+    Math.min(previousOffset, Math.max(0, scrollSize - clientSize))
+  )
+}
+
 export function synchronizedScrollTop(
   sourceTop: number,
   sourceScrollHeight: number,

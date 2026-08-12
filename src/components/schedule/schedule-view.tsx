@@ -9,7 +9,6 @@ import {
 } from "react"
 import Link from "next/link"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
-import { cn } from "@/lib/utils"
 import { useIsMobile } from "@/hooks/use-mobile"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
@@ -40,6 +39,8 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
@@ -647,10 +648,13 @@ export function ScheduleView({
   }
 
   return (
-    <div className="flex flex-col flex-1 min-h-0">
-      {/* Header: breadcrumb + project switcher + view toggle + new task */}
-      <div className="mb-3 flex flex-col gap-2 lg:flex-row lg:items-center">
-        <nav className="flex min-w-0 items-center gap-1.5 text-sm">
+    <div className="flex min-h-full flex-col" data-schedule-workspace>
+      <div
+        className="mb-1 flex h-8 shrink-0 min-w-0 flex-nowrap items-center gap-1 overflow-x-auto"
+        data-schedule-controls
+        data-schedule-toolbar
+      >
+        <nav className="flex shrink-0 items-center gap-1.5 text-sm">
           <Link
             href={
               globalMode || !projectId
@@ -667,7 +671,7 @@ export function ScheduleView({
           </span>
         </nav>
 
-        <div className="flex flex-wrap items-center gap-2 lg:ml-auto lg:justify-end">
+        <div className="ml-auto flex shrink-0 items-center gap-2">
           {globalMode && scope ? (
             <>
               <Button asChild variant="outline" size="sm" className="h-8">
@@ -686,7 +690,7 @@ export function ScheduleView({
                 currentProjectId={projectId}
                 targetSection="schedule"
                 placeholder="Switch schedule project..."
-                className="w-full sm:w-[300px]"
+                className="h-8 w-full sm:w-[300px]"
               />
               <Button asChild variant="outline" size="sm" className="h-8">
                 <Link href="/dashboard/schedule?mode=projects&scope=all&view=gantt">
@@ -703,27 +707,42 @@ export function ScheduleView({
             />
           )}
 
-          {/* View switcher */}
-          <div className={cn(
-            "flex items-center rounded-lg border bg-muted/40 p-0.5",
-            isMobile ? "gap-0" : "gap-0",
-          )}>
-            {VIEW_OPTIONS.map(({ value, icon: Icon, label }) => (
-              <button
-                key={value}
-                onClick={() => setView(value)}
-                className={cn(
-                  "flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium transition-all",
-                  view === value
-                    ? "bg-background text-foreground shadow-sm"
-                    : "text-muted-foreground hover:text-foreground"
-                )}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                aria-label="Schedule view"
+                className="h-8 shrink-0 px-2 text-xs"
+                size="sm"
+                variant="outline"
               >
-                <Icon className="size-3.5" />
-                {!isMobile && <span>{label}</span>}
-              </button>
-            ))}
-          </div>
+                {(() => {
+                  const activeView = VIEW_OPTIONS.find(
+                    (option) => option.value === view
+                  )
+                  const ActiveIcon = activeView?.icon ?? IconCalendar
+                  return (
+                    <>
+                      <ActiveIcon className="size-3.5" />
+                      <span className="ml-1.5">{activeView?.label}</span>
+                    </>
+                  )
+                })()}
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuRadioGroup
+                value={view}
+                onValueChange={(value) => setView(value as View)}
+              >
+                {VIEW_OPTIONS.map(({ value, icon: Icon, label }) => (
+                  <DropdownMenuRadioItem key={value} value={value}>
+                    <Icon className="mr-2 size-4" />
+                    {label}
+                  </DropdownMenuRadioItem>
+                ))}
+              </DropdownMenuRadioGroup>
+            </DropdownMenuContent>
+          </DropdownMenu>
 
           <Button
             size="sm"
@@ -743,23 +762,24 @@ export function ScheduleView({
       </div>
 
       {projectId && publicationStatus && (
-        <div className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-1 border-y py-2 text-xs">
-          <span className="font-medium">
-            External schedule:
-            {" "}
+        <div
+          className="mb-1 flex h-8 shrink-0 min-w-0 flex-nowrap items-center gap-2 overflow-x-auto text-xs"
+          data-schedule-publication-controls
+        >
+          <span className="shrink-0 text-muted-foreground">
             {publicationStatus.hasPublishedSchedule
               ? `Published ${new Date(
                   publicationStatus.publishedAt ?? ""
                 ).toLocaleString()}`
-              : "Not yet published"}
+              : "Not published"}
           </span>
           {publicationStatus.hasUnpublishedChanges && (
-            <span className="text-amber-700 dark:text-amber-300">
+            <span className="shrink-0 text-amber-700 dark:text-amber-300">
               Unpublished changes
             </span>
           )}
           <Button
-            className="ml-auto h-7"
+            className="ml-auto h-7 shrink-0 px-2 text-xs"
             size="sm"
             variant={
               publicationStatus.hasUnpublishedChanges
@@ -768,14 +788,14 @@ export function ScheduleView({
             }
             onClick={() => setPublishOpen(true)}
           >
-            <IconSend className="mr-1.5 size-3.5" />
-            Publish schedule
+            <IconSend className="mr-1 size-3.5" />
+            Publish
           </Button>
         </div>
       )}
 
       {/* Action bar: search, filters, overflow */}
-      <div className="mb-3 flex flex-wrap items-center gap-2 print:hidden">
+      <div className="mb-1 flex h-8 shrink-0 min-w-0 flex-nowrap items-center gap-1.5 overflow-x-auto print:hidden">
         {/* Search */}
         <div className="relative min-w-0 flex-1 sm:flex-none sm:w-52">
           <IconSearch className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground pointer-events-none" />
@@ -1123,8 +1143,12 @@ export function ScheduleView({
         </div>
       </div>
 
-      {/* View content */}
-      <div className="flex flex-col flex-1 min-h-0">
+      {/* The schedule is a document-scrolling workspace: preserve a useful view height
+          after the compact toolbars, then let the dashboard scroll region carry it. */}
+      <div
+        className="flex min-h-[34rem] flex-1 flex-col"
+        data-schedule-view-content
+      >
         {view === "calendar" && (
           isMobile && !globalMode ? (
             <ScheduleMobileView

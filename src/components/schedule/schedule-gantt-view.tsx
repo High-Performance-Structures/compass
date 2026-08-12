@@ -23,6 +23,10 @@ import { Switch } from "@/components/ui/switch"
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import {
@@ -41,6 +45,7 @@ import {
   IconSettings,
   IconZoomIn,
   IconZoomOut,
+  IconCalendar,
 } from "@tabler/icons-react"
 import {
   Select,
@@ -932,56 +937,60 @@ export function ScheduleGanttView({
   )
 
   return (
-    <div className="flex flex-col flex-1 min-h-0">
-      {/* Compact controls row */}
-      <div className="flex items-center gap-2 mb-2">
-        <div className="flex items-center gap-1.5">
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div
+        className="mb-1 flex h-8 shrink-0 items-center"
+        data-gantt-controls
+      >
+        <div className="flex items-center gap-1">
           {isMobile && (
             <Select
               value={mobileView}
-              onValueChange={(val) =>
-                setMobileView(val as "tasks" | "chart")
+              onValueChange={(value) =>
+                setMobileView(value as "tasks" | "chart")
               }
             >
-              <SelectTrigger className="h-7 w-20 text-xs">
+              <SelectTrigger className="h-8 w-20 text-xs">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="chart">Chart</SelectItem>
-                <SelectItem value="tasks">Schedule Items</SelectItem>
+                <SelectItem value="tasks">Items</SelectItem>
               </SelectContent>
             </Select>
           )}
-
-          {/* Day / Week / Month / Year */}
-          <div className="flex items-center rounded-md border bg-muted/40 p-0.5">
-            {(["Day", "Week", "Month", "Year"] as const).map((mode) => (
-              <button
-                key={mode}
-                onClick={() => handleViewModeChange(mode)}
-                className={cn(
-                  "px-2 py-1 text-xs font-medium rounded-sm transition-all",
-                  viewMode === mode
-                    ? "bg-background text-foreground shadow-sm"
-                    : "text-muted-foreground hover:text-foreground"
-                )}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                aria-label="Gantt controls"
+                className="h-8 px-2 text-xs"
+                size="sm"
+                variant="outline"
               >
-                {mode}
-              </button>
-            ))}
-          </div>
-
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={scrollToToday}
-            className="h-7 px-2.5 text-xs"
-          >
-            Today
-          </Button>
+                <IconCalendar className="size-3.5" />
+                <span className="ml-1.5">{viewMode}</span>
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start">
+              <DropdownMenuRadioGroup
+                value={viewMode}
+                onValueChange={(mode) =>
+                  handleViewModeChange(mode as ViewMode)
+                }
+              >
+                {(["Day", "Week", "Month", "Year"] as const).map((mode) => (
+                  <DropdownMenuRadioItem key={mode} value={mode}>
+                    {mode}
+                  </DropdownMenuRadioItem>
+                ))}
+              </DropdownMenuRadioGroup>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={scrollToToday}>Today</DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
 
-        <div className="flex items-center gap-1 ml-auto">
+        <div className="ml-auto flex items-center gap-1">
           <Button
             variant="ghost"
             size="icon"
@@ -1008,7 +1017,7 @@ export function ScheduleGanttView({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-48">
-              <div className="px-2 py-1.5 space-y-2">
+              <div className="space-y-2 px-2 py-1.5">
                 <div className="flex items-center justify-between">
                   <span className="text-xs">Group by Phase</span>
                   <Switch
