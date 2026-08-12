@@ -742,7 +742,7 @@ test.describe("usable Compass areas", () => {
     const dayDialog = page.getByRole("dialog")
     await expect(dayDialog).toContainText("5 work items scheduled for this day")
     for (const title of [
-      "Regression Schedule Item",
+      "Gantt overflow schedule item 19",
       "Overflow schedule item two",
       "Overflow schedule item three",
       "Overflow schedule item four",

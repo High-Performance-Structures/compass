@@ -225,11 +225,16 @@ const upsert = db.transaction(() => {
       content = excluded.content
   `).run(now)
 
-  const overflowScheduleItems = Array.from({ length: 18 }, (_, index) => [
-    `e2e-schedule-${String(index + 2).padStart(3, "0")}`,
-    `Overflow schedule item ${index + 2}`,
-    index + 2,
-  ])
+  const overflowScheduleItems = [
+    ["e2e-schedule-002", "Overflow schedule item two", 2],
+    ["e2e-schedule-003", "Overflow schedule item three", 3],
+    ["e2e-schedule-004", "Overflow schedule item four", 4],
+    ...Array.from({ length: 15 }, (_, index) => [
+      `e2e-schedule-${String(index + 5).padStart(3, "0")}`,
+      `Gantt overflow schedule item ${index + 5}`,
+      index + 5,
+    ]),
+  ]
   const upsertOverflowScheduleItem = db.prepare(`
     INSERT INTO schedule_tasks (
       id, project_id, title, start_date, workdays, end_date_calculated, phase,
@@ -247,7 +252,12 @@ const upsert = db.transaction(() => {
       updated_at = excluded.updated_at
   `)
   for (const [id, title, sortOrder] of overflowScheduleItems) {
-    const date = id === "e2e-schedule-019" ? today : previousWeek
+    const date =
+      sortOrder <= 4 || sortOrder === 19
+        ? today
+        : new Date(Date.now() - (21 - (sortOrder - 5)) * 24 * 60 * 60 * 1000)
+            .toISOString()
+            .slice(0, 10)
     upsertOverflowScheduleItem.run(
       id,
       title,
