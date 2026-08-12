@@ -302,6 +302,99 @@ test.describe("usable Compass areas", () => {
     await page.keyboard.press("Escape")
   })
 
+  test("Gantt lets each user choose synchronized or independent vertical panes", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1366, height: 768 })
+    const response = await page.goto(
+      "/dashboard/projects/e2e-project-001/schedule?view=gantt&order=chronological"
+    )
+    await expectHealthyNavigation(
+      page,
+      response,
+      "/dashboard/projects/e2e-project-001/schedule"
+    )
+
+    const scrollRegion = page.locator(
+      '[data-dashboard-scroll-region="schedule"]:visible'
+    )
+    const controls = page.locator("[data-schedule-controls]:visible")
+    const outerScrollRange = await scrollRegion.evaluate((region) =>
+      region.scrollHeight - region.clientHeight
+    )
+    const controlsHeight = await controls.evaluate(
+      (controlsElement) => controlsElement.getBoundingClientRect().height
+    )
+    expect(outerScrollRange).toBeGreaterThanOrEqual(controlsHeight)
+
+    await page.getByRole("button", { name: "Gantt settings" }).click()
+    const powerUserSwitch = page.getByRole("switch", {
+      name: "Use power-user Gantt scrolling",
+    })
+    await expect(powerUserSwitch).toBeVisible()
+    const taskList = page.locator(".schedule-gantt-task-list")
+    const chart = page.locator(".gantt-container")
+    if (await powerUserSwitch.isChecked()) {
+      await powerUserSwitch.click()
+    }
+    await expect(powerUserSwitch).not.toBeChecked()
+    await expect(taskList).toBeVisible()
+    await expect(chart).toBeVisible()
+    await taskList.evaluate((element) => {
+      element.style.height = "120px"
+      element.scrollTop = 0
+    })
+    await chart.evaluate((element) => {
+      element.style.height = "120px"
+      element.scrollTop = 0
+    })
+
+    await page.keyboard.press("Escape")
+    await page.getByRole("button", { name: "Gantt controls" }).click()
+    await page.getByRole("menuitem", { name: "Today" }).click()
+    await expect
+      .poll(() => taskList.evaluate((element) => element.scrollTop))
+      .toBeGreaterThan(0)
+    await expect
+      .poll(() => chart.evaluate((element) => element.scrollTop))
+      .toBeGreaterThan(0)
+
+    await taskList.evaluate((element) => {
+      element.scrollTop = Math.min(96, element.scrollHeight - element.clientHeight)
+      element.dispatchEvent(new Event("scroll"))
+    })
+    const synchronizedChartTop = await chart.evaluate((element) => element.scrollTop)
+    expect(synchronizedChartTop).toBeGreaterThan(0)
+
+    await page.getByRole("button", { name: "Gantt settings" }).click()
+    await expect(powerUserSwitch).toBeVisible()
+    await powerUserSwitch.click()
+    await expect(powerUserSwitch).toBeChecked()
+    await taskList.evaluate((element) => {
+      element.scrollTop = 0
+    })
+    await chart.evaluate((element) => {
+      element.scrollTop = 0
+    })
+
+    await page.keyboard.press("Escape")
+    await page.getByRole("button", { name: "Gantt controls" }).click()
+    await page.getByRole("menuitem", { name: "Today" }).click()
+    await expect
+      .poll(() => chart.evaluate((element) => element.scrollTop))
+      .toBeGreaterThan(0)
+    expect(await taskList.evaluate((element) => element.scrollTop)).toBe(0)
+
+    await taskList.evaluate((element) => {
+      element.scrollTop = Math.min(96, element.scrollHeight - element.clientHeight)
+      element.dispatchEvent(new Event("scroll"))
+    })
+    const listTop = await taskList.evaluate((element) => element.scrollTop)
+    const chartTop = await chart.evaluate((element) => element.scrollTop)
+    expect(listTop).toBeGreaterThan(0)
+    expect(chartTop).toBeGreaterThan(0)
+  })
+
   test("Schedule Calendar controls use one compact menu", async ({ page }) => {
     await page.setViewportSize({ width: 980, height: 700 })
     const response = await page.goto(

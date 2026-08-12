@@ -16,6 +16,7 @@ import { ScheduleView } from "@/components/schedule/schedule-view"
 import type { ScheduleData, ScheduleBaselineData } from "@/lib/schedule/types"
 import type { OwnerScheduleView } from "@/lib/schedule/owner-visibility"
 import { getScheduleSavedViews } from "@/app/actions/schedule-saved-views"
+import { getUserSchedulePreferences } from "@/app/actions/user-schedule-preferences"
 import {
   getSchedulePublicationStatus,
   type SchedulePublicationStatus,
@@ -58,9 +59,10 @@ export default async function SchedulePage({
   let assigneeOptions: ProjectTaskAssigneeOption[] = []
   let ownerScheduleView: OwnerScheduleView = "items"
   let publicationStatus: SchedulePublicationStatus | null = null
-  const [savedViews, currentUser] = await Promise.all([
+  const [savedViews, currentUser, schedulePreferences] = await Promise.all([
     getScheduleSavedViews(),
     getCurrentUser(),
+    getUserSchedulePreferences(),
   ])
 
   try {
@@ -113,6 +115,7 @@ export default async function SchedulePage({
         focusTaskId={focusTaskId}
         ownerScheduleView={ownerScheduleView}
         savedViews={savedViews}
+        ganttScrollMode={schedulePreferences.ganttScrollMode}
         currentUserAssigneeTerms={scheduleAssigneeTerms(currentUser)}
         publicationStatus={publicationStatus}
       />

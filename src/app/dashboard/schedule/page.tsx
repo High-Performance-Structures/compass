@@ -20,6 +20,7 @@ import type {
 } from "@/lib/schedule/project-scope"
 import type { ProjectDepartment } from "@/lib/project-branding"
 import { getScheduleSavedViews } from "@/app/actions/schedule-saved-views"
+import { getUserSchedulePreferences } from "@/app/actions/user-schedule-preferences"
 import { getSchedulePublicationStatus } from "@/app/actions/schedule-publications"
 import { getCurrentUser } from "@/lib/auth"
 import { scheduleAssigneeTerms } from "@/lib/schedule/saved-views"
@@ -95,10 +96,11 @@ export default async function SchedulePage({
 }): Promise<React.ReactElement> {
   const query = await searchParams
   if (firstValue(query.mode) === "projects") {
-    const [allProjects, savedViews, currentUser] = await Promise.all([
+    const [allProjects, savedViews, currentUser, schedulePreferences] = await Promise.all([
       getProjects(),
       getScheduleSavedViews(),
       getCurrentUser(),
+      getUserSchedulePreferences(),
     ])
     const requestedScope = firstValue(query.scope)
     const scopeKind = isScopeKind(requestedScope) ? requestedScope : "all"
@@ -200,6 +202,7 @@ export default async function SchedulePage({
           globalMode
           ownerScheduleView={ownerScheduleView}
           savedViews={savedViews}
+          ganttScrollMode={schedulePreferences.ganttScrollMode}
           currentUserAssigneeTerms={scheduleAssigneeTerms(currentUser)}
           publicationStatus={publicationStatus}
         />

@@ -5,6 +5,9 @@ import { dirname, resolve } from "node:path"
 const databasePath = resolve(process.env.LOCAL_DB_PATH || "local.db")
 const now = new Date().toISOString()
 const today = now.slice(0, 10)
+const previousWeek = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
+  .toISOString()
+  .slice(0, 10)
 const publishedScheduleSnapshot = JSON.stringify({
   version: 1,
   tasks: [
@@ -161,6 +164,11 @@ const upsert = db.transaction(() => {
   `).run(now)
 
   db.prepare(`
+    DELETE FROM user_schedule_preferences
+    WHERE user_id = 'demo-user-001'
+  `).run()
+
+  db.prepare(`
     INSERT INTO schedule_tasks (
       id, project_id, title, start_date, workdays, end_date_calculated, phase,
       display_color, status, is_critical_path, is_milestone, percent_complete,
@@ -176,7 +184,7 @@ const upsert = db.transaction(() => {
       end_date_calculated = excluded.end_date_calculated,
       status = excluded.status,
       updated_at = excluded.updated_at
-  `).run(today, today, now, now)
+  `).run(previousWeek, previousWeek, now, now)
 
   db.prepare(`
     INSERT INTO channels (
@@ -217,11 +225,11 @@ const upsert = db.transaction(() => {
       content = excluded.content
   `).run(now)
 
-  const overflowScheduleItems = [
-    ["e2e-schedule-002", "Overflow schedule item two", 2],
-    ["e2e-schedule-003", "Overflow schedule item three", 3],
-    ["e2e-schedule-004", "Overflow schedule item four", 4],
-  ]
+  const overflowScheduleItems = Array.from({ length: 18 }, (_, index) => [
+    `e2e-schedule-${String(index + 2).padStart(3, "0")}`,
+    `Overflow schedule item ${index + 2}`,
+    index + 2,
+  ])
   const upsertOverflowScheduleItem = db.prepare(`
     INSERT INTO schedule_tasks (
       id, project_id, title, start_date, workdays, end_date_calculated, phase,
@@ -239,11 +247,12 @@ const upsert = db.transaction(() => {
       updated_at = excluded.updated_at
   `)
   for (const [id, title, sortOrder] of overflowScheduleItems) {
+    const date = id === "e2e-schedule-019" ? today : previousWeek
     upsertOverflowScheduleItem.run(
       id,
       title,
-      today,
-      today,
+      date,
+      date,
       sortOrder,
       now,
       now

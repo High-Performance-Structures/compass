@@ -45,6 +45,16 @@ export function normalizeWheelDelta(
   return delta
 }
 
+export function canScrollGanttAxis(
+  offset: number,
+  scrollSize: number,
+  clientSize: number,
+  delta: number
+): boolean {
+  const maximumOffset = Math.max(0, scrollSize - clientSize)
+  return delta < 0 ? offset > 0 : delta > 0 && offset < maximumOffset
+}
+
 export function clampGanttScrollOffset(
   previousOffset: number,
   scrollSize: number,

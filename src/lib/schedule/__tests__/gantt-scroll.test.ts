@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest"
 import {
+  canScrollGanttAxis,
   clampGanttScrollOffset,
   centeredGanttRowScrollTop,
   centeredTimelineScrollLeft,
@@ -42,6 +43,12 @@ describe("Gantt dominant-axis scrolling", () => {
     expect(clampGanttScrollOffset(1_200, 2_000, 1_000)).toBe(1_000)
     expect(clampGanttScrollOffset(-20, 2_000, 1_000)).toBe(0)
     expect(clampGanttScrollOffset(500, 600, 800)).toBe(0)
+  })
+
+  it("releases wheel events to the page when a Gantt pane reaches its edge", () => {
+    expect(canScrollGanttAxis(0, 1_000, 400, -64)).toBe(false)
+    expect(canScrollGanttAxis(600, 1_000, 400, 64)).toBe(false)
+    expect(canScrollGanttAxis(300, 1_000, 400, 64)).toBe(true)
   })
 
   it("maps independently sized scroll panes to the same relative row", () => {

@@ -6,6 +6,7 @@ import {
   useEffect,
   useMemo,
   useRef,
+  useTransition,
   type UIEvent,
 } from "react"
 import {
@@ -67,6 +68,12 @@ import {
 } from "@/lib/schedule/gantt-transform"
 import type { DisplayItem, FrappeTask } from "@/lib/schedule/gantt-transform"
 import { updateTask } from "@/app/actions/schedule"
+import { updateGanttScrollMode } from "@/app/actions/user-schedule-preferences"
+import {
+  DEFAULT_GANTT_SCROLL_MODE,
+  type GanttScrollMode,
+  shouldSynchronizeGanttPanes,
+} from "@/lib/schedule/gantt-interaction-mode"
 import { countBusinessDays } from "@/lib/schedule/business-days"
 import { effectivePercentComplete } from "@/lib/schedule/progress"
 import {
@@ -93,6 +100,7 @@ import type { ScheduleProjectData } from "@/lib/schedule/project-scope"
 import { projectScheduleLabel } from "@/lib/schedule/project-scope"
 import {
   centeredGanttRowScrollTop,
+  canScrollGanttAxis,
   ganttRowIndexForScrollTop,
   lockWheelToDominantAxis,
   nearestScheduleRowIndexForDate,
@@ -114,6 +122,7 @@ interface ScheduleGanttViewProps {
   readonly exceptions: readonly WorkdayExceptionData[]
   readonly assigneeOptions: readonly ProjectTaskAssigneeOption[]
   readonly projects?: readonly ScheduleProjectData[]
+  readonly ganttScrollMode?: GanttScrollMode
   readonly groupByPhase?: boolean
   readonly onGroupByPhaseChange?: (grouped: boolean) => void
 }
@@ -125,6 +134,7 @@ export function ScheduleGanttView({
   exceptions,
   assigneeOptions,
   projects = [],
+  ganttScrollMode = DEFAULT_GANTT_SCROLL_MODE,
   groupByPhase = false,
   onGroupByPhaseChange,
 }: ScheduleGanttViewProps) {
@@ -150,6 +160,8 @@ export function ScheduleGanttView({
   )
   const [focusedTaskId, setFocusedTaskId] = useState<string | null>(null)
   const [mobileView, setMobileView] = useState<"tasks" | "chart">("chart")
+  const [scrollMode, setScrollMode] = useState<GanttScrollMode>(ganttScrollMode)
+  const [isSavingScrollMode, startScrollModeTransition] = useTransition()
   const [panMode] = useState(false)
   const taskListRef = useRef<HTMLDivElement>(null)
   const ganttContainerRef = useRef<HTMLElement | null>(null)
@@ -172,6 +184,10 @@ export function ScheduleGanttView({
   useEffect(() => {
     setPhaseGrouping(groupByPhase)
   }, [groupByPhase])
+
+  useEffect(() => {
+    setScrollMode(ganttScrollMode)
+  }, [ganttScrollMode])
 
   const [hasLoadedPalette, setHasLoadedPalette] = useState(false)
 
@@ -247,6 +263,20 @@ export function ScheduleGanttView({
     setColumnWidth(defaultWidths[mode])
   }
 
+  const handleScrollModeChange = (powerUser: boolean): void => {
+    const nextMode: GanttScrollMode = powerUser ? "power" : "default"
+    if (nextMode === scrollMode) return
+    const previousMode = scrollMode
+    setScrollMode(nextMode)
+    startScrollModeTransition(async () => {
+      const result = await updateGanttScrollMode(nextMode)
+      if (!result.success) {
+        setScrollMode(previousMode)
+        toast.error(result.error)
+      }
+    })
+  }
+
   const rememberScrollPosition = useCallback(
     (position: GanttScrollPosition) => {
       scrollPositionRef.current = position
@@ -306,6 +336,19 @@ export function ScheduleGanttView({
         normalizeWheelDelta(rawDeltaY, event.deltaMode, pageSize)
       )
       if (locked.deltaX === 0 && locked.deltaY === 0) return
+      const canScrollHorizontally = canScrollGanttAxis(
+        taskList.scrollLeft,
+        taskList.scrollWidth,
+        taskList.clientWidth,
+        locked.deltaX
+      )
+      const canScrollVertically = canScrollGanttAxis(
+        taskList.scrollTop,
+        taskList.scrollHeight,
+        taskList.clientHeight,
+        locked.deltaY
+      )
+      if (!canScrollHorizontally && !canScrollVertically) return
 
       event.preventDefault()
       taskList.scrollLeft += locked.deltaX
@@ -366,7 +409,7 @@ export function ScheduleGanttView({
             container.scrollLeft = position.left
           }
           container.scrollTop = position.top
-          if (taskListRef.current) {
+          if (taskListRef.current && shouldSynchronizeGanttPanes(scrollMode)) {
             taskListRef.current.scrollTop = synchronizedScrollTop(
               position.top,
               container.scrollHeight,
@@ -378,14 +421,14 @@ export function ScheduleGanttView({
         })
       })
     },
-    [projectId, scrollStorageKey]
+    [projectId, scrollMode, scrollStorageKey]
   )
 
   const handleGanttScroll = useCallback(
     (position: GanttScrollPosition) => {
       const taskList = taskListRef.current
       const ganttContainer = ganttContainerRef.current
-      if (taskList && ganttContainer) {
+      if (taskList && ganttContainer && shouldSynchronizeGanttPanes(scrollMode)) {
         const synchronizedTop = synchronizedScrollTop(
           position.top,
           ganttContainer.scrollHeight,
@@ -399,14 +442,14 @@ export function ScheduleGanttView({
       }
       rememberScrollPosition(position)
     },
-    [rememberScrollPosition]
+    [rememberScrollPosition, scrollMode]
   )
 
   const handleTaskListScroll = useCallback(
     (event: UIEvent<HTMLDivElement>) => {
       const top = event.currentTarget.scrollTop
       const ganttContainer = ganttContainerRef.current
-      if (ganttContainer) {
+      if (ganttContainer && shouldSynchronizeGanttPanes(scrollMode)) {
         const synchronizedTop = synchronizedScrollTop(
           top,
           event.currentTarget.scrollHeight,
@@ -443,7 +486,7 @@ export function ScheduleGanttView({
           : {}),
       })
     },
-    [rememberScrollPosition]
+    [rememberScrollPosition, scrollMode]
   )
 
   const openTaskEditor = useCallback(
@@ -636,7 +679,7 @@ export function ScheduleGanttView({
     ganttContainer.scrollTop = ganttTop
 
     const taskList = taskListRef.current
-    if (taskList) {
+    if (taskList && shouldSynchronizeGanttPanes(scrollMode)) {
       taskList.scrollTop = synchronizedScrollTop(
         ganttTop,
         ganttContainer.scrollHeight,
@@ -657,7 +700,7 @@ export function ScheduleGanttView({
     // Start the smooth horizontal movement last. Assigning scrollTop after
     // scrollTo({ behavior: "smooth" }) cancels that animation in browsers.
     scrollToTodayRef.current?.()
-  }, [displayItems])
+  }, [displayItems, scrollMode])
 
   const taskTable = (
     <Table className="table-fixed">
@@ -1012,12 +1055,37 @@ export function ScheduleGanttView({
 
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" className="size-7">
+              <Button
+                aria-label="Gantt settings"
+                variant="ghost"
+                size="icon"
+                className="size-7"
+              >
                 <IconSettings className="size-3.5" />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-48">
               <div className="space-y-2 px-2 py-1.5">
+                <div className="border-b pb-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <div>
+                      <span className="text-xs">Power-user scrolling</span>
+                      <p className="text-[10px] leading-snug text-muted-foreground">
+                        Scroll task list and chart independently.
+                      </p>
+                    </div>
+                    <Switch
+                      aria-label="Use power-user Gantt scrolling"
+                      checked={scrollMode === "power"}
+                      disabled={isSavingScrollMode}
+                      onCheckedChange={handleScrollModeChange}
+                      className="scale-75"
+                    />
+                  </div>
+                  <p className="mt-1 text-[10px] leading-snug text-muted-foreground">
+                    Default keeps rows aligned. Shift + wheel pans the timeline horizontally in either mode.
+                  </p>
+                </div>
                 <div className="flex items-center justify-between">
                   <span className="text-xs">Group by Phase</span>
                   <Switch
