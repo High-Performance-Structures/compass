@@ -17,6 +17,7 @@ import {
   feedbackStatusUsesEmail,
   type FeedbackDeskStatus,
 } from "@/lib/jarvis/feedback-lifecycle"
+import { feedbackFeatureTransitionIsBlocked } from "@/lib/jarvis/feedback-feature-priority"
 import { createSystemNotificationEvent } from "@/lib/notifications/events"
 
 type CompassDb = ReturnType<typeof getDb>
@@ -74,6 +75,7 @@ export type FeedbackLifecycleUpdate = Readonly<{
   status: FeedbackDeskStatus
   priority?: "low" | "normal" | "high" | "urgent"
   message?: string
+  internalSummary?: string | null
   githubIssueUrl?: string | null
   githubIssueNodeId?: string | null
   draftPullRequestUrl?: string | null
@@ -92,6 +94,14 @@ export async function applyFeedbackLifecycleUpdate(
   notifiedUserCount: number
   requesterUpdateQueued: boolean
 }>> {
+  if (feedbackFeatureTransitionIsBlocked({
+    currentStatus: item.status,
+    featurePriorityApprovedAt: item.featurePriorityApprovedAt,
+    kind: item.kind,
+    nextStatus: update.status,
+  })) {
+    throw new Error("Feature requests require a leadership priority decision before implementation")
+  }
   const priority = update.priority ?? item.priority
   const issueUrl = update.githubIssueUrl === undefined
     ? item.githubIssueUrl
@@ -108,6 +118,9 @@ export async function applyFeedbackLifecycleUpdate(
   const assignedToName = update.assignedToName === undefined
     ? item.assignedToName
     : update.assignedToName
+  const internalSummary = update.internalSummary === undefined
+    ? item.internalSummary
+    : update.internalSummary
   const lifecycleUpdateKind = feedbackRequesterUpdateKind(
     item.status,
     update.status,
@@ -125,6 +138,7 @@ export async function applyFeedbackLifecycleUpdate(
     item.githubDraftPullRequestUrl !== draftUrl ||
     item.assignedToUserId !== assignedToUserId ||
     item.assignedToName !== assignedToName ||
+    item.internalSummary !== internalSummary ||
     update.message?.trim() !== undefined
   if (!changed) {
     return { changed: false, notifiedUserCount: 0, requesterUpdateQueued: false }
@@ -149,6 +163,7 @@ export async function applyFeedbackLifecycleUpdate(
     githubDraftPullRequestUrl: draftUrl,
     assignedToUserId,
     assignedToName,
+    internalSummary,
     slaTargetAt:
       item.slaTargetAt === null || priorityChanged
         ? feedbackSlaTarget(priority)
