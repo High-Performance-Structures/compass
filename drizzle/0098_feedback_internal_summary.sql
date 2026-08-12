@@ -1,0 +1,1 @@
+ALTER TABLE `feedback_desk_items` ADD `internal_summary` text;

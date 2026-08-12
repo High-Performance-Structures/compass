@@ -90,15 +90,22 @@ export async function POST(
     return Response.json({ error: "Feedback request not found" }, { status: 404 })
   }
 
-  const result = await applyFeedbackLifecycleUpdate(db, item, {
-    status: parsed.data.status,
-    priority: parsed.data.priority,
-    message: parsed.data.message,
-    githubIssueUrl: parsed.data.githubIssueUrl,
-    draftPullRequestUrl: parsed.data.draftPullRequestUrl,
-    actorSource: "signet",
-    idempotencyKey: eventKey,
-  })
+  let result: Awaited<ReturnType<typeof applyFeedbackLifecycleUpdate>>
+  try {
+    result = await applyFeedbackLifecycleUpdate(db, item, {
+      status: parsed.data.status,
+      priority: parsed.data.priority,
+      message: parsed.data.message,
+      githubIssueUrl: parsed.data.githubIssueUrl,
+      draftPullRequestUrl: parsed.data.draftPullRequestUrl,
+      actorSource: "signet",
+      idempotencyKey: eventKey,
+    })
+  } catch (error) {
+    return Response.json({
+      error: error instanceof Error ? error.message : "Feedback status update rejected",
+    }, { status: 409 })
+  }
   return Response.json({
     success: true,
     feedbackDeskItemId: id,

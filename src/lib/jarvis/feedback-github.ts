@@ -7,6 +7,9 @@ import {
 } from "@/db/schema-jarvis"
 import { getJarvisEnvValue } from "@/lib/jarvis/auth"
 import {
+  feedbackFeatureGithubIssueCreationIsBlocked,
+} from "@/lib/jarvis/feedback-feature-priority"
+import {
   GITHUB_FEEDBACK_PROJECT_TITLE,
   githubFeedbackIssueContent,
 } from "@/lib/jarvis/feedback-github-content"
@@ -173,6 +176,10 @@ export async function linkFeedbackDeskItemToGithub(
       await addIssueToFeedbackProject(config, nodeId)
     }
     return item.githubIssueUrl
+  }
+
+  if (feedbackFeatureGithubIssueCreationIsBlocked(item)) {
+    return null
   }
 
   const issueContent = githubFeedbackIssueContent(item)

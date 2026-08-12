@@ -9,6 +9,7 @@ import {
   knownFeedbackStatus,
   type FeedbackDeskStatus,
 } from "@/lib/jarvis/feedback-lifecycle"
+import { feedbackFeatureTransitionIsBlocked } from "@/lib/jarvis/feedback-feature-priority"
 import { applyFeedbackLifecycleUpdate } from "@/lib/jarvis/feedback-status-update"
 
 type CompassDb = ReturnType<typeof getDb>
@@ -209,6 +210,12 @@ export async function syncFeedbackDeskItemsFromGithub(
       state.pullRequestUrl !== null &&
       state.pullRequestUrl !== item.githubDraftPullRequestUrl
     if (!needsLink && !needsStatus && !needsPullRequest) continue
+    if (feedbackFeatureTransitionIsBlocked({
+      currentStatus: item.status,
+      featurePriorityApprovedAt: item.featurePriorityApprovedAt,
+      kind: item.kind,
+      nextStatus: nextStatus ?? knownFeedbackStatus(item.status),
+    })) continue
 
     const message = state.projectStatus
       ? `The Feedback Desk moved this request to ${state.projectStatus}.`

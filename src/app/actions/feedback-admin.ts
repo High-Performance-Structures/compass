@@ -14,6 +14,7 @@ import {
 } from "@/db/schema-jarvis"
 import { requireAuth } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
+import { isFeatureImplementationStatus } from "@/lib/jarvis/feedback-feature-priority"
 import {
   FEEDBACK_DESK_STATUSES,
   feedbackIsOverdue,
@@ -29,6 +30,7 @@ const updateSchema = z.object({
   priority: z.enum(["low", "normal", "high", "urgent"]),
   assignedToUserId: z.string().min(1).nullable(),
   message: z.string().max(2_000).optional(),
+  internalSummary: z.string().max(4_000).optional(),
   githubIssueUrl: z.union([
     z.url().refine(
       (value) => /^https:\/\/github\.com\/[^/]+\/[^/]+\/issues\/\d+(?:\/|$)/.test(value),
@@ -65,6 +67,7 @@ export type FeedbackAdminOverview = Readonly<{
     priority: string
     title: string
     description: string
+    internalSummary: string | null
     reporterName: string | null
     source: string
     assignedToUserId: string | null
@@ -74,6 +77,8 @@ export type FeedbackAdminOverview = Readonly<{
     githubIssueUrl: string | null
     githubIssueCreationApprovedAt: string | null
     githubIssueCreationApprovedBy: string | null
+    featurePriorityApprovedAt: string | null
+    featurePriorityApprovedBy: string | null
     githubDraftPullRequestUrl: string | null
     privacyScrubbedAt: string | null
     createdAt: string
@@ -154,6 +159,7 @@ export async function getFeedbackAdminOverview(): Promise<FeedbackAdminOverviewR
           priority: item.priority,
           title: item.title,
           description: item.description,
+          internalSummary: item.internalSummary,
           reporterName: item.reporterName,
           source: item.source,
           assignedToUserId: item.assignedToUserId,
@@ -163,6 +169,8 @@ export async function getFeedbackAdminOverview(): Promise<FeedbackAdminOverviewR
           githubIssueUrl: item.githubIssueUrl,
           githubIssueCreationApprovedAt: item.githubIssueCreationApprovedAt,
           githubIssueCreationApprovedBy: item.githubIssueCreationApprovedBy,
+          featurePriorityApprovedAt: item.featurePriorityApprovedAt,
+          featurePriorityApprovedBy: item.featurePriorityApprovedBy,
           githubDraftPullRequestUrl: item.githubDraftPullRequestUrl,
           privacyScrubbedAt: item.privacyScrubbedAt,
           createdAt: item.createdAt,
@@ -228,7 +236,9 @@ export async function setFeedbackGithubIssueCreationApproval(
     const db = getDb(env.DB)
     const item = await db.select({
       id: feedbackDeskItems.id,
+      kind: feedbackDeskItems.kind,
       githubIssueUrl: feedbackDeskItems.githubIssueUrl,
+      featurePriorityApprovedAt: feedbackDeskItems.featurePriorityApprovedAt,
     }).from(feedbackDeskItems).where(and(
       eq(feedbackDeskItems.id, parsed.id),
       eq(feedbackDeskItems.organizationId, admin.organizationId),
@@ -236,6 +246,16 @@ export async function setFeedbackGithubIssueCreationApproval(
     if (!item) return { success: false, error: "Feedback request not found" }
     if (item.githubIssueUrl) {
       return { success: false, error: "This request already has a GitHub issue" }
+    }
+    if (
+      parsed.approved &&
+      item.kind === "feature" &&
+      item.featurePriorityApprovedAt === null
+    ) {
+      return {
+        success: false,
+        error: "Approve this feature's priority before approving a new GitHub issue",
+      }
     }
     const now = new Date().toISOString()
     await db.update(feedbackDeskItems).set({
@@ -253,6 +273,59 @@ export async function setFeedbackGithubIssueCreationApproval(
     return {
       success: false,
       error: error instanceof Error ? error.message : "Approval update failed",
+    }
+  }
+}
+
+export async function setFeedbackFeaturePriorityApproval(
+  input: Readonly<{ id: string; approved: boolean }>,
+): Promise<Readonly<{ success: boolean; error?: string }>> {
+  try {
+    const parsed = z.object({
+      id: z.string().min(1),
+      approved: z.boolean(),
+    }).parse(input)
+    const admin = await requireFeedbackAdmin()
+    const { env } = await getCloudflareContext()
+    const db = getDb(env.DB)
+    const item = await db.select({
+      id: feedbackDeskItems.id,
+      kind: feedbackDeskItems.kind,
+      status: feedbackDeskItems.status,
+    }).from(feedbackDeskItems).where(and(
+      eq(feedbackDeskItems.id, parsed.id),
+      eq(feedbackDeskItems.organizationId, admin.organizationId),
+    )).get()
+    if (!item) return { success: false, error: "Feedback request not found" }
+    if (item.kind !== "feature") {
+      return { success: false, error: "Only feature requests need a leadership priority decision" }
+    }
+    if (!parsed.approved && isFeatureImplementationStatus(item.status)) {
+      return {
+        success: false,
+        error: "A feature already in implementation cannot have its priority approval removed",
+      }
+    }
+    const now = new Date().toISOString()
+    await db.update(feedbackDeskItems).set({
+      featurePriorityApprovedAt: parsed.approved ? now : null,
+      featurePriorityApprovedBy: parsed.approved ? admin.id : null,
+      ...(parsed.approved ? {} : {
+        githubIssueCreationApprovedAt: null,
+        githubIssueCreationApprovedBy: null,
+      }),
+      updatedAt: now,
+    }).where(and(
+      eq(feedbackDeskItems.id, item.id),
+      eq(feedbackDeskItems.organizationId, admin.organizationId),
+    ))
+    revalidatePath("/dashboard/requests")
+    revalidatePath("/dashboard/requests/manage")
+    return { success: true }
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Priority decision update failed",
     }
   }
 }
@@ -301,6 +374,9 @@ export async function updateFeedbackAdminItem(
       assignedToUserId: assignee?.id ?? null,
       assignedToName: assignee?.displayName ?? assignee?.email ?? null,
       message: parsed.message?.trim() || undefined,
+      internalSummary: parsed.internalSummary === undefined
+        ? undefined
+        : parsed.internalSummary.trim() || null,
       githubIssueUrl: parsed.githubIssueUrl === undefined
         ? undefined
         : parsed.githubIssueUrl || null,

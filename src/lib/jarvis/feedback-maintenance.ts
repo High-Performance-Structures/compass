@@ -19,6 +19,7 @@ import {
   type FeedbackDeskKind,
 } from "@/lib/jarvis/feedback-desk"
 import { linkFeedbackDeskItemToGithub } from "@/lib/jarvis/feedback-github"
+import { feedbackFeatureGithubIssueCreationIsBlocked } from "@/lib/jarvis/feedback-feature-priority"
 import { githubFeedbackIssueContent } from "@/lib/jarvis/feedback-github-content"
 import { syncFeedbackDeskItemsFromGithub } from "@/lib/jarvis/feedback-github-sync"
 import {
@@ -42,11 +43,11 @@ export type FeedbackMaintenanceResult = Readonly<{
 export function feedbackGithubLinkAction(
   item: Pick<
     FeedbackDeskItem,
-    "githubIssueUrl" | "githubIssueCreationApprovedAt" | "status"
+    "featurePriorityApprovedAt" | "githubIssueUrl" | "githubIssueCreationApprovedAt" | "kind" | "status"
   >,
 ): "repair" | "create" | "review" | "skip" {
   if (item.githubIssueUrl) return "repair"
-  if (item.githubIssueCreationApprovedAt) return "create"
+  if (item.githubIssueCreationApprovedAt && !feedbackFeatureGithubIssueCreationIsBlocked(item)) return "create"
   if (feedbackIsResolved(item.status)) return "skip"
   return "review"
 }

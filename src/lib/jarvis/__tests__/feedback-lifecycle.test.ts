@@ -109,28 +109,52 @@ describe("Feedback Desk lifecycle", () => {
 
   it("requires review before creating a missing historical GitHub issue", () => {
     expect(feedbackGithubLinkAction({
+      featurePriorityApprovedAt: null,
       githubIssueUrl: null,
       githubIssueCreationApprovedAt: null,
+      kind: "bug",
       status: "new",
     })).toBe("review")
     expect(feedbackGithubLinkAction({
+      featurePriorityApprovedAt: null,
       githubIssueUrl: null,
       githubIssueCreationApprovedAt: "2026-08-05T12:00:00.000Z",
+      kind: "bug",
       status: "new",
     })).toBe("create")
     expect(feedbackGithubLinkAction({
+      featurePriorityApprovedAt: null,
+      githubIssueUrl: null,
+      githubIssueCreationApprovedAt: "2026-08-05T12:00:00.000Z",
+      kind: "feature",
+      status: "new",
+    })).toBe("review")
+    expect(feedbackGithubLinkAction({
+      featurePriorityApprovedAt: "2026-08-05T12:00:00.000Z",
+      githubIssueUrl: null,
+      githubIssueCreationApprovedAt: "2026-08-05T12:00:00.000Z",
+      kind: "feature",
+      status: "new",
+    })).toBe("create")
+    expect(feedbackGithubLinkAction({
+      featurePriorityApprovedAt: null,
       githubIssueUrl: "https://github.com/example/compass/issues/1",
       githubIssueCreationApprovedAt: null,
+      kind: "bug",
       status: "closed",
     })).toBe("repair")
     expect(feedbackGithubLinkAction({
+      featurePriorityApprovedAt: null,
       githubIssueUrl: null,
       githubIssueCreationApprovedAt: null,
+      kind: "bug",
       status: "deployed",
     })).toBe("skip")
     expect(feedbackGithubLinkAction({
+      featurePriorityApprovedAt: null,
       githubIssueUrl: null,
       githubIssueCreationApprovedAt: null,
+      kind: "bug",
       status: "closed",
     })).toBe("skip")
   })
