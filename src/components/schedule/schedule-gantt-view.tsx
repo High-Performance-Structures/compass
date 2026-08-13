@@ -348,7 +348,24 @@ export function ScheduleGanttView({
         taskList.clientHeight,
         locked.deltaY
       )
-      if (!canScrollHorizontally && !canScrollVertically) return
+      if (!canScrollHorizontally && !canScrollVertically) {
+        const workspace = taskList.closest<HTMLElement>(
+          '[data-dashboard-scroll-region="schedule"]'
+        )
+        if (
+          workspace &&
+          canScrollGanttAxis(
+            workspace.scrollTop,
+            workspace.scrollHeight,
+            workspace.clientHeight,
+            locked.deltaY
+          )
+        ) {
+          event.preventDefault()
+          workspace.scrollTop += locked.deltaY
+        }
+        return
+      }
 
       event.preventDefault()
       taskList.scrollLeft += locked.deltaX
