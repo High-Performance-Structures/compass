@@ -10,14 +10,12 @@
   height: 100% !important;
   max-height: 100%;
   min-height: 0;
-  overscroll-behavior: contain;
   scrollbar-gutter: stable;
   scrollbar-width: thin;
   scrollbar-color: oklch(0.72 0.02 95 / 0.7) transparent;
 }
 
 .schedule-gantt-task-list {
-  overscroll-behavior: contain;
   scrollbar-gutter: stable;
   scrollbar-width: thin;
   scrollbar-color: oklch(0.72 0.02 95 / 0.7) transparent;

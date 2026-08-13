@@ -325,7 +325,24 @@ export function GanttChart({
         container.clientHeight,
         locked.deltaY
       )
-      if (!canScrollHorizontally && !canScrollVertically) return
+      if (!canScrollHorizontally && !canScrollVertically) {
+        const workspace = wrapper.closest<HTMLElement>(
+          '[data-dashboard-scroll-region="schedule"]'
+        )
+        if (
+          workspace &&
+          canScrollGanttAxis(
+            workspace.scrollTop,
+            workspace.scrollHeight,
+            workspace.clientHeight,
+            locked.deltaY
+          )
+        ) {
+          e.preventDefault()
+          workspace.scrollTop += locked.deltaY
+        }
+        return
+      }
 
       e.preventDefault()
       container.scrollLeft += locked.deltaX

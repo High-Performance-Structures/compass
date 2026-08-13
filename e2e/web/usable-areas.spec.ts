@@ -395,6 +395,59 @@ test.describe("usable Compass areas", () => {
     expect(chartTop).toBeGreaterThan(0)
   })
 
+  test("Gantt releases edge wheel input to the surrounding Schedule workspace", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1366, height: 768 })
+    const response = await page.goto(
+      "/dashboard/projects/e2e-project-001/schedule?view=gantt&order=chronological"
+    )
+    await expectHealthyNavigation(
+      page,
+      response,
+      "/dashboard/projects/e2e-project-001/schedule"
+    )
+
+    const scrollRegion = page.locator(
+      '[data-dashboard-scroll-region="schedule"]:visible'
+    )
+    const taskList = page.locator(".schedule-gantt-task-list")
+    const chart = page.locator(".gantt-container")
+    await expect(taskList).toBeVisible()
+    await expect(chart).toBeVisible()
+    const outerScrollRange = await scrollRegion.evaluate(
+      (element) => element.scrollHeight - element.clientHeight
+    )
+    expect(outerScrollRange).toBeGreaterThan(0)
+
+    for (const pane of [taskList, chart]) {
+      for (const edge of ["top", "bottom"] as const) {
+        await pane.evaluate((element, paneEdge) => {
+          element.style.height = "120px"
+          element.scrollTop = paneEdge === "top" ? 0 : element.scrollHeight
+        }, edge)
+        await scrollRegion.evaluate((element, paneEdge) => {
+          element.scrollTop = paneEdge === "top" ? element.scrollHeight : 0
+        }, edge)
+        const initialWorkspaceTop = await scrollRegion.evaluate(
+          (element) => element.scrollTop
+        )
+        const paneBox = await pane.boundingBox()
+        expect(paneBox).not.toBeNull()
+        if (!paneBox) return
+
+        await page.mouse.move(
+          paneBox.x + paneBox.width / 2,
+          paneBox.y + paneBox.height / 2
+        )
+        await page.mouse.wheel(0, edge === "top" ? -240 : 240)
+        await expect
+          .poll(() => scrollRegion.evaluate((element) => element.scrollTop))
+          .not.toBe(initialWorkspaceTop)
+      }
+    }
+  })
+
   test("Schedule Calendar controls use one compact menu", async ({ page }) => {
     await page.setViewportSize({ width: 980, height: 700 })
     const response = await page.goto(
