@@ -222,7 +222,7 @@ test.describe("usable Compass areas", () => {
     await expect(controls).toBeVisible()
     const controlHeight = await controls.evaluate((element) => element.clientHeight)
     expect(controlHeight).toBeLessThanOrEqual(40)
-    await expect(controls).toHaveCSS("overflow-x", "auto")
+    await expect(scrollRegion).toHaveCSS("overflow-x", "auto")
 
     const projectSwitcher = page.getByRole("combobox", {
       name: "Switch project",
@@ -304,6 +304,52 @@ test.describe("usable Compass areas", () => {
     await expect
       .poll(() => scrollRegion.evaluate((element) => element.scrollTop))
       .toBeGreaterThan(0)
+  })
+
+  test("Global project schedules expose header actions through outer scrolling", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 640, height: 700 })
+    const path =
+      "/dashboard/schedule?mode=projects&scope=project&view=gantt&order=chronological&project=e2e-project-001"
+    const response = await page.goto(path)
+    await expectHealthyNavigation(page, response, "/dashboard/schedule")
+
+    const scrollRegion = page.locator(
+      '[data-dashboard-scroll-region="schedule"]:visible'
+    )
+    const newScheduleItem = page.getByRole("button", {
+      name: "New Schedule Item",
+    })
+    await expect(newScheduleItem).toBeVisible()
+
+    const regionBox = await scrollRegion.boundingBox()
+    expect(regionBox).not.toBeNull()
+    if (!regionBox) return
+
+    await page.mouse.move(regionBox.x + 5, regionBox.y + 5)
+    await page.mouse.wheel(1_200, 0)
+    await expect
+      .poll(() => scrollRegion.evaluate((element) => element.scrollLeft))
+      .toBeGreaterThan(0)
+    await scrollRegion.evaluate((element) => {
+      element.scrollLeft = element.scrollWidth
+    })
+
+    expect(
+      await newScheduleItem.evaluate((element) => {
+        const scrollRegion = element.closest(
+          '[data-dashboard-scroll-region="schedule"]'
+        )
+        if (!scrollRegion) return false
+        const regionBounds = scrollRegion.getBoundingClientRect()
+        const actionBounds = element.getBoundingClientRect()
+        return (
+          actionBounds.left >= regionBounds.left - 1 &&
+          actionBounds.right <= regionBounds.right + 1
+        )
+      })
+    ).toBe(true)
   })
 
   test("Schedule puts view choices and Gantt controls in compact menus", async ({
