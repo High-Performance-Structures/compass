@@ -656,7 +656,7 @@ export function ScheduleView({
       data-schedule-workspace
     >
       <div
-        className="mb-1 flex h-8 shrink-0 min-w-0 flex-nowrap items-center gap-1 overflow-x-auto"
+        className="mb-1 flex h-8 w-max min-w-full shrink-0 flex-nowrap items-center gap-1"
         data-schedule-controls
         data-schedule-toolbar
       >
