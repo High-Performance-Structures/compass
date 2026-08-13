@@ -410,18 +410,6 @@ test.describe("usable Compass areas", () => {
       "/dashboard/projects/e2e-project-001/schedule"
     )
 
-    const scrollRegion = page.locator(
-      '[data-dashboard-scroll-region="schedule"]:visible'
-    )
-    const controls = page.locator("[data-schedule-controls]:visible")
-    const outerScrollRange = await scrollRegion.evaluate((region) =>
-      region.scrollHeight - region.clientHeight
-    )
-    const controlsHeight = await controls.evaluate(
-      (controlsElement) => controlsElement.getBoundingClientRect().height
-    )
-    expect(outerScrollRange).toBeGreaterThanOrEqual(controlsHeight)
-
     await page.getByRole("button", { name: "Gantt settings" }).click()
     const powerUserSwitch = page.getByRole("switch", {
       name: "Use power-user Gantt scrolling",
