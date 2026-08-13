@@ -651,7 +651,10 @@ export function ScheduleView({
   }
 
   return (
-    <div className="flex min-h-full flex-col" data-schedule-workspace>
+    <div
+      className="flex min-h-full min-w-[960px] flex-col"
+      data-schedule-workspace
+    >
       <div
         className="mb-1 flex h-8 shrink-0 min-w-0 flex-nowrap items-center gap-1 overflow-x-auto"
         data-schedule-controls
@@ -1196,6 +1199,12 @@ export function ScheduleView({
           />
         )}
       </div>
+
+      <div
+        aria-hidden="true"
+        className="h-[100dvh] shrink-0"
+        data-schedule-scroll-reserve
+      />
 
       {/* New schedule item dialog */}
       {projectId && (
