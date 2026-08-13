@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest"
 import type { AuthUser } from "@/lib/auth"
 import { DEMO_USER } from "@/lib/demo"
 import {
+  canCreateProject,
   canManageWorkCalendarEvents,
   canUseAskCompass,
   canUseFieldDesk,
@@ -27,6 +28,52 @@ function userWithRole(role: string): AuthUser {
     updatedAt: "2026-01-01T00:00:00.000Z",
   }
 }
+
+describe("canCreateProject", () => {
+  it.each([
+    "admin",
+    "secondary_admin",
+    "executive",
+    "office",
+    "office_manager",
+    "project_manager",
+    "project_administrator",
+    "assistant_project_manager",
+    "architectural_designer",
+    "drafter",
+    "lead_estimator",
+    "assistant_estimator",
+    "coordinator",
+    "accounting",
+  ])("allows active project-create role %s", (role) => {
+    expect(canCreateProject(userWithRole(role))).toBe(true)
+  })
+
+  it.each([
+    "field_superintendent",
+    "field_crew",
+    "field",
+    "developer",
+    "client",
+    "subcontractor",
+    "supplier",
+    "guest",
+    "unknown",
+  ])("denies non-project-create role %s", (role) => {
+    expect(canCreateProject(userWithRole(role))).toBe(false)
+  })
+
+  it("denies inactive, unauthenticated, and demo users", () => {
+    expect(
+      canCreateProject({
+        ...userWithRole("assistant_project_manager"),
+        isActive: false,
+      }),
+    ).toBe(false)
+    expect(canCreateProject(null)).toBe(false)
+    expect(canCreateProject(DEMO_USER)).toBe(false)
+  })
+})
 
 describe("canUseAskCompass", () => {
   it("allows active staff roles with agent read permission", () => {

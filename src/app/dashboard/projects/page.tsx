@@ -13,7 +13,10 @@ import { ProjectsHub } from "@/components/projects/projects-hub"
 import { ProjectHubLaunchpad } from "@/components/projects/project-hub-launchpad"
 import { getCurrentUser } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
-import { canManageProjectRegistry } from "@/lib/permissions"
+import {
+  canCreateProject,
+  canManageProjectRegistry,
+} from "@/lib/permissions"
 
 export type ProjectsHubProject = {
   readonly id: string
@@ -62,7 +65,7 @@ export default async function ProjectsPage({
       <ProjectHubLaunchpad
         projects={projectList}
         overview={overview}
-        canManageProjects={canManageProjectRegistry(currentUser)}
+        canManageProjects={canCreateProject(currentUser)}
         intakeAssignees={intakeAssignees}
       />
     )
