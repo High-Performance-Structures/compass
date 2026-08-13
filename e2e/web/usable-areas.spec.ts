@@ -460,8 +460,8 @@ test.describe("usable Compass areas", () => {
     const scrollRegion = page.locator(
       '[data-dashboard-scroll-region="schedule"]:visible'
     )
-    const taskList = page.locator(".schedule-gantt-task-list")
-    const chart = page.locator(".gantt-container")
+    const taskList = page.locator(".schedule-gantt-task-list:visible")
+    const chart = page.locator(".gantt-container:visible")
     await expect(taskList).toBeVisible()
     await expect(chart).toBeVisible()
     const outerScrollRange = await scrollRegion.evaluate(
