@@ -710,6 +710,14 @@ export type YoutubeChannelConnection =
 export type NewYoutubeChannelConnection =
   typeof youtubeChannelConnections.$inferInsert
 
+export const userSchedulePreferences = sqliteTable("user_schedule_preferences", {
+  userId: text("user_id")
+    .primaryKey()
+    .references(() => users.id, { onDelete: "cascade" }),
+  ganttScrollMode: text("gantt_scroll_mode").notNull().default("default"),
+  updatedAt: text("updated_at").notNull(),
+})
+
 export const scheduleSavedViews = sqliteTable(
   "schedule_saved_views",
   {

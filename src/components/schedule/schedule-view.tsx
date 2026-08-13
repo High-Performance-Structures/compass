@@ -109,6 +109,7 @@ import {
   type ScheduleOrderMode,
 } from "@/lib/schedule/task-ordering"
 import type { OwnerScheduleView } from "@/lib/schedule/owner-visibility"
+import type { GanttScrollMode } from "@/lib/schedule/gantt-interaction-mode"
 import {
   deleteScheduleView,
   saveScheduleView,
@@ -150,6 +151,7 @@ interface ScheduleViewProps {
   readonly globalMode?: boolean
   readonly ownerScheduleView?: OwnerScheduleView
   readonly savedViews?: readonly SavedScheduleViewData[]
+  readonly ganttScrollMode?: GanttScrollMode
   readonly currentUserAssigneeTerms?: readonly string[]
   readonly publicationStatus?: SchedulePublicationStatus | null
 }
@@ -168,6 +170,7 @@ export function ScheduleView({
   globalMode = false,
   ownerScheduleView = "items",
   savedViews: initialSavedViews = [],
+  ganttScrollMode = "default",
   currentUserAssigneeTerms = [],
   publicationStatus: initialPublicationStatus = null,
 }: ScheduleViewProps) {
@@ -1146,7 +1149,7 @@ export function ScheduleView({
       {/* The schedule is a document-scrolling workspace: preserve a useful view height
           after the compact toolbars, then let the dashboard scroll region carry it. */}
       <div
-        className="flex min-h-[34rem] flex-1 flex-col"
+        className="flex min-h-[calc(100dvh-3.5rem)] flex-1 flex-col"
         data-schedule-view-content
       >
         {view === "calendar" && (
@@ -1185,6 +1188,7 @@ export function ScheduleView({
             exceptions={initialData.exceptions}
             assigneeOptions={assigneeOptions}
             projects={scheduleProjects}
+            ganttScrollMode={ganttScrollMode}
             groupByPhase={groupMode === "phase"}
             onGroupByPhaseChange={(grouped) =>
               setGroupMode(grouped ? "phase" : "none")

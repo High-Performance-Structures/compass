@@ -7,6 +7,7 @@ import { getScheduleItemClasses } from "@/lib/schedule/appearance"
 import {
   dominantScrollAxis,
   clampGanttScrollOffset,
+  canScrollGanttAxis,
   lockWheelToDominantAxis,
   normalizeWheelDelta,
   paddingToIncludeDate,
@@ -312,6 +313,19 @@ export function GanttChart({
         normalizeWheelDelta(rawDeltaY, e.deltaMode, pageSize)
       )
       if (locked.deltaX === 0 && locked.deltaY === 0) return
+      const canScrollHorizontally = canScrollGanttAxis(
+        container.scrollLeft,
+        container.scrollWidth,
+        container.clientWidth,
+        locked.deltaX
+      )
+      const canScrollVertically = canScrollGanttAxis(
+        container.scrollTop,
+        container.scrollHeight,
+        container.clientHeight,
+        locked.deltaY
+      )
+      if (!canScrollHorizontally && !canScrollVertically) return
 
       e.preventDefault()
       container.scrollLeft += locked.deltaX
