@@ -257,6 +257,55 @@ test.describe("usable Compass areas", () => {
     ).toBe(true)
   })
 
+  test("Schedule gives a resized browser a longer scrollable workspace", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 640, height: 700 })
+    const path = "/dashboard/projects/e2e-project-001/schedule?view=list"
+    const response = await page.goto(path)
+    await expectHealthyNavigation(
+      page,
+      response,
+      "/dashboard/projects/e2e-project-001/schedule"
+    )
+
+    const scrollRegion = page.locator(
+      '[data-dashboard-scroll-region="schedule"]:visible'
+    )
+    const workspace = page.locator("[data-schedule-workspace]:visible")
+    await expect(scrollRegion).toHaveCSS("overflow-x", "auto")
+    await expect(workspace).toBeVisible()
+
+    const scrollRange = await scrollRegion.evaluate((element) => ({
+      horizontal: element.scrollWidth - element.clientWidth,
+      vertical: element.scrollHeight - element.clientHeight,
+      clientHeight: element.clientHeight,
+    }))
+    expect(scrollRange.vertical).toBeGreaterThanOrEqual(
+      scrollRange.clientHeight
+    )
+    expect(scrollRange.horizontal).toBeGreaterThan(0)
+
+    const regionBox = await scrollRegion.boundingBox()
+    expect(regionBox).not.toBeNull()
+    if (!regionBox) return
+
+    await scrollRegion.evaluate((element) => {
+      element.scrollLeft = 0
+      element.scrollTop = 0
+    })
+    await page.mouse.move(regionBox.x + 5, regionBox.y + 5)
+    await page.mouse.wheel(240, 0)
+    await expect
+      .poll(() => scrollRegion.evaluate((element) => element.scrollLeft))
+      .toBeGreaterThan(0)
+
+    await page.mouse.wheel(0, 900)
+    await expect
+      .poll(() => scrollRegion.evaluate((element) => element.scrollTop))
+      .toBeGreaterThan(0)
+  })
+
   test("Schedule puts view choices and Gantt controls in compact menus", async ({
     page,
   }) => {
@@ -411,8 +460,8 @@ test.describe("usable Compass areas", () => {
     const scrollRegion = page.locator(
       '[data-dashboard-scroll-region="schedule"]:visible'
     )
-    const taskList = page.locator(".schedule-gantt-task-list")
-    const chart = page.locator(".gantt-container")
+    const taskList = page.locator(".schedule-gantt-task-list:visible")
+    const chart = page.locator(".gantt-container:visible")
     await expect(taskList).toBeVisible()
     await expect(chart).toBeVisible()
     const outerScrollRange = await scrollRegion.evaluate(
@@ -427,7 +476,8 @@ test.describe("usable Compass areas", () => {
           element.scrollTop = paneEdge === "top" ? 0 : element.scrollHeight
         }, edge)
         await scrollRegion.evaluate((element, paneEdge) => {
-          element.scrollTop = paneEdge === "top" ? element.scrollHeight : 0
+          const distance = Math.min(240, element.scrollHeight - element.clientHeight)
+          element.scrollTop = paneEdge === "top" ? distance : 0
         }, edge)
         const initialWorkspaceTop = await scrollRegion.evaluate(
           (element) => element.scrollTop

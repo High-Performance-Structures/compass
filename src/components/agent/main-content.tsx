@@ -18,11 +18,13 @@ export function MainContent({
       data-dashboard-scroll-region={isSchedule ? "schedule" : undefined}
       {...rest}
       className={cn(
-        "flex flex-col overflow-x-hidden min-w-0 min-h-0",
+        "flex flex-col min-w-0 min-h-0",
         "transition-[flex,opacity] duration-300 ease-in-out",
         needsFixedHeight
             ? "flex-1 overflow-hidden"
-            : "flex-1 overflow-y-auto pb-14 md:pb-0",
+            : isSchedule
+              ? "flex-1 overflow-x-auto overflow-y-auto pb-14 md:pb-0"
+              : "flex-1 overflow-x-hidden overflow-y-auto pb-14 md:pb-0",
         classNameProp
       )}
     >
