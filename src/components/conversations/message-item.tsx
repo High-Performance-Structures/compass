@@ -62,6 +62,7 @@ type MessageData = {
 
 type MessageItemProps = {
   readonly message: MessageData
+  readonly showThreadAction?: boolean
 }
 
 function getRoleBadge(email: string) {
@@ -85,11 +86,15 @@ function arePropsEqual(prev: MessageItemProps, next: MessageItemProps): boolean 
     prevMsg.deletedAt === nextMsg.deletedAt &&
     prevMsg.attachments?.length === nextMsg.attachments?.length &&
     prevMsg.reactions?.map((reaction) => `${reaction.emoji}:${reaction.count}`).join("|") ===
-      nextMsg.reactions?.map((reaction) => `${reaction.emoji}:${reaction.count}`).join("|")
+      nextMsg.reactions?.map((reaction) => `${reaction.emoji}:${reaction.count}`).join("|") &&
+    prev.showThreadAction === next.showThreadAction
   )
 }
 
-export const MessageItem = React.memo(function MessageItem({ message }: MessageItemProps) {
+export const MessageItem = React.memo(function MessageItem({
+  message,
+  showThreadAction = true,
+}: MessageItemProps) {
   const [isHovered, setIsHovered] = React.useState(false)
   const [isFocused, setIsFocused] = React.useState(false)
   const [reactionOpen, setReactionOpen] = React.useState(false)
@@ -238,7 +243,7 @@ export const MessageItem = React.memo(function MessageItem({ message }: MessageI
           </div>
         )}
 
-        {message.replyCount > 0 && (
+        {showThreadAction && message.replyCount > 0 && (
           <button
             className="mt-2 flex items-center gap-1 text-xs text-primary hover:underline"
             onClick={handleReply}
@@ -256,15 +261,17 @@ export const MessageItem = React.memo(function MessageItem({ message }: MessageI
 
       {(isHovered || isFocused || reactionOpen) && (
         <div className="absolute right-4 top-2 flex gap-1 rounded-md border bg-background p-1 shadow-sm">
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-7 w-7"
-            onClick={handleReply}
-            aria-label="Reply to message"
-          >
-            <MessageSquare className="h-3.5 w-3.5" />
-          </Button>
+          {showThreadAction && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7"
+              onClick={handleReply}
+              aria-label="Reply to message"
+            >
+              <MessageSquare className="h-3.5 w-3.5" />
+            </Button>
+          )}
           <Popover open={reactionOpen} onOpenChange={setReactionOpen}>
             <PopoverTrigger asChild>
               <Button

@@ -31,7 +31,7 @@ import { NotificationsPopover } from "@/components/notifications-popover"
 import { useCommandMenu } from "@/components/command-menu-provider"
 import { useAgentOptional } from "@/components/agent/chat-provider"
 import { AccountModal } from "@/components/account-modal"
-import { DirectMessageDialog } from "@/components/conversations/direct-message-dialog"
+import { useConversationPanelOptional } from "@/components/conversations/conversation-panel-provider"
 import { getInitials } from "@/lib/utils"
 import type { SidebarUser } from "@/lib/auth"
 
@@ -85,8 +85,8 @@ export function SiteHeader({
   const [headerQuery, setHeaderQuery] = React.useState("")
   const searchInputRef = React.useRef<HTMLInputElement>(null)
   const agentContext = useAgentOptional()
+  const conversationPanel = useConversationPanelOptional()
   const [accountOpen, setAccountOpen] = React.useState(false)
-  const [directMessageOpen, setDirectMessageOpen] = React.useState(false)
   const [isLoggingOut, startLogoutTransition] = React.useTransition()
   const { toggleSidebar } = useSidebar()
 
@@ -157,7 +157,7 @@ export function SiteHeader({
               variant="ghost"
               size="icon"
               className="size-9 shrink-0 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-              onClick={() => setDirectMessageOpen(true)}
+              onClick={() => conversationPanel?.openDirectMessages()}
               aria-label="Direct message a team member"
               title="Direct message"
             >
@@ -260,7 +260,7 @@ export function SiteHeader({
               variant="ghost"
               size="icon"
               className="size-7 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-              onClick={() => setDirectMessageOpen(true)}
+              onClick={() => conversationPanel?.openDirectMessages()}
               aria-label="Direct message a team member"
               title="Direct message"
             >
@@ -318,12 +318,6 @@ export function SiteHeader({
       </div>
 
       <AccountModal open={accountOpen} onOpenChange={setAccountOpen} user={user} />
-      {canUseDirectMessages && (
-        <DirectMessageDialog
-          open={directMessageOpen}
-          onOpenChange={setDirectMessageOpen}
-        />
-      )}
     </header>
   )
 }

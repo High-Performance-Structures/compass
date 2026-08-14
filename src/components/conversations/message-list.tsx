@@ -45,11 +45,16 @@ type MessageData = {
 type MessageListProps = {
   readonly channelId: string
   readonly initialMessages: readonly MessageData[]
+  readonly showThreadActions?: boolean
 }
 
 const MAX_MESSAGES = 200
 
-export function MessageList({ channelId, initialMessages }: MessageListProps) {
+export function MessageList({
+  channelId,
+  initialMessages,
+  showThreadActions = true,
+}: MessageListProps) {
   // server returns DESC order; reverse for chronological display
   const [messages, setMessages] = React.useState<readonly MessageData[]>(
     [...initialMessages].reverse()
@@ -209,7 +214,11 @@ export function MessageList({ channelId, initialMessages }: MessageListProps) {
               </div>
             </div>
             {group.messages.map((message) => (
-              <MessageItem key={message.id} message={message} />
+              <MessageItem
+                key={message.id}
+                message={message}
+                showThreadAction={showThreadActions}
+              />
             ))}
           </div>
         ))}
