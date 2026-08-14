@@ -3,9 +3,10 @@
 import { getCloudflareContext } from "@/lib/db"
 import { eq, and, gt, desc, sql } from "drizzle-orm"
 import { getDb } from "@/db"
-import { messages, typingSessions, channelMembers } from "@/db/schema-conversations"
+import { messages, typingSessions } from "@/db/schema-conversations"
 import { users } from "@/db/schema"
 import { getCurrentUser } from "@/lib/auth"
+import { getConversationChannelAccess } from "@/lib/conversations/channel-access"
 
 type TypingUser = {
   id: string
@@ -70,20 +71,12 @@ export async function getChannelUpdates(
     const { env } = await getCloudflareContext()
     const db = getDb(env.DB)
 
-    // verify user is a member of the channel
-    const membership = await db
-      .select()
-      .from(channelMembers)
-      .where(
-        and(
-          eq(channelMembers.channelId, channelId),
-          eq(channelMembers.userId, user.id)
-        )
-      )
-      .limit(1)
-      .then((rows) => rows[0] ?? null)
-
-    if (!membership) {
+    const channel = await getConversationChannelAccess({
+      db,
+      user,
+      channelId,
+    })
+    if (!channel) {
       return { success: false, error: "Not a member of this channel" }
     }
 
@@ -180,20 +173,12 @@ export async function setTyping(
     const { env } = await getCloudflareContext()
     const db = getDb(env.DB)
 
-    // verify user is a member of the channel
-    const membership = await db
-      .select()
-      .from(channelMembers)
-      .where(
-        and(
-          eq(channelMembers.channelId, channelId),
-          eq(channelMembers.userId, user.id)
-        )
-      )
-      .limit(1)
-      .then((rows) => rows[0] ?? null)
-
-    if (!membership) {
+    const channel = await getConversationChannelAccess({
+      db,
+      user,
+      channelId,
+    })
+    if (!channel) {
       return { success: false, error: "Not a member of this channel" }
     }
 

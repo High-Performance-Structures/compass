@@ -36,6 +36,10 @@ import {
 import { isDemoUser } from "@/lib/demo"
 import { isInternalStaffRole } from "@/lib/user-roles"
 import { requireOrg } from "@/lib/org-scope"
+import {
+  getConversationChannelAccess,
+  isReplyInConversationChannel,
+} from "@/lib/conversations/channel-access"
 import { revalidatePath } from "next/cache"
 import { enqueueFeedbackDeskItem } from "@/lib/jarvis/feedback-desk"
 import { linkFeedbackDeskItemToGithub } from "@/lib/jarvis/feedback-github"
@@ -482,33 +486,33 @@ export async function sendMessage(data: {
     const { env } = await getCloudflareContext()
     const db = getDb(env.DB)
 
-    // verify user is a member of the channel
-    const membership = await db
-      .select()
-      .from(channelMembers)
-      .where(
-        and(
-          eq(channelMembers.channelId, data.channelId),
-          eq(channelMembers.userId, user.id)
-        )
-      )
-      .limit(1)
-      .then((rows) => rows[0] ?? null)
-
-    if (!membership) {
+    const activityChannel = await getConversationChannelAccess({
+      db,
+      user,
+      channelId: data.channelId,
+    })
+    if (!activityChannel) {
       return { success: false, error: "Not a member of this channel" }
     }
-    const activityChannel = await db
-      .select({
-        name: channels.name,
-        organizationId: channels.organizationId,
-        projectId: channels.projectId,
-      })
-      .from(channels)
-      .where(eq(channels.id, data.channelId))
-      .get()
-    if (!activityChannel) {
-      return { success: false, error: "Channel not found" }
+    if (data.threadId) {
+      const parentMessage = await db
+        .select({
+          channelId: messages.channelId,
+          threadId: messages.threadId,
+        })
+        .from(messages)
+        .where(eq(messages.id, data.threadId))
+        .limit(1)
+        .then((rows) => rows[0] ?? null)
+      if (
+        !isReplyInConversationChannel({
+          channelId: data.channelId,
+          parentChannelId: parentMessage?.channelId ?? null,
+          parentThreadId: parentMessage?.threadId ?? null,
+        })
+      ) {
+        return { success: false, error: "Reply target not found in this channel" }
+      }
     }
 
     const now = new Date().toISOString()
@@ -885,20 +889,12 @@ export async function getMessages(
     const { env } = await getCloudflareContext()
     const db = getDb(env.DB)
 
-    // verify user is a member
-    const membership = await db
-      .select()
-      .from(channelMembers)
-      .where(
-        and(
-          eq(channelMembers.channelId, channelId),
-          eq(channelMembers.userId, user.id)
-        )
-      )
-      .limit(1)
-      .then((rows) => rows[0] ?? null)
-
-    if (!membership) {
+    const channel = await getConversationChannelAccess({
+      db,
+      user,
+      channelId,
+    })
+    if (!channel) {
       return { success: false, error: "Not a member of this channel" }
     }
 
@@ -995,20 +991,12 @@ export async function getThreadMessages(
       return { success: false, error: "Parent message not found" }
     }
 
-    // verify user is a member
-    const membership = await db
-      .select()
-      .from(channelMembers)
-      .where(
-        and(
-          eq(channelMembers.channelId, parentMessage.channelId),
-          eq(channelMembers.userId, user.id)
-        )
-      )
-      .limit(1)
-      .then((rows) => rows[0] ?? null)
-
-    if (!membership) {
+    const channel = await getConversationChannelAccess({
+      db,
+      user,
+      channelId: parentMessage.channelId,
+    })
+    if (!channel) {
       return { success: false, error: "Not a member of this channel" }
     }
 
@@ -1109,20 +1097,12 @@ export async function addReaction(messageId: string, emoji: string) {
       return { success: false, error: "Message not found" }
     }
 
-    // verify user is a member of the channel
-    const membership = await db
-      .select()
-      .from(channelMembers)
-      .where(
-        and(
-          eq(channelMembers.channelId, message.channelId),
-          eq(channelMembers.userId, user.id)
-        )
-      )
-      .limit(1)
-      .then((rows) => rows[0] ?? null)
-
-    if (!membership) {
+    const channel = await getConversationChannelAccess({
+      db,
+      user,
+      channelId: message.channelId,
+    })
+    if (!channel) {
       return { success: false, error: "Not a member of this channel" }
     }
 
@@ -1196,20 +1176,12 @@ export async function removeReaction(messageId: string, emoji: string) {
       return { success: false, error: "Message not found" }
     }
 
-    // verify user is a member of the channel
-    const membership = await db
-      .select()
-      .from(channelMembers)
-      .where(
-        and(
-          eq(channelMembers.channelId, message.channelId),
-          eq(channelMembers.userId, user.id)
-        )
-      )
-      .limit(1)
-      .then((rows) => rows[0] ?? null)
-
-    if (!membership) {
+    const channel = await getConversationChannelAccess({
+      db,
+      user,
+      channelId: message.channelId,
+    })
+    if (!channel) {
       return { success: false, error: "Not a member of this channel" }
     }
 

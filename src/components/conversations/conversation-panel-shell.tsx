@@ -15,6 +15,7 @@ import {
   conversationFullViewHref,
   conversationPanelOpenedAnnouncement,
 } from "@/lib/conversations/notification-route"
+import { isBuildertrendArchiveChannelId } from "@/lib/conversations/channel-access"
 import { useConversationPanel } from "./conversation-panel-provider"
 
 type PanelData = Extract<
@@ -283,14 +284,25 @@ function ConversationPanelContent() {
                 This conversation is archived.
               </div>
             ) : (
-              <MessageComposer
-                channelId={data.channel.id}
-                channelName={data.channel.name}
-                organizationId={data.channel.organizationId}
-                isProjectChannel={Boolean(data.channel.projectId)}
-                projectRecipients={data.projectRecipients}
-                onSent={() => void loadConversation(data.channel.id)}
-              />
+              <>
+                {isBuildertrendArchiveChannelId(data.channel.id) ? (
+                  <div className="border-t bg-muted/30 px-4 py-2 text-xs text-muted-foreground">
+                    Continue this Buildertrend archive in Compass. Replies stay internal;
+                    original Buildertrend recipients are not notified.
+                  </div>
+                ) : null}
+                <MessageComposer
+                  channelId={data.channel.id}
+                  channelName={data.channel.name}
+                  organizationId={data.channel.organizationId}
+                  isProjectChannel={
+                    Boolean(data.channel.projectId) &&
+                    !isBuildertrendArchiveChannelId(data.channel.id)
+                  }
+                  projectRecipients={data.projectRecipients}
+                  onSent={() => void loadConversation(data.channel.id)}
+                />
+              </>
             )}
           </div>
         ) : null}
