@@ -1,7 +1,8 @@
 "use client"
 
 import * as React from "react"
-import { ArrowLeft, MessageCircle, PanelRightClose, RefreshCw } from "lucide-react"
+import { useRouter } from "next/navigation"
+import { ArrowLeft, ExternalLink, MessageCircle, PanelRightClose, RefreshCw } from "lucide-react"
 import { getConversationPanelData } from "@/app/actions/conversation-panel"
 import { listChannels } from "@/app/actions/conversations"
 import { DirectMessagePicker } from "@/components/conversations/direct-message-dialog"
@@ -10,6 +11,10 @@ import { MessageList } from "@/components/conversations/message-list"
 import { ConversationsProvider } from "@/contexts/conversations-context"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
+import {
+  conversationFullViewHref,
+  conversationPanelOpenedAnnouncement,
+} from "@/lib/conversations/notification-route"
 import { useConversationPanel } from "./conversation-panel-provider"
 
 type PanelData = Extract<
@@ -30,6 +35,7 @@ function channelLabel(channel: TextChannel): string {
 }
 
 function ConversationPanelContent() {
+  const router = useRouter()
   const { isOpen, channelId, view, open, close } = useConversationPanel()
   const [channels, setChannels] = React.useState<readonly TextChannel[]>([])
   const [channelsLoading, setChannelsLoading] = React.useState(false)
@@ -139,6 +145,9 @@ function ConversationPanelContent() {
 
   return (
     <>
+      <p className="sr-only" aria-live="polite" aria-atomic="true">
+        {isOpen && channelId ? conversationPanelOpenedAnnouncement() : ""}
+      </p>
       <section
         className={cn(
           "flex flex-col bg-background",
@@ -186,6 +195,21 @@ function ConversationPanelContent() {
               </p>
             ) : null}
           </div>
+          {channelId ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              onClick={() => {
+                close()
+                router.push(conversationFullViewHref(channelId))
+              }}
+              aria-label="Open conversation in center"
+              title="Open in center"
+            >
+              <ExternalLink className="size-4" />
+            </Button>
+          ) : null}
           <Button
             type="button"
             variant="ghost"
