@@ -35,8 +35,11 @@ export function useConversationPanelOptional(): ConversationPanelContextValue | 
 
 export function ConversationPanelProvider({
   children,
+  enabled = true,
 }: {
   readonly children: React.ReactNode
+  /** Only provide panel actions when a visible dashboard drawer is mounted. */
+  readonly enabled?: boolean
 }) {
   const [state, setState] = React.useState<ConversationPanelState>({
     isOpen: false,
@@ -70,7 +73,7 @@ export function ConversationPanelProvider({
   )
 
   return (
-    <ConversationPanelContext.Provider value={value}>
+    <ConversationPanelContext.Provider value={enabled ? value : null}>
       {children}
     </ConversationPanelContext.Provider>
   )

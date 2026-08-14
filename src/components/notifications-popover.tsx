@@ -6,6 +6,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type MouseEvent,
 } from "react"
 import Link from "next/link"
 import {
@@ -37,6 +38,8 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet"
 import { useIsMobile } from "@/hooks/use-mobile"
+import { useConversationPanelOptional } from "@/components/conversations/conversation-panel-provider"
+import { notificationPanelChannelId } from "@/lib/conversations/notification-route"
 
 function iconFor(item: NotificationCenterItem): typeof IconClipboardCheck {
   if (item.eventType.startsWith("rfi.")) return IconMessageCircle
@@ -67,7 +70,10 @@ function NotificationsList({
   readonly notifications: readonly NotificationCenterItem[]
   readonly loading: boolean
   readonly onClear: () => void
-  readonly onNavigate: (item: NotificationCenterItem) => void
+  readonly onNavigate: (
+    item: NotificationCenterItem,
+    event: MouseEvent<HTMLAnchorElement>
+  ) => void
 }) {
   return (
     <>
@@ -83,7 +89,7 @@ function NotificationsList({
               <Link
                 key={item.id}
                 href={item.href}
-                onClick={() => onNavigate(item)}
+                onClick={(event) => onNavigate(item, event)}
                 className="hover:bg-muted/50 flex gap-3 border-b px-4 py-3 transition-colors last:border-0"
               >
                 <Icon className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
@@ -134,6 +140,7 @@ function NotificationsList({
 
 export function NotificationsPopover() {
   const isMobile = useIsMobile()
+  const conversationPanel = useConversationPanelOptional()
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(true)
   const [notifications, setNotifications] =
@@ -209,7 +216,27 @@ export function NotificationsPopover() {
     }
   }
 
-  async function navigate(item: NotificationCenterItem): Promise<void> {
+  async function navigate(
+    item: NotificationCenterItem,
+    event: MouseEvent<HTMLAnchorElement>
+  ): Promise<void> {
+    const channelId = notificationPanelChannelId({
+      href: item.href,
+      isMobile,
+      hasConversationPanel: conversationPanel !== null,
+    })
+    const isPlainClick =
+      event.button === 0 &&
+      !event.metaKey &&
+      !event.ctrlKey &&
+      !event.shiftKey &&
+      !event.altKey
+
+    if (channelId && isPlainClick) {
+      event.preventDefault()
+      conversationPanel?.open(channelId)
+    }
+
     setOpen(false)
     if (item.readAt) return
     setNotifications((items) =>

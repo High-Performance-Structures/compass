@@ -75,7 +75,7 @@ export default async function DashboardLayout({
       offlineScopeKey={offlineScopeKey}
       canSubmitCherish={canUseCompassFieldDesk}
     >
-    <ConversationPanelProvider>
+    <ConversationPanelProvider enabled={canUseDirectMessages}>
     <PresenceProvider>
     <VoiceProvider>
     <SettingsProvider>
