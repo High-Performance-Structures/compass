@@ -8,6 +8,7 @@ import {
   locateProjectTrackerLayout,
   type ProjectIntakeTrackerInput,
 } from "@/lib/google/project-intake-tracker"
+import { resolveProjectIntakeIntegrationEmail } from "@/lib/google/project-intake-identity"
 
 const PROJECT: ProjectIntakeTrackerInput = {
   department: "O",
@@ -29,6 +30,21 @@ const PROJECT: ProjectIntakeTrackerInput = {
 }
 
 describe("Google Developer-folder project tracking intake", () => {
+  it("uses the organization connector identity for tracker writes", () => {
+    expect(
+      resolveProjectIntakeIntegrationEmail({
+        connectorGoogleEmail: "integration-owner@hps-colorado.com",
+        connectorEmail: "connector-login@hps-colorado.com",
+      })
+    ).toBe("integration-owner@hps-colorado.com")
+    expect(
+      resolveProjectIntakeIntegrationEmail({
+        connectorGoogleEmail: null,
+        connectorEmail: "connector-login@hps-colorado.com",
+      })
+    ).toBe("connector-login@hps-colorado.com")
+  })
+
   it("locates a shifted tracker header and allocates the next department number", () => {
     const rows = [
       ["Project Lead Tracking"],

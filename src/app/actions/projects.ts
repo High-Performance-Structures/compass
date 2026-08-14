@@ -40,6 +40,7 @@ import {
   type ProjectIntakeTrackerInput,
   type ProjectTrackerLayout,
 } from "@/lib/google/project-intake-tracker"
+import { resolveProjectIntakeIntegrationEmail } from "@/lib/google/project-intake-identity"
 import { requireOrg } from "@/lib/org-scope"
 import {
   canManageProjectRegistry,
@@ -250,6 +251,7 @@ function intakeClientName(input: CreateProjectIntakeInput): string | null {
 type ProjectWorkspaceClients = {
   readonly sheets: SheetsClient
   readonly drive: DriveClient
+  readonly projectIntakeGoogleEmail: string
 }
 
 async function projectWorkspaceClients(input: {
@@ -258,8 +260,13 @@ async function projectWorkspaceClients(input: {
 }): Promise<ProjectWorkspaceClients> {
   const db = getDb(input.environment.DB)
   const authRows = await db
-    .select()
+    .select({
+      serviceAccountKeyEncrypted: googleAuth.serviceAccountKeyEncrypted,
+      connectorGoogleEmail: users.googleEmail,
+      connectorEmail: users.email,
+    })
     .from(googleAuth)
+    .innerJoin(users, eq(users.id, googleAuth.connectedBy))
     .where(eq(googleAuth.organizationId, input.organizationId))
     .limit(1)
   const auth = authRows[0]
@@ -275,6 +282,10 @@ async function projectWorkspaceClients(input: {
   return {
     sheets: new SheetsClient(serviceAccountKey),
     drive: new DriveClient({ serviceAccountKey }),
+    projectIntakeGoogleEmail: resolveProjectIntakeIntegrationEmail({
+      connectorGoogleEmail: auth.connectorGoogleEmail,
+      connectorEmail: auth.connectorEmail,
+    }),
   }
 }
 
@@ -367,14 +378,15 @@ export async function createProjectIntake(
       environment: env,
       organizationId,
     })
-    const googleEmail = user.googleEmail ?? user.email
+    const submittingGoogleEmail = user.googleEmail ?? user.email
+    const projectIntakeGoogleEmail = googleClients.projectIntakeGoogleEmail
     const departmentDestination = departmentTrackingDestination(department)
     const [registryRows, departmentRows] = await Promise.all([
-      googleClients.sheets.getValues(googleEmail, {
+      googleClients.sheets.getValues(projectIntakeGoogleEmail, {
         spreadsheetId: PROJECT_REGISTRY_DESTINATION.spreadsheetId,
         range: quotedSheetRange(PROJECT_REGISTRY_DESTINATION.sheetTitle, "A:Z"),
       }),
-      googleClients.sheets.getValues(googleEmail, {
+      googleClients.sheets.getValues(projectIntakeGoogleEmail, {
         spreadsheetId: departmentDestination.spreadsheetId,
         range: quotedSheetRange(departmentDestination.sheetTitle, "A:AZ"),
       }),
@@ -642,7 +654,7 @@ export async function createProjectIntake(
     try {
       const drive = await provisionGoogleProjectDriveFolder(
         googleClients.drive,
-        googleEmail,
+        submittingGoogleEmail,
         { department, folderName: driveFolderName }
       )
       projectDriveUrl = drive.folderUrl
@@ -717,7 +729,7 @@ export async function createProjectIntake(
     try {
       registryWrite = await appendProjectRowIfMissing({
         sheets: googleClients.sheets,
-        googleEmail,
+        googleEmail: projectIntakeGoogleEmail,
         spreadsheetId: PROJECT_REGISTRY_DESTINATION.spreadsheetId,
         sheetTitle: PROJECT_REGISTRY_DESTINATION.sheetTitle,
         rows: registryRows,
@@ -735,7 +747,7 @@ export async function createProjectIntake(
     try {
       departmentWrite = await appendProjectRowIfMissing({
         sheets: googleClients.sheets,
-        googleEmail,
+        googleEmail: projectIntakeGoogleEmail,
         spreadsheetId: departmentDestination.spreadsheetId,
         sheetTitle: departmentDestination.sheetTitle,
         rows: departmentRows,
