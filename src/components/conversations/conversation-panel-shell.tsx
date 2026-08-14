@@ -283,26 +283,21 @@ function ConversationPanelContent() {
               <div className="border-t bg-muted/30 px-4 py-3 text-sm text-muted-foreground">
                 This conversation is archived.
               </div>
+            ) : isBuildertrendArchiveChannelId(data.channel.id) ? (
+              <div className="border-t bg-muted/30 px-4 py-3 text-sm text-muted-foreground">
+                Open this conversation in the center to reply within an archived
+                Buildertrend message thread. Replies stay internal; mention a teammate
+                to notify them.
+              </div>
             ) : (
-              <>
-                {isBuildertrendArchiveChannelId(data.channel.id) ? (
-                  <div className="border-t bg-muted/30 px-4 py-2 text-xs text-muted-foreground">
-                    Continue this Buildertrend archive in Compass. Replies stay internal;
-                    original Buildertrend recipients are not notified.
-                  </div>
-                ) : null}
-                <MessageComposer
-                  channelId={data.channel.id}
-                  channelName={data.channel.name}
-                  organizationId={data.channel.organizationId}
-                  isProjectChannel={
-                    Boolean(data.channel.projectId) &&
-                    !isBuildertrendArchiveChannelId(data.channel.id)
-                  }
-                  projectRecipients={data.projectRecipients}
-                  onSent={() => void loadConversation(data.channel.id)}
-                />
-              </>
+              <MessageComposer
+                channelId={data.channel.id}
+                channelName={data.channel.name}
+                organizationId={data.channel.organizationId}
+                isProjectChannel={Boolean(data.channel.projectId)}
+                projectRecipients={data.projectRecipients}
+                onSent={() => void loadConversation(data.channel.id)}
+              />
             )}
           </div>
         ) : null}

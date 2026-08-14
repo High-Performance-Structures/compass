@@ -1,14 +1,18 @@
 import { describe, expect, it } from "vitest"
 import {
   canAccessConversationChannel,
+  canCreateConversationMessage,
   isBuildertrendArchiveChannelId,
   isReplyInConversationChannel,
 } from "../channel-access"
+
+const archiveChannelId = "bt-message-archive-5072748"
 
 describe("canAccessConversationChannel", () => {
   it("allows an internal staff member to continue a public staff archive without a membership row", () => {
     expect(
       canAccessConversationChannel({
+        channelId: archiveChannelId,
         hasMembership: false,
         isPrivate: false,
         audience: "staff",
@@ -20,6 +24,7 @@ describe("canAccessConversationChannel", () => {
   it("does not grant a public staff archive to an external user without membership", () => {
     expect(
       canAccessConversationChannel({
+        channelId: archiveChannelId,
         hasMembership: false,
         isPrivate: false,
         audience: "staff",
@@ -31,6 +36,7 @@ describe("canAccessConversationChannel", () => {
   it("continues to honor explicit channel membership for any audience", () => {
     expect(
       canAccessConversationChannel({
+        channelId: "project-owner-123",
         hasMembership: true,
         isPrivate: true,
         audience: "clients",
@@ -39,12 +45,13 @@ describe("canAccessConversationChannel", () => {
     ).toBe(true)
   })
 
-  it("does not widen non-staff public channels without membership", () => {
+  it("does not widen ordinary public staff channels without membership", () => {
     expect(
       canAccessConversationChannel({
+        channelId: "project-staff-123",
         hasMembership: false,
         isPrivate: false,
-        audience: "clients",
+        audience: "staff",
         role: "project_manager",
       })
     ).toBe(false)
@@ -53,8 +60,25 @@ describe("canAccessConversationChannel", () => {
 
 describe("isBuildertrendArchiveChannelId", () => {
   it("recognizes only the imported Buildertrend archive channel namespace", () => {
-    expect(isBuildertrendArchiveChannelId("bt-message-archive-5072748")).toBe(true)
+    expect(isBuildertrendArchiveChannelId(archiveChannelId)).toBe(true)
     expect(isBuildertrendArchiveChannelId("project-team-5072748")).toBe(false)
+  })
+})
+
+describe("canCreateConversationMessage", () => {
+  it("requires a Buildertrend archive continuation to name a parent message", () => {
+    expect(
+      canCreateConversationMessage({ channelId: archiveChannelId, threadId: undefined })
+    ).toBe(false)
+    expect(
+      canCreateConversationMessage({ channelId: archiveChannelId, threadId: "parent-message" })
+    ).toBe(true)
+  })
+
+  it("keeps ordinary conversation root posts available", () => {
+    expect(
+      canCreateConversationMessage({ channelId: "project-staff-123", threadId: undefined })
+    ).toBe(true)
   })
 })
 
@@ -62,25 +86,32 @@ describe("isReplyInConversationChannel", () => {
   it("keeps a reply attached to its top-level Buildertrend archive message", () => {
     expect(
       isReplyInConversationChannel({
-        channelId: "bt-message-archive-5072748",
-        parentChannelId: "bt-message-archive-5072748",
+        channelId: archiveChannelId,
+        parentChannelId: archiveChannelId,
         parentThreadId: null,
       })
     ).toBe(true)
   })
 
-  it("rejects a cross-channel or nested-thread reply target", () => {
+  it("rejects a missing, cross-channel, or nested-thread reply target", () => {
     expect(
       isReplyInConversationChannel({
-        channelId: "bt-message-archive-5072748",
+        channelId: archiveChannelId,
+        parentChannelId: null,
+        parentThreadId: null,
+      })
+    ).toBe(false)
+    expect(
+      isReplyInConversationChannel({
+        channelId: archiveChannelId,
         parentChannelId: "another-channel",
         parentThreadId: null,
       })
     ).toBe(false)
     expect(
       isReplyInConversationChannel({
-        channelId: "bt-message-archive-5072748",
-        parentChannelId: "bt-message-archive-5072748",
+        channelId: archiveChannelId,
+        parentChannelId: archiveChannelId,
         parentThreadId: "existing-parent",
       })
     ).toBe(false)

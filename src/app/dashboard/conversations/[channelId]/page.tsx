@@ -70,17 +70,19 @@ export default async function ChannelPage({
         />
         {isBuildertrendArchive ? (
           <div className="border-t bg-muted/30 px-4 py-2 text-xs text-muted-foreground">
-            Continue this Buildertrend archive in Compass. Replies stay internal;
-            original Buildertrend recipients are not notified.
+            Continue this Buildertrend archive in Compass by opening a message thread.
+            Replies stay internal; original Buildertrend recipients are not notified.
+            Mention a teammate to notify them.
           </div>
-        ) : null}
-        <MessageComposer
-          channelId={channelId}
-          channelName={channel.name}
-          organizationId={channel.organizationId}
-          isProjectChannel={Boolean(channel.projectId) && !isBuildertrendArchive}
-          projectRecipients={projectRecipients}
-        />
+        ) : (
+          <MessageComposer
+            channelId={channelId}
+            channelName={channel.name}
+            organizationId={channel.organizationId}
+            isProjectChannel={Boolean(channel.projectId)}
+            projectRecipients={projectRecipients}
+          />
+        )}
       </div>
       <ThreadPanel />
     </div>

@@ -1,10 +1,10 @@
 import { and, eq } from "drizzle-orm"
 
 import { channelMembers, channels } from "@/db/schema-conversations"
+import type { getDb } from "@/db"
 import type { AuthUser } from "@/lib/auth"
 import { requireOrg } from "@/lib/org-scope"
 import { isInternalStaffRole } from "@/lib/user-roles"
-import type { getDb } from "@/db"
 
 export type ConversationChannelAccess = {
   readonly id: string
@@ -15,7 +15,12 @@ export type ConversationChannelAccess = {
   readonly audience: string
 }
 
+export function isBuildertrendArchiveChannelId(channelId: string): boolean {
+  return channelId.startsWith("bt-message-archive-")
+}
+
 export function canAccessConversationChannel(input: {
+  readonly channelId: string
   readonly hasMembership: boolean
   readonly isPrivate: boolean
   readonly audience: string
@@ -23,14 +28,18 @@ export function canAccessConversationChannel(input: {
 }): boolean {
   return (
     input.hasMembership ||
-    (!input.isPrivate &&
+    (isBuildertrendArchiveChannelId(input.channelId) &&
+      !input.isPrivate &&
       input.audience === "staff" &&
       isInternalStaffRole(input.role))
   )
 }
 
-export function isBuildertrendArchiveChannelId(channelId: string): boolean {
-  return channelId.startsWith("bt-message-archive-")
+export function canCreateConversationMessage(input: {
+  readonly channelId: string
+  readonly threadId?: string
+}): boolean {
+  return !isBuildertrendArchiveChannelId(input.channelId) || Boolean(input.threadId)
 }
 
 export function isReplyInConversationChannel(input: {
@@ -45,10 +54,9 @@ export function isReplyInConversationChannel(input: {
 }
 
 /**
- * Authorizes regular conversation actions. Buildertrend history channels are
- * public, staff-only channels and intentionally have no per-user membership
- * rows, so internal staff may read and continue them while external users
- * remain strictly membership-scoped.
+ * Buildertrend history imports are public staff-only channels with no per-user
+ * membership rows. Only that source namespace permits internal staff access
+ * without membership; every other conversation remains membership-scoped.
  */
 export async function getConversationChannelAccess(input: {
   readonly db: ReturnType<typeof getDb>
@@ -86,6 +94,7 @@ export async function getConversationChannelAccess(input: {
     .then((rows) => rows[0] ?? null)
 
   return canAccessConversationChannel({
+    channelId: channel.id,
     hasMembership: membership !== null,
     isPrivate: channel.isPrivate,
     audience: channel.audience,

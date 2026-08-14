@@ -37,6 +37,7 @@ import { isDemoUser } from "@/lib/demo"
 import { isInternalStaffRole } from "@/lib/user-roles"
 import { requireOrg } from "@/lib/org-scope"
 import {
+  canCreateConversationMessage,
   getConversationChannelAccess,
   isReplyInConversationChannel,
 } from "@/lib/conversations/channel-access"
@@ -493,6 +494,12 @@ export async function sendMessage(data: {
     })
     if (!activityChannel) {
       return { success: false, error: "Not a member of this channel" }
+    }
+    if (!canCreateConversationMessage(data)) {
+      return {
+        success: false,
+        error: "Choose an archived Buildertrend message and reply in its thread.",
+      }
     }
     if (data.threadId) {
       const parentMessage = await db
