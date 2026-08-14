@@ -12,6 +12,8 @@ import { Toaster } from "@/components/ui/sonner"
 import { ChatPanelShell } from "@/components/agent/chat-panel-shell"
 import { MainContent } from "@/components/agent/main-content"
 import { ChatProvider } from "@/components/agent/chat-provider"
+import { ConversationPanelProvider } from "@/components/conversations/conversation-panel-provider"
+import { ConversationPanelShell } from "@/components/conversations/conversation-panel-shell"
 import {
   SidebarInset,
   SidebarProvider,
@@ -73,6 +75,7 @@ export default async function DashboardLayout({
       offlineScopeKey={offlineScopeKey}
       canSubmitCherish={canUseCompassFieldDesk}
     >
+    <ConversationPanelProvider>
     <PresenceProvider>
     <VoiceProvider>
     <SettingsProvider>
@@ -117,6 +120,7 @@ export default async function DashboardLayout({
               {children}
             </MainContent>
             {canUseCompassAgent && <ChatPanelShell />}
+            {canUseDirectMessages && <ConversationPanelShell />}
           </div>
         </SidebarInset>
         <MobileBottomNav canUseFieldDesk={canUseCompassFieldDesk} />
@@ -136,6 +140,7 @@ export default async function DashboardLayout({
     </SettingsProvider>
     </VoiceProvider>
     </PresenceProvider>
+    </ConversationPanelProvider>
     </ChatProvider>
   )
 }

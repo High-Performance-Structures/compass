@@ -34,6 +34,7 @@ import { cn } from "@/lib/utils"
 import { CreateChannelDialog } from "@/components/conversations/create-channel-dialog"
 import { VoiceChannelStub } from "@/components/conversations/voice-channel-stub"
 import { DirectMessageDialog } from "@/components/conversations/direct-message-dialog"
+import { useConversationPanelOptional } from "@/components/conversations/conversation-panel-provider"
 import { ChevronRight } from "lucide-react"
 
 type ChannelData = {
@@ -67,6 +68,7 @@ function setCategoryCollapsedState(id: string, collapsed: boolean): void {
 export function NavConversations() {
   const pathname = usePathname()
   const { state } = useSidebar()
+  const conversationPanel = useConversationPanelOptional()
   const isExpanded = state === "expanded"
   const [channels, setChannels] = React.useState<ChannelData[]>([])
   const [categories, setCategories] = React.useState<CategoryData[]>([])
@@ -190,36 +192,56 @@ export function NavConversations() {
     })
   }
 
-  const renderChannelItem = (channel: ChannelData) => (
-    <SidebarMenuItem key={channel.id}>
-      <SidebarMenuButton
-        asChild
-        tooltip={channel.name}
-        className={cn(
-          pathname === `/dashboard/conversations/${channel.id}` &&
-            "bg-sidebar-foreground/10 font-medium"
+  const renderChannelItem = (channel: ChannelData) => {
+    const opensInPanel =
+      conversationPanel !== null &&
+      channel.type === "text" &&
+      channel.audience !== "direct"
+    const isPanelChannel =
+      opensInPanel &&
+      conversationPanel?.isOpen === true &&
+      conversationPanel?.channelId === channel.id
+    const channelContent = (
+      <>
+        {channel.audience === "direct" ? (
+          <IconUser className="shrink-0" />
+        ) : channel.projectId ? (
+          <IconBuilding className="shrink-0" />
+        ) : (
+          <IconMessageCircle className="shrink-0" />
         )}
-      >
-        <Link href={`/dashboard/conversations/${channel.id}`}>
-          {channel.audience === "direct" ? (
-            <IconUser className="shrink-0" />
-          ) : channel.projectId ? (
-            <IconBuilding className="shrink-0" />
-          ) : (
-            <IconMessageCircle className="shrink-0" />
-          )}
-          <span className={cn(channel.unreadCount && channel.unreadCount > 0 && "font-semibold")}>
-            {channel.name}
+        <span className={cn(channel.unreadCount && channel.unreadCount > 0 && "font-semibold")}>
+          {channel.name}
+        </span>
+        {channel.unreadCount && channel.unreadCount > 0 && (
+          <span className="ml-auto flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-primary-foreground">
+            {channel.unreadCount}
           </span>
-          {channel.unreadCount && channel.unreadCount > 0 && (
-            <span className="ml-auto flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-primary-foreground">
-              {channel.unreadCount}
-            </span>
+        )}
+      </>
+    )
+
+    return (
+      <SidebarMenuItem key={channel.id}>
+        <SidebarMenuButton
+          asChild
+          tooltip={channel.name}
+          className={cn(
+            (isPanelChannel || pathname === `/dashboard/conversations/${channel.id}`) &&
+              "bg-sidebar-foreground/10 font-medium"
           )}
-        </Link>
-      </SidebarMenuButton>
-    </SidebarMenuItem>
-  )
+        >
+          {opensInPanel ? (
+            <button type="button" onClick={() => conversationPanel?.open(channel.id)}>
+              {channelContent}
+            </button>
+          ) : (
+            <Link href={`/dashboard/conversations/${channel.id}`}>{channelContent}</Link>
+          )}
+        </SidebarMenuButton>
+      </SidebarMenuItem>
+    )
+  }
 
   const renderProjectLabel = (project: ProjectListItem) => (
     <SidebarMenuItem key={`project-label-${project.id}`}>

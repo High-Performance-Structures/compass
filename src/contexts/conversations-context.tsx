@@ -56,8 +56,11 @@ export function useConversations() {
 
 export function ConversationsProvider({
   children,
+  wrap = true,
 }: {
   readonly children: React.ReactNode
+  /** Preserve the legacy flex container unless the caller already owns layout. */
+  readonly wrap?: boolean
 }) {
   const [threadOpen, setThreadOpen] = React.useState(false)
   const [threadMessageId, setThreadMessageId] = React.useState<string | null>(null)
@@ -88,9 +91,7 @@ export function ConversationsProvider({
 
   return (
     <ConversationsContext.Provider value={value}>
-      <div className="flex min-h-0 flex-1 overflow-hidden">
-        {children}
-      </div>
+      {wrap ? <div className="flex min-h-0 flex-1 overflow-hidden">{children}</div> : children}
     </ConversationsContext.Provider>
   )
 }
