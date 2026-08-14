@@ -50,6 +50,26 @@ describe("isReplyMessage", () => {
 })
 
 describe("candidateFromMessage attachments", () => {
+  it("keeps a project alias ahead of the final Gmail delivery mailbox", () => {
+    const result = candidateFromMessage({
+      id: "message-with-project-alias",
+      payload: {
+        headers: [
+          {
+            name: "To",
+            value: "jarvis+project-proj-h-office@hps-colorado.com",
+          },
+          { name: "Delivered-To", value: "jarvis@hps-colorado.com" },
+          { name: "Subject", value: "[RFI] Office question" },
+        ],
+      },
+    })
+
+    expect(result.toAddress).toBe(
+      "jarvis+project-proj-h-office@hps-colorado.com"
+    )
+  })
+
   it("captures a Gmail attachment reference for later download", () => {
     const result = candidateFromMessage({
       id: "message-with-photo",

@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { useState } from "react"
-import { IconSettings, IconTemplate } from "@tabler/icons-react"
+import { IconMailForward, IconSettings, IconTemplate } from "@tabler/icons-react"
 import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
@@ -123,6 +123,12 @@ export function OfficeMaintenanceDrawer({
           </div>
         </div>
         <div className="space-y-2 px-4">
+          <Button asChild variant="outline" className="w-full justify-start">
+            <Link href="/dashboard/office-maintenance/inbound-email">
+              <IconMailForward className="size-4" />
+              Review inbound email
+            </Link>
+          </Button>
           <div className="space-y-2 border p-3">
             <div>
               <p className="text-sm font-medium">GoTo text routing</p>
