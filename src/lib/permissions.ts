@@ -588,6 +588,18 @@ export function hasAnyPermission(
   return !!resourcePermissions && resourcePermissions.length > 0
 }
 
+export function canCreateProject(user: AuthUser | null): boolean {
+  if (!user || !user.isActive) return false
+  if (
+    isDemoUser(user.id) ||
+    (user.organizationId !== null && isDemoOrg(user.organizationId))
+  ) {
+    return false
+  }
+
+  return can(user, "project", "create")
+}
+
 export function canManageProjectRegistry(user: AuthUser | null): boolean {
   if (!user || !user.isActive) return false
   if (
