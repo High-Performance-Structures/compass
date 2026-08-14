@@ -216,6 +216,13 @@ export function candidateFromMessage(message: GmailMessage): InboundCandidate {
     message.snippet ?? "",
   ].join("\n")
   const from = parseAddress(headers.get("from") ?? null)
+  // Forwarding rules commonly replace To. Preserve the original project alias
+  // when Gmail exposes it so a new tagged email can still be routed correctly.
+  const routedTo =
+    headers.get("x-original-to") ??
+    headers.get("to") ??
+    headers.get("delivered-to") ??
+    null
 
   return {
     gmailMessageId: message.id,
@@ -226,7 +233,7 @@ export function candidateFromMessage(message: GmailMessage): InboundCandidate {
     token: extractToken(searchable),
     fromAddress: from.email,
     fromName: from.name,
-    toAddress: headers.get("to") ?? null,
+    toAddress: routedTo,
     subject: headers.get("subject") ?? "(no subject)",
     textBody: textBody.length > 0 ? textBody : null,
     htmlBody: htmlBody.length > 0 ? htmlBody : null,

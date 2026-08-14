@@ -21,6 +21,7 @@ import {
   stripHtml,
   type InboundCandidate,
 } from "@/lib/email/gmail-message-parser"
+import { matchInboundProject } from "@/lib/email/inbound-routing"
 import {
   projectEmailDestination,
   projectEmailTitle,
@@ -742,7 +743,18 @@ export async function routeProjectInboundEmail(input: {
   readonly organizationId: string
   readonly candidate: InboundCandidate
 }): Promise<ProjectInboundRouteResult> {
-  const projectId = projectIdFromInboundAddress(input.candidate.toAddress)
+  let projectId = projectIdFromInboundAddress(input.candidate.toAddress)
+  if (!projectId && projectEmailDestination(input.candidate.subject)) {
+    const projectRows = await input.db
+      .select({
+        id: projects.id,
+        projectNumber: projects.projectNumber,
+        name: projects.name,
+      })
+      .from(projects)
+      .where(eq(projects.organizationId, input.organizationId))
+    projectId = matchInboundProject(input.candidate, projectRows)?.id ?? null
+  }
   if (!projectId) return { kind: "not_project_email" }
 
   const senderAllowed = await senderCanEmailProject({
