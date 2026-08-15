@@ -98,8 +98,9 @@ export default async function InboundEmailReviewPage(): Promise<React.ReactEleme
                 </p>
               ) : (
                 <p className="mt-4 text-sm text-muted-foreground">
-                  This message arrived before Compass retained unmatched text
-                  content. Add a useful title and description before routing it.
+                  {item.recoveryError ??
+                    "Compass is recovering the content of this earlier unmatched text from GoTo."}
+                  {" "}You can add a useful title and description manually if needed.
                 </p>
               )}
 

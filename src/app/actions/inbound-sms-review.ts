@@ -38,6 +38,7 @@ export type InboundSmsReviewItem = {
   readonly receivedAt: string
   readonly reviewReason: string | null
   readonly attachmentCount: number
+  readonly recoveryError: string | null
 }
 
 export type InboundSmsReviewQueue = {
@@ -128,6 +129,7 @@ export async function getInboundSmsReviewQueue(): Promise<InboundSmsReviewQueue>
       receivedAt: event.receivedAt,
       reviewReason: event.reviewReason,
       attachmentCount: storedGotoAttachments(event.attachmentMetadata).length,
+      recoveryError: event.error,
     })),
   }
 }
