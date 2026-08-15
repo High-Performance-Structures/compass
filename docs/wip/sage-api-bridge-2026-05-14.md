@@ -80,3 +80,37 @@ request ID together with the timestamp, method, target, and raw body. Compass
 consumes poll request IDs once, rejects replayed polls, and only reports the
 bridge online after a recent authenticated poll. Production and
 non-production environments must use distinct `SAGE_BRIDGE_SECRET` values.
+
+### Private poller deployment
+
+The reference poller is `scripts/sage_pay_application_poller.py`; its systemd
+units are in `deploy/systemd/`. The deployed process:
+
+- runs on a private-network bridge host, never in a browser;
+- receives the SQL password and HMAC secret from the host secret broker;
+- connects with a dedicated read-only Sage identity;
+- claims bounded Compass requests once per minute;
+- reads only the latest AIA header and its G703 lines;
+- derives total earned less retainage from populated Sage header totals when
+  Sage's `ttlern` field is empty;
+- posts a revisioned, project-scoped snapshot back to Compass; and
+- uses a process lock so overlapping timer invocations cannot duplicate work.
+
+Operational installation and health-check commands are documented in
+`deploy/systemd/README.md`. Do not place SQL credentials or the shared HMAC
+secret in a unit file, command history, repository file, or application log.
+
+### Production validation checklist
+
+Before treating a project as connected:
+
+1. Confirm the Compass project maps both Sage's stable job identity and its
+   numeric AIA job key.
+2. Request a read from the project Budget / G703 workspace.
+3. Confirm the bridge run completes and the heartbeat remains current.
+4. Reconcile header contract, completed-and-stored, retainage, prior
+   certificates, current payment, and balance totals against Sage.
+5. Reconcile the sum and count of normalized G703 lines against the Sage AIA
+   lines.
+6. Keep the imported application internal until a staff member reviews and
+   intentionally publishes it to an owner.
