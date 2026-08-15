@@ -25,12 +25,21 @@ const sageBridgePaths = [
 
 const webhookPaths = ["/api/integrations/goto/inbound"]
 
+// These routes bypass WorkOS only so their own bearer/HMAC checks can run.
+// Keep the allowlist exact: none of the route prefixes are public.
+const scheduledMaintenancePaths = [
+  "/api/email/gmail-sync",
+  "/api/operations/feedback/reconcile",
+  "/api/operations/goto/recover-message-bodies",
+]
+
 export function isPublicPath(pathname: string): boolean {
   return (
     publicPaths.includes(pathname) ||
     bridgePaths.includes(pathname) ||
     sageBridgePaths.includes(pathname) ||
     webhookPaths.includes(pathname) ||
+    scheduledMaintenancePaths.includes(pathname) ||
     pathname.startsWith("/api/auth/") ||
     pathname.startsWith("/api/integrations/jarvis/") ||
     pathname.startsWith("/api/netsuite/") ||
