@@ -9,6 +9,9 @@ import {
   isFollowUpEligibleJobStatus,
   isEligibleFollowUpOwner,
   isMeaningfulClientInteraction,
+  isBuiltInProjectJobStatusLabel,
+  isSupportedProjectJobStatusLabel,
+  normalizeProjectJobStatusLabel,
   projectNumberParts,
 } from "@/lib/project-profile"
 
@@ -29,6 +32,15 @@ describe("project profile rules", () => {
         "Bid Refused",
       ]),
     )
+  })
+
+  it("recognizes built-in status labels before an administrator creates a custom status", () => {
+    expect(isBuiltInProjectJobStatusLabel("Intake")).toBe(true)
+    expect(isBuiltInProjectJobStatusLabel(" estimate sent ")).toBe(true)
+    expect(isBuiltInProjectJobStatusLabel("Warranty")).toBe(false)
+    expect(isSupportedProjectJobStatusLabel("Warranty / punch-list")).toBe(true)
+    expect(isSupportedProjectJobStatusLabel("État")).toBe(false)
+    expect(normalizeProjectJobStatusLabel(" Warranty ")).toBe("warranty")
   })
 
   it("replaces only the address-derived number suffix", () => {

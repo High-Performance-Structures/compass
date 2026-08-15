@@ -11,6 +11,7 @@ import {
   projectExternalLinks,
   projectFollowUps,
   projectInteractions,
+  projectJobStatusLabelKeys,
   projectJobStatuses,
   projectNotes,
   projectNumberAliases,
@@ -51,8 +52,11 @@ import {
   PROJECT_CLIENT_STATUSES,
   PROJECT_JOB_STATUS_DEFINITIONS,
   buildProjectNumberWithAddressSuffix,
+  isBuiltInProjectJobStatusLabel,
   isEligibleFollowUpOwner,
   isMeaningfulClientInteraction,
+  isSupportedProjectJobStatusLabel,
+  normalizeProjectJobStatusLabel,
   projectNumberParts,
   type ProjectClientStatus,
 } from "@/lib/project-profile"
@@ -1304,6 +1308,32 @@ export async function createCustomProjectJobStatus(input: {
     const db = getDb(env.DB)
     const label = nullableText(input.label)
     if (!label) return { success: false, error: "Enter a job-status label." }
+    if (!isSupportedProjectJobStatusLabel(label)) {
+      return {
+        success: false,
+        error: "Custom job-status labels must use printable basic Latin characters.",
+      }
+    }
+    const normalizedLabel = normalizeProjectJobStatusLabel(label)
+    if (isBuiltInProjectJobStatusLabel(label)) {
+      return {
+        success: false,
+        error: "That standard status is already available in the Job status menu.",
+      }
+    }
+    const existingCustomStatuses = await db
+      .select({ statusId: projectJobStatusLabelKeys.statusId })
+      .from(projectJobStatusLabelKeys)
+      .where(
+        and(
+          eq(projectJobStatusLabelKeys.organizationId, organizationId),
+          eq(projectJobStatusLabelKeys.normalizedLabel, normalizedLabel),
+        ),
+      )
+      .limit(1)
+    if (existingCustomStatuses.length > 0) {
+      return { success: false, error: "That custom status already exists." }
+    }
     if (input.followUpCadenceDays !== null && (!Number.isInteger(input.followUpCadenceDays) || input.followUpCadenceDays < 1)) {
       return { success: false, error: "Follow-up cadence must be a positive whole number." }
     }

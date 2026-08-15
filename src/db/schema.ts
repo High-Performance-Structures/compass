@@ -561,6 +561,48 @@ export const projectJobStatuses = sqliteTable(
   ],
 )
 
+export const projectJobStatusLabelKeys = sqliteTable(
+  "project_job_status_label_keys",
+  {
+    statusId: text("status_id")
+      .primaryKey()
+      .references(() => projectJobStatuses.id, { onDelete: "cascade" }),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    normalizedLabel: text("normalized_label").notNull(),
+  },
+  (table) => [
+    uniqueIndex("project_job_status_label_keys_org_normalized_unique").on(
+      table.organizationId,
+      table.normalizedLabel,
+    ),
+  ],
+)
+
+export const projectJobStatusLabelConflicts = sqliteTable(
+  "project_job_status_label_conflicts",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id").notNull(),
+    normalizedLabel: text("normalized_label").notNull(),
+    retainedStatusId: text("retained_status_id").notNull(),
+    retainedLabel: text("retained_label").notNull(),
+    discardedStatusId: text("discarded_status_id").notNull(),
+    discardedLabel: text("discarded_label").notNull(),
+    discardedSageCode: text("discarded_sage_code"),
+    discardedFollowUpCadenceDays: integer("discarded_follow_up_cadence_days"),
+    discardedActive: integer("discarded_active", { mode: "boolean" }).notNull(),
+    createdAt: text("created_at").notNull(),
+  },
+  (table) => [
+    index("project_job_status_label_conflicts_org_idx").on(table.organizationId),
+    uniqueIndex("project_job_status_label_conflicts_discarded_unique").on(
+      table.discardedStatusId,
+    ),
+  ],
+)
+
 export const projectProfileAuditEvents = sqliteTable(
   "project_profile_audit_events",
   {
