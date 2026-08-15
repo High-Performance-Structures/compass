@@ -142,6 +142,23 @@ export const PROJECT_JOB_STATUS_DEFINITIONS = [
 
 export type ProjectJobStatusId = (typeof PROJECT_JOB_STATUS_DEFINITIONS)[number]["id"]
 
+const PROJECT_JOB_STATUS_LABEL_PATTERN = /^[\x20-\x7E]+$/
+
+export function normalizeProjectJobStatusLabel(label: string): string {
+  return label.trim().toLowerCase()
+}
+
+export function isSupportedProjectJobStatusLabel(label: string): boolean {
+  return label === label.trim() && PROJECT_JOB_STATUS_LABEL_PATTERN.test(label)
+}
+
+export function isBuiltInProjectJobStatusLabel(label: string): boolean {
+  const normalizedLabel = normalizeProjectJobStatusLabel(label)
+  return PROJECT_JOB_STATUS_DEFINITIONS.some(
+    (status) => normalizeProjectJobStatusLabel(status.label) === normalizedLabel,
+  )
+}
+
 export const FOLLOW_UP_EXCLUDED_JOB_STATUSES = [
   "complete",
   "closed",

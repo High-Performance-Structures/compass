@@ -260,10 +260,13 @@ export function ProjectInformationWorkspace({
             </select>
           </div>
           <div className="space-y-2">
-            <Label htmlFor="job-status">Job status</Label>
-            <select id="job-status" className="flex h-9 w-full rounded-md border bg-background px-3 text-sm" value={jobStatusId} onChange={(event) => setJobStatusId(event.target.value)}>
+            <Label htmlFor="job-status">Approved job status</Label>
+            <select id="job-status" aria-describedby="job-status-help" className="flex h-9 w-full rounded-md border bg-background px-3 text-sm" value={jobStatusId} onChange={(event) => setJobStatusId(event.target.value)}>
               {information.jobStatuses.map((status) => <option key={status.id} value={status.id}>{status.label}</option>)}
             </select>
+            <p id="job-status-help" className="text-xs text-muted-foreground">
+              Choose the approved operational stage for this project. {canManageJobStatuses ? "If a shared stage is genuinely missing, add it in the administrator-only section below." : "Only registry managers can add a shared status."}
+            </p>
           </div>
           {information.project.projectNumber && (
             <div className="space-y-2 md:col-span-2">
@@ -283,13 +286,15 @@ export function ProjectInformationWorkspace({
 
       {canManageJobStatuses && (
         <section className="rounded-lg border bg-card p-4 sm:p-5">
-          <h2 className="font-semibold">Governed job statuses</h2>
-          <p className="mt-1 text-sm text-muted-foreground">Administrators may add a Sage-aligned status and its follow-up cadence. Staff can select it but cannot create arbitrary values.</p>
+          <h2 className="font-semibold">Add an organization-specific status</h2>
+          <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
+            The Approved job status menu contains Compass’s standard Sage-aligned stages and any organization-specific stages already approved by a registry manager. Use this administrator-only form only when your organization has approved a genuinely missing shared stage. It becomes available to every project in this organization; it does not change Sage automatically.
+          </p>
           <form className="mt-4 grid gap-3 md:grid-cols-4" onSubmit={createJobStatus}>
-            <div className="space-y-2 md:col-span-2"><Label htmlFor="new-job-status">Status label</Label><Input id="new-job-status" value={newJobStatusLabel} onChange={(event) => setNewJobStatusLabel(event.target.value)} required /></div>
-            <div className="space-y-2"><Label htmlFor="new-job-status-code">Sage code</Label><Input id="new-job-status-code" value={newJobStatusSageCode} onChange={(event) => setNewJobStatusSageCode(event.target.value)} /></div>
-            <div className="space-y-2"><Label htmlFor="new-job-status-cadence">Cadence (business days)</Label><Input id="new-job-status-cadence" type="number" min="1" value={newJobStatusCadence} onChange={(event) => setNewJobStatusCadence(event.target.value)} required /></div>
-            <div className="md:col-span-4"><Button type="submit" disabled={pending}>Add governed status</Button></div>
+            <div className="space-y-2 md:col-span-2"><Label htmlFor="new-job-status">Custom status label</Label><Input id="new-job-status" value={newJobStatusLabel} onChange={(event) => setNewJobStatusLabel(event.target.value)} placeholder="For example: Warranty" aria-describedby="new-job-status-help" required /><p id="new-job-status-help" className="text-xs text-muted-foreground">Use printable basic Latin characters so the organization-wide label is unique.</p></div>
+            <div className="space-y-2"><Label htmlFor="new-job-status-code">Optional Sage reference code</Label><Input id="new-job-status-code" value={newJobStatusSageCode} onChange={(event) => setNewJobStatusSageCode(event.target.value)} /></div>
+            <div className="space-y-2"><Label htmlFor="new-job-status-cadence">Follow-up cadence (business days)</Label><Input id="new-job-status-cadence" type="number" min="1" value={newJobStatusCadence} onChange={(event) => setNewJobStatusCadence(event.target.value)} required /></div>
+            <div className="md:col-span-4"><Button type="submit" disabled={pending}>Add custom status</Button></div>
           </form>
         </section>
       )}

@@ -160,6 +160,21 @@ test.describe("usable Compass areas", () => {
     }
   })
 
+  test("project information explains approved job-status selection", async ({ page }) => {
+    const projectsResponse = await page.goto("/dashboard/projects")
+    await expectHealthyNavigation(page, projectsResponse, "/dashboard/projects")
+    const projectId = await findProjectId(page)
+    if (!projectId) {
+      test.skip(true, "The demo workspace does not expose a project to test")
+      return
+    }
+
+    const response = await page.goto(`/dashboard/projects/${projectId}/information`)
+    await expectHealthyNavigation(page, response, `/dashboard/projects/${projectId}/information`)
+    await expect(page.getByRole("combobox", { name: "Approved job status" })).toBeVisible()
+    await expect(page.getByText(/Choose the approved operational stage for this project/)).toBeVisible()
+  })
+
   test("timezone preference persists after reloading settings", async ({ page }) => {
     const path = "/dashboard/settings"
     const response = await page.goto(path)
