@@ -126,7 +126,7 @@ export function OfficeMaintenanceDrawer({
           <Button asChild variant="outline" className="w-full justify-start">
             <Link href="/dashboard/office-maintenance/inbound-email">
               <IconMailForward className="size-4" />
-              Review inbound email
+              Review inbound messages
             </Link>
           </Button>
           <div className="space-y-2 border p-3">
