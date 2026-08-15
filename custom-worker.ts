@@ -107,14 +107,34 @@ async function recoverGotoMessageBodies(env: CloudflareEnv): Promise<void> {
   }
 }
 
+function maintenanceErrorLabel(error: unknown): string {
+  if (!(error instanceof Error)) return "Unknown error"
+  const status = /\b[1-5]\d{2}\b/.exec(error.message)?.[0]
+  return status ? `${error.name} status ${status}` : error.name
+}
+
+async function runMaintenanceJob(
+  name: string,
+  job: () => Promise<void>
+): Promise<void> {
+  try {
+    await job()
+  } catch (error) {
+    // Jobs are independent; log only the error class/status to avoid leaking data.
+    console.error(`[scheduled] ${name} failed: ${maintenanceErrorLabel(error)}`)
+  }
+}
+
 export default {
   fetch: worker.fetch,
   async scheduled(_controller, env, ctx): Promise<void> {
     ctx.waitUntil(
       Promise.all([
-        reconcile(env),
-        syncInboundEmail(env),
-        recoverGotoMessageBodies(env),
+        runMaintenanceJob("feedback reconciliation", () => reconcile(env)),
+        runMaintenanceJob("inbound email sync", () => syncInboundEmail(env)),
+        runMaintenanceJob("GoTo message recovery", () =>
+          recoverGotoMessageBodies(env)
+        ),
       ]).then(() => undefined)
     )
   },

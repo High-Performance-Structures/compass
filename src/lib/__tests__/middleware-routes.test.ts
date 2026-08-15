@@ -43,4 +43,16 @@ describe("middleware public routes", () => {
     expect(isPublicPath("/api/integrations/goto/inbound")).toBe(true)
     expect(isPublicPath("/api/integrations/goto/setup")).toBe(false)
   })
+
+  it("allows only exact independently authenticated maintenance routes", () => {
+    expect(isPublicPath("/api/email/gmail-sync")).toBe(true)
+    expect(isPublicPath("/api/operations/feedback/reconcile")).toBe(true)
+    expect(
+      isPublicPath("/api/operations/goto/recover-message-bodies")
+    ).toBe(true)
+    expect(isPublicPath("/api/operations/goto")).toBe(false)
+    expect(
+      isPublicPath("/api/operations/goto/recover-message-bodies/extra")
+    ).toBe(false)
+  })
 })
