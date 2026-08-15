@@ -349,6 +349,15 @@ export default async function ProjectSummaryPage({
           <ProjectEmailAddressCard projectId={id} compact />
         </div>
 
+        <div className="mb-4 sm:mb-5">
+          <Link
+            href={`/dashboard/projects/${id}/information`}
+            className="inline-flex items-center rounded-md border bg-background px-3 py-2 text-sm font-medium transition-colors hover:bg-muted"
+          >
+            Project Information & Follow-up
+          </Link>
+        </div>
+
         <section className="mb-4 grid grid-cols-2 gap-x-5 gap-y-3 border-y py-3 sm:mb-5 lg:grid-cols-4">
           <Link
             href={`/dashboard/projects/${id}/schedule`}

@@ -6,6 +6,7 @@ const applicationErrorText =
 const coreAreas = [
   { name: "dashboard", path: "/dashboard" },
   { name: "projects", path: "/dashboard/projects" },
+  { name: "client follow-up", path: "/dashboard/projects/follow-up" },
   { name: "work calendar", path: "/dashboard/schedule" },
   { name: "RFIs", path: "/dashboard/rfis" },
   { name: "purchase orders", path: "/dashboard/purchase-orders" },
@@ -24,6 +25,7 @@ const projectAreas = [
   { name: "daily logs", suffix: "/daily-logs" },
   { name: "photos", suffix: "/photos" },
   { name: "contacts", suffix: "/contacts" },
+  { name: "project information", suffix: "/information" },
   { name: "financials", suffix: "/financials" },
   { name: "budget", suffix: "/budget" },
   { name: "purchase orders", suffix: "/purchase-orders" },
@@ -140,9 +142,25 @@ test.describe("usable Compass areas", () => {
     }
   })
 
-  test("timezone preference persists after reloading settings", async ({
-    page,
-  }) => {
+  test("project information and client follow-up workspaces render", async ({ page }) => {
+    const projectsResponse = await page.goto("/dashboard/projects")
+    await expectHealthyNavigation(page, projectsResponse, "/dashboard/projects")
+    const projectId = await findProjectId(page)
+    if (!projectId) {
+      test.skip(true, "The deployed demo has no read-only project fixture")
+      return
+    }
+
+    for (const path of [
+      `/dashboard/projects/${projectId}/information`,
+      "/dashboard/projects/follow-up",
+    ]) {
+      const response = await page.goto(path)
+      await expectHealthyNavigation(page, response, path)
+    }
+  })
+
+  test("timezone preference persists after reloading settings", async ({ page }) => {
     const path = "/dashboard/settings"
     const response = await page.goto(path)
     await expectHealthyNavigation(page, response, path)

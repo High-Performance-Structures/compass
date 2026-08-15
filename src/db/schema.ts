@@ -452,7 +452,11 @@ export const projects = sqliteTable("projects", {
   projectNumber: text("project_number"),
   name: text("name").notNull(),
   status: text("status").notNull().default("OPEN"),
+  // `address` remains the project/site address for compatibility with existing data.
   address: text("address"),
+  mailingAddress: text("mailing_address"),
+  clientStatus: text("client_status").notNull().default("customer"),
+  jobStatusId: text("job_status_id").notNull().default("current"),
   clientName: text("client_name"),
   projectManager: text("project_manager"),
   organizationId: text("organization_id").references(() => organizations.id),
@@ -501,6 +505,136 @@ export const projectNumberReservations = sqliteTable(
     ),
   ]
 )
+
+export const projectNumberAliases = sqliteTable(
+  "project_number_aliases",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    projectNumber: text("project_number").notNull(),
+    createdBy: text("created_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    createdAt: text("created_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("project_number_aliases_org_number_unique").on(
+      table.organizationId,
+      table.projectNumber,
+    ),
+  ],
+)
+
+export const projectJobStatuses = sqliteTable(
+  "project_job_statuses",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    label: text("label").notNull(),
+    sageCode: text("sage_code"),
+    followUpCadenceDays: integer("follow_up_cadence_days"),
+    active: integer("active", { mode: "boolean" }).notNull().default(true),
+    sortOrder: integer("sort_order").notNull().default(1000),
+    createdBy: text("created_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("project_job_statuses_org_label_unique").on(
+      table.organizationId,
+      table.label,
+    ),
+    index("project_job_statuses_org_active_idx").on(
+      table.organizationId,
+      table.active,
+      table.sortOrder,
+    ),
+  ],
+)
+
+export const projectProfileAuditEvents = sqliteTable(
+  "project_profile_audit_events",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    actorUserId: text("actor_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    eventType: text("event_type").notNull(),
+    entityType: text("entity_type").notNull(),
+    entityId: text("entity_id"),
+    beforeJson: text("before_json"),
+    afterJson: text("after_json"),
+    createdAt: text("created_at").notNull(),
+  },
+  (table) => [
+    index("project_profile_audit_events_project_created_idx").on(
+      table.projectId,
+      table.createdAt,
+    ),
+  ],
+)
+
+export const projectProfileSyncOperations = sqliteTable(
+  "project_profile_sync_operations",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    operation: text("operation").notNull(),
+    status: text("status").notNull().default("pending"),
+    payloadJson: text("payload_json").notNull(),
+    error: text("error"),
+    attempts: integer("attempts").notNull().default(0),
+    attemptedAt: text("attempted_at"),
+    completedAt: text("completed_at"),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => [
+    index("project_profile_sync_operations_project_status_idx").on(
+      table.projectId,
+      table.status,
+      table.createdAt,
+    ),
+  ],
+)
+
+export const projectFollowUps = sqliteTable("project_follow_ups", {
+  projectId: text("project_id")
+    .primaryKey()
+    .references(() => projects.id, { onDelete: "cascade" }),
+  organizationId: text("organization_id")
+    .notNull()
+    .references(() => organizations.id, { onDelete: "cascade" }),
+  nextFollowUpAt: text("next_follow_up_at").notNull(),
+  ownerUserId: text("owner_user_id").references(() => users.id, {
+    onDelete: "set null",
+  }),
+  createdBy: text("created_by").references(() => users.id, {
+    onDelete: "set null",
+  }),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+})
 
 export const activityEvents = sqliteTable(
   "activity_events",
@@ -1561,6 +1695,85 @@ export const projectContacts = sqliteTable("project_contacts", {
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
 })
+
+export const projectNotes = sqliteTable(
+  "project_notes",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    content: text("content").notNull(),
+    createdBy: text("created_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    updatedBy: text("updated_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    deletedBy: text("deleted_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+    deletedAt: text("deleted_at"),
+  },
+  (table) => [
+    index("project_notes_project_created_idx").on(
+      table.projectId,
+      table.createdAt,
+    ),
+  ],
+)
+
+export const projectInteractions = sqliteTable(
+  "project_interactions",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    projectContactId: text("project_contact_id").references(
+      () => projectContacts.id,
+      { onDelete: "set null" },
+    ),
+    interactionType: text("interaction_type").notNull(),
+    direction: text("direction").notNull(),
+    source: text("source").notNull().default("manual"),
+    qualifiesForClientTouch: integer("qualifies_for_client_touch", {
+      mode: "boolean",
+    }).notNull().default(false),
+    summary: text("summary").notNull(),
+    occurredAt: text("occurred_at").notNull(),
+    createdBy: text("created_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    updatedBy: text("updated_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    deletedBy: text("deleted_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+    deletedAt: text("deleted_at"),
+  },
+  (table) => [
+    index("project_interactions_project_occurred_idx").on(
+      table.projectId,
+      table.occurredAt,
+    ),
+    index("project_interactions_org_occurred_idx").on(
+      table.organizationId,
+      table.occurredAt,
+    ),
+  ],
+)
 
 export const projectContactSourceLinks = sqliteTable("project_contact_source_links", {
   id: text("id").primaryKey(),

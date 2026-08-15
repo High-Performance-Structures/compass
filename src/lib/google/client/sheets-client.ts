@@ -171,4 +171,38 @@ export class SheetsClient {
     const updates = objectValue(payload?.updates)
     return { updatedRange: stringValue(updates?.updatedRange) }
   }
+
+  async updateValues(
+    userEmail: string,
+    input: {
+      readonly spreadsheetId: string
+      readonly range: string
+      readonly values: ReadonlyArray<ReadonlyArray<unknown>>
+    }
+  ): Promise<GoogleSheetAppendResult> {
+    const token = await getAccessToken(this.serviceAccountKey, userEmail)
+    const params = new URLSearchParams({ valueInputOption: "RAW" })
+    const range = encodeURIComponent(input.range)
+    const response = await fetch(
+      `${GOOGLE_SHEETS_API}/${input.spreadsheetId}/values/${range}?${params.toString()}`,
+      {
+        method: "PUT",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ values: input.values }),
+      }
+    )
+
+    if (!response.ok) {
+      const body = await response.text()
+      throw new Error(
+        `Google Sheets API error (${response.status}): ${body.slice(0, 500)}`
+      )
+    }
+    const payload = objectValue(await response.json())
+    const updates = objectValue(payload?.updates)
+    return { updatedRange: stringValue(updates?.updatedRange) }
+  }
 }
