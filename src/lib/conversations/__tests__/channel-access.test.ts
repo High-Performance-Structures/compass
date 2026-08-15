@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest"
 import {
+  areArchiveMentionTypesAllowed,
   areArchiveUserMentionsInternal,
   canAccessConversationChannel,
   canCreateConversationMessage,
@@ -34,7 +35,19 @@ describe("canAccessConversationChannel", () => {
     ).toBe(false)
   })
 
-  it("continues to honor explicit channel membership for any audience", () => {
+  it("does not grant a public staff archive to an external user even with a stale membership row", () => {
+    expect(
+      canAccessConversationChannel({
+        channelId: archiveChannelId,
+        hasMembership: true,
+        isPrivate: false,
+        audience: "staff",
+        role: "client",
+      })
+    ).toBe(false)
+  })
+
+  it("continues to honor explicit channel membership for any non-archive audience", () => {
     expect(
       canAccessConversationChannel({
         channelId: "project-owner-123",
@@ -79,6 +92,32 @@ describe("canCreateConversationMessage", () => {
   it("keeps ordinary conversation root posts available", () => {
     expect(
       canCreateConversationMessage({ channelId: "project-staff-123", threadId: undefined })
+    ).toBe(true)
+  })
+})
+
+describe("areArchiveMentionTypesAllowed", () => {
+  it("rejects channel-wide mentions in an archive", () => {
+    expect(
+      areArchiveMentionTypesAllowed({
+        channelId: archiveChannelId,
+        mentionTypes: ["channel"],
+      })
+    ).toBe(false)
+    expect(
+      areArchiveMentionTypesAllowed({
+        channelId: archiveChannelId,
+        mentionTypes: ["here"],
+      })
+    ).toBe(false)
+  })
+
+  it("does not change mention types for ordinary channels", () => {
+    expect(
+      areArchiveMentionTypesAllowed({
+        channelId: "project-staff-123",
+        mentionTypes: ["channel", "here", "agent"],
+      })
     ).toBe(true)
   })
 })

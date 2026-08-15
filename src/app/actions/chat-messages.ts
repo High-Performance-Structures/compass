@@ -37,6 +37,7 @@ import { isDemoUser } from "@/lib/demo"
 import { isInternalStaffRole } from "@/lib/user-roles"
 import { requireOrg } from "@/lib/org-scope"
 import {
+  areArchiveMentionTypesAllowed,
   areArchiveUserMentionsInternal,
   canCreateConversationMessage,
   getConversationChannelAccess,
@@ -497,6 +498,18 @@ export async function sendMessage(data: {
     if (!activityChannel) {
       return { success: false, error: "Not a member of this channel" }
     }
+    const isBuildertrendArchive = isBuildertrendArchiveChannelId(data.channelId)
+    if (
+      !areArchiveMentionTypesAllowed({
+        channelId: data.channelId,
+        mentionTypes: (data.mentions ?? []).map((mention) => mention.mentionType),
+      })
+    ) {
+      return {
+        success: false,
+        error: "Buildertrend archive replies can only mention internal teammates.",
+      }
+    }
     const mentionedUserIds = Array.from(
       new Set(
         (data.mentions ?? []).flatMap((mention) =>
@@ -506,12 +519,12 @@ export async function sendMessage(data: {
         )
       )
     )
-    if (
-      isBuildertrendArchiveChannelId(data.channelId) &&
-      mentionedUserIds.length > 0
-    ) {
+    if (isBuildertrendArchive && mentionedUserIds.length > 0) {
       const mentionedUsers = await db
-        .select({ id: users.id, role: users.role })
+        .select({
+          id: users.id,
+          organizationRole: organizationMembers.role,
+        })
         .from(users)
         .innerJoin(
           organizationMembers,
@@ -525,7 +538,9 @@ export async function sendMessage(data: {
         )
       const internalMentionedUserIds = new Set(
         mentionedUsers
-          .filter((mentionedUser) => isInternalStaffRole(mentionedUser.role))
+          .filter((mentionedUser) =>
+            isInternalStaffRole(mentionedUser.organizationRole)
+          )
           .map((mentionedUser) => mentionedUser.id)
       )
       if (
@@ -793,7 +808,7 @@ export async function sendMessage(data: {
         )
       )
 
-    if (channel) {
+    if (channel && !isBuildertrendArchive) {
       try {
         await notifyChannelMessage({
           organizationId: channel.organizationId,

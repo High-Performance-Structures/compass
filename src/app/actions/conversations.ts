@@ -18,6 +18,7 @@ import { revalidatePath } from "next/cache"
 import { requireOrg } from "@/lib/org-scope"
 import { isDemoUser } from "@/lib/demo"
 import { isInternalStaffRole } from "@/lib/user-roles"
+import { isBuildertrendArchiveChannelId } from "@/lib/conversations/channel-access"
 import {
   directChannelId,
   directParticipantIds,
@@ -277,7 +278,10 @@ export async function listChannels() {
           // External project users only discover conversations they belong to.
           viewerIsInternal
             ? sql`(${channels.isPrivate} = 0 OR ${channelMembers.userId} IS NOT NULL)`
-            : sql`${channelMembers.userId} IS NOT NULL`,
+            : and(
+                sql`${channelMembers.userId} IS NOT NULL`,
+                sql`${channels.id} NOT LIKE 'bt-message-archive-%'`
+              ),
           // not archived
           sql`${channels.archivedAt} IS NULL`
         )
@@ -333,8 +337,9 @@ export async function getChannel(channelId: string) {
       .then((rows) => rows[0] ?? null)
 
     if (
-      (channel.isPrivate || !isInternalStaffRole(user.role)) &&
-      !membership
+      isBuildertrendArchiveChannelId(channel.id)
+        ? !isInternalStaffRole(user.role)
+        : (channel.isPrivate || !isInternalStaffRole(user.role)) && !membership
     ) {
       return { success: false, error: "Access denied" }
     }

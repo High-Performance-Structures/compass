@@ -26,13 +26,14 @@ export function canAccessConversationChannel(input: {
   readonly audience: string
   readonly role: string
 }): boolean {
-  return (
-    input.hasMembership ||
-    (isBuildertrendArchiveChannelId(input.channelId) &&
+  if (isBuildertrendArchiveChannelId(input.channelId)) {
+    return (
       !input.isPrivate &&
       input.audience === "staff" &&
-      isInternalStaffRole(input.role))
-  )
+      isInternalStaffRole(input.role)
+    )
+  }
+  return input.hasMembership
 }
 
 export function canCreateConversationMessage(input: {
@@ -40,6 +41,16 @@ export function canCreateConversationMessage(input: {
   readonly threadId?: string
 }): boolean {
   return !isBuildertrendArchiveChannelId(input.channelId) || Boolean(input.threadId)
+}
+
+export function areArchiveMentionTypesAllowed(input: {
+  readonly channelId: string
+  readonly mentionTypes: readonly string[]
+}): boolean {
+  return (
+    !isBuildertrendArchiveChannelId(input.channelId) ||
+    input.mentionTypes.every((mentionType) => mentionType === "user")
+  )
 }
 
 export function areArchiveUserMentionsInternal(input: {
