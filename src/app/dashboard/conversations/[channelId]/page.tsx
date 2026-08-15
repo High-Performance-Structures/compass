@@ -72,7 +72,7 @@ export default async function ChannelPage({
           <div className="border-t bg-muted/30 px-4 py-2 text-xs text-muted-foreground">
             Continue this Buildertrend archive in Compass by opening a message thread.
             Replies stay internal; original Buildertrend recipients are not notified.
-            Mention a teammate to notify them.
+            Mention an internal teammate to notify them.
           </div>
         ) : (
           <MessageComposer

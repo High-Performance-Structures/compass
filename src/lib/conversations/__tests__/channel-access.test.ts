@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest"
 import {
+  areArchiveUserMentionsInternal,
   canAccessConversationChannel,
   canCreateConversationMessage,
   isBuildertrendArchiveChannelId,
@@ -78,6 +79,35 @@ describe("canCreateConversationMessage", () => {
   it("keeps ordinary conversation root posts available", () => {
     expect(
       canCreateConversationMessage({ channelId: "project-staff-123", threadId: undefined })
+    ).toBe(true)
+  })
+})
+
+describe("areArchiveUserMentionsInternal", () => {
+  it("only permits internal teammates to receive direct mentions in an archive", () => {
+    expect(
+      areArchiveUserMentionsInternal({
+        channelId: archiveChannelId,
+        mentionedUserIds: ["staff-user"],
+        internalUserIds: new Set(["staff-user"]),
+      })
+    ).toBe(true)
+    expect(
+      areArchiveUserMentionsInternal({
+        channelId: archiveChannelId,
+        mentionedUserIds: ["external-user"],
+        internalUserIds: new Set(["staff-user"]),
+      })
+    ).toBe(false)
+  })
+
+  it("does not change direct mention behavior for ordinary channels", () => {
+    expect(
+      areArchiveUserMentionsInternal({
+        channelId: "project-staff-123",
+        mentionedUserIds: ["external-user"],
+        internalUserIds: new Set(),
+      })
     ).toBe(true)
   })
 })

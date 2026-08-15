@@ -42,6 +42,17 @@ export function canCreateConversationMessage(input: {
   return !isBuildertrendArchiveChannelId(input.channelId) || Boolean(input.threadId)
 }
 
+export function areArchiveUserMentionsInternal(input: {
+  readonly channelId: string
+  readonly mentionedUserIds: readonly string[]
+  readonly internalUserIds: ReadonlySet<string>
+}): boolean {
+  return (
+    !isBuildertrendArchiveChannelId(input.channelId) ||
+    input.mentionedUserIds.every((userId) => input.internalUserIds.has(userId))
+  )
+}
+
 export function isReplyInConversationChannel(input: {
   readonly channelId: string
   readonly parentChannelId: string | null

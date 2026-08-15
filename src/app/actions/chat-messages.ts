@@ -37,8 +37,10 @@ import { isDemoUser } from "@/lib/demo"
 import { isInternalStaffRole } from "@/lib/user-roles"
 import { requireOrg } from "@/lib/org-scope"
 import {
+  areArchiveUserMentionsInternal,
   canCreateConversationMessage,
   getConversationChannelAccess,
+  isBuildertrendArchiveChannelId,
   isReplyInConversationChannel,
 } from "@/lib/conversations/channel-access"
 import { revalidatePath } from "next/cache"
@@ -494,6 +496,50 @@ export async function sendMessage(data: {
     })
     if (!activityChannel) {
       return { success: false, error: "Not a member of this channel" }
+    }
+    const mentionedUserIds = Array.from(
+      new Set(
+        (data.mentions ?? []).flatMap((mention) =>
+          mention.mentionType === "user" && mention.targetId
+            ? [mention.targetId]
+            : []
+        )
+      )
+    )
+    if (
+      isBuildertrendArchiveChannelId(data.channelId) &&
+      mentionedUserIds.length > 0
+    ) {
+      const mentionedUsers = await db
+        .select({ id: users.id, role: users.role })
+        .from(users)
+        .innerJoin(
+          organizationMembers,
+          eq(organizationMembers.userId, users.id)
+        )
+        .where(
+          and(
+            eq(organizationMembers.organizationId, activityChannel.organizationId),
+            inArray(users.id, mentionedUserIds)
+          )
+        )
+      const internalMentionedUserIds = new Set(
+        mentionedUsers
+          .filter((mentionedUser) => isInternalStaffRole(mentionedUser.role))
+          .map((mentionedUser) => mentionedUser.id)
+      )
+      if (
+        !areArchiveUserMentionsInternal({
+          channelId: data.channelId,
+          mentionedUserIds,
+          internalUserIds: internalMentionedUserIds,
+        })
+      ) {
+        return {
+          success: false,
+          error: "Buildertrend archive replies can only mention internal teammates.",
+        }
+      }
     }
     if (!canCreateConversationMessage(data)) {
       return {
