@@ -4,6 +4,7 @@ import { eq } from "drizzle-orm"
 
 import type { getDb } from "@/db"
 import { projects } from "@/db/schema"
+import { recordActivityEvent } from "@/lib/activity-log"
 import type {
   InboundAttachment,
   InboundCandidate,
@@ -51,7 +52,7 @@ async function projectForMessage(input: {
   return match ? { kind: "found", ...match } : { kind: "missing" }
 }
 
-async function downloadAttachments(input: {
+export async function downloadGotoInboundAttachments(input: {
   readonly env: unknown
   readonly message: GotoInboundMessage
 }): Promise<readonly InboundAttachment[]> {
@@ -120,6 +121,11 @@ export async function processGotoInboundMessage(input: {
 }): Promise<{
   readonly projectId: string | null
   readonly status: "processed" | "needs_review"
+  readonly reviewReason:
+    | "missing_project"
+    | "ambiguous_project"
+    | "routing_review"
+    | null
 }> {
   const project = await projectForMessage({
     db: input.db,
@@ -131,9 +137,41 @@ export async function processGotoInboundMessage(input: {
       messageId: input.message.messageId,
       reason: project.kind,
     })
-    return { projectId: null, status: "needs_review" }
+    const senderDigits = input.message.senderPhone.replace(/\D/g, "")
+    const senderSuffix = senderDigits.slice(-4) || "unknown"
+    await recordActivityEvent({
+      db: input.db,
+      id: `project-sms-review-${input.message.messageId}`,
+      organizationId: input.organizationId,
+      projectId: null,
+      actor: {
+        id: null,
+        email: `sms:${input.message.senderPhone}`,
+        displayName: `Text sender ending ${senderSuffix}`,
+        firstName: null,
+        lastName: null,
+        role: "project_sms",
+      },
+      category: "conversation",
+      action: "project_goto_sms.needs_review",
+      entityType: "project_goto_sms",
+      entityId: input.message.messageId,
+      summary: "Incoming text message is awaiting project and destination review.",
+      metadata: {
+        reason: project.kind === "missing" ? "missing_project" : "ambiguous_project",
+        bodyRetained: true,
+        attachmentCount: input.message.attachments.length,
+      },
+      createdAt: input.message.receivedAt,
+    })
+    return {
+      projectId: null,
+      status: "needs_review",
+      reviewReason:
+        project.kind === "missing" ? "missing_project" : "ambiguous_project",
+    }
   }
-  const attachments = await downloadAttachments({
+  const attachments = await downloadGotoInboundAttachments({
     env: input.env,
     message: input.message,
   })
@@ -173,5 +211,6 @@ export async function processGotoInboundMessage(input: {
   return {
     projectId: project.id,
     status: result.kind === "needs_review" ? "needs_review" : "processed",
+    reviewReason: result.kind === "needs_review" ? "routing_review" : null,
   }
 }

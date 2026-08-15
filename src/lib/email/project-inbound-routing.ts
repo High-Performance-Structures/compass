@@ -60,6 +60,13 @@ const EMAIL_SOURCE: ProjectInboundSource = {
   label: "Email",
 }
 
+const SMS_SOURCE: ProjectInboundSource = {
+  kind: "goto_sms",
+  idPrefix: "sms",
+  sourceSystem: "goto_sms",
+  label: "Text message",
+}
+
 export type ProjectInboundRouteResult =
   | { readonly kind: "not_project_email" }
   | { readonly kind: "other_organization" }
@@ -935,12 +942,7 @@ export async function routeProjectInboundSms(input: {
       id: `project-sms-review-${input.candidate.gmailMessageId}`,
       organizationId: input.organizationId,
       projectId: input.projectId,
-      actor: inboundActor(input.candidate, {
-        kind: "goto_sms",
-        idPrefix: "sms",
-        sourceSystem: "goto_sms",
-        label: "Text message",
-      }),
+      actor: inboundActor(input.candidate, SMS_SOURCE),
       category: "conversation",
       action: "project_goto_sms.needs_review",
       entityType: "project_goto_sms",
@@ -958,11 +960,24 @@ export async function routeProjectInboundSms(input: {
     organizationId: input.organizationId,
     projectId: input.projectId,
     candidate: verifiedCandidate,
-    source: {
-      kind: "goto_sms",
-      idPrefix: "sms",
-      sourceSystem: "goto_sms",
-      label: "Text message",
-    },
+    source: SMS_SOURCE,
+  })
+}
+
+/**
+ * Route a text after a project administrator approves it in the inbound review
+ * queue. Authorization belongs to the calling server action; this deliberately
+ * bypasses automatic sender matching.
+ */
+export async function routeReviewedProjectInboundSms(input: {
+  readonly env: unknown
+  readonly db: Db
+  readonly organizationId: string
+  readonly projectId: string
+  readonly candidate: InboundCandidate
+}): Promise<ProjectInboundRouteResult> {
+  return routeVerifiedProjectInboundMessage({
+    ...input,
+    source: SMS_SOURCE,
   })
 }

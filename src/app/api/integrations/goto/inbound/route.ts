@@ -127,6 +127,10 @@ export async function POST(request: Request): Promise<Response> {
       accountKey: parsed.message.accountKey,
       ownerTouchpoint: parsed.message.ownerTouchpoint,
       senderPhone: parsed.message.senderPhone,
+      conversationId: parsed.message.conversationId,
+      messageBody: parsed.message.body,
+      attachmentMetadata: JSON.stringify(parsed.message.attachments),
+      reviewReason: null,
       status: "received",
       error: null,
       receivedAt: parsed.message.receivedAt,
@@ -152,6 +156,7 @@ export async function POST(request: Request): Promise<Response> {
         .set({
           projectId: result.projectId,
           status: result.status,
+          reviewReason: result.reviewReason,
           processedAt,
           updatedAt: processedAt,
         })
