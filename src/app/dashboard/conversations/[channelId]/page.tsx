@@ -10,6 +10,7 @@ import {
   type ProjectRecipientContact,
 } from "@/components/conversations/message-composer"
 import { ThreadPanel } from "@/components/conversations/thread-panel"
+import { isBuildertrendArchiveChannelId } from "@/lib/conversations/channel-access"
 
 export default async function ChannelPage({
   params,
@@ -27,6 +28,7 @@ export default async function ChannelPage({
   }
 
   const channel = channelResult.data
+  const isBuildertrendArchive = isBuildertrendArchiveChannelId(channel.id)
   const messages = messagesResult.success && messagesResult.data ? messagesResult.data : []
   const [contactsSummary, projects] = await Promise.all([
     channel.projectId
@@ -66,13 +68,21 @@ export default async function ChannelPage({
           channelId={channelId}
           initialMessages={messages}
         />
-        <MessageComposer
-          channelId={channelId}
-          channelName={channel.name}
-          organizationId={channel.organizationId}
-          isProjectChannel={Boolean(channel.projectId)}
-          projectRecipients={projectRecipients}
-        />
+        {isBuildertrendArchive ? (
+          <div className="border-t bg-muted/30 px-4 py-2 text-xs text-muted-foreground">
+            Continue this Buildertrend archive in Compass by opening a message thread.
+            Replies stay internal; original Buildertrend recipients are not notified.
+            Mention an internal teammate to notify them.
+          </div>
+        ) : (
+          <MessageComposer
+            channelId={channelId}
+            channelName={channel.name}
+            organizationId={channel.organizationId}
+            isProjectChannel={Boolean(channel.projectId)}
+            projectRecipients={projectRecipients}
+          />
+        )}
       </div>
       <ThreadPanel />
     </div>

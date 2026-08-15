@@ -19,6 +19,7 @@ import { requireAuth } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
 import { requireOrg } from "@/lib/org-scope"
 import { channelNotificationRecipients } from "@/lib/notifications/audience"
+import { isBuildertrendArchiveChannelId } from "@/lib/conversations/channel-access"
 
 export type ProjectMessageRecipient =
   | { readonly kind: "channel" }
@@ -180,6 +181,13 @@ export async function sendProjectMessage(input: {
     }
     if (!channel.projectId) {
       return { success: false, error: "Choose a project channel first" }
+    }
+    if (isBuildertrendArchiveChannelId(channel.id)) {
+      return {
+        success: false,
+        error:
+          "Buildertrend archive conversations are internal Compass-only. Reply in the channel instead.",
+      }
     }
 
     const sent = await sendMessage({

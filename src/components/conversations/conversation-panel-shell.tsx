@@ -15,6 +15,7 @@ import {
   conversationFullViewHref,
   conversationPanelOpenedAnnouncement,
 } from "@/lib/conversations/notification-route"
+import { isBuildertrendArchiveChannelId } from "@/lib/conversations/channel-access"
 import { useConversationPanel } from "./conversation-panel-provider"
 
 type PanelData = Extract<
@@ -281,6 +282,12 @@ function ConversationPanelContent() {
             {data.channel.archivedAt ? (
               <div className="border-t bg-muted/30 px-4 py-3 text-sm text-muted-foreground">
                 This conversation is archived.
+              </div>
+            ) : isBuildertrendArchiveChannelId(data.channel.id) ? (
+              <div className="border-t bg-muted/30 px-4 py-3 text-sm text-muted-foreground">
+                Open this conversation in the center to reply within an archived
+                Buildertrend message thread. Replies stay internal; mention an internal
+                teammate to notify them.
               </div>
             ) : (
               <MessageComposer

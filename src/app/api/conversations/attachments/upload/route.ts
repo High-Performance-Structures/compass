@@ -5,7 +5,6 @@ import { NextRequest, NextResponse } from "next/server"
 import { getDb } from "@/db"
 import {
   channels,
-  channelMembers,
   messageAttachments,
   messages,
 } from "@/db/schema-conversations"
@@ -23,6 +22,7 @@ import {
 } from "@/lib/google/config"
 import { requireOrg } from "@/lib/org-scope"
 import { requirePermission } from "@/lib/permissions"
+import { getConversationChannelAccess } from "@/lib/conversations/channel-access"
 
 const MAX_ATTACHMENT_COUNT = 10
 const MAX_ATTACHMENT_FILE_BYTES = 25 * 1024 * 1024
@@ -203,18 +203,12 @@ export async function POST(
       )
     }
 
-    const membership = await db
-      .select({ id: channelMembers.id })
-      .from(channelMembers)
-      .where(
-        and(
-          eq(channelMembers.channelId, message.channelId),
-          eq(channelMembers.userId, user.id)
-        )
-      )
-      .limit(1)
-      .then((rows) => rows[0] ?? null)
-    if (!membership) {
+    const channel = await getConversationChannelAccess({
+      db,
+      user,
+      channelId: message.channelId,
+    })
+    if (!channel) {
       return NextResponse.json(
         { success: false, error: "You do not have access to this channel." },
         { status: 403 }

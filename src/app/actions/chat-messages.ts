@@ -36,6 +36,14 @@ import {
 import { isDemoUser } from "@/lib/demo"
 import { isInternalStaffRole } from "@/lib/user-roles"
 import { requireOrg } from "@/lib/org-scope"
+import {
+  areArchiveMentionTypesAllowed,
+  areArchiveUserMentionsInternal,
+  canCreateConversationMessage,
+  getConversationChannelAccess,
+  isBuildertrendArchiveChannelId,
+  isReplyInConversationChannel,
+} from "@/lib/conversations/channel-access"
 import { revalidatePath } from "next/cache"
 import { enqueueFeedbackDeskItem } from "@/lib/jarvis/feedback-desk"
 import { linkFeedbackDeskItemToGithub } from "@/lib/jarvis/feedback-github"
@@ -482,33 +490,97 @@ export async function sendMessage(data: {
     const { env } = await getCloudflareContext()
     const db = getDb(env.DB)
 
-    // verify user is a member of the channel
-    const membership = await db
-      .select()
-      .from(channelMembers)
-      .where(
-        and(
-          eq(channelMembers.channelId, data.channelId),
-          eq(channelMembers.userId, user.id)
-        )
-      )
-      .limit(1)
-      .then((rows) => rows[0] ?? null)
-
-    if (!membership) {
+    const activityChannel = await getConversationChannelAccess({
+      db,
+      user,
+      channelId: data.channelId,
+    })
+    if (!activityChannel) {
       return { success: false, error: "Not a member of this channel" }
     }
-    const activityChannel = await db
-      .select({
-        name: channels.name,
-        organizationId: channels.organizationId,
-        projectId: channels.projectId,
+    const isBuildertrendArchive = isBuildertrendArchiveChannelId(data.channelId)
+    if (
+      !areArchiveMentionTypesAllowed({
+        channelId: data.channelId,
+        mentionTypes: (data.mentions ?? []).map((mention) => mention.mentionType),
       })
-      .from(channels)
-      .where(eq(channels.id, data.channelId))
-      .get()
-    if (!activityChannel) {
-      return { success: false, error: "Channel not found" }
+    ) {
+      return {
+        success: false,
+        error: "Buildertrend archive replies can only mention internal teammates.",
+      }
+    }
+    const mentionedUserIds = Array.from(
+      new Set(
+        (data.mentions ?? []).flatMap((mention) =>
+          mention.mentionType === "user" && mention.targetId
+            ? [mention.targetId]
+            : []
+        )
+      )
+    )
+    if (isBuildertrendArchive && mentionedUserIds.length > 0) {
+      const mentionedUsers = await db
+        .select({
+          id: users.id,
+          organizationRole: organizationMembers.role,
+        })
+        .from(users)
+        .innerJoin(
+          organizationMembers,
+          eq(organizationMembers.userId, users.id)
+        )
+        .where(
+          and(
+            eq(organizationMembers.organizationId, activityChannel.organizationId),
+            inArray(users.id, mentionedUserIds)
+          )
+        )
+      const internalMentionedUserIds = new Set(
+        mentionedUsers
+          .filter((mentionedUser) =>
+            isInternalStaffRole(mentionedUser.organizationRole)
+          )
+          .map((mentionedUser) => mentionedUser.id)
+      )
+      if (
+        !areArchiveUserMentionsInternal({
+          channelId: data.channelId,
+          mentionedUserIds,
+          internalUserIds: internalMentionedUserIds,
+        })
+      ) {
+        return {
+          success: false,
+          error: "Buildertrend archive replies can only mention internal teammates.",
+        }
+      }
+    }
+    if (!canCreateConversationMessage(data)) {
+      return {
+        success: false,
+        error: "Choose an archived Buildertrend message and reply in its thread.",
+      }
+    }
+    if (data.threadId) {
+      const parentMessage = await db
+        .select({
+          channelId: messages.channelId,
+          threadId: messages.threadId,
+        })
+        .from(messages)
+        .where(eq(messages.id, data.threadId))
+        .limit(1)
+        .then((rows) => rows[0] ?? null)
+      if (
+        !isReplyInConversationChannel({
+          channelId: data.channelId,
+          parentChannelId: parentMessage?.channelId ?? null,
+          parentThreadId: parentMessage?.threadId ?? null,
+        })
+      ) {
+        return { success: false, error: "Reply target not found in this channel" }
+      }
     }
 
     const now = new Date().toISOString()
@@ -736,7 +808,7 @@ export async function sendMessage(data: {
         )
       )
 
-    if (channel) {
+    if (channel && !isBuildertrendArchive) {
       try {
         await notifyChannelMessage({
           organizationId: channel.organizationId,
@@ -885,20 +957,12 @@ export async function getMessages(
     const { env } = await getCloudflareContext()
     const db = getDb(env.DB)
 
-    // verify user is a member
-    const membership = await db
-      .select()
-      .from(channelMembers)
-      .where(
-        and(
-          eq(channelMembers.channelId, channelId),
-          eq(channelMembers.userId, user.id)
-        )
-      )
-      .limit(1)
-      .then((rows) => rows[0] ?? null)
-
-    if (!membership) {
+    const channel = await getConversationChannelAccess({
+      db,
+      user,
+      channelId,
+    })
+    if (!channel) {
       return { success: false, error: "Not a member of this channel" }
     }
 
@@ -995,20 +1059,12 @@ export async function getThreadMessages(
       return { success: false, error: "Parent message not found" }
     }
 
-    // verify user is a member
-    const membership = await db
-      .select()
-      .from(channelMembers)
-      .where(
-        and(
-          eq(channelMembers.channelId, parentMessage.channelId),
-          eq(channelMembers.userId, user.id)
-        )
-      )
-      .limit(1)
-      .then((rows) => rows[0] ?? null)
-
-    if (!membership) {
+    const channel = await getConversationChannelAccess({
+      db,
+      user,
+      channelId: parentMessage.channelId,
+    })
+    if (!channel) {
       return { success: false, error: "Not a member of this channel" }
     }
 
@@ -1109,20 +1165,12 @@ export async function addReaction(messageId: string, emoji: string) {
       return { success: false, error: "Message not found" }
     }
 
-    // verify user is a member of the channel
-    const membership = await db
-      .select()
-      .from(channelMembers)
-      .where(
-        and(
-          eq(channelMembers.channelId, message.channelId),
-          eq(channelMembers.userId, user.id)
-        )
-      )
-      .limit(1)
-      .then((rows) => rows[0] ?? null)
-
-    if (!membership) {
+    const channel = await getConversationChannelAccess({
+      db,
+      user,
+      channelId: message.channelId,
+    })
+    if (!channel) {
       return { success: false, error: "Not a member of this channel" }
     }
 
@@ -1196,20 +1244,12 @@ export async function removeReaction(messageId: string, emoji: string) {
       return { success: false, error: "Message not found" }
     }
 
-    // verify user is a member of the channel
-    const membership = await db
-      .select()
-      .from(channelMembers)
-      .where(
-        and(
-          eq(channelMembers.channelId, message.channelId),
-          eq(channelMembers.userId, user.id)
-        )
-      )
-      .limit(1)
-      .then((rows) => rows[0] ?? null)
-
-    if (!membership) {
+    const channel = await getConversationChannelAccess({
+      db,
+      user,
+      channelId: message.channelId,
+    })
+    if (!channel) {
       return { success: false, error: "Not a member of this channel" }
     }
 
