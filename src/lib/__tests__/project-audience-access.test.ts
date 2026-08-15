@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest"
 
-import { canUseProjectAudience } from "@/lib/project-audience-access"
+import {
+  canUseActiveProjectAudience,
+  canUseProjectAudience,
+} from "@/lib/project-audience-access"
 
 describe("project audience access", () => {
   it.each(["client", "owner"])("allows %s to use the owner view", (role) => {
@@ -15,6 +18,14 @@ describe("project audience access", () => {
       expect(canUseProjectAudience(role, "owner")).toBe(false)
     }
   )
+
+  it("denies an inactive external member even with an eligible audience role", () => {
+    expect(canUseActiveProjectAudience("owner", "owner", false)).toBe(false)
+    expect(canUseActiveProjectAudience("supplier", "sub_vendor", false)).toBe(
+      false
+    )
+    expect(canUseActiveProjectAudience("owner", "owner", true)).toBe(true)
+  })
 
   it.each(["guest", "unknown", null])(
     "does not infer an audience for %s",

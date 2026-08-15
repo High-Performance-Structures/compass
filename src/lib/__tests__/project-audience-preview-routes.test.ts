@@ -31,6 +31,9 @@ describe("project audience preview routes", () => {
       projectAudienceSectionHref("project/one", "sub-vendor", "rfis")
     ).toBe("/preview/projects/project%2Fone/sub-vendor/rfis")
     expect(
+      projectAudienceSectionHref("project/one", "owner", "files")
+    ).toBe("/preview/projects/project%2Fone/owner/files")
+    expect(
       projectAudienceSectionHref("project/one", "owner", "overview")
     ).toBe("/preview/projects/project%2Fone/owner")
   })

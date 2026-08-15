@@ -50,6 +50,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { ProjectContextSwitcher } from "@/components/projects/project-context-switcher"
+import { ProjectExternalResourceSharingDialog } from "@/components/projects/project-external-resource-sharing-dialog"
 import {
   photoLinkHref,
   projectInternalPhotoUrl,
@@ -1009,8 +1010,18 @@ export function ProjectPhotoReview({
                   </label>
                 </div>
                 <div className="flex items-center justify-between gap-2 border-t px-2 py-1.5">
-                  {href ? (
-                    <a
+                  {photo.reviewStatus === "approved" && photo.driveFileId ? (
+                    <ProjectExternalResourceSharingDialog
+                      projectId={library.project.id}
+                      resourceId={photo.id}
+                      resourceType="photo"
+                    />
+                  ) : (
+                    <span className="text-xs text-muted-foreground">Approve to share</span>
+                  )}
+                  <div className="flex items-center gap-2">
+                    {href ? (
+                      <a
                       href={href}
                       target="_blank"
                       rel="noreferrer"
@@ -1031,6 +1042,7 @@ export function ProjectPhotoReview({
                   >
                     {sourceInitial(photo.sourceSystem)}
                   </span>
+                  </div>
                 </div>
               </article>
             )

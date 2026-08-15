@@ -61,6 +61,8 @@ const DEPARTMENT_CHILD_FOLDERS: Readonly<
     "11_ChangeOrders",
     "12_Purchasing",
     "Pictures",
+    "Owner Uploads",
+    "Sub-Supplier Uploads",
     "99_Archive",
   ],
   H: [
@@ -75,6 +77,8 @@ const DEPARTMENT_CHILD_FOLDERS: Readonly<
     "08_Submittals",
     "Correspondence",
     "Photos",
+    "Owner Uploads",
+    "Sub-Supplier Uploads",
     "Schedules",
   ],
   D: [
@@ -87,9 +91,19 @@ const DEPARTMENT_CHILD_FOLDERS: Readonly<
     "06_Engineering",
     "Correspondence",
     "Photos",
+    "Owner Uploads",
+    "Sub-Supplier Uploads",
     "99_Archive",
   ],
-  N: ["00_OrderDocs", "01_Quotes", "02_Invoices", "03_DeliveryDocs", "Photos"],
+  N: [
+    "00_OrderDocs",
+    "01_Quotes",
+    "02_Invoices",
+    "03_DeliveryDocs",
+    "Photos",
+    "Owner Uploads",
+    "Sub-Supplier Uploads",
+  ],
 }
 
 function cleanFolderPart(value: string | null): string | null {

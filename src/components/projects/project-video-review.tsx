@@ -21,6 +21,7 @@ import {
   type ProjectVideoItem,
   type ProjectVideoWorkspace,
 } from "@/app/actions/project-videos"
+import { ProjectExternalResourceSharingDialog } from "@/components/projects/project-external-resource-sharing-dialog"
 import { ProjectVideoUpload } from "@/components/projects/project-video-upload"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -118,6 +119,13 @@ function VideoReviewCard({
           </p>
         </div>
         <div className="flex items-center gap-2">
+          {video.publishStatus === "published" && (
+            <ProjectExternalResourceSharingDialog
+              projectId={projectId}
+              resourceId={video.id}
+              resourceType="video"
+            />
+          )}
           {video.driveUrl && (
             <Button asChild size="sm" variant="outline">
               <Link href={video.driveUrl} target="_blank" rel="noreferrer">

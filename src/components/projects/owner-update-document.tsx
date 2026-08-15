@@ -17,6 +17,7 @@ import { Button } from "@/components/ui/button"
 import { OwnerUpdateActions } from "@/components/projects/owner-update-actions"
 import { OwnerUpdateDraftEditor } from "@/components/projects/owner-update-draft-editor"
 import { OwnerUpdatePhotoTile } from "@/components/projects/owner-update-photo-tile"
+import { ownerUpdateDocumentHref } from "@/lib/owner-updates/resource-links"
 import { projectBrandFor } from "@/lib/project-branding"
 import { projectAudienceSectionHref } from "@/lib/project-audience-preview-routes"
 import { projectAudiencePhotoUrl } from "@/lib/photo-sources"
@@ -48,14 +49,6 @@ function statusLabel(value: string): string {
 
 function projectLabel(document: OwnerProjectUpdateDocument): string {
   return document.project.projectNumber ?? document.project.name
-}
-
-function ownerUpdateDocumentHref(input: {
-  readonly driveFileId: string | null
-  readonly driveUrl: string | null
-}): string | null {
-  if (input.driveFileId) return `/api/google/download/${input.driveFileId}`
-  return input.driveUrl
 }
 
 export function OwnerUpdateDocument({
@@ -353,7 +346,13 @@ export function OwnerUpdateDocument({
               </div>
               <div className="mt-3 divide-y border-y print:border-black">
                 {document.documents.map((file) => {
-                  const href = ownerUpdateDocumentHref(file)
+                  const href = ownerUpdateDocumentHref({
+                    projectId: document.project.id,
+                    photoId: file.id,
+                    viewerIsInternal: document.viewerIsInternal,
+                    driveFileId: file.driveFileId,
+                    driveUrl: file.driveUrl,
+                  })
                   return (
                     <div
                       key={file.id}

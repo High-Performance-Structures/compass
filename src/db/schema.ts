@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm"
 import {
   index,
   sqliteTable,
@@ -1809,6 +1810,119 @@ export const projectMembers = sqliteTable("project_members", {
   assignedAt: text("assigned_at").notNull(),
 })
 
+export const projectAudienceFiles = sqliteTable(
+  "project_audience_files",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    audience: text("audience").notNull(),
+    uploadedBy: text("uploaded_by")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    folderId: text("folder_id").notNull(),
+    driveFileId: text("drive_file_id"),
+    driveUrl: text("drive_url"),
+    fileName: text("file_name").notNull(),
+    mimeType: text("mime_type").notNull(),
+    fileSize: integer("file_size").notNull(),
+    uploadStatus: text("upload_status").notNull().default("pending"),
+    createdAt: text("created_at").notNull(),
+    uploadedAt: text("uploaded_at"),
+  },
+  (table) => [
+    index("project_audience_files_project_audience_created_idx").on(
+      table.projectId,
+      table.audience,
+      table.createdAt
+    ),
+    index("project_audience_files_quota_idx").on(
+      table.projectId,
+      table.uploadedBy,
+      table.createdAt
+    ),
+    uniqueIndex("project_audience_files_drive_file_id_unique").on(
+      table.driveFileId
+    ),
+  ]
+)
+
+export const projectExternalResourceGrants = sqliteTable(
+  "project_external_resource_grants",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    resourceType: text("resource_type").notNull(),
+    resourceId: text("resource_id").notNull(),
+    recipientUserId: text("recipient_user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    grantedBy: text("granted_by")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    grantedAt: text("granted_at").notNull(),
+    revokedBy: text("revoked_by").references(() => users.id, {
+      onDelete: "restrict",
+    }),
+    revokedAt: text("revoked_at"),
+  },
+  (table) => [
+    uniqueIndex("project_external_resource_grants_active_unique")
+      .on(
+        table.projectId,
+        table.resourceType,
+        table.resourceId,
+        table.recipientUserId
+      )
+      .where(sql`${table.revokedAt} IS NULL`),
+    index("project_external_resource_grants_recipient_idx").on(
+      table.recipientUserId,
+      table.projectId,
+      table.resourceType,
+      table.resourceId
+    ),
+  ]
+)
+
+export const projectExternalResourceGrantEvents = sqliteTable(
+  "project_external_resource_grant_events",
+  {
+    id: text("id").primaryKey(),
+    grantId: text("grant_id")
+      .notNull()
+      .references(() => projectExternalResourceGrants.id, { onDelete: "cascade" }),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    action: text("action").notNull(),
+    actorUserId: text("actor_user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    occurredAt: text("occurred_at").notNull(),
+  },
+  (table) => [
+    index("project_external_resource_grant_events_project_idx").on(
+      table.projectId,
+      table.occurredAt
+    ),
+    index("project_external_resource_grant_events_grant_idx").on(
+      table.grantId,
+      table.occurredAt
+    ),
+  ]
+)
 export const projectAccessInvitations = sqliteTable(
   "project_access_invitations",
   {

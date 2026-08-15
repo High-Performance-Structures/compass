@@ -6,6 +6,7 @@ import {
   IconChevronDown,
   IconClipboardCheck,
   IconEye,
+  IconFile,
   IconFileDollar,
   IconFileInvoice,
   IconHome,
@@ -78,6 +79,11 @@ const OWNER_NAVIGATION: readonly PreviewNavigationItem[] = [
     icon: <IconPhoto className="size-4" />,
   },
   {
+    label: "Files",
+    section: "files",
+    icon: <IconFile className="size-4" />,
+  },
+  {
     label: "Project Team",
     section: "team",
     icon: <IconUsers className="size-4" />,
@@ -119,6 +125,11 @@ const SUB_VENDOR_NAVIGATION: readonly PreviewNavigationItem[] = [
     label: "Photos",
     section: "photos",
     icon: <IconPhoto className="size-4" />,
+  },
+  {
+    label: "Files",
+    section: "files",
+    icon: <IconFile className="size-4" />,
   },
   {
     label: "Project Team",

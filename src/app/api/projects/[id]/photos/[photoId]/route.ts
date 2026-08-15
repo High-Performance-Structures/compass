@@ -1,11 +1,8 @@
-import { and, eq, or } from "drizzle-orm"
+import { and, eq } from "drizzle-orm"
 import { NextRequest } from "next/server"
 
 import { getDb } from "@/db"
-import {
-  dailyLogPhotos,
-  projectMembers,
-} from "@/db/schema"
+import { dailyLogPhotos } from "@/db/schema"
 import { googleAuth } from "@/db/schema-google"
 import { requireAuth } from "@/lib/auth"
 import { decrypt } from "@/lib/crypto"
@@ -15,16 +12,13 @@ import {
   getGoogleCryptoSalt,
   parseServiceAccountKey,
 } from "@/lib/google/config"
-import {
-  canUseProjectAudience,
-  type ProjectAudience,
-} from "@/lib/project-audience-access"
+import { hasActiveExternalProjectResourceGrant } from "@/lib/project-external-resource-access"
 import { assertProjectAccess } from "@/lib/project-access"
 import { isInternalStaffRole } from "@/lib/user-roles"
 
 const DEFAULT_COMPASS_GOOGLE_DOWNLOAD_USER = "compass@hps-colorado.com"
 
-function audienceValue(value: string | null): ProjectAudience | null {
+function audienceValue(value: string | null): "owner" | "sub_vendor" | null {
   if (value === "owner" || value === "sub_vendor") return value
   return null
 }
@@ -78,31 +72,19 @@ export async function GET(
       if (audience === null) {
         return new Response("Photo not found", { status: 404 })
       }
-      const [membership] = await db
-        .select({ role: projectMembers.role })
-        .from(projectMembers)
-        .where(
-          and(
-            eq(projectMembers.projectId, projectId),
-            eq(projectMembers.userId, user.id)
-          )
-        )
-        .limit(1)
-      if (!canUseProjectAudience(membership?.role ?? null, audience)) {
+      const granted = await hasActiveExternalProjectResourceGrant({
+        db,
+        organizationId: project.organizationId,
+        projectId,
+        recipientUserId: user.id,
+        resourceId: photoId,
+        resourceType: "photo",
+      })
+      if (!granted) {
         return new Response("Photo not found", { status: 404 })
       }
     }
 
-    const visibility =
-      audience === "owner"
-        ? or(
-            eq(dailyLogPhotos.ownerVisible, true),
-            eq(dailyLogPhotos.publicShareable, true)
-          )
-        : or(
-            eq(dailyLogPhotos.subVendorVisible, true),
-            eq(dailyLogPhotos.publicShareable, true)
-          )
     const [photo] = await db
       .select({
         driveFileId: dailyLogPhotos.driveFileId,
@@ -119,8 +101,7 @@ export async function GET(
           : and(
               eq(dailyLogPhotos.id, photoId),
               eq(dailyLogPhotos.projectId, projectId),
-              eq(dailyLogPhotos.reviewStatus, "approved"),
-              visibility
+              eq(dailyLogPhotos.reviewStatus, "approved")
             )
       )
       .limit(1)

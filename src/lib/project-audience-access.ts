@@ -9,3 +9,11 @@ export function canUseProjectAudience(
   }
   return projectRole === "subcontractor" || projectRole === "supplier"
 }
+
+export function canUseActiveProjectAudience(
+  projectRole: string | null,
+  audience: ProjectAudience,
+  userIsActive: boolean
+): boolean {
+  return userIsActive && canUseProjectAudience(projectRole, audience)
+}

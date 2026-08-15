@@ -1,6 +1,6 @@
 "use server"
 
-import { and, asc, desc, eq, isNull, or } from "drizzle-orm"
+import { and, asc, desc, eq, isNotNull, isNull, or } from "drizzle-orm"
 
 import { getDb } from "@/db"
 import {
@@ -10,6 +10,7 @@ import {
   ownerProjectUpdates,
   projectContacts,
   projectMembers,
+  projectExternalResourceGrants,
   projectOperations,
   projectRfis,
   projects,
@@ -23,6 +24,7 @@ import { getCloudflareContext } from "@/lib/db"
 import { requirePermission } from "@/lib/permissions"
 import { assertProjectAccess } from "@/lib/project-access"
 import {
+  canUseActiveProjectAudience,
   canUseProjectAudience,
   type ProjectAudience,
 } from "@/lib/project-audience-access"
@@ -200,7 +202,13 @@ async function verifyProjectAccess(
         )
       )
       .get()
-    if (!canUseProjectAudience(membership?.role ?? null, audience)) {
+    if (
+      !canUseActiveProjectAudience(
+        membership?.role ?? null,
+        audience,
+        user.isActive
+      )
+    ) {
       throw new Error("Project not found")
     }
   }
@@ -319,7 +327,7 @@ export async function getProjectAudiencePreview(
             }))
         )
 
-  const visibilityFilter =
+  const internalPreviewVisibilityFilter =
     audience === "owner"
       ? or(
           eq(dailyLogPhotos.ownerVisible, true),
@@ -330,33 +338,58 @@ export async function getProjectAudiencePreview(
           eq(dailyLogPhotos.publicShareable, true)
         )
 
-  const photoRows = await db
-    .select({
-      id: dailyLogPhotos.id,
-      fileName: dailyLogPhotos.fileName,
-      driveFileId: dailyLogPhotos.driveFileId,
-      thumbnailUrl: dailyLogPhotos.thumbnailUrl,
-      mimeType: dailyLogPhotos.mimeType,
-      caption: dailyLogPhotos.caption,
-      capturedAt: dailyLogPhotos.capturedAt,
-      createdAt: dailyLogPhotos.createdAt,
-      logDate: dailyLogs.logDate,
-      logWorkCompleted: dailyLogs.workCompleted,
-      logIssues: dailyLogs.issues,
-      logNotes: dailyLogs.notes,
-      photoKind: dailyLogPhotos.photoKind,
-      schedulePhaseOverride: dailyLogPhotos.schedulePhaseOverride,
-    })
-    .from(dailyLogPhotos)
-    .leftJoin(dailyLogs, eq(dailyLogPhotos.dailyLogId, dailyLogs.id))
-    .where(
-      and(
-        eq(dailyLogPhotos.projectId, projectId),
-        eq(dailyLogPhotos.reviewStatus, "approved"),
-        visibilityFilter
-      )
-    )
-    .orderBy(desc(dailyLogPhotos.capturedAt), desc(dailyLogPhotos.createdAt))
+  const photoFields = {
+    id: dailyLogPhotos.id,
+    fileName: dailyLogPhotos.fileName,
+    driveFileId: dailyLogPhotos.driveFileId,
+    thumbnailUrl: dailyLogPhotos.thumbnailUrl,
+    mimeType: dailyLogPhotos.mimeType,
+    caption: dailyLogPhotos.caption,
+    capturedAt: dailyLogPhotos.capturedAt,
+    createdAt: dailyLogPhotos.createdAt,
+    logDate: dailyLogs.logDate,
+    logWorkCompleted: dailyLogs.workCompleted,
+    logIssues: dailyLogs.issues,
+    logNotes: dailyLogs.notes,
+    photoKind: dailyLogPhotos.photoKind,
+    schedulePhaseOverride: dailyLogPhotos.schedulePhaseOverride,
+  }
+  const photoRows = viewerIsInternal
+    ? await db
+        .select(photoFields)
+        .from(dailyLogPhotos)
+        .leftJoin(dailyLogs, eq(dailyLogPhotos.dailyLogId, dailyLogs.id))
+        .where(
+          and(
+            eq(dailyLogPhotos.projectId, projectId),
+            eq(dailyLogPhotos.reviewStatus, "approved"),
+            internalPreviewVisibilityFilter
+          )
+        )
+        .orderBy(desc(dailyLogPhotos.capturedAt), desc(dailyLogPhotos.createdAt))
+    : await db
+        .select(photoFields)
+        .from(dailyLogPhotos)
+        .innerJoin(
+          projectExternalResourceGrants,
+          and(
+            eq(projectExternalResourceGrants.organizationId, organizationId),
+            eq(projectExternalResourceGrants.projectId, projectId),
+            eq(projectExternalResourceGrants.resourceType, "photo"),
+            eq(projectExternalResourceGrants.resourceId, dailyLogPhotos.id),
+            eq(projectExternalResourceGrants.recipientUserId, viewer.id),
+            isNull(projectExternalResourceGrants.revokedAt)
+          )
+        )
+        .leftJoin(dailyLogs, eq(dailyLogPhotos.dailyLogId, dailyLogs.id))
+        .where(
+          and(
+            eq(dailyLogPhotos.projectId, projectId),
+            eq(dailyLogPhotos.reviewStatus, "approved"),
+            isNotNull(dailyLogPhotos.driveFileId)
+          )
+        )
+        .orderBy(desc(dailyLogPhotos.capturedAt), desc(dailyLogPhotos.createdAt))
 
   const currentScheduleRows = await db
     .select({

@@ -1,6 +1,6 @@
 "use server"
 
-import { and, asc, desc, eq, gte, inArray } from "drizzle-orm"
+import { and, asc, desc, eq, gte, inArray, isNull } from "drizzle-orm"
 
 import { getDb } from "@/db"
 import {
@@ -9,6 +9,7 @@ import {
   dailyLogTaskLinks,
   ownerProjectUpdates,
   projectExternalLinks,
+  projectExternalResourceGrants,
   projectMembers,
   projectOperations,
   scheduleTasks,
@@ -18,6 +19,7 @@ import {
 import { requireAuth } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
 import { normalizeDailyLogNotes } from "@/lib/daily-logs/notes"
+import { canUseProjectDailyLogWorkspace } from "@/lib/daily-logs/workspace-access"
 import { isDemoUser } from "@/lib/demo"
 import { requireOrg } from "@/lib/org-scope"
 import {
@@ -42,11 +44,14 @@ import {
 } from "@/lib/owner-updates/composer"
 import { isOwnerUpdateVisibleToRole } from "@/lib/owner-updates/history"
 import { retainSelectedAndScopedRows } from "@/lib/owner-updates/photo-selection"
+import { ownerFacingExternalText } from "@/lib/owner-updates/external-content"
+import { selectedOwnerUpdateResourceIdsForViewer } from "@/lib/owner-updates/external-resource-grants"
 import { ownerUpdateIdBatches } from "@/lib/owner-updates/query-batches"
+import { projectAudiencePhotoUrl } from "@/lib/photo-sources"
 import { can } from "@/lib/permissions"
 import { requireFeaturePermission } from "@/lib/permission-enforcement"
 import { assertProjectAccess } from "@/lib/project-access"
-import { canUseProjectAudience } from "@/lib/project-audience-access"
+import { canUseActiveProjectAudience } from "@/lib/project-audience-access"
 import {
   PROJECT_TODO_RECORD_TYPES,
   isArchivedProjectTodoStatus,
@@ -313,6 +318,7 @@ type OwnerUpdateDraftResult =
 
 export type OwnerProjectUpdateDocument = {
   readonly canManage: boolean
+  readonly viewerIsInternal: boolean
   readonly viewerId: string
   readonly project: OwnerUpdateProject
   readonly update: {
@@ -535,14 +541,6 @@ function isPhotoInOwnerUpdateScope(
   )
 }
 
-function ownerFacingDailyLogNotes(value: string | null): string | null {
-  const trimmed = value?.trim() ?? ""
-  if (trimmed.length === 0) return null
-  if (trimmed.startsWith("Buildertrend title:")) return null
-  if (trimmed.includes("Buildertrend job ID:")) return null
-  return trimmed
-}
-
 function photoReviewPhotoCount(value: string | null): number | null {
   if (!value) return null
 
@@ -641,7 +639,13 @@ async function verifyOwnerUpdateReadAccess(projectId: string): Promise<{
         )
       )
       .get()
-    if (!canUseProjectAudience(membership?.role ?? null, "owner")) {
+    if (
+      !canUseActiveProjectAudience(
+        membership?.role ?? null,
+        "owner",
+        viewer.isActive
+      )
+    ) {
       throw new Error("Project not found")
     }
   }
@@ -1311,6 +1315,10 @@ export async function getOwnerUpdateProjectHeader(projectId: string): Promise<{
 export async function getProjectDailyLogWorkspace(
   projectId: string
 ): Promise<ProjectDailyLogWorkspace> {
+  const viewer = await requireAuth()
+  if (!canUseProjectDailyLogWorkspace(viewer.role)) {
+    throw new Error("Project not found")
+  }
   const db = await verifyProjectAccess(projectId)
 
   const [project] = await db
@@ -2150,6 +2158,7 @@ export async function getOwnerProjectUpdateDocument(
   const [project] = await db
     .select({
       id: projects.id,
+      organizationId: projects.organizationId,
       name: projects.name,
       projectNumber: projects.projectNumber,
       address: projects.address,
@@ -2187,7 +2196,7 @@ export async function getOwnerProjectUpdateDocument(
     )
     .limit(1)
 
-  if (!project || !update) {
+  if (!project || !update || !project.organizationId) {
     throw new Error("Owner update not found")
   }
   if (!isOwnerUpdateVisibleToRole(update.status, viewer.role)) {
@@ -2200,6 +2209,26 @@ export async function getOwnerProjectUpdateDocument(
     update.scheduleSnapshot
   )
   const canManage = can(viewer, "project", "update")
+  const viewerIsInternal = isInternalStaffRole(viewer.role)
+  const activePhotoGrantRows = viewerIsInternal
+    ? []
+    : await db
+        .select({ resourceId: projectExternalResourceGrants.resourceId })
+        .from(projectExternalResourceGrants)
+        .where(
+          and(
+            eq(projectExternalResourceGrants.organizationId, project.organizationId),
+            eq(projectExternalResourceGrants.projectId, projectId),
+            eq(projectExternalResourceGrants.resourceType, "photo"),
+            eq(projectExternalResourceGrants.recipientUserId, viewer.id),
+            isNull(projectExternalResourceGrants.revokedAt)
+          )
+        )
+  const selectedPhotoIdsForViewer = selectedOwnerUpdateResourceIdsForViewer({
+    isInternal: viewerIsInternal,
+    grantedResourceIds: activePhotoGrantRows.map((grant) => grant.resourceId),
+    selectedResourceIds: selectedPhotoIds,
+  })
 
   const allLogRows = await db
     .select({
@@ -2268,13 +2297,15 @@ export async function getOwnerProjectUpdateDocument(
       )
       .map((row) => row.id)
   )
+  const ownerFacingText = (value: string | null): string | null =>
+    viewerIsInternal ? value : ownerFacingExternalText(value)
   const mapDailyLog = (
     row: (typeof allLogRows)[number]
   ): OwnerUpdateDailyLog => ({
       id: row.id,
       sourceSystem: row.sourceSystem,
       logDate: row.logDate,
-      workCompleted: row.workCompleted,
+      workCompleted: ownerFacingText(row.workCompleted) ?? "",
       weather: [
         row.weatherConditions,
         row.weatherTempF === null ? null : `${row.weatherTempF}F`,
@@ -2282,9 +2313,9 @@ export async function getOwnerProjectUpdateDocument(
         .filter((part) => part !== null && part.length > 0)
         .join(", ") || null,
       manpower: row.crewPresent,
-      safetyNotes: row.safetyIncidents,
-      issues: row.issues,
-      nextSteps: ownerFacingDailyLogNotes(
+      safetyNotes: ownerFacingText(row.safetyIncidents),
+      issues: ownerFacingText(row.issues),
+      nextSteps: ownerFacingText(
         normalizeDailyLogNotes(row.workCompleted, row.notes)
       ),
       authorName: displayName({
@@ -2333,21 +2364,22 @@ export async function getOwnerProjectUpdateDocument(
       row.thumbnailUrl === null && row.mimeType?.startsWith("image/") !== true
   )
 
-  const selectedImageRows = selectRowsByIdOrder(imageRows, selectedPhotoIds)
+  const selectedImageRows = selectRowsByIdOrder(
+    imageRows,
+    selectedPhotoIdsForViewer
+  )
   const photosForUpdate = selectedImageRows
-    .filter(
-      (row) =>
-        update.status !== "published" ||
-        (row.reviewStatus === "approved" && row.ownerVisible)
-    )
+    .filter((row) => update.status !== "published" || row.reviewStatus === "approved")
     .map((row) => ({
       id: row.id,
       sourceSystem: row.sourceSystem,
       fileName: row.fileName,
       mimeType: row.mimeType,
-      driveUrl: row.driveUrl,
+      driveUrl: viewerIsInternal ? row.driveUrl : null,
       driveFileId: row.driveFileId,
-      thumbnailUrl: row.thumbnailUrl,
+      thumbnailUrl: viewerIsInternal
+        ? row.thumbnailUrl
+        : projectAudiencePhotoUrl(projectId, row.id, "owner"),
       caption: row.caption,
       capturedAt: row.capturedAt,
       reviewStatus: row.reviewStatus,
@@ -2383,9 +2415,16 @@ export async function getOwnerProjectUpdateDocument(
         }))
     : []
 
-  const selectedDocumentIds = composerSnapshot.documents.map(
-    (document) => document.id
-  )
+  const selectedDocumentIds = selectedOwnerUpdateResourceIdsForViewer({
+    isInternal: viewerIsInternal,
+    grantedResourceIds: activePhotoGrantRows.map((grant) => grant.resourceId),
+    selectedResourceIds: composerSnapshot.documents.map((document) => document.id),
+  })
+  const visibleDocuments = composerSnapshot.documents
+    .filter((document) => selectedDocumentIds.includes(document.id))
+    .map((document) =>
+      viewerIsInternal ? document : { ...document, driveUrl: null }
+    )
   const selectedDocumentIdSet = new Set(selectedDocumentIds)
   const scopedDocumentRows = documentRows.filter(
     (row) =>
@@ -2401,7 +2440,7 @@ export async function getOwnerProjectUpdateDocument(
   )
   const availableDocuments = canManage
     ? [
-        ...composerSnapshot.documents,
+        ...visibleDocuments,
         ...scopedDocumentRows.map(ownerUpdateDocumentSelection),
       ].slice(0, 120)
     : []
@@ -2451,13 +2490,14 @@ export async function getOwnerProjectUpdateDocument(
 
   return {
     canManage,
+    viewerIsInternal,
     viewerId: viewer.id,
     project,
     update: {
       id: update.id,
       title: update.title,
       updateDate: update.updateDate,
-      summary: update.summary,
+      summary: ownerFacingText(update.summary) ?? "",
       status: update.status,
       channel: update.channel,
       publishedAt: update.publishedAt,
@@ -2473,7 +2513,7 @@ export async function getOwnerProjectUpdateDocument(
     availableDailyLogs,
     photos: photosForUpdate,
     availablePhotos,
-    documents: composerSnapshot.documents,
+    documents: visibleDocuments,
     availableDocuments,
     photoFolder:
       photoFolder

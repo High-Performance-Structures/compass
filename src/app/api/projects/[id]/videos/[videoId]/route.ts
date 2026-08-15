@@ -2,21 +2,13 @@ import { and, eq } from "drizzle-orm"
 import { type NextRequest } from "next/server"
 
 import { getDb } from "@/db"
-import { projectMembers, projectVideos } from "@/db/schema"
+import { projectVideos } from "@/db/schema"
 import { requireAuth } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
 import { downloadProjectVideoFile } from "@/lib/email/project-video-attachments"
-import {
-  canUseProjectAudience,
-  type ProjectAudience,
-} from "@/lib/project-audience-access"
+import { hasActiveExternalProjectResourceGrant } from "@/lib/project-external-resource-access"
 import { assertProjectAccess } from "@/lib/project-access"
 import { isInternalStaffRole } from "@/lib/user-roles"
-
-function audienceValue(value: string | null): ProjectAudience | null {
-  if (value === "owner" || value === "sub_vendor") return value
-  return null
-}
 
 function safeFileName(value: string): string {
   return value.replace(/["\r\n]/g, "_")
@@ -36,9 +28,6 @@ export async function GET(
   try {
     const user = await requireAuth()
     const { id: projectId, videoId } = await params
-    const requestedAudience = audienceValue(
-      request.nextUrl.searchParams.get("audience")
-    )
     const { env } = await getCloudflareContext()
     const db = getDb(env.DB)
     const project = await assertProjectAccess(db, user, projectId)
@@ -47,20 +36,15 @@ export async function GET(
     }
     const internal = isInternalStaffRole(user.role)
     if (!internal) {
-      if (!requestedAudience) {
-        return new Response("Video not found", { status: 404 })
-      }
-      const [membership] = await db
-        .select({ role: projectMembers.role })
-        .from(projectMembers)
-        .where(
-          and(
-            eq(projectMembers.projectId, projectId),
-            eq(projectMembers.userId, user.id)
-          )
-        )
-        .limit(1)
-      if (!canUseProjectAudience(membership?.role ?? null, requestedAudience)) {
+      const granted = await hasActiveExternalProjectResourceGrant({
+        db,
+        organizationId: project.organizationId,
+        projectId,
+        recipientUserId: user.id,
+        resourceId: videoId,
+        resourceType: "video",
+      })
+      if (!granted) {
         return new Response("Video not found", { status: 404 })
       }
     }
@@ -82,16 +66,15 @@ export async function GET(
         )
       )
       .limit(1)
-    const allowedExternally =
-      video?.publishStatus === "published" &&
-      (video.audience === requestedAudience || video.audience === "public")
-    if (!video || (!internal && !allowedExternally)) {
+    const externallyStreamable =
+      video?.publishStatus === "published" && video.driveFileId !== null
+    if (!video || (!internal && !externallyStreamable)) {
       return new Response("Video not found", { status: 404 })
     }
-    // YouTube's published copy is transcoded for reliable browser audio/video.
-    // Keep this authenticated Compass URL stable so existing Daily Log links
-    // also benefit from the compatible playback copy.
+    // Non-public external playback is deliberately streamed through Compass.
+    // Redirecting to an unlisted provider URL would let a recipient forward it.
     if (
+      internal &&
       video.publishStatus === "published" &&
       video.youtubeUrl &&
       video.audience !== "staff" &&

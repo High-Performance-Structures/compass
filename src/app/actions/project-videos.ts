@@ -24,6 +24,7 @@ import {
 } from "@/lib/google/youtube"
 import { requireOrg } from "@/lib/org-scope"
 import { requireFeaturePermission } from "@/lib/permission-enforcement"
+import { projectVideoDailyLogShareUrl } from "@/lib/videos/external-share"
 import {
   isYoutubeApiAuditApproved,
   youtubePrivacyForAudience,
@@ -522,10 +523,10 @@ export async function publishProjectVideo(input: {
         .from(dailyLogs)
         .where(eq(dailyLogs.id, video.linkedEntityId))
         .limit(1)
-      const shareUrl =
-        video.compassAudience === "staff"
-          ? `https://compass.openrangeconstruction.ltd/api/projects/${encodeURIComponent(input.projectId)}/videos/${encodeURIComponent(video.id)}`
-          : uploaded.url
+      const shareUrl = projectVideoDailyLogShareUrl({
+        projectId: input.projectId,
+        videoId: video.id,
+      })
       const notes = [
         dailyLog?.notes?.replace(
           "The share link will appear here after publication.",
