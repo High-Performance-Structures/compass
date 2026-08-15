@@ -10,6 +10,7 @@ import {
   projectAccessInvitations,
   projectContacts,
   projectContactSourceLinks,
+  projectProfileSyncOperations,
   projectMembers,
   projects,
   users,
@@ -405,8 +406,46 @@ function revalidateContactPaths(projectId: string): void {
   revalidatePath(`/dashboard/projects/${projectId}`)
   revalidatePath(`/dashboard/projects/${projectId}/contacts`)
   revalidatePath(`/dashboard/projects/${projectId}/contacts/review`)
+  revalidatePath(`/dashboard/projects/${projectId}/information`)
   revalidatePath(`/dashboard/projects/${projectId}/rfis`)
   revalidatePath(`/dashboard/projects/${projectId}/purchase-orders`)
+}
+
+async function queueProjectContactTrackerRefresh(input: {
+  readonly db: Awaited<ReturnType<typeof getDb>>
+  readonly organizationId: string
+  readonly projectId: string
+}): Promise<void> {
+  const [project] = await input.db
+    .select({ projectNumber: projects.projectNumber })
+    .from(projects)
+    .where(
+      and(
+        eq(projects.id, input.projectId),
+        eq(projects.organizationId, input.organizationId),
+      ),
+    )
+    .limit(1)
+  if (!project?.projectNumber) return
+
+  const now = new Date().toISOString()
+  await input.db.insert(projectProfileSyncOperations).values({
+    id: crypto.randomUUID(),
+    organizationId: input.organizationId,
+    projectId: input.projectId,
+    operation: "tracker_row_update",
+    status: "pending",
+    payloadJson: JSON.stringify({
+      previousProjectNumber: project.projectNumber,
+      projectNumber: project.projectNumber,
+    }),
+    error: null,
+    attempts: 0,
+    attemptedAt: null,
+    completedAt: null,
+    createdAt: now,
+    updatedAt: now,
+  })
 }
 
 function sourceIdPart(value: string): string {
@@ -1030,6 +1069,11 @@ export async function saveProjectContact(
       })
     }
 
+    await queueProjectContactTrackerRefresh({
+      db,
+      organizationId: orgId,
+      projectId: input.projectId,
+    })
     revalidateContactPaths(input.projectId)
     return { success: true, contactId }
   } catch (error) {
@@ -1210,6 +1254,11 @@ export async function removeProjectContact(
       }
     }
 
+    await queueProjectContactTrackerRefresh({
+      db,
+      organizationId: orgId,
+      projectId,
+    })
     revalidateContactPaths(projectId)
     return { success: true, contactId }
   } catch (error) {

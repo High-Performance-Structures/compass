@@ -6,6 +6,8 @@ import {
   buildProjectRegistryRow,
   departmentTrackingDestination,
   locateProjectTrackerLayout,
+  updateProjectTrackerRow,
+  patchProjectTrackerCells,
   type ProjectIntakeTrackerInput,
 } from "@/lib/google/project-intake-tracker"
 import { resolveProjectIntakeIntegrationEmail } from "@/lib/google/project-intake-identity"
@@ -259,5 +261,89 @@ describe("Google Developer-folder project tracking intake", () => {
         driveFolderUrl: null,
       })[0]
     ).toBe("O-211-33A")
+  })
+
+  it("creates patches only for explicitly mapped tracker cells", () => {
+    const layout = locateProjectTrackerLayout([
+      ["Project Number", "Client", "Project Address", "Status", "Created By"],
+    ])
+    expect(layout).not.toBeNull()
+    if (!layout) return
+
+    expect(
+      patchProjectTrackerCells({
+        layout,
+        values: {
+          "project number": "H-430-2150",
+          client: "New Client",
+          "project address": "2150 Grafton Dr.",
+        },
+      }),
+    ).toEqual([
+      { column: 0, value: "H-430-2150" },
+      { column: 1, value: "New Client" },
+      { column: 2, value: "2150 Grafton Dr." },
+    ])
+  })
+
+  it("patches mapped cells using either project number after a partial retry", async () => {
+    const rows = [
+      ["Project Number", "Client", "Project Address", "Status"],
+      ["H-430-2150", "Taylor", "Unknown", "Current"],
+    ]
+    const layout = locateProjectTrackerLayout(rows)
+    expect(layout).not.toBeNull()
+    if (!layout) return
+
+    const writes: {
+      readonly userEmail: string
+      readonly spreadsheetId: string
+      readonly range: string
+      readonly values: ReadonlyArray<ReadonlyArray<unknown>>
+    }[] = []
+    const result = await updateProjectTrackerRow({
+      sheets: {
+        async updateValues(userEmail, input) {
+          writes.push({ userEmail, ...input })
+          return { updatedRange: input.range }
+        },
+      },
+      googleEmail: "integration@example.com",
+      spreadsheetId: "tracker-id",
+      sheetTitle: "Tracker",
+      rows,
+      layout,
+      currentProjectNumbers: ["H-430-00", "H-430-2150"],
+      patches: patchProjectTrackerCells({
+        layout,
+        values: {
+          "project number": "H-430-2150",
+          client: "Taylor",
+          "project address": "2150 Grafton Dr.",
+        },
+      }),
+    })
+
+    expect(result.rowNumber).toBe(2)
+    expect(writes).toEqual([
+      {
+        userEmail: "integration@example.com",
+        spreadsheetId: "tracker-id",
+        range: "'Tracker'!A2",
+        values: [["H-430-2150"]],
+      },
+      {
+        userEmail: "integration@example.com",
+        spreadsheetId: "tracker-id",
+        range: "'Tracker'!B2",
+        values: [["Taylor"]],
+      },
+      {
+        userEmail: "integration@example.com",
+        spreadsheetId: "tracker-id",
+        range: "'Tracker'!C2",
+        values: [["2150 Grafton Dr."]],
+      },
+    ])
   })
 })

@@ -301,7 +301,7 @@ export async function updateProjectRegistry(
     const db = getDb(env.DB)
 
     const existing = await db
-      .select({ id: projects.id })
+      .select({ id: projects.id, projectNumber: projects.projectNumber })
       .from(projects)
       .where(
         and(eq(projects.id, projectId), eq(projects.organizationId, orgId))
@@ -318,6 +318,12 @@ export async function updateProjectRegistry(
       return projectNumberResult
     }
     const projectNumber = projectNumberResult
+    if (projectNumber !== existing[0].projectNumber) {
+      return {
+        success: false,
+        error: "Project number corrections must use Project Information so Drive and tracker links remain synchronized.",
+      }
+    }
     const status = optionValue(
       formData,
       "status",

@@ -32,6 +32,17 @@ export type ProjectTrackingDestination = {
   readonly divisionLabel: "ORC" | "HPS" | "NuTech" | "Design"
 }
 
+export type ProjectTrackerWriteClient = {
+  readonly updateValues: (
+    userEmail: string,
+    input: {
+      readonly spreadsheetId: string
+      readonly range: string
+      readonly values: ReadonlyArray<ReadonlyArray<unknown>>
+    },
+  ) => Promise<{ readonly updatedRange: string | null }>
+}
+
 export const PROJECT_REGISTRY_DESTINATION = {
   spreadsheetId: "1Gwmxfm2wzVgrmov9qSxnFxyX_WJDa5gPbk6VgoZI46I",
   workbookTitle: "Project Registry",
@@ -118,6 +129,77 @@ export function projectRowNumber(
     if (value.toUpperCase() === normalizedProjectNumber) return rowIndex + 1
   }
   return null
+}
+
+function spreadsheetColumnName(columnCount: number): string {
+  if (!Number.isInteger(columnCount) || columnCount < 1) {
+    throw new Error("Tracker row needs at least one column.")
+  }
+
+  let remaining = columnCount
+  let label = ""
+  while (remaining > 0) {
+    remaining -= 1
+    label = String.fromCharCode(65 + (remaining % 26)) + label
+    remaining = Math.floor(remaining / 26)
+  }
+  return label
+}
+
+function quotedSheetRange(sheetTitle: string, range: string): string {
+  return `'${sheetTitle.replaceAll("'", "''")}'!${range}`
+}
+
+export type ProjectTrackerCellPatch = {
+  readonly column: number
+  readonly value: string
+}
+
+export function patchProjectTrackerCells(input: {
+  readonly layout: ProjectTrackerLayout
+  readonly values: Readonly<Record<string, string>>
+}): readonly ProjectTrackerCellPatch[] {
+  const normalizedValues = new Map(
+    Object.entries(input.values).map(([header, value]) => [normalizedHeader(header), value]),
+  )
+  return input.layout.headers.flatMap((header, column) => {
+    const value = normalizedValues.get(normalizedHeader(header))
+    return value === undefined ? [] : [{ column, value }]
+  })
+}
+
+export async function updateProjectTrackerRow(input: {
+  readonly sheets: ProjectTrackerWriteClient
+  readonly googleEmail: string
+  readonly spreadsheetId: string
+  readonly sheetTitle: string
+  readonly rows: ReadonlyArray<ReadonlyArray<unknown>>
+  readonly layout: ProjectTrackerLayout
+  readonly currentProjectNumbers: readonly string[]
+  readonly patches: readonly ProjectTrackerCellPatch[]
+}): Promise<{ readonly updatedRange: string | null; readonly rowNumber: number }> {
+  const rowNumber = input.currentProjectNumbers
+    .map((projectNumber) => projectRowNumber(input.rows, input.layout, projectNumber))
+    .find((candidate): candidate is number => candidate !== null)
+  if (rowNumber === undefined) {
+    throw new Error(
+      `Project ${input.currentProjectNumbers.join(" or ")} is not present in ${input.sheetTitle}.`,
+    )
+  }
+
+  let updatedRange: string | null = null
+  for (const patch of input.patches) {
+    const result = await input.sheets.updateValues(input.googleEmail, {
+      spreadsheetId: input.spreadsheetId,
+      range: quotedSheetRange(
+        input.sheetTitle,
+        `${spreadsheetColumnName(patch.column + 1)}${rowNumber}`,
+      ),
+      values: [[patch.value]],
+    })
+    updatedRange = result.updatedRange
+  }
+  return { updatedRange, rowNumber }
 }
 
 export function allocateProjectNumber(input: {

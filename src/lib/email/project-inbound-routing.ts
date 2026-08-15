@@ -11,6 +11,7 @@ import {
   projectContacts,
   projectChangeOrderHistory,
   projectChangeOrders,
+  projectInteractions,
   projectOperations,
   projectRfis,
   projectVideos,
@@ -35,6 +36,7 @@ import {
 import { storeDailyLogEmailAttachments } from "@/lib/email/project-email-attachments"
 import { storeProjectVideoAttachment } from "@/lib/email/project-video-attachments"
 import { projectDepartment } from "@/lib/project-branding"
+import { isMeaningfulClientInteraction } from "@/lib/project-profile"
 import { youtubeChannelForDepartment } from "@/lib/videos/channel-routing"
 import {
   isYoutubeApiAuditApproved,
@@ -101,6 +103,58 @@ function senderLabel(candidate: InboundCandidate): string {
   return candidate.fromName?.trim() || candidate.fromAddress
 }
 
+async function recordVerifiedInboundClientInteraction(input: {
+  readonly db: Db
+  readonly organizationId: string
+  readonly projectId: string
+  readonly candidate: InboundCandidate
+  readonly source: ProjectInboundSource
+}): Promise<void> {
+  const title = projectEmailTitle(input.candidate.subject) || input.candidate.subject
+  const [contact] = await input.db
+    .select({ id: projectContacts.id })
+    .from(projectContacts)
+    .where(
+      and(
+        eq(projectContacts.projectId, input.projectId),
+        eq(projectContacts.contactType, "owner"),
+        eq(projectContacts.active, true),
+        sql`lower(${projectContacts.email}) = ${input.candidate.fromAddress.trim().toLowerCase()}`,
+      ),
+    )
+    .limit(1)
+  if (!contact) return
+  const interactionType = input.source.kind === "email" ? "email" : "sms"
+  if (!isMeaningfulClientInteraction({
+    interactionType,
+    direction: "inbound",
+    source: input.source.sourceSystem,
+  })) {
+    throw new Error("Verified inbound route has an unsupported client interaction type.")
+  }
+  const summary = `${input.source.label} from ${senderLabel(input.candidate)}: ${title}`
+  await input.db
+    .insert(projectInteractions)
+    .values({
+      id: `project-interaction-${input.source.idPrefix}-${input.candidate.gmailMessageId}`,
+      organizationId: input.organizationId,
+      projectId: input.projectId,
+      projectContactId: contact.id,
+      interactionType,
+      direction: "inbound",
+      source: input.source.sourceSystem,
+      qualifiesForClientTouch: true,
+      summary,
+      occurredAt: input.candidate.receivedAt,
+      createdBy: null,
+      updatedBy: null,
+      deletedBy: null,
+      createdAt: input.candidate.receivedAt,
+      updatedAt: input.candidate.receivedAt,
+      deletedAt: null,
+    })
+    .onConflictDoNothing()
+}
 function inboundActor(
   candidate: InboundCandidate,
   source: ProjectInboundSource
@@ -728,6 +782,13 @@ async function routeVerifiedProjectInboundMessage(input: {
       attachmentCount: input.candidate.attachments.length,
     },
     createdAt: input.candidate.receivedAt,
+  })
+  await recordVerifiedInboundClientInteraction({
+    db: input.db,
+    organizationId: input.organizationId,
+    projectId,
+    candidate: input.candidate,
+    source: input.source,
   })
   return {
     kind: "routed",
