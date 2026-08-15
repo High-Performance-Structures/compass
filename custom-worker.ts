@@ -8,6 +8,8 @@ import {
 
 const RECONCILE_TARGET = "/api/operations/feedback/reconcile"
 const EMAIL_SYNC_TARGET = "/api/email/gmail-sync"
+const GOTO_MESSAGE_RECOVERY_TARGET =
+  "/api/operations/goto/recover-message-bodies"
 
 async function reconcile(env: CloudflareEnv): Promise<void> {
   const body = JSON.stringify({ source: "cron" })
@@ -75,9 +77,45 @@ async function syncInboundEmail(env: CloudflareEnv): Promise<void> {
   }
 }
 
+async function recoverGotoMessageBodies(env: CloudflareEnv): Promise<void> {
+  const body = ""
+  const timestamp = String(Math.floor(Date.now() / 1_000))
+  const secret = getJarvisEnvValue(env, "JARVIS_BRIDGE_SECRET")
+  if (!secret) throw new Error("JARVIS_BRIDGE_SECRET is required")
+  const signature = await createJarvisSignature(
+    secret,
+    timestamp,
+    "POST",
+    GOTO_MESSAGE_RECOVERY_TARGET,
+    body
+  )
+  const worker = env.WORKER_SELF_REFERENCE
+  if (!worker) throw new Error("WORKER_SELF_REFERENCE is required")
+  const response = await worker.fetch(
+    `https://compass.internal${GOTO_MESSAGE_RECOVERY_TARGET}`,
+    {
+      method: "POST",
+      headers: {
+        "X-Compass-Timestamp": timestamp,
+        "X-Compass-Signature": signature,
+      },
+      body,
+    }
+  )
+  if (!response.ok) {
+    throw new Error(`GoTo message recovery failed with ${response.status}`)
+  }
+}
+
 export default {
   fetch: worker.fetch,
   async scheduled(_controller, env, ctx): Promise<void> {
-    ctx.waitUntil(Promise.all([reconcile(env), syncInboundEmail(env)]).then(() => undefined))
+    ctx.waitUntil(
+      Promise.all([
+        reconcile(env),
+        syncInboundEmail(env),
+        recoverGotoMessageBodies(env),
+      ]).then(() => undefined)
+    )
   },
 } satisfies ExportedHandler<CloudflareEnv>
