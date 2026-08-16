@@ -74,6 +74,36 @@ export const cherishPulseResponses = sqliteTable("cherish_pulse_responses", {
   updatedAt: text("updated_at").notNull(),
 })
 
+export const staffBoardPosts = sqliteTable(
+  "staff_board_posts",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    authorId: text("author_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    title: text("title").notNull(),
+    body: text("body").notNull(),
+    isPinned: integer("is_pinned", { mode: "boolean" }).notNull().default(false),
+    archivedAt: text("archived_at"),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => [
+    index("staff_board_posts_org_created_idx").on(
+      table.organizationId,
+      table.createdAt
+    ),
+    index("staff_board_posts_org_pinned_idx").on(
+      table.organizationId,
+      table.isPinned,
+      table.createdAt
+    ),
+  ]
+)
+
 export const notificationPreferences = sqliteTable("notification_preferences", {
   userId: text("user_id")
     .primaryKey()

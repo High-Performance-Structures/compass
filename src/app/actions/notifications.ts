@@ -1,6 +1,6 @@
 "use server"
 
-import { and, desc, eq, isNull } from "drizzle-orm"
+import { and, desc, eq, isNull, ne, or } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
 import { getDb } from "@/db"
@@ -23,6 +23,7 @@ import {
 } from "@/lib/notifications/sms-consent"
 import { isValidSmsQuietHoursTime } from "@/lib/notifications/sms-policy"
 import { requireOrg } from "@/lib/org-scope"
+import { hasActiveStaffBoardOrganization } from "@/lib/staff-board"
 import { isValidTimeZone } from "@/lib/work-calendar"
 
 export type NotificationPreferenceState = {
@@ -427,6 +428,17 @@ export async function getNotificationCenter(): Promise<NotificationCenterResult>
     const user = await requireAuth()
     const { env } = await getCloudflareContext()
     const db = getDb(env.DB)
+    const canReadStaffBoardNotifications = await hasActiveStaffBoardOrganization(user)
+    const staffBoardOrganizationId = canReadStaffBoardNotifications
+      ? requireOrg(user)
+      : null
+    const staffBoardNotificationScope =
+      staffBoardOrganizationId === null
+        ? ne(notificationEvents.eventType, "staff_board.post_created")
+        : or(
+            ne(notificationEvents.eventType, "staff_board.post_created"),
+            eq(notificationEvents.organizationId, staffBoardOrganizationId)
+          )
 
     const rows = await db
       .select({
@@ -450,7 +462,8 @@ export async function getNotificationCenter(): Promise<NotificationCenterResult>
         and(
           eq(notificationRecipients.userId, user.id),
           eq(notificationRecipients.inApp, true),
-          isNull(notificationRecipients.dismissedAt)
+          isNull(notificationRecipients.dismissedAt),
+          staffBoardNotificationScope
         )
       )
       .orderBy(desc(notificationRecipients.createdAt))
