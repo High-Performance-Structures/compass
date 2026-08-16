@@ -7,16 +7,19 @@ import {
 
 describe("user photo storage", () => {
   it("keeps dashboard and sidebar photos independent", () => {
-    const email = "person@example.com"
+    const scope = {
+      organizationId: "org-1",
+      userId: "user-1",
+    }
 
-    expect(dashboardDeskPhotoStorageKey(email)).toBe(
-      "compass-desk-photo:person@example.com"
+    expect(dashboardDeskPhotoStorageKey(scope)).toBe(
+      "compass-workspace-photo:org-1:user-1:dashboard"
     )
-    expect(sidebarDeskPhotoStorageKey(email)).toBe(
-      "compass-sidebar-desk-photo:person@example.com"
+    expect(sidebarDeskPhotoStorageKey(scope)).toBe(
+      "compass-workspace-photo:org-1:user-1:sidebar"
     )
-    expect(sidebarDeskPhotoStorageKey(email)).not.toBe(
-      dashboardDeskPhotoStorageKey(email)
+    expect(sidebarDeskPhotoStorageKey(scope)).not.toBe(
+      dashboardDeskPhotoStorageKey(scope)
     )
   })
 })

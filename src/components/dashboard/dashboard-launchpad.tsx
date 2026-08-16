@@ -4,7 +4,6 @@ import {
   useCallback,
   useEffect,
   useMemo,
-  useRef,
   useState,
   useTransition,
 } from "react"
@@ -79,6 +78,11 @@ import {
   type TeamAvailabilityMember,
 } from "@/lib/dashboard/office-status"
 import { dashboardDeskPhotoStorageKey } from "@/lib/user-photo-storage"
+import {
+  canManageWorkspacePhoto,
+  resolveWorkspacePhoto,
+  WORKSPACE_PHOTO_REMOVED,
+} from "@/lib/workspace-photo-policy"
 import { isProjectTodoRecordType } from "@/lib/project-todos"
 import {
   compareOfficeCalendarPriority,
@@ -115,27 +119,57 @@ export type DashboardOfficeEvent = {
   readonly startTime: string
 }
 
-const MARTINE_DEFAULT_DESK_PHOTO = "/user-desk-photos/martine-desk-photo.jpeg"
-const HIDDEN_DESK_PHOTO = "__hidden__"
 const TEAM_AVAILABILITY_REFRESH_MS = 10_000
 
-function deskPhotoForUser(user: SidebarUser | null): string | null {
-  if (!user) return null
-  if (user.dashboardDeskPhoto === HIDDEN_DESK_PHOTO) return null
-  if (user.dashboardDeskPhoto) return user.dashboardDeskPhoto
+function canManageDeskPhoto(user: SidebarUser | null): boolean {
+  return (
+    user !== null &&
+    canManageWorkspacePhoto({
+      actor: {
+        userId: user.id,
+        organizationId: user.organizationId,
+        organizationType: user.organizationType,
+        role: user.role,
+        isActive: user.isActive,
+        isDemo: user.isDemo,
+      },
+      photo: {
+        userId: user.id,
+        organizationId: user.organizationId ?? "",
+      },
+    })
+  )
+}
 
-  try {
-    const storedPhoto = window.localStorage.getItem(
-      dashboardDeskPhotoStorageKey(user.email)
-    )
-    if (storedPhoto === HIDDEN_DESK_PHOTO) return null
-    if (storedPhoto) return storedPhoto
-  } catch {
-    // The default photo still works when browser storage is unavailable.
+function deskPhotoScopeForUser(user: SidebarUser | null): string | null {
+  return user !== null && canManageDeskPhoto(user) && user.organizationId
+    ? `${user.organizationId}:${user.id}`
+    : null
+}
+
+function deskPhotoForUser(user: SidebarUser | null): string | null {
+  if (!user || !canManageDeskPhoto(user)) return null
+  if (!user.organizationId) return null
+  const durablePhoto = user.dashboardDeskPhoto
+  let cachedPhoto: string | null = null
+
+  if (user.organizationId) {
+    try {
+      const scope = { organizationId: user.organizationId, userId: user.id }
+      const storedPhoto = window.localStorage.getItem(
+        dashboardDeskPhotoStorageKey(scope)
+      )
+      cachedPhoto = storedPhoto
+    } catch {
+      cachedPhoto = null
+    }
   }
 
-  const identity = `${user.name} ${user.email}`.toLowerCase()
-  return identity.includes("martine") ? MARTINE_DEFAULT_DESK_PHOTO : null
+  return resolveWorkspacePhoto({
+    durablePhoto,
+    cachedPhoto,
+    allowCache: true,
+  })
 }
 
 function readFileAsDataUrl(file: File): Promise<string> {
@@ -181,13 +215,27 @@ function resizeDeskPhoto(dataUrl: string): Promise<string> {
 }
 
 function saveDeskPhoto(user: SidebarUser, dataUrl: string): void {
+  if (!canManageDeskPhoto(user) || !user.organizationId) return
   try {
     window.localStorage.setItem(
-      dashboardDeskPhotoStorageKey(user.email),
+      dashboardDeskPhotoStorageKey({
+        organizationId: user.organizationId,
+        userId: user.id,
+      }),
       dataUrl
     )
   } catch {
     // The updated image still remains available for the current session.
+  }
+}
+
+function resetDeskPhoto(user: SidebarUser): void {
+  if (!canManageDeskPhoto(user) || !user.organizationId) return
+  try {
+    const scope = { organizationId: user.organizationId, userId: user.id }
+    window.localStorage.removeItem(dashboardDeskPhotoStorageKey(scope))
+  } catch {
+    // The durable profile reset still applies when browser storage is unavailable.
   }
 }
 
@@ -453,35 +501,17 @@ function DeskHero({
 }): React.ReactElement {
   const [deskPhotoFailed, setDeskPhotoFailed] = useState(false)
   const [deskPhotoUrl, setDeskPhotoUrl] = useState<string | null>(null)
+  const [deskPhotoScope, setDeskPhotoScope] = useState<string | null>(null)
   const [deskPhotoMessage, setDeskPhotoMessage] = useState<string | null>(null)
   const [statusMessage, setStatusMessage] = useState<string | null>(null)
   const [isStatusPending, startStatusTransition] = useTransition()
-  const migratedLegacyPhotoFor = useRef<string | null>(null)
   const firstName = user?.firstName ?? user?.name.split(" ")[0] ?? "there"
 
   useEffect(() => {
     setDeskPhotoFailed(false)
     setDeskPhotoUrl(deskPhotoForUser(user))
+    setDeskPhotoScope(deskPhotoScopeForUser(user))
 
-    if (
-      !user ||
-      user.dashboardDeskPhoto ||
-      migratedLegacyPhotoFor.current === user.email
-    ) {
-      return
-    }
-
-    try {
-      const legacyPhoto = window.localStorage.getItem(
-        dashboardDeskPhotoStorageKey(user.email)
-      )
-      if (!legacyPhoto) return
-
-      migratedLegacyPhotoFor.current = user.email
-      void updateWorkspacePhoto("dashboard", legacyPhoto)
-    } catch {
-      // Keep the browser-local photo when storage is unavailable.
-    }
   }, [user])
 
   function handleStatusChange(nextStatus: DeskStatus): void {
@@ -505,7 +535,7 @@ function DeskHero({
     event: React.ChangeEvent<HTMLInputElement>
   ): Promise<void> {
     const file = event.currentTarget.files?.[0]
-    if (!file || !user) return
+    if (!file || !user || !canManageDeskPhoto(user)) return
     event.currentTarget.value = ""
 
     if (!file.type.startsWith("image/")) {
@@ -524,18 +554,44 @@ function DeskHero({
       saveDeskPhoto(user, resizedDataUrl)
       setDeskPhotoFailed(false)
       setDeskPhotoUrl(resizedDataUrl)
+      setDeskPhotoScope(deskPhotoScopeForUser(user))
       setDeskPhotoMessage("Desk photo updated.")
     } catch {
       setDeskPhotoMessage("Could not update the desk photo.")
     }
   }
 
+  async function handleDeskPhotoReset(): Promise<void> {
+    if (!user) return
+    const result = await updateWorkspacePhoto(
+      "dashboard",
+      WORKSPACE_PHOTO_REMOVED
+    )
+    if (!result.success) {
+      setDeskPhotoMessage(result.error)
+      return
+    }
+    resetDeskPhoto(user)
+    setDeskPhotoFailed(false)
+    setDeskPhotoUrl(null)
+    setDeskPhotoScope(null)
+    setDeskPhotoMessage("Desk photo removed.")
+  }
+
+  const visibleDeskPhoto =
+    user !== null &&
+    user !== undefined &&
+    canManageDeskPhoto(user) &&
+    deskPhotoScopeForUser(user) === deskPhotoScope
+      ? deskPhotoUrl
+      : null
+
   return (
     <section className="grid min-h-52 overflow-hidden border-y border-border/70 bg-background sm:grid-cols-[minmax(10rem,0.8fr)_minmax(0,1.2fr)]">
       <div className="relative min-h-40 overflow-hidden bg-muted">
-        {deskPhotoUrl && !deskPhotoFailed ? (
+        {visibleDeskPhoto && !deskPhotoFailed ? (
           <Image
-            src={deskPhotoUrl}
+            src={visibleDeskPhoto}
             alt={`${firstName}'s desk`}
             fill
             sizes="(min-width: 1024px) 260px, 50vw"
@@ -548,17 +604,26 @@ function DeskHero({
             <IconHome2 className="size-10 text-[#2f5963]/60" />
           </div>
         )}
-        {user ? (
-          <label className="absolute bottom-3 left-3 flex cursor-pointer items-center gap-1.5 border border-white/40 bg-black/55 px-2.5 py-1.5 text-xs font-medium text-white backdrop-blur-sm transition hover:bg-black/70">
-            <IconPhotoEdit className="size-3.5" />
-            Change desk photo
-            <input
-              type="file"
-              accept="image/*"
-              className="sr-only"
-              onChange={handleDeskPhotoUpload}
-            />
-          </label>
+        {canManageDeskPhoto(user) ? (
+          <div className="absolute bottom-3 left-3 flex items-center gap-1.5">
+            <label className="flex cursor-pointer items-center gap-1.5 border border-white/40 bg-black/55 px-2.5 py-1.5 text-xs font-medium text-white backdrop-blur-sm transition hover:bg-black/70">
+              <IconPhotoEdit className="size-3.5" />
+              Change desk photo
+              <input
+                type="file"
+                accept="image/*"
+                className="sr-only"
+                onChange={handleDeskPhotoUpload}
+              />
+            </label>
+            <button
+              type="button"
+              onClick={() => void handleDeskPhotoReset()}
+              className="border border-white/40 bg-black/55 px-2.5 py-1.5 text-xs font-medium text-white backdrop-blur-sm transition hover:bg-black/70"
+            >
+              Remove
+            </button>
+          </div>
         ) : null}
       </div>
 

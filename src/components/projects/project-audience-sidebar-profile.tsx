@@ -20,15 +20,18 @@ import {
 } from "@/components/ui/popover"
 import { useCompassTheme, useTheme } from "@/components/theme-provider"
 import { THEME_PRESETS } from "@/lib/theme/presets"
-import { sidebarDeskPhotoStorageKey } from "@/lib/user-photo-storage"
+import { resolveWorkspacePhoto } from "@/lib/workspace-photo-policy"
 import { cn } from "@/lib/utils"
 import { ProjectAudienceNotificationSettings } from "@/components/projects/project-audience-notification-settings"
 
 type AudienceViewer = {
+  readonly id: string
+  readonly organizationId: string | null
   readonly name: string
   readonly email: string
   readonly avatarUrl: string | null
   readonly sidebarPhotoUrl: string | null
+  readonly canManagePhoto: boolean
 }
 
 function readFileAsDataUrl(file: File): Promise<string> {
@@ -81,38 +84,55 @@ export function ProjectAudienceSidebarProfile({
   const { theme, setTheme } = useTheme()
   const { activeThemeId, setVisualTheme } = useCompassTheme()
   const [photoUrl, setPhotoUrl] = React.useState<string | null>(
-    viewer.sidebarPhotoUrl ?? viewer.avatarUrl
+    viewer.canManagePhoto
+      ? resolveWorkspacePhoto({
+          durablePhoto: viewer.sidebarPhotoUrl,
+          cachedPhoto: null,
+          allowCache: false,
+        }) ?? viewer.avatarUrl
+      : viewer.avatarUrl
+  )
+  const [photoScope, setPhotoScope] = React.useState<string | null>(
+    viewer.canManagePhoto && viewer.organizationId
+      ? `${viewer.organizationId}:${viewer.id}`
+      : null
   )
   const inputRef = React.useRef<HTMLInputElement>(null)
-  const migratedLegacyPhotoFor = React.useRef<string | null>(null)
 
   React.useEffect(() => {
-    try {
-      const legacyPhoto = window.localStorage.getItem(
-        sidebarDeskPhotoStorageKey(viewer.email)
-      )
-      setPhotoUrl(
-        viewer.sidebarPhotoUrl ??
-          legacyPhoto ??
-          viewer.avatarUrl
-      )
+    setPhotoUrl(
+      viewer.canManagePhoto
+        ? resolveWorkspacePhoto({
+            durablePhoto: viewer.sidebarPhotoUrl,
+            cachedPhoto: null,
+            allowCache: false,
+          }) ?? viewer.avatarUrl
+        : viewer.avatarUrl
+    )
+    setPhotoScope(
+      viewer.canManagePhoto && viewer.organizationId
+        ? `${viewer.organizationId}:${viewer.id}`
+        : null
+    )
+  }, [
+    viewer.avatarUrl,
+    viewer.canManagePhoto,
+    viewer.id,
+    viewer.organizationId,
+    viewer.sidebarPhotoUrl,
+  ])
 
-      if (
-        !viewer.sidebarPhotoUrl &&
-        legacyPhoto &&
-        migratedLegacyPhotoFor.current !== viewer.email
-      ) {
-        migratedLegacyPhotoFor.current = viewer.email
-        void updateWorkspacePhoto("sidebar", legacyPhoto)
-      }
-    } catch {
-      setPhotoUrl(viewer.avatarUrl)
-    }
-  }, [viewer.avatarUrl, viewer.email, viewer.sidebarPhotoUrl])
+  const visiblePhoto =
+    viewer.canManagePhoto &&
+    viewer.organizationId !== null &&
+    photoScope === `${viewer.organizationId}:${viewer.id}`
+      ? photoUrl
+      : viewer.avatarUrl
 
   async function handlePhoto(
     event: React.ChangeEvent<HTMLInputElement>
   ): Promise<void> {
+    if (!viewer.canManagePhoto) return
     const file = event.currentTarget.files?.[0]
     event.currentTarget.value = ""
     if (!file) return
@@ -128,11 +148,10 @@ export function ProjectAudienceSidebarProfile({
         toast.error(result.error)
         return
       }
-      window.localStorage.setItem(
-        sidebarDeskPhotoStorageKey(viewer.email),
-        photo
-      )
       setPhotoUrl(photo)
+      setPhotoScope(
+        viewer.organizationId ? `${viewer.organizationId}:${viewer.id}` : null
+      )
       toast.success("Sidebar photo updated.")
     } catch {
       toast.error("Could not update the sidebar photo.")
@@ -141,22 +160,29 @@ export function ProjectAudienceSidebarProfile({
 
   return (
     <div className="space-y-2 border-t border-sidebar-border p-3">
-      <input
-        ref={inputRef}
-        type="file"
-        accept="image/*"
-        className="hidden"
-        onChange={handlePhoto}
-      />
+      {viewer.canManagePhoto ? (
+        <input
+          ref={inputRef}
+          type="file"
+          accept="image/*"
+          className="hidden"
+          onChange={handlePhoto}
+        />
+      ) : null}
       <button
         type="button"
-        onClick={() => inputRef.current?.click()}
-        className="group relative block h-24 w-full overflow-hidden rounded-md border border-sidebar-border bg-sidebar-accent text-left"
-        aria-label="Change sidebar photo"
+        onClick={() => {
+          if (viewer.canManagePhoto) inputRef.current?.click()
+        }}
+        className={cn(
+          "group relative block h-24 w-full overflow-hidden rounded-md border border-sidebar-border bg-sidebar-accent text-left",
+          !viewer.canManagePhoto && "cursor-default"
+        )}
+        aria-label={viewer.canManagePhoto ? "Change sidebar photo" : "Profile photo"}
       >
-        {photoUrl ? (
+        {visiblePhoto ? (
           <Image
-            src={photoUrl}
+            src={visiblePhoto}
             alt={`${viewer.name}'s sidebar photo`}
             fill
             sizes="240px"
@@ -168,10 +194,12 @@ export function ProjectAudienceSidebarProfile({
             Add your photo
           </span>
         )}
-        <span className="absolute inset-x-0 bottom-0 flex items-center justify-between bg-black/55 px-2 py-1 text-[11px] text-white opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
-          Change photo
-          <IconCamera className="size-3.5" />
-        </span>
+        {viewer.canManagePhoto ? (
+          <span className="absolute inset-x-0 bottom-0 flex items-center justify-between bg-black/55 px-2 py-1 text-[11px] text-white opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
+            Change photo
+            <IconCamera className="size-3.5" />
+          </span>
+        ) : null}
       </button>
 
       <ProjectAudienceNotificationSettings />

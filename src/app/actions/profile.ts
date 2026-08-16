@@ -3,10 +3,16 @@
 import { getWorkOS, signOut } from "@workos-inc/authkit-nextjs"
 import { getCloudflareContext } from "@/lib/db"
 import { getDb } from "@/db"
-import { users } from "@/db/schema"
-import { eq } from "drizzle-orm"
+import { organizationMembers, organizations, users } from "@/db/schema"
+import { and, eq } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { requireAuth } from "@/lib/auth"
+import { isDemoUser } from "@/lib/demo"
+import { isInternalStaffRole } from "@/lib/user-roles"
+import {
+  canManageWorkspacePhoto,
+  WORKSPACE_PHOTO_REMOVED,
+} from "@/lib/workspace-photo-policy"
 import {
   updateProfileSchema,
   changePasswordSchema,
@@ -18,7 +24,6 @@ type ActionResult<T = undefined> =
   | { success: true; data?: T }
   | { success: false; error: string }
 
-const HIDDEN_WORKSPACE_PHOTO = "__hidden__"
 const MAX_WORKSPACE_PHOTO_LENGTH = 680_000
 const SAFE_IMAGE_DATA_URL =
   /^data:image\/(?:jpeg|png|webp);base64,[a-z0-9+/]+={0,2}$/i
@@ -32,10 +37,21 @@ export async function updateWorkspacePhoto(
       return { success: false, error: "Select a valid workspace photo." }
     }
     const currentUser = await requireAuth()
-    const normalized = value?.trim() || null
     if (
-      normalized !== null &&
-      normalized !== HIDDEN_WORKSPACE_PHOTO &&
+      !currentUser.organizationId ||
+      !currentUser.isActive ||
+      currentUser.organizationType !== "internal" ||
+      isDemoUser(currentUser.id) ||
+      !isInternalStaffRole(currentUser.role)
+    ) {
+      return {
+        success: false,
+        error: "Desk photos are available to internal staff only.",
+      }
+    }
+    const normalized = value?.trim() || WORKSPACE_PHOTO_REMOVED
+    if (
+      normalized !== WORKSPACE_PHOTO_REMOVED &&
       (
         normalized.length > MAX_WORKSPACE_PHOTO_LENGTH ||
         !SAFE_IMAGE_DATA_URL.test(normalized)
@@ -49,12 +65,59 @@ export async function updateWorkspacePhoto(
 
     const { env } = await getCloudflareContext()
     const db = getDb(env.DB)
+    const membership = await db
+      .select({
+        id: organizationMembers.id,
+        organizationIsActive: organizations.isActive,
+      })
+      .from(organizationMembers)
+      .innerJoin(
+        organizations,
+        eq(organizations.id, organizationMembers.organizationId)
+      )
+      .where(
+        and(
+          eq(organizationMembers.userId, currentUser.id),
+          eq(organizationMembers.organizationId, currentUser.organizationId)
+        )
+      )
+      .limit(1)
+      .get()
+    if (
+      !membership ||
+      !membership.organizationIsActive ||
+      !canManageWorkspacePhoto({
+        actor: {
+          userId: currentUser.id,
+          organizationId: currentUser.organizationId,
+          organizationType: currentUser.organizationType,
+          role: currentUser.role,
+          isActive: currentUser.isActive,
+          isDemo: isDemoUser(currentUser.id),
+        },
+        photo: {
+          userId: currentUser.id,
+          organizationId: currentUser.organizationId,
+        },
+      })
+    ) {
+      return {
+        success: false,
+        error: "Desk photos are not available for this account.",
+      }
+    }
     await db
       .update(users)
       .set({
         ...(slot === "dashboard"
-          ? { dashboardDeskPhotoUrl: normalized }
-          : { sidebarDeskPhotoUrl: normalized }),
+          ? {
+              dashboardDeskPhotoUrl: normalized,
+              dashboardDeskPhotoOrganizationId: currentUser.organizationId,
+            }
+          : {
+              sidebarDeskPhotoUrl: normalized,
+              sidebarDeskPhotoOrganizationId: currentUser.organizationId,
+            }),
         updatedAt: new Date().toISOString(),
       })
       .where(eq(users.id, currentUser.id))
