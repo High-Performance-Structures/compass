@@ -6,42 +6,43 @@ import { IconPhotoEdit, IconUpload, IconX } from "@tabler/icons-react"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { updateWorkspacePhoto } from "@/app/actions/profile"
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover"
 import type { SidebarUser } from "@/lib/auth"
+import {
+  dashboardDeskPhotoStorageKey,
+  HIDDEN_DESK_PHOTO,
+} from "@/lib/user-photo-storage"
 
-const MARTINE_DEFAULT_DESK_PHOTO = "/user-desk-photos/martine-desk-photo.jpeg"
-const HIDDEN_DESK_PHOTO = "__hidden__"
-
-function storageKey(user: SidebarUser): string {
-  return `compass-desk-photo:${user.email}`
-}
-
-function defaultDeskPhoto(user: SidebarUser): string | null {
-  const identity = `${user.name} ${user.email}`.toLowerCase()
-
-  return identity.includes("martine") ? MARTINE_DEFAULT_DESK_PHOTO : null
+function storageKey(user: SidebarUser): string | null {
+  if (!user.organizationId) return null
+  return dashboardDeskPhotoStorageKey(user.email, user.organizationId)
 }
 
 function readStoredPhoto(user: SidebarUser): string | null | typeof HIDDEN_DESK_PHOTO {
+  const key = storageKey(user)
+  if (!key) return null
   try {
-    return window.localStorage.getItem(storageKey(user))
+    return window.localStorage.getItem(key)
   } catch {
     return null
   }
 }
 
 function saveStoredPhoto(user: SidebarUser, value: string | null): void {
+  const key = storageKey(user)
+  if (!key) return
   try {
     if (value === null) {
-      window.localStorage.removeItem(storageKey(user))
+      window.localStorage.removeItem(key)
       return
     }
 
-    window.localStorage.setItem(storageKey(user), value)
+    window.localStorage.setItem(key, value)
   } catch {
     // The preview can still update for this session if storage is unavailable.
   }
@@ -100,20 +101,38 @@ export function PersonalDeskPhoto({
   readonly user: SidebarUser | null
 }): React.ReactElement | null {
   const [photoUrl, setPhotoUrl] = React.useState<string | null>(null)
+  const [photoScope, setPhotoScope] = React.useState<string | null>(null)
   const [message, setMessage] = React.useState<string | null>(null)
+  const currentPhotoScope = user
+    ? `${user.id}:${user.organizationId ?? "none"}:${user.dashboardDeskPhoto ?? "none"}`
+    : "no-user"
 
   React.useEffect(() => {
     if (!user) return
+    setPhotoScope(currentPhotoScope)
 
+    const serverPhoto = user.dashboardDeskPhoto
     const storedPhoto = readStoredPhoto(user)
     setPhotoUrl(
-      storedPhoto === HIDDEN_DESK_PHOTO
-        ? null
-        : storedPhoto ?? defaultDeskPhoto(user)
+      serverPhoto === HIDDEN_DESK_PHOTO ? null : serverPhoto ?? storedPhoto
     )
-  }, [user])
 
-  if (!user || photoUrl === null) {
+    if (serverPhoto !== null || !storedPhoto) return
+    const legacyPhoto = storedPhoto
+    if (!legacyPhoto) return
+    if (legacyPhoto === HIDDEN_DESK_PHOTO) {
+      void updateWorkspacePhoto("dashboard", HIDDEN_DESK_PHOTO)
+      return
+    }
+
+    void updateWorkspacePhoto("dashboard", legacyPhoto).then((result) => {
+      if (result.success && result.data?.url) setPhotoUrl(result.data.url)
+    })
+  }, [currentPhotoScope, user])
+
+  const renderedPhotoUrl = photoScope === currentPhotoScope ? photoUrl : null
+
+  if (!user || renderedPhotoUrl === null) {
     return null
   }
 
@@ -132,26 +151,41 @@ export function PersonalDeskPhoto({
 
     const dataUrl = await readFileAsDataUrl(file)
     const resizedDataUrl = await resizeImageDataUrl(dataUrl)
-    setPhotoUrl(resizedDataUrl)
+    const result = await updateWorkspacePhoto("dashboard", resizedDataUrl)
+    if (!result.success) {
+      setMessage(result.error)
+      return
+    }
+    setPhotoUrl(result.data?.url ?? resizedDataUrl)
     saveStoredPhoto(user, resizedDataUrl)
     setMessage("Desk photo updated.")
     event.currentTarget.value = ""
   }
 
-  function handleReset(): void {
+  async function handleReset(): Promise<void> {
     if (!user) return
 
-    const fallback = defaultDeskPhoto(user)
-    setPhotoUrl(fallback)
+    const result = await updateWorkspacePhoto("dashboard", HIDDEN_DESK_PHOTO)
+    if (!result.success) {
+      setMessage(result.error)
+      return
+    }
+    setPhotoUrl(null)
     saveStoredPhoto(user, null)
-    setMessage(fallback ? "Desk photo reset." : null)
+    setMessage("Desk photo reset.")
   }
 
-  function handleRemove(): void {
+  async function handleRemove(): Promise<void> {
     if (!user) return
 
+    const result = await updateWorkspacePhoto("dashboard", HIDDEN_DESK_PHOTO)
+    if (!result.success) {
+      setMessage(result.error)
+      return
+    }
     setPhotoUrl(null)
     saveStoredPhoto(user, HIDDEN_DESK_PHOTO)
+    setMessage("Desk photo removed.")
   }
 
   return (
@@ -165,7 +199,7 @@ export function PersonalDeskPhoto({
           >
             <div className="relative aspect-[16/10] overflow-hidden rounded-sm bg-sidebar-accent">
               <Image
-                src={photoUrl}
+                src={renderedPhotoUrl}
                 alt={`${user.name}'s desk photo`}
                 fill
                 sizes="240px"
@@ -189,7 +223,7 @@ export function PersonalDeskPhoto({
             </div>
             <div className="relative aspect-[16/10] overflow-hidden rounded-md border bg-muted">
               <Image
-                src={photoUrl}
+                src={renderedPhotoUrl}
                 alt={`${user.name}'s desk photo preview`}
                 fill
                 sizes="288px"
@@ -210,10 +244,18 @@ export function PersonalDeskPhoto({
               </p>
             )}
             <div className="flex justify-between gap-2">
-              <Button variant="outline" size="sm" onClick={handleReset}>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => void handleReset()}
+              >
                 Reset
               </Button>
-              <Button variant="ghost" size="sm" onClick={handleRemove}>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => void handleRemove()}
+              >
                 <IconX className="size-4" />
                 Hide
               </Button>

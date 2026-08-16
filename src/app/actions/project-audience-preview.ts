@@ -214,7 +214,7 @@ async function verifyProjectAccess(
       name: user.displayName ?? user.email.split("@")[0] ?? "Compass user",
       email: user.email,
       avatarUrl: user.avatarUrl,
-      sidebarPhotoUrl: user.sidebarDeskPhotoUrl ?? null,
+      sidebarPhotoUrl: null,
     },
   }
 }
