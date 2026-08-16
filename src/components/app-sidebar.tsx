@@ -4,6 +4,7 @@ import * as React from "react"
 import {
   IconAddressBook,
   IconActivity,
+  IconBellRinging,
   IconCalendarStats,
   IconClipboardCheck,
   IconTimeline,
@@ -82,6 +83,12 @@ const NAV_MAIN = [
     internalOnly: true,
   },
   {
+    title: "Staff Board",
+    url: "/dashboard/staff-board",
+    icon: IconBellRinging,
+    staffBoardOnly: true,
+  },
+  {
     title: "Projects",
     url: "/dashboard/projects",
     icon: IconFolder,
@@ -155,6 +162,7 @@ const NAV_MAIN = [
     icon: IconMessageReport,
     adminOnly: true,
   },
+
   {
     title: "Files",
     url: "/dashboard/files",
@@ -187,11 +195,13 @@ function SidebarNav({
   canUseFieldDesk,
   canViewActivity,
   canManageFeedback,
+  canViewStaffBoard,
 }: {
   projects: ReadonlyArray<ProjectListItem>
   readonly canUseFieldDesk: boolean
   readonly canViewActivity: boolean
   readonly canManageFeedback: boolean
+  readonly canViewStaffBoard: boolean
 }) {
   const pathname = usePathname()
   const { state } = useSidebar()
@@ -226,7 +236,8 @@ function SidebarNav({
   const navMain = NAV_MAIN.filter(
     (item) =>
       (!item.internalOnly || canViewActivity) &&
-      (!item.adminOnly || canManageFeedback)
+      (!item.adminOnly || canManageFeedback) &&
+      (!item.staffBoardOnly || canViewStaffBoard)
   ).map((item) =>
     typeof item.projectPath === "string"
       ? {
@@ -280,6 +291,7 @@ export function AppSidebar({
   canUseFieldDesk = false,
   canViewActivity = false,
   canManageFeedback = false,
+  canViewStaffBoard = false,
   ...props
 }: React.ComponentProps<typeof Sidebar> & {
   readonly projects?: ReadonlyArray<ProjectListItem>
@@ -289,6 +301,7 @@ export function AppSidebar({
   readonly canUseFieldDesk?: boolean
   readonly canViewActivity?: boolean
   readonly canManageFeedback?: boolean
+  readonly canViewStaffBoard?: boolean
 }) {
   const { isMobile } = useSidebar()
   const { channelId } = useVoiceState()
@@ -304,6 +317,7 @@ export function AppSidebar({
           canUseFieldDesk={canUseFieldDesk}
           canViewActivity={canViewActivity}
           canManageFeedback={canManageFeedback}
+          canViewStaffBoard={canViewStaffBoard}
         />
       </SidebarContent>
       <SidebarFooter className="border-t border-sidebar-border/60">

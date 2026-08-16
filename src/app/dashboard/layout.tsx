@@ -39,6 +39,7 @@ import {
   canManageUserAccess,
 } from "@/lib/permissions"
 import { isInternalStaffRole } from "@/lib/user-roles"
+import { hasActiveStaffBoardOrganization } from "@/lib/staff-board"
 
 export default async function DashboardLayout({
   children,
@@ -61,6 +62,9 @@ export default async function DashboardLayout({
   const canUseCompassOfficeTalk = canUseOfficeTalk(authUser)
   const canViewActivity = authUser
     ? isInternalStaffRole(authUser.role)
+    : false
+  const canViewStaffBoard = authUser
+    ? await hasActiveStaffBoardOrganization(authUser)
     : false
   const canUseDirectMessages = canViewActivity
   const canManageFeedback = canManageUserAccess(authUser)
@@ -103,6 +107,7 @@ export default async function DashboardLayout({
           canUseFieldDesk={canUseCompassFieldDesk}
           canViewActivity={canViewActivity}
           canManageFeedback={canManageFeedback}
+          canViewStaffBoard={canViewStaffBoard}
         />
         <SidebarInset className="overflow-hidden">
           <DesktopOfflineBanner />

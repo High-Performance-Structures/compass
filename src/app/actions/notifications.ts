@@ -1,6 +1,6 @@
 "use server"
 
-import { and, desc, eq, isNull } from "drizzle-orm"
+import { and, desc, eq, isNull, not, or, sql } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
 import { getDb } from "@/db"
@@ -12,6 +12,7 @@ import {
 } from "@/db/schema"
 import { getCurrentUser, requireAuth } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
+import { getActiveStaffBoardOrganization } from "@/lib/staff-board"
 import {
   isMissingNotificationTableError,
   queueSmsDelivery,
@@ -422,9 +423,29 @@ export async function sendTestSmsNotification(): Promise<NotificationSmsTestResu
   }
 }
 
+function staffBoardNotificationScope(
+  organizationId: string | null
+): ReturnType<typeof sql> {
+  const staffBoardEvent = sql`source_type = 'staff_board'`
+  const eventLink = sql`staff_board_event.id = notification_recipients.event_id`
+  const hiddenStaffBoardEvent = sql`NOT EXISTS (
+    SELECT 1 FROM notification_events AS staff_board_event
+    WHERE ${eventLink} AND ${staffBoardEvent}
+  )`
+  if (organizationId === null) return hiddenStaffBoardEvent
+  return sql`(${hiddenStaffBoardEvent} OR EXISTS (
+    SELECT 1 FROM notification_events AS staff_board_event
+    WHERE ${eventLink}
+      AND ${staffBoardEvent}
+      AND staff_board_event.organization_id = ${organizationId}
+  ))`
+}
+
 export async function getNotificationCenter(): Promise<NotificationCenterResult> {
   try {
     const user = await requireAuth()
+    const activeStaffBoardOrganizationId =
+      await getActiveStaffBoardOrganization(user)
     const { env } = await getCloudflareContext()
     const db = getDb(env.DB)
 
@@ -450,7 +471,19 @@ export async function getNotificationCenter(): Promise<NotificationCenterResult>
         and(
           eq(notificationRecipients.userId, user.id),
           eq(notificationRecipients.inApp, true),
-          isNull(notificationRecipients.dismissedAt)
+          isNull(notificationRecipients.dismissedAt),
+          activeStaffBoardOrganizationId === null
+            ? not(eq(notificationEvents.sourceType, "staff_board"))
+            : or(
+                not(eq(notificationEvents.sourceType, "staff_board")),
+                and(
+                  eq(notificationEvents.sourceType, "staff_board"),
+                  eq(
+                    notificationEvents.organizationId,
+                    activeStaffBoardOrganizationId
+                  )
+                )
+              )
         )
       )
       .orderBy(desc(notificationRecipients.createdAt))
@@ -482,6 +515,8 @@ export async function markNotificationRead(
 ): Promise<NotificationActionResult> {
   try {
     const user = await requireAuth()
+    const activeStaffBoardOrganizationId =
+      await getActiveStaffBoardOrganization(user)
     const { env } = await getCloudflareContext()
     const db = getDb(env.DB)
     const now = new Date().toISOString()
@@ -492,7 +527,8 @@ export async function markNotificationRead(
       .where(
         and(
           eq(notificationRecipients.id, recipientId),
-          eq(notificationRecipients.userId, user.id)
+          eq(notificationRecipients.userId, user.id),
+          staffBoardNotificationScope(activeStaffBoardOrganizationId)
         )
       )
 
@@ -512,6 +548,8 @@ export async function markNotificationRead(
 export async function markAllNotificationsRead(): Promise<NotificationActionResult> {
   try {
     const user = await requireAuth()
+    const activeStaffBoardOrganizationId =
+      await getActiveStaffBoardOrganization(user)
     const { env } = await getCloudflareContext()
     const db = getDb(env.DB)
     const now = new Date().toISOString()
@@ -522,7 +560,8 @@ export async function markAllNotificationsRead(): Promise<NotificationActionResu
       .where(
         and(
           eq(notificationRecipients.userId, user.id),
-          isNull(notificationRecipients.readAt)
+          isNull(notificationRecipients.readAt),
+          staffBoardNotificationScope(activeStaffBoardOrganizationId)
         )
       )
 
