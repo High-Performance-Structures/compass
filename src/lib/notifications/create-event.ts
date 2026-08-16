@@ -78,6 +78,7 @@ export type CreateNotificationInput = {
   readonly audience: string
   readonly createdBy: string | null
   readonly recipients: readonly NotificationRecipientInput[]
+  readonly recipientRoles?: readonly string[]
   readonly delivery: NotificationDelivery
 }
 
@@ -598,6 +599,16 @@ async function persistNotificationEvent(
 
   const { env } = await getCloudflareContext()
   const db = getDb(env.DB)
+  const recipientConditions = [
+    eq(organizationMembers.organizationId, input.organizationId),
+    eq(users.isActive, true),
+    inArray(organizationMembers.userId, requestedRecipientIds),
+  ]
+  if (input.recipientRoles !== undefined) {
+    recipientConditions.push(
+      inArray(organizationMembers.role, input.recipientRoles)
+    )
+  }
   const recipients = await db
     .select({
       userId: users.id,
@@ -606,16 +617,7 @@ async function persistNotificationEvent(
     })
     .from(organizationMembers)
     .innerJoin(users, eq(users.id, organizationMembers.userId))
-    .where(
-      and(
-        eq(
-          organizationMembers.organizationId,
-          input.organizationId
-        ),
-        eq(users.isActive, true),
-        inArray(organizationMembers.userId, requestedRecipientIds)
-      )
-    )
+    .where(and(...recipientConditions))
   if (recipients.length === 0) return
 
   const projectNumber = input.projectId
