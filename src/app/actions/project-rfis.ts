@@ -420,7 +420,6 @@ export async function createProjectRfi(
       updatedAt: now,
     }
 
-    await db.insert(projectRfis).values(inserted)
     const attachmentRows = input.attachments.map((attachment) => ({
       id: crypto.randomUUID(),
       projectId,
@@ -437,13 +436,14 @@ export async function createProjectRfi(
     }))
 
     if (attachmentRows.length > 0) {
-      try {
-        await db.insert(projectRfiAttachments).values(attachmentRows)
-      } catch (error) {
-        if (!isMissingAttachmentTableError(error)) {
-          throw error
-        }
-      }
+      // D1 batches are atomic: the RFI and its attachment metadata either both
+      // commit or both roll back. A timeout/error must never leave a partial RFI.
+      await db.batch([
+        db.insert(projectRfis).values(inserted),
+        db.insert(projectRfiAttachments).values(attachmentRows),
+      ])
+    } else {
+      await db.insert(projectRfis).values(inserted)
     }
 
     revalidatePath(`/dashboard/projects/${projectId}`)
@@ -675,21 +675,8 @@ export async function deleteProjectRfi(
       return { success: false, error: "RFI not found." }
     }
 
-    try {
-      await db
-        .delete(projectRfiAttachments)
-        .where(
-          and(
-            eq(projectRfiAttachments.rfiId, rfiId),
-            eq(projectRfiAttachments.projectId, projectId)
-          )
-        )
-    } catch (error) {
-      if (!isMissingAttachmentTableError(error)) {
-        throw error
-      }
-    }
-
+    // The attachment foreign key uses ON DELETE CASCADE, so one statement is
+    // both faster and atomic. A failed delete cannot strip attachment metadata.
     await db
       .delete(projectRfis)
       .where(and(eq(projectRfis.id, rfiId), eq(projectRfis.projectId, projectId)))

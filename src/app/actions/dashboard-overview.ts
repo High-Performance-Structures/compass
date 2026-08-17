@@ -1,6 +1,6 @@
 "use server"
 
-import { asc, desc, eq } from "drizzle-orm"
+import { asc, desc, eq, sql } from "drizzle-orm"
 
 import { getDb } from "@/db"
 import {
@@ -203,6 +203,21 @@ function averageProgress(
   return Math.round(total / rows.length)
 }
 
+function groupByProjectId<T extends { readonly projectId: string }>(
+  rows: readonly T[]
+): ReadonlyMap<string, readonly T[]> {
+  const grouped = new Map<string, T[]>()
+  for (const row of rows) {
+    const projectRows = grouped.get(row.projectId)
+    if (projectRows) {
+      projectRows.push(row)
+    } else {
+      grouped.set(row.projectId, [row])
+    }
+  }
+  return grouped
+}
+
 export async function getDashboardOverview(): Promise<DashboardOverview> {
   try {
     const user = await requireAuth()
@@ -217,20 +232,145 @@ export async function getDashboardOverview(): Promise<DashboardOverview> {
     const db = getDb(env.DB)
     const today = new Date().toISOString().slice(0, 10)
 
-    const projectRows = await db
+    const rankedDailyLogs = db
       .select({
-        id: projects.id,
-        name: projects.name,
-        projectNumber: projects.projectNumber,
-        clientName: projects.clientName,
-        status: projects.status,
-        sageJobId: projects.sageJobId,
-        sageJobNumber: projects.sageJobNumber,
-        googleDriveFolderId: projects.googleDriveFolderId,
+        projectId: dailyLogs.projectId,
+        logDate: dailyLogs.logDate,
+        sourceSystem: dailyLogs.sourceSystem,
+        reviewStatus: dailyLogs.reviewStatus,
+        rank: sql<number>`row_number() over (
+          partition by ${dailyLogs.projectId}
+          order by ${dailyLogs.logDate} desc
+        )`.as("rank"),
       })
-      .from(projects)
+      .from(dailyLogs)
+      .innerJoin(projects, eq(dailyLogs.projectId, projects.id))
       .where(eq(projects.organizationId, orgId))
-      .orderBy(asc(projects.projectNumber), asc(projects.name))
+      .as("ranked_daily_logs")
+
+    // Load each dashboard dataset once for the organization. The previous
+    // per-project loop issued seven sequential D1 queries per project, making
+    // dashboard latency grow linearly with both project count and network RTT.
+    const [
+      projectRows,
+      allTaskRows,
+      allPhotoRows,
+      allLogRows,
+      allOwnerUpdateRows,
+      allOperationRows,
+      allRfiRows,
+    ] = await db.batch([
+      db
+        .select({
+          id: projects.id,
+          name: projects.name,
+          projectNumber: projects.projectNumber,
+          clientName: projects.clientName,
+          status: projects.status,
+          sageJobId: projects.sageJobId,
+          sageJobNumber: projects.sageJobNumber,
+          googleDriveFolderId: projects.googleDriveFolderId,
+        })
+        .from(projects)
+        .where(eq(projects.organizationId, orgId))
+        .orderBy(asc(projects.projectNumber), asc(projects.name)),
+      db
+        .select({
+          projectId: scheduleTasks.projectId,
+          id: scheduleTasks.id,
+          title: scheduleTasks.title,
+          startDate: scheduleTasks.startDate,
+          endDate: scheduleTasks.endDateCalculated,
+          assignedTo: scheduleTasks.assignedTo,
+          status: scheduleTasks.status,
+          percentComplete: scheduleTasks.percentComplete,
+        })
+        .from(scheduleTasks)
+        .innerJoin(projects, eq(scheduleTasks.projectId, projects.id))
+        .where(eq(projects.organizationId, orgId))
+        .orderBy(asc(scheduleTasks.startDate), asc(scheduleTasks.sortOrder)),
+      db
+        .select({
+          projectId: dailyLogPhotos.projectId,
+          id: dailyLogPhotos.id,
+          fileName: dailyLogPhotos.fileName,
+          driveFileId: dailyLogPhotos.driveFileId,
+          driveUrl: dailyLogPhotos.driveUrl,
+          thumbnailUrl: dailyLogPhotos.thumbnailUrl,
+          caption: dailyLogPhotos.caption,
+          capturedAt: dailyLogPhotos.capturedAt,
+          mimeType: dailyLogPhotos.mimeType,
+          photoKind: dailyLogPhotos.photoKind,
+          createdAt: dailyLogPhotos.createdAt,
+          reviewStatus: dailyLogPhotos.reviewStatus,
+          ownerVisible: dailyLogPhotos.ownerVisible,
+        })
+        .from(dailyLogPhotos)
+        .innerJoin(projects, eq(dailyLogPhotos.projectId, projects.id))
+        .where(eq(projects.organizationId, orgId))
+        .orderBy(desc(dailyLogPhotos.capturedAt), desc(dailyLogPhotos.createdAt)),
+      db
+        .select({
+          projectId: rankedDailyLogs.projectId,
+          logDate: rankedDailyLogs.logDate,
+          sourceSystem: rankedDailyLogs.sourceSystem,
+          reviewStatus: rankedDailyLogs.reviewStatus,
+        })
+        .from(rankedDailyLogs)
+        .where(eq(rankedDailyLogs.rank, 1)),
+      db
+        .select({
+          projectId: ownerProjectUpdates.projectId,
+          id: ownerProjectUpdates.id,
+          title: ownerProjectUpdates.title,
+          status: ownerProjectUpdates.status,
+          updateDate: ownerProjectUpdates.updateDate,
+        })
+        .from(ownerProjectUpdates)
+        .innerJoin(projects, eq(ownerProjectUpdates.projectId, projects.id))
+        .where(eq(projects.organizationId, orgId))
+        .orderBy(desc(ownerProjectUpdates.updateDate)),
+      db
+        .select({
+          projectId: projectOperations.projectId,
+          id: projectOperations.id,
+          sourceRecordType: projectOperations.sourceRecordType,
+          sourceRecordNumber: projectOperations.sourceRecordNumber,
+          title: projectOperations.title,
+          status: projectOperations.status,
+          dueDate: projectOperations.dueDate,
+          amount: projectOperations.amount,
+          sourceSystem: projectOperations.sourceSystem,
+          lastSyncedAt: projectOperations.lastSyncedAt,
+          assigneeName: projectOperations.assigneeName,
+          companyName: projectOperations.companyName,
+        })
+        .from(projectOperations)
+        .innerJoin(projects, eq(projectOperations.projectId, projects.id))
+        .where(eq(projects.organizationId, orgId))
+        .orderBy(asc(projectOperations.dueDate), asc(projectOperations.title)),
+      db
+        .select({
+          projectId: projectRfis.projectId,
+          id: projectRfis.id,
+          rfiNumber: projectRfis.rfiNumber,
+          subject: projectRfis.subject,
+          priority: projectRfis.priority,
+          status: projectRfis.status,
+          dueDate: projectRfis.dueDate,
+        })
+        .from(projectRfis)
+        .innerJoin(projects, eq(projectRfis.projectId, projects.id))
+        .where(eq(projects.organizationId, orgId))
+        .orderBy(asc(projectRfis.dueDate), asc(projectRfis.rfiNumber)),
+    ])
+
+    const tasksByProject = groupByProjectId(allTaskRows)
+    const photosByProject = groupByProjectId(allPhotoRows)
+    const logsByProject = groupByProjectId(allLogRows)
+    const ownerUpdatesByProject = groupByProjectId(allOwnerUpdateRows)
+    const operationsByProject = groupByProjectId(allOperationRows)
+    const rfisByProject = groupByProjectId(allRfiRows)
 
     const dashboardProjects: DashboardProject[] = []
     const upcomingTasks: DashboardTask[] = []
@@ -250,19 +390,7 @@ export async function getDashboardOverview(): Promise<DashboardOverview> {
         mappedProjectCount += 1
       }
 
-      const taskRows = await db
-        .select({
-          id: scheduleTasks.id,
-          title: scheduleTasks.title,
-          startDate: scheduleTasks.startDate,
-          endDate: scheduleTasks.endDateCalculated,
-          assignedTo: scheduleTasks.assignedTo,
-          status: scheduleTasks.status,
-          percentComplete: scheduleTasks.percentComplete,
-        })
-        .from(scheduleTasks)
-        .where(eq(scheduleTasks.projectId, project.id))
-        .orderBy(asc(scheduleTasks.startDate), asc(scheduleTasks.sortOrder))
+      const taskRows = tasksByProject.get(project.id) ?? []
 
       const activeTasks = taskRows.filter((task) => !isClosedStatus(task.status))
       const nextTaskRow =
@@ -282,24 +410,7 @@ export async function getDashboardOverview(): Promise<DashboardOverview> {
 
       if (nextTask) upcomingTasks.push(nextTask)
 
-      const photoRows = await db
-        .select({
-          id: dailyLogPhotos.id,
-          fileName: dailyLogPhotos.fileName,
-          driveFileId: dailyLogPhotos.driveFileId,
-          driveUrl: dailyLogPhotos.driveUrl,
-          thumbnailUrl: dailyLogPhotos.thumbnailUrl,
-          caption: dailyLogPhotos.caption,
-          capturedAt: dailyLogPhotos.capturedAt,
-          mimeType: dailyLogPhotos.mimeType,
-          photoKind: dailyLogPhotos.photoKind,
-          createdAt: dailyLogPhotos.createdAt,
-          reviewStatus: dailyLogPhotos.reviewStatus,
-          ownerVisible: dailyLogPhotos.ownerVisible,
-        })
-        .from(dailyLogPhotos)
-        .where(eq(dailyLogPhotos.projectId, project.id))
-        .orderBy(desc(dailyLogPhotos.capturedAt), desc(dailyLogPhotos.createdAt))
+      const photoRows = photosByProject.get(project.id) ?? []
 
       const projectPhotosToReview = photoRows.filter(
         (photo) => photo.reviewStatus === "needs_review"
@@ -336,55 +447,14 @@ export async function getDashboardOverview(): Promise<DashboardOverview> {
         })
       }
 
-      const latestLogRows = await db
-        .select({
-          logDate: dailyLogs.logDate,
-          sourceSystem: dailyLogs.sourceSystem,
-          reviewStatus: dailyLogs.reviewStatus,
-        })
-        .from(dailyLogs)
-        .where(eq(dailyLogs.projectId, project.id))
-        .orderBy(desc(dailyLogs.logDate))
-        .limit(1)
-
-      const latestOwnerUpdateRows = await db
-        .select({
-          id: ownerProjectUpdates.id,
-          title: ownerProjectUpdates.title,
-          status: ownerProjectUpdates.status,
-          updateDate: ownerProjectUpdates.updateDate,
-        })
-        .from(ownerProjectUpdates)
-        .where(eq(ownerProjectUpdates.projectId, project.id))
-        .orderBy(desc(ownerProjectUpdates.updateDate))
-        .limit(1)
-
-      const ownerUpdateRows = await db
-        .select({ status: ownerProjectUpdates.status })
-        .from(ownerProjectUpdates)
-        .where(eq(ownerProjectUpdates.projectId, project.id))
+      const latestLogRows = logsByProject.get(project.id) ?? []
+      const ownerUpdateRows = ownerUpdatesByProject.get(project.id) ?? []
       const projectDraftOwnerUpdates = ownerUpdateRows.filter(
         (update) => update.status === "draft"
       ).length
       draftOwnerUpdates += projectDraftOwnerUpdates
 
-      const operationRows = await db
-        .select({
-          id: projectOperations.id,
-          sourceRecordType: projectOperations.sourceRecordType,
-          sourceRecordNumber: projectOperations.sourceRecordNumber,
-          title: projectOperations.title,
-          status: projectOperations.status,
-          dueDate: projectOperations.dueDate,
-          amount: projectOperations.amount,
-          sourceSystem: projectOperations.sourceSystem,
-          lastSyncedAt: projectOperations.lastSyncedAt,
-          assigneeName: projectOperations.assigneeName,
-          companyName: projectOperations.companyName,
-        })
-        .from(projectOperations)
-        .where(eq(projectOperations.projectId, project.id))
-        .orderBy(asc(projectOperations.dueDate), asc(projectOperations.title))
+      const operationRows = operationsByProject.get(project.id) ?? []
 
       const activeOperations = operationRows.filter(
         (operation) => !isClosedStatus(operation.status)
@@ -425,18 +495,7 @@ export async function getDashboardOverview(): Promise<DashboardOverview> {
         })
       }
 
-      const rfiRows = await db
-        .select({
-          id: projectRfis.id,
-          rfiNumber: projectRfis.rfiNumber,
-          subject: projectRfis.subject,
-          priority: projectRfis.priority,
-          status: projectRfis.status,
-          dueDate: projectRfis.dueDate,
-        })
-        .from(projectRfis)
-        .where(eq(projectRfis.projectId, project.id))
-        .orderBy(asc(projectRfis.dueDate), asc(projectRfis.rfiNumber))
+      const rfiRows = rfisByProject.get(project.id) ?? []
 
       const projectOpenRfis = rfiRows.filter(
         (rfi) => !isClosedStatus(rfi.status)
@@ -469,7 +528,7 @@ export async function getDashboardOverview(): Promise<DashboardOverview> {
         photosToReview: projectPhotosToReview,
         ownerVisiblePhotos,
         latestLog: latestLogRows[0] ?? null,
-        latestOwnerUpdate: latestOwnerUpdateRows[0] ?? null,
+        latestOwnerUpdate: ownerUpdateRows[0] ?? null,
         openPoCount: openPoRows.length,
         openPoAmount: projectOpenPoAmount,
         activeCommitmentCount: activeOperations.length,
