@@ -215,7 +215,13 @@ export default async function StaffMessageDeskPage({
                 <h3 className="font-semibold">Text sender ending {item.senderPhone.replace(/\D/g, "").slice(-4) || "unknown"}</h3>
                 <p className="text-sm text-muted-foreground">{timestamp(item.receivedAt)}</p>
               </div>
-              <Badge variant="secondary">Needs review</Badge>
+              <Badge asChild variant="secondary">
+                <Link
+                  href={`/dashboard/office-maintenance/inbound-email#inbound-sms-${encodeURIComponent(item.id)}`}
+                >
+                  Needs review
+                </Link>
+              </Badge>
             </div>
             <p className="mt-4 whitespace-pre-wrap border-l-2 pl-3 text-sm leading-6">
               {item.messageBody ?? "No message body was retained."}
