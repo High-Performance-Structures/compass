@@ -15,24 +15,30 @@ type TestDatabase = {
 }
 
 type TestDatabaseModule = {
-  readonly DatabaseSync: new (filename: string) => TestDatabase
+  readonly Database: new (filename: string) => TestDatabase
 }
 
 function isTestDatabaseModule(value: unknown): value is TestDatabaseModule {
   return (
     value !== null &&
     typeof value === "object" &&
-    "DatabaseSync" in value &&
-    typeof value.DatabaseSync === "function"
+    "Database" in value &&
+    typeof value.Database === "function"
   )
 }
 
 async function createDatabase(): Promise<TestDatabase> {
-  const sqliteModule: unknown = await import("node:sqlite")
-  if (!isTestDatabaseModule(sqliteModule)) {
-    throw new Error("node:sqlite did not provide a DatabaseSync constructor")
+  if ("Bun" in globalThis) {
+    const bunSqliteSpecifier = "bun:sqlite"
+    const sqliteModule: unknown = await import(bunSqliteSpecifier)
+    if (!isTestDatabaseModule(sqliteModule)) {
+      throw new Error("bun:sqlite did not provide a Database constructor")
+    }
+    return new sqliteModule.Database(":memory:")
   }
-  return new sqliteModule.DatabaseSync(":memory:")
+
+  const { default: Database } = await import("better-sqlite3")
+  return new Database(":memory:")
 }
 
 const guardedMigrationSql = readFileSync(

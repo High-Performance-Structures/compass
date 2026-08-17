@@ -10,6 +10,7 @@ export const ACTIVITY_CATEGORIES = [
   "financial",
   "presence",
   "schedule",
+  "warranty",
 ] as const
 
 export type ActivityCategory = (typeof ACTIVITY_CATEGORIES)[number]

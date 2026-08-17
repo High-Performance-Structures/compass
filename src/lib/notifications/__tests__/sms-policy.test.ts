@@ -45,6 +45,23 @@ describe("SMS notification policy", () => {
     ).toBe(false)
   })
 
+  it("routes live warranty updates through project activity consent", () => {
+    expect(
+      shouldSendSmsNotification(ENABLED_PREFERENCES, {
+        eventType: "warranty.updated",
+        createdBy: "project-manager",
+        occurredAt: new Date("2026-07-30T18:00:00.000Z"),
+      })
+    ).toBe(true)
+    expect(
+      shouldSendSmsNotification(ENABLED_PREFERENCES, {
+        eventType: "warranty.created",
+        createdBy: null,
+        occurredAt: new Date("2026-07-30T18:00:00.000Z"),
+      })
+    ).toBe(false)
+  })
+
   it("requires current consent and the matching category preference", () => {
     expect(
       shouldSendSmsNotification(
