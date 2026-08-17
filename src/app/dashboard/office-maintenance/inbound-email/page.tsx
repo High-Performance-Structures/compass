@@ -9,6 +9,10 @@ import {
 } from "@tabler/icons-react"
 
 import {
+  getStaffMessageAssignees,
+  submitRouteGotoTextToMessageDesk,
+} from "@/app/actions/staff-message-desk"
+import {
   dismissInboundEmail,
   getInboundEmailReviewQueue,
   routeInboundEmailToRfi,
@@ -32,8 +36,11 @@ function suggestedTitle(value: string | null): string {
 }
 
 export default async function InboundEmailReviewPage(): Promise<React.ReactElement> {
-  const queue = await getInboundEmailReviewQueue()
-  const smsQueue = await getInboundSmsReviewQueue()
+  const [queue, smsQueue, staffAssignees] = await Promise.all([
+    getInboundEmailReviewQueue(),
+    getInboundSmsReviewQueue(),
+    getStaffMessageAssignees(),
+  ])
 
   return (
     <main className="mx-auto w-full max-w-5xl space-y-5 p-4 lg:p-6">
@@ -172,6 +179,31 @@ export default async function InboundEmailReviewPage(): Promise<React.ReactEleme
                 <input type="hidden" name="eventId" value={item.id} />
                 <Button type="submit" variant="outline">Dismiss</Button>
               </form>
+              {staffAssignees.success && staffAssignees.data.length > 0 ? (
+                <form
+                  action={submitRouteGotoTextToMessageDesk}
+                  className="mt-2 flex flex-col gap-2 border-t pt-3 sm:flex-row sm:items-end sm:justify-end"
+                >
+                  <input type="hidden" name="eventId" value={item.id} />
+                  <label className="flex flex-1 flex-col gap-1 text-sm font-medium sm:max-w-sm">
+                    Route to Message Desk
+                    <select
+                      name="assigneeUserId"
+                      required
+                      defaultValue=""
+                      className="h-10 border bg-background px-3 font-normal"
+                    >
+                      <option value="" disabled>Select one staff recipient…</option>
+                      {staffAssignees.data.map((assignee) => (
+                        <option key={assignee.id} value={assignee.id}>
+                          {assignee.name} · {assignee.email}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <Button type="submit" variant="outline">Route to Message Desk</Button>
+                </form>
+              ) : null}
             </article>
           ))
         )}

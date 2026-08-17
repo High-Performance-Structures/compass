@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm"
 import {
   index,
   sqliteTable,
@@ -719,6 +720,53 @@ export const activityEvents = sqliteTable(
 
 export type ActivityEvent = typeof activityEvents.$inferSelect
 export type NewActivityEvent = typeof activityEvents.$inferInsert
+
+export const staffMessageRecords = sqliteTable(
+  "staff_message_records",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    sourceType: text("source_type").notNull(),
+    gotoInboundEventId: text("goto_inbound_event_id").references(
+      () => gotoInboundEvents.id,
+      { onDelete: "set null" }
+    ),
+    callerName: text("caller_name").notNull(),
+    callerCompany: text("caller_company"),
+    callerPhone: text("caller_phone"),
+    callerEmail: text("caller_email"),
+    subject: text("subject").notNull(),
+    body: text("body").notNull(),
+    assigneeUserId: text("assignee_user_id")
+      .notNull()
+      .references(() => users.id),
+    createdBy: text("created_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("staff_message_records_goto_event_unique")
+      .on(table.gotoInboundEventId)
+      .where(
+        sql`${table.gotoInboundEventId} IS NOT NULL`
+      ),
+    index("staff_message_records_org_created_idx").on(
+      table.organizationId,
+      table.createdAt
+    ),
+    index("staff_message_records_assignee_created_idx").on(
+      table.assigneeUserId,
+      table.createdAt
+    ),
+  ]
+)
+
+export type StaffMessageRecord = typeof staffMessageRecords.$inferSelect
+export type NewStaffMessageRecord = typeof staffMessageRecords.$inferInsert
 
 export const gotoInboundEvents = sqliteTable(
   "goto_inbound_events",

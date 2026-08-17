@@ -5,6 +5,7 @@ import { useState } from "react"
 import {
   IconDatabase,
   IconMailForward,
+  IconPhone,
   IconSettings,
   IconTemplate,
 } from "@tabler/icons-react"
@@ -132,6 +133,12 @@ export function OfficeMaintenanceDrawer({
             <Link href="/dashboard/office-maintenance/inbound-email">
               <IconMailForward className="size-4" />
               Review inbound messages
+            </Link>
+          </Button>
+          <Button asChild variant="outline" className="w-full justify-start">
+            <Link href="/dashboard/office-maintenance/message-desk">
+              <IconPhone className="size-4" />
+              Open Staff Message Desk
             </Link>
           </Button>
           <Button asChild variant="outline" className="w-full justify-start">
