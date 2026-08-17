@@ -128,7 +128,7 @@ The `CapApp-SPM/Package.swift` file is managed by `cap sync`. Don't edit it manu
 
 ### Info.plist permissions
 
-Before submitting to the App Store, add these usage description keys to `ios/App/App/Info.plist`:
+The required usage description keys are already present in `ios/App/App/Info.plist`:
 
 ```xml
 <key>NSCameraUsageDescription</key>
@@ -137,11 +137,9 @@ Before submitting to the App Store, add these usage description keys to `ios/App
 <string>Compass accesses your photo library to attach existing photos to projects.</string>
 <key>NSFaceIDUsageDescription</key>
 <string>Compass uses Face ID to keep your project data secure when you return to the app.</string>
-<key>NSLocationWhenInUseUsageDescription</key>
-<string>Compass records GPS coordinates on site photos to track where they were taken.</string>
 ```
 
-Apple will reject the app without these. The strings appear in the system permission dialogs, so they should explain *why* the permission is needed in terms the user understands.
+Apple will reject the app if code accesses one of these protected capabilities without the matching description. Field Mode preserves GPS metadata that is already present in captured images, but it does not request live location and therefore does not declare a location usage key. The strings appear in system permission dialogs, so they must continue to explain *why* the permission is needed in terms the user understands.
 
 ### Push notifications (APNs)
 
@@ -149,8 +147,10 @@ iOS push notifications require an APNs key, not a certificate. The key is a `.p8
 
 1. Create a key with Apple Push Notifications service (APNs) enabled
 2. Download the `.p8` file (you can only download it once)
-3. Upload it to your Firebase project under Project Settings > Cloud Messaging > APNs Authentication Key
-4. Note the Key ID and your Team ID -- Firebase needs both
+3. Store the private key as the `APNS_PRIVATE_KEY` Cloudflare secret
+4. Store the Key ID and Apple Team ID as `APNS_KEY_ID` and `APNS_TEAM_ID`
+
+Compass sends iOS device tokens directly to APNs. The Firebase project is used only for Android FCM delivery.
 
 The `AppDelegate.swift` already handles Universal Links via `ApplicationDelegateProxy`. For push notification delegate methods, Capacitor's `@capacitor/push-notifications` plugin registers them automatically when the plugin is loaded.
 
@@ -188,6 +188,8 @@ For TestFlight / App Store distribution:
 
 This file must be served from the web domain with `Content-Type: application/json` and no redirects. Cloudflare Workers handles this correctly by default for files in `public/`.
 
+The bundled Field Mode shell listens for Capacitor `appUrlOpen` events and the cold-start launch URL. It accepts only HTTPS `/dashboard/*` URLs on the exact Compass origin, gates the destination behind the shared biometric lock when required, then navigates the webview to the matching live page while preserving the query and fragment.
+
 
 ## Android specifics
 
@@ -213,18 +215,16 @@ android/
 
 ### Permissions
 
-The current `AndroidManifest.xml` only declares `INTERNET`. Before building for production, add these permissions:
+The app manifest declares network access plus the legacy storage permissions needed when `saveToGallery` runs on older Android releases:
 
 ```xml
-<uses-permission android:name="android.permission.CAMERA" />
-<uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
-<uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
-<uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
-<uses-permission android:name="android.permission.USE_BIOMETRIC" />
+<uses-permission android:name="android.permission.INTERNET" />
 <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+<uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
+<uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="29" />
 ```
 
-Unlike iOS, Android permissions are declared in the manifest *and* requested at runtime. Capacitor plugins handle the runtime request automatically when you call their APIs, but the manifest declarations must be present or the runtime requests will silently fail.
+The app declares `POST_NOTIFICATIONS` itself so Android 13 and newer can display the runtime notification prompt. Capacitor and the native plugins merge biometric, network-state, foreground-service, and related permissions into the final app manifest. The Camera plugin uses Android's system camera activity and does not require the app to request `CAMERA`. Field Mode preserves GPS metadata already present in the captured image; it does not request live device location.
 
 ### Firebase Cloud Messaging (FCM)
 
@@ -236,7 +236,7 @@ Android push notifications go through Firebase Cloud Messaging, even if they ori
 4. The `classpath 'com.google.gms:google-services'` line needs to be added to `android/build.gradle`
 5. Add `apply plugin: 'com.google.gms.google-services'` at the bottom of `android/app/build.gradle`
 
-The same Firebase project handles both platforms. Upload your iOS APNs key to Firebase, and it will route notifications to the correct platform based on the device token.
+Firebase handles Android delivery only. Compass sends iOS notifications directly to APNs with its Apple provider key.
 
 ### Building and running
 
@@ -257,7 +257,7 @@ For Play Store distribution:
 
 ### App Links
 
-`public/.well-known/assetlinks.json` enables Android App Links. Replace `SIGNING_CERT_HASH` with the SHA-256 fingerprint of your signing certificate:
+`public/.well-known/assetlinks.json` enables Android App Links. Its package name must match `applicationId`, and its SHA-256 fingerprint must match the Play App Signing certificate (or the upload certificate for direct/internal installs):
 
 ```bash
 # get the fingerprint from your keystore
@@ -265,25 +265,27 @@ keytool -list -v -keystore your-keystore.jks \
   -alias your-alias | grep SHA256
 ```
 
-The fingerprint is a colon-separated hex string like `AA:BB:CC:...`. Enter it without the colons in `assetlinks.json`.
+The fingerprint is a colon-separated hex string like `AA:BB:CC:...`. Preserve the colons in `assetlinks.json`.
+
+Android uses the same exact-origin Field Mode routing described above, so verified links work whether the app is already running or launched from a terminated state.
 
 
 ## Push notifications
 
 ### How the system works
 
-The push notification system has three parts: token registration on the client, token storage on the server, and notification delivery via FCM.
+The push notification system has three parts: token registration on the client, token storage on the server, and platform-specific notification delivery.
 
-When the native app starts, the `PushNotificationRegistrar` component (rendered in the dashboard layout) runs the `useNativePush` hook. This hook requests permission, gets a device token from APNs (iOS) or FCM (Android), and POSTs it to `/api/push/register`. The server stores the token in the `push_tokens` table, associated with the current user.
+When the live native app starts, the `PushNotificationRegistrar` component (rendered in the dashboard layout) runs the `useNativePush` hook. This hook requests permission, gets a device token from APNs (iOS) or FCM (Android), and POSTs it to `/api/push/register`. The server stores the token in the `push_tokens` table, associated with the current user.
 
-To send a notification, server-side code calls `sendPushNotification()` from `src/lib/push/send.ts`. This function looks up all tokens for a given user and sends the notification via FCM's HTTP v1 API. FCM routes iOS notifications through APNs automatically (this is why the APNs key is uploaded to Firebase).
+The server dispatches Android tokens through authenticated FCM HTTP v1 and iOS tokens directly through APNs. Android credentials come from a Firebase service-account JSON document. APNs uses an ES256 provider token generated from the Apple key ID, team ID, and private key. Provider credentials remain server-side Cloudflare secrets.
 
 ```
 Device boots → useNativePush → request permission → get token
   → POST /api/push/register → push_tokens table
 
 Server event → sendPushNotification(userId, title, body, data)
-  → query push_tokens → FCM HTTP v1 API → device
+  → query push_tokens → FCM HTTP v1 (Android) or APNs (iOS) → device
 ```
 
 ### Token lifecycle
@@ -294,18 +296,17 @@ On sign-out, the client should call `DELETE /api/push/register` to remove the to
 
 ### Adding push triggers
 
-To send a push notification when something happens (e.g., an invoice status change), call `sendPushNotification` from the relevant server action:
+Call `sendPushNotification` with the Cloudflare environment from a server-only action. Delivery should be scheduled with the request context's `waitUntil` when it does not need to block the response.
 
 ```typescript
-import { sendPushNotification } from "@/lib/push/send"
-
-// inside a server action, after the mutation
-await sendPushNotification(env.DB, env.FCM_SERVER_KEY, {
-  userId: projectManager.id,
-  title: "Invoice approved",
-  body: `Invoice #${invoice.number} for ${project.name} was approved`,
-  data: { url: `/dashboard/financials` },
-})
+ctx.waitUntil(
+  sendPushNotification(env, {
+    userId,
+    title: "Project updated",
+    body: "A new field update is ready.",
+    data: { url: `/dashboard/projects/${projectId}` },
+  }),
+)
 ```
 
 The `data.url` field is picked up by the client-side push handler. When the user taps the notification, the app navigates to that URL.
@@ -317,7 +318,7 @@ Biometric auth exists to protect the app when a user puts it in the background -
 
 The `BiometricGuard` component wraps the dashboard layout. It listens for `appStateChange` events from `@capacitor/app`. When the app moves to the background, it records the timestamp. When the app returns to the foreground, if more than 30 seconds have elapsed and biometric is enabled, it shows a full-screen blur overlay and triggers the biometric prompt.
 
-Users opt in to biometric auth. On first login in the native app, `BiometricGuard` shows a prompt asking if they want to enable Face ID or fingerprint lock. This prompt only appears once (tracked via `localStorage`). Users can also toggle biometric on or off in Settings > Notifications.
+Users opt in to biometric auth. On first login in the native app, `BiometricGuard` shows a prompt asking if they want to enable Face ID or fingerprint lock. This prompt only appears once. The preference is stored with Capacitor Preferences so both the bundled Field Mode shell and the live app enforce it; legacy `localStorage` values are migrated automatically. Users can also toggle biometric on or off in Settings > Notifications.
 
 The "Use password" fallback redirects to `/login`, which goes through the normal WorkOS auth flow. This is important -- if biometric fails repeatedly (e.g., the sensor is dirty, the user changed their fingerprint), there must be a way back in.
 
@@ -454,7 +455,8 @@ Google's review is generally less strict about WebView apps than Apple's, but th
 | `src/components/native/native-shell.tsx` | Status bar style sync with theme |
 | `src/components/native/upload-queue-indicator.tsx` | Pending upload badge |
 | `src/app/api/push/register/route.ts` | POST (upsert token), DELETE (remove on sign-out) |
-| `src/lib/push/send.ts` | FCM HTTP v1 push notification sender |
+| `src/lib/push/send.ts` | Platform dispatcher for FCM HTTP v1 and direct APNs delivery |
+| `src/lib/push/providers.ts` | FCM OAuth/HTTP and APNs provider-token implementations |
 | `public/.well-known/apple-app-site-association` | iOS Universal Links configuration |
 | `public/.well-known/assetlinks.json` | Android App Links configuration |
 
@@ -470,10 +472,13 @@ Google's review is generally less strict about WebView apps than Apple's, but th
 | `.gitignore` | Native build artifact exclusions |
 
 
-## Environment variables
+## Push environment variables
 
 | Variable | Where | Purpose |
 |----------|-------|---------|
-| `FCM_SERVER_KEY` | Wrangler secret | Firebase Cloud Messaging server key for push delivery |
+| `FIREBASE_SERVICE_ACCOUNT_JSON` | Wrangler secret | Firebase service-account JSON used to mint FCM HTTP v1 OAuth tokens |
+| `APNS_KEY_ID`, `APNS_TEAM_ID`, `APNS_PRIVATE_KEY` | Wrangler secrets | APNs token-auth credentials for iOS push delivery |
+| `APNS_BUNDLE_ID` | Wrangler variable (optional) | APNs topic; defaults to `com.hpscolorado.compass` |
+| `APNS_ENVIRONMENT` | Wrangler variable (optional) | `production` by default; use `development` only for debug-device tokens |
 
 No other environment variables are needed for the native layer. The existing `WORKOS_*` and `OPENROUTER_API_KEY` variables continue to work as before -- they're used by the web app, which the native shell loads remotely.

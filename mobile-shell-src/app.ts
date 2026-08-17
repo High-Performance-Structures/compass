@@ -6,6 +6,7 @@ import { Directory, Filesystem } from "@capacitor/filesystem"
 import { Keyboard, KeyboardResize } from "@capacitor/keyboard"
 import { Network } from "@capacitor/network"
 import { Preferences } from "@capacitor/preferences"
+import { NativeBiometric } from "@capgo/capacitor-native-biometric"
 import { z } from "zod/v4"
 
 import {
@@ -19,6 +20,7 @@ import {
   type FieldQueuedAttachment,
   type FieldUserProfile,
 } from "../src/lib/field/types"
+import { resolveDashboardAppUrl } from "./app-url"
 
 const LIVE_URL = "https://compass.openrangeconstruction.ltd"
 const PROJECTS_KEY = "compass_field_projects_v1"
@@ -29,8 +31,10 @@ const DOCUMENTS_KEY = "compass_field_documents_v1"
 const AUTH_STATE_KEY = "compass_native_auth_state_v1"
 const AUTH_VERIFIER_KEY = "compass_native_auth_verifier_v1"
 const PROFILE_KEY = "compass_field_profile_v1"
+const BIOMETRIC_ENABLED_KEY = "compass_biometric_enabled"
 const FIELD_ATTACHMENT_DIRECTORY = "compass-field-attachments"
 const MAX_ATTACHMENT_BYTES = 50 * 1024 * 1024
+const BACKGROUND_LOCK_THRESHOLD_MS = 30_000
 const isIos = Capacitor.getPlatform() === "ios"
 
 type Project = FieldProject
@@ -85,6 +89,11 @@ let startingConversation = false
 let refreshingProject = false
 let directRecipientId = ""
 let directMessageDraft = ""
+let biometricEnabled = false
+let biometricLocked = false
+let securityMigrationRequired = false
+let backgroundedAt: number | null = null
+let pendingAppUrl: string | null = null
 
 function bellIcon(): string {
   return `<svg class="header-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.268 21a2 2 0 0 0 3.464 0"></path><path d="M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326"></path></svg>`
@@ -310,6 +319,19 @@ function view(): string {
 
 function render(): void {
   if (!app) return
+  if (securityMigrationRequired) {
+    app.innerHTML = `<main class="lock-screen"><div class="lock-mark" aria-hidden="true">C</div><h1>Security update required</h1><p>Connect once to finish protecting Field Mode data on this device.</p><button id="continue-security-update" class="primary" type="button" ${online ? "" : "disabled"}>${online ? "Continue securely" : "Waiting for connection"}</button></main>`
+    document.querySelector<HTMLButtonElement>("#continue-security-update")?.addEventListener("click", continueSecurityMigration)
+    return
+  }
+  if (biometricLocked) {
+    app.innerHTML = `<main class="lock-screen"><div class="lock-mark" aria-hidden="true">C</div><h1>Compass is locked</h1><p>Use Face ID or your device fingerprint to continue.</p><button id="unlock-compass" class="primary" type="button">Unlock Compass</button><button id="unlock-with-password" class="text-button" type="button" ${online ? "" : "disabled"}>Use password</button></main>`
+    document.querySelector<HTMLButtonElement>("#unlock-compass")?.addEventListener("click", () => void unlockCompass())
+    document.querySelector<HTMLButtonElement>("#unlock-with-password")?.addEventListener("click", () => {
+      if (online) window.location.assign(`${LIVE_URL}/login`)
+    })
+    return
+  }
   const title = packet ? projectLabel(packet.project) : "Compass"
   const queued = outbox.length > 0 ? ` - ${outbox.length} waiting to sync` : ""
   const unreadNotifications = packet?.notifications.filter((notification) => notification.readAt === null).length ?? 0
@@ -323,6 +345,50 @@ function render(): void {
   const liveLabel = projects.length === 0 ? "Sign in" : "Full Compass"
   app.innerHTML = `<div class="shell"><header class="shell-header"><div class="header-row"><div><p class="eyebrow">Field mode</p><h1 class="project-title">${escapeHtml(title)}</h1></div><div class="header-actions">${outbox.length > 0 && online ? `<button id="sync-now" class="icon-button" type="button" aria-label="Sync waiting work">${syncIcon()}</button>` : ""}<button id="field-notifications" class="notification-button" type="button" aria-label="Notifications">${bellIcon()}${unreadNotifications > 0 ? `<span>${unreadNotifications > 9 ? "9+" : unreadNotifications}</span>` : ""}</button><button id="field-settings" class="settings-button" type="button" aria-label="Field settings">Settings</button><button id="open-live" class="live-button" ${online && !signingIn ? "" : "disabled"}>${liveLabel}</button></div></div><div class="sync-line"><span class="status-dot ${online ? "online" : ""}"></span>${syncing ? "Opening secure sync" : online ? "Connection available" : "Offline"}${escapeHtml(queued)}</div></header><main class="content">${view()}</main><nav class="tabbar">${tabs.map((tab) => `<button class="tab ${activeTab === tab.value ? "active" : ""}" data-tab="${tab.value}"><span class="tab-symbol">${tab.symbol}</span>${tab.label}</button>`).join("")}</nav></div>`
   bindEvents()
+}
+
+async function biometricPreference(): Promise<boolean | null> {
+  const result = await Preferences.get({ key: BIOMETRIC_ENABLED_KEY })
+  if (result.value === null) return null
+  return result.value === "true"
+}
+
+function continueSecurityMigration(): void {
+  if (!online) return
+  window.location.replace(`${LIVE_URL}/dashboard/field`)
+}
+
+async function unlockCompass(): Promise<boolean> {
+  try {
+    const availability = await NativeBiometric.isAvailable()
+    if (!availability.isAvailable) return false
+    await NativeBiometric.verifyIdentity({
+      reason: "Unlock Compass",
+      title: "Authentication Required",
+    })
+    biometricLocked = false
+    backgroundedAt = null
+    render()
+    const destination = pendingAppUrl
+    pendingAppUrl = null
+    if (destination) {
+      await handleAppUrl(destination)
+      return true
+    }
+    void refreshConnectivityAndSync()
+    return true
+  } catch {
+    biometricLocked = true
+    render()
+    return false
+  }
+}
+
+async function lockCompassIfEnabled(): Promise<void> {
+  if (!biometricEnabled) return
+  biometricLocked = true
+  render()
+  await unlockCompass()
 }
 
 function isTab(value: string | undefined): value is Tab {
@@ -889,8 +955,7 @@ function resetAbandonedSignIn(): void {
   render()
 }
 
-async function handleAuthCallback(callbackUrl: string): Promise<void> {
-  const url = new URL(callbackUrl)
+async function handleAuthCallback(url: URL): Promise<void> {
   if (url.protocol !== "compass:" || url.hostname !== "auth" || url.pathname !== "/callback") return
 
   await Browser.close().catch(() => undefined)
@@ -935,12 +1000,69 @@ async function handleAuthCallback(callbackUrl: string): Promise<void> {
   form.submit()
 }
 
+async function handleAppUrl(appUrl: string): Promise<void> {
+  const dashboardUrl = resolveDashboardAppUrl(appUrl, LIVE_URL)
+  if (dashboardUrl) {
+    const exceededBackgroundThreshold =
+      backgroundedAt !== null &&
+      Date.now() - backgroundedAt > BACKGROUND_LOCK_THRESHOLD_MS
+    if (
+      biometricEnabled &&
+      (biometricLocked || exceededBackgroundThreshold)
+    ) {
+      pendingAppUrl = appUrl
+      biometricLocked = true
+      render()
+      await unlockCompass()
+      return
+    }
+    window.location.assign(dashboardUrl)
+    return
+  }
+
+  let url: URL
+  try {
+    url = new URL(appUrl)
+  } catch {
+    return
+  }
+
+  await handleAuthCallback(url)
+}
+
 async function initialize(): Promise<void> {
   if (isIos) {
     document.body.classList.add("platform-ios")
     await Keyboard.setResizeMode({ mode: KeyboardResize.Native })
     await Keyboard.setScroll({ isDisabled: false })
   }
+  const initialStatus = await Network.getStatus()
+  online = initialStatus.connected
+  const storedBiometricPreference = await biometricPreference()
+  if (storedBiometricPreference === null) {
+    // The previous release stored this choice on the live web origin, which the
+    // bundled shell cannot read. Fail closed until the dashboard migrates it.
+    securityMigrationRequired = true
+    render()
+    if (online) {
+      continueSecurityMigration()
+      return
+    }
+    await Network.addListener("networkStatusChange", ({ connected }) => {
+      online = connected
+      render()
+      if (connected) continueSecurityMigration()
+    })
+    window.addEventListener("online", () => {
+      online = true
+      render()
+      continueSecurityMigration()
+    })
+    return
+  }
+  biometricEnabled = storedBiometricPreference
+  biometricLocked = biometricEnabled
+  if (biometricLocked) render()
   await Keyboard.addListener("keyboardWillShow", ({ keyboardHeight }) => {
     document.documentElement.style.setProperty("--keyboard-height", `${keyboardHeight}px`)
     document.body.classList.add("keyboard-open")
@@ -955,18 +1077,26 @@ async function initialize(): Promise<void> {
     document.body.classList.remove("keyboard-open")
     document.documentElement.style.setProperty("--keyboard-height", "0px")
   })
-  await App.addListener("appUrlOpen", ({ url }) => void handleAuthCallback(url))
+  await App.addListener("appUrlOpen", ({ url }) => void handleAppUrl(url))
   await Browser.addListener("browserFinished", resetAbandonedSignIn)
   await App.addListener("appStateChange", ({ isActive }) => {
-    if (!isActive) return
+    if (!isActive) {
+      backgroundedAt = Date.now()
+      return
+    }
+    const elapsed = backgroundedAt === null ? 0 : Date.now() - backgroundedAt
+    backgroundedAt = null
+    if (elapsed > BACKGROUND_LOCK_THRESHOLD_MS) {
+      void lockCompassIfEnabled()
+      return
+    }
     window.setTimeout(resetAbandonedSignIn, 1_000)
     void refreshConnectivityAndSync()
   })
   const launchUrl = await App.getLaunchUrl()
-  if (launchUrl?.url) void handleAuthCallback(launchUrl.url)
+  const launchUrlQueued = Boolean(launchUrl?.url && biometricLocked)
+  if (launchUrlQueued && launchUrl?.url) pendingAppUrl = launchUrl.url
 
-  const status = await Network.getStatus()
-  online = status.connected
   const projectResult = projectsSchema.safeParse(await readJson(PROJECTS_KEY))
   const outboxResult = fieldOutboxSchema.safeParse(await readJson(OUTBOX_KEY))
   const documentResult = savedDocumentsSchema.safeParse(await readJson(DOCUMENTS_KEY))
@@ -984,6 +1114,10 @@ async function initialize(): Promise<void> {
     : null
   packet = packetResult?.success ? packetResult.data : null
   render()
+  if (biometricLocked) await unlockCompass()
+  if (launchUrl?.url && !launchUrlQueued && !biometricLocked) {
+    await handleAppUrl(launchUrl.url)
+  }
   if (online && packet) void refreshProjectPacket()
   resumePendingSync()
 

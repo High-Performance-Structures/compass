@@ -2,7 +2,7 @@ import { NextResponse } from "next/server"
 import { z } from "zod/v4"
 
 import { sendMessage } from "@/app/actions/chat-messages"
-import { openDirectConversation } from "@/app/actions/conversations"
+import { createDirectMessage } from "@/app/actions/conversations"
 
 const requestSchema = z.object({
   targetUserId: z.string().min(1),
@@ -19,8 +19,8 @@ export async function POST(request: Request): Promise<Response> {
       )
     }
 
-    const conversation = await openDirectConversation(parsed.data.targetUserId)
-    if (!conversation.success) {
+    const conversation = await createDirectMessage([parsed.data.targetUserId])
+    if (!conversation.success || !conversation.data) {
       return NextResponse.json(conversation, { status: 403 })
     }
 

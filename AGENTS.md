@@ -288,7 +288,8 @@ optional (enable specific modules):
 - `NETSUITE_CLIENT_ID`, `NETSUITE_CLIENT_SECRET`, `NETSUITE_ACCOUNT_ID`, `NETSUITE_REDIRECT_URI`, `NETSUITE_TOKEN_ENCRYPTION_KEY` -- netsuite sync
 - `NETSUITE_CONCURRENCY_LIMIT` -- defaults to 15
 - `GOOGLE_SERVICE_ACCOUNT_ENCRYPTION_KEY` -- google drive
-- `FCM_SERVER_KEY` -- push notifications
+- `FIREBASE_SERVICE_ACCOUNT_JSON` -- Android push notifications through FCM HTTP v1
+- `APNS_KEY_ID`, `APNS_TEAM_ID`, `APNS_PRIVATE_KEY` -- iOS push notifications through direct APNs provider-token delivery
 
 see [docs/development/getting-started.md](docs/development/getting-started.md) for full setup.
 

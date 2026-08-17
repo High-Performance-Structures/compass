@@ -2,7 +2,7 @@ import { NextResponse } from "next/server"
 import { z } from "zod/v4"
 
 import { getFieldProjectPacket } from "@/app/actions/field-mode"
-import { openProjectConversationChannel } from "@/app/actions/project-messages"
+import { createChannel } from "@/app/actions/conversations"
 
 const requestSchema = z.object({
   projectId: z.string().min(1),
@@ -18,7 +18,26 @@ export async function POST(request: Request): Promise<Response> {
       )
     }
 
-    const result = await openProjectConversationChannel(parsed.data.projectId)
+    const currentPacket = await getFieldProjectPacket(parsed.data.projectId)
+    if (currentPacket.channel) {
+      return NextResponse.json({
+        success: true,
+        created: false,
+        channel: currentPacket.channel,
+        messages: currentPacket.messages,
+      })
+    }
+
+    const channelName = currentPacket.project.projectNumber
+      ? `${currentPacket.project.projectNumber} · ${currentPacket.project.name}`
+      : currentPacket.project.name
+    const result = await createChannel({
+      name: channelName,
+      type: "text",
+      description: "Project staff conversation",
+      projectId: parsed.data.projectId,
+      isPrivate: false,
+    })
     if (!result.success) {
       return NextResponse.json(result, { status: 403 })
     }
@@ -26,7 +45,7 @@ export async function POST(request: Request): Promise<Response> {
     const packet = await getFieldProjectPacket(parsed.data.projectId)
     return NextResponse.json({
       success: true,
-      created: result.data.created,
+      created: true,
       channel: packet.channel,
       messages: packet.messages,
     })

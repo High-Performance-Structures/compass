@@ -21,6 +21,7 @@ import { mapDriveFileToFileItem } from "@/lib/google/mapper"
 import { isDriveItemWithinProjectFolder } from "@/lib/google/project-folder-boundary"
 import type { FileItem } from "@/lib/files-data"
 import { assertProjectAccess } from "@/lib/project-access"
+import { isDemoUser } from "@/lib/demo"
 import {
   PROJECT_FILE_SOURCES,
   getProjectFolderMatch,
@@ -481,7 +482,7 @@ export async function listProjectDriveFilesForField(
   try {
     const user = await requireAuth()
     requirePermission(user, "document", "read")
-    if (isDemoAuthUser(user)) {
+    if (isDemoUser(user.id)) {
       return { success: true, files: [], nextPageToken: null }
     }
 
@@ -561,7 +562,7 @@ export async function listProjectDriveFolderForField(
   try {
     const user = await requireAuth()
     requirePermission(user, "document", "read")
-    if (isDemoAuthUser(user)) {
+    if (isDemoUser(user.id)) {
       return { success: true, folderName: "Documents", files: [], nextPageToken: null }
     }
 

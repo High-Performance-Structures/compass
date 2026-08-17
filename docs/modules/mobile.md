@@ -205,7 +205,7 @@ export function NativeShell() {
 
 **`biometric-guard.tsx`** -- wraps the app with biometric lock screen functionality. Listens for app state changes (background/foreground). If the app was backgrounded for more than 30 seconds and biometrics are enabled, it shows a full-screen lock overlay. Auto-authenticates on appear, with a fallback "Use password" button that redirects to the login page.
 
-Also handles first-login setup: after a 2-second delay on first native launch, prompts the user to enable biometric locking. The prompt state is tracked in localStorage so it's only shown once.
+Also handles first-login setup: after a 2-second delay on first native launch, prompts the user to enable biometric locking. The prompt and enabled state are stored with Capacitor Preferences so the live app and bundled Field Mode shell share the same lock policy. Legacy localStorage values are migrated automatically.
 
 **`offline-banner.tsx`** -- shows a slim amber banner when the device is offline. Uses `@capacitor/network` on native, falls back to `navigator.onLine` events on web. This component actually works on both platforms -- the web fallback is useful for PWA-like behavior.
 
@@ -215,27 +215,25 @@ Also handles first-login setup: after a 2-second delay on first native launch, p
 push notifications
 ---
 
-`src/lib/push/send.ts` sends push notifications via FCM HTTP v1 API. It works from Cloudflare Workers without the Firebase SDK -- just a direct HTTP POST to `https://fcm.googleapis.com/v1/projects/-/messages:send`.
+Token registration, storage, and platform-specific delivery are implemented. Android messages use FCM HTTP v1 with a short-lived OAuth token minted from a Firebase service account. The Capacitor plugin returns an APNs token on iOS, so iOS messages go directly to APNs using an ES256 provider token.
 
 The sender:
 
 1. Looks up all push tokens for the target user from the `push_tokens` table
-2. Sends each token a notification with platform-specific config (high priority for Android, sound + badge for iOS)
-3. Auto-cleans invalid tokens: 404 responses (unregistered device) trigger token deletion
+2. Groups tokens by platform and obtains one provider authorization token per delivery batch
+3. Sends Android tokens to the Firebase project-scoped endpoint and iOS tokens to the configured APNs environment
+4. Auto-cleans invalid tokens when FCM returns 404 or APNs returns 410
 
 ```typescript
-const message: FcmMessage = {
-  message: {
-    token: t.token,
-    notification: { title: payload.title, body: payload.body },
-    data: payload.data ? { ...payload.data } : undefined,
-    android: { priority: "high" },
-    apns: { payload: { aps: { sound: "default", badge: 1 } } },
-  },
-}
+await sendPushNotification(env, {
+  userId,
+  title: "You were mentioned",
+  body: "Open Compass to view the conversation.",
+  data: { url: `/dashboard/conversations/${channelId}` },
+})
 ```
 
-Device tokens are registered via `POST /api/push/register` (called by `use-native-push.ts` on app launch) and cleaned up via `DELETE /api/push/register`.
+Device tokens are registered via `POST /api/push/register` (called by `use-native-push.ts` on app launch) and cleaned up via `DELETE /api/push/register`. Provider credentials must be configured in Cloudflare and delivery must be verified on physical devices before release.
 
 
 Capacitor configuration

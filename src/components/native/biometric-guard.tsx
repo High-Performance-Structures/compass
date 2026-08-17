@@ -18,6 +18,7 @@ export function BiometricGuard({
 }) {
   const native = useNative()
   const {
+    isLoaded,
     isAvailable,
     isEnabled,
     hasBeenPrompted,
@@ -32,6 +33,16 @@ export function BiometricGuard({
   const [locked, setLocked] = useState(false)
   const [showPrompt, setShowPrompt] = useState(false)
   const backgroundedAt = useRef<number | null>(null)
+  const initialLockHandled = useRef(false)
+
+  // Lock a native cold start after the shared preference has loaded. This
+  // runs only once, so enabling biometrics after an explicit verification
+  // does not immediately prompt the user a second time.
+  useEffect(() => {
+    if (!native || !isLoaded || initialLockHandled.current) return
+    initialLockHandled.current = true
+    if (isEnabled) setLocked(true)
+  }, [native, isLoaded, isEnabled])
 
   // listen for app state changes (background/foreground)
   useEffect(() => {
@@ -88,14 +99,14 @@ export function BiometricGuard({
   const handleEnableBiometric = useCallback(async () => {
     const success = await authenticate()
     if (success) {
-      setEnabled(true)
+      await setEnabled(true)
     }
-    markPrompted()
+    await markPrompted()
     setShowPrompt(false)
   }, [authenticate, setEnabled, markPrompted])
 
-  const handleSkipBiometric = useCallback(() => {
-    markPrompted()
+  const handleSkipBiometric = useCallback(async () => {
+    await markPrompted()
     setShowPrompt(false)
   }, [markPrompted])
 
