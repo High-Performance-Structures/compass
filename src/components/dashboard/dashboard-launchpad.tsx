@@ -122,6 +122,7 @@ const TEAM_AVAILABILITY_REFRESH_MS = 10_000
 
 function deskPhotoForUser(user: SidebarUser | null): string | null {
   if (!user) return null
+  if (!user.canUseWorkspacePhotos) return null
   if (!user.organizationId) return null
   if (user.dashboardDeskPhoto === HIDDEN_DESK_PHOTO) return null
   if (user.dashboardDeskPhoto) return user.dashboardDeskPhoto
@@ -182,6 +183,7 @@ function resizeDeskPhoto(dataUrl: string): Promise<string> {
 }
 
 function saveDeskPhoto(user: SidebarUser, dataUrl: string): void {
+  if (!user.canUseWorkspacePhotos) return
   if (!user.organizationId) return
   try {
     window.localStorage.setItem(
@@ -197,6 +199,7 @@ function clearDeskPhotoCache(
   user: SidebarUser,
   value: typeof HIDDEN_DESK_PHOTO | null
 ): void {
+  if (!user.canUseWorkspacePhotos) return
   if (!user.organizationId) return
   try {
     if (value === null) {
@@ -493,6 +496,7 @@ function DeskHero({
 
     const serverPhoto = user?.dashboardDeskPhoto ?? null
     if (!user) return
+    if (!user.canUseWorkspacePhotos) return
     if (!user.organizationId) return
     const migrationKey = `${user.email}:${user.organizationId ?? "none"}`
     if (
@@ -612,7 +616,7 @@ function DeskHero({
             <IconHome2 className="size-10 text-[#2f5963]/60" />
           </div>
         )}
-        {user ? (
+        {user?.canUseWorkspacePhotos ? (
           <div className="absolute bottom-3 left-3 flex flex-wrap gap-1.5">
             <label className="flex cursor-pointer items-center gap-1.5 border border-white/40 bg-black/55 px-2.5 py-1.5 text-xs font-medium text-white backdrop-blur-sm transition hover:bg-black/70">
               <IconPhotoEdit className="size-3.5" />

@@ -108,8 +108,10 @@ export async function GET(request: NextRequest): Promise<Response> {
   const user = await getCurrentUser()
   if (
     !user ||
+    !user.isActive ||
     isDemoUser(user.id) ||
     !isInternalStaffRole(user.role) ||
+    user.organizationType !== "internal" ||
     !user.organizationId
   ) {
     return notFound()

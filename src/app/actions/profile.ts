@@ -191,7 +191,12 @@ export async function updateWorkspacePhoto(
       return { success: false, error: "Invalid desk-photo slot." }
     }
     const currentUser = await requireAuth()
-    if (isDemoUser(currentUser.id) || !isInternalStaffRole(currentUser.role)) {
+    if (
+      isDemoUser(currentUser.id) ||
+      !currentUser.isActive ||
+      currentUser.organizationType !== "internal" ||
+      !isInternalStaffRole(currentUser.role)
+    ) {
       return { success: false, error: "Desk photos are not available here." }
     }
     const organizationId = requireOrg(currentUser)
@@ -209,6 +214,7 @@ export async function updateWorkspacePhoto(
           organizations,
           eq(organizations.id, organizationMembers.organizationId)
         )
+        .innerJoin(users, eq(users.id, organizationMembers.userId))
         .where(
           and(
             eq(organizationMembers.userId, currentUser.id),

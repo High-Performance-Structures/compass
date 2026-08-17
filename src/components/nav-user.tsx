@@ -70,6 +70,7 @@ function defaultSidebarPhoto(user: SidebarUser): string | null {
 }
 
 function loadSidebarPhoto(user: SidebarUser): string | null {
+  if (!user.canUseWorkspacePhotos) return null
   if (!user.organizationId) return null
   if (user.sidebarDeskPhoto === HIDDEN_DESK_PHOTO) return null
   if (user.sidebarDeskPhoto) return user.sidebarDeskPhoto
@@ -86,6 +87,7 @@ function loadSidebarPhoto(user: SidebarUser): string | null {
 }
 
 function saveSidebarPhoto(user: SidebarUser, dataUrl: string): void {
+  if (!user.canUseWorkspacePhotos) return
   if (!user.organizationId) return
   try {
     window.localStorage.setItem(
@@ -98,6 +100,7 @@ function saveSidebarPhoto(user: SidebarUser, dataUrl: string): void {
 }
 
 function resetSidebarPhoto(user: SidebarUser): void {
+  if (!user.canUseWorkspacePhotos) return
   if (!user.organizationId) return
   try {
     window.localStorage.setItem(
@@ -194,6 +197,7 @@ export function NavUser({
     setSidebarPhotoUrl(loadSidebarPhoto(user))
 
     const serverPhoto = user.sidebarDeskPhoto
+    if (!user.canUseWorkspacePhotos) return
     const migrationKey = `${user.email}:${user.organizationId ?? "none"}`
     if (
       serverPhoto !== null ||
@@ -379,21 +383,25 @@ export function NavUser({
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
             <DropdownMenuGroup>
-              <DropdownMenuItem
-                onSelect={(event) => {
-                  event.preventDefault()
-                  photoInputRef.current?.click()
-                }}
-              >
-                <IconPhotoEdit />
-                Change sidebar photo
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                onSelect={() => void handleSidebarPhotoReset()}
-              >
-                <IconRefresh />
-                Reset sidebar photo
-              </DropdownMenuItem>
+              {user.canUseWorkspacePhotos ? (
+                <>
+                  <DropdownMenuItem
+                    onSelect={(event) => {
+                      event.preventDefault()
+                      photoInputRef.current?.click()
+                    }}
+                  >
+                    <IconPhotoEdit />
+                    Change sidebar photo
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onSelect={() => void handleSidebarPhotoReset()}
+                  >
+                    <IconRefresh />
+                    Reset sidebar photo
+                  </DropdownMenuItem>
+                </>
+              ) : null}
               <DropdownMenuSeparator />
               <DropdownMenuItem onSelect={() => setAccountOpen(true)}>
                 <IconUserCircle />
@@ -425,14 +433,16 @@ export function NavUser({
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
-        <input
-          ref={photoInputRef}
-          type="file"
-          accept="image/jpeg,image/png,image/webp"
-          className="sr-only"
-          aria-label="Choose sidebar photo"
-          onChange={handleSidebarPhotoUpload}
-        />
+        {user.canUseWorkspacePhotos ? (
+          <input
+            ref={photoInputRef}
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            className="sr-only"
+            aria-label="Choose sidebar photo"
+            onChange={handleSidebarPhotoUpload}
+          />
+        ) : null}
       </SidebarMenuItem>
       <AccountModal
         open={accountOpen}

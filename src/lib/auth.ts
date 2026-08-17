@@ -51,6 +51,7 @@ export type AuthUser = {
 export type SidebarUser = Readonly<{
   id: string
   organizationId: string | null
+  canUseWorkspacePhotos: boolean
   name: string
   email: string
   avatar: string | null
@@ -74,9 +75,10 @@ export function toSidebarUser(user: AuthUser): SidebarUser {
   return {
     id: user.id,
     organizationId: user.organizationId,
+    canUseWorkspacePhotos,
     name: user.displayName ?? user.email.split("@")[0] ?? "User",
     email: user.email,
-    avatar: user.avatarUrl,
+    avatar: canUseWorkspacePhotos ? user.avatarUrl : null,
     dashboardDeskPhoto:
       canUseWorkspacePhotos &&
       user.dashboardDeskPhotoOrganizationId === user.organizationId
@@ -517,6 +519,12 @@ export async function getCurrentUser(): Promise<AuthUser | null> {
         ) ?? activeOrg
     }
 
+    const canUseWorkspacePhotos =
+      dbUser.isActive &&
+      !isDemoUser(dbUser.id) &&
+      activeOrg?.orgType === "internal" &&
+      isInternalStaffRole(effectiveRole)
+
     if (activatedPendingAccount && activeOrg) {
       await recordActivityEvent({
         db,
@@ -543,12 +551,19 @@ export async function getCurrentUser(): Promise<AuthUser | null> {
       firstName: dbUser.firstName,
       lastName: dbUser.lastName,
       displayName: dbUser.displayName,
-      avatarUrl: dbUser.avatarUrl,
-      dashboardDeskPhotoUrl: dbUser.dashboardDeskPhotoUrl,
+      avatarUrl: canUseWorkspacePhotos ? dbUser.avatarUrl : null,
+      dashboardDeskPhotoUrl: canUseWorkspacePhotos
+        ? dbUser.dashboardDeskPhotoUrl
+        : null,
       dashboardDeskPhotoOrganizationId:
-        dbUser.dashboardDeskPhotoOrganizationId,
-      sidebarDeskPhotoUrl: dbUser.sidebarDeskPhotoUrl,
-      sidebarDeskPhotoOrganizationId: dbUser.sidebarDeskPhotoOrganizationId,
+        canUseWorkspacePhotos
+          ? dbUser.dashboardDeskPhotoOrganizationId
+          : null,
+      sidebarDeskPhotoUrl: canUseWorkspacePhotos
+        ? dbUser.sidebarDeskPhotoUrl
+        : null,
+      sidebarDeskPhotoOrganizationId:
+        canUseWorkspacePhotos ? dbUser.sidebarDeskPhotoOrganizationId : null,
       role: effectiveRole,
       googleEmail: dbUser.googleEmail ?? null,
       isActive: dbUser.isActive,

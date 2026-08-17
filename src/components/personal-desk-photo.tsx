@@ -19,6 +19,7 @@ import {
 } from "@/lib/user-photo-storage"
 
 function storageKey(user: SidebarUser): string | null {
+  if (!user.canUseWorkspacePhotos) return null
   if (!user.organizationId) return null
   return dashboardDeskPhotoStorageKey(user.email, user.organizationId)
 }
@@ -110,6 +111,10 @@ export function PersonalDeskPhoto({
   React.useEffect(() => {
     if (!user) return
     setPhotoScope(currentPhotoScope)
+    if (!user.canUseWorkspacePhotos) {
+      setPhotoUrl(null)
+      return
+    }
 
     const serverPhoto = user.dashboardDeskPhoto
     const storedPhoto = readStoredPhoto(user)

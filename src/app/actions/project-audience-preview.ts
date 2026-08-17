@@ -37,6 +37,10 @@ import {
 import { parsePublishedScheduleSnapshot } from "@/lib/schedule/publications"
 import { projectAudiencePhotoUrl } from "@/lib/photo-sources"
 import { canViewerConfirmScheduleTask } from "@/lib/schedule/confirmation"
+import {
+  toProjectAudienceViewer,
+  type ProjectAudienceViewer,
+} from "@/lib/project-audience-viewer"
 
 export type { ProjectAudience } from "@/lib/project-audience-access"
 
@@ -137,13 +141,7 @@ export type AudienceContact = {
 export type ProjectAudiencePreview = {
   readonly audience: ProjectAudience
   readonly viewerIsInternal: boolean
-  readonly viewer: {
-    readonly id: string
-    readonly name: string
-    readonly email: string
-    readonly avatarUrl: string | null
-    readonly sidebarPhotoUrl: string | null
-  }
+  readonly viewer: ProjectAudienceViewer
   readonly projectOptions: readonly AudienceProjectOption[]
   readonly project: {
     readonly id: string
@@ -170,13 +168,7 @@ async function verifyProjectAccess(
   readonly db: ReturnType<typeof getDb>
   readonly organizationId: string
   readonly viewerIsInternal: boolean
-  readonly viewer: {
-    readonly id: string
-    readonly name: string
-    readonly email: string
-    readonly avatarUrl: string | null
-    readonly sidebarPhotoUrl: string | null
-  }
+  readonly viewer: ProjectAudienceViewer
 }> {
   const user = await requireAuth()
   requirePermission(user, "project", "read")
@@ -209,13 +201,7 @@ async function verifyProjectAccess(
     db,
     organizationId: project.organizationId,
     viewerIsInternal,
-    viewer: {
-      id: user.id,
-      name: user.displayName ?? user.email.split("@")[0] ?? "Compass user",
-      email: user.email,
-      avatarUrl: user.avatarUrl,
-      sidebarPhotoUrl: null,
-    },
+    viewer: toProjectAudienceViewer(user, viewerIsInternal),
   }
 }
 
