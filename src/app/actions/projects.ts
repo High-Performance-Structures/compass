@@ -3,6 +3,7 @@
 import { getCloudflareContext } from "@/lib/db"
 import { getDb } from "@/db"
 import {
+  customers,
   organizationMembers,
   projectExternalLinks,
   projectMembers,
@@ -11,8 +12,9 @@ import {
   projects,
   users,
 } from "@/db/schema"
+import { sageClientProjectWriteOperations } from "@/db/schema-sage"
 import { googleAuth } from "@/db/schema-google"
-import { and, asc, eq } from "drizzle-orm"
+import { and, asc, eq, sql } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { requireAuth } from "@/lib/auth"
 import { decrypt } from "@/lib/crypto"
@@ -47,6 +49,19 @@ import {
   requirePermission,
 } from "@/lib/permissions"
 import { canUseOrganizationProjectScopeRole } from "@/lib/user-roles"
+import {
+  PROJECT_JOB_STATUS_DEFINITIONS,
+} from "@/lib/project-profile"
+import {
+  isSageWriteApproved,
+  parseSageClientStatusId,
+  parseSageJobTypeId,
+  sageClientStatusName,
+  sageJobTypeName,
+  sageShortName,
+  type SageClientStatusId,
+  type SageJobTypeId,
+} from "@/lib/sage/client-project-write"
 
 export type ProjectStatusValue =
   | "OPEN"
@@ -82,10 +97,17 @@ export type CreateProjectShellInput = {
   readonly clientName: string | null
   readonly address: string | null
   readonly status: string
+  readonly sageClientStatusId: SageClientStatusId
+  readonly sageJobStatusId: string
+  readonly sageJobType: SageJobTypeId
 }
 
 type CreateProjectShellResult =
-  | { readonly success: true; readonly id: string }
+  | {
+      readonly success: true
+      readonly id: string
+      readonly sageStatus: "queued" | "approval_required"
+    }
   | { readonly success: false; readonly error: string }
 
 type UpdateProjectStatusResult =
@@ -101,7 +123,11 @@ export type ProjectIntakeAssignee = {
 export type CreateProjectIntakeInput = Omit<
   ProjectIntakeTrackerInput,
   "intakeDate"
->
+> & {
+  readonly sageClientStatusId: SageClientStatusId
+  readonly sageJobStatusId: string
+  readonly sageJobType: SageJobTypeId
+}
 
 export type CreateProjectIntakeResult =
   | {
@@ -110,7 +136,7 @@ export type CreateProjectIntakeResult =
       readonly projectNumber: string
       readonly trackerStatus: "written" | "pending"
       readonly driveStatus: "provisioned" | "pending"
-      readonly sageStatus: "staged"
+      readonly sageStatus: "queued" | "approval_required"
       readonly warning: string | null
     }
   | { readonly success: false; readonly error: string }
@@ -369,6 +395,26 @@ export async function createProjectIntake(
     const db = getDb(env.DB)
 
     const projectName = requireText(input.projectName, "Project name")
+    const clientName = requireText(intakeClientName(input) ?? "", "Client")
+    const sageClientStatusId = parseSageClientStatusId(input.sageClientStatusId)
+    if (!sageClientStatusId) {
+      return { success: false, error: "Choose a Sage client status." }
+    }
+    const sageJobStatus = PROJECT_JOB_STATUS_DEFINITIONS.find(
+      (status) => status.id === input.sageJobStatusId
+    )
+    if (!sageJobStatus) {
+      return { success: false, error: "Choose a Sage job status." }
+    }
+    const sageJobType = parseSageJobTypeId(input.sageJobType)
+    if (!sageJobType) {
+      return { success: false, error: "Choose a Sage job type." }
+    }
+    const sageWriteApproved = await isSageWriteApproved(
+      db,
+      organizationId,
+      user.id
+    )
     const department = normalizedIntakeDepartment(input.department)
     if (!department) {
       return { success: false, error: "Choose ORC, HPS, Nu-Tech, or Design." }
@@ -448,6 +494,22 @@ export async function createProjectIntake(
       }
     }
 
+    const customerEmail = cleanText(input.contactEmail)?.toLowerCase() ?? null
+    const customerMatch = await db
+      .select()
+      .from(customers)
+      .where(
+        and(
+          eq(customers.organizationId, organizationId),
+          customerEmail
+            ? sql`lower(trim(${customers.email})) = ${customerEmail}`
+            : sql`lower(trim(${customers.name})) = ${clientName.toLowerCase()}`
+        )
+      )
+      .limit(1)
+      .get()
+    const customerId = customerMatch?.id ?? crypto.randomUUID()
+
     const now = new Date().toISOString()
     const projectId = `proj-${slugPart(projectNumber)}-${crypto.randomUUID().slice(0, 8)}`
     const operationId = crypto.randomUUID()
@@ -456,6 +518,7 @@ export async function createProjectIntake(
     const driveLinkId = crypto.randomUUID()
     const sageLinkId = crypto.randomUUID()
     const sageOperationId = crypto.randomUUID()
+    const sageWriteOperationId = crypto.randomUUID()
     const trackerProject: ProjectIntakeTrackerInput = {
       ...input,
       department,
@@ -468,16 +531,47 @@ export async function createProjectIntake(
       streetNumber: input.streetNumber,
       streetName: input.streetName,
     })
-    const sagePayload = JSON.stringify({
-      source: "compass_project_intake",
-      projectId,
-      projectNumber,
-      department,
-      projectName,
-      clientName: intakeClientName(input),
-      address: joinedAddress(input),
-      assignedTo: cleanText(input.assignedTo),
-    })
+    const customerValues = {
+      id: customerId,
+      organizationId,
+      name: clientName,
+      company: cleanText(input.companyName),
+      email: cleanText(input.contactEmail),
+      phone: cleanText(input.contactPhone),
+      address: cleanText(input.billingAddress) ?? joinedAddress(input),
+      notes: cleanText(input.notes),
+      sageClientStatusId,
+      createdAt: now,
+      updatedAt: now,
+    }
+    const sageWritePayload = {
+      operationType: "ensure_client_and_job" as const,
+      company: "High Performance Structures Inc" as const,
+      client: {
+        compassCustomerId: customerId,
+        name: clientName,
+        shortName: sageShortName(cleanText(input.companyName) ?? clientName),
+        company: cleanText(input.companyName),
+        email: cleanText(input.contactEmail),
+        phone: cleanText(input.contactPhone),
+        address: joinedAddress(input),
+        billingAddress: cleanText(input.billingAddress),
+        notes: cleanText(input.notes),
+        status: {
+          expectedNumber: sageClientStatusId,
+          name: sageClientStatusName(sageClientStatusId),
+        },
+      },
+      job: {
+        compassProjectId: projectId,
+        compassProjectNumber: projectNumber,
+        name: projectName,
+        shortName: sageShortName(projectName),
+        address: joinedAddress(input),
+        statusName: sageJobStatus.label,
+        typeName: sageJobTypeName(sageJobType),
+      },
+    }
 
     try {
       await db.batch([
@@ -489,6 +583,10 @@ export async function createProjectIntake(
           status: "OPEN",
           address: joinedAddress(input),
           clientName: intakeClientName(input),
+          clientStatus: "customer",
+          jobStatusId: sageJobStatus.id,
+          sageJobStatusName: sageJobStatus.label,
+          sageJobTypeName: sageJobTypeName(sageJobType),
           projectManager: cleanText(input.assignedTo),
           ownerUpdatesEnabled: true,
           ownerUpdateChannel: "compass",
@@ -496,6 +594,20 @@ export async function createProjectIntake(
           createdAt: now,
           updatedAt: now,
         }),
+        customerMatch
+          ? db
+              .update(customers)
+              .set({
+                company: customerValues.company ?? customerMatch.company,
+                email: customerValues.email ?? customerMatch.email,
+                phone: customerValues.phone ?? customerMatch.phone,
+                address: customerValues.address ?? customerMatch.address,
+                notes: customerValues.notes ?? customerMatch.notes,
+                sageClientStatusId,
+                updatedAt: now,
+              })
+              .where(eq(customers.id, customerId))
+          : db.insert(customers).values(customerValues),
         db.insert(projectNumberReservations).values({
           id: crypto.randomUUID(),
           organizationId,
@@ -620,20 +732,34 @@ export async function createProjectIntake(
           sourceRecordType: "sage_project_handoff",
           sourceRecordId: projectNumber,
           sourceRecordNumber: projectNumber,
-          title: `${projectNumber} Sage project handoff`,
-          description:
-            "Review this Compass project intake, then create or match the Sage job.",
-          status: "needs_review",
+          title: `${projectNumber} Sage client/job write`,
+          description: sageWriteApproved
+            ? "Approved Compass intake queued for the narrow Sage client/job writer."
+            : "Compass intake recorded; Sage write is blocked until requested by an approved user.",
+          status: sageWriteApproved ? "open" : "needs_review",
           priority: "high",
           assigneeType: "internal",
           assigneeName: cleanText(input.assignedTo),
           companyName: intakeClientName(input),
           externalUrl: null,
-          sageWriteStatus: "needs_review",
-          sagePayloadJson: sagePayload,
+          sageWriteStatus: sageWriteApproved ? "queued" : "approval_required",
+          sagePayloadJson: JSON.stringify(sageWritePayload),
           syncDirection: "write",
           syncStatus: "pending_sage",
           createdAt: now,
+          updatedAt: now,
+        }),
+        db.insert(sageClientProjectWriteOperations).values({
+          id: sageWriteOperationId,
+          organizationId,
+          customerId,
+          projectId,
+          requestedByUserId: user.id,
+          operationType: "ensure_client_and_job",
+          idempotencyKey: `project:${projectId}`,
+          payloadJson: JSON.stringify(sageWritePayload),
+          status: sageWriteApproved ? "queued" : "approval_required",
+          requestedAt: now,
           updatedAt: now,
         }),
       ])
@@ -826,7 +952,12 @@ export async function createProjectIntake(
       entityType: "project",
       entityId: projectId,
       summary: `Created ${projectNumber} — ${projectName}.`,
-      metadata: { department, trackerStatus, driveStatus, sageStatus: "staged" },
+      metadata: {
+        department,
+        trackerStatus,
+        driveStatus,
+        sageStatus: sageWriteApproved ? "queued" : "approval_required",
+      },
     })
     revalidatePath("/dashboard/projects")
     revalidatePath(`/dashboard/projects/${projectId}`)
@@ -837,7 +968,7 @@ export async function createProjectIntake(
       projectNumber,
       trackerStatus,
       driveStatus,
-      sageStatus: "staged",
+      sageStatus: sageWriteApproved ? "queued" : "approval_required",
       warning,
     }
   } catch (error) {
@@ -1087,7 +1218,23 @@ export async function createProjectShell(
     const db = getDb(env.DB)
     const projectNumber = cleanText(input.projectNumber)
     const name = requireText(input.name, "Project name")
+    const clientName = requireText(input.clientName ?? "", "Client")
     const status = cleanText(input.status) ?? "OPEN"
+    const sageClientStatusId = parseSageClientStatusId(input.sageClientStatusId)
+    if (!sageClientStatusId) {
+      return { success: false, error: "Choose a Sage client status." }
+    }
+    const sageJobStatus = PROJECT_JOB_STATUS_DEFINITIONS.find(
+      (option) => option.id === input.sageJobStatusId
+    )
+    if (!sageJobStatus) {
+      return { success: false, error: "Choose a Sage job status." }
+    }
+    const sageJobType = parseSageJobTypeId(input.sageJobType)
+    if (!sageJobType) {
+      return { success: false, error: "Choose a Sage job type." }
+    }
+    const approved = await isSageWriteApproved(db, orgId, user.id)
 
     if (projectNumber) {
       const duplicate = await db
@@ -1114,41 +1261,118 @@ export async function createProjectShell(
       ? slugPart(projectNumber)
       : `${departmentPrefix(input.department)}-${slugPart(name)}`
     const id = `proj-${idBase}-${crypto.randomUUID().slice(0, 8)}`
+    const customerMatch = await db
+      .select()
+      .from(customers)
+      .where(
+        and(
+          eq(customers.organizationId, orgId),
+          sql`lower(trim(${customers.name})) = ${clientName.toLowerCase()}`
+        )
+      )
+      .limit(1)
+      .get()
+    const customerId = customerMatch?.id ?? crypto.randomUUID()
+    const address = cleanText(input.address)
+    const payload = {
+      operationType: "ensure_client_and_job" as const,
+      company: "High Performance Structures Inc" as const,
+      client: {
+        compassCustomerId: customerId,
+        name: clientName,
+        shortName: sageShortName(clientName),
+        company: null,
+        email: null,
+        phone: null,
+        address,
+        billingAddress: address,
+        notes: null,
+        status: {
+          expectedNumber: sageClientStatusId,
+          name: sageClientStatusName(sageClientStatusId),
+        },
+      },
+      job: {
+        compassProjectId: id,
+        compassProjectNumber: projectNumber,
+        name,
+        shortName: sageShortName(name),
+        address,
+        statusName: sageJobStatus.label,
+        typeName: sageJobTypeName(sageJobType),
+      },
+    }
 
-    await db.insert(projects).values({
-      id,
-      organizationId: orgId,
-      projectNumber,
-      name,
-      status,
-      address: cleanText(input.address),
-      clientName: cleanText(input.clientName),
-      ownerUpdatesEnabled: true,
-      ownerUpdateChannel: "compass",
-      ownerUpdateCadence: "weekly",
-      createdAt: now,
-      updatedAt: now,
-    })
-
-    await db.insert(projectExternalLinks).values({
-      id: crypto.randomUUID(),
-      projectId: id,
-      system: "compass",
-      label: "Compass project shell",
-      externalId: id,
-      externalNumber: projectNumber,
-      externalUrl: `/dashboard/projects/${id}`,
-      syncDirection: "bidirectional",
-      syncStatus: "mapped",
-      metadata: JSON.stringify({ department: input.department }),
-      createdAt: now,
-      updatedAt: now,
-    })
+    await db.batch([
+      db.insert(projects).values({
+        id,
+        organizationId: orgId,
+        projectNumber,
+        name,
+        status,
+        address,
+        clientName,
+        clientStatus: "customer",
+        jobStatusId: sageJobStatus.id,
+        sageJobStatusName: sageJobStatus.label,
+        sageJobTypeName: sageJobTypeName(sageJobType),
+        ownerUpdatesEnabled: true,
+        ownerUpdateChannel: "compass",
+        ownerUpdateCadence: "weekly",
+        createdAt: now,
+        updatedAt: now,
+      }),
+      customerMatch
+        ? db
+            .update(customers)
+            .set({ sageClientStatusId, updatedAt: now })
+            .where(eq(customers.id, customerId))
+        : db.insert(customers).values({
+            id: customerId,
+            organizationId: orgId,
+            name: clientName,
+            address,
+            sageClientStatusId,
+            createdAt: now,
+            updatedAt: now,
+          }),
+      db.insert(projectExternalLinks).values({
+        id: crypto.randomUUID(),
+        projectId: id,
+        system: "compass",
+        label: "Compass project shell",
+        externalId: id,
+        externalNumber: projectNumber,
+        externalUrl: `/dashboard/projects/${id}`,
+        syncDirection: "bidirectional",
+        syncStatus: "mapped",
+        metadata: JSON.stringify({ department: input.department }),
+        createdAt: now,
+        updatedAt: now,
+      }),
+      db.insert(sageClientProjectWriteOperations).values({
+        id: crypto.randomUUID(),
+        organizationId: orgId,
+        customerId,
+        projectId: id,
+        requestedByUserId: user.id,
+        operationType: "ensure_client_and_job",
+        idempotencyKey: `project:${id}`,
+        payloadJson: JSON.stringify(payload),
+        status: approved ? "queued" : "approval_required",
+        requestedAt: now,
+        updatedAt: now,
+      }),
+    ])
 
     revalidatePath("/dashboard/projects")
     revalidatePath(`/dashboard/projects/${id}`)
     revalidatePath("/dashboard")
-    return { success: true, id }
+    return {
+      success: true,
+      id,
+      sageStatus: approved ? "queued" : "approval_required",
+    }
   } catch (error) {
     return {
       success: false,

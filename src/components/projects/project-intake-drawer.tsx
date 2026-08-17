@@ -37,6 +37,13 @@ import {
 } from "@/components/ui/sheet"
 import { Textarea } from "@/components/ui/textarea"
 import type { ProjectIntakeDepartment } from "@/lib/google/project-intake-tracker"
+import { PROJECT_JOB_STATUS_DEFINITIONS } from "@/lib/project-profile"
+import {
+  SAGE_CLIENT_STATUS_OPTIONS,
+  SAGE_JOB_TYPE_OPTIONS,
+  type SageClientStatusId,
+  type SageJobTypeId,
+} from "@/lib/sage/client-project-write"
 
 const DEPARTMENTS: readonly {
   readonly value: ProjectIntakeDepartment
@@ -87,10 +94,18 @@ export function ProjectIntakeDrawer({
   const formRef = useRef<HTMLFormElement>(null)
   const [open, setOpen] = useState(false)
   const [department, setDepartment] = useState<ProjectIntakeDepartment>("O")
+  const [sageClientStatusId, setSageClientStatusId] =
+    useState<SageClientStatusId | null>(null)
+  const [sageJobStatusId, setSageJobStatusId] = useState("")
+  const [sageJobType, setSageJobType] = useState<SageJobTypeId | null>(null)
   const [isPending, startTransition] = useTransition()
 
   function submitProject(event: React.FormEvent<HTMLFormElement>): void {
     event.preventDefault()
+    if (!sageClientStatusId || !sageJobStatusId || !sageJobType) {
+      toast.error("Choose the Sage client status, job status, and job type.")
+      return
+    }
     const formData = new FormData(event.currentTarget)
     startTransition(async () => {
       try {
@@ -110,6 +125,9 @@ export function ProjectIntakeDrawer({
           assignedTo: fieldValue(formData, "assignedTo"),
           referredBy: fieldValue(formData, "referredBy"),
           notes: fieldValue(formData, "notes"),
+          sageClientStatusId,
+          sageJobStatusId,
+          sageJobType,
         })
         if (!result.success) {
           toast.error(result.error)
@@ -118,10 +136,15 @@ export function ProjectIntakeDrawer({
         if (result.warning) toast.warning(result.warning)
         else {
           toast.success(
-            `${result.projectNumber} created in Compass, Project Registry, the department tracker, Drive, and Sage review.`
+            result.sageStatus === "queued"
+              ? `${result.projectNumber} created; the Sage client/job write is queued.`
+              : `${result.projectNumber} created in Compass; the Sage write requires an approved user.`
           )
         }
         formRef.current?.reset()
+        setSageClientStatusId(null)
+        setSageJobStatusId("")
+        setSageJobType(null)
         setOpen(false)
         router.push(`/dashboard/projects/${result.id}`)
         router.refresh()
@@ -196,6 +219,66 @@ export function ProjectIntakeDrawer({
             <p className="text-xs text-muted-foreground">
               The official number is assigned from the live department sequence when you submit.
             </p>
+            <div className="grid gap-4 sm:grid-cols-3">
+              <Field label="Sage client status *">
+                <Select
+                  value={sageClientStatusId ? String(sageClientStatusId) : ""}
+                  onValueChange={(value) => {
+                    const match = SAGE_CLIENT_STATUS_OPTIONS.find(
+                      (option) => String(option.id) === value
+                    )
+                    setSageClientStatusId(match?.id ?? null)
+                  }}
+                  required
+                >
+                  <SelectTrigger><SelectValue placeholder="Choose status" /></SelectTrigger>
+                  <SelectContent>
+                    {SAGE_CLIENT_STATUS_OPTIONS.map((option) => (
+                      <SelectItem key={option.id} value={String(option.id)}>
+                        {option.id} — {option.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </Field>
+              <Field label="Sage job status *">
+                <Select
+                  value={sageJobStatusId}
+                  onValueChange={setSageJobStatusId}
+                  required
+                >
+                  <SelectTrigger><SelectValue placeholder="Choose status" /></SelectTrigger>
+                  <SelectContent>
+                    {PROJECT_JOB_STATUS_DEFINITIONS.map((option) => (
+                      <SelectItem key={option.id} value={option.id}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </Field>
+              <Field label="Sage job type *">
+                <Select
+                  value={sageJobType ?? ""}
+                  onValueChange={(value) => {
+                    const match = SAGE_JOB_TYPE_OPTIONS.find(
+                      (option) => option.id === value
+                    )
+                    setSageJobType(match?.id ?? null)
+                  }}
+                  required
+                >
+                  <SelectTrigger><SelectValue placeholder="Choose type" /></SelectTrigger>
+                  <SelectContent>
+                    {SAGE_JOB_TYPE_OPTIONS.map((option) => (
+                      <SelectItem key={option.id} value={option.id}>
+                        {option.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </Field>
+            </div>
           </section>
 
           <section className="space-y-3">
@@ -279,7 +362,15 @@ export function ProjectIntakeDrawer({
               <Button type="button" variant="outline" onClick={() => setOpen(false)} disabled={isPending}>
                 Cancel
               </Button>
-              <Button type="submit" disabled={isPending}>
+              <Button
+                type="submit"
+                disabled={
+                  isPending ||
+                  !sageClientStatusId ||
+                  !sageJobStatusId ||
+                  !sageJobType
+                }
+              >
                 {isPending ? "Creating project…" : "Create project"}
               </Button>
             </div>

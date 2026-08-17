@@ -10,7 +10,18 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import type { Customer } from "@/db/schema"
+import {
+  SAGE_CLIENT_STATUS_OPTIONS,
+  type SageClientStatusId,
+} from "@/lib/sage/client-project-write"
 
 interface CustomerDialogProps {
   open: boolean
@@ -23,6 +34,7 @@ interface CustomerDialogProps {
     phone: string
     address: string
     notes: string
+    sageClientStatusId: SageClientStatusId
   }) => void
 }
 
@@ -38,6 +50,7 @@ export function CustomerDialog({
   const [phone, setPhone] = React.useState("")
   const [address, setAddress] = React.useState("")
   const [notes, setNotes] = React.useState("")
+  const [sageClientStatusId, setSageClientStatusId] = React.useState("")
 
   React.useEffect(() => {
     if (initialData) {
@@ -47,6 +60,7 @@ export function CustomerDialog({
       setPhone(initialData.phone ?? "")
       setAddress(initialData.address ?? "")
       setNotes(initialData.notes ?? "")
+      setSageClientStatusId(String(initialData.sageClientStatusId ?? 1))
     } else {
       setName("")
       setCompany("")
@@ -54,12 +68,17 @@ export function CustomerDialog({
       setPhone("")
       setAddress("")
       setNotes("")
+      setSageClientStatusId("")
     }
   }, [initialData, open])
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     if (!name.trim()) return
+    const selectedStatus = SAGE_CLIENT_STATUS_OPTIONS.find(
+      (option) => String(option.id) === sageClientStatusId
+    )
+    if (!selectedStatus) return
     onSubmit({
       name: name.trim(),
       company: company.trim(),
@@ -67,6 +86,7 @@ export function CustomerDialog({
       phone: phone.trim(),
       address: address.trim(),
       notes: notes.trim(),
+      sageClientStatusId: selectedStatus.id,
     })
   }
 
@@ -91,6 +111,27 @@ export function CustomerDialog({
               required
               autoFocus
             />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="cust-sage-status" className="text-xs">
+              Sage client status *
+            </Label>
+            <Select
+              value={sageClientStatusId}
+              onValueChange={setSageClientStatusId}
+              required
+            >
+              <SelectTrigger id="cust-sage-status" className="h-9">
+                <SelectValue placeholder="Choose a status" />
+              </SelectTrigger>
+              <SelectContent>
+                {SAGE_CLIENT_STATUS_OPTIONS.map((option) => (
+                  <SelectItem key={option.id} value={String(option.id)}>
+                    {option.id} — {option.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="cust-company" className="text-xs">
@@ -167,7 +208,11 @@ export function CustomerDialog({
           >
             Cancel
           </Button>
-          <Button type="submit" className="h-9">
+          <Button
+            type="submit"
+            className="h-9"
+            disabled={!initialData && !sageClientStatusId}
+          >
             {initialData ? "Save Changes" : "Create Customer"}
           </Button>
         </ResponsiveDialogFooter>

@@ -51,6 +51,11 @@ import {
   openHpsProjectManagerWorkWindow,
 } from "@/lib/google/project-manager-app"
 import { cn } from "@/lib/utils"
+import { PROJECT_JOB_STATUS_DEFINITIONS } from "@/lib/project-profile"
+import {
+  SAGE_CLIENT_STATUS_OPTIONS,
+  SAGE_JOB_TYPE_OPTIONS,
+} from "@/lib/sage/client-project-write"
 
 type DepartmentId = "O" | "H" | "N" | "D" | "UNASSIGNED"
 type ProjectStatusBucket =
@@ -1239,6 +1244,20 @@ export function ProjectsHub({
     const name = String(formData.get("name") ?? "").trim()
     const clientName = String(formData.get("clientName") ?? "").trim()
     const address = String(formData.get("address") ?? "").trim()
+    const sageClientStatus = SAGE_CLIENT_STATUS_OPTIONS.find(
+      (option) => String(option.id) === String(formData.get("sageClientStatusId") ?? "")
+    )
+    const sageJobStatusId = String(formData.get("sageJobStatusId") ?? "").trim()
+    const sageJobType = SAGE_JOB_TYPE_OPTIONS.find(
+      (option) => option.id === String(formData.get("sageJobType") ?? "")
+    )
+
+    if (!sageClientStatus || !sageJobStatusId || !sageJobType) {
+      setCreateProjectMessage(
+        "Choose the Sage client status, job status, and job type."
+      )
+      return
+    }
 
     setCreateProjectMessage(null)
     startCreateProjectTransition(async () => {
@@ -1249,6 +1268,9 @@ export function ProjectsHub({
         clientName: clientName.length > 0 ? clientName : null,
         address: address.length > 0 ? address : null,
         status: "OPEN",
+        sageClientStatusId: sageClientStatus.id,
+        sageJobStatusId,
+        sageJobType: sageJobType.id,
       })
 
       if (!result.success) {
@@ -1257,7 +1279,11 @@ export function ProjectsHub({
       }
 
       form.reset()
-      setCreateProjectMessage("Project shell created.")
+      setCreateProjectMessage(
+        result.sageStatus === "queued"
+          ? "Project shell created; Sage write queued."
+          : "Project shell created; Sage write requires an approved user."
+      )
       router.push(`/dashboard/projects/${result.id}`)
       router.refresh()
     })
@@ -1625,7 +1651,46 @@ export function ProjectsHub({
                       name="clientName"
                       placeholder="Client"
                       aria-label="Client"
+                      required
                     />
+                  </div>
+                  <div className="mt-3 grid gap-3 lg:grid-cols-3">
+                    <Select name="sageClientStatusId" required>
+                      <SelectTrigger aria-label="Sage client status">
+                        <SelectValue placeholder="Client status" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {SAGE_CLIENT_STATUS_OPTIONS.map((option) => (
+                          <SelectItem key={option.id} value={String(option.id)}>
+                            {option.id} — {option.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Select name="sageJobStatusId" required>
+                      <SelectTrigger aria-label="Sage job status">
+                        <SelectValue placeholder="Job status" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {PROJECT_JOB_STATUS_DEFINITIONS.map((option) => (
+                          <SelectItem key={option.id} value={option.id}>
+                            {option.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Select name="sageJobType" required>
+                      <SelectTrigger aria-label="Sage job type">
+                        <SelectValue placeholder="Job type" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {SAGE_JOB_TYPE_OPTIONS.map((option) => (
+                          <SelectItem key={option.id} value={option.id}>
+                            {option.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
                   <div className="mt-3 grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto]">
                     <Input
