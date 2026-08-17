@@ -4,6 +4,7 @@ import { getDb } from "@/db"
 import {
   organizationMembers,
   projectContacts,
+  projectMembers,
   projects,
   users,
 } from "@/db/schema"
@@ -18,6 +19,7 @@ import {
   channelNotificationRecipients,
   type ChannelMessageMention,
 } from "@/lib/notifications/audience"
+import { isInternalStaffRole } from "@/lib/user-roles"
 
 export {
   createNotificationEvent,
@@ -70,6 +72,27 @@ type ChannelMessageNotificationInput = {
   readonly content: string
   readonly sender: AuthUser
   readonly mentions: readonly ChannelMessageMention[]
+}
+
+type WarrantyCreatedNotificationInput = {
+  readonly organizationId: string
+  readonly projectId: string
+  readonly claimId: string
+  readonly claimNumber: string
+  readonly title: string
+  readonly priority: string
+  readonly createdBy: AuthUser
+}
+
+type WarrantyUpdatedNotificationInput = {
+  readonly organizationId: string
+  readonly projectId: string
+  readonly claimId: string
+  readonly claimNumber: string
+  readonly title: string
+  readonly status: string
+  readonly claimantUserId: string | null
+  readonly updatedBy: AuthUser
 }
 
 function normalizeName(value: string | null): string {
@@ -390,5 +413,98 @@ export async function notifyProjectAssignment(
       email: true,
       push: true,
     },
+  })
+}
+
+export async function notifyWarrantyClaimCreated(
+  input: WarrantyCreatedNotificationInput
+): Promise<void> {
+  const { env } = await getCloudflareContext()
+  const db = getDb(env.DB)
+  const members = await db
+    .select({
+      userId: users.id,
+      email: users.email,
+      googleEmail: users.googleEmail,
+      role: users.role,
+    })
+    .from(projectMembers)
+    .innerJoin(users, eq(users.id, projectMembers.userId))
+    .where(
+      and(
+        eq(projectMembers.projectId, input.projectId),
+        eq(users.isActive, true)
+      )
+    )
+  const recipients = members
+    .filter(
+      (member) =>
+        member.userId !== input.createdBy.id &&
+        isInternalStaffRole(member.role)
+    )
+    .map((member) => ({
+      userId: member.userId,
+      email: member.googleEmail?.trim() || member.email,
+    }))
+  if (recipients.length === 0) return
+
+  await createNotificationEvent({
+    organizationId: input.organizationId,
+    projectId: input.projectId,
+    eventType: "warranty.created",
+    sourceType: "warranty_claim",
+    sourceId: input.claimId,
+    title: `${input.claimNumber}: ${input.title}`,
+    body: `${input.createdBy.displayName ?? input.createdBy.email} submitted a ${input.priority} priority warranty claim.`,
+    href:
+      `/dashboard/projects/${input.projectId}/warranty` +
+      `#warranty-${encodeURIComponent(input.claimId)}`,
+    priority: input.priority === "urgent" ? "high" : "normal",
+    audience: "project_team",
+    createdBy: input.createdBy.id,
+    recipients,
+    delivery: { inApp: true, email: true, push: true },
+  })
+}
+
+export async function notifyWarrantyClaimUpdated(
+  input: WarrantyUpdatedNotificationInput
+): Promise<void> {
+  if (!input.claimantUserId || input.claimantUserId === input.updatedBy.id) return
+  const { env } = await getCloudflareContext()
+  const db = getDb(env.DB)
+  const claimant = await db
+    .select({
+      userId: users.id,
+      email: users.email,
+      googleEmail: users.googleEmail,
+    })
+    .from(users)
+    .where(and(eq(users.id, input.claimantUserId), eq(users.isActive, true)))
+    .limit(1)
+    .then((rows) => rows[0] ?? null)
+  if (!claimant) return
+
+  await createNotificationEvent({
+    organizationId: input.organizationId,
+    projectId: input.projectId,
+    eventType: "warranty.updated",
+    sourceType: "warranty_claim",
+    sourceId: input.claimId,
+    title: `${input.claimNumber}: ${input.title}`,
+    body: `Your warranty claim is now ${input.status.replace(/_/g, " ")}.`,
+    href:
+      `/preview/projects/${input.projectId}/owner/warranty` +
+      `#warranty-${encodeURIComponent(input.claimId)}`,
+    priority: "normal",
+    audience: "claimant",
+    createdBy: input.updatedBy.id,
+    recipients: [
+      {
+        userId: claimant.userId,
+        email: claimant.googleEmail?.trim() || claimant.email,
+      },
+    ],
+    delivery: { inApp: true, email: true, push: true },
   })
 }

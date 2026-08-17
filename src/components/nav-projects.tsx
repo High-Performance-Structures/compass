@@ -21,6 +21,7 @@ import {
   IconShoppingCartQuestion,
   IconUsers,
   IconVideo,
+  IconShieldCheck,
 } from "@tabler/icons-react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
@@ -51,6 +52,7 @@ type ProjectSectionKey =
   | "rfqs"
   | "purchase-orders"
   | "change-orders"
+  | "warranty"
   | "estimate"
   | "budget"
   | "financials"
@@ -145,6 +147,12 @@ const PROJECT_SECTION_ITEMS: readonly ProjectSectionItem[] = [
     section: "change-orders",
   },
   {
+    title: "Warranty",
+    hrefSuffix: "warranty",
+    icon: IconShieldCheck,
+    section: "warranty",
+  },
+  {
     title: "Estimate",
     hrefSuffix: "estimate",
     icon: IconFileDollar,
@@ -233,6 +241,7 @@ function activeProjectSection(pathname: string | null): ProjectSectionKey {
     case "schedule":
     case "todos":
     case "conversations":
+    case "warranty":
       return section
     default:
       return "overview"

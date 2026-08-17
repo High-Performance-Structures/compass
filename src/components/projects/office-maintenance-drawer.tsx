@@ -3,6 +3,7 @@
 import Link from "next/link"
 import { useState } from "react"
 import {
+  IconDatabase,
   IconMailForward,
   IconPhone,
   IconSettings,
@@ -138,6 +139,12 @@ export function OfficeMaintenanceDrawer({
             <Link href="/dashboard/office-maintenance/message-desk">
               <IconPhone className="size-4" />
               Open Staff Message Desk
+            </Link>
+          </Button>
+          <Button asChild variant="outline" className="w-full justify-start">
+            <Link href="/dashboard/office-maintenance/buildertrend-cutover">
+              <IconDatabase className="size-4" />
+              Buildertrend cutover coverage
             </Link>
           </Button>
           <div className="space-y-2 border p-3">

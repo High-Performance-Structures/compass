@@ -9,6 +9,7 @@ export type ProjectAudienceWorkspaceSection =
   | "change-orders"
   | "conversations"
   | "photos"
+  | "warranty"
   | "team"
 
 export function projectAudiencePreviewHref(

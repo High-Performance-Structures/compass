@@ -37,6 +37,7 @@ import {
 import { parsePublishedScheduleSnapshot } from "@/lib/schedule/publications"
 import { projectAudiencePhotoUrl } from "@/lib/photo-sources"
 import { canViewerConfirmScheduleTask } from "@/lib/schedule/confirmation"
+import { isWarrantyProjectStage } from "@/lib/warranty/status"
 
 export type { ProjectAudience } from "@/lib/project-audience-access"
 
@@ -153,6 +154,7 @@ export type ProjectAudiencePreview = {
     readonly clientName: string | null
     readonly projectManager: string | null
     readonly ownerScheduleView: OwnerScheduleView
+    readonly warrantyEnabled: boolean
   }
   readonly ownerUpdates: readonly AudienceOwnerUpdate[]
   readonly photos: readonly AudiencePhoto[]
@@ -271,6 +273,7 @@ export async function getProjectAudiencePreview(
       projectManager: projects.projectManager,
       ownerScheduleView: projects.ownerScheduleView,
       status: projects.status,
+      jobStatusId: projects.jobStatusId,
     })
     .from(projects)
     .where(eq(projects.id, projectId))
@@ -720,6 +723,10 @@ export async function getProjectAudiencePreview(
       clientName: project.clientName,
       projectManager: project.projectManager,
       ownerScheduleView,
+      warrantyEnabled: isWarrantyProjectStage({
+        status: project.status,
+        jobStatusId: project.jobStatusId,
+      }),
     },
     ownerUpdates: ownerUpdateRows,
     photos: photoRows.filter(isImage).map((photo) => {

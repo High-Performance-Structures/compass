@@ -21,6 +21,7 @@ const CATEGORY_LABELS: Readonly<Record<ActivityCategory, string>> = {
   financial: "Financial",
   presence: "Availability",
   schedule: "Schedule",
+  warranty: "Warranty",
 }
 
 type ActivityPageProps = {
