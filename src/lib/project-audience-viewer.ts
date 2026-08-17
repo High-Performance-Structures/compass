@@ -12,16 +12,25 @@ export type ProjectAudienceViewer = {
 
 type ProjectAudienceViewerSource = Pick<
   AuthUser,
-  "id" | "displayName" | "email" | "avatarUrl" | "role" | "isActive" | "organizationType"
+  | "id"
+  | "displayName"
+  | "email"
+  | "avatarUrl"
+  | "role"
+  | "isActive"
+  | "organizationId"
+  | "organizationType"
 >
 
 export function toProjectAudienceViewer(
   user: ProjectAudienceViewerSource,
-  viewerIsInternal: boolean
+  viewerIsInternal: boolean,
+  projectOrganizationId: string
 ): ProjectAudienceViewer {
   const canShareProfilePhoto =
     viewerIsInternal &&
     user.isActive &&
+    user.organizationId === projectOrganizationId &&
     user.organizationType === "internal" &&
     isInternalStaffRole(user.role) &&
     !isDemoUser(user.id)

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest"
 
 import {
+  authorizedWorkspacePhotoUrl,
   controlledDeskPhotoUrl,
   dashboardDeskPhotoStorageKey,
   isLegacyDeskPhotoValue,
@@ -8,21 +9,77 @@ import {
   parseControlledDeskPhoto,
   parseImageDataUrl,
   sidebarDeskPhotoStorageKey,
+  workspacePhotoStateKey,
 } from "@/lib/user-photo-storage"
 
 describe("user photo storage", () => {
   it("keeps dashboard and sidebar photos independent", () => {
-    const email = "person@example.com"
+    const userId = "user-123"
 
-    expect(dashboardDeskPhotoStorageKey(email, "org-123")).toBe(
-      `compass-desk-photo:org-123:${email}`
+    expect(dashboardDeskPhotoStorageKey(userId, "org-123")).toBe(
+      "compass-desk-photo:user-123:org-123:dashboard"
     )
-    expect(sidebarDeskPhotoStorageKey(email, "org-123")).toBe(
-      "compass-sidebar-desk-photo:org-123:person@example.com"
+    expect(sidebarDeskPhotoStorageKey(userId, "org-123")).toBe(
+      "compass-desk-photo:user-123:org-123:sidebar"
     )
-    expect(sidebarDeskPhotoStorageKey(email, "org-123")).not.toBe(
-      dashboardDeskPhotoStorageKey(email, "org-123")
+    expect(sidebarDeskPhotoStorageKey(userId, "org-123")).not.toBe(
+      dashboardDeskPhotoStorageKey(userId, "org-123")
     )
+  })
+
+  it("does not share a cache key when an email address is reused by another user", () => {
+    expect(dashboardDeskPhotoStorageKey("user-123", "org-123")).not.toBe(
+      dashboardDeskPhotoStorageKey("user-456", "org-123")
+    )
+  })
+
+  it.each(["dashboard", "sidebar"] as const)(
+    "synchronously redacts stale %s photo state after authorization is removed",
+    (slot) => {
+      const authorizedScope = workspacePhotoStateKey({
+        userId: "user-123",
+        organizationId: "org-123",
+        slot,
+        canUseWorkspacePhotos: true,
+        serverPhotoUrl: null,
+      })
+      const unauthorizedScope = workspacePhotoStateKey({
+        userId: "user-123",
+        organizationId: "org-123",
+        slot,
+        canUseWorkspacePhotos: false,
+        serverPhotoUrl: null,
+      })
+
+      expect(unauthorizedScope).not.toBe(authorizedScope)
+      expect(
+        authorizedWorkspacePhotoUrl({
+          canUseWorkspacePhotos: false,
+          currentScope: unauthorizedScope,
+          loadedScope: authorizedScope,
+          photoUrl: "data:image/png;base64,AQID",
+        })
+      ).toBeNull()
+    }
+  )
+
+  it("keeps an authorized photo visible only in its current state scope", () => {
+    const scope = workspacePhotoStateKey({
+      userId: "user-123",
+      organizationId: "org-123",
+      slot: "dashboard",
+      canUseWorkspacePhotos: true,
+      serverPhotoUrl: "/api/users/desk-photo?slot=dashboard&file=file-1",
+    })
+
+    expect(
+      authorizedWorkspacePhotoUrl({
+        canUseWorkspacePhotos: true,
+        currentScope: scope,
+        loadedScope: scope,
+        photoUrl: "/api/users/desk-photo?slot=dashboard&file=file-1",
+      })
+    ).toBe("/api/users/desk-photo?slot=dashboard&file=file-1")
   })
 
   it("round-trips only controlled, slot-specific photo URLs", () => {

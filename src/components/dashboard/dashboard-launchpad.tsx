@@ -79,8 +79,10 @@ import {
   type TeamAvailabilityMember,
 } from "@/lib/dashboard/office-status"
 import {
+  authorizedWorkspacePhotoUrl,
   dashboardDeskPhotoStorageKey,
   HIDDEN_DESK_PHOTO,
+  workspacePhotoStateKey,
 } from "@/lib/user-photo-storage"
 import { isProjectTodoRecordType } from "@/lib/project-todos"
 import {
@@ -129,7 +131,7 @@ function deskPhotoForUser(user: SidebarUser | null): string | null {
 
   try {
     const storedPhoto = window.localStorage.getItem(
-      dashboardDeskPhotoStorageKey(user.email, user.organizationId)
+      dashboardDeskPhotoStorageKey(user.id, user.organizationId)
     )
     if (storedPhoto === HIDDEN_DESK_PHOTO) return null
     if (storedPhoto) return storedPhoto
@@ -187,7 +189,7 @@ function saveDeskPhoto(user: SidebarUser, dataUrl: string): void {
   if (!user.organizationId) return
   try {
     window.localStorage.setItem(
-      dashboardDeskPhotoStorageKey(user.email, user.organizationId),
+      dashboardDeskPhotoStorageKey(user.id, user.organizationId),
       dataUrl
     )
   } catch {
@@ -204,11 +206,11 @@ function clearDeskPhotoCache(
   try {
     if (value === null) {
       window.localStorage.removeItem(
-        dashboardDeskPhotoStorageKey(user.email, user.organizationId)
+        dashboardDeskPhotoStorageKey(user.id, user.organizationId)
       )
     } else {
       window.localStorage.setItem(
-        dashboardDeskPhotoStorageKey(user.email, user.organizationId),
+        dashboardDeskPhotoStorageKey(user.id, user.organizationId),
         value
       )
     }
@@ -486,7 +488,13 @@ function DeskHero({
   const migratedLegacyPhotoFor = useRef<string | null>(null)
   const firstName = user?.firstName ?? user?.name.split(" ")[0] ?? "there"
   const currentDeskPhotoScope = user
-    ? `${user.id}:${user.organizationId ?? "none"}:${user.dashboardDeskPhoto ?? "none"}`
+    ? workspacePhotoStateKey({
+        userId: user.id,
+        organizationId: user.organizationId,
+        slot: "dashboard",
+        canUseWorkspacePhotos: user.canUseWorkspacePhotos,
+        serverPhotoUrl: user.dashboardDeskPhoto,
+      })
     : "no-user"
 
   useEffect(() => {
@@ -498,7 +506,7 @@ function DeskHero({
     if (!user) return
     if (!user.canUseWorkspacePhotos) return
     if (!user.organizationId) return
-    const migrationKey = `${user.email}:${user.organizationId ?? "none"}`
+    const migrationKey = `${user.id}:${user.organizationId}:dashboard`
     if (
       serverPhoto !== null ||
       migratedLegacyPhotoFor.current === migrationKey
@@ -508,7 +516,7 @@ function DeskHero({
 
     try {
       const legacyPhoto = window.localStorage.getItem(
-        dashboardDeskPhotoStorageKey(user.email, user.organizationId)
+        dashboardDeskPhotoStorageKey(user.id, user.organizationId)
       )
       if (!legacyPhoto) return
 
@@ -523,8 +531,12 @@ function DeskHero({
     }
   }, [currentDeskPhotoScope, user])
 
-  const renderedDeskPhotoUrl =
-    deskPhotoScope === currentDeskPhotoScope ? deskPhotoUrl : null
+  const renderedDeskPhotoUrl = authorizedWorkspacePhotoUrl({
+    canUseWorkspacePhotos: user?.canUseWorkspacePhotos === true,
+    currentScope: currentDeskPhotoScope,
+    loadedScope: deskPhotoScope,
+    photoUrl: deskPhotoUrl,
+  })
 
   function handleStatusChange(nextStatus: DeskStatus): void {
     const previousStatus = status

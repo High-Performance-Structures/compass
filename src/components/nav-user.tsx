@@ -49,8 +49,10 @@ import { AccountModal } from "@/components/account-modal"
 import { DevicePicker } from "@/components/voice/device-picker"
 import { useVoiceState } from "@/hooks/use-voice-state"
 import {
+  authorizedWorkspacePhotoUrl,
   HIDDEN_DESK_PHOTO,
   sidebarDeskPhotoStorageKey,
+  workspacePhotoStateKey,
 } from "@/lib/user-photo-storage"
 import { cn } from "@/lib/utils"
 import { getInitials } from "@/lib/utils"
@@ -76,7 +78,7 @@ function loadSidebarPhoto(user: SidebarUser): string | null {
   if (user.sidebarDeskPhoto) return user.sidebarDeskPhoto
   try {
     const storedPhoto = window.localStorage.getItem(
-      sidebarDeskPhotoStorageKey(user.email, user.organizationId)
+      sidebarDeskPhotoStorageKey(user.id, user.organizationId)
     )
     return storedPhoto === HIDDEN_DESK_PHOTO
       ? null
@@ -91,7 +93,7 @@ function saveSidebarPhoto(user: SidebarUser, dataUrl: string): void {
   if (!user.organizationId) return
   try {
     window.localStorage.setItem(
-      sidebarDeskPhotoStorageKey(user.email, user.organizationId),
+      sidebarDeskPhotoStorageKey(user.id, user.organizationId),
       dataUrl
     )
   } catch {
@@ -104,7 +106,7 @@ function resetSidebarPhoto(user: SidebarUser): void {
   if (!user.organizationId) return
   try {
     window.localStorage.setItem(
-      sidebarDeskPhotoStorageKey(user.email, user.organizationId),
+      sidebarDeskPhotoStorageKey(user.id, user.organizationId),
       HIDDEN_DESK_PHOTO
     )
   } catch {
@@ -174,7 +176,13 @@ export function NavUser({
   const photoInputRef = React.useRef<HTMLInputElement>(null)
   const migratedLegacyPhotoFor = React.useRef<string | null>(null)
   const currentSidebarPhotoScope = user
-    ? `${user.id}:${user.organizationId ?? "none"}:${user.sidebarDeskPhoto ?? "none"}`
+    ? workspacePhotoStateKey({
+        userId: user.id,
+        organizationId: user.organizationId,
+        slot: "sidebar",
+        canUseWorkspacePhotos: user.canUseWorkspacePhotos,
+        serverPhotoUrl: user.sidebarDeskPhoto,
+      })
     : "no-user"
   const {
     isMuted,
@@ -198,7 +206,7 @@ export function NavUser({
 
     const serverPhoto = user.sidebarDeskPhoto
     if (!user.canUseWorkspacePhotos) return
-    const migrationKey = `${user.email}:${user.organizationId ?? "none"}`
+    const migrationKey = `${user.id}:${user.organizationId}:sidebar`
     if (
       serverPhoto !== null ||
       migratedLegacyPhotoFor.current === migrationKey
@@ -208,7 +216,7 @@ export function NavUser({
 
     try {
       const legacyPhoto = window.localStorage.getItem(
-        sidebarDeskPhotoStorageKey(user.email, user.organizationId)
+        sidebarDeskPhotoStorageKey(user.id, user.organizationId)
       )
       if (!legacyPhoto) return
 
@@ -223,8 +231,12 @@ export function NavUser({
     }
   }, [currentSidebarPhotoScope, user])
 
-  const renderedSidebarPhotoUrl =
-    sidebarPhotoScope === currentSidebarPhotoScope ? sidebarPhotoUrl : null
+  const renderedSidebarPhotoUrl = authorizedWorkspacePhotoUrl({
+    canUseWorkspacePhotos: user?.canUseWorkspacePhotos === true,
+    currentScope: currentSidebarPhotoScope,
+    loadedScope: sidebarPhotoScope,
+    photoUrl: sidebarPhotoUrl,
+  })
 
   if (!user) {
     return null

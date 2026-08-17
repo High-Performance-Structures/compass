@@ -14,14 +14,16 @@ import {
 } from "@/components/ui/popover"
 import type { SidebarUser } from "@/lib/auth"
 import {
+  authorizedWorkspacePhotoUrl,
   dashboardDeskPhotoStorageKey,
   HIDDEN_DESK_PHOTO,
+  workspacePhotoStateKey,
 } from "@/lib/user-photo-storage"
 
 function storageKey(user: SidebarUser): string | null {
   if (!user.canUseWorkspacePhotos) return null
   if (!user.organizationId) return null
-  return dashboardDeskPhotoStorageKey(user.email, user.organizationId)
+  return dashboardDeskPhotoStorageKey(user.id, user.organizationId)
 }
 
 function readStoredPhoto(user: SidebarUser): string | null | typeof HIDDEN_DESK_PHOTO {
@@ -105,7 +107,13 @@ export function PersonalDeskPhoto({
   const [photoScope, setPhotoScope] = React.useState<string | null>(null)
   const [message, setMessage] = React.useState<string | null>(null)
   const currentPhotoScope = user
-    ? `${user.id}:${user.organizationId ?? "none"}:${user.dashboardDeskPhoto ?? "none"}`
+    ? workspacePhotoStateKey({
+        userId: user.id,
+        organizationId: user.organizationId,
+        slot: "dashboard",
+        canUseWorkspacePhotos: user.canUseWorkspacePhotos,
+        serverPhotoUrl: user.dashboardDeskPhoto,
+      })
     : "no-user"
 
   React.useEffect(() => {
@@ -135,7 +143,12 @@ export function PersonalDeskPhoto({
     })
   }, [currentPhotoScope, user])
 
-  const renderedPhotoUrl = photoScope === currentPhotoScope ? photoUrl : null
+  const renderedPhotoUrl = authorizedWorkspacePhotoUrl({
+    canUseWorkspacePhotos: user?.canUseWorkspacePhotos === true,
+    currentScope: currentPhotoScope,
+    loadedScope: photoScope,
+    photoUrl,
+  })
 
   if (!user || renderedPhotoUrl === null) {
     return null

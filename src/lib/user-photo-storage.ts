@@ -1,21 +1,47 @@
 export function dashboardDeskPhotoStorageKey(
-  email: string,
+  userId: string,
   organizationId: string
 ): string {
-  return `compass-desk-photo:${organizationId}:${email}`
+  return `compass-desk-photo:${userId}:${organizationId}:dashboard`
 }
 
 export function sidebarDeskPhotoStorageKey(
-  email: string,
+  userId: string,
   organizationId: string
 ): string {
-  return `compass-sidebar-desk-photo:${organizationId}:${email}`
+  return `compass-desk-photo:${userId}:${organizationId}:sidebar`
 }
 
 export const HIDDEN_DESK_PHOTO = "__hidden__"
 
 export const DESK_PHOTO_SLOTS = ["dashboard", "sidebar"] as const
 export type DeskPhotoSlot = (typeof DESK_PHOTO_SLOTS)[number]
+
+export function workspacePhotoStateKey(input: {
+  readonly userId: string
+  readonly organizationId: string | null
+  readonly slot: DeskPhotoSlot
+  readonly canUseWorkspacePhotos: boolean
+  readonly serverPhotoUrl: string | null
+}): string {
+  return [
+    input.userId,
+    input.organizationId ?? "none",
+    input.slot,
+    input.canUseWorkspacePhotos ? "authorized" : "unauthorized",
+    input.serverPhotoUrl ?? "none",
+  ].join(":")
+}
+
+export function authorizedWorkspacePhotoUrl(input: {
+  readonly canUseWorkspacePhotos: boolean
+  readonly currentScope: string
+  readonly loadedScope: string | null
+  readonly photoUrl: string | null
+}): string | null {
+  if (!input.canUseWorkspacePhotos) return null
+  return input.loadedScope === input.currentScope ? input.photoUrl : null
+}
 
 export function isDeskPhotoSlot(value: string): value is DeskPhotoSlot {
   return value === DESK_PHOTO_SLOTS[0] || value === DESK_PHOTO_SLOTS[1]

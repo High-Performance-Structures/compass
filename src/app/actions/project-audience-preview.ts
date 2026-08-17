@@ -201,7 +201,11 @@ async function verifyProjectAccess(
     db,
     organizationId: project.organizationId,
     viewerIsInternal,
-    viewer: toProjectAudienceViewer(user, viewerIsInternal),
+    viewer: toProjectAudienceViewer(
+      user,
+      viewerIsInternal,
+      project.organizationId
+    ),
   }
 }
 
