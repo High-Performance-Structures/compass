@@ -16,6 +16,7 @@ import {
 } from "@/app/actions/project-rfis"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { SearchableComboboxField } from "@/components/searchable-combobox"
 import {
   Sheet,
   SheetContent,
@@ -247,18 +248,17 @@ export function ProjectRfiCreateForm({
             <label className="mb-1 block text-xs font-medium text-muted-foreground">
               Company or trade
             </label>
-            <select
+            <SearchableComboboxField
               name="companyNameSelect"
-              defaultValue=""
+              ariaLabel="Company or trade"
+              placeholder="Choose from project contacts"
+              searchPlaceholder="Search companies and trades..."
               className={DOCUMENT_SELECT_CLASS}
-            >
-              <option value="">Choose from project contacts</option>
-              {companyOrTradeOptions.map((option) => (
-                <option key={option} value={option}>
-                  {option}
-                </option>
-              ))}
-            </select>
+              options={companyOrTradeOptions.map((option) => ({
+                value: option,
+                label: option,
+              }))}
+            />
             <Input
               name="companyNameCustom"
               placeholder="Or type company/trade"
@@ -270,28 +270,18 @@ export function ProjectRfiCreateForm({
               <label className="mb-1 block text-xs font-medium text-muted-foreground">
                 Assigned to
               </label>
-              <select
+              <SearchableComboboxField
                 name="assignedToNameSelect"
-                defaultValue=""
+                ariaLabel="Assigned to"
+                placeholder="Choose project contact"
+                searchPlaceholder="Search project contacts..."
                 className={DOCUMENT_SELECT_CLASS}
-              >
-                <option value="">Choose project contact</option>
-                {RFI_CONTACT_GROUPS.map((group) => {
-                  const options = peopleOptions.filter(
-                    (option) => option.group === group.value
-                  )
-                  if (options.length === 0) return null
-                  return (
-                    <optgroup key={group.value} label={group.label}>
-                      {options.map((option) => (
-                        <option key={option.value} value={option.value}>
-                          {option.label}
-                        </option>
-                      ))}
-                    </optgroup>
-                  )
-                })}
-              </select>
+                options={peopleOptions.map((option) => ({
+                  value: option.value,
+                  label: option.label,
+                  description: RFI_CONTACT_GROUPS.find((group) => group.value === option.group)?.label,
+                }))}
+              />
               <Input
                 name="assignedToNameCustom"
                 placeholder="Or type assignee"
@@ -302,28 +292,18 @@ export function ProjectRfiCreateForm({
               <label className="mb-1 block text-xs font-medium text-muted-foreground">
                 Requested by
               </label>
-              <select
+              <SearchableComboboxField
                 name="requesterNameSelect"
-                defaultValue=""
+                ariaLabel="Requested by"
+                placeholder="Choose project contact"
+                searchPlaceholder="Search project contacts..."
                 className={DOCUMENT_SELECT_CLASS}
-              >
-                <option value="">Choose project contact</option>
-                {RFI_CONTACT_GROUPS.map((group) => {
-                  const options = peopleOptions.filter(
-                    (option) => option.group === group.value
-                  )
-                  if (options.length === 0) return null
-                  return (
-                    <optgroup key={group.value} label={group.label}>
-                      {options.map((option) => (
-                        <option key={option.value} value={option.value}>
-                          {option.label}
-                        </option>
-                      ))}
-                    </optgroup>
-                  )
-                })}
-              </select>
+                options={peopleOptions.map((option) => ({
+                  value: option.value,
+                  label: option.label,
+                  description: RFI_CONTACT_GROUPS.find((group) => group.value === option.group)?.label,
+                }))}
+              />
               <Input
                 name="requesterNameCustom"
                 placeholder="Or type requester"

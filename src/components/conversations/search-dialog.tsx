@@ -3,7 +3,7 @@
 import * as React from "react"
 import { normalizeConversationMentions } from "@/lib/conversations/message-content"
 import { formatDistanceToNow, format, parseISO } from "date-fns"
-import { IconMessageCircle, IconUser, IconCalendar, IconSearch, IconLoader2 } from "@tabler/icons-react"
+import { IconCalendar, IconSearch, IconLoader2 } from "@tabler/icons-react"
 import {
   CommandDialog,
   CommandList,
@@ -11,13 +11,7 @@ import {
   CommandGroup,
   CommandItem,
 } from "@/components/ui/command"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
+import { SearchableCombobox } from "@/components/searchable-combobox"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
@@ -192,35 +186,42 @@ export function SearchDialog({
       </div>
 
       <div className="flex items-center gap-2 border-b px-3 py-2">
-        <Select value={selectedChannel} onValueChange={setSelectedChannel}>
-          <SelectTrigger size="sm" className="h-7 text-xs">
-            <IconMessageCircle className="mr-1 size-3" />
-            <SelectValue placeholder="Channel" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Channels</SelectItem>
-            {channels.map((channel) => (
-              <SelectItem key={channel.id} value={channel.id}>
-                {channel.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <SearchableCombobox
+          ariaLabel="Filter by channel"
+          options={[
+            { value: "all", label: "All Channels" },
+            ...channels.map((channel) => ({
+              value: channel.id,
+              label: channel.name,
+            })),
+          ]}
+          value={selectedChannel}
+          onValueChange={setSelectedChannel}
+          placeholder="Channel"
+          searchPlaceholder="Search channels..."
+          emptyMessage="No matching channels."
+          groupHeading="Channels"
+          className="h-7 w-auto min-w-36 text-xs"
+        />
 
-        <Select value={selectedUser} onValueChange={setSelectedUser}>
-          <SelectTrigger size="sm" className="h-7 text-xs">
-            <IconUser className="mr-1 size-3" />
-            <SelectValue placeholder="User" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Users</SelectItem>
-            {users.map((user) => (
-              <SelectItem key={user.id} value={user.id}>
-                {user.displayName ?? user.email.split("@")[0]}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <SearchableCombobox
+          ariaLabel="Filter by user"
+          options={[
+            { value: "all", label: "All Users" },
+            ...users.map((user) => ({
+              value: user.id,
+              label: user.displayName ?? user.email.split("@")[0],
+              description: user.email,
+            })),
+          ]}
+          value={selectedUser}
+          onValueChange={setSelectedUser}
+          placeholder="User"
+          searchPlaceholder="Search users..."
+          emptyMessage="No matching users."
+          groupHeading="Users"
+          className="h-7 w-auto min-w-36 text-xs"
+        />
 
         <Popover>
           <PopoverTrigger asChild>

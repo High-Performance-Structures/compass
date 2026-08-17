@@ -17,6 +17,7 @@ import {
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
+import { SearchableCombobox } from "@/components/searchable-combobox"
 import { createDependency } from "@/app/actions/schedule"
 import { wouldCreateCycle } from "@/lib/schedule/dependency-validation"
 import type {
@@ -106,36 +107,42 @@ export function DependencyDialog({
         <div className="space-y-4">
           <div>
             <Label>Predecessor (must finish first)</Label>
-            <Select value={predecessorId} onValueChange={setPredecessorId}>
-              <SelectTrigger className="mt-1">
-                <SelectValue placeholder="Select schedule item" />
-              </SelectTrigger>
-              <SelectContent>
-                {tasks.map((t) => (
-                  <SelectItem key={t.id} value={t.id}>
-                    {t.title}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <SearchableCombobox
+              ariaLabel="Choose predecessor schedule item"
+              options={tasks.map((task) => ({
+                value: task.id,
+                label: task.title,
+                keywords: task.id,
+              }))}
+              value={predecessorId}
+              onValueChange={setPredecessorId}
+              placeholder="Select schedule item"
+              searchPlaceholder="Search schedule items..."
+              emptyMessage="No matching schedule items."
+              groupHeading="Schedule items"
+              className="mt-1"
+            />
           </div>
 
           <div>
             <Label>Successor (depends on predecessor)</Label>
-            <Select value={successorId} onValueChange={setSuccessorId}>
-              <SelectTrigger className="mt-1">
-                <SelectValue placeholder="Select schedule item" />
-              </SelectTrigger>
-              <SelectContent>
-                {tasks
-                  .filter((t) => t.id !== predecessorId)
-                  .map((t) => (
-                    <SelectItem key={t.id} value={t.id}>
-                      {t.title}
-                    </SelectItem>
-                  ))}
-              </SelectContent>
-            </Select>
+            <SearchableCombobox
+              ariaLabel="Choose successor schedule item"
+              options={tasks
+                .filter((task) => task.id !== predecessorId)
+                .map((task) => ({
+                  value: task.id,
+                  label: task.title,
+                  keywords: task.id,
+                }))}
+              value={successorId}
+              onValueChange={setSuccessorId}
+              placeholder="Select schedule item"
+              searchPlaceholder="Search schedule items..."
+              emptyMessage="No matching schedule items."
+              groupHeading="Schedule items"
+              className="mt-1"
+            />
           </div>
 
           <div className="grid grid-cols-2 gap-4">

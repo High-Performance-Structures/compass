@@ -45,13 +45,7 @@ import {
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
+import { SearchableCombobox } from "@/components/searchable-combobox"
 import { Textarea } from "@/components/ui/textarea"
 import { DailyLogPrintDocument } from "@/components/projects/daily-log-print-document"
 import { useDeveloperMode } from "@/components/developer-mode-provider"
@@ -1414,26 +1408,25 @@ export function ProjectDailyLogWorkspace({
               </div>
               <div className="grid min-w-0 gap-1.5">
                 <Label htmlFor="daily-log-print-author">Author</Label>
-                <select
+                <SearchableCombobox
                   id="daily-log-print-author"
                   value={printAuthor}
-                  onChange={(event) =>
-                    setPrintAuthor(event.currentTarget.value)
-                  }
-                  className="h-9 min-w-0 rounded-md border bg-background px-3 text-sm"
-                >
-                  <option value={ALL_DAILY_LOG_AUTHORS}>All authors</option>
-                  {printAuthorOptions.map((author) => (
-                    <option key={author} value={author}>
-                      {author}
-                    </option>
-                  ))}
-                  {hasUnknownPrintAuthor && (
-                    <option value={UNKNOWN_DAILY_LOG_AUTHOR}>
-                      Imported / no author
-                    </option>
-                  )}
-                </select>
+                  onValueChange={setPrintAuthor}
+                  ariaLabel="Filter daily logs by author"
+                  placeholder="All authors"
+                  searchPlaceholder="Search authors..."
+                  className="h-9 min-w-0"
+                  options={[
+                    { value: ALL_DAILY_LOG_AUTHORS, label: "All authors" },
+                    ...printAuthorOptions.map((author) => ({
+                      value: author,
+                      label: author,
+                    })),
+                    ...(hasUnknownPrintAuthor
+                      ? [{ value: UNKNOWN_DAILY_LOG_AUTHOR, label: "Imported / no author" }]
+                      : []),
+                  ]}
+                />
               </div>
               <div className="flex items-end">
                 <Button
@@ -1832,19 +1825,23 @@ export function ProjectDailyLogWorkspace({
                       <Label htmlFor={`daily-log-file-phase-${log.id}`}>
                         Phase for this batch
                       </Label>
-                      <Select value={uploadPhase} onValueChange={setUploadPhase}>
-                        <SelectTrigger id={`daily-log-file-phase-${log.id}`}>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value={NO_PHASE_VALUE}>No phase</SelectItem>
-                          {workspace.schedulePhases.map((phase) => (
-                            <SelectItem key={phase} value={phase}>
-                              {phase}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                      <SearchableCombobox
+                        id={`daily-log-file-phase-${log.id}`}
+                        ariaLabel="Choose phase for attachment batch"
+                        options={[
+                          { value: NO_PHASE_VALUE, label: "No phase" },
+                          ...workspace.schedulePhases.map((phase) => ({
+                            value: phase,
+                            label: phase,
+                          })),
+                        ]}
+                        value={uploadPhase}
+                        onValueChange={setUploadPhase}
+                        placeholder="No phase"
+                        searchPlaceholder="Search phases..."
+                        emptyMessage="No matching phases."
+                        groupHeading="Phases"
+                      />
                     </div>
                     <fieldset className="min-w-0">
                       <legend className="text-sm font-medium">

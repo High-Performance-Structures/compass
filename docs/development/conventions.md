@@ -224,6 +224,13 @@ priority, visibility, recurrence, and sort order. Action menus remain
 keeps small controls fast while preventing long business-data lists from
 becoming scroll-only pickers.
 
+Entity combobox options must come from the current server result or current
+component props; do not copy them into a one-time hard-coded list. Refresh the
+source whenever the owning dialog or page reloads, and revalidate affected
+paths after mutations. Dependent comboboxes (for example division → cost code
+or template → template item) must recompute from the current parent value and
+clear a child selection when it is no longer available.
+
 ### Information density and responsive text
 
 Keep Compass clean, crisp, professional, and easy to scan. Rounded cards,

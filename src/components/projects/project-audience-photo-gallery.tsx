@@ -12,6 +12,7 @@ import {
 import type { AudiencePhoto } from "@/app/actions/project-audience-preview"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { SearchableCombobox } from "@/components/searchable-combobox"
 import {
   Dialog,
   DialogContent,
@@ -215,24 +216,26 @@ export function ProjectAudiencePhotoGallery({
               <span className="text-xs font-medium uppercase text-muted-foreground">
                 Phase
               </span>
-              <Select
+              <SearchableCombobox
+                ariaLabel="Photo phase"
+                options={[
+                  { value: "all", label: "All phases" },
+                  ...phases.map((phase) => ({
+                    value: phase.value,
+                    label: `${phaseLabel(
+                      phase.value === NO_PHASE_VALUE ? "" : phase.value
+                    )} (${phase.count})`,
+                    keywords: phase.value,
+                  })),
+                ]}
                 value={phaseFilter}
                 onValueChange={setPhaseFilter}
-              >
-                <SelectTrigger aria-label="Photo phase" className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All phases</SelectItem>
-                  {phases.map((phase) => (
-                    <SelectItem key={phase.value} value={phase.value}>
-                      {phaseLabel(
-                        phase.value === NO_PHASE_VALUE ? "" : phase.value
-                      )} ({phase.count})
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                placeholder="All phases"
+                searchPlaceholder="Search phases..."
+                emptyMessage="No matching phases."
+                groupHeading="Phases"
+                className="h-9"
+              />
             </label>
             <label className="w-full space-y-1 text-sm sm:w-56">
               <span className="text-xs font-medium uppercase text-muted-foreground">

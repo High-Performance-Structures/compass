@@ -11,6 +11,7 @@ import {
   type ProjectSelectionStatus,
 } from "@/app/actions/project-selections"
 import { ProjectSelectionComboboxInput } from "@/components/projects/project-selection-combobox-input"
+import { SearchableCombobox } from "@/components/searchable-combobox"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import {
@@ -208,21 +209,15 @@ export function ProjectSelectionEditForm({
                 />
               </Field>
               <Field label="Room type">
-                <Select
+                <SearchableCombobox
                   value={selectedRoomType}
                   onValueChange={setSelectedRoomType}
-                >
-                  <SelectTrigger className={DOCUMENT_SELECT_CLASS}>
-                    <SelectValue placeholder="Select room type" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {options.roomTypes.map((option) => (
-                      <SelectItem key={option.value} value={option.value}>
-                        {option.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                  ariaLabel="Room type"
+                  placeholder="Select room type"
+                  searchPlaceholder="Search room types..."
+                  className={DOCUMENT_SELECT_CLASS}
+                  options={options.roomTypes}
+                />
                 <input
                   type="hidden"
                   name="roomType"
@@ -291,18 +286,18 @@ export function ProjectSelectionEditForm({
               <Field label="Color / finish">
                 {selection.choiceOptions.length > 0 ? (
                   <>
-                    <Select value={selectedChoice} onValueChange={setSelectedChoice}>
-                      <SelectTrigger className={DOCUMENT_SELECT_CLASS}>
-                        <SelectValue placeholder="Choose an option" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {selection.choiceOptions.map((option) => (
-                          <SelectItem key={option} value={option}>
-                            {option}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <SearchableCombobox
+                      value={selectedChoice}
+                      onValueChange={setSelectedChoice}
+                      ariaLabel="Color or finish"
+                      placeholder="Choose an option"
+                      searchPlaceholder="Search options..."
+                      className={DOCUMENT_SELECT_CLASS}
+                      options={selection.choiceOptions.map((option) => ({
+                        value: option,
+                        label: option,
+                      }))}
+                    />
                     <input type="hidden" name="colorFinish" value={selectedChoice} />
                   </>
                 ) : (
@@ -337,27 +332,31 @@ export function ProjectSelectionEditForm({
           <div className="border-y py-3">
             <div className="grid gap-3 sm:grid-cols-[minmax(0,.85fr)_minmax(0,1fr)_minmax(0,.65fr)]">
               <Field label="Division">
-                <Select value={division} onValueChange={setDivision}>
-                  <SelectTrigger className={DOCUMENT_SELECT_CLASS}>
-                    <SelectValue placeholder="All divisions" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All divisions</SelectItem>
-                    {options.divisions.map((option) => (
-                      <SelectItem key={option.value} value={option.value}>
-                        {option.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <SearchableCombobox
+                  value={division}
+                  onValueChange={setDivision}
+                  ariaLabel="Division"
+                  placeholder="All divisions"
+                  searchPlaceholder="Search divisions..."
+                  className={DOCUMENT_SELECT_CLASS}
+                  options={[
+                    { value: "all", label: "All divisions" },
+                    ...options.divisions,
+                  ]}
+                />
               </Field>
               <Field label="Cost code">
                 <ProjectSelectionComboboxInput
+                  key={`selection-cost-code-${selection.id}-${division}`}
                   id={`selection-cost-code-${selection.id}`}
                   name="costCode"
                   options={costCodeOptions}
                   placeholder="Search cost code"
-                  defaultValue={textValue(selection.costCode)}
+                  defaultValue={
+                    division === initialDivision(selection, options)
+                      ? textValue(selection.costCode)
+                      : ""
+                  }
                   emptyMessage="No cost codes in this division."
                 />
               </Field>

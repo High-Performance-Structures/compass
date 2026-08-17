@@ -27,6 +27,7 @@ import {
 } from "@/app/actions/project-photos"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { SearchableCombobox } from "@/components/searchable-combobox"
 import {
   Dialog,
   DialogContent,
@@ -721,23 +722,24 @@ export function ProjectPhotoReview({
                 <span className="text-xs font-medium uppercase text-muted-foreground">
                   Phase
                 </span>
-                <Select
+                <SearchableCombobox
+                  ariaLabel="Phase"
+                  options={[
+                    { value: "all", label: "All phases" },
+                    { value: NO_PHASE_VALUE, label: "No phase" },
+                    ...library.phases.map((phase) => ({
+                      value: phase.value,
+                      label: `${phase.label} (${phase.count})`,
+                    })),
+                  ]}
                   value={phaseFilter}
                   onValueChange={setPhaseFilter}
-                >
-                  <SelectTrigger aria-label="Phase" className="w-full">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All phases</SelectItem>
-                    <SelectItem value={NO_PHASE_VALUE}>No phase</SelectItem>
-                    {library.phases.map((phase) => (
-                      <SelectItem key={phase.value} value={phase.value}>
-                        {phase.label} ({phase.count})
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                  placeholder="All phases"
+                  searchPlaceholder="Search phases..."
+                  emptyMessage="No matching phases."
+                  groupHeading="Phases"
+                  className="h-9"
+                />
               </label>
               <label className="w-full space-y-1 text-sm sm:w-56">
                 <span className="text-xs font-medium uppercase text-muted-foreground">
@@ -987,27 +989,24 @@ export function ProjectPhotoReview({
                 <div className="border-t px-2 py-1.5">
                   <label className="flex min-w-0 items-center justify-between gap-2 text-xs text-muted-foreground">
                     <span className="shrink-0">Phase</span>
-                    <Select
+                    <SearchableCombobox
+                      ariaLabel={`Phase for ${photo.caption ?? photo.fileName}`}
+                      options={[
+                        { value: NO_PHASE_VALUE, label: "No phase" },
+                        ...library.phases.map((phase) => ({
+                          value: phase.value,
+                          label: phase.label,
+                        })),
+                      ]}
                       value={photo.schedulePhase || NO_PHASE_VALUE}
                       onValueChange={(value) => changePhotoPhase(photo.id, value)}
                       disabled={isPending}
-                    >
-                      <SelectTrigger
-                        aria-label={`Phase for ${photo.caption ?? photo.fileName}`}
-                        size="sm"
-                        className="h-7 min-w-0 flex-1 px-1.5 text-xs"
-                      >
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value={NO_PHASE_VALUE}>No phase</SelectItem>
-                        {library.phases.map((phase) => (
-                          <SelectItem key={phase.value} value={phase.value}>
-                            {phase.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                      placeholder="No phase"
+                      searchPlaceholder="Search phases..."
+                      emptyMessage="No matching phases."
+                      groupHeading="Phases"
+                      className="h-7 min-w-0 flex-1 px-1.5 text-xs"
+                    />
                   </label>
                 </div>
                 <div className="flex items-center justify-between gap-2 border-t px-2 py-1.5">
@@ -1271,22 +1270,22 @@ export function ProjectPhotoReview({
                 <span className="text-xs font-medium uppercase text-muted-foreground">
                   Phase
                 </span>
-                <Select
+                <SearchableCombobox
+                  ariaLabel="Upload phase"
+                  options={[
+                    { value: NO_PHASE_VALUE, label: "No phase" },
+                    ...library.phases.map((phase) => ({
+                      value: phase.value,
+                      label: phase.label,
+                    })),
+                  ]}
                   value={uploadPhase}
                   onValueChange={setUploadPhase}
-                >
-                  <SelectTrigger aria-label="Upload phase" className="w-full">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value={NO_PHASE_VALUE}>No phase</SelectItem>
-                    {library.phases.map((phase) => (
-                      <SelectItem key={phase.value} value={phase.value}>
-                        {phase.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                  placeholder="No phase"
+                  searchPlaceholder="Search phases..."
+                  emptyMessage="No matching phases."
+                  groupHeading="Phases"
+                />
               </label>
 
               <div className="rounded-md border bg-muted/20 p-3 text-xs text-muted-foreground">

@@ -15,6 +15,7 @@ import {
 } from "@/app/actions/feedback-admin"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { SearchableCombobox } from "@/components/searchable-combobox"
 import {
   Card,
   CardContent,
@@ -198,10 +199,23 @@ function RequestEditor({
           </label>
           <label className="space-y-1 text-xs font-medium">
             Owner
-            <select className="h-9 w-full rounded-md border bg-background px-3 text-sm" value={assignee} onChange={(event) => setAssignee(event.target.value)}>
-              <option value="">Unassigned</option>
-              {assignees.map((value) => <option key={value.id} value={value.id}>{value.name}</option>)}
-            </select>
+            <SearchableCombobox
+              ariaLabel="Choose feedback owner"
+              options={[
+                { value: "", label: "Unassigned" },
+                ...assignees.map((value) => ({
+                  value: value.id,
+                  label: value.name,
+                })),
+              ]}
+              value={assignee}
+              onValueChange={setAssignee}
+              placeholder="Unassigned"
+              searchPlaceholder="Search internal staff..."
+              emptyMessage="No matching staff."
+              groupHeading="Owners"
+              className="h-9"
+            />
           </label>
         </div>
         <div className="grid gap-3 md:grid-cols-2">
@@ -341,7 +355,7 @@ export function FeedbackDeskAdmin({ overview }: Readonly<{ overview: FeedbackAdm
           </div>
         </CardHeader>
         <CardContent className="space-y-3">
-          {filteredItems.length === 0 ? <p className="py-4 text-center text-sm text-muted-foreground">No requests match these filters. Try a broader queue or clear the search.</p> : <label className="block space-y-1 text-xs font-medium">Selected request<select className="h-10 w-full rounded-md border bg-background px-3 text-sm" value={selectedItem?.id ?? ""} onChange={(event) => setSelectedId(event.target.value)}>{filteredItems.map((item) => <option key={item.id} value={item.id}>{item.kind} · {feedbackStatusLabel(item.status)} · {item.title}</option>)}</select></label>}
+          {filteredItems.length === 0 ? <p className="py-4 text-center text-sm text-muted-foreground">No requests match these filters. Try a broader queue or clear the search.</p> : <label className="block space-y-1 text-xs font-medium">Selected request<SearchableCombobox ariaLabel="Choose feedback request" options={filteredItems.map((item) => ({ value: item.id, label: item.title, description: `${item.kind} · ${feedbackStatusLabel(item.status)}` }))} value={selectedItem?.id ?? ""} onValueChange={setSelectedId} placeholder="Choose request" searchPlaceholder="Search requests..." emptyMessage="No matching requests." groupHeading="Requests" /></label>}
         </CardContent>
       </Card>
 

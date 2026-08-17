@@ -35,6 +35,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { SearchableCombobox } from "@/components/searchable-combobox"
 import {
   Table,
   TableBody,
@@ -307,26 +308,25 @@ export function VendorsTable({
   )
 
   const categoryFilter = (
-    <Select
+    <SearchableCombobox
       value={
         (table.getColumn("category")?.getFilterValue() as string) ?? "all"
       }
       onValueChange={(v) =>
         table.getColumn("category")?.setFilterValue(v === "all" ? "" : v)
       }
-    >
-      <SelectTrigger className="h-8 flex-1 sm:w-[200px] sm:flex-none">
-        <SelectValue placeholder="Filter by category" />
-      </SelectTrigger>
-      <SelectContent>
-        <SelectItem value="all">All Categories</SelectItem>
-        {categories.map((categoryOption) => (
-          <SelectItem key={categoryOption} value={categoryOption}>
-            {categoryOption}
-          </SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
+      ariaLabel="Filter vendors by category"
+      placeholder="All Categories"
+      searchPlaceholder="Search categories..."
+      className="h-8 flex-1 sm:w-[200px] sm:flex-none"
+      options={[
+        { value: "all", label: "All Categories" },
+        ...categories.map((categoryOption) => ({
+          value: categoryOption,
+          label: categoryOption,
+        })),
+      ]}
+    />
   )
 
   if (isMobile) {
@@ -355,7 +355,7 @@ export function VendorsTable({
               <SelectItem value="oldest">Oldest</SelectItem>
             </SelectContent>
           </Select>
-          <Select
+          <SearchableCombobox
             value={
               (table.getColumn("category")?.getFilterValue() as string) ??
               "all"
@@ -365,19 +365,17 @@ export function VendorsTable({
                 .getColumn("category")
                 ?.setFilterValue(v === "all" ? "" : v)
             }
-          >
-            <SelectTrigger>
-              <SelectValue placeholder="Category" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Categories</SelectItem>
-              {categories.map((categoryOption) => (
-                <SelectItem key={categoryOption} value={categoryOption}>
-                  {categoryOption}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+            ariaLabel="Filter vendors by category"
+            placeholder="All Categories"
+            searchPlaceholder="Search categories..."
+            options={[
+              { value: "all", label: "All Categories" },
+              ...categories.map((categoryOption) => ({
+                value: categoryOption,
+                label: categoryOption,
+              })),
+            ]}
+          />
         </div>
         {rows.length ? (
           <div className="rounded-md border divide-y">

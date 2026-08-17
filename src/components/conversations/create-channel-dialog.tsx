@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation"
 import { useForm } from "react-hook-form"
 import { z } from "zod/v4"
 import { zodResolver } from "@hookform/resolvers/zod"
-import { Hash, Volume2, Megaphone, Lock, FolderOpen } from "lucide-react"
+import { Hash, Volume2, Megaphone, Lock } from "lucide-react"
 import {
   Dialog,
   DialogContent,
@@ -21,13 +21,7 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
+import { SearchableCombobox } from "@/components/searchable-combobox"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
@@ -262,30 +256,23 @@ export function CreateChannelDialog({
                     Category
                   </FormLabel>
                   <FormControl>
-                    <Select
+                    <SearchableCombobox
                       value={field.value ?? "none"}
                       onValueChange={(value) =>
                         field.onChange(value === "none" ? null : value)
                       }
                       disabled={loadingCategories}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select a category" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="none">
-                          <div className="flex items-center gap-2">
-                            <FolderOpen className="h-4 w-4 text-muted-foreground" />
-                            <span>No Category</span>
-                          </div>
-                        </SelectItem>
-                        {categories.map((category) => (
-                          <SelectItem key={category.id} value={category.id}>
-                            {category.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                      ariaLabel="Channel category"
+                      placeholder="Select a category"
+                      searchPlaceholder="Search categories..."
+                      options={[
+                        { value: "none", label: "No Category" },
+                        ...categories.map((category) => ({
+                          value: category.id,
+                          label: category.name,
+                        })),
+                      ]}
+                    />
                   </FormControl>
                   <FormMessage />
                 </FormItem>

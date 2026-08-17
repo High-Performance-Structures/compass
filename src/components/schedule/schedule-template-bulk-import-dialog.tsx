@@ -23,13 +23,7 @@ import {
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue
-} from "@/components/ui/select"
+import { SearchableCombobox } from "@/components/searchable-combobox"
 
 type ScheduleTemplateBulkImportDialogProps = {
   readonly open: boolean
@@ -81,7 +75,7 @@ export function ScheduleTemplateBulkImportDialog({
     let cancelled = false
     setLoading(true)
     setLoadError(false)
-    void loadScheduleTemplateImportOptions()
+    void loadScheduleTemplateImportOptions({ refresh: true })
       .then((groups) => {
         if (!cancelled) setTemplateGroups(groups)
       })
@@ -249,18 +243,20 @@ export function ScheduleTemplateBulkImportDialog({
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-2">
                   <Label htmlFor="bulk-schedule-template">Template</Label>
-                  <Select value={templateId} onValueChange={chooseTemplate}>
-                    <SelectTrigger id="bulk-schedule-template">
-                      <SelectValue placeholder="Choose a published template" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {templateGroups?.map((group) => (
-                        <SelectItem key={group.templateId} value={group.templateId}>
-                          {group.templateName}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <SearchableCombobox
+                    id="bulk-schedule-template"
+                    ariaLabel="Choose published schedule template"
+                    options={(templateGroups ?? []).map((group) => ({
+                      value: group.templateId,
+                      label: group.templateName,
+                    }))}
+                    value={templateId}
+                    onValueChange={chooseTemplate}
+                    placeholder="Choose a published template"
+                    searchPlaceholder="Search templates..."
+                    emptyMessage="No matching templates."
+                    groupHeading="Templates"
+                  />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="bulk-template-anchor-date">First-item start date</Label>
@@ -370,21 +366,19 @@ export function ScheduleTemplateBulkImportDialog({
                             </span>
                           </label>
                           {assignedItemId && (
-                            <Select
+                            <SearchableCombobox
+                              ariaLabel={`Schedule item for ${todo.title}`}
+                              options={selectedItems.map((item) => ({
+                                value: item.id,
+                                label: item.title,
+                              }))}
                               value={assignedItemId}
                               onValueChange={(value) => assignTodo(todo.id, value)}
-                            >
-                              <SelectTrigger aria-label={`Schedule item for ${todo.title}`}>
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {selectedItems.map((item) => (
-                                  <SelectItem key={item.id} value={item.id}>
-                                    {item.title}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
+                              placeholder="Choose schedule item"
+                              searchPlaceholder="Search selected items..."
+                              emptyMessage="No matching schedule items."
+                              groupHeading="Schedule items"
+                            />
                           )}
                         </div>
                       )

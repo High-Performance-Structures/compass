@@ -27,6 +27,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { ProjectContactDirectorySelect } from "@/components/projects/project-contact-directory-select"
 import { ProjectContactReviewScrollRestorer } from "@/components/projects/project-contact-review-scroll-restorer"
+import { SearchableComboboxField } from "@/components/searchable-combobox"
 
 async function approveContactSourceLinkForm(formData: FormData): Promise<void> {
   "use server"
@@ -237,20 +238,20 @@ function AssignContactForm({
     >
       <input type="hidden" name="projectId" value={projectId} />
       <LinkIdInputs links={group.links} />
-      <select
+      <SearchableComboboxField
         name="projectContactId"
         defaultValue={primary.projectContactId ?? ""}
-        className="h-9 min-w-0 flex-1 rounded-md border bg-background px-3 text-sm shadow-xs outline-none transition-colors focus:border-ring focus:ring-ring/50 focus:ring-[3px]"
-      >
-        <option value="" disabled>
-          Choose contact
-        </option>
-        {contacts.map((contact) => (
-          <option key={contact.id} value={contact.id}>
-            {contact.displayName} - {contactTypeLabel(contact.contactType)}
-          </option>
-        ))}
-      </select>
+        required
+        ariaLabel="Project contact"
+        placeholder="Choose contact"
+        searchPlaceholder="Search project contacts..."
+        className="h-9 min-w-0 flex-1"
+        options={contacts.map((contact) => ({
+          value: contact.id,
+          label: contact.displayName,
+          description: contactTypeLabel(contact.contactType),
+        }))}
+      />
       <Button type="submit" size="sm" variant="secondary">
         <IconLink />
         Assign

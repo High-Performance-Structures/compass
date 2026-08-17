@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { SearchableCombobox } from "@/components/searchable-combobox"
 import {
   Select,
   SelectContent,
@@ -104,7 +105,7 @@ export function InviteDialog({
       } else {
         toast.error(result.error || "Failed to invite user")
       }
-    } catch (error) {
+    } catch {
       toast.error("Failed to invite user")
     } finally {
       setLoading(false)
@@ -174,23 +175,25 @@ export function InviteDialog({
               </div>
             ) : (
               <>
-                <Select
+                <SearchableCombobox
+                  id="organization"
+                  ariaLabel="Choose organization"
+                  options={[
+                    { value: "none", label: "None" },
+                    ...organizations.map((organization) => ({
+                      value: organization.id,
+                      label: organization.name,
+                      description: organization.type,
+                    })),
+                  ]}
                   value={organizationId}
                   onValueChange={setOrganizationId}
                   disabled={loading}
-                >
-                  <SelectTrigger id="organization">
-                    <SelectValue placeholder="Select organization" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">None</SelectItem>
-                    {organizations.map((org) => (
-                      <SelectItem key={org.id} value={org.id}>
-                        {org.name} ({org.type})
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                  placeholder="Select organization"
+                  searchPlaceholder="Search organizations..."
+                  emptyMessage="No matching organizations."
+                  groupHeading="Organizations"
+                />
                 <p className="text-xs text-muted-foreground">
                   Assign the user to an organization upon invitation
                 </p>
