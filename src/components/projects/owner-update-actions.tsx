@@ -7,11 +7,26 @@ import {
   IconCopy,
   IconMail,
   IconPrinter,
+  IconRefresh,
   IconSparkles,
   IconTrash,
 } from "@tabler/icons-react"
 
-import { deleteOwnerProjectUpdateDraft } from "@/app/actions/project-field"
+import {
+  deleteOwnerProjectUpdateDraft,
+  recallOwnerProjectUpdate,
+} from "@/app/actions/project-field"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog"
 import { Button } from "@/components/ui/button"
 
 const PRINT_IMAGE_TIMEOUT_MS = 3_000
@@ -85,6 +100,7 @@ export function OwnerUpdateActions({
 }): React.ReactElement {
   const router = useRouter()
   const [isDeleting, setIsDeleting] = useState(false)
+  const [isRecalling, setIsRecalling] = useState(false)
   const [publishError, setPublishError] = useState<string | null>(null)
   const [copied, setCopied] = useState<"link" | "email" | "html" | null>(null)
 
@@ -207,6 +223,24 @@ export function OwnerUpdateActions({
     }
   }
 
+  async function recallUpdate(): Promise<void> {
+    setPublishError(null)
+    setIsRecalling(true)
+    try {
+      const result = await recallOwnerProjectUpdate(projectId, updateId)
+      if (!result.success) {
+        setPublishError(result.error)
+        return
+      }
+
+      window.location.reload()
+    } catch {
+      setPublishError("Unable to recall this update. Please try again.")
+    } finally {
+      setIsRecalling(false)
+    }
+  }
+
   return (
     <div className="flex flex-wrap items-center gap-2 print:hidden">
       {canManage && status === "draft" && (
@@ -219,6 +253,36 @@ export function OwnerUpdateActions({
           <IconTrash className="size-4" />
           {isDeleting ? "Deleting..." : "Delete draft"}
         </Button>
+      )}
+      {canManage && status === "published" && (
+        <AlertDialog>
+          <AlertDialogTrigger asChild>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={isRecalling}
+            >
+              <IconRefresh className="size-4" />
+              {isRecalling ? "Recalling..." : "Recall update"}
+            </Button>
+          </AlertDialogTrigger>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Recall this owner update?</AlertDialogTitle>
+              <AlertDialogDescription>
+                The update will be hidden from the owner portal and returned to
+                draft so it can be corrected. This cannot withdraw copies that
+                were already emailed, downloaded, or printed.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Keep published</AlertDialogCancel>
+              <AlertDialogAction onClick={() => void recallUpdate()}>
+                Recall to draft
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       )}
       <Button size="sm" onClick={printOwnerUpdate}>
         <IconPrinter className="size-4" />
