@@ -19,6 +19,7 @@ import {
   IconMessageCircleQuestion,
   IconMessageReport,
   IconPalette,
+  IconPhone,
   IconPhoto,
   IconReceipt,
   IconShoppingCart,
@@ -79,6 +80,12 @@ const NAV_MAIN = [
     title: "Activity",
     url: "/dashboard/activity",
     icon: IconActivity,
+    internalOnly: true,
+  },
+  {
+    title: "Staff Message Desk",
+    url: "/dashboard/office-maintenance/message-desk",
+    icon: IconPhone,
     internalOnly: true,
   },
   {
