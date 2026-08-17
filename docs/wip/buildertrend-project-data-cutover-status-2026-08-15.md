@@ -28,6 +28,14 @@ details are intentionally excluded.
   removing document thumbnails that had been misclassified as photographs after
   confirming the underlying documents remained in Drive.
 - Imported message attachments use non-Buildertrend storage.
+- User-facing Buildertrend provenance links were removed atomically from imported
+  messages, daily logs, finish selections, and change orders. Exact-count and
+  shape guards passed before mutation, and the postflight found no remaining
+  scoped URLs while retaining Buildertrend source IDs in the archive records.
+- Historical pay-application links for the two priority projects now open their
+  verified complete Drive supporting packages rather than standalone forms.
+- The identified test vendor-bill submission is preserved as evidence but is
+  rejected, not Sage-ready, and quarantined from synchronization.
 - Promoted project records have operational IDs, and no orphaned promotion
   pointers were found.
 - Buildertrend provenance remains in internal archive tables as migration
@@ -42,22 +50,6 @@ details are intentionally excluded.
 - A small set of historical panorama records remains intentionally pointer-only.
 - The staged-file inventory is otherwise verified. Unresolved records remain
   explicit rather than being silently blanked.
-
-## Remaining operational-link cleanup
-
-Imported content is present, but some user-facing records still include removable
-Buildertrend provenance:
-
-- final-line links in imported project messages;
-- first-line source URLs in imported daily logs;
-- trailing source URLs in historical finish-selection notes; and
-- source-link fields on imported change orders.
-
-Cleanup must remove only the provenance link or footer. It must not alter
-substantive content, source IDs, authors, recipients, statuses, or timestamps. A
-guarded cleanup script passed an exact-count fixture, but production D1 rejects
-raw SQL transaction statements. The cleanup remains unapplied until it can run
-through an atomic D1 batch or transaction boundary.
 
 ## Review-gated project-data gaps
 
@@ -81,15 +73,10 @@ through an atomic D1 batch or transaction boundary.
   differences that must be reconciled against source packages and Sage.
 - Sage and Google pay-application baselines differ. The records are a
   reconciliation pair, not disposable duplicates.
-- Complete Drive pay-request packages exist for historical applications whose
-  current Compass links open only an individual form. Exact guarded forward and
-  rollback mappings are prepared but remain unapplied pending an atomic execution
-  path.
 - Imported change orders still need cost-code, phase, budget-ledger, and Sage
   mappings before they can drive G703 values.
 - Broader financial cutover requires verified active-project Sage mappings, a
   refreshed cost-code catalog, and populated tax entities.
-- Test submissions must be quarantined before broad Sage synchronization.
 
 ## Intentional archive-only records
 
