@@ -13,6 +13,7 @@ import {
   IconPhoto,
   IconQuestionMark,
   IconUsers,
+  IconShieldCheck,
 } from "@tabler/icons-react"
 
 import type { AudienceProjectOption } from "@/app/actions/project-audience-preview"
@@ -127,6 +128,12 @@ const SUB_VENDOR_NAVIGATION: readonly PreviewNavigationItem[] = [
   },
 ]
 
+const OWNER_WARRANTY_NAVIGATION: PreviewNavigationItem = {
+  label: "Warranty",
+  section: "warranty",
+  icon: <IconShieldCheck className="size-4" />,
+}
+
 function audienceRoute(audience: ProjectAudience): "owner" | "sub-vendor" {
   return audience === "owner" ? "owner" : "sub-vendor"
 }
@@ -148,6 +155,7 @@ export function ProjectAudiencePreviewShell({
   messageShortcut,
   contentMode = "document",
   activeSection = "overview",
+  warrantyEnabled = false,
   children,
 }: {
   readonly audience: ProjectAudience
@@ -165,12 +173,17 @@ export function ProjectAudiencePreviewShell({
   readonly messageShortcut: ProjectAudienceMessageShortcut | null
   readonly contentMode?: "document" | "viewport"
   readonly activeSection?: ProjectAudienceWorkspaceSection
+  readonly warrantyEnabled?: boolean
   readonly children: React.ReactNode
 }): React.ReactElement {
   const routeAudience = audienceRoute(audience)
   const homeHref = projectAudiencePreviewHref(projectId, routeAudience)
   const navigation =
-    audience === "owner" ? OWNER_NAVIGATION : SUB_VENDOR_NAVIGATION
+    audience === "owner"
+      ? warrantyEnabled
+        ? [...OWNER_NAVIGATION, OWNER_WARRANTY_NAVIGATION]
+        : OWNER_NAVIGATION
+      : SUB_VENDOR_NAVIGATION
 
   return (
     <div

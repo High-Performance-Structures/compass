@@ -745,6 +745,7 @@ export function ProjectAudiencePreview({
         viewerIsInternal={data.viewerIsInternal}
         messageShortcut={messageShortcut}
         activeSection={section}
+        warrantyEnabled={data.project.warrantyEnabled}
       >
         <OwnerProjectPreview data={data} section={section} />
       </ProjectAudiencePreviewShell>
@@ -762,6 +763,7 @@ export function ProjectAudiencePreview({
       viewerIsInternal={data.viewerIsInternal}
       messageShortcut={messageShortcut}
       activeSection={section}
+      warrantyEnabled={data.project.warrantyEnabled}
     >
       <main className="min-h-screen bg-muted/30">
         <div className="mx-auto flex max-w-6xl flex-col gap-4 px-4 py-4 sm:px-6 lg:px-8">

@@ -77,6 +77,7 @@ export default async function OwnerUpdatePreviewPage({
       viewerIsInternal={preview.viewerIsInternal}
       messageShortcut={messageShortcut}
       activeSection="updates"
+      warrantyEnabled={preview.project.warrantyEnabled}
     >
       <OwnerUpdateDocument
         document={document}

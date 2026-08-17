@@ -1,6 +1,6 @@
 # Buildertrend Project-Data Cutover Status
 
-Updated: 2026-08-15
+Updated: 2026-08-17
 
 This public ledger records the technical state and safety requirements of the
 Buildertrend-to-Compass project-data cutover. Client names, project identifiers,
@@ -28,6 +28,12 @@ details are intentionally excluded.
   removing document thumbnails that had been misclassified as photographs after
   confirming the underlying documents remained in Drive.
 - Imported message attachments use non-Buildertrend storage.
+- User-facing imported messages, daily logs, finish selections, and change
+  orders no longer expose Buildertrend provenance URLs. Internal source IDs are
+  retained for deterministic reconciliation.
+- Historical pay-application package links for the two priority active projects
+  now open the verified complete packages in Google Drive.
+- The identified Sage test vendor bill is quarantined from operational queues.
 - Promoted project records have operational IDs, and no orphaned promotion
   pointers were found.
 - Buildertrend provenance remains in internal archive tables as migration
@@ -43,29 +49,27 @@ details are intentionally excluded.
 - The staged-file inventory is otherwise verified. Unresolved records remain
   explicit rather than being silently blanked.
 
-## Remaining operational-link cleanup
+## Operational-link cleanup
 
-Imported content is present, but some user-facing records still include removable
-Buildertrend provenance:
+The guarded cleanup has been applied to production. It removed only removable
+Buildertrend provenance from:
 
 - final-line links in imported project messages;
 - first-line source URLs in imported daily logs;
 - trailing source URLs in historical finish-selection notes; and
 - source-link fields on imported change orders.
 
-Cleanup must remove only the provenance link or footer. It must not alter
-substantive content, source IDs, authors, recipients, statuses, or timestamps. A
-guarded cleanup script passed an exact-count fixture, but production D1 rejects
-raw SQL transaction statements. The cleanup remains unapplied until it can run
-through an atomic D1 batch or transaction boundary.
+The operation ran through D1's atomic file-execution path with a pre-change Time
+Travel bookmark. Substantive content, source IDs, authors, recipients, statuses,
+and timestamps were preserved.
 
 ## Review-gated project-data gaps
 
 - Open imported to-dos remain staged where dates, assignees, hierarchy, or parent
   relationships are incomplete. Blind promotion would create misleading
   duplicate work.
-- Compass does not yet have a dedicated operational warranty-claim model or
-  warranty-claim staging record type.
+- Historical Buildertrend warranty claims still require review-gated capture and
+  promotion into the new Compass warranty workflow.
 - Executed imported change orders need supporting acceptance documents before
   their remaining source references can be removed.
 - Some owner assignments on active or warranty projects are not yet represented
@@ -81,10 +85,9 @@ through an atomic D1 batch or transaction boundary.
   differences that must be reconciled against source packages and Sage.
 - Sage and Google pay-application baselines differ. The records are a
   reconciliation pair, not disposable duplicates.
-- Complete Drive pay-request packages exist for historical applications whose
-  current Compass links open only an individual form. Exact guarded forward and
-  rollback mappings are prepared but remain unapplied pending an atomic execution
-  path.
+- Complete Drive pay-request packages for the priority projects are linked from
+  their historical Compass applications. Remaining projects still require the
+  same exact-file reconciliation.
 - Imported change orders still need cost-code, phase, budget-ledger, and Sage
   mappings before they can drive G703 values.
 - Broader financial cutover requires verified active-project Sage mappings, a
@@ -100,6 +103,22 @@ Do not bulk-promote:
 - claim and dispute archives retained for evidence;
 - verified empty-source markers; and
 - pointer-only historical panorama records.
+
+## Warranty workflow
+
+Compass now has a first-class, project-scoped warranty workflow with:
+
+- owner submissions available only during Warranty or Service project stages;
+- internal status, priority, assignment, visit, resolution, and deletion controls;
+- owner resolution confirmation;
+- project-Drive evidence uploads delivered through protected Compass downloads;
+- owner-safe history separated from internal notes;
+- activity and opt-in notification events; and
+- a dedicated review-gated staging table for historical Buildertrend claims.
+
+The warranty database migration must be applied before the corresponding
+application release. Historical source records will remain review-gated rather
+than being bulk-promoted.
 
 ## Completion criteria
 
