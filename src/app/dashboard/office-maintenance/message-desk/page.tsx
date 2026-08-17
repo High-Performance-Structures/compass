@@ -15,11 +15,25 @@ import { SearchableStaffFormSelect } from "@/components/office/searchable-staff-
 import {
   parseStaffMessageStatus,
   STAFF_MESSAGE_STATUS_OPTIONS,
-  staffMessageStatusLabel,
   type StaffMessageStatus,
 } from "@/lib/staff-message-desk"
 
 type StaffMessageFilter = "open" | "all" | StaffMessageStatus
+
+const MONTH_OPTIONS = [
+  "January",
+  "February",
+  "March",
+  "April",
+  "May",
+  "June",
+  "July",
+  "August",
+  "September",
+  "October",
+  "November",
+  "December",
+] as const
 
 function fieldClassName(): string {
   return "h-10 border bg-background px-3 text-sm"
@@ -44,13 +58,36 @@ function matchesFilter(
   return status === filter
 }
 
+function monthFilter(value: string | undefined): number | null {
+  if (!value) return null
+  const month = Number(value)
+  return Number.isInteger(month) && month >= 1 && month <= 12 ? month : null
+}
+
+function yearFilter(value: string | undefined): number | null {
+  if (!value) return null
+  const year = Number(value)
+  return Number.isInteger(year) && year >= 2000 && year <= 2100 ? year : null
+}
+
+function recordDate(value: string): Date | null {
+  const date = new Date(value)
+  return Number.isNaN(date.getTime()) ? null : date
+}
+
 export default async function StaffMessageDeskPage({
   searchParams,
 }: {
-  readonly searchParams: Promise<{ readonly status?: string }>
+  readonly searchParams: Promise<{
+    readonly month?: string
+    readonly status?: string
+    readonly year?: string
+  }>
 }): Promise<React.ReactElement> {
   const query = await searchParams
   const selectedFilter = messageFilter(query.status)
+  const selectedMonth = monthFilter(query.month)
+  const selectedYear = yearFilter(query.year)
   const result = await getStaffMessageDesk()
   if (!result.success) {
     return (
@@ -61,9 +98,21 @@ export default async function StaffMessageDeskPage({
     )
   }
   const { records, assignees, inboundTexts } = result.data
-  const visibleRecords = records.filter((record) =>
-    matchesFilter(record.status, selectedFilter)
-  )
+  const availableYears = Array.from(
+    new Set(
+      records.flatMap((record) => {
+        const date = recordDate(record.createdAt)
+        return date ? [date.getFullYear()] : []
+      })
+    )
+  ).sort((left, right) => right - left)
+  const visibleRecords = records.filter((record) => {
+    if (!matchesFilter(record.status, selectedFilter)) return false
+    const date = recordDate(record.createdAt)
+    if (!date) return selectedMonth === null && selectedYear === null
+    if (selectedMonth !== null && date.getMonth() + 1 !== selectedMonth) return false
+    return selectedYear === null || date.getFullYear() === selectedYear
+  })
   const openCount = records.filter((record) => record.status !== "closed").length
 
   return (
@@ -143,9 +192,9 @@ export default async function StaffMessageDeskPage({
             <IconInbox className="size-5 text-muted-foreground" />
             <h2 id="active-staff-messages" className="text-lg font-semibold">Message Desk records</h2>
           </div>
-          <form method="get" className="flex items-end gap-2">
+          <form method="get" className="flex flex-wrap items-end gap-2">
             <label className="flex flex-col gap-1 text-sm font-medium">
-              Filter by status
+              Status
               <select name="status" defaultValue={selectedFilter} className={fieldClassName()}>
                 <option value="open">All open messages</option>
                 <option value="all">All messages</option>
@@ -154,48 +203,89 @@ export default async function StaffMessageDeskPage({
                 ))}
               </select>
             </label>
+            <label className="flex flex-col gap-1 text-sm font-medium">
+              Month
+              <select name="month" defaultValue={selectedMonth ?? ""} className={fieldClassName()}>
+                <option value="">All months</option>
+                {MONTH_OPTIONS.map((month, index) => (
+                  <option key={month} value={index + 1}>{month}</option>
+                ))}
+              </select>
+            </label>
+            <label className="flex flex-col gap-1 text-sm font-medium">
+              Year
+              <select name="year" defaultValue={selectedYear ?? ""} className={fieldClassName()}>
+                <option value="">All years</option>
+                {availableYears.map((year) => (
+                  <option key={year} value={year}>{year}</option>
+                ))}
+              </select>
+            </label>
             <Button type="submit" variant="outline">Apply</Button>
           </form>
         </div>
         {visibleRecords.length === 0 ? (
           <div className="border border-dashed p-8 text-center text-sm text-muted-foreground">
-            {records.length === 0 ? "No message records yet." : "No messages match this status filter."}
+            {records.length === 0 ? "No message records yet." : "No messages match these filters."}
           </div>
-        ) : visibleRecords.map((record) => (
-          <article id={`message-${record.id}`} key={record.id} className="border bg-background p-4 shadow-sm">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <h3 className="text-lg font-semibold">{record.subject}</h3>
-                  <Badge variant="outline">{record.sourceType === "call" ? "Call" : "Message"}</Badge>
-                  <Badge variant={record.status === "closed" ? "secondary" : "default"}>
-                    {staffMessageStatusLabel(record.status)}
-                  </Badge>
-                </div>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  {record.callerName}
-                  {record.callerCompany ? ` · ${record.callerCompany}` : ""}
-                  {record.callerPhone ? ` · ${record.callerPhone}` : ""}
-                  {record.callerEmail ? ` · ${record.callerEmail}` : ""}
-                </p>
-              </div>
-              <p className="text-xs text-muted-foreground">Assigned to {record.assigneeName} · {timestamp(record.createdAt)}</p>
-            </div>
-            <p className="mt-4 whitespace-pre-wrap border-l-2 pl-3 text-sm leading-6">{record.body}</p>
-            <form action={submitUpdateStaffMessageStatus} className="mt-4 flex flex-wrap items-end justify-end gap-2 border-t pt-4">
-              <input type="hidden" name="recordId" value={record.id} />
-              <label className="flex min-w-48 flex-col gap-1 text-sm font-medium">
-                Status
-                <select name="status" defaultValue={record.status} className={fieldClassName()}>
-                  {STAFF_MESSAGE_STATUS_OPTIONS.map((option) => (
-                    <option key={option.value} value={option.value}>{option.label}</option>
-                  ))}
-                </select>
-              </label>
-              <Button type="submit" variant="outline">Update status</Button>
-            </form>
-          </article>
-        ))}
+        ) : (
+          <div className="overflow-x-auto border bg-background shadow-sm">
+            <table className="w-full min-w-[1050px] border-collapse text-sm">
+              <thead className="bg-muted/60 text-left text-xs uppercase tracking-wide text-muted-foreground">
+                <tr>
+                  <th scope="col" className="border-b px-3 py-2 font-medium">Received</th>
+                  <th scope="col" className="border-b px-3 py-2 font-medium">Contact</th>
+                  <th scope="col" className="border-b px-3 py-2 font-medium">Message</th>
+                  <th scope="col" className="border-b px-3 py-2 font-medium">Assigned to</th>
+                  <th scope="col" className="border-b px-3 py-2 font-medium">Type</th>
+                  <th scope="col" className="border-b px-3 py-2 font-medium">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {visibleRecords.map((record) => (
+                  <tr id={`message-${record.id}`} key={record.id} className="align-top hover:bg-muted/30">
+                    <td className="whitespace-nowrap border-b px-3 py-3 text-xs text-muted-foreground">
+                      {timestamp(record.createdAt)}
+                    </td>
+                    <td className="border-b px-3 py-3">
+                      <p className="font-medium">{record.callerName}</p>
+                      {record.callerCompany ? <p className="text-xs text-muted-foreground">{record.callerCompany}</p> : null}
+                      {record.callerPhone ? <p className="text-xs text-muted-foreground">{record.callerPhone}</p> : null}
+                      {record.callerEmail ? <p className="text-xs text-muted-foreground">{record.callerEmail}</p> : null}
+                    </td>
+                    <td className="max-w-md border-b px-3 py-3">
+                      <p className="font-medium">{record.subject}</p>
+                      <p className="mt-1 line-clamp-2 whitespace-pre-wrap text-xs leading-5 text-muted-foreground">
+                        {record.body}
+                      </p>
+                    </td>
+                    <td className="border-b px-3 py-3">{record.assigneeName}</td>
+                    <td className="border-b px-3 py-3">
+                      <Badge variant="outline">{record.sourceType === "call" ? "Call" : "Message"}</Badge>
+                    </td>
+                    <td className="border-b px-3 py-3">
+                      <form action={submitUpdateStaffMessageStatus} className="flex items-center gap-2">
+                        <input type="hidden" name="recordId" value={record.id} />
+                        <label className="sr-only" htmlFor={`status-${record.id}`}>Status</label>
+                        <select
+                          id={`status-${record.id}`}
+                          name="status"
+                          defaultValue={record.status}
+                          className="h-9 min-w-44 border bg-background px-2 text-sm"
+                        >
+                          {STAFF_MESSAGE_STATUS_OPTIONS.map((option) => (
+                            <option key={option.value} value={option.value}>{option.label}</option>
+                          ))}
+                        </select>
+                        <Button type="submit" variant="outline" size="sm">Update</Button>
+                      </form>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </section>
 
       <section className="space-y-4 border-t pt-6" aria-labelledby="inbound-text-routing">
