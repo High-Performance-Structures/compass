@@ -28,6 +28,10 @@ details are intentionally excluded.
   removing document thumbnails that had been misclassified as photographs after
   confirming the underlying documents remained in Drive.
 - Imported message attachments use non-Buildertrend storage.
+- User-facing Buildertrend provenance links were removed atomically from imported
+  messages, daily logs, finish selections, and change orders. Exact-count and
+  shape guards passed before mutation, and the postflight found no remaining
+  scoped URLs while retaining Buildertrend source IDs in the archive records.
 - Promoted project records have operational IDs, and no orphaned promotion
   pointers were found.
 - Buildertrend provenance remains in internal archive tables as migration
@@ -42,22 +46,6 @@ details are intentionally excluded.
 - A small set of historical panorama records remains intentionally pointer-only.
 - The staged-file inventory is otherwise verified. Unresolved records remain
   explicit rather than being silently blanked.
-
-## Remaining operational-link cleanup
-
-Imported content is present, but some user-facing records still include removable
-Buildertrend provenance:
-
-- final-line links in imported project messages;
-- first-line source URLs in imported daily logs;
-- trailing source URLs in historical finish-selection notes; and
-- source-link fields on imported change orders.
-
-Cleanup must remove only the provenance link or footer. It must not alter
-substantive content, source IDs, authors, recipients, statuses, or timestamps. A
-guarded cleanup script passed an exact-count fixture, but production D1 rejects
-raw SQL transaction statements. The cleanup remains unapplied until it can run
-through an atomic D1 batch or transaction boundary.
 
 ## Review-gated project-data gaps
 
