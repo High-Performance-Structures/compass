@@ -32,6 +32,10 @@ details are intentionally excluded.
   messages, daily logs, finish selections, and change orders. Exact-count and
   shape guards passed before mutation, and the postflight found no remaining
   scoped URLs while retaining Buildertrend source IDs in the archive records.
+- Historical pay-application links for the two priority projects now open their
+  verified complete Drive supporting packages rather than standalone forms.
+- The identified test vendor-bill submission is preserved as evidence but is
+  rejected, not Sage-ready, and quarantined from synchronization.
 - Promoted project records have operational IDs, and no orphaned promotion
   pointers were found.
 - Buildertrend provenance remains in internal archive tables as migration
@@ -69,15 +73,10 @@ details are intentionally excluded.
   differences that must be reconciled against source packages and Sage.
 - Sage and Google pay-application baselines differ. The records are a
   reconciliation pair, not disposable duplicates.
-- Complete Drive pay-request packages exist for historical applications whose
-  current Compass links open only an individual form. Exact guarded forward and
-  rollback mappings are prepared but remain unapplied pending an atomic execution
-  path.
 - Imported change orders still need cost-code, phase, budget-ledger, and Sage
   mappings before they can drive G703 values.
 - Broader financial cutover requires verified active-project Sage mappings, a
   refreshed cost-code catalog, and populated tax entities.
-- Test submissions must be quarantined before broad Sage synchronization.
 
 ## Intentional archive-only records
 
