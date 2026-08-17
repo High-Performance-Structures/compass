@@ -3,8 +3,10 @@ import { describe, expect, it } from "vitest"
 import {
   STAFF_MESSAGE_STATUSES,
   canTransitionStaffMessageStatus,
+  archivedStaffMessageGotoEventState,
   isEligibleStaffMessageAssignee,
   isStaffMessageDeskUser,
+  linkedStaffMessageGotoEventState,
   type StaffMessageDeskUser,
 } from "@/lib/staff-message-desk"
 
@@ -86,5 +88,20 @@ describe("Staff Message Desk rules", () => {
     expect(canTransitionStaffMessageStatus("Waiting", "Completed")).toBe(true)
     expect(canTransitionStaffMessageStatus("Completed", "In Progress")).toBe(false)
     expect(canTransitionStaffMessageStatus("New", "Completed")).toBe(false)
+  })
+
+  it("resolves a linked GoTo review event and restores it when archived", () => {
+    expect(linkedStaffMessageGotoEventState("2026-08-17T12:00:00.000Z")).toEqual({
+      status: "processed",
+      reviewReason: null,
+      processedAt: "2026-08-17T12:00:00.000Z",
+      updatedAt: "2026-08-17T12:00:00.000Z",
+    })
+    expect(archivedStaffMessageGotoEventState("2026-08-17T13:00:00.000Z")).toEqual({
+      status: "needs_review",
+      reviewReason: null,
+      processedAt: null,
+      updatedAt: "2026-08-17T13:00:00.000Z",
+    })
   })
 })

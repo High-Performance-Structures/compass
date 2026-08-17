@@ -10,6 +10,35 @@ export const STAFF_MESSAGE_STATUSES = [
 
 export type StaffMessageStatus = (typeof STAFF_MESSAGE_STATUSES)[number]
 
+export type StaffMessageGotoEventState = Readonly<{
+  readonly status: "needs_review" | "processed"
+  readonly reviewReason: null
+  readonly processedAt: string | null
+  readonly updatedAt: string
+}>
+
+export function linkedStaffMessageGotoEventState(
+  now: string
+): StaffMessageGotoEventState {
+  return {
+    status: "processed",
+    reviewReason: null,
+    processedAt: now,
+    updatedAt: now,
+  }
+}
+
+export function archivedStaffMessageGotoEventState(
+  now: string
+): StaffMessageGotoEventState {
+  return {
+    status: "needs_review",
+    reviewReason: null,
+    processedAt: null,
+    updatedAt: now,
+  }
+}
+
 export type StaffMessageDeskUser = Readonly<{
   readonly id: string
   readonly isActive: boolean

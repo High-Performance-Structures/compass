@@ -15,10 +15,12 @@ import {
 import { requireAuth, type AuthUser } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
 import {
+  archivedStaffMessageGotoEventState,
   canTransitionStaffMessageStatus,
   isEligibleStaffMessageAssignee,
   isStaffMessageDeskUser,
   isStaffMessageStatus,
+  linkedStaffMessageGotoEventState,
   type StaffMessageDeskUser,
   type StaffMessageStatus,
 } from "@/lib/staff-message-desk"
@@ -492,7 +494,7 @@ export async function createStaffMessageRecord(
     }
     const now = new Date().toISOString()
     const id = crypto.randomUUID()
-    await db
+    const recordInsert = db
       .insert(staffMessageRecords)
       .values({
         id,
@@ -516,7 +518,23 @@ export async function createStaffMessageRecord(
         createdAt: now,
         updatedAt: now,
       })
-      .run()
+    if (linkedEventId) {
+      await db.batch([
+        recordInsert,
+        db
+          .update(gotoInboundEvents)
+          .set(linkedStaffMessageGotoEventState(now))
+          .where(
+            and(
+              eq(gotoInboundEvents.id, linkedEventId),
+              eq(gotoInboundEvents.organizationId, organizationId),
+              eq(gotoInboundEvents.status, "needs_review")
+            )
+          ),
+      ])
+    } else {
+      await db.batch([recordInsert])
+    }
     await appendHistory({
       db,
       organizationId,
@@ -652,7 +670,12 @@ export async function deleteStaffMessageRecord(
     }
     const recordId = requiredValue(formData, "recordId")
     const existing = await db
-      .select({ id: staffMessageRecords.id, status: staffMessageRecords.status, assigneeUserId: staffMessageRecords.assigneeUserId })
+      .select({
+        id: staffMessageRecords.id,
+        status: staffMessageRecords.status,
+        assigneeUserId: staffMessageRecords.assigneeUserId,
+        gotoInboundEventId: staffMessageRecords.gotoInboundEventId,
+      })
       .from(staffMessageRecords)
       .where(
         and(
@@ -664,7 +687,7 @@ export async function deleteStaffMessageRecord(
       .get()
     if (!existing) throw new Error("Staff message record not found")
     const now = new Date().toISOString()
-    await db
+    const recordArchive = db
       .update(staffMessageRecords)
       .set({ deletedAt: now, deletedBy: user.id, updatedAt: now })
       .where(
@@ -674,7 +697,22 @@ export async function deleteStaffMessageRecord(
           isNull(staffMessageRecords.deletedAt)
         )
       )
-      .run()
+    if (existing.gotoInboundEventId) {
+      await db.batch([
+        recordArchive,
+        db
+          .update(gotoInboundEvents)
+          .set(archivedStaffMessageGotoEventState(now))
+          .where(
+            and(
+              eq(gotoInboundEvents.id, existing.gotoInboundEventId),
+              eq(gotoInboundEvents.organizationId, organizationId)
+            )
+          ),
+      ])
+    } else {
+      await db.batch([recordArchive])
+    }
     await appendHistory({
       db,
       organizationId,

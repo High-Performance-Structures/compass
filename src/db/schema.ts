@@ -6,6 +6,7 @@ import {
   real,
   uniqueIndex,
 } from "drizzle-orm/sqlite-core"
+import { sql } from "drizzle-orm"
 
 // Auth and user management tables
 export const users = sqliteTable("users", {
@@ -756,9 +757,9 @@ export const staffMessageRecords = sqliteTable(
     updatedAt: text("updated_at").notNull(),
   },
   (table) => [
-    uniqueIndex("staff_message_records_goto_event_unique").on(
-      table.gotoInboundEventId
-    ),
+    uniqueIndex("staff_message_records_goto_event_active_unique")
+      .on(table.gotoInboundEventId)
+      .where(sql`${table.gotoInboundEventId} IS NOT NULL AND ${table.deletedAt} IS NULL`),
     index("staff_message_records_org_status_idx").on(
       table.organizationId,
       table.status,

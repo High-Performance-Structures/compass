@@ -2,16 +2,16 @@ export const dynamic = "force-dynamic"
 
 import Link from "next/link"
 import { redirect } from "next/navigation"
-import { IconArrowLeft, IconInbox, IconPhone, IconTrash } from "@tabler/icons-react"
+import { IconArrowLeft, IconInbox, IconPhone } from "@tabler/icons-react"
 
 import {
   getStaffMessageDesk,
   submitCreateStaffMessageRecord,
-  submitDeleteStaffMessageRecord,
   submitUpdateStaffMessageRecord,
 } from "@/app/actions/staff-message-desk"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { StaffMessageArchiveDialog } from "@/components/office/staff-message-archive-dialog"
 import { STAFF_MESSAGE_STATUSES } from "@/lib/staff-message-desk"
 
 function timestamp(value: string): string {
@@ -193,14 +193,9 @@ export default async function StaffMessageDeskPage(): Promise<React.ReactElement
               </ol>
             </div>
             {canDelete ? (
-              <form action={submitDeleteStaffMessageRecord} className="mt-4 flex justify-end border-t pt-3">
-                <input type="hidden" name="recordId" value={record.id} />
-                <input type="hidden" name="note" value="Administrator archived this record from the active desk." />
-                <Button type="submit" variant="outline">
-                  <IconTrash className="size-4" />
-                  Archive record
-                </Button>
-              </form>
+              <div className="mt-4 flex justify-end border-t pt-3">
+                <StaffMessageArchiveDialog recordId={record.id} />
+              </div>
             ) : null}
           </article>
         ))}
