@@ -56,13 +56,11 @@ export function isStaffMessageDeskUser(
 
 export function isEligibleStaffMessageAssignee(
   user: StaffMessageDeskUser,
-  organizationId: string,
-  creatorUserId: string
+  organizationId: string
 ): boolean {
   return (
     isStaffMessageDeskUser(user) &&
-    user.organizationId === organizationId &&
-    user.id !== creatorUserId
+    user.organizationId === organizationId
   )
 }
 

@@ -27,15 +27,13 @@ describe("Staff Message Desk authorization", () => {
     expect(isStaffMessageDeskUser({ ...internalStaff, organizationId: null })).toBe(false)
   })
 
-  it("requires the selected recipient to be active internal staff in the current organization and not the caller", () => {
-    expect(isEligibleStaffMessageAssignee(internalStaff, "org-internal", "staff-2")).toBe(true)
-    expect(isEligibleStaffMessageAssignee(internalStaff, "org-other", "staff-2")).toBe(false)
-    expect(isEligibleStaffMessageAssignee(internalStaff, "org-internal", "staff-1")).toBe(false)
+  it("allows any active internal staff member in the current organization, including the current user", () => {
+    expect(isEligibleStaffMessageAssignee(internalStaff, "org-internal")).toBe(true)
+    expect(isEligibleStaffMessageAssignee(internalStaff, "org-other")).toBe(false)
     expect(
       isEligibleStaffMessageAssignee(
         { ...internalStaff, role: "client" },
-        "org-internal",
-        "staff-2"
+        "org-internal"
       )
     ).toBe(false)
   })

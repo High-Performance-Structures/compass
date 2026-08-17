@@ -1,6 +1,6 @@
 "use server"
 
-import { and, asc, desc, eq, isNull, ne } from "drizzle-orm"
+import { and, asc, desc, eq, isNull } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
 import { getDb } from "@/db"
@@ -64,6 +64,7 @@ export type StaffMessageAssigneeDto = Readonly<{
   readonly id: string
   readonly name: string
   readonly email: string
+  readonly isCurrentUser: boolean
 }>
 
 export type StaffMessageInboundTextDto = Readonly<{
@@ -167,7 +168,6 @@ function displayName(row: Pick<StaffDeskUserRow, "displayName" | "firstName" | "
 async function assigneeFor(
   db: ReturnType<typeof getDb>,
   organizationId: string,
-  creatorUserId: string,
   assigneeUserId: string
 ): Promise<StaffDeskUserRow> {
   const row = await db
@@ -186,7 +186,6 @@ async function assigneeFor(
     .where(
       and(
         eq(users.id, assigneeUserId),
-        ne(users.id, creatorUserId),
         eq(users.isActive, true),
         eq(organizationMembers.organizationId, organizationId),
         eq(organizations.type, "internal"),
@@ -194,7 +193,7 @@ async function assigneeFor(
       )
     )
     .get()
-  if (!row) throw new Error("Choose one other active internal staff member")
+  if (!row) throw new Error("Choose an active internal staff member")
   if (
     !isEligibleStaffMessageAssignee(
       deskUser({
@@ -204,11 +203,10 @@ async function assigneeFor(
         organizationType: "internal",
         role: row.memberRole,
       }),
-      organizationId,
-      creatorUserId
+      organizationId
     )
   ) {
-    throw new Error("Assignee must be another active internal staff member")
+    throw new Error("Assignee must be an active internal staff member")
   }
   return row
 }
@@ -216,7 +214,7 @@ async function assigneeFor(
 async function activeAssignees(
   db: ReturnType<typeof getDb>,
   organizationId: string,
-  creatorUserId: string
+  currentUserId: string
 ): Promise<readonly StaffMessageAssigneeDto[]> {
   const rows = await db
     .select({
@@ -233,7 +231,6 @@ async function activeAssignees(
     .innerJoin(organizations, eq(organizations.id, organizationMembers.organizationId))
     .where(
       and(
-        ne(users.id, creatorUserId),
         eq(users.isActive, true),
         eq(organizationMembers.organizationId, organizationId),
         eq(organizations.type, "internal"),
@@ -251,11 +248,15 @@ async function activeAssignees(
           organizationType: "internal",
           role: row.memberRole,
         }),
-        organizationId,
-        creatorUserId
+        organizationId
       )
     )
-    .map((row) => ({ id: row.id, name: displayName(row), email: row.email }))
+    .map((row) => ({
+      id: row.id,
+      name: displayName(row),
+      email: row.email,
+      isCurrentUser: row.id === currentUserId,
+    }))
 }
 
 export async function getStaffMessageAssignees(): Promise<
@@ -449,7 +450,6 @@ export async function createStaffMessage(
     const assignee = await assigneeFor(
       db,
       organizationId,
-      user.id,
       requiredValue(formData, "assigneeUserId")
     )
     const id = await insertStaffMessage({
@@ -482,7 +482,6 @@ export async function routeGotoTextToMessageDesk(
     const assignee = await assigneeFor(
       db,
       organizationId,
-      user.id,
       requiredValue(formData, "assigneeUserId")
     )
     const event = await db

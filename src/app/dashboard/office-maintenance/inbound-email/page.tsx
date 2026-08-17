@@ -24,6 +24,7 @@ import {
 } from "@/app/actions/inbound-sms-review"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { SearchableStaffFormSelect } from "@/components/office/searchable-staff-form-select"
 import { SearchableProjectFormSelect } from "@/components/projects/searchable-project-form-select"
 
 function receivedLabel(value: string): string {
@@ -173,22 +174,10 @@ export default async function InboundEmailReviewPage(): Promise<React.ReactEleme
                   className="mt-2 flex flex-col gap-2 border-t pt-3 sm:flex-row sm:items-end sm:justify-end"
                 >
                   <input type="hidden" name="eventId" value={item.id} />
-                  <label className="flex flex-1 flex-col gap-1 text-sm font-medium sm:max-w-sm">
-                    Route to Message Desk
-                    <select
-                      name="assigneeUserId"
-                      required
-                      defaultValue=""
-                      className="h-10 border bg-background px-3 font-normal"
-                    >
-                      <option value="" disabled>Select one staff recipient…</option>
-                      {staffAssignees.data.map((assignee) => (
-                        <option key={assignee.id} value={assignee.id}>
-                          {assignee.name} · {assignee.email}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
+                  <div className="flex flex-1 flex-col gap-1 text-sm font-medium sm:max-w-sm">
+                    <span>Route to Message Desk</span>
+                    <SearchableStaffFormSelect assignees={staffAssignees.data} />
+                  </div>
                   <Button type="submit" variant="outline">Route to Message Desk</Button>
                 </form>
               ) : null}

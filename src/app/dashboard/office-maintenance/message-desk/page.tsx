@@ -11,6 +11,7 @@ import {
 } from "@/app/actions/staff-message-desk"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { SearchableStaffFormSelect } from "@/components/office/searchable-staff-form-select"
 import {
   parseStaffMessageStatus,
   STAFF_MESSAGE_STATUS_OPTIONS,
@@ -91,7 +92,7 @@ export default async function StaffMessageDeskPage({
       <section className="border-b pb-6" aria-labelledby="new-staff-message">
         <h2 id="new-staff-message" className="text-lg font-semibold">New call or message</h2>
         {assignees.length === 0 ? (
-          <p className="mt-3 text-sm text-muted-foreground">No other active internal staff member is available to receive a message.</p>
+          <p className="mt-3 text-sm text-muted-foreground">No active internal staff member is available to receive a message.</p>
         ) : (
           <form action={submitCreateStaffMessage} className="mt-4 grid gap-3 md:grid-cols-2">
             <label className="flex flex-col gap-1 text-sm font-medium">
@@ -101,15 +102,10 @@ export default async function StaffMessageDeskPage({
                 <option value="message">Incoming message</option>
               </select>
             </label>
-            <label className="flex flex-col gap-1 text-sm font-medium">
-              Assign to one staff member
-              <select name="assigneeUserId" required defaultValue="" className={fieldClassName()}>
-                <option value="" disabled>Select a recipient…</option>
-                {assignees.map((assignee) => (
-                  <option key={assignee.id} value={assignee.id}>{assignee.name} · {assignee.email}</option>
-                ))}
-              </select>
-            </label>
+            <div className="flex flex-col gap-1 text-sm font-medium">
+              <span>Assign to one staff member</span>
+              <SearchableStaffFormSelect assignees={assignees} />
+            </div>
             <label className="flex flex-col gap-1 text-sm font-medium">
               Caller / contact name
               <input name="callerName" required className={fieldClassName()} />
@@ -227,15 +223,10 @@ export default async function StaffMessageDeskPage({
             {assignees.length > 0 ? (
               <form action={submitRouteGotoTextToMessageDesk} className="mt-4 flex flex-col gap-3 border-t pt-4 sm:flex-row sm:items-end">
                 <input type="hidden" name="eventId" value={item.id} />
-                <label className="flex flex-1 flex-col gap-1 text-sm font-medium">
-                  Route to one staff member
-                  <select name="assigneeUserId" required defaultValue="" className={fieldClassName()}>
-                    <option value="" disabled>Select a recipient…</option>
-                    {assignees.map((assignee) => (
-                      <option key={assignee.id} value={assignee.id}>{assignee.name} · {assignee.email}</option>
-                    ))}
-                  </select>
-                </label>
+                <div className="flex flex-1 flex-col gap-1 text-sm font-medium">
+                  <span>Route to one staff member</span>
+                  <SearchableStaffFormSelect assignees={assignees} />
+                </div>
                 <Button type="submit">Route to Message Desk</Button>
               </form>
             ) : null}
