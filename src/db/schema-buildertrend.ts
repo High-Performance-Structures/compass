@@ -289,6 +289,57 @@ export const buildertrendImportObservations = sqliteTable(
   ]
 )
 
+export const buildertrendModuleAttestations = sqliteTable(
+  "buildertrend_module_attestations",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    importRunId: text("import_run_id").references(
+      () => buildertrendImportRuns.id,
+      { onDelete: "set null" }
+    ),
+    moduleKey: text("module_key").notNull(),
+    status: text("status").notNull(),
+    observedCount: integer("observed_count").notNull().default(0),
+    manifestFingerprint: text("manifest_fingerprint").notNull(),
+    evidenceDriveFileId: text("evidence_drive_file_id"),
+    evidenceDriveUrl: text("evidence_drive_url"),
+    sourceLabel: text("source_label").notNull(),
+    checkedAt: text("checked_at").notNull(),
+    verifiedBy: text("verified_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    notes: text("notes"),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("buildertrend_module_attestations_org_project_module_unique").on(
+      table.organizationId,
+      table.projectId,
+      table.moduleKey
+    ),
+    index("buildertrend_module_attestations_org_status_idx").on(
+      table.organizationId,
+      table.status
+    ),
+    index("buildertrend_module_attestations_run_idx").on(table.importRunId),
+    check(
+      "buildertrend_module_attestations_status_check",
+      sql`${table.status} in ('captured', 'verified_empty', 'partial', 'blocked', 'unavailable')`
+    ),
+    check(
+      "buildertrend_module_attestations_observed_count_check",
+      sql`${table.observedCount} >= 0`
+    ),
+  ]
+)
+
 export const buildertrendIdentityReviewRuns = sqliteTable(
   "buildertrend_staging_identity_review_runs",
   {
@@ -452,6 +503,10 @@ export type BuildertrendImportObservation =
   typeof buildertrendImportObservations.$inferSelect
 export type NewBuildertrendImportObservation =
   typeof buildertrendImportObservations.$inferInsert
+export type BuildertrendModuleAttestation =
+  typeof buildertrendModuleAttestations.$inferSelect
+export type NewBuildertrendModuleAttestation =
+  typeof buildertrendModuleAttestations.$inferInsert
 export type BuildertrendIdentityReviewRun =
   typeof buildertrendIdentityReviewRuns.$inferSelect
 export type NewBuildertrendIdentityReviewRun =
