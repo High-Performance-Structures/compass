@@ -902,6 +902,38 @@ test.describe("usable Compass areas", () => {
     ).toBeVisible()
   })
 
+  test("project selectors use the searchable project standard", async ({
+    page,
+  }) => {
+    const path = "/dashboard/projects/e2e-project-001/schedule?view=list"
+    const response = await page.goto(path)
+    await expectHealthyNavigation(
+      page,
+      response,
+      "/dashboard/projects/e2e-project-001/schedule"
+    )
+
+    const projectCombobox = page
+      .getByRole("main")
+      .getByRole("combobox", { name: "Switch project" })
+    await expect(projectCombobox).toBeVisible()
+    await projectCombobox.click()
+
+    const projectPopover = page.locator('[data-slot="popover-content"]:visible')
+    const projectSearch = projectPopover.getByPlaceholder(
+      "Search number, name, or client..."
+    )
+    await projectSearch.fill("Regression Test")
+    await expect(
+      projectPopover.getByText("H-E2E-001", { exact: true })
+    ).toBeVisible()
+
+    await projectSearch.fill("not-a-real-project")
+    await expect(
+      projectPopover.getByText("No matching projects.")
+    ).toBeVisible()
+  })
+
   test("work calendar arrows move by the active view period", async ({
     page,
   }) => {

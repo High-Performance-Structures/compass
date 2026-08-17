@@ -210,6 +210,20 @@ Built on `@tanstack/react-table`. The pattern uses a `DataTable` component that 
 
 React Hook Form with Zod resolvers. The validation schemas from `src/lib/validations/` plug directly into form configuration.
 
+### Dropdowns and comboboxes
+
+Use a searchable combobox for entity lists that can grow or need recognition
+by more than one field: projects, people, companies, templates, cost codes, and
+similar records. Search values should include the identifiers and secondary
+labels users recognize, not only the displayed name. Project selectors use
+`ProjectCombobox`, which searches project number, name, client, and ID.
+
+Keep the ordinary shadcn `Select` for short, fixed vocabularies such as status,
+priority, visibility, recurrence, and sort order. Action menus remain
+`DropdownMenu`; they are commands rather than value selectors. This distinction
+keeps small controls fast while preventing long business-data lists from
+becoming scroll-only pickers.
+
 ### Information density and responsive text
 
 Keep Compass clean, crisp, professional, and easy to scan. Rounded cards,

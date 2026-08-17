@@ -11,6 +11,14 @@ import { cn } from "@/lib/utils"
 import { useProjectList } from "@/components/project-list-provider"
 import { useIsMobile } from "@/hooks/use-mobile"
 import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command"
+import {
   Sheet,
   SheetContent,
   SheetHeader,
@@ -135,57 +143,66 @@ export function MobileProjectSwitcher({
               Projects
             </SheetTitle>
           </SheetHeader>
-          <div className="max-h-[60vh] overflow-y-auto py-1">
-            {projects.map((project) => {
-              const isActive = project.id === projectId
-              return (
-                <button
-                  key={project.id}
-                  className={cn(
-                    "flex w-full items-center gap-3",
-                    "px-4 py-3 text-left",
-                    "active:bg-muted/50",
-                    isActive && "bg-muted/30"
-                  )}
-                  onClick={() => {
-                    setOpen(false)
-                    if (!isActive) {
-                      router.push(
-                        projectSectionHref(pathname, project.id)
-                      )
-                    }
-                  }}
-                >
-                  <IconFolder
-                    className={cn(
-                      "size-5 shrink-0",
-                      isActive
-                        ? "text-primary"
-                        : "text-muted-foreground"
-                    )}
-                  />
-                  <span className="min-w-0 flex-1">
-                    <span
-                      className={cn(
-                        "block truncate text-sm",
-                        isActive && "font-medium"
-                      )}
+          <Command>
+            <CommandInput placeholder="Search number, name, or client..." />
+            <CommandList className="compass-content-scroll max-h-[60vh]">
+              <CommandEmpty>No matching projects.</CommandEmpty>
+              <CommandGroup>
+                {projects.map((project) => {
+                  const isActive = project.id === projectId
+                  return (
+                    <CommandItem
+                      key={project.id}
+                      value={[
+                        project.projectNumber,
+                        project.name,
+                        project.clientName,
+                        project.id,
+                      ]
+                        .filter(Boolean)
+                        .join(" ")}
+                      className="gap-3 px-4 py-3"
+                      onSelect={() => {
+                        setOpen(false)
+                        if (!isActive) {
+                          router.push(
+                            projectSectionHref(pathname, project.id)
+                          )
+                        }
+                      }}
                     >
-                      {project.projectNumber ?? project.name}
-                    </span>
-                    {project.projectNumber && (
-                      <span className="block truncate text-xs text-muted-foreground">
-                        {project.name}
+                      <IconFolder
+                        className={cn(
+                          "size-5 shrink-0",
+                          isActive
+                            ? "text-primary"
+                            : "text-muted-foreground"
+                        )}
+                      />
+                      <span className="min-w-0 flex-1">
+                        <span
+                          className={cn(
+                            "block truncate text-sm",
+                            isActive && "font-medium"
+                          )}
+                        >
+                          {project.projectNumber ?? project.name}
+                        </span>
+                        {project.projectNumber && (
+                          <span className="block truncate text-xs text-muted-foreground">
+                            {project.name}
+                          </span>
+                        )}
                       </span>
-                    )}
-                  </span>
-                  {isActive && (
-                    <IconCheck className="size-4 text-primary shrink-0" />
-                  )}
-                </button>
-              )
-            })}
-          </div>
+                      {isActive && (
+                        <IconCheck className="size-4 shrink-0 text-primary" />
+                      )}
+                    </CommandItem>
+                  )
+                })}
+              </CommandGroup>
+            </CommandList>
+          </Command>
         </SheetContent>
       </Sheet>
     </>

@@ -1,6 +1,8 @@
 "use client"
 
 import * as React from "react"
+import { ProjectCombobox } from "@/components/projects/project-combobox"
+import { SearchableCombobox } from "@/components/searchable-combobox"
 import { Button } from "@/components/ui/button"
 import {
   ResponsiveDialog,
@@ -125,34 +127,35 @@ export function VendorBillDialog({
     <>
       <div className="space-y-1.5">
         <Label className="text-xs">Vendor *</Label>
-        <Select value={vendorId} onValueChange={setVendorId}>
-          <SelectTrigger className="h-9">
-            <SelectValue placeholder="Select vendor" />
-          </SelectTrigger>
-          <SelectContent>
-            {vendors.map((v) => (
-              <SelectItem key={v.id} value={v.id}>
-                {v.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <SearchableCombobox
+          options={vendors.map((vendor) => ({
+            value: vendor.id,
+            label: vendor.name,
+            description: vendor.category,
+            keywords: [vendor.category, vendor.email, vendor.phone]
+              .filter(Boolean)
+              .join(" "),
+          }))}
+          value={vendorId}
+          onValueChange={setVendorId}
+          ariaLabel="Choose vendor"
+          placeholder="Select vendor"
+          searchPlaceholder="Search name, category, or email..."
+          emptyMessage="No matching vendors."
+          className="h-9"
+        />
       </div>
       <div className="space-y-1.5">
         <Label className="text-xs">Project</Label>
-        <Select value={projectId || "none"} onValueChange={(v) => setProjectId(v === "none" ? "" : v)}>
-          <SelectTrigger className="h-9">
-            <SelectValue placeholder="Select project" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="none">None</SelectItem>
-            {projects.map((p) => (
-              <SelectItem key={p.id} value={p.id}>
-                {p.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <ProjectCombobox
+          projects={projects}
+          value={projectId}
+          onValueChange={setProjectId}
+          specialOptions={[
+            { value: "", label: "None", keywords: "clear no project" },
+          ]}
+          className="h-9"
+        />
       </div>
       <div className="space-y-1.5">
         <Label className="text-xs">Bill #</Label>

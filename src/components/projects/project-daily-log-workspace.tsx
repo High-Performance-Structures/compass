@@ -56,6 +56,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { DailyLogPrintDocument } from "@/components/projects/daily-log-print-document"
 import { useDeveloperMode } from "@/components/developer-mode-provider"
 import { useProjectList } from "@/components/project-list-provider"
+import { ProjectCombobox } from "@/components/projects/project-combobox"
 import { ProjectContextSwitcher } from "@/components/projects/project-context-switcher"
 import { ProjectTaskCreateButton } from "@/components/projects/project-task-create-button"
 import {
@@ -1672,26 +1673,13 @@ export function ProjectDailyLogWorkspace({
                     <Label htmlFor={`daily-log-edit-project-${log.id}`}>
                       Project
                     </Label>
-                    <Select
+                    <ProjectCombobox
+                      id={`daily-log-edit-project-${log.id}`}
+                      ariaLabel="Choose daily log project"
+                      projects={projects}
                       value={editProjectId}
                       onValueChange={setEditProjectId}
-                    >
-                      <SelectTrigger
-                        id={`daily-log-edit-project-${log.id}`}
-                        aria-label="Project"
-                      >
-                        <SelectValue placeholder="Select a project" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {projects.map((project) => (
-                          <SelectItem key={project.id} value={project.id}>
-                            {project.projectNumber
-                              ? `${project.projectNumber} - ${project.name}`
-                              : project.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    />
                     <p className="text-xs text-muted-foreground">
                       Moving a log also moves its files and linked to-dos.
                       Project-specific schedule links are cleared.

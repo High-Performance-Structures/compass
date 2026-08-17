@@ -43,7 +43,6 @@ export type SearchableComboboxProps = {
   readonly className?: string
   readonly popoverClassName?: string
 }
-
 export function SearchableCombobox({
   options,
   value,
@@ -67,7 +66,6 @@ export function SearchableCombobox({
     const nextValue = reconcileSearchableComboboxValue(options, value)
     if (nextValue !== value) onValueChange(nextValue)
   }, [onValueChange, options, value])
-
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
