@@ -105,6 +105,18 @@ function normalizeContactIdentity(value: string | null): string {
     : ""
 }
 
+async function loadOptionalSummary<T>(
+  label: string,
+  load: () => Promise<T>
+): Promise<T | null> {
+  try {
+    return await load()
+  } catch (error) {
+    console.warn(`[project-summary] ${label} unavailable`, error)
+    return null
+  }
+}
+
 export default async function ProjectSummaryPage({
   params,
 }: {
@@ -259,15 +271,42 @@ export default async function ProjectSummaryPage({
         }
       }
     }
-    if (canEditRegistry) {
-      registry = await getProjectRegistry(id)
-      sageSyncQueue = await getProjectSageSyncQueue(id)
-    }
-    fieldSummary = await getProjectFieldSummary(id)
-    budgetSummary = await getProjectBudgetSummary(id, "internal")
-    contactsSummary = await getProjectContactsSummary(id, "internal")
-    operationsSummary = await getProjectOperationsSummary(id)
-    rfiSummary = await getProjectRfiSummary(id)
+    // These panels are independent. Resolve them concurrently so a project
+    // page pays for the slowest summary instead of the sum of every D1 roundtrip.
+    const [
+      loadedRegistry,
+      loadedSageSyncQueue,
+      loadedFieldSummary,
+      loadedBudgetSummary,
+      loadedContactsSummary,
+      loadedOperationsSummary,
+      loadedRfiSummary,
+    ] = await Promise.all([
+      canEditRegistry
+        ? loadOptionalSummary("registry", () => getProjectRegistry(id))
+        : Promise.resolve(null),
+      canEditRegistry
+        ? loadOptionalSummary("Sage sync queue", () => getProjectSageSyncQueue(id))
+        : Promise.resolve(null),
+      loadOptionalSummary("field summary", () => getProjectFieldSummary(id)),
+      loadOptionalSummary("budget summary", () =>
+        getProjectBudgetSummary(id, "internal")
+      ),
+      loadOptionalSummary("contacts summary", () =>
+        getProjectContactsSummary(id, "internal")
+      ),
+      loadOptionalSummary("operations summary", () =>
+        getProjectOperationsSummary(id)
+      ),
+      loadOptionalSummary("RFI summary", () => getProjectRfiSummary(id)),
+    ])
+    registry = loadedRegistry
+    sageSyncQueue = loadedSageSyncQueue
+    fieldSummary = loadedFieldSummary
+    budgetSummary = loadedBudgetSummary
+    contactsSummary = loadedContactsSummary
+    operationsSummary = loadedOperationsSummary
+    rfiSummary = loadedRfiSummary
   } catch (error) {
     if (
       hasDigest(error) &&

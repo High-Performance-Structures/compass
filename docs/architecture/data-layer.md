@@ -189,6 +189,29 @@ const db = getDb(env.DB)
 The `getDb()` function is called per-request -- it creates a new Drizzle instance each time. This is intentional. Cloudflare Workers are stateless isolates; there's no persistent connection to reuse. The cost of creating the Drizzle wrapper is negligible compared to the query itself.
 
 
+atomic writes and asynchronous work
+---
+
+D1 calls are asynchronous, but an awaited call is still part of the request's
+critical path. Authorization reads, response-dependent reads, primary writes,
+and durable operation records must remain awaited.
+
+Use `db.batch()` when multiple D1 statements maintain one local invariant. D1
+batches commit all statements or roll them all back, so code must not model a
+transaction as an async callback containing separate queries. The shared
+`DatabaseProvider` intentionally does not expose a callback `transaction()` API.
+
+A JavaScript timeout such as `Promise.race()` only stops waiting for a query; it
+does not prove that D1 canceled or rolled back a write. Retriable write workflows
+therefore need stable operation IDs, uniqueness constraints, and reconciliation
+before retry.
+
+Reserve `waitUntil()` for short, best-effort work that is safe to lose. Durable,
+long-running, or external side effects belong in Cloudflare Queues or Workflows
+with idempotent consumers. Persist and await the queue or operation record before
+returning success to the caller.
+
+
 migration workflow
 ---
 

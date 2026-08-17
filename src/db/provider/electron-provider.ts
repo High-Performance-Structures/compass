@@ -22,11 +22,6 @@ export function createElectronProvider(config?: ElectronProviderConfig): Databas
       throw new Error("Electron desktop does not expose raw SQL IPC")
     },
 
-    async transaction<T>(fn: (db: DrizzleDB) => Promise<T>): Promise<T> {
-      void fn
-      throw new Error("Electron desktop does not expose raw SQL IPC")
-    },
-
     async close(): Promise<void> {
       return
     },

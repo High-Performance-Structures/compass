@@ -59,14 +59,6 @@ export function createD1Provider(config: D1ProviderConfig): DatabaseProvider {
       }
     },
 
-    async transaction<T>(fn: (db: DrizzleDB) => Promise<T>): Promise<T> {
-      const db = await this.getDb()
-      // D1 batch provides transaction-like semantics
-      // For true transactions, we need to use db.batch()
-      // This is a simplified version - full transaction support
-      // requires the batch API
-      return fn(db)
-    },
   }
 }
 

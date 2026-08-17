@@ -12,7 +12,6 @@ export interface DatabaseProvider {
   readonly type: ProviderType
   getDb(): Promise<DrizzleDB>
   execute(sql: string, params?: unknown[]): Promise<void>
-  transaction<T>(fn: (db: DrizzleDB) => Promise<T>): Promise<T>
   close?(): Promise<void>
 }
 

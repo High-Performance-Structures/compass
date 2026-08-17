@@ -102,11 +102,6 @@ export function createMemoryProvider(config?: MemoryProviderConfig): DatabasePro
       }
     },
 
-    async transaction<T>(fn: (db: DrizzleDB) => Promise<T>): Promise<T> {
-      const { sqlite: initializedSqlite, db: initializedDb } = await initialize()
-      return initializedSqlite.transaction(() => fn(initializedDb as DrizzleDB))()
-    },
-
     async close(): Promise<void> {
       if (sqlite) {
         sqlite.close()

@@ -102,50 +102,6 @@ describe.each(providerFactories)("%s", (name, createProvider) => {
     })
   })
 
-  describe("transaction", () => {
-    beforeEach(async () => {
-      await provider.execute(`
-        CREATE TABLE IF NOT EXISTS txn_test (
-          id TEXT PRIMARY KEY,
-          value INTEGER
-        )
-      `)
-    })
-
-    // Note: better-sqlite3's transaction() doesn't support async callbacks.
-    // The MemoryProvider's transaction implementation needs to be refactored
-    // to properly handle async functions. These tests are skipped until then.
-    // The interface is correct, but the implementation has a limitation.
-
-    it.skip("commits successful transaction", async () => {
-      await provider.transaction(async () => {
-        await provider.execute("INSERT INTO txn_test (id, value) VALUES ('a', 1)")
-        await provider.execute("INSERT INTO txn_test (id, value) VALUES ('b', 2)")
-      })
-
-      // Note: Cannot verify with db.execute due to Drizzle type limitations
-      // The transaction would have committed the inserts
-      const db = await provider.getDb()
-      expect(db).toBeDefined()
-    })
-
-    it.skip("returns transaction result", async () => {
-      const result = await provider.transaction(async () => {
-        return "transaction-result"
-      })
-
-      expect(result).toBe("transaction-result")
-    })
-
-    it.skip("provides db parameter for drizzle operations", async () => {
-      await provider.transaction(async (db) => {
-        expect(db).toBeDefined()
-        expect(typeof db.select).toBe("function")
-        return Promise.resolve("success")
-      })
-    })
-  })
-
   describe("close", () => {
     it("can be called multiple times safely", async () => {
       if (!provider.close) {
@@ -184,7 +140,6 @@ describe("DatabaseProvider interface compliance", () => {
     expect(provider.type).toBeDefined()
     expect(typeof provider.getDb).toBe("function")
     expect(typeof provider.execute).toBe("function")
-    expect(typeof provider.transaction).toBe("function")
     expect(typeof provider.close).toBe("function")
   })
 })
