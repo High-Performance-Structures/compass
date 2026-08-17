@@ -123,14 +123,17 @@ export async function getBuildertrendCutoverCoverage(): Promise<BuildertrendCuto
       moduleKey: buildertrendModuleAttestations.moduleKey,
       status: buildertrendModuleAttestations.status,
       observedCount: buildertrendModuleAttestations.observedCount,
+      checkedAt: buildertrendModuleAttestations.checkedAt,
     })
     .from(buildertrendModuleAttestations)
     .where(eq(buildertrendModuleAttestations.organizationId, organizationId))
 
+  const generatedAt = new Date().toISOString()
   const summary = summarizeBuildertrendModuleCoverage(
-    projectRows.map((project) => ({ id: project.id })),
+    projectRows.map((project) => ({ id: project.id, status: project.status })),
     evidence,
-    attestationRows
+    attestationRows,
+    generatedAt
   )
   const statusCounts = new Map<string, number>()
   for (const project of projectRows) {
@@ -139,7 +142,7 @@ export async function getBuildertrendCutoverCoverage(): Promise<BuildertrendCuto
 
   return {
     ...summary,
-    generatedAt: new Date().toISOString(),
+    generatedAt,
     statusCounts: [...statusCounts.entries()]
       .map(([status, count]) => ({ status, count }))
       .sort((left, right) => left.status.localeCompare(right.status)),
