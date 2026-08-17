@@ -7,9 +7,18 @@ import {
   getStaffMessageDesk,
   submitCreateStaffMessage,
   submitRouteGotoTextToMessageDesk,
+  submitUpdateStaffMessageStatus,
 } from "@/app/actions/staff-message-desk"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import {
+  parseStaffMessageStatus,
+  STAFF_MESSAGE_STATUS_OPTIONS,
+  staffMessageStatusLabel,
+  type StaffMessageStatus,
+} from "@/lib/staff-message-desk"
+
+type StaffMessageFilter = "open" | "all" | StaffMessageStatus
 
 function fieldClassName(): string {
   return "h-10 border bg-background px-3 text-sm"
@@ -20,7 +29,27 @@ function timestamp(value: string): string {
   return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleString()
 }
 
-export default async function StaffMessageDeskPage(): Promise<React.ReactElement> {
+function messageFilter(value: string | undefined): StaffMessageFilter {
+  if (value === "all" || value === "open") return value
+  return value ? parseStaffMessageStatus(value) ?? "open" : "open"
+}
+
+function matchesFilter(
+  status: StaffMessageStatus,
+  filter: StaffMessageFilter
+): boolean {
+  if (filter === "all") return true
+  if (filter === "open") return status !== "closed"
+  return status === filter
+}
+
+export default async function StaffMessageDeskPage({
+  searchParams,
+}: {
+  readonly searchParams: Promise<{ readonly status?: string }>
+}): Promise<React.ReactElement> {
+  const query = await searchParams
+  const selectedFilter = messageFilter(query.status)
   const result = await getStaffMessageDesk()
   if (!result.success) {
     return (
@@ -31,6 +60,10 @@ export default async function StaffMessageDeskPage(): Promise<React.ReactElement
     )
   }
   const { records, assignees, inboundTexts } = result.data
+  const visibleRecords = records.filter((record) =>
+    matchesFilter(record.status, selectedFilter)
+  )
+  const openCount = records.filter((record) => record.status !== "closed").length
 
   return (
     <main className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-6 overflow-y-auto p-4 lg:p-6">
@@ -51,7 +84,7 @@ export default async function StaffMessageDeskPage(): Promise<React.ReactElement
               Capture a call for one accountable staff member, or manually route an inbound text after review.
             </p>
           </div>
-          <Badge variant="secondary">{records.length} messages</Badge>
+          <Badge variant="secondary">{openCount} open · {records.length} total</Badge>
         </div>
       </header>
 
@@ -109,19 +142,39 @@ export default async function StaffMessageDeskPage(): Promise<React.ReactElement
       </section>
 
       <section className="space-y-4" aria-labelledby="active-staff-messages">
-        <div className="flex items-center gap-2 border-b pb-2">
-          <IconInbox className="size-5 text-muted-foreground" />
-          <h2 id="active-staff-messages" className="text-lg font-semibold">Message Desk records</h2>
+        <div className="flex flex-wrap items-end justify-between gap-3 border-b pb-3">
+          <div className="flex items-center gap-2">
+            <IconInbox className="size-5 text-muted-foreground" />
+            <h2 id="active-staff-messages" className="text-lg font-semibold">Message Desk records</h2>
+          </div>
+          <form method="get" className="flex items-end gap-2">
+            <label className="flex flex-col gap-1 text-sm font-medium">
+              Filter by status
+              <select name="status" defaultValue={selectedFilter} className={fieldClassName()}>
+                <option value="open">All open messages</option>
+                <option value="all">All messages</option>
+                {STAFF_MESSAGE_STATUS_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>{option.label}</option>
+                ))}
+              </select>
+            </label>
+            <Button type="submit" variant="outline">Apply</Button>
+          </form>
         </div>
-        {records.length === 0 ? (
-          <div className="border border-dashed p-8 text-center text-sm text-muted-foreground">No message records yet.</div>
-        ) : records.map((record) => (
+        {visibleRecords.length === 0 ? (
+          <div className="border border-dashed p-8 text-center text-sm text-muted-foreground">
+            {records.length === 0 ? "No message records yet." : "No messages match this status filter."}
+          </div>
+        ) : visibleRecords.map((record) => (
           <article id={`message-${record.id}`} key={record.id} className="border bg-background p-4 shadow-sm">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
                 <div className="flex flex-wrap items-center gap-2">
                   <h3 className="text-lg font-semibold">{record.subject}</h3>
                   <Badge variant="outline">{record.sourceType === "call" ? "Call" : "Message"}</Badge>
+                  <Badge variant={record.status === "closed" ? "secondary" : "default"}>
+                    {staffMessageStatusLabel(record.status)}
+                  </Badge>
                 </div>
                 <p className="mt-1 text-sm text-muted-foreground">
                   {record.callerName}
@@ -133,6 +186,18 @@ export default async function StaffMessageDeskPage(): Promise<React.ReactElement
               <p className="text-xs text-muted-foreground">Assigned to {record.assigneeName} · {timestamp(record.createdAt)}</p>
             </div>
             <p className="mt-4 whitespace-pre-wrap border-l-2 pl-3 text-sm leading-6">{record.body}</p>
+            <form action={submitUpdateStaffMessageStatus} className="mt-4 flex flex-wrap items-end justify-end gap-2 border-t pt-4">
+              <input type="hidden" name="recordId" value={record.id} />
+              <label className="flex min-w-48 flex-col gap-1 text-sm font-medium">
+                Status
+                <select name="status" defaultValue={record.status} className={fieldClassName()}>
+                  {STAFF_MESSAGE_STATUS_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>{option.label}</option>
+                  ))}
+                </select>
+              </label>
+              <Button type="submit" variant="outline">Update status</Button>
+            </form>
           </article>
         ))}
       </section>

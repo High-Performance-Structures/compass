@@ -24,6 +24,7 @@ import {
 } from "@/app/actions/inbound-sms-review"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { SearchableProjectFormSelect } from "@/components/projects/searchable-project-form-select"
 
 function receivedLabel(value: string): string {
   const parsed = new Date(value)
@@ -116,23 +117,10 @@ export default async function InboundEmailReviewPage(): Promise<React.ReactEleme
                 className="mt-4 grid gap-3 border-t pt-4 md:grid-cols-2"
               >
                 <input type="hidden" name="eventId" value={item.id} />
-                <label className="flex flex-col gap-1 text-sm font-medium">
-                  Project
-                  <select
-                    name="projectId"
-                    required
-                    defaultValue=""
-                    className="h-10 border bg-background px-3 font-normal"
-                  >
-                    <option value="" disabled>Select project…</option>
-                    {smsQueue.projects.map((project) => (
-                      <option key={project.id} value={project.id}>
-                        {project.projectNumber ? `${project.projectNumber} — ` : ""}
-                        {project.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
+                <div className="flex flex-col gap-1 text-sm font-medium">
+                  <span>Project</span>
+                  <SearchableProjectFormSelect projects={smsQueue.projects} />
+                </div>
                 <label className="flex flex-col gap-1 text-sm font-medium">
                   Destination
                   <select

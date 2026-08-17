@@ -739,6 +739,7 @@ export const staffMessageRecords = sqliteTable(
     callerEmail: text("caller_email"),
     subject: text("subject").notNull(),
     body: text("body").notNull(),
+    status: text("status").notNull().default("new"),
     assigneeUserId: text("assignee_user_id")
       .notNull()
       .references(() => users.id),
@@ -761,6 +762,11 @@ export const staffMessageRecords = sqliteTable(
     index("staff_message_records_assignee_created_idx").on(
       table.assigneeUserId,
       table.createdAt
+    ),
+    index("staff_message_records_org_status_updated_idx").on(
+      table.organizationId,
+      table.status,
+      table.updatedAt
     ),
   ]
 )

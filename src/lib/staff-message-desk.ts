@@ -1,5 +1,39 @@
 import { isInternalStaffRole } from "@/lib/user-roles"
 
+export type StaffMessageStatus =
+  | "new"
+  | "follow_up_needed"
+  | "in_progress"
+  | "waiting_on_contact"
+  | "closed"
+
+export type StaffMessageStatusOption = Readonly<{
+  readonly value: StaffMessageStatus
+  readonly label: string
+}>
+
+export const STAFF_MESSAGE_STATUS_OPTIONS: readonly StaffMessageStatusOption[] = [
+  { value: "new", label: "New" },
+  { value: "follow_up_needed", label: "Follow-Up Needed" },
+  { value: "in_progress", label: "In Progress" },
+  { value: "waiting_on_contact", label: "Waiting on Caller" },
+  { value: "closed", label: "Closed" },
+]
+
+export function parseStaffMessageStatus(value: string): StaffMessageStatus | null {
+  return (
+    STAFF_MESSAGE_STATUS_OPTIONS.find((option) => option.value === value)?.value ??
+    null
+  )
+}
+
+export function staffMessageStatusLabel(status: StaffMessageStatus): string {
+  return (
+    STAFF_MESSAGE_STATUS_OPTIONS.find((option) => option.value === status)?.label ??
+    status
+  )
+}
+
 export type StaffMessageDeskUser = Readonly<{
   readonly id: string
   readonly isActive: boolean

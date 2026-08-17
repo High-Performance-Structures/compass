@@ -18,6 +18,8 @@ import {
   buildStaffMessageAssignmentNotification,
   isEligibleStaffMessageAssignee,
   isStaffMessageDeskUser,
+  parseStaffMessageStatus,
+  type StaffMessageStatus,
   type StaffMessageDeskUser,
 } from "@/lib/staff-message-desk"
 import { createNotificationEvent } from "@/lib/notifications/create-event"
@@ -50,6 +52,7 @@ export type StaffMessageDeskRecordDto = Readonly<{
   readonly callerEmail: string | null
   readonly subject: string
   readonly body: string
+  readonly status: StaffMessageStatus
   readonly assigneeUserId: string
   readonly assigneeName: string
   readonly createdBy: string | null
@@ -318,6 +321,7 @@ export async function getStaffMessageDesk(): Promise<ActionResult<StaffMessageDe
         callerEmail: staffMessageRecords.callerEmail,
         subject: staffMessageRecords.subject,
         body: staffMessageRecords.body,
+        status: staffMessageRecords.status,
         assigneeUserId: staffMessageRecords.assigneeUserId,
         createdBy: staffMessageRecords.createdBy,
         createdAt: staffMessageRecords.createdAt,
@@ -364,6 +368,7 @@ export async function getStaffMessageDesk(): Promise<ActionResult<StaffMessageDe
           callerEmail: row.callerEmail,
           subject: row.subject,
           body: row.body,
+          status: parseStaffMessageStatus(row.status) ?? "new",
           assigneeUserId: row.assigneeUserId,
           assigneeName: displayName({
             displayName: row.assigneeDisplayName,
@@ -416,6 +421,7 @@ async function insertStaffMessage(input: {
     callerEmail: input.callerEmail,
     subject: input.subject,
     body: input.body,
+    status: "new",
     assigneeUserId: input.assignee.id,
     createdBy: input.user.id,
     createdAt: now,
@@ -523,6 +529,35 @@ export async function routeGotoTextToMessageDesk(
   }
 }
 
+export async function updateStaffMessageStatus(
+  formData: FormData
+): Promise<ActionResult<{ readonly id: string; readonly status: StaffMessageStatus }>> {
+  try {
+    const { db, organizationId } = await staffMessageContext()
+    const recordId = requiredValue(formData, "recordId")
+    const status = parseStaffMessageStatus(requiredValue(formData, "status"))
+    if (!status) throw new Error("Choose a valid message status")
+
+    const updated = await db
+      .update(staffMessageRecords)
+      .set({ status, updatedAt: new Date().toISOString() })
+      .where(
+        and(
+          eq(staffMessageRecords.id, recordId),
+          eq(staffMessageRecords.organizationId, organizationId)
+        )
+      )
+      .returning({ id: staffMessageRecords.id })
+      .get()
+    if (!updated) throw new Error("Message record was not found")
+
+    revalidatePath(MESSAGE_DESK_PATH)
+    return { success: true, data: { id: updated.id, status } }
+  } catch (error) {
+    return failure(error)
+  }
+}
+
 export async function submitCreateStaffMessage(formData: FormData): Promise<void> {
   await createStaffMessage(formData)
 }
@@ -531,4 +566,10 @@ export async function submitRouteGotoTextToMessageDesk(
   formData: FormData
 ): Promise<void> {
   await routeGotoTextToMessageDesk(formData)
+}
+
+export async function submitUpdateStaffMessageStatus(
+  formData: FormData
+): Promise<void> {
+  await updateStaffMessageStatus(formData)
 }

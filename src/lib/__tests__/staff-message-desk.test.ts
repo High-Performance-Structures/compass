@@ -5,6 +5,8 @@ import {
   buildStaffMessageAssignmentNotification,
   isEligibleStaffMessageAssignee,
   isStaffMessageDeskUser,
+  parseStaffMessageStatus,
+  staffMessageStatusLabel,
   type StaffMessageDeskUser,
 } from "@/lib/staff-message-desk"
 
@@ -75,5 +77,19 @@ describe("Staff Message Desk routing contracts", () => {
       assigneeUserId: "staff-2",
       sourceEventMutation: null,
     })
+  })
+
+})
+
+describe("Staff Message Desk statuses", () => {
+  it("accepts the supported workflow values and rejects arbitrary input", () => {
+    expect(parseStaffMessageStatus("new")).toBe("new")
+    expect(parseStaffMessageStatus("follow_up_needed")).toBe("follow_up_needed")
+    expect(parseStaffMessageStatus("not-a-status")).toBeNull()
+  })
+
+  it("provides staff-facing labels", () => {
+    expect(staffMessageStatusLabel("waiting_on_contact")).toBe("Waiting on Caller")
+    expect(staffMessageStatusLabel("closed")).toBe("Closed")
   })
 })
