@@ -116,6 +116,7 @@ export async function ProjectAudienceConversation({
       messageShortcut={messageShortcut}
       contentMode="viewport"
       activeSection="conversations"
+      warrantyEnabled={preview.project.warrantyEnabled}
     >
       <main className="min-h-0 flex-1 overflow-hidden bg-background">
         <ConversationsProvider>

@@ -84,6 +84,7 @@ export async function ProjectAudienceChangeOrders({
       viewerIsInternal={preview.viewerIsInternal}
       messageShortcut={messageShortcut}
       activeSection="change-orders"
+      warrantyEnabled={preview.project.warrantyEnabled}
     >
       <main className="min-h-screen bg-muted/20 px-4 py-5 sm:px-6 lg:px-8">
         <div className="mx-auto max-w-6xl">

@@ -173,6 +173,14 @@ export const PERMISSION_FEATURES: readonly PermissionFeature[] = [
     resource: "document",
   },
   {
+    id: "warranty-claims",
+    group: "Client Experience",
+    label: "Warranty Claims",
+    description:
+      "Project warranty submissions, assignment, visits, evidence, resolution, and owner confirmation.",
+    resource: "project",
+  },
+  {
     id: "owner-preview",
     group: "Client Experience",
     label: "Owner Preview",

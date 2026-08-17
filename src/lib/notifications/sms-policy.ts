@@ -86,7 +86,9 @@ export function isProjectActivitySmsEvent(eventType: string): boolean {
   return (
     eventType === "message.channel" ||
     eventType === "message.thread_reply" ||
-    eventType === "message.project"
+    eventType === "message.project" ||
+    eventType === "warranty.created" ||
+    eventType === "warranty.updated"
   )
 }
 
