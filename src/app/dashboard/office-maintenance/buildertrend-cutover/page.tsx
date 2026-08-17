@@ -33,7 +33,8 @@ export default async function BuildertrendCutoverPage(): Promise<React.ReactElem
         <p className="mt-2 max-w-3xl text-sm text-muted-foreground">
           A module is complete only when its captured count is attested, or a
           signed capture confirms that Buildertrend contained zero records.
-          Existing records without that final check remain partial.
+          Existing records without that final check remain partial. Evidence
+          for live or unclassified projects becomes stale after seven days.
         </p>
       </header>
 
@@ -85,7 +86,8 @@ export default async function BuildertrendCutoverPage(): Promise<React.ReactElem
           <p className="text-sm text-muted-foreground">
             “Partial” includes captured records that have not received a
             matching completeness attestation. “Conflict” means the attested
-            count no longer matches staged evidence.
+            count no longer matches staged evidence. “Stale” requires a fresh
+            Buildertrend check before cutover.
           </p>
         </div>
         <div className="overflow-x-auto border">
@@ -96,6 +98,7 @@ export default async function BuildertrendCutoverPage(): Promise<React.ReactElem
                 <th className="px-3 py-3 text-right font-medium">Captured</th>
                 <th className="px-3 py-3 text-right font-medium">Empty</th>
                 <th className="px-3 py-3 text-right font-medium">Partial</th>
+                <th className="px-3 py-3 text-right font-medium">Stale</th>
                 <th className="px-3 py-3 text-right font-medium">
                   Blocked / unavailable
                 </th>
@@ -117,6 +120,7 @@ export default async function BuildertrendCutoverPage(): Promise<React.ReactElem
                     {module.verifiedEmptyCount}
                   </td>
                   <td className="px-3 py-3 text-right">{module.partialCount}</td>
+                  <td className="px-3 py-3 text-right">{module.staleCount}</td>
                   <td className="px-3 py-3 text-right">
                     {module.blockedCount + module.unavailableCount}
                   </td>

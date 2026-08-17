@@ -20,6 +20,7 @@ export type BuildertrendModuleKey =
 export type BuildertrendCoverageStatus =
   | "verified_captured"
   | "verified_empty"
+  | "stale"
   | "partial"
   | "blocked"
   | "unavailable"
@@ -53,6 +54,7 @@ export const BUILDERTREND_MODULES: readonly BuildertrendModuleDefinition[] = [
 
 export type BuildertrendCoverageProject = {
   readonly id: string
+  readonly status: string
 }
 
 export type BuildertrendCoverageEvidence = {
@@ -66,6 +68,7 @@ export type BuildertrendCoverageAttestation = {
   readonly moduleKey: string
   readonly status: string
   readonly observedCount: number
+  readonly checkedAt: string
 }
 
 export type BuildertrendModuleCoverageRow = {
@@ -74,6 +77,7 @@ export type BuildertrendModuleCoverageRow = {
   readonly projectCount: number
   readonly verifiedCapturedCount: number
   readonly verifiedEmptyCount: number
+  readonly staleCount: number
   readonly partialCount: number
   readonly blockedCount: number
   readonly unavailableCount: number
@@ -81,6 +85,25 @@ export type BuildertrendModuleCoverageRow = {
   readonly missingCount: number
   readonly verifiedCount: number
   readonly completionPercent: number
+}
+
+export const BUILDERTREND_LIVE_FRESHNESS_DAYS = 7
+
+function projectEvidenceCanRemainStable(status: string): boolean {
+  return status === "ARCHIVE" || status === "COMPLETE" || status === "INACTIVE"
+}
+
+function attestationIsStale(
+  projectStatus: string,
+  checkedAt: string,
+  generatedAtMillis: number
+): boolean {
+  if (projectEvidenceCanRemainStable(projectStatus)) return false
+  const checkedAtMillis = Date.parse(checkedAt)
+  if (!Number.isFinite(checkedAtMillis)) return true
+  const freshnessMillis =
+    BUILDERTREND_LIVE_FRESHNESS_DAYS * 24 * 60 * 60 * 1_000
+  return generatedAtMillis - checkedAtMillis > freshnessMillis
 }
 
 export type BuildertrendCoverageSummary = {
@@ -102,21 +125,33 @@ function normalizedCount(value: number): number {
 }
 
 function attestedStatus(
+  projectStatus: string,
   evidenceCount: number,
-  attestation: BuildertrendCoverageAttestation | undefined
+  attestation: BuildertrendCoverageAttestation | undefined,
+  generatedAtMillis: number
 ): BuildertrendCoverageStatus {
   if (!attestation) return evidenceCount > 0 ? "partial" : "missing"
 
   const observedCount = normalizedCount(attestation.observedCount)
   if (attestation.status === "captured") {
-    return observedCount === evidenceCount && evidenceCount > 0
-      ? "verified_captured"
-      : "conflict"
+    if (observedCount !== evidenceCount || evidenceCount === 0) return "conflict"
+    return attestationIsStale(
+      projectStatus,
+      attestation.checkedAt,
+      generatedAtMillis
+    )
+      ? "stale"
+      : "verified_captured"
   }
   if (attestation.status === "verified_empty") {
-    return observedCount === 0 && evidenceCount === 0
-      ? "verified_empty"
-      : "conflict"
+    if (observedCount !== 0 || evidenceCount !== 0) return "conflict"
+    return attestationIsStale(
+      projectStatus,
+      attestation.checkedAt,
+      generatedAtMillis
+    )
+      ? "stale"
+      : "verified_empty"
   }
   if (attestation.status === "partial") return "partial"
   if (attestation.status === "blocked") return "blocked"
@@ -134,8 +169,13 @@ function countStatuses(
 export function summarizeBuildertrendModuleCoverage(
   projects: readonly BuildertrendCoverageProject[],
   evidence: readonly BuildertrendCoverageEvidence[],
-  attestations: readonly BuildertrendCoverageAttestation[]
+  attestations: readonly BuildertrendCoverageAttestation[],
+  generatedAt = new Date().toISOString()
 ): BuildertrendCoverageSummary {
+  const parsedGeneratedAt = Date.parse(generatedAt)
+  const generatedAtMillis = Number.isFinite(parsedGeneratedAt)
+    ? parsedGeneratedAt
+    : Date.now()
   const evidenceByKey = new Map<string, number>()
   for (const item of evidence) {
     const key = coverageKey(item.projectId, item.moduleKey)
@@ -157,8 +197,10 @@ export function summarizeBuildertrendModuleCoverage(
     const statuses = projects.map((project) => {
       const key = coverageKey(project.id, module.key)
       return attestedStatus(
+        project.status,
         evidenceByKey.get(key) ?? 0,
-        attestationByKey.get(key)
+        attestationByKey.get(key),
+        generatedAtMillis
       )
     })
     const verifiedCapturedCount = countStatuses(statuses, "verified_captured")
@@ -170,6 +212,7 @@ export function summarizeBuildertrendModuleCoverage(
       projectCount: projects.length,
       verifiedCapturedCount,
       verifiedEmptyCount,
+      staleCount: countStatuses(statuses, "stale"),
       partialCount: countStatuses(statuses, "partial"),
       blockedCount: countStatuses(statuses, "blocked"),
       unavailableCount: countStatuses(statuses, "unavailable"),

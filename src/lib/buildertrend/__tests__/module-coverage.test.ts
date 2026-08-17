@@ -19,7 +19,10 @@ function moduleRow(
 describe("Buildertrend module coverage", () => {
   it("does not treat source records alone as complete evidence", () => {
     const summary = summarizeBuildertrendModuleCoverage(
-      [{ id: "project-a" }, { id: "project-b" }],
+      [
+        { id: "project-a", status: "OPEN" },
+        { id: "project-b", status: "OPEN" },
+      ],
       [{ projectId: "project-a", moduleKey: "daily_logs", recordCount: 4 }],
       []
     )
@@ -32,7 +35,10 @@ describe("Buildertrend module coverage", () => {
 
   it("counts matching captures and explicit empty checks as verified", () => {
     const summary = summarizeBuildertrendModuleCoverage(
-      [{ id: "project-a" }, { id: "project-b" }],
+      [
+        { id: "project-a", status: "OPEN" },
+        { id: "project-b", status: "OPEN" },
+      ],
       [{ projectId: "project-a", moduleKey: "rfis", recordCount: 3 }],
       [
         {
@@ -40,14 +46,17 @@ describe("Buildertrend module coverage", () => {
           moduleKey: "rfis",
           status: "captured",
           observedCount: 3,
+          checkedAt: "2026-08-17T12:00:00.000Z",
         },
         {
           projectId: "project-b",
           moduleKey: "rfis",
           status: "verified_empty",
           observedCount: 0,
+          checkedAt: "2026-08-17T12:00:00.000Z",
         },
-      ]
+      ],
+      "2026-08-17T12:00:00.000Z"
     )
 
     const rfis = moduleRow(summary.modules, "rfis")
@@ -58,7 +67,7 @@ describe("Buildertrend module coverage", () => {
 
   it("flags count mismatches instead of accepting stale attestations", () => {
     const summary = summarizeBuildertrendModuleCoverage(
-      [{ id: "project-a" }],
+      [{ id: "project-a", status: "OPEN" }],
       [{ projectId: "project-a", moduleKey: "tasks", recordCount: 5 }],
       [
         {
@@ -66,11 +75,53 @@ describe("Buildertrend module coverage", () => {
           moduleKey: "tasks",
           status: "captured",
           observedCount: 4,
+          checkedAt: "2026-08-17T12:00:00.000Z",
         },
-      ]
+      ],
+      "2026-08-17T12:00:00.000Z"
     )
 
     expect(moduleRow(summary.modules, "tasks").conflictCount).toBe(1)
+  })
+
+  it("does not count stale evidence for a live project as complete", () => {
+    const summary = summarizeBuildertrendModuleCoverage(
+      [{ id: "project-a", status: "OPEN" }],
+      [{ projectId: "project-a", moduleKey: "messages", recordCount: 8 }],
+      [
+        {
+          projectId: "project-a",
+          moduleKey: "messages",
+          status: "captured",
+          observedCount: 8,
+          checkedAt: "2026-08-01T12:00:00.000Z",
+        },
+      ],
+      "2026-08-17T12:00:00.000Z"
+    )
+
+    const messages = moduleRow(summary.modules, "messages")
+    expect(messages.staleCount).toBe(1)
+    expect(messages.verifiedCount).toBe(0)
+  })
+
+  it("keeps matching historical evidence complete for an inactive project", () => {
+    const summary = summarizeBuildertrendModuleCoverage(
+      [{ id: "project-a", status: "INACTIVE" }],
+      [{ projectId: "project-a", moduleKey: "messages", recordCount: 8 }],
+      [
+        {
+          projectId: "project-a",
+          moduleKey: "messages",
+          status: "captured",
+          observedCount: 8,
+          checkedAt: "2026-07-01T12:00:00.000Z",
+        },
+      ],
+      "2026-08-17T12:00:00.000Z"
+    )
+
+    expect(moduleRow(summary.modules, "messages").verifiedCapturedCount).toBe(1)
   })
 
   it("maps staging record and file types to the audited modules", () => {
