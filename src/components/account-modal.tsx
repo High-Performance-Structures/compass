@@ -33,6 +33,9 @@ export function AccountModal({ open, onOpenChange, user }: AccountModalProps) {
   // Profile form state
   const [firstName, setFirstName] = React.useState("")
   const [lastName, setLastName] = React.useState("")
+  const [email, setEmail] = React.useState("")
+  const [phone, setPhone] = React.useState("")
+  const [address, setAddress] = React.useState("")
   const [isSavingProfile, setIsSavingProfile] = React.useState(false)
 
   // Password form state
@@ -46,6 +49,9 @@ export function AccountModal({ open, onOpenChange, user }: AccountModalProps) {
     if (user && open) {
       setFirstName(user.firstName ?? "")
       setLastName(user.lastName ?? "")
+      setEmail(user.email)
+      setPhone(user.phone ?? "")
+      setAddress(user.address ?? "")
       // Clear password fields when opening
       setCurrentPassword("")
       setNewPassword("")
@@ -62,9 +68,28 @@ export function AccountModal({ open, onOpenChange, user }: AccountModalProps) {
   async function handleSaveProfile() {
     setIsSavingProfile(true)
     try {
-      const result = await updateProfile({ firstName, lastName })
+      const result = await updateProfile({
+        firstName,
+        lastName,
+        email,
+        phone,
+        address,
+      })
       if (result.success) {
-        toast.success("Profile updated")
+        if (
+          result.data?.emailVerificationRequired &&
+          !result.data.verificationEmailSent
+        ) {
+          toast.warning(
+            "Profile updated, but the verification email could not be sent. Contact support before signing out."
+          )
+        } else {
+          toast.success(
+            result.data?.emailVerificationRequired
+              ? "Profile updated. Verify your new email before your next sign-in."
+              : "Profile updated"
+          )
+        }
         router.refresh() // Refresh to show updated data
         onOpenChange(false)
       } else {
@@ -112,7 +137,11 @@ export function AccountModal({ open, onOpenChange, user }: AccountModalProps) {
   }
 
   const hasProfileChanges =
-    firstName !== (user.firstName ?? "") || lastName !== (user.lastName ?? "")
+    firstName !== (user.firstName ?? "") ||
+    lastName !== (user.lastName ?? "") ||
+    email.trim().toLowerCase() !== user.email.trim().toLowerCase() ||
+    phone.trim() !== (user.phone ?? "").trim() ||
+    address.trim() !== (user.address ?? "").trim()
 
   const canChangePassword =
     currentPassword.length > 0 &&
@@ -172,14 +201,36 @@ export function AccountModal({ open, onOpenChange, user }: AccountModalProps) {
               <Input
                 id="email"
                 type="email"
-                value={user.email}
-                className="h-9 bg-muted text-muted-foreground"
-                disabled
-                readOnly
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
+                className="h-9"
+                disabled={isSavingProfile}
               />
               <p className="text-xs text-muted-foreground">
-                Contact support to change your email address.
+                A changed email must be verified. SSO-managed emails may need
+                to be changed by your identity administrator.
               </p>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="phone" className="text-xs">Phone</Label>
+              <Input
+                id="phone"
+                type="tel"
+                value={phone}
+                onChange={(event) => setPhone(event.target.value)}
+                className="h-9"
+                disabled={isSavingProfile}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="address" className="text-xs">Address</Label>
+              <Input
+                id="address"
+                value={address}
+                onChange={(event) => setAddress(event.target.value)}
+                className="h-9"
+                disabled={isSavingProfile}
+              />
             </div>
           </div>
 

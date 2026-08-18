@@ -3,8 +3,14 @@
 import { getWorkOS, signOut } from "@workos-inc/authkit-nextjs"
 import { getCloudflareContext } from "@/lib/db"
 import { getDb } from "@/db"
-import { users } from "@/db/schema"
-import { eq } from "drizzle-orm"
+import {
+  customers,
+  projectAccessInvitations,
+  projectContacts,
+  users,
+  vendors,
+} from "@/db/schema"
+import { and, eq, inArray } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { requireAuth } from "@/lib/auth"
 import {
@@ -73,12 +79,24 @@ export async function updateWorkspacePhoto(
   }
 }
 
+type ProfileUpdateResult = {
+  readonly emailVerificationRequired: boolean
+  readonly verificationEmailSent: boolean
+}
+
+function nullableProfileValue(value: string): string | null {
+  const normalized = value.trim()
+  return normalized.length > 0 ? normalized : null
+}
+
 /**
- * Update the current user's profile (first name, last name)
+ * Update the signed-in user's identity in WorkOS and every linked Compass
+ * contact snapshot. Once an account is active, this is the identity source of
+ * truth for customer and vendor directory records linked through invitations.
  */
 export async function updateProfile(
   input: UpdateProfileInput
-): Promise<ActionResult> {
+): Promise<ActionResult<ProfileUpdateResult>> {
   try {
     // Validate input
     const parsed = updateProfileSchema.safeParse(input)
@@ -89,17 +107,22 @@ export async function updateProfile(
       }
     }
 
-    const { firstName, lastName } = parsed.data
+    const { firstName, lastName, email, phone, address } = parsed.data
 
     // Get current authenticated user
     const currentUser = await requireAuth()
 
-    // Update in WorkOS
+    const normalizedCurrentEmail = currentUser.email.trim().toLowerCase()
+    const emailChanged = email !== normalizedCurrentEmail
+
+    // WorkOS remains authoritative for the login email and may reject an
+    // email managed by SSO or directory sync before any local values change.
     const workos = getWorkOS()
     await workos.userManagement.updateUser({
       userId: currentUser.id,
       firstName,
       lastName,
+      ...(emailChanged ? { email } : {}),
     })
 
     // Update in local database
@@ -108,6 +131,51 @@ export async function updateProfile(
       const db = getDb(env.DB)
       const now = new Date().toISOString()
       const displayName = `${firstName} ${lastName}`.trim()
+      const identity = {
+        email,
+        phone: nullableProfileValue(phone),
+        address: nullableProfileValue(address),
+      }
+
+      const acceptedContactRows = await db
+        .select({
+          id: projectContacts.id,
+          sourceEntityType: projectContacts.sourceEntityType,
+          sourceEntityId: projectContacts.sourceEntityId,
+        })
+        .from(projectAccessInvitations)
+        .innerJoin(
+          projectContacts,
+          eq(projectContacts.id, projectAccessInvitations.projectContactId)
+        )
+        .where(
+          and(
+            eq(projectAccessInvitations.acceptedBy, currentUser.id),
+            eq(projectAccessInvitations.status, "accepted")
+          )
+        )
+
+      const acceptedContactIds = Array.from(
+        new Set(acceptedContactRows.map((contact) => contact.id))
+      )
+      const linkedCustomerIds = Array.from(
+        new Set(
+          acceptedContactRows.flatMap((contact) =>
+            contact.sourceEntityType === "customer" && contact.sourceEntityId
+              ? [contact.sourceEntityId]
+              : []
+          )
+        )
+      )
+      const linkedVendorIds = Array.from(
+        new Set(
+          acceptedContactRows.flatMap((contact) =>
+            contact.sourceEntityType === "vendor" && contact.sourceEntityId
+              ? [contact.sourceEntityId]
+              : []
+          )
+        )
+      )
 
       await db
         .update(users)
@@ -115,13 +183,107 @@ export async function updateProfile(
           firstName,
           lastName,
           displayName,
+          ...identity,
           updatedAt: now,
         })
         .where(eq(users.id, currentUser.id))
         .run()
+
+      await db
+        .update(projectContacts)
+        .set({
+          displayName,
+          ...identity,
+          updatedAt: now,
+        })
+        .where(
+          and(
+            eq(projectContacts.sourceEntityType, "user"),
+            eq(projectContacts.sourceEntityId, currentUser.id)
+          )
+        )
+        .run()
+
+      if (acceptedContactIds.length > 0) {
+        await db
+          .update(projectContacts)
+          .set({ ...identity, updatedAt: now })
+          .where(inArray(projectContacts.id, acceptedContactIds))
+          .run()
+      }
+
+      if (linkedCustomerIds.length > 0) {
+        await db
+          .update(customers)
+          .set({ ...identity, updatedAt: now })
+          .where(inArray(customers.id, linkedCustomerIds))
+          .run()
+        await db
+          .update(projectContacts)
+          .set({ ...identity, updatedAt: now })
+          .where(
+            and(
+              eq(projectContacts.sourceEntityType, "customer"),
+              inArray(projectContacts.sourceEntityId, linkedCustomerIds)
+            )
+          )
+          .run()
+      }
+
+      if (linkedVendorIds.length > 0) {
+        await db
+          .update(vendors)
+          .set({ ...identity, updatedAt: now })
+          .where(inArray(vendors.id, linkedVendorIds))
+          .run()
+        await db
+          .update(projectContacts)
+          .set({ ...identity, updatedAt: now })
+          .where(
+            and(
+              eq(projectContacts.sourceEntityType, "vendor"),
+              inArray(projectContacts.sourceEntityId, linkedVendorIds)
+            )
+          )
+          .run()
+      }
+
+      await db
+        .update(projectAccessInvitations)
+        .set({ email, updatedAt: now })
+        .where(
+          and(
+            eq(projectAccessInvitations.acceptedBy, currentUser.id),
+            eq(projectAccessInvitations.status, "accepted")
+          )
+        )
+        .run()
     }
 
-    return { success: true }
+    let verificationEmailSent = !emailChanged
+    if (emailChanged) {
+      try {
+        await workos.userManagement.sendVerificationEmail({
+          userId: currentUser.id,
+        })
+        verificationEmailSent = true
+      } catch (error) {
+        console.warn("Profile email changed, but verification email failed:", error)
+      }
+    }
+
+    revalidatePath("/dashboard", "layout")
+    revalidatePath("/dashboard/contacts")
+    revalidatePath("/dashboard/customers")
+    revalidatePath("/dashboard/vendors")
+    revalidatePath("/dashboard/projects", "layout")
+    return {
+      success: true,
+      data: {
+        emailVerificationRequired: emailChanged,
+        verificationEmailSent,
+      },
+    }
   } catch (error) {
     console.error("Error updating profile:", error)
     return {

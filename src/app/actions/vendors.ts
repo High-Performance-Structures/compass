@@ -14,6 +14,10 @@ import { requirePermission } from "@/lib/permissions"
 import { revalidatePath } from "next/cache"
 import { requireOrg } from "@/lib/org-scope"
 import { isDemoUser } from "@/lib/demo"
+import {
+  contactIdentityChanged,
+  directoryIdentityManagedByActiveUser,
+} from "@/lib/contact-identity-ownership"
 
 export type InternalDirectoryContact = {
   readonly id: string
@@ -344,12 +348,56 @@ export async function updateVendor(
     const { env } = await getCloudflareContext()
     const db = getDb(env.DB)
 
-    await db
-      .update(vendors)
-      .set({ ...data, updatedAt: new Date().toISOString() })
+    const existing = await db
+      .select()
+      .from(vendors)
       .where(and(eq(vendors.id, id), eq(vendors.organizationId, orgId)))
+      .limit(1)
+      .get()
+    if (!existing) return { success: false, error: "Vendor not found" }
+
+    const nextIdentity = {
+      email: data.email === undefined ? existing.email : data.email,
+      phone: data.phone === undefined ? existing.phone : data.phone,
+      address: data.address === undefined ? existing.address : data.address,
+    }
+    const identityChanged = contactIdentityChanged(existing, nextIdentity)
+    if (
+      identityChanged &&
+      (await directoryIdentityManagedByActiveUser({
+        db,
+        organizationId: orgId,
+        entityType: "vendor",
+        entityId: id,
+      }))
+    ) {
+      return {
+        success: false,
+        error:
+          "This active Compass user manages their own phone, email, and address.",
+      }
+    }
+
+    const updatedAt = new Date().toISOString()
+    await db.batch([
+      db
+        .update(vendors)
+        .set({ ...data, updatedAt })
+        .where(and(eq(vendors.id, id), eq(vendors.organizationId, orgId))),
+      db
+        .update(projectContacts)
+        .set({ ...nextIdentity, updatedAt })
+        .where(
+          and(
+            eq(projectContacts.sourceEntityType, "vendor"),
+            eq(projectContacts.sourceEntityId, id)
+          )
+        ),
+    ])
 
     revalidatePath("/dashboard/vendors")
+    revalidatePath("/dashboard/contacts")
+    revalidatePath("/dashboard/projects", "layout")
     return { success: true }
   } catch (err) {
     return {
