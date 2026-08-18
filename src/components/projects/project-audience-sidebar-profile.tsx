@@ -11,7 +11,6 @@ import {
 } from "@tabler/icons-react"
 import { toast } from "sonner"
 
-import { updateWorkspacePhoto } from "@/app/actions/profile"
 import { Button } from "@/components/ui/button"
 import {
   Popover,
@@ -20,7 +19,6 @@ import {
 } from "@/components/ui/popover"
 import { useCompassTheme, useTheme } from "@/components/theme-provider"
 import { THEME_PRESETS } from "@/lib/theme/presets"
-import { sidebarDeskPhotoStorageKey } from "@/lib/user-photo-storage"
 import { cn } from "@/lib/utils"
 import { ProjectAudienceNotificationSettings } from "@/components/projects/project-audience-notification-settings"
 
@@ -83,32 +81,16 @@ export function ProjectAudienceSidebarProfile({
   const [photoUrl, setPhotoUrl] = React.useState<string | null>(
     viewer.sidebarPhotoUrl ?? viewer.avatarUrl
   )
+  const [photoScope, setPhotoScope] = React.useState<string | null>(null)
+  const currentPhotoScope = `${viewer.email}:${viewer.avatarUrl ?? "none"}:${viewer.sidebarPhotoUrl ?? "none"}`
   const inputRef = React.useRef<HTMLInputElement>(null)
-  const migratedLegacyPhotoFor = React.useRef<string | null>(null)
 
   React.useEffect(() => {
-    try {
-      const legacyPhoto = window.localStorage.getItem(
-        sidebarDeskPhotoStorageKey(viewer.email)
-      )
-      setPhotoUrl(
-        viewer.sidebarPhotoUrl ??
-          legacyPhoto ??
-          viewer.avatarUrl
-      )
+    setPhotoScope(currentPhotoScope)
+    setPhotoUrl(viewer.sidebarPhotoUrl ?? viewer.avatarUrl)
+  }, [currentPhotoScope, viewer.avatarUrl, viewer.sidebarPhotoUrl])
 
-      if (
-        !viewer.sidebarPhotoUrl &&
-        legacyPhoto &&
-        migratedLegacyPhotoFor.current !== viewer.email
-      ) {
-        migratedLegacyPhotoFor.current = viewer.email
-        void updateWorkspacePhoto("sidebar", legacyPhoto)
-      }
-    } catch {
-      setPhotoUrl(viewer.avatarUrl)
-    }
-  }, [viewer.avatarUrl, viewer.email, viewer.sidebarPhotoUrl])
+  const renderedPhotoUrl = photoScope === currentPhotoScope ? photoUrl : null
 
   async function handlePhoto(
     event: React.ChangeEvent<HTMLInputElement>
@@ -123,17 +105,8 @@ export function ProjectAudienceSidebarProfile({
 
     try {
       const photo = await resizeSidebarPhoto(await readFileAsDataUrl(file))
-      const result = await updateWorkspacePhoto("sidebar", photo)
-      if (!result.success) {
-        toast.error(result.error)
-        return
-      }
-      window.localStorage.setItem(
-        sidebarDeskPhotoStorageKey(viewer.email),
-        photo
-      )
       setPhotoUrl(photo)
-      toast.success("Sidebar photo updated.")
+      toast.success("Sidebar photo applied for this session.")
     } catch {
       toast.error("Could not update the sidebar photo.")
     }
@@ -154,9 +127,9 @@ export function ProjectAudienceSidebarProfile({
         className="group relative block h-24 w-full overflow-hidden rounded-md border border-sidebar-border bg-sidebar-accent text-left"
         aria-label="Change sidebar photo"
       >
-        {photoUrl ? (
+        {renderedPhotoUrl ? (
           <Image
-            src={photoUrl}
+            src={renderedPhotoUrl}
             alt={`${viewer.name}'s sidebar photo`}
             fill
             sizes="240px"

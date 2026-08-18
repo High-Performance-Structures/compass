@@ -17,7 +17,9 @@ export const users = sqliteTable("users", {
   displayName: text("display_name"),
   avatarUrl: text("avatar_url"),
   dashboardDeskPhotoUrl: text("dashboard_desk_photo_url"),
+  dashboardDeskPhotoOrganizationId: text("dashboard_desk_photo_organization_id"),
   sidebarDeskPhotoUrl: text("sidebar_desk_photo_url"),
+  sidebarDeskPhotoOrganizationId: text("sidebar_desk_photo_organization_id"),
   role: text("role").notNull().default("office"), // admin, office, field, client
   googleEmail: text("google_email"), // override for google workspace impersonation
   isActive: integer("is_active", { mode: "boolean" }).notNull().default(true),

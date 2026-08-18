@@ -78,7 +78,12 @@ import {
   type DeskStatus,
   type TeamAvailabilityMember,
 } from "@/lib/dashboard/office-status"
-import { dashboardDeskPhotoStorageKey } from "@/lib/user-photo-storage"
+import {
+  authorizedWorkspacePhotoUrl,
+  dashboardDeskPhotoStorageKey,
+  HIDDEN_DESK_PHOTO,
+  workspacePhotoStateKey,
+} from "@/lib/user-photo-storage"
 import { isProjectTodoRecordType } from "@/lib/project-todos"
 import {
   compareOfficeCalendarPriority,
@@ -115,27 +120,26 @@ export type DashboardOfficeEvent = {
   readonly startTime: string
 }
 
-const MARTINE_DEFAULT_DESK_PHOTO = "/user-desk-photos/martine-desk-photo.jpeg"
-const HIDDEN_DESK_PHOTO = "__hidden__"
 const TEAM_AVAILABILITY_REFRESH_MS = 10_000
 
 function deskPhotoForUser(user: SidebarUser | null): string | null {
   if (!user) return null
+  if (!user.canUseWorkspacePhotos) return null
+  if (!user.organizationId) return null
   if (user.dashboardDeskPhoto === HIDDEN_DESK_PHOTO) return null
   if (user.dashboardDeskPhoto) return user.dashboardDeskPhoto
 
   try {
     const storedPhoto = window.localStorage.getItem(
-      dashboardDeskPhotoStorageKey(user.email)
+      dashboardDeskPhotoStorageKey(user.id, user.organizationId)
     )
     if (storedPhoto === HIDDEN_DESK_PHOTO) return null
     if (storedPhoto) return storedPhoto
   } catch {
-    // The default photo still works when browser storage is unavailable.
+    // The neutral placeholder still works when browser storage is unavailable.
   }
 
-  const identity = `${user.name} ${user.email}`.toLowerCase()
-  return identity.includes("martine") ? MARTINE_DEFAULT_DESK_PHOTO : null
+  return null
 }
 
 function readFileAsDataUrl(file: File): Promise<string> {
@@ -181,13 +185,37 @@ function resizeDeskPhoto(dataUrl: string): Promise<string> {
 }
 
 function saveDeskPhoto(user: SidebarUser, dataUrl: string): void {
+  if (!user.canUseWorkspacePhotos) return
+  if (!user.organizationId) return
   try {
     window.localStorage.setItem(
-      dashboardDeskPhotoStorageKey(user.email),
+      dashboardDeskPhotoStorageKey(user.id, user.organizationId),
       dataUrl
     )
   } catch {
     // The updated image still remains available for the current session.
+  }
+}
+
+function clearDeskPhotoCache(
+  user: SidebarUser,
+  value: typeof HIDDEN_DESK_PHOTO | null
+): void {
+  if (!user.canUseWorkspacePhotos) return
+  if (!user.organizationId) return
+  try {
+    if (value === null) {
+      window.localStorage.removeItem(
+        dashboardDeskPhotoStorageKey(user.id, user.organizationId)
+      )
+    } else {
+      window.localStorage.setItem(
+        dashboardDeskPhotoStorageKey(user.id, user.organizationId),
+        value
+      )
+    }
+  } catch {
+    // The server remains the source of truth when browser storage is unavailable.
   }
 }
 
@@ -453,36 +481,62 @@ function DeskHero({
 }): React.ReactElement {
   const [deskPhotoFailed, setDeskPhotoFailed] = useState(false)
   const [deskPhotoUrl, setDeskPhotoUrl] = useState<string | null>(null)
+  const [deskPhotoScope, setDeskPhotoScope] = useState<string | null>(null)
   const [deskPhotoMessage, setDeskPhotoMessage] = useState<string | null>(null)
   const [statusMessage, setStatusMessage] = useState<string | null>(null)
   const [isStatusPending, startStatusTransition] = useTransition()
   const migratedLegacyPhotoFor = useRef<string | null>(null)
   const firstName = user?.firstName ?? user?.name.split(" ")[0] ?? "there"
+  const currentDeskPhotoScope = user
+    ? workspacePhotoStateKey({
+        userId: user.id,
+        organizationId: user.organizationId,
+        slot: "dashboard",
+        canUseWorkspacePhotos: user.canUseWorkspacePhotos,
+        serverPhotoUrl: user.dashboardDeskPhoto,
+      })
+    : "no-user"
 
   useEffect(() => {
+    setDeskPhotoScope(currentDeskPhotoScope)
     setDeskPhotoFailed(false)
     setDeskPhotoUrl(deskPhotoForUser(user))
 
+    const serverPhoto = user?.dashboardDeskPhoto ?? null
+    if (!user) return
+    if (!user.canUseWorkspacePhotos) return
+    if (!user.organizationId) return
+    const migrationKey = `${user.id}:${user.organizationId}:dashboard`
     if (
-      !user ||
-      user.dashboardDeskPhoto ||
-      migratedLegacyPhotoFor.current === user.email
+      serverPhoto !== null ||
+      migratedLegacyPhotoFor.current === migrationKey
     ) {
       return
     }
 
     try {
       const legacyPhoto = window.localStorage.getItem(
-        dashboardDeskPhotoStorageKey(user.email)
+        dashboardDeskPhotoStorageKey(user.id, user.organizationId)
       )
       if (!legacyPhoto) return
 
-      migratedLegacyPhotoFor.current = user.email
-      void updateWorkspacePhoto("dashboard", legacyPhoto)
+      migratedLegacyPhotoFor.current = migrationKey
+      void updateWorkspacePhoto("dashboard", legacyPhoto).then((result) => {
+        if (result.success && result.data?.url) {
+          setDeskPhotoUrl(result.data.url)
+        }
+      })
     } catch {
       // Keep the browser-local photo when storage is unavailable.
     }
-  }, [user])
+  }, [currentDeskPhotoScope, user])
+
+  const renderedDeskPhotoUrl = authorizedWorkspacePhotoUrl({
+    canUseWorkspacePhotos: user?.canUseWorkspacePhotos === true,
+    currentScope: currentDeskPhotoScope,
+    loadedScope: deskPhotoScope,
+    photoUrl: deskPhotoUrl,
+  })
 
   function handleStatusChange(nextStatus: DeskStatus): void {
     const previousStatus = status
@@ -523,19 +577,45 @@ function DeskHero({
       }
       saveDeskPhoto(user, resizedDataUrl)
       setDeskPhotoFailed(false)
-      setDeskPhotoUrl(resizedDataUrl)
+      setDeskPhotoUrl(result.data?.url ?? resizedDataUrl)
       setDeskPhotoMessage("Desk photo updated.")
     } catch {
       setDeskPhotoMessage("Could not update the desk photo.")
     }
   }
 
+  async function handleDeskPhotoReset(): Promise<void> {
+    if (!user) return
+    const result = await updateWorkspacePhoto("dashboard", HIDDEN_DESK_PHOTO)
+    if (!result.success) {
+      setDeskPhotoMessage(result.error)
+      return
+    }
+    clearDeskPhotoCache(user, HIDDEN_DESK_PHOTO)
+    setDeskPhotoFailed(false)
+    setDeskPhotoUrl(null)
+    setDeskPhotoMessage("Desk photo reset.")
+  }
+
+  async function handleDeskPhotoRemove(): Promise<void> {
+    if (!user) return
+    const result = await updateWorkspacePhoto("dashboard", HIDDEN_DESK_PHOTO)
+    if (!result.success) {
+      setDeskPhotoMessage(result.error)
+      return
+    }
+    clearDeskPhotoCache(user, HIDDEN_DESK_PHOTO)
+    setDeskPhotoFailed(false)
+    setDeskPhotoUrl(null)
+    setDeskPhotoMessage("Desk photo removed.")
+  }
+
   return (
     <section className="grid min-h-52 overflow-hidden border-y border-border/70 bg-background sm:grid-cols-[minmax(10rem,0.8fr)_minmax(0,1.2fr)]">
       <div className="relative min-h-40 overflow-hidden bg-muted">
-        {deskPhotoUrl && !deskPhotoFailed ? (
+        {renderedDeskPhotoUrl && !deskPhotoFailed ? (
           <Image
-            src={deskPhotoUrl}
+            src={renderedDeskPhotoUrl}
             alt={`${firstName}'s desk`}
             fill
             sizes="(min-width: 1024px) 260px, 50vw"
@@ -548,17 +628,33 @@ function DeskHero({
             <IconHome2 className="size-10 text-[#2f5963]/60" />
           </div>
         )}
-        {user ? (
-          <label className="absolute bottom-3 left-3 flex cursor-pointer items-center gap-1.5 border border-white/40 bg-black/55 px-2.5 py-1.5 text-xs font-medium text-white backdrop-blur-sm transition hover:bg-black/70">
-            <IconPhotoEdit className="size-3.5" />
-            Change desk photo
-            <input
-              type="file"
-              accept="image/*"
-              className="sr-only"
-              onChange={handleDeskPhotoUpload}
-            />
-          </label>
+        {user?.canUseWorkspacePhotos ? (
+          <div className="absolute bottom-3 left-3 flex flex-wrap gap-1.5">
+            <label className="flex cursor-pointer items-center gap-1.5 border border-white/40 bg-black/55 px-2.5 py-1.5 text-xs font-medium text-white backdrop-blur-sm transition hover:bg-black/70">
+              <IconPhotoEdit className="size-3.5" />
+              Change desk photo
+              <input
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                className="sr-only"
+                onChange={handleDeskPhotoUpload}
+              />
+            </label>
+            <button
+              type="button"
+              onClick={() => void handleDeskPhotoReset()}
+              className="border border-white/40 bg-black/55 px-2.5 py-1.5 text-xs font-medium text-white backdrop-blur-sm transition hover:bg-black/70"
+            >
+              Reset
+            </button>
+            <button
+              type="button"
+              onClick={() => void handleDeskPhotoRemove()}
+              className="border border-white/40 bg-black/55 px-2.5 py-1.5 text-xs font-medium text-white backdrop-blur-sm transition hover:bg-black/70"
+            >
+              Remove
+            </button>
+          </div>
         ) : null}
       </div>
 

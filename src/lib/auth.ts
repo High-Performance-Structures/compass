@@ -11,13 +11,14 @@ import {
 import type { User } from "@/db/schema"
 import { and, desc, eq, sql } from "drizzle-orm"
 import { cookies } from "next/headers"
-import { DEMO_USER } from "@/lib/demo"
+import { DEMO_USER, isDemoUser } from "@/lib/demo"
 import {
   isDevAuthFallbackAllowed,
   isWorkOSConfigured,
 } from "@/lib/auth-config"
 import {
   isExternalProjectRole,
+  isInternalStaffRole,
 } from "@/lib/user-roles"
 import { ensureProjectAudienceConversation } from "@/lib/project-audience-conversations"
 import { recordActivityEvent } from "@/lib/activity-log"
@@ -30,7 +31,9 @@ export type AuthUser = {
   readonly displayName: string | null
   readonly avatarUrl: string | null
   readonly dashboardDeskPhotoUrl?: string | null
+  readonly dashboardDeskPhotoOrganizationId?: string | null
   readonly sidebarDeskPhotoUrl?: string | null
+  readonly sidebarDeskPhotoOrganizationId?: string | null
   readonly role: string
   readonly googleEmail: string | null
   readonly isActive: boolean
@@ -47,6 +50,8 @@ export type AuthUser = {
  */
 export type SidebarUser = Readonly<{
   id: string
+  organizationId: string | null
+  canUseWorkspacePhotos: boolean
   name: string
   email: string
   avatar: string | null
@@ -60,13 +65,30 @@ export type SidebarUser = Readonly<{
  * Convert AuthUser to SidebarUser for UI components
  */
 export function toSidebarUser(user: AuthUser): SidebarUser {
+  const canUseWorkspacePhotos =
+    user.isActive &&
+    user.organizationId !== null &&
+    user.organizationType === "internal" &&
+    isInternalStaffRole(user.role) &&
+    !isDemoUser(user.id)
+
   return {
     id: user.id,
+    organizationId: user.organizationId,
+    canUseWorkspacePhotos,
     name: user.displayName ?? user.email.split("@")[0] ?? "User",
     email: user.email,
-    avatar: user.avatarUrl,
-    dashboardDeskPhoto: user.dashboardDeskPhotoUrl ?? null,
-    sidebarDeskPhoto: user.sidebarDeskPhotoUrl ?? null,
+    avatar: canUseWorkspacePhotos ? user.avatarUrl : null,
+    dashboardDeskPhoto:
+      canUseWorkspacePhotos &&
+      user.dashboardDeskPhotoOrganizationId === user.organizationId
+        ? user.dashboardDeskPhotoUrl ?? null
+        : null,
+    sidebarDeskPhoto:
+      canUseWorkspacePhotos &&
+      user.sidebarDeskPhotoOrganizationId === user.organizationId
+        ? user.sidebarDeskPhotoUrl ?? null
+        : null,
     firstName: user.firstName,
     lastName: user.lastName,
   }
@@ -441,7 +463,12 @@ export async function getCurrentUser(): Promise<AuthUser | null> {
         organizations,
         eq(organizations.id, organizationMembers.organizationId)
       )
-      .where(eq(organizationMembers.userId, dbUser.id))
+      .where(
+        and(
+          eq(organizationMembers.userId, dbUser.id),
+          eq(organizations.isActive, true)
+        )
+      )
 
     let activeOrg: {
       readonly orgId: string
@@ -492,6 +519,12 @@ export async function getCurrentUser(): Promise<AuthUser | null> {
         ) ?? activeOrg
     }
 
+    const canUseWorkspacePhotos =
+      dbUser.isActive &&
+      !isDemoUser(dbUser.id) &&
+      activeOrg?.orgType === "internal" &&
+      isInternalStaffRole(effectiveRole)
+
     if (activatedPendingAccount && activeOrg) {
       await recordActivityEvent({
         db,
@@ -518,9 +551,19 @@ export async function getCurrentUser(): Promise<AuthUser | null> {
       firstName: dbUser.firstName,
       lastName: dbUser.lastName,
       displayName: dbUser.displayName,
-      avatarUrl: dbUser.avatarUrl,
-      dashboardDeskPhotoUrl: dbUser.dashboardDeskPhotoUrl,
-      sidebarDeskPhotoUrl: dbUser.sidebarDeskPhotoUrl,
+      avatarUrl: canUseWorkspacePhotos ? dbUser.avatarUrl : null,
+      dashboardDeskPhotoUrl: canUseWorkspacePhotos
+        ? dbUser.dashboardDeskPhotoUrl
+        : null,
+      dashboardDeskPhotoOrganizationId:
+        canUseWorkspacePhotos
+          ? dbUser.dashboardDeskPhotoOrganizationId
+          : null,
+      sidebarDeskPhotoUrl: canUseWorkspacePhotos
+        ? dbUser.sidebarDeskPhotoUrl
+        : null,
+      sidebarDeskPhotoOrganizationId:
+        canUseWorkspacePhotos ? dbUser.sidebarDeskPhotoOrganizationId : null,
       role: effectiveRole,
       googleEmail: dbUser.googleEmail ?? null,
       isActive: dbUser.isActive,
