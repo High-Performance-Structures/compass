@@ -3,7 +3,7 @@
 import { getCloudflareContext } from "@/lib/db"
 import { eq, and } from "drizzle-orm"
 import { getDb } from "@/db"
-import { customers, type NewCustomer } from "@/db/schema"
+import { customers, projectContacts, type NewCustomer } from "@/db/schema"
 import { sageClientProjectWriteOperations } from "@/db/schema-sage"
 import { requireAuth } from "@/lib/auth"
 import { requirePermission } from "@/lib/permissions"
@@ -17,6 +17,10 @@ import {
   sageShortName,
   type SageClientStatusId,
 } from "@/lib/sage/client-project-write"
+import {
+  contactIdentityChanged,
+  directoryIdentityManagedByActiveUser,
+} from "@/lib/contact-identity-ownership"
 
 export type CreateCustomerInput = {
   readonly name: string
@@ -160,12 +164,56 @@ export async function updateCustomer(
     const { env } = await getCloudflareContext()
     const db = getDb(env.DB)
 
-    await db
-      .update(customers)
-      .set({ ...data, updatedAt: new Date().toISOString() })
+    const existing = await db
+      .select()
+      .from(customers)
       .where(and(eq(customers.id, id), eq(customers.organizationId, orgId)))
+      .limit(1)
+      .get()
+    if (!existing) return { success: false, error: "Customer not found" }
+
+    const nextIdentity = {
+      email: data.email === undefined ? existing.email : data.email,
+      phone: data.phone === undefined ? existing.phone : data.phone,
+      address: data.address === undefined ? existing.address : data.address,
+    }
+    const identityChanged = contactIdentityChanged(existing, nextIdentity)
+    if (
+      identityChanged &&
+      (await directoryIdentityManagedByActiveUser({
+        db,
+        organizationId: orgId,
+        entityType: "customer",
+        entityId: id,
+      }))
+    ) {
+      return {
+        success: false,
+        error:
+          "This active Compass user manages their own phone, email, and address.",
+      }
+    }
+
+    const updatedAt = new Date().toISOString()
+    await db.batch([
+      db
+        .update(customers)
+        .set({ ...data, updatedAt })
+        .where(and(eq(customers.id, id), eq(customers.organizationId, orgId))),
+      db
+        .update(projectContacts)
+        .set({ ...nextIdentity, updatedAt })
+        .where(
+          and(
+            eq(projectContacts.sourceEntityType, "customer"),
+            eq(projectContacts.sourceEntityId, id)
+          )
+        ),
+    ])
 
     revalidatePath("/dashboard/customers")
+    revalidatePath("/dashboard/contacts")
+    revalidatePath("/dashboard/projects", "layout")
     return { success: true }
   } catch (err) {
     return {

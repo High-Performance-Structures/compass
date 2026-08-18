@@ -11,13 +11,38 @@ import {
   isMeaningfulClientInteraction,
   isBuiltInProjectJobStatusLabel,
   isSupportedProjectJobStatusLabel,
+  legacyProjectStatusAfterClientUpdate,
   normalizeProjectJobStatusLabel,
+  projectClientStatusLabel,
+  projectJobStatusBucket,
+  projectJobStatusLabel,
   projectNumberParts,
 } from "@/lib/project-profile"
 
 describe("project profile rules", () => {
   it("keeps client status limited to lead and customer", () => {
     expect(PROJECT_CLIENT_STATUSES).toEqual(["lead", "customer"])
+  })
+
+  it("clears the legacy lead status when a project becomes a customer", () => {
+    expect(
+      legacyProjectStatusAfterClientUpdate({
+        currentStatus: "LEAD",
+        clientStatus: "customer",
+      }),
+    ).toBe("OPEN")
+    expect(
+      legacyProjectStatusAfterClientUpdate({
+        currentStatus: "LEAD",
+        clientStatus: "lead",
+      }),
+    ).toBe("LEAD")
+    expect(
+      legacyProjectStatusAfterClientUpdate({
+        currentStatus: "WARRANTY",
+        clientStatus: "customer",
+      }),
+    ).toBe("WARRANTY")
   })
 
   it("keeps the approved Sage-aligned job statuses standardized", () => {
@@ -32,6 +57,54 @@ describe("project profile rules", () => {
         "Bid Refused",
       ]),
     )
+  })
+
+  it("uses the exact approved job status label for project-facing status", () => {
+    expect(
+      projectJobStatusLabel({ jobStatusId: "current", customLabel: null }),
+    ).toBe("Current")
+    expect(
+      projectJobStatusLabel({
+        jobStatusId: "organization-warranty",
+        customLabel: "Extended Warranty",
+      }),
+    ).toBe("Extended Warranty")
+    expect(
+      projectJobStatusLabel({ jobStatusId: "missing", customLabel: null }),
+    ).toBe("Unknown job status")
+  })
+
+  it("keeps client classification separate from job status", () => {
+    expect(projectClientStatusLabel("customer")).toBe("Customer")
+    expect(projectClientStatusLabel("lead")).toBe("Lead")
+    expect(projectClientStatusLabel("unexpected")).toBe("Unknown client status")
+  })
+
+  it("groups project search views from approved job status rather than legacy OPEN", () => {
+    expect(
+      projectJobStatusBucket({
+        jobStatusId: "current",
+        jobStatusLabel: "Current",
+      }),
+    ).toBe("active")
+    expect(
+      projectJobStatusBucket({
+        jobStatusId: "organization-warranty",
+        jobStatusLabel: "Warranty Service",
+      }),
+    ).toBe("warranty")
+    expect(
+      projectJobStatusBucket({
+        jobStatusId: "complete",
+        jobStatusLabel: "Complete",
+      }),
+    ).toBe("complete")
+    expect(
+      projectJobStatusBucket({
+        jobStatusId: "bid_refused",
+        jobStatusLabel: "Bid Refused",
+      }),
+    ).toBe("inactive")
   })
 
   it("recognizes built-in status labels before an administrator creates a custom status", () => {

@@ -15,6 +15,8 @@ export const users = sqliteTable("users", {
   firstName: text("first_name"),
   lastName: text("last_name"),
   displayName: text("display_name"),
+  phone: text("phone"),
+  address: text("address"),
   avatarUrl: text("avatar_url"),
   dashboardDeskPhotoUrl: text("dashboard_desk_photo_url"),
   sidebarDeskPhotoUrl: text("sidebar_desk_photo_url"),
@@ -1777,6 +1779,7 @@ export const projectContacts = sqliteTable("project_contacts", {
   primaryCostCode: text("primary_cost_code"),
   email: text("email"),
   phone: text("phone"),
+  address: text("address"),
   notes: text("notes"),
   ownerPortalVisible: integer("owner_portal_visible", {
     mode: "boolean",

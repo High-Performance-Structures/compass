@@ -8,6 +8,10 @@ import {
   IconBuilding,
   IconBuildingCommunity,
   IconCheck,
+  IconChevronLeft,
+  IconChevronRight,
+  IconChevronsLeft,
+  IconChevronsRight,
   IconLayoutCards,
   IconList,
   IconPaint,
@@ -25,12 +29,24 @@ import { ProjectIntakeDrawer } from "@/components/projects/project-intake-drawer
 import { ProjectQuickSwitcher } from "@/components/projects/project-quick-switcher"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { OfficeMaintenanceDrawer } from "@/components/projects/office-maintenance-drawer"
 import { cn } from "@/lib/utils"
+import {
+  projectClientStatusLabel,
+  projectJobStatusBucket,
+} from "@/lib/project-profile"
 
 type DepartmentFilter = "ALL" | "O" | "H" | "N" | "D" | "OTHER"
 type StatusFilter = "active" | "warranty" | "complete" | "all"
 type ProjectLayout = "cards" | "list"
+type ProjectPageSize = 5 | 10 | 25 | 50 | "all"
 
 type DepartmentDefinition = {
   readonly id: DepartmentFilter
@@ -57,6 +73,16 @@ const STATUS_OPTIONS: readonly {
   { value: "all", label: "All" },
 ]
 
+const PROJECT_PAGE_SIZES: readonly ProjectPageSize[] = [5, 10, 25, 50, "all"]
+
+function parseProjectPageSize(value: string): ProjectPageSize {
+  if (value === "5") return 5
+  if (value === "25") return 25
+  if (value === "50") return 50
+  if (value === "all") return "all"
+  return 10
+}
+
 function departmentForProject(project: ProjectListItem): DepartmentFilter {
   const prefix = project.projectNumber?.trim().slice(0, 1).toUpperCase()
   if (prefix === "O" || prefix === "H" || prefix === "N" || prefix === "D") {
@@ -66,24 +92,11 @@ function departmentForProject(project: ProjectListItem): DepartmentFilter {
 }
 
 function statusForProject(project: ProjectListItem): StatusFilter {
-  const status = project.status.trim().toLowerCase().replace(/[^a-z0-9]+/g, " ")
-  if (
-    status === "open" ||
-    status === "active" ||
-    status === "current" ||
-    status === "construction" ||
-    status === "in progress" ||
-    status === "scheduled" ||
-    status === "preconstruction"
-  ) {
-    return "active"
-  }
-  if (status.includes("warranty") || status.includes("service")) {
-    return "warranty"
-  }
-  if (status === "closed" || status === "complete" || status === "completed") {
-    return "complete"
-  }
+  const bucket = projectJobStatusBucket({
+    jobStatusId: project.jobStatusId,
+    jobStatusLabel: project.jobStatusLabel,
+  })
+  if (bucket === "active" || bucket === "warranty" || bucket === "complete") return bucket
   return "all"
 }
 
@@ -181,7 +194,13 @@ function ProjectCard({
             {department === "OTHER" ? "Unassigned department" : department}
           </p>
         </div>
-        <ProjectHealth projectId={project.id} overview={overview} />
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex min-w-0 flex-wrap gap-1.5">
+            <Badge variant="secondary">{project.jobStatusLabel}</Badge>
+            <Badge variant="outline">{projectClientStatusLabel(project.clientStatus)}</Badge>
+          </div>
+          <ProjectHealth projectId={project.id} overview={overview} />
+        </div>
       </Link>
     )
   }
@@ -235,7 +254,13 @@ function ProjectCard({
           {health?.nextTask ? `Next: ${health.nextTask.title}` : project.clientName ?? "No next phase recorded"}
         </p>
         <div className="mt-2">
-          <ProjectHealth projectId={project.id} overview={overview} />
+          <div className="flex flex-wrap items-center gap-1.5">
+            <Badge variant="secondary">{project.jobStatusLabel}</Badge>
+            <Badge variant="outline">{projectClientStatusLabel(project.clientStatus)}</Badge>
+          </div>
+          <div className="mt-2">
+            <ProjectHealth projectId={project.id} overview={overview} />
+          </div>
         </div>
 
         <Button
@@ -269,6 +294,8 @@ export function ProjectHubLaunchpad({
   const [department, setDepartment] = useState<DepartmentFilter>("ALL")
   const [status, setStatus] = useState<StatusFilter>("active")
   const [layout, setLayout] = useState<ProjectLayout>("cards")
+  const [pageSize, setPageSize] = useState<ProjectPageSize>(10)
+  const [pageIndex, setPageIndex] = useState(0)
 
   const statusCounts = useMemo(
     () => ({
@@ -304,6 +331,29 @@ export function ProjectHubLaunchpad({
     [department, projects, status]
   )
 
+  const pageCount =
+    pageSize === "all"
+      ? 1
+      : Math.max(1, Math.ceil(visibleProjects.length / pageSize))
+  const currentPageIndex = Math.min(pageIndex, pageCount - 1)
+  const firstVisibleProjectIndex =
+    visibleProjects.length === 0
+      ? 0
+      : pageSize === "all"
+        ? 1
+        : currentPageIndex * pageSize + 1
+  const lastVisibleProjectIndex =
+    pageSize === "all"
+      ? visibleProjects.length
+      : Math.min((currentPageIndex + 1) * pageSize, visibleProjects.length)
+  const paginatedProjects =
+    pageSize === "all"
+      ? visibleProjects
+      : visibleProjects.slice(
+          currentPageIndex * pageSize,
+          (currentPageIndex + 1) * pageSize
+        )
+
   return (
     <main className="mx-auto w-full max-w-[1500px] space-y-4 p-3 sm:p-4 lg:p-5">
       <header className="flex flex-col gap-3 border-b pb-4 sm:flex-row sm:items-center sm:justify-between">
@@ -335,7 +385,10 @@ export function ProjectHubLaunchpad({
               <button
                 key={item.id}
                 type="button"
-                onClick={() => setDepartment(item.id)}
+                onClick={() => {
+                  setDepartment(item.id)
+                  setPageIndex(0)
+                }}
                 className={cn(
                   "flex h-10 shrink-0 items-center gap-2 bg-background px-3 text-sm font-medium transition-colors hover:bg-muted",
                   department === item.id && "bg-[#2f5963] text-white hover:bg-[#2f5963]"
@@ -368,7 +421,10 @@ export function ProjectHubLaunchpad({
               <button
                 key={value}
                 type="button"
-                onClick={() => setStatus(value)}
+                onClick={() => {
+                  setStatus(value)
+                  setPageIndex(0)
+                }}
                 className={cn(
                   "flex h-8 items-center gap-2 border px-3 text-sm transition-colors hover:bg-muted",
                   status === value && "border-[#2f5963] bg-[#2f5963]/[0.07] font-semibold"
@@ -397,7 +453,7 @@ export function ProjectHubLaunchpad({
               {status === "all" ? "All" : status.charAt(0).toUpperCase() + status.slice(1)} projects
             </h2>
             <p className="text-xs text-muted-foreground">
-              {visibleProjects.length} project{visibleProjects.length === 1 ? "" : "s"} shown · use ⌘K for global search
+              {visibleProjects.length} project{visibleProjects.length === 1 ? "" : "s"} match · use ⌘K for global search
             </p>
           </div>
           <div className="grid grid-cols-2 border p-0.5">
@@ -428,7 +484,7 @@ export function ProjectHubLaunchpad({
               : "divide-y border-y"
           )}
         >
-          {visibleProjects.map((project) => (
+          {paginatedProjects.map((project) => (
             <ProjectCard
               key={project.id}
               project={project}
@@ -446,13 +502,100 @@ export function ProjectHubLaunchpad({
               onClick={() => {
                 setDepartment("ALL")
                 setStatus("all")
+                setPageIndex(0)
               }}
               className="mt-2 text-sm font-medium text-primary hover:underline"
             >
               Clear filters
             </button>
           </div>
-        ) : null}
+        ) : (
+          <div className="mt-4 flex flex-col gap-3 border-t pt-3 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-sm text-muted-foreground" aria-live="polite">
+              Showing {firstVisibleProjectIndex}–{lastVisibleProjectIndex} of{" "}
+              {visibleProjects.length} projects
+            </p>
+
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="flex items-center gap-2">
+                <label htmlFor="projects-per-page" className="text-sm font-medium">
+                  Projects per page
+                </label>
+                <Select
+                  value={String(pageSize)}
+                  onValueChange={(value) => {
+                    setPageSize(parseProjectPageSize(value))
+                    setPageIndex(0)
+                  }}
+                >
+                  <SelectTrigger id="projects-per-page" size="sm" className="w-20">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent side="top">
+                    {PROJECT_PAGE_SIZES.map((size) => (
+                      <SelectItem key={size} value={String(size)}>
+                        {size === "all" ? "All" : size}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <span className="min-w-24 text-center text-sm font-medium">
+                Page {currentPageIndex + 1} of {pageCount}
+              </span>
+
+              <div className="flex items-center gap-1">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  className="size-8"
+                  onClick={() => setPageIndex(0)}
+                  disabled={currentPageIndex === 0}
+                >
+                  <span className="sr-only">Go to first page</span>
+                  <IconChevronsLeft className="size-4" />
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  className="size-8"
+                  onClick={() => setPageIndex(Math.max(0, currentPageIndex - 1))}
+                  disabled={currentPageIndex === 0}
+                >
+                  <span className="sr-only">Go to previous page</span>
+                  <IconChevronLeft className="size-4" />
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  className="size-8"
+                  onClick={() =>
+                    setPageIndex(Math.min(pageCount - 1, currentPageIndex + 1))
+                  }
+                  disabled={currentPageIndex >= pageCount - 1}
+                >
+                  <span className="sr-only">Go to next page</span>
+                  <IconChevronRight className="size-4" />
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  className="size-8"
+                  onClick={() => setPageIndex(pageCount - 1)}
+                  disabled={currentPageIndex >= pageCount - 1}
+                >
+                  <span className="sr-only">Go to last page</span>
+                  <IconChevronsRight className="size-4" />
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
       </section>
 
       <footer className="flex flex-wrap items-center justify-between gap-2 border-t pt-3 text-xs text-muted-foreground">

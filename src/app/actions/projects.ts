@@ -5,7 +5,9 @@ import { getDb } from "@/db"
 import {
   customers,
   organizationMembers,
+  projectContacts,
   projectExternalLinks,
+  projectJobStatuses,
   projectMembers,
   projectNumberReservations,
   projectOperations,
@@ -14,7 +16,7 @@ import {
 } from "@/db/schema"
 import { sageClientProjectWriteOperations } from "@/db/schema-sage"
 import { googleAuth } from "@/db/schema-google"
-import { and, asc, eq, sql } from "drizzle-orm"
+import { and, asc, eq, or, sql } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { requireAuth } from "@/lib/auth"
 import { decrypt } from "@/lib/crypto"
@@ -45,12 +47,17 @@ import {
 import { resolveProjectIntakeIntegrationEmail } from "@/lib/google/project-intake-identity"
 import { requireOrg } from "@/lib/org-scope"
 import {
+  contactIdentityChanged,
+  directoryIdentityManagedByActiveUser,
+} from "@/lib/contact-identity-ownership"
+import {
   canManageProjectRegistry,
   requirePermission,
 } from "@/lib/permissions"
 import { canUseOrganizationProjectScopeRole } from "@/lib/user-roles"
 import {
   PROJECT_JOB_STATUS_DEFINITIONS,
+  projectJobStatusLabel,
 } from "@/lib/project-profile"
 import {
   isSageWriteApproved,
@@ -88,7 +95,24 @@ export type ProjectListItem = {
   readonly clientName: string | null
   readonly googleDriveFolderId: string | null
   readonly status: string
+  readonly clientStatus: string
+  readonly jobStatusId: string
+  readonly jobStatusLabel: string
   readonly createdAt: string
+}
+
+type ProjectListRow = Omit<ProjectListItem, "jobStatusLabel"> & {
+  readonly customJobStatusLabel: string | null
+}
+
+function projectListItems(rows: readonly ProjectListRow[]): ProjectListItem[] {
+  return rows.map(({ customJobStatusLabel, ...project }) => ({
+    ...project,
+    jobStatusLabel: projectJobStatusLabel({
+      jobStatusId: project.jobStatusId,
+      customLabel: customJobStatusLabel,
+    }),
+  }))
 }
 
 export type CreateProjectShellInput = {
@@ -320,6 +344,20 @@ function appendWarning(current: string | null, next: string): string {
   return current ? `${current} ${next}` : next
 }
 
+function intakeAssigneeName(input: {
+  readonly displayName: string | null
+  readonly firstName: string | null
+  readonly lastName: string | null
+  readonly email: string
+}): string {
+  return (
+    cleanText(input.displayName) ??
+    ([cleanText(input.firstName), cleanText(input.lastName)]
+      .filter((value) => value !== null)
+      .join(" ") || input.email)
+  )
+}
+
 function projectDepartment(projectNumber: string | null): ProjectIntakeDepartment | null {
   return normalizedIntakeDepartment(projectNumber?.slice(0, 1) ?? null)
 }
@@ -372,11 +410,7 @@ export async function getProjectIntakeAssignees(): Promise<
 
     return rows.map((row) => ({
       id: row.id,
-      name:
-        cleanText(row.displayName) ??
-        ([cleanText(row.firstName), cleanText(row.lastName)]
-          .filter((value) => value !== null)
-          .join(" ") || row.email),
+      name: intakeAssigneeName(row),
       email: row.email,
     }))
   } catch {
@@ -503,7 +537,10 @@ export async function createProjectIntake(
         and(
           eq(customers.organizationId, organizationId),
           customerEmail
-            ? sql`lower(trim(${customers.email})) = ${customerEmail}`
+            ? or(
+                sql`lower(trim(${customers.email})) = ${customerEmail}`,
+                sql`lower(trim(${customers.name})) = ${clientName.toLowerCase()}`
+              )
             : sql`lower(trim(${customers.name})) = ${clientName.toLowerCase()}`
         )
       )
@@ -511,8 +548,41 @@ export async function createProjectIntake(
       .get()
     const customerId = customerMatch?.id ?? crypto.randomUUID()
 
+    const assignedTo = cleanText(input.assignedTo)
+    const assigneeRows = assignedTo
+      ? await db
+          .select({
+            id: users.id,
+            displayName: users.displayName,
+            firstName: users.firstName,
+            lastName: users.lastName,
+            email: users.email,
+            phone: users.phone,
+            address: users.address,
+          })
+          .from(organizationMembers)
+          .innerJoin(users, eq(users.id, organizationMembers.userId))
+          .where(
+            and(
+              eq(organizationMembers.organizationId, organizationId),
+              eq(users.isActive, true)
+            )
+          )
+      : []
+    const assignee = assignedTo
+      ? assigneeRows.find(
+          (candidate) =>
+            intakeAssigneeName(candidate).toLowerCase() === assignedTo.toLowerCase()
+        ) ?? null
+      : null
+    const projectManagerName = assignee
+      ? intakeAssigneeName(assignee)
+      : assignedTo
+
     const now = new Date().toISOString()
     const projectId = `proj-${slugPart(projectNumber)}-${crypto.randomUUID().slice(0, 8)}`
+    const ownerContactId = crypto.randomUUID()
+    const internalContactId = assignedTo ? crypto.randomUUID() : null
     const operationId = crypto.randomUUID()
     const registryLinkId = crypto.randomUUID()
     const departmentTrackerLinkId = crypto.randomUUID()
@@ -536,14 +606,34 @@ export async function createProjectIntake(
       id: customerId,
       organizationId,
       name: clientName,
-      company: cleanText(input.companyName),
-      email: cleanText(input.contactEmail),
-      phone: cleanText(input.contactPhone),
-      address: cleanText(input.billingAddress) ?? joinedAddress(input),
-      notes: cleanText(input.notes),
+      company: cleanText(input.companyName) ?? customerMatch?.company ?? null,
+      email: cleanText(input.contactEmail) ?? customerMatch?.email ?? null,
+      phone: cleanText(input.contactPhone) ?? customerMatch?.phone ?? null,
+      address:
+        cleanText(input.billingAddress) ??
+        customerMatch?.address ??
+        joinedAddress(input) ??
+        null,
+      notes: cleanText(input.notes) ?? customerMatch?.notes ?? null,
       sageClientStatusId,
       createdAt: now,
       updatedAt: now,
+    }
+    if (
+      customerMatch &&
+      contactIdentityChanged(customerMatch, customerValues) &&
+      (await directoryIdentityManagedByActiveUser({
+        db,
+        organizationId,
+        entityType: "customer",
+        entityId: customerId,
+      }))
+    ) {
+      return {
+        success: false,
+        error:
+          "This active Compass client manages their own phone, email, and address. Use their existing directory details for this project.",
+      }
     }
     const fullSageJobName = sageJobName(projectNumber, projectName)
     const sageWritePayload = {
@@ -589,7 +679,7 @@ export async function createProjectIntake(
           jobStatusId: sageJobStatus.id,
           sageJobStatusName: sageJobStatus.label,
           sageJobTypeName: sageJobTypeName(sageJobType),
-          projectManager: cleanText(input.assignedTo),
+          projectManager: projectManagerName,
           ownerUpdatesEnabled: true,
           ownerUpdateChannel: "compass",
           ownerUpdateCadence: "weekly",
@@ -610,6 +700,77 @@ export async function createProjectIntake(
               })
               .where(eq(customers.id, customerId))
           : db.insert(customers).values(customerValues),
+        db.insert(projectContacts).values({
+          id: ownerContactId,
+          projectId,
+          contactType: "owner",
+          sourceSystem: "customer_directory",
+          sourceRecordId: customerId,
+          sourceEntityType: "customer",
+          sourceEntityId: customerId,
+          displayName: clientName,
+          companyName: customerValues.company,
+          role: "Owner / Client",
+          email: customerValues.email,
+          phone: customerValues.phone,
+          address: customerValues.address,
+          notes: null,
+          ownerPortalVisible: true,
+          subVendorPortalVisible: false,
+          internalVisible: true,
+          primaryContact: true,
+          active: true,
+          sortOrder: 100,
+          syncStatus: "manual",
+          lastSyncedAt: null,
+          createdAt: now,
+          updatedAt: now,
+        }),
+        ...(assignedTo && internalContactId
+          ? [
+              db.insert(projectContacts).values({
+                id: internalContactId,
+                projectId,
+                contactType: "internal",
+                sourceSystem: assignee
+                  ? "organization_directory"
+                  : "compass_project_intake",
+                sourceRecordId: assignee?.id ?? projectId,
+                sourceEntityType: assignee ? "user" : "manual",
+                sourceEntityId: assignee?.id ?? null,
+                displayName: projectManagerName ?? assignedTo,
+                companyName: null,
+                role: "Project manager",
+                email: assignee?.email ?? null,
+                phone: assignee?.phone ?? null,
+                address: assignee?.address ?? null,
+                notes: assignee
+                  ? null
+                  : "Typed project intake assignment; match this contact to an active team member when available.",
+                ownerPortalVisible: true,
+                subVendorPortalVisible: true,
+                internalVisible: true,
+                primaryContact: true,
+                active: true,
+                sortOrder: 200,
+                syncStatus: assignee ? "synced" : "manual",
+                lastSyncedAt: assignee ? now : null,
+                createdAt: now,
+                updatedAt: now,
+              }),
+            ]
+          : []),
+        ...(assignee
+          ? [
+              db.insert(projectMembers).values({
+                id: crypto.randomUUID(),
+                projectId,
+                userId: assignee.id,
+                role: "project-manager",
+                assignedAt: now,
+              }),
+            ]
+          : []),
         db.insert(projectNumberReservations).values({
           id: crypto.randomUUID(),
           organizationId,
@@ -1173,7 +1334,7 @@ export async function getProjects(): Promise<ProjectListItem[]> {
       user.organizationType === "internal" &&
       canUseOrganizationProjectScopeRole(user.role)
     ) {
-      return await db
+      const rows = await db
         .select({
           id: projects.id,
           name: projects.name,
@@ -1181,14 +1342,25 @@ export async function getProjects(): Promise<ProjectListItem[]> {
           clientName: projects.clientName,
           googleDriveFolderId: projects.googleDriveFolderId,
           status: projects.status,
+          clientStatus: projects.clientStatus,
+          jobStatusId: projects.jobStatusId,
+          customJobStatusLabel: projectJobStatuses.label,
           createdAt: projects.createdAt,
         })
         .from(projects)
+        .leftJoin(
+          projectJobStatuses,
+          and(
+            eq(projectJobStatuses.id, projects.jobStatusId),
+            eq(projectJobStatuses.organizationId, projects.organizationId),
+          ),
+        )
         .where(eq(projects.organizationId, user.organizationId))
         .orderBy(asc(projects.projectNumber), asc(projects.name))
+      return projectListItems(rows)
     }
 
-    return await db
+    const rows = await db
       .select({
         id: projects.id,
         name: projects.name,
@@ -1196,12 +1368,23 @@ export async function getProjects(): Promise<ProjectListItem[]> {
         clientName: projects.clientName,
         googleDriveFolderId: projects.googleDriveFolderId,
         status: projects.status,
+        clientStatus: projects.clientStatus,
+        jobStatusId: projects.jobStatusId,
+        customJobStatusLabel: projectJobStatuses.label,
         createdAt: projects.createdAt,
       })
       .from(projectMembers)
       .innerJoin(projects, eq(projects.id, projectMembers.projectId))
+      .leftJoin(
+        projectJobStatuses,
+        and(
+          eq(projectJobStatuses.id, projects.jobStatusId),
+          eq(projectJobStatuses.organizationId, projects.organizationId),
+        ),
+      )
       .where(eq(projectMembers.userId, user.id))
       .orderBy(asc(projects.projectNumber), asc(projects.name))
+    return projectListItems(rows)
   } catch {
     return []
   }
@@ -1339,6 +1522,32 @@ export async function createProjectShell(
             createdAt: now,
             updatedAt: now,
           }),
+      db.insert(projectContacts).values({
+        id: crypto.randomUUID(),
+        projectId: id,
+        contactType: "owner",
+        sourceSystem: "customer_directory",
+        sourceRecordId: customerId,
+        sourceEntityType: "customer",
+        sourceEntityId: customerId,
+        displayName: clientName,
+        companyName: customerMatch?.company ?? null,
+        role: "Owner / Client",
+        email: customerMatch?.email ?? null,
+        phone: customerMatch?.phone ?? null,
+        address: customerMatch?.address ?? address,
+        notes: null,
+        ownerPortalVisible: true,
+        subVendorPortalVisible: false,
+        internalVisible: true,
+        primaryContact: true,
+        active: true,
+        sortOrder: 100,
+        syncStatus: "manual",
+        lastSyncedAt: null,
+        createdAt: now,
+        updatedAt: now,
+      }),
       db.insert(projectExternalLinks).values({
         id: crypto.randomUUID(),
         projectId: id,

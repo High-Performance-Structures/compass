@@ -56,6 +56,7 @@ import {
   isEligibleFollowUpOwner,
   isMeaningfulClientInteraction,
   isSupportedProjectJobStatusLabel,
+  legacyProjectStatusAfterClientUpdate,
   normalizeProjectJobStatusLabel,
   projectNumberParts,
   type ProjectClientStatus,
@@ -825,6 +826,7 @@ export async function updateProjectInformation(input: {
       .select({
         id: projects.id,
         projectNumber: projects.projectNumber,
+        status: projects.status,
         address: projects.address,
         mailingAddress: projects.mailingAddress,
         clientStatus: projects.clientStatus,
@@ -900,10 +902,15 @@ export async function updateProjectInformation(input: {
         )
       : []
     const updatedAt = nowIso()
+    const legacyStatus = legacyProjectStatusAfterClientUpdate({
+      currentStatus: existing.status,
+      clientStatus: input.clientStatus,
+    })
     const projectUpdate = db
       .update(projects)
       .set({
         projectNumber,
+        status: legacyStatus,
         address: projectAddress,
         mailingAddress,
         clientStatus: input.clientStatus,
@@ -932,6 +939,7 @@ export async function updateProjectInformation(input: {
         mailingAddress,
         clientStatus: input.clientStatus,
         jobStatusId: input.jobStatusId,
+        status: legacyStatus,
       }),
       createdAt: updatedAt,
     })

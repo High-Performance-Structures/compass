@@ -6,6 +6,7 @@ import {
   organizations,
   organizationMembers,
   projectAccessInvitations,
+  projectContacts,
   projectMembers,
 } from "@/db/schema"
 import type { User } from "@/db/schema"
@@ -28,6 +29,8 @@ export type AuthUser = {
   readonly firstName: string | null
   readonly lastName: string | null
   readonly displayName: string | null
+  readonly phone?: string | null
+  readonly address?: string | null
   readonly avatarUrl: string | null
   readonly dashboardDeskPhotoUrl?: string | null
   readonly sidebarDeskPhotoUrl?: string | null
@@ -54,6 +57,8 @@ export type SidebarUser = Readonly<{
   sidebarDeskPhoto: string | null
   firstName: string | null
   lastName: string | null
+  phone: string | null
+  address: string | null
 }>
 
 /**
@@ -69,6 +74,8 @@ export function toSidebarUser(user: AuthUser): SidebarUser {
     sidebarDeskPhoto: user.sidebarDeskPhotoUrl ?? null,
     firstName: user.firstName,
     lastName: user.lastName,
+    phone: user.phone ?? null,
+    address: user.address ?? null,
   }
 }
 
@@ -149,8 +156,14 @@ async function claimProjectAccessInvitations(
       role: projectAccessInvitations.role,
       invitedBy: projectAccessInvitations.invitedBy,
       workosExpiresAt: projectAccessInvitations.workosExpiresAt,
+      contactPhone: projectContacts.phone,
+      contactAddress: projectContacts.address,
     })
     .from(projectAccessInvitations)
+    .leftJoin(
+      projectContacts,
+      eq(projectContacts.id, projectAccessInvitations.projectContactId)
+    )
     .where(
       and(
         eq(projectAccessInvitations.status, "sent"),
@@ -158,6 +171,33 @@ async function claimProjectAccessInvitations(
       )
     )
     .orderBy(desc(projectAccessInvitations.invitedAt))
+
+  const currentIdentity = await db
+    .select({ phone: users.phone, address: users.address })
+    .from(users)
+    .where(eq(users.id, userId))
+    .get()
+  const identityInvitation = invitations.find(
+    (invitation) =>
+      (!invitation.workosExpiresAt || invitation.workosExpiresAt > now) &&
+      (invitation.contactPhone || invitation.contactAddress)
+  )
+  if (
+    currentIdentity &&
+    identityInvitation &&
+    ((!currentIdentity.phone && identityInvitation.contactPhone) ||
+      (!currentIdentity.address && identityInvitation.contactAddress))
+  ) {
+    await db
+      .update(users)
+      .set({
+        phone: currentIdentity.phone ?? identityInvitation.contactPhone,
+        address: currentIdentity.address ?? identityInvitation.contactAddress,
+        updatedAt: now,
+      })
+      .where(eq(users.id, userId))
+      .run()
+  }
 
   let claimedInvitation: {
     readonly organizationId: string
@@ -518,6 +558,8 @@ export async function getCurrentUser(): Promise<AuthUser | null> {
       firstName: dbUser.firstName,
       lastName: dbUser.lastName,
       displayName: dbUser.displayName,
+      phone: dbUser.phone,
+      address: dbUser.address,
       avatarUrl: dbUser.avatarUrl,
       dashboardDeskPhotoUrl: dbUser.dashboardDeskPhotoUrl,
       sidebarDeskPhotoUrl: dbUser.sidebarDeskPhotoUrl,

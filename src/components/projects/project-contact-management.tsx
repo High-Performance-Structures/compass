@@ -126,6 +126,7 @@ function initialInput(
     primaryCostCode: contact?.primaryCostCode ?? "",
     email: contact?.email ?? "",
     phone: contact?.phone ?? "",
+    address: contact?.address ?? "",
     notes: contact?.notes ?? "",
     ownerPortalVisible: contact?.ownerPortalVisible ?? false,
     subVendorPortalVisible: contact?.subVendorPortalVisible ?? false,
@@ -274,6 +275,10 @@ export function ProjectContactEditor({
       option.id === input.directorySourceId &&
       option.sourceType === input.directorySourceType
   ) ?? null
+  const identityManagedByActiveUser =
+    contact?.identityManagedByActiveUser ??
+    selectedDirectory?.identityManagedByActiveUser ??
+    false
 
   function updateInput<Key extends keyof ProjectContactMutationInput>(
     key: Key,
@@ -306,6 +311,7 @@ export function ProjectContactEditor({
       companyName: option.companyName ?? "",
       email: option.email ?? "",
       phone: option.phone ?? "",
+      address: option.address ?? "",
       role: projectRole,
       ownerPortalVisible:
         option.suggestedContactType === "internal" || current.ownerPortalVisible,
@@ -325,6 +331,7 @@ export function ProjectContactEditor({
         return
       }
       toast.success(isEditing ? "Project contact updated." : "Project contact added.")
+      if (result.warning) toast.warning(result.warning)
       setOpen(false)
       router.refresh()
     })
@@ -358,7 +365,9 @@ export function ProjectContactEditor({
           <SheetHeader>
             <SheetTitle>{isEditing ? "Edit project contact" : "Add project contact"}</SheetTitle>
             <SheetDescription>
-              Changes apply to this project. The company-wide directory record remains intact.
+              {identityManagedByActiveUser
+                ? "This active Compass user manages their own phone, email, and address. Project role and visibility remain editable here."
+                : "Phone, email, and address stay synchronized with the linked company directory record."}
             </SheetDescription>
           </SheetHeader>
 
@@ -492,6 +501,7 @@ export function ProjectContactEditor({
                   type="email"
                   value={input.email}
                   onChange={(event) => updateInput("email", event.target.value)}
+                  disabled={identityManagedByActiveUser}
                 />
               </div>
               <div className="grid gap-2">
@@ -501,6 +511,16 @@ export function ProjectContactEditor({
                   type="tel"
                   value={input.phone}
                   onChange={(event) => updateInput("phone", event.target.value)}
+                  disabled={identityManagedByActiveUser}
+                />
+              </div>
+              <div className="grid gap-2 sm:col-span-2">
+                <Label htmlFor="project-contact-address">Address</Label>
+                <Input
+                  id="project-contact-address"
+                  value={input.address}
+                  onChange={(event) => updateInput("address", event.target.value)}
+                  disabled={identityManagedByActiveUser}
                 />
               </div>
               <div className="grid gap-2">

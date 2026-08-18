@@ -221,6 +221,8 @@ export async function sendProjectAccessInvitation(
         id: users.id,
         role: users.role,
         isActive: users.isActive,
+        phone: users.phone,
+        address: users.address,
       })
       .from(users)
       .where(sql`lower(trim(${users.email})) = ${email}`)
@@ -286,6 +288,20 @@ export async function sendProjectAccessInvitation(
     let accessStatus: "invited" | "access_granted" = "invited"
 
     if (activeExistingUser) {
+      if (
+        (!activeExistingUser.phone && row.contact.phone) ||
+        (!activeExistingUser.address && row.contact.address)
+      ) {
+        await db
+          .update(users)
+          .set({
+            phone: activeExistingUser.phone ?? row.contact.phone,
+            address: activeExistingUser.address ?? row.contact.address,
+            updatedAt: now,
+          })
+          .where(eq(users.id, activeExistingUser.id))
+          .run()
+      }
       if (!verifiedOrganizationMembership) {
         await ensureExternalOrganizationMembership({
           db,
