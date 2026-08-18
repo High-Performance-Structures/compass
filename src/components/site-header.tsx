@@ -106,7 +106,7 @@ export function SiteHeader({
     <header className="sticky top-0 z-40 flex shrink-0 items-center border-b border-border/40 bg-background/80 backdrop-blur-sm">
       {/* mobile header: single unified pill */}
       <div className="flex h-14 w-full items-center px-3 md:hidden">
-        <div className="flex h-11 w-full items-center gap-2 rounded-lg bg-muted/50 px-2.5">
+        <div className="flex h-11 w-full items-center gap-1 rounded-lg bg-muted/50 px-2.5 sm:gap-2">
           <button
             type="button"
             className="flex size-10 shrink-0 items-center justify-center rounded-full -ml-0.5 hover:bg-background/60"
@@ -119,7 +119,7 @@ export function SiteHeader({
           </button>
           <button
             type="button"
-            className="flex h-9 flex-1 items-center gap-2 rounded-md px-2 hover:bg-background/60"
+            className="flex h-9 min-w-0 flex-1 items-center gap-2 overflow-hidden rounded-md px-2 hover:bg-background/60"
             onClick={openCommand}
             aria-label={
               canUseAskCompass
@@ -128,7 +128,7 @@ export function SiteHeader({
             }
           >
             <IconSearch className="size-4 text-muted-foreground shrink-0" />
-            <span className="text-muted-foreground text-sm">
+            <span className="min-w-0 truncate whitespace-nowrap text-left text-sm text-muted-foreground">
               {canUseAskCompass ? "Ask Jarvis or search..." : "Search Compass..."}
             </span>
           </button>
