@@ -1,7 +1,7 @@
 import { and, eq } from "drizzle-orm"
 import { z } from "zod/v4"
 import { getDb } from "@/db"
-import { jarvisBridgeEvents } from "@/db/schema-jarvis"
+import { feedbackDeskItems, jarvisBridgeEvents } from "@/db/schema-jarvis"
 import { getCloudflareContext } from "@/lib/db"
 import {
   getJarvisEnvValue,
@@ -86,6 +86,7 @@ export async function POST(
       id: jarvisBridgeEvents.id,
       eventType: jarvisBridgeEvents.eventType,
       payload: jarvisBridgeEvents.payload,
+      feedbackDeskItemId: jarvisBridgeEvents.feedbackDeskItemId,
     })
     .from(jarvisBridgeEvents)
     .where(
@@ -121,6 +122,19 @@ export async function POST(
       updatedAt: nowIso,
     })
     .where(eq(jarvisBridgeEvents.id, id))
+
+  if (
+    existing.eventType === "feedback.delivery_requested" &&
+    parsed.data.status === "failed" &&
+    existing.feedbackDeskItemId
+  ) {
+    await db.update(feedbackDeskItems).set({
+      deliveryGraphStatus: "failed",
+      deliveryGraphLastError: parsed.data.error ?? "Delivery worker failed",
+      deliveryGraphUpdatedAt: nowIso,
+      updatedAt: nowIso,
+    }).where(eq(feedbackDeskItems.id, existing.feedbackDeskItemId))
+  }
 
   return Response.json({ success: true })
 }

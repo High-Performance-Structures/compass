@@ -80,6 +80,9 @@ export type FeedbackAdminOverview = Readonly<{
     featurePriorityApprovedAt: string | null
     featurePriorityApprovedBy: string | null
     githubDraftPullRequestUrl: string | null
+    deliveryGraphId: string | null
+    deliveryGraphStatus: string | null
+    deliveryGraphLastError: string | null
     privacyScrubbedAt: string | null
     createdAt: string
     updatedAt: string
@@ -172,6 +175,9 @@ export async function getFeedbackAdminOverview(): Promise<FeedbackAdminOverviewR
           featurePriorityApprovedAt: item.featurePriorityApprovedAt,
           featurePriorityApprovedBy: item.featurePriorityApprovedBy,
           githubDraftPullRequestUrl: item.githubDraftPullRequestUrl,
+          deliveryGraphId: item.deliveryGraphId,
+          deliveryGraphStatus: item.deliveryGraphStatus,
+          deliveryGraphLastError: item.deliveryGraphLastError,
           privacyScrubbedAt: item.privacyScrubbedAt,
           createdAt: item.createdAt,
           updatedAt: item.updatedAt,
