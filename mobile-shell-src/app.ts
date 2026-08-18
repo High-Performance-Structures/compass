@@ -91,7 +91,6 @@ let directRecipientId = ""
 let directMessageDraft = ""
 let biometricEnabled = false
 let biometricLocked = false
-let securityMigrationRequired = false
 let backgroundedAt: number | null = null
 let pendingAppUrl: string | null = null
 
@@ -319,11 +318,6 @@ function view(): string {
 
 function render(): void {
   if (!app) return
-  if (securityMigrationRequired) {
-    app.innerHTML = `<main class="lock-screen"><div class="lock-mark" aria-hidden="true">C</div><h1>Security update required</h1><p>Connect once to finish protecting Field Mode data on this device.</p><button id="continue-security-update" class="primary" type="button" ${online ? "" : "disabled"}>${online ? "Continue securely" : "Waiting for connection"}</button></main>`
-    document.querySelector<HTMLButtonElement>("#continue-security-update")?.addEventListener("click", continueSecurityMigration)
-    return
-  }
   if (biometricLocked) {
     app.innerHTML = `<main class="lock-screen"><div class="lock-mark" aria-hidden="true">C</div><h1>Compass is locked</h1><p>Use Face ID or your device fingerprint to continue.</p><button id="unlock-compass" class="primary" type="button">Unlock Compass</button><button id="unlock-with-password" class="text-button" type="button" ${online ? "" : "disabled"}>Use password</button></main>`
     document.querySelector<HTMLButtonElement>("#unlock-compass")?.addEventListener("click", () => void unlockCompass())
@@ -343,7 +337,7 @@ function render(): void {
     { value: "chat", symbol: "M", label: "Messages" },
   ]
   const liveLabel = projects.length === 0 ? "Sign in" : "Full Compass"
-  app.innerHTML = `<div class="shell"><header class="shell-header"><div class="header-row"><div><p class="eyebrow">Field mode</p><h1 class="project-title">${escapeHtml(title)}</h1></div><div class="header-actions">${outbox.length > 0 && online ? `<button id="sync-now" class="icon-button" type="button" aria-label="Sync waiting work">${syncIcon()}</button>` : ""}<button id="field-notifications" class="notification-button" type="button" aria-label="Notifications">${bellIcon()}${unreadNotifications > 0 ? `<span>${unreadNotifications > 9 ? "9+" : unreadNotifications}</span>` : ""}</button><button id="field-settings" class="settings-button" type="button" aria-label="Field settings">Settings</button><button id="open-live" class="live-button" ${online && !signingIn ? "" : "disabled"}>${liveLabel}</button></div></div><div class="sync-line"><span class="status-dot ${online ? "online" : ""}"></span>${syncing ? "Opening secure sync" : online ? "Connection available" : "Offline"}${escapeHtml(queued)}</div></header><main class="content">${view()}</main><nav class="tabbar">${tabs.map((tab) => `<button class="tab ${activeTab === tab.value ? "active" : ""}" data-tab="${tab.value}"><span class="tab-symbol">${tab.symbol}</span>${tab.label}</button>`).join("")}</nav></div>`
+  app.innerHTML = `<div class="shell"><header class="shell-header"><div class="header-row"><div><p class="eyebrow">Field mode</p><h1 class="project-title">${escapeHtml(title)}</h1></div><div class="header-actions">${outbox.length > 0 && online ? `<button id="sync-now" class="icon-button" type="button" aria-label="Sync waiting work">${syncIcon()}</button>` : ""}<button id="field-notifications" class="notification-button" type="button" aria-label="Notifications">${bellIcon()}${unreadNotifications > 0 ? `<span>${unreadNotifications > 9 ? "9+" : unreadNotifications}</span>` : ""}</button><button id="open-cherish" class="settings-button" type="button" ${online ? "" : "disabled"}>CHERISH</button><button id="field-settings" class="settings-button" type="button" aria-label="Field settings">Settings</button><button id="open-live" class="live-button" ${online && !signingIn ? "" : "disabled"}>${liveLabel}</button></div></div><div class="sync-line"><span class="status-dot ${online ? "online" : ""}"></span>${syncing ? "Opening secure sync" : online ? "Connection available" : "Offline"}${escapeHtml(queued)}</div></header><main class="content">${view()}</main><nav class="tabbar">${tabs.map((tab) => `<button class="tab ${activeTab === tab.value ? "active" : ""}" data-tab="${tab.value}"><span class="tab-symbol">${tab.symbol}</span>${tab.label}</button>`).join("")}</nav></div>`
   bindEvents()
 }
 
@@ -351,11 +345,6 @@ async function biometricPreference(): Promise<boolean | null> {
   const result = await Preferences.get({ key: BIOMETRIC_ENABLED_KEY })
   if (result.value === null) return null
   return result.value === "true"
-}
-
-function continueSecurityMigration(): void {
-  if (!online) return
-  window.location.replace(`${LIVE_URL}/dashboard/field`)
 }
 
 async function unlockCompass(): Promise<boolean> {
@@ -404,6 +393,7 @@ function bindEvents(): void {
   document.querySelectorAll<HTMLButtonElement>("[data-project-id]").forEach((button) => button.addEventListener("click", () => void selectProject(button.dataset.projectId ?? "")))
   document.querySelectorAll<HTMLButtonElement>("[data-file-id]").forEach((button) => button.addEventListener("click", () => void openDocument(button.dataset.fileId ?? "")))
   document.querySelector<HTMLButtonElement>("#open-live")?.addEventListener("click", openFullCompass)
+  document.querySelector<HTMLButtonElement>("#open-cherish")?.addEventListener("click", openCherish)
   document.querySelector<HTMLButtonElement>("#sync-now")?.addEventListener("click", resumePendingSync)
   document.querySelector<HTMLButtonElement>("#field-notifications")?.addEventListener("click", () => {
     activeTab = "notifications"
@@ -746,6 +736,11 @@ function openFullCompass(): void {
   window.location.assign(`${LIVE_URL}${path}`)
 }
 
+function openCherish(): void {
+  if (!online) return
+  window.location.assign(`${LIVE_URL}/dashboard/field`)
+}
+
 function resumePendingSync(): void {
   const focusedElement = document.activeElement
   const composing = focusedElement instanceof HTMLInputElement
@@ -1039,28 +1034,10 @@ async function initialize(): Promise<void> {
   const initialStatus = await Network.getStatus()
   online = initialStatus.connected
   const storedBiometricPreference = await biometricPreference()
-  if (storedBiometricPreference === null) {
-    // The previous release stored this choice on the live web origin, which the
-    // bundled shell cannot read. Fail closed until the dashboard migrates it.
-    securityMigrationRequired = true
-    render()
-    if (online) {
-      continueSecurityMigration()
-      return
-    }
-    await Network.addListener("networkStatusChange", ({ connected }) => {
-      online = connected
-      render()
-      if (connected) continueSecurityMigration()
-    })
-    window.addEventListener("online", () => {
-      online = true
-      render()
-      continueSecurityMigration()
-    })
-    return
-  }
-  biometricEnabled = storedBiometricPreference
+  // Older releases stored this choice on the live origin. Keep Field Mode
+  // available during migration; opening Full Compass copies the legacy choice
+  // into shared native Preferences for subsequent offline launches.
+  biometricEnabled = storedBiometricPreference ?? false
   biometricLocked = biometricEnabled
   if (biometricLocked) render()
   await Keyboard.addListener("keyboardWillShow", ({ keyboardHeight }) => {

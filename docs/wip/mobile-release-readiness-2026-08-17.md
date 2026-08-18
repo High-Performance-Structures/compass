@@ -12,6 +12,7 @@ This is the shortest path from the current Capacitor apps to field-test and stor
 - iOS Universal Links and Android App Links are configured in the native projects.
 - Dashboard Universal/App Links are routed from both cold and warm Field Mode launches into the matching live Compass page.
 - Cached Field Mode data now honors the same biometric opt-in as the live app on cold start and after 30 seconds in the background.
+- Full Compass keeps a dedicated Field control that returns native users to the bundled offline shell. CHERISH remains a separate field action and never replaces that control.
 - Android disables cleartext traffic and excludes cached project data from cloud backup and device transfer.
 - Android declares the Android 13+ notification permission required by the runtime push prompt.
 - The server now uses Firebase service-account OAuth for Android FCM delivery and direct APNs provider-token delivery for iOS.

@@ -251,7 +251,7 @@ function SidebarNav({
     ? [
         ...projectScopedPersistentNav,
         {
-          title: "Field Desk",
+          title: "CHERISH",
           url: "/dashboard/field",
           icon: IconHeartHandshake,
         },

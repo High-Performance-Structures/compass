@@ -1,5 +1,6 @@
 "use client"
 
+import Link from "next/link"
 import { useEffect, useState, useTransition } from "react"
 import {
   IconCloudCheck,
@@ -187,18 +188,23 @@ export function FieldDesk({
               Welcome, {displayName}
             </h1>
           </div>
-          <div
-            className={cn(
-              "flex items-center gap-2 text-sm",
-              online ? "text-emerald-700" : "text-amber-700",
-            )}
-          >
-            {online ? (
-              <IconCloudCheck className="size-5" />
-            ) : (
-              <IconCloudOff className="size-5" />
-            )}
-            <span>{online ? "Online" : "Offline — changes will sync later"}</span>
+          <div className="flex flex-wrap items-center justify-end gap-3">
+            <div
+              className={cn(
+                "flex items-center gap-2 text-sm",
+                online ? "text-emerald-700" : "text-amber-700",
+              )}
+            >
+              {online ? (
+                <IconCloudCheck className="size-5" />
+              ) : (
+                <IconCloudOff className="size-5" />
+              )}
+              <span>{online ? "Online" : "Offline — changes will sync later"}</span>
+            </div>
+            <Button asChild variant="outline" size="sm">
+              <Link href="/dashboard/projects">Full Compass</Link>
+            </Button>
           </div>
         </div>
         {pendingCount > 0 && (
