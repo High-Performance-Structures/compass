@@ -12,7 +12,6 @@ import {
   IconFile,
   IconFileFilled,
   IconBriefcase,
-  IconHeartHandshake,
 } from "@tabler/icons-react"
 import { useNativePlatform } from "@/hooks/use-native"
 import { fieldModeUrl } from "@/lib/native/field-mode-url"
@@ -129,25 +128,11 @@ export function MobileBottomNav({
         {canUseFieldDesk && (
           <NavItem
             href={fieldModeUrl(nativePlatform)}
-            icon={
-              nativePlatform === "web" ? (
-                <IconHeartHandshake className="size-[22px]" />
-              ) : (
-                <IconBriefcase className="size-[22px]" />
-              )
-            }
-            activeIcon={
-              nativePlatform === "web" ? (
-                <IconHeartHandshake className="size-[22px]" />
-              ) : (
-                <IconBriefcase className="size-[22px]" />
-              )
-            }
-            label={nativePlatform === "web" ? "CHERISH" : "Field"}
+            icon={<IconBriefcase className="size-[22px]" />}
+            activeIcon={<IconBriefcase className="size-[22px]" />}
+            label="Field"
             externalNavigation={nativePlatform !== "web"}
-            isActive={
-              nativePlatform === "web" && isActive("/dashboard/field")
-            }
+            isActive={isActive("/dashboard/field")}
           />
         )}
         <NavItem

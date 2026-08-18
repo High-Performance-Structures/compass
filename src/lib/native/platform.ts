@@ -49,10 +49,26 @@ export function resolveMobilePlatform(
   capacitorPlatform: string | null | undefined,
   hintedPlatform: string | null | undefined,
   storedPlatform: string | null | undefined,
+  browserPlatform: string | null | undefined = undefined,
 ): MobilePlatform {
   if (isMobilePlatform(capacitorPlatform)) return capacitorPlatform
   if (isMobilePlatform(hintedPlatform)) return hintedPlatform
   if (isMobilePlatform(storedPlatform)) return storedPlatform
+  if (isMobilePlatform(browserPlatform)) return browserPlatform
+  return "web"
+}
+
+export function inferMobileBrowserPlatform(
+  userAgent: string,
+  navigatorPlatform?: string,
+  maxTouchPoints = 0,
+): MobilePlatform {
+  const normalizedUserAgent = userAgent.toLowerCase()
+  if (normalizedUserAgent.includes("android")) return "android"
+  if (/iphone|ipad|ipod/.test(normalizedUserAgent)) return "ios"
+
+  // Modern iPadOS can identify itself as macOS in Safari.
+  if (navigatorPlatform === "MacIntel" && maxTouchPoints > 1) return "ios"
   return "web"
 }
 
@@ -114,10 +130,16 @@ export function getMobilePlatform(): MobilePlatform {
   } catch {
     // Fall back to web when storage is unavailable.
   }
+  const browserPlatform = inferMobileBrowserPlatform(
+    window.navigator.userAgent,
+    window.navigator.platform,
+    window.navigator.maxTouchPoints,
+  )
   return resolveMobilePlatform(
     capacitorPlatform,
     hintedPlatform,
     storedPlatform,
+    browserPlatform,
   )
 }
 
