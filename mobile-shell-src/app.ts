@@ -24,7 +24,7 @@ import {
   type FieldQueuedAttachment,
   type FieldUserProfile,
 } from "../src/lib/field/types"
-import { resolveDashboardAppUrl } from "./app-url"
+import { isFieldAppUrl, resolveDashboardAppUrl } from "./app-url"
 
 const LIVE_URL = "https://compass.openrangeconstruction.ltd"
 const PROJECTS_KEY = "compass_field_projects_v1"
@@ -1162,6 +1162,14 @@ async function handleAuthCallback(url: URL): Promise<void> {
 }
 
 async function handleAppUrl(appUrl: string): Promise<void> {
+  if (isFieldAppUrl(appUrl)) {
+    await Browser.close().catch(() => undefined)
+    activeTab = packet ? "today" : "projects"
+    authError = ""
+    render()
+    return
+  }
+
   const dashboardUrl = resolveDashboardAppUrl(appUrl, LIVE_URL)
   if (dashboardUrl) {
     const exceededBackgroundThreshold =

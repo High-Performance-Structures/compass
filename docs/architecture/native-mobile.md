@@ -188,7 +188,7 @@ For TestFlight / App Store distribution:
 
 This file must be served from the web domain with `Content-Type: application/json` and no redirects. Cloudflare Workers handles this correctly by default for files in `public/`.
 
-The bundled Field Mode shell listens for Capacitor `appUrlOpen` events and the cold-start launch URL. It accepts only HTTPS `/dashboard/*` URLs on the exact Compass origin, gates the destination behind the shared biometric lock when required, then navigates the webview to the matching live page while preserving the query and fragment.
+The bundled Field Mode shell listens for Capacitor `appUrlOpen` events and the cold-start launch URL. It accepts only HTTPS `/dashboard/*` URLs on the exact Compass origin, gates the destination behind the shared biometric lock when required, then navigates the webview to the matching live page while preserving the query and fragment. The hosted mobile navigation uses the registered `compass://field` deep link to return from Full Compass to the bundled offline shell.
 
 
 ## Android specifics

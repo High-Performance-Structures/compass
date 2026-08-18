@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { resolveDashboardAppUrl } from "./app-url"
+import { isFieldAppUrl, resolveDashboardAppUrl } from "./app-url"
 
 const LIVE_ORIGIN = "https://compass.openrangeconstruction.ltd"
 
@@ -34,5 +34,15 @@ describe("resolveDashboardAppUrl", () => {
         LIVE_ORIGIN,
       ),
     ).toBeUndefined()
+  })
+})
+
+describe("isFieldAppUrl", () => {
+  it("accepts only the dedicated Field return deep link", () => {
+    expect(isFieldAppUrl("compass://field")).toBe(true)
+    expect(isFieldAppUrl("compass://field/projects")).toBe(true)
+    expect(isFieldAppUrl("compass://auth/callback")).toBe(false)
+    expect(isFieldAppUrl("https://compass.openrangeconstruction.ltd/dashboard/field")).toBe(false)
+    expect(isFieldAppUrl("not a url")).toBe(false)
   })
 })

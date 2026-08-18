@@ -19,3 +19,12 @@ export function resolveDashboardAppUrl(
 
   return `${liveOrigin}${url.pathname}${url.search}${url.hash}`
 }
+
+export function isFieldAppUrl(appUrl: string): boolean {
+  try {
+    const url = new URL(appUrl)
+    return url.protocol === "compass:" && url.hostname === "field"
+  } catch {
+    return false
+  }
+}
