@@ -27,7 +27,7 @@ namespace CompassSageClientProjectWriter
         private static Type ImbxmlType;
         private static Type GlobalType;
         private static object ApiInstance;
-        private static bool ExclusiveAccess;
+        private static bool ApiInitialized;
 
         public sealed class Envelope { public WriteRequest[] requests { get; set; } }
         public sealed class WriteRequest
@@ -81,37 +81,41 @@ namespace CompassSageClientProjectWriter
         {
             public ApiSession(string user, string password)
             {
-                Directory.SetCurrentDirectory(Path.GetDirectoryName(ApiDllPath));
-                Assembly assembly = Assembly.LoadFrom(ApiDllPath);
-                ImbxmlType = assembly.GetType("Sage.SMB.API.IMBXML", true);
-                GlobalType = assembly.GetType("Sage.SMB.API.mbAPIGlobal", true);
-                ApiInstance = Activator.CreateInstance(ImbxmlType);
-                InvokeStatic("SetRqDataSource", new object[] { DataSource() });
-                Invoke("SetDataSource", new object[] { DataSource() });
-                Invoke("IntializeAPI", new object[0]);
-                InvokeStatic("SetRqDataSource", new object[] { DataSource() });
-                InvokeStatic("ResetRqAcceptState", new object[0]);
-                InvokeStatic("EnableAcceptRq", new object[] { true });
-                Invoke("SetDataSource", new object[] { DataSource() });
-                Invoke("EnableRequests", new object[0]);
-                object allowed = Invoke("IsApplicationAllowed", new object[] { user, password });
-                if (!(allowed is int) || (int)allowed != 0) throw new InvalidOperationException("The Sage API application is not allowed (code " + Convert.ToString(allowed) + ").");
-                object valid = Invoke("IsValidUser", new object[] { TargetCompany, user, password });
-                if (!(valid is bool) || !(bool)valid) throw new InvalidOperationException("jarvis.api is not a valid Sage API user for the target company.");
-                object exclusive = Invoke("GetExclusiveAccess", new object[] { TargetCompany, user, password });
-                if (!(exclusive is int) || (int)exclusive != 0) throw new InvalidOperationException("Sage exclusive access is unavailable (code " + Convert.ToString(exclusive) + ").");
-                ExclusiveAccess = true;
-            }
-            public void Dispose()
-            {
-                try { if (ExclusiveAccess) Invoke("ReleaseExclusiveAccess", new object[0]); }
-                finally
+                try
                 {
-                    ExclusiveAccess = false;
-                    try { Invoke("DeIntializeAPI", new object[0]); } catch { }
-                    ApiInstance = null;
+                    Directory.SetCurrentDirectory(Path.GetDirectoryName(ApiDllPath));
+                    Assembly assembly = Assembly.LoadFrom(ApiDllPath);
+                    ImbxmlType = assembly.GetType("Sage.SMB.API.IMBXML", true);
+                    GlobalType = assembly.GetType("Sage.SMB.API.mbAPIGlobal", true);
+                    ApiInstance = Activator.CreateInstance(ImbxmlType);
+                    InvokeStatic("SetRqDataSource", new object[] { DataSource() });
+                    Invoke("SetDataSource", new object[] { DataSource() });
+                    Invoke("IntializeAPI", new object[0]);
+                    ApiInitialized = true;
+                    InvokeStatic("SetRqDataSource", new object[] { DataSource() });
+                    InvokeStatic("ResetRqAcceptState", new object[0]);
+                    InvokeStatic("EnableAcceptRq", new object[] { true });
+                    Invoke("SetDataSource", new object[] { DataSource() });
+                    Invoke("EnableRequests", new object[0]);
+                    object allowed = Invoke("IsApplicationAllowed", new object[] { user, password });
+                    if (!(allowed is int) || (int)allowed != 0) throw new InvalidOperationException("The Sage API application is not allowed (code " + Convert.ToString(allowed) + ").");
+                    object valid = Invoke("IsValidUser", new object[] { TargetCompany, user, password });
+                    if (!(valid is bool) || !(bool)valid) throw new InvalidOperationException("jarvis.api is not a valid Sage API user for the target company.");
+                }
+                catch
+                {
+                    ResetApi();
+                    throw;
                 }
             }
+            public void Dispose() { ResetApi(); }
+        }
+
+        private static void ResetApi()
+        {
+            try { if (ApiInitialized && ApiInstance != null) Invoke("DeIntializeAPI", new object[0]); }
+            catch { }
+            finally { ApiInitialized = false; ApiInstance = null; }
         }
 
         public static int Main(string[] args)
@@ -553,8 +557,19 @@ namespace CompassSageClientProjectWriter
             }
         }
 
-        private static object Invoke(string name, object[] args) { return FindMethod(ImbxmlType, name, args.Length, false).Invoke(ApiInstance, args); }
-        private static object InvokeStatic(string name, object[] args) { return FindMethod(GlobalType, name, args.Length, true).Invoke(null, args); }
+        private static object Invoke(string name, object[] args) { return InvokeMethod(FindMethod(ImbxmlType, name, args.Length, false), ApiInstance, args); }
+        private static object InvokeStatic(string name, object[] args) { return InvokeMethod(FindMethod(GlobalType, name, args.Length, true), null, args); }
+        private static object InvokeMethod(MethodInfo method, object target, object[] args)
+        {
+            try { return method.Invoke(target, args); }
+            catch (TargetInvocationException error)
+            {
+                Exception inner = error.InnerException;
+                if (inner == null) throw;
+                string message = String.IsNullOrWhiteSpace(inner.Message) ? inner.GetType().FullName : inner.Message;
+                throw new InvalidOperationException(message, inner);
+            }
+        }
         private static MethodInfo FindMethod(Type type, string name, int count, bool isStatic)
         {
             BindingFlags flags = BindingFlags.Public | BindingFlags.NonPublic | (isStatic ? BindingFlags.Static : BindingFlags.Instance);

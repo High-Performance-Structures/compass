@@ -6,6 +6,7 @@ import {
   sageClientProjectWritePayloadSchema,
   sageClientProjectWriteResultSchema,
   sageClientStatusName,
+  sageJobName,
   sageJobTypeName,
   sageShortName,
 } from "@/lib/sage/client-project-write"
@@ -30,6 +31,16 @@ describe("Sage client/project write contract", () => {
   it("caps Sage short names at the database limit", () => {
     expect(sageShortName("  High   Performance Structures Incorporated "))
       .toBe("High Performance Structures In")
+  })
+
+  it("prefixes the Sage job name with the full Compass project number", () => {
+    expect(sageJobName("H-434-595", "Luke Loeffler Earthwork")).toBe(
+      "H-434-595-Luke Loeffler Earthwork"
+    )
+    expect(sageJobName(null, "  Internal   Operations  ")).toBe(
+      "Internal Operations"
+    )
+    expect(sageJobName("O-123-456", "x".repeat(80))).toHaveLength(75)
   })
 
   it("validates the exact target company and required job selections", () => {
