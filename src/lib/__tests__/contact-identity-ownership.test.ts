@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest"
 
-import { contactIdentityChanged } from "@/lib/contact-identity-ownership"
+import {
+  contactIdentityChanged,
+  requestedDirectoryIdentityKeys,
+} from "@/lib/contact-identity-ownership"
 import { updateProfileSchema } from "@/lib/validations/profile"
 
 describe("contact identity ownership", () => {
@@ -37,6 +40,28 @@ describe("contact identity ownership", () => {
     expect(
       contactIdentityChanged(current, { ...current, address: "20 Main Street" })
     ).toBe(true)
+  })
+
+  it("filters active identities for directories larger than D1's parameter limit", () => {
+    const entityIds = Array.from(
+      { length: 540 },
+      (_, index) => `directory-${index}`
+    )
+
+    const result = requestedDirectoryIdentityKeys({
+      entityIds,
+      rows: [
+        { entityType: "customer", entityId: "directory-10" },
+        { entityType: "vendor", entityId: "directory-539" },
+        { entityType: "vendor", entityId: "outside-directory" },
+        { entityType: "customer", entityId: null },
+      ],
+    })
+
+    expect(Array.from(result)).toEqual([
+      "customer:directory-10",
+      "vendor:directory-539",
+    ])
   })
 })
 
