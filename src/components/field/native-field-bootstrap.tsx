@@ -32,7 +32,7 @@ export function NativeFieldBootstrap({
 
   useEffect(() => {
     let cancelled = false
-    let fallbackTimer: ReturnType<typeof window.setTimeout> | null = null
+    let fallbackTimer: number | null = null
 
     async function prepareFieldMode(): Promise<void> {
       try {
