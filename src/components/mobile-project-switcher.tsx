@@ -21,7 +21,8 @@ interface MobileProjectSwitcherProps {
   projectName: string
   projectNumber?: string | null
   projectId: string
-  status?: string
+  jobStatus?: string
+  clientStatus?: string
 }
 
 function projectSectionHref(
@@ -54,7 +55,8 @@ export function MobileProjectSwitcher({
   projectName,
   projectNumber = null,
   projectId,
-  status,
+  jobStatus,
+  clientStatus,
 }: MobileProjectSwitcherProps) {
   const isMobile = useIsMobile()
   const router = useRouter()
@@ -77,9 +79,14 @@ export function MobileProjectSwitcher({
             </p>
           )}
         </div>
-        {status && (
+        {jobStatus && (
           <span className="rounded-md bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
-            {status}
+            {jobStatus}
+          </span>
+        )}
+        {clientStatus && (
+          <span className="rounded-md border px-2 py-0.5 text-xs font-medium text-muted-foreground">
+            {clientStatus}
           </span>
         )}
       </div>
@@ -102,11 +109,18 @@ export function MobileProjectSwitcher({
           </span>
         )}
       </button>
-      {status && (
-        <div>
-          <span className="rounded-md bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
-            {status}
-          </span>
+      {(jobStatus || clientStatus) && (
+        <div className="flex flex-wrap gap-1.5">
+          {jobStatus && (
+            <span className="rounded-md bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
+              {jobStatus}
+            </span>
+          )}
+          {clientStatus && (
+            <span className="rounded-md border px-2 py-0.5 text-xs font-medium text-muted-foreground">
+              {clientStatus}
+            </span>
+          )}
         </div>
       )}
 

@@ -180,6 +180,7 @@ function isClosedStatus(status: string): boolean {
     normalized === "completed" ||
     normalized === "done" ||
     normalized === "closed" ||
+    normalized === "void" ||
     normalized === "inactive" ||
     normalized === "archive" ||
     normalized === "archived" ||

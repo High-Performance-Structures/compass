@@ -33,6 +33,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton"
 import { CustomersTable } from "@/components/financials/customers-table"
 import { CustomerDialog } from "@/components/financials/customer-dialog"
+import type { SageClientStatusId } from "@/lib/sage/client-project-write"
 import { VendorsTable } from "@/components/financials/vendors-table"
 import { VendorDialog } from "@/components/financials/vendor-dialog"
 
@@ -243,6 +244,7 @@ function ContactsContent() {
     phone: string
     address: string
     notes: string
+    sageClientStatusId: SageClientStatusId
   }) => {
     if (editingCustomer) {
       const result = await updateCustomer(editingCustomer.id, data)
@@ -253,9 +255,20 @@ function ContactsContent() {
         return
       }
     } else {
-      const result = await createCustomer(data)
+      const result = await createCustomer({
+        ...data,
+        company: data.company || null,
+        email: data.email || null,
+        phone: data.phone || null,
+        address: data.address || null,
+        notes: data.notes || null,
+      })
       if (result.success) {
-        toast.success("Customer created")
+        toast.success(
+          result.sageStatus === "queued"
+            ? "Customer created; Sage write queued"
+            : "Customer created in Compass; Sage write requires an approved user"
+        )
       } else {
         toast.error(result.error || "Failed")
         return

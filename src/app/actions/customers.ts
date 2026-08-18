@@ -3,12 +3,34 @@
 import { getCloudflareContext } from "@/lib/db"
 import { eq, and } from "drizzle-orm"
 import { getDb } from "@/db"
-import { customers, type NewCustomer } from "@/db/schema"
+import { customers, projectContacts, type NewCustomer } from "@/db/schema"
+import { sageClientProjectWriteOperations } from "@/db/schema-sage"
 import { requireAuth } from "@/lib/auth"
 import { requirePermission } from "@/lib/permissions"
 import { revalidatePath } from "next/cache"
 import { requireOrg } from "@/lib/org-scope"
 import { isDemoUser } from "@/lib/demo"
+import {
+  isSageWriteApproved,
+  parseSageClientStatusId,
+  sageClientStatusName,
+  sageShortName,
+  type SageClientStatusId,
+} from "@/lib/sage/client-project-write"
+import {
+  contactIdentityChanged,
+  directoryIdentityManagedByActiveUser,
+} from "@/lib/contact-identity-ownership"
+
+export type CreateCustomerInput = {
+  readonly name: string
+  readonly company: string | null
+  readonly email: string | null
+  readonly phone: string | null
+  readonly address: string | null
+  readonly notes: string | null
+  readonly sageClientStatusId: SageClientStatusId
+}
 
 export async function getCustomers() {
   const user = await requireAuth()
@@ -39,7 +61,7 @@ export async function getCustomer(id: string) {
 }
 
 export async function createCustomer(
-  data: Omit<NewCustomer, "id" | "createdAt" | "updatedAt" | "organizationId">
+  data: CreateCustomerInput
 ) {
   try {
     const user = await requireAuth()
@@ -54,17 +76,70 @@ export async function createCustomer(
 
     const now = new Date().toISOString()
     const id = crypto.randomUUID()
-
-    await db.insert(customers).values({
+    const statusId = parseSageClientStatusId(data.sageClientStatusId)
+    if (!statusId) {
+      return { success: false, error: "Choose a Sage client status." }
+    }
+    const name = data.name.trim()
+    if (!name) return { success: false, error: "Customer name is required." }
+    const approved = await isSageWriteApproved(db, orgId, user.id)
+    const operationId = crypto.randomUUID()
+    const customerValues = {
       id,
       organizationId: orgId,
-      ...data,
+      name,
+      company: data.company?.trim() || null,
+      email: data.email?.trim() || null,
+      phone: data.phone?.trim() || null,
+      address: data.address?.trim() || null,
+      notes: data.notes?.trim() || null,
+      sageClientStatusId: statusId,
       createdAt: now,
       updatedAt: now,
-    })
+    }
+    const payload = {
+      operationType: "ensure_client" as const,
+      company: "High Performance Structures Inc" as const,
+      client: {
+        compassCustomerId: id,
+        name,
+        shortName: sageShortName(data.company?.trim() || name),
+        company: data.company?.trim() || null,
+        email: data.email?.trim() || null,
+        phone: data.phone?.trim() || null,
+        address: data.address?.trim() || null,
+        billingAddress: data.address?.trim() || null,
+        notes: data.notes?.trim() || null,
+        status: {
+          expectedNumber: statusId,
+          name: sageClientStatusName(statusId),
+        },
+      },
+    }
+
+    await db.batch([
+      db.insert(customers).values(customerValues),
+      db.insert(sageClientProjectWriteOperations).values({
+        id: operationId,
+        organizationId: orgId,
+        customerId: id,
+        projectId: null,
+        requestedByUserId: user.id,
+        operationType: "ensure_client",
+        idempotencyKey: `customer:${id}`,
+        payloadJson: JSON.stringify(payload),
+        status: approved ? "queued" : "approval_required",
+        requestedAt: now,
+        updatedAt: now,
+      }),
+    ])
 
     revalidatePath("/dashboard/customers")
-    return { success: true, id }
+    return {
+      success: true,
+      id,
+      sageStatus: approved ? "queued" : "approval_required",
+    }
   } catch (err) {
     return {
       success: false,
@@ -89,12 +164,56 @@ export async function updateCustomer(
     const { env } = await getCloudflareContext()
     const db = getDb(env.DB)
 
-    await db
-      .update(customers)
-      .set({ ...data, updatedAt: new Date().toISOString() })
+    const existing = await db
+      .select()
+      .from(customers)
       .where(and(eq(customers.id, id), eq(customers.organizationId, orgId)))
+      .limit(1)
+      .get()
+    if (!existing) return { success: false, error: "Customer not found" }
+
+    const nextIdentity = {
+      email: data.email === undefined ? existing.email : data.email,
+      phone: data.phone === undefined ? existing.phone : data.phone,
+      address: data.address === undefined ? existing.address : data.address,
+    }
+    const identityChanged = contactIdentityChanged(existing, nextIdentity)
+    if (
+      identityChanged &&
+      (await directoryIdentityManagedByActiveUser({
+        db,
+        organizationId: orgId,
+        entityType: "customer",
+        entityId: id,
+      }))
+    ) {
+      return {
+        success: false,
+        error:
+          "This active Compass user manages their own phone, email, and address.",
+      }
+    }
+
+    const updatedAt = new Date().toISOString()
+    await db.batch([
+      db
+        .update(customers)
+        .set({ ...data, updatedAt })
+        .where(and(eq(customers.id, id), eq(customers.organizationId, orgId))),
+      db
+        .update(projectContacts)
+        .set({ ...nextIdentity, updatedAt })
+        .where(
+          and(
+            eq(projectContacts.sourceEntityType, "customer"),
+            eq(projectContacts.sourceEntityId, id)
+          )
+        ),
+    ])
 
     revalidatePath("/dashboard/customers")
+    revalidatePath("/dashboard/contacts")
+    revalidatePath("/dashboard/projects", "layout")
     return { success: true }
   } catch (err) {
     return {

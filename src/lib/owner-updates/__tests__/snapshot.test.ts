@@ -6,6 +6,7 @@ import {
   isValidOwnerUpdatePeriod,
   parseOwnerUpdateComposerSnapshot,
   parseOwnerUpdateScheduleSnapshot,
+  reconcileSubmittedScheduleSelections,
   selectRowsByIdOrder,
   serializeOwnerUpdateComposerSnapshot,
   serializeOwnerUpdateScheduleSnapshot,
@@ -110,6 +111,36 @@ describe("owner update snapshots", () => {
         serializeOwnerUpdateComposerSnapshot(snapshot)
       )
     ).toEqual(snapshot)
+  })
+
+  it("persists only schedule items submitted by the draft editor", () => {
+    const candidates = [
+      {
+        id: "schedule-one",
+        title: "Cabinets",
+        startDate: "2026-08-17",
+        endDate: "2026-08-18",
+        assignedTo: null,
+        status: "PENDING",
+        percentComplete: 0,
+        notes: "",
+      },
+      {
+        id: "schedule-two",
+        title: "Countertops",
+        startDate: "2026-08-19",
+        endDate: "2026-08-20",
+        assignedTo: null,
+        status: "PENDING",
+        percentComplete: 0,
+        notes: "",
+      },
+    ]
+
+    expect(
+      reconcileSubmittedScheduleSelections([candidates[1]], candidates)
+    ).toEqual([candidates[1]])
+    expect(reconcileSubmittedScheduleSelections([], candidates)).toEqual([])
   })
 
   it("derives reporting periods from selected log dates", () => {

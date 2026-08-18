@@ -5,6 +5,7 @@ import {
   IconGitMerge,
   IconHome,
   IconMail,
+  IconMapPin,
   IconPhone,
   IconShieldCheck,
   IconUsers,
@@ -178,6 +179,12 @@ function ContactCard({
             <span className="inline-flex items-center gap-1">
               <IconPhone className="size-3" />
               {contact.phone}
+            </span>
+          )}
+          {contact.address && (
+            <span className="inline-flex items-center gap-1">
+              <IconMapPin className="size-3" />
+              {contact.address}
             </span>
           )}
         </div>

@@ -25,6 +25,7 @@ import {
   isDateWithinOwnerUpdatePeriod,
   isValidOwnerUpdatePeriod,
   parseOwnerUpdateComposerSnapshot,
+  reconcileSubmittedScheduleSelections,
   selectRowsByIdOrder,
   serializeOwnerUpdateComposerSnapshot,
   type OwnerUpdateComposerSnapshot,
@@ -324,6 +325,7 @@ export type OwnerProjectUpdateDocument = {
     readonly channel: string
     readonly publishedAt: string | null
     readonly sentAt: string | null
+    readonly recalledAt: string | null
     readonly updatedAt: string
     readonly sourceDailyLogIds: readonly string[]
     readonly selectedPhotoIds: readonly string[]
@@ -2176,6 +2178,7 @@ export async function getOwnerProjectUpdateDocument(
       scheduleSnapshot: ownerProjectUpdates.scheduleSnapshot,
       publishedAt: ownerProjectUpdates.publishedAt,
       sentAt: ownerProjectUpdates.sentAt,
+      recalledAt: ownerProjectUpdates.recalledAt,
       updatedAt: ownerProjectUpdates.updatedAt,
     })
     .from(ownerProjectUpdates)
@@ -2462,6 +2465,7 @@ export async function getOwnerProjectUpdateDocument(
       channel: update.channel,
       publishedAt: update.publishedAt,
       sentAt: update.sentAt,
+      recalledAt: update.recalledAt,
       updatedAt: update.updatedAt,
       sourceDailyLogIds: selectedDailyLogIds,
       selectedPhotoIds,
@@ -2723,41 +2727,13 @@ export async function updateOwnerProjectUpdateDraft(
       candidates.todos.map((item) => [item.id, item])
     )
 
-    function selectedScheduleItems(
-      selected: readonly OwnerUpdateScheduleSelection[],
-      candidatesById: ReadonlyMap<string, OwnerUpdateScheduleSelection>
-    ): readonly OwnerUpdateScheduleSelection[] {
-      const seen = new Set<string>()
-      return selected.flatMap((item) => {
-        if (seen.has(item.id)) return []
-        seen.add(item.id)
-        const candidate =
-          candidatesById.get(item.id) ??
-          [...candidatesById.values()].find(
-            (candidateItem) =>
-              candidateItem.title === item.title &&
-              candidateItem.startDate === item.startDate &&
-              candidateItem.endDate === item.endDate
-          )
-        if (candidate === undefined) return []
-        const editedTitle = item.title.trim()
-        return [
-          {
-            ...candidate,
-            title: editedTitle.length > 0 ? editedTitle : candidate.title,
-            notes: item.notes.trim(),
-          },
-        ]
-      })
-    }
-
-    const completedScheduleItems = selectedScheduleItems(
+    const completedScheduleItems = reconcileSubmittedScheduleSelections(
       input.completedScheduleItems,
-      completedById
+      [...completedById.values()]
     )
-    const lookAheadScheduleItems = selectedScheduleItems(
+    const lookAheadScheduleItems = reconcileSubmittedScheduleSelections(
       input.lookAheadScheduleItems,
-      lookAheadById
+      [...lookAheadById.values()]
     )
     const seenTodoIds = new Set<string>()
     const todos = input.todos.flatMap((item) => {
@@ -3269,4 +3245,84 @@ export async function publishOwnerProjectUpdate(
   )
 
   return { success: true }
+}
+
+export async function recallOwnerProjectUpdate(
+  projectId: string,
+  updateId: string
+): Promise<
+  | { readonly success: true }
+  | { readonly success: false; readonly error: string }
+> {
+  try {
+    const user = await requireAuth()
+    if (isDemoUser(user.id)) {
+      return { success: false, error: "DEMO_READ_ONLY" }
+    }
+    await requireFeaturePermission(user, "owner-updates", "update")
+    const orgId = requireOrg(user)
+    const { env } = await getCloudflareContext()
+    const db = getDb(env.DB)
+
+    const [update] = await db
+      .select({ status: ownerProjectUpdates.status })
+      .from(ownerProjectUpdates)
+      .innerJoin(projects, eq(ownerProjectUpdates.projectId, projects.id))
+      .where(
+        and(
+          eq(ownerProjectUpdates.id, updateId),
+          eq(ownerProjectUpdates.projectId, projectId),
+          eq(projects.organizationId, orgId)
+        )
+      )
+      .limit(1)
+
+    if (!update) {
+      return { success: false, error: "Owner update not found." }
+    }
+    if (update.status === "draft") {
+      return { success: true }
+    }
+    if (update.status !== "published") {
+      return {
+        success: false,
+        error: "Only a published owner update can be recalled.",
+      }
+    }
+
+    const now = new Date().toISOString()
+    await db
+      .update(ownerProjectUpdates)
+      .set({
+        status: "draft",
+        publishedAt: null,
+        recalledAt: now,
+        recalledBy: user.id,
+        updatedAt: now,
+      })
+      .where(
+        and(
+          eq(ownerProjectUpdates.id, updateId),
+          eq(ownerProjectUpdates.projectId, projectId),
+          eq(ownerProjectUpdates.status, "published")
+        )
+      )
+
+    revalidatePath(`/dashboard/projects/${projectId}`)
+    revalidatePath(`/dashboard/projects/${projectId}/owner-updates`)
+    revalidatePath(
+      `/dashboard/projects/${projectId}/owner-updates/${updateId}`
+    )
+    revalidatePath(`/dashboard/projects/${projectId}/preview/owner`)
+
+    return { success: true }
+  } catch (error) {
+    return {
+      success: false,
+      error:
+        error instanceof Error
+          ? error.message
+          : "Unable to recall this owner update.",
+    }
+  }
 }

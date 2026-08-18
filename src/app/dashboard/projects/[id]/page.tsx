@@ -5,6 +5,7 @@ import { getDb } from "@/db"
 import {
   projectContacts,
   projectExternalLinks,
+  projectJobStatuses,
   projectMembers,
   projects,
   scheduleTasks,
@@ -51,6 +52,10 @@ import {
   defaultWorkflowRoleId,
 } from "@/lib/project-workflow-roles"
 import type { ScheduleTask } from "@/db/schema"
+import {
+  projectClientStatusLabel,
+  projectJobStatusLabel,
+} from "@/lib/project-profile"
 
 function getWeekDays(): { date: Date; dayName: string }[] {
   const today = new Date()
@@ -129,6 +134,9 @@ export default async function ProjectSummaryPage({
     projectNumber: string | null
     name: string
     status: string
+    clientStatus: string
+    jobStatusId: string
+    jobStatusLabel: string
     address: string | null
     clientName: string | null
     projectManager: string | null
@@ -180,16 +188,31 @@ export default async function ProjectSummaryPage({
       redirect(projectAudiencePreviewHref(id, "sub-vendor"))
     }
 
-    const [found] = await db
-      .select()
+    const [foundRow] = await db
+      .select({
+        project: projects,
+        customJobStatusLabel: projectJobStatuses.label,
+      })
       .from(projects)
+      .leftJoin(
+        projectJobStatuses,
+        and(
+          eq(projectJobStatuses.id, projects.jobStatusId),
+          eq(projectJobStatuses.organizationId, projects.organizationId),
+        ),
+      )
       .where(eq(projects.id, id))
       .limit(1)
 
+    const found = foundRow?.project
     if (!found) notFound()
+    const jobStatusLabel = projectJobStatusLabel({
+      jobStatusId: found.jobStatusId,
+      customLabel: foundRow.customJobStatusLabel,
+    })
 
     if (found.googleDriveFolderId) {
-      project = found
+      project = { ...found, jobStatusLabel }
     } else {
       const [driveLink] = await db
         .select({
@@ -207,6 +230,7 @@ export default async function ProjectSummaryPage({
 
       project = {
         ...found,
+        jobStatusLabel,
         googleDriveFolderId:
           driveLink?.externalId ??
           driveFolderIdFromUrl(driveLink?.externalUrl ?? null),
@@ -319,7 +343,10 @@ export default async function ProjectSummaryPage({
   }
 
   const projectName = project?.name ?? "Project"
-  const projectStatus = project?.status ?? "OPEN"
+  const projectJobStatus = project?.jobStatusLabel ?? "Unknown job status"
+  const clientStatus = project
+    ? projectClientStatusLabel(project.clientStatus)
+    : "Unknown client status"
   const initialWorkflowRoleId = defaultWorkflowRoleId({
     projectRole,
     userRole,
@@ -366,7 +393,8 @@ export default async function ProjectSummaryPage({
             projectName={projectName}
             projectNumber={project?.projectNumber}
             projectId={id}
-            status={projectStatus}
+            jobStatus={projectJobStatus}
+            clientStatus={clientStatus}
           />
           <ProjectActionsMenu
             projectId={id}

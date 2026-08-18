@@ -7,7 +7,87 @@ import {
 } from "drizzle-orm/sqlite-core"
 import { sql } from "drizzle-orm"
 
-import { projects, users } from "./schema"
+import { customers, organizations, projects, users } from "./schema"
+
+export const sageWriteApprovals = sqliteTable(
+  "sage_write_approvals",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    approvedByUserId: text("approved_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    approvedAt: text("approved_at").notNull(),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("sage_write_approvals_org_user_idx").on(
+      table.organizationId,
+      table.userId
+    ),
+  ]
+)
+
+export const sageClientProjectWriteOperations = sqliteTable(
+  "sage_client_project_write_operations",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    customerId: text("customer_id").references(() => customers.id, {
+      onDelete: "set null",
+    }),
+    projectId: text("project_id").references(() => projects.id, {
+      onDelete: "set null",
+    }),
+    requestedByUserId: text("requested_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    operationType: text("operation_type").notNull(),
+    idempotencyKey: text("idempotency_key").notNull(),
+    payloadJson: text("payload_json").notNull(),
+    status: text("status").notNull().default("queued"),
+    claimToken: text("claim_token"),
+    claimedAt: text("claimed_at"),
+    attemptCount: integer("attempt_count").notNull().default(0),
+    sageClientId: text("sage_client_id"),
+    sageClientNumber: text("sage_client_number"),
+    sageJobId: text("sage_job_id"),
+    sageJobNumber: text("sage_job_number"),
+    resolvedClientStatusNumber: integer("resolved_client_status_number"),
+    resolvedJobStatusNumber: integer("resolved_job_status_number"),
+    resolvedJobTypeNumber: integer("resolved_job_type_number"),
+    errorMessage: text("error_message"),
+    requestedAt: text("requested_at").notNull(),
+    completedAt: text("completed_at"),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("sage_client_project_writes_idempotency_idx").on(
+      table.idempotencyKey
+    ),
+    index("sage_client_project_writes_claim_idx").on(
+      table.status,
+      table.claimedAt,
+      table.requestedAt
+    ),
+    index("sage_client_project_writes_project_idx").on(
+      table.projectId,
+      table.status
+    ),
+    index("sage_client_project_writes_customer_idx").on(
+      table.customerId,
+      table.status
+    ),
+  ]
+)
 
 export const sagePayApplicationSyncRuns = sqliteTable(
   "sage_pay_application_sync_runs",
@@ -118,3 +198,6 @@ export type SagePayApplicationSyncRun =
   typeof sagePayApplicationSyncRuns.$inferSelect
 export type SagePayApplicationSnapshot =
   typeof sagePayApplicationSnapshots.$inferSelect
+export type SageWriteApproval = typeof sageWriteApprovals.$inferSelect
+export type SageClientProjectWriteOperation =
+  typeof sageClientProjectWriteOperations.$inferSelect

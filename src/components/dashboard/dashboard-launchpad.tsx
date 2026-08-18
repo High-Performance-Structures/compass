@@ -763,7 +763,7 @@ function OfficeTaskList({
             id: "draft-owner-updates",
             title: `Review ${overview.metrics.draftOwnerUpdates} draft owner update${overview.metrics.draftOwnerUpdates === 1 ? "" : "s"}`,
             detail: "Publication queue",
-            href: "/dashboard/projects",
+            href: "/dashboard/office-alerts?queue=owner-updates",
             category: "Owner update",
           }]
         : []
@@ -773,7 +773,7 @@ function OfficeTaskList({
             id: "field-photo-review",
             title: `Review ${overview.metrics.photosToReview} field photo${overview.metrics.photosToReview === 1 ? "" : "s"}`,
             detail: "Visibility decisions",
-            href: "/dashboard/projects/select?target=photos",
+            href: "/dashboard/office-alerts?queue=photos",
             category: "Field review",
           }]
         : []
@@ -968,19 +968,19 @@ function OfficeAlerts({
     {
       label: "Open RFIs",
       value: overview.metrics.openRfis,
-      href: "/dashboard/rfis",
+      href: "/dashboard/office-alerts?queue=rfis",
       icon: <IconMessageCircleQuestion className="size-4" />,
     },
     {
       label: "Draft owner updates",
       value: overview.metrics.draftOwnerUpdates,
-      href: "/dashboard/projects",
+      href: "/dashboard/office-alerts?queue=owner-updates",
       icon: <IconClipboardText className="size-4" />,
     },
     {
       label: "Photos to review",
       value: overview.metrics.photosToReview,
-      href: "/dashboard/projects/select?target=photos",
+      href: "/dashboard/office-alerts?queue=photos",
       icon: <IconPhoto className="size-4" />,
     },
   ]

@@ -21,6 +21,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover"
 import { cn } from "@/lib/utils"
+import { projectClientStatusLabel } from "@/lib/project-profile"
 
 type ProjectQuickSwitcherProps = {
   readonly projects: readonly ProjectListItem[]
@@ -41,6 +42,9 @@ function projectSearchValue(project: ProjectListItem): string {
     project.projectNumber,
     project.name,
     project.clientName,
+    projectClientStatusLabel(project.clientStatus),
+    project.jobStatusId,
+    project.jobStatusLabel,
     project.id,
   ]
     .filter((value): value is string => Boolean(value))
@@ -107,7 +111,7 @@ export function ProjectQuickSwitcher({
         className="w-[var(--radix-popover-trigger-width)] p-0"
       >
         <Command>
-          <CommandInput placeholder="Search number, name, or client..." />
+          <CommandInput placeholder="Search number, name, client, or status..." />
           <CommandList>
             <CommandEmpty>No matching projects.</CommandEmpty>
             <CommandGroup>

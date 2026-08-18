@@ -36,7 +36,7 @@ interface PaymentDialogProps {
   initialData?: Payment | null
   customers: Customer[]
   vendors: Vendor[]
-  projects: Project[]
+  projects: readonly Pick<Project, "id" | "name">[]
   onSubmit: (data: {
     paymentType: string
     customerId: string | null

@@ -22,6 +22,8 @@ const bridgePaths = [
 const sageBridgePaths = [
   "/api/integrations/sage/pay-applications/requests",
   "/api/integrations/sage/pay-applications/results",
+  "/api/integrations/sage/client-project-writes/requests",
+  "/api/integrations/sage/client-project-writes/results",
 ]
 
 const webhookPaths = ["/api/integrations/goto/inbound"]

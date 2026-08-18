@@ -36,7 +36,7 @@ interface InvoiceDialogProps {
   onOpenChange: (open: boolean) => void
   initialData?: Invoice | null
   customers: Customer[]
-  projects: Project[]
+  projects: readonly Pick<Project, "id" | "name">[]
   onSubmit: (data: {
     customerId: string
     projectId: string | null
