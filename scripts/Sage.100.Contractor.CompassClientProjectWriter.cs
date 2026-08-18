@@ -168,8 +168,20 @@ namespace CompassSageClientProjectWriter
             int jobTypes = CatalogCount("jobtyp");
             if (jobStatuses < 1 || jobTypes < 1)
                 throw new InvalidOperationException("Sage job status and job type catalogs must not be empty.");
+            string user = Required("SAGE_API_USER");
+            string clientRequestName = FindRequestName(new string[] { "ClientAddNextRq", "ClientAddRq" });
+            BuildClientXml(clientRequestName, user, new ClientPayload {
+                name = "Compass Diagnostic", shortName = "Compass Diagnostic",
+                address = "1 Diagnostic Way", billingAddress = "1 Diagnostic Way",
+                email = "diagnostic@example.invalid", phone = "555-0100", notes = "Schema validation only"
+            }, 1);
+            string jobRequestName = FindRequestName(new string[] { "JobAddNextWithCustomJobStatusRq", "JobAddNextRq", "JobAddWithCustomJobStatusRq", "JobAddRq" });
+            BuildJobXml(jobRequestName, user, new JobPayload {
+                compassProjectNumber = "O-000-000", name = "Compass Diagnostic",
+                shortName = "Compass Diagnostic", address = "1 Diagnostic Way"
+            }, 1, 1, 1);
             using (new ApiSession(Required("SAGE_API_USER"), Required("SAGE_API_PASSWORD"))) { }
-            Console.WriteLine("DIAGNOSTIC_OK company=" + TargetCompany + " clientStatuses=6 jobStatuses=" + jobStatuses + " jobTypes=" + jobTypes + " apiUser=" + Required("SAGE_API_USER"));
+            Console.WriteLine("DIAGNOSTIC_OK company=" + TargetCompany + " clientStatuses=6 jobStatuses=" + jobStatuses + " jobTypes=" + jobTypes + " apiUser=" + user + " clientRequest=" + clientRequestName + " jobRequest=" + jobRequestName);
         }
 
         private static int CatalogCount(string table)
@@ -232,9 +244,9 @@ namespace CompassSageClientProjectWriter
                 {
                     if (clientRecord == null)
                     {
-                        string requestName = FindRequestName(new string[] { "ClientAddRq", "ClientAddNextRq" });
+                        string requestName = FindRequestName(new string[] { "ClientAddNextRq", "ClientAddRq" });
                         Submit(BuildClientXml(requestName, user, client, clientStatus), password);
-                        clientRecord = FindClient(client);
+                        clientRecord = FindClientAfterAdd(client);
                         if (clientRecord == null) throw new InvalidOperationException("Sage returned success but the client could not be read back.");
                     }
                     if (request.payload.job != null)
@@ -242,7 +254,7 @@ namespace CompassSageClientProjectWriter
                         jobRecord = FindJob(request.payload.job, clientRecord.Number);
                         if (jobRecord == null)
                         {
-                            string requestName = FindRequestName(new string[] { "JobAddWithCustomJobStatusRq", "JobAddNextWithCustomJobStatusRq", "JobAddRq", "JobAddNextRq" });
+                            string requestName = FindRequestName(new string[] { "JobAddNextWithCustomJobStatusRq", "JobAddNextRq", "JobAddWithCustomJobStatusRq", "JobAddRq" });
                             Submit(BuildJobXml(requestName, user, request.payload.job, clientRecord.Number, jobStatus, jobType), password);
                             jobRecord = FindJob(request.payload.job, clientRecord.Number);
                             if (jobRecord == null) throw new InvalidOperationException("Sage returned success but the job could not be read back.");
@@ -273,11 +285,36 @@ namespace CompassSageClientProjectWriter
 
         private static SageRecord FindClient(ClientPayload client)
         {
-            string predicate = String.IsNullOrWhiteSpace(client.email)
-                ? "LOWER(LTRIM(RTRIM(clnnme))) = LOWER(LTRIM(RTRIM(@match)))"
-                : "LOWER(LTRIM(RTRIM(e_mail))) = LOWER(LTRIM(RTRIM(@match)))";
-            string match = String.IsNullOrWhiteSpace(client.email) ? client.name : client.email;
-            return SingleRecord("SELECT CONVERT(varchar(36), _idnum), recnum, status, 0 FROM dbo.reccln WHERE " + predicate, match, null);
+            if (String.IsNullOrWhiteSpace(client.email)) return FindClientByName(client.name);
+            SageRecord emailMatch = FindClientByEmail(client.email);
+            if (emailMatch != null) return emailMatch;
+            if (FindClientByName(client.name) != null)
+                throw new InvalidOperationException("A Sage client matches the requested name but not the requested email; no write was attempted.");
+            return null;
+        }
+
+        private static SageRecord FindClientAfterAdd(ClientPayload client)
+        {
+            SageRecord emailMatch = String.IsNullOrWhiteSpace(client.email) ? null : FindClientByEmail(client.email);
+            // Sage can accept the client while leaving reccln.e_mail blank. This exact-name
+            // fallback is safe only after the pre-add lookup found no name conflict.
+            return emailMatch ?? FindClientByName(client.name);
+        }
+
+        private static SageRecord FindClientByEmail(string email)
+        {
+            return SingleRecord(
+                "SELECT CONVERT(varchar(36), _idnum), recnum, status, 0 FROM dbo.reccln WHERE LOWER(LTRIM(RTRIM(e_mail))) = LOWER(LTRIM(RTRIM(@match)))",
+                email,
+                null);
+        }
+
+        private static SageRecord FindClientByName(string name)
+        {
+            return SingleRecord(
+                "SELECT CONVERT(varchar(36), _idnum), recnum, status, 0 FROM dbo.reccln WHERE LOWER(LTRIM(RTRIM(clnnme))) = LOWER(LTRIM(RTRIM(@match)))",
+                name,
+                null);
         }
 
         private static SageRecord FindJob(JobPayload job, int clientNumber)
