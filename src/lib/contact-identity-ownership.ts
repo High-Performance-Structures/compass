@@ -1,4 +1,4 @@
-import { and, eq, inArray, or } from "drizzle-orm"
+import { and, eq, or } from "drizzle-orm"
 
 import type { getDb } from "@/db"
 import {
@@ -15,6 +15,11 @@ export type ContactIdentityFields = {
 }
 
 type DirectoryEntityType = "customer" | "vendor"
+
+type DirectoryIdentityRow = {
+  readonly entityType: string
+  readonly entityId: string | null
+}
 
 function normalizedIdentityValue(
   value: string | null | undefined,
@@ -35,6 +40,21 @@ export function contactIdentityChanged(
       normalizedIdentityValue(next.phone, false) ||
     normalizedIdentityValue(current.address, false) !==
       normalizedIdentityValue(next.address, false)
+  )
+}
+
+export function requestedDirectoryIdentityKeys(input: {
+  readonly entityIds: readonly string[]
+  readonly rows: readonly DirectoryIdentityRow[]
+}): ReadonlySet<string> {
+  const requestedIds = new Set(input.entityIds.filter(Boolean))
+
+  return new Set(
+    input.rows.flatMap((row) =>
+      row.entityId && requestedIds.has(row.entityId)
+        ? [`${row.entityType}:${row.entityId}`]
+        : []
+    )
   )
 }
 
@@ -79,6 +99,10 @@ export async function activeDirectoryIdentityKeys(input: {
   const entityIds = Array.from(new Set(input.entityIds.filter(Boolean)))
   if (entityIds.length === 0) return new Set<string>()
 
+  // D1 allows at most 100 bound parameters per query. Organizations can have
+  // hundreds of directory records, so query the small set of accepted active
+  // identities for the organization and filter it in memory instead of using
+  // one bound parameter for every customer and vendor ID.
   const rows = await input.db
     .select({
       entityType: projectContacts.sourceEntityType,
@@ -99,7 +123,6 @@ export async function activeDirectoryIdentityKeys(input: {
       and(
         eq(projects.organizationId, input.organizationId),
         eq(users.isActive, true),
-        inArray(projectContacts.sourceEntityId, entityIds),
         or(
           eq(projectContacts.sourceEntityType, "customer"),
           eq(projectContacts.sourceEntityType, "vendor")
@@ -107,9 +130,5 @@ export async function activeDirectoryIdentityKeys(input: {
       )
     )
 
-  return new Set(
-    rows.flatMap((row) =>
-      row.entityId ? [`${row.entityType}:${row.entityId}`] : []
-    )
-  )
+  return requestedDirectoryIdentityKeys({ entityIds, rows })
 }
