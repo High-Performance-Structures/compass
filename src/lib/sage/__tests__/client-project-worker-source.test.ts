@@ -41,5 +41,31 @@ describe("Sage client/project worker source boundary", () => {
     expect(source).toContain(
       'using (new ApiSession(Required("SAGE_API_USER"), Required("SAGE_API_PASSWORD")))'
     )
+    expect(source).toContain(
+      'BuildClientXml(clientRequestName, user, new ClientPayload'
+    )
+    expect(source).toContain(
+      'BuildJobXml(jobRequestName, user, new JobPayload'
+    )
+  })
+
+  it("prefers Sage add-next requests so Sage allocates client and job numbers", () => {
+    expect(source).toContain(
+      'new string[] { "ClientAddNextRq", "ClientAddRq" }'
+    )
+    expect(source).toContain(
+      'new string[] { "JobAddNextWithCustomJobStatusRq", "JobAddNextRq", "JobAddWithCustomJobStatusRq", "JobAddRq" }'
+    )
+  })
+
+  it("limits exact-name reconciliation to post-add readback", () => {
+    expect(source).toContain("clientRecord = FindClientAfterAdd(client)")
+    expect(source).toContain("private static SageRecord FindClientAfterAdd")
+    expect(source).toContain(
+      "Sage can accept the client while leaving reccln.e_mail blank"
+    )
+    expect(source).toContain(
+      "A Sage client matches the requested name but not the requested email; no write was attempted."
+    )
   })
 })
