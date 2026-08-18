@@ -20,6 +20,17 @@ import {
   type OwnerProjectUpdateDocument,
 } from "@/app/actions/project-field"
 import { Badge } from "@/components/ui/badge"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
@@ -518,6 +529,11 @@ export function OwnerUpdateDraftEditor({
               Choose the source material, ask Jarvis for a draft, then edit
               every owner-facing section before publishing.
             </p>
+            {document.update.recalledAt !== null && (
+              <p className="mt-1 text-xs text-muted-foreground">
+                This published update was recalled for correction.
+              </p>
+            )}
           </div>
           <div className="flex flex-wrap gap-2">
             <Button
@@ -537,17 +553,41 @@ export function OwnerUpdateDraftEditor({
               )}
               Save draft
             </Button>
-            <Button
-              type="button"
-              onClick={() => void saveDraft("publish")}
-              disabled={status.kind === "saving"}
-            >
-              <IconSend className="size-4" />
-              {status.kind === "saving" &&
-              status.message.includes("publishing")
-                ? "Publishing..."
-                : "Save & publish"}
-            </Button>
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button
+                  type="button"
+                  disabled={status.kind === "saving"}
+                >
+                  <IconSend className="size-4" />
+                  {status.kind === "saving" &&
+                  status.message.includes("publishing")
+                    ? "Publishing..."
+                    : "Save & publish"}
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Save and publish this update?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    Compass will publish exactly {completedScheduleItems.length}{" "}
+                    completed schedule item
+                    {completedScheduleItems.length === 1 ? "" : "s"} and{" "}
+                    {lookAheadScheduleItems.length} Looking Ahead item
+                    {lookAheadScheduleItems.length === 1 ? "" : "s"}. Review
+                    these counts before continuing.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Review draft</AlertDialogCancel>
+                  <AlertDialogAction
+                    onClick={() => void saveDraft("publish")}
+                  >
+                    Save & publish
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
           </div>
         </div>
 

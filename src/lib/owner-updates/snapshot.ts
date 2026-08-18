@@ -156,6 +156,37 @@ export function serializeOwnerUpdateComposerSnapshot(
   return JSON.stringify(snapshot)
 }
 
+export function reconcileSubmittedScheduleSelections(
+  submitted: readonly OwnerUpdateScheduleSelection[],
+  candidates: readonly OwnerUpdateScheduleSelection[]
+): readonly OwnerUpdateScheduleSelection[] {
+  const candidateById = new Map(candidates.map((item) => [item.id, item]))
+  const seen = new Set<string>()
+
+  return submitted.flatMap((item) => {
+    if (seen.has(item.id)) return []
+    seen.add(item.id)
+    const candidate =
+      candidateById.get(item.id) ??
+      candidates.find(
+        (candidateItem) =>
+          candidateItem.title === item.title &&
+          candidateItem.startDate === item.startDate &&
+          candidateItem.endDate === item.endDate
+      )
+    if (candidate === undefined) return []
+    const editedTitle = item.title.trim()
+
+    return [
+      {
+        ...candidate,
+        title: editedTitle.length > 0 ? editedTitle : candidate.title,
+        notes: item.notes.trim(),
+      },
+    ]
+  })
+}
+
 type IdentifiedRow = {
   readonly id: string
 }
