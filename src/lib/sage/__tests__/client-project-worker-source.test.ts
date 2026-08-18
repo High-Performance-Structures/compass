@@ -68,4 +68,16 @@ describe("Sage client/project worker source boundary", () => {
       "A Sage client matches the requested name but not the requested email; no write was attempted."
     )
   })
+
+  it("does not require exclusive company access for normal API writes", () => {
+    expect(source).not.toContain("GetExclusiveAccess")
+    expect(source).not.toContain("ReleaseExclusiveAccess")
+  })
+
+  it("cleans up failed API initialization and exposes Sage errors", () => {
+    expect(source).toContain("catch\n                {\n                    ResetApi()")
+    expect(source).toContain("if (ApiInitialized && ApiInstance != null)")
+    expect(source).toContain("catch (TargetInvocationException error)")
+    expect(source).toContain("error.InnerException")
+  })
 })

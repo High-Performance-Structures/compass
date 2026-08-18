@@ -57,6 +57,7 @@ import {
   parseSageClientStatusId,
   parseSageJobTypeId,
   sageClientStatusName,
+  sageJobName,
   sageJobTypeName,
   sageShortName,
   type SageClientStatusId,
@@ -544,6 +545,7 @@ export async function createProjectIntake(
       createdAt: now,
       updatedAt: now,
     }
+    const fullSageJobName = sageJobName(projectNumber, projectName)
     const sageWritePayload = {
       operationType: "ensure_client_and_job" as const,
       company: "High Performance Structures Inc" as const,
@@ -565,8 +567,8 @@ export async function createProjectIntake(
       job: {
         compassProjectId: projectId,
         compassProjectNumber: projectNumber,
-        name: projectName,
-        shortName: sageShortName(projectName),
+        name: fullSageJobName,
+        shortName: sageShortName(fullSageJobName),
         address: joinedAddress(input),
         statusName: sageJobStatus.label,
         typeName: sageJobTypeName(sageJobType),
@@ -1274,6 +1276,7 @@ export async function createProjectShell(
       .get()
     const customerId = customerMatch?.id ?? crypto.randomUUID()
     const address = cleanText(input.address)
+    const fullSageJobName = sageJobName(projectNumber, name)
     const payload = {
       operationType: "ensure_client_and_job" as const,
       company: "High Performance Structures Inc" as const,
@@ -1295,8 +1298,8 @@ export async function createProjectShell(
       job: {
         compassProjectId: id,
         compassProjectNumber: projectNumber,
-        name,
-        shortName: sageShortName(name),
+        name: fullSageJobName,
+        shortName: sageShortName(fullSageJobName),
         address,
         statusName: sageJobStatus.label,
         typeName: sageJobTypeName(sageJobType),

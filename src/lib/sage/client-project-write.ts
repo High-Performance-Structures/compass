@@ -123,6 +123,18 @@ export function sageShortName(value: string): string {
   return value.trim().replace(/\s+/g, " ").slice(0, 30)
 }
 
+export function sageJobName(
+  projectNumber: string | null,
+  projectName: string
+): string {
+  const normalizedName = projectName.trim().replace(/\s+/g, " ")
+  const normalizedNumber = projectNumber?.trim().replace(/\s+/g, " ") ?? ""
+  const fullName = normalizedNumber
+    ? `${normalizedNumber}-${normalizedName}`
+    : normalizedName
+  return fullName.slice(0, 75)
+}
+
 export async function isSageWriteApproved(
   db: ReturnType<typeof getDb>,
   organizationId: string,
