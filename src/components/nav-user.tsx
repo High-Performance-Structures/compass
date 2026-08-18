@@ -52,6 +52,37 @@ import { sidebarDeskPhotoStorageKey } from "@/lib/user-photo-storage"
 import { cn } from "@/lib/utils"
 import { getInitials } from "@/lib/utils"
 import type { SidebarUser } from "@/lib/auth"
+import {
+  canManageWorkspacePhoto,
+  resolveWorkspacePhoto,
+  WORKSPACE_PHOTO_REMOVED,
+} from "@/lib/workspace-photo-policy"
+
+function canManageSidebarPhoto(user: SidebarUser | null): boolean {
+  return (
+    user !== null &&
+    canManageWorkspacePhoto({
+      actor: {
+        userId: user.id,
+        organizationId: user.organizationId,
+        organizationType: user.organizationType,
+        role: user.role,
+        isActive: user.isActive,
+        isDemo: user.isDemo,
+      },
+      photo: {
+        userId: user.id,
+        organizationId: user.organizationId ?? "",
+      },
+    })
+  )
+}
+
+function sidebarPhotoScopeForUser(user: SidebarUser | null): string | null {
+  return user !== null && canManageSidebarPhoto(user) && user.organizationId
+    ? `${user.organizationId}:${user.id}`
+    : null
+}
 
 function stopEvent(e: React.MouseEvent | React.PointerEvent): void {
   e.stopPropagation()
@@ -67,21 +98,31 @@ function defaultSidebarPhoto(user: SidebarUser): string | null {
 }
 
 function loadSidebarPhoto(user: SidebarUser): string | null {
-  if (user.sidebarDeskPhoto) return user.sidebarDeskPhoto
-  try {
-    return (
-      window.localStorage.getItem(sidebarDeskPhotoStorageKey(user.email)) ??
-      defaultSidebarPhoto(user)
-    )
-  } catch {
-    return defaultSidebarPhoto(user)
+  if (!canManageSidebarPhoto(user)) return null
+  let cachedPhoto: string | null = null
+  if (user.organizationId) {
+    try {
+      const scope = { organizationId: user.organizationId, userId: user.id }
+      cachedPhoto = window.localStorage.getItem(sidebarDeskPhotoStorageKey(scope))
+    } catch {
+      cachedPhoto = null
+    }
   }
+  return resolveWorkspacePhoto({
+    durablePhoto: user.sidebarDeskPhoto,
+    cachedPhoto,
+    allowCache: true,
+  })
 }
 
 function saveSidebarPhoto(user: SidebarUser, dataUrl: string): void {
+  if (!canManageSidebarPhoto(user) || !user.organizationId) return
   try {
     window.localStorage.setItem(
-      sidebarDeskPhotoStorageKey(user.email),
+      sidebarDeskPhotoStorageKey({
+        organizationId: user.organizationId,
+        userId: user.id,
+      }),
       dataUrl
     )
   } catch {
@@ -90,8 +131,10 @@ function saveSidebarPhoto(user: SidebarUser, dataUrl: string): void {
 }
 
 function resetSidebarPhoto(user: SidebarUser): void {
+  if (!canManageSidebarPhoto(user) || !user.organizationId) return
   try {
-    window.localStorage.removeItem(sidebarDeskPhotoStorageKey(user.email))
+    const scope = { organizationId: user.organizationId, userId: user.id }
+    window.localStorage.removeItem(sidebarDeskPhotoStorageKey(scope))
   } catch {
     // The reset still applies for this browser session.
   }
@@ -151,10 +194,13 @@ export function NavUser({
   const [sidebarPhotoUrl, setSidebarPhotoUrl] = React.useState<string | null>(
     null
   )
+  const [sidebarPhotoScope, setSidebarPhotoScope] = React.useState<string | null>(
+    null
+  )
   const [sidebarPhotoFailed, setSidebarPhotoFailed] = React.useState(false)
   const [isLoggingOut, startLogoutTransition] = React.useTransition()
   const photoInputRef = React.useRef<HTMLInputElement>(null)
-  const migratedLegacyPhotoFor = React.useRef<string | null>(null)
+
   const {
     isMuted,
     isDeafened,
@@ -171,23 +217,8 @@ export function NavUser({
   React.useEffect(() => {
     if (!user) return
     setSidebarPhotoFailed(false)
-    setSidebarPhotoUrl(loadSidebarPhoto(user))
-
-    if (user.sidebarDeskPhoto || migratedLegacyPhotoFor.current === user.email) {
-      return
-    }
-
-    try {
-      const legacyPhoto = window.localStorage.getItem(
-        sidebarDeskPhotoStorageKey(user.email)
-      )
-      if (!legacyPhoto) return
-
-      migratedLegacyPhotoFor.current = user.email
-      void updateWorkspacePhoto("sidebar", legacyPhoto)
-    } catch {
-      // Keep the browser-local photo when storage is unavailable.
-    }
+    setSidebarPhotoUrl(loadSidebarPhoto(user) ?? defaultSidebarPhoto(user))
+    setSidebarPhotoScope(sidebarPhotoScopeForUser(user))
   }, [user])
 
   if (!user) {
@@ -205,6 +236,7 @@ export function NavUser({
   async function handleSidebarPhotoUpload(
     event: React.ChangeEvent<HTMLInputElement>
   ): Promise<void> {
+    if (!canManageSidebarPhoto(user)) return
     const file = event.currentTarget.files?.[0]
     event.currentTarget.value = ""
     if (!file || !user) return
@@ -225,6 +257,7 @@ export function NavUser({
       saveSidebarPhoto(user, resizedDataUrl)
       setSidebarPhotoFailed(false)
       setSidebarPhotoUrl(resizedDataUrl)
+      setSidebarPhotoScope(sidebarPhotoScopeForUser(user))
       toast.success("Sidebar photo updated.")
     } catch {
       toast.error("Could not update the sidebar photo.")
@@ -234,7 +267,10 @@ export function NavUser({
   async function handleSidebarPhotoReset(): Promise<void> {
     if (!user) return
 
-    const result = await updateWorkspacePhoto("sidebar", null)
+    const result = await updateWorkspacePhoto(
+      "sidebar",
+      WORKSPACE_PHOTO_REMOVED
+    )
     if (!result.success) {
       toast.error(result.error)
       return
@@ -242,8 +278,15 @@ export function NavUser({
     resetSidebarPhoto(user)
     setSidebarPhotoFailed(false)
     setSidebarPhotoUrl(defaultSidebarPhoto(user))
+    setSidebarPhotoScope(null)
     toast.success("Sidebar photo reset.")
   }
+
+  const visibleSidebarPhoto =
+    canManageSidebarPhoto(user) &&
+    sidebarPhotoScopeForUser(user) === sidebarPhotoScope
+      ? sidebarPhotoUrl
+      : defaultSidebarPhoto(user)
 
   return (
     <SidebarMenu>
@@ -266,9 +309,9 @@ export function NavUser({
               )}
             >
               <span className="relative h-24 min-w-0 flex-1 overflow-hidden rounded-sm border border-sidebar-border bg-sidebar-accent group-data-[collapsible=icon]:size-7! group-data-[collapsible=icon]:flex-none">
-                {sidebarPhotoUrl && !sidebarPhotoFailed ? (
+                {visibleSidebarPhoto && !sidebarPhotoFailed ? (
                   <Image
-                    src={sidebarPhotoUrl}
+                    src={visibleSidebarPhoto}
                     alt={`${user.name}'s sidebar photo`}
                     fill
                     sizes="220px"
@@ -347,21 +390,25 @@ export function NavUser({
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
             <DropdownMenuGroup>
-              <DropdownMenuItem
-                onSelect={(event) => {
-                  event.preventDefault()
-                  photoInputRef.current?.click()
-                }}
-              >
-                <IconPhotoEdit />
-                Change sidebar photo
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                onSelect={() => void handleSidebarPhotoReset()}
-              >
-                <IconRefresh />
-                Reset sidebar photo
-              </DropdownMenuItem>
+              {canManageSidebarPhoto(user) ? (
+                <>
+                  <DropdownMenuItem
+                    onSelect={(event) => {
+                      event.preventDefault()
+                      photoInputRef.current?.click()
+                    }}
+                  >
+                    <IconPhotoEdit />
+                    Change sidebar photo
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onSelect={() => void handleSidebarPhotoReset()}
+                  >
+                    <IconRefresh />
+                    Reset sidebar photo
+                  </DropdownMenuItem>
+                </>
+              ) : null}
               <DropdownMenuSeparator />
               <DropdownMenuItem onSelect={() => setAccountOpen(true)}>
                 <IconUserCircle />
@@ -393,14 +440,16 @@ export function NavUser({
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
-        <input
-          ref={photoInputRef}
-          type="file"
-          accept="image/*"
-          className="sr-only"
-          aria-label="Choose sidebar photo"
-          onChange={handleSidebarPhotoUpload}
-        />
+        {canManageSidebarPhoto(user) ? (
+          <input
+            ref={photoInputRef}
+            type="file"
+            accept="image/*"
+            className="sr-only"
+            aria-label="Choose sidebar photo"
+            onChange={handleSidebarPhotoUpload}
+          />
+        ) : null}
       </SidebarMenuItem>
       <AccountModal
         open={accountOpen}

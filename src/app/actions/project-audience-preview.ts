@@ -7,6 +7,7 @@ import {
   dailyLogPhotos,
   dailyLogs,
   organizationMembers,
+  organizations,
   ownerProjectUpdates,
   projectContacts,
   projectMembers,
@@ -19,6 +20,7 @@ import {
 } from "@/db/schema"
 import { channelMembers, channels } from "@/db/schema-conversations"
 import { requireAuth } from "@/lib/auth"
+import { isDemoUser } from "@/lib/demo"
 import { getCloudflareContext } from "@/lib/db"
 import { requirePermission } from "@/lib/permissions"
 import { assertProjectAccess } from "@/lib/project-access"
@@ -140,6 +142,7 @@ export type ProjectAudiencePreview = {
   readonly viewerIsInternal: boolean
   readonly viewer: {
     readonly id: string
+    readonly organizationId: string | null
     readonly name: string
     readonly email: string
     readonly avatarUrl: string | null
@@ -174,6 +177,7 @@ async function verifyProjectAccess(
   readonly viewerIsInternal: boolean
   readonly viewer: {
     readonly id: string
+    readonly organizationId: string | null
     readonly name: string
     readonly email: string
     readonly avatarUrl: string | null
@@ -190,7 +194,43 @@ async function verifyProjectAccess(
   if (!project.organizationId) {
     throw new Error("Project organization is missing")
   }
-  const viewerIsInternal = isInternalStaffRole(user.role)
+  const activeOrganization = await db
+    .select({ id: organizations.id })
+    .from(organizations)
+    .where(
+      and(
+        eq(organizations.id, project.organizationId),
+        eq(organizations.isActive, true)
+      )
+    )
+    .get()
+  if (!activeOrganization) {
+    throw new Error("Project organization is inactive")
+  }
+  const viewerIsInternal =
+    user.isActive &&
+    user.organizationType === "internal" &&
+    user.organizationId === project.organizationId &&
+    !isDemoUser(user.id) &&
+    isInternalStaffRole(user.role)
+  if (viewerIsInternal) {
+    const activeOrganization = await db
+      .select({ id: organizations.id })
+      .from(organizationMembers)
+      .innerJoin(
+        organizations,
+        eq(organizations.id, organizationMembers.organizationId)
+      )
+      .where(
+        and(
+          eq(organizationMembers.userId, user.id),
+          eq(organizationMembers.organizationId, project.organizationId),
+          eq(organizations.isActive, true)
+        )
+      )
+      .get()
+    if (!activeOrganization) throw new Error("Project not found")
+  }
   if (!viewerIsInternal) {
     const membership = await db
       .select({ role: projectMembers.role })
@@ -213,10 +253,15 @@ async function verifyProjectAccess(
     viewerIsInternal,
     viewer: {
       id: user.id,
+      organizationId: viewerIsInternal ? project.organizationId : null,
       name: user.displayName ?? user.email.split("@")[0] ?? "Compass user",
       email: user.email,
       avatarUrl: user.avatarUrl,
-      sidebarPhotoUrl: user.sidebarDeskPhotoUrl ?? null,
+      sidebarPhotoUrl:
+        viewerIsInternal &&
+        user.sidebarDeskPhotoOrganizationId === project.organizationId
+          ? user.sidebarDeskPhotoUrl ?? null
+          : null,
     },
   }
 }

@@ -164,6 +164,8 @@ export function ProjectAudiencePreviewShell({
   readonly projectNumber: string | null
   readonly projectOptions: readonly AudienceProjectOption[]
   readonly viewer: {
+    readonly id: string
+    readonly organizationId: string | null
     readonly name: string
     readonly email: string
     readonly avatarUrl: string | null
@@ -292,7 +294,12 @@ export function ProjectAudiencePreviewShell({
           ))}
         </nav>
 
-        <ProjectAudienceSidebarProfile viewer={viewer} />
+        <ProjectAudienceSidebarProfile
+          viewer={{
+            ...viewer,
+            canManagePhoto: viewerIsInternal,
+          }}
+        />
       </aside>
 
       <div

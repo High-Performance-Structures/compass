@@ -11,14 +11,13 @@ import {
 import type { User } from "@/db/schema"
 import { and, desc, eq, sql } from "drizzle-orm"
 import { cookies } from "next/headers"
-import { DEMO_USER } from "@/lib/demo"
+import { DEMO_USER, isDemoUser } from "@/lib/demo"
 import {
   isDevAuthFallbackAllowed,
   isWorkOSConfigured,
 } from "@/lib/auth-config"
-import {
-  isExternalProjectRole,
-} from "@/lib/user-roles"
+import { isExternalProjectRole } from "@/lib/user-roles"
+import { canManageWorkspacePhoto } from "@/lib/workspace-photo-policy"
 import { ensureProjectAudienceConversation } from "@/lib/project-audience-conversations"
 import { recordActivityEvent } from "@/lib/activity-log"
 
@@ -30,7 +29,9 @@ export type AuthUser = {
   readonly displayName: string | null
   readonly avatarUrl: string | null
   readonly dashboardDeskPhotoUrl?: string | null
+  readonly dashboardDeskPhotoOrganizationId?: string | null
   readonly sidebarDeskPhotoUrl?: string | null
+  readonly sidebarDeskPhotoOrganizationId?: string | null
   readonly role: string
   readonly googleEmail: string | null
   readonly isActive: boolean
@@ -49,6 +50,11 @@ export type SidebarUser = Readonly<{
   id: string
   name: string
   email: string
+  organizationId: string | null
+  organizationType: string | null
+  role: string
+  isActive: boolean
+  isDemo: boolean
   avatar: string | null
   dashboardDeskPhoto: string | null
   sidebarDeskPhoto: string | null
@@ -60,13 +66,43 @@ export type SidebarUser = Readonly<{
  * Convert AuthUser to SidebarUser for UI components
  */
 export function toSidebarUser(user: AuthUser): SidebarUser {
+  const canExposeWorkspacePhoto = canManageWorkspacePhoto({
+    actor: {
+      userId: user.id,
+      organizationId: user.organizationId,
+      organizationType: user.organizationType,
+      role: user.role,
+      isActive: user.isActive,
+      isDemo: isDemoUser(user.id),
+    },
+    photo: {
+      userId: user.id,
+      organizationId: user.organizationId ?? "",
+    },
+  })
+  const dashboardPhotoIsScoped =
+    user.dashboardDeskPhotoOrganizationId === user.organizationId
+  const sidebarPhotoIsScoped =
+    user.sidebarDeskPhotoOrganizationId === user.organizationId
+
   return {
     id: user.id,
     name: user.displayName ?? user.email.split("@")[0] ?? "User",
     email: user.email,
+    organizationId: user.organizationId,
+    organizationType: user.organizationType,
+    role: user.role,
+    isActive: user.isActive,
+    isDemo: isDemoUser(user.id),
     avatar: user.avatarUrl,
-    dashboardDeskPhoto: user.dashboardDeskPhotoUrl ?? null,
-    sidebarDeskPhoto: user.sidebarDeskPhotoUrl ?? null,
+    dashboardDeskPhoto:
+      canExposeWorkspacePhoto && dashboardPhotoIsScoped
+        ? user.dashboardDeskPhotoUrl ?? null
+        : null,
+    sidebarDeskPhoto:
+      canExposeWorkspacePhoto && sidebarPhotoIsScoped
+        ? user.sidebarDeskPhotoUrl ?? null
+        : null,
     firstName: user.firstName,
     lastName: user.lastName,
   }
@@ -434,6 +470,7 @@ export async function getCurrentUser(): Promise<AuthUser | null> {
         orgId: organizations.id,
         orgName: organizations.name,
         orgType: organizations.type,
+        orgIsActive: organizations.isActive,
         memberRole: organizationMembers.role,
       })
       .from(organizationMembers)
@@ -443,6 +480,10 @@ export async function getCurrentUser(): Promise<AuthUser | null> {
       )
       .where(eq(organizationMembers.userId, dbUser.id))
 
+    const activeOrgMemberships = orgMemberships.filter(
+      (membership) => membership.orgIsActive
+    )
+
     let activeOrg: {
       readonly orgId: string
       readonly orgName: string
@@ -450,15 +491,15 @@ export async function getCurrentUser(): Promise<AuthUser | null> {
       readonly memberRole: string
     } | null = null
 
-    if (orgMemberships.length > 0) {
+    if (activeOrgMemberships.length > 0) {
       // check for cookie preference
       try {
         const cookieStore = await cookies()
         const preferredOrg = cookieStore.get("compass-active-org")?.value
-        const match = orgMemberships.find((m) => m.orgId === preferredOrg)
-        activeOrg = match ?? orgMemberships[0]
+        const match = activeOrgMemberships.find((m) => m.orgId === preferredOrg)
+        activeOrg = match ?? activeOrgMemberships[0]
       } catch {
-        activeOrg = orgMemberships[0]
+        activeOrg = activeOrgMemberships[0]
       }
     }
 
@@ -468,7 +509,7 @@ export async function getCurrentUser(): Promise<AuthUser | null> {
       .where(eq(projectMembers.userId, dbUser.id))
       .limit(1)
       .get()
-    const hasInternalStaffOrganization = orgMemberships.some(
+    const hasInternalStaffOrganization = activeOrgMemberships.some(
       (membership) =>
         membership.orgType === "internal" &&
         !isExternalProjectRole(membership.memberRole)
@@ -485,7 +526,7 @@ export async function getCurrentUser(): Promise<AuthUser | null> {
       isExternalProjectRole(projectMembership.role)
     ) {
       activeOrg =
-        orgMemberships.find(
+        activeOrgMemberships.find(
           (membership) =>
             membership.orgType === "internal" &&
             isExternalProjectRole(membership.memberRole)
@@ -520,7 +561,11 @@ export async function getCurrentUser(): Promise<AuthUser | null> {
       displayName: dbUser.displayName,
       avatarUrl: dbUser.avatarUrl,
       dashboardDeskPhotoUrl: dbUser.dashboardDeskPhotoUrl,
+      dashboardDeskPhotoOrganizationId:
+        dbUser.dashboardDeskPhotoOrganizationId ?? null,
       sidebarDeskPhotoUrl: dbUser.sidebarDeskPhotoUrl,
+      sidebarDeskPhotoOrganizationId:
+        dbUser.sidebarDeskPhotoOrganizationId ?? null,
       role: effectiveRole,
       googleEmail: dbUser.googleEmail ?? null,
       isActive: dbUser.isActive,
