@@ -118,9 +118,15 @@ namespace CompassSageClientProjectWriter
         {
             ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls12;
             bool once = args.Length > 0 && String.Equals(args[0], "--once", StringComparison.OrdinalIgnoreCase);
+            bool diagnose = args.Length > 0 && String.Equals(args[0], "--diagnose", StringComparison.OrdinalIgnoreCase);
             try
             {
-                RequireConfiguration();
+                RequireConfiguration(!diagnose);
+                if (diagnose)
+                {
+                    RunDiagnostics();
+                    return 0;
+                }
                 do
                 {
                     PollOnce();
@@ -135,17 +141,42 @@ namespace CompassSageClientProjectWriter
             }
         }
 
-        private static void RequireConfiguration()
+        private static void RequireConfiguration(bool requireWriteSwitch)
         {
             Required("COMPASS_BASE_URL"); Required("SAGE_BRIDGE_SECRET");
             Required("SAGE_API_USER"); Required("SAGE_API_PASSWORD");
             string database = Environment.GetEnvironmentVariable("SAGE_SQL_DATABASE") ?? TargetCompany;
             if (!String.Equals(database.Trim(), TargetCompany, StringComparison.Ordinal))
                 throw new InvalidOperationException("SAGE_SQL_DATABASE must be exactly " + TargetCompany + ".");
-            if (!String.Equals(Environment.GetEnvironmentVariable("SAGE_CLIENT_PROJECT_WRITES_ENABLED"), "true", StringComparison.OrdinalIgnoreCase))
+            if (requireWriteSwitch && !String.Equals(Environment.GetEnvironmentVariable("SAGE_CLIENT_PROJECT_WRITES_ENABLED"), "true", StringComparison.OrdinalIgnoreCase))
                 throw new InvalidOperationException("Local Sage write switch is disabled.");
             if (!File.Exists(ApiDllPath) || !File.Exists(XsdPath))
                 throw new FileNotFoundException("The Sage API DLL or mbxml.xsd is missing.");
+        }
+
+        private static void RunDiagnostics()
+        {
+            string[] clientStatuses = new string[] { "Current", "Warranty", "Complete", "Inactive", "Archive", "Other" };
+            for (int index = 0; index < clientStatuses.Length; index++)
+            {
+                int actual = ResolveCatalog("clnsts", "stsnme", clientStatuses[index]);
+                int expected = index + 1;
+                if (actual != expected)
+                    throw new InvalidOperationException("Client status mismatch: expected " + expected + " " + clientStatuses[index] + ", but Sage resolved " + actual + ".");
+            }
+            int jobStatuses = CatalogCount("jobsts");
+            int jobTypes = CatalogCount("jobtyp");
+            if (jobStatuses < 1 || jobTypes < 1)
+                throw new InvalidOperationException("Sage job status and job type catalogs must not be empty.");
+            using (new ApiSession(Required("SAGE_API_USER"), Required("SAGE_API_PASSWORD"))) { }
+            Console.WriteLine("DIAGNOSTIC_OK company=" + TargetCompany + " clientStatuses=6 jobStatuses=" + jobStatuses + " jobTypes=" + jobTypes + " apiUser=" + Required("SAGE_API_USER"));
+        }
+
+        private static int CatalogCount(string table)
+        {
+            using (SqlConnection connection = OpenSql())
+            using (SqlCommand command = new SqlCommand("SELECT COUNT(*) FROM dbo." + table, connection))
+                return Convert.ToInt32(command.ExecuteScalar());
         }
 
         private static void PollOnce()

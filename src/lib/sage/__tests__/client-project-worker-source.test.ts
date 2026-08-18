@@ -31,4 +31,15 @@ describe("Sage client/project worker source boundary", () => {
       source.indexOf('Invoke("submitXML"')
     )
   })
+
+  it("has a read-only diagnostic path that verifies Sage without claiming work", () => {
+    expect(source).toContain('"--diagnose"')
+    expect(source).toContain("RunDiagnostics()")
+    expect(source).toContain(
+      'new string[] { "Current", "Warranty", "Complete", "Inactive", "Archive", "Other" }'
+    )
+    expect(source).toContain(
+      'using (new ApiSession(Required("SAGE_API_USER"), Required("SAGE_API_PASSWORD")))'
+    )
+  })
 })
