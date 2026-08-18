@@ -79,6 +79,7 @@ button { cursor: pointer; }
 .status-dot.online { background: #2d7b50; }
 .live-button { border: 0; background: transparent; color: var(--green); font-size: 13px; font-weight: 750; }
 .settings-button { min-height: 34px; border: 1px solid var(--line); border-radius: 3px; background: transparent; color: var(--muted); font-size: 12px; font-weight: 750; }
+.settings-button[aria-current="page"] { border-color: var(--green); background: var(--green-light); color: var(--green); }
 .icon-button, .notification-button { position: relative; display: grid; width: 34px; height: 34px; place-items: center; border: 0; background: transparent; color: var(--green); }
 .notification-button span { position: absolute; top: -3px; right: -5px; min-width: 18px; border-radius: 9px; background: var(--green); padding: 2px 5px; color: #fff; font-size: 10px; line-height: 14px; }
 .header-icon { width: 20px; height: 20px; }

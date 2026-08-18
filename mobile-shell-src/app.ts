@@ -10,11 +10,15 @@ import { NativeBiometric } from "@capgo/capacitor-native-biometric"
 import { z } from "zod/v4"
 
 import {
+  cherishResponseTypeSchema,
+  cherishValueSchema,
   fieldOutboxSchema,
   fieldProjectPacketSchema,
   fieldProjectSchema,
   fieldUserProfileSchema,
   type FieldOutboxItem,
+  type FieldCherishResponseType,
+  type FieldCherishValue,
   type FieldProject,
   type FieldProjectPacket,
   type FieldQueuedAttachment,
@@ -48,7 +52,7 @@ type SavedDocument = {
   readonly path: string
   readonly savedAt: string
 }
-type Tab = "projects" | "today" | "log" | "documents" | "chat" | "notifications" | "settings"
+type Tab = "projects" | "today" | "log" | "documents" | "chat" | "notifications" | "cherish" | "settings"
 type AuthMode = "choice" | "password" | "email" | "code"
 
 const savedDocumentSchema = z.object({
@@ -89,6 +93,11 @@ let startingConversation = false
 let refreshingProject = false
 let directRecipientId = ""
 let directMessageDraft = ""
+let cherishValue: FieldCherishValue = "Reliability"
+let cherishResponseType: FieldCherishResponseType = "shoutout"
+let cherishMessage = ""
+let cherishFeedback = ""
+let syncingCherish = false
 let biometricEnabled = false
 let biometricLocked = false
 let backgroundedAt: number | null = null
@@ -299,6 +308,38 @@ function notificationsView(): string {
   return sectionHead("Notifications", "Messages and project activity needing your attention.") + (rows ? `<div class="rows">${rows}</div>` : empty("No notifications."))
 }
 
+function cherishView(): string {
+  const valueOptions = cherishValueSchema.options
+    .map(
+      (value) =>
+        `<option value="${value}" ${value === cherishValue ? "selected" : ""}>${value}</option>`
+    )
+    .join("")
+  const responseOptions: readonly {
+    readonly value: FieldCherishResponseType
+    readonly label: string
+  }[] = [
+    { value: "shoutout", label: "Shoutout" },
+    { value: "win", label: "Project win" },
+    { value: "concern", label: "Private concern" },
+  ]
+
+  return `${sectionHead("CHERISH feedback", "Save a shoutout, project win, or private concern without leaving Field Mode.")}
+    <form id="cherish-form" class="form">
+      <label class="field">CHERISH value
+        <select name="cherishValue" required>${valueOptions}</select>
+      </label>
+      <label class="field">Response type
+        <select name="responseType" required>${responseOptions.map((option) => `<option value="${option.value}" ${option.value === cherishResponseType ? "selected" : ""}>${option.label}</option>`).join("")}</select>
+      </label>
+      <label class="field">What would you like to share?
+        <textarea name="message" minlength="3" maxlength="1200" required placeholder="Add a little detail">${escapeHtml(cherishMessage)}</textarea>
+      </label>
+      ${cherishFeedback ? `<p class="${cherishFeedback.startsWith("Saved") || cherishFeedback.startsWith("Synced") ? "message-success" : "attachment-error"}" role="status">${escapeHtml(cherishFeedback)}</p>` : ""}
+      <button class="primary" type="submit" ${syncingCherish ? "disabled" : ""}>${syncingCherish ? "Syncing" : online ? "Save and sync" : "Save for sync"}</button>
+    </form>`
+}
+
 function settingsView(): string {
   const profileRows = profile
     ? `<dl class="profile-list"><div><dt>Name</dt><dd>${escapeHtml(profile.name)}</dd></div><div><dt>Email</dt><dd>${escapeHtml(profile.email)}</dd></div><div><dt>Role</dt><dd>${escapeHtml(profile.role)}</dd></div><div><dt>Project</dt><dd>${escapeHtml(packet?.project.name ?? "None selected")}</dd></div><div><dt>Sync</dt><dd>${online ? "Online" : "Offline"} - ${outbox.length === 0 ? "Up to date" : `${outbox.length} waiting`}</dd></div></dl>`
@@ -312,6 +353,7 @@ function view(): string {
   if (activeTab === "log") return logView()
   if (activeTab === "documents") return documentsView()
   if (activeTab === "notifications") return notificationsView()
+  if (activeTab === "cherish") return cherishView()
   if (activeTab === "settings") return settingsView()
   return messagesView()
 }
@@ -337,7 +379,7 @@ function render(): void {
     { value: "chat", symbol: "M", label: "Messages" },
   ]
   const liveLabel = projects.length === 0 ? "Sign in" : "Full Compass"
-  app.innerHTML = `<div class="shell"><header class="shell-header"><div class="header-row"><div><p class="eyebrow">Field mode</p><h1 class="project-title">${escapeHtml(title)}</h1></div><div class="header-actions">${outbox.length > 0 && online ? `<button id="sync-now" class="icon-button" type="button" aria-label="Sync waiting work">${syncIcon()}</button>` : ""}<button id="field-notifications" class="notification-button" type="button" aria-label="Notifications">${bellIcon()}${unreadNotifications > 0 ? `<span>${unreadNotifications > 9 ? "9+" : unreadNotifications}</span>` : ""}</button><button id="open-cherish" class="settings-button" type="button" ${online ? "" : "disabled"}>CHERISH</button><button id="field-settings" class="settings-button" type="button" aria-label="Field settings">Settings</button><button id="open-live" class="live-button" ${online && !signingIn ? "" : "disabled"}>${liveLabel}</button></div></div><div class="sync-line"><span class="status-dot ${online ? "online" : ""}"></span>${syncing ? "Opening secure sync" : online ? "Connection available" : "Offline"}${escapeHtml(queued)}</div></header><main class="content">${view()}</main><nav class="tabbar">${tabs.map((tab) => `<button class="tab ${activeTab === tab.value ? "active" : ""}" data-tab="${tab.value}"><span class="tab-symbol">${tab.symbol}</span>${tab.label}</button>`).join("")}</nav></div>`
+  app.innerHTML = `<div class="shell"><header class="shell-header"><div class="header-row"><div><p class="eyebrow">Field mode</p><h1 class="project-title">${escapeHtml(title)}</h1></div><div class="header-actions">${outbox.length > 0 && online ? `<button id="sync-now" class="icon-button" type="button" aria-label="Sync waiting work">${syncIcon()}</button>` : ""}<button id="field-notifications" class="notification-button" type="button" aria-label="Notifications">${bellIcon()}${unreadNotifications > 0 ? `<span>${unreadNotifications > 9 ? "9+" : unreadNotifications}</span>` : ""}</button><button id="open-cherish" class="settings-button" type="button" ${activeTab === "cherish" ? "aria-current=page" : ""}>CHERISH</button><button id="field-settings" class="settings-button" type="button" aria-label="Field settings">Settings</button><button id="open-live" class="live-button" ${online && !signingIn ? "" : "disabled"}>${liveLabel}</button></div></div><div class="sync-line"><span class="status-dot ${online ? "online" : ""}"></span>${syncing || syncingCherish ? "Syncing waiting work" : online ? "Connection available" : "Offline"}${escapeHtml(queued)}</div></header><main class="content">${view()}</main><nav class="tabbar">${tabs.map((tab) => `<button class="tab ${activeTab === tab.value ? "active" : ""}" data-tab="${tab.value}"><span class="tab-symbol">${tab.symbol}</span>${tab.label}</button>`).join("")}</nav></div>`
   bindEvents()
 }
 
@@ -381,7 +423,7 @@ async function lockCompassIfEnabled(): Promise<void> {
 }
 
 function isTab(value: string | undefined): value is Tab {
-  return value === "projects" || value === "today" || value === "log" || value === "documents" || value === "chat" || value === "notifications" || value === "settings"
+  return value === "projects" || value === "today" || value === "log" || value === "documents" || value === "chat" || value === "notifications" || value === "cherish" || value === "settings"
 }
 
 function bindEvents(): void {
@@ -394,7 +436,7 @@ function bindEvents(): void {
   document.querySelectorAll<HTMLButtonElement>("[data-file-id]").forEach((button) => button.addEventListener("click", () => void openDocument(button.dataset.fileId ?? "")))
   document.querySelector<HTMLButtonElement>("#open-live")?.addEventListener("click", openFullCompass)
   document.querySelector<HTMLButtonElement>("#open-cherish")?.addEventListener("click", openCherish)
-  document.querySelector<HTMLButtonElement>("#sync-now")?.addEventListener("click", resumePendingSync)
+  document.querySelector<HTMLButtonElement>("#sync-now")?.addEventListener("click", () => void resumePendingSync())
   document.querySelector<HTMLButtonElement>("#field-notifications")?.addEventListener("click", () => {
     activeTab = "notifications"
     render()
@@ -402,6 +444,20 @@ function bindEvents(): void {
   document.querySelector<HTMLButtonElement>("#field-settings")?.addEventListener("click", () => {
     activeTab = "settings"
     render()
+  })
+  document.querySelector<HTMLFormElement>("#cherish-form")?.addEventListener("submit", (event) => void queueCherish(event))
+  document.querySelector("#cherish-form select[name='cherishValue']")?.addEventListener("change", (event) => {
+    if (!(event.currentTarget instanceof HTMLSelectElement)) return
+    const parsed = cherishValueSchema.safeParse(event.currentTarget.value)
+    if (parsed.success) cherishValue = parsed.data
+  })
+  document.querySelector("#cherish-form select[name='responseType']")?.addEventListener("change", (event) => {
+    if (!(event.currentTarget instanceof HTMLSelectElement)) return
+    const parsed = cherishResponseTypeSchema.safeParse(event.currentTarget.value)
+    if (parsed.success) cherishResponseType = parsed.data
+  })
+  document.querySelector<HTMLTextAreaElement>("#cherish-form textarea[name='message']")?.addEventListener("input", (event) => {
+    if (event.currentTarget instanceof HTMLTextAreaElement) cherishMessage = event.currentTarget.value
   })
   document.querySelector<HTMLButtonElement>("#native-sign-in")?.addEventListener("click", () => void beginNativeSignIn())
   document.querySelector<HTMLButtonElement>("#password-sign-in")?.addEventListener("click", beginPasswordSignIn)
@@ -504,7 +560,7 @@ async function selectProject(projectId: string): Promise<void> {
   await writeJson(ACTIVE_PROJECT_KEY, projectId)
   if (!result.success) {
     if (online) {
-      window.location.assign(`${LIVE_URL}/dashboard/field?projectId=${encodeURIComponent(projectId)}`)
+      window.location.assign(liveAppUrl(`/dashboard/field?projectId=${encodeURIComponent(projectId)}`))
       return
     }
     projectError = "Open this project once while connected before using it offline."
@@ -596,6 +652,96 @@ async function queueChat(event: SubmitEvent): Promise<void> {
   render()
 }
 
+async function queueCherish(event: SubmitEvent): Promise<void> {
+  event.preventDefault()
+  if (!(event.currentTarget instanceof HTMLFormElement)) return
+
+  const form = new FormData(event.currentTarget)
+  const parsedValue = cherishValueSchema.safeParse(form.get("cherishValue"))
+  const parsedResponseType = cherishResponseTypeSchema.safeParse(form.get("responseType"))
+  const message = String(form.get("message") ?? "").trim()
+  if (!parsedValue.success || !parsedResponseType.success || message.length < 3) {
+    cherishFeedback = "Add a little more detail before saving."
+    render()
+    return
+  }
+  if (message.length > 1_200) {
+    cherishFeedback = "Keep CHERISH responses under 1,200 characters."
+    render()
+    return
+  }
+
+  cherishValue = parsedValue.data
+  cherishResponseType = parsedResponseType.data
+  outbox.push({
+    id: crypto.randomUUID(),
+    kind: "cherish_pulse",
+    cherishValue,
+    responseType: cherishResponseType,
+    message,
+    createdAt: new Date().toISOString(),
+  })
+  await writeJson(OUTBOX_KEY, outbox)
+  cherishMessage = ""
+  cherishFeedback = online
+    ? "Saved on this device. Syncing now."
+    : "Saved on this device. It will sync when service returns."
+  render()
+  if (online) await syncCherishOutbox()
+}
+
+async function syncCherishOutbox(): Promise<void> {
+  if (!online || syncingCherish) return
+  const pending = outbox.filter((item) => item.kind === "cherish_pulse")
+  if (pending.length === 0) return
+
+  syncingCherish = true
+  render()
+  let syncedCount = 0
+  try {
+    for (const item of pending) {
+      try {
+        const response = await CapacitorHttp.post({
+          url: `${LIVE_URL}/api/field/cherish`,
+          headers: { "Content-Type": "application/json" },
+          data: {
+            id: item.id,
+            cherishValue: item.cherishValue,
+            responseType: item.responseType,
+            message: item.message,
+          },
+          responseType: "json",
+        })
+        const result = z.object({
+          success: z.boolean(),
+          error: z.string().optional(),
+        }).safeParse(responseData(response.data))
+        if (!result.success || !result.data.success) {
+          cherishFeedback = result.success
+            ? result.data.error ?? "Saved on this device. Sign in to Full Compass when ready to sync."
+            : "Saved on this device. Sign in to Full Compass when ready to sync."
+          break
+        }
+
+        outbox = outbox.filter((queued) => queued.id !== item.id)
+        syncedCount += 1
+      } catch {
+        cherishFeedback = "Saved on this device. Sign in to Full Compass when ready to sync."
+        break
+      }
+    }
+  } finally {
+    if (syncedCount > 0) {
+      await writeJson(OUTBOX_KEY, outbox)
+      cherishFeedback = syncedCount === 1
+        ? "Synced to the CHERISH review queue."
+        : `Synced ${syncedCount} CHERISH responses.`
+    }
+    syncingCherish = false
+    render()
+  }
+}
+
 async function queueDirectReply(event: SubmitEvent): Promise<void> {
   event.preventDefault()
   if (!packet || !(event.currentTarget instanceof HTMLFormElement)) return
@@ -613,7 +759,7 @@ async function queueDirectReply(event: SubmitEvent): Promise<void> {
   await writeJson(OUTBOX_KEY, outbox)
   formElement.reset()
   render()
-  resumePendingSync()
+  void resumePendingSync()
 }
 
 function responseData(value: unknown): unknown {
@@ -720,7 +866,16 @@ async function openDocument(fileId: string): Promise<void> {
   })
   if (document.type !== "folder") params.set("downloadFileId", document.id)
   if (document.type === "folder") params.set("folderId", document.id)
-  window.location.assign(`${LIVE_URL}/dashboard/field?${params.toString()}`)
+  window.location.assign(liveAppUrl(`/dashboard/field?${params.toString()}`))
+}
+
+function liveAppUrl(path: string): string {
+  const url = new URL(path, LIVE_URL)
+  const platform = Capacitor.getPlatform()
+  if (platform === "ios" || platform === "android") {
+    url.searchParams.set("nativePlatform", platform)
+  }
+  return url.toString()
 }
 
 function openFullCompass(): void {
@@ -733,20 +888,23 @@ function openFullCompass(): void {
   const path = packet
     ? `/dashboard/projects/${encodeURIComponent(packet.project.id)}`
     : "/dashboard/projects"
-  window.location.assign(`${LIVE_URL}${path}`)
+  window.location.assign(liveAppUrl(path))
 }
 
 function openCherish(): void {
-  if (!online) return
-  window.location.assign(`${LIVE_URL}/dashboard/field`)
+  activeTab = "cherish"
+  render()
 }
 
-function resumePendingSync(): void {
+async function resumePendingSync(): Promise<void> {
   const focusedElement = document.activeElement
   const composing = focusedElement instanceof HTMLInputElement
     || focusedElement instanceof HTMLTextAreaElement
     || focusedElement?.getAttribute("contenteditable") === "true"
-  if (syncing || composing || !online || projects.length === 0 || outbox.length === 0) return
+  if (syncing || composing || !online || outbox.length === 0) return
+  await syncCherishOutbox()
+  const needsHostedSync = outbox.some((item) => item.kind !== "cherish_pulse")
+  if (!needsHostedSync || projects.length === 0) return
   syncing = true
   render()
   const params = new URLSearchParams()
@@ -757,7 +915,7 @@ function resumePendingSync(): void {
     syncing = false
     render()
   }, 10_000)
-  window.location.assign(`${LIVE_URL}/dashboard/field${query ? `?${query}` : ""}`)
+  window.location.assign(liveAppUrl(`/dashboard/field${query ? `?${query}` : ""}`))
 }
 
 function base64Url(bytes: Uint8Array): string {
@@ -866,7 +1024,7 @@ async function signInWithPassword(event: SubmitEvent): Promise<void> {
       render()
       return
     }
-    window.location.assign(`${LIVE_URL}/dashboard/field`)
+    window.location.assign(liveAppUrl("/dashboard/field"))
   } catch {
     authError = "Compass could not sign you in. Check your connection and try again."
     signingIn = false
@@ -936,7 +1094,7 @@ async function verifyNativeEmailCode(event: SubmitEvent): Promise<void> {
       render()
       return
     }
-    window.location.assign(`${LIVE_URL}/dashboard/field`)
+    window.location.assign(liveAppUrl("/dashboard/field"))
   } catch {
     authError = "The code could not be verified. Check your connection and try again."
     signingIn = false
@@ -989,6 +1147,14 @@ async function handleAuthCallback(url: URL): Promise<void> {
     input.type = "hidden"
     input.name = name
     input.value = value
+    form.appendChild(input)
+  }
+  const platform = Capacitor.getPlatform()
+  if (platform === "ios" || platform === "android") {
+    const input = document.createElement("input")
+    input.type = "hidden"
+    input.name = "nativePlatform"
+    input.value = platform
     form.appendChild(input)
   }
   document.body.appendChild(form)
@@ -1096,7 +1262,7 @@ async function initialize(): Promise<void> {
     await handleAppUrl(launchUrl.url)
   }
   if (online && packet) void refreshProjectPacket()
-  resumePendingSync()
+  void resumePendingSync()
 
   await Network.addListener("networkStatusChange", () => void refreshConnectivityAndSync())
   window.addEventListener("online", () => void refreshConnectivityAndSync())
@@ -1115,7 +1281,7 @@ async function refreshConnectivityAndSync(): Promise<void> {
   online = status.connected
   if (outboxResult.success) outbox = outboxResult.data
   if (previousOnline !== online || previousOutbox !== JSON.stringify(outbox)) render()
-  resumePendingSync()
+  void resumePendingSync()
   if (!previousOnline && online && activeTab === "chat") {
     void refreshProjectPacket()
   }

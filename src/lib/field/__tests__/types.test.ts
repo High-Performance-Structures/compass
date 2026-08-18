@@ -27,4 +27,19 @@ describe("fieldOutboxSchema", () => {
       attachments: [],
     })
   })
+
+  it("preserves CHERISH feedback queued by the offline native shell", () => {
+    const result = fieldOutboxSchema.safeParse([
+      {
+        id: "d8bfa307-c18e-4317-a3ba-4e581a318a10",
+        kind: "cherish_pulse",
+        cherishValue: "Integrity",
+        responseType: "shoutout",
+        message: "Thank you for taking ownership of the closeout list.",
+        createdAt: "2026-08-18T02:30:00.000Z",
+      },
+    ])
+
+    expect(result.success).toBe(true)
+  })
 })

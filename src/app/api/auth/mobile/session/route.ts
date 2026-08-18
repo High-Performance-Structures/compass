@@ -8,6 +8,7 @@ import { isWorkOSConfigured } from "@/lib/auth-config"
 const mobileSessionSchema = z.object({
   code: z.string().min(8).max(2048),
   codeVerifier: z.string().min(43).max(128).regex(/^[A-Za-z0-9._~-]+$/),
+  nativePlatform: z.enum(["ios", "android"]).optional(),
 })
 
 export async function POST(request: NextRequest): Promise<Response> {
@@ -19,6 +20,7 @@ export async function POST(request: NextRequest): Promise<Response> {
   const parsed = mobileSessionSchema.safeParse({
     code: formData.get("code"),
     codeVerifier: formData.get("codeVerifier"),
+    nativePlatform: formData.get("nativePlatform") ?? undefined,
   })
   if (!parsed.success) {
     return NextResponse.redirect(new URL("/login?error=invalid_mobile_auth", request.url), 303)
@@ -49,7 +51,11 @@ export async function POST(request: NextRequest): Promise<Response> {
       request
     )
 
-    return NextResponse.redirect(new URL("/dashboard/field", request.url), 303)
+    const destination = new URL("/dashboard/field", request.url)
+    if (parsed.data.nativePlatform) {
+      destination.searchParams.set("nativePlatform", parsed.data.nativePlatform)
+    }
+    return NextResponse.redirect(destination, 303)
   } catch (error) {
     console.error("Mobile OAuth session exchange failed:", error)
     return NextResponse.redirect(new URL("/login?error=auth_failed", request.url), 303)

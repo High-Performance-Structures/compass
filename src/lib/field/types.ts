@@ -114,6 +114,22 @@ export const fieldQueuedAttachmentSchema = z.object({
   capturedAt: z.string(),
 })
 
+export const cherishValueSchema = z.enum([
+  "Camaraderie",
+  "Honor",
+  "Excellence",
+  "Reliability",
+  "Integrity",
+  "Servitude",
+  "Humility",
+])
+
+export const cherishResponseTypeSchema = z.enum([
+  "shoutout",
+  "win",
+  "concern",
+])
+
 export const fieldOutboxItemSchema = z.discriminatedUnion("kind", [
   z.object({
     id: z.string(),
@@ -134,6 +150,14 @@ export const fieldOutboxItemSchema = z.discriminatedUnion("kind", [
       content: z.string(),
     }),
   }),
+  z.object({
+    id: z.string(),
+    kind: z.literal("cherish_pulse"),
+    cherishValue: cherishValueSchema,
+    responseType: cherishResponseTypeSchema,
+    message: z.string().trim().min(3).max(1_200),
+    createdAt: z.string(),
+  }),
 ])
 
 export const fieldOutboxSchema = z.array(fieldOutboxItemSchema)
@@ -147,3 +171,7 @@ export type FieldNotification = z.infer<typeof fieldNotificationSchema>
 export type FieldDailyLogDraft = z.infer<typeof fieldDailyLogDraftSchema>
 export type FieldQueuedAttachment = z.infer<typeof fieldQueuedAttachmentSchema>
 export type FieldOutboxItem = z.infer<typeof fieldOutboxItemSchema>
+export type FieldCherishValue = z.infer<typeof cherishValueSchema>
+export type FieldCherishResponseType = z.infer<
+  typeof cherishResponseTypeSchema
+>

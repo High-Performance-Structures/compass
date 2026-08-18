@@ -24,6 +24,7 @@ interface NavItemProps {
   activeIcon: React.ReactNode
   label: string
   isActive: boolean
+  externalNavigation?: boolean
 }
 
 function NavItem({
@@ -32,12 +33,10 @@ function NavItem({
   activeIcon,
   label,
   isActive,
+  externalNavigation = false,
 }: NavItemProps) {
-  return (
-    <Link
-      href={href}
-      className="flex flex-col items-center justify-center gap-0.5"
-    >
+  const content = (
+    <>
       <div
         className={cn(
           "flex h-7 w-14 items-center justify-center",
@@ -65,6 +64,22 @@ function NavItem({
       >
         {label}
       </span>
+    </>
+  )
+
+  const className = "flex flex-col items-center justify-center gap-0.5"
+
+  if (externalNavigation) {
+    return (
+      <a href={href} className={className}>
+        {content}
+      </a>
+    )
+  }
+
+  return (
+    <Link href={href} className={className}>
+      {content}
     </Link>
   )
 }
@@ -129,6 +144,7 @@ export function MobileBottomNav({
               )
             }
             label={nativePlatform === "web" ? "CHERISH" : "Field"}
+            externalNavigation={nativePlatform !== "web"}
             isActive={
               nativePlatform === "web" && isActive("/dashboard/field")
             }
