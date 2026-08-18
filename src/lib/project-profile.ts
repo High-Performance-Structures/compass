@@ -37,6 +37,20 @@ export function isEligibleFollowUpOwner(input: {
 
 export type ProjectClientStatus = (typeof PROJECT_CLIENT_STATUSES)[number]
 
+export function legacyProjectStatusAfterClientUpdate(input: {
+  readonly currentStatus: string
+  readonly clientStatus: ProjectClientStatus
+}): string {
+  if (
+    input.clientStatus === "customer"
+    && input.currentStatus.trim().toUpperCase() === "LEAD"
+  ) {
+    return "OPEN"
+  }
+
+  return input.currentStatus
+}
+
 export type ProjectJobStatusDefinition = {
   readonly id: string
   readonly label: string

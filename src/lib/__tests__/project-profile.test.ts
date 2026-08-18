@@ -11,6 +11,7 @@ import {
   isMeaningfulClientInteraction,
   isBuiltInProjectJobStatusLabel,
   isSupportedProjectJobStatusLabel,
+  legacyProjectStatusAfterClientUpdate,
   normalizeProjectJobStatusLabel,
   projectNumberParts,
 } from "@/lib/project-profile"
@@ -18,6 +19,27 @@ import {
 describe("project profile rules", () => {
   it("keeps client status limited to lead and customer", () => {
     expect(PROJECT_CLIENT_STATUSES).toEqual(["lead", "customer"])
+  })
+
+  it("clears the legacy lead status when a project becomes a customer", () => {
+    expect(
+      legacyProjectStatusAfterClientUpdate({
+        currentStatus: "LEAD",
+        clientStatus: "customer",
+      }),
+    ).toBe("OPEN")
+    expect(
+      legacyProjectStatusAfterClientUpdate({
+        currentStatus: "LEAD",
+        clientStatus: "lead",
+      }),
+    ).toBe("LEAD")
+    expect(
+      legacyProjectStatusAfterClientUpdate({
+        currentStatus: "WARRANTY",
+        clientStatus: "customer",
+      }),
+    ).toBe("WARRANTY")
   })
 
   it("keeps the approved Sage-aligned job statuses standardized", () => {
