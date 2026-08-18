@@ -156,6 +156,81 @@ export const PROJECT_JOB_STATUS_DEFINITIONS = [
 
 export type ProjectJobStatusId = (typeof PROJECT_JOB_STATUS_DEFINITIONS)[number]["id"]
 
+export type ProjectJobStatusBucket =
+  | "active"
+  | "warranty"
+  | "complete"
+  | "inactive"
+  | "archive"
+  | "other"
+
+export function projectClientStatusLabel(clientStatus: string): string {
+  const normalized = clientStatus.trim().toLowerCase()
+  if (normalized === "lead") return "Lead"
+  if (normalized === "customer") return "Customer"
+  return "Unknown client status"
+}
+
+export function projectJobStatusLabel(input: {
+  readonly jobStatusId: string
+  readonly customLabel: string | null
+}): string {
+  const builtIn = PROJECT_JOB_STATUS_DEFINITIONS.find(
+    (status) => status.id === input.jobStatusId,
+  )
+  if (builtIn) return builtIn.label
+
+  const customLabel = input.customLabel?.trim()
+  return customLabel || "Unknown job status"
+}
+
+export function projectJobStatusBucket(input: {
+  readonly jobStatusId: string
+  readonly jobStatusLabel: string
+}): ProjectJobStatusBucket {
+  const id = input.jobStatusId.trim().toLowerCase()
+  const label = input.jobStatusLabel.trim().toLowerCase()
+
+  if (
+    id.includes("warranty")
+    || label.includes("warranty")
+    || label.includes("service")
+  ) {
+    return "warranty"
+  }
+  if (
+    id === "complete"
+    || id === "closed"
+    || label === "complete"
+    || label === "completed"
+    || label === "closed"
+  ) {
+    return "complete"
+  }
+  if (
+    id === "inactive"
+    || id === "bid_refused"
+    || id === "paused"
+    || label === "inactive"
+    || label === "bid refused"
+    || label === "paused"
+  ) {
+    return "inactive"
+  }
+  if (
+    id === "archive"
+    || id === "archived"
+    || label === "archive"
+    || label === "archived"
+  ) {
+    return "archive"
+  }
+  if (id === "other" || label === "other" || input.jobStatusLabel === "Unknown job status") {
+    return "other"
+  }
+  return "active"
+}
+
 const PROJECT_JOB_STATUS_LABEL_PATTERN = /^[\x20-\x7E]+$/
 
 export function normalizeProjectJobStatusLabel(label: string): string {

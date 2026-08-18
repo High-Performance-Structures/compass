@@ -9,7 +9,7 @@ import { useRegisterPageActions } from "@/hooks/use-register-page-actions"
 
 import { getCustomers } from "@/app/actions/customers"
 import { getVendors } from "@/app/actions/vendors"
-import { getProjects } from "@/app/actions/projects"
+import { getProjects, type ProjectListItem } from "@/app/actions/projects"
 import {
   getInvoices,
   createInvoice,
@@ -35,7 +35,7 @@ import {
   deleteCreditMemo,
 } from "@/app/actions/credit-memos"
 
-import type { Customer, Vendor, Project } from "@/db/schema"
+import type { Customer, Vendor } from "@/db/schema"
 import type {
   Invoice,
   VendorBill,
@@ -89,7 +89,7 @@ function FinancialsContent() {
 
   const [customersList, setCustomersList] = React.useState<Customer[]>([])
   const [vendorsList, setVendorsList] = React.useState<Vendor[]>([])
-  const [projectsList, setProjectsList] = React.useState<Project[]>([])
+  const [projectsList, setProjectsList] = React.useState<ProjectListItem[]>([])
 
   const [invoicesList, setInvoicesList] = React.useState<Invoice[]>([])
   const [billsList, setBillsList] = React.useState<VendorBill[]>([])
@@ -125,7 +125,7 @@ function FinancialsContent() {
       ])
       setCustomersList(c)
       setVendorsList(v)
-      setProjectsList(p as Project[])
+      setProjectsList(p)
       setInvoicesList(inv)
       setBillsList(bills)
       setPaymentsList(pay)
@@ -435,7 +435,7 @@ function FinancialsContent() {
         onOpenChange={setInvoiceDialogOpen}
         initialData={editingInvoice}
         customers={customersList}
-        projects={projectsList as Project[]}
+        projects={projectsList}
         onSubmit={handleInvoiceSubmit}
       />
 
@@ -444,7 +444,7 @@ function FinancialsContent() {
         onOpenChange={setBillDialogOpen}
         initialData={editingBill}
         vendors={vendorsList}
-        projects={projectsList as Project[]}
+        projects={projectsList}
         onSubmit={handleBillSubmit}
       />
 
@@ -454,7 +454,7 @@ function FinancialsContent() {
         initialData={editingPayment}
         customers={customersList}
         vendors={vendorsList}
-        projects={projectsList as Project[]}
+        projects={projectsList}
         onSubmit={handlePaymentSubmit}
       />
 
@@ -463,7 +463,7 @@ function FinancialsContent() {
         onOpenChange={setMemoDialogOpen}
         initialData={editingMemo}
         customers={customersList}
-        projects={projectsList as Project[]}
+        projects={projectsList}
         onSubmit={handleMemoSubmit}
       />
     </>

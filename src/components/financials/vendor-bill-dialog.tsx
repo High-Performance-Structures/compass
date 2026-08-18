@@ -35,7 +35,7 @@ interface VendorBillDialogProps {
   onOpenChange: (open: boolean) => void
   initialData?: VendorBill | null
   vendors: Vendor[]
-  projects: Project[]
+  projects: readonly Pick<Project, "id" | "name">[]
   onSubmit: (data: {
     vendorId: string
     projectId: string | null

@@ -6,6 +6,7 @@ import {
   customers,
   organizationMembers,
   projectExternalLinks,
+  projectJobStatuses,
   projectMembers,
   projectNumberReservations,
   projectOperations,
@@ -51,6 +52,7 @@ import {
 import { canUseOrganizationProjectScopeRole } from "@/lib/user-roles"
 import {
   PROJECT_JOB_STATUS_DEFINITIONS,
+  projectJobStatusLabel,
 } from "@/lib/project-profile"
 import {
   isSageWriteApproved,
@@ -88,7 +90,24 @@ export type ProjectListItem = {
   readonly clientName: string | null
   readonly googleDriveFolderId: string | null
   readonly status: string
+  readonly clientStatus: string
+  readonly jobStatusId: string
+  readonly jobStatusLabel: string
   readonly createdAt: string
+}
+
+type ProjectListRow = Omit<ProjectListItem, "jobStatusLabel"> & {
+  readonly customJobStatusLabel: string | null
+}
+
+function projectListItems(rows: readonly ProjectListRow[]): ProjectListItem[] {
+  return rows.map(({ customJobStatusLabel, ...project }) => ({
+    ...project,
+    jobStatusLabel: projectJobStatusLabel({
+      jobStatusId: project.jobStatusId,
+      customLabel: customJobStatusLabel,
+    }),
+  }))
 }
 
 export type CreateProjectShellInput = {
@@ -1173,7 +1192,7 @@ export async function getProjects(): Promise<ProjectListItem[]> {
       user.organizationType === "internal" &&
       canUseOrganizationProjectScopeRole(user.role)
     ) {
-      return await db
+      const rows = await db
         .select({
           id: projects.id,
           name: projects.name,
@@ -1181,14 +1200,25 @@ export async function getProjects(): Promise<ProjectListItem[]> {
           clientName: projects.clientName,
           googleDriveFolderId: projects.googleDriveFolderId,
           status: projects.status,
+          clientStatus: projects.clientStatus,
+          jobStatusId: projects.jobStatusId,
+          customJobStatusLabel: projectJobStatuses.label,
           createdAt: projects.createdAt,
         })
         .from(projects)
+        .leftJoin(
+          projectJobStatuses,
+          and(
+            eq(projectJobStatuses.id, projects.jobStatusId),
+            eq(projectJobStatuses.organizationId, projects.organizationId),
+          ),
+        )
         .where(eq(projects.organizationId, user.organizationId))
         .orderBy(asc(projects.projectNumber), asc(projects.name))
+      return projectListItems(rows)
     }
 
-    return await db
+    const rows = await db
       .select({
         id: projects.id,
         name: projects.name,
@@ -1196,12 +1226,23 @@ export async function getProjects(): Promise<ProjectListItem[]> {
         clientName: projects.clientName,
         googleDriveFolderId: projects.googleDriveFolderId,
         status: projects.status,
+        clientStatus: projects.clientStatus,
+        jobStatusId: projects.jobStatusId,
+        customJobStatusLabel: projectJobStatuses.label,
         createdAt: projects.createdAt,
       })
       .from(projectMembers)
       .innerJoin(projects, eq(projects.id, projectMembers.projectId))
+      .leftJoin(
+        projectJobStatuses,
+        and(
+          eq(projectJobStatuses.id, projects.jobStatusId),
+          eq(projectJobStatuses.organizationId, projects.organizationId),
+        ),
+      )
       .where(eq(projectMembers.userId, user.id))
       .orderBy(asc(projects.projectNumber), asc(projects.name))
+    return projectListItems(rows)
   } catch {
     return []
   }

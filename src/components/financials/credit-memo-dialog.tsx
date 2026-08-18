@@ -29,7 +29,7 @@ interface CreditMemoDialogProps {
   onOpenChange: (open: boolean) => void
   initialData?: CreditMemo | null
   customers: Customer[]
-  projects: Project[]
+  projects: readonly Pick<Project, "id" | "name">[]
   onSubmit: (data: {
     customerId: string
     projectId: string | null

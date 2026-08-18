@@ -8,7 +8,7 @@ import {
   getProjects,
 } from "@/app/actions/projects"
 import { getDb } from "@/db"
-import { projectExternalLinks, projects } from "@/db/schema"
+import { projectExternalLinks, projectJobStatuses, projects } from "@/db/schema"
 import { ProjectsHub } from "@/components/projects/projects-hub"
 import { ProjectHubLaunchpad } from "@/components/projects/project-hub-launchpad"
 import { getCurrentUser } from "@/lib/auth"
@@ -17,12 +17,16 @@ import {
   canCreateProject,
   canManageProjectRegistry,
 } from "@/lib/permissions"
+import { projectJobStatusLabel } from "@/lib/project-profile"
 
 export type ProjectsHubProject = {
   readonly id: string
   readonly projectNumber: string | null
   readonly name: string
   readonly status: string
+  readonly clientStatus: string
+  readonly jobStatusId: string
+  readonly jobStatusLabel: string
   readonly address: string | null
   readonly clientName: string | null
   readonly projectManager: string | null
@@ -90,6 +94,9 @@ export default async function ProjectsPage({
         projectNumber: projects.projectNumber,
         name: projects.name,
         status: projects.status,
+        clientStatus: projects.clientStatus,
+        jobStatusId: projects.jobStatusId,
+        customJobStatusLabel: projectJobStatuses.label,
         address: projects.address,
         clientName: projects.clientName,
         projectManager: projects.projectManager,
@@ -106,13 +113,24 @@ export default async function ProjectsPage({
         createdAt: projects.createdAt,
       })
       .from(projects)
+      .leftJoin(
+        projectJobStatuses,
+        and(
+          eq(projectJobStatuses.id, projects.jobStatusId),
+          eq(projectJobStatuses.organizationId, projects.organizationId),
+        ),
+      )
       .orderBy(asc(projects.projectNumber), asc(projects.name))
 
     const loadedProjects = organizationId
       ? await query.where(eq(projects.organizationId, organizationId))
       : await query
-    hubProjects = loadedProjects.map((project) => ({
+    hubProjects = loadedProjects.map(({ customJobStatusLabel, ...project }) => ({
       ...project,
+      jobStatusLabel: projectJobStatusLabel({
+        jobStatusId: project.jobStatusId,
+        customLabel: customJobStatusLabel,
+      }),
       telegramChatId: null,
     }))
 

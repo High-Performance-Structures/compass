@@ -27,6 +27,10 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { OfficeMaintenanceDrawer } from "@/components/projects/office-maintenance-drawer"
 import { cn } from "@/lib/utils"
+import {
+  projectClientStatusLabel,
+  projectJobStatusBucket,
+} from "@/lib/project-profile"
 
 type DepartmentFilter = "ALL" | "O" | "H" | "N" | "D" | "OTHER"
 type StatusFilter = "active" | "warranty" | "complete" | "all"
@@ -66,24 +70,11 @@ function departmentForProject(project: ProjectListItem): DepartmentFilter {
 }
 
 function statusForProject(project: ProjectListItem): StatusFilter {
-  const status = project.status.trim().toLowerCase().replace(/[^a-z0-9]+/g, " ")
-  if (
-    status === "open" ||
-    status === "active" ||
-    status === "current" ||
-    status === "construction" ||
-    status === "in progress" ||
-    status === "scheduled" ||
-    status === "preconstruction"
-  ) {
-    return "active"
-  }
-  if (status.includes("warranty") || status.includes("service")) {
-    return "warranty"
-  }
-  if (status === "closed" || status === "complete" || status === "completed") {
-    return "complete"
-  }
+  const bucket = projectJobStatusBucket({
+    jobStatusId: project.jobStatusId,
+    jobStatusLabel: project.jobStatusLabel,
+  })
+  if (bucket === "active" || bucket === "warranty" || bucket === "complete") return bucket
   return "all"
 }
 
@@ -181,7 +172,13 @@ function ProjectCard({
             {department === "OTHER" ? "Unassigned department" : department}
           </p>
         </div>
-        <ProjectHealth projectId={project.id} overview={overview} />
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex min-w-0 flex-wrap gap-1.5">
+            <Badge variant="secondary">{project.jobStatusLabel}</Badge>
+            <Badge variant="outline">{projectClientStatusLabel(project.clientStatus)}</Badge>
+          </div>
+          <ProjectHealth projectId={project.id} overview={overview} />
+        </div>
       </Link>
     )
   }
@@ -235,7 +232,13 @@ function ProjectCard({
           {health?.nextTask ? `Next: ${health.nextTask.title}` : project.clientName ?? "No next phase recorded"}
         </p>
         <div className="mt-2">
-          <ProjectHealth projectId={project.id} overview={overview} />
+          <div className="flex flex-wrap items-center gap-1.5">
+            <Badge variant="secondary">{project.jobStatusLabel}</Badge>
+            <Badge variant="outline">{projectClientStatusLabel(project.clientStatus)}</Badge>
+          </div>
+          <div className="mt-2">
+            <ProjectHealth projectId={project.id} overview={overview} />
+          </div>
         </div>
 
         <Button

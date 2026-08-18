@@ -25,7 +25,6 @@ import {
 import type { ProjectsHubProject } from "@/app/dashboard/projects/page"
 import {
   createProjectShell,
-  updateProjectStatus,
   type ProjectStatusValue,
 } from "@/app/actions/projects"
 import { updateProjectRegistry } from "@/app/actions/project-registry"
@@ -51,20 +50,19 @@ import {
   openHpsProjectManagerWorkWindow,
 } from "@/lib/google/project-manager-app"
 import { cn } from "@/lib/utils"
-import { PROJECT_JOB_STATUS_DEFINITIONS } from "@/lib/project-profile"
+import {
+  PROJECT_JOB_STATUS_DEFINITIONS,
+  projectClientStatusLabel,
+  projectJobStatusBucket,
+  type ProjectJobStatusBucket,
+} from "@/lib/project-profile"
 import {
   SAGE_CLIENT_STATUS_OPTIONS,
   SAGE_JOB_TYPE_OPTIONS,
 } from "@/lib/sage/client-project-write"
 
 type DepartmentId = "O" | "H" | "N" | "D" | "UNASSIGNED"
-type ProjectStatusBucket =
-  | "active"
-  | "warranty"
-  | "complete"
-  | "inactive"
-  | "archive"
-  | "other"
+type ProjectStatusBucket = ProjectJobStatusBucket
 
 type ProjectStatusOption = {
   readonly value: ProjectStatusValue
@@ -266,62 +264,11 @@ function projectSubtitle(project: ProjectsHubProject): string {
     .join(" · ")
 }
 
-function statusLabel(status: string): string {
-  const normalized = status.trim().toLowerCase().replace(/[^a-z0-9]+/g, " ")
-  if (normalized === "open") return "Active"
-  if (normalized === "active") return "Active"
-  if (normalized === "in progress") return "Active"
-  if (normalized === "current") return "Active"
-  if (normalized === "construction") return "Active"
-  if (normalized === "warranty") return "Warranty"
-  if (normalized === "warranty service") return "Warranty"
-  if (normalized === "inactive") return "Inactive"
-  if (normalized === "paused") return "Inactive"
-  if (normalized === "archive") return "Archive"
-  if (normalized === "archived") return "Archive"
-  if (normalized === "closed") return "Complete"
-  if (normalized === "complete") return "Complete"
-  if (normalized === "completed") return "Complete"
-  if (normalized === "other") return "Other"
-  return status
-}
-
-function statusBucket(status: string): ProjectStatusBucket {
-  const normalized = status.trim().toLowerCase().replace(/[^a-z0-9]+/g, " ")
-
-  if (
-    normalized === "open" ||
-    normalized === "active" ||
-    normalized === "in progress" ||
-    normalized === "current" ||
-    normalized === "construction" ||
-    normalized === "scheduled" ||
-    normalized === "preconstruction"
-  ) {
-    return "active"
-  }
-
-  if (normalized.includes("warranty") || normalized.includes("service")) {
-    return "warranty"
-  }
-
-  if (normalized === "inactive" || normalized === "paused") {
-    return "inactive"
-  }
-
-  if (normalized === "archive" || normalized === "archived") {
-    return "archive"
-  }
-
-  if (
-    normalized === "closed" ||
-    normalized === "complete" ||
-    normalized === "completed"
-  ) {
-    return "complete"
-  }
-
-  return "other"
+function statusBucket(project: ProjectsHubProject): ProjectStatusBucket {
+  return projectJobStatusBucket({
+    jobStatusId: project.jobStatusId,
+    jobStatusLabel: project.jobStatusLabel,
+  })
 }
 
 function projectStatusValue(status: string): ProjectStatusValue {
@@ -329,7 +276,18 @@ function projectStatusValue(status: string): ProjectStatusValue {
   const option = PROJECT_STATUS_OPTIONS.find((item) => item.value === normalized)
   if (option) return option.value
 
-  const bucket = statusBucket(status)
+  const normalizedStatus = status.trim().toLowerCase()
+  const bucket = normalizedStatus === "warranty"
+    ? "warranty"
+    : normalizedStatus === "complete"
+      ? "complete"
+      : normalizedStatus === "inactive"
+        ? "inactive"
+        : normalizedStatus === "archive"
+          ? "archive"
+          : normalizedStatus === "other"
+            ? "other"
+            : "active"
   const bucketOption = PROJECT_STATUS_OPTIONS.find(
     (item) => item.bucket === bucket
   )
@@ -420,7 +378,7 @@ function countByStatusBucket(
   projects: readonly ProjectsHubProject[],
   bucket: ProjectStatusBucket
 ): number {
-  return projects.filter((project) => statusBucket(project.status) === bucket)
+  return projects.filter((project) => statusBucket(project) === bucket)
     .length
 }
 
@@ -438,6 +396,10 @@ function projectMatchesSearch(
       project.address,
       project.projectManager,
       project.sageJobNumber,
+      projectClientStatusLabel(project.clientStatus),
+      project.clientStatus,
+      project.jobStatusId,
+      project.jobStatusLabel,
     ]
       .filter((value): value is string => Boolean(value))
       .join(" ")
@@ -482,66 +444,6 @@ function DepartmentMark({
     >
       {department.icon}
     </span>
-  )
-}
-
-function ProjectStatusSelect({
-  projectId,
-  currentStatus,
-  projectLabelText,
-}: {
-  readonly projectId: string
-  readonly currentStatus: string
-  readonly projectLabelText: string
-}): React.ReactElement {
-  const router = useRouter()
-  const [statusMessage, setStatusMessage] = React.useState<string | null>(null)
-  const [isUpdatingStatus, startStatusTransition] = React.useTransition()
-
-  function selectProjectStatus(nextStatus: string): void {
-    const statusOption = PROJECT_STATUS_OPTIONS.find(
-      (option) => option.value === nextStatus
-    )
-    if (!statusOption) return
-
-    setStatusMessage(null)
-    startStatusTransition(async () => {
-      const result = await updateProjectStatus(projectId, statusOption.value)
-      if (!result.success) {
-        setStatusMessage(result.error)
-        return
-      }
-
-      router.refresh()
-    })
-  }
-
-  return (
-    <div className="shrink-0">
-      <Select
-        value={projectStatusValue(currentStatus)}
-        onValueChange={selectProjectStatus}
-        disabled={isUpdatingStatus}
-      >
-        <SelectTrigger
-          size="sm"
-          className="h-7 w-[7.5rem] bg-background text-xs"
-          aria-label={`Change status for ${projectLabelText}`}
-        >
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent align="end">
-          {PROJECT_STATUS_OPTIONS.map((option) => (
-            <SelectItem key={option.value} value={option.value}>
-              {option.label}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-      {statusMessage && (
-        <p className="mt-1 text-xs text-destructive">{statusMessage}</p>
-      )}
-    </div>
   )
 }
 
@@ -603,10 +505,8 @@ function RegistrySelectField({
 
 function ProjectCard({
   project,
-  canUpdateStatus,
 }: {
   readonly project: ProjectsHubProject
-  readonly canUpdateStatus: boolean
 }): React.ReactElement {
   const label = projectLabel(project)
   const subtitle = projectSubtitle(project)
@@ -635,17 +535,14 @@ function ProjectCard({
             </p>
           )}
         </div>
-        {canUpdateStatus ? (
-          <ProjectStatusSelect
-            projectId={project.id}
-            currentStatus={project.status}
-            projectLabelText={label}
-          />
-        ) : (
-          <span className="shrink-0 pt-0.5 text-xs font-medium text-muted-foreground">
-            {statusLabel(project.status)}
+        <div className="flex shrink-0 flex-wrap justify-end gap-1.5">
+          <span className="rounded-md bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
+            {project.jobStatusLabel}
           </span>
-        )}
+          <span className="rounded-md border px-2 py-0.5 text-xs font-medium text-muted-foreground">
+            {projectClientStatusLabel(project.clientStatus)}
+          </span>
+        </div>
       </div>
 
       <div className="mt-3 flex flex-wrap gap-x-4 gap-y-2 border-t pt-2">
@@ -689,11 +586,9 @@ function ProjectCard({
 function DepartmentLane({
   group,
   activeDepartment,
-  canUpdateStatus,
 }: {
   readonly group: DepartmentGroup
   readonly activeDepartment: DepartmentId | "ALL"
-  readonly canUpdateStatus: boolean
 }): React.ReactElement {
   const isFiltered = activeDepartment !== "ALL"
   const visibleProjects = isFiltered ? group.projects : group.projects.slice(0, 5)
@@ -739,11 +634,7 @@ function DepartmentLane({
       {visibleProjects.length > 0 ? (
         <div className="grid gap-3 p-3 xl:grid-cols-2">
           {visibleProjects.map((project) => (
-            <ProjectCard
-              key={project.id}
-              project={project}
-              canUpdateStatus={canUpdateStatus}
-            />
+            <ProjectCard key={project.id} project={project} />
           ))}
         </div>
       ) : (
@@ -865,12 +756,10 @@ function DepartmentToolButton({
 
 function DepartmentLanding({
   group,
-  canUpdateStatus,
   canOpenTools,
   onOpenProjectManager,
 }: {
   readonly group: DepartmentGroup
-  readonly canUpdateStatus: boolean
   readonly canOpenTools: boolean
   readonly onOpenProjectManager: () => void
 }): React.ReactElement {
@@ -978,11 +867,7 @@ function DepartmentLanding({
         {group.projects.length > 0 ? (
           <div className="mt-3 grid gap-3 xl:grid-cols-2">
             {group.projects.map((project) => (
-              <ProjectCard
-                key={project.id}
-                project={project}
-                canUpdateStatus={canUpdateStatus}
-              />
+              <ProjectCard key={project.id} project={project} />
             ))}
           </div>
         ) : (
@@ -1332,7 +1217,7 @@ export function ProjectsHub({
     ? projects.find((project) => project.id === selectedRegistryProjectId) ?? null
     : null
   const statusFilteredProjects = projects.filter((project) =>
-    activeStatusFilters.includes(statusBucket(project.status))
+    activeStatusFilters.includes(statusBucket(project))
   )
   const searchedProjects = statusFilteredProjects.filter((project) =>
     projectMatchesSearch(project, normalizedQuery)
@@ -1353,13 +1238,13 @@ export function ProjectsHub({
         )
       : groups.filter((group) => group.id === activeDepartment)
   const activeProjects = projects.filter(
-    (project) => statusBucket(project.status) === "active"
+    (project) => statusBucket(project) === "active"
   )
   const warrantyProjects = projects.filter(
-    (project) => statusBucket(project.status) === "warranty"
+    (project) => statusBucket(project) === "warranty"
   )
   const completeProjects = projects.filter(
-    (project) => statusBucket(project.status) === "complete"
+    (project) => statusBucket(project) === "complete"
   )
   const linkedToSageCount = projects.filter((project) =>
     Boolean(project.sageJobNumber)
@@ -1448,7 +1333,7 @@ export function ProjectsHub({
               placeholder={
                 selectedDepartmentGroup
                   ? `Search ${selectedDepartmentGroup.shortLabel} projects...`
-                  : "Search by project number, client, address, or accounting job..."
+                  : "Search by project number, client, job status, address, or accounting job..."
               }
               className="pl-9"
             />
@@ -1529,7 +1414,7 @@ export function ProjectsHub({
           <span>
             <span className="font-semibold tabular-nums">
               {
-                projects.filter((project) => statusBucket(project.status) === "other")
+                projects.filter((project) => statusBucket(project) === "other")
                   .length
               }
             </span>{" "}
@@ -1753,14 +1638,17 @@ export function ProjectsHub({
                             {projectLabel(project)}
                           </span>
                           <span className="block truncate text-xs text-muted-foreground">
-                            {projectSubtitle(project) || statusLabel(project.status)}
+                            {projectSubtitle(project) || project.jobStatusLabel}
                           </span>
                         </button>
-                        <ProjectStatusSelect
-                          projectId={project.id}
-                          currentStatus={project.status}
-                          projectLabelText={projectLabel(project)}
-                        />
+                        <div className="flex shrink-0 flex-wrap justify-end gap-1.5">
+                          <span className="rounded-md bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
+                            {project.jobStatusLabel}
+                          </span>
+                          <span className="rounded-md border px-2 py-0.5 text-xs font-medium text-muted-foreground">
+                            {projectClientStatusLabel(project.clientStatus)}
+                          </span>
+                        </div>
                       </div>
                     ))
                   ) : (
@@ -1816,7 +1704,7 @@ export function ProjectsHub({
                         placeholder="O-### or H-###"
                       />
                       <RegistrySelectField
-                        label="Status"
+                        label="Legacy status"
                         name="status"
                         value={projectStatusValue(selectedRegistryProject.status)}
                         options={PROJECT_STATUS_OPTIONS}
@@ -1939,7 +1827,6 @@ export function ProjectsHub({
         ) : selectedDepartmentGroup ? (
           <DepartmentLanding
             group={selectedDepartmentGroup}
-            canUpdateStatus={canCreateOrUpdateProjects}
             canOpenTools={canCreateOrUpdateProjects}
             onOpenProjectManager={openProjectManager}
           />
@@ -1954,7 +1841,6 @@ export function ProjectsHub({
                 key={group.id}
                 group={group}
                 activeDepartment={activeDepartment}
-                canUpdateStatus={canCreateOrUpdateProjects}
               />
             ))}
           </section>
