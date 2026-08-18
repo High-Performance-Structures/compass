@@ -84,6 +84,6 @@
 		"REALTIMEKIT_APP_ID": "3e31a97a-54ce-4940-ac53-c593db8d5c25",
 		"WORKOS_REDIRECT_URI": "https://compass.openrangeconstruction.ltd/callback",
 		"JARVIS_AGENT_BRIDGE_ENABLED": "true",
-		"SAGE_CLIENT_PROJECT_WRITES_ENABLED": "false"
+		"SAGE_CLIENT_PROJECT_WRITES_ENABLED": "true"
 	}
 }
