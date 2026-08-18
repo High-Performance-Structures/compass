@@ -51,7 +51,7 @@ export async function POST(request: NextRequest): Promise<Response> {
       request
     )
 
-    const destination = new URL("/dashboard/field", request.url)
+    const destination = new URL("/dashboard/field/native-bootstrap", request.url)
     if (parsed.data.nativePlatform) {
       destination.searchParams.set("nativePlatform", parsed.data.nativePlatform)
     }

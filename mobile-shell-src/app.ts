@@ -148,6 +148,9 @@ function empty(text: string): string { return `<div class="empty">${escapeHtml(t
 
 function projectsView(): string {
   if (projects.length === 0) {
+    if (profile) {
+      return sectionHead("Active projects") + `<div class="empty auth-empty"><p>No active projects are assigned to your Compass account yet.</p><div class="auth-actions"><button id="open-live-empty" class="secondary auth-button" type="button" ${online ? "" : "disabled"}>Open Full Compass</button></div></div>`
+    }
     if (authMode === "password") {
       return sectionHead("Sign in to Field Mode", "Use the email address and password connected to your Compass account.") + `<form id="native-password-form" class="form auth-form"><label class="field">Email address<input name="email" type="email" autocomplete="email" inputmode="email" value="${escapeHtml(authEmail)}" required /></label><label class="field">Password<input name="password" type="password" autocomplete="current-password" required /></label>${authError ? `<p class="auth-error" role="alert">${escapeHtml(authError)}</p>` : ""}<button class="primary" type="submit" ${signingIn ? "disabled" : ""}>${signingIn ? "Signing in" : "Sign in"}</button><button class="text-button" id="native-reset-password" type="button" ${online && !signingIn ? "" : "disabled"}>Forgot or need a password?</button><button class="text-button" data-auth-choice type="button" ${signingIn ? "disabled" : ""}>Back to sign-in choices</button></form>`
     }
@@ -378,7 +381,7 @@ function render(): void {
     { value: "documents", symbol: "D", label: "Documents" },
     { value: "chat", symbol: "M", label: "Messages" },
   ]
-  const liveLabel = projects.length === 0 ? "Sign in" : "Full Compass"
+  const liveLabel = profile ? "Full Compass" : "Sign in"
   app.innerHTML = `<div class="shell"><header class="shell-header"><div class="header-row"><div><p class="eyebrow">Field mode</p><h1 class="project-title">${escapeHtml(title)}</h1></div><div class="header-actions">${outbox.length > 0 && online ? `<button id="sync-now" class="icon-button" type="button" aria-label="Sync waiting work">${syncIcon()}</button>` : ""}<button id="field-notifications" class="notification-button" type="button" aria-label="Notifications">${bellIcon()}${unreadNotifications > 0 ? `<span>${unreadNotifications > 9 ? "9+" : unreadNotifications}</span>` : ""}</button><button id="open-cherish" class="settings-button" type="button" ${activeTab === "cherish" ? "aria-current=page" : ""}>CHERISH</button><button id="field-settings" class="settings-button" type="button" aria-label="Field settings">Settings</button><button id="open-live" class="live-button" ${online && !signingIn ? "" : "disabled"}>${liveLabel}</button></div></div><div class="sync-line"><span class="status-dot ${online ? "online" : ""}"></span>${syncing || syncingCherish ? "Syncing waiting work" : online ? "Connection available" : "Offline"}${escapeHtml(queued)}</div></header><main class="content">${view()}</main><nav class="tabbar">${tabs.map((tab) => `<button class="tab ${activeTab === tab.value ? "active" : ""}" data-tab="${tab.value}"><span class="tab-symbol">${tab.symbol}</span>${tab.label}</button>`).join("")}</nav></div>`
   bindEvents()
 }
@@ -435,6 +438,7 @@ function bindEvents(): void {
   document.querySelectorAll<HTMLButtonElement>("[data-project-id]").forEach((button) => button.addEventListener("click", () => void selectProject(button.dataset.projectId ?? "")))
   document.querySelectorAll<HTMLButtonElement>("[data-file-id]").forEach((button) => button.addEventListener("click", () => void openDocument(button.dataset.fileId ?? "")))
   document.querySelector<HTMLButtonElement>("#open-live")?.addEventListener("click", openFullCompass)
+  document.querySelector<HTMLButtonElement>("#open-live-empty")?.addEventListener("click", openFullCompass)
   document.querySelector<HTMLButtonElement>("#open-cherish")?.addEventListener("click", openCherish)
   document.querySelector<HTMLButtonElement>("#sync-now")?.addEventListener("click", () => void resumePendingSync())
   document.querySelector<HTMLButtonElement>("#field-notifications")?.addEventListener("click", () => {
@@ -560,7 +564,7 @@ async function selectProject(projectId: string): Promise<void> {
   await writeJson(ACTIVE_PROJECT_KEY, projectId)
   if (!result.success) {
     if (online) {
-      window.location.assign(liveAppUrl(`/dashboard/field?projectId=${encodeURIComponent(projectId)}`))
+      window.location.assign(liveAppUrl(`/dashboard/field/native-bootstrap?projectId=${encodeURIComponent(projectId)}`))
       return
     }
     projectError = "Open this project once while connected before using it offline."
@@ -881,6 +885,10 @@ function liveAppUrl(path: string): string {
 function openFullCompass(): void {
   if (!online) return
   if (projects.length === 0) {
+    if (profile) {
+      window.location.assign(liveAppUrl("/dashboard/projects"))
+      return
+    }
     activeTab = "projects"
     render()
     return
@@ -1024,7 +1032,7 @@ async function signInWithPassword(event: SubmitEvent): Promise<void> {
       render()
       return
     }
-    window.location.assign(liveAppUrl("/dashboard/field"))
+    window.location.assign(liveAppUrl("/dashboard/field/native-bootstrap"))
   } catch {
     authError = "Compass could not sign you in. Check your connection and try again."
     signingIn = false
@@ -1094,7 +1102,7 @@ async function verifyNativeEmailCode(event: SubmitEvent): Promise<void> {
       render()
       return
     }
-    window.location.assign(liveAppUrl("/dashboard/field"))
+    window.location.assign(liveAppUrl("/dashboard/field/native-bootstrap"))
   } catch {
     authError = "The code could not be verified. Check your connection and try again."
     signingIn = false
@@ -1259,7 +1267,9 @@ async function initialize(): Promise<void> {
   profile = profileResult.success ? profileResult.data : null
   if (projects.length === 0) activeTab = "projects"
   const activeProjectId = activeProjectResult.success ? activeProjectResult.data : null
-  const selectedId = activeProjectId ?? projects[0]?.id ?? null
+  const selectedId = projects.some((project) => project.id === activeProjectId)
+    ? activeProjectId
+    : projects[0]?.id ?? null
   const packetResult = selectedId
     ? fieldProjectPacketSchema.safeParse(await readJson(packetKey(selectedId)))
     : null

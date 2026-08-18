@@ -67,6 +67,18 @@ export async function cacheNativeFieldState(
   ])
 }
 
+export async function cacheNativeFieldProjects(
+  projects: readonly FieldProject[]
+): Promise<void> {
+  if (!isNative()) return
+  await Promise.all([
+    writeJson(PROJECTS_KEY, projects),
+    projects.length === 0
+      ? writeJson(ACTIVE_PROJECT_KEY, null)
+      : Promise.resolve(),
+  ])
+}
+
 export async function cacheNativeFieldProfile(
   profile: FieldUserProfile
 ): Promise<void> {
