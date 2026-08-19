@@ -2,6 +2,7 @@
 
 import * as React from "react"
 import { Check, ChevronsUpDown } from "lucide-react"
+import { useRouter } from "next/navigation"
 import { IconMailForward } from "@tabler/icons-react"
 import { toast } from "sonner"
 
@@ -33,6 +34,7 @@ import {
 } from "@/components/ui/sheet"
 import { Textarea } from "@/components/ui/textarea"
 import { projectAccessWelcomeTemplate } from "@/lib/email/project-access-welcome"
+import { projectContactCanInvite } from "@/lib/project-contact-access-status"
 import { cn } from "@/lib/utils"
 
 type InvitableContact = ProjectContactItem & {
@@ -42,7 +44,10 @@ type InvitableContact = ProjectContactItem & {
 function isInvitableContact(
   contact: ProjectContactItem
 ): contact is InvitableContact {
-  return Boolean(contact.email?.trim())
+  return (
+    Boolean(contact.email?.trim()) &&
+    projectContactCanInvite(contact.accessStatus)
+  )
 }
 
 function accessLabel(contactType: ProjectContactItem["contactType"]): string {
@@ -61,6 +66,7 @@ export function ProjectContactInviteLauncher({
   readonly projectLabel: string
   readonly contacts: readonly ProjectContactItem[]
 }): React.ReactElement | null {
+  const router = useRouter()
   const eligibleContacts = contacts.filter(isInvitableContact)
   const [sheetOpen, setSheetOpen] = React.useState(false)
   const [contactPickerOpen, setContactPickerOpen] = React.useState(false)
@@ -117,6 +123,7 @@ export function ProjectContactInviteLauncher({
         toast.success("Compass invitation and welcome email sent")
       }
       handleOpenChange(false)
+      router.refresh()
     } catch {
       toast.error("Unable to send the Compass invitation")
     } finally {

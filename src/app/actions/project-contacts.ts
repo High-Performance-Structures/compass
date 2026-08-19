@@ -1,6 +1,6 @@
 "use server"
 
-import { and, asc, desc, eq, inArray, or } from "drizzle-orm"
+import { and, asc, desc, eq, inArray, or, sql } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
 import { getDb } from "@/db"
@@ -33,6 +33,7 @@ import {
   type ProjectContactAccessStatus,
   type ProjectContactInvitationSnapshot,
 } from "@/lib/project-contact-access-status"
+import { resolveProjectContactIdentity } from "@/lib/project-contact-directory-identity"
 
 export type ProjectContactType =
   | "owner"
@@ -593,34 +594,99 @@ export async function getProjectContactsSummary(
             )
           )
 
-  const rows = await db
-    .select()
+  const projectRow = await db
+    .select({ organizationId: projects.organizationId })
+    .from(projects)
+    .where(eq(projects.id, projectId))
+    .get()
+  if (!projectRow?.organizationId) throw new Error("Project not found")
+  const organizationId = projectRow.organizationId
+  const directoryRows = await db
+    .select({
+      contact: projectContacts,
+      customer: {
+        email: customers.email,
+        phone: customers.phone,
+        address: customers.address,
+      },
+      vendor: {
+        email: vendors.email,
+        phone: vendors.phone,
+        address: vendors.address,
+      },
+      teamMember: {
+        email: users.email,
+        phone: users.phone,
+        address: users.address,
+      },
+    })
     .from(projectContacts)
+    .leftJoin(
+      customers,
+      and(
+        eq(projectContacts.sourceEntityType, "customer"),
+        eq(projectContacts.sourceEntityId, customers.id),
+        eq(customers.organizationId, organizationId)
+      )
+    )
+    .leftJoin(
+      vendors,
+      and(
+        eq(projectContacts.sourceEntityType, "vendor"),
+        eq(projectContacts.sourceEntityId, vendors.id),
+        eq(vendors.organizationId, organizationId)
+      )
+    )
+    .leftJoin(
+      users,
+      and(
+        eq(projectContacts.sourceEntityType, "user"),
+        eq(projectContacts.sourceEntityId, users.id),
+        sql`exists (
+          select 1 from ${organizationMembers}
+          where ${organizationMembers.userId} = ${users.id}
+            and ${organizationMembers.organizationId} = ${organizationId}
+        )`
+      )
+    )
     .where(visibilityWhere)
     .orderBy(
       asc(projectContacts.sortOrder),
       asc(projectContacts.contactType),
       asc(projectContacts.displayName)
     )
+  const rows = directoryRows.map((row) => {
+    const directoryIdentity =
+      row.contact.sourceEntityType === "customer"
+        ? row.customer
+        : row.contact.sourceEntityType === "vendor"
+          ? row.vendor
+          : row.contact.sourceEntityType === "user"
+            ? row.teamMember
+            : null
+    const identity = resolveProjectContactIdentity(
+      {
+        email: row.contact.email,
+        phone: row.contact.phone,
+        address: row.contact.address,
+      },
+      directoryIdentity
+    )
 
-  const projectRow = await db
-    .select({ organizationId: projects.organizationId })
-    .from(projects)
-    .where(eq(projects.id, projectId))
-    .get()
-  const directoryIdentityKeys = projectRow?.organizationId
-    ? await activeDirectoryIdentityKeys({
-        db,
-        organizationId: projectRow.organizationId,
-        entityIds: rows.flatMap((row) =>
-          (row.sourceEntityType === "customer" ||
-            row.sourceEntityType === "vendor") &&
-          row.sourceEntityId
-            ? [row.sourceEntityId]
-            : []
-        ),
-      })
-    : new Set<string>()
+    return { ...row.contact, ...identity }
+  })
+
+  const directoryIdentityKeys = await activeDirectoryIdentityKeys({
+    db,
+    organizationId,
+    entityIds: rows.flatMap((row) =>
+      (row.sourceEntityType === "customer" ||
+        row.sourceEntityType === "vendor") &&
+      row.sourceEntityId
+        ? [row.sourceEntityId]
+        : []
+    ),
+  })
 
   const invitationRows = await db
     .select({

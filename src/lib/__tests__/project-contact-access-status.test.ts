@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest"
 
-import { projectContactAccessStatus } from "@/lib/project-contact-access-status"
+import {
+  projectContactAccessStatus,
+  projectContactCanInvite,
+} from "@/lib/project-contact-access-status"
 
 const NOW = new Date("2026-07-29T20:00:00.000Z")
 
@@ -63,5 +66,15 @@ describe("projectContactAccessStatus", () => {
         now: NOW,
       })
     ).toBe("inactive")
+  })
+})
+
+describe("projectContactCanInvite", () => {
+  it("allows new and expired invitations without duplicating current access", () => {
+    expect(projectContactCanInvite("not_invited")).toBe(true)
+    expect(projectContactCanInvite("expired")).toBe(true)
+    expect(projectContactCanInvite("pending")).toBe(false)
+    expect(projectContactCanInvite("active")).toBe(false)
+    expect(projectContactCanInvite("inactive")).toBe(false)
   })
 })

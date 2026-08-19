@@ -11,6 +11,12 @@ export type ProjectContactInvitationSnapshot = {
   readonly acceptedUserActive: boolean | null
 }
 
+export function projectContactCanInvite(
+  status: ProjectContactAccessStatus
+): boolean {
+  return status === "not_invited" || status === "expired"
+}
+
 export function projectContactAccessStatus(input: {
   readonly activeProjectMember: boolean
   readonly latestInvitation: ProjectContactInvitationSnapshot | null

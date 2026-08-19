@@ -2,6 +2,7 @@
 
 import * as React from "react"
 import { IconMailForward } from "@tabler/icons-react"
+import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 
 import { sendProjectAccessInvitation } from "@/app/actions/project-access-invitations"
@@ -43,6 +44,7 @@ export function ProjectContactInviteButton({
   readonly contactEmail: string
   readonly contactType: InvitableContactType
 }): React.ReactElement {
+  const router = useRouter()
   const template = projectAccessWelcomeTemplate({
     recipientName: contactName,
     projectLabel,
@@ -85,6 +87,7 @@ export function ProjectContactInviteButton({
         toast.success("Compass invitation and welcome email sent")
       }
       setOpen(false)
+      router.refresh()
     } catch {
       toast.error("Unable to send the Compass invitation")
     } finally {

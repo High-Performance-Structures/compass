@@ -1,11 +1,12 @@
 "use server"
 
-import { and, eq, sql } from "drizzle-orm"
+import { and, desc, eq, or, sql } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { z } from "zod/v4"
 
 import { getDb } from "@/db"
 import {
+  customers,
   projectAccessInvitations,
   projectContacts,
   projectMembers,
@@ -13,6 +14,7 @@ import {
   organizations,
   projects,
   users,
+  vendors,
 } from "@/db/schema"
 import { requireAuth } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
@@ -21,6 +23,8 @@ import { sendCompassEmail } from "@/lib/email/compass-email"
 import { buildProjectAccessWelcomeHtml } from "@/lib/email/project-access-welcome"
 import { requirePermission } from "@/lib/permissions"
 import { ensureProjectAudienceConversation } from "@/lib/project-audience-conversations"
+import { projectContactAccessStatus } from "@/lib/project-contact-access-status"
+import { resolveProjectContactIdentity } from "@/lib/project-contact-directory-identity"
 import {
   isExternalProjectRole,
   isInternalStaffRole,
@@ -186,9 +190,52 @@ export async function sendProjectAccessInvitation(
         projectName: projects.name,
         projectNumber: projects.projectNumber,
         organizationId: projects.organizationId,
+        customer: {
+          email: customers.email,
+          phone: customers.phone,
+          address: customers.address,
+        },
+        vendor: {
+          email: vendors.email,
+          phone: vendors.phone,
+          address: vendors.address,
+        },
+        teamMember: {
+          email: users.email,
+          phone: users.phone,
+          address: users.address,
+        },
       })
       .from(projectContacts)
       .innerJoin(projects, eq(projects.id, projectContacts.projectId))
+      .leftJoin(
+        customers,
+        and(
+          eq(projectContacts.sourceEntityType, "customer"),
+          eq(projectContacts.sourceEntityId, customers.id),
+          eq(customers.organizationId, projects.organizationId)
+        )
+      )
+      .leftJoin(
+        vendors,
+        and(
+          eq(projectContacts.sourceEntityType, "vendor"),
+          eq(projectContacts.sourceEntityId, vendors.id),
+          eq(vendors.organizationId, projects.organizationId)
+        )
+      )
+      .leftJoin(
+        users,
+        and(
+          eq(projectContacts.sourceEntityType, "user"),
+          eq(projectContacts.sourceEntityId, users.id),
+          sql`exists (
+            select 1 from ${organizationMembers}
+            where ${organizationMembers.userId} = ${users.id}
+              and ${organizationMembers.organizationId} = ${projects.organizationId}
+          )`
+        )
+      )
       .where(
         and(
           eq(projectContacts.id, parsed.data.contactId),
@@ -203,7 +250,23 @@ export async function sendProjectAccessInvitation(
       return { success: false, error: "Project contact not found." }
     }
 
-    const email = row.contact.email?.trim().toLowerCase() ?? ""
+    const directoryIdentity =
+      row.contact.sourceEntityType === "customer"
+        ? row.customer
+        : row.contact.sourceEntityType === "vendor"
+          ? row.vendor
+          : row.contact.sourceEntityType === "user"
+            ? row.teamMember
+            : null
+    const identity = resolveProjectContactIdentity(
+      {
+        email: row.contact.email,
+        phone: row.contact.phone,
+        address: row.contact.address,
+      },
+      directoryIdentity
+    )
+    const email = identity.email?.toLowerCase() ?? ""
     if (!email) {
       return {
         success: false,
@@ -216,6 +279,12 @@ export async function sendProjectAccessInvitation(
     }
 
     const now = new Date().toISOString()
+    await db
+      .update(projectContacts)
+      .set({ ...identity, updatedAt: now })
+      .where(eq(projectContacts.id, row.contact.id))
+      .run()
+
     const existingUser = await db
       .select({
         id: users.id,
@@ -238,6 +307,51 @@ export async function sendProjectAccessInvitation(
         error:
           "This Compass account is deactivated. Reactivate it in People before assigning project access.",
       }
+    }
+    const pendingInvitation = !activeExistingUser
+      ? await db
+          .select({
+            id: projectAccessInvitations.id,
+            workosExpiresAt: projectAccessInvitations.workosExpiresAt,
+          })
+          .from(projectAccessInvitations)
+          .where(
+            and(
+              eq(projectAccessInvitations.projectId, parsed.data.projectId),
+              eq(projectAccessInvitations.status, "sent"),
+              or(
+                eq(projectAccessInvitations.projectContactId, row.contact.id),
+                sql`lower(trim(${projectAccessInvitations.email})) = ${email}`
+              )
+            )
+          )
+          .orderBy(desc(projectAccessInvitations.invitedAt))
+          .get()
+      : null
+    if (pendingInvitation) {
+      const pendingStatus = projectContactAccessStatus({
+        activeProjectMember: false,
+        latestInvitation: {
+          status: "sent",
+          workosExpiresAt: pendingInvitation.workosExpiresAt,
+          acceptedUserActive: null,
+        },
+        now: new Date(now),
+      })
+      if (pendingStatus === "pending") {
+        revalidatePath(`/dashboard/projects/${parsed.data.projectId}/contacts`)
+        return {
+          success: true,
+          accessStatus: "invited",
+          warning: "This contact already has a current invitation.",
+        }
+      }
+
+      await db
+        .update(projectAccessInvitations)
+        .set({ status: "expired", updatedAt: now })
+        .where(eq(projectAccessInvitations.id, pendingInvitation.id))
+        .run()
     }
     const internalMembership = activeExistingUser
       ? await db
@@ -289,14 +403,14 @@ export async function sendProjectAccessInvitation(
 
     if (activeExistingUser) {
       if (
-        (!activeExistingUser.phone && row.contact.phone) ||
-        (!activeExistingUser.address && row.contact.address)
+        (!activeExistingUser.phone && identity.phone) ||
+        (!activeExistingUser.address && identity.address)
       ) {
         await db
           .update(users)
           .set({
-            phone: activeExistingUser.phone ?? row.contact.phone,
-            address: activeExistingUser.address ?? row.contact.address,
+            phone: activeExistingUser.phone ?? identity.phone,
+            address: activeExistingUser.address ?? identity.address,
             updatedAt: now,
           })
           .where(eq(users.id, activeExistingUser.id))
