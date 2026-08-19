@@ -21,6 +21,7 @@ import { ProjectContactEditor } from "@/components/projects/project-contact-mana
 import { ProjectContactInviteButton } from "@/components/projects/project-contact-invite-button"
 import { ProjectContactInviteLauncher } from "@/components/projects/project-contact-invite-launcher"
 import { Badge } from "@/components/ui/badge"
+import { projectContactCanInvite } from "@/lib/project-contact-access-status"
 
 type ProjectContactDisplayGroupId = "customers" | "vendors" | "internal"
 
@@ -94,7 +95,7 @@ function accessStatusLabel(contact: ProjectContactItem): string {
     case "active":
       return "Active"
     case "pending":
-      return "Pending"
+      return "Invited"
     case "expired":
       return "Expired"
     case "inactive":
@@ -196,18 +197,20 @@ function ContactCard({
         </p>
       )}
 
-      {!compact && contact.email && (
-        <div className="mt-3 flex justify-end">
-          <ProjectContactInviteButton
-            projectId={projectId}
-            projectLabel={projectLabel}
-            contactId={contact.id}
-            contactName={contact.displayName}
-            contactEmail={contact.email}
-            contactType={contact.contactType}
-          />
-        </div>
-      )}
+      {!compact &&
+        contact.email &&
+        projectContactCanInvite(contact.accessStatus) && (
+          <div className="mt-3 flex justify-end">
+            <ProjectContactInviteButton
+              projectId={projectId}
+              projectLabel={projectLabel}
+              contactId={contact.id}
+              contactName={contact.displayName}
+              contactEmail={contact.email}
+              contactType={contact.contactType}
+            />
+          </div>
+        )}
     </article>
   )
 }
