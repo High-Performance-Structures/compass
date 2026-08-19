@@ -246,6 +246,7 @@ type DailyLogReviewInput = {
 }
 
 type CreateDailyLogInput = {
+  readonly clientSubmissionId?: string
   readonly logDate: string
   readonly weatherTempF: number | null
   readonly weatherConditions: string
@@ -1579,7 +1580,24 @@ export async function createProjectDailyLog(
 ): Promise<CreateDailyLogResult> {
   try {
     const { db, userId } = await verifyDailyLogStaffMutationAccess(projectId)
-    const dailyLogId = crypto.randomUUID()
+    const clientSubmissionId = input.clientSubmissionId?.trim()
+    const dailyLogId = clientSubmissionId || crypto.randomUUID()
+
+    // Native Field Mode retries after interrupted requests. Reusing the client
+    // UUID prevents a successful first request from creating a duplicate log.
+    if (clientSubmissionId) {
+      const [existing] = await db
+        .select({ projectId: dailyLogs.projectId, authorId: dailyLogs.authorId })
+        .from(dailyLogs)
+        .where(eq(dailyLogs.id, dailyLogId))
+        .limit(1)
+
+      if (existing) {
+        return existing.projectId === projectId && existing.authorId === userId
+          ? { success: true, dailyLogId }
+          : { success: false, error: "Daily log submission ID is already in use." }
+      }
+    }
     const now = new Date().toISOString()
     const logDate = normalizedLogDate(input.logDate)
     const workCompleted = requiredText(input.workCompleted, "Work completed")

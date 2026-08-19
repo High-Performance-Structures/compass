@@ -27,6 +27,7 @@ import {
   type FieldUserProfile,
 } from "../src/lib/field/types"
 import { isTaskAssignedToFieldUser } from "../src/lib/field/task-assignment"
+import { drainDailyLogOutbox } from "../src/lib/field/daily-log-outbox"
 import { isFieldAppUrl, resolveDashboardAppUrl } from "./app-url"
 import {
   filterFieldProjects,
@@ -108,6 +109,7 @@ let authMode: AuthMode = "choice"
 let authEmail = ""
 let draftAttachments: FieldQueuedAttachment[] = []
 let attachmentError = ""
+let syncingDailyLogs = false
 let projectError = ""
 let syncing = false
 let messageActionError = ""
@@ -467,7 +469,7 @@ function render(): void {
     { value: "chat", symbol: "M", label: "Messages" },
   ]
   const liveLabel = profile ? "Full Compass" : "Sign in"
-  app.innerHTML = `<div class="shell"><header class="shell-header"><div class="header-row"><div><p class="eyebrow">Field mode</p><h1 class="project-title">${escapeHtml(title)}</h1></div><div class="header-actions">${outbox.length > 0 && online ? `<button id="sync-now" class="icon-button" type="button" aria-label="Sync waiting work">${syncIcon()}</button>` : ""}<button id="field-notifications" class="notification-button" type="button" aria-label="Notifications">${bellIcon()}${unreadNotifications > 0 ? `<span>${unreadNotifications > 9 ? "9+" : unreadNotifications}</span>` : ""}</button><button id="open-cherish" class="settings-button" type="button" ${activeTab === "cherish" ? "aria-current=page" : ""}>CHERISH</button><button id="field-settings" class="settings-button" type="button" aria-label="Field settings">Settings</button><button id="open-live" class="live-button" ${online && !signingIn ? "" : "disabled"}>${liveLabel}</button></div></div><div class="sync-line"><span class="status-dot ${online ? "online" : ""}"></span>${syncing || syncingCherish ? "Syncing waiting work" : online ? "Connection available" : "Offline"}${escapeHtml(queued)}</div></header><main class="content">${view()}</main><nav class="tabbar">${tabs.map((tab) => `<button class="tab ${activeTab === tab.value ? "active" : ""}" data-tab="${tab.value}"><span class="tab-symbol">${tab.symbol}</span>${tab.label}</button>`).join("")}</nav></div>`
+  app.innerHTML = `<div class="shell"><header class="shell-header"><div class="header-row"><div><p class="eyebrow">Field mode</p><h1 class="project-title">${escapeHtml(title)}</h1></div><div class="header-actions">${outbox.length > 0 && online ? `<button id="sync-now" class="icon-button" type="button" aria-label="Sync waiting work">${syncIcon()}</button>` : ""}<button id="field-notifications" class="notification-button" type="button" aria-label="Notifications">${bellIcon()}${unreadNotifications > 0 ? `<span>${unreadNotifications > 9 ? "9+" : unreadNotifications}</span>` : ""}</button><button id="open-cherish" class="settings-button" type="button" ${activeTab === "cherish" ? "aria-current=page" : ""}>CHERISH</button><button id="field-settings" class="settings-button" type="button" aria-label="Field settings">Settings</button><button id="open-live" class="live-button" ${online && !signingIn ? "" : "disabled"}>${liveLabel}</button></div></div><div class="sync-line"><span class="status-dot ${online ? "online" : ""}"></span>${syncing || syncingCherish || syncingDailyLogs ? "Syncing waiting work" : online ? "Connection available" : "Offline"}${escapeHtml(queued)}</div></header><main class="content">${view()}</main><nav class="tabbar">${tabs.map((tab) => `<button class="tab ${activeTab === tab.value ? "active" : ""}" data-tab="${tab.value}"><span class="tab-symbol">${tab.symbol}</span>${tab.label}</button>`).join("")}</nav></div>`
   bindEvents()
 }
 
@@ -727,6 +729,105 @@ async function queueDailyLog(event: SubmitEvent): Promise<void> {
   attachmentError = ""
   formElement.reset()
   render()
+  if (online) void syncDailyLogOutbox()
+}
+
+async function uploadQueuedDailyLogAttachment(
+  item: Extract<FieldOutboxItem, { readonly kind: "daily_log" }>,
+  remoteDailyLogId: string,
+  attachment: FieldQueuedAttachment
+): Promise<void> {
+  const storedFile = await Filesystem.readFile({
+    path: attachment.localPath,
+    directory: Directory.Data,
+  })
+  if (typeof storedFile.data !== "string") {
+    throw new Error(`${attachment.fileName} could not be read for sync.`)
+  }
+
+  const binary = window.atob(storedFile.data)
+  const bytes = new Uint8Array(binary.length)
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index)
+  }
+  const file = new File([bytes], attachment.fileName, {
+    type: attachment.mimeType,
+  })
+  const formData = new FormData()
+  formData.append("files", file)
+  formData.set("dailyLogId", remoteDailyLogId)
+  formData.set("capturedDate", item.payload.logDate)
+  formData.set("photoKind", "progress")
+
+  const response = await fetch(
+    `${LIVE_URL}/api/projects/${encodeURIComponent(item.projectId)}/photos/upload`,
+    { method: "POST", body: formData, credentials: "include" }
+  )
+  const responseBody: unknown = await response.json().catch(() => null)
+  if (!response.ok) {
+    const message =
+      typeof responseBody === "object" &&
+      responseBody !== null &&
+      "error" in responseBody &&
+      typeof responseBody.error === "string"
+        ? responseBody.error
+        : `Unable to upload ${attachment.fileName}.`
+    throw new Error(message)
+  }
+
+  await Filesystem.deleteFile({
+    path: attachment.localPath,
+    directory: Directory.Data,
+  }).catch(() => undefined)
+}
+
+async function syncDailyLogOutbox(): Promise<void> {
+  if (!online || syncingDailyLogs) return
+  if (!outbox.some((item) => item.kind === "daily_log")) return
+
+  syncingDailyLogs = true
+  attachmentError = ""
+  render()
+  let syncedCount = 0
+  try {
+    syncedCount = await drainDailyLogOutbox(outbox, {
+      createDailyLog: async (item) => {
+        const response = await CapacitorHttp.post({
+          url: `${LIVE_URL}/api/field/daily-logs`,
+          headers: { "Content-Type": "application/json" },
+          data: { id: item.id, projectId: item.projectId, payload: item.payload },
+          responseType: "json",
+        })
+        const result = z.object({
+          success: z.boolean(),
+          dailyLogId: z.string().optional(),
+          error: z.string().optional(),
+        }).safeParse(responseData(response.data))
+        if (!result.success || !result.data.success || !result.data.dailyLogId) {
+          throw new Error(
+            result.success
+              ? result.data.error ?? "The daily log is saved and will retry."
+              : "The daily log is saved and will retry."
+          )
+        }
+        return result.data.dailyLogId
+      },
+      uploadAttachment: uploadQueuedDailyLogAttachment,
+      persist: async (items) => {
+        outbox = [...items]
+        await writeJson(OUTBOX_KEY, outbox)
+      },
+    })
+  } catch (error) {
+    attachmentError = error instanceof Error
+      ? error.message
+      : "The daily log is saved and will retry."
+  } finally {
+    syncingDailyLogs = false
+    render()
+  }
+
+  if (syncedCount > 0 && packet) void refreshProjectPacket()
 }
 
 function formatBytes(value: number): string {
@@ -1219,7 +1320,8 @@ async function resumePendingSync(): Promise<void> {
   const composing = focusedElement instanceof HTMLInputElement
     || focusedElement instanceof HTMLTextAreaElement
     || focusedElement?.getAttribute("contenteditable") === "true"
-  if (syncing || composing || !online || outbox.length === 0) return
+  if (syncing || syncingDailyLogs || composing || !online || outbox.length === 0) return
+  await syncDailyLogOutbox()
   await syncCherishOutbox()
   await syncChatOutbox()
 }
