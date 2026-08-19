@@ -12,6 +12,7 @@ import {
   IconMessageCircle,
   IconPhoto,
   IconQuestionMark,
+  IconShoppingCartQuestion,
   IconUsers,
   IconShieldCheck,
 } from "@tabler/icons-react"
@@ -105,6 +106,11 @@ const SUB_VENDOR_NAVIGATION: readonly PreviewNavigationItem[] = [
     label: "RFIs",
     section: "rfis",
     icon: <IconQuestionMark className="size-4" />,
+  },
+  {
+    label: "RFQs",
+    section: "rfqs",
+    icon: <IconShoppingCartQuestion className="size-4" />,
   },
   {
     label: "Change Orders",

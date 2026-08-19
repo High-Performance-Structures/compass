@@ -8,8 +8,12 @@ import {
   IconPrinter,
   IconSparkles,
 } from "@tabler/icons-react"
+import { useRouter } from "next/navigation"
 
-import type { ProjectRfqItem } from "@/app/actions/project-operations"
+import {
+  type ProjectRfqItem,
+  updateProjectOperationStatus,
+} from "@/app/actions/project-operations"
 import { Button } from "@/components/ui/button"
 import type { ProjectBrand } from "@/lib/project-branding"
 
@@ -29,9 +33,10 @@ function plainText(value: string | null): string {
 }
 
 function rfqLink(projectId: string, rfqId: string): string {
-  return `/dashboard/projects/${projectId}/rfqs?created=${encodeURIComponent(
-    rfqId
-  )}`
+  return (
+    `/preview/projects/${encodeURIComponent(projectId)}/sub-vendor/rfqs` +
+    `?rfq=${encodeURIComponent(rfqId)}#rfq-${encodeURIComponent(rfqId)}`
+  )
 }
 
 function rfqRows(rfq: ProjectRfqItem): string {
@@ -144,8 +149,27 @@ export function ProjectRfqShareActions({
   readonly projectLabel: string
   readonly rfq: ProjectRfqItem
 }): React.ReactElement {
+  const router = useRouter()
   const [copied, setCopied] = React.useState<CopiedState>(null)
+  const [shareError, setShareError] = React.useState<string | null>(null)
   const requiresTemplateReview = rfq.templateReview !== null
+
+  async function prepareForSharing(): Promise<boolean> {
+    setShareError(null)
+    if (rfq.status !== "draft") return true
+    const result = await updateProjectOperationStatus(
+      projectId,
+      rfq.id,
+      "rfq",
+      "sent"
+    )
+    if (!result.success) {
+      setShareError(result.error)
+      return false
+    }
+    router.refresh()
+    return true
+  }
 
   function absoluteUrl(): string {
     return new URL(rfqLink(projectId, rfq.id), window.location.origin).toString()
@@ -202,16 +226,19 @@ export function ProjectRfqShareActions({
   }
 
   async function copyLink(): Promise<void> {
+    if (!(await prepareForSharing())) return
     await navigator.clipboard.writeText(absoluteUrl())
     setCopied("link")
   }
 
   async function copyEmail(): Promise<void> {
+    if (!(await prepareForSharing())) return
     await navigator.clipboard.writeText(plainEmail())
     setCopied("email")
   }
 
   async function copyHtmlEmail(): Promise<void> {
+    if (!(await prepareForSharing())) return
     const html = htmlEmail()
     const plain = plainEmail()
     if ("ClipboardItem" in window) {
@@ -281,6 +308,11 @@ export function ProjectRfqShareActions({
         )}
         HTML
       </Button>
+      {shareError && (
+        <span role="alert" className="basis-full text-xs text-destructive">
+          {shareError}
+        </span>
+      )}
     </div>
   )
 }

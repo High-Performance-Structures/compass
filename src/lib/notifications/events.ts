@@ -51,6 +51,17 @@ type RfiUpdatedNotificationInput = {
   readonly updatedBy: AuthUser
 }
 
+type RfqResponseNotificationInput = {
+  readonly organizationId: string
+  readonly projectId: string
+  readonly rfqId: string
+  readonly rfqNumber: string | null
+  readonly title: string
+  readonly decision: "quote" | "decline"
+  readonly amount: number | null
+  readonly respondedBy: AuthUser
+}
+
 type ProjectAssignmentNotificationInput = {
   readonly organizationId: string
   readonly projectId: string
@@ -263,10 +274,12 @@ export async function notifyRfiCreated(
     .then((rows) => rows[0] ?? null)
 
   const recipients = new Map<string, NotificationRecipientInput>()
-  recipients.set(input.createdBy.id, {
-    userId: input.createdBy.id,
-    email: input.createdBy.email,
-  })
+  if (isInternalStaffRole(input.createdBy.role)) {
+    recipients.set(input.createdBy.id, {
+      userId: input.createdBy.id,
+      email: input.createdBy.email,
+    })
+  }
 
   const assignedRecipients = await projectAssignmentRecipients(
     db,
@@ -372,6 +385,69 @@ export async function notifyRfiUpdated(
       email: true,
       push: true,
     },
+  })
+}
+
+export async function notifyRfqResponseReceived(
+  input: RfqResponseNotificationInput
+): Promise<void> {
+  const { env } = await getCloudflareContext()
+  const db = getDb(env.DB)
+  const members = await db
+    .select({
+      userId: users.id,
+      email: users.email,
+      googleEmail: users.googleEmail,
+      role: users.role,
+    })
+    .from(projectMembers)
+    .innerJoin(users, eq(users.id, projectMembers.userId))
+    .where(
+      and(
+        eq(projectMembers.projectId, input.projectId),
+        eq(users.isActive, true)
+      )
+    )
+  const recipients = members
+    .filter(
+      (member) =>
+        member.userId !== input.respondedBy.id &&
+        isInternalStaffRole(member.role)
+    )
+    .map((member) => ({
+      userId: member.userId,
+      email: member.googleEmail?.trim() || member.email,
+    }))
+  if (recipients.length === 0) return
+
+  const responseLabel =
+    input.decision === "decline"
+      ? "declined the request"
+      : `submitted a quote${
+          input.amount === null
+            ? ""
+            : ` for ${new Intl.NumberFormat("en-US", {
+                style: "currency",
+                currency: "USD",
+              }).format(input.amount)}`
+        }`
+  const responder = input.respondedBy.displayName ?? input.respondedBy.email
+  await createNotificationEvent({
+    organizationId: input.organizationId,
+    projectId: input.projectId,
+    eventType: "rfq.response_received",
+    sourceType: "rfq",
+    sourceId: input.rfqId,
+    title: `${input.rfqNumber ?? "RFQ"}: ${input.title}`,
+    body: `${responder} ${responseLabel}.`,
+    href:
+      `/dashboard/projects/${input.projectId}/rfqs?status=response_received` +
+      `#rfq-${encodeURIComponent(input.rfqId)}`,
+    priority: "normal",
+    audience: "project_team",
+    createdBy: input.respondedBy.id,
+    recipients,
+    delivery: { inApp: true, email: true, push: true },
   })
 }
 
