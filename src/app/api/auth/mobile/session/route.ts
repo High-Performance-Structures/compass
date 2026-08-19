@@ -12,17 +12,43 @@ const mobileSessionSchema = z.object({
 })
 
 export async function POST(request: NextRequest): Promise<Response> {
+  const expectsJson = request.headers
+    .get("content-type")
+    ?.toLowerCase()
+    .includes("application/json") ?? false
+
   if (!isWorkOSConfigured()) {
+    if (expectsJson) {
+      return NextResponse.json(
+        { success: false, error: "Authentication is unavailable." },
+        { status: 503 }
+      )
+    }
     return NextResponse.redirect(new URL("/login?error=auth_unavailable", request.url), 303)
   }
 
-  const formData = await request.formData()
-  const parsed = mobileSessionSchema.safeParse({
-    code: formData.get("code"),
-    codeVerifier: formData.get("codeVerifier"),
-    nativePlatform: formData.get("nativePlatform") ?? undefined,
-  })
+  let submitted: unknown
+  try {
+    submitted = expectsJson
+      ? await request.json()
+      : Object.fromEntries(await request.formData())
+  } catch {
+    if (expectsJson) {
+      return NextResponse.json(
+        { success: false, error: "Secure sign in could not be verified." },
+        { status: 400 }
+      )
+    }
+    return NextResponse.redirect(new URL("/login?error=invalid_mobile_auth", request.url), 303)
+  }
+  const parsed = mobileSessionSchema.safeParse(submitted)
   if (!parsed.success) {
+    if (expectsJson) {
+      return NextResponse.json(
+        { success: false, error: "Secure sign in could not be verified." },
+        { status: 400 }
+      )
+    }
     return NextResponse.redirect(new URL("/login?error=invalid_mobile_auth", request.url), 303)
   }
 
@@ -51,6 +77,10 @@ export async function POST(request: NextRequest): Promise<Response> {
       request
     )
 
+    if (expectsJson) {
+      return NextResponse.json({ success: true })
+    }
+
     const destination = new URL("/dashboard/field/native-bootstrap", request.url)
     if (parsed.data.nativePlatform) {
       destination.searchParams.set("nativePlatform", parsed.data.nativePlatform)
@@ -58,6 +88,12 @@ export async function POST(request: NextRequest): Promise<Response> {
     return NextResponse.redirect(destination, 303)
   } catch (error) {
     console.error("Mobile OAuth session exchange failed:", error)
+    if (expectsJson) {
+      return NextResponse.json(
+        { success: false, error: "Secure sign in could not be completed." },
+        { status: 401 }
+      )
+    }
     return NextResponse.redirect(new URL("/login?error=auth_failed", request.url), 303)
   }
 }
