@@ -356,9 +356,11 @@ export async function getFieldProjectPacket(
 
 export async function submitFieldDailyLog(
   projectId: string,
-  draft: FieldDailyLogDraft
+  draft: FieldDailyLogDraft,
+  clientSubmissionId?: string
 ): Promise<FieldDailyLogMutationResult> {
   const result = await createProjectDailyLog(projectId, {
+    clientSubmissionId,
     logDate: draft.logDate,
     weatherTempF: null,
     weatherConditions: "",
