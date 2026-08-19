@@ -35,6 +35,7 @@ import {
   isRfqStatus,
   purchaseOrderStatusAfterEmail,
 } from "@/lib/project-operations/status"
+import { canEditPurchaseOrderDraft } from "@/lib/purchase-orders/draft-edit"
 import {
   parsePortalPurchaseOrderPayload,
   type PortalPurchaseOrderAcknowledgement,
@@ -224,6 +225,11 @@ export type CreatePurchaseOrderRequestInput = {
   readonly priority: string
   readonly lines: readonly CreatePurchaseOrderLineInput[]
 }
+
+export type UpdatePurchaseOrderRequestInput =
+  CreatePurchaseOrderRequestInput & {
+    readonly expectedUpdatedAt: string
+  }
 
 export type CreatePurchaseOrderLineInput = {
   readonly description: string | null
@@ -1910,6 +1916,158 @@ export async function createPurchaseOrderRequest(
         error instanceof Error
           ? error.message
           : "Failed to create purchase order request",
+    }
+  }
+}
+
+export async function updatePurchaseOrderRequest(
+  projectId: string,
+  purchaseOrderId: string,
+  input: UpdatePurchaseOrderRequestInput
+): Promise<ProjectOperationActionResult> {
+  try {
+    const db = await verifyProjectUpdateAccess(
+      projectId,
+      "purchase-orders"
+    )
+    const [existing] = await db
+      .select()
+      .from(projectOperations)
+      .where(
+        and(
+          eq(projectOperations.id, purchaseOrderId),
+          eq(projectOperations.projectId, projectId),
+          eq(projectOperations.sourceRecordType, "purchase_order")
+        )
+      )
+      .limit(1)
+
+    if (!existing) {
+      throw new Error("Purchase order not found")
+    }
+    if (!canEditPurchaseOrderDraft(existing)) {
+      throw new Error(
+        "This purchase order can no longer be edited because it was sent or queued for Sage."
+      )
+    }
+    if (existing.updatedAt !== input.expectedUpdatedAt) {
+      throw new Error(
+        "This purchase order changed after you opened it. Refresh and try again."
+      )
+    }
+    if (!existing.sourceRecordNumber) {
+      throw new Error("Purchase order number is missing")
+    }
+
+    const now = new Date().toISOString()
+    const title = requireText(input.title, "Title")
+    const description = cleanText(input.description)
+    const companyName = cleanText(input.companyName)
+    const sageVendorId = cleanText(input.sageVendorId)
+    const shipTo = cleanText(input.shipTo)
+    const orderDate = cleanDate(input.orderDate, "P.O. date")
+    const dueDate = cleanDate(input.dueDate, "Required date")
+    const lines = normalizePurchaseOrderLines(input.lines, description ?? title)
+    const amount = lines.reduce((total, line) => total + line.amount, 0)
+    const headerCostCode = lines.length === 1 ? lines[0]?.costCode ?? null : null
+    const headerPhaseCode = lines.length === 1 ? lines[0]?.phaseCode ?? null : null
+    const headerTaxGroup = lines.length === 1 ? lines[0]?.taxGroup ?? null : null
+    const sagePayloadJson = JSON.stringify(
+      buildSagePurchaseOrderPayload({
+        project: {
+          sageJobId: existing.sageJobId,
+          sageJobNumber: existing.sageJobNumber,
+        },
+        sourceRecordNumber: existing.sourceRecordNumber,
+        title,
+        description,
+        companyName,
+        sageVendorId,
+        shipTo,
+        orderDate,
+        dueDate,
+        lines,
+      })
+    )
+
+    const lineInserts = lines.map((line) =>
+      db.insert(projectPurchaseOrderLines).values({
+        id: crypto.randomUUID(),
+        operationId: purchaseOrderId,
+        projectId,
+        sourceSystem: "compass",
+        sourceRecordId: null,
+        lineNumber: line.lineNumber,
+        costCode: line.costCode,
+        phaseCode: line.phaseCode,
+        description: line.description,
+        quantity: line.quantity,
+        unitCost: line.unitCost,
+        unit: line.unit,
+        amount: line.amount,
+        taxGroup: line.taxGroup,
+        sagePayloadJson: JSON.stringify(line),
+        syncStatus: "pending_sage",
+        createdAt: now,
+        updatedAt: now,
+      })
+    )
+
+    await db.batch([
+      db
+        .update(projectOperations)
+        .set({
+          title,
+          description,
+          priority: input.priority,
+          assigneeName: cleanText(input.assigneeName),
+          companyName,
+          costCode: headerCostCode,
+          dueDate,
+          amount,
+          sageVendorId,
+          sageVendorName: companyName,
+          sagePhaseCode: headerPhaseCode,
+          sageCostCode: headerCostCode,
+          sageTaxGroup: headerTaxGroup,
+          sageShipTo: shipTo,
+          sageOrderDate: orderDate,
+          sageRequiredDate: dueDate,
+          sagePayloadJson,
+          updatedAt: now,
+        })
+        .where(
+          and(
+            eq(projectOperations.id, purchaseOrderId),
+            eq(projectOperations.projectId, projectId),
+            eq(projectOperations.updatedAt, input.expectedUpdatedAt)
+          )
+        ),
+      db
+        .delete(projectPurchaseOrderLines)
+        .where(
+          and(
+            eq(projectPurchaseOrderLines.operationId, purchaseOrderId),
+            eq(projectPurchaseOrderLines.projectId, projectId)
+          )
+        ),
+      ...lineInserts,
+    ])
+
+    revalidatePath(`/dashboard/projects/${projectId}`)
+    revalidatePath(`/dashboard/projects/${projectId}/purchase-orders`)
+    revalidatePath("/dashboard/purchase-orders")
+    revalidatePath("/dashboard/financials")
+    revalidatePath("/dashboard/schedule")
+
+    return { success: true, id: purchaseOrderId }
+  } catch (error) {
+    return {
+      success: false,
+      error:
+        error instanceof Error
+          ? error.message
+          : "Failed to update purchase order request",
     }
   }
 }
