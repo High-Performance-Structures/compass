@@ -21,6 +21,7 @@ import {
 } from "@/lib/jarvis/feedback-lifecycle"
 import { runFeedbackMaintenance } from "@/lib/jarvis/feedback-maintenance"
 import { applyFeedbackLifecycleUpdate } from "@/lib/jarvis/feedback-status-update"
+import { feedbackBugTransitionIsBlocked } from "@/lib/jarvis/feedback-lifecycle-evidence"
 import { canManageUserAccess } from "@/lib/permissions"
 import { isInternalStaffRole } from "@/lib/user-roles"
 
@@ -354,6 +355,15 @@ export async function updateFeedbackAdminItem(
       eq(feedbackDeskItems.organizationId, admin.organizationId),
     )).get()
     if (!item) return { success: false, error: "Feedback request not found" }
+    const evidenceError = feedbackBugTransitionIsBlocked({
+      ...item,
+      nextStatus: parsed.status,
+      githubDraftPullRequestUrl:
+        parsed.draftPullRequestUrl === undefined
+          ? item.githubDraftPullRequestUrl
+          : parsed.draftPullRequestUrl || null,
+    })
+    if (evidenceError) return { success: false, error: evidenceError }
     const assignee = parsed.assignedToUserId
       ? await db.select({
           id: users.id,

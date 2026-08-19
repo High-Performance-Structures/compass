@@ -12,6 +12,7 @@ import {
 import { FEEDBACK_DESK_STATUSES } from "@/lib/jarvis/feedback-lifecycle"
 import { applyFeedbackLifecycleUpdate } from "@/lib/jarvis/feedback-status-update"
 import { feedbackDeliveryGraphUpdate } from "@/lib/jarvis/feedback-delivery"
+import { feedbackBugTransitionIsBlocked } from "@/lib/jarvis/feedback-lifecycle-evidence"
 
 const statusUpdateSchema = z.object({
   idempotencyKey: z.string().min(1).max(256),
@@ -119,6 +120,17 @@ export async function POST(
       { error: "Only an already-triaged bug can receive a delivery graph" },
       { status: 409 },
     )
+  }
+  const evidenceError = feedbackBugTransitionIsBlocked({
+    ...item,
+    nextStatus: parsed.data.status,
+    githubDraftPullRequestUrl:
+      parsed.data.draftPullRequestUrl === undefined
+        ? item.githubDraftPullRequestUrl
+        : parsed.data.draftPullRequestUrl,
+  })
+  if (evidenceError) {
+    return Response.json({ error: evidenceError }, { status: 409 })
   }
 
   let result: Awaited<ReturnType<typeof applyFeedbackLifecycleUpdate>>

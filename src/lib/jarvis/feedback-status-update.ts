@@ -23,6 +23,7 @@ import {
   shouldRequestFeedbackDeliveryGraph,
   type FeedbackDeliveryGraphUpdate,
 } from "@/lib/jarvis/feedback-delivery"
+import { feedbackBugTransitionIsBlocked } from "@/lib/jarvis/feedback-lifecycle-evidence"
 import { createSystemNotificationEvent } from "@/lib/notifications/events"
 
 type CompassDb = ReturnType<typeof getDb>
@@ -151,6 +152,18 @@ export async function applyFeedbackLifecycleUpdate(
   const deliveryGraphUpdatedAt = update.deliveryGraph
     ? new Date().toISOString()
     : item.deliveryGraphUpdatedAt
+  const evidenceError = feedbackBugTransitionIsBlocked({
+    kind: item.kind,
+    status: item.status,
+    nextStatus: update.status,
+    deliveryGraphId,
+    deliveryGraphStatus,
+    deliveryGraphImplementationTaskId,
+    deliveryGraphReviewTaskId,
+    deliveryGraphReleaseTaskId,
+    githubDraftPullRequestUrl: draftUrl,
+  })
+  if (evidenceError) throw new Error(evidenceError)
   const lifecycleUpdateKind = feedbackRequesterUpdateKind(
     item.status,
     update.status,

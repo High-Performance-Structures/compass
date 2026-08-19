@@ -8,6 +8,7 @@ import {
   readBoundedBody,
   verifyJarvisRequest,
 } from "@/lib/jarvis/auth"
+import { feedbackDeliveryGraphIsComplete } from "@/lib/jarvis/feedback-lifecycle-evidence"
 import { jarvisPayloadAfterCompletion } from "@/lib/jarvis/visual-context"
 
 const acknowledgementSchema = z.object({
@@ -99,6 +100,39 @@ export async function POST(
 
   if (!existing) {
     return Response.json({ error: "Event not found" }, { status: 404 })
+  }
+
+  if (
+    existing.eventType === "feedback.delivery_requested" &&
+    parsed.data.status === "completed"
+  ) {
+    const item = existing.feedbackDeskItemId
+      ? await db.select().from(feedbackDeskItems)
+        .where(eq(feedbackDeskItems.id, existing.feedbackDeskItemId))
+        .get()
+      : null
+    if (!item || !feedbackDeliveryGraphIsComplete(item)) {
+      const retrySeconds = parsed.data.retryAfterSeconds ?? 60
+      const retryAt = new Date(
+        now.getTime() + retrySeconds * 1000,
+      ).toISOString()
+      await db.update(jarvisBridgeEvents).set({
+        status: "pending",
+        result: null,
+        lastError: "Delivery graph attachment is incomplete",
+        availableAt: retryAt,
+        claimToken: null,
+        claimedAt: null,
+        completedAt: null,
+        updatedAt: nowIso,
+      }).where(eq(jarvisBridgeEvents.id, id))
+      return Response.json({
+        success: false,
+        retryable: true,
+        error: "Complete the durable delivery graph before acknowledging this event",
+        retryAfterSeconds: retrySeconds,
+      }, { status: 409 })
+    }
   }
 
   await db

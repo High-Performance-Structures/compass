@@ -11,6 +11,7 @@ import {
 } from "@/lib/jarvis/feedback-lifecycle"
 import { feedbackFeatureTransitionIsBlocked } from "@/lib/jarvis/feedback-feature-priority"
 import { applyFeedbackLifecycleUpdate } from "@/lib/jarvis/feedback-status-update"
+import { feedbackBugTransitionIsBlocked } from "@/lib/jarvis/feedback-lifecycle-evidence"
 
 type CompassDb = ReturnType<typeof getDb>
 type GithubProjectState = Readonly<{
@@ -215,6 +216,11 @@ export async function syncFeedbackDeskItemsFromGithub(
       featurePriorityApprovedAt: item.featurePriorityApprovedAt,
       kind: item.kind,
       nextStatus: nextStatus ?? knownFeedbackStatus(item.status),
+    })) continue
+    if (feedbackBugTransitionIsBlocked({
+      ...item,
+      nextStatus: nextStatus ?? knownFeedbackStatus(item.status),
+      githubDraftPullRequestUrl: state.pullRequestUrl ?? item.githubDraftPullRequestUrl,
     })) continue
 
     const message = state.projectStatus

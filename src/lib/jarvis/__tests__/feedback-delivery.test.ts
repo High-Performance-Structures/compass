@@ -6,6 +6,7 @@ import {
   shouldRequestFeedbackDeliveryGraph,
   type FeedbackDeliveryGraphItem,
 } from "@/lib/jarvis/feedback-delivery"
+import { feedbackDeliveryOperationalFixture } from "./fixtures/feedback-delivery-operational.fixture"
 
 const bug: FeedbackDeliveryGraphItem = {
   id: "f43e6e9a-1889-4ce0-9d16-6b6f13d57b58",
@@ -93,5 +94,29 @@ describe("Feedback Desk delivery graph routing", () => {
     expect(feedbackDeliveryGraphEvent(bug).idempotencyKey).toBe(
       feedbackDeliveryGraphEvent(bug).idempotencyKey,
     )
+  })
+
+  it("proves the sanitized operational fixture preserves durable IDs across retry", () => {
+    const event = feedbackDeliveryGraphEvent(feedbackDeliveryOperationalFixture.item)
+    const attachment = feedbackDeliveryGraphUpdate(
+      feedbackDeliveryOperationalFixture.graphAttachment,
+    )
+
+    expect(event).toMatchObject(feedbackDeliveryOperationalFixture.event)
+    expect(attachment).toMatchObject({
+      status: "created",
+      graphId: "graph-fixture-1",
+      implementationTaskId: "task-implementation-fixture-1",
+      reviewTaskId: "task-review-fixture-1",
+      releaseTaskId: "task-release-fixture-1",
+    })
+    expect(feedbackDeliveryOperationalFixture.retry).toEqual({
+      firstAckStatus: "pending",
+      nextAttempt: 2,
+    })
+    expect(JSON.stringify(event)).not.toContain("redacted request title")
+    expect(JSON.stringify(event)).not.toContain("redacted request description")
+    expect(JSON.stringify(event)).not.toContain("reporterEmail")
+    expect(JSON.stringify(event)).not.toContain("channelId")
   })
 })

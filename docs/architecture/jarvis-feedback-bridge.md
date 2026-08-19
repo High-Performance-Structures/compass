@@ -243,10 +243,15 @@ maintenance retry or repeated status callback cannot create a second graph.
 The private runtime creates the implementation, independent-review, and
 release-steward tasks through its normal Kanban tools, then attaches all three
 task IDs to the protected Feedback Desk record with a signed callback. A
-successful graph attachment leaves the request `triaged`; implementation,
-testing, merge, and deployment status changes require their corresponding
-evidence callbacks. A retryable pull failure returns the event to `pending`,
-while a terminal failure remains visible in the protected operations health and
+successful graph attachment leaves the request `triaged`. Compass applies the
+same fail-closed evidence predicates to administrator updates, signed Jarvis
+callbacks, and GitHub Project synchronization: `planned` and `in_progress`
+require a durable graph with all three task IDs, while `testing` and `deployed`
+also require the linked pull-request evidence. A `feedback.delivery_requested`
+event cannot be acknowledged as completed until that complete graph attachment
+is visible in D1; an incomplete attachment leaves the event `pending` with a
+retry time. A retryable pull failure returns the event to `pending`, while a
+terminal failure remains visible in the protected operations health and
 Feedback Desk records. Features never enqueue this event and remain blocked by
 the persisted leadership priority decision.
 
