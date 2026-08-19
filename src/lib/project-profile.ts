@@ -2,13 +2,80 @@ import { isInternalStaffRole } from "@/lib/user-roles"
 
 export const PROJECT_CLIENT_STATUSES = ["lead", "customer"] as const
 
-const MANUAL_MEANINGFUL_INTERACTION_TYPES = new Set([
-  "call",
-  "email",
-  "meeting",
-  "site_visit",
-  "client_send",
-])
+export type ProjectInteractionTypeOption = {
+  readonly id: string
+  readonly label: string
+}
+
+export const PROJECT_INTERACTION_TYPE_DEFINITIONS = [
+  { id: "call", label: "Call" },
+  { id: "email", label: "Email" },
+  { id: "sms", label: "Text" },
+  { id: "meeting", label: "Meeting" },
+  { id: "site_visit", label: "Site visit" },
+  { id: "client_send", label: "Document/Submittal to Client" },
+] as const satisfies readonly { readonly id: string; readonly label: string }[]
+
+const CUSTOM_INTERACTION_TYPE_PREFIX = "custom:"
+const CUSTOM_INTERACTION_TYPE_PATTERN = /^[\x20-\x7E]{1,60}$/
+const MANUAL_MEANINGFUL_INTERACTION_TYPES = new Set<string>(
+  PROJECT_INTERACTION_TYPE_DEFINITIONS.map((type) => type.id),
+)
+
+function normalizeInteractionTypeLabel(label: string): string {
+  return label.trim().toLowerCase()
+}
+
+export function customProjectInteractionType(label: string): string | null {
+  const trimmed = label.trim()
+  if (!CUSTOM_INTERACTION_TYPE_PATTERN.test(trimmed)) return null
+  const normalized = normalizeInteractionTypeLabel(trimmed)
+  if (
+    PROJECT_INTERACTION_TYPE_DEFINITIONS.some(
+      (type) => normalizeInteractionTypeLabel(type.label) === normalized,
+    )
+  ) {
+    return null
+  }
+  return `${CUSTOM_INTERACTION_TYPE_PREFIX}${trimmed}`
+}
+
+function customProjectInteractionTypeLabel(interactionType: string): string | null {
+  if (!interactionType.startsWith(CUSTOM_INTERACTION_TYPE_PREFIX)) return null
+  const label = interactionType.slice(CUSTOM_INTERACTION_TYPE_PREFIX.length)
+  return customProjectInteractionType(label) === interactionType ? label : null
+}
+
+export function projectInteractionTypeLabel(interactionType: string): string {
+  const builtIn = PROJECT_INTERACTION_TYPE_DEFINITIONS.find(
+    (type) => type.id === interactionType,
+  )
+  if (builtIn) return builtIn.label
+  return customProjectInteractionTypeLabel(interactionType) ?? interactionType
+}
+
+export function projectInteractionTypeOptions(
+  interactionTypes: readonly string[],
+): readonly ProjectInteractionTypeOption[] {
+  const options: ProjectInteractionTypeOption[] = PROJECT_INTERACTION_TYPE_DEFINITIONS.map(
+    (type) => ({ ...type }),
+  )
+  const labels = new Set(options.map((option) => normalizeInteractionTypeLabel(option.label)))
+  const customOptions = interactionTypes
+    .map((interactionType) => ({
+      id: interactionType,
+      label: customProjectInteractionTypeLabel(interactionType),
+    }))
+    .filter((option): option is { readonly id: string; readonly label: string } => {
+      if (!option.label) return false
+      const normalized = normalizeInteractionTypeLabel(option.label)
+      if (labels.has(normalized)) return false
+      labels.add(normalized)
+      return true
+    })
+    .sort((left, right) => left.label.localeCompare(right.label))
+  return [...options, ...customOptions]
+}
 
 export function isMeaningfulClientInteraction(input: {
   readonly interactionType: string
@@ -18,7 +85,10 @@ export function isMeaningfulClientInteraction(input: {
   if (input.source === "manual") {
     return (
       (input.direction === "inbound" || input.direction === "outbound")
-      && MANUAL_MEANINGFUL_INTERACTION_TYPES.has(input.interactionType)
+      && (
+        MANUAL_MEANINGFUL_INTERACTION_TYPES.has(input.interactionType)
+        || customProjectInteractionTypeLabel(input.interactionType) !== null
+      )
     )
   }
   return (
