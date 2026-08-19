@@ -7,7 +7,7 @@ import type {
 } from "@/lib/google/client/types"
 import {
   buildProjectDriveFolderName,
-  projectDriveChildFolders,
+  projectDriveTemplateFolderId,
   provisionProjectDriveFolder,
 } from "@/lib/google/project-drive-provisioning"
 
@@ -55,6 +55,24 @@ class MemoryDriveClient {
     this.createdNames.push(options.name)
     return file
   }
+
+  async copyFile(
+    _userEmail: string,
+    fileId: string,
+    options: { readonly name: string; readonly parentId: string }
+  ): Promise<DriveFile> {
+    const source = await this.getFile(_userEmail, fileId)
+    const id = `file-${this.nextId}`
+    this.nextId += 1
+    const file: DriveFile = {
+      ...source,
+      id,
+      name: options.name,
+      parents: [options.parentId],
+    }
+    this.files.set(id, file)
+    return file
+  }
 }
 
 describe("project Drive provisioning", () => {
@@ -71,6 +89,20 @@ describe("project Drive provisioning", () => {
 
   it("creates and verifies the ORC folder set under the canonical department root", async () => {
     const client = new MemoryDriveClient()
+    const templateId = projectDriveTemplateFolderId("O")
+    client.files.set(templateId, {
+      id: templateId,
+      name: "O-SequentialNumber-AddressNumber-LastName",
+      mimeType: FOLDER_MIME_TYPE,
+    })
+    for (const name of ["03_PayRequests", "11_ChangeOrders"]) {
+      client.files.set(`template-${name}`, {
+        id: `template-${name}`,
+        name,
+        mimeType: FOLDER_MIME_TYPE,
+        parents: [templateId],
+      })
+    }
     const result = await provisionProjectDriveFolder(
       client,
       "martine@hps-colorado.com",
@@ -78,7 +110,7 @@ describe("project Drive provisioning", () => {
     )
 
     expect(result.createdRoot).toBe(true)
-    expect(result.createdChildCount).toBe(projectDriveChildFolders("O").length)
+    expect(result.createdChildCount).toBe(2)
     expect(client.createdNames).toContain("03_PayRequests")
     expect(client.createdNames).toContain("11_ChangeOrders")
     expect(result.parentFolderId).toBe("0Bzi_pskoDROqd3RCemxpT3Flanc")
@@ -86,6 +118,18 @@ describe("project Drive provisioning", () => {
 
   it("reuses a previously created root and only fills missing children", async () => {
     const client = new MemoryDriveClient()
+    const templateId = projectDriveTemplateFolderId("H")
+    client.files.set(templateId, {
+      id: templateId,
+      name: "H-SequentialNumber-AddressNumber-LastName",
+      mimeType: FOLDER_MIME_TYPE,
+    })
+    client.files.set("template-plans", {
+      id: "template-plans",
+      name: "04_PermittedPlansSpecifications",
+      mimeType: FOLDER_MIME_TYPE,
+      parents: [templateId],
+    })
     await client.createFolder("test@example.com", {
       name: "H-432-10 - Example",
       parentId: "0Bzi_pskoDROqcEZZRHhIQ01RMmc",

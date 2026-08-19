@@ -30,6 +30,7 @@ import {
 } from "@/lib/google/config"
 import {
   buildProjectDriveFolderName,
+  projectDriveTemplateFolderId,
   provisionProjectDriveFolder as provisionGoogleProjectDriveFolder,
 } from "@/lib/google/project-drive-provisioning"
 import {
@@ -968,7 +969,9 @@ export async function createProjectIntake(
                 department,
                 folderName: drive.folderName,
                 parentFolderId: drive.parentFolderId,
+                templateFolderId: projectDriveTemplateFolderId(department),
                 childFolderNames: drive.childFolderNames,
+                copiedFileCount: drive.copiedFileCount,
               }),
               updatedAt: syncedAt,
             })
@@ -1149,6 +1152,7 @@ export type ProvisionProjectDriveResult =
       readonly folderUrl: string
       readonly createdRoot: boolean
       readonly createdChildCount: number
+      readonly copiedFileCount: number
     }
   | { readonly success: false; readonly error: string }
 
@@ -1185,16 +1189,6 @@ export async function provisionProjectDriveFolder(
       )
       .limit(1)
     if (!project) return { success: false, error: "Project not found" }
-    if (project.googleDriveFolderId) {
-      return {
-        success: true,
-        folderId: project.googleDriveFolderId,
-        folderUrl: `https://drive.google.com/drive/folders/${project.googleDriveFolderId}`,
-        createdRoot: false,
-        createdChildCount: 0,
-      }
-    }
-
     const department = projectDepartment(project.projectNumber)
     if (!department || !project.projectNumber) {
       return {
@@ -1230,7 +1224,11 @@ export async function provisionProjectDriveFolder(
     const drive = await provisionGoogleProjectDriveFolder(
       googleClients.drive,
       user.googleEmail ?? user.email,
-      { department, folderName }
+      {
+        department,
+        folderName,
+        existingFolderId: project.googleDriveFolderId ?? undefined,
+      }
     )
     const now = new Date().toISOString()
     const linkValues = {
@@ -1245,7 +1243,9 @@ export async function provisionProjectDriveFolder(
         department,
         folderName: drive.folderName,
         parentFolderId: drive.parentFolderId,
+        templateFolderId: projectDriveTemplateFolderId(department),
         childFolderNames: drive.childFolderNames,
+        copiedFileCount: drive.copiedFileCount,
       }),
       updatedAt: now,
     }
@@ -1298,6 +1298,7 @@ export async function provisionProjectDriveFolder(
         folderId: drive.folderId,
         createdRoot: drive.createdRoot,
         createdChildCount: drive.createdChildCount,
+        copiedFileCount: drive.copiedFileCount,
       },
     })
     revalidatePath(`/dashboard/projects/${projectId}`)
@@ -1309,6 +1310,7 @@ export async function provisionProjectDriveFolder(
       folderUrl: drive.folderUrl,
       createdRoot: drive.createdRoot,
       createdChildCount: drive.createdChildCount,
+      copiedFileCount: drive.copiedFileCount,
     }
   } catch (error) {
     return {

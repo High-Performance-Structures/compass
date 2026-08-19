@@ -179,6 +179,26 @@ server actions
 Each action follows the same structure: authenticate, check RBAC, resolve the Google email, build a `DriveClient`, execute the operation, map results.
 
 
+project folder provisioning
+---
+
+`src/lib/google/project-drive-provisioning.ts` provisions new project folders.
+The department templates under `________Developer/00-Directories` are the
+authoritative source for their folder names, nested folders, and template
+files. Provisioning recursively copies the applicable O, H, D, or N template
+and records the template folder ID in the project's Google Drive metadata.
+
+Do not add a second hard-coded folder-name list to Compass. Update the live
+Developer template when the project structure changes; the next project setup
+will copy that structure. Re-running Drive setup is idempotent and fills
+missing template content in an already-mapped project without duplicating
+matching items.
+
+Field Mode intentionally exposes only the canonical
+`04_PermittedPlansSpecifications` and `05_SelectionsFinishes` roots and their
+descendants. Full Compass retains the complete project-folder view.
+
+
 schema
 ---
 

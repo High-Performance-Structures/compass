@@ -25,11 +25,20 @@ type ProjectDriveClient = {
       readonly driveId?: string
     }
   ) => Promise<DriveFile>
+  readonly copyFile: (
+    userEmail: string,
+    fileId: string,
+    options: {
+      readonly name: string
+      readonly parentId: string
+    }
+  ) => Promise<DriveFile>
 }
 
 export type ProjectDriveProvisioningInput = {
   readonly department: ProjectIntakeDepartment
   readonly folderName: string
+  readonly existingFolderId?: string
 }
 
 export type ProjectDriveProvisioningResult = {
@@ -40,56 +49,24 @@ export type ProjectDriveProvisioningResult = {
   readonly childFolderNames: readonly string[]
   readonly createdRoot: boolean
   readonly createdChildCount: number
+  readonly copiedFileCount: number
 }
 
-const DEPARTMENT_CHILD_FOLDERS: Readonly<
-  Record<ProjectIntakeDepartment, readonly string[]>
+// These stable Drive IDs point to the department templates under
+// ________Developer/00-Directories. The live templates are the source of truth;
+// folder names and template files must not be duplicated in application code.
+const DEPARTMENT_TEMPLATE_FOLDER_IDS: Readonly<
+  Record<ProjectIntakeDepartment, string>
 > = {
-  O: [
-    "00_CustomerInfo",
-    "01_ActiveContractDocuments",
-    "02_WorkingEstimate",
-    "03_PayRequests",
-    "04_PermittedPlansSpecifications",
-    "05_SelectionsFinishes",
-    "06_Communications",
-    "07_ConstructionLog",
-    "08_Inspections",
-    "09_Financing",
-    "10_Preconstruction",
-    "11_ConstructionSchedule",
-    "11_ChangeOrders",
-    "12_Purchasing",
-    "Pictures",
-    "99_Archive",
-  ],
-  H: [
-    "00_Contracts",
-    "01_Takeoffs",
-    "02_Estimates",
-    "03_BidDocs",
-    "04_PermittedPlans",
-    "05_PropertyInfo",
-    "06_PayRequests",
-    "07_Inspections-Tests",
-    "08_Submittals",
-    "Correspondence",
-    "Photos",
-    "Schedules",
-  ],
-  D: [
-    "00_Contracts",
-    "01_ProgramDocs",
-    "02_Schematics",
-    "03_DesignDevelopment",
-    "04_ConstructionDocs",
-    "05_PermitSet",
-    "06_Engineering",
-    "Correspondence",
-    "Photos",
-    "99_Archive",
-  ],
-  N: ["00_OrderDocs", "01_Quotes", "02_Invoices", "03_DeliveryDocs", "Photos"],
+  O: "1MKrmHWS0gjhRDzcLmv4quz-NvqCJEei9",
+  H: "11sUheLU_sXpr6uS7v_MaswmdRtMNSokH",
+  D: "1-0QvQBQrF52ytwUltkt9qBAzAtxdFAQT",
+  N: "1S0A0AtLKNLp-sLvIwqRLaK2BoyLvmKdm",
+}
+
+type TemplateCopyCounts = {
+  readonly createdFolderCount: number
+  readonly copiedFileCount: number
 }
 
 function cleanFolderPart(value: string | null): string | null {
@@ -173,10 +150,91 @@ export function buildProjectDriveFolderName(input: {
     .join(" - ")
 }
 
-export function projectDriveChildFolders(
+export function projectDriveTemplateFolderId(
   department: ProjectIntakeDepartment
-): readonly string[] {
-  return DEPARTMENT_CHILD_FOLDERS[department]
+): string {
+  return DEPARTMENT_TEMPLATE_FOLDER_IDS[department]
+}
+
+async function listAllChildren(
+  client: ProjectDriveClient,
+  userEmail: string,
+  folderId: string
+): Promise<readonly DriveFile[]> {
+  const files: DriveFile[] = []
+  let pageToken: string | undefined
+
+  do {
+    const page = await client.listFiles(userEmail, {
+      folderId,
+      pageSize: 200,
+      pageToken,
+      orderBy: "folder,name",
+    })
+    files.push(...page.files)
+    pageToken = page.nextPageToken
+  } while (pageToken)
+
+  return files
+}
+
+function templateItemKey(file: DriveFile): string {
+  return `${file.mimeType}\u0000${file.name}`
+}
+
+async function copyTemplateContents(
+  client: ProjectDriveClient,
+  userEmail: string,
+  templateFolderId: string,
+  destinationFolderId: string
+): Promise<TemplateCopyCounts> {
+  const [templateItems, destinationItems] = await Promise.all([
+    listAllChildren(client, userEmail, templateFolderId),
+    listAllChildren(client, userEmail, destinationFolderId),
+  ])
+  const destinationByKey = new Map(
+    destinationItems.map((item) => [templateItemKey(item), item])
+  )
+  let createdFolderCount = 0
+  let copiedFileCount = 0
+
+  for (const templateItem of templateItems) {
+    const key = templateItemKey(templateItem)
+    const existing = destinationByKey.get(key) ?? null
+
+    if (templateItem.mimeType === GOOGLE_FOLDER_MIME_TYPE) {
+      const destinationFolder =
+        existing ??
+        (await client.createFolder(userEmail, {
+          name: templateItem.name,
+          parentId: destinationFolderId,
+        }))
+      if (!existing) {
+        destinationByKey.set(key, destinationFolder)
+        createdFolderCount += 1
+      }
+      const nested = await copyTemplateContents(
+        client,
+        userEmail,
+        templateItem.id,
+        destinationFolder.id
+      )
+      createdFolderCount += nested.createdFolderCount
+      copiedFileCount += nested.copiedFileCount
+      continue
+    }
+
+    if (!existing) {
+      const copied = await client.copyFile(userEmail, templateItem.id, {
+        name: templateItem.name,
+        parentId: destinationFolderId,
+      })
+      destinationByKey.set(key, copied)
+      copiedFileCount += 1
+    }
+  }
+
+  return { createdFolderCount, copiedFileCount }
 }
 
 export async function provisionProjectDriveFolder(
@@ -188,12 +246,9 @@ export async function provisionProjectDriveFolder(
   const folderName = cleanFolderPart(input.folderName)
   if (!folderName) throw new Error("Project folder name is required.")
 
-  const existingRoot = await findFolder(
-    client,
-    userEmail,
-    source.folderId,
-    folderName
-  )
+  const existingRoot = input.existingFolderId
+    ? await client.getFile(userEmail, input.existingFolderId)
+    : await findFolder(client, userEmail, source.folderId, folderName)
   const root =
     existingRoot ??
     (await client.createFolder(userEmail, {
@@ -201,46 +256,39 @@ export async function provisionProjectDriveFolder(
       parentId: source.folderId,
     }))
   const verifiedRoot = await client.getFile(userEmail, root.id)
-  verifyFolder(verifiedRoot, folderName, source.folderId)
-
-  const childFolderNames = projectDriveChildFolders(input.department)
-  const existingChildren = await client.listFiles(userEmail, {
-    folderId: verifiedRoot.id,
-    query: `mimeType = '${GOOGLE_FOLDER_MIME_TYPE}'`,
-    pageSize: 200,
-  })
-  const existingNames = new Set(existingChildren.files.map((folder) => folder.name))
-  const missingNames = childFolderNames.filter((name) => !existingNames.has(name))
-  await Promise.all(
-    missingNames.map((name) =>
-      client.createFolder(userEmail, { name, parentId: verifiedRoot.id })
-    )
+  verifyFolder(
+    verifiedRoot,
+    input.existingFolderId ? verifiedRoot.name : folderName,
+    source.folderId
   )
 
-  // Read the project folder again after writes so Compass only records a link
-  // once every required child landed in the intended parent.
-  const verifiedChildren = await client.listFiles(userEmail, {
-    folderId: verifiedRoot.id,
-    query: `mimeType = '${GOOGLE_FOLDER_MIME_TYPE}'`,
-    pageSize: 200,
-  })
-  const verifiedNames = new Set(verifiedChildren.files.map((folder) => folder.name))
-  const missingAfterWrite = childFolderNames.filter(
-    (name) => !verifiedNames.has(name)
-  )
-  if (missingAfterWrite.length > 0) {
-    throw new Error(
-      `Google Drive did not confirm ${missingAfterWrite.join(", ")}.`
-    )
+  const templateFolderId = projectDriveTemplateFolderId(input.department)
+  const template = await client.getFile(userEmail, templateFolderId)
+  if (template.mimeType !== GOOGLE_FOLDER_MIME_TYPE) {
+    throw new Error("The configured Developer project template is not a folder.")
   }
+  const copied = await copyTemplateContents(
+    client,
+    userEmail,
+    templateFolderId,
+    verifiedRoot.id
+  )
+  const childFolderNames = (await listAllChildren(
+    client,
+    userEmail,
+    templateFolderId
+  ))
+    .filter((item) => item.mimeType === GOOGLE_FOLDER_MIME_TYPE)
+    .map((item) => item.name)
 
   return {
     folderId: verifiedRoot.id,
-    folderName,
+    folderName: verifiedRoot.name,
     folderUrl: `https://drive.google.com/drive/folders/${verifiedRoot.id}`,
     parentFolderId: source.folderId,
     childFolderNames,
     createdRoot: existingRoot === null,
-    createdChildCount: missingNames.length,
+    createdChildCount: copied.createdFolderCount,
+    copiedFileCount: copied.copiedFileCount,
   }
 }
