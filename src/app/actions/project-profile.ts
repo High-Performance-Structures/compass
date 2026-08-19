@@ -1,6 +1,6 @@
 "use server"
 
-import { and, asc, desc, eq, isNull, sql } from "drizzle-orm"
+import { and, asc, desc, eq, isNull, like, sql } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
 import { getDb } from "@/db"
@@ -58,8 +58,11 @@ import {
   isSupportedProjectJobStatusLabel,
   legacyProjectStatusAfterClientUpdate,
   normalizeProjectJobStatusLabel,
+  projectInteractionTypeLabel,
+  projectInteractionTypeOptions,
   projectNumberParts,
   type ProjectClientStatus,
+  type ProjectInteractionTypeOption,
 } from "@/lib/project-profile"
 import { clientFollowUpState } from "@/lib/project-follow-up"
 import { getProjectAccessRecord } from "@/lib/project-access"
@@ -89,6 +92,7 @@ export type ProjectProfileNote = {
 export type ProjectProfileInteraction = {
   readonly id: string
   readonly interactionType: string
+  readonly interactionTypeLabel: string
   readonly direction: string
   readonly summary: string
   readonly source: string
@@ -114,6 +118,7 @@ export type ProjectInformation = {
     readonly status: string
   }
   readonly jobStatuses: readonly ProjectProfileJobStatus[]
+  readonly interactionTypes: readonly ProjectInteractionTypeOption[]
   readonly clientContacts: readonly {
     readonly id: string
     readonly displayName: string
@@ -376,7 +381,7 @@ export async function getProjectInformation(
     const project = projectRows[0]
     if (!project) return null
 
-    const [customStatuses, notes, interactions, followUps, operations, aliases, clientContacts] = await Promise.all([
+    const [customStatuses, customInteractionTypes, notes, interactions, followUps, operations, aliases, clientContacts] = await Promise.all([
       db
         .select({
           id: projectJobStatuses.id,
@@ -393,6 +398,17 @@ export async function getProjectInformation(
           ),
         )
         .orderBy(asc(projectJobStatuses.sortOrder), asc(projectJobStatuses.label)),
+      db
+        .selectDistinct({ interactionType: projectInteractions.interactionType })
+        .from(projectInteractions)
+        .where(
+          and(
+            eq(projectInteractions.organizationId, organizationId),
+            eq(projectInteractions.source, "manual"),
+            like(projectInteractions.interactionType, "custom:%"),
+          ),
+        )
+        .orderBy(asc(projectInteractions.interactionType)),
       db
         .select({
           id: projectNotes.id,
@@ -479,10 +495,16 @@ export async function getProjectInformation(
     return {
       project: { ...project, clientStatus },
       jobStatuses: jobStatusOptions(customStatuses),
+      interactionTypes: projectInteractionTypeOptions(
+        customInteractionTypes.map((item) => item.interactionType),
+      ),
       clientContacts,
       projectNumberAliases: aliases.map((alias) => alias.projectNumber),
       notes,
-      interactions,
+      interactions: interactions.map((interaction) => ({
+        ...interaction,
+        interactionTypeLabel: projectInteractionTypeLabel(interaction.interactionType),
+      })),
       followUp: followUps[0] ?? null,
       syncOperations: operations,
     }

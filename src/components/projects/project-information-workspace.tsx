@@ -22,6 +22,9 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
+import { customProjectInteractionType } from "@/lib/project-profile"
+
+const CUSTOM_INTERACTION_TYPE_OPTION = "__custom__"
 
 function suffixFromProjectNumber(projectNumber: string | null): string {
   if (!projectNumber) return ""
@@ -65,6 +68,7 @@ export function ProjectInformationWorkspace({
   const [propagateMailingAddress, setPropagateMailingAddress] = useState(false)
   const [note, setNote] = useState("")
   const [interactionType, setInteractionType] = useState("call")
+  const [customInteractionTypeLabel, setCustomInteractionTypeLabel] = useState("")
   const [interactionContactId, setInteractionContactId] = useState(
     information.clientContacts[0]?.id ?? "",
   )
@@ -116,16 +120,27 @@ export function ProjectInformationWorkspace({
 
   function saveInteraction(event: FormEvent<HTMLFormElement>): void {
     event.preventDefault()
+    const selectedInteractionType = interactionType === CUSTOM_INTERACTION_TYPE_OPTION
+      ? customProjectInteractionType(customInteractionTypeLabel)
+      : interactionType
+    if (!selectedInteractionType) {
+      setMessage("Enter a unique custom interaction type using 1–60 standard characters.")
+      return
+    }
     startTransition(async () => {
       const result = await createProjectInteraction({
         projectId: information.project.id,
-        interactionType,
+        interactionType: selectedInteractionType,
         direction,
         summary: interactionSummary,
         occurredAt: interactionTime,
         contactId: interactionContactId || null,
       })
-      if (result.success) setInteractionSummary("")
+      if (result.success) {
+        setInteractionSummary("")
+        setCustomInteractionTypeLabel("")
+        setInteractionType(selectedInteractionType)
+      }
       refreshAfter(result)
     })
   }
@@ -313,7 +328,7 @@ export function ProjectInformationWorkspace({
 
         <section className="rounded-lg border bg-card p-4 sm:p-5">
           <h2 className="font-semibold">Log client interaction</h2>
-          <p className="mt-1 text-sm text-muted-foreground">Calls, emails, meetings, site visits, and client-facing sends count as meaningful contact.</p>
+          <p className="mt-1 text-sm text-muted-foreground">Calls, emails, texts, meetings, site visits, documents/submittals sent to clients, and custom interaction types count as meaningful contact.</p>
           <form className="mt-4 grid gap-3" onSubmit={saveInteraction}>
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <div className="space-y-2">
@@ -323,10 +338,11 @@ export function ProjectInformationWorkspace({
                   {information.clientContacts.map((contact) => <option key={contact.id} value={contact.id}>{contact.displayName}</option>)}
                 </select>
               </div>
-              <div className="space-y-2"><Label htmlFor="interaction-type">Type</Label><select id="interaction-type" className="flex h-9 w-full rounded-md border bg-background px-3 text-sm" value={interactionType} onChange={(event) => setInteractionType(event.target.value)}><option value="call">Call</option><option value="email">Email</option><option value="meeting">Meeting</option><option value="site_visit">Site visit</option><option value="client_send">Client-facing send</option></select></div>
+              <div className="space-y-2"><Label htmlFor="interaction-type">Type</Label><select id="interaction-type" className="flex h-9 w-full rounded-md border bg-background px-3 text-sm" value={interactionType} onChange={(event) => setInteractionType(event.target.value)}>{information.interactionTypes.map((type) => <option key={type.id} value={type.id}>{type.label}</option>)}<option value={CUSTOM_INTERACTION_TYPE_OPTION}>Add another interaction type…</option></select></div>
               <div className="space-y-2"><Label htmlFor="interaction-direction">Direction</Label><select id="interaction-direction" className="flex h-9 w-full rounded-md border bg-background px-3 text-sm" value={direction} onChange={(event) => setDirection(event.target.value === "inbound" ? "inbound" : "outbound")}><option value="outbound">Outbound</option><option value="inbound">Inbound</option></select></div>
               <div className="space-y-2"><Label htmlFor="interaction-time">When</Label><Input id="interaction-time" type="datetime-local" value={interactionTime} onChange={(event) => setInteractionTime(event.target.value)} required /></div>
             </div>
+            {interactionType === CUSTOM_INTERACTION_TYPE_OPTION && <div className="space-y-2"><Label htmlFor="custom-interaction-type">Custom interaction type</Label><Input id="custom-interaction-type" value={customInteractionTypeLabel} onChange={(event) => setCustomInteractionTypeLabel(event.target.value)} maxLength={60} placeholder="For example: Design review" aria-describedby="custom-interaction-type-help" required /><p id="custom-interaction-type-help" className="text-xs text-muted-foreground">After the first logged interaction, this choice becomes available on every project in your organization.</p></div>}
             <div className="space-y-2"><Label htmlFor="interaction-summary">Outcome / summary</Label><Textarea id="interaction-summary" value={interactionSummary} onChange={(event) => setInteractionSummary(event.target.value)} rows={3} required /></div>
             <div><Button type="submit" disabled={pending}>Log interaction</Button></div>
           </form>
@@ -341,7 +357,7 @@ export function ProjectInformationWorkspace({
         </section>
         <section className="rounded-lg border bg-card p-4 sm:p-5">
           <h2 className="font-semibold">Meaningful interaction history</h2>
-          <div className="mt-4 space-y-3">{information.interactions.length === 0 ? <p className="text-sm text-muted-foreground">No meaningful client interaction recorded yet.</p> : information.interactions.map((item) => <article className="rounded-md border p-3" key={item.id}><div className="flex items-start justify-between gap-3"><div><Badge variant="outline">{item.direction} · {item.interactionType}</Badge><p className="mt-2 whitespace-pre-wrap text-sm">{item.summary}</p></div><Button type="button" size="sm" variant="ghost" disabled={pending} onClick={() => removeInteraction(item.id)}>Delete</Button></div><p className="mt-2 text-xs text-muted-foreground">{item.authorName ?? "Unknown"} · {new Date(item.occurredAt).toLocaleString()} · {item.source}</p></article>)}</div>
+          <div className="mt-4 space-y-3">{information.interactions.length === 0 ? <p className="text-sm text-muted-foreground">No meaningful client interaction recorded yet.</p> : information.interactions.map((item) => <article className="rounded-md border p-3" key={item.id}><div className="flex items-start justify-between gap-3"><div><Badge variant="outline">{item.direction} · {item.interactionTypeLabel}</Badge><p className="mt-2 whitespace-pre-wrap text-sm">{item.summary}</p></div><Button type="button" size="sm" variant="ghost" disabled={pending} onClick={() => removeInteraction(item.id)}>Delete</Button></div><p className="mt-2 text-xs text-muted-foreground">{item.authorName ?? "Unknown"} · {new Date(item.occurredAt).toLocaleString()} · {item.source}</p></article>)}</div>
         </section>
       </div>
 

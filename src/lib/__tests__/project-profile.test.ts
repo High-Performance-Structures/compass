@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest"
 
 import {
+  customProjectInteractionType,
   FOLLOW_UP_EXCLUDED_JOB_STATUSES,
   PROJECT_CLIENT_STATUSES,
   PROJECT_JOB_STATUS_DEFINITIONS,
@@ -14,6 +15,8 @@ import {
   legacyProjectStatusAfterClientUpdate,
   normalizeProjectJobStatusLabel,
   projectClientStatusLabel,
+  projectInteractionTypeLabel,
+  projectInteractionTypeOptions,
   projectJobStatusBucket,
   projectJobStatusLabel,
   projectNumberParts,
@@ -163,6 +166,39 @@ describe("project profile rules", () => {
     expect(
       isMeaningfulClientInteraction({ interactionType: "email", direction: "outbound", source: "background_sync" }),
     ).toBe(false)
+  })
+
+  it("labels the built-in text and document/submittal interaction choices", () => {
+    expect(projectInteractionTypeLabel("sms")).toBe("Text")
+    expect(projectInteractionTypeLabel("client_send")).toBe("Document/Submittal to Client")
+    expect(
+      isMeaningfulClientInteraction({ interactionType: "sms", direction: "outbound", source: "manual" }),
+    ).toBe(true)
+  })
+
+  it("adds valid custom interaction types to the reusable organization list", () => {
+    const designReview = customProjectInteractionType("Design review")
+    expect(designReview).toBe("custom:Design review")
+    expect(customProjectInteractionType("Call")).toBeNull()
+    expect(customProjectInteractionType("x".repeat(61))).toBeNull()
+    expect(
+      isMeaningfulClientInteraction({
+        interactionType: designReview ?? "",
+        direction: "outbound",
+        source: "manual",
+      }),
+    ).toBe(true)
+    expect(projectInteractionTypeOptions([
+      "custom:Warranty consultation",
+      "custom:Design review",
+      "custom:design review",
+      "not-custom",
+    ])).toEqual(expect.arrayContaining([
+      { id: "sms", label: "Text" },
+      { id: "client_send", label: "Document/Submittal to Client" },
+      { id: "custom:Design review", label: "Design review" },
+      { id: "custom:Warranty consultation", label: "Warranty consultation" },
+    ]))
   })
 
   it("allows follow-up owners only when they are active internal members", () => {
