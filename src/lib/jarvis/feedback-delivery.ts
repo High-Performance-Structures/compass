@@ -67,10 +67,10 @@ export function feedbackDeliveryGraphUpdate(
     return error
       ? {
           status: "failed",
-          graphId: input.graphId ?? null,
-          implementationTaskId: input.implementationTaskId ?? null,
-          reviewTaskId: input.reviewTaskId ?? null,
-          releaseTaskId: input.releaseTaskId ?? null,
+          graphId: input.graphId?.trim() || null,
+          implementationTaskId: input.implementationTaskId?.trim() || null,
+          reviewTaskId: input.reviewTaskId?.trim() || null,
+          releaseTaskId: input.releaseTaskId?.trim() || null,
           error,
         }
       : null

@@ -108,6 +108,48 @@ describe("POST /api/integrations/jarvis/feedback/:id/status", () => {
     expect(mocks.applyFeedbackLifecycleUpdate).not.toHaveBeenCalled()
   })
 
+  it("normalizes failed delivery graph IDs before persistence", async () => {
+    mocks.applyFeedbackLifecycleUpdate.mockResolvedValue({
+      notifiedUserCount: 0,
+      requesterUpdateQueued: false,
+    })
+
+    const response = await POST(
+      new Request("https://compass.example/api/integrations/jarvis/feedback/feedback-1/status", {
+        method: "POST",
+        body: JSON.stringify({
+          idempotencyKey: "callback-failed-graph",
+          status: "triaged",
+          deliveryGraph: {
+            status: "failed",
+            graphId: " graph-failed-1 ",
+            implementationTaskId: " \t",
+            reviewTaskId: "\nreview-failed-1 \t",
+            releaseTaskId: "  ",
+            error: " worker failed ",
+          },
+        }),
+      }),
+      { params: Promise.resolve({ id: "feedback-1" }) },
+    )
+
+    expect(response.status).toBe(200)
+    expect(mocks.applyFeedbackLifecycleUpdate).toHaveBeenCalledWith(
+      expect.anything(),
+      unprovenBug,
+      expect.objectContaining({
+        deliveryGraph: {
+          status: "failed",
+          graphId: "graph-failed-1",
+          implementationTaskId: null,
+          reviewTaskId: "review-failed-1",
+          releaseTaskId: null,
+          error: "worker failed",
+        },
+      }),
+    )
+  })
+
   it("accepts a complete delivery graph with valid IDs", async () => {
     mocks.applyFeedbackLifecycleUpdate.mockResolvedValue({
       notifiedUserCount: 0,
