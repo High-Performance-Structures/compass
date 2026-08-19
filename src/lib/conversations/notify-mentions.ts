@@ -9,8 +9,7 @@ type MentionTarget = Readonly<{
 }>
 
 export async function notifyMentionedUsers(
-  d1: D1Database,
-  fcmServerKey: string,
+  env: CloudflareEnv,
   messageId: string,
   channelId: string,
   senderId: string,
@@ -18,7 +17,7 @@ export async function notifyMentionedUsers(
   mentions: ReadonlyArray<MentionTarget>,
 ): Promise<void> {
   // resolve each mention to a set of userIds
-  const db = getDb(d1)
+  const db = getDb(env.DB)
   const notifyUserIds = new Set<string>()
 
   for (const mention of mentions) {
@@ -71,11 +70,16 @@ export async function notifyMentionedUsers(
 
   // send push notifications
   const promises = Array.from(notifyUserIds).map(userId =>
-    sendPushNotification(d1, fcmServerKey, {
+    sendPushNotification(env, {
       userId,
       title: `${senderName} mentioned you`,
       body: "You were mentioned in a conversation",
-      data: { channelId, messageId, type: "mention" },
+      data: {
+        channelId,
+        messageId,
+        type: "mention",
+        url: `/dashboard/conversations/${channelId}`,
+      },
     }).catch(err => console.error(`Push failed for ${userId}:`, err))
   )
 

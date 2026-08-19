@@ -754,42 +754,35 @@ async function persistNotificationEvent(
       }
 
       if (delivery.push) {
-        const fcmServerKey = envString(env, "FCM_SERVER_KEY")
         let status = "pending_provider"
-        let error: string | null =
-          "FCM_SERVER_KEY is not configured"
-        if (fcmServerKey) {
-          try {
-            const result = await sendPushNotification(
-              env.DB,
-              fcmServerKey,
-              {
-                userId: recipient.userId,
-                title: input.title,
-                body: input.body,
-                data: {
-                  href: input.href,
-                  eventType: input.eventType,
-                },
-              }
-            )
-            status =
-              result.failed > 0
-                ? "failed"
-                : result.sent > 0
-                  ? "sent"
-                  : "skipped_no_token"
-            error =
-              result.failed > 0
-                ? `${result.failed} push delivery attempt(s) failed`
-                : null
-          } catch (pushError) {
-            status = "failed"
-            error =
-              pushError instanceof Error
-                ? pushError.message
-                : "Push delivery failed"
-          }
+        let error: string | null = null
+        try {
+          const result = await sendPushNotification(env, {
+            userId: recipient.userId,
+            title: input.title,
+            body: input.body,
+            data: {
+              url: input.href,
+              href: input.href,
+              eventType: input.eventType,
+            },
+          })
+          status =
+            result.failed > 0
+              ? "failed"
+              : result.sent > 0
+                ? "sent"
+                : "skipped_no_token"
+          error =
+            result.failed > 0
+              ? `${result.failed} push delivery attempt(s) failed`
+              : null
+        } catch (pushError) {
+          status = "failed"
+          error =
+            pushError instanceof Error
+              ? pushError.message
+              : "Push delivery failed"
         }
 
         await db.insert(notificationDeliveries).values({
@@ -800,7 +793,7 @@ async function persistNotificationEvent(
           channel: "push",
           status,
           toAddress: null,
-          provider: "fcm",
+          provider: "native_push",
           providerMessageId: null,
           error,
           attemptedAt: new Date().toISOString(),

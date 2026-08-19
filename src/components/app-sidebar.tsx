@@ -251,7 +251,7 @@ function SidebarNav({
     ? [
         ...projectScopedPersistentNav,
         {
-          title: "Field Desk",
+          title: "CHERISH",
           url: "/dashboard/field",
           icon: IconHeartHandshake,
         },
@@ -299,6 +299,9 @@ export function AppSidebar({
 }) {
   const { isMobile } = useSidebar()
   const { channelId } = useVoiceState()
+  const pathname = usePathname()
+
+  if (pathname.startsWith("/dashboard/field")) return null
 
   return (
     <Sidebar collapsible="icon" {...props}>

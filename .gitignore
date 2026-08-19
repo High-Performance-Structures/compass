@@ -32,8 +32,12 @@ release/
 playwright-report/
 test-results/
 outputs/
+output/
 mobile-ui-references/
 .fuse_*
+android/.idea/
+__pycache__/
+*.py[cod]
 
 # directories
 tmp/
@@ -44,6 +48,7 @@ public/project-photo-previews/
 public/user-desk-photos/
 
 # capacitor native builds
+mobile-shell/
 ios/App/Pods/
 ios/App/build/
 android/.gradle/

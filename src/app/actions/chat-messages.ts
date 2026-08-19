@@ -487,7 +487,7 @@ export async function sendMessage(data: {
       return { success: false, error: `Message too long (max ${MAX_MESSAGE_LENGTH} characters)` }
     }
 
-    const { env } = await getCloudflareContext()
+    const { env, ctx } = await getCloudflareContext()
     const db = getDb(env.DB)
 
     const activityChannel = await getConversationChannelAccess({
@@ -635,15 +635,12 @@ export async function sendMessage(data: {
       }))
       await db.insert(messageMentions).values(mentionRows)
 
-      // fire-and-forget notification (don't await, don't block on error)
-      const envRecord = env as unknown as Record<string, string>
-      const fcmKey = envRecord.FCM_SERVER_KEY
-      if (fcmKey) {
+      // Keep notification delivery alive after the server action responds.
+      ctx.waitUntil(
         import("@/lib/conversations/notify-mentions")
           .then(({ notifyMentionedUsers }) =>
             notifyMentionedUsers(
-              env.DB,
-              fcmKey,
+              env,
               messageId,
               data.channelId,
               user.id,
@@ -651,8 +648,18 @@ export async function sendMessage(data: {
               data.mentions ?? [],
             )
           )
-          .catch(console.error)
-      }
+          .catch((error: unknown) => {
+            console.error(
+              JSON.stringify({
+                event: "mention_push_failed",
+                reason:
+                  error instanceof Error
+                    ? error.message
+                    : "Unknown push delivery error",
+              }),
+            )
+          }),
+      )
     }
 
     // if this is a thread reply, update parent message

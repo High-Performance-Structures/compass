@@ -2,8 +2,8 @@
 // All exports are safe to call in browser (return false / no-op).
 
 type CapacitorGlobal = {
-  readonly isNative: boolean
-  getPlatform: () => string
+  readonly isNativePlatform: () => boolean
+  readonly getPlatform: () => string
 }
 
 function getCapacitor(): CapacitorGlobal | undefined {
@@ -18,7 +18,7 @@ function getDesktopBridge(): Window["compassDesktop"] {
 }
 
 export function isNative(): boolean {
-  return getCapacitor()?.isNative ?? false
+  return getCapacitor()?.isNativePlatform() ?? false
 }
 
 export function isIOS(): boolean {
@@ -38,6 +38,39 @@ export function isDesktop(): boolean {
 }
 
 export type Platform = "ios" | "android" | "windows" | "macos" | "linux" | "web"
+export type MobilePlatform = "ios" | "android" | "web"
+const NATIVE_PLATFORM_SESSION_KEY = "compass_native_platform"
+
+function isMobilePlatform(value: string | null | undefined): value is Exclude<MobilePlatform, "web"> {
+  return value === "ios" || value === "android"
+}
+
+export function resolveMobilePlatform(
+  capacitorPlatform: string | null | undefined,
+  hintedPlatform: string | null | undefined,
+  storedPlatform: string | null | undefined,
+  browserPlatform: string | null | undefined = undefined,
+): MobilePlatform {
+  if (isMobilePlatform(capacitorPlatform)) return capacitorPlatform
+  if (isMobilePlatform(hintedPlatform)) return hintedPlatform
+  if (isMobilePlatform(storedPlatform)) return storedPlatform
+  if (isMobilePlatform(browserPlatform)) return browserPlatform
+  return "web"
+}
+
+export function inferMobileBrowserPlatform(
+  userAgent: string,
+  navigatorPlatform?: string,
+  maxTouchPoints = 0,
+): MobilePlatform {
+  const normalizedUserAgent = userAgent.toLowerCase()
+  if (normalizedUserAgent.includes("android")) return "android"
+  if (/iphone|ipad|ipod/.test(normalizedUserAgent)) return "ios"
+
+  // Modern iPadOS can identify itself as macOS in Safari.
+  if (navigatorPlatform === "MacIntel" && maxTouchPoints > 1) return "ios"
+  return "web"
+}
 
 function detectDesktopOS(): "windows" | "macos" | "linux" {
   const desktop = getDesktopBridge()
@@ -57,7 +90,7 @@ export function getPlatform(): Platform {
   }
   // Then check Capacitor mobile
   const cap = getCapacitor()
-  if (cap?.isNative) {
+  if (cap?.isNativePlatform()) {
     const p = cap.getPlatform()
     if (p === "ios") return "ios"
     if (p === "android") return "android"
@@ -66,13 +99,48 @@ export function getPlatform(): Platform {
 }
 
 // Legacy function for backward compatibility
-export function getMobilePlatform(): "ios" | "android" | "web" {
+export function getMobilePlatform(): MobilePlatform {
   const cap = getCapacitor()
-  if (!cap?.isNative) return "web"
-  const p = cap.getPlatform()
-  if (p === "ios") return "ios"
-  if (p === "android") return "android"
-  return "web"
+  const capacitorPlatform = cap?.isNativePlatform()
+    ? cap.getPlatform()
+    : undefined
+
+  if (typeof window === "undefined") {
+    return resolveMobilePlatform(capacitorPlatform, null, null)
+  }
+  const hintedPlatform = new URLSearchParams(window.location.search).get(
+    "nativePlatform"
+  )
+  if (isMobilePlatform(hintedPlatform)) {
+    try {
+      window.sessionStorage.setItem(
+        NATIVE_PLATFORM_SESSION_KEY,
+        hintedPlatform
+      )
+    } catch {
+      // Session storage can be unavailable in hardened WebViews.
+    }
+  }
+
+  let storedPlatform: string | null = null
+  try {
+    storedPlatform = window.sessionStorage.getItem(
+      NATIVE_PLATFORM_SESSION_KEY
+    )
+  } catch {
+    // Fall back to web when storage is unavailable.
+  }
+  const browserPlatform = inferMobileBrowserPlatform(
+    window.navigator.userAgent,
+    window.navigator.platform,
+    window.navigator.maxTouchPoints,
+  )
+  return resolveMobilePlatform(
+    capacitorPlatform,
+    hintedPlatform,
+    storedPlatform,
+    browserPlatform,
+  )
 }
 
 // Returns true for any native platform (Capacitor mobile or Electron desktop)

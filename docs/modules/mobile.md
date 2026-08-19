@@ -1,7 +1,7 @@
 Mobile Module
 ===
 
-The mobile module wraps Compass in a native iOS and Android app using Capacitor. It's not a separate codebase or a React Native port -- it's a WebView that loads the live Cloudflare deployment. The native layer adds device-specific capabilities: biometric authentication, push notifications, camera access with GPS tagging, offline photo queuing, and status bar theming.
+The mobile module wraps Compass in a native iOS and Android app using Capacitor. It is not a separate React Native codebase. The app bundles a small, field-focused offline shell and moves into the live Cloudflare deployment whenever it can reach Compass. The native layer adds device-specific capabilities: durable offline storage, biometric authentication, push notifications, camera access with GPS tagging, offline photo queuing, and status bar theming.
 
 The fundamental design principle: **the web app must never break because of native code.** Every Capacitor import is dynamic (`await import()`), every native feature is gated behind `isNative()` checks, and every native component returns `null` on web. If Capacitor isn't present, the app works exactly as it does in a browser.
 
@@ -205,7 +205,7 @@ export function NativeShell() {
 
 **`biometric-guard.tsx`** -- wraps the app with biometric lock screen functionality. Listens for app state changes (background/foreground). If the app was backgrounded for more than 30 seconds and biometrics are enabled, it shows a full-screen lock overlay. Auto-authenticates on appear, with a fallback "Use password" button that redirects to the login page.
 
-Also handles first-login setup: after a 2-second delay on first native launch, prompts the user to enable biometric locking. The prompt state is tracked in localStorage so it's only shown once.
+Also handles first-login setup: after a 2-second delay on first native launch, prompts the user to enable biometric locking. The prompt and enabled state are stored with Capacitor Preferences so the live app and bundled Field Mode shell share the same lock policy. Legacy localStorage values are migrated automatically.
 
 **`offline-banner.tsx`** -- shows a slim amber banner when the device is offline. Uses `@capacitor/network` on native, falls back to `navigator.onLine` events on web. This component actually works on both platforms -- the web fallback is useful for PWA-like behavior.
 
@@ -215,27 +215,25 @@ Also handles first-login setup: after a 2-second delay on first native launch, p
 push notifications
 ---
 
-`src/lib/push/send.ts` sends push notifications via FCM HTTP v1 API. It works from Cloudflare Workers without the Firebase SDK -- just a direct HTTP POST to `https://fcm.googleapis.com/v1/projects/-/messages:send`.
+Token registration, storage, and platform-specific delivery are implemented. Android messages use FCM HTTP v1 with a short-lived OAuth token minted from a Firebase service account. The Capacitor plugin returns an APNs token on iOS, so iOS messages go directly to APNs using an ES256 provider token.
 
 The sender:
 
 1. Looks up all push tokens for the target user from the `push_tokens` table
-2. Sends each token a notification with platform-specific config (high priority for Android, sound + badge for iOS)
-3. Auto-cleans invalid tokens: 404 responses (unregistered device) trigger token deletion
+2. Groups tokens by platform and obtains one provider authorization token per delivery batch
+3. Sends Android tokens to the Firebase project-scoped endpoint and iOS tokens to the configured APNs environment
+4. Auto-cleans invalid tokens when FCM returns 404 or APNs returns 410
 
 ```typescript
-const message: FcmMessage = {
-  message: {
-    token: t.token,
-    notification: { title: payload.title, body: payload.body },
-    data: payload.data ? { ...payload.data } : undefined,
-    android: { priority: "high" },
-    apns: { payload: { aps: { sound: "default", badge: 1 } } },
-  },
-}
+await sendPushNotification(env, {
+  userId,
+  title: "You were mentioned",
+  body: "Open Compass to view the conversation.",
+  data: { url: `/dashboard/conversations/${channelId}` },
+})
 ```
 
-Device tokens are registered via `POST /api/push/register` (called by `use-native-push.ts` on app launch) and cleaned up via `DELETE /api/push/register`.
+Device tokens are registered via `POST /api/push/register` (called by `use-native-push.ts` on app launch) and cleaned up via `DELETE /api/push/register`. Provider credentials must be configured in Cloudflare and delivery must be verified on physical devices before release.
 
 
 Capacitor configuration
@@ -245,11 +243,10 @@ Capacitor configuration
 
 ```typescript
 const config: CapacitorConfig = {
-  appId: "ltd.openrangeconstruction.compass",
+  appId: "com.hpscolorado.compass",
   appName: "Compass",
-  webDir: "public",
+  webDir: "mobile-shell",
   server: {
-    url: "https://compass.openrangeconstruction.ltd",
     cleartext: false,
     allowNavigation: [
       "compass.openrangeconstruction.ltd",
@@ -262,11 +259,15 @@ const config: CapacitorConfig = {
 }
 ```
 
-The `server.url` points to the live production deployment. The app doesn't bundle a static export -- it loads the real web app in a WebView. This means native users always get the latest version without app store updates for UI changes.
+The default release profile is the bundled offline Field Mode. Run `bun cap:sync` for normal TestFlight and Play builds. Field Mode is intentionally smaller than the office web application: it gives field staff a fast path to active work, daily logs, documents, photos, and messages without exposing the full administrative interface.
+
+`mobile-shell/` is generated by `bun run mobile:build` from `mobile-shell-src/`. It contains only the offline field workspace, not a static export of the server-rendered application. There is no `server.url` in the default profile, so the shell can cold-start with no network. It reads cached active projects, tasks, schedule items, daily logs, construction documents, project chat, and queued mutations from Capacitor Preferences and Filesystem. When Compass is reachable, authenticated refresh and sync use the matching Field Mode routes on the Cloudflare deployment.
+
+The live Field Mode writes every refreshed project packet to the same native storage and flushes the native outbox when service returns. Full Compass remains the live application, so ordinary UI and server changes still arrive without an app-store update. Changes to the bundled fallback require `bun cap:sync` and a new native build.
 
 `allowNavigation` lists domains the WebView is allowed to navigate to. This is needed for OAuth flows (WorkOS, Google, Microsoft) that redirect the user to external auth pages.
 
-The `webDir: "public"` is mostly a formality for Capacitor CLI requirements. Since the app loads from a remote URL, local web assets are only used during the splash screen.
+The generated `mobile-shell/` directory is ignored by Git. Run `bun cap:sync` before opening Xcode or Android Studio for a normal release. `bun run cap:sync:live` is an explicit developer fallback that wraps the full live web application; it must not be used for field releases.
 
 Plugins configured:
 - `SplashScreen` -- white background, 2-second display, auto-hide

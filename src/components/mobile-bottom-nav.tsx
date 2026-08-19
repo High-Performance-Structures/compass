@@ -11,8 +11,10 @@ import {
   IconSettingsFilled,
   IconFile,
   IconFileFilled,
-  IconHeartHandshake,
+  IconBriefcase,
 } from "@tabler/icons-react"
+import { useNativePlatform } from "@/hooks/use-native"
+import { fieldModeUrl } from "@/lib/native/field-mode-url"
 import { cn } from "@/lib/utils"
 
 interface NavItemProps {
@@ -21,6 +23,7 @@ interface NavItemProps {
   activeIcon: React.ReactNode
   label: string
   isActive: boolean
+  externalNavigation?: boolean
 }
 
 function NavItem({
@@ -29,12 +32,10 @@ function NavItem({
   activeIcon,
   label,
   isActive,
+  externalNavigation = false,
 }: NavItemProps) {
-  return (
-    <Link
-      href={href}
-      className="flex flex-col items-center justify-center gap-0.5"
-    >
+  const content = (
+    <>
       <div
         className={cn(
           "flex h-7 w-14 items-center justify-center",
@@ -62,6 +63,22 @@ function NavItem({
       >
         {label}
       </span>
+    </>
+  )
+
+  const className = "flex flex-col items-center justify-center gap-0.5"
+
+  if (externalNavigation) {
+    return (
+      <a href={href} className={className}>
+        {content}
+      </a>
+    )
+  }
+
+  return (
+    <Link href={href} className={className}>
+      {content}
     </Link>
   )
 }
@@ -72,6 +89,7 @@ export function MobileBottomNav({
   readonly canUseFieldDesk?: boolean
 }) {
   const pathname = usePathname()
+  const nativePlatform = useNativePlatform()
 
   const isActive = (path: string) => {
     if (path === "/dashboard") return pathname === "/dashboard"
@@ -109,10 +127,11 @@ export function MobileBottomNav({
         />
         {canUseFieldDesk && (
           <NavItem
-            href="/dashboard/field"
-            icon={<IconHeartHandshake className="size-[22px]" />}
-            activeIcon={<IconHeartHandshake className="size-[22px]" />}
+            href={fieldModeUrl(nativePlatform)}
+            icon={<IconBriefcase className="size-[22px]" />}
+            activeIcon={<IconBriefcase className="size-[22px]" />}
             label="Field"
+            externalNavigation={nativePlatform !== "web"}
             isActive={isActive("/dashboard/field")}
           />
         )}

@@ -77,10 +77,26 @@ the repository.
 | `SAGE_SQL_INSTANCE` | Optional named SQL Server instance. |
 | `SAGE_SQL_ENCRYPT` | Optional SQL encryption flag, depending on certificate setup. |
 | `SAGE_READ_ONLY` | Defaults to read-only unless explicitly disabled for approved write workflows. |
+| `SAGE_ALLOW_CLIENT_PROJECT_WRITES` | Must be exactly `true` to enable the limited client/job creation capability. |
+| `SAGE_CLIENT_PROJECT_WRITE_URL` | HTTPS endpoint for the private Sage API bridge's idempotent client/job operation. |
+| `SAGE_CLIENT_PROJECT_WRITE_TOKEN` | Bearer token dedicated to the private client/job write endpoint. Store as a secret; do not reuse `SAGE_BRIDGE_SECRET`, which authenticates inbound poller requests. |
+| `SAGE_COMPANY_ID` | Bridge-owned identifier for the target Sage company. |
+| `SAGE_DEFAULT_CLIENT_STATUS` | Existing Sage client status used for new clients. |
+| `SAGE_DEFAULT_JOB_STATUS` | Existing Sage job status used for new jobs. |
+| `SAGE_DEFAULT_JOB_TYPE` | Existing Sage job type used for new jobs. |
 
 See `docs/wip/sage-api-bridge-2026-05-14.md` and
 `docs/wip/compass-security-plan-2026-05-19.md` before adding or enabling Sage
 write behavior.
+
+The limited write remains disabled unless both `SAGE_READ_ONLY=false` and
+`SAGE_ALLOW_CLIENT_PROJECT_WRITES=true`. The bridge endpoint must use the Sage
+100 Contractor API on the private Sage host; Compass does not issue direct SQL
+inserts. Apply D1 migrations `0066_sage_client_project_writes.sql` and
+`0067_sage_client_project_write_approvals.sql` before enabling the capability.
+Only active users with an approved Compass Sage-write record can execute this
+limited write. Organization admins can grant or revoke that approval from the
+user Access panel.
 
 ### NetSuite integration (legacy/generic, optional)
 
@@ -107,7 +123,12 @@ decision reactivates NetSuite for a specific workflow.
 
 | Variable | Description |
 |----------|-------------|
-| `FCM_SERVER_KEY` | Firebase Cloud Messaging server key for sending push notifications to iOS/Android. |
+| `FIREBASE_SERVICE_ACCOUNT_JSON` | Firebase service-account JSON for Android FCM HTTP v1 delivery. Store as a Cloudflare secret. |
+| `APNS_KEY_ID` | Apple Push Notification service key identifier. |
+| `APNS_TEAM_ID` | Apple Developer team identifier. |
+| `APNS_PRIVATE_KEY` | APNs `.p8` private-key contents. Store as a Cloudflare secret. |
+| `APNS_BUNDLE_ID` | Optional APNs topic override; defaults to `com.hpscolorado.compass`. |
+| `APNS_ENVIRONMENT` | Optional APNs endpoint selection; defaults to `production`. |
 
 ### GitHub deployment (optional)
 
@@ -174,11 +195,12 @@ Migrations live in `drizzle/` and are applied in order. Never modify an existing
 
 ### Mobile (Capacitor)
 
-The mobile app is a webview wrapper that loads the live Cloudflare deployment. It's not a static export.
+The mobile app defaults to a purpose-built offline Field Mode shell. It is not a static export of the full Next.js application. The shell caches active project packets locally and syncs through the deployed Field Mode backend when connectivity is available.
 
 | Command | What it does |
 |---------|-------------|
-| `bun cap:sync` | Syncs web assets and Capacitor plugins to native projects. Run after adding new Capacitor plugins. |
+| `bun cap:sync` | Builds the offline Field Mode shell and syncs it plus Capacitor plugins to the native projects. |
+| `bun run cap:sync:live` | Developer-only fallback that wraps the full live web application; do not use for field releases. |
 | `bun cap:ios` | Opens the Xcode project for iOS development. |
 | `bun cap:android` | Opens the Android Studio project. |
 

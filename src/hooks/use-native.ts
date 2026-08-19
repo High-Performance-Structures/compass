@@ -4,7 +4,7 @@ import { useSyncExternalStore } from "react"
 import { isNative, isIOS, isAndroid, getMobilePlatform } from "@/lib/native/platform"
 
 // Snapshot never changes after initial load (Capacitor injects before hydration)
-function subscribe(_onStoreChange: () => void): () => void {
+function subscribe(): () => void {
   return () => {}
 }
 
@@ -24,9 +24,13 @@ export function useNative(): boolean {
 export function useNativePlatform(): "ios" | "android" | "web" {
   return useSyncExternalStore(
     subscribe,
-    () => getMobilePlatform(),
-    () => "web" as const,
+    getMobilePlatform,
+    getServerMobilePlatform,
   )
+}
+
+function getServerMobilePlatform(): "web" {
+  return "web"
 }
 
 export { isIOS, isAndroid }

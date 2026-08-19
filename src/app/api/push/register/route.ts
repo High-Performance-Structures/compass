@@ -20,7 +20,9 @@ export async function POST(request: Request) {
     !body ||
     typeof body !== "object" ||
     !("token" in body) ||
-    !("platform" in body)
+    !("platform" in body) ||
+    typeof body.token !== "string" ||
+    typeof body.platform !== "string"
   ) {
     return NextResponse.json(
       { error: "Missing token or platform" },
@@ -28,9 +30,12 @@ export async function POST(request: Request) {
     )
   }
 
-  const { token, platform } = body as {
-    token: string
-    platform: string
+  const { token, platform } = body
+  if (token.length < 16 || token.length > 4096) {
+    return NextResponse.json(
+      { error: "Invalid push token" },
+      { status: 400 },
+    )
   }
   if (platform !== "ios" && platform !== "android") {
     return NextResponse.json(
@@ -79,8 +84,8 @@ export async function DELETE(request: Request) {
     body &&
     typeof body === "object" &&
     "token" in body &&
-    typeof (body as Record<string, unknown>).token === "string"
-      ? (body as Record<string, string>).token
+    typeof body.token === "string"
+      ? body.token
       : undefined
 
   const { env } = await getCloudflareContext()

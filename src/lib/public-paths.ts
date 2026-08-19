@@ -10,6 +10,7 @@ const publicPaths = [
   "/privacy",
   "/terms",
   "/manifest.json",
+  "/api/mobile/health",
 ]
 
 const bridgePaths = [
@@ -42,6 +43,7 @@ export function isPublicPath(pathname: string): boolean {
     sageBridgePaths.includes(pathname) ||
     webhookPaths.includes(pathname) ||
     scheduledMaintenancePaths.includes(pathname) ||
+    pathname.startsWith("/.well-known/") ||
     pathname.startsWith("/api/auth/") ||
     pathname.startsWith("/api/integrations/jarvis/") ||
     pathname.startsWith("/api/netsuite/") ||

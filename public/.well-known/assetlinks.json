@@ -3,8 +3,11 @@
     "relation": ["delegate_permission/common.handle_all_urls"],
     "target": {
       "namespace": "android_app",
-      "package_name": "ltd.openrangeconstruction.compass",
-      "sha256_cert_fingerprints": ["SIGNING_CERT_HASH"]
+      "package_name": "com.hpscolorado.compass",
+      "sha256_cert_fingerprints": [
+        "D2:6C:4D:BF:EA:AA:64:10:41:D2:30:EB:36:D8:BC:11:01:1D:1F:44:81:BD:7E:93:64:E3:73:70:F6:F8:DB:0C",
+        "99:FE:73:BD:E5:A2:E6:18:A3:0D:DE:23:AA:D2:D4:14:1A:FC:52:79:29:E5:63:C8:EF:68:2B:7C:65:CE:BC:6C"
+      ]
     }
   }
 ]

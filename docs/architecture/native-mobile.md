@@ -7,9 +7,9 @@ Developer documentation for the Compass iOS and Android implementations.
 
 Compass is deeply server-rendered. Server actions, middleware auth, D1 database access via `getCloudflareContext()` -- the entire data layer assumes it's running on Cloudflare Workers. Frameworks like NextNative require `output: "export"` (static HTML), which would mean rewriting every action, every database call, every auth check. That's not a refactor; it's a rewrite.
 
-Capacitor takes a different approach. The native app is a thin shell -- a WKWebView on iOS, an Android WebView on Android -- that loads the live deployment at `compass.openrangeconstruction.ltd`. The web app doesn't know or care that it's running inside a native container. Auth works because it's the same origin, same cookies, same middleware. When you run `bun deploy`, the native app gets the update immediately, no app store submission required.
+Capacitor takes a hybrid approach. The native app bundles a small offline Field Mode -- a WKWebView on iOS and an Android WebView on Android -- then navigates to the live deployment at `compass.openrangeconstruction.ltd` when the service is reachable. The bundled shell is not a static export of Next.js. It is a purpose-built recovery surface for active projects, tasks, schedule items, daily logs, construction documents, and project chat.
 
-The tradeoff is real: you don't get truly native UI, and you're dependent on network connectivity for most features. But for a construction management tool where the primary interface is already responsive and touch-optimized, the tradeoff is worth it. The native shell exists to provide the things a WebView genuinely can't: push notifications, biometric auth, camera access with GPS metadata, and offline photo queuing. These are also the features that satisfy Apple's Guideline 4.2 (which rejects apps that are "merely a web site bundled as an app").
+The live application remains the complete experience and receives normal Cloudflare deployments immediately. The bundled shell supplies a dependable cold start and durable offline outbox; it also hosts the native capabilities a browser cannot provide reliably, including push notifications, biometric auth, camera access with GPS metadata, offline files, and photo queuing.
 
 
 ## Architecture
@@ -18,9 +18,9 @@ The native layer follows one principle: **the web app must never break because o
 
 ```
 ┌─────────────────────────────────────────────────┐
-│                 Native Shell                     │
+│             Bundled Offline Field Shell           │
+│  Active work + native outbox + saved documents   │
 │  iOS: WKWebView    Android: Android WebView      │
-│  Capacitor Core + 12 plugins                     │
 ├─────────────────────────────────────────────────┤
 │              Bridge Layer (TypeScript)            │
 │  platform.ts → isNative() / isIOS() / isAndroid() │
@@ -35,7 +35,7 @@ The native layer follows one principle: **the web app must never break because o
 │  BiometricGuard  OfflineBanner  NativeShell       │
 │  UploadQueueIndicator  PushNotificationRegistrar  │
 ├─────────────────────────────────────────────────┤
-│              Compass Web App                      │
+│              Live Compass Web App                 │
 │  Next.js 15 + Cloudflare Workers + D1             │
 │  (completely unchanged)                           │
 └─────────────────────────────────────────────────┘
@@ -87,7 +87,6 @@ If you add a new Capacitor plugin, follow this pattern. A static `import { Camer
 
 ```typescript
 server: {
-  url: "https://compass.openrangeconstruction.ltd",
   allowNavigation: [
     "compass.openrangeconstruction.ltd",
     "api.workos.com",
@@ -98,9 +97,13 @@ server: {
 }
 ```
 
-The `server.url` tells Capacitor to load this URL instead of bundled HTML. The `webDir: "public"` field is required by the schema but unused since we're loading remote content.
+The default release profile is the bundled offline Field Mode. Run `bun cap:sync` for normal TestFlight and Play builds. The Field Mode backend and native shell must be deployed and released as one compatible contract.
 
-`allowNavigation` is the list of domains the WebView is permitted to navigate to. This matters because WorkOS SSO redirects the user through `authkit.workos.com` and potentially through Google or Microsoft login pages. If a domain isn't in this list, the WebView will block the navigation and auth will fail silently. If you add a new SSO provider, add its domain here.
+The default `webDir: "mobile-shell"` points Capacitor at the output of `bun run mobile:build`; `bun cap:sync` performs both steps. Omitting `server.url` is intentional: Capacitor opens the bundled `index.html` even when the device has no service. The shell checks `/api/mobile/health` and uses `/dashboard/field` when Compass is available. `COMPASS_MOBILE_MODE=live bun cap:sync` is a developer-only escape hatch for wrapping the full live deployment, not a field release profile.
+
+The live and bundled surfaces share a versioned storage contract. Preferences stores active-project packets and queued daily logs/chat messages. Filesystem stores saved construction documents and photo payloads. Stored documents include source file IDs and MIME types; local copies are disposable and Google Drive remains the source of truth.
+
+`allowNavigation` is the list of domains the WebView is permitted to navigate to after leaving the bundled shell. This matters because Compass and WorkOS SSO redirect through the listed domains. If a new SSO provider is added, add its domain here.
 
 
 ## iOS specifics
@@ -125,7 +128,7 @@ The `CapApp-SPM/Package.swift` file is managed by `cap sync`. Don't edit it manu
 
 ### Info.plist permissions
 
-Before submitting to the App Store, add these usage description keys to `ios/App/App/Info.plist`:
+The required usage description keys are already present in `ios/App/App/Info.plist`:
 
 ```xml
 <key>NSCameraUsageDescription</key>
@@ -134,11 +137,9 @@ Before submitting to the App Store, add these usage description keys to `ios/App
 <string>Compass accesses your photo library to attach existing photos to projects.</string>
 <key>NSFaceIDUsageDescription</key>
 <string>Compass uses Face ID to keep your project data secure when you return to the app.</string>
-<key>NSLocationWhenInUseUsageDescription</key>
-<string>Compass records GPS coordinates on site photos to track where they were taken.</string>
 ```
 
-Apple will reject the app without these. The strings appear in the system permission dialogs, so they should explain *why* the permission is needed in terms the user understands.
+Apple will reject the app if code accesses one of these protected capabilities without the matching description. Field Mode preserves GPS metadata that is already present in captured images, but it does not request live location and therefore does not declare a location usage key. The strings appear in system permission dialogs, so they must continue to explain *why* the permission is needed in terms the user understands.
 
 ### Push notifications (APNs)
 
@@ -146,8 +147,10 @@ iOS push notifications require an APNs key, not a certificate. The key is a `.p8
 
 1. Create a key with Apple Push Notifications service (APNs) enabled
 2. Download the `.p8` file (you can only download it once)
-3. Upload it to your Firebase project under Project Settings > Cloud Messaging > APNs Authentication Key
-4. Note the Key ID and your Team ID -- Firebase needs both
+3. Store the private key as the `APNS_PRIVATE_KEY` Cloudflare secret
+4. Store the Key ID and Apple Team ID as `APNS_KEY_ID` and `APNS_TEAM_ID`
+
+Compass sends iOS device tokens directly to APNs. The Firebase project is used only for Android FCM delivery.
 
 The `AppDelegate.swift` already handles Universal Links via `ApplicationDelegateProxy`. For push notification delegate methods, Capacitor's `@capacitor/push-notifications` plugin registers them automatically when the plugin is loaded.
 
@@ -176,7 +179,7 @@ For TestFlight / App Store distribution:
 {
   "applinks": {
     "details": [{
-      "appID": "ABC123DEF.ltd.openrangeconstruction.compass",
+      "appID": "78SM7S793Z.com.hpscolorado.compass",
       "paths": ["/dashboard/*"]
     }]
   }
@@ -184,6 +187,8 @@ For TestFlight / App Store distribution:
 ```
 
 This file must be served from the web domain with `Content-Type: application/json` and no redirects. Cloudflare Workers handles this correctly by default for files in `public/`.
+
+The bundled Field Mode shell listens for Capacitor `appUrlOpen` events and the cold-start launch URL. It accepts only HTTPS `/dashboard/*` URLs on the exact Compass origin, gates the destination behind the shared biometric lock when required, then navigates the webview to the matching live page while preserving the query and fragment. Native WorkOS authentication finishes at `/dashboard/field/native-bootstrap`, which caches the signed-in user's profile, active-project list, and first project packet in Capacitor Preferences before returning through `compass://field`. This keeps a first-time tester in the bundled offline shell instead of stranding them in the hosted CHERISH desk. The hosted mobile navigation uses the same registered deep link to return from Full Compass. The native iOS and Android entry points handle that return before forwarding other deep links to Capacitor and reload the configured local start page; this is required because the hosted Full Compass page has replaced the shell and no longer has its JavaScript listener.
 
 
 ## Android specifics
@@ -210,30 +215,28 @@ android/
 
 ### Permissions
 
-The current `AndroidManifest.xml` only declares `INTERNET`. Before building for production, add these permissions:
+The app manifest declares network access plus the legacy storage permissions needed when `saveToGallery` runs on older Android releases:
 
 ```xml
-<uses-permission android:name="android.permission.CAMERA" />
-<uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
-<uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
-<uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
-<uses-permission android:name="android.permission.USE_BIOMETRIC" />
+<uses-permission android:name="android.permission.INTERNET" />
 <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+<uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
+<uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="29" />
 ```
 
-Unlike iOS, Android permissions are declared in the manifest *and* requested at runtime. Capacitor plugins handle the runtime request automatically when you call their APIs, but the manifest declarations must be present or the runtime requests will silently fail.
+The app declares `POST_NOTIFICATIONS` itself so Android 13 and newer can display the runtime notification prompt. Capacitor and the native plugins merge biometric, network-state, foreground-service, and related permissions into the final app manifest. The Camera plugin uses Android's system camera activity and does not require the app to request `CAMERA`. Field Mode preserves GPS metadata already present in the captured image; it does not request live device location.
 
 ### Firebase Cloud Messaging (FCM)
 
 Android push notifications go through Firebase Cloud Messaging, even if they originate from APNs on the backend.
 
 1. Create a Firebase project at console.firebase.google.com
-2. Add an Android app with package name `ltd.openrangeconstruction.compass`
+2. Add an Android app with package name `com.hpscolorado.compass`
 3. Download `google-services.json` and place it at `android/app/google-services.json`
 4. The `classpath 'com.google.gms:google-services'` line needs to be added to `android/build.gradle`
 5. Add `apply plugin: 'com.google.gms.google-services'` at the bottom of `android/app/build.gradle`
 
-The same Firebase project handles both platforms. Upload your iOS APNs key to Firebase, and it will route notifications to the correct platform based on the device token.
+Firebase handles Android delivery only. Compass sends iOS notifications directly to APNs with its Apple provider key.
 
 ### Building and running
 
@@ -254,7 +257,7 @@ For Play Store distribution:
 
 ### App Links
 
-`public/.well-known/assetlinks.json` enables Android App Links. Replace `SIGNING_CERT_HASH` with the SHA-256 fingerprint of your signing certificate:
+`public/.well-known/assetlinks.json` enables Android App Links. Its package name must match `applicationId`, and its SHA-256 fingerprint must match the Play App Signing certificate (or the upload certificate for direct/internal installs):
 
 ```bash
 # get the fingerprint from your keystore
@@ -262,25 +265,27 @@ keytool -list -v -keystore your-keystore.jks \
   -alias your-alias | grep SHA256
 ```
 
-The fingerprint is a colon-separated hex string like `AA:BB:CC:...`. Enter it without the colons in `assetlinks.json`.
+The fingerprint is a colon-separated hex string like `AA:BB:CC:...`. Preserve the colons in `assetlinks.json`.
+
+Android uses the same exact-origin Field Mode routing described above, so verified links work whether the app is already running or launched from a terminated state.
 
 
 ## Push notifications
 
 ### How the system works
 
-The push notification system has three parts: token registration on the client, token storage on the server, and notification delivery via FCM.
+The push notification system has three parts: token registration on the client, token storage on the server, and platform-specific notification delivery.
 
-When the native app starts, the `PushNotificationRegistrar` component (rendered in the dashboard layout) runs the `useNativePush` hook. This hook requests permission, gets a device token from APNs (iOS) or FCM (Android), and POSTs it to `/api/push/register`. The server stores the token in the `push_tokens` table, associated with the current user.
+When the live native app starts, the `PushNotificationRegistrar` component (rendered in the dashboard layout) runs the `useNativePush` hook. This hook requests permission, gets a device token from APNs (iOS) or FCM (Android), and POSTs it to `/api/push/register`. The server stores the token in the `push_tokens` table, associated with the current user.
 
-To send a notification, server-side code calls `sendPushNotification()` from `src/lib/push/send.ts`. This function looks up all tokens for a given user and sends the notification via FCM's HTTP v1 API. FCM routes iOS notifications through APNs automatically (this is why the APNs key is uploaded to Firebase).
+The server dispatches Android tokens through authenticated FCM HTTP v1 and iOS tokens directly through APNs. Android credentials come from a Firebase service-account JSON document. APNs uses an ES256 provider token generated from the Apple key ID, team ID, and private key. Provider credentials remain server-side Cloudflare secrets.
 
 ```
 Device boots → useNativePush → request permission → get token
   → POST /api/push/register → push_tokens table
 
 Server event → sendPushNotification(userId, title, body, data)
-  → query push_tokens → FCM HTTP v1 API → device
+  → query push_tokens → FCM HTTP v1 (Android) or APNs (iOS) → device
 ```
 
 ### Token lifecycle
@@ -291,18 +296,17 @@ On sign-out, the client should call `DELETE /api/push/register` to remove the to
 
 ### Adding push triggers
 
-To send a push notification when something happens (e.g., an invoice status change), call `sendPushNotification` from the relevant server action:
+Call `sendPushNotification` with the Cloudflare environment from a server-only action. Delivery should be scheduled with the request context's `waitUntil` when it does not need to block the response.
 
 ```typescript
-import { sendPushNotification } from "@/lib/push/send"
-
-// inside a server action, after the mutation
-await sendPushNotification(env.DB, env.FCM_SERVER_KEY, {
-  userId: projectManager.id,
-  title: "Invoice approved",
-  body: `Invoice #${invoice.number} for ${project.name} was approved`,
-  data: { url: `/dashboard/financials` },
-})
+ctx.waitUntil(
+  sendPushNotification(env, {
+    userId,
+    title: "Project updated",
+    body: "A new field update is ready.",
+    data: { url: `/dashboard/projects/${projectId}` },
+  }),
+)
 ```
 
 The `data.url` field is picked up by the client-side push handler. When the user taps the notification, the app navigates to that URL.
@@ -314,7 +318,7 @@ Biometric auth exists to protect the app when a user puts it in the background -
 
 The `BiometricGuard` component wraps the dashboard layout. It listens for `appStateChange` events from `@capacitor/app`. When the app moves to the background, it records the timestamp. When the app returns to the foreground, if more than 30 seconds have elapsed and biometric is enabled, it shows a full-screen blur overlay and triggers the biometric prompt.
 
-Users opt in to biometric auth. On first login in the native app, `BiometricGuard` shows a prompt asking if they want to enable Face ID or fingerprint lock. This prompt only appears once (tracked via `localStorage`). Users can also toggle biometric on or off in Settings > Notifications.
+Users opt in to biometric auth. On first login in the native app, `BiometricGuard` shows a prompt asking if they want to enable Face ID or fingerprint lock. This prompt only appears once. The preference is stored with Capacitor Preferences so both the bundled Field Mode shell and the live app enforce it; legacy `localStorage` values are migrated automatically. Users can also toggle biometric on or off in Settings > Notifications.
 
 The "Use password" fallback redirects to `/login`, which goes through the normal WorkOS auth flow. This is important -- if biometric fails repeatedly (e.g., the sensor is dirty, the user changed their fingerprint), there must be a way back in.
 
@@ -401,7 +405,7 @@ This distinction matters for release planning. Web changes can ship immediately.
 
 **Account setup:**
 - Enroll at developer.apple.com ($99/year)
-- Create an App ID: `ltd.openrangeconstruction.compass`
+- Create an App ID: `com.hpscolorado.compass`
 - Create provisioning profiles for development and distribution
 - Create an APNs authentication key
 
@@ -451,7 +455,8 @@ Google's review is generally less strict about WebView apps than Apple's, but th
 | `src/components/native/native-shell.tsx` | Status bar style sync with theme |
 | `src/components/native/upload-queue-indicator.tsx` | Pending upload badge |
 | `src/app/api/push/register/route.ts` | POST (upsert token), DELETE (remove on sign-out) |
-| `src/lib/push/send.ts` | FCM HTTP v1 push notification sender |
+| `src/lib/push/send.ts` | Platform dispatcher for FCM HTTP v1 and direct APNs delivery |
+| `src/lib/push/providers.ts` | FCM OAuth/HTTP and APNs provider-token implementations |
 | `public/.well-known/apple-app-site-association` | iOS Universal Links configuration |
 | `public/.well-known/assetlinks.json` | Android App Links configuration |
 
@@ -467,10 +472,13 @@ Google's review is generally less strict about WebView apps than Apple's, but th
 | `.gitignore` | Native build artifact exclusions |
 
 
-## Environment variables
+## Push environment variables
 
 | Variable | Where | Purpose |
 |----------|-------|---------|
-| `FCM_SERVER_KEY` | Wrangler secret | Firebase Cloud Messaging server key for push delivery |
+| `FIREBASE_SERVICE_ACCOUNT_JSON` | Wrangler secret | Firebase service-account JSON used to mint FCM HTTP v1 OAuth tokens |
+| `APNS_KEY_ID`, `APNS_TEAM_ID`, `APNS_PRIVATE_KEY` | Wrangler secrets | APNs token-auth credentials for iOS push delivery |
+| `APNS_BUNDLE_ID` | Wrangler variable (optional) | APNs topic; defaults to `com.hpscolorado.compass` |
+| `APNS_ENVIRONMENT` | Wrangler variable (optional) | `production` by default; use `development` only for debug-device tokens |
 
 No other environment variables are needed for the native layer. The existing `WORKOS_*` and `OPENROUTER_API_KEY` variables continue to work as before -- they're used by the web app, which the native shell loads remotely.
