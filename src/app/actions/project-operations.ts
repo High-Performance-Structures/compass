@@ -1858,9 +1858,8 @@ export async function createPurchaseOrderRequest(
       updatedAt: now,
     }
 
-    await db.insert(projectOperations).values(inserted)
-    await db.insert(projectPurchaseOrderLines).values(
-      lines.map((line) => ({
+    const lineInserts = lines.map((line) =>
+      db.insert(projectPurchaseOrderLines).values({
         id: crypto.randomUUID(),
         operationId: id,
         projectId,
@@ -1879,8 +1878,15 @@ export async function createPurchaseOrderRequest(
         syncStatus: "pending_sage",
         createdAt: now,
         updatedAt: now,
-      }))
+      })
     )
+
+    // D1 permits at most 100 bound parameters per statement. Keep each line in
+    // its own statement and batch the header plus lines so the write is atomic.
+    await db.batch([
+      db.insert(projectOperations).values(inserted),
+      ...lineInserts,
+    ])
     revalidatePath(`/dashboard/projects/${projectId}`)
     revalidatePath(`/dashboard/projects/${projectId}/purchase-orders`)
     revalidatePath("/dashboard/purchase-orders")
