@@ -39,6 +39,7 @@ import { ProjectEmailAddressCard } from "@/components/projects/project-email-add
 import { ProjectAudienceMessageLauncher } from "@/components/projects/project-audience-message-launcher"
 import { ProjectAudiencePhotoGallery } from "@/components/projects/project-audience-photo-gallery"
 import { ProjectAudiencePreviewShell } from "@/components/projects/project-audience-preview-shell"
+import { ProjectAudiencePurchaseOrderResponseDialog } from "@/components/projects/project-audience-purchase-order-response-dialog"
 import { ProjectAudienceRfiCreateDialog } from "@/components/projects/project-audience-rfi-create-dialog"
 import { ProjectAudienceRfqResponseDialog } from "@/components/projects/project-audience-rfq-response-dialog"
 import { ProjectAudienceSchedule } from "@/components/projects/project-audience-schedule"
@@ -49,7 +50,10 @@ import {
   projectAudienceSectionHref,
   type ProjectAudienceWorkspaceSection,
 } from "@/lib/project-audience-preview-routes"
-import { projectAudienceMessageShortcut } from "@/lib/project-audience-direct-message"
+import {
+  projectAudienceMessageShortcut,
+  type ProjectAudienceMessageRecipient,
+} from "@/lib/project-audience-direct-message"
 import { selectUpcomingScheduleItems } from "@/lib/project-audience-schedule-selection"
 
 function formatDate(value: string | null): string {
@@ -117,8 +121,14 @@ function operationReferenceLabel(item: AudienceOperationItem): string {
 
 function OperationRow({
   item,
+  projectId,
+  recipients,
+  viewerIsInternal,
 }: {
   readonly item: AudienceOperationItem
+  readonly projectId: string
+  readonly recipients: readonly ProjectAudienceMessageRecipient[]
+  readonly viewerIsInternal: boolean
 }): React.ReactElement {
   return (
     <div className="rounded-md border bg-background p-3">
@@ -136,13 +146,37 @@ function OperationRow({
             {item.assigneeName ? ` · ${item.assigneeName}` : ""}
           </p>
         </div>
-        <Badge variant="secondary">{statusLabel(item.status)}</Badge>
+        <div className="flex flex-wrap items-center gap-2">
+          {item.acknowledgement && (
+            <Badge variant="outline">Acknowledged</Badge>
+          )}
+          <Badge variant="secondary">{statusLabel(item.status)}</Badge>
+        </div>
       </div>
+      {item.description && (
+        <p className="mt-2 line-clamp-3 text-sm text-muted-foreground">
+          {item.description}
+        </p>
+      )}
       <p className="mt-2 text-xs text-muted-foreground">
         {formatDate(item.startDate)}
         {" - "}
         {formatDate(item.dueDate)}
       </p>
+      {item.sourceRecordType === "purchase_order" && (
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t pt-3">
+          <span className="text-sm font-medium">{formatMoney(item.amount)}</span>
+          <ProjectAudiencePurchaseOrderResponseDialog
+            projectId={projectId}
+            purchaseOrderId={item.id}
+            purchaseOrderLabel={item.sourceRecordNumber ?? item.title}
+            status={item.status}
+            acknowledgement={item.acknowledgement}
+            recipients={recipients}
+            viewerIsInternal={viewerIsInternal}
+          />
+        </div>
+      )}
     </div>
   )
 }
@@ -1077,7 +1111,13 @@ export function ProjectAudiencePreview({
             {data.operations.length > 0 ? (
               <div className="mt-4 grid gap-3">
                 {data.operations.map((item) => (
-                  <OperationRow key={item.id} item={item} />
+                  <OperationRow
+                    key={item.id}
+                    item={item}
+                    projectId={data.project.id}
+                    recipients={messageShortcut?.recipients ?? []}
+                    viewerIsInternal={data.viewerIsInternal}
+                  />
                 ))}
               </div>
             ) : (

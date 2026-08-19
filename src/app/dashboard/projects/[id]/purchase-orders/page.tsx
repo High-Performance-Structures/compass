@@ -68,6 +68,7 @@ const PURCHASE_ORDER_FILTERS: readonly {
   { value: "open", label: "Open" },
   { value: "draft", label: "Draft" },
   { value: "approved", label: "Approved" },
+  { value: "sent", label: "Sent" },
   { value: "ordered", label: "Ordered" },
   { value: "partially_received", label: "Partially received" },
   { value: "received", label: "Received" },
@@ -193,6 +194,21 @@ function PurchaseOrderCard({
           <span>{formatDate(order.dueDate)}</span>
         </div>
         <p className="mt-3 text-sm font-medium">{money(order.amount)}</p>
+        {order.vendorAcknowledgement && (
+          <div className="mt-3 rounded-md border border-green-200 bg-green-50 p-3 text-sm text-green-900">
+            <p className="font-medium">
+              Vendor acknowledged receipt · {order.vendorAcknowledgement.responderName}
+            </p>
+            <p className="mt-1 text-xs">
+              {new Date(
+                order.vendorAcknowledgement.submittedAt
+              ).toLocaleString("en-US")}
+              {order.vendorAcknowledgement.note
+                ? ` · ${order.vendorAcknowledgement.note}`
+                : ""}
+            </p>
+          </div>
+        )}
         <div className="mt-3 rounded-md border bg-muted/20 p-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <p className="text-xs font-medium uppercase text-muted-foreground">

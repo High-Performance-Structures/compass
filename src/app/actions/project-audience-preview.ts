@@ -6,15 +6,14 @@ import { getDb } from "@/db"
 import {
   dailyLogPhotos,
   dailyLogs,
-  organizationMembers,
   ownerProjectUpdates,
+  projectContacts,
   projectMembers,
   projectOperations,
   projectRfis,
   projects,
   schedulePublications,
   scheduleTasks,
-  users,
 } from "@/db/schema"
 import { channelMembers, channels } from "@/db/schema-conversations"
 import { requireAuth } from "@/lib/auth"
@@ -27,8 +26,15 @@ import {
 } from "@/lib/project-audience-access"
 import { ensureProjectAudienceConversation } from "@/lib/project-audience-conversations"
 import { getProjectAudienceViewerContact } from "@/lib/project-audience-viewer-contact"
-import { isAssignedVisibleAudienceTeamMember } from "@/lib/project-audience-team"
+import { getProjectAudienceStaff } from "@/lib/project-audience-staff"
+import { selectProjectAudienceScheduleItems } from "@/lib/project-audience-schedule-visibility"
 import { isInternalStaffRole } from "@/lib/user-roles"
+import {
+  isPortalVisiblePurchaseOrderStatus,
+  parsePortalPurchaseOrderPayload,
+  portalPurchaseOrderMatchesRecipient,
+  type PortalPurchaseOrderAcknowledgement,
+} from "@/lib/purchase-orders/portal-response"
 import {
   isOwnerScheduleView,
   summarizeOwnerScheduleByPhase,
@@ -82,12 +88,15 @@ export type AudienceOperationItem = {
   readonly sourceRecordType: string
   readonly sourceRecordNumber: string | null
   readonly title: string
+  readonly description: string | null
   readonly status: string
   readonly priority: string
   readonly assigneeName: string | null
   readonly companyName: string | null
   readonly startDate: string | null
   readonly dueDate: string | null
+  readonly amount: number | null
+  readonly acknowledgement: PortalPurchaseOrderAcknowledgement | null
 }
 
 export type AudienceOwnerUpdate = {
@@ -254,6 +263,7 @@ function isActiveStatus(value: string): boolean {
 
 function isSubVendorOperation(value: string): boolean {
   return [
+    "purchase_order",
     "subcontractor_task",
     "supplier_task",
     "schedule_task",
@@ -275,10 +285,6 @@ function photoDate(value: {
   if (value.capturedAt) return value.capturedAt.slice(0, 10)
   if (value.logDate) return value.logDate
   return value.createdAt.slice(0, 10)
-}
-
-function normalizeVisibleName(value: string | null): string {
-  return value?.trim().toLowerCase() ?? ""
 }
 
 export async function getProjectAudiencePreview(
@@ -527,6 +533,7 @@ export async function getProjectAudiencePreview(
             startDate: projectOperations.startDate,
             dueDate: projectOperations.dueDate,
             amount: projectOperations.amount,
+            sageVendorName: projectOperations.sageVendorName,
             sagePayloadJson: projectOperations.sagePayloadJson,
           })
           .from(projectOperations)
@@ -610,79 +617,53 @@ export async function getProjectAudiencePreview(
     )
     .orderBy(asc(channels.sortOrder), asc(channels.name))
 
-  const internalTeamRows = await db
-    .select({
-      id: users.id,
-      userId: users.id,
-      displayName: users.displayName,
-      email: users.email,
-      organizationRole: organizationMembers.role,
-      projectRole: projectMembers.role,
-      projectAssignedAt: projectMembers.assignedAt,
-    })
-    .from(projectMembers)
-    .innerJoin(users, eq(users.id, projectMembers.userId))
-    .innerJoin(
-      organizationMembers,
-      and(
-        eq(organizationMembers.userId, projectMembers.userId),
-        eq(organizationMembers.organizationId, organizationId)
-      )
-    )
-    .where(
-      and(
-        eq(projectMembers.projectId, projectId),
-        eq(users.isActive, true)
-      )
-    )
-    .orderBy(desc(projectMembers.assignedAt), asc(users.displayName))
-
-  // Audience workspaces expose the authoritative internal team only. Internal
-  // previewers receive the same directory that an owner or partner will see.
-  const visibleContactRows = Array.from(
-    new Map(
-      internalTeamRows
-        .filter((member) =>
-          isAssignedVisibleAudienceTeamMember({
-            userId: member.userId,
-            email: member.email,
-            organizationRole: member.organizationRole,
-            projectRole: member.projectRole,
-          })
-        )
-        .map((member) => [member.userId, member])
-    ).values()
-  ).map((member) => ({
-    id: member.id,
+  const internalTeamRows = await getProjectAudienceStaff(db, {
+    projectId,
+    organizationId,
+    audience,
+  })
+  const visibleContactRows: readonly AudienceContact[] = internalTeamRows.map((member) => ({
+    id: member.contactId,
     userId: member.userId,
     contactType: "internal",
-    displayName: member.displayName ?? member.email,
-    companyName: null,
-    role: member.projectRole,
-    trade: null,
-    csiDivision: null,
-    csiDivisionName: null,
+    displayName: member.displayName,
+    companyName: member.companyName,
+    role: member.role,
+    trade: member.trade,
+    csiDivision: member.csiDivision,
+    csiDivisionName: member.csiDivisionName,
     email: member.email,
-    phone: null,
-    primaryContact: false,
+    phone: member.phone,
+    primaryContact: member.primaryContact,
   }))
-  const visibleContactNames = new Set(
-    visibleContactRows
-      .flatMap((contact) => [
-        normalizeVisibleName(contact.displayName),
-        normalizeVisibleName(contact.companyName),
-      ])
-      .filter((value) => value.length > 0)
-  )
+  const externalContactRows =
+    audience === "sub_vendor"
+      ? await db
+          .select({
+            id: projectContacts.id,
+            displayName: projectContacts.displayName,
+            companyName: projectContacts.companyName,
+            email: projectContacts.email,
+          })
+          .from(projectContacts)
+          .where(
+            and(
+              eq(projectContacts.projectId, projectId),
+              eq(projectContacts.active, true),
+              or(
+                eq(projectContacts.contactType, "supplier"),
+                eq(projectContacts.contactType, "subcontractor")
+              )
+            )
+          )
+      : []
   const ownerScheduleView =
     audience === "owner" && isOwnerScheduleView(project.ownerScheduleView)
       ? project.ownerScheduleView
       : "items"
-  const audienceScheduleRows = scheduleRows.filter((item) =>
-    audience === "owner"
-      ? item.ownerVisible !== false
-      : item.subVendorVisible ??
-        visibleContactNames.has(normalizeVisibleName(item.assignedTo))
+  const audienceScheduleRows = selectProjectAudienceScheduleItems(
+    scheduleRows,
+    audience
   )
   const visibleScheduleItem = (
     item: (typeof audienceScheduleRows)[number]
@@ -754,6 +735,56 @@ export async function getProjectAudiencePreview(
       }
     })
 
+  const portalOperationContacts = viewerIsInternal
+    ? externalContactRows
+    : viewerContact
+      ? [viewerContact]
+      : []
+  const audienceOperations: readonly AudienceOperationItem[] = operationRows
+    .filter((operation) => {
+      if (!isSubVendorOperation(operation.sourceRecordType)) return false
+      if (operation.sourceRecordType === "purchase_order") {
+        if (!isPortalVisiblePurchaseOrderStatus(operation.status)) return false
+      } else if (!isActiveStatus(operation.status)) {
+        return false
+      }
+      const payload = parsePortalPurchaseOrderPayload(operation.sagePayloadJson)
+      return portalOperationContacts.some((contact) =>
+        portalPurchaseOrderMatchesRecipient({
+          // Internal previews represent the contact assignment, while a signed-in
+          // vendor must also satisfy any explicit delivery email on the PO.
+          recipientEmails: viewerIsInternal ? [] : payload.recipientEmails,
+          companyName: operation.companyName,
+          assigneeName: operation.assigneeName,
+          vendorName: operation.sageVendorName,
+          viewerEmail: viewerIsInternal ? contact.email ?? "" : viewer.email,
+          viewerCompanyName: contact.companyName,
+          viewerDisplayName: contact.displayName,
+        })
+      )
+    })
+    .map((operation) => {
+      const payload = parsePortalPurchaseOrderPayload(operation.sagePayloadJson)
+      return {
+        id: operation.id,
+        sourceRecordType: operation.sourceRecordType,
+        sourceRecordNumber: operation.sourceRecordNumber,
+        title: operation.title,
+        description: operation.description,
+        status: operation.status,
+        priority: operation.priority,
+        assigneeName: operation.assigneeName,
+        companyName: operation.companyName,
+        startDate: operation.startDate,
+        dueDate: operation.dueDate,
+        amount: operation.amount,
+        acknowledgement:
+          operation.sourceRecordType === "purchase_order"
+            ? payload.acknowledgement
+            : null,
+      }
+    })
+
   return {
     audience,
     viewerIsInternal,
@@ -798,15 +829,7 @@ export async function getProjectAudiencePreview(
       }
     }),
     scheduleItems: audienceScheduleItems,
-    operations: operationRows
-      .filter(
-        (operation) =>
-          isSubVendorOperation(operation.sourceRecordType) &&
-          isActiveStatus(operation.status) &&
-          (visibleContactNames.has(normalizeVisibleName(operation.companyName)) ||
-            visibleContactNames.has(normalizeVisibleName(operation.assigneeName)))
-      )
-      .slice(0, 10),
+    operations: audienceOperations,
     rfis: rfiRows,
     rfqs: audienceRfqs,
     messageChannels: messageChannelRows,
