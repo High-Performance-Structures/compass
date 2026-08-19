@@ -6,6 +6,7 @@ import {
   isRfqStatus,
   parseProjectOperationStatusFilter,
   projectOperationMatchesStatusFilter,
+  purchaseOrderStatusAfterEmail,
   statusLabel,
 } from "@/lib/project-operations/status"
 
@@ -33,6 +34,13 @@ describe("project operation statuses", () => {
     expect(isPurchaseOrderStatus("response_received")).toBe(false)
     expect(isRfqStatus("response_received")).toBe(true)
     expect(isRfqStatus("partially_received")).toBe(false)
+  })
+
+  it("marks newly issued POs sent without downgrading later lifecycle states", () => {
+    expect(purchaseOrderStatusAfterEmail("draft")).toBe("sent")
+    expect(purchaseOrderStatusAfterEmail("approved")).toBe("sent")
+    expect(purchaseOrderStatusAfterEmail("ordered")).toBe("ordered")
+    expect(purchaseOrderStatusAfterEmail("received")).toBe("received")
   })
 
   it("defaults filters to open and accepts query arrays", () => {

@@ -49,7 +49,7 @@ export function ProjectAudienceRfiCreateDialog({
     recipients[0]?.userId ?? ""
   )
   const [state, setState] = React.useState<SubmitState>({ kind: "idle" })
-  const unavailable = viewerIsInternal || recipients.length === 0
+  const unavailable = recipients.length === 0
 
   function reset(): void {
     setSubject("")
@@ -62,6 +62,14 @@ export function ProjectAudienceRfiCreateDialog({
   function submit(event: React.FormEvent<HTMLFormElement>): void {
     event.preventDefault()
     setState({ kind: "idle" })
+    if (viewerIsInternal) {
+      setState({
+        kind: "error",
+        message:
+          "Preview mode shows the partner form, but only an assigned sub/vendor can create the live RFI.",
+      })
+      return
+    }
     startTransition(async () => {
       const result = await createSubVendorRfi(projectId, {
         subject,
@@ -86,10 +94,10 @@ export function ProjectAudienceRfiCreateDialog({
           type="button"
           disabled={unavailable}
           title={
-            viewerIsInternal
-              ? "Sign in as the assigned sub/vendor to send an RFI."
-              : recipients.length === 0
-                ? "Assign an internal project team member first."
+            recipients.length === 0
+              ? "Add an active internal staff member first."
+              : viewerIsInternal
+                ? "Preview the RFI form an assigned sub/vendor can send."
                 : undefined
           }
         >
@@ -107,6 +115,13 @@ export function ProjectAudienceRfiCreateDialog({
             </DialogDescription>
           </DialogHeader>
           <div className="mt-5 grid gap-4">
+            {viewerIsInternal && (
+              <p className="border bg-muted/40 p-3 text-sm text-muted-foreground">
+                Preview mode: this is the form an assigned sub/vendor can send.
+                Submitting is blocked here so an internal staff account cannot be
+                recorded as the external requester.
+              </p>
+            )}
             <label className="grid gap-1.5 text-sm font-medium">
               Send to
               <Select value={recipientUserId} onValueChange={setRecipientUserId}>

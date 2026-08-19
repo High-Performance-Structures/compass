@@ -5,11 +5,9 @@ import { revalidatePath } from "next/cache"
 
 import { getDb } from "@/db"
 import {
-  organizationMembers,
   projectMembers,
   projectOperations,
   projectRfis,
-  users,
 } from "@/db/schema"
 import { requireAuth, type AuthUser } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
@@ -20,7 +18,13 @@ import {
 import { assertProjectAccess } from "@/lib/project-access"
 import type { ProjectAudienceViewerContact } from "@/lib/project-audience-viewer-contact"
 import { getProjectAudienceViewerContact } from "@/lib/project-audience-viewer-contact"
-import { isAssignedVisibleAudienceTeamMember } from "@/lib/project-audience-team"
+import { getProjectAudienceStaff } from "@/lib/project-audience-staff"
+import {
+  parsePortalPurchaseOrderPayload,
+  portalPurchaseOrderCanReceiveResponse,
+  portalPurchaseOrderMatchesRecipient,
+  withPortalPurchaseOrderAcknowledgement,
+} from "@/lib/purchase-orders/portal-response"
 import {
   parsePortalRfqPayload,
   portalRfqCanReceiveResponse,
@@ -47,6 +51,17 @@ export type SubmitSubVendorRfqResponseInput = {
   readonly validUntil: string | null
   readonly notes: string | null
 }
+
+export type RespondSubVendorPurchaseOrderInput =
+  | {
+      readonly decision: "acknowledge"
+      readonly note: string | null
+    }
+  | {
+      readonly decision: "question"
+      readonly question: string
+      readonly recipientUserId: string
+    }
 
 type SubVendorWriteContext = {
   readonly db: ReturnType<typeof getDb>
@@ -144,8 +159,10 @@ function revalidateSubVendorWorkspace(projectId: string): void {
   revalidatePath(`/preview/projects/${projectId}/sub-vendor`)
   revalidatePath(`/preview/projects/${projectId}/sub-vendor/rfis`)
   revalidatePath(`/preview/projects/${projectId}/sub-vendor/rfqs`)
+  revalidatePath(`/preview/projects/${projectId}/sub-vendor/commitments`)
   revalidatePath(`/dashboard/projects/${projectId}/rfis`)
   revalidatePath(`/dashboard/projects/${projectId}/rfqs`)
+  revalidatePath(`/dashboard/projects/${projectId}/purchase-orders`)
   revalidatePath("/dashboard/rfis")
 }
 
@@ -158,42 +175,19 @@ export async function createSubVendorRfi(
     const priority = validRfiPriority(input.priority)
     if (!priority) return { success: false, error: "Choose a valid priority." }
 
-    const recipient = await context.db
-      .select({
-        id: users.id,
-        email: users.email,
-        displayName: users.displayName,
-        organizationRole: organizationMembers.role,
-        projectRole: projectMembers.role,
-      })
-      .from(projectMembers)
-      .innerJoin(users, eq(users.id, projectMembers.userId))
-      .innerJoin(
-        organizationMembers,
-        and(
-          eq(organizationMembers.userId, users.id),
-          eq(organizationMembers.organizationId, context.organizationId)
-        )
-      )
-      .where(
-        and(
-          eq(projectMembers.projectId, projectId),
-          eq(projectMembers.userId, input.recipientUserId),
-          eq(users.isActive, true)
-        )
-      )
-      .limit(1)
-      .then((rows) => rows[0] ?? null)
-    if (
-      !recipient ||
-      !isAssignedVisibleAudienceTeamMember({
-        userId: recipient.id,
-        email: recipient.email,
-        organizationRole: recipient.organizationRole,
-        projectRole: recipient.projectRole,
-      })
-    ) {
-      return { success: false, error: "Choose an assigned project team member." }
+    const audienceStaff = await getProjectAudienceStaff(context.db, {
+      projectId,
+      organizationId: context.organizationId,
+      audience: "sub_vendor",
+    })
+    const recipient = audienceStaff.find(
+      (member) => member.userId === input.recipientUserId
+    )
+    if (!recipient) {
+      return {
+        success: false,
+        error: "Choose a staff member selected for the sub/vendor workspace.",
+      }
     }
 
     const rows = await context.db
@@ -213,7 +207,7 @@ export async function createSubVendorRfi(
       priority,
       audience: "sub_vendor",
       requesterName: context.user.displayName ?? context.user.email,
-      assignedToName: recipient.displayName ?? recipient.email,
+      assignedToName: recipient.displayName,
       companyName: context.viewerContact.companyName,
       submittedAt: now,
       createdAt: now,
@@ -241,6 +235,169 @@ export async function createSubVendorRfi(
     return {
       success: false,
       error: error instanceof Error ? error.message : "Unable to send the RFI.",
+    }
+  }
+}
+
+export async function respondToSubVendorPurchaseOrder(
+  projectId: string,
+  purchaseOrderId: string,
+  input: RespondSubVendorPurchaseOrderInput
+): Promise<SubVendorActionResult> {
+  try {
+    const context = await getSubVendorWriteContext(projectId)
+    const purchaseOrder = await context.db
+      .select({
+        id: projectOperations.id,
+        sourceRecordNumber: projectOperations.sourceRecordNumber,
+        title: projectOperations.title,
+        status: projectOperations.status,
+        assigneeName: projectOperations.assigneeName,
+        companyName: projectOperations.companyName,
+        sageVendorName: projectOperations.sageVendorName,
+        sagePayloadJson: projectOperations.sagePayloadJson,
+        updatedAt: projectOperations.updatedAt,
+      })
+      .from(projectOperations)
+      .where(
+        and(
+          eq(projectOperations.id, purchaseOrderId),
+          eq(projectOperations.projectId, projectId),
+          eq(projectOperations.sourceRecordType, "purchase_order")
+        )
+      )
+      .limit(1)
+      .then((rows) => rows[0] ?? null)
+    if (!purchaseOrder) {
+      return { success: false, error: "Purchase order not found." }
+    }
+    if (!portalPurchaseOrderCanReceiveResponse(purchaseOrder.status)) {
+      return {
+        success: false,
+        error: "This purchase order is no longer accepting responses.",
+      }
+    }
+
+    const payload = parsePortalPurchaseOrderPayload(
+      purchaseOrder.sagePayloadJson
+    )
+    if (
+      !portalPurchaseOrderMatchesRecipient({
+        recipientEmails: payload.recipientEmails,
+        companyName: purchaseOrder.companyName,
+        assigneeName: purchaseOrder.assigneeName,
+        vendorName: purchaseOrder.sageVendorName,
+        viewerEmail: context.user.email,
+        viewerCompanyName: context.viewerContact.companyName,
+        viewerDisplayName: context.viewerContact.displayName,
+      })
+    ) {
+      return {
+        success: false,
+        error: "This purchase order was assigned to another vendor.",
+      }
+    }
+
+    const now = new Date().toISOString()
+    if (input.decision === "acknowledge") {
+      const updateResult = await context.db
+        .update(projectOperations)
+        .set({
+          sagePayloadJson: withPortalPurchaseOrderAcknowledgement(
+            purchaseOrder.sagePayloadJson,
+            {
+              responderUserId: context.user.id,
+              responderName: context.user.displayName ?? context.user.email,
+              responderCompany: context.viewerContact.companyName,
+              note: cleanText(input.note, 2_000),
+              submittedAt: now,
+            }
+          ),
+          updatedAt: now,
+        })
+        .where(
+          and(
+            eq(projectOperations.id, purchaseOrderId),
+            eq(projectOperations.projectId, projectId),
+            eq(projectOperations.status, purchaseOrder.status),
+            eq(projectOperations.updatedAt, purchaseOrder.updatedAt)
+          )
+        )
+        .run()
+      if ((updateResult.meta.changes ?? 0) !== 1) {
+        return {
+          success: false,
+          error:
+            "The purchase order changed. Refresh the page before responding.",
+        }
+      }
+      revalidateSubVendorWorkspace(projectId)
+      return { success: true, id: purchaseOrderId }
+    }
+
+    const audienceStaff = await getProjectAudienceStaff(context.db, {
+      projectId,
+      organizationId: context.organizationId,
+      audience: "sub_vendor",
+    })
+    const recipient = audienceStaff.find(
+      (member) => member.userId === input.recipientUserId
+    )
+    if (!recipient) {
+      return {
+        success: false,
+        error: "Choose a staff member selected for the sub/vendor workspace.",
+      }
+    }
+
+    const rows = await context.db
+      .select({ id: projectRfis.id })
+      .from(projectRfis)
+      .where(eq(projectRfis.projectId, projectId))
+    const rfiId = crypto.randomUUID()
+    const poReference = purchaseOrder.sourceRecordNumber ?? purchaseOrder.title
+    const inserted: typeof projectRfis.$inferInsert = {
+      id: rfiId,
+      projectId,
+      sourceSystem: "compass_portal",
+      rfiNumber: rfiNumber(context.projectNumber, rows.length, rfiId),
+      subject: `Question about PO ${poReference}`.slice(0, 240),
+      question: requireText(input.question, "Question", 10_000),
+      status: "new",
+      priority: "normal",
+      audience: "sub_vendor",
+      requesterName: context.user.displayName ?? context.user.email,
+      assignedToName: recipient.displayName,
+      companyName: context.viewerContact.companyName,
+      submittedAt: now,
+      createdAt: now,
+      updatedAt: now,
+    }
+    await context.db.insert(projectRfis).values(inserted)
+    revalidateSubVendorWorkspace(projectId)
+
+    try {
+      await notifyRfiCreated({
+        organizationId: context.organizationId,
+        projectId,
+        rfiId,
+        rfiNumber: inserted.rfiNumber,
+        subject: inserted.subject,
+        assignedToName: inserted.assignedToName ?? null,
+        createdBy: context.user,
+      })
+    } catch (notificationError) {
+      console.error("[sub-vendor-po-question] notification error", notificationError)
+    }
+
+    return { success: true, id: rfiId }
+  } catch (error) {
+    return {
+      success: false,
+      error:
+        error instanceof Error
+          ? error.message
+          : "Unable to respond to the purchase order.",
     }
   }
 }

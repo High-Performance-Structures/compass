@@ -1,6 +1,7 @@
 export type PurchaseOrderStatus =
   | "draft"
   | "approved"
+  | "sent"
   | "ordered"
   | "partially_received"
   | "received"
@@ -26,6 +27,7 @@ export const PURCHASE_ORDER_STATUS_OPTIONS: readonly {
 }[] = [
   { value: "draft", label: "Draft" },
   { value: "approved", label: "Approved" },
+  { value: "sent", label: "Sent" },
   { value: "ordered", label: "Ordered" },
   { value: "partially_received", label: "Partially received" },
   { value: "received", label: "Received" },
@@ -89,6 +91,11 @@ export function isRfqStatus(status: string): status is RfqStatus {
     RFQ_STATUS_OPTIONS.some((option) => option.value === normalized) &&
     status === normalized
   )
+}
+
+export function purchaseOrderStatusAfterEmail(status: string): string {
+  const normalized = normalizedStatus(status)
+  return normalized === "draft" || normalized === "approved" ? "sent" : status
 }
 
 export function parseProjectOperationStatusFilter(

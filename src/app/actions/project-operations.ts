@@ -33,7 +33,13 @@ import {
 import {
   isPurchaseOrderStatus,
   isRfqStatus,
+  purchaseOrderStatusAfterEmail,
 } from "@/lib/project-operations/status"
+import {
+  parsePortalPurchaseOrderPayload,
+  type PortalPurchaseOrderAcknowledgement,
+  withPortalPurchaseOrderRecipients,
+} from "@/lib/purchase-orders/portal-response"
 import {
   parsePortalRfqPayload,
   type PortalRfqVendorResponse,
@@ -91,6 +97,7 @@ export type ProjectPurchaseOrderLineItem = {
 export type ProjectPurchaseOrderItem = ProjectOperationItem & {
   readonly lines: readonly ProjectPurchaseOrderLineItem[]
   readonly vendorEmail: string | null
+  readonly vendorAcknowledgement: PortalPurchaseOrderAcknowledgement | null
 }
 
 export type ProjectPurchaseOrderPhaseOption = {
@@ -1557,6 +1564,8 @@ export async function getProjectPurchaseOrders(
     ...toOperationItem(row),
     lines: linesByOperation.get(row.id) ?? [],
     vendorEmail: purchaseOrderVendorEmail(row, contactRows, vendorRows),
+    vendorAcknowledgement: parsePortalPurchaseOrderPayload(row.sagePayloadJson)
+      .acknowledgement,
   }))
 }
 
@@ -2731,6 +2740,9 @@ export async function sendPurchaseOrderEmail(
       ...toOperationItem(operation),
       lines: lineRows.map(toPurchaseOrderLineItem),
       vendorEmail: null,
+      vendorAcknowledgement: parsePortalPurchaseOrderPayload(
+        operation.sagePayloadJson
+      ).acknowledgement,
     }
     const senderName = user.displayName ?? user.email
     const emailInput = {
@@ -2759,7 +2771,11 @@ export async function sendPurchaseOrderEmail(
     await db
       .update(projectOperations)
       .set({
-        status: "sent",
+        status: purchaseOrderStatusAfterEmail(operation.status),
+        sagePayloadJson: withPortalPurchaseOrderRecipients(
+          operation.sagePayloadJson,
+          [...to, ...cc]
+        ),
         updatedAt: now,
       })
       .where(eq(projectOperations.id, purchaseOrderId))

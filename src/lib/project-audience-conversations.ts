@@ -2,7 +2,6 @@ import { and, eq, inArray, isNull } from "drizzle-orm"
 
 import type { getDb } from "@/db"
 import {
-  organizationMembers,
   projectAccessInvitations,
   projectMembers,
   projects,
@@ -17,7 +16,7 @@ import {
   canUseProjectAudience,
   type ProjectAudience,
 } from "@/lib/project-audience-access"
-import { isAssignedVisibleAudienceTeamMember } from "@/lib/project-audience-team"
+import { getProjectAudienceStaff } from "@/lib/project-audience-staff"
 
 type Db = ReturnType<typeof getDb>
 type ConversationMemberRole = "owner" | "moderator" | "member"
@@ -196,48 +195,16 @@ async function ensureMembers(
   }
 }
 
-async function organizationStaffUserIds(
+async function audienceStaffUserIds(
   db: Db,
-  organizationId: string,
-  projectId: string
+  input: {
+    readonly projectId: string
+    readonly organizationId: string
+    readonly audience: ProjectAudience
+  }
 ): Promise<readonly string[]> {
-  const memberRows = await db
-    .select({
-      userId: organizationMembers.userId,
-      email: users.email,
-      organizationRole: organizationMembers.role,
-      projectRole: projectMembers.role,
-    })
-    .from(projectMembers)
-    .innerJoin(users, eq(users.id, projectMembers.userId))
-    .innerJoin(
-      organizationMembers,
-      and(
-        eq(organizationMembers.userId, projectMembers.userId),
-        eq(organizationMembers.organizationId, organizationId)
-      )
-    )
-    .where(
-      and(
-        eq(projectMembers.projectId, projectId),
-        eq(users.isActive, true)
-      )
-    )
-
-  return Array.from(
-    new Set(
-      memberRows
-        .filter((row) =>
-          isAssignedVisibleAudienceTeamMember({
-            userId: row.userId,
-            email: row.email,
-            organizationRole: row.organizationRole,
-            projectRole: row.projectRole,
-          })
-        )
-        .map((row) => row.userId)
-    )
-  )
+  const staff = await getProjectAudienceStaff(db, input)
+  return Array.from(new Set(staff.map((member) => member.userId)))
 }
 
 async function externalParticipantUserIds(input: {
@@ -327,11 +294,11 @@ export async function ensureProjectAudienceConversation(input: {
 
   if (!project) throw new Error("Project not found")
 
-  const staffIds = await organizationStaffUserIds(
-    input.db,
-    input.organizationId,
-    input.projectId
-  )
+  const staffIds = await audienceStaffUserIds(input.db, {
+    projectId: input.projectId,
+    organizationId: input.organizationId,
+    audience: input.audience,
+  })
   const externalParticipantIds = await externalParticipantUserIds({
     db: input.db,
     projectId: input.projectId,
