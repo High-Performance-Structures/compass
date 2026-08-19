@@ -19,8 +19,9 @@ import {
 import { DriveClient } from "@/lib/google/client/drive-client"
 import { mapDriveFileToFileItem } from "@/lib/google/mapper"
 import { isDriveItemWithinProjectFolder } from "@/lib/google/project-folder-boundary"
+import { filterFieldDocumentRootFolders } from "@/lib/field/document-access"
+import { assertFieldProjectMembership } from "@/lib/field/project-access"
 import type { FileItem } from "@/lib/files-data"
-import { assertProjectAccess } from "@/lib/project-access"
 import { isDemoUser } from "@/lib/demo"
 import {
   PROJECT_FILE_SOURCES,
@@ -490,7 +491,7 @@ export async function listProjectDriveFilesForField(
     const envRecord = env as unknown as Record<string, string>
     const config = getGoogleConfig(envRecord)
     const db = getDb(env.DB)
-    await assertProjectAccess(db, user, projectId)
+    await assertFieldProjectMembership(db, user.id, projectId)
 
     const project = await db
       .select({ folderId: projects.googleDriveFolderId })
@@ -532,7 +533,7 @@ export async function listProjectDriveFilesForField(
 
     return {
       success: true,
-      files: result.files.map((file) =>
+      files: filterFieldDocumentRootFolders(result.files).map((file) =>
         withProjectCategoryMetadata(
           mapDriveFileToFileItem(file, starredIds, project.folderId)
         )
@@ -570,7 +571,7 @@ export async function listProjectDriveFolderForField(
     const envRecord = env as unknown as Record<string, string>
     const config = getGoogleConfig(envRecord)
     const db = getDb(env.DB)
-    await assertProjectAccess(db, user, projectId)
+    await assertFieldProjectMembership(db, user.id, projectId)
 
     const project = await db
       .select({ folderId: projects.googleDriveFolderId })
@@ -601,14 +602,31 @@ export async function listProjectDriveFolderForField(
       auth.serviceAccountKeyEncrypted,
       config.encryptionKey
     )
-    const withinProject = await isDriveItemWithinProjectFolder({
-      client,
-      googleEmail,
-      itemId: folderId,
-      projectFolderId: project.folderId,
+    const projectRoot = await client.listFiles(googleEmail, {
+      folderId: project.folderId,
+      driveId: auth.sharedDriveId ?? undefined,
+      orderBy: "folder,name",
     })
-    if (!withinProject) {
-      return { success: false, error: "Folder is outside the selected project" }
+    const fieldDocumentRoots = filterFieldDocumentRootFolders(projectRoot.files)
+    let withinFieldDocuments = false
+    for (const root of fieldDocumentRoots) {
+      if (
+        await isDriveItemWithinProjectFolder({
+          client,
+          googleEmail,
+          itemId: folderId,
+          projectFolderId: root.id,
+        })
+      ) {
+        withinFieldDocuments = true
+        break
+      }
+    }
+    if (!withinFieldDocuments) {
+      return {
+        success: false,
+        error: "Folder is outside the documents available in Field Mode",
+      }
     }
 
     const [folder, starredIds, result] = await Promise.all([

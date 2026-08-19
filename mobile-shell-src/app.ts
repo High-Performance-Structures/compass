@@ -236,8 +236,8 @@ function projectsView(): string {
       : `<button id="native-sign-in" class="secondary auth-button" type="button" ${online && !signingIn ? "" : "disabled"}>${signingIn ? "Opening secure sign in" : "Sign in with Google"}</button>`
     return sectionHead("Active projects") + `<div class="empty auth-empty">${message}<div class="auth-actions"><button id="password-sign-in" class="primary auth-button" type="button" ${online && !signingIn ? "" : "disabled"}>Sign in with email and password</button>${googleSignIn}</div></div>`
   }
-  return sectionHead("Active projects", "Filter by company or type any part of a project to find it fast.") + `${projectError ? `<p class="auth-error" role="alert">${escapeHtml(projectError)}</p>` : ""}<div class="project-picker">
-    <label class="field">Company<select id="project-company-filter"><option value="all"${projectCompanyFilter === "all" ? " selected" : ""}>All companies (${projects.length})</option>${projectCompanyOptions()}</select></label>
+  return sectionHead("Active projects", "Filter by department or type any part of a project to find it fast.") + `${projectError ? `<p class="auth-error" role="alert">${escapeHtml(projectError)}</p>` : ""}<div class="project-picker">
+    <label class="field">Department<select id="project-company-filter"><option value="all"${projectCompanyFilter === "all" ? " selected" : ""}>All departments (${projects.length})</option>${projectCompanyOptions()}</select></label>
     <label class="field">Find a project<input id="project-search" type="search" inputmode="search" autocomplete="off" spellcheck="false" aria-controls="project-picker-results" placeholder="Number, name, or address" value="${escapeHtml(projectSearch)}" /></label>
     <div id="project-picker-results" aria-live="polite">${projectPickerResults()}</div>
   </div>`
@@ -382,7 +382,7 @@ function messagesView(): string {
       </div>${directMessage}`
   }
   const messages = packet.messages.map((message) => `<div class="message"><div class="message-meta"><span class="message-author">${escapeHtml(message.userName)}</span><span class="message-time">${escapeHtml(shortDate(message.createdAt))}</span></div><p class="message-body">${escapeHtml(message.content)}</p></div>`).join("")
-  return directMessage + sectionHead(packet.channel.name, "Project messages") + `<div class="chat-list">${messages || empty("No cached messages.")}</div><form id="chat-form" class="chat-compose"><div class="keyboard-toolbar"><span>New message</span><button data-keyboard-done type="button">Done</button></div><textarea name="content" required placeholder="Message the project team"></textarea><button class="primary" type="submit">Save message for sync</button></form>`
+  return directMessage + sectionHead(packet.channel.name, "Project messages") + `<div class="chat-list">${messages || empty("No cached messages.")}</div><details class="project-message-tools"><summary>Message the project team</summary><form id="chat-form" class="chat-compose"><div class="keyboard-toolbar"><span>Project team message</span><button data-keyboard-done type="button">Done</button></div><textarea name="content" required placeholder="Message the project team"></textarea><button class="primary" type="submit">Save message for sync</button></form></details>`
 }
 
 function notificationsView(): string {

@@ -219,30 +219,17 @@ button { cursor: pointer; }
 .message-author { font-weight: 800; }
 .message-time { color: var(--muted); }
 .message-body { margin: 7px 0 0; white-space: pre-wrap; font-size: 14px; line-height: 1.55; }
-.chat-compose { position: sticky; bottom: calc(64px + env(safe-area-inset-bottom)); padding: 12px 0; border-top: 1px solid var(--line); background: #f8f8f5; }
+.project-message-tools { margin-top: 18px; border-top: 1px solid var(--line); }
+.project-message-tools > summary { padding: 16px 0; color: var(--green); font-size: 14px; font-weight: 800; cursor: pointer; }
+.chat-compose { padding: 0 0 18px; }
 .keyboard-toolbar { display: none; align-items: center; justify-content: space-between; margin-bottom: 8px; color: var(--muted); font-size: 12px; font-weight: 750; }
 .keyboard-toolbar button { min-height: 36px; border: 0; background: transparent; color: var(--green); font: inherit; font-size: 15px; }
 .chat-compose textarea { width: 100%; min-height: 82px; border: 1px solid #aeb8b1; border-radius: 3px; padding: 10px; }
 .keyboard-open .shell { padding-bottom: calc(var(--keyboard-height, 0px) + 210px); }
 .keyboard-open .tabbar { display: none; }
 .keyboard-open .keyboard-toolbar { display: flex; }
-.keyboard-open .chat-compose {
-  position: fixed;
-  inset: auto 18px var(--keyboard-height, 0px);
-  z-index: 50;
-  width: min(calc(100% - 36px), 724px);
-  margin-inline: auto;
-  padding: 10px 0 12px;
-  box-shadow: 0 -12px 22px rgba(24, 33, 28, .12);
-}
+.keyboard-open .chat-compose { padding-bottom: 12px; }
 .platform-ios.keyboard-open .shell { padding-bottom: 120px; }
-.platform-ios.keyboard-open .chat-compose {
-  position: sticky;
-  inset: auto;
-  bottom: 0;
-  width: auto;
-  margin-inline: 0;
-}
 
 @media (prefers-color-scheme: dark) {
   :root { color-scheme: dark; background: #111713; color: #edf3ef; --green-light: #1e3529; --line: #35423a; --muted: #a7b2aa; }

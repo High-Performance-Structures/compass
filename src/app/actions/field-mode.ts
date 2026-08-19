@@ -31,9 +31,8 @@ import type {
   FieldProjectPacket,
 } from "@/lib/field/types"
 import { isTaskAssignedToFieldUser } from "@/lib/field/task-assignment"
-import { assertProjectAccess } from "@/lib/project-access"
+import { assertFieldProjectMembership } from "@/lib/field/project-access"
 import {
-  canUseOrganizationProjectScopeRole,
   isInternalStaffRole,
   userRoleLabel,
 } from "@/lib/user-roles"
@@ -80,28 +79,8 @@ export async function getActiveFieldProjects(): Promise<readonly FieldProject[]>
   const { env } = await getCloudflareContext()
   const db = getDb(env.DB)
 
-  if (
-    user.organizationId &&
-    user.organizationType === "internal" &&
-    canUseOrganizationProjectScopeRole(user.role)
-  ) {
-    return db
-      .select({
-        id: projects.id,
-        name: projects.name,
-        projectNumber: projects.projectNumber,
-        address: projects.address,
-      })
-      .from(projects)
-      .where(
-        and(
-          eq(projects.organizationId, user.organizationId),
-          eq(projects.status, "OPEN")
-        )
-      )
-      .orderBy(asc(projects.projectNumber), asc(projects.name))
-  }
-
+  // Field Mode is intentionally narrower than Full Compass: every user sees
+  // only jobs where they are an explicit project member.
   return db
     .select({
       id: projects.id,
@@ -126,7 +105,7 @@ export async function getFieldProjectPacket(
   const user = await requireAuth()
   const { env } = await getCloudflareContext()
   const db = getDb(env.DB)
-  await assertProjectAccess(db, user, projectId)
+  await assertFieldProjectMembership(db, user.id, projectId)
 
   const project = await db
     .select({

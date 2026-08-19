@@ -221,6 +221,33 @@ export class DriveClient {
     )
   }
 
+  async copyFile(
+    userEmail: string,
+    fileId: string,
+    options: {
+      readonly name: string
+      readonly parentId: string
+    }
+  ): Promise<DriveFile> {
+    const params = new URLSearchParams({
+      fields: DRIVE_FILE_FIELDS,
+      supportsAllDrives: "true",
+    })
+
+    return this.request<DriveFile>(
+      userEmail,
+      `/files/${fileId}/copy?${params.toString()}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: options.name,
+          parents: [options.parentId],
+        }),
+      }
+    )
+  }
+
   async initiateResumableUpload(
     userEmail: string,
     options: UploadOptions
