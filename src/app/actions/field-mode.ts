@@ -30,6 +30,7 @@ import type {
   FieldProject,
   FieldProjectPacket,
 } from "@/lib/field/types"
+import { isTaskAssignedToFieldUser } from "@/lib/field/task-assignment"
 import { assertProjectAccess } from "@/lib/project-access"
 import {
   canUseOrganizationProjectScopeRole,
@@ -250,8 +251,9 @@ export async function getFieldProjectPacket(
       assignedTo: task.assignedTo,
     })
   )
-  const assignedTaskItems: FieldProjectPacket["tasks"] = operationTasks.map(
-    (task) => ({
+  const assignedTaskItems: FieldProjectPacket["tasks"] = operationTasks
+    .filter((task) => isTaskAssignedToFieldUser(task.assigneeName, user))
+    .map((task) => ({
       id: task.id,
       kind: "task",
       title: task.title,
@@ -265,8 +267,7 @@ export async function getFieldProjectPacket(
       isCriticalPath: false,
       isMilestone: false,
       assignedTo: task.assigneeName,
-    })
-  )
+    }))
 
   return {
     project: {

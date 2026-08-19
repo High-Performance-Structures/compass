@@ -13,18 +13,28 @@ import {
   cherishResponseTypeSchema,
   cherishValueSchema,
   fieldOutboxSchema,
+  fieldDocumentSchema,
   fieldProjectPacketSchema,
   fieldProjectSchema,
   fieldUserProfileSchema,
   type FieldOutboxItem,
   type FieldCherishResponseType,
   type FieldCherishValue,
+  type FieldDocument,
   type FieldProject,
   type FieldProjectPacket,
   type FieldQueuedAttachment,
   type FieldUserProfile,
 } from "../src/lib/field/types"
+import { isTaskAssignedToFieldUser } from "../src/lib/field/task-assignment"
 import { isFieldAppUrl, resolveDashboardAppUrl } from "./app-url"
+import {
+  filterFieldProjects,
+  isProjectCompanyFilter,
+  PROJECT_COMPANY_OPTIONS,
+  projectCompanyLabel,
+  type ProjectCompanyFilter,
+} from "./project-picker"
 
 const LIVE_URL = "https://compass.openrangeconstruction.ltd"
 const PROJECTS_KEY = "compass_field_projects_v1"
@@ -77,6 +87,12 @@ const nativeFieldBootstrapResponseSchema = z.object({
   projects: projectsSchema.optional(),
   initialPacket: fieldProjectPacketSchema.nullable().optional(),
 })
+const nativeFieldFolderResponseSchema = z.object({
+  success: z.boolean(),
+  error: z.string().optional(),
+  folder: z.object({ id: z.string(), name: z.string() }).optional(),
+  documents: z.array(fieldDocumentSchema).optional(),
+})
 
 const app = document.querySelector<HTMLDivElement>("#app")
 let projects: Project[] = []
@@ -109,6 +125,16 @@ let biometricEnabled = false
 let biometricLocked = false
 let backgroundedAt: number | null = null
 let pendingAppUrl: string | null = null
+let projectCompanyFilter: ProjectCompanyFilter = "all"
+let projectSearch = ""
+let downloadingDocumentId = ""
+let documentActionError = ""
+let loadingDocumentFolderId = ""
+let documentFolderStack: {
+  readonly id: string
+  readonly name: string
+  readonly documents: readonly FieldDocument[]
+}[] = []
 
 function bellIcon(): string {
   return `<svg class="header-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.268 21a2 2 0 0 0 3.464 0"></path><path d="M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326"></path></svg>`
@@ -147,6 +173,39 @@ function projectLabel(project: Project): string {
   return project.projectNumber ? `${project.projectNumber} - ${project.name}` : project.name
 }
 
+function filteredProjectList(): readonly Project[] {
+  return filterFieldProjects(projects, projectCompanyFilter, projectSearch)
+}
+
+function projectPickerResults(): string {
+  const filteredProjects = filteredProjectList()
+  const hasFilter = projectCompanyFilter !== "all" || projectSearch.trim().length > 0
+  const summary = filteredProjects.length === projects.length
+    ? `${projects.length} projects`
+    : `${filteredProjects.length} of ${projects.length} projects`
+  const clearButton = hasFilter
+    ? `<button id="clear-project-filters" class="project-clear" type="button">Clear filters</button>`
+    : ""
+
+  if (filteredProjects.length === 0) {
+    return `<div class="project-result-summary"><span>${escapeHtml(summary)}</span>${clearButton}</div><div class="empty project-empty">No projects match that company and search.</div>`
+  }
+
+  return `<div class="project-result-summary"><span>${escapeHtml(summary)}</span>${clearButton}</div><div class="rows project-results">${filteredProjects.map((project) => `
+    <button class="row project-row" data-project-id="${escapeHtml(project.id)}" type="button">
+      <div class="row-main"><div class="project-row-heading"><p class="row-title">${escapeHtml(projectLabel(project))}</p><span class="project-company-badge">${escapeHtml(projectCompanyLabel(project))}</span></div><p class="row-note">${escapeHtml(project.address ?? "")}</p></div>
+      <strong>${packet?.project.id === project.id ? "Selected" : "Open"}</strong>
+    </button>`).join("")}</div>`
+}
+
+function projectCompanyOptions(): string {
+  return PROJECT_COMPANY_OPTIONS.map((option) => {
+    const count = projects.filter((project) => projectCompanyLabel(project) === option.label).length
+    const selected = projectCompanyFilter === option.value ? " selected" : ""
+    return `<option value="${option.value}"${selected}>${escapeHtml(option.label)} (${count})</option>`
+  }).join("")
+}
+
 function sectionHead(title: string, note = ""): string {
   return `<div class="section-head"><h2>${escapeHtml(title)}</h2>${note ? `<p>${escapeHtml(note)}</p>` : ""}</div>`
 }
@@ -175,20 +234,32 @@ function projectsView(): string {
       : `<button id="native-sign-in" class="secondary auth-button" type="button" ${online && !signingIn ? "" : "disabled"}>${signingIn ? "Opening secure sign in" : "Sign in with Google"}</button>`
     return sectionHead("Active projects") + `<div class="empty auth-empty">${message}<div class="auth-actions"><button id="password-sign-in" class="primary auth-button" type="button" ${online && !signingIn ? "" : "disabled"}>Sign in with email and password</button>${googleSignIn}</div></div>`
   }
-  return sectionHead("Active projects", "Choose the job you are working on.") + `${projectError ? `<p class="auth-error" role="alert">${escapeHtml(projectError)}</p>` : ""}<div class="rows">${projects.map((project) => `
-    <button class="row project-row" data-project-id="${escapeHtml(project.id)}">
-      <div class="row-main"><p class="row-title">${escapeHtml(projectLabel(project))}</p><p class="row-note">${escapeHtml(project.address ?? "")}</p></div>
-      <strong>${packet?.project.id === project.id ? "Selected" : "Open"}</strong>
-    </button>`).join("")}</div>`
+  return sectionHead("Active projects", "Filter by company or type any part of a project to find it fast.") + `${projectError ? `<p class="auth-error" role="alert">${escapeHtml(projectError)}</p>` : ""}<div class="project-picker">
+    <label class="field">Company<select id="project-company-filter"><option value="all"${projectCompanyFilter === "all" ? " selected" : ""}>All companies (${projects.length})</option>${projectCompanyOptions()}</select></label>
+    <label class="field">Find a project<input id="project-search" type="search" inputmode="search" autocomplete="off" spellcheck="false" aria-controls="project-picker-results" placeholder="Number, name, or address" value="${escapeHtml(projectSearch)}" /></label>
+    <div id="project-picker-results" aria-live="polite">${projectPickerResults()}</div>
+  </div>`
 }
 
 function todayView(): string {
   if (!packet) return empty("Select a project to begin.")
   const today = new Date().toISOString().slice(0, 10)
   const open = packet.tasks.filter((task) => !["COMPLETE", "complete", "closed", "cancelled"].includes(task.status))
-  const assigned = open.filter((task) => task.kind === "task").slice(0, 12)
+  const assigned = open
+    .filter(
+      (task) =>
+        task.kind === "task" &&
+        profile !== null &&
+        isTaskAssignedToFieldUser(task.assignedTo, {
+          email: profile.email,
+          displayName: profile.name,
+          firstName: null,
+          lastName: null,
+        })
+    )
+    .slice(0, 12)
   const schedule = open.filter((task) => task.kind === "schedule" && task.endDate >= today).sort((left, right) => left.startDate.localeCompare(right.startDate)).slice(0, 14)
-  const assignedRows = assigned.length ? `<div class="rows">${assigned.map((task) => `<div class="row"><div class="row-main"><p class="row-title">${escapeHtml(task.title)}</p><p class="row-note">${escapeHtml(task.assignedTo ?? task.description ?? "Assigned task")}</p></div><span class="row-date">${escapeHtml(shortDate(task.endDate))}</span></div>`).join("")}</div>` : empty("No open tasks for this project.")
+  const assignedRows = assigned.length ? `<div class="rows">${assigned.map((task) => `<div class="row"><div class="row-main"><p class="row-title">${escapeHtml(task.title)}</p><p class="row-note">${escapeHtml(task.assignedTo ?? task.description ?? "Assigned task")}</p></div><span class="row-date">${escapeHtml(shortDate(task.endDate))}</span></div>`).join("")}</div>` : empty("No open tasks are assigned to you for this project.")
   const scheduleRows = schedule.length ? `<div class="rows">${schedule.map((task) => `<div class="row"><span class="row-date">${escapeHtml(shortDate(task.startDate))}</span><div class="row-main"><p class="row-title">${escapeHtml(task.title)}</p><p class="row-note">${escapeHtml(task.phase)} - ${task.percentComplete}%</p></div></div>`).join("")}</div>` : empty("No upcoming schedule items.")
   return sectionHead("My tasks", "Assigned work for this job.") + assignedRows + `<div class="block">${sectionHead("Project schedule")}${scheduleRows}</div>`
 }
@@ -216,28 +287,35 @@ function logView(): string {
 
 function documentsView(): string {
   if (!packet) return empty("Select a project to view documents.")
+  const currentFolder = documentFolderStack.at(-1) ?? null
+  const visibleDocuments = currentFolder?.documents ?? packet.documents
   const projectDocuments = documents.filter((item) => item.projectId === packet?.project.id)
   const savedIds = new Set(projectDocuments.map((item) => item.fileId))
   const rootIds = new Set(packet.documents.map((document) => document.id))
-  const rows = packet.documents.map((document) => {
+  const rows = visibleDocuments.map((document) => {
     const saved = savedIds.has(document.id)
     const canOpen = saved || online
+    const downloading = downloadingDocumentId === document.id
+    const loadingFolder = loadingDocumentFolderId === document.id
     const note = saved
       ? "Available offline"
       : document.type === "folder"
         ? online ? "Browse the files in this folder" : "Folder requires a connection"
-        : online ? "Tap to download for offline use" : "Not downloaded"
-    const action = saved ? "Open" : online ? document.type === "folder" ? "Browse" : "Download" : ""
-    return `<button class="row document-row" data-file-id="${escapeHtml(document.id)}" ${canOpen ? "" : "disabled"}><div class="row-main"><p class="row-title">${escapeHtml(document.name)}</p><p class="row-note">${escapeHtml(note)}</p></div><strong>${action}</strong></button>`
+        : downloading ? "Saving securely on this device" : online ? "Tap to download for offline use" : "Not downloaded"
+    const action = loadingFolder ? "Opening…" : downloading ? "Saving…" : saved ? "Open" : online ? document.type === "folder" ? "Browse" : "Download" : ""
+    return `<button class="row document-row" data-file-id="${escapeHtml(document.id)}" ${canOpen && !downloading && !loadingFolder ? "" : "disabled"}><div class="row-main"><p class="row-title">${escapeHtml(document.name)}</p><p class="row-note">${escapeHtml(note)}</p></div><strong>${action}</strong></button>`
   }).join("")
   const nestedRows = projectDocuments
     .filter((document) => !rootIds.has(document.fileId))
     .map((document) => `<button class="row document-row" data-file-id="${escapeHtml(document.fileId)}"><div class="row-main"><p class="row-title">${escapeHtml(document.name)}</p><p class="row-note">Available offline</p></div><strong>Open</strong></button>`)
     .join("")
-  const savedFromFolders = nestedRows
+  const savedFromFolders = nestedRows && !currentFolder
     ? `<div class="block">${sectionHead("Saved from folders", "Downloaded files available without service.")}<div class="rows">${nestedRows}</div></div>`
     : ""
-  return sectionHead("Construction documents", "Only files marked available offline can open without service.") + (rows ? `<div class="rows">${rows}</div>` : empty("No cached project documents.")) + savedFromFolders
+  const folderNavigation = currentFolder
+    ? `<div class="document-folder-nav"><button id="document-folder-back" class="secondary" type="button">← Back</button><div><span>Current folder</span><strong>${escapeHtml(currentFolder.name)}</strong></div></div>`
+    : ""
+  return sectionHead(currentFolder?.name ?? "Construction documents", currentFolder ? "Browse or save a file without leaving Field Mode." : "Only files marked available offline can open without service.") + folderNavigation + (documentActionError ? `<p class="auth-error" role="alert">${escapeHtml(documentActionError)}</p>` : "") + (rows ? `<div class="rows">${rows}</div>` : empty(currentFolder ? "This folder is empty." : "No cached project documents.")) + savedFromFolders
 }
 
 function directMessageView(): string {
@@ -443,7 +521,24 @@ function bindEvents(): void {
     if (activeTab === "chat" && online) void refreshProjectPacket()
   }))
   document.querySelectorAll<HTMLButtonElement>("[data-project-id]").forEach((button) => button.addEventListener("click", () => void selectProject(button.dataset.projectId ?? "")))
+  document.querySelector("#project-company-filter")?.addEventListener("change", (event) => {
+    if (!(event.currentTarget instanceof HTMLSelectElement)) return
+    if (!isProjectCompanyFilter(event.currentTarget.value)) return
+    projectCompanyFilter = event.currentTarget.value
+    refreshProjectPickerResults()
+  })
+  document.querySelector<HTMLInputElement>("#project-search")?.addEventListener("input", (event) => {
+    if (!(event.currentTarget instanceof HTMLInputElement)) return
+    projectSearch = event.currentTarget.value
+    refreshProjectPickerResults()
+  })
+  bindProjectPickerResultEvents()
   document.querySelectorAll<HTMLButtonElement>("[data-file-id]").forEach((button) => button.addEventListener("click", () => void openDocument(button.dataset.fileId ?? "")))
+  document.querySelector<HTMLButtonElement>("#document-folder-back")?.addEventListener("click", () => {
+    documentFolderStack = documentFolderStack.slice(0, -1)
+    documentActionError = ""
+    render()
+  })
   document.querySelector<HTMLButtonElement>("#open-live")?.addEventListener("click", openFullCompass)
   document.querySelector<HTMLButtonElement>("#open-live-empty")?.addEventListener("click", openFullCompass)
   document.querySelector<HTMLButtonElement>("#open-cherish")?.addEventListener("click", openCherish)
@@ -511,6 +606,31 @@ function bindEvents(): void {
   document.querySelector<HTMLTextAreaElement>("#direct-message-form textarea[name='content']")?.addEventListener("input", (event) => {
     if (event.currentTarget instanceof HTMLTextAreaElement) directMessageDraft = event.currentTarget.value
   })
+}
+
+function bindProjectPickerResultEvents(): void {
+  document.querySelector<HTMLButtonElement>("#clear-project-filters")?.addEventListener("click", () => {
+    projectCompanyFilter = "all"
+    projectSearch = ""
+    const companySelect = document.querySelector("#project-company-filter")
+    const searchInput = document.querySelector<HTMLInputElement>("#project-search")
+    if (companySelect instanceof HTMLSelectElement) companySelect.value = "all"
+    if (searchInput) {
+      searchInput.value = ""
+      searchInput.focus()
+    }
+    refreshProjectPickerResults()
+  })
+}
+
+function refreshProjectPickerResults(): void {
+  const results = document.querySelector<HTMLDivElement>("#project-picker-results")
+  if (!results) return
+  results.innerHTML = projectPickerResults()
+  results.querySelectorAll<HTMLButtonElement>("[data-project-id]").forEach((button) => {
+    button.addEventListener("click", () => void selectProject(button.dataset.projectId ?? ""))
+  })
+  bindProjectPickerResultEvents()
 }
 
 async function refreshProjectPacket(): Promise<void> {
@@ -586,6 +706,8 @@ async function selectProject(projectId: string): Promise<void> {
     return
   }
   projectError = ""
+  documentFolderStack = []
+  documentActionError = ""
   packet = result.data
   activeTab = "today"
   render()
@@ -667,6 +789,7 @@ async function queueChat(event: SubmitEvent): Promise<void> {
   await writeJson(OUTBOX_KEY, outbox)
   formElement.reset()
   render()
+  if (online) void syncChatOutbox()
 }
 
 async function queueCherish(event: SubmitEvent): Promise<void> {
@@ -776,7 +899,54 @@ async function queueDirectReply(event: SubmitEvent): Promise<void> {
   await writeJson(OUTBOX_KEY, outbox)
   formElement.reset()
   render()
-  void resumePendingSync()
+  if (online) void syncChatOutbox()
+}
+
+async function syncChatOutbox(): Promise<void> {
+  if (!online || syncing) return
+  const pending = outbox.filter((item) => item.kind === "chat_message")
+  if (pending.length === 0) return
+
+  syncing = true
+  messageActionError = ""
+  render()
+  let syncedCount = 0
+  try {
+    for (const item of pending) {
+      const response = await CapacitorHttp.post({
+        url: `${LIVE_URL}/api/field/conversations/message`,
+        headers: { "Content-Type": "application/json" },
+        data: item.payload,
+        responseType: "json",
+      })
+      const result = z.object({
+        success: z.boolean(),
+        error: z.string().optional(),
+      }).safeParse(responseData(response.data))
+      if (!result.success || !result.data.success) {
+        throw new Error(
+          result.success
+            ? result.data.error ?? "The message is saved and will retry."
+            : "The message is saved and will retry."
+        )
+      }
+
+      outbox = outbox.filter((queued) => queued.id !== item.id)
+      syncedCount += 1
+    }
+  } catch (error) {
+    messageActionError = error instanceof Error
+      ? error.message
+      : "The message is saved and will retry."
+  } finally {
+    if (syncedCount > 0) await writeJson(OUTBOX_KEY, outbox)
+    syncing = false
+    render()
+  }
+
+  if (syncedCount > 0 && activeTab === "chat") {
+    void refreshProjectPacket()
+  }
 }
 
 function responseData(value: unknown): unknown {
@@ -875,15 +1045,142 @@ async function openDocument(fileId: string): Promise<void> {
   }
   if (!online) return
 
-  const document = packet.documents.find((item) => item.id === fileId)
+  const currentFolder = documentFolderStack.at(-1) ?? null
+  const document = (currentFolder?.documents ?? packet.documents).find((item) => item.id === fileId)
   if (!document) return
-  const params = new URLSearchParams({
-    projectId: packet.project.id,
-    view: "documents",
-  })
-  if (document.type !== "folder") params.set("downloadFileId", document.id)
-  if (document.type === "folder") params.set("folderId", document.id)
-  window.location.assign(liveAppUrl(`/dashboard/field?${params.toString()}`))
+  if (document.type !== "folder") {
+    await downloadDocumentForOffline(document)
+    return
+  }
+  await browseDocumentFolder(document)
+}
+
+async function browseDocumentFolder(folder: FieldDocument): Promise<void> {
+  if (!packet || !online || loadingDocumentFolderId) return
+  const projectId = packet.project.id
+  loadingDocumentFolderId = folder.id
+  documentActionError = ""
+  render()
+
+  try {
+    const response = await CapacitorHttp.get({
+      url: `${LIVE_URL}/api/field/projects/${encodeURIComponent(projectId)}/folders/${encodeURIComponent(folder.id)}`,
+      responseType: "json",
+    })
+    const result = nativeFieldFolderResponseSchema.safeParse(
+      responseData(response.data)
+    )
+    if (
+      !result.success ||
+      !result.data.success ||
+      !result.data.folder ||
+      !result.data.documents
+    ) {
+      throw new Error(
+        result.success
+          ? result.data.error ?? "Compass could not open this folder."
+          : "Compass could not open this folder."
+      )
+    }
+
+    documentFolderStack = [
+      ...documentFolderStack,
+      {
+        id: result.data.folder.id,
+        name: result.data.folder.name,
+        documents: result.data.documents,
+      },
+    ]
+  } catch (error) {
+    documentActionError = error instanceof Error
+      ? error.message
+      : "Compass could not open this folder."
+  } finally {
+    loadingDocumentFolderId = ""
+    render()
+  }
+}
+
+function documentFileExtension(mimeType: string): string {
+  if (mimeType === "application/pdf") return ".pdf"
+  if (mimeType.includes("spreadsheet")) return ".xlsx"
+  if (mimeType.includes("wordprocessingml")) return ".docx"
+  if (mimeType.startsWith("image/jpeg")) return ".jpg"
+  if (mimeType.startsWith("image/png")) return ".png"
+  return ""
+}
+
+function safeDocumentFileName(name: string, mimeType: string): string {
+  const cleaned = name
+    .replace(/[^a-zA-Z0-9._-]+/g, "-")
+    .replace(/^-+|-+$/g, "") || "project-document"
+  const extension = documentFileExtension(mimeType)
+  if (!extension || cleaned.toLocaleLowerCase().endsWith(extension)) return cleaned
+  return `${cleaned}${extension}`
+}
+
+function responseHeader(
+  headers: Readonly<Record<string, string>>,
+  requestedName: string
+): string | null {
+  const normalizedName = requestedName.toLocaleLowerCase()
+  for (const [name, value] of Object.entries(headers)) {
+    if (name.toLocaleLowerCase() === normalizedName) return value
+  }
+  return null
+}
+
+async function downloadDocumentForOffline(
+  document: FieldDocument
+): Promise<void> {
+  if (!packet || downloadingDocumentId) return
+  const projectId = packet.project.id
+  downloadingDocumentId = document.id
+  documentActionError = ""
+  render()
+
+  try {
+    const response = await CapacitorHttp.get({
+      url: `${LIVE_URL}/api/google/download/${encodeURIComponent(document.id)}?projectId=${encodeURIComponent(projectId)}`,
+      responseType: "arraybuffer",
+    })
+    const data: unknown = response.data
+    if (response.status < 200 || response.status >= 300 || typeof data !== "string" || data.length === 0) {
+      throw new Error("Compass could not download this document.")
+    }
+
+    const mimeType = responseHeader(response.headers, "content-type")
+      ?.split(";", 1)[0]
+      ?.trim() || document.mimeType || "application/octet-stream"
+    const path = `compass-field-documents/${projectId}/${safeDocumentFileName(document.name, mimeType)}`
+    await Filesystem.writeFile({
+      path,
+      data,
+      directory: Directory.Data,
+      recursive: true,
+    })
+
+    const savedDocument: SavedDocument = {
+      projectId,
+      fileId: document.id,
+      name: document.name,
+      mimeType,
+      path,
+      savedAt: new Date().toISOString(),
+    }
+    documents = [
+      ...documents.filter((saved) => saved.projectId !== projectId || saved.fileId !== document.id),
+      savedDocument,
+    ]
+    await writeJson(DOCUMENTS_KEY, documents)
+  } catch (error) {
+    documentActionError = error instanceof Error
+      ? error.message
+      : "Compass could not download this document."
+  } finally {
+    downloadingDocumentId = ""
+    render()
+  }
 }
 
 function liveAppUrl(path: string): string {
@@ -924,19 +1221,7 @@ async function resumePendingSync(): Promise<void> {
     || focusedElement?.getAttribute("contenteditable") === "true"
   if (syncing || composing || !online || outbox.length === 0) return
   await syncCherishOutbox()
-  const needsHostedSync = outbox.some((item) => item.kind !== "cherish_pulse")
-  if (!needsHostedSync || projects.length === 0) return
-  syncing = true
-  render()
-  const params = new URLSearchParams()
-  if (packet) params.set("projectId", packet.project.id)
-  const query = params.toString()
-  window.setTimeout(() => {
-    if (!syncing) return
-    syncing = false
-    render()
-  }, 10_000)
-  window.location.assign(liveAppUrl(`/dashboard/field${query ? `?${query}` : ""}`))
+  await syncChatOutbox()
 }
 
 function base64Url(bytes: Uint8Array): string {

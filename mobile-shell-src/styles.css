@@ -98,6 +98,20 @@ button { cursor: pointer; }
 .row-title { margin: 0; font-size: 15px; font-weight: 750; }
 .row-note { margin: 5px 0 0; color: var(--muted); font-size: 13px; line-height: 1.4; }
 .row-date { flex: 0 0 64px; color: var(--green); font-size: 13px; font-weight: 800; }
+.project-picker { display: grid; gap: 16px; padding-top: 18px; }
+.project-picker .field { gap: 6px; }
+.project-result-summary { display: flex; min-height: 28px; align-items: center; justify-content: space-between; gap: 12px; color: var(--muted); font-size: 12px; font-weight: 750; }
+.project-clear { min-height: 32px; border: 0; background: transparent; padding: 4px 0 4px 12px; color: var(--green); font-size: 12px; font-weight: 800; }
+.project-results { max-height: min(52vh, 520px); overflow-y: auto; overscroll-behavior: contain; border-top: 1px solid var(--line); }
+.project-row-heading { display: flex; align-items: flex-start; gap: 8px; }
+.project-row-heading .row-title { min-width: 0; flex: 1; }
+.project-company-badge { flex: 0 0 auto; border-radius: 999px; background: var(--green-light); padding: 3px 7px; color: var(--green); font-size: 10px; font-weight: 850; line-height: 1.2; }
+.project-empty { padding-block: 28px; }
+.document-folder-nav { display: flex; align-items: center; gap: 12px; padding: 14px 0; border-bottom: 1px solid var(--line); }
+.document-folder-nav .secondary { min-height: 40px; padding-inline: 12px; }
+.document-folder-nav div { display: grid; gap: 2px; min-width: 0; }
+.document-folder-nav span { color: var(--muted); font-size: 11px; font-weight: 700; }
+.document-folder-nav strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; }
 .empty { padding: 42px 12px; border-bottom: 1px dashed var(--line); color: var(--muted); text-align: center; }
 .empty p { margin: 0; }
 .auth-empty { display: grid; justify-items: center; gap: 20px; }
