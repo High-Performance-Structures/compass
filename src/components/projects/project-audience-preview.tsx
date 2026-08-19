@@ -5,9 +5,11 @@ import {
   IconCalendarStats,
   IconChevronDown,
   IconClipboardCheck,
+  IconExternalLink,
   IconFolder,
   IconMessageCircle,
   IconQuestionMark,
+  IconShoppingCartQuestion,
   IconSparkles,
   IconUsers,
 } from "@tabler/icons-react"
@@ -19,6 +21,7 @@ import type {
   AudienceOwnerUpdate,
   AudienceProjectOption,
   AudienceRfi,
+  AudienceRfq,
   AudienceScheduleItem,
   ProjectAudience,
   ProjectAudiencePreview as ProjectAudiencePreviewData,
@@ -33,8 +36,11 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { OwnerCoverPhotoControl } from "@/components/projects/owner-cover-photo-control"
 import { ProjectEmailAddressCard } from "@/components/projects/project-email-address-card"
+import { ProjectAudienceMessageLauncher } from "@/components/projects/project-audience-message-launcher"
 import { ProjectAudiencePhotoGallery } from "@/components/projects/project-audience-photo-gallery"
 import { ProjectAudiencePreviewShell } from "@/components/projects/project-audience-preview-shell"
+import { ProjectAudienceRfiCreateDialog } from "@/components/projects/project-audience-rfi-create-dialog"
+import { ProjectAudienceRfqResponseDialog } from "@/components/projects/project-audience-rfq-response-dialog"
 import { ProjectAudienceSchedule } from "@/components/projects/project-audience-schedule"
 import {
   ownerUpdatePreviewHref,
@@ -60,6 +66,15 @@ function statusLabel(value: string): string {
     .split("_")
     .map((part) => `${part.slice(0, 1).toUpperCase()}${part.slice(1)}`)
     .join(" ")
+}
+
+function formatMoney(value: number | null): string {
+  if (value === null) return "Not submitted"
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: 2,
+  }).format(value)
 }
 
 function projectLabel(data: ProjectAudiencePreviewData): string {
@@ -172,6 +187,125 @@ function RfiRow({
         {item.assignedToName && <span>Assigned: {item.assignedToName}</span>}
         {item.dueDate && <span>Due {formatDate(item.dueDate)}</span>}
       </div>
+    </article>
+  )
+}
+
+function RfqRow({
+  item,
+  projectId,
+  viewerIsInternal,
+}: {
+  readonly item: AudienceRfq
+  readonly projectId: string
+  readonly viewerIsInternal: boolean
+}): React.ReactElement {
+  return (
+    <article id={`rfq-${item.id}`} className="scroll-mt-24 border bg-background p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-xs font-medium text-muted-foreground">
+            {item.number ?? "Request for quote"}
+          </p>
+          <h3 className="mt-1 text-base font-semibold">{item.title}</h3>
+          <div className="mt-2 flex flex-wrap gap-2 text-xs text-muted-foreground">
+            {item.vendorCategory && <span>{item.vendorCategory}</span>}
+            {item.dueDate && <span>Response due {formatDate(item.dueDate)}</span>}
+          </div>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge variant={item.status === "sent" ? "secondary" : "outline"}>
+            {statusLabel(item.status)}
+          </Badge>
+          <ProjectAudienceRfqResponseDialog
+            projectId={projectId}
+            rfqId={item.id}
+            rfqTitle={item.title}
+            status={item.status}
+            response={item.vendorResponse}
+            viewerIsInternal={viewerIsInternal}
+          />
+        </div>
+      </div>
+
+      {item.description && (
+        <p className="mt-4 whitespace-pre-wrap text-sm text-muted-foreground">
+          {item.description}
+        </p>
+      )}
+
+      {item.scopeItems.length > 0 && (
+        <div className="mt-4 overflow-hidden border">
+          <div className="grid grid-cols-[2.5rem_minmax(0,1fr)] gap-2 border-b bg-muted/40 px-3 py-2 text-xs font-medium text-muted-foreground sm:grid-cols-[2.5rem_minmax(0,1fr)_6rem_7rem]">
+            <span>#</span>
+            <span>Scope</span>
+            <span className="hidden sm:block">Phase</span>
+            <span className="hidden sm:block">Cost code</span>
+          </div>
+          {item.scopeItems.map((line) => (
+            <div
+              key={`${item.id}-${line.lineNumber}`}
+              className="grid grid-cols-[2.5rem_minmax(0,1fr)] gap-2 border-b px-3 py-2 text-xs last:border-b-0 sm:grid-cols-[2.5rem_minmax(0,1fr)_6rem_7rem]"
+            >
+              <span className="font-medium">{line.lineNumber}</span>
+              <span>
+                {line.description}
+                {line.notes && (
+                  <span className="mt-1 block text-muted-foreground">{line.notes}</span>
+                )}
+              </span>
+              <span className="hidden sm:block">{line.phaseCode ?? "-"}</span>
+              <span className="hidden sm:block">{line.costCode ?? "-"}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {item.documentLinks.length > 0 && (
+        <div className="mt-4 flex flex-wrap gap-2">
+          {item.documentLinks.map((document) => (
+            <Button
+              key={`${item.id}-document-${document.lineNumber}`}
+              asChild
+              variant="outline"
+              size="sm"
+            >
+              <a href={document.url} target="_blank" rel="noreferrer">
+                {document.label}
+                <IconExternalLink className="size-3" />
+              </a>
+            </Button>
+          ))}
+        </div>
+      )}
+
+      {item.vendorResponse && (
+        <div className="mt-4 border-l-2 border-primary bg-primary/5 px-3 py-3 text-sm">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="font-medium">
+              {item.vendorResponse.decision === "decline"
+                ? "Declined to quote"
+                : `Quote submitted · ${formatMoney(item.vendorResponse.amount)}`}
+            </p>
+            <span className="text-xs text-muted-foreground">
+              {new Date(item.vendorResponse.submittedAt).toLocaleDateString("en-US")}
+            </span>
+          </div>
+          <div className="mt-2 flex flex-wrap gap-3 text-xs text-muted-foreground">
+            {item.vendorResponse.leadTime && (
+              <span>Lead time: {item.vendorResponse.leadTime}</span>
+            )}
+            {item.vendorResponse.validUntil && (
+              <span>Valid through {formatDate(item.vendorResponse.validUntil)}</span>
+            )}
+          </div>
+          {item.vendorResponse.notes && (
+            <p className="mt-2 whitespace-pre-wrap text-muted-foreground">
+              {item.vendorResponse.notes}
+            </p>
+          )}
+        </div>
+      )}
     </article>
   )
 }
@@ -411,10 +545,10 @@ function AudienceMetricStrip({
       icon: <IconClipboardCheck className="size-4" />,
     },
     {
-      label: "Messages",
-      value: String(data.messageChannels.length),
-      detail: "project channels",
-      icon: <IconMessageCircle className="size-4" />,
+      label: "RFQs",
+      value: String(data.rfqs.length),
+      detail: "quote requests",
+      icon: <IconShoppingCartQuestion className="size-4" />,
     },
   ]
 
@@ -807,6 +941,43 @@ export function ProjectAudiencePreview({
         )}
 
         {section === "overview" && (
+          <section className="border bg-background p-4 sm:p-5">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div className="max-w-2xl">
+                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  Compass partner workspace
+                </p>
+                <h2 className="mt-1 text-lg font-semibold">Project command center</h2>
+                <p className="mt-2 text-sm text-muted-foreground">
+                  Keep questions, quotes, schedules, files, and project-team
+                  conversations together in one secure workspace.
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <ProjectAudienceRfiCreateDialog
+                  projectId={data.project.id}
+                  recipients={messageShortcut?.recipients ?? []}
+                  viewerIsInternal={data.viewerIsInternal}
+                />
+                <Button asChild variant="outline">
+                  <Link
+                    href={projectAudienceSectionHref(
+                      data.project.id,
+                      "sub-vendor",
+                      "rfqs"
+                    )}
+                  >
+                    <IconShoppingCartQuestion className="size-4" />
+                    Review RFQs
+                  </Link>
+                </Button>
+                <ProjectAudienceMessageLauncher shortcut={messageShortcut} />
+              </div>
+            </div>
+          </section>
+        )}
+
+        {section === "overview" && (
           <section className="rounded-lg border bg-background/80 px-3 py-2">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex min-w-0 items-center gap-2">
@@ -928,7 +1099,14 @@ export function ProjectAudiencePreview({
                   <IconQuestionMark className="size-4 text-muted-foreground" />
                   <h2 className="text-sm font-semibold">RFIs</h2>
                 </div>
-                <Badge variant="outline">{data.rfis.length} visible</Badge>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge variant="outline">{data.rfis.length} visible</Badge>
+                  <ProjectAudienceRfiCreateDialog
+                    projectId={data.project.id}
+                    recipients={messageShortcut?.recipients ?? []}
+                    viewerIsInternal={data.viewerIsInternal}
+                  />
+                </div>
               </div>
               {data.rfis.length > 0 ? (
                 <div className="mt-4 grid gap-3">
@@ -942,6 +1120,40 @@ export function ProjectAudiencePreview({
                 </p>
               )}
             </div>
+          </section>
+        )}
+
+        {section === "rfqs" && (
+          <section className="space-y-3">
+            <div className="flex flex-wrap items-end justify-between gap-3 border-y py-3">
+              <div>
+                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  Pricing requests
+                </p>
+                <h1 className="mt-1 text-xl font-semibold">Requests for quote</h1>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Review assigned scopes and send pricing directly to the
+                  internal project team.
+                </p>
+              </div>
+              <Badge variant="outline">{data.rfqs.length} assigned</Badge>
+            </div>
+            {data.rfqs.length > 0 ? (
+              <div className="grid gap-3">
+                {data.rfqs.map((item) => (
+                  <RfqRow
+                    key={item.id}
+                    item={item}
+                    projectId={data.project.id}
+                    viewerIsInternal={data.viewerIsInternal}
+                  />
+                ))}
+              </div>
+            ) : (
+              <p className="border bg-background p-5 text-sm text-muted-foreground">
+                No RFQs are currently assigned to your company.
+              </p>
+            )}
           </section>
         )}
 

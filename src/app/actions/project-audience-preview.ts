@@ -8,7 +8,6 @@ import {
   dailyLogs,
   organizationMembers,
   ownerProjectUpdates,
-  projectContacts,
   projectMembers,
   projectOperations,
   projectRfis,
@@ -27,6 +26,7 @@ import {
   type ProjectAudience,
 } from "@/lib/project-audience-access"
 import { ensureProjectAudienceConversation } from "@/lib/project-audience-conversations"
+import { getProjectAudienceViewerContact } from "@/lib/project-audience-viewer-contact"
 import { isAssignedVisibleAudienceTeamMember } from "@/lib/project-audience-team"
 import { isInternalStaffRole } from "@/lib/user-roles"
 import {
@@ -38,6 +38,14 @@ import { parsePublishedScheduleSnapshot } from "@/lib/schedule/publications"
 import { projectAudiencePhotoUrl } from "@/lib/photo-sources"
 import { canViewerConfirmScheduleTask } from "@/lib/schedule/confirmation"
 import { isWarrantyProjectStage } from "@/lib/warranty/status"
+import {
+  isPortalVisibleRfqStatus,
+  parsePortalRfqPayload,
+  portalRfqMatchesRecipient,
+  type PortalRfqDocumentLink,
+  type PortalRfqScopeItem,
+  type PortalRfqVendorResponse,
+} from "@/lib/rfqs/portal-response"
 
 export type { ProjectAudience } from "@/lib/project-audience-access"
 
@@ -113,6 +121,22 @@ export type AudienceRfi = {
   readonly answeredAt: string | null
 }
 
+export type AudienceRfq = {
+  readonly id: string
+  readonly number: string | null
+  readonly title: string
+  readonly description: string | null
+  readonly status: string
+  readonly priority: string
+  readonly companyName: string | null
+  readonly vendorCategory: string | null
+  readonly dueDate: string | null
+  readonly amount: number | null
+  readonly scopeItems: readonly PortalRfqScopeItem[]
+  readonly documentLinks: readonly PortalRfqDocumentLink[]
+  readonly vendorResponse: PortalRfqVendorResponse | null
+}
+
 export type AudienceMessageChannel = {
   readonly id: string
   readonly name: string
@@ -161,6 +185,7 @@ export type ProjectAudiencePreview = {
   readonly scheduleItems: readonly AudienceScheduleItem[]
   readonly operations: readonly AudienceOperationItem[]
   readonly rfis: readonly AudienceRfi[]
+  readonly rfqs: readonly AudienceRfq[]
   readonly messageChannels: readonly AudienceMessageChannel[]
   readonly contacts: readonly AudienceContact[]
 }
@@ -322,6 +347,14 @@ export async function getProjectAudiencePreview(
             }))
         )
 
+  const viewerContact =
+    audience === "sub_vendor" && !viewerIsInternal
+      ? await getProjectAudienceViewerContact(db, projectId, {
+          id: viewer.id,
+          email: viewer.email,
+        })
+      : null
+
   const visibilityFilter =
     audience === "owner"
       ? or(
@@ -454,37 +487,6 @@ export async function getProjectAudiencePreview(
       left.id.localeCompare(right.id)
   )
 
-  const contactRows = await db
-    .select({
-      id: projectContacts.id,
-      userId: projectContacts.sourceEntityId,
-      contactType: projectContacts.contactType,
-      displayName: projectContacts.displayName,
-      companyName: projectContacts.companyName,
-      role: projectContacts.role,
-      trade: projectContacts.trade,
-      csiDivision: projectContacts.csiDivision,
-      csiDivisionName: projectContacts.csiDivisionName,
-      email: projectContacts.email,
-      phone: projectContacts.phone,
-      primaryContact: projectContacts.primaryContact,
-    })
-    .from(projectContacts)
-    .where(
-      audience === "owner"
-        ? and(
-            eq(projectContacts.projectId, projectId),
-            eq(projectContacts.active, true),
-            eq(projectContacts.ownerPortalVisible, true)
-          )
-        : and(
-            eq(projectContacts.projectId, projectId),
-            eq(projectContacts.active, true),
-            eq(projectContacts.subVendorPortalVisible, true)
-          )
-    )
-    .orderBy(asc(projectContacts.sortOrder), asc(projectContacts.displayName))
-
   const ownerUpdateRows =
     audience === "owner"
       ? await db
@@ -521,8 +523,11 @@ export async function getProjectAudiencePreview(
             priority: projectOperations.priority,
             assigneeName: projectOperations.assigneeName,
             companyName: projectOperations.companyName,
+            description: projectOperations.description,
             startDate: projectOperations.startDate,
             dueDate: projectOperations.dueDate,
+            amount: projectOperations.amount,
+            sagePayloadJson: projectOperations.sagePayloadJson,
           })
           .from(projectOperations)
           .where(eq(projectOperations.projectId, projectId))
@@ -560,7 +565,7 @@ export async function getProjectAudiencePreview(
   const audienceContactId =
     viewerIsInternal
       ? null
-      : contactRows.find((contact) => contact.userId === viewer.id)?.id ?? null
+      : viewerContact?.id ?? null
   if (
     audience === "owner" ||
     (!viewerIsInternal && audienceContactId !== null)
@@ -710,6 +715,45 @@ export async function getProjectAudiencePreview(
         }))
       : audienceScheduleRows.map(visibleScheduleItem)
 
+  const audienceRfqs: readonly AudienceRfq[] = operationRows
+    .filter((operation) => {
+      if (
+        operation.sourceRecordType !== "rfq" ||
+        !isPortalVisibleRfqStatus(operation.status)
+      ) {
+        return false
+      }
+      if (viewerIsInternal) return true
+      if (!viewerContact) return false
+      const payload = parsePortalRfqPayload(operation.sagePayloadJson)
+      return portalRfqMatchesRecipient({
+        recipientEmail: payload.recipientEmail,
+        companyName: operation.companyName,
+        assigneeName: operation.assigneeName,
+        viewerEmail: viewer.email,
+        viewerCompanyName: viewerContact.companyName,
+        viewerDisplayName: viewerContact.displayName,
+      })
+    })
+    .map((operation) => {
+      const payload = parsePortalRfqPayload(operation.sagePayloadJson)
+      return {
+        id: operation.id,
+        number: operation.sourceRecordNumber,
+        title: operation.title,
+        description: operation.description,
+        status: operation.status,
+        priority: operation.priority,
+        companyName: operation.companyName,
+        vendorCategory: payload.vendorCategory,
+        dueDate: operation.dueDate,
+        amount: operation.amount,
+        scopeItems: payload.scopeItems,
+        documentLinks: payload.documentLinks,
+        vendorResponse: payload.vendorResponse,
+      }
+    })
+
   return {
     audience,
     viewerIsInternal,
@@ -764,6 +808,7 @@ export async function getProjectAudiencePreview(
       )
       .slice(0, 10),
     rfis: rfiRows,
+    rfqs: audienceRfqs,
     messageChannels: messageChannelRows,
     contacts: visibleContactRows,
   }

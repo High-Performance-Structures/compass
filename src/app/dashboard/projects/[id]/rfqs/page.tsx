@@ -157,6 +157,7 @@ function RfqCard({
 }): React.ReactElement {
   return (
     <article
+      id={`rfq-${rfq.id}`}
       data-rfq-id={rfq.id}
       className={cn(
         "border-l-2 border-y border-r bg-background px-4 py-3",
@@ -233,6 +234,43 @@ function RfqCard({
           {rfq.templateReview.requiresDocumentPackage && (
             <p className="mt-1 text-muted-foreground">
               Add the project plans/specifications package. Sharing stays disabled until review is complete.
+            </p>
+          )}
+        </div>
+      )}
+
+      {rfq.vendorResponse && (
+        <div className="mt-3 border-l-2 border-brand-hps-primary bg-muted/30 px-3 py-3 text-sm">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="font-medium">
+              {rfq.vendorResponse.decision === "decline"
+                ? "Vendor declined to quote"
+                : `Vendor quote: ${new Intl.NumberFormat("en-US", {
+                    style: "currency",
+                    currency: "USD",
+                  }).format(rfq.vendorResponse.amount ?? 0)}`}
+            </p>
+            <span className="text-xs text-muted-foreground">
+              {new Date(rfq.vendorResponse.submittedAt).toLocaleString("en-US")}
+            </span>
+          </div>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Submitted by {rfq.vendorResponse.responderName}
+            {rfq.vendorResponse.responderCompany
+              ? ` · ${rfq.vendorResponse.responderCompany}`
+              : ""}
+          </p>
+          <div className="mt-2 flex flex-wrap gap-3 text-xs text-muted-foreground">
+            {rfq.vendorResponse.leadTime && (
+              <span>Lead time: {rfq.vendorResponse.leadTime}</span>
+            )}
+            {rfq.vendorResponse.validUntil && (
+              <span>Valid through {formatDate(rfq.vendorResponse.validUntil)}</span>
+            )}
+          </div>
+          {rfq.vendorResponse.notes && (
+            <p className="mt-2 whitespace-pre-wrap text-muted-foreground">
+              {rfq.vendorResponse.notes}
             </p>
           )}
         </div>

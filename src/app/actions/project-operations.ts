@@ -34,6 +34,10 @@ import {
   isPurchaseOrderStatus,
   isRfqStatus,
 } from "@/lib/project-operations/status"
+import {
+  parsePortalRfqPayload,
+  type PortalRfqVendorResponse,
+} from "@/lib/rfqs/portal-response"
 
 export type ProjectOperationKind = "purchase_order" | "rfq"
 
@@ -130,6 +134,7 @@ export type ProjectRfqItem = ProjectOperationItem & {
     readonly unresolvedPlaceholders: readonly string[]
     readonly requiresDocumentPackage: boolean
   } | null
+  readonly vendorResponse: PortalRfqVendorResponse | null
 }
 
 export type NextScheduleItem = {
@@ -896,6 +901,7 @@ function toRfqItem(
   recipientEmail: string | null
 ): ProjectRfqItem {
   const payload = parseJsonRecord(row.sagePayloadJson)
+  const portalPayload = parsePortalRfqPayload(row.sagePayloadJson)
 
   return {
     ...toOperationItem(row),
@@ -905,6 +911,7 @@ function toRfqItem(
     scopeItems: parseRfqScopeItems(payload, row.description),
     documentLinks: parseRfqDocumentLinks(payload),
     templateReview: parseRfqTemplateReview(payload),
+    vendorResponse: portalPayload.vendorResponse,
   }
 }
 
@@ -1741,6 +1748,9 @@ export async function updateProjectOperationStatus(
     revalidatePath("/dashboard/financials")
     revalidatePath("/dashboard/schedule")
     revalidatePath("/dashboard")
+    if (operationKind === "rfq") {
+      revalidatePath(`/preview/projects/${projectId}/sub-vendor/rfqs`)
+    }
 
     return { success: true, id: operationId }
   } catch (error) {
@@ -2116,6 +2126,9 @@ export async function updateRfqRequest(
     )
     const documentLinks = normalizeRfqDocumentLinks(input.documentLinks)
     const existingPayload = parseJsonRecord(existing[0].sagePayloadJson)
+    const existingVendorResponse = parsePortalRfqPayload(
+      existing[0].sagePayloadJson
+    ).vendorResponse
     const existingTemplateReview = parseRfqTemplateReview(existingPayload)
     const unresolvedPlaceholders = existingTemplateReview
       ? findTemplatePlaceholders(
@@ -2157,6 +2170,7 @@ export async function updateRfqRequest(
       scope: description,
       scopeItems,
       documentLinks,
+      vendorResponse: existingVendorResponse,
       templateReview:
         templateReview &&
         (templateReview.unresolvedPlaceholders.length > 0 ||
