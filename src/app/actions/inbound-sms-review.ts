@@ -1,10 +1,16 @@
 "use server"
 
-import { and, desc, eq, inArray } from "drizzle-orm"
+import { and, asc, desc, eq, inArray } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
+import { redirect } from "next/navigation"
 
 import { getDb } from "@/db"
-import { gotoInboundEvents, projects } from "@/db/schema"
+import {
+  gotoInboundEvents,
+  organizationMembers,
+  projects,
+  users,
+} from "@/db/schema"
 import { recordActivityEvent } from "@/lib/activity-log"
 import { requireAuth } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
@@ -21,9 +27,14 @@ import { deleteGotoConversation } from "@/lib/goto/conversations"
 import { downloadGotoInboundAttachments } from "@/lib/goto/inbound"
 import { normalizeSmsPhoneNumber } from "@/lib/goto/numbers"
 import type { GotoInboundMessage } from "@/lib/goto/notification-parser"
+import {
+  isInboundSmsTodoDestination,
+  normalizeInboundSmsTodoDueDate,
+} from "@/lib/goto/review-routing"
 import { requireOrg } from "@/lib/org-scope"
 import { requireFeaturePermission } from "@/lib/permission-enforcement"
 import { canManageProjectRegistry } from "@/lib/permissions"
+import { projectTodoHref } from "@/lib/work-calendar"
 
 type StoredGotoAttachment = GotoInboundMessage["attachments"][number]
 
@@ -48,6 +59,12 @@ export type InboundSmsReviewItem = {
 export type InboundSmsReviewQueue = {
   readonly items: readonly InboundSmsReviewItem[]
   readonly projects: readonly InboundSmsReviewProject[]
+}
+
+export type InboundSmsTaskAssignee = {
+  readonly id: string
+  readonly name: string
+  readonly email: string
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -136,12 +153,64 @@ export async function getInboundSmsReviewQueue(): Promise<InboundSmsReviewQueue>
   }
 }
 
+function staffDisplayName(row: {
+  readonly displayName: string | null
+  readonly firstName: string | null
+  readonly lastName: string | null
+  readonly email: string
+}): string {
+  const displayName = row.displayName?.trim()
+  if (displayName) return displayName
+
+  const fullName = [row.firstName, row.lastName]
+    .filter((part): part is string => Boolean(part?.trim()))
+    .join(" ")
+    .trim()
+  return fullName || row.email
+}
+
+export async function getInboundSmsTaskAssignees(): Promise<
+  readonly InboundSmsTaskAssignee[]
+> {
+  const { db, organizationId } = await reviewContext()
+  const rows = await db
+    .select({
+      id: users.id,
+      email: users.email,
+      displayName: users.displayName,
+      firstName: users.firstName,
+      lastName: users.lastName,
+    })
+    .from(users)
+    .innerJoin(organizationMembers, eq(organizationMembers.userId, users.id))
+    .where(
+      and(
+        eq(organizationMembers.organizationId, organizationId),
+        eq(users.isActive, true)
+      )
+    )
+    .orderBy(asc(users.displayName), asc(users.email))
+
+  return rows.map((row) => ({
+    id: row.id,
+    name: staffDisplayName(row),
+    email: row.email,
+  }))
+}
+
 function requiredFormString(formData: FormData, key: string): string {
   const value = formData.get(key)
   if (typeof value !== "string" || value.trim().length === 0) {
     throw new Error(`${key} is required`)
   }
   return value.trim()
+}
+
+function requiredDueDate(formData: FormData): string {
+  const value = requiredFormString(formData, "dueDate")
+  const dueDate = normalizeInboundSmsTodoDueDate(value)
+  if (!dueDate) throw new Error("Choose a valid due date")
+  return dueDate
 }
 
 function reviewedDestination(value: string): ProjectEmailDestination {
@@ -221,6 +290,40 @@ export async function routeInboundSms(formData: FormData): Promise<void> {
     .get()
   if (!project) throw new Error("Project not found")
 
+  const todoDetails =
+    isInboundSmsTodoDestination(destination)
+      ? await (async () => {
+          const assigneeUserId = requiredFormString(formData, "assigneeUserId")
+          const dueDate = requiredDueDate(formData)
+          const assignee = await db
+            .select({
+              id: users.id,
+              email: users.email,
+              displayName: users.displayName,
+              firstName: users.firstName,
+              lastName: users.lastName,
+            })
+            .from(users)
+            .innerJoin(
+              organizationMembers,
+              eq(organizationMembers.userId, users.id)
+            )
+            .where(
+              and(
+                eq(users.id, assigneeUserId),
+                eq(users.isActive, true),
+                eq(organizationMembers.organizationId, organizationId)
+              )
+            )
+            .get()
+          if (!assignee) throw new Error("Choose an active staff assignee")
+          return {
+            assigneeName: staffDisplayName(assignee),
+            dueDate,
+          }
+        })()
+      : undefined
+
   const claimTime = new Date().toISOString()
   const claimed = await db
     .update(gotoInboundEvents)
@@ -236,6 +339,7 @@ export async function routeInboundSms(formData: FormData): Promise<void> {
     .get()
   if (!claimed) throw new Error("Inbound text is already being reviewed")
 
+  let routedEntityId: string | null = null
   try {
     const attachmentMetadata = storedGotoAttachments(event.attachmentMetadata)
     const message: GotoInboundMessage = {
@@ -276,10 +380,12 @@ export async function routeInboundSms(formData: FormData): Promise<void> {
       organizationId,
       projectId: project.id,
       candidate,
+      todoDetails,
     })
     if (result.kind !== "routed") {
       throw new Error("Compass could not route the reviewed text")
     }
+    routedEntityId = result.entityId
 
     const now = new Date().toISOString()
     await db
@@ -319,6 +425,14 @@ export async function routeInboundSms(formData: FormData): Promise<void> {
   revalidatePath("/dashboard/office-maintenance/inbound-email")
   revalidatePath("/dashboard/activity")
   revalidatePath(`/dashboard/projects/${project.id}`)
+  revalidatePath(`/dashboard/projects/${project.id}/todos`)
+  revalidatePath("/dashboard/schedule")
+  if (
+    routedEntityId &&
+    isInboundSmsTodoDestination(destination)
+  ) {
+    redirect(projectTodoHref(project.id, routedEntityId))
+  }
 }
 
 export async function dismissInboundSms(formData: FormData): Promise<void> {

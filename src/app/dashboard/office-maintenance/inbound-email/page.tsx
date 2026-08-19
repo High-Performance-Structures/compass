@@ -20,9 +20,11 @@ import {
 import {
   dismissInboundSms,
   getInboundSmsReviewQueue,
+  getInboundSmsTaskAssignees,
   routeInboundSms,
 } from "@/app/actions/inbound-sms-review"
 import { InboundSmsProjectCombobox } from "@/components/goto/inbound-sms-project-combobox"
+import { InboundSmsRoutingFields } from "@/components/goto/inbound-sms-routing-fields"
 import { TrashInboundSmsButton } from "@/components/goto/trash-inbound-sms-button"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -38,10 +40,11 @@ function suggestedTitle(value: string | null): string {
 }
 
 export default async function InboundEmailReviewPage(): Promise<React.ReactElement> {
-  const [queue, smsQueue, staffAssignees] = await Promise.all([
+  const [queue, smsQueue, staffAssignees, smsTaskAssignees] = await Promise.all([
     getInboundEmailReviewQueue(),
     getInboundSmsReviewQueue(),
     getStaffMessageAssignees(),
+    getInboundSmsTaskAssignees(),
   ])
 
   return (
@@ -130,24 +133,7 @@ export default async function InboundEmailReviewPage(): Promise<React.ReactEleme
                     defaultValue={item.suggestedProjectId}
                   />
                 </div>
-                <label className="flex flex-col gap-1 text-sm font-medium">
-                  Destination
-                  <select
-                    name="destination"
-                    required
-                    defaultValue=""
-                    className="h-10 border bg-background px-3 font-normal"
-                  >
-                    <option value="" disabled>Select destination…</option>
-                    <option value="rfi">RFI</option>
-                    <option value="rfq">RFQ draft</option>
-                    <option value="change_order">Change-order draft</option>
-                    <option value="todo">To-do</option>
-                    <option value="delivery">Delivery to-do</option>
-                    <option value="daily_log">Daily log</option>
-                    <option value="video">Video review</option>
-                  </select>
-                </label>
+                <InboundSmsRoutingFields assignees={smsTaskAssignees} />
                 <label className="flex flex-col gap-1 text-sm font-medium md:col-span-2">
                   Title
                   <input

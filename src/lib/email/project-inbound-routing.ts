@@ -53,6 +53,11 @@ export type ProjectInboundSource = {
   readonly label: "Email" | "Text message"
 }
 
+export type ReviewedInboundTodoDetails = {
+  readonly assigneeName: string
+  readonly dueDate: string
+}
+
 const EMAIL_SOURCE: ProjectInboundSource = {
   kind: "email",
   idPrefix: "email",
@@ -339,6 +344,7 @@ async function routeTodo(input: {
   readonly projectId: string
   readonly candidate: InboundCandidate
   readonly delivery?: boolean
+  readonly todoDetails?: ReviewedInboundTodoDetails
   readonly now: string
   readonly source: ProjectInboundSource
 }): Promise<{ readonly id: string; readonly status: "routed_todo" }> {
@@ -373,6 +379,8 @@ async function routeTodo(input: {
       status: "open",
       priority: "normal",
       assigneeType: "internal",
+      assigneeName: input.todoDetails?.assigneeName ?? null,
+      dueDate: input.todoDetails?.dueDate ?? null,
       sageWriteStatus: "not_ready",
       syncDirection: "write",
       syncStatus: "needs_review",
@@ -684,6 +692,7 @@ async function routeDestination(input: {
   readonly projectNumber: string | null
   readonly candidate: InboundCandidate
   readonly destination: ProjectEmailDestination
+  readonly todoDetails?: ReviewedInboundTodoDetails
   readonly now: string
   readonly source: ProjectInboundSource
 }): Promise<{
@@ -714,6 +723,7 @@ async function routeVerifiedProjectInboundMessage(input: {
   readonly projectId: string
   readonly candidate: InboundCandidate
   readonly source: ProjectInboundSource
+  readonly todoDetails?: ReviewedInboundTodoDetails
 }): Promise<ProjectInboundRouteResult> {
   const projectId = input.projectId
   const [project] = await input.db
@@ -760,6 +770,7 @@ async function routeVerifiedProjectInboundMessage(input: {
     projectNumber: project.projectNumber,
     candidate: input.candidate,
     destination,
+    todoDetails: input.todoDetails,
     now: new Date().toISOString(),
     source: input.source,
   })
@@ -975,6 +986,7 @@ export async function routeReviewedProjectInboundSms(input: {
   readonly organizationId: string
   readonly projectId: string
   readonly candidate: InboundCandidate
+  readonly todoDetails?: ReviewedInboundTodoDetails
 }): Promise<ProjectInboundRouteResult> {
   return routeVerifiedProjectInboundMessage({
     ...input,

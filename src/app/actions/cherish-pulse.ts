@@ -8,6 +8,7 @@ import { getCloudflareContext } from "@/lib/db"
 import { requireAuth, type AuthUser } from "@/lib/auth"
 import { requireOrg } from "@/lib/org-scope"
 import { canManageProjectRegistry } from "@/lib/permissions"
+import { isInternalStaffRole } from "@/lib/user-roles"
 
 export type CherishValue =
   | "Camaraderie"
@@ -288,6 +289,136 @@ export async function getCherishPulseReviewQueue(): Promise<
   }
 }
 
+export async function getCherishPulseTeamStream(): Promise<
+  ActionResult<readonly CherishPulseReviewItem[]>
+> {
+  try {
+    const user = await requireAuth()
+    if (!canViewCherishPulse(user)) {
+      return {
+        success: false,
+        error: "Only internal team members can view CHERISH recognition.",
+      }
+    }
+
+    const organizationId = requireOrg(user)
+    const { env } = await getCloudflareContext()
+    if (!env?.DB) {
+      return {
+        success: false,
+        error: "Compass storage is not available right now.",
+      }
+    }
+
+    const db = getDb(env.DB)
+    const rows = await db
+      .select({
+        id: cherishPulseResponses.id,
+        cherishValue: cherishPulseResponses.cherishValue,
+        responseType: cherishPulseResponses.responseType,
+        message: cherishPulseResponses.message,
+        source: cherishPulseResponses.source,
+        visibility: cherishPulseResponses.visibility,
+        reviewStatus: cherishPulseResponses.reviewStatus,
+        submittedByName: cherishPulseResponses.submittedByName,
+        submittedByEmail: cherishPulseResponses.submittedByEmail,
+        weekStart: cherishPulseResponses.weekStart,
+        createdAt: cherishPulseResponses.createdAt,
+      })
+      .from(cherishPulseResponses)
+      .where(
+        and(
+          eq(cherishPulseResponses.organizationId, organizationId),
+          eq(cherishPulseResponses.visibility, "team"),
+          eq(cherishPulseResponses.reviewStatus, "approved")
+        )
+      )
+      .orderBy(
+        desc(cherishPulseResponses.publishedAt),
+        desc(cherishPulseResponses.createdAt)
+      )
+      .limit(20)
+
+    return {
+      success: true,
+      data: rows.map(rowToReviewItem),
+    }
+  } catch (error) {
+    return {
+      success: false,
+      error:
+        error instanceof Error
+          ? error.message
+          : "Unable to load CHERISH recognition.",
+    }
+  }
+}
+
+export async function getCherishPulseLeadershipStream(): Promise<
+  ActionResult<readonly CherishPulseReviewItem[]>
+> {
+  try {
+    const user = await requireAuth()
+    if (!canManageProjectRegistry(user)) {
+      return {
+        success: false,
+        error: "Only admins can view private CHERISH concerns.",
+      }
+    }
+
+    const organizationId = requireOrg(user)
+    const { env } = await getCloudflareContext()
+    if (!env?.DB) {
+      return {
+        success: false,
+        error: "Compass storage is not available right now.",
+      }
+    }
+
+    const db = getDb(env.DB)
+    const rows = await db
+      .select({
+        id: cherishPulseResponses.id,
+        cherishValue: cherishPulseResponses.cherishValue,
+        responseType: cherishPulseResponses.responseType,
+        message: cherishPulseResponses.message,
+        source: cherishPulseResponses.source,
+        visibility: cherishPulseResponses.visibility,
+        reviewStatus: cherishPulseResponses.reviewStatus,
+        submittedByName: cherishPulseResponses.submittedByName,
+        submittedByEmail: cherishPulseResponses.submittedByEmail,
+        weekStart: cherishPulseResponses.weekStart,
+        createdAt: cherishPulseResponses.createdAt,
+      })
+      .from(cherishPulseResponses)
+      .where(
+        and(
+          eq(cherishPulseResponses.organizationId, organizationId),
+          eq(cherishPulseResponses.visibility, "private"),
+          eq(cherishPulseResponses.reviewStatus, "approved")
+        )
+      )
+      .orderBy(
+        desc(cherishPulseResponses.reviewedAt),
+        desc(cherishPulseResponses.createdAt)
+      )
+      .limit(20)
+
+    return {
+      success: true,
+      data: rows.map(rowToReviewItem),
+    }
+  } catch (error) {
+    return {
+      success: false,
+      error:
+        error instanceof Error
+          ? error.message
+          : "Unable to load private CHERISH concerns.",
+    }
+  }
+}
+
 export async function reviewCherishPulseResponse(
   input: ReviewCherishPulseInput
 ): Promise<ActionResult<{ readonly id: string; readonly reviewStatus: CherishPulseReviewStatus }>> {
@@ -382,6 +513,14 @@ function canSubmitCherishPulse(user: AuthUser): boolean {
       user.role === "secondary_admin" ||
       user.role === "office" ||
       user.role === "field")
+  )
+}
+
+function canViewCherishPulse(user: AuthUser): boolean {
+  return (
+    user.isActive &&
+    user.organizationType === "internal" &&
+    isInternalStaffRole(user.role)
   )
 }
 

@@ -45,6 +45,7 @@ import {
 } from "@/app/actions/presence"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { CherishPulseStream } from "@/components/dashboard/cherish-pulse-stream"
 import { OfficeMaintenanceDrawer } from "@/components/projects/office-maintenance-drawer"
 import {
   Dialog,
@@ -612,7 +613,11 @@ function DeskHero({
   )
 }
 
-function CherishComposer(): React.ReactElement {
+function CherishComposer({
+  onSubmitted,
+}: {
+  readonly onSubmitted: () => void
+}): React.ReactElement {
   const [open, setOpen] = useState(false)
   const [responseType, setResponseType] =
     useState<CherishPulseResponseType>("shoutout")
@@ -639,6 +644,7 @@ function CherishComposer(): React.ReactElement {
       }
 
       setMessage("")
+      onSubmitted()
       setResultMessage(
         isPrivate
           ? "Your private concern was sent for leadership review."
@@ -1222,8 +1228,14 @@ function ProjectWorkspace({
 
 function TeamPulseDrawer({
   overview,
+  canReviewCherish,
+  cherishRefreshKey,
+  onCherishSubmitted,
 }: {
   readonly overview: DashboardOverview
+  readonly canReviewCherish: boolean
+  readonly cherishRefreshKey: number
+  readonly onCherishSubmitted: () => void
 }): React.ReactElement {
   return (
     <Sheet>
@@ -1251,9 +1263,13 @@ function TeamPulseDrawer({
               is needed.
             </p>
             <div className="mt-3">
-              <CherishComposer />
+              <CherishComposer onSubmitted={onCherishSubmitted} />
             </div>
           </div>
+          <CherishPulseStream
+            canReview={canReviewCherish}
+            refreshKey={cherishRefreshKey}
+          />
           <div>
             <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
               Today at a glance
@@ -1274,8 +1290,7 @@ function TeamPulseDrawer({
             </div>
           </div>
           <p className="text-xs leading-5 text-muted-foreground">
-            Public team recognition will appear here after review. Private
-            concerns remain visible only to authorized leadership.
+            Private concerns remain visible only to authorized leadership.
           </p>
         </div>
       </SheetContent>
@@ -1304,6 +1319,11 @@ export function DashboardLaunchpad({
   const [deskStatus, setDeskStatus] = useState<DeskStatus>(() =>
     deskStatusForPresenceMessage(initialDeskStatusMessage)
   )
+  const [cherishRefreshKey, setCherishRefreshKey] = useState(0)
+
+  function handleCherishSubmitted(): void {
+    setCherishRefreshKey((current) => current + 1)
+  }
 
   return (
     <main className="mx-auto w-full max-w-[1500px] space-y-4 p-3 sm:p-4 lg:p-5">
@@ -1347,8 +1367,13 @@ export function DashboardLaunchpad({
           {canManageOfficeMaintenance ? (
             <OfficeMaintenanceDrawer projects={overview.projects} />
           ) : null}
-          <CherishComposer />
-          <TeamPulseDrawer overview={overview} />
+          <CherishComposer onSubmitted={handleCherishSubmitted} />
+          <TeamPulseDrawer
+            overview={overview}
+            canReviewCherish={canManageOfficeMaintenance}
+            cherishRefreshKey={cherishRefreshKey}
+            onCherishSubmitted={handleCherishSubmitted}
+          />
         </div>
       </div>
 
