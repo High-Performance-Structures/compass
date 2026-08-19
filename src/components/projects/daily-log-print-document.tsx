@@ -1,7 +1,7 @@
 import type * as React from "react"
-import Image from "next/image"
 
 import type { ProjectDailyLogItem } from "@/app/actions/project-field"
+import { ProjectBrandLogo } from "@/components/projects/project-brand-logo"
 import { projectBrandFor } from "@/lib/project-branding"
 
 function formatPrintDate(value: string): string {
@@ -73,8 +73,7 @@ export function DailyLogPrintDocument({
   readonly projectLabel: string
   readonly projectName: string
   readonly projectNumber: string | null
-}): React.ReactElement | null {
-  if (logs.length === 0) return null
+}): React.ReactElement {
   const brand = projectBrandFor({ projectId, projectNumber })
 
   return (
@@ -85,12 +84,9 @@ export function DailyLogPrintDocument({
       <header className="border-b-2 border-black pb-4">
         <div className="flex items-start justify-between gap-6">
           <div className="flex items-start gap-3">
-            <Image
-              src={brand.logoSrc}
-              alt={brand.logoAlt}
-              width={48}
-              height={48}
-              unoptimized
+            <ProjectBrandLogo
+              brand={brand}
+              size={48}
               className="h-12 w-12 object-contain"
             />
             <div>

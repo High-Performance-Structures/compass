@@ -1,9 +1,8 @@
 export const dynamic = "force-dynamic"
 
-import Image from "next/image"
-
 import { getProjectEstimateWorkspace } from "@/app/actions/project-estimates"
 import { getProjects } from "@/app/actions/projects"
+import { ProjectBrandLogo } from "@/components/projects/project-brand-logo"
 import { projectBrandFor } from "@/lib/project-branding"
 
 function money(cents: number): string {
@@ -46,13 +45,10 @@ export default async function ProjectEstimatePrintPage({
     <main className="mx-auto max-w-[8.5in] bg-white p-8 text-black print:max-w-none print:p-0">
       <header className="flex items-start justify-between gap-6 border-b-2 border-black pb-5">
         <div className="flex items-center gap-4">
-          <Image
-            src={brand.logoSrc}
-            alt={brand.logoAlt}
-            width={80}
-            height={80}
+          <ProjectBrandLogo
+            brand={brand}
+            size={80}
             className="size-20 object-contain"
-            priority
           />
           <div>
             <p className="text-lg font-bold">{brand.companyName}</p>

@@ -1,5 +1,4 @@
 import type * as React from "react"
-import Image from "next/image"
 import Link from "next/link"
 import { IconArrowLeft } from "@tabler/icons-react"
 import { notFound } from "next/navigation"
@@ -11,6 +10,7 @@ import {
   type ProjectSelectionsSummary,
 } from "@/app/actions/project-selections"
 import { getProjects } from "@/app/actions/projects"
+import { ProjectBrandLogo } from "@/components/projects/project-brand-logo"
 import { ProjectContextWatermarkShell } from "@/components/projects/project-context-watermark-shell"
 import { ProjectQuickSwitcher } from "@/components/projects/project-quick-switcher"
 import { ProjectSelectionsWorkspace } from "@/components/projects/project-selections-workspace"
@@ -81,12 +81,9 @@ export default async function ProjectSelectionsPage({
             </Link>
           </Button>
           <div className="flex items-center gap-3">
-            <Image
-              src={brand.logoSrc}
-              alt={brand.logoAlt}
-              width={32}
-              height={32}
-              unoptimized
+            <ProjectBrandLogo
+              brand={brand}
+              size={32}
               className="h-8 w-8 object-contain"
             />
             <h1 className="text-2xl font-semibold tracking-tight">

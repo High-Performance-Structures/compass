@@ -1,7 +1,6 @@
 export const dynamic = "force-dynamic"
 
 import Link from "next/link"
-import Image from "next/image"
 import {
   IconArrowLeft,
   IconEye,
@@ -22,6 +21,7 @@ import {
   ProjectBudgetG703Table,
   ProjectBudgetPanel,
 } from "@/components/projects/project-budget-panel"
+import { ProjectBrandLogo } from "@/components/projects/project-brand-logo"
 import { ProjectBudgetPrintButton } from "@/components/projects/project-budget-print-button"
 import { ProjectContextSwitcher } from "@/components/projects/project-context-switcher"
 import { SagePayApplicationSyncControl } from "@/components/projects/sage-pay-application-sync-control"
@@ -126,12 +126,9 @@ export default async function ProjectBudgetPage({
         >
           <header className="hidden border-b pb-3 print:flex print:items-start print:justify-between print:gap-4">
             <div className="flex items-center gap-3">
-              <Image
-                src={brand.logoSrc}
-                alt={brand.logoAlt}
-                width={64}
-                height={64}
-                priority
+              <ProjectBrandLogo
+                brand={brand}
+                size={56}
                 className="size-14 object-contain"
               />
               <div>

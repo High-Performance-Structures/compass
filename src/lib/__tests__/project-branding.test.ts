@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest"
+import { statSync } from "node:fs"
+import { join } from "node:path"
 
 import { projectBrandFor, projectDepartment } from "@/lib/project-branding"
 
@@ -35,6 +37,24 @@ describe("project branding", () => {
       logoSrc: "/department-logos/nu-tech-n.png",
     })
   })
+
+  it.each([
+    ["O-202-595", "Open Range Construction", "/department-logos/orc-mark.png"],
+    ["D-18-00", "Open Range Construction", "/department-logos/orc-mark.png"],
+    ["H-OFFICE", "High Performance Structures, Inc.", "/department-logos/hps-h-green.svg"],
+    ["N-830-8220", "Nu-Tech Systems", "/department-logos/nu-tech-n.png"],
+  ])(
+    "maps %s to a deployable department logo",
+    (projectNumber, companyName, logoSrc) => {
+      expect(projectBrandFor({ projectNumber })).toMatchObject({
+        companyName,
+        logoSrc,
+      })
+      expect(
+        statSync(join(process.cwd(), "public", logoSrc)).size
+      ).toBeGreaterThan(0)
+    }
+  )
 
   it("keeps HPS as the safe fallback for unnumbered legacy projects", () => {
     expect(projectBrandFor({})).toMatchObject({

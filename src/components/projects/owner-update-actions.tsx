@@ -28,54 +28,10 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
 import { Button } from "@/components/ui/button"
-
-const PRINT_IMAGE_TIMEOUT_MS = 3_000
-
-async function waitForPrintableImage(
-  image: HTMLImageElement
-): Promise<void> {
-  if (image.complete) {
-    if (image.naturalWidth > 0) {
-      try {
-        await image.decode()
-      } catch {
-        // A decoded resource can still be available to the browser's print
-        // renderer even when decode() rejects for a cached image.
-      }
-    }
-    return
-  }
-
-  await new Promise<void>((resolve) => {
-    let settled = false
-    const finish = (): void => {
-      if (settled) return
-      settled = true
-      window.clearTimeout(timeoutId)
-      image.removeEventListener("load", finish)
-      image.removeEventListener("error", finish)
-      resolve()
-    }
-    const timeoutId = window.setTimeout(finish, PRINT_IMAGE_TIMEOUT_MS)
-
-    image.addEventListener("load", finish, { once: true })
-    image.addEventListener("error", finish, { once: true })
-  })
-}
-
-async function waitForPrintLayout(root: HTMLElement): Promise<void> {
-  await Promise.all(
-    Array.from(root.querySelectorAll("img")).map(waitForPrintableImage)
-  )
-
-  // Give the cloned print tree two layout frames after its image dimensions
-  // settle so PNG logos are present when the print snapshot is captured.
-  await new Promise<void>((resolve) => {
-    window.requestAnimationFrame(() => {
-      window.requestAnimationFrame(() => resolve())
-    })
-  })
-}
+import {
+  PRINT_STATE_TIMEOUT_MS,
+  waitForPrintLayout,
+} from "@/lib/print/readiness"
 
 export function OwnerUpdateActions({
   canManage,
@@ -196,7 +152,7 @@ export function OwnerUpdateActions({
     window.addEventListener("afterprint", resetPrintState)
     await waitForPrintLayout(printRoot)
     window.print()
-    window.setTimeout(resetPrintState, 5000)
+    window.setTimeout(resetPrintState, PRINT_STATE_TIMEOUT_MS)
   }
 
   async function deleteDraft(): Promise<void> {

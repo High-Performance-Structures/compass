@@ -1,5 +1,4 @@
 import type * as React from "react"
-import Image from "next/image"
 import Link from "next/link"
 import {
   IconArrowLeft,
@@ -17,6 +16,7 @@ import { Button } from "@/components/ui/button"
 import { OwnerUpdateActions } from "@/components/projects/owner-update-actions"
 import { OwnerUpdateDraftEditor } from "@/components/projects/owner-update-draft-editor"
 import { OwnerUpdatePhotoTile } from "@/components/projects/owner-update-photo-tile"
+import { ProjectBrandLogo } from "@/components/projects/project-brand-logo"
 import { projectBrandFor } from "@/lib/project-branding"
 import { projectAudienceSectionHref } from "@/lib/project-audience-preview-routes"
 import { projectAudiencePhotoUrl } from "@/lib/photo-sources"
@@ -125,15 +125,10 @@ export function OwnerUpdateDocument({
         >
           <div className="hidden print:mb-6 print:flex print:items-start print:justify-between print:border-b-2 print:border-black print:pb-4">
             <div className="flex items-center gap-3">
-              <Image
-                src={brand.logoSrc}
-                alt={brand.logoAlt}
-                width={56}
-                height={56}
-                priority
-                unoptimized
-                sizes="56px"
-                data-owner-update-brand-logo="true"
+              <ProjectBrandLogo
+                brand={brand}
+                size={56}
+                ownerUpdateMarker
                 className="h-14 w-14 object-contain"
               />
               <div>

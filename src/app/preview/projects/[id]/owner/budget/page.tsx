@@ -1,7 +1,6 @@
 export const dynamic = "force-dynamic"
 
 import type * as React from "react"
-import Image from "next/image"
 import { notFound } from "next/navigation"
 import {
   IconDownload,
@@ -22,6 +21,7 @@ import {
   ProjectBudgetG703Table,
   ProjectBudgetPanel,
 } from "@/components/projects/project-budget-panel"
+import { ProjectBrandLogo } from "@/components/projects/project-brand-logo"
 import { ProjectBudgetPrintButton } from "@/components/projects/project-budget-print-button"
 import { ProjectAudiencePreviewShell } from "@/components/projects/project-audience-preview-shell"
 import { Badge } from "@/components/ui/badge"
@@ -272,12 +272,9 @@ export default async function OwnerBudgetPage({
           >
             <header className="hidden border-b pb-3 print:flex print:items-start print:justify-between print:gap-4">
               <div className="flex items-center gap-3">
-                <Image
-                  src={brand.logoSrc}
-                  alt={brand.logoAlt}
-                  width={64}
-                  height={64}
-                  priority
+                <ProjectBrandLogo
+                  brand={brand}
+                  size={56}
                   className="size-14 object-contain"
                 />
                 <div>

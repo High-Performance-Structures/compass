@@ -1,5 +1,4 @@
 import type * as React from "react"
-import Image from "next/image"
 import Link from "next/link"
 import {
   IconArrowLeft,
@@ -17,6 +16,7 @@ import {
   type ProjectTaskAssigneeOption,
 } from "@/app/actions/project-contacts"
 import { getProjects } from "@/app/actions/projects"
+import { ProjectBrandLogo } from "@/components/projects/project-brand-logo"
 import { ProjectPurchaseOrderDeleteButton } from "@/components/projects/project-purchase-order-delete-button"
 import { ProjectPurchaseOrderEmailButton } from "@/components/projects/project-purchase-order-email-button"
 import {
@@ -283,12 +283,9 @@ function PurchaseOrderCard({
       <div className="hidden text-[11px] leading-tight text-black print:block">
         <div className="flex items-start justify-between border-b-2 border-black pb-4">
           <div className="flex items-center gap-3">
-            <Image
-              src={brand.logoSrc}
-              alt={brand.logoAlt}
-              width={64}
-              height={64}
-              unoptimized
+            <ProjectBrandLogo
+              brand={brand}
+              size={64}
               className="h-16 w-16 shrink-0 object-contain"
             />
             <div>

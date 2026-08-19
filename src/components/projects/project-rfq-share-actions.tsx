@@ -16,6 +16,12 @@ import {
 } from "@/app/actions/project-operations"
 import { Button } from "@/components/ui/button"
 import type { ProjectBrand } from "@/lib/project-branding"
+import { requiresSynchronousPrint } from "@/lib/print/ios-print"
+import {
+  IOS_PRINT_STATE_TIMEOUT_MS,
+  PRINT_STATE_TIMEOUT_MS,
+  waitForPrintLayout,
+} from "@/lib/print/readiness"
 
 type CopiedState = "link" | "email" | "html" | null
 
@@ -81,7 +87,7 @@ function printHtml({
     <article class="rfq-printable">
       <header class="rfq-print-header">
         <div class="rfq-print-brand">
-          <img src="${escapeHtml(brand.logoSrc)}" alt="${escapeHtml(brand.logoAlt)}" />
+          <img src="${escapeHtml(brand.logoSrc)}" alt="${escapeHtml(brand.logoAlt)}" loading="eager" decoding="sync" data-project-brand-logo="true" />
           <div>
             <p>${escapeHtml(brand.companyName)}</p>
             <h1>${escapeHtml(rfq.title)}</h1>
@@ -171,6 +177,12 @@ export function ProjectRfqShareActions({
     return true
   }
 
+  React.useEffect(() => {
+    const logo = new window.Image()
+    logo.decoding = "sync"
+    logo.src = brand.logoSrc
+  }, [brand.logoSrc])
+
   function absoluteUrl(): string {
     return new URL(rfqLink(projectId, rfq.id), window.location.origin).toString()
   }
@@ -255,7 +267,7 @@ export function ProjectRfqShareActions({
     setCopied("email")
   }
 
-  function printRfq(): void {
+  async function printRfq(): Promise<void> {
     const printRoot = document.createElement("article")
     printRoot.setAttribute("data-rfq-print-root", "true")
     printRoot.innerHTML = printHtml({
@@ -273,9 +285,16 @@ export function ProjectRfqShareActions({
       window.removeEventListener("afterprint", resetPrintState)
     }
 
+    if (requiresSynchronousPrint(window.navigator)) {
+      window.print()
+      window.setTimeout(resetPrintState, IOS_PRINT_STATE_TIMEOUT_MS)
+      return
+    }
+
     window.addEventListener("afterprint", resetPrintState)
+    await waitForPrintLayout(printRoot)
     window.print()
-    window.setTimeout(resetPrintState, 5000)
+    window.setTimeout(resetPrintState, PRINT_STATE_TIMEOUT_MS)
   }
 
   return (

@@ -20,6 +20,12 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import type { ProjectBrand } from "@/lib/project-branding"
+import { requiresSynchronousPrint } from "@/lib/print/ios-print"
+import {
+  IOS_PRINT_STATE_TIMEOUT_MS,
+  PRINT_STATE_TIMEOUT_MS,
+  waitForPrintLayout,
+} from "@/lib/print/readiness"
 
 type CopiedState = "link" | "email" | "html" | "sheet" | null
 type PrintMode = "packet" | "room_sheets"
@@ -153,7 +159,7 @@ function packetHtml({
   return `
     <header class="selection-print-header">
       <div class="selection-print-brand">
-        <img src="${escapeHtml(brand.logoSrc)}" alt="${escapeHtml(brand.logoAlt)}" />
+        <img src="${escapeHtml(brand.logoSrc)}" alt="${escapeHtml(brand.logoAlt)}" loading="eager" decoding="sync" data-project-brand-logo="true" />
         <div>
           <p>${escapeHtml(brand.companyName)}</p>
           <span>Finish Selection Packet</span>
@@ -200,6 +206,12 @@ export function ProjectSelectionShareActions({
   const emailSubject = `${projectLabel} - Finish selections${
     filterLabel ? ` - ${filterLabel}` : ""
   }`
+
+  React.useEffect(() => {
+    const logo = new window.Image()
+    logo.decoding = "sync"
+    logo.src = brand.logoSrc
+  }, [brand.logoSrc])
 
   function absoluteSelectionUrl(): string {
     return new URL(selectionLink(projectId), window.location.origin).toString()
@@ -336,7 +348,7 @@ export function ProjectSelectionShareActions({
     setCopied("sheet")
   }
 
-  function printPacket(): void {
+  async function printPacket(): Promise<void> {
     const printRoot = document.createElement("article")
     printRoot.setAttribute("data-selection-print-root", "true")
     printRoot.className = "selection-printable bg-white text-black"
@@ -359,9 +371,16 @@ export function ProjectSelectionShareActions({
       window.removeEventListener("afterprint", resetPrintState)
     }
 
+    if (requiresSynchronousPrint(window.navigator)) {
+      window.print()
+      window.setTimeout(resetPrintState, IOS_PRINT_STATE_TIMEOUT_MS)
+      return
+    }
+
     window.addEventListener("afterprint", resetPrintState)
+    await waitForPrintLayout(printRoot)
     window.print()
-    window.setTimeout(resetPrintState, 5000)
+    window.setTimeout(resetPrintState, PRINT_STATE_TIMEOUT_MS)
   }
 
   return (

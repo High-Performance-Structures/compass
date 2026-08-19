@@ -83,6 +83,7 @@ import { ScheduleBaselineView } from "./schedule-baseline-view"
 import { ScheduleItemFormDialog } from "./schedule-item-form-dialog"
 import { ScheduleTemplateDialog } from "./schedule-template-dialog"
 import { ScheduleTemplateBulkImportDialog } from "./schedule-template-bulk-import-dialog"
+import { ProjectBrandLogo } from "@/components/projects/project-brand-logo"
 import { ProjectQuickSwitcher } from "@/components/projects/project-quick-switcher"
 import { ScheduleScopeSwitcher } from "./schedule-scope-switcher"
 import { OwnerScheduleVisibilityControl } from "./owner-schedule-visibility-control"
@@ -110,6 +111,9 @@ import {
 } from "@/lib/schedule/task-ordering"
 import type { OwnerScheduleView } from "@/lib/schedule/owner-visibility"
 import type { GanttScrollMode } from "@/lib/schedule/gantt-interaction-mode"
+import { projectBrandFor } from "@/lib/project-branding"
+import { requiresSynchronousPrint } from "@/lib/print/ios-print"
+import { waitForPrintLayout } from "@/lib/print/readiness"
 import {
   deleteScheduleView,
   saveScheduleView,
@@ -178,6 +182,16 @@ export function ScheduleView({
   const pathname = usePathname()
   const searchParams = useSearchParams()
   const isMobile = useIsMobile()
+  const activeProject = projectId
+    ? allProjects.find((project) => project.id === projectId) ??
+      scheduleProjects.find((project) => project.id === projectId)
+    : undefined
+  const printBrand = projectId
+    ? projectBrandFor({
+        projectId,
+        projectNumber: activeProject?.projectNumber,
+      })
+    : null
   const requestedPreset = searchParams.get("preset")
   const initialPreset =
     SCHEDULE_VIEW_PRESETS.find((value) => value === requestedPreset) ?? "all"
@@ -650,11 +664,43 @@ export function ScheduleView({
     }
   }
 
+  async function printSchedule(): Promise<void> {
+    const printRoot = document.querySelector(
+      '[data-project-schedule-print-root="true"]'
+    )
+    if (
+      printRoot instanceof HTMLElement &&
+      !requiresSynchronousPrint(window.navigator)
+    ) {
+      await waitForPrintLayout(printRoot)
+    }
+    window.print()
+  }
+
   return (
     <div
       className="flex min-h-full min-w-[960px] flex-col"
       data-schedule-workspace
+      data-project-schedule-print-root="true"
     >
+      {printBrand && (
+        <header className="hidden border-b-2 border-black pb-3 text-black print:flex print:items-start print:justify-between print:gap-4">
+          <div className="flex items-center gap-3">
+            <ProjectBrandLogo
+              brand={printBrand}
+              size={56}
+              className="size-14 object-contain"
+            />
+            <div>
+              <p className="text-sm font-bold uppercase">
+                {printBrand.companyName}
+              </p>
+              <p className="text-xs">Project Schedule</p>
+            </div>
+          </div>
+          <p className="text-right text-xs font-semibold">{projectName}</p>
+        </header>
+      )}
       <div
         className="mb-1 flex h-8 w-max min-w-full shrink-0 flex-nowrap items-center gap-1"
         data-schedule-controls
@@ -1131,7 +1177,7 @@ export function ScheduleView({
                 <IconUpload className="size-4 mr-2" />
                 Import CSV
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => window.print()}>
+              <DropdownMenuItem onClick={printSchedule}>
                 <IconPrinter className="size-4 mr-2" />
                 Print
               </DropdownMenuItem>

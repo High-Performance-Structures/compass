@@ -3,13 +3,19 @@
 import { IconPrinter } from "@tabler/icons-react"
 
 import { Button } from "@/components/ui/button"
+import { requiresSynchronousPrint } from "@/lib/print/ios-print"
+import {
+  IOS_PRINT_STATE_TIMEOUT_MS,
+  PRINT_STATE_TIMEOUT_MS,
+  waitForPrintLayout,
+} from "@/lib/print/readiness"
 
 export function ProjectPurchaseOrderPrintButton({
   purchaseOrderId,
 }: {
   readonly purchaseOrderId: string
 }): React.ReactElement {
-  function printPurchaseOrder(): void {
+  async function printPurchaseOrder(): Promise<void> {
     const selected = document.querySelector(
       `[data-po-id="${purchaseOrderId}"]`
     )
@@ -27,9 +33,16 @@ export function ProjectPurchaseOrderPrintButton({
       window.removeEventListener("afterprint", resetPrintState)
     }
 
+    if (requiresSynchronousPrint(window.navigator)) {
+      window.print()
+      window.setTimeout(resetPrintState, IOS_PRINT_STATE_TIMEOUT_MS)
+      return
+    }
+
     window.addEventListener("afterprint", resetPrintState)
+    await waitForPrintLayout(selected)
     window.print()
-    window.setTimeout(resetPrintState, 1000)
+    window.setTimeout(resetPrintState, PRINT_STATE_TIMEOUT_MS)
   }
 
   return (

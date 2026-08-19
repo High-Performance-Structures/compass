@@ -73,6 +73,7 @@ import {
   MAX_PHOTO_UPLOAD_FILE_BYTES,
   PHOTO_UPLOAD_LIMIT_LABEL,
 } from "@/lib/photos/upload-limits"
+import { waitForPrintLayout } from "@/lib/print/readiness"
 import { cn } from "@/lib/utils"
 
 type LogFilter = "all" | "needs_review" | "approved" | "owner_visible"
@@ -861,7 +862,15 @@ export function ProjectDailyLogWorkspace({
     setMessage(null)
     setPrintLogs(targetLogs)
     document.body.classList.add("daily-log-printing")
-    window.setTimeout(() => window.print(), 50)
+    window.setTimeout(async () => {
+      const printRoot = document.querySelector(
+        '[data-daily-log-print-root="true"]'
+      )
+      if (printRoot instanceof HTMLElement) {
+        await waitForPrintLayout(printRoot)
+      }
+      window.print()
+    }, 50)
   }
 
   function chooseUploadFiles(fileList: FileList | null): void {

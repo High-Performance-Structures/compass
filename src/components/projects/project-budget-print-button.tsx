@@ -5,28 +5,11 @@ import { IconPrinter } from "@tabler/icons-react"
 
 import { Button } from "@/components/ui/button"
 import { requiresSynchronousPrint } from "@/lib/print/ios-print"
-
-const PRINT_IMAGE_TIMEOUT_MS = 3_000
-const IOS_PRINT_STATE_TIMEOUT_MS = 120_000
-
-async function waitForImage(image: HTMLImageElement): Promise<void> {
-  if (image.complete) return
-
-  await new Promise<void>((resolve) => {
-    let settled = false
-    const finish = (): void => {
-      if (settled) return
-      settled = true
-      window.clearTimeout(timeoutId)
-      image.removeEventListener("load", finish)
-      image.removeEventListener("error", finish)
-      resolve()
-    }
-    const timeoutId = window.setTimeout(finish, PRINT_IMAGE_TIMEOUT_MS)
-    image.addEventListener("load", finish, { once: true })
-    image.addEventListener("error", finish, { once: true })
-  })
-}
+import {
+  IOS_PRINT_STATE_TIMEOUT_MS,
+  PRINT_STATE_TIMEOUT_MS,
+  waitForPrintLayout,
+} from "@/lib/print/readiness"
 
 export function ProjectBudgetPrintButton(): React.ReactElement {
   async function printBudget(): Promise<void> {
@@ -66,12 +49,9 @@ export function ProjectBudgetPrintButton(): React.ReactElement {
     }
 
     window.addEventListener("afterprint", resetPrintState)
-    await Promise.all(
-      Array.from(printRoot.querySelectorAll("img")).map(waitForImage)
-    )
-    await document.fonts.ready
+    await waitForPrintLayout(printRoot)
     window.print()
-    window.setTimeout(resetPrintState, 5_000)
+    window.setTimeout(resetPrintState, PRINT_STATE_TIMEOUT_MS)
   }
 
   return (
