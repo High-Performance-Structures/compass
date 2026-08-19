@@ -208,6 +208,12 @@ The basic Ask Jarvis poller uses
 `?limit=1&eventType=agent.prompt` so it cannot claim unrelated Feedback Desk
 events or hold multiple prompts while Hermes handles them sequentially.
 
+The private delivery worker uses
+`?eventType=feedback.delivery_requested` and acknowledges each graph handoff
+through the same signed event acknowledgement endpoint. A retryable failure
+must include `retryAfterSeconds`; a terminal failure remains visible instead of
+being treated as a completed delivery.
+
 The reference poller is
 `scripts/jarvis-agent-poller.py`. The user-service template is
 `ops/systemd/compass-jarvis-agent-poller.service`; install the script under
@@ -226,6 +232,28 @@ delivery ledger prevents a service restart from sending the same external
 update twice before acknowledgement. The notifier service runs with Hermes's
 virtual-environment Python so those send adapters use the same dependencies as
 the Hermes gateway.
+
+Confirmed bugs that an administrator moves into `triaged` also enqueue one
+`feedback.delivery_requested` event. The event is the supported handoff to the
+private Hermes/Kanban runtime: it contains only the Feedback Desk item's opaque
+ID, the `CFD-<UUID>` reference, and the fixed `bug` kind. It never contains the
+request title, description, reporter, source ID, channel, thread, or metadata.
+The event's idempotency key is `feedback-delivery-graph:<item-id>`, so a
+maintenance retry or repeated status callback cannot create a second graph.
+The private runtime creates the implementation, independent-review, and
+release-steward tasks through its normal Kanban tools, then attaches all three
+task IDs to the protected Feedback Desk record with a signed callback. A
+successful graph attachment leaves the request `triaged`. Compass applies the
+same fail-closed evidence predicates to administrator updates, signed Jarvis
+callbacks, and GitHub Project synchronization: `planned` and `in_progress`
+require a durable graph with all three task IDs, while `testing` and `deployed`
+also require the linked pull-request evidence. A `feedback.delivery_requested`
+event cannot be acknowledged as completed until that complete graph attachment
+is visible in D1; an incomplete attachment leaves the event `pending` with a
+retry time. A retryable pull failure returns the event to `pending`, while a
+terminal failure remains visible in the protected operations health and
+Feedback Desk records. Features never enqueue this event and remain blocked by
+the persisted leadership priority decision.
 
 Both private relay services post a signed heartbeat to
 `POST /api/integrations/jarvis/health` at least once per minute. The protected
@@ -348,7 +376,10 @@ Compass suppresses repeated callbacks that leave both the lifecycle status and
 draft pull request unchanged. Requesters receive only receipt, a meaningful
 status transition (triage, information needed, planned, implementation,
 testing, deployment, or closure), or a newly opened/materially updated draft
-pull request.
+pull request. A private delivery worker may attach a complete
+implementation/review/release graph in the same signed callback using
+`deliveryGraph` while leaving the request in `triaged`; incomplete graph
+attachments and lifecycle advancement in that callback are rejected.
 The event's `source` is always the original source (`telegram`,
 `jarvis-email`, or `compass-conversation`), never a generic fallback route:
 the adapter must send Telegram updates only through Telegram, Jarvis mailbox

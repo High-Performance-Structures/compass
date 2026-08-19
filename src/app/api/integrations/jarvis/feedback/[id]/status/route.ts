@@ -11,6 +11,8 @@ import {
 } from "@/lib/jarvis/auth"
 import { FEEDBACK_DESK_STATUSES } from "@/lib/jarvis/feedback-lifecycle"
 import { applyFeedbackLifecycleUpdate } from "@/lib/jarvis/feedback-status-update"
+import { feedbackDeliveryGraphUpdate } from "@/lib/jarvis/feedback-delivery"
+import { feedbackBugTransitionIsBlocked } from "@/lib/jarvis/feedback-lifecycle-evidence"
 
 const statusUpdateSchema = z.object({
   idempotencyKey: z.string().min(1).max(256),
@@ -31,6 +33,14 @@ const statusUpdateSchema = z.object({
     ),
     z.null(),
   ]).optional(),
+  deliveryGraph: z.object({
+    status: z.enum(["created", "failed"]),
+    graphId: z.string().min(1).max(256).optional(),
+    implementationTaskId: z.string().min(1).max(256).optional(),
+    reviewTaskId: z.string().min(1).max(256).optional(),
+    releaseTaskId: z.string().min(1).max(256).optional(),
+    error: z.string().max(2_000).optional(),
+  }).optional(),
 })
 
 export async function POST(
@@ -73,6 +83,22 @@ export async function POST(
     )
   }
 
+  const deliveryGraph = parsed.data.deliveryGraph
+    ? feedbackDeliveryGraphUpdate(parsed.data.deliveryGraph) ?? undefined
+    : undefined
+  if (parsed.data.deliveryGraph && !deliveryGraph) {
+    return Response.json(
+      { error: "Incomplete feedback delivery graph update" },
+      { status: 400 },
+    )
+  }
+  if (deliveryGraph && parsed.data.status !== "triaged") {
+    return Response.json(
+      { error: "Delivery graph updates cannot advance lifecycle status" },
+      { status: 409 },
+    )
+  }
+
   const { id } = await params
   const db = getDb(env.DB)
   const eventKey = `feedback-status:${id}:${parsed.data.idempotencyKey}`
@@ -89,6 +115,23 @@ export async function POST(
   if (!item) {
     return Response.json({ error: "Feedback request not found" }, { status: 404 })
   }
+  if (deliveryGraph && (item.kind !== "bug" || item.status !== "triaged")) {
+    return Response.json(
+      { error: "Only an already-triaged bug can receive a delivery graph" },
+      { status: 409 },
+    )
+  }
+  const evidenceError = feedbackBugTransitionIsBlocked({
+    ...item,
+    nextStatus: parsed.data.status,
+    githubDraftPullRequestUrl:
+      parsed.data.draftPullRequestUrl === undefined
+        ? item.githubDraftPullRequestUrl
+        : parsed.data.draftPullRequestUrl,
+  })
+  if (evidenceError) {
+    return Response.json({ error: evidenceError }, { status: 409 })
+  }
 
   let result: Awaited<ReturnType<typeof applyFeedbackLifecycleUpdate>>
   try {
@@ -98,6 +141,7 @@ export async function POST(
       message: parsed.data.message,
       githubIssueUrl: parsed.data.githubIssueUrl,
       draftPullRequestUrl: parsed.data.draftPullRequestUrl,
+      deliveryGraph,
       actorSource: "signet",
       idempotencyKey: eventKey,
     })

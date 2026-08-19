@@ -160,6 +160,8 @@ function RequestEditor({
             {!item.githubIssueUrl && !item.githubIssueCreationApprovedAt && feedbackIsResolved(item.status) && (
               <Badge variant="outline">No GitHub issue required</Badge>
             )}
+            {item.deliveryGraphStatus === "created" && <Badge>Delivery graph attached</Badge>}
+            {item.deliveryGraphStatus === "failed" && <Badge variant="destructive">Delivery graph failed</Badge>}
             <Badge variant="secondary">{item.kind}</Badge>
           </div>
         </div>

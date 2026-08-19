@@ -18,6 +18,12 @@ import {
   type FeedbackDeskStatus,
 } from "@/lib/jarvis/feedback-lifecycle"
 import { feedbackFeatureTransitionIsBlocked } from "@/lib/jarvis/feedback-feature-priority"
+import {
+  feedbackDeliveryGraphEvent,
+  shouldRequestFeedbackDeliveryGraph,
+  type FeedbackDeliveryGraphUpdate,
+} from "@/lib/jarvis/feedback-delivery"
+import { feedbackBugTransitionIsBlocked } from "@/lib/jarvis/feedback-lifecycle-evidence"
 import { createSystemNotificationEvent } from "@/lib/notifications/events"
 
 type CompassDb = ReturnType<typeof getDb>
@@ -79,6 +85,7 @@ export type FeedbackLifecycleUpdate = Readonly<{
   githubIssueUrl?: string | null
   githubIssueNodeId?: string | null
   draftPullRequestUrl?: string | null
+  deliveryGraph?: FeedbackDeliveryGraphUpdate
   assignedToUserId?: string | null
   assignedToName?: string | null
   actorSource: string
@@ -121,6 +128,42 @@ export async function applyFeedbackLifecycleUpdate(
   const internalSummary = update.internalSummary === undefined
     ? item.internalSummary
     : update.internalSummary
+  const deliveryGraphId = update.deliveryGraph === undefined
+    ? item.deliveryGraphId
+    : update.deliveryGraph.graphId
+  const deliveryGraphStatus = update.deliveryGraph === undefined
+    ? item.deliveryGraphStatus
+    : update.deliveryGraph.status
+  const deliveryGraphImplementationTaskId =
+    update.deliveryGraph === undefined
+      ? item.deliveryGraphImplementationTaskId
+      : update.deliveryGraph.implementationTaskId
+  const deliveryGraphReviewTaskId =
+    update.deliveryGraph === undefined
+      ? item.deliveryGraphReviewTaskId
+      : update.deliveryGraph.reviewTaskId
+  const deliveryGraphReleaseTaskId =
+    update.deliveryGraph === undefined
+      ? item.deliveryGraphReleaseTaskId
+      : update.deliveryGraph.releaseTaskId
+  const deliveryGraphLastError = update.deliveryGraph === undefined
+    ? item.deliveryGraphLastError
+    : update.deliveryGraph.error
+  const deliveryGraphUpdatedAt = update.deliveryGraph
+    ? new Date().toISOString()
+    : item.deliveryGraphUpdatedAt
+  const evidenceError = feedbackBugTransitionIsBlocked({
+    kind: item.kind,
+    status: item.status,
+    nextStatus: update.status,
+    deliveryGraphId,
+    deliveryGraphStatus,
+    deliveryGraphImplementationTaskId,
+    deliveryGraphReviewTaskId,
+    deliveryGraphReleaseTaskId,
+    githubDraftPullRequestUrl: draftUrl,
+  })
+  if (evidenceError) throw new Error(evidenceError)
   const lifecycleUpdateKind = feedbackRequesterUpdateKind(
     item.status,
     update.status,
@@ -139,6 +182,13 @@ export async function applyFeedbackLifecycleUpdate(
     item.assignedToUserId !== assignedToUserId ||
     item.assignedToName !== assignedToName ||
     item.internalSummary !== internalSummary ||
+    item.deliveryGraphId !== deliveryGraphId ||
+    item.deliveryGraphStatus !== deliveryGraphStatus ||
+    item.deliveryGraphImplementationTaskId !== deliveryGraphImplementationTaskId ||
+    item.deliveryGraphReviewTaskId !== deliveryGraphReviewTaskId ||
+    item.deliveryGraphReleaseTaskId !== deliveryGraphReleaseTaskId ||
+    item.deliveryGraphLastError !== deliveryGraphLastError ||
+    item.deliveryGraphUpdatedAt !== deliveryGraphUpdatedAt ||
     update.message?.trim() !== undefined
   if (!changed) {
     return { changed: false, notifiedUserCount: 0, requesterUpdateQueued: false }
@@ -164,6 +214,13 @@ export async function applyFeedbackLifecycleUpdate(
     assignedToUserId,
     assignedToName,
     internalSummary,
+    deliveryGraphId,
+    deliveryGraphStatus,
+    deliveryGraphImplementationTaskId,
+    deliveryGraphReviewTaskId,
+    deliveryGraphReleaseTaskId,
+    deliveryGraphLastError,
+    deliveryGraphUpdatedAt,
     slaTargetAt:
       item.slaTargetAt === null || priorityChanged
         ? feedbackSlaTarget(priority)
@@ -219,6 +276,24 @@ export async function applyFeedbackLifecycleUpdate(
     createdAt: now,
     updatedAt: now,
   }).onConflictDoNothing()
+  const deliveryEvent = shouldRequestFeedbackDeliveryGraph(item, update.status)
+    ? feedbackDeliveryGraphEvent(item)
+    : null
+  const deliveryStatement = deliveryEvent
+    ? db.insert(jarvisBridgeEvents).values({
+        id: crypto.randomUUID(),
+        organizationId: item.organizationId,
+        direction: "outbound",
+        source: "feedback-desk",
+        eventType: deliveryEvent.eventType,
+        idempotencyKey: deliveryEvent.idempotencyKey,
+        feedbackDeskItemId: item.id,
+        payload: JSON.stringify(deliveryEvent.payload),
+        availableAt: now,
+        createdAt: now,
+        updatedAt: now,
+      }).onConflictDoNothing()
+    : null
   if (requesterUpdateKind) {
     const outboundStatement = db.insert(jarvisBridgeEvents).values({
       id: crypto.randomUUID(),
@@ -233,7 +308,13 @@ export async function applyFeedbackLifecycleUpdate(
       createdAt: now,
       updatedAt: now,
     }).onConflictDoNothing()
-    await db.batch([updateStatement, inboundStatement, outboundStatement])
+    if (deliveryStatement) {
+      await db.batch([updateStatement, inboundStatement, outboundStatement, deliveryStatement])
+    } else {
+      await db.batch([updateStatement, inboundStatement, outboundStatement])
+    }
+  } else if (deliveryStatement) {
+    await db.batch([updateStatement, inboundStatement, deliveryStatement])
   } else {
     await db.batch([updateStatement, inboundStatement])
   }

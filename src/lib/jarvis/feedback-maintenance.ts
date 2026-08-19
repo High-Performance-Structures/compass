@@ -22,6 +22,7 @@ import { linkFeedbackDeskItemToGithub } from "@/lib/jarvis/feedback-github"
 import { feedbackFeatureGithubIssueCreationIsBlocked } from "@/lib/jarvis/feedback-feature-priority"
 import { githubFeedbackIssueContent } from "@/lib/jarvis/feedback-github-content"
 import { syncFeedbackDeskItemsFromGithub } from "@/lib/jarvis/feedback-github-sync"
+import { feedbackDeliveryGraphEvent } from "@/lib/jarvis/feedback-delivery"
 import {
   feedbackIsResolved,
   feedbackSlaTarget,
@@ -35,6 +36,7 @@ export type FeedbackMaintenanceResult = Readonly<{
   linkedCount: number
   missingLinkReviewCount: number
   syncedCount: number
+  deliveryRequestedCount: number
   scrubbedCount: number
   slaBackfilledCount: number
   failedCount: number
@@ -233,6 +235,38 @@ async function scrubLegacyGithubIssues(
   return { scrubbed, failed }
 }
 
+async function ensureFeedbackDeliveryGraphRequests(
+  db: CompassDb,
+  items: readonly FeedbackDeskItem[],
+): Promise<number> {
+  let requestedCount = 0
+  for (const item of items) {
+    if (item.kind !== "bug" || item.status !== "triaged") continue
+    const event = feedbackDeliveryGraphEvent(item)
+    const existing = await db.select({ id: jarvisBridgeEvents.id })
+      .from(jarvisBridgeEvents)
+      .where(eq(jarvisBridgeEvents.idempotencyKey, event.idempotencyKey))
+      .get()
+    if (existing) continue
+    const now = new Date().toISOString()
+    await db.insert(jarvisBridgeEvents).values({
+      id: crypto.randomUUID(),
+      organizationId: item.organizationId,
+      direction: "outbound",
+      source: "feedback-desk",
+      eventType: event.eventType,
+      idempotencyKey: event.idempotencyKey,
+      feedbackDeskItemId: item.id,
+      payload: JSON.stringify(event.payload),
+      availableAt: now,
+      createdAt: now,
+      updatedAt: now,
+    }).onConflictDoNothing()
+    requestedCount += 1
+  }
+  return requestedCount
+}
+
 export async function recordFeedbackServiceHealth(
   db: CompassDb,
   input: Readonly<{
@@ -333,6 +367,10 @@ export async function runFeedbackMaintenance(
           ...item,
           slaTargetAt: feedbackSlaTarget(item.priority, new Date(item.createdAt)),
         })
+    const deliveryRequestedCount = await ensureFeedbackDeliveryGraphRequests(
+      db,
+      itemsWithSla,
+    )
     const syncedCount = await syncFeedbackDeskItemsFromGithub(db, env, itemsWithSla)
     const privacy = await scrubLegacyGithubIssues(
       db,
@@ -346,6 +384,7 @@ export async function runFeedbackMaintenance(
       linkedCount,
       missingLinkReviewCount,
       syncedCount,
+      deliveryRequestedCount,
       scrubbedCount: privacy.scrubbed,
       slaBackfilledCount,
       failedCount,
@@ -356,7 +395,7 @@ export async function runFeedbackMaintenance(
       processedCount: result.processedCount,
       updatedCount:
         recoveredCount + linkedCount + syncedCount + privacy.scrubbed +
-        slaBackfilledCount,
+        slaBackfilledCount + deliveryRequestedCount,
       failedCount,
       summary: JSON.stringify(result),
       completedAt,
