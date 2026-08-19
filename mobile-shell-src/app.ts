@@ -70,6 +70,13 @@ const nativeAuthResponseSchema = z.object({
   error: z.string().optional(),
   redirectUrl: z.string().optional(),
 })
+const nativeFieldBootstrapResponseSchema = z.object({
+  success: z.boolean(),
+  error: z.string().optional(),
+  profile: fieldUserProfileSchema.optional(),
+  projects: projectsSchema.optional(),
+  initialPacket: fieldProjectPacketSchema.nullable().optional(),
+})
 
 const app = document.querySelector<HTMLDivElement>("#app")
 let projects: Project[] = []
@@ -564,7 +571,13 @@ async function selectProject(projectId: string): Promise<void> {
   await writeJson(ACTIVE_PROJECT_KEY, projectId)
   if (!result.success) {
     if (online) {
-      window.location.assign(liveAppUrl(`/dashboard/field/native-bootstrap?projectId=${encodeURIComponent(projectId)}`))
+      const downloaded = await downloadNativeFieldState(projectId).catch(() => false)
+      if (!downloaded) {
+        projectError = authError || "Compass could not download this project. Please try again."
+        authError = ""
+        activeTab = "projects"
+        render()
+      }
       return
     }
     projectError = "Open this project once while connected before using it offline."
@@ -997,6 +1010,48 @@ function nativeAuthData(value: unknown): z.infer<typeof nativeAuthResponseSchema
   return nativeAuthResponseSchema.safeParse(value).data ?? null
 }
 
+async function downloadNativeFieldState(projectId?: string): Promise<boolean> {
+  const params = new URLSearchParams()
+  if (projectId) params.set("projectId", projectId)
+  const query = params.toString()
+  const response = await CapacitorHttp.get({
+    url: `${LIVE_URL}/api/field/native-bootstrap${query ? `?${query}` : ""}`,
+    responseType: "json",
+  })
+  const result = nativeFieldBootstrapResponseSchema.safeParse(
+    responseData(response.data)
+  )
+  if (
+    !result.success ||
+    !result.data.success ||
+    !result.data.profile ||
+    !result.data.projects
+  ) {
+    authError = result.success
+      ? result.data.error ?? "Compass could not download Field Mode. Please try again."
+      : "Compass could not download Field Mode. Please try again."
+    return false
+  }
+
+  projects = result.data.projects
+  profile = result.data.profile
+  packet = result.data.initialPacket ?? null
+  const activeProjectId = packet?.project.id ?? projects[0]?.id ?? null
+  await Promise.all([
+    writeJson(PROFILE_KEY, profile),
+    writeJson(PROJECTS_KEY, projects),
+    writeJson(ACTIVE_PROJECT_KEY, activeProjectId),
+    packet ? writeJson(packetKey(packet.project.id), packet) : Promise.resolve(),
+  ])
+  authMode = "choice"
+  authError = ""
+  projectError = ""
+  signingIn = false
+  activeTab = packet ? "today" : "projects"
+  render()
+  return true
+}
+
 async function openPasswordReset(): Promise<void> {
   if (!online || signingIn) return
   await Browser.open({ url: `${LIVE_URL}/reset-password` })
@@ -1032,7 +1087,10 @@ async function signInWithPassword(event: SubmitEvent): Promise<void> {
       render()
       return
     }
-    window.location.assign(liveAppUrl("/dashboard/field/native-bootstrap"))
+    if (!await downloadNativeFieldState()) {
+      signingIn = false
+      render()
+    }
   } catch {
     authError = "Compass could not sign you in. Check your connection and try again."
     signingIn = false
@@ -1102,7 +1160,10 @@ async function verifyNativeEmailCode(event: SubmitEvent): Promise<void> {
       render()
       return
     }
-    window.location.assign(liveAppUrl("/dashboard/field/native-bootstrap"))
+    if (!await downloadNativeFieldState()) {
+      signingIn = false
+      render()
+    }
   } catch {
     authError = "The code could not be verified. Check your connection and try again."
     signingIn = false
@@ -1140,33 +1201,42 @@ async function handleAuthCallback(url: URL): Promise<void> {
     return
   }
 
-  await Promise.all([
-    Preferences.remove({ key: AUTH_STATE_KEY }),
-    Preferences.remove({ key: AUTH_VERIFIER_KEY }),
-  ])
-
-  // A top-level form POST lets the live Compass origin set its HttpOnly session
-  // cookie before redirecting this webview into authenticated Field Mode.
-  const form = document.createElement("form")
-  form.method = "POST"
-  form.action = `${LIVE_URL}/api/auth/mobile/session`
-  for (const [name, value] of [["code", code], ["codeVerifier", verifierResult.value]]) {
-    const input = document.createElement("input")
-    input.type = "hidden"
-    input.name = name
-    input.value = value
-    form.appendChild(input)
+  signingIn = true
+  render()
+  try {
+    const platform = Capacitor.getPlatform()
+    const response = await CapacitorHttp.post({
+      url: `${LIVE_URL}/api/auth/mobile/session`,
+      headers: { "Content-Type": "application/json" },
+      data: {
+        code,
+        codeVerifier: verifierResult.value,
+        ...(platform === "ios" || platform === "android"
+          ? { nativePlatform: platform }
+          : {}),
+      },
+      responseType: "json",
+    })
+    const result = nativeAuthData(response.data)
+    if (!result?.success) {
+      authError = result?.error ?? "Secure sign in could not be completed. Please try again."
+      signingIn = false
+      render()
+      return
+    }
+    await Promise.all([
+      Preferences.remove({ key: AUTH_STATE_KEY }),
+      Preferences.remove({ key: AUTH_VERIFIER_KEY }),
+    ])
+    if (!await downloadNativeFieldState()) {
+      signingIn = false
+      render()
+    }
+  } catch {
+    authError = "Secure sign in could not be completed. Please try again."
+    signingIn = false
+    render()
   }
-  const platform = Capacitor.getPlatform()
-  if (platform === "ios" || platform === "android") {
-    const input = document.createElement("input")
-    input.type = "hidden"
-    input.name = "nativePlatform"
-    input.value = platform
-    form.appendChild(input)
-  }
-  document.body.appendChild(form)
-  form.submit()
 }
 
 async function handleAppUrl(appUrl: string): Promise<void> {
