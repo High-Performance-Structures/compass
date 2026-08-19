@@ -81,4 +81,71 @@ describe("POST /api/integrations/jarvis/feedback/:id/status", () => {
     })
     expect(mocks.applyFeedbackLifecycleUpdate).not.toHaveBeenCalled()
   })
+
+  it("rejects whitespace-only delivery graph IDs before persistence", async () => {
+    const response = await POST(
+      new Request("https://compass.example/api/integrations/jarvis/feedback/feedback-1/status", {
+        method: "POST",
+        body: JSON.stringify({
+          idempotencyKey: "callback-whitespace-graph",
+          status: "triaged",
+          deliveryGraph: {
+            status: "created",
+            graphId: " ",
+            implementationTaskId: "\t",
+            reviewTaskId: "\n",
+            releaseTaskId: " \t",
+          },
+        }),
+      }),
+      { params: Promise.resolve({ id: "feedback-1" }) },
+    )
+
+    expect(response.status).toBe(400)
+    await expect(response.json()).resolves.toEqual({
+      error: "Incomplete feedback delivery graph update",
+    })
+    expect(mocks.applyFeedbackLifecycleUpdate).not.toHaveBeenCalled()
+  })
+
+  it("accepts a complete delivery graph with valid IDs", async () => {
+    mocks.applyFeedbackLifecycleUpdate.mockResolvedValue({
+      notifiedUserCount: 0,
+      requesterUpdateQueued: false,
+    })
+
+    const response = await POST(
+      new Request("https://compass.example/api/integrations/jarvis/feedback/feedback-1/status", {
+        method: "POST",
+        body: JSON.stringify({
+          idempotencyKey: "callback-valid-graph",
+          status: "triaged",
+          deliveryGraph: {
+            status: "created",
+            graphId: "graph-1",
+            implementationTaskId: "implementation-1",
+            reviewTaskId: "review-1",
+            releaseTaskId: "release-1",
+          },
+        }),
+      }),
+      { params: Promise.resolve({ id: "feedback-1" }) },
+    )
+
+    expect(response.status).toBe(200)
+    expect(mocks.applyFeedbackLifecycleUpdate).toHaveBeenCalledWith(
+      expect.anything(),
+      unprovenBug,
+      expect.objectContaining({
+        deliveryGraph: {
+          status: "created",
+          graphId: "graph-1",
+          implementationTaskId: "implementation-1",
+          reviewTaskId: "review-1",
+          releaseTaskId: "release-1",
+          error: null,
+        },
+      }),
+    )
+  })
 })

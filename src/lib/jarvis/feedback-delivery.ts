@@ -76,20 +76,24 @@ export function feedbackDeliveryGraphUpdate(
       : null
   }
 
+  const graphId = input.graphId?.trim()
+  const implementationTaskId = input.implementationTaskId?.trim()
+  const reviewTaskId = input.reviewTaskId?.trim()
+  const releaseTaskId = input.releaseTaskId?.trim()
   if (
-    !input.graphId ||
-    !input.implementationTaskId ||
-    !input.reviewTaskId ||
-    !input.releaseTaskId
+    !graphId ||
+    !implementationTaskId ||
+    !reviewTaskId ||
+    !releaseTaskId
   ) {
     return null
   }
   return {
     status: "created",
-    graphId: input.graphId,
-    implementationTaskId: input.implementationTaskId,
-    reviewTaskId: input.reviewTaskId,
-    releaseTaskId: input.releaseTaskId,
+    graphId,
+    implementationTaskId,
+    reviewTaskId,
+    releaseTaskId,
     error: null,
   }
 }
