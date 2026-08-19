@@ -22,6 +22,7 @@ import {
   getInboundSmsReviewQueue,
   routeInboundSms,
 } from "@/app/actions/inbound-sms-review"
+import { TrashInboundSmsButton } from "@/components/goto/trash-inbound-sms-button"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 
@@ -82,20 +83,24 @@ export default async function InboundEmailReviewPage(): Promise<React.ReactEleme
             >
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div>
-                  <h3 className="font-semibold">{item.senderLabel}</h3>
+                  <h3 className="font-semibold">{item.senderPhone}</h3>
                   <p className="text-sm text-muted-foreground">
-                    {receivedLabel(item.receivedAt)}
+                    Received {receivedLabel(item.receivedAt)} at {item.ownerTouchpoint}
                     {item.attachmentCount > 0
                       ? ` · ${item.attachmentCount} attachment${item.attachmentCount === 1 ? "" : "s"}`
                       : ""}
                   </p>
                 </div>
-                <Badge variant="outline">
+                <Badge variant={item.suggestedProjectId ? "default" : "outline"}>
                   {item.reviewReason === "ambiguous_project"
                     ? "Ambiguous project"
+                    : item.reviewReason === "routing_review" && item.suggestedProjectId
+                      ? "Project pre-populated"
                     : item.reviewReason === "legacy_project_unmatched"
                       ? "Earlier unmatched text"
-                      : "Project needed"}
+                      : item.suggestedProjectId
+                        ? "Destination needed"
+                        : "Project needed"}
                 </Badge>
               </div>
 
@@ -121,7 +126,7 @@ export default async function InboundEmailReviewPage(): Promise<React.ReactEleme
                   <select
                     name="projectId"
                     required
-                    defaultValue=""
+                    defaultValue={item.suggestedProjectId ?? ""}
                     className="h-10 border bg-background px-3 font-normal"
                   >
                     <option value="" disabled>Select project…</option>
@@ -175,10 +180,16 @@ export default async function InboundEmailReviewPage(): Promise<React.ReactEleme
                   <Button type="submit">Route to Compass</Button>
                 </div>
               </form>
-              <form action={dismissInboundSms} className="mt-2 flex justify-end">
-                <input type="hidden" name="eventId" value={item.id} />
-                <Button type="submit" variant="outline">Dismiss</Button>
-              </form>
+              <div className="mt-2 flex flex-wrap justify-end gap-2">
+                <form action={dismissInboundSms}>
+                  <input type="hidden" name="eventId" value={item.id} />
+                  <Button type="submit" variant="outline">Dismiss from Compass</Button>
+                </form>
+                <TrashInboundSmsButton
+                  eventId={item.id}
+                  senderPhone={item.senderPhone}
+                />
+              </div>
               {staffAssignees.success && staffAssignees.data.length > 0 ? (
                 <form
                   action={submitRouteGotoTextToMessageDesk}

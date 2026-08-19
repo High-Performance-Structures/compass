@@ -1,9 +1,9 @@
 import "server-only"
 
-import { eq } from "drizzle-orm"
+import { and, eq, isNotNull } from "drizzle-orm"
 
 import type { getDb } from "@/db"
-import { projects } from "@/db/schema"
+import { gotoInboundEvents, projectContacts, projects } from "@/db/schema"
 import { recordActivityEvent } from "@/lib/activity-log"
 import type {
   InboundAttachment,
@@ -12,6 +12,11 @@ import type {
 import { projectInboundEmailAddress } from "@/lib/email/project-address"
 import { routeProjectInboundSms } from "@/lib/email/project-inbound-routing"
 import { gotoAttachmentMimeType } from "@/lib/goto/mime-type"
+import {
+  gotoSenderNumberForProject,
+  normalizeSmsPhoneNumber,
+} from "@/lib/goto/numbers"
+import { matchGotoInboundProject } from "@/lib/goto/project-matcher"
 import type { GotoInboundMessage } from "@/lib/goto/notification-parser"
 import { getGotoAccessToken } from "@/lib/notifications/create-event"
 import {
@@ -26,30 +31,74 @@ function regexEscape(value: string): string {
 }
 
 async function projectForMessage(input: {
+  readonly env: unknown
   readonly db: Db
   readonly organizationId: string
   readonly body: string
+  readonly senderPhone: string
+  readonly ownerTouchpoint: string
+  readonly conversationId: string | null
 }): Promise<
-  | { readonly kind: "found"; readonly id: string; readonly projectNumber: string }
+  | {
+      readonly kind: "found"
+      readonly id: string
+      readonly projectNumber: string | null
+    }
   | { readonly kind: "missing" | "ambiguous" }
 > {
   const rows = await input.db
-    .select({ id: projects.id, projectNumber: projects.projectNumber })
+    .select({
+      id: projects.id,
+      projectNumber: projects.projectNumber,
+      status: projects.status,
+      contactPhone: projectContacts.phone,
+      contactType: projectContacts.contactType,
+      primaryContact: projectContacts.primaryContact,
+    })
     .from(projects)
-    .where(eq(projects.organizationId, input.organizationId))
-  const matches = rows.flatMap((project) => {
-    const projectNumber = project.projectNumber?.trim()
-    if (!projectNumber) return []
-    const pattern = new RegExp(
-      `(^|[^a-z0-9])${regexEscape(projectNumber)}(?=$|[^a-z0-9])`,
-      "i"
+    .leftJoin(
+      projectContacts,
+      and(
+        eq(projectContacts.projectId, projects.id),
+        eq(projectContacts.active, true)
+      )
     )
-    return pattern.test(input.body) ? [{ id: project.id, projectNumber }] : []
+    .where(eq(projects.organizationId, input.organizationId))
+  const priorConversationProjectIds = input.conversationId
+    ? await input.db
+        .select({ projectId: gotoInboundEvents.projectId })
+        .from(gotoInboundEvents)
+        .where(
+          and(
+            eq(gotoInboundEvents.organizationId, input.organizationId),
+            eq(gotoInboundEvents.conversationId, input.conversationId),
+            eq(gotoInboundEvents.status, "processed"),
+            isNotNull(gotoInboundEvents.projectId)
+          )
+        )
+        .then((events) =>
+          events.flatMap((event) =>
+            event.projectId === null ? [] : [event.projectId]
+          )
+        )
+    : []
+  const ownerPhone = normalizeSmsPhoneNumber(input.ownerTouchpoint)
+  const match = matchGotoInboundProject({
+    body: input.body,
+    senderPhone: input.senderPhone,
+    priorConversationProjectIds,
+    candidates: rows.map((row) => ({
+      ...row,
+      ownerNumberMatches:
+        gotoSenderNumberForProject(input.env, row.projectNumber) === ownerPhone,
+    })),
   })
-  if (matches.length === 0) return { kind: "missing" }
-  if (matches.length > 1) return { kind: "ambiguous" }
-  const match = matches[0]
-  return match ? { kind: "found", ...match } : { kind: "missing" }
+  if (match.kind !== "found") return { kind: match.kind }
+  return {
+    kind: "found",
+    id: match.id,
+    projectNumber: match.projectNumber,
+  }
 }
 
 export async function downloadGotoInboundAttachments(input: {
@@ -128,9 +177,13 @@ export async function processGotoInboundMessage(input: {
     | null
 }> {
   const project = await projectForMessage({
+    env: input.env,
     db: input.db,
     organizationId: input.organizationId,
     body: input.message.body,
+    senderPhone: input.message.senderPhone,
+    ownerTouchpoint: input.message.ownerTouchpoint,
+    conversationId: input.message.conversationId,
   })
   if (project.kind !== "found") {
     console.warn("[goto-inbound] SMS needs review", {
@@ -158,7 +211,8 @@ export async function processGotoInboundMessage(input: {
       entityId: input.message.messageId,
       summary: "Incoming text message is awaiting project and destination review.",
       metadata: {
-        reason: project.kind === "missing" ? "missing_project" : "ambiguous_project",
+        reason:
+          project.kind === "missing" ? "missing_project" : "ambiguous_project",
         bodyRetained: true,
         attachmentCount: input.message.attachments.length,
       },
@@ -176,11 +230,12 @@ export async function processGotoInboundMessage(input: {
     message: input.message,
   })
   const firstLine = input.message.body.split(/\r?\n/, 1)[0]?.trim() ?? ""
-  const subject = firstLine
-    .replace(
-      new RegExp(`(^|\\s)${regexEscape(project.projectNumber)}(?=\\s|$)`, "i"),
-      " "
-    )
+  const subject = (project.projectNumber
+    ? firstLine.replace(
+        new RegExp(`(^|\\s)${regexEscape(project.projectNumber)}(?=\\s|$)`, "i"),
+        " "
+      )
+    : firstLine)
     .replace(/\s{2,}/g, " ")
     .trim()
   const candidate: InboundCandidate = {

@@ -794,6 +794,9 @@ export const gotoInboundEvents = sqliteTable(
     reviewReason: text("review_reason"),
     status: text("status").notNull().default("received"),
     error: text("error"),
+    trashedAt: text("trashed_at"),
+    trashedBy: text("trashed_by"),
+    providerDeletedAt: text("provider_deleted_at"),
     receivedAt: text("received_at").notNull(),
     processedAt: text("processed_at"),
     createdAt: text("created_at").notNull(),
@@ -805,6 +808,10 @@ export const gotoInboundEvents = sqliteTable(
       table.organizationId,
       table.status,
       table.receivedAt
+    ),
+    index("goto_inbound_events_org_conversation_idx").on(
+      table.organizationId,
+      table.conversationId
     ),
   ]
 )

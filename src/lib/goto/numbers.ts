@@ -20,6 +20,12 @@ export function normalizeSmsPhoneNumber(value: string): string {
   return `+${digits}`
 }
 
+export function normalizedSmsPhoneKey(value: string): string | null {
+  const normalized = normalizeSmsPhoneNumber(value)
+  const digits = normalized.replace(/\D/g, "")
+  return digits.length >= 10 ? digits : null
+}
+
 export function gotoSmsOwnerNumbers(env: unknown): readonly string[] {
   const configured = [
     envString(env, "GOTO_SMS_FROM_NUMBER") ?? DEFAULT_GOTO_ORC_FROM_NUMBER,

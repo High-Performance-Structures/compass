@@ -1,6 +1,6 @@
 "use server"
 
-import { and, desc, eq } from "drizzle-orm"
+import { and, desc, eq, inArray } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
 import { getDb } from "@/db"
@@ -17,7 +17,9 @@ import {
   type ProjectEmailDestination,
 } from "@/lib/email/project-address"
 import { routeReviewedProjectInboundSms } from "@/lib/email/project-inbound-routing"
+import { deleteGotoConversation } from "@/lib/goto/conversations"
 import { downloadGotoInboundAttachments } from "@/lib/goto/inbound"
+import { normalizeSmsPhoneNumber } from "@/lib/goto/numbers"
 import type { GotoInboundMessage } from "@/lib/goto/notification-parser"
 import { requireOrg } from "@/lib/org-scope"
 import { requireFeaturePermission } from "@/lib/permission-enforcement"
@@ -33,12 +35,14 @@ export type InboundSmsReviewProject = {
 
 export type InboundSmsReviewItem = {
   readonly id: string
-  readonly senderLabel: string
+  readonly senderPhone: string
+  readonly ownerTouchpoint: string
+  readonly suggestedProjectId: string | null
   readonly messageBody: string | null
   readonly receivedAt: string
   readonly reviewReason: string | null
-  readonly attachmentCount: number
   readonly recoveryError: string | null
+  readonly attachmentCount: number
 }
 
 export type InboundSmsReviewQueue = {
@@ -79,13 +83,9 @@ function storedGotoAttachments(
   })
 }
 
-function maskedPhone(value: string): string {
-  const digits = value.replace(/\D/g, "")
-  return `Text sender ending ${digits.slice(-4) || "unknown"}`
-}
-
 async function reviewContext(): Promise<{
   readonly db: ReturnType<typeof getDb>
+  readonly env: unknown
   readonly organizationId: string
   readonly user: Awaited<ReturnType<typeof requireAuth>>
 }> {
@@ -95,7 +95,7 @@ async function reviewContext(): Promise<{
   }
   const organizationId = requireOrg(user)
   const { env } = await getCloudflareContext()
-  return { db: getDb(env.DB), organizationId, user }
+  return { db: getDb(env.DB), env, organizationId, user }
 }
 
 export async function getInboundSmsReviewQueue(): Promise<InboundSmsReviewQueue> {
@@ -124,12 +124,14 @@ export async function getInboundSmsReviewQueue(): Promise<InboundSmsReviewQueue>
     projects: projectRows,
     items: eventRows.map((event) => ({
       id: event.id,
-      senderLabel: maskedPhone(event.senderPhone),
+      senderPhone: normalizeSmsPhoneNumber(event.senderPhone),
+      ownerTouchpoint: normalizeSmsPhoneNumber(event.ownerTouchpoint),
+      suggestedProjectId: event.projectId,
       messageBody: event.messageBody,
       receivedAt: event.receivedAt,
       reviewReason: event.reviewReason,
-      attachmentCount: storedGotoAttachments(event.attachmentMetadata).length,
       recoveryError: event.error,
+      attachmentCount: storedGotoAttachments(event.attachmentMetadata).length,
     })),
   }
 }
@@ -191,10 +193,10 @@ export async function routeInboundSms(formData: FormData): Promise<void> {
   const destination = reviewedDestination(
     requiredFormString(formData, "destination")
   )
-  const { db, organizationId, user } = await reviewContext()
+  const { db, env, organizationId, user } = await reviewContext()
   await requireFeaturePermission(user, destinationFeature(destination), "create")
 
-  const [event] = await db
+  const event = await db
     .select()
     .from(gotoInboundEvents)
     .where(
@@ -204,10 +206,10 @@ export async function routeInboundSms(formData: FormData): Promise<void> {
         eq(gotoInboundEvents.status, "needs_review")
       )
     )
-    .limit(1)
+    .get()
   if (!event) throw new Error("Inbound text is no longer awaiting review")
 
-  const [project] = await db
+  const project = await db
     .select({ id: projects.id })
     .from(projects)
     .where(
@@ -216,7 +218,7 @@ export async function routeInboundSms(formData: FormData): Promise<void> {
         eq(projects.organizationId, organizationId)
       )
     )
-    .limit(1)
+    .get()
   if (!project) throw new Error("Project not found")
 
   const claimTime = new Date().toISOString()
@@ -247,7 +249,6 @@ export async function routeInboundSms(formData: FormData): Promise<void> {
       receivedAt: event.receivedAt,
       attachments: attachmentMetadata,
     }
-    const { env } = await getCloudflareContext()
     const attachments: readonly InboundAttachment[] =
       attachmentMetadata.length > 0
         ? await downloadGotoInboundAttachments({ env, message })
@@ -351,9 +352,94 @@ export async function dismissInboundSms(formData: FormData): Promise<void> {
     action: "project_goto_sms.dismissed",
     entityType: "project_goto_sms",
     entityId: event.messageId,
-    summary: "Dismissed an inbound text after administrative review.",
+    summary: "Dismissed an inbound text from the Compass message desk.",
     metadata: { reviewedBy: user.id },
     createdAt: now,
+  })
+  revalidatePath("/dashboard/office-maintenance/inbound-email")
+  revalidatePath("/dashboard/activity")
+}
+
+export async function trashInboundSms(formData: FormData): Promise<void> {
+  const eventId = requiredFormString(formData, "eventId")
+  const { db, env, organizationId, user } = await reviewContext()
+  const event = await db
+    .select()
+    .from(gotoInboundEvents)
+    .where(
+      and(
+        eq(gotoInboundEvents.id, eventId),
+        eq(gotoInboundEvents.organizationId, organizationId),
+        eq(gotoInboundEvents.status, "needs_review")
+      )
+    )
+    .get()
+  if (!event) throw new Error("Inbound text is no longer awaiting review")
+
+  const claimedAt = new Date().toISOString()
+  const claimed = await db
+    .update(gotoInboundEvents)
+    .set({ status: "trashing", error: null, updatedAt: claimedAt })
+    .where(
+      and(
+        eq(gotoInboundEvents.id, event.id),
+        eq(gotoInboundEvents.status, "needs_review")
+      )
+    )
+    .returning({ id: gotoInboundEvents.id })
+    .get()
+  if (!claimed) throw new Error("Inbound text is already being reviewed")
+
+  const deleted = await deleteGotoConversation({
+    env,
+    ownerPhoneNumber: event.ownerTouchpoint,
+    contactPhoneNumber: event.senderPhone,
+  })
+  if (!deleted.success) {
+    await db
+      .update(gotoInboundEvents)
+      .set({
+        status: "needs_review",
+        error: deleted.error.slice(0, 2_000),
+        updatedAt: new Date().toISOString(),
+      })
+      .where(eq(gotoInboundEvents.id, event.id))
+    throw new Error(deleted.error)
+  }
+
+  const trashedAt = new Date().toISOString()
+  await db
+    .update(gotoInboundEvents)
+    .set({
+      status: "trashed",
+      reviewReason: "spam",
+      error: null,
+      trashedAt,
+      trashedBy: user.id,
+      providerDeletedAt: trashedAt,
+      processedAt: trashedAt,
+      updatedAt: trashedAt,
+    })
+    .where(
+      and(
+        eq(gotoInboundEvents.organizationId, organizationId),
+        eq(gotoInboundEvents.ownerTouchpoint, event.ownerTouchpoint),
+        eq(gotoInboundEvents.senderPhone, event.senderPhone),
+        inArray(gotoInboundEvents.status, ["needs_review", "trashing"])
+      )
+    )
+
+  await recordActivityEvent({
+    db,
+    organizationId,
+    actor: user,
+    category: "conversation",
+    action: "project_goto_sms.trashed",
+    entityType: "project_goto_sms",
+    entityId: event.messageId,
+    summary: `Deleted the GoTo conversation with ${normalizeSmsPhoneNumber(event.senderPhone)} as spam.`,
+    metadata: { providerDeleted: true, reviewedBy: user.id },
+    createdAt: trashedAt,
   })
   revalidatePath("/dashboard/office-maintenance/inbound-email")
   revalidatePath("/dashboard/activity")
