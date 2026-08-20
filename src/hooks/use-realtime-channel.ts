@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useRef, useCallback } from "react"
-import { getChannelUpdates } from "@/app/actions/conversations-realtime"
+import { z } from "zod/v4"
 
 type TypingUser = {
   id: string
@@ -42,6 +42,35 @@ type PollingOptions = {
 const DEFAULT_VISIBLE_POLL_INTERVAL = 2500 // 2.5 seconds when tab is visible
 const DEFAULT_HIDDEN_POLL_INTERVAL = 10000 // 10 seconds when tab is hidden
 
+const realtimeUpdateSchema = z.object({
+  success: z.literal(true),
+  data: z.object({
+    messages: z.array(z.object({
+      id: z.string(),
+      channelId: z.string(),
+      threadId: z.string().nullable(),
+      content: z.string(),
+      contentHtml: z.string().nullable(),
+      editedAt: z.string().nullable(),
+      deletedAt: z.string().nullable(),
+      isPinned: z.boolean(),
+      replyCount: z.number(),
+      lastReplyAt: z.string().nullable(),
+      createdAt: z.string(),
+      user: z.object({
+        id: z.string(),
+        displayName: z.string().nullable(),
+        email: z.string(),
+        avatarUrl: z.string().nullable(),
+      }).nullable(),
+    })),
+    typingUsers: z.array(z.object({
+      id: z.string(),
+      displayName: z.string().nullable(),
+    })),
+  }),
+})
+
 function isTransientFetchError(error: unknown): boolean {
   return error instanceof TypeError && error.message === "Failed to fetch"
 }
@@ -68,33 +97,36 @@ export function useRealtimeChannel(
   }, [lastMessageId])
 
   const poll = useCallback(async () => {
-    // don't poll without a baseline message to compare against
-    if (!lastMessageIdRef.current) {
-      return
-    }
-
     setIsPolling(true)
 
     try {
-      const result = await getChannelUpdates(
-        channelId,
-        lastMessageIdRef.current ?? undefined,
-      )
-
-      if (result.success) {
-        // accumulate new messages (avoid duplicates)
-        if (result.data.messages.length > 0) {
-          setNewMessages((prev) => {
-            const existingIds = new Set(prev.map((m) => m.id))
-            const uniqueNew = result.data.messages.filter(
-              (m) => !existingIds.has(m.id),
-            )
-            return [...prev, ...uniqueNew]
-          })
-        }
-
-        setTypingUsers(result.data.typingUsers)
+      const search = new URLSearchParams()
+      if (lastMessageIdRef.current) {
+        search.set("lastMessageId", lastMessageIdRef.current)
       }
+      const response = await fetch(
+        `/api/conversations/${encodeURIComponent(channelId)}/updates?${search.toString()}`,
+        { cache: "no-store" },
+      )
+      const result = realtimeUpdateSchema.safeParse(await response.json())
+      if (!response.ok || !result.success) {
+        throw new Error("Unable to refresh conversation messages.")
+      }
+
+      // Accumulate new messages while avoiding duplicates. With no baseline,
+      // the endpoint returns the latest messages so an initially empty thread
+      // can receive its first reply without a full page reload.
+      if (result.data.data.messages.length > 0) {
+        setNewMessages((prev) => {
+          const existingIds = new Set(prev.map((message) => message.id))
+          const uniqueNew = result.data.data.messages.filter(
+            (message) => !existingIds.has(message.id),
+          )
+          return [...prev, ...uniqueNew]
+        })
+      }
+
+      setTypingUsers(result.data.data.typingUsers)
     } catch (error) {
       if (isTransientFetchError(error)) {
         return
@@ -117,17 +149,14 @@ export function useRealtimeChannel(
         pollingRef.current = null
       }
 
-      // only start polling if we have a lastMessageId
-      if (lastMessageIdRef.current) {
-        const interval = isVisibleRef.current
-          ? visibleInterval
-          : hiddenInterval
+      const interval = isVisibleRef.current
+        ? visibleInterval
+        : hiddenInterval
 
-        pollingRef.current = setInterval(poll, interval)
-        // also poll immediately when becoming visible
-        if (isVisibleRef.current) {
-          poll()
-        }
+      pollingRef.current = setInterval(poll, interval)
+      // also poll immediately when becoming visible
+      if (isVisibleRef.current) {
+        poll()
       }
     }
 
@@ -144,11 +173,6 @@ export function useRealtimeChannel(
     if (pollingRef.current) {
       clearInterval(pollingRef.current)
       pollingRef.current = null
-    }
-
-    // only start polling when we have messages to compare against
-    if (!lastMessageId) {
-      return
     }
 
     const interval = isVisibleRef.current
