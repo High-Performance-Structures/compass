@@ -1147,6 +1147,7 @@ export const projectOperations = sqliteTable("project_operations", {
   priority: text("priority").notNull().default("normal"),
   assigneeType: text("assignee_type"),
   assigneeName: text("assignee_name"),
+  siteContactPhone: text("site_contact_phone"),
   companyName: text("company_name"),
   costCode: text("cost_code"),
   startDate: text("start_date"),

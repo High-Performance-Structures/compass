@@ -1,4 +1,5 @@
 import type { ProjectBrand } from "@/lib/project-branding"
+import { purchaseOrderSiteContactLabel } from "@/lib/purchase-orders/site-contact"
 
 export type PurchaseOrderEmailLine = {
   readonly lineNumber: number
@@ -21,6 +22,8 @@ export type PurchaseOrderEmailInput = {
   readonly order: {
     readonly sourceRecordNumber: string | null
     readonly companyName: string | null
+    readonly assigneeName: string | null
+    readonly siteContactPhone: string | null
     readonly sageOrderDate: string | null
     readonly dueDate: string | null
     readonly amount: number | null
@@ -76,6 +79,10 @@ export function purchaseOrderEmailText(
     `P.O.: ${input.order.sourceRecordNumber ?? "Unnumbered"}`,
     `Project: ${input.projectNumber ? `${input.projectNumber} - ` : ""}${input.projectName}`,
     `Vendor: ${input.order.companyName ?? "Vendor TBD"}`,
+    `Site Contact: ${purchaseOrderSiteContactLabel({
+      name: input.order.assigneeName,
+      phone: input.order.siteContactPhone,
+    })}`,
     `Order Date: ${formatEmailDate(input.order.sageOrderDate)}`,
     `Required By: ${formatEmailDate(input.order.dueDate)}`,
     `Delivery Location: ${input.deliveryLocation ?? "TBD"}`,
@@ -126,6 +133,7 @@ export function purchaseOrderEmailHtml(
         <tbody>
           <tr><td style="font-weight:700;width:160px;">Project</td><td>${escapeHtml(projectLabel)}</td></tr>
           <tr><td style="font-weight:700;">Vendor</td><td>${escapeHtml(input.order.companyName ?? "Vendor TBD")}</td></tr>
+          <tr><td style="font-weight:700;">Site Contact</td><td>${escapeHtml(purchaseOrderSiteContactLabel({ name: input.order.assigneeName, phone: input.order.siteContactPhone }))}</td></tr>
           <tr><td style="font-weight:700;">Order Date</td><td>${formatEmailDate(input.order.sageOrderDate)}</td></tr>
           <tr><td style="font-weight:700;">Required By</td><td>${formatEmailDate(input.order.dueDate)}</td></tr>
           <tr><td style="font-weight:700;">Delivery Location</td><td>${deliveryLocation}</td></tr>

@@ -16,7 +16,7 @@ export function purchaseOrderVendorOptions<
   )
 }
 
-export function purchaseOrderInternalOwnerOptions<
+export function purchaseOrderSiteContactOptions<
   T extends PurchaseOrderContactOption,
 >(options: readonly T[]): readonly T[] {
   return options.filter((option) => option.contactType === "internal")

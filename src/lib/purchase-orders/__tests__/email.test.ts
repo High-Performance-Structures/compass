@@ -18,6 +18,8 @@ function emailInput(deliveryLocation: string | null): PurchaseOrderEmailInput {
     order: {
       sourceRecordNumber: "O-202-595-PO-001",
       companyName: "Test Supplier",
+      assigneeName: "Casey Foreman",
+      siteContactPhone: "719.555.0134",
       sageOrderDate: "2026-08-20",
       dueDate: "2026-08-25",
       amount: 125,
@@ -73,6 +75,17 @@ describe("purchase order email delivery location", () => {
     )
     expect(purchaseOrderEmailHtml(input)).toContain(
       "PO Box 9046<br>Woodland Park, CO 80866<br>Tel: 719.630.8767<br>Email: accounting@openrangeconstruction.com"
+    )
+  })
+
+  it("includes the site contact name and phone in both email formats", () => {
+    const input = emailInput("Pick-Up")
+
+    expect(purchaseOrderEmailText(input)).toContain(
+      "Site Contact: Casey Foreman · 719.555.0134"
+    )
+    expect(purchaseOrderEmailHtml(input)).toContain(
+      "Site Contact</td><td>Casey Foreman · 719.555.0134"
     )
   })
 })

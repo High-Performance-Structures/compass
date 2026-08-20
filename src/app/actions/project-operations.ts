@@ -66,6 +66,7 @@ export type ProjectOperationItem = {
   readonly priority: string
   readonly assigneeType: string | null
   readonly assigneeName: string | null
+  readonly siteContactPhone: string | null
   readonly companyName: string | null
   readonly costCode: string | null
   readonly startDate: string | null
@@ -228,6 +229,7 @@ export type CreatePurchaseOrderRequestInput = {
   readonly companyName: string | null
   readonly sageVendorId: string | null
   readonly assigneeName: string | null
+  readonly siteContactPhone: string | null
   readonly shipTo: string | null
   readonly orderDate: string | null
   readonly dueDate: string | null
@@ -871,6 +873,7 @@ function toOperationItem(row: typeof projectOperations.$inferSelect): ProjectOpe
     priority: row.priority,
     assigneeType: row.assigneeType,
     assigneeName: row.assigneeName,
+    siteContactPhone: row.siteContactPhone,
     companyName: row.companyName,
     costCode: row.costCode,
     startDate: row.startDate,
@@ -1699,6 +1702,7 @@ export async function createPurchaseOrderRequest(
       priority: input.priority,
       assigneeType: "vendor",
       assigneeName: cleanText(input.assigneeName),
+      siteContactPhone: cleanText(input.siteContactPhone),
       companyName,
       costCode: headerCostCode,
       dueDate,
@@ -1869,6 +1873,7 @@ export async function updatePurchaseOrderRequest(
           description,
           priority: input.priority,
           assigneeName: cleanText(input.assigneeName),
+          siteContactPhone: cleanText(input.siteContactPhone),
           companyName,
           costCode: headerCostCode,
           dueDate,

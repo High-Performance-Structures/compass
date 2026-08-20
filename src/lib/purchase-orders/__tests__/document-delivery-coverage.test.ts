@@ -33,6 +33,23 @@ describe("purchase order delivery output coverage", () => {
     expect(printMarkup).not.toContain("Vendor ID:")
   })
 
+  it("prints the site contact name and phone instead of internal-owner metadata", () => {
+    const page = source(
+      "src/app/dashboard/projects/[id]/purchase-orders/page.tsx"
+    )
+    const printStart = page.indexOf(
+      '<div className="hidden text-[11px] leading-tight text-black print:block">'
+    )
+    const printEnd = page.indexOf("</article>", printStart)
+
+    expect(printStart).toBeGreaterThan(-1)
+    expect(printEnd).toBeGreaterThan(printStart)
+    const printMarkup = page.slice(printStart, printEnd)
+    expect(printMarkup).toContain("Site Contact:")
+    expect(printMarkup).toContain("order.siteContactPhone")
+    expect(printMarkup).not.toContain("Internal Owner:")
+  })
+
   it("loads the project address for the sent email document", () => {
     const action = source("src/app/actions/project-operations.ts")
 

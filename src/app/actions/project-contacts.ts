@@ -1999,6 +1999,69 @@ export async function getProjectTaskAssigneeOptions(
   }
 }
 
+export async function getProjectPurchaseOrderSiteContactOptions(
+  projectId: string
+): Promise<readonly ProjectTaskAssigneeOption[]> {
+  const user = await requireAuth()
+  await requireFeaturePermission(user, "purchase-orders", "read")
+  const db = await verifyProjectAccess(projectId)
+  const orgId = requireOrg(user)
+
+  const projectRows = await db
+    .select()
+    .from(projectContacts)
+    .where(
+      and(
+        eq(projectContacts.projectId, projectId),
+        eq(projectContacts.contactType, "internal"),
+        eq(projectContacts.active, true)
+      )
+    )
+    .orderBy(asc(projectContacts.displayName))
+  const projectOptions = projectRows
+    .map((row) => toContactItem(row))
+    .map(projectContactToTaskAssigneeOption)
+  const projectNameKeys = new Set(
+    projectOptions.map((option) => normalizeDirectoryKey(option.name))
+  )
+  const projectEmailKeys = new Set(
+    projectOptions
+      .map((option) => option.email?.trim().toLowerCase() ?? "")
+      .filter((email) => email.length > 0)
+  )
+
+  const organizationRows = await db
+    .select({
+      id: users.id,
+      email: users.email,
+      displayName: users.displayName,
+      firstName: users.firstName,
+      lastName: users.lastName,
+      phone: users.phone,
+    })
+    .from(organizationMembers)
+    .innerJoin(users, eq(users.id, organizationMembers.userId))
+    .where(
+      and(
+        eq(organizationMembers.organizationId, orgId),
+        eq(users.isActive, true)
+      )
+    )
+    .orderBy(asc(users.displayName), asc(users.email))
+  const organizationOptions = organizationRows
+    .map((row) => ({
+      ...organizationUserToTaskAssigneeOption(row),
+      phone: row.phone,
+    }))
+    .filter(
+      (option) =>
+        !projectNameKeys.has(normalizeDirectoryKey(option.name)) &&
+        !projectEmailKeys.has(option.email?.trim().toLowerCase() ?? "")
+    )
+
+  return [...projectOptions, ...organizationOptions]
+}
+
 export async function getProjectContactMatchReview(
   projectId: string
 ): Promise<ProjectContactMatchReview> {

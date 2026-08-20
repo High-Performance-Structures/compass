@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest"
 
 import {
   purchaseOrderCostCodesForPhase,
-  purchaseOrderInternalOwnerOptions,
+  purchaseOrderSiteContactOptions,
   purchaseOrderVendorOptions,
 } from "@/lib/purchase-orders/form-options"
 
@@ -21,9 +21,9 @@ describe("purchase order form options", () => {
     ])
   })
 
-  it("keeps only staff choices in the internal owner selector", () => {
+  it("keeps only staff choices in the site contact selector", () => {
     expect(
-      purchaseOrderInternalOwnerOptions(contacts).map((option) => option.id)
+      purchaseOrderSiteContactOptions(contacts).map((option) => option.id)
     ).toEqual(["internal"])
   })
 

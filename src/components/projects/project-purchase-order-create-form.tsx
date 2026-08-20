@@ -48,7 +48,7 @@ import {
 import { Textarea } from "@/components/ui/textarea"
 import {
   purchaseOrderCostCodesForPhase,
-  purchaseOrderInternalOwnerOptions,
+  purchaseOrderSiteContactOptions,
   purchaseOrderVendorOptions,
 } from "@/lib/purchase-orders/form-options"
 import {
@@ -56,6 +56,7 @@ import {
   purchaseOrderShipToValue,
   type PurchaseOrderShipToState,
 } from "@/lib/purchase-orders/ship-to"
+import { purchaseOrderSiteContactSelection } from "@/lib/purchase-orders/site-contact"
 
 type DraftPurchaseOrderLine = {
   readonly id: string
@@ -310,6 +311,7 @@ type SharedPurchaseOrderFormProps = {
   readonly projectId: string
   readonly jobsiteAddress: string | null
   readonly contactOptions: readonly ProjectTaskAssigneeOption[]
+  readonly siteContactOptions: readonly ProjectTaskAssigneeOption[]
   readonly phaseOptions: readonly ProjectPurchaseOrderPhaseOption[]
   readonly costCodeOptions: readonly ProjectPurchaseOrderCostCodeOption[]
 }
@@ -331,6 +333,7 @@ function ProjectPurchaseOrderForm(
     projectId,
     jobsiteAddress,
     contactOptions,
+    siteContactOptions,
     phaseOptions,
     costCodeOptions,
   } = props
@@ -349,6 +352,9 @@ function ProjectPurchaseOrderForm(
   const [assigneeName, setAssigneeName] = React.useState(
     purchaseOrder?.assigneeName ?? ""
   )
+  const [siteContactPhone, setSiteContactPhone] = React.useState(
+    purchaseOrder?.siteContactPhone ?? ""
+  )
   const [shipTo, setShipTo] = React.useState<PurchaseOrderShipToState>(() =>
     initialPurchaseOrderShipToState({
       storedShipTo: purchaseOrder?.sageShipTo ?? null,
@@ -362,9 +368,9 @@ function ProjectPurchaseOrderForm(
     () => purchaseOrderVendorOptions(contactOptions),
     [contactOptions]
   )
-  const internalOwnerOptions = React.useMemo(
-    () => purchaseOrderInternalOwnerOptions(contactOptions),
-    [contactOptions]
+  const internalSiteContactOptions = React.useMemo(
+    () => purchaseOrderSiteContactOptions(siteContactOptions),
+    [siteContactOptions]
   )
 
   const total = lines.reduce((sum, line) => sum + lineAmount(line), 0)
@@ -408,6 +414,7 @@ function ProjectPurchaseOrderForm(
         setSageVendorId(purchaseOrder.sageVendorId ?? "")
         setCompanyName(purchaseOrder.companyName ?? "")
         setAssigneeName(purchaseOrder.assigneeName ?? "")
+        setSiteContactPhone(purchaseOrder.siteContactPhone ?? "")
         setShipTo(
           initialPurchaseOrderShipToState({
             storedShipTo: purchaseOrder.sageShipTo,
@@ -437,6 +444,7 @@ function ProjectPurchaseOrderForm(
         companyName: cleanText(companyName),
         sageVendorId: cleanText(String(formData.get("sageVendorId") ?? "")),
         assigneeName: cleanText(assigneeName),
+        siteContactPhone: cleanText(siteContactPhone),
         shipTo: purchaseOrderShipToValue({ state: shipTo, jobsiteAddress }),
         orderDate: cleanText(String(formData.get("orderDate") ?? "")),
         dueDate: cleanText(String(formData.get("dueDate") ?? "")),
@@ -461,6 +469,7 @@ function ProjectPurchaseOrderForm(
         setSageVendorId("")
         setCompanyName("")
         setAssigneeName("")
+        setSiteContactPhone("")
         setShipTo(
           initialPurchaseOrderShipToState({
             storedShipTo: null,
@@ -578,13 +587,32 @@ function ProjectPurchaseOrderForm(
             ) : (
               <input type="hidden" name="sageVendorId" value={sageVendorId} />
             )}
-            <Field label="Internal owner">
+            <Field label="Site contact">
               <ProjectAssigneePicker
                 value={assigneeName}
-                options={internalOwnerOptions}
-                placeholder="Choose staff member or type a name..."
-                onValueChange={(value) => setAssigneeName(value)}
+                options={internalSiteContactOptions}
+                placeholder="Choose staff or type an external name..."
+                onValueChange={(value, option) => {
+                  const contact = purchaseOrderSiteContactSelection({
+                    name: value,
+                    currentName: assigneeName,
+                    currentPhone: siteContactPhone,
+                    option,
+                  })
+                  setAssigneeName(contact.name)
+                  setSiteContactPhone(contact.phone)
+                }}
                 className="rounded-none border-x-0 border-t-0 px-0 shadow-none focus-visible:ring-0"
+              />
+            </Field>
+            <Field label="Site contact phone">
+              <Input
+                type="tel"
+                value={siteContactPhone}
+                onChange={(event) => setSiteContactPhone(event.target.value)}
+                placeholder="Select staff or enter a phone number"
+                autoComplete="tel"
+                className={DOCUMENT_INPUT_CLASS}
               />
             </Field>
             <div className="space-y-2">

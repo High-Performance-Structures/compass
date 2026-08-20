@@ -12,6 +12,7 @@ import {
   type ProjectPurchaseOrderItem,
 } from "@/app/actions/project-operations"
 import {
+  getProjectPurchaseOrderSiteContactOptions,
   getProjectTaskAssigneeOptions,
   type ProjectTaskAssigneeOption,
 } from "@/app/actions/project-contacts"
@@ -43,6 +44,7 @@ import {
 } from "@/lib/project-operations/status"
 import { canEditPurchaseOrderDraft } from "@/lib/purchase-orders/draft-edit"
 import { resolvedPurchaseOrderShipTo } from "@/lib/purchase-orders/ship-to"
+import { purchaseOrderSiteContactLabel } from "@/lib/purchase-orders/site-contact"
 import {
   projectBrandFor,
   type ProjectBrand,
@@ -120,6 +122,7 @@ function PurchaseOrderCard({
   isCreated,
   isFocused,
   taskAssigneeOptions,
+  siteContactOptions,
   jobsiteAddress,
   phaseOptions,
   costCodeOptions,
@@ -132,6 +135,7 @@ function PurchaseOrderCard({
   readonly isCreated: boolean
   readonly isFocused: boolean
   readonly taskAssigneeOptions: readonly ProjectTaskAssigneeOption[]
+  readonly siteContactOptions: readonly ProjectTaskAssigneeOption[]
   readonly jobsiteAddress: string | null
   readonly phaseOptions: React.ComponentProps<
     typeof ProjectPurchaseOrderEditForm
@@ -185,6 +189,7 @@ function PurchaseOrderCard({
                 projectId={projectId}
                 purchaseOrder={order}
                 contactOptions={taskAssigneeOptions}
+                siteContactOptions={siteContactOptions}
                 jobsiteAddress={jobsiteAddress}
                 phaseOptions={phaseOptions}
                 costCodeOptions={costCodeOptions}
@@ -224,7 +229,12 @@ function PurchaseOrderCard({
         </div>
         <div className="mt-3 grid grid-cols-1 gap-2 text-sm text-muted-foreground sm:grid-cols-2 lg:grid-cols-4">
           <span>{order.companyName ?? "Vendor TBD"}</span>
-          <span>{order.assigneeName ?? "Owner TBD"}</span>
+          <span>
+            Site contact: {purchaseOrderSiteContactLabel({
+              name: order.assigneeName,
+              phone: order.siteContactPhone,
+            })}
+          </span>
           <span>
             {order.lines.length > 1
               ? `${order.lines.length} cost lines`
@@ -347,6 +357,8 @@ function PurchaseOrderCard({
               <p className="whitespace-pre-line font-medium">
                 {deliveryLocation ?? "TBD"}
               </p>
+              <p>Site Contact: {order.assigneeName ?? "TBD"}</p>
+              <p>Phone: {order.siteContactPhone ?? "TBD"}</p>
             </div>
           </div>
         </div>
@@ -433,11 +445,13 @@ export default async function ProjectPurchaseOrdersPage({
     projects,
     purchaseOrders,
     taskAssigneeOptions,
+    siteContactOptions,
     purchaseOrderCodingOptions,
   ] = await Promise.all([
     getProjects(),
     getProjectPurchaseOrders(id),
     getProjectTaskAssigneeOptions(id),
+    getProjectPurchaseOrderSiteContactOptions(id),
     getProjectPurchaseOrderFormOptions(id),
   ]).catch((error: unknown) => {
     redirectIfFeaturePermissionDenied(error)
@@ -520,6 +534,7 @@ export default async function ProjectPurchaseOrdersPage({
               projectId={id}
               jobsiteAddress={purchaseOrderCodingOptions.jobsiteAddress}
               contactOptions={taskAssignees}
+              siteContactOptions={siteContactOptions}
               phaseOptions={purchaseOrderCodingOptions.phases}
               costCodeOptions={purchaseOrderCodingOptions.costCodes}
             />
@@ -566,6 +581,7 @@ export default async function ProjectPurchaseOrdersPage({
               isCreated={order.id === createdPurchaseOrderId}
               isFocused={order.id === focusedPurchaseOrderId}
               taskAssigneeOptions={taskAssignees}
+              siteContactOptions={siteContactOptions}
               jobsiteAddress={purchaseOrderCodingOptions.jobsiteAddress}
               phaseOptions={purchaseOrderCodingOptions.phases}
               costCodeOptions={purchaseOrderCodingOptions.costCodes}
