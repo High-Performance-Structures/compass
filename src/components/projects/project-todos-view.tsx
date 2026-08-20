@@ -1,11 +1,13 @@
 "use client"
 
 import * as React from "react"
+import Link from "next/link"
 import { useRouter } from "next/navigation"
 import {
   IconArchive,
   IconEdit,
   IconSearch,
+  IconTimeline,
 } from "@tabler/icons-react"
 
 import type { ProjectTaskAssigneeOption } from "@/app/actions/project-contacts"
@@ -30,7 +32,10 @@ import {
   projectTodoTypeLabel,
   type ProjectTodoStatus,
 } from "@/lib/project-todos"
-import { normalizeWorkCalendarSearch } from "@/lib/work-calendar"
+import {
+  normalizeWorkCalendarSearch,
+  scheduleItemHref,
+} from "@/lib/work-calendar"
 
 type TodoFilter = "active" | "completed" | "archived" | "all"
 
@@ -323,6 +328,18 @@ export function ProjectTodosView({
                     <p className="mt-2 line-clamp-3 whitespace-pre-wrap text-sm text-muted-foreground">
                       {item.description}
                     </p>
+                  )}
+                  {item.linkedScheduleTaskId && (
+                    <Link
+                      href={scheduleItemHref(
+                        projectId,
+                        item.linkedScheduleTaskId
+                      )}
+                      className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
+                    >
+                      <IconTimeline className="size-3.5" />
+                      View linked schedule item
+                    </Link>
                   )}
                   <p className="mt-2 text-xs text-muted-foreground">
                     {developerModeEnabled

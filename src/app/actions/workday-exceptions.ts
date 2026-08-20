@@ -16,6 +16,7 @@ import { isDemoUser } from "@/lib/demo"
 import { requirePermission } from "@/lib/permissions"
 import { recordActivityEvent } from "@/lib/activity-log"
 import { recalculateScheduleDates } from "@/lib/schedule/propagate-dates"
+import { linkedTodoDateUpdateStatement } from "@/lib/schedule/linked-todo-sync"
 import type {
   DependencyType,
   TaskStatus,
@@ -104,6 +105,12 @@ async function runExceptionScheduleBatch(
   const statements: D1PreparedStatement[] = [mutation]
   for (const [taskId, dates] of updatedTasks) {
     statements.push(
+      linkedTodoDateUpdateStatement(database, {
+        scheduleTaskId: taskId,
+        nextStartDate: dates.startDate,
+        nextEndDate: dates.endDateCalculated,
+        updatedAt,
+      }),
       database
         .prepare(
           `UPDATE schedule_tasks
@@ -252,6 +259,8 @@ export async function createWorkdayException(
       metadata: { affectedItemCount: updatedTasks.size },
     })
     revalidatePath(`/dashboard/projects/${projectId}/schedule`)
+    revalidatePath(`/dashboard/projects/${projectId}/todos`)
+    revalidatePath("/dashboard")
     revalidatePath("/dashboard/schedule")
     return { success: true }
   } catch (error) {
@@ -367,6 +376,8 @@ export async function updateWorkdayException(
     revalidatePath(
       `/dashboard/projects/${existing.projectId}/schedule`
     )
+    revalidatePath(`/dashboard/projects/${existing.projectId}/todos`)
+    revalidatePath("/dashboard")
     revalidatePath("/dashboard/schedule")
     return { success: true }
   } catch (error) {
@@ -449,6 +460,8 @@ export async function deleteWorkdayException(
     revalidatePath(
       `/dashboard/projects/${existing.projectId}/schedule`
     )
+    revalidatePath(`/dashboard/projects/${existing.projectId}/todos`)
+    revalidatePath("/dashboard")
     revalidatePath("/dashboard/schedule")
     return { success: true }
   } catch (error) {

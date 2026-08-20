@@ -739,6 +739,53 @@ test.describe("usable Compass areas", () => {
     ).toHaveCount(2)
   })
 
+  test("schedule items expose related records in the existing to-do workspace", async ({
+    page,
+  }) => {
+    const schedulePath =
+      "/dashboard/projects/e2e-project-001/schedule?view=list"
+    const response = await page.goto(schedulePath)
+    await expectHealthyNavigation(
+      page,
+      response,
+      "/dashboard/projects/e2e-project-001/schedule"
+    )
+
+    const scheduleRow = page
+      .locator("#schedule-item-e2e-schedule-001")
+      .last()
+    await scheduleRow.locator('button[title="Edit schedule item"]').click()
+
+    const editDialog = page.getByRole("dialog", {
+      name: "Edit Schedule Item",
+    })
+    await expect(
+      editDialog.getByRole("heading", { name: "Related to-dos" })
+    ).toBeVisible()
+    const linkedTodo = editDialog.getByRole("link", {
+      name: "Regression follow-up",
+    })
+    await expect(linkedTodo).toHaveAttribute(
+      "href",
+      /\/dashboard\/projects\/e2e-project-001\/todos\?item=e2e-todo-001/
+    )
+    await linkedTodo.click()
+
+    await expect(page).toHaveURL(
+      /\/dashboard\/projects\/e2e-project-001\/todos\?item=e2e-todo-001/
+    )
+    const focusedTodo = page.locator(
+      'article[data-focused="true"]#todo-e2e-todo-001'
+    )
+    await expect(focusedTodo).toContainText("Regression follow-up")
+    await expect(
+      focusedTodo.getByRole("link", { name: "View linked schedule item" })
+    ).toHaveAttribute(
+      "href",
+      /\/dashboard\/projects\/e2e-project-001\/schedule\?view=list&item=e2e-schedule-001/
+    )
+  })
+
   test("published audience schedules stay isolated from drafts and internal links", async ({
     page,
   }) => {

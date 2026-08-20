@@ -36,6 +36,7 @@ import {
   purchaseOrderStatusAfterEmail,
 } from "@/lib/project-operations/status"
 import { canEditPurchaseOrderDraft } from "@/lib/purchase-orders/draft-edit"
+import { linkedScheduleTaskId } from "@/lib/schedule/linked-todos"
 import {
   purchaseOrderEmailHtml,
   purchaseOrderEmailText,
@@ -59,6 +60,8 @@ export type ProjectOperationItem = {
   readonly id: string
   readonly sourceSystem: string
   readonly sourceRecordType: string
+  readonly sourceRecordId: string | null
+  readonly linkedScheduleTaskId: string | null
   readonly sourceRecordNumber: string | null
   readonly title: string
   readonly description: string | null
@@ -72,6 +75,7 @@ export type ProjectOperationItem = {
   readonly startDate: string | null
   readonly dueDate: string | null
   readonly amount: number | null
+  readonly externalUrl: string | null
   readonly syncStatus: string
   readonly sageJobId: string | null
   readonly sageJobNumber: string | null
@@ -861,11 +865,16 @@ function parseRfqTemplateReview(
     : null
 }
 
-function toOperationItem(row: typeof projectOperations.$inferSelect): ProjectOperationItem {
+function toOperationItem(
+  row: typeof projectOperations.$inferSelect,
+  scheduleTaskIds: ReadonlySet<string> = new Set()
+): ProjectOperationItem {
   return {
     id: row.id,
     sourceSystem: row.sourceSystem,
     sourceRecordType: row.sourceRecordType,
+    sourceRecordId: row.sourceRecordId,
+    linkedScheduleTaskId: linkedScheduleTaskId(row, scheduleTaskIds),
     sourceRecordNumber: row.sourceRecordNumber,
     title: row.title,
     description: row.description,
@@ -879,6 +888,7 @@ function toOperationItem(row: typeof projectOperations.$inferSelect): ProjectOpe
     startDate: row.startDate,
     dueDate: row.dueDate,
     amount: row.amount,
+    externalUrl: row.externalUrl,
     syncStatus: row.syncStatus,
     sageJobId: row.sageJobId,
     sageJobNumber: row.sageJobNumber,
@@ -1079,8 +1089,12 @@ export async function getProjectOperationsSummary(
     ),
     activeCommitmentCount: activeCommitments.length,
     nextScheduleItem,
-    purchaseOrders: purchaseOrders.slice(0, 5).map(toOperationItem),
-    commitments: commitments.slice(0, 6).map(toOperationItem),
+    purchaseOrders: purchaseOrders
+      .slice(0, 5)
+      .map((operation) => toOperationItem(operation)),
+    commitments: commitments
+      .slice(0, 6)
+      .map((operation) => toOperationItem(operation)),
   }
 }
 
@@ -1119,7 +1133,74 @@ export async function getProjectTodos(
       asc(projectOperations.title)
     )
 
-  return operations.map(toOperationItem)
+  const candidateScheduleTaskIds = [
+    ...new Set(
+      operations.flatMap((operation) =>
+        operation.sourceRecordId ? [operation.sourceRecordId] : []
+      )
+    ),
+  ]
+  const scheduleTaskIds = new Set(
+    candidateScheduleTaskIds.length === 0
+      ? []
+      : (
+          await db
+            .select({ id: scheduleTasks.id })
+            .from(scheduleTasks)
+            .where(
+              and(
+                eq(scheduleTasks.projectId, projectId),
+                inArray(scheduleTasks.id, candidateScheduleTaskIds)
+              )
+            )
+        ).map((task) => task.id)
+  )
+
+  return operations.map((operation) =>
+    toOperationItem(operation, scheduleTaskIds)
+  )
+}
+
+export async function getScheduleTaskTodos(
+  projectId: string,
+  scheduleTaskId: string
+): Promise<readonly ProjectOperationItem[]> {
+  const db = await verifyProjectAccess(projectId, "tasks")
+  const [scheduleTask] = await db
+    .select({ id: scheduleTasks.id })
+    .from(scheduleTasks)
+    .where(
+      and(
+        eq(scheduleTasks.id, scheduleTaskId),
+        eq(scheduleTasks.projectId, projectId)
+      )
+    )
+    .limit(1)
+
+  if (!scheduleTask) return []
+
+  const operations = await db
+    .select()
+    .from(projectOperations)
+    .where(
+      and(
+        eq(projectOperations.projectId, projectId),
+        eq(projectOperations.sourceRecordId, scheduleTask.id),
+        inArray(projectOperations.sourceRecordType, [
+          ...PROJECT_TODO_RECORD_TYPES,
+        ])
+      )
+    )
+    .orderBy(
+      asc(projectOperations.dueDate),
+      asc(projectOperations.createdAt),
+      asc(projectOperations.title)
+    )
+
+  const scheduleTaskIds = new Set([scheduleTask.id])
+  return operations.map((operation) =>
+    toOperationItem(operation, scheduleTaskIds)
+  )
 }
 
 export async function getProjectSageSyncQueue(
