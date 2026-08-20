@@ -29,11 +29,20 @@ describe("project document branding coverage", () => {
     }
   )
 
+  it.each(REACT_PRINT_DOCUMENTS)(
+    "%s uses the shared department contact defaults",
+    (file) => {
+      expect(source(file)).toContain("ProjectBrandContactDetails")
+    }
+  )
+
   it.each(GENERATED_PRINT_DOCUMENTS)(
     "%s waits for its department logo before printing",
     (file) => {
       const contents = source(file)
       expect(contents).toContain('data-project-brand-logo="true"')
+      expect(contents).toContain('data-project-brand-contact="true"')
+      expect(contents).toContain("brand.contactLines")
       expect(contents).toContain("new window.Image()")
       expect(contents).toContain("waitForPrintLayout(printRoot)")
     }

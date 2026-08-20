@@ -1,6 +1,7 @@
 import type * as React from "react"
 
 import type { ProjectDailyLogItem } from "@/app/actions/project-field"
+import { ProjectBrandContactDetails } from "@/components/projects/project-brand-contact-details"
 import { ProjectBrandLogo } from "@/components/projects/project-brand-logo"
 import { projectBrandFor } from "@/lib/project-branding"
 
@@ -93,6 +94,10 @@ export function DailyLogPrintDocument({
               <p className="text-sm font-bold uppercase">
                 {brand.companyName}
               </p>
+              <ProjectBrandContactDetails
+                brand={brand}
+                lineClassName="text-xs"
+              />
               <h1 className="mt-1 text-2xl font-semibold">Daily Logs</h1>
               <p className="mt-1 text-sm">{projectName}</p>
               {clientName && <p className="text-xs">Client: {clientName}</p>}

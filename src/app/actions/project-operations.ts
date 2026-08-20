@@ -40,6 +40,7 @@ import {
   purchaseOrderEmailHtml,
   purchaseOrderEmailText,
 } from "@/lib/purchase-orders/email"
+import { projectBrandFor } from "@/lib/project-branding"
 import {
   parsePortalPurchaseOrderPayload,
   type PortalPurchaseOrderAcknowledgement,
@@ -2791,6 +2792,10 @@ export async function sendPurchaseOrderEmail(
     }
     const senderName = user.displayName ?? user.email
     const emailInput = {
+      brand: projectBrandFor({
+        projectId: project.id,
+        projectNumber: project.projectNumber,
+      }),
       projectName: project.name,
       projectNumber: project.projectNumber,
       senderName,

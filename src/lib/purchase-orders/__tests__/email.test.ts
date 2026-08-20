@@ -5,9 +5,11 @@ import {
   purchaseOrderEmailText,
   type PurchaseOrderEmailInput,
 } from "@/lib/purchase-orders/email"
+import { projectBrandFor } from "@/lib/project-branding"
 
 function emailInput(deliveryLocation: string | null): PurchaseOrderEmailInput {
   return {
+    brand: projectBrandFor({ projectNumber: "O-202-595" }),
     projectName: "Test Project",
     projectNumber: "O-202-595",
     senderName: "Project Manager",
@@ -61,5 +63,16 @@ describe("purchase order email delivery location", () => {
       "Delivery Location: TBD"
     )
     expect(purchaseOrderEmailHtml(emailInput(null))).toContain(">TBD</td>")
+  })
+
+  it("includes the department contact defaults in both email formats", () => {
+    const input = emailInput("Pick-Up")
+
+    expect(purchaseOrderEmailText(input)).toContain(
+      "PO Box 9046\nWoodland Park, CO 80866\nTel: 719.630.8767\nEmail: accounting@openrangeconstruction.com"
+    )
+    expect(purchaseOrderEmailHtml(input)).toContain(
+      "PO Box 9046<br>Woodland Park, CO 80866<br>Tel: 719.630.8767<br>Email: accounting@openrangeconstruction.com"
+    )
   })
 })

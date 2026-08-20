@@ -1,3 +1,5 @@
+import type { ProjectBrand } from "@/lib/project-branding"
+
 export type PurchaseOrderEmailLine = {
   readonly lineNumber: number
   readonly description: string
@@ -10,6 +12,7 @@ export type PurchaseOrderEmailLine = {
 }
 
 export type PurchaseOrderEmailInput = {
+  readonly brand: ProjectBrand
   readonly projectName: string
   readonly projectNumber: string | null
   readonly senderName: string
@@ -82,6 +85,9 @@ export function purchaseOrderEmailText(
     "",
     `Total: ${formatMoney(input.order.amount)}`,
     "",
+    input.brand.companyName,
+    ...input.brand.contactLines,
+    "",
     `Sent through Compass by ${input.senderName}.`,
   ].join("\n")
 }
@@ -146,6 +152,10 @@ export function purchaseOrderEmailHtml(
           </tr>
         </tfoot>
       </table>
+      <div style="margin-top:20px;border-top:1px solid #d1d5db;padding-top:12px;color:#4b5563;font-size:12px;">
+        <strong>${escapeHtml(input.brand.companyName)}</strong><br>
+        ${input.brand.contactLines.map((line) => escapeHtml(line)).join("<br>")}
+      </div>
       <p style="margin-top:20px;color:#4b5563;font-size:12px;">
         Sent through Compass by ${escapeHtml(input.senderName)}.
       </p>

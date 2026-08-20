@@ -16,6 +16,7 @@ import { Button } from "@/components/ui/button"
 import { OwnerUpdateActions } from "@/components/projects/owner-update-actions"
 import { OwnerUpdateDraftEditor } from "@/components/projects/owner-update-draft-editor"
 import { OwnerUpdatePhotoTile } from "@/components/projects/owner-update-photo-tile"
+import { ProjectBrandContactDetails } from "@/components/projects/project-brand-contact-details"
 import { ProjectBrandLogo } from "@/components/projects/project-brand-logo"
 import { projectBrandFor } from "@/lib/project-branding"
 import { projectAudienceSectionHref } from "@/lib/project-audience-preview-routes"
@@ -135,6 +136,10 @@ export function OwnerUpdateDocument({
                 <p className="text-sm font-bold uppercase">
                   {brand.companyName}
                 </p>
+                <ProjectBrandContactDetails
+                  brand={brand}
+                  lineClassName="text-xs"
+                />
                 <p className="text-xs">Project Owner Update</p>
               </div>
             </div>

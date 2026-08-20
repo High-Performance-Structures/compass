@@ -91,6 +91,14 @@ function printHtml({
           <div>
             <p>${escapeHtml(brand.companyName)}</p>
             <h1>${escapeHtml(rfq.title)}</h1>
+            <div data-project-brand-contact="true">
+              ${brand.contactLines
+                .map(
+                  (line) =>
+                    `<span style="display:block;margin-top:0.02in;text-align:left;text-transform:none;">${escapeHtml(line)}</span>`
+                )
+                .join("")}
+            </div>
           </div>
         </div>
         <div>
@@ -200,6 +208,9 @@ export function ProjectRfqShareActions({
       "",
       "Open RFQ:",
       absoluteUrl(),
+      "",
+      brand.companyName,
+      ...brand.contactLines,
     ]
       .filter((line) => line.length > 0)
       .join("\n")
@@ -234,6 +245,10 @@ export function ProjectRfqShareActions({
         }
         <ul style="margin:0 0 18px 20px;padding:0;color:#374151;font-size:14px;">${rows}</ul>
         <a href="${absoluteUrl()}" style="display:inline-block;background:#3f7d4d;color:#ffffff;text-decoration:none;border-radius:6px;padding:10px 16px;font-weight:700;">Open RFQ</a>
+        <div style="margin-top:20px;border-top:1px solid #d1d5db;padding-top:12px;font-size:12px;color:#6b7280;">
+          <strong>${escapeHtml(brand.companyName)}</strong><br>
+          ${brand.contactLines.map((line) => escapeHtml(line)).join("<br>")}
+        </div>
       </div>`.trim()
   }
 

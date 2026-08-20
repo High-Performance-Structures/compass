@@ -16,6 +16,7 @@ import {
   type ProjectTaskAssigneeOption,
 } from "@/app/actions/project-contacts"
 import { getProjects } from "@/app/actions/projects"
+import { ProjectBrandContactDetails } from "@/components/projects/project-brand-contact-details"
 import { ProjectBrandLogo } from "@/components/projects/project-brand-logo"
 import { ProjectPurchaseOrderDeleteButton } from "@/components/projects/project-purchase-order-delete-button"
 import { ProjectPurchaseOrderEmailButton } from "@/components/projects/project-purchase-order-email-button"
@@ -298,9 +299,7 @@ function PurchaseOrderCard({
               <p className="text-sm font-bold uppercase">
                 {brand.companyName}
               </p>
-              {brand.mailingAddress.map((line) => (
-                <p key={line}>{line}</p>
-              ))}
+              <ProjectBrandContactDetails brand={brand} />
             </div>
           </div>
           <div className="text-right">

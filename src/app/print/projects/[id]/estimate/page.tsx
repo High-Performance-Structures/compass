@@ -2,6 +2,7 @@ export const dynamic = "force-dynamic"
 
 import { getProjectEstimateWorkspace } from "@/app/actions/project-estimates"
 import { getProjects } from "@/app/actions/projects"
+import { ProjectBrandContactDetails } from "@/components/projects/project-brand-contact-details"
 import { ProjectBrandLogo } from "@/components/projects/project-brand-logo"
 import { projectBrandFor } from "@/lib/project-branding"
 
@@ -52,9 +53,10 @@ export default async function ProjectEstimatePrintPage({
           />
           <div>
             <p className="text-lg font-bold">{brand.companyName}</p>
-            {brand.mailingAddress.map((line) => (
-              <p key={line} className="text-sm">{line}</p>
-            ))}
+            <ProjectBrandContactDetails
+              brand={brand}
+              lineClassName="text-sm"
+            />
           </div>
         </div>
         <div className="text-right">

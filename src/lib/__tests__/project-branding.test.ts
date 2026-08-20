@@ -23,9 +23,51 @@ describe("project branding", () => {
     const design = projectBrandFor({ projectNumber: "D-18-00" })
 
     expect(design.companyName).toBe(orc.companyName)
+    expect(design.contactLines).toEqual(orc.contactLines)
     expect(design.logoSrc).toBe(orc.logoSrc)
     expect(design.department).toBe("D")
   })
+
+  it.each([
+    [
+      "H-OFFICE",
+      ["PO Box 1813", "Woodland Park, CO 80866"],
+      "719.900.8850",
+      "accounting@hps-colorado.com",
+    ],
+    [
+      "N-830-8220",
+      ["PO Box 1813", "Woodland Park, CO 80866"],
+      "719.686.0770",
+      "orders@nutechcolorado.com",
+    ],
+    [
+      "O-202-595",
+      ["PO Box 9046", "Woodland Park, CO 80866"],
+      "719.630.8767",
+      "accounting@openrangeconstruction.com",
+    ],
+    [
+      "D-18-00",
+      ["PO Box 9046", "Woodland Park, CO 80866"],
+      "719.630.8767",
+      "accounting@openrangeconstruction.com",
+    ],
+  ] as const)(
+    "uses the canonical document contact defaults for %s",
+    (projectNumber, mailingAddress, telephone, email) => {
+      expect(projectBrandFor({ projectNumber })).toMatchObject({
+        mailingAddress,
+        telephone,
+        email,
+        contactLines: [
+          ...mailingAddress,
+          `Tel: ${telephone}`,
+          `Email: ${email}`,
+        ],
+      })
+    }
+  )
 
   it("uses distinct HPS and Nu-Tech identities", () => {
     expect(projectBrandFor({ projectNumber: "H-OFFICE" })).toMatchObject({

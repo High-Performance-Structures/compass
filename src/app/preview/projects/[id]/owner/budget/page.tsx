@@ -21,6 +21,7 @@ import {
   ProjectBudgetG703Table,
   ProjectBudgetPanel,
 } from "@/components/projects/project-budget-panel"
+import { ProjectBrandContactDetails } from "@/components/projects/project-brand-contact-details"
 import { ProjectBrandLogo } from "@/components/projects/project-brand-logo"
 import { ProjectBudgetPrintButton } from "@/components/projects/project-budget-print-button"
 import { ProjectAudiencePreviewShell } from "@/components/projects/project-audience-preview-shell"
@@ -279,6 +280,10 @@ export default async function OwnerBudgetPage({
                 />
                 <div>
                   <p className="text-lg font-semibold">{brand.companyName}</p>
+                  <ProjectBrandContactDetails
+                    brand={brand}
+                    lineClassName="text-xs"
+                  />
                   <p className="text-sm text-muted-foreground">
                     {preview.project.projectNumber ?? preview.project.name}
                   </p>

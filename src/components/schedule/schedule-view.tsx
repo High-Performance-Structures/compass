@@ -83,6 +83,7 @@ import { ScheduleBaselineView } from "./schedule-baseline-view"
 import { ScheduleItemFormDialog } from "./schedule-item-form-dialog"
 import { ScheduleTemplateDialog } from "./schedule-template-dialog"
 import { ScheduleTemplateBulkImportDialog } from "./schedule-template-bulk-import-dialog"
+import { ProjectBrandContactDetails } from "@/components/projects/project-brand-contact-details"
 import { ProjectBrandLogo } from "@/components/projects/project-brand-logo"
 import { ProjectQuickSwitcher } from "@/components/projects/project-quick-switcher"
 import { ScheduleScopeSwitcher } from "./schedule-scope-switcher"
@@ -695,6 +696,10 @@ export function ScheduleView({
               <p className="text-sm font-bold uppercase">
                 {printBrand.companyName}
               </p>
+              <ProjectBrandContactDetails
+                brand={printBrand}
+                lineClassName="text-xs"
+              />
               <p className="text-xs">Project Schedule</p>
             </div>
           </div>

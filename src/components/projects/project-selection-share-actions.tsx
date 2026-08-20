@@ -163,6 +163,14 @@ function packetHtml({
         <div>
           <p>${escapeHtml(brand.companyName)}</p>
           <span>Finish Selection Packet</span>
+          <div data-project-brand-contact="true">
+            ${brand.contactLines
+              .map(
+                (line) =>
+                  `<span style="display:block;margin-top:0.02in;text-align:left;text-transform:none;">${escapeHtml(line)}</span>`
+              )
+              .join("")}
+          </div>
         </div>
       </div>
       <div class="selection-print-meta">
@@ -227,6 +235,9 @@ export function ProjectSelectionShareActions({
       "You can review and fill these out in Compass, or use the attached/printed packet if paper is easier.",
       "",
       `Open finish selections: ${absoluteSelectionUrl()}`,
+      "",
+      brand.companyName,
+      ...brand.contactLines,
     ]
       .filter((line) => line.length > 0)
       .join("\n")
@@ -264,6 +275,10 @@ export function ProjectSelectionShareActions({
         <p style="margin:18px 0 0 0;font-size:12px;color:#6b7280;">
           Prefer paper or a spreadsheet? Let us know and we can send a printable packet.
         </p>
+        <div style="margin-top:20px;border-top:1px solid #d1d5db;padding-top:12px;font-size:12px;color:#6b7280;">
+          <strong>${escapeHtml(brand.companyName)}</strong><br>
+          ${brand.contactLines.map((line) => escapeHtml(line)).join("<br>")}
+        </div>
       </div>`.trim()
   }
 

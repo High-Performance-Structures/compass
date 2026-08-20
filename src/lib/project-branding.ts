@@ -2,33 +2,42 @@ export type ProjectDepartment = "O" | "H" | "N" | "D"
 
 export type ProjectBrand = {
   readonly companyName: string
+  readonly contactLines: readonly string[]
   readonly department: ProjectDepartment
+  readonly email: string
   readonly logoAlt: string
   readonly logoSrc: string
   readonly mailingAddress: readonly string[]
+  readonly telephone: string
 }
 
-type BrandIdentity = Omit<ProjectBrand, "department">
+type BrandIdentity = Omit<ProjectBrand, "contactLines" | "department">
 
 const ORC_BRAND: BrandIdentity = {
   companyName: "Open Range Construction",
+  email: "accounting@openrangeconstruction.com",
   logoAlt: "Open Range Construction",
   logoSrc: "/department-logos/orc-mark.png",
-  mailingAddress: [],
+  mailingAddress: ["PO Box 9046", "Woodland Park, CO 80866"],
+  telephone: "719.630.8767",
 }
 
 const HPS_BRAND: BrandIdentity = {
   companyName: "High Performance Structures, Inc.",
+  email: "accounting@hps-colorado.com",
   logoAlt: "High Performance Structures",
   logoSrc: "/department-logos/hps-h-green.svg",
-  mailingAddress: ["P.O. Box 878", "Woodland Park, CO 80866"],
+  mailingAddress: ["PO Box 1813", "Woodland Park, CO 80866"],
+  telephone: "719.900.8850",
 }
 
 const NUTECH_BRAND: BrandIdentity = {
   companyName: "Nu-Tech Systems",
+  email: "orders@nutechcolorado.com",
   logoAlt: "Nu-Tech Systems",
   logoSrc: "/department-logos/nu-tech-n.png",
-  mailingAddress: [],
+  mailingAddress: ["PO Box 1813", "Woodland Park, CO 80866"],
+  telephone: "719.686.0770",
 }
 
 function isProjectDepartment(value: string): value is ProjectDepartment {
@@ -80,6 +89,11 @@ export function projectBrandFor({
 
   return {
     ...identity,
+    contactLines: [
+      ...identity.mailingAddress,
+      `Tel: ${identity.telephone}`,
+      `Email: ${identity.email}`,
+    ],
     department,
   }
 }
