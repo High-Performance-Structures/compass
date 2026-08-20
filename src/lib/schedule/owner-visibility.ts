@@ -13,12 +13,10 @@ export type OwnerScheduleSourceItem = {
   readonly percentComplete: number
   readonly isMilestone: boolean
   readonly workdays: number
+  readonly displayColor: string | null
 }
 
-export type OwnerScheduleVisibleItem = Omit<
-  OwnerScheduleSourceItem,
-  "workdays"
->
+export type OwnerScheduleVisibleItem = OwnerScheduleSourceItem
 
 export function isOwnerScheduleView(
   value: string
@@ -110,6 +108,8 @@ export function summarizeOwnerScheduleByPhase(
       assignedTo: null,
       percentComplete: allComplete ? 100 : percentComplete,
       isMilestone: false,
+      workdays: totalWeight,
+      displayColor: phaseItems[0].displayColor,
     }
   }).sort(
     (left, right) =>

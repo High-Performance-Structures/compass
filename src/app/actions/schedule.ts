@@ -1130,6 +1130,7 @@ export async function updateTask(
     ownerVisible?: boolean
     subVendorVisible?: boolean
     confirmationRequired?: boolean
+    acceptChangeProposal?: boolean
   }
 ): Promise<{ success: boolean; error?: string }> {
   try {
@@ -1185,6 +1186,10 @@ export async function updateTask(
       assignmentChanged ||
       (data.confirmationRequired !== undefined &&
         data.confirmationRequired !== task.confirmationRequired)
+    const acceptChangeProposal =
+      data.acceptChangeProposal === true &&
+      task.proposedStartDate !== null &&
+      task.proposedWorkdays !== null
     const now = new Date().toISOString()
     const confirmation = newScheduleConfirmationState({
       required: confirmationRequired,
@@ -1243,7 +1248,25 @@ export async function updateTask(
               confirmationStatus: confirmation.status,
               confirmationRequestedAt: confirmation.requestedAt,
               confirmationRespondedAt: null,
-              reminderSentAt: null
+              reminderSentAt: null,
+              proposedStartDate: null,
+              proposedWorkdays: null,
+              proposalNote: null,
+              proposalSubmittedAt: null
+            }
+          : {}),
+        ...(acceptChangeProposal
+          ? {
+              // The accepted dates remain a draft until the internal user
+              // publishes them, at which point the assignee confirms anew.
+              confirmationStatus: confirmationRequired ? "pending" : "not_requested",
+              confirmationRequestedAt: confirmationRequired ? now : null,
+              confirmationRespondedAt: null,
+              reminderSentAt: null,
+              proposedStartDate: null,
+              proposedWorkdays: null,
+              proposalNote: null,
+              proposalSubmittedAt: null
             }
           : {}),
         updatedAt: now
@@ -1267,6 +1290,28 @@ export async function updateTask(
       entityId: taskId,
       summary: `Updated schedule item “${data.title ?? task.title}”.`
     })
+
+    if (acceptChangeProposal) {
+      await recordActivityEvent({
+        db,
+        organizationId: orgId,
+        projectId: task.projectId,
+        actor: user,
+        category: "schedule",
+        action: "schedule.assignment_change_accepted",
+        entityType: "schedule_item",
+        entityId: taskId,
+        summary: `Applied the subcontractor's proposed dates to the draft for “${
+          data.title ?? task.title
+        }”.`,
+        metadata: {
+          proposedStartDate: task.proposedStartDate,
+          proposedWorkdays: task.proposedWorkdays,
+          savedStartDate: startDate,
+          savedWorkdays: workdays
+        }
+      })
+    }
 
     await recalcCriticalPath(db, task.projectId)
     revalidateSchedulePaths(task.projectId)

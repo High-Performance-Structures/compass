@@ -8,15 +8,32 @@ import {
   IconChevronLeft,
   IconChevronRight,
   IconList,
+  IconPencil,
   IconTimeline,
   IconX,
 } from "@tabler/icons-react"
 import { toast } from "sonner"
 
-import { respondToScheduleTaskConfirmation } from "@/app/actions/schedule-confirmations"
+import {
+  proposeScheduleTaskChange,
+  respondToScheduleTaskConfirmation,
+} from "@/app/actions/schedule-confirmations"
 import type { AudienceScheduleItem } from "@/app/actions/project-audience-preview"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
+import { useScheduleDisplayPalette } from "@/hooks/use-schedule-display-palette"
+import { getScheduleItemDisplayColor } from "@/lib/schedule/appearance"
 import {
   centeredTimelineScrollLeft,
   lockWheelToDominantAxis,
@@ -113,6 +130,7 @@ function statusLabel(value: string): string {
 function confirmationLabel(value: string): string {
   if (value === "confirmed") return "Confirmed"
   if (value === "declined") return "Cannot commit"
+  if (value === "proposed") return "New date proposed"
   if (value === "pending") return "Awaiting confirmation"
   if (value === "unavailable") return "Compass account needed"
   return "Not requested"
@@ -125,6 +143,29 @@ function ScheduleConfirmationControl({
 }): React.ReactElement | null {
   const router = useRouter()
   const [pending, startTransition] = React.useTransition()
+  const [proposalOpen, setProposalOpen] = React.useState(false)
+  const [proposedStartDate, setProposedStartDate] = React.useState(
+    item.proposedStartDate ?? item.startDate
+  )
+  const [proposedWorkdays, setProposedWorkdays] = React.useState(
+    item.proposedWorkdays ?? item.workdays
+  )
+  const [proposalNote, setProposalNote] = React.useState(
+    item.proposalNote ?? ""
+  )
+  React.useEffect(() => {
+    if (!proposalOpen) return
+    setProposedStartDate(item.proposedStartDate ?? item.startDate)
+    setProposedWorkdays(item.proposedWorkdays ?? item.workdays)
+    setProposalNote(item.proposalNote ?? "")
+  }, [
+    item.proposalNote,
+    item.proposedStartDate,
+    item.proposedWorkdays,
+    item.startDate,
+    item.workdays,
+    proposalOpen,
+  ])
   if (!item.confirmationRequired) return null
 
   const respond = (response: "confirmed" | "declined"): void => {
@@ -139,6 +180,23 @@ function ScheduleConfirmationControl({
           ? "Schedule commitment confirmed."
           : "The project team has been notified that you cannot commit."
       )
+      router.refresh()
+    })
+  }
+
+  const submitProposal = (): void => {
+    startTransition(async () => {
+      const result = await proposeScheduleTaskChange(item.id, {
+        startDate: proposedStartDate,
+        workdays: proposedWorkdays,
+        note: proposalNote,
+      })
+      if (!result.success) {
+        toast.error(result.error)
+        return
+      }
+      toast.success("Your proposed date was sent to the project team for review.")
+      setProposalOpen(false)
       router.refresh()
     })
   }
@@ -160,7 +218,7 @@ function ScheduleConfirmationControl({
             onClick={() => respond("confirmed")}
           >
             <IconCheck className="size-4" />
-            Confirm
+            Approve
           </Button>
           <Button
             type="button"
@@ -172,8 +230,78 @@ function ScheduleConfirmationControl({
             <IconX className="size-4" />
             Cannot commit
           </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            disabled={pending}
+            onClick={() => setProposalOpen(true)}
+          >
+            <IconPencil className="size-4" />
+            Suggest date
+          </Button>
         </>
       )}
+      <Dialog open={proposalOpen} onOpenChange={setProposalOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Suggest a new schedule date</DialogTitle>
+            <DialogDescription>
+              This sends a proposal to the project team. It does not change the
+              published schedule until an internal user reviews and publishes it.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-2">
+            <div className="grid gap-2">
+              <Label htmlFor={`proposal-start-${item.id}`}>Start date</Label>
+              <Input
+                id={`proposal-start-${item.id}`}
+                type="date"
+                value={proposedStartDate}
+                onChange={(event) => setProposedStartDate(event.target.value)}
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor={`proposal-duration-${item.id}`}>
+                Duration (workdays)
+              </Label>
+              <Input
+                id={`proposal-duration-${item.id}`}
+                type="number"
+                min={1}
+                max={3650}
+                value={proposedWorkdays}
+                onChange={(event) =>
+                  setProposedWorkdays(Number(event.target.value))
+                }
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor={`proposal-note-${item.id}`}>Note (optional)</Label>
+              <Textarea
+                id={`proposal-note-${item.id}`}
+                maxLength={1000}
+                value={proposalNote}
+                placeholder="Explain the timing or coordination constraint."
+                onChange={(event) => setProposalNote(event.target.value)}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={pending}
+              onClick={() => setProposalOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button type="button" disabled={pending} onClick={submitProposal}>
+              {pending ? "Sending…" : "Send proposal"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
@@ -212,9 +340,12 @@ type GanttTick = GanttMonth
 
 function ProjectAudienceGantt({
   items,
+  projectId,
 }: {
   readonly items: readonly AudienceScheduleItem[]
+  readonly projectId: string
 }): React.ReactElement {
+  const displayColorPalette = useScheduleDisplayPalette(projectId)
   const scrollContainerRef = React.useRef<HTMLDivElement>(null)
   const pendingAnchorDateRef = React.useRef<string | null>(null)
   const didInitialScrollRef = React.useRef(false)
@@ -557,6 +688,10 @@ function ProjectAudienceGantt({
               100,
               Math.max(0, item.percentComplete)
             )
+            const displayColor = getScheduleItemDisplayColor(
+              item,
+              displayColorPalette
+            )
 
             return (
               <div key={item.id} className="flex h-14 border-b">
@@ -598,16 +733,24 @@ function ProjectAudienceGantt({
                   />
                   <div
                     className={cn(
-                      "absolute top-3 h-8 overflow-hidden rounded-sm border border-primary/30 bg-primary/15 transition-shadow",
+                      "absolute top-3 h-8 overflow-hidden rounded-sm border transition-shadow",
                       selectedItemId === item.id &&
                         "ring-2 ring-primary ring-offset-1"
                     )}
-                    style={{ left, width }}
+                    style={{
+                      left,
+                      width,
+                      borderColor: displayColor,
+                      backgroundColor: `${displayColor}33`,
+                    }}
                     title={`${item.title}: ${percentComplete}% complete`}
                   >
                     <div
-                      className="h-full bg-primary/45"
-                      style={{ width: `${percentComplete}%` }}
+                      className="h-full"
+                      style={{
+                        width: `${percentComplete}%`,
+                        backgroundColor: `${displayColor}80`,
+                      }}
                     />
                     <span className="absolute inset-0 flex items-center px-2 text-[10px] font-medium">
                       {percentComplete}%
@@ -648,11 +791,14 @@ function ProjectAudienceGantt({
 
 export function ProjectAudienceSchedule({
   items,
+  projectId,
   presentation = "items",
 }: {
   readonly items: readonly AudienceScheduleItem[]
+  readonly projectId: string
   readonly presentation?: OwnerScheduleView
 }): React.ReactElement {
+  const displayColorPalette = useScheduleDisplayPalette(projectId)
   const [view, setView] = React.useState<ScheduleView>("list")
   const [visibleMonth, setVisibleMonth] = React.useState(() =>
     monthStart(new Date())
@@ -722,7 +868,18 @@ export function ProjectAudienceSchedule({
               className="grid gap-2 px-4 py-3 sm:grid-cols-[minmax(0,1fr)_auto_auto] sm:items-center sm:px-5"
             >
               <div className="min-w-0">
-                <p className="truncate text-sm font-medium">{item.title}</p>
+                <p className="flex min-w-0 items-center gap-2 truncate text-sm font-medium">
+                  <span
+                    className="size-2.5 shrink-0 rounded-full"
+                    style={{
+                      backgroundColor: getScheduleItemDisplayColor(
+                        item,
+                        displayColorPalette
+                      ),
+                    }}
+                  />
+                  <span className="truncate">{item.title}</span>
+                </p>
                 <p className="mt-1 text-xs text-muted-foreground">
                   {item.phase}
                   {item.assignedTo ? ` · ${item.assignedTo}` : ""}
@@ -826,7 +983,17 @@ export function ProjectAudienceSchedule({
                           <div
                             key={item.id}
                             title={`${item.title} · ${statusLabel(item.status)}`}
-                            className="truncate border-l-2 border-primary bg-primary/5 px-1 py-0.5 text-[10px] leading-4"
+                            className="truncate border-l-2 px-1 py-0.5 text-[10px] leading-4"
+                            style={{
+                              borderColor: getScheduleItemDisplayColor(
+                                item,
+                                displayColorPalette
+                              ),
+                              backgroundColor: `${getScheduleItemDisplayColor(
+                                item,
+                                displayColorPalette
+                              )}14`,
+                            }}
                           >
                             {item.title}
                           </div>
@@ -845,7 +1012,7 @@ export function ProjectAudienceSchedule({
           </div>
         </div>
       ) : (
-        <ProjectAudienceGantt items={sortedItems} />
+        <ProjectAudienceGantt items={sortedItems} projectId={projectId} />
       )}
     </section>
   )

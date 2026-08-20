@@ -51,6 +51,10 @@ export interface ScheduleTaskData {
   confirmationRequestedAt?: string | null
   confirmationRespondedAt?: string | null
   reminderSentAt?: string | null
+  proposedStartDate?: string | null
+  proposedWorkdays?: number | null
+  proposalNote?: string | null
+  proposalSubmittedAt?: string | null
   sortOrder: number
   createdAt: string
   updatedAt: string

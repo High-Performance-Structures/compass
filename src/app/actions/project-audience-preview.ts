@@ -73,14 +73,20 @@ export type AudienceScheduleItem = {
   readonly title: string
   readonly startDate: string
   readonly endDate: string
+  readonly workdays: number
   readonly status: string
   readonly phase: string
+  readonly displayColor: string | null
   readonly assignedTo: string | null
   readonly percentComplete: number
   readonly isMilestone: boolean
   readonly confirmationRequired: boolean
   readonly confirmationStatus: string
   readonly viewerCanConfirm: boolean
+  readonly proposedStartDate: string | null
+  readonly proposedWorkdays: number | null
+  readonly proposalNote: string | null
+  readonly proposalSubmittedAt: string | null
 }
 
 export type AudienceOperationItem = {
@@ -406,6 +412,7 @@ export async function getProjectAudiencePreview(
       title: scheduleTasks.title,
       startDate: scheduleTasks.startDate,
       endDate: scheduleTasks.endDateCalculated,
+      displayColor: scheduleTasks.displayColor,
       status: scheduleTasks.status,
       phase: scheduleTasks.phase,
       assignedTo: scheduleTasks.assignedTo,
@@ -420,6 +427,10 @@ export async function getProjectAudiencePreview(
       confirmationRequestedAt: scheduleTasks.confirmationRequestedAt,
       confirmationRespondedAt: scheduleTasks.confirmationRespondedAt,
       reminderSentAt: scheduleTasks.reminderSentAt,
+      proposedStartDate: scheduleTasks.proposedStartDate,
+      proposedWorkdays: scheduleTasks.proposedWorkdays,
+      proposalNote: scheduleTasks.proposalNote,
+      proposalSubmittedAt: scheduleTasks.proposalSubmittedAt,
     })
     .from(scheduleTasks)
     .where(eq(scheduleTasks.projectId, projectId))
@@ -441,49 +452,56 @@ export async function getProjectAudiencePreview(
   )
   const scheduleRowsUnsorted = publishedSchedule
     ? publishedSnapshot
-      ? publishedSnapshot.tasks.map((task) => ({
-          id: task.id,
-          title: task.title,
-          startDate: task.startDate,
-          endDate: task.endDateCalculated,
-          status: task.status,
-          phase: task.phase,
-          assignedTo: task.assignedTo,
-          percentComplete: task.percentComplete,
-          isMilestone: task.isMilestone,
-          workdays: task.workdays,
-          assignedUserId: task.assignedUserId,
-          ownerVisible: task.ownerVisible,
-          subVendorVisible: task.subVendorVisible,
-          confirmationRequired: task.confirmationRequired,
-          // Response state may update after publication, but only overlay it
-          // while the published assignee and requirement still match live.
-          confirmationStatus:
-            currentScheduleById.get(task.id)?.assignedUserId ===
-              task.assignedUserId &&
-            currentScheduleById.get(task.id)?.confirmationRequired ===
-              task.confirmationRequired
-              ? currentScheduleById.get(task.id)?.confirmationStatus ??
-                task.confirmationStatus
+      ? publishedSnapshot.tasks.map((task) => {
+          const currentTask = currentScheduleById.get(task.id)
+          // External dates always come from the immutable publication. Only
+          // response state may move live, and only while that publication
+          // still describes the current assignment and dates.
+          const canOverlayResponse =
+            currentTask?.assignedUserId === task.assignedUserId &&
+            currentTask.confirmationRequired === task.confirmationRequired &&
+            currentTask.startDate === task.startDate &&
+            currentTask.workdays === task.workdays
+          return {
+            id: task.id,
+            title: task.title,
+            startDate: task.startDate,
+            endDate: task.endDateCalculated,
+            displayColor: task.displayColor,
+            status: task.status,
+            phase: task.phase,
+            assignedTo: task.assignedTo,
+            percentComplete: task.percentComplete,
+            isMilestone: task.isMilestone,
+            workdays: task.workdays,
+            assignedUserId: task.assignedUserId,
+            ownerVisible: task.ownerVisible,
+            subVendorVisible: task.subVendorVisible,
+            confirmationRequired: task.confirmationRequired,
+            confirmationStatus: canOverlayResponse
+              ? currentTask.confirmationStatus
               : task.confirmationStatus,
-          confirmationRequestedAt: task.confirmationRequestedAt,
-          confirmationRespondedAt:
-            currentScheduleById.get(task.id)?.assignedUserId ===
-              task.assignedUserId &&
-            currentScheduleById.get(task.id)?.confirmationRequired ===
-              task.confirmationRequired
-              ? currentScheduleById.get(task.id)?.confirmationRespondedAt ??
-                task.confirmationRespondedAt
+            confirmationRequestedAt: task.confirmationRequestedAt,
+            confirmationRespondedAt: canOverlayResponse
+              ? currentTask.confirmationRespondedAt
               : task.confirmationRespondedAt,
-          reminderSentAt:
-            currentScheduleById.get(task.id)?.assignedUserId ===
-              task.assignedUserId &&
-            currentScheduleById.get(task.id)?.confirmationRequired ===
-              task.confirmationRequired
-              ? currentScheduleById.get(task.id)?.reminderSentAt ??
-                task.reminderSentAt
+            reminderSentAt: canOverlayResponse
+              ? currentTask.reminderSentAt
               : task.reminderSentAt,
-        }))
+            proposedStartDate: canOverlayResponse
+              ? currentTask.proposedStartDate
+              : task.proposedStartDate,
+            proposedWorkdays: canOverlayResponse
+              ? currentTask.proposedWorkdays
+              : task.proposedWorkdays,
+            proposalNote: canOverlayResponse
+              ? currentTask.proposalNote
+              : task.proposalNote,
+            proposalSubmittedAt: canOverlayResponse
+              ? currentTask.proposalSubmittedAt
+              : task.proposalSubmittedAt,
+          }
+        })
       : []
     : currentScheduleRows
   const scheduleRows = [...scheduleRowsUnsorted].sort(
@@ -672,19 +690,28 @@ export async function getProjectAudiencePreview(
     title: item.title,
     startDate: item.startDate,
     endDate: item.endDate,
+    workdays: item.workdays,
     status: item.status,
     phase: item.phase,
+    displayColor: item.displayColor,
     assignedTo: item.assignedTo,
     percentComplete: item.percentComplete,
     isMilestone: item.isMilestone,
     confirmationRequired: item.confirmationRequired,
     confirmationStatus: item.confirmationStatus,
-    viewerCanConfirm: canViewerConfirmScheduleTask({
+    viewerCanConfirm: audience === "sub_vendor" && canViewerConfirmScheduleTask({
       viewerIsInternal,
       viewerId: viewer.id,
       assignedUserId: item.assignedUserId,
       confirmationRequired: item.confirmationRequired,
     }),
+    proposedStartDate:
+      item.assignedUserId === viewer.id ? item.proposedStartDate : null,
+    proposedWorkdays:
+      item.assignedUserId === viewer.id ? item.proposedWorkdays : null,
+    proposalNote: item.assignedUserId === viewer.id ? item.proposalNote : null,
+    proposalSubmittedAt:
+      item.assignedUserId === viewer.id ? item.proposalSubmittedAt : null,
   })
   const audienceScheduleItems: readonly AudienceScheduleItem[] =
     ownerScheduleView === "phases"
@@ -693,6 +720,10 @@ export async function getProjectAudiencePreview(
           confirmationRequired: false,
           confirmationStatus: "not_requested",
           viewerCanConfirm: false,
+          proposedStartDate: null,
+          proposedWorkdays: null,
+          proposalNote: null,
+          proposalSubmittedAt: null,
         }))
       : audienceScheduleRows.map(visibleScheduleItem)
 
