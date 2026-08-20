@@ -32,6 +32,7 @@ import type {
 } from "@/lib/field/types"
 import { isTaskAssignedToFieldUser } from "@/lib/field/task-assignment"
 import { assertFieldProjectMembership } from "@/lib/field/project-access"
+import { orderDirectConversationsByActivity } from "@/lib/field/direct-conversations"
 import {
   isInternalStaffRole,
   userRoleLabel,
@@ -192,8 +193,8 @@ export async function getFieldProjectPacket(
     : []
   const channel = projectChannels[0] ?? null
   const directChannels = channelResult.success && channelResult.data
-    ? channelResult.data
-        .filter(
+    ? orderDirectConversationsByActivity(
+        channelResult.data.filter(
           (candidate) =>
             candidate.type === "text" &&
             candidate.isPrivate &&
@@ -201,8 +202,7 @@ export async function getFieldProjectPacket(
             candidate.archivedAt === null &&
             candidate.memberRole !== null
         )
-        .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
-        .slice(0, 10)
+      )
     : []
   const [messageResult, directConversationResults] = await Promise.all([
     channel ? getMessages(channel.id, { limit: 30 }) : null,
