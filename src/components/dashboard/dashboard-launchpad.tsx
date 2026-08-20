@@ -533,7 +533,7 @@ function DeskHero({
 
   return (
     <section className="grid min-h-52 overflow-hidden border-y border-border/70 bg-background sm:grid-cols-[minmax(10rem,0.8fr)_minmax(0,1.2fr)]">
-      <div className="relative min-h-40 overflow-hidden bg-muted">
+      <div className="group/desk-photo relative min-h-40 overflow-hidden bg-muted">
         {deskPhotoUrl && !deskPhotoFailed ? (
           <Image
             src={deskPhotoUrl}
@@ -550,7 +550,7 @@ function DeskHero({
           </div>
         )}
         {user ? (
-          <label className="absolute bottom-3 left-3 flex cursor-pointer items-center gap-1.5 border border-white/40 bg-black/55 px-2.5 py-1.5 text-xs font-medium text-white backdrop-blur-sm transition hover:bg-black/70">
+          <label className="pointer-events-none absolute bottom-3 left-3 flex cursor-pointer items-center gap-1.5 border border-white/40 bg-black/55 px-2.5 py-1.5 text-xs font-medium text-white opacity-0 backdrop-blur-sm transition hover:bg-black/70 group-hover/desk-photo:pointer-events-auto group-hover/desk-photo:opacity-100 group-focus-within/desk-photo:pointer-events-auto group-focus-within/desk-photo:opacity-100">
             <IconPhotoEdit className="size-3.5" />
             Change desk photo
             <input
