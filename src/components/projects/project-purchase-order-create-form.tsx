@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation"
 import {
   IconCheck,
   IconChevronDown,
+  IconPencil,
   IconPlus,
   IconShoppingCart,
   IconTrash,
@@ -13,8 +14,10 @@ import {
 import type { ProjectTaskAssigneeOption } from "@/app/actions/project-contacts"
 import {
   createPurchaseOrderRequest,
+  updatePurchaseOrderRequest,
   type CreatePurchaseOrderLineInput,
   type ProjectPurchaseOrderCostCodeOption,
+  type ProjectPurchaseOrderItem,
   type ProjectPurchaseOrderPhaseOption,
 } from "@/app/actions/project-operations"
 import { ProjectAssigneePicker } from "@/components/projects/project-assignee-picker"
@@ -213,6 +216,33 @@ function newLine(): DraftPurchaseOrderLine {
   }
 }
 
+function textFromNumber(value: number): string {
+  return Number.isFinite(value) ? String(value) : ""
+}
+
+function draftLinesFromPurchaseOrder(
+  purchaseOrder: ProjectPurchaseOrderItem | null
+): readonly DraftPurchaseOrderLine[] {
+  if (purchaseOrder === null || purchaseOrder.lines.length === 0) {
+    return [newLine()]
+  }
+
+  return purchaseOrder.lines.map((line) => ({
+    id: line.id,
+    description: line.description,
+    phaseCode: line.phaseCode ?? "",
+    costCode: line.costCode ?? "",
+    quantity: textFromNumber(line.quantity),
+    unitCost: textFromNumber(line.unitCost),
+    unit: line.unit ?? "",
+    amount:
+      line.amount === line.quantity * line.unitCost
+        ? ""
+        : textFromNumber(line.amount),
+    taxGroup: line.taxGroup ?? "",
+  }))
+}
+
 function numberFromText(value: string): number | null {
   const trimmed = value.replaceAll(",", "").trim()
   if (trimmed.length === 0) return null
@@ -270,25 +300,41 @@ function Field({
   )
 }
 
-export function ProjectPurchaseOrderCreateForm({
-  projectId,
-  contactOptions,
-  phaseOptions,
-  costCodeOptions,
-}: {
+type SharedPurchaseOrderFormProps = {
   readonly projectId: string
   readonly contactOptions: readonly ProjectTaskAssigneeOption[]
   readonly phaseOptions: readonly ProjectPurchaseOrderPhaseOption[]
   readonly costCodeOptions: readonly ProjectPurchaseOrderCostCodeOption[]
-}): React.ReactElement {
+}
+
+type PurchaseOrderFormProps = SharedPurchaseOrderFormProps &
+  (
+    | { readonly kind: "create" }
+    | {
+        readonly kind: "edit"
+        readonly purchaseOrder: ProjectPurchaseOrderItem
+      }
+  )
+
+function ProjectPurchaseOrderForm(
+  props: PurchaseOrderFormProps
+): React.ReactElement {
+  const { projectId, contactOptions, phaseOptions, costCodeOptions } = props
+  const purchaseOrder = props.kind === "edit" ? props.purchaseOrder : null
   const router = useRouter()
   const formRef = React.useRef<HTMLFormElement>(null)
-  const [lines, setLines] = React.useState<readonly DraftPurchaseOrderLine[]>([
-    newLine(),
-  ])
-  const [sageVendorId, setSageVendorId] = React.useState("")
-  const [companyName, setCompanyName] = React.useState("")
-  const [assigneeName, setAssigneeName] = React.useState("")
+  const [lines, setLines] = React.useState<readonly DraftPurchaseOrderLine[]>(
+    () => draftLinesFromPurchaseOrder(purchaseOrder)
+  )
+  const [sageVendorId, setSageVendorId] = React.useState(
+    purchaseOrder?.sageVendorId ?? ""
+  )
+  const [companyName, setCompanyName] = React.useState(
+    purchaseOrder?.companyName ?? ""
+  )
+  const [assigneeName, setAssigneeName] = React.useState(
+    purchaseOrder?.assigneeName ?? ""
+  )
   const [submitting, setSubmitting] = React.useState(false)
   const [message, setMessage] = React.useState<string | null>(null)
   const [open, setOpen] = React.useState(false)
@@ -334,6 +380,19 @@ export function ProjectPurchaseOrderCreateForm({
     )
   }
 
+  function handleOpenChange(nextOpen: boolean): void {
+    if (nextOpen) {
+      setMessage(null)
+      if (purchaseOrder !== null) {
+        setLines(draftLinesFromPurchaseOrder(purchaseOrder))
+        setSageVendorId(purchaseOrder.sageVendorId ?? "")
+        setCompanyName(purchaseOrder.companyName ?? "")
+        setAssigneeName(purchaseOrder.assigneeName ?? "")
+      }
+    }
+    setOpen(nextOpen)
+  }
+
   async function handleSubmit(
     event: React.FormEvent<HTMLFormElement>
   ): Promise<void> {
@@ -346,7 +405,7 @@ export function ProjectPurchaseOrderCreateForm({
 
     try {
       const formData = new FormData(form)
-      const result = await createPurchaseOrderRequest(projectId, {
+      const request = {
         title: String(formData.get("title") ?? ""),
         description: cleanText(String(formData.get("description") ?? "")),
         companyName: cleanText(companyName),
@@ -357,30 +416,47 @@ export function ProjectPurchaseOrderCreateForm({
         dueDate: cleanText(String(formData.get("dueDate") ?? "")),
         priority: String(formData.get("priority") ?? "normal"),
         lines: lines.map(toLineInput),
-      })
+      }
+      const result =
+        purchaseOrder === null
+          ? await createPurchaseOrderRequest(projectId, request)
+          : await updatePurchaseOrderRequest(projectId, purchaseOrder.id, {
+              ...request,
+              expectedUpdatedAt: purchaseOrder.updatedAt,
+            })
 
       if (!result.success) {
         throw new Error(result.error)
       }
 
-      form.reset()
-      setLines([newLine()])
-      setSageVendorId("")
-      setCompanyName("")
-      setAssigneeName("")
-      setMessage("P.O. request saved in Compass.")
-      setOpen(false)
-      router.push(
-        `/dashboard/projects/${projectId}/purchase-orders?created=${encodeURIComponent(
-          result.id
-        )}`
+      if (purchaseOrder === null) {
+        form.reset()
+        setLines([newLine()])
+        setSageVendorId("")
+        setCompanyName("")
+        setAssigneeName("")
+      }
+      setMessage(
+        purchaseOrder === null
+          ? "P.O. request saved in Compass."
+          : "Purchase order draft updated."
       )
+      setOpen(false)
+      if (purchaseOrder === null) {
+        router.push(
+          `/dashboard/projects/${projectId}/purchase-orders?created=${encodeURIComponent(
+            result.id
+          )}`
+        )
+      }
       router.refresh()
     } catch (error) {
       setMessage(
         error instanceof Error
           ? error.message
-          : "Could not stage the P.O. request."
+          : purchaseOrder === null
+            ? "Could not stage the P.O. request."
+            : "Could not update the purchase order draft."
       )
     } finally {
       setSubmitting(false)
@@ -388,19 +464,32 @@ export function ProjectPurchaseOrderCreateForm({
   }
 
   return (
-    <Sheet open={open} onOpenChange={setOpen}>
+    <Sheet open={open} onOpenChange={handleOpenChange}>
       <SheetTrigger asChild>
-        <Button type="button">
-          <IconPlus className="size-4" />
-          New PO
+        <Button
+          type="button"
+          variant={purchaseOrder === null ? "default" : "outline"}
+          size={purchaseOrder === null ? "default" : "sm"}
+        >
+          {purchaseOrder === null ? (
+            <IconPlus className="size-4" />
+          ) : (
+            <IconPencil className="size-4" />
+          )}
+          {purchaseOrder === null ? "New PO" : "Edit draft"}
         </Button>
       </SheetTrigger>
       <SheetContent className="w-[min(96vw,1180px)] overflow-y-auto sm:max-w-none">
         <SheetHeader className="border-b px-5 py-4">
-          <SheetTitle>Request Purchase Order</SheetTitle>
+          <SheetTitle>
+            {purchaseOrder === null
+              ? "Request Purchase Order"
+              : `Edit ${purchaseOrder.sourceRecordNumber ?? "Purchase Order"}`}
+          </SheetTitle>
           <SheetDescription>
-            Enter the vendor once, then code each purchase line for job tracking,
-            printing, supplier email, and optional accounting sync.
+            {purchaseOrder === null
+              ? "Enter the vendor once, then code each purchase line for job tracking, printing, supplier email, and optional accounting sync."
+              : "Update the draft header, delivery details, and individual line items before sending or accounting sync."}
           </SheetDescription>
         </SheetHeader>
         <form
@@ -419,6 +508,7 @@ export function ProjectPurchaseOrderCreateForm({
             <Input
               name="title"
               placeholder="ICF bracing rental"
+              defaultValue={purchaseOrder?.title ?? ""}
               required
               className={DOCUMENT_INPUT_CLASS}
             />
@@ -427,6 +517,7 @@ export function ProjectPurchaseOrderCreateForm({
             <Textarea
               name="description"
               placeholder="Overall scope, delivery notes, or billing context"
+              defaultValue={purchaseOrder?.description ?? ""}
               className={`min-h-24 ${DOCUMENT_INPUT_CLASS}`}
             />
           </Field>
@@ -463,6 +554,7 @@ export function ProjectPurchaseOrderCreateForm({
             <Field label="Ship to / delivery location">
               <Input
                 name="shipTo"
+                defaultValue={purchaseOrder?.sageShipTo ?? ""}
                 placeholder="Jobsite, office, or pickup"
                 className={DOCUMENT_INPUT_CLASS}
               />
@@ -471,6 +563,7 @@ export function ProjectPurchaseOrderCreateForm({
               <Input
                 name="orderDate"
                 type="date"
+                defaultValue={purchaseOrder?.sageOrderDate ?? ""}
                 className={DOCUMENT_INPUT_CLASS}
               />
             </Field>
@@ -478,13 +571,14 @@ export function ProjectPurchaseOrderCreateForm({
               <Input
                 name="dueDate"
                 type="date"
+                defaultValue={purchaseOrder?.dueDate ?? ""}
                 className={DOCUMENT_INPUT_CLASS}
               />
             </Field>
             <Field label="Priority">
               <select
                 name="priority"
-                defaultValue="normal"
+                defaultValue={purchaseOrder?.priority ?? "normal"}
                 className={DOCUMENT_SELECT_CLASS}
               >
                 <option value="normal">Normal priority</option>
@@ -653,11 +747,31 @@ export function ProjectPurchaseOrderCreateForm({
         <div className="flex justify-end">
           <Button type="submit" disabled={submitting}>
             <IconShoppingCart className="size-4" />
-            {submitting ? "Staging PO..." : "Create PO Request"}
+            {submitting
+              ? purchaseOrder === null
+                ? "Staging PO..."
+                : "Saving changes..."
+              : purchaseOrder === null
+                ? "Create PO Request"
+                : "Save changes"}
           </Button>
         </div>
       </form>
       </SheetContent>
     </Sheet>
   )
+}
+
+export function ProjectPurchaseOrderCreateForm(
+  props: SharedPurchaseOrderFormProps
+): React.ReactElement {
+  return <ProjectPurchaseOrderForm {...props} kind="create" />
+}
+
+export function ProjectPurchaseOrderEditForm(
+  props: SharedPurchaseOrderFormProps & {
+    readonly purchaseOrder: ProjectPurchaseOrderItem
+  }
+): React.ReactElement {
+  return <ProjectPurchaseOrderForm {...props} kind="edit" />
 }

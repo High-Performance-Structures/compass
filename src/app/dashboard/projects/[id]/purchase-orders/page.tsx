@@ -12,11 +12,17 @@ import {
   getProjectPurchaseOrders,
   type ProjectPurchaseOrderItem,
 } from "@/app/actions/project-operations"
-import { getProjectTaskAssigneeOptions } from "@/app/actions/project-contacts"
+import {
+  getProjectTaskAssigneeOptions,
+  type ProjectTaskAssigneeOption,
+} from "@/app/actions/project-contacts"
 import { getProjects } from "@/app/actions/projects"
 import { ProjectPurchaseOrderDeleteButton } from "@/components/projects/project-purchase-order-delete-button"
 import { ProjectPurchaseOrderEmailButton } from "@/components/projects/project-purchase-order-email-button"
-import { ProjectPurchaseOrderCreateForm } from "@/components/projects/project-purchase-order-create-form"
+import {
+  ProjectPurchaseOrderCreateForm,
+  ProjectPurchaseOrderEditForm,
+} from "@/components/projects/project-purchase-order-create-form"
 import { ProjectPurchaseOrderPrintButton } from "@/components/projects/project-purchase-order-print-button"
 import { ProjectOperationStatusSelect } from "@/components/projects/project-operation-status-select"
 import { ProjectTaskCreateButton } from "@/components/projects/project-task-create-button"
@@ -31,6 +37,7 @@ import {
   projectOperationMatchesStatusFilter,
   type ProjectOperationStatusFilter,
 } from "@/lib/project-operations/status"
+import { canEditPurchaseOrderDraft } from "@/lib/purchase-orders/draft-edit"
 import {
   projectBrandFor,
   type ProjectBrand,
@@ -108,6 +115,8 @@ function PurchaseOrderCard({
   isCreated,
   isFocused,
   taskAssigneeOptions,
+  phaseOptions,
+  costCodeOptions,
 }: {
   readonly brand: ProjectBrand
   readonly order: ProjectPurchaseOrderItem
@@ -115,9 +124,13 @@ function PurchaseOrderCard({
   readonly projectLabel: string
   readonly isCreated: boolean
   readonly isFocused: boolean
-  readonly taskAssigneeOptions: React.ComponentProps<
-    typeof ProjectTaskCreateButton
-  >["assigneeOptions"]
+  readonly taskAssigneeOptions: readonly ProjectTaskAssigneeOption[]
+  readonly phaseOptions: React.ComponentProps<
+    typeof ProjectPurchaseOrderEditForm
+  >["phaseOptions"]
+  readonly costCodeOptions: React.ComponentProps<
+    typeof ProjectPurchaseOrderEditForm
+  >["costCodeOptions"]
 }): React.ReactElement {
   return (
     <article
@@ -150,6 +163,15 @@ function PurchaseOrderCard({
             <Badge variant="outline">{label(order.syncStatus)}</Badge>
             {order.priority === "high" && (
               <Badge variant="destructive">High</Badge>
+            )}
+            {canEditPurchaseOrderDraft(order) && (
+              <ProjectPurchaseOrderEditForm
+                projectId={projectId}
+                purchaseOrder={order}
+                contactOptions={taskAssigneeOptions}
+                phaseOptions={phaseOptions}
+                costCodeOptions={costCodeOptions}
+              />
             )}
             <ProjectPurchaseOrderEmailButton
               projectId={projectId}
@@ -519,6 +541,8 @@ export default async function ProjectPurchaseOrdersPage({
               isCreated={order.id === createdPurchaseOrderId}
               isFocused={order.id === focusedPurchaseOrderId}
               taskAssigneeOptions={taskAssignees}
+              phaseOptions={purchaseOrderCodingOptions.phases}
+              costCodeOptions={purchaseOrderCodingOptions.costCodes}
             />
           ))
         ) : (
