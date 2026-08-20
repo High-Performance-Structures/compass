@@ -6,7 +6,6 @@ import {
   useEffect,
   useMemo,
   useRef,
-  useTransition,
   type UIEvent,
 } from "react"
 import {
@@ -68,12 +67,7 @@ import {
 } from "@/lib/schedule/gantt-transform"
 import type { DisplayItem, FrappeTask } from "@/lib/schedule/gantt-transform"
 import { updateTask } from "@/app/actions/schedule"
-import { updateGanttScrollMode } from "@/app/actions/user-schedule-preferences"
-import {
-  DEFAULT_GANTT_SCROLL_MODE,
-  type GanttScrollMode,
-  shouldSynchronizeGanttPanes,
-} from "@/lib/schedule/gantt-interaction-mode"
+import type { GanttScrollMode } from "@/lib/schedule/gantt-interaction-mode"
 import { countBusinessDays } from "@/lib/schedule/business-days"
 import { effectivePercentComplete } from "@/lib/schedule/progress"
 import {
@@ -101,8 +95,7 @@ import { projectScheduleLabel } from "@/lib/schedule/project-scope"
 import {
   centeredGanttRowScrollTop,
   canScrollGanttAxis,
-  ganttRowIndexForScrollTop,
-  lockWheelToDominantAxis,
+  ganttWheelIntent,
   nearestScheduleRowIndexForDate,
   normalizeWheelDelta,
   synchronizedScrollTop,
@@ -134,7 +127,6 @@ export function ScheduleGanttView({
   exceptions,
   assigneeOptions,
   projects = [],
-  ganttScrollMode = DEFAULT_GANTT_SCROLL_MODE,
   groupByPhase = false,
   onGroupByPhaseChange,
 }: ScheduleGanttViewProps) {
@@ -160,8 +152,6 @@ export function ScheduleGanttView({
   )
   const [focusedTaskId, setFocusedTaskId] = useState<string | null>(null)
   const [mobileView, setMobileView] = useState<"tasks" | "chart">("chart")
-  const [scrollMode, setScrollMode] = useState<GanttScrollMode>(ganttScrollMode)
-  const [isSavingScrollMode, startScrollModeTransition] = useTransition()
   const [panMode] = useState(false)
   const taskListRef = useRef<HTMLDivElement>(null)
   const ganttContainerRef = useRef<HTMLElement | null>(null)
@@ -169,9 +159,6 @@ export function ScheduleGanttView({
   const scrollStorageTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const scrollToTodayRef = useRef<(() => void) | null>(null)
   const scrollToDateRef = useRef<((date: string) => void) | null>(null)
-  const scrollTaskIntoViewRef = useRef<((taskId: string) => void) | null>(null)
-  const displayItemsRef = useRef<readonly DisplayItem[]>([])
-  const followedListItemRef = useRef<string | null>(null)
   const scrollRestoredProjectRef = useRef<string | null>(null)
   const preferenceScopeKey = projectId ?? "unified"
   const scrollStorageKey = `compass:schedule-scroll:${preferenceScopeKey}`
@@ -184,10 +171,6 @@ export function ScheduleGanttView({
   useEffect(() => {
     setPhaseGrouping(groupByPhase)
   }, [groupByPhase])
-
-  useEffect(() => {
-    setScrollMode(ganttScrollMode)
-  }, [ganttScrollMode])
 
   const [hasLoadedPalette, setHasLoadedPalette] = useState(false)
 
@@ -263,20 +246,6 @@ export function ScheduleGanttView({
     setColumnWidth(defaultWidths[mode])
   }
 
-  const handleScrollModeChange = (powerUser: boolean): void => {
-    const nextMode: GanttScrollMode = powerUser ? "power" : "default"
-    if (nextMode === scrollMode) return
-    const previousMode = scrollMode
-    setScrollMode(nextMode)
-    startScrollModeTransition(async () => {
-      const result = await updateGanttScrollMode(nextMode)
-      if (!result.success) {
-        setScrollMode(previousMode)
-        toast.error(result.error)
-      }
-    })
-  }
-
   const rememberScrollPosition = useCallback(
     (position: GanttScrollPosition) => {
       scrollPositionRef.current = position
@@ -325,51 +294,59 @@ export function ScheduleGanttView({
     // the task pane just as the timeline does so either side remains usable.
     const handleTaskListWheel = (event: WheelEvent) => {
       if (event.ctrlKey) return
-
-      const pageSize = Math.max(taskList.clientWidth, taskList.clientHeight)
-      const rawDeltaX =
-        event.shiftKey && event.deltaX === 0 ? event.deltaY : event.deltaX
-      const rawDeltaY =
-        event.shiftKey && event.deltaX === 0 ? 0 : event.deltaY
-      const locked = lockWheelToDominantAxis(
-        normalizeWheelDelta(rawDeltaX, event.deltaMode, pageSize),
-        normalizeWheelDelta(rawDeltaY, event.deltaMode, pageSize)
+      const intent = ganttWheelIntent(
+        event.deltaX,
+        event.deltaY,
+        event.shiftKey
       )
-      if (locked.deltaX === 0 && locked.deltaY === 0) return
-      const canScrollHorizontally = canScrollGanttAxis(
-        taskList.scrollLeft,
-        taskList.scrollWidth,
-        taskList.clientWidth,
-        locked.deltaX
+      if (!intent) return
+      const target =
+        intent.axis === "horizontal" ? ganttContainerRef.current : taskList
+      if (!target) return
+      const pageSize =
+        intent.axis === "vertical" ? target.clientHeight : target.clientWidth
+      const delta = normalizeWheelDelta(
+        intent.delta,
+        event.deltaMode,
+        pageSize
       )
-      const canScrollVertically = canScrollGanttAxis(
-        taskList.scrollTop,
-        taskList.scrollHeight,
-        taskList.clientHeight,
-        locked.deltaY
-      )
-      if (!canScrollHorizontally && !canScrollVertically) {
+      const canScroll =
+        intent.axis === "vertical"
+          ? canScrollGanttAxis(
+              target.scrollTop,
+              target.scrollHeight,
+              target.clientHeight,
+              delta
+            )
+          : canScrollGanttAxis(
+              target.scrollLeft,
+              target.scrollWidth,
+              target.clientWidth,
+              delta
+            )
+      if (!canScroll) {
         const workspace = taskList.closest<HTMLElement>(
           '[data-dashboard-scroll-region="schedule"]'
         )
         if (
+          intent.axis === "vertical" &&
           workspace &&
           canScrollGanttAxis(
             workspace.scrollTop,
             workspace.scrollHeight,
             workspace.clientHeight,
-            locked.deltaY
+            delta
           )
         ) {
           event.preventDefault()
-          workspace.scrollTop += locked.deltaY
+          workspace.scrollTop += delta
         }
         return
       }
 
       event.preventDefault()
-      taskList.scrollLeft += locked.deltaX
-      taskList.scrollTop += locked.deltaY
+      if (intent.axis === "vertical") target.scrollTop += delta
+      else target.scrollLeft += delta
     }
 
     taskList.addEventListener("wheel", handleTaskListWheel, {
@@ -426,7 +403,7 @@ export function ScheduleGanttView({
             container.scrollLeft = position.left
           }
           container.scrollTop = position.top
-          if (taskListRef.current && shouldSynchronizeGanttPanes(scrollMode)) {
+          if (taskListRef.current) {
             taskListRef.current.scrollTop = synchronizedScrollTop(
               position.top,
               container.scrollHeight,
@@ -438,14 +415,14 @@ export function ScheduleGanttView({
         })
       })
     },
-    [projectId, scrollMode, scrollStorageKey]
+    [projectId, scrollStorageKey]
   )
 
   const handleGanttScroll = useCallback(
     (position: GanttScrollPosition) => {
       const taskList = taskListRef.current
       const ganttContainer = ganttContainerRef.current
-      if (taskList && ganttContainer && shouldSynchronizeGanttPanes(scrollMode)) {
+      if (taskList && ganttContainer) {
         const synchronizedTop = synchronizedScrollTop(
           position.top,
           ganttContainer.scrollHeight,
@@ -459,14 +436,14 @@ export function ScheduleGanttView({
       }
       rememberScrollPosition(position)
     },
-    [rememberScrollPosition, scrollMode]
+    [rememberScrollPosition]
   )
 
   const handleTaskListScroll = useCallback(
     (event: UIEvent<HTMLDivElement>) => {
       const top = event.currentTarget.scrollTop
       const ganttContainer = ganttContainerRef.current
-      if (ganttContainer && shouldSynchronizeGanttPanes(scrollMode)) {
+      if (ganttContainer) {
         const synchronizedTop = synchronizedScrollTop(
           top,
           event.currentTarget.scrollHeight,
@@ -478,22 +455,6 @@ export function ScheduleGanttView({
           ganttContainer.scrollTop = synchronizedTop
         }
 
-        const itemIndex = ganttRowIndexForScrollTop(
-          top,
-          displayItemsRef.current.length
-        )
-        const item =
-          itemIndex === null ? undefined : displayItemsRef.current[itemIndex]
-        const itemKey =
-          item?.type === "task" ? item.task.id : item?.phase ?? null
-        if (item && itemKey && followedListItemRef.current !== itemKey) {
-          followedListItemRef.current = itemKey
-          if (item.type === "task") {
-            scrollTaskIntoViewRef.current?.(item.task.id)
-          } else {
-            scrollToDateRef.current?.(item.group.startDate)
-          }
-        }
       }
       rememberScrollPosition({
         left: ganttContainer?.scrollLeft ?? scrollPositionRef.current.left,
@@ -503,7 +464,7 @@ export function ScheduleGanttView({
           : {}),
       })
     },
-    [rememberScrollPosition, scrollMode]
+    [rememberScrollPosition]
   )
 
   const openTaskEditor = useCallback(
@@ -597,8 +558,6 @@ export function ScheduleGanttView({
     phaseGrouping,
     projectById,
   ])
-  displayItemsRef.current = displayItems
-
   const togglePhase = (phase: string) => {
     setCollapsedPhases((prev) => {
       const next = new Set(prev)
@@ -655,13 +614,6 @@ export function ScheduleGanttView({
     []
   )
 
-  const handleTaskVisibilityReady = useCallback(
-    (handler: ((taskId: string) => void) | null) => {
-      scrollTaskIntoViewRef.current = handler
-    },
-    []
-  )
-
   const scrollToToday = useCallback(() => {
     const ganttContainer = ganttContainerRef.current
     if (!ganttContainer) {
@@ -696,7 +648,7 @@ export function ScheduleGanttView({
     ganttContainer.scrollTop = ganttTop
 
     const taskList = taskListRef.current
-    if (taskList && shouldSynchronizeGanttPanes(scrollMode)) {
+    if (taskList) {
       taskList.scrollTop = synchronizedScrollTop(
         ganttTop,
         ganttContainer.scrollHeight,
@@ -709,15 +661,12 @@ export function ScheduleGanttView({
     const targetItem = displayItems[rowIndex]
     if (targetItem?.type === "task") {
       setFocusedTaskId(targetItem.task.id)
-      followedListItemRef.current = targetItem.task.id
-    } else if (targetItem) {
-      followedListItemRef.current = targetItem.phase
     }
 
     // Start the smooth horizontal movement last. Assigning scrollTop after
     // scrollTo({ behavior: "smooth" }) cancels that animation in browsers.
     scrollToTodayRef.current?.()
-  }, [displayItems, scrollMode])
+  }, [displayItems])
 
   const taskTable = (
     <Table className="table-fixed">
@@ -1083,26 +1032,6 @@ export function ScheduleGanttView({
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-48">
               <div className="space-y-2 px-2 py-1.5">
-                <div className="border-b pb-2">
-                  <div className="flex items-center justify-between gap-2">
-                    <div>
-                      <span className="text-xs">Power-user scrolling</span>
-                      <p className="text-[10px] leading-snug text-muted-foreground">
-                        Scroll task list and chart independently.
-                      </p>
-                    </div>
-                    <Switch
-                      aria-label="Use power-user Gantt scrolling"
-                      checked={scrollMode === "power"}
-                      disabled={isSavingScrollMode}
-                      onCheckedChange={handleScrollModeChange}
-                      className="scale-75"
-                    />
-                  </div>
-                  <p className="mt-1 text-[10px] leading-snug text-muted-foreground">
-                    Default keeps rows aligned. Shift + wheel pans the timeline horizontally in either mode.
-                  </p>
-                </div>
                 <div className="flex items-center justify-between">
                   <span className="text-xs">Group by Phase</span>
                   <Switch
@@ -1151,7 +1080,6 @@ export function ScheduleGanttView({
                 onScrollPositionChange={handleGanttScroll}
                 onTodayScrollReady={handleTodayScrollReady}
                 onDateScrollReady={handleDateScrollReady}
-                onTaskVisibilityReady={handleTaskVisibilityReady}
               />
               {scheduleKey}
             </div>
@@ -1190,7 +1118,6 @@ export function ScheduleGanttView({
                 onScrollPositionChange={handleGanttScroll}
                 onTodayScrollReady={handleTodayScrollReady}
                 onDateScrollReady={handleDateScrollReady}
-                onTaskVisibilityReady={handleTaskVisibilityReady}
               />
               {scheduleKey}
             </div>

@@ -5,6 +5,7 @@ import {
   centeredGanttRowScrollTop,
   centeredTimelineScrollLeft,
   dominantScrollAxis,
+  ganttWheelIntent,
   ganttRowIndexForScrollTop,
   lockWheelToDominantAxis,
   nearestScheduleRowIndexForDate,
@@ -31,6 +32,28 @@ describe("Gantt dominant-axis scrolling", () => {
   it("chooses one axis for diagonal drag gestures", () => {
     expect(dominantScrollAxis(18, 31)).toBe("vertical")
     expect(dominantScrollAxis(42, 12)).toBe("horizontal")
+  })
+
+  it("keeps ordinary wheel scrolling vertical despite horizontal noise", () => {
+    expect(ganttWheelIntent(72, 6, false)).toEqual({
+      axis: "vertical",
+      delta: 6,
+    })
+  })
+
+  it("uses Shift+wheel for horizontal timeline navigation", () => {
+    expect(ganttWheelIntent(0, 64, true)).toEqual({
+      axis: "horizontal",
+      delta: 64,
+    })
+    expect(ganttWheelIntent(-72, 6, true)).toEqual({
+      axis: "horizontal",
+      delta: -72,
+    })
+  })
+
+  it("ignores horizontal trackpad movement without Shift", () => {
+    expect(ganttWheelIntent(72, 0, false)).toBeNull()
   })
 
   it("normalizes line and page wheel deltas", () => {
