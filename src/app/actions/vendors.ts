@@ -1,13 +1,15 @@
 "use server"
 
 import { getCloudflareContext } from "@/lib/db"
-import { eq, and } from "drizzle-orm"
+import { eq, and, asc, desc, inArray, isNull, or } from "drizzle-orm"
 import { getDb } from "@/db"
 import {
   projectContacts,
-  projects,
+  organizationMembers,
+  users,
+  vendorContacts,
   vendors,
-  type NewVendor,
+  type Vendor,
 } from "@/db/schema"
 import { requireAuth } from "@/lib/auth"
 import { requirePermission } from "@/lib/permissions"
@@ -18,6 +20,8 @@ import {
   contactIdentityChanged,
   directoryIdentityManagedByActiveUser,
 } from "@/lib/contact-identity-ownership"
+import { userRoleLabel } from "@/lib/user-roles"
+import { uniqueInternalStaffMembers } from "@/lib/internal-contact-directory"
 
 export type InternalDirectoryContact = {
   readonly id: string
@@ -29,144 +33,91 @@ export type InternalDirectoryContact = {
   readonly sourceLabel: string
 }
 
-const DEFAULT_INTERNAL_DIRECTORY_CONTACTS: readonly InternalDirectoryContact[] = [
-  {
-    id: "internal-department-hps",
-    name: "High Performance Structures Inc.",
-    company: "High Performance Structures Inc.",
-    role: "Internal department",
-    email: null,
-    phone: null,
-    sourceLabel: "Compass seed",
-  },
-  {
-    id: "internal-department-orc",
-    name: "Open Range Construction",
-    company: "Open Range Construction",
-    role: "Internal department",
-    email: null,
-    phone: null,
-    sourceLabel: "Compass seed",
-  },
-  {
-    id: "internal-department-nutech",
-    name: "Nu-Tech Systems",
-    company: "Nu-Tech Systems",
-    role: "ICF sales and bracing rental",
-    email: null,
-    phone: null,
-    sourceLabel: "Compass seed",
-  },
-  {
-    id: "internal-employee-martine-vogel",
-    name: "Martine Vogel",
-    company: "High Performance Structures",
-    role: "Admin-owner",
-    email: null,
-    phone: null,
-    sourceLabel: "Sage roster",
-  },
-  {
-    id: "internal-employee-daniel-vogel",
-    name: "Daniel Vogel",
-    company: "High Performance Structures",
-    role: "Project Manager / Field production",
-    email: null,
-    phone: null,
-    sourceLabel: "Sage roster",
-  },
-  {
-    id: "internal-employee-sarah-cowman",
-    name: "Sarah Cowman",
-    company: "High Performance Structures",
-    role: "Senior Field Crew",
-    email: null,
-    phone: null,
-    sourceLabel: "Sage roster",
-  },
-  {
-    id: "internal-employee-stanley-platt",
-    name: "Stanley Platt",
-    company: "High Performance Structures",
-    role: "Field Superintendent",
-    email: null,
-    phone: null,
-    sourceLabel: "Sage roster",
-  },
-  {
-    id: "internal-employee-sylvi-vogel",
-    name: "Sylvi Vogel",
-    company: "High Performance Structures",
-    role: "Architectural Designer / Design & Print",
-    email: null,
-    phone: null,
-    sourceLabel: "Sage roster",
-  },
-  {
-    id: "internal-employee-cassandra-rodriguez-v",
-    name: "Cassandra Rodriguez-V",
-    company: "High Performance Structures",
-    role: "Project Administrator / Accounting Coordinator",
-    email: null,
-    phone: null,
-    sourceLabel: "Sage roster",
-  },
-  {
-    id: "internal-employee-wesley-jones",
-    name: "Wesley Jones",
-    company: "High Performance Structures",
-    role: "Assistant Project Manager",
-    email: null,
-    phone: null,
-    sourceLabel: "Sage roster",
-  },
-  {
-    id: "internal-employee-rebekah-jones",
-    name: "Rebekah Jones",
-    company: "High Performance Structures",
-    role: "Office Manager / Business Development",
-    email: null,
-    phone: null,
-    sourceLabel: "Sage roster",
-  },
-  {
-    id: "internal-employee-isabel-araguz",
-    name: "Isabel Araguz",
-    company: "High Performance Structures",
-    role: "Field Crew",
-    email: null,
-    phone: null,
-    sourceLabel: "Sage roster",
-  },
-]
-
-function normalizeInternalContactKey(value: string): string {
-  return value
-    .trim()
-    .toLowerCase()
-    .replace(/&/g, "and")
-    .replace(/[^a-z0-9]+/g, " ")
-    .replace(/\s+/g, " ")
-    .trim()
+export type VendorContactItem = {
+  readonly id: string
+  readonly vendorId: string
+  readonly name: string
+  readonly title: string | null
+  readonly email: string | null
+  readonly phone: string | null
+  readonly isPrimary: boolean
+  readonly active: boolean
+  readonly sourceSystem: string
 }
 
-function internalSourceLabel(sourceSystem: string): string {
-  if (sourceSystem.includes("sage")) return "Sage"
-  if (sourceSystem === "buildertrend") return "Buildertrend"
-  return "Compass"
+export type VendorDirectoryCompany = Vendor & {
+  readonly contacts: readonly VendorContactItem[]
 }
 
-function isSeededInternalDepartmentName(value: string): boolean {
-  const normalized = normalizeInternalContactKey(value)
-  return (
-    normalized === "hps subcontractor" ||
-    normalized.includes("high performance structures") ||
-    normalized.includes("open range construction") ||
-    normalized.includes("nu tech")
-  )
+export type VendorContactMutationInput = {
+  readonly id: string | null
+  readonly name: string
+  readonly title: string
+  readonly email: string
+  readonly phone: string
+  readonly isPrimary: boolean
 }
 
-export async function getVendors() {
+export type VendorCompanyMutationInput = {
+  readonly name: string
+  readonly category: string
+  readonly email: string
+  readonly phone: string
+  readonly address: string
+  readonly contacts?: readonly VendorContactMutationInput[]
+}
+
+export type VendorCompanyUpdateInput = {
+  readonly name?: string
+  readonly category?: string
+  readonly email?: string | null
+  readonly phone?: string | null
+  readonly address?: string | null
+  readonly contacts?: readonly VendorContactMutationInput[]
+}
+
+export type VendorMutationResult =
+  | { readonly success: true; readonly id: string }
+  | { readonly success: false; readonly error: string }
+
+export type VendorUpdateResult =
+  | { readonly success: true }
+  | { readonly success: false; readonly error: string }
+
+export type VendorContactMutationResult =
+  | { readonly success: true; readonly contact: VendorContactItem }
+  | { readonly success: false; readonly error: string }
+
+function nullableText(value: string): string | null {
+  const normalized = value.trim()
+  return normalized.length > 0 ? normalized : null
+}
+
+function nullableOptionalText(value: string | null | undefined): string | null {
+  return value ? nullableText(value) : null
+}
+
+function normalizedContactInputs(
+  contacts: readonly VendorContactMutationInput[]
+): readonly VendorContactMutationInput[] {
+  const normalized = contacts
+    .map((contact) => ({
+      ...contact,
+      name: contact.name.trim(),
+      title: contact.title.trim(),
+      email: contact.email.trim().toLowerCase(),
+      phone: contact.phone.trim(),
+    }))
+    .filter((contact) => contact.name.length > 0)
+  const primaryIndex = normalized.findIndex((contact) => contact.isPrimary)
+
+  return normalized.map((contact, index) => ({
+    ...contact,
+    isPrimary: primaryIndex >= 0 ? index === primaryIndex : index === 0,
+  }))
+}
+
+export async function getVendors(): Promise<VendorDirectoryCompany[]> {
   const user = await requireAuth()
   requirePermission(user, "vendor", "read")
   const orgId = requireOrg(user)
@@ -174,12 +125,55 @@ export async function getVendors() {
   const { env } = await getCloudflareContext()
   const db = getDb(env.DB)
 
-  return db
-    .select()
-    .from(vendors)
-    .where(
-      and(eq(vendors.organizationId, orgId), eq(vendors.directoryStatus, "active"))
-    )
+  const [vendorRows, contactRows] = await Promise.all([
+    db
+      .select()
+      .from(vendors)
+      .where(
+        and(
+          eq(vendors.organizationId, orgId),
+          eq(vendors.directoryStatus, "active")
+        )
+      )
+      .orderBy(asc(vendors.name)),
+    db
+      .select({
+        id: vendorContacts.id,
+        vendorId: vendorContacts.vendorId,
+        name: vendorContacts.name,
+        title: vendorContacts.title,
+        email: vendorContacts.email,
+        phone: vendorContacts.phone,
+        isPrimary: vendorContacts.isPrimary,
+        active: vendorContacts.active,
+        sourceSystem: vendorContacts.sourceSystem,
+      })
+      .from(vendorContacts)
+      .innerJoin(vendors, eq(vendors.id, vendorContacts.vendorId))
+      .where(
+        and(
+          eq(vendors.organizationId, orgId),
+          eq(vendors.directoryStatus, "active"),
+          eq(vendorContacts.active, true)
+        )
+      )
+      .orderBy(
+        asc(vendorContacts.vendorId),
+        desc(vendorContacts.isPrimary),
+        asc(vendorContacts.name)
+      ),
+  ])
+  const contactsByVendor = new Map<string, VendorContactItem[]>()
+  for (const contact of contactRows) {
+    const current = contactsByVendor.get(contact.vendorId) ?? []
+    current.push(contact)
+    contactsByVendor.set(contact.vendorId, current)
+  }
+
+  return vendorRows.map((vendor) => ({
+    ...vendor,
+    contacts: contactsByVendor.get(vendor.id) ?? [],
+  }))
 }
 
 export async function getInternalDirectoryContacts(): Promise<
@@ -192,92 +186,42 @@ export async function getInternalDirectoryContacts(): Promise<
   const { env } = await getCloudflareContext()
   const db = getDb(env.DB)
 
-  const internalVendors = await db
+  const teamRows = await db
     .select({
-      id: vendors.id,
-      name: vendors.name,
-      category: vendors.category,
-      email: vendors.email,
-      phone: vendors.phone,
-      sourceSystem: vendors.sourceSystem,
+      id: users.id,
+      email: users.email,
+      displayName: users.displayName,
+      firstName: users.firstName,
+      lastName: users.lastName,
+      phone: users.phone,
+      role: organizationMembers.role,
     })
-    .from(vendors)
+    .from(organizationMembers)
+    .innerJoin(users, eq(users.id, organizationMembers.userId))
     .where(
       and(
-        eq(vendors.organizationId, orgId),
-        eq(vendors.directoryStatus, "active"),
-        eq(vendors.category, "Internal")
+        eq(organizationMembers.organizationId, orgId),
+        eq(users.isActive, true)
       )
     )
 
-  const internalProjectContacts = await db
-    .select({
-      id: projectContacts.id,
-      name: projectContacts.displayName,
-      company: projectContacts.companyName,
-      role: projectContacts.role,
-      email: projectContacts.email,
-      phone: projectContacts.phone,
-      sourceSystem: projectContacts.sourceSystem,
-    })
-    .from(projectContacts)
-    .innerJoin(projects, eq(projects.id, projectContacts.projectId))
-    .where(
-      and(
-        eq(projects.organizationId, orgId),
-        eq(projectContacts.contactType, "internal"),
-        eq(projectContacts.active, true)
-      )
-    )
-
-  const contacts = new Map<string, InternalDirectoryContact>()
-
-  for (const contact of DEFAULT_INTERNAL_DIRECTORY_CONTACTS) {
-    const key = normalizeInternalContactKey(
-      [contact.name, contact.company ?? "", contact.email ?? ""].join("|")
-    )
-    contacts.set(key, contact)
-  }
-
-  for (const vendor of internalVendors) {
-    if (isSeededInternalDepartmentName(vendor.name)) continue
-
-    const key = normalizeInternalContactKey(
-      [vendor.name, vendor.email ?? ""].join("|")
-    )
-    contacts.set(key, {
-      id: `vendor-${vendor.id}`,
-      name: vendor.name,
-      company: vendor.name,
-      role: vendor.category,
-      email: vendor.email,
-      phone: vendor.phone,
-      sourceLabel: internalSourceLabel(vendor.sourceSystem),
+  const contacts: InternalDirectoryContact[] = []
+  for (const member of uniqueInternalStaffMembers(teamRows)) {
+    const fullName = [member.firstName, member.lastName]
+      .filter((part): part is string => Boolean(part?.trim()))
+      .join(" ")
+    contacts.push({
+      id: member.id,
+      name: member.displayName?.trim() || fullName || member.email,
+      company: null,
+      role: userRoleLabel(member.role),
+      email: member.email,
+      phone: member.phone,
+      sourceLabel: "Settings team",
     })
   }
 
-  for (const contact of internalProjectContacts) {
-    if (isSeededInternalDepartmentName(contact.name)) continue
-
-    const key = normalizeInternalContactKey(
-      [contact.name, contact.company ?? "", contact.email ?? ""].join("|")
-    )
-    if (contacts.has(key)) continue
-
-    contacts.set(key, {
-      id: `project-contact-${contact.id}`,
-      name: contact.name,
-      company: contact.company,
-      role: contact.role,
-      email: contact.email,
-      phone: contact.phone,
-      sourceLabel: internalSourceLabel(contact.sourceSystem),
-    })
-  }
-
-  return Array.from(contacts.values()).sort((left, right) =>
-    left.name.localeCompare(right.name)
-  )
+  return contacts.sort((left, right) => left.name.localeCompare(right.name))
 }
 
 export async function getVendor(id: string) {
@@ -298,8 +242,8 @@ export async function getVendor(id: string) {
 }
 
 export async function createVendor(
-  data: Omit<NewVendor, "id" | "createdAt" | "updatedAt" | "organizationId">
-) {
+  data: VendorCompanyMutationInput
+): Promise<VendorMutationResult> {
   try {
     const user = await requireAuth()
     if (isDemoUser(user.id)) {
@@ -311,18 +255,46 @@ export async function createVendor(
     const { env } = await getCloudflareContext()
     const db = getDb(env.DB)
 
+    const name = data.name.trim()
+    const category = data.category.trim()
+    if (!name) return { success: false, error: "Vendor company name is required" }
+    if (!category) return { success: false, error: "Vendor category is required" }
+
     const now = new Date().toISOString()
     const id = crypto.randomUUID()
+    const contactInputs = normalizedContactInputs(data.contacts ?? [])
 
     await db.insert(vendors).values({
       id,
       organizationId: orgId,
-      ...data,
+      name,
+      category,
+      email: nullableText(data.email),
+      phone: nullableText(data.phone),
+      address: nullableText(data.address),
       createdAt: now,
       updatedAt: now,
     })
+    for (const contact of contactInputs) {
+      await db.insert(vendorContacts).values({
+        id: crypto.randomUUID(),
+        vendorId: id,
+        name: contact.name,
+        title: nullableText(contact.title),
+        email: nullableText(contact.email),
+        phone: nullableText(contact.phone),
+        isPrimary: contact.isPrimary,
+        active: true,
+        sourceSystem: "manual",
+        sourceRecordId: null,
+        createdAt: now,
+        updatedAt: now,
+      })
+    }
 
     revalidatePath("/dashboard/vendors")
+    revalidatePath("/dashboard/contacts")
+    revalidatePath("/dashboard/projects", "layout")
     return { success: true, id }
   } catch (err) {
     return {
@@ -335,8 +307,8 @@ export async function createVendor(
 
 export async function updateVendor(
   id: string,
-  data: Partial<NewVendor>
-) {
+  data: VendorCompanyUpdateInput
+): Promise<VendorUpdateResult> {
   try {
     const user = await requireAuth()
     if (isDemoUser(user.id)) {
@@ -356,10 +328,23 @@ export async function updateVendor(
       .get()
     if (!existing) return { success: false, error: "Vendor not found" }
 
+    const name = data.name?.trim() ?? existing.name
+    const category = data.category?.trim() ?? existing.category
+    if (!name) return { success: false, error: "Vendor company name is required" }
+    if (!category) return { success: false, error: "Vendor category is required" }
     const nextIdentity = {
-      email: data.email === undefined ? existing.email : data.email,
-      phone: data.phone === undefined ? existing.phone : data.phone,
-      address: data.address === undefined ? existing.address : data.address,
+      email:
+        data.email === undefined
+          ? existing.email
+          : nullableOptionalText(data.email),
+      phone:
+        data.phone === undefined
+          ? existing.phone
+          : nullableOptionalText(data.phone),
+      address:
+        data.address === undefined
+          ? existing.address
+          : nullableOptionalText(data.address),
     }
     const identityChanged = contactIdentityChanged(existing, nextIdentity)
     if (
@@ -378,22 +363,179 @@ export async function updateVendor(
       }
     }
 
+    const contactInputs = normalizedContactInputs(data.contacts ?? [])
+    const existingContacts =
+      data.contacts === undefined
+        ? []
+        : await db
+            .select()
+            .from(vendorContacts)
+            .where(eq(vendorContacts.vendorId, id))
+    const existingById = new Map(
+      existingContacts.map((contact) => [contact.id, contact])
+    )
+    for (const contact of contactInputs) {
+      const existingContact = contact.id
+        ? existingById.get(contact.id)
+        : undefined
+      if (contact.id && !existingContact) {
+        return { success: false, error: "Vendor contact not found" }
+      }
+      if (
+        existingContact &&
+        contactIdentityChanged(
+          {
+            email: existingContact.email,
+            phone: existingContact.phone,
+            address: null,
+          },
+          {
+            email: nullableText(contact.email),
+            phone: nullableText(contact.phone),
+            address: null,
+          }
+        ) &&
+        (await directoryIdentityManagedByActiveUser({
+          db,
+          organizationId: orgId,
+          entityType: "vendor_contact",
+          entityId: existingContact.id,
+        }))
+      ) {
+        return {
+          success: false,
+          error: `${existingContact.name} manages their own email and phone in Compass.`,
+        }
+      }
+    }
+    const submittedExistingIds = new Set(
+      contactInputs.flatMap((contact) => (contact.id ? [contact.id] : []))
+    )
+    const removedContacts = existingContacts.filter(
+      (contact) => contact.active && !submittedExistingIds.has(contact.id)
+    )
+    for (const removedContact of removedContacts) {
+      if (
+        await directoryIdentityManagedByActiveUser({
+          db,
+          organizationId: orgId,
+          entityType: "vendor_contact",
+          entityId: removedContact.id,
+        })
+      ) {
+        return {
+          success: false,
+          error: `${removedContact.name} is an active Compass user and cannot be removed from this vendor company.`,
+        }
+      }
+    }
+
     const updatedAt = new Date().toISOString()
-    await db.batch([
-      db
-        .update(vendors)
-        .set({ ...data, updatedAt })
-        .where(and(eq(vendors.id, id), eq(vendors.organizationId, orgId))),
-      db
-        .update(projectContacts)
-        .set({ ...nextIdentity, updatedAt })
-        .where(
-          and(
-            eq(projectContacts.sourceEntityType, "vendor"),
-            eq(projectContacts.sourceEntityId, id)
+    await db
+      .update(vendors)
+      .set({ name, category, ...nextIdentity, updatedAt })
+      .where(and(eq(vendors.id, id), eq(vendors.organizationId, orgId)))
+    await db
+      .update(projectContacts)
+      .set({ companyName: name, updatedAt })
+      .where(eq(projectContacts.vendorId, id))
+    await db
+      .update(projectContacts)
+      .set({ ...nextIdentity, updatedAt })
+      .where(
+        and(
+          eq(projectContacts.sourceEntityType, "vendor"),
+          eq(projectContacts.sourceEntityId, id),
+          isNull(projectContacts.vendorContactId)
+        )
+      )
+
+    if (data.contacts === undefined) {
+      revalidatePath("/dashboard/vendors")
+      revalidatePath("/dashboard/contacts")
+      revalidatePath("/dashboard/projects", "layout")
+      return { success: true }
+    }
+
+    const retainedIds = new Set<string>()
+    await db
+      .update(vendorContacts)
+      .set({ isPrimary: false, updatedAt })
+      .where(eq(vendorContacts.vendorId, id))
+
+    for (const contact of contactInputs) {
+      const existingContact = contact.id ? existingById.get(contact.id) : undefined
+      const identity = {
+        email: nullableText(contact.email),
+        phone: nullableText(contact.phone),
+        address: null,
+      }
+
+      const contactId = existingContact?.id ?? crypto.randomUUID()
+      retainedIds.add(contactId)
+      if (existingContact) {
+        await db
+          .update(vendorContacts)
+          .set({
+            name: contact.name,
+            title: nullableText(contact.title),
+            email: identity.email,
+            phone: identity.phone,
+            isPrimary: contact.isPrimary,
+            active: true,
+            updatedAt,
+          })
+          .where(
+            and(
+              eq(vendorContacts.id, contactId),
+              eq(vendorContacts.vendorId, id)
+            )
           )
-        ),
-    ])
+      } else {
+        await db.insert(vendorContacts).values({
+          id: contactId,
+          vendorId: id,
+          name: contact.name,
+          title: nullableText(contact.title),
+          email: identity.email,
+          phone: identity.phone,
+          isPrimary: contact.isPrimary,
+          active: true,
+          sourceSystem: "manual",
+          sourceRecordId: null,
+          createdAt: updatedAt,
+          updatedAt,
+        })
+      }
+      await db
+        .update(projectContacts)
+        .set({
+          displayName: contact.name,
+          companyName: name,
+          email: identity.email,
+          phone: identity.phone,
+          updatedAt,
+        })
+        .where(
+          or(
+            eq(projectContacts.vendorContactId, contactId),
+            and(
+              eq(projectContacts.sourceEntityType, "vendor_contact"),
+              eq(projectContacts.sourceEntityId, contactId)
+            )
+          )
+        )
+    }
+
+    const removedIds = existingContacts
+      .map((contact) => contact.id)
+      .filter((contactId) => !retainedIds.has(contactId))
+    if (removedIds.length > 0) {
+      await db
+        .update(vendorContacts)
+        .set({ active: false, isPrimary: false, updatedAt })
+        .where(inArray(vendorContacts.id, removedIds))
+    }
 
     revalidatePath("/dashboard/vendors")
     revalidatePath("/dashboard/contacts")
@@ -405,6 +547,67 @@ export async function updateVendor(
       error:
         err instanceof Error ? err.message : "Failed to update vendor",
     }
+  }
+}
+
+export async function createVendorContact(
+  vendorId: string,
+  input: VendorContactMutationInput
+): Promise<VendorContactMutationResult> {
+  try {
+    const user = await requireAuth()
+    if (isDemoUser(user.id)) return { success: false, error: "DEMO_READ_ONLY" }
+    requirePermission(user, "vendor", "update")
+    const orgId = requireOrg(user)
+    const name = input.name.trim()
+    if (!name) return { success: false, error: "Contact name is required" }
+
+    const { env } = await getCloudflareContext()
+    const db = getDb(env.DB)
+    const vendor = await db
+      .select({ id: vendors.id })
+      .from(vendors)
+      .where(
+        and(
+          eq(vendors.id, vendorId),
+          eq(vendors.organizationId, orgId),
+          eq(vendors.directoryStatus, "active")
+        )
+      )
+      .get()
+    if (!vendor) return { success: false, error: "Vendor company not found" }
+
+    const now = new Date().toISOString()
+    const id = crypto.randomUUID()
+    if (input.isPrimary) {
+      await db
+        .update(vendorContacts)
+        .set({ isPrimary: false, updatedAt: now })
+        .where(eq(vendorContacts.vendorId, vendorId))
+    }
+    const contact: VendorContactItem = {
+      id,
+      vendorId,
+      name,
+      title: nullableText(input.title),
+      email: nullableText(input.email),
+      phone: nullableText(input.phone),
+      isPrimary: input.isPrimary,
+      active: true,
+      sourceSystem: "manual",
+    }
+    await db.insert(vendorContacts).values({
+      ...contact,
+      sourceRecordId: null,
+      createdAt: now,
+      updatedAt: now,
+    })
+    revalidatePath("/dashboard/contacts")
+    revalidatePath("/dashboard/projects", "layout")
+    return { success: true, contact }
+  } catch (error) {
+    console.error("Failed to create vendor contact", error)
+    return { success: false, error: "Failed to create vendor contact" }
   }
 }
 

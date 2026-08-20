@@ -20,8 +20,10 @@ import {
   updateVendor,
   deleteVendor,
   type InternalDirectoryContact,
+  type VendorCompanyMutationInput,
+  type VendorDirectoryCompany,
 } from "@/app/actions/vendors"
-import type { Customer, Vendor } from "@/db/schema"
+import type { Customer } from "@/db/schema"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -55,7 +57,7 @@ function toContactsTab(value: string | null): Tab {
   return "customers"
 }
 
-function isInternalVendor(vendor: Vendor): boolean {
+function isInternalVendor(vendor: VendorDirectoryCompany): boolean {
   return vendor.category.trim().toLowerCase() === "internal"
 }
 
@@ -154,7 +156,9 @@ function ContactsContent() {
   const [loading, setLoading] = React.useState(true)
 
   const [customersList, setCustomersList] = React.useState<Customer[]>([])
-  const [vendorsList, setVendorsList] = React.useState<Vendor[]>([])
+  const [vendorsList, setVendorsList] = React.useState<
+    readonly VendorDirectoryCompany[]
+  >([])
   const [internalContactsList, setInternalContactsList] = React.useState<
     readonly InternalDirectoryContact[]
   >([])
@@ -165,7 +169,7 @@ function ContactsContent() {
 
   const [vendorDialogOpen, setVendorDialogOpen] = React.useState(false)
   const [editingVendor, setEditingVendor] =
-    React.useState<Vendor | null>(null)
+    React.useState<VendorDirectoryCompany | null>(null)
 
   const loadAll = async () => {
     try {
@@ -288,13 +292,7 @@ function ContactsContent() {
     }
   }
 
-  const handleVendorSubmit = async (data: {
-    name: string
-    category: string
-    email: string
-    phone: string
-    address: string
-  }) => {
+  const handleVendorSubmit = async (data: VendorCompanyMutationInput) => {
     if (editingVendor) {
       const result = await updateVendor(editingVendor.id, data)
       if (result.success) {

@@ -14,6 +14,7 @@ import {
   organizations,
   projects,
   users,
+  vendorContacts,
   vendors,
 } from "@/db/schema"
 import { requireAuth } from "@/lib/auth"
@@ -200,6 +201,10 @@ export async function sendProjectAccessInvitation(
           phone: vendors.phone,
           address: vendors.address,
         },
+        vendorContact: {
+          email: vendorContacts.email,
+          phone: vendorContacts.phone,
+        },
         teamMember: {
           email: users.email,
           phone: users.phone,
@@ -219,9 +224,22 @@ export async function sendProjectAccessInvitation(
       .leftJoin(
         vendors,
         and(
-          eq(projectContacts.sourceEntityType, "vendor"),
-          eq(projectContacts.sourceEntityId, vendors.id),
+          or(
+            eq(projectContacts.vendorId, vendors.id),
+            and(
+              eq(projectContacts.sourceEntityType, "vendor"),
+              eq(projectContacts.sourceEntityId, vendors.id)
+            )
+          ),
           eq(vendors.organizationId, projects.organizationId)
+        )
+      )
+      .leftJoin(
+        vendorContacts,
+        and(
+          eq(projectContacts.vendorContactId, vendorContacts.id),
+          eq(vendorContacts.vendorId, vendors.id),
+          eq(vendorContacts.active, true)
         )
       )
       .leftJoin(
@@ -251,7 +269,13 @@ export async function sendProjectAccessInvitation(
     }
 
     const directoryIdentity =
-      row.contact.sourceEntityType === "customer"
+      row.contact.vendorContactId
+        ? {
+            email: row.vendorContact?.email ?? null,
+            phone: row.vendorContact?.phone ?? null,
+            address: null,
+          }
+        : row.contact.sourceEntityType === "customer"
         ? row.customer
         : row.contact.sourceEntityType === "vendor"
           ? row.vendor

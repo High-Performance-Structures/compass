@@ -1,4 +1,4 @@
-import { and, eq, or } from "drizzle-orm"
+import { and, eq, isNull, or } from "drizzle-orm"
 
 import type { getDb } from "@/db"
 import {
@@ -14,7 +14,7 @@ export type ContactIdentityFields = {
   readonly address: string | null
 }
 
-type DirectoryEntityType = "customer" | "vendor"
+type DirectoryEntityType = "customer" | "vendor" | "vendor_contact"
 
 type DirectoryIdentityRow = {
   readonly entityType: string
@@ -64,6 +64,19 @@ export async function directoryIdentityManagedByActiveUser(input: {
   readonly entityType: DirectoryEntityType
   readonly entityId: string
 }): Promise<boolean> {
+  const directoryMatch =
+    input.entityType === "vendor_contact"
+      ? eq(projectContacts.vendorContactId, input.entityId)
+      : input.entityType === "vendor"
+        ? and(
+            eq(projectContacts.sourceEntityType, "vendor"),
+            eq(projectContacts.sourceEntityId, input.entityId),
+            isNull(projectContacts.vendorContactId)
+          )
+        : and(
+            eq(projectContacts.sourceEntityType, input.entityType),
+            eq(projectContacts.sourceEntityId, input.entityId)
+          )
   const row = await input.db
     .select({ userId: users.id })
     .from(projectContacts)
@@ -80,8 +93,7 @@ export async function directoryIdentityManagedByActiveUser(input: {
     .where(
       and(
         eq(projects.organizationId, input.organizationId),
-        eq(projectContacts.sourceEntityType, input.entityType),
-        eq(projectContacts.sourceEntityId, input.entityId),
+        directoryMatch,
         eq(users.isActive, true)
       )
     )
@@ -107,6 +119,7 @@ export async function activeDirectoryIdentityKeys(input: {
     .select({
       entityType: projectContacts.sourceEntityType,
       entityId: projectContacts.sourceEntityId,
+      vendorContactId: projectContacts.vendorContactId,
     })
     .from(projectContacts)
     .innerJoin(projects, eq(projects.id, projectContacts.projectId))
@@ -125,10 +138,22 @@ export async function activeDirectoryIdentityKeys(input: {
         eq(users.isActive, true),
         or(
           eq(projectContacts.sourceEntityType, "customer"),
-          eq(projectContacts.sourceEntityType, "vendor")
+          eq(projectContacts.sourceEntityType, "vendor"),
+          eq(projectContacts.sourceEntityType, "vendor_contact")
         )
       )
     )
 
-  return requestedDirectoryIdentityKeys({ entityIds, rows })
+  const identityRows: DirectoryIdentityRow[] = rows.flatMap((row) => {
+    const directoryRows: DirectoryIdentityRow[] = [row]
+    if (row.vendorContactId) {
+      directoryRows.push({
+        entityType: "vendor_contact",
+        entityId: row.vendorContactId,
+      })
+    }
+    return directoryRows
+  })
+
+  return requestedDirectoryIdentityKeys({ entityIds, rows: identityRows })
 }

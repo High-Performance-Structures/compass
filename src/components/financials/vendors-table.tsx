@@ -2,6 +2,7 @@
 
 import * as React from "react"
 import { IconDotsVertical } from "@tabler/icons-react"
+import type { VendorDirectoryCompany } from "@/app/actions/vendors"
 import {
   flexRender,
   getCoreRowModel,
@@ -14,7 +15,6 @@ import {
   type SortingState,
 } from "@tanstack/react-table"
 
-import type { Vendor } from "@/db/schema"
 import { useIsMobile } from "@/hooks/use-mobile"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
@@ -45,19 +45,19 @@ import {
 } from "@/components/ui/table"
 
 interface VendorsTableProps {
-  vendors: Vendor[]
+  vendors: readonly VendorDirectoryCompany[]
   categories: readonly string[]
-  onEdit?: (vendor: Vendor) => void
+  onEdit?: (vendor: VendorDirectoryCompany) => void
   onDelete?: (id: string) => void
 }
 
-function vendorSourceLabel(vendor: Vendor): string {
+function vendorSourceLabel(vendor: VendorDirectoryCompany): string {
   if (vendor.sourceSystem?.includes("sage")) return "Sage"
   if (vendor.sourceSystem === "buildertrend") return "BT only"
   return "Compass"
 }
 
-function vendorSyncLabel(vendor: Vendor): string {
+function vendorSyncLabel(vendor: VendorDirectoryCompany): string {
   if (vendor.syncStatus === "needs_sage_review") return "Needs Sage review"
   if (vendor.syncStatus === "synced") return "Synced"
   return "Manual"
@@ -103,7 +103,7 @@ export function VendorsTable({
     }
   }
 
-  const columns: ColumnDef<Vendor>[] = [
+  const columns: ColumnDef<VendorDirectoryCompany>[] = [
     {
       id: "select",
       header: ({ table }) => (
@@ -168,10 +168,29 @@ export function VendorsTable({
       },
     },
     {
-      accessorKey: "email",
-      header: "Email",
+      id: "contacts",
+      header: "People",
       cell: ({ row }) => {
-        const email = row.getValue("email") as string | null
+        const contacts = row.original.contacts
+        const primary = contacts.find((contact) => contact.isPrimary)
+        if (contacts.length === 0) {
+          return <span className="text-muted-foreground/40">—</span>
+        }
+        return (
+          <div className="flex flex-col">
+            <span>{primary?.name ?? contacts[0]?.name}</span>
+            <span className="text-xs text-muted-foreground">
+              {contacts.length} {contacts.length === 1 ? "person" : "people"}
+            </span>
+          </div>
+        )
+      },
+    },
+    {
+      accessorKey: "email",
+      header: "Company email",
+      cell: ({ row }) => {
+        const email = row.original.email
         if (!email) {
           return (
             <span className="text-muted-foreground/40">—</span>
@@ -190,9 +209,9 @@ export function VendorsTable({
     },
     {
       accessorKey: "phone",
-      header: "Phone",
+      header: "Company phone",
       cell: ({ row }) => {
-        const phone = row.getValue("phone") as string | null
+        const phone = row.original.phone
         if (!phone) {
           return (
             <span className="text-muted-foreground/40">—</span>
@@ -260,7 +279,7 @@ export function VendorsTable({
   ]
 
   const table = useReactTable({
-    data: vendors,
+    data: [...vendors],
     columns,
     onSortingChange: setSorting,
     onColumnFiltersChange: setColumnFilters,
@@ -382,8 +401,9 @@ export function VendorsTable({
                       </Badge>
                     </div>
                     <p className="text-xs text-muted-foreground truncate">
-                      {[v.email, v.phone].filter(Boolean).join(" \u00b7 ") ||
-                        "No contact info"}
+                      {v.contacts.length > 0
+                        ? `${v.contacts.length} ${v.contacts.length === 1 ? "person" : "people"}`
+                        : "No contact people"}
                     </p>
                     <p className="mt-1 text-[11px] text-muted-foreground">
                       {vendorSourceLabel(v)} · {vendorSyncLabel(v)}
