@@ -204,15 +204,23 @@ export async function getFieldProjectPacket(
         )
       )
     : []
-  const [messageResult, directConversationResults] = await Promise.all([
-    channel ? getMessages(channel.id, { limit: 30 }) : null,
-    Promise.all(
-      directChannels.map(async (directChannel) => ({
-        channel: directChannel,
-        result: await getMessages(directChannel.id, { limit: 12 }),
-      }))
-    ),
-  ])
+  const messageResult = channel
+    ? await getMessages(channel.id, { limit: 30 })
+    : null
+  const directConversationResults: Array<{
+    readonly channel: (typeof directChannels)[number]
+    readonly result: Awaited<ReturnType<typeof getMessages>>
+  }> = []
+
+  // Each message read performs several D1 queries. Loading every direct
+  // conversation in one Promise.all can exceed the Worker's concurrent D1
+  // connection allowance and silently turn otherwise valid threads empty.
+  for (const directChannel of directChannels) {
+    directConversationResults.push({
+      channel: directChannel,
+      result: await getMessages(directChannel.id, { limit: 12 }),
+    })
+  }
   const scheduleItems: FieldProjectPacket["tasks"] = schedule.tasks.map(
     (task) => ({
       id: task.id,

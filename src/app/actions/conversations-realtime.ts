@@ -92,7 +92,12 @@ export async function getChannelUpdates(
       .select(messageSelectFields)
       .from(messages)
       .leftJoin(users, eq(users.id, messages.userId))
-      .where(eq(messages.channelId, channelId))
+      .where(
+        and(
+          eq(messages.channelId, channelId),
+          sql`${messages.threadId} IS NULL`
+        )
+      )
       .orderBy(desc(messages.createdAt))
 
     if (lastMessageId) {
@@ -112,6 +117,7 @@ export async function getChannelUpdates(
           .where(
             and(
               eq(messages.channelId, channelId),
+              sql`${messages.threadId} IS NULL`,
               gt(messages.createdAt, lastMessage.createdAt)
             )
           )
