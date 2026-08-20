@@ -33,7 +33,9 @@ import { conversationChannelIdFromNotificationHref } from "../src/lib/conversati
 import { isFieldAppUrl, resolveDashboardAppUrl } from "./app-url"
 import {
   appendOptimisticDirectMessage,
+  PROJECT_CONVERSATION_KEY,
   pushNotificationHref,
+  resolveConversationSelection,
 } from "./conversation-state"
 import {
   filterFieldProjects,
@@ -334,7 +336,7 @@ function documentsView(): string {
   return sectionHead(currentFolder?.name ?? "Construction documents", currentFolder ? "Browse or save a file without leaving Field Mode." : "Only files marked available offline can open without service.") + folderNavigation + (documentActionError ? `<p class="auth-error" role="alert">${escapeHtml(documentActionError)}</p>` : "") + (rows ? `<div class="rows">${rows}</div>` : empty(currentFolder ? "This folder is empty." : "No cached project documents.")) + savedFromFolders
 }
 
-function directMessageView(): string {
+function newDirectMessageView(): string {
   if (!packet) return ""
   const options = packet.contacts
     .map(
@@ -343,34 +345,7 @@ function directMessageView(): string {
     )
     .join("")
 
-  const conversations = packet.directConversations
-    .map((conversation, index) => {
-      const messageRows = conversation.messages
-        .slice(-6)
-        .map(
-          (message) =>
-            `<div class="message"><div class="message-meta"><span class="message-author">${escapeHtml(message.userName)}</span><span class="message-time">${escapeHtml(shortDate(message.createdAt))}</span></div><p class="message-body">${escapeHtml(message.content)}</p></div>`
-        )
-        .join("")
-      const isOpen = openDirectChannelId
-        ? conversation.id === openDirectChannelId
-        : index === 0
-      return `<details class="direct-thread" data-direct-channel-id="${escapeHtml(conversation.id)}" ${isOpen ? "open" : ""}>
-        <summary><span>${escapeHtml(conversation.name)}</span>${conversation.unreadCount > 0 ? `<strong>${conversation.unreadCount} new</strong>` : ""}</summary>
-        <div class="direct-thread-messages">${messageRows || empty("No messages in this conversation.")}</div>
-        <form class="direct-reply-form" data-direct-channel-id="${escapeHtml(conversation.id)}">
-          <div class="keyboard-toolbar"><span>Private reply</span><button data-keyboard-done type="button">Done</button></div>
-          <textarea name="content" required placeholder="Reply privately">${escapeHtml(directReplyDrafts[conversation.id] ?? "")}</textarea>
-          <button class="primary" type="submit">${online ? "Send reply" : "Save reply for sync"}</button>
-        </form>
-      </details>`
-    })
-    .join("")
-  const history = conversations
-    ? `<div class="direct-history"><h2>Direct conversations</h2>${conversations}</div>`
-    : ""
-
-  return `${history}<details class="message-tools" ${packet.channel ? "" : "open"}>
+  return `<details class="message-tools" ${packet.channel || packet.directConversations.length > 0 ? "" : "open"}>
     <summary>New direct message</summary>
     <form id="direct-message-form" class="direct-message-form">
       ${packet.contacts.length > 0
@@ -387,19 +362,82 @@ function directMessageView(): string {
   </details>`
 }
 
+function conversationPickerView(selectedConversationId: string | null): string {
+  if (!packet || !selectedConversationId) return ""
+  const unreadCount = packet.directConversations.reduce(
+    (total, conversation) => total + conversation.unreadCount,
+    0
+  )
+  const conversationCount = packet.directConversations.length + (packet.channel ? 1 : 0)
+  const projectOption = packet.channel
+    ? `<optgroup label="Project group"><option value="${PROJECT_CONVERSATION_KEY}" ${selectedConversationId === PROJECT_CONVERSATION_KEY ? "selected" : ""}>${escapeHtml(packet.channel.name)}</option></optgroup>`
+    : ""
+  const directOptions = packet.directConversations
+    .map(
+      (conversation) =>
+        `<option value="${escapeHtml(conversation.id)}" ${selectedConversationId === conversation.id ? "selected" : ""}>${escapeHtml(conversation.name)}${conversation.unreadCount > 0 ? ` (${conversation.unreadCount} new)` : ""}</option>`
+    )
+    .join("")
+  const directGroup = directOptions
+    ? `<optgroup label="Direct messages">${directOptions}</optgroup>`
+    : ""
+  const unreadSummary = unreadCount > 0 ? ` · ${unreadCount} unread` : ""
+
+  return `<div class="conversation-picker"><label class="field">Conversation
+    <select id="message-conversation" aria-label="Choose a conversation">${projectOption}${directGroup}</select>
+    <span class="conversation-count">${conversationCount} conversation${conversationCount === 1 ? "" : "s"}${unreadSummary}</span>
+  </label></div>`
+}
+
+function activeDirectConversationView(channelId: string): string {
+  if (!packet) return ""
+  const conversation = packet.directConversations.find(
+    (candidate) => candidate.id === channelId
+  )
+  if (!conversation) return ""
+  const messageRows = conversation.messages
+    .slice(-12)
+    .map(
+      (message) =>
+        `<div class="message"><div class="message-meta"><span class="message-author">${escapeHtml(message.userName)}</span><span class="message-time">${escapeHtml(shortDate(message.createdAt))}</span></div><p class="message-body">${escapeHtml(message.content)}</p></div>`
+    )
+    .join("")
+
+  return `<section class="active-conversation" aria-label="Direct conversation with ${escapeHtml(conversation.name)}">
+    <div class="active-conversation-head"><h2>${escapeHtml(conversation.name)}</h2><span>Direct message</span></div>
+    <div class="direct-thread-messages">${messageRows || empty("No messages in this conversation.")}</div>
+    <form class="direct-reply-form" data-direct-channel-id="${escapeHtml(conversation.id)}">
+      <div class="keyboard-toolbar"><span>Private reply</span><button data-keyboard-done type="button">Done</button></div>
+      <textarea name="content" required placeholder="Reply privately">${escapeHtml(directReplyDrafts[conversation.id] ?? "")}</textarea>
+      <button class="primary" type="submit">${online ? "Send reply" : "Save reply for sync"}</button>
+    </form>
+  </section>`
+}
+
 function messagesView(): string {
   if (!packet) return empty("Select a project to view messages.")
-  const directMessage = directMessageView()
+  const selectedConversationId = resolveConversationSelection(
+    packet,
+    openDirectChannelId
+  )
+  const picker = conversationPickerView(selectedConversationId)
+  const newDirectMessage = newDirectMessageView()
+  if (
+    selectedConversationId &&
+    selectedConversationId !== PROJECT_CONVERSATION_KEY
+  ) {
+    return `${picker}${activeDirectConversationView(selectedConversationId)}${newDirectMessage}`
+  }
   if (!packet.channel) {
     return `${sectionHead("Project messages", "Start a team channel for this job or message a staff member directly.")}
       <div class="message-start">
         <button id="start-project-channel" class="primary" type="button" ${online && !startingConversation ? "" : "disabled"}>${startingConversation ? "Starting channel..." : "Start project channel"}</button>
         ${!online ? `<p class="message-help">Connect once to create the channel. Existing cached conversations remain available offline.</p>` : ""}
         ${messageActionError ? `<p class="attachment-error" role="alert">${escapeHtml(messageActionError)}</p>` : ""}
-      </div>${directMessage}`
+      </div>${newDirectMessage}`
   }
   const messages = packet.messages.map((message) => `<div class="message"><div class="message-meta"><span class="message-author">${escapeHtml(message.userName)}</span><span class="message-time">${escapeHtml(shortDate(message.createdAt))}</span></div><p class="message-body">${escapeHtml(message.content)}</p></div>`).join("")
-  return directMessage + sectionHead(packet.channel.name, "Project messages") + `<div class="chat-list">${messages || empty("No cached messages.")}</div><details class="project-message-tools"><summary>Message the project team</summary><form id="chat-form" class="chat-compose"><div class="keyboard-toolbar"><span>Project team message</span><button data-keyboard-done type="button">Done</button></div><textarea name="content" required placeholder="Message the project team">${escapeHtml(projectMessageDraft)}</textarea><button class="primary" type="submit">${online ? "Send message" : "Save message for sync"}</button></form></details>`
+  return picker + sectionHead(packet.channel.name, "Project messages") + `<div class="chat-list">${messages || empty("No cached messages.")}</div><details class="project-message-tools"><summary>Message the project team</summary><form id="chat-form" class="chat-compose"><div class="keyboard-toolbar"><span>Project team message</span><button data-keyboard-done type="button">Done</button></div><textarea name="content" required placeholder="Message the project team">${escapeHtml(projectMessageDraft)}</textarea><button class="primary" type="submit">${online ? "Send message" : "Save message for sync"}</button></form></details>${newDirectMessage}`
 }
 
 function notificationsView(): string {
@@ -628,9 +666,16 @@ function bindEvents(): void {
   document.querySelector<HTMLTextAreaElement>("#chat-form textarea[name='content']")?.addEventListener("input", (event) => {
     if (event.currentTarget instanceof HTMLTextAreaElement) projectMessageDraft = event.currentTarget.value
   })
-  document.querySelectorAll<HTMLDetailsElement>(".direct-thread").forEach((details) => details.addEventListener("toggle", () => {
-    if (details.open) openDirectChannelId = details.dataset.directChannelId ?? null
-  }))
+  const conversationSelect = document.querySelector("#message-conversation")
+  if (conversationSelect instanceof HTMLSelectElement) {
+    conversationSelect.addEventListener("change", (event) => {
+      if (!(event.currentTarget instanceof HTMLSelectElement)) return
+      openDirectChannelId = event.currentTarget.value === PROJECT_CONVERSATION_KEY
+        ? null
+        : event.currentTarget.value
+      render()
+    })
+  }
   document.querySelectorAll<HTMLFormElement>(".direct-reply-form").forEach((form) => {
     form.addEventListener("submit", (event) => void queueDirectReply(event))
     const channelId = form.dataset.directChannelId ?? ""
@@ -1879,7 +1924,7 @@ async function initialize(): Promise<void> {
     window.setTimeout(() => {
       const focusedElement = document.activeElement
       if (focusedElement instanceof HTMLElement) {
-        focusedElement.scrollIntoView({ block: "center", behavior: "smooth" })
+        focusedElement.scrollIntoView({ block: "nearest", inline: "nearest" })
       }
     }, 120)
   })
