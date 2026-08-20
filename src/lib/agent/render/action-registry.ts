@@ -243,9 +243,16 @@ export const actionRegistry: Record<
     resource: "vendor",
     permission: "create",
     execute: async (params) => {
-      const result = await createVendor(
-        params as Parameters<typeof createVendor>[0]
-      )
+      const result = await createVendor({
+        name: typeof params.name === "string" ? params.name : "",
+        category:
+          typeof params.category === "string"
+            ? params.category
+            : "Miscellaneous Vendor",
+        email: typeof params.email === "string" ? params.email : "",
+        phone: typeof params.phone === "string" ? params.phone : "",
+        address: typeof params.address === "string" ? params.address : "",
+      })
       return wrapResult(result)
     },
   },
@@ -254,8 +261,18 @@ export const actionRegistry: Record<
     resource: "vendor",
     permission: "update",
     execute: async (params) => {
-      const { id, ...data } = params as { id: string } & Record<string, unknown>
-      const result = await updateVendor(id, data)
+      const id = typeof params.id === "string" ? params.id : ""
+      const result = await updateVendor(id, {
+        ...(typeof params.name === "string" ? { name: params.name } : {}),
+        ...(typeof params.category === "string"
+          ? { category: params.category }
+          : {}),
+        ...(typeof params.email === "string" ? { email: params.email } : {}),
+        ...(typeof params.phone === "string" ? { phone: params.phone } : {}),
+        ...(typeof params.address === "string"
+          ? { address: params.address }
+          : {}),
+      })
       return wrapResult(result)
     },
   },

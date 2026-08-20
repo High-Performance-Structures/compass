@@ -8,6 +8,7 @@ import {
   projectAccessInvitations,
   projectContacts,
   users,
+  vendorContacts,
   vendors,
 } from "@/db/schema"
 import { and, eq, inArray } from "drizzle-orm"
@@ -142,6 +143,7 @@ export async function updateProfile(
           id: projectContacts.id,
           sourceEntityType: projectContacts.sourceEntityType,
           sourceEntityId: projectContacts.sourceEntityId,
+          vendorContactId: projectContacts.vendorContactId,
         })
         .from(projectAccessInvitations)
         .innerJoin(
@@ -170,9 +172,23 @@ export async function updateProfile(
       const linkedVendorIds = Array.from(
         new Set(
           acceptedContactRows.flatMap((contact) =>
-            contact.sourceEntityType === "vendor" && contact.sourceEntityId
+            contact.sourceEntityType === "vendor" &&
+            contact.sourceEntityId &&
+            !contact.vendorContactId
               ? [contact.sourceEntityId]
               : []
+          )
+        )
+      )
+      const linkedVendorContactIds = Array.from(
+        new Set(
+          acceptedContactRows.flatMap((contact) =>
+            contact.vendorContactId
+              ? [contact.vendorContactId]
+              : contact.sourceEntityType === "vendor_contact" &&
+                  contact.sourceEntityId
+                ? [contact.sourceEntityId]
+                : []
           )
         )
       )
@@ -245,6 +261,24 @@ export async function updateProfile(
               inArray(projectContacts.sourceEntityId, linkedVendorIds)
             )
           )
+          .run()
+      }
+
+      if (linkedVendorContactIds.length > 0) {
+        await db
+          .update(vendorContacts)
+          .set({
+            name: displayName,
+            email: identity.email,
+            phone: identity.phone,
+            updatedAt: now,
+          })
+          .where(inArray(vendorContacts.id, linkedVendorContactIds))
+          .run()
+        await db
+          .update(projectContacts)
+          .set({ displayName, ...identity, updatedAt: now })
+          .where(inArray(projectContacts.vendorContactId, linkedVendorContactIds))
           .run()
       }
 

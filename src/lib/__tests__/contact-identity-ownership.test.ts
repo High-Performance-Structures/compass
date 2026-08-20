@@ -53,6 +53,7 @@ describe("contact identity ownership", () => {
       rows: [
         { entityType: "customer", entityId: "directory-10" },
         { entityType: "vendor", entityId: "directory-539" },
+        { entityType: "vendor_contact", entityId: "directory-42" },
         { entityType: "vendor", entityId: "outside-directory" },
         { entityType: "customer", entityId: null },
       ],
@@ -61,6 +62,7 @@ describe("contact identity ownership", () => {
     expect(Array.from(result)).toEqual([
       "customer:directory-10",
       "vendor:directory-539",
+      "vendor_contact:directory-42",
     ])
   })
 })

@@ -1777,6 +1777,13 @@ export const projectContacts = sqliteTable("project_contacts", {
   sourceRecordId: text("source_record_id"),
   sourceEntityType: text("source_entity_type").notNull().default("manual"),
   sourceEntityId: text("source_entity_id"),
+  vendorId: text("vendor_id").references(() => vendors.id, {
+    onDelete: "set null",
+  }),
+  vendorContactId: text("vendor_contact_id").references(
+    () => vendorContacts.id,
+    { onDelete: "set null" }
+  ),
   displayName: text("display_name").notNull(),
   companyName: text("company_name"),
   role: text("role"),
@@ -2141,6 +2148,32 @@ export const vendors = sqliteTable("vendors", {
   updatedAt: text("updated_at"),
 })
 
+export const vendorContacts = sqliteTable(
+  "vendor_contacts",
+  {
+    id: text("id").primaryKey(),
+    vendorId: text("vendor_id")
+      .notNull()
+      .references(() => vendors.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    title: text("title"),
+    email: text("email"),
+    phone: text("phone"),
+    isPrimary: integer("is_primary", { mode: "boolean" })
+      .notNull()
+      .default(false),
+    active: integer("active", { mode: "boolean" }).notNull().default(true),
+    sourceSystem: text("source_system").notNull().default("manual"),
+    sourceRecordId: text("source_record_id"),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => [
+    index("vendor_contacts_vendor_idx").on(table.vendorId),
+    index("vendor_contacts_vendor_active_idx").on(table.vendorId, table.active),
+  ]
+)
+
 export const sageCostCodes = sqliteTable("sage_cost_codes", {
   id: text("id").primaryKey(),
   sourceSystem: text("source_system").notNull().default("sage"),
@@ -2267,6 +2300,8 @@ export const feedback = sqliteTable("feedback", {
 
 export type Vendor = typeof vendors.$inferSelect
 export type NewVendor = typeof vendors.$inferInsert
+export type VendorContact = typeof vendorContacts.$inferSelect
+export type NewVendorContact = typeof vendorContacts.$inferInsert
 export type Feedback = typeof feedback.$inferSelect
 export type NewFeedback = typeof feedback.$inferInsert
 

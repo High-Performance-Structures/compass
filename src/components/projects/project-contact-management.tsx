@@ -20,6 +20,10 @@ import {
   type ProjectContactType,
 } from "@/app/actions/project-contacts"
 import {
+  createVendor,
+  createVendorContact,
+} from "@/app/actions/vendors"
+import {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
@@ -111,11 +115,26 @@ function initialInput(
   projectId: string,
   contact: ProjectContactItem | null
 ): ProjectContactMutationInput {
+  const directorySourceType = contact?.vendorId
+    ? "vendor"
+    : contact?.sourceEntityType === "customer"
+      ? "customer"
+      : contact?.sourceEntityType === "user"
+        ? "team"
+        : null
+  const directorySourceId =
+    contact?.vendorId ??
+    (directorySourceType && contact?.sourceEntityId
+      ? contact.sourceEntityId
+      : null)
+
   return {
     projectId,
     contactId: contact?.id ?? null,
-    directorySourceType: null,
-    directorySourceId: null,
+    directorySourceType,
+    directorySourceId,
+    vendorId: contact?.vendorId ?? null,
+    vendorContactId: contact?.vendorContactId ?? null,
     contactType: contact?.contactType ?? "owner",
     displayName: contact?.displayName ?? "",
     companyName: contact?.companyName ?? "",
@@ -133,6 +152,10 @@ function initialInput(
     internalVisible: contact?.internalVisible ?? true,
     primaryContact: contact?.primaryContact ?? false,
   }
+}
+
+function isVendorContactType(type: ProjectContactType): boolean {
+  return type === "supplier" || type === "subcontractor"
 }
 
 function groupedDirectoryOptions(
@@ -264,21 +287,40 @@ export function ProjectContactEditor({
   const router = useRouter()
   const [open, setOpen] = useState(false)
   const [directoryOpenKey, setDirectoryOpenKey] = useState<string | null>(null)
+  const [availableDirectoryOptions, setAvailableDirectoryOptions] = useState(
+    directoryOptions
+  )
   const [input, setInput] = useState(() => initialInput(projectId, contact))
+  const [showNewVendor, setShowNewVendor] = useState(false)
+  const [newVendorName, setNewVendorName] = useState("")
+  const [showNewVendorContact, setShowNewVendorContact] = useState(false)
+  const [newVendorContactName, setNewVendorContactName] = useState("")
+  const [newVendorContactEmail, setNewVendorContactEmail] = useState("")
+  const [newVendorContactPhone, setNewVendorContactPhone] = useState("")
   const [customRoleSelected, setCustomRoleSelected] = useState(
     () => Boolean(contact?.role && !isPresetProjectRole(contact.role))
   )
   const [isPending, startTransition] = useTransition()
   const isEditing = contact !== null
-  const selectedDirectory = directoryOptions.find(
+  const selectedDirectory = availableDirectoryOptions.find(
     (option) =>
       option.id === input.directorySourceId &&
       option.sourceType === input.directorySourceType
   ) ?? null
+  const vendorOptions = availableDirectoryOptions.filter(
+    (option) => option.sourceType === "vendor"
+  )
+  const selectedVendor =
+    selectedDirectory?.sourceType === "vendor" ? selectedDirectory : null
+  const selectedVendorContact = selectedVendor?.vendorContacts.find(
+    (vendorContact) => vendorContact.id === input.vendorContactId
+  ) ?? null
   const identityManagedByActiveUser =
-    contact?.identityManagedByActiveUser ??
-    selectedDirectory?.identityManagedByActiveUser ??
-    false
+    input.directorySourceType === null
+      ? (contact?.identityManagedByActiveUser ?? false)
+      : (selectedVendorContact?.identityManagedByActiveUser ??
+        selectedDirectory?.identityManagedByActiveUser ??
+        false)
 
   function updateInput<Key extends keyof ProjectContactMutationInput>(
     key: Key,
@@ -291,7 +333,14 @@ export function ProjectContactEditor({
     setOpen(nextOpen)
     if (nextOpen) {
       setInput(initialInput(projectId, contact))
+      setAvailableDirectoryOptions(directoryOptions)
       setDirectoryOpenKey(null)
+      setShowNewVendor(false)
+      setNewVendorName("")
+      setShowNewVendorContact(false)
+      setNewVendorContactName("")
+      setNewVendorContactEmail("")
+      setNewVendorContactPhone("")
       setCustomRoleSelected(
         Boolean(contact?.role && !isPresetProjectRole(contact.role))
       )
@@ -299,27 +348,151 @@ export function ProjectContactEditor({
   }
 
   function applyDirectoryOption(option: ProjectContactDirectoryOption): void {
-    const projectRole = defaultProjectRole(option.suggestedContactType)
     setDirectoryOpenKey(`${option.sourceType}:${option.id}`)
     setCustomRoleSelected(false)
+    setInput((current) => {
+      const contactType =
+        option.sourceType === "vendor" &&
+        isVendorContactType(current.contactType)
+          ? current.contactType
+          : option.suggestedContactType
+      return {
+        ...current,
+        directorySourceType: option.sourceType,
+        directorySourceId: option.id,
+        vendorId: option.sourceType === "vendor" ? option.id : null,
+        vendorContactId: null,
+        contactType,
+        displayName: option.displayName,
+        companyName: option.companyName ?? "",
+        email: option.email ?? "",
+        phone: option.phone ?? "",
+        address: option.address ?? "",
+        role: defaultProjectRole(contactType),
+        ownerPortalVisible:
+          contactType === "internal" || current.ownerPortalVisible,
+        subVendorPortalVisible:
+          isVendorContactType(contactType) || current.subVendorPortalVisible,
+      }
+    })
+  }
+
+  function applyVendorContact(contactId: string): void {
+    if (!selectedVendor) return
+    if (contactId === "company-only") {
+      setInput((current) => ({
+        ...current,
+        vendorContactId: null,
+        displayName: selectedVendor.displayName,
+        companyName: selectedVendor.displayName,
+        email: selectedVendor.email ?? "",
+        phone: selectedVendor.phone ?? "",
+        address: selectedVendor.address ?? "",
+      }))
+      return
+    }
+    const vendorContact = selectedVendor.vendorContacts.find(
+      (option) => option.id === contactId
+    )
+    if (!vendorContact) return
     setInput((current) => ({
       ...current,
-      directorySourceType: option.sourceType,
-      directorySourceId: option.id,
-      contactType: option.suggestedContactType,
-      displayName: option.displayName,
-      companyName: option.companyName ?? "",
-      email: option.email ?? "",
-      phone: option.phone ?? "",
-      address: option.address ?? "",
-      role: projectRole,
-      ownerPortalVisible:
-        option.suggestedContactType === "internal" || current.ownerPortalVisible,
-      subVendorPortalVisible:
-        option.suggestedContactType === "subcontractor" ||
-        option.suggestedContactType === "supplier" ||
-        current.subVendorPortalVisible,
+      vendorContactId: vendorContact.id,
+      displayName: vendorContact.name,
+      companyName: selectedVendor.displayName,
+      email: vendorContact.email ?? "",
+      phone: vendorContact.phone ?? "",
+      address: selectedVendor.address ?? "",
     }))
+  }
+
+  function addVendorCompany(): void {
+    const name = newVendorName.trim()
+    if (!name) return
+    startTransition(async () => {
+      const category =
+        input.contactType === "supplier" ? "Supplier" : "Subcontractor"
+      const result = await createVendor({
+        name,
+        category,
+        email: "",
+        phone: "",
+        address: "",
+        contacts: [],
+      })
+      if (!result.success) {
+        toast.error(result.error)
+        return
+      }
+      const option: ProjectContactDirectoryOption = {
+        id: result.id,
+        sourceType: "vendor",
+        displayName: name,
+        companyName: name,
+        email: null,
+        phone: null,
+        address: null,
+        suggestedContactType: input.contactType,
+        identityManagedByActiveUser: false,
+        vendorContacts: [],
+      }
+      setAvailableDirectoryOptions((current) => [...current, option])
+      applyDirectoryOption(option)
+      setNewVendorName("")
+      setShowNewVendor(false)
+      toast.success("Vendor company added.")
+    })
+  }
+
+  function addVendorPerson(): void {
+    if (!selectedVendor || !newVendorContactName.trim()) return
+    startTransition(async () => {
+      const result = await createVendorContact(selectedVendor.id, {
+        id: null,
+        name: newVendorContactName,
+        title: "",
+        email: newVendorContactEmail,
+        phone: newVendorContactPhone,
+        isPrimary: selectedVendor.vendorContacts.length === 0,
+      })
+      if (!result.success) {
+        toast.error(result.error)
+        return
+      }
+      setAvailableDirectoryOptions((current) =>
+        current.map((option) =>
+          option.sourceType === "vendor" && option.id === selectedVendor.id
+            ? {
+                ...option,
+                vendorContacts: [
+                  ...option.vendorContacts,
+                  {
+                    id: result.contact.id,
+                    name: result.contact.name,
+                    title: result.contact.title,
+                    email: result.contact.email,
+                    phone: result.contact.phone,
+                    isPrimary: result.contact.isPrimary,
+                    identityManagedByActiveUser: false,
+                  },
+                ],
+              }
+            : option
+        )
+      )
+      setInput((current) => ({
+        ...current,
+        vendorContactId: result.contact.id,
+        displayName: result.contact.name,
+        email: result.contact.email ?? "",
+        phone: result.contact.phone ?? "",
+      }))
+      setNewVendorContactName("")
+      setNewVendorContactEmail("")
+      setNewVendorContactPhone("")
+      setShowNewVendorContact(false)
+      toast.success("Vendor contact added.")
+    })
   }
 
   function submit(event: React.FormEvent<HTMLFormElement>): void {
@@ -372,48 +545,206 @@ export function ProjectContactEditor({
           </SheetHeader>
 
           <div className="grid flex-1 gap-5 px-4 py-5 sm:px-6">
-            {!isEditing && directoryOptions.length > 0 && (
-              <div className="grid gap-2">
-                <Label>Company directory</Label>
-                <DirectoryPicker
-                  key={directoryOpenKey ?? "manual"}
-                  options={directoryOptions}
-                  selected={selectedDirectory}
-                  onSelect={applyDirectoryOption}
-                />
-                <p className="text-xs text-muted-foreground">
-                  Select an existing record to prefill the form, or enter a new contact below.
-                </p>
+            <div className="grid gap-2">
+              <Label htmlFor="project-contact-type">Contact type</Label>
+              <Select
+                value={input.contactType}
+                onValueChange={(value) => {
+                  if (
+                    value !== "owner" &&
+                    value !== "supplier" &&
+                    value !== "subcontractor" &&
+                    value !== "internal"
+                  ) {
+                    return
+                  }
+                  const keepVendor =
+                    isVendorContactType(input.contactType) &&
+                    isVendorContactType(value)
+                  setInput((current) => ({
+                    ...current,
+                    contactType: value,
+                    role: defaultProjectRole(value),
+                    ...(keepVendor
+                      ? {}
+                      : {
+                          directorySourceType: null,
+                          directorySourceId: null,
+                          vendorId: null,
+                          vendorContactId: null,
+                        }),
+                  }))
+                  setCustomRoleSelected(false)
+                }}
+              >
+                <SelectTrigger id="project-contact-type">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="owner">Owner / customer</SelectItem>
+                  <SelectItem value="supplier">Supplier</SelectItem>
+                  <SelectItem value="subcontractor">Subcontractor</SelectItem>
+                  <SelectItem value="internal">Internal team</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {isVendorContactType(input.contactType) ? (
+              <div className="grid gap-4 rounded-lg border p-4">
+                <div className="grid gap-2">
+                  <Label>Vendor company</Label>
+                  <DirectoryPicker
+                    key={directoryOpenKey ?? "vendor"}
+                    options={vendorOptions}
+                    selected={selectedVendor}
+                    onSelect={applyDirectoryOption}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Choose from all {vendorOptions.length} Sage and Compass vendor companies.
+                  </p>
+                </div>
+                {showNewVendor ? (
+                  <div className="flex gap-2">
+                    <Input
+                      value={newVendorName}
+                      onChange={(event) => setNewVendorName(event.target.value)}
+                      placeholder="New vendor company name"
+                      aria-label="New vendor company name"
+                    />
+                    <Button
+                      type="button"
+                      onClick={addVendorCompany}
+                      disabled={isPending || !newVendorName.trim()}
+                    >
+                      Add
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      onClick={() => setShowNewVendor(false)}
+                    >
+                      Cancel
+                    </Button>
+                  </div>
+                ) : (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="w-fit"
+                    onClick={() => setShowNewVendor(true)}
+                  >
+                    <IconPlus className="size-4" />
+                    Add new vendor
+                  </Button>
+                )}
+
+                {selectedVendor && (
+                  <div className="grid gap-3 border-t pt-4">
+                    <div className="grid gap-2">
+                      <Label>Contact person</Label>
+                      <Select
+                        value={input.vendorContactId ?? "company-only"}
+                        onValueChange={applyVendorContact}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Choose a person" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="company-only">
+                            Company only (no specific person)
+                          </SelectItem>
+                          {selectedVendor.vendorContacts.map((vendorContact) => (
+                            <SelectItem key={vendorContact.id} value={vendorContact.id}>
+                              {vendorContact.name}
+                              {vendorContact.title ? ` · ${vendorContact.title}` : ""}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    {showNewVendorContact ? (
+                      <div className="grid gap-2 sm:grid-cols-2">
+                        <Input
+                          required
+                          value={newVendorContactName}
+                          onChange={(event) =>
+                            setNewVendorContactName(event.target.value)
+                          }
+                          placeholder="Contact name"
+                        />
+                        <Input
+                          type="email"
+                          value={newVendorContactEmail}
+                          onChange={(event) =>
+                            setNewVendorContactEmail(event.target.value)
+                          }
+                          placeholder="Email"
+                        />
+                        <Input
+                          type="tel"
+                          value={newVendorContactPhone}
+                          onChange={(event) =>
+                            setNewVendorContactPhone(event.target.value)
+                          }
+                          placeholder="Phone"
+                        />
+                        <div className="flex gap-2">
+                          <Button
+                            type="button"
+                            onClick={addVendorPerson}
+                            disabled={isPending || !newVendorContactName.trim()}
+                          >
+                            Add person
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            onClick={() => setShowNewVendorContact(false)}
+                          >
+                            Cancel
+                          </Button>
+                        </div>
+                      </div>
+                    ) : (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="w-fit"
+                        onClick={() => setShowNewVendorContact(true)}
+                      >
+                        <IconPlus className="size-4" />
+                        Add contact person
+                      </Button>
+                    )}
+                  </div>
+                )}
               </div>
+            ) : (
+              !isEditing && (
+                <div className="grid gap-2">
+                  <Label>
+                    {input.contactType === "owner"
+                      ? "Customer directory"
+                      : "Settings team"}
+                  </Label>
+                  <DirectoryPicker
+                    key={directoryOpenKey ?? input.contactType}
+                    options={availableDirectoryOptions.filter((option) =>
+                      input.contactType === "owner"
+                        ? option.sourceType === "customer"
+                        : option.sourceType === "team"
+                    )}
+                    selected={selectedDirectory}
+                    onSelect={applyDirectoryOption}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Select an existing record to prefill the form, or enter one manually.
+                  </p>
+                </div>
+              )
             )}
 
             <div className="grid gap-4 sm:grid-cols-2">
-              <div className="grid gap-2">
-                <Label htmlFor="project-contact-type">Contact type</Label>
-                <Select
-                  value={input.contactType}
-                  onValueChange={(value) => {
-                    if (
-                      value === "owner" ||
-                      value === "supplier" ||
-                      value === "subcontractor" ||
-                      value === "internal"
-                    ) {
-                      updateInput("contactType", value)
-                    }
-                  }}
-                >
-                  <SelectTrigger id="project-contact-type">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="owner">Owner / customer</SelectItem>
-                    <SelectItem value="supplier">Supplier</SelectItem>
-                    <SelectItem value="subcontractor">Subcontractor</SelectItem>
-                    <SelectItem value="internal">Internal team</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
               <div className="grid gap-2">
                 <Label htmlFor="project-contact-name">Contact name</Label>
                 <Input
@@ -429,6 +760,7 @@ export function ProjectContactEditor({
                   id="project-contact-company"
                   value={input.companyName}
                   onChange={(event) => updateInput("companyName", event.target.value)}
+                  readOnly={selectedVendor !== null}
                 />
               </div>
               <div className="grid gap-2">
@@ -628,7 +960,14 @@ export function ProjectContactEditor({
             <Button type="button" variant="outline" onClick={() => setOpen(false)}>
               Cancel
             </Button>
-            <Button type="submit" disabled={isPending || !input.displayName.trim()}>
+            <Button
+              type="submit"
+              disabled={
+                isPending ||
+                !input.displayName.trim() ||
+                (isVendorContactType(input.contactType) && !input.vendorId)
+              }
+            >
               {isPending ? "Saving..." : "Save contact"}
             </Button>
           </SheetFooter>
