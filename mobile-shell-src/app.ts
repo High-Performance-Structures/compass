@@ -6,6 +6,7 @@ import { Directory, Filesystem } from "@capacitor/filesystem"
 import { Keyboard, KeyboardResize } from "@capacitor/keyboard"
 import { Network } from "@capacitor/network"
 import { Preferences } from "@capacitor/preferences"
+import { PushNotifications } from "@capacitor/push-notifications"
 import { NativeBiometric } from "@capgo/capacitor-native-biometric"
 import { z } from "zod/v4"
 
@@ -28,7 +29,12 @@ import {
 } from "../src/lib/field/types"
 import { isTaskAssignedToFieldUser } from "../src/lib/field/task-assignment"
 import { drainDailyLogOutbox } from "../src/lib/field/daily-log-outbox"
+import { conversationChannelIdFromNotificationHref } from "../src/lib/conversations/notification-route"
 import { isFieldAppUrl, resolveDashboardAppUrl } from "./app-url"
+import {
+  appendOptimisticDirectMessage,
+  pushNotificationHref,
+} from "./conversation-state"
 import {
   filterFieldProjects,
   isProjectCompanyFilter,
@@ -65,6 +71,7 @@ type SavedDocument = {
 }
 type Tab = "projects" | "today" | "log" | "documents" | "chat" | "notifications" | "cherish" | "settings"
 type AuthMode = "choice" | "password" | "email" | "code"
+type PushStatus = "checking" | "enabled" | "permission_required" | "denied" | "error"
 
 const savedDocumentSchema = z.object({
   projectId: z.string(),
@@ -118,6 +125,13 @@ let startingConversation = false
 let refreshingProject = false
 let directRecipientId = ""
 let directMessageDraft = ""
+let projectMessageDraft = ""
+let openDirectChannelId: string | null = null
+const directReplyDrafts: Record<string, string> = {}
+let lastProjectRefreshAt = 0
+let pushStatus: PushStatus = "checking"
+let pushToken: string | null = null
+let pushSetupStarted = false
 let cherishValue: FieldCherishValue = "Reliability"
 let cherishResponseType: FieldCherishResponseType = "shoutout"
 let cherishMessage = ""
@@ -338,13 +352,16 @@ function directMessageView(): string {
             `<div class="message"><div class="message-meta"><span class="message-author">${escapeHtml(message.userName)}</span><span class="message-time">${escapeHtml(shortDate(message.createdAt))}</span></div><p class="message-body">${escapeHtml(message.content)}</p></div>`
         )
         .join("")
-      return `<details class="direct-thread" ${index === 0 ? "open" : ""}>
+      const isOpen = openDirectChannelId
+        ? conversation.id === openDirectChannelId
+        : index === 0
+      return `<details class="direct-thread" data-direct-channel-id="${escapeHtml(conversation.id)}" ${isOpen ? "open" : ""}>
         <summary><span>${escapeHtml(conversation.name)}</span>${conversation.unreadCount > 0 ? `<strong>${conversation.unreadCount} new</strong>` : ""}</summary>
         <div class="direct-thread-messages">${messageRows || empty("No messages in this conversation.")}</div>
         <form class="direct-reply-form" data-direct-channel-id="${escapeHtml(conversation.id)}">
           <div class="keyboard-toolbar"><span>Private reply</span><button data-keyboard-done type="button">Done</button></div>
-          <textarea name="content" required placeholder="Reply privately"></textarea>
-          <button class="primary" type="submit">Save reply for sync</button>
+          <textarea name="content" required placeholder="Reply privately">${escapeHtml(directReplyDrafts[conversation.id] ?? "")}</textarea>
+          <button class="primary" type="submit">${online ? "Send reply" : "Save reply for sync"}</button>
         </form>
       </details>`
     })
@@ -382,13 +399,13 @@ function messagesView(): string {
       </div>${directMessage}`
   }
   const messages = packet.messages.map((message) => `<div class="message"><div class="message-meta"><span class="message-author">${escapeHtml(message.userName)}</span><span class="message-time">${escapeHtml(shortDate(message.createdAt))}</span></div><p class="message-body">${escapeHtml(message.content)}</p></div>`).join("")
-  return directMessage + sectionHead(packet.channel.name, "Project messages") + `<div class="chat-list">${messages || empty("No cached messages.")}</div><details class="project-message-tools"><summary>Message the project team</summary><form id="chat-form" class="chat-compose"><div class="keyboard-toolbar"><span>Project team message</span><button data-keyboard-done type="button">Done</button></div><textarea name="content" required placeholder="Message the project team"></textarea><button class="primary" type="submit">Save message for sync</button></form></details>`
+  return directMessage + sectionHead(packet.channel.name, "Project messages") + `<div class="chat-list">${messages || empty("No cached messages.")}</div><details class="project-message-tools"><summary>Message the project team</summary><form id="chat-form" class="chat-compose"><div class="keyboard-toolbar"><span>Project team message</span><button data-keyboard-done type="button">Done</button></div><textarea name="content" required placeholder="Message the project team">${escapeHtml(projectMessageDraft)}</textarea><button class="primary" type="submit">${online ? "Send message" : "Save message for sync"}</button></form></details>`
 }
 
 function notificationsView(): string {
   if (!packet) return empty("Open a project online once to load notifications.")
   const rows = packet.notifications.map((notification) => `
-    <button class="row notification-row" data-notification-id="${escapeHtml(notification.id)}" data-notification-project-id="${escapeHtml(notification.projectId ?? "")}">
+    <button class="row notification-row" data-notification-id="${escapeHtml(notification.id)}" data-notification-href="${escapeHtml(notification.href)}" data-notification-project-id="${escapeHtml(notification.projectId ?? "")}">
       <div class="row-main">
         <p class="row-title">${escapeHtml(notification.title)}</p>
         <p class="row-note">${escapeHtml(notification.body)}</p>
@@ -434,7 +451,19 @@ function settingsView(): string {
   const profileRows = profile
     ? `<dl class="profile-list"><div><dt>Name</dt><dd>${escapeHtml(profile.name)}</dd></div><div><dt>Email</dt><dd>${escapeHtml(profile.email)}</dd></div><div><dt>Role</dt><dd>${escapeHtml(profile.role)}</dd></div><div><dt>Project</dt><dd>${escapeHtml(packet?.project.name ?? "None selected")}</dd></div><div><dt>Sync</dt><dd>${online ? "Online" : "Offline"} - ${outbox.length === 0 ? "Up to date" : `${outbox.length} waiting`}</dd></div></dl>`
     : `<p class="notice">Open Compass once while connected to cache your profile.</p>`
-  return `${sectionHead("Field settings", "Profile and offline readiness")}${profileRows}<div class="block">${sectionHead("Before working offline")}<ol class="guide-list"><li>While connected, open every project you expect to use.</li><li>Refresh each project so tasks, schedule items, logs, and messages are current.</li><li>Save the plans and files you need from Documents.</li><li>Confirm the header shows no items waiting to sync.</li></ol></div><div class="block">${sectionHead("How offline sync works")}<div class="guide-copy"><p>Daily logs, attachments, and project messages stay securely on this device while offline.</p><p>After service returns, keep Compass open until the waiting count reaches zero.</p><p>If a file fails partway through, Compass retries the remaining files without creating a second daily log.</p></div></div>`
+  const pushDescription = pushStatus === "enabled"
+    ? "Enabled — Compass can alert this device to new direct messages."
+    : pushStatus === "denied"
+      ? "Off in iPhone or Android Settings. Open Settings, choose Compass, then allow notifications."
+      : pushStatus === "permission_required"
+        ? "Permission is still needed on this device."
+        : pushStatus === "error"
+          ? "Compass could not finish notification setup. Try again while connected."
+          : "Checking notification permission on this device."
+  const pushButton = pushStatus === "enabled" || pushStatus === "checking"
+    ? ""
+    : `<button id="enable-push" class="secondary" type="button">Try notification setup again</button>`
+  return `${sectionHead("Field settings", "Profile and offline readiness")}${profileRows}<div class="block">${sectionHead("iPhone and Android notifications")}<div class="guide-copy"><p>${escapeHtml(pushDescription)}</p>${pushButton}</div></div><div class="block">${sectionHead("Before working offline")}<ol class="guide-list"><li>While connected, open every project you expect to use.</li><li>Refresh each project so tasks, schedule items, logs, and messages are current.</li><li>Save the plans and files you need from Documents.</li><li>Confirm the header shows no items waiting to sync.</li></ol></div><div class="block">${sectionHead("How offline sync works")}<div class="guide-copy"><p>Daily logs, attachments, and project messages stay securely on this device while offline.</p><p>After service returns, keep Compass open until the waiting count reaches zero.</p><p>If a file fails partway through, Compass retries the remaining files without creating a second daily log.</p></div></div>`
 }
 
 function view(): string {
@@ -553,6 +582,9 @@ function bindEvents(): void {
     activeTab = "settings"
     render()
   })
+  document.querySelector<HTMLButtonElement>("#enable-push")?.addEventListener("click", () => {
+    void setupPushNotifications()
+  })
   document.querySelector<HTMLFormElement>("#cherish-form")?.addEventListener("submit", (event) => void queueCherish(event))
   document.querySelector("#cherish-form select[name='cherishValue']")?.addEventListener("change", (event) => {
     if (!(event.currentTarget instanceof HTMLSelectElement)) return
@@ -593,7 +625,21 @@ function bindEvents(): void {
   })
   document.querySelectorAll<HTMLButtonElement>("[data-remove-attachment]").forEach((button) => button.addEventListener("click", () => void removeDraftAttachment(button.dataset.removeAttachment ?? "")))
   document.querySelector<HTMLFormElement>("#chat-form")?.addEventListener("submit", (event) => void queueChat(event))
-  document.querySelectorAll<HTMLFormElement>(".direct-reply-form").forEach((form) => form.addEventListener("submit", (event) => void queueDirectReply(event)))
+  document.querySelector<HTMLTextAreaElement>("#chat-form textarea[name='content']")?.addEventListener("input", (event) => {
+    if (event.currentTarget instanceof HTMLTextAreaElement) projectMessageDraft = event.currentTarget.value
+  })
+  document.querySelectorAll<HTMLDetailsElement>(".direct-thread").forEach((details) => details.addEventListener("toggle", () => {
+    if (details.open) openDirectChannelId = details.dataset.directChannelId ?? null
+  }))
+  document.querySelectorAll<HTMLFormElement>(".direct-reply-form").forEach((form) => {
+    form.addEventListener("submit", (event) => void queueDirectReply(event))
+    const channelId = form.dataset.directChannelId ?? ""
+    form.querySelector<HTMLTextAreaElement>("textarea[name='content']")?.addEventListener("input", (event) => {
+      if (channelId && event.currentTarget instanceof HTMLTextAreaElement) {
+        directReplyDrafts[channelId] = event.currentTarget.value
+      }
+    })
+  })
   document.querySelector<HTMLButtonElement>("#start-project-channel")?.addEventListener("click", () => void startProjectChannel())
   document.querySelector<HTMLButtonElement>("#refresh-project-messages")?.addEventListener("click", () => void refreshProjectPacket())
   document.querySelector<HTMLFormElement>("#direct-message-form")?.addEventListener("submit", (event) => void sendDirectMessage(event))
@@ -635,12 +681,12 @@ function refreshProjectPickerResults(): void {
   bindProjectPickerResultEvents()
 }
 
-async function refreshProjectPacket(): Promise<void> {
+async function refreshProjectPacket(showProgress = true): Promise<void> {
   if (!packet || !online || refreshingProject) return
   const projectId = packet.project.id
   refreshingProject = true
   messageActionError = ""
-  render()
+  if (showProgress) render()
   try {
     const response = await CapacitorHttp.get({
       url: `${LIVE_URL}/api/field/projects/${encodeURIComponent(projectId)}`,
@@ -659,6 +705,7 @@ async function refreshProjectPacket(): Promise<void> {
       )
     }
     packet = result.data.packet
+    lastProjectRefreshAt = Date.now()
     await writeJson(packetKey(projectId), packet)
   } catch (error) {
     messageActionError =
@@ -672,17 +719,57 @@ async function refreshProjectPacket(): Promise<void> {
 async function openNotification(button: HTMLButtonElement): Promise<void> {
   const notificationId = button.dataset.notificationId
   if (!notificationId) return
-  if (online) {
-    window.location.assign(`${LIVE_URL}/api/field/notifications/${encodeURIComponent(notificationId)}/open`)
+  const href = button.dataset.notificationHref ?? ""
+  const directChannelId = conversationChannelIdFromNotificationHref(href)
+  if (directChannelId) {
+    if (online) await markNotificationRead(notificationId)
+    openDirectConversation(directChannelId)
+    if (online) void refreshProjectPacket(false)
     return
   }
 
   const projectId = button.dataset.notificationProjectId
+  if (online) {
+    window.location.assign(`${LIVE_URL}/api/field/notifications/${encodeURIComponent(notificationId)}/open`)
+    return
+  }
   if (!projectId) return
   const result = fieldProjectPacketSchema.safeParse(await readJson(packetKey(projectId)))
   if (!result.success || !result.data.channel) return
   packet = result.data
   await writeJson(ACTIVE_PROJECT_KEY, projectId)
+  activeTab = "chat"
+  render()
+}
+
+async function markNotificationRead(notificationId: string): Promise<void> {
+  try {
+    const response = await CapacitorHttp.post({
+      url: `${LIVE_URL}/api/field/notifications/${encodeURIComponent(notificationId)}/open`,
+      headers: { "Content-Type": "application/json" },
+      data: {},
+      responseType: "json",
+    })
+    const result = z.object({ success: z.boolean() }).safeParse(responseData(response.data))
+    if (!result.success || !result.data.success) return
+    if (packet) {
+      packet = {
+        ...packet,
+        notifications: packet.notifications.map((notification) =>
+          notification.id === notificationId
+            ? { ...notification, readAt: new Date().toISOString() }
+            : notification
+        ),
+      }
+      await writeJson(packetKey(packet.project.id), packet)
+    }
+  } catch {
+    // Opening the direct conversation remains useful when read-state sync fails.
+  }
+}
+
+function openDirectConversation(channelId: string): void {
+  openDirectChannelId = channelId
   activeTab = "chat"
   render()
 }
@@ -886,8 +973,18 @@ async function queueChat(event: SubmitEvent): Promise<void> {
   const form = new FormData(formElement)
   const content = String(form.get("content") ?? "").trim()
   if (!content) return
-  outbox.push({ id: crypto.randomUUID(), kind: "chat_message", projectId: packet.project.id, createdAt: new Date().toISOString(), payload: { channelId: packet.channel.id, content } })
-  await writeJson(OUTBOX_KEY, outbox)
+  const id = crypto.randomUUID()
+  const createdAt = new Date().toISOString()
+  outbox.push({ id, kind: "chat_message", projectId: packet.project.id, createdAt, payload: { channelId: packet.channel.id, content } })
+  packet = {
+    ...packet,
+    messages: [...packet.messages, { id, content, createdAt, userName: profile?.name ?? "You" }],
+  }
+  projectMessageDraft = ""
+  await Promise.all([
+    writeJson(OUTBOX_KEY, outbox),
+    writeJson(packetKey(packet.project.id), packet),
+  ])
   formElement.reset()
   render()
   if (online) void syncChatOutbox()
@@ -990,14 +1087,28 @@ async function queueDirectReply(event: SubmitEvent): Promise<void> {
   const channelId = formElement.dataset.directChannelId ?? ""
   const content = String(new FormData(formElement).get("content") ?? "").trim()
   if (!channelId || !content) return
+  const id = crypto.randomUUID()
+  const createdAt = new Date().toISOString()
   outbox.push({
-    id: crypto.randomUUID(),
+    id,
     kind: "chat_message",
     projectId: packet.project.id,
-    createdAt: new Date().toISOString(),
+    createdAt,
     payload: { channelId, content },
   })
-  await writeJson(OUTBOX_KEY, outbox)
+  packet = appendOptimisticDirectMessage(packet, {
+    channelId,
+    id,
+    content,
+    createdAt,
+    userName: profile?.name ?? "You",
+  })
+  openDirectChannelId = channelId
+  directReplyDrafts[channelId] = ""
+  await Promise.all([
+    writeJson(OUTBOX_KEY, outbox),
+    writeJson(packetKey(packet.project.id), packet),
+  ])
   formElement.reset()
   render()
   if (online) void syncChatOutbox()
@@ -1046,7 +1157,7 @@ async function syncChatOutbox(): Promise<void> {
   }
 
   if (syncedCount > 0 && activeTab === "chat") {
-    void refreshProjectPacket()
+    await refreshProjectPacket(false)
   }
 }
 
@@ -1056,6 +1167,88 @@ function responseData(value: unknown): unknown {
     return JSON.parse(value)
   } catch {
     return null
+  }
+}
+
+async function persistPushToken(token: string): Promise<void> {
+  if (!online) {
+    pushStatus = "error"
+    if (activeTab === "settings") render()
+    return
+  }
+  try {
+    const platform = Capacitor.getPlatform()
+    if (platform !== "ios" && platform !== "android") {
+      throw new Error("Push notifications require a native platform.")
+    }
+    const response = await CapacitorHttp.post({
+      url: `${LIVE_URL}/api/push/register`,
+      headers: { "Content-Type": "application/json" },
+      data: { token, platform },
+      responseType: "json",
+    })
+    const result = z.object({ success: z.boolean() }).safeParse(responseData(response.data))
+    pushStatus = result.success && result.data.success ? "enabled" : "error"
+  } catch {
+    pushStatus = "error"
+  }
+  if (activeTab === "settings") render()
+}
+
+async function requestPushPermissionAndRegister(): Promise<void> {
+  pushStatus = "checking"
+  if (activeTab === "settings") render()
+  try {
+    const checked = await PushNotifications.checkPermissions()
+    const permission = checked.receive === "prompt"
+      ? (await PushNotifications.requestPermissions()).receive
+      : checked.receive
+    if (permission !== "granted") {
+      pushStatus = permission === "denied" ? "denied" : "permission_required"
+      if (activeTab === "settings") render()
+      return
+    }
+    await PushNotifications.register()
+  } catch {
+    pushStatus = "error"
+    if (activeTab === "settings") render()
+  }
+}
+
+async function setupPushNotifications(): Promise<void> {
+  if (pushSetupStarted) {
+    await requestPushPermissionAndRegister()
+    return
+  }
+  try {
+    await PushNotifications.addListener("registration", (token) => {
+      pushToken = token.value
+      void persistPushToken(token.value)
+    })
+    await PushNotifications.addListener("registrationError", () => {
+      pushStatus = "error"
+      if (activeTab === "settings") render()
+    })
+    await PushNotifications.addListener("pushNotificationReceived", () => {
+      if (packet && online) void refreshProjectPacket(false)
+    })
+    await PushNotifications.addListener("pushNotificationActionPerformed", (action) => {
+      const href = pushNotificationHref(action.notification.data)
+      if (!href) return
+      const channelId = conversationChannelIdFromNotificationHref(href)
+      if (channelId) {
+        openDirectConversation(channelId)
+        if (packet && online) void refreshProjectPacket(false)
+        return
+      }
+      if (href.startsWith("/dashboard/")) window.location.assign(liveAppUrl(href))
+    })
+    pushSetupStarted = true
+    await requestPushPermissionAndRegister()
+  } catch {
+    pushSetupStarted = false
+    pushStatus = "error"
+    if (activeTab === "settings") render()
   }
 }
 
@@ -1436,6 +1629,7 @@ async function downloadNativeFieldState(projectId?: string): Promise<boolean> {
   signingIn = false
   activeTab = packet ? "today" : "projects"
   render()
+  if (pushToken) void persistPushToken(pushToken)
   return true
 }
 
@@ -1695,6 +1889,7 @@ async function initialize(): Promise<void> {
   })
   await App.addListener("appUrlOpen", ({ url }) => void handleAppUrl(url))
   await Browser.addListener("browserFinished", resetAbandonedSignIn)
+  void setupPushNotifications()
   await App.addListener("appStateChange", ({ isActive }) => {
     if (!isActive) {
       backgroundedAt = Date.now()
@@ -1757,8 +1952,26 @@ async function refreshConnectivityAndSync(): Promise<void> {
   if (outboxResult.success) outbox = outboxResult.data
   if (previousOnline !== online || previousOutbox !== JSON.stringify(outbox)) render()
   void resumePendingSync()
+  if (!previousOnline && online && pushToken && pushStatus !== "enabled") {
+    void persistPushToken(pushToken)
+  }
   if (!previousOnline && online && activeTab === "chat") {
     void refreshProjectPacket()
+    return
+  }
+  const focusedElement = document.activeElement
+  const composingMessage = focusedElement instanceof HTMLTextAreaElement
+    || projectMessageDraft.trim().length > 0
+    || directMessageDraft.trim().length > 0
+    || Object.values(directReplyDrafts).some((draft) => draft.trim().length > 0)
+  if (
+    online &&
+    packet &&
+    activeTab === "chat" &&
+    !composingMessage &&
+    Date.now() - lastProjectRefreshAt >= 15_000
+  ) {
+    void refreshProjectPacket(false)
   }
 }
 
