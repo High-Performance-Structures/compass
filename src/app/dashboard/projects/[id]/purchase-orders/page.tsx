@@ -321,7 +321,9 @@ function PurchaseOrderCard({
             </div>
             <div className="min-h-20 p-2">
               <p className="font-semibold">{order.companyName ?? "Vendor TBD"}</p>
-              <p>Vendor ID: {order.sageVendorId ?? "Not linked"}</p>
+              {order.vendorAddress && (
+                <p className="whitespace-pre-line">{order.vendorAddress}</p>
+              )}
             </div>
           </div>
           <div className="border border-black">

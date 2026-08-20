@@ -47,6 +47,7 @@ import {
   withPortalPurchaseOrderRecipients,
 } from "@/lib/purchase-orders/portal-response"
 import { resolvedPurchaseOrderShipTo } from "@/lib/purchase-orders/ship-to"
+import { purchaseOrderVendorDetails } from "@/lib/purchase-orders/vendor-details"
 import {
   parsePortalRfqPayload,
   type PortalRfqVendorResponse,
@@ -103,6 +104,7 @@ export type ProjectPurchaseOrderLineItem = {
 
 export type ProjectPurchaseOrderItem = ProjectOperationItem & {
   readonly lines: readonly ProjectPurchaseOrderLineItem[]
+  readonly vendorAddress: string | null
   readonly vendorEmail: string | null
   readonly vendorAcknowledgement: PortalPurchaseOrderAcknowledgement | null
 }
@@ -469,13 +471,6 @@ function envString(env: unknown, key: string): string | null {
   return typeof value === "string" && value.trim().length > 0
     ? value
     : process.env[key] ?? null
-}
-
-function normalizeComparableName(value: string | null): string {
-  return (value ?? "")
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, " ")
-    .trim()
 }
 
 function parseEmailList(value: string | null): readonly string[] {
@@ -936,54 +931,6 @@ function toPurchaseOrderLineItem(
   }
 }
 
-function purchaseOrderVendorEmail(
-  order: typeof projectOperations.$inferSelect,
-  contactRows: readonly {
-    readonly displayName: string
-    readonly companyName: string | null
-    readonly email: string | null
-  }[],
-  vendorRows: readonly {
-    readonly name: string
-    readonly email: string | null
-    readonly netsuiteId: string | null
-    readonly sourceRecordId: string | null
-    readonly sourceRecordNumber: string | null
-  }[]
-): string | null {
-  const vendorKeys = [
-    order.companyName,
-    order.sageVendorName,
-    order.sageVendorId,
-  ].map(normalizeComparableName)
-
-  const matchingContact = contactRows.find((contact) => {
-    if (!contact.email) return false
-    const contactKeys = [
-      contact.companyName,
-      contact.displayName,
-    ].map(normalizeComparableName)
-    return contactKeys.some((key) => key.length > 0 && vendorKeys.includes(key))
-  })
-  if (matchingContact?.email) return matchingContact.email
-
-  const matchingVendor = vendorRows.find((vendor) => {
-    if (!vendor.email) return false
-    const vendorIds = [
-      vendor.netsuiteId,
-      vendor.sourceRecordId,
-      vendor.sourceRecordNumber,
-    ].map(normalizeComparableName)
-    const vendorName = normalizeComparableName(vendor.name)
-    return (
-      vendorIds.some((id) => id.length > 0 && vendorKeys.includes(id)) ||
-      (vendorName.length > 0 && vendorKeys.includes(vendorName))
-    )
-  })
-
-  return matchingVendor?.email ?? null
-}
-
 async function sendResendPurchaseOrderEmail(
   env: unknown,
   input: {
@@ -1416,6 +1363,7 @@ export async function getProjectPurchaseOrders(
   const [contactRows, vendorRows] = await Promise.all([
     db
       .select({
+        address: projectContacts.address,
         displayName: projectContacts.displayName,
         companyName: projectContacts.companyName,
         email: projectContacts.email,
@@ -1424,6 +1372,7 @@ export async function getProjectPurchaseOrders(
       .where(and(eq(projectContacts.projectId, projectId), eq(projectContacts.active, true))),
     db
       .select({
+        address: vendors.address,
         name: vendors.name,
         email: vendors.email,
         netsuiteId: vendors.netsuiteId,
@@ -1441,13 +1390,22 @@ export async function getProjectPurchaseOrders(
     linesByOperation.set(line.operationId, existing)
   }
 
-  return rows.map((row) => ({
-    ...toOperationItem(row),
-    lines: linesByOperation.get(row.id) ?? [],
-    vendorEmail: purchaseOrderVendorEmail(row, contactRows, vendorRows),
-    vendorAcknowledgement: parsePortalPurchaseOrderPayload(row.sagePayloadJson)
-      .acknowledgement,
-  }))
+  return rows.map((row) => {
+    const vendorDetails = purchaseOrderVendorDetails({
+      order: row,
+      contacts: contactRows,
+      vendors: vendorRows,
+    })
+
+    return {
+      ...toOperationItem(row),
+      lines: linesByOperation.get(row.id) ?? [],
+      vendorAddress: vendorDetails.address,
+      vendorEmail: vendorDetails.email,
+      vendorAcknowledgement: parsePortalPurchaseOrderPayload(row.sagePayloadJson)
+        .acknowledgement,
+    }
+  })
 }
 
 export async function getProjectPurchaseOrderFormOptions(
@@ -1552,6 +1510,7 @@ export async function getProjectRfqs(
   const [contactRows, vendorRows] = await Promise.all([
     db
       .select({
+        address: projectContacts.address,
         displayName: projectContacts.displayName,
         companyName: projectContacts.companyName,
         email: projectContacts.email,
@@ -1562,6 +1521,7 @@ export async function getProjectRfqs(
       ),
     db
       .select({
+        address: vendors.address,
         name: vendors.name,
         email: vendors.email,
         netsuiteId: vendors.netsuiteId,
@@ -1573,7 +1533,14 @@ export async function getProjectRfqs(
   ])
 
   return rows.map((row) =>
-    toRfqItem(row, purchaseOrderVendorEmail(row, contactRows, vendorRows))
+    toRfqItem(
+      row,
+      purchaseOrderVendorDetails({
+        order: row,
+        contacts: contactRows,
+        vendors: vendorRows,
+      }).email
+    )
   )
 }
 
@@ -2785,6 +2752,7 @@ export async function sendPurchaseOrderEmail(
     const order: ProjectPurchaseOrderItem = {
       ...toOperationItem(operation),
       lines: lineRows.map(toPurchaseOrderLineItem),
+      vendorAddress: null,
       vendorEmail: null,
       vendorAcknowledgement: parsePortalPurchaseOrderPayload(
         operation.sagePayloadJson
