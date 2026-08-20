@@ -13,6 +13,7 @@ import {
   projectProfileSyncOperations,
   projectMembers,
   projects,
+  sageCostCodes,
   users,
   vendorContacts,
   vendors,
@@ -200,6 +201,25 @@ export type ProjectVendorContactOption = {
   readonly phone: string | null
   readonly isPrimary: boolean
   readonly identityManagedByActiveUser: boolean
+}
+
+export type ProjectContactDivisionOption = {
+  readonly value: string
+  readonly label: string
+  readonly name: string
+}
+
+export type ProjectContactCostCodeOption = {
+  readonly value: string
+  readonly label: string
+  readonly description: string
+  readonly divisionCode: string
+  readonly divisionName: string
+}
+
+export type ProjectContactSageOptions = {
+  readonly divisions: readonly ProjectContactDivisionOption[]
+  readonly costCodes: readonly ProjectContactCostCodeOption[]
 }
 
 export type ProjectContactMutationInput = {
@@ -987,7 +1007,6 @@ export async function getProjectContactDirectoryOptions(
   }
 
   const customerOptions: ProjectContactDirectoryOption[] = customerRows
-    .filter((row) => !existingSources.has(`customer:${row.id}`))
     .map((row) => ({
       id: row.id,
       sourceType: "customer",
@@ -1050,6 +1069,50 @@ export async function getProjectContactDirectoryOptions(
   )
 }
 
+export async function getProjectContactSageOptions(
+  projectId: string
+): Promise<ProjectContactSageOptions> {
+  const user = await requireAuth()
+  await requireFeaturePermission(user, "project-contacts", "update")
+  const db = await verifyProjectAccess(projectId, "update")
+  const rows = await db
+    .select({
+      code: sageCostCodes.code,
+      description: sageCostCodes.description,
+      divisionCode: sageCostCodes.divisionCode,
+      divisionDescription: sageCostCodes.divisionDescription,
+    })
+    .from(sageCostCodes)
+    .where(eq(sageCostCodes.active, true))
+    .orderBy(asc(sageCostCodes.divisionCode), asc(sageCostCodes.code))
+
+  const divisions = new Map<string, ProjectContactDivisionOption>()
+  const costCodes = new Map<string, ProjectContactCostCodeOption>()
+  for (const row of rows) {
+    const description =
+      row.code === `${row.divisionCode} 00 00`
+        ? row.divisionDescription
+        : row.description
+    divisions.set(row.divisionCode, {
+      value: row.divisionCode,
+      label: `${row.divisionCode} 00 00 - ${row.divisionDescription}`,
+      name: row.divisionDescription,
+    })
+    costCodes.set(row.code, {
+      value: row.code,
+      label: `${row.code} - ${description}`,
+      description,
+      divisionCode: row.divisionCode,
+      divisionName: row.divisionDescription,
+    })
+  }
+
+  return {
+    divisions: Array.from(divisions.values()),
+    costCodes: Array.from(costCodes.values()),
+  }
+}
+
 export async function saveProjectContact(
   input: ProjectContactMutationInput
 ): Promise<ProjectContactMutationResult> {
@@ -1081,11 +1144,12 @@ export async function saveProjectContact(
     let warning: string | undefined
     let directoryIdentity: ContactIdentityFields | null = null
     let directoryIdentityManaged = false
+    let canonicalDisplayName: string | null = null
+    let canonicalCompanyName: string | null = null
 
     const requiresVendorCompany =
       input.contactType === "subcontractor" || input.contactType === "supplier"
     if (
-      !contactId &&
       requiresVendorCompany &&
       (input.directorySourceType !== "vendor" || !input.directorySourceId)
     ) {
@@ -1093,6 +1157,20 @@ export async function saveProjectContact(
         success: false,
         error: "Choose a vendor company for this project contact.",
       }
+    }
+    if (
+      input.contactType === "owner" &&
+      input.directorySourceType !== null &&
+      input.directorySourceType !== "customer"
+    ) {
+      return { success: false, error: "Choose a client or lead contact." }
+    }
+    if (
+      input.contactType === "internal" &&
+      input.directorySourceType !== null &&
+      input.directorySourceType !== "team"
+    ) {
+      return { success: false, error: "Choose a Settings team member." }
     }
 
     if (input.directorySourceType && input.directorySourceId) {
@@ -1103,6 +1181,8 @@ export async function saveProjectContact(
         const [directoryRecord] = await db
           .select({
             id: customers.id,
+            name: customers.name,
+            company: customers.company,
             email: customers.email,
             phone: customers.phone,
             address: customers.address,
@@ -1120,6 +1200,8 @@ export async function saveProjectContact(
         }
         sourceSystem = "customer_directory"
         sourceEntityType = "customer"
+        canonicalDisplayName = directoryRecord.name
+        canonicalCompanyName = directoryRecord.company
         directoryIdentity = directoryRecord
         directoryIdentityManaged =
           await directoryIdentityManagedByActiveUser({
@@ -1158,6 +1240,7 @@ export async function saveProjectContact(
           const contactRecord = await db
             .select({
               id: vendorContacts.id,
+              name: vendorContacts.name,
               email: vendorContacts.email,
               phone: vendorContacts.phone,
             })
@@ -1173,6 +1256,8 @@ export async function saveProjectContact(
           if (!contactRecord) {
             return { success: false, error: "Vendor contact not found" }
           }
+          canonicalDisplayName = contactRecord.name
+          canonicalCompanyName = directoryRecord.name
           sourceRecordId = contactRecord.id
           sourceEntityType = "vendor_contact"
           sourceEntityId = contactRecord.id
@@ -1185,6 +1270,8 @@ export async function saveProjectContact(
               entityId: contactRecord.id,
             })
         } else {
+          canonicalDisplayName = directoryRecord.name
+          canonicalCompanyName = directoryRecord.name
           sourceRecordId = directoryRecord.id
           sourceEntityType = "vendor"
           sourceEntityId = directoryRecord.id
@@ -1247,8 +1334,8 @@ export async function saveProjectContact(
 
     const contactValues = {
       contactType: input.contactType,
-      displayName: input.displayName.trim(),
-      companyName: nullableInput(input.companyName),
+      displayName: canonicalDisplayName ?? input.displayName.trim(),
+      companyName: canonicalCompanyName ?? nullableInput(input.companyName),
       role: nullableInput(input.role),
       trade: nullableInput(input.trade),
       csiDivision: nullableInput(input.csiDivision),

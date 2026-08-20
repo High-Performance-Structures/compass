@@ -10,8 +10,10 @@ import Link from "next/link"
 
 import {
   getProjectContactDirectoryOptions,
+  getProjectContactSageOptions,
   getProjectContactsSummary,
   type ProjectContactDirectoryOption,
+  type ProjectContactSageOptions,
   type ProjectContactsSummary,
 } from "@/app/actions/project-contacts"
 import { getProjects } from "@/app/actions/projects"
@@ -31,6 +33,7 @@ export default async function ProjectContactsPage({
 
   let contacts: ProjectContactsSummary | null = null
   let directoryOptions: readonly ProjectContactDirectoryOption[] = []
+  let sageOptions: ProjectContactSageOptions = { divisions: [], costCodes: [] }
   let canManageContacts = false
   let projectLabel = "This project"
 
@@ -51,7 +54,12 @@ export default async function ProjectContactsPage({
   }
 
   try {
-    directoryOptions = await getProjectContactDirectoryOptions(id)
+    const [loadedDirectoryOptions, loadedSageOptions] = await Promise.all([
+      getProjectContactDirectoryOptions(id),
+      getProjectContactSageOptions(id),
+    ])
+    directoryOptions = loadedDirectoryOptions
+    sageOptions = loadedSageOptions
     canManageContacts = true
   } catch {
     // Read-only project users may view allowed contacts without receiving the
@@ -106,6 +114,7 @@ export default async function ProjectContactsPage({
           summary={contacts}
           showOpenLink={false}
           directoryOptions={canManageContacts ? directoryOptions : undefined}
+          sageOptions={canManageContacts ? sageOptions : undefined}
         />
       </div>
 
@@ -115,6 +124,7 @@ export default async function ProjectContactsPage({
           projectLabel={projectLabel}
           summary={contacts}
           directoryOptions={canManageContacts ? directoryOptions : undefined}
+          sageOptions={canManageContacts ? sageOptions : undefined}
         />
       )}
     </div>

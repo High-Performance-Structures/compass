@@ -9,9 +9,10 @@ import { useRegisterPageActions } from "@/hooks/use-register-page-actions"
 
 import {
   getCustomers,
-  createCustomer,
+  createCustomerDirectoryContact,
   updateCustomer,
   deleteCustomer,
+  type CustomerRelationshipType,
 } from "@/app/actions/customers"
 import {
   getVendors,
@@ -35,7 +36,6 @@ import {
 import { Skeleton } from "@/components/ui/skeleton"
 import { CustomersTable } from "@/components/financials/customers-table"
 import { CustomerDialog } from "@/components/financials/customer-dialog"
-import type { SageClientStatusId } from "@/lib/sage/client-project-write"
 import { VendorsTable } from "@/components/financials/vendors-table"
 import { VendorDialog } from "@/components/financials/vendor-dialog"
 
@@ -209,7 +209,7 @@ function ContactsContent() {
     () => ({
       customers: {
         id: "add-customer",
-        label: "Add Customer",
+        label: "Add Client / Lead",
         onSelect: openCustomer,
       },
       vendors: {
@@ -248,7 +248,7 @@ function ContactsContent() {
     phone: string
     address: string
     notes: string
-    sageClientStatusId: SageClientStatusId
+    relationshipType: CustomerRelationshipType
   }) => {
     if (editingCustomer) {
       const result = await updateCustomer(editingCustomer.id, data)
@@ -259,7 +259,7 @@ function ContactsContent() {
         return
       }
     } else {
-      const result = await createCustomer({
+      const result = await createCustomerDirectoryContact({
         ...data,
         company: data.company || null,
         email: data.email || null,
@@ -269,9 +269,9 @@ function ContactsContent() {
       })
       if (result.success) {
         toast.success(
-          result.sageStatus === "queued"
-            ? "Customer created; Sage write queued"
-            : "Customer created in Compass; Sage write requires an approved user"
+          result.existing
+            ? "Existing client/lead contact selected"
+            : "Client/lead contact added to Contacts"
         )
       } else {
         toast.error(result.error || "Failed")
@@ -329,7 +329,7 @@ function ContactsContent() {
   }
 
   const vendorContacts = vendorsList.filter((vendor) => !isInternalVendor(vendor))
-  const addLabel = tab === "customers" ? "Add Customer" : "Add Vendor"
+  const addLabel = tab === "customers" ? "Add Client / Lead" : "Add Vendor"
   const addHandler = tab === "customers" ? openCustomer : openVendor
   const vendorCategories = Array.from(
     new Set([
@@ -354,7 +354,7 @@ function ContactsContent() {
           <div className="flex items-center justify-between gap-3 shrink-0">
             <TabsList>
               <TabsTrigger value="customers" className="text-xs sm:text-sm">
-                Customers
+                Clients & Leads
                 <span className="ml-1.5 text-muted-foreground tabular-nums">
                   {customersList.length}
                 </span>

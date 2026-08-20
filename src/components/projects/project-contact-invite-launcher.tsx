@@ -44,7 +44,12 @@ type InvitableContact = ProjectContactItem & {
 function isInvitableContact(
   contact: ProjectContactItem
 ): contact is InvitableContact {
+  const isCompanyOnlyVendor =
+    (contact.contactType === "supplier" ||
+      contact.contactType === "subcontractor") &&
+    contact.vendorContactId === null
   return (
+    !isCompanyOnlyVendor &&
     Boolean(contact.email?.trim()) &&
     projectContactCanInvite(contact.accessStatus)
   )
