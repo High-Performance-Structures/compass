@@ -4,7 +4,12 @@ import * as React from "react"
 import { IconUserPlus } from "@tabler/icons-react"
 import { toast } from "sonner"
 
-import { getUsers, deactivateUser, type UserWithRelations } from "@/app/actions/users"
+import {
+  getSettingsUsers,
+  deactivateUser,
+  inviteUser,
+  type UserWithRelations,
+} from "@/app/actions/users"
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
 import { PeopleTable } from "@/components/people-table"
@@ -25,7 +30,7 @@ export function TeamTab() {
 
   const loadUsers = async () => {
     try {
-      const data = await getUsers()
+      const data = await getSettingsUsers()
       setUsers(data)
     } catch (error) {
       console.error("Failed to load users:", error)
@@ -52,6 +57,21 @@ export function TeamTab() {
     } catch (error) {
       console.error("Failed to deactivate user:", error)
       toast.error("Failed to deactivate user")
+    }
+  }
+
+  const handleReinviteUser = async (user: UserWithRelations) => {
+    try {
+      const result = await inviteUser(user.email, user.role)
+      if (result.success) {
+        toast.success("Invitation sent again")
+        await loadUsers()
+      } else {
+        toast.error(result.error || "Failed to resend invitation")
+      }
+    } catch (error) {
+      console.error("Failed to resend invitation:", error)
+      toast.error("Failed to resend invitation")
     }
   }
 
@@ -99,6 +119,7 @@ export function TeamTab() {
             users={users}
             onEditUser={handleEditUser}
             onDeactivateUser={handleDeactivateUser}
+            onReinviteUser={handleReinviteUser}
           />
         )}
       </div>

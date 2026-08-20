@@ -54,6 +54,7 @@ interface PeopleTableProps {
   users: UserWithRelations[]
   onEditUser?: (user: UserWithRelations) => void
   onDeactivateUser?: (userId: string) => void
+  onReinviteUser?: (user: UserWithRelations) => void
   /** Hides select, teams, groups, and projects columns */
   compact?: boolean
 }
@@ -62,6 +63,7 @@ export function PeopleTable({
   users,
   onEditUser,
   onDeactivateUser,
+  onReinviteUser,
   compact = false,
 }: PeopleTableProps) {
   const isMobile = useIsMobile()
@@ -108,9 +110,14 @@ export function PeopleTable({
               <IconUserCircle className="size-8 text-muted-foreground" />
             )}
             <div className="flex flex-col">
-              <span className="font-medium">
-                {user.displayName || user.email.split("@")[0]}
-              </span>
+              <div className="flex items-center gap-2">
+                <span className="font-medium">
+                  {user.displayName || user.email.split("@")[0]}
+                </span>
+                {user.accessStatus === "invited" && (
+                  <Badge variant="secondary">Invited</Badge>
+                )}
+              </div>
               <span className="text-sm text-muted-foreground flex items-center gap-1">
                 <IconMail className="size-3" />
                 {user.email}
@@ -198,18 +205,26 @@ export function PeopleTable({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={() => onEditUser?.(user)}>
-                Edit User
-              </DropdownMenuItem>
-              <DropdownMenuItem>Assign to Project</DropdownMenuItem>
-              <DropdownMenuItem>Assign to Team</DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem
-                className="text-destructive"
-                onClick={() => onDeactivateUser?.(user.id)}
-              >
-                Deactivate
-              </DropdownMenuItem>
+              {user.accessStatus === "invited" ? (
+                <DropdownMenuItem onClick={() => onReinviteUser?.(user)}>
+                  Send invitation again
+                </DropdownMenuItem>
+              ) : (
+                <>
+                  <DropdownMenuItem onClick={() => onEditUser?.(user)}>
+                    Edit User
+                  </DropdownMenuItem>
+                  <DropdownMenuItem>Assign to Project</DropdownMenuItem>
+                  <DropdownMenuItem>Assign to Team</DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    className="text-destructive"
+                    onClick={() => onDeactivateUser?.(user.id)}
+                  >
+                    Deactivate
+                  </DropdownMenuItem>
+                </>
+              )}
             </DropdownMenuContent>
           </DropdownMenu>
         )
