@@ -5,8 +5,8 @@ import { IconMail, IconLoader2 } from "@tabler/icons-react"
 import { toast } from "sonner"
 
 import { createProjectRfiEmailDraft } from "@/app/actions/project-rfis"
+import { EmailRecipientPicker } from "@/components/email/email-recipient-picker"
 import { Button } from "@/components/ui/button"
-import { Checkbox } from "@/components/ui/checkbox"
 import {
   Dialog,
   DialogContent,
@@ -15,13 +15,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { Input } from "@/components/ui/input"
-
-export type ProjectRfiEmailRecipientOption = {
-  readonly email: string
-  readonly label: string
-  readonly recommended: boolean
-}
+import type { EmailRecipientOption } from "@/lib/email/recipient-options"
 
 export function ProjectRfiCommunicationActions({
   projectId,
@@ -32,43 +26,34 @@ export function ProjectRfiCommunicationActions({
   readonly projectId: string
   readonly rfiId: string
   readonly rfiNumber: string
-  readonly recipientOptions: readonly ProjectRfiEmailRecipientOption[]
+  readonly recipientOptions: readonly EmailRecipientOption[]
 }): React.ReactElement {
   const [open, setOpen] = React.useState(false)
-  const [selected, setSelected] = React.useState<readonly string[]>([])
-  const [manualEmail, setManualEmail] = React.useState("")
+  const [to, setTo] = React.useState<readonly string[]>([])
+  const [cc, setCc] = React.useState<readonly string[]>([])
   const [starting, setStarting] = React.useState(false)
 
   function openEmailDialog(): void {
-    setSelected(
+    setTo(
       recipientOptions
         .filter((option) => option.recommended)
         .map((option) => option.email)
     )
-    setManualEmail("")
+    setCc([])
     setOpen(true)
   }
 
-  function toggleEmail(email: string, checked: boolean): void {
-    setSelected((current) =>
-      checked
-        ? Array.from(new Set([...current, email]))
-        : current.filter((candidate) => candidate !== email)
-    )
-  }
-
   async function openDefaultEmailApp(): Promise<void> {
-    const manual = manualEmail.trim()
-    const recipients = manual
-      ? Array.from(new Set([...selected, manual]))
-      : selected
-    if (recipients.length === 0) {
+    if (to.length === 0) {
       toast.error("Choose or enter at least one recipient.")
       return
     }
 
     setStarting(true)
-    const result = await createProjectRfiEmailDraft(projectId, rfiId, recipients)
+    const result = await createProjectRfiEmailDraft(projectId, rfiId, {
+      to,
+      cc,
+    })
     setStarting(false)
     if (!result.success) {
       toast.error(result.error)
@@ -76,7 +61,9 @@ export function ProjectRfiCommunicationActions({
     }
 
     setOpen(false)
-    toast.info("Keep Compass in CC or use Reply All so responses stay with this RFI.")
+    toast.info(
+      "Keep Compass in CC or use Reply All so responses stay with this RFI."
+    )
     window.location.href = result.href
   }
 
@@ -88,7 +75,7 @@ export function ProjectRfiCommunicationActions({
       </Button>
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="sm:max-w-lg">
+        <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle>Email {rfiNumber}</DialogTitle>
             <DialogDescription>
@@ -98,52 +85,24 @@ export function ProjectRfiCommunicationActions({
             </DialogDescription>
           </DialogHeader>
 
-          <div className="max-h-64 space-y-1 overflow-y-auto border-y py-2">
-            {recipientOptions.length === 0 ? (
-              <p className="px-2 py-4 text-sm text-muted-foreground">
-                No project contacts have an email address yet.
-              </p>
-            ) : (
-              recipientOptions.map((option) => {
-                const checked = selected.includes(option.email)
-                return (
-                  <label
-                    key={option.email}
-                    className="flex cursor-pointer items-center gap-3 px-2 py-2 hover:bg-muted"
-                  >
-                    <Checkbox
-                      checked={checked}
-                      onCheckedChange={(value) =>
-                        toggleEmail(option.email, value === true)
-                      }
-                    />
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate text-sm font-medium">
-                        {option.label}
-                      </span>
-                      <span className="block truncate text-xs text-muted-foreground">
-                        {option.email}
-                      </span>
-                    </span>
-                    {option.recommended ? (
-                      <span className="text-xs text-muted-foreground">RFI contact</span>
-                    ) : null}
-                  </label>
-                )
-              })
-            )}
-          </div>
-
-          <div className="space-y-1.5">
-            <label htmlFor={`rfi-manual-email-${rfiId}`} className="text-sm font-medium">
-              Or enter another email
-            </label>
-            <Input
-              id={`rfi-manual-email-${rfiId}`}
-              type="email"
-              value={manualEmail}
-              onChange={(event) => setManualEmail(event.currentTarget.value)}
-              placeholder="name@example.com"
+          <div className="grid gap-4 sm:grid-cols-2">
+            <EmailRecipientPicker
+              id={`rfi-email-to-${rfiId}`}
+              label="To"
+              options={recipientOptions}
+              value={to}
+              excludedEmails={cc}
+              onChange={setTo}
+              required
+            />
+            <EmailRecipientPicker
+              id={`rfi-email-cc-${rfiId}`}
+              label="Cc"
+              options={recipientOptions}
+              value={cc}
+              excludedEmails={to}
+              onChange={setCc}
+              placeholder="Choose an optional contact..."
             />
           </div>
 
@@ -151,8 +110,16 @@ export function ProjectRfiCommunicationActions({
             <Button type="button" variant="ghost" onClick={() => setOpen(false)}>
               Cancel
             </Button>
-            <Button type="button" disabled={starting} onClick={() => void openDefaultEmailApp()}>
-              {starting ? <IconLoader2 className="size-4 animate-spin" /> : <IconMail className="size-4" />}
+            <Button
+              type="button"
+              disabled={starting || to.length === 0}
+              onClick={() => void openDefaultEmailApp()}
+            >
+              {starting ? (
+                <IconLoader2 className="size-4 animate-spin" />
+              ) : (
+                <IconMail className="size-4" />
+              )}
               Open email app
             </Button>
           </DialogFooter>

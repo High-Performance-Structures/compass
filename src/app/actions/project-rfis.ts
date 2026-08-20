@@ -128,6 +128,11 @@ export type ProjectRfiEmailDraftResult =
     }
   | { readonly success: false; readonly error: string }
 
+export type ProjectRfiEmailDraftInput = {
+  readonly to: readonly string[]
+  readonly cc: readonly string[]
+}
+
 async function verifyProjectAccess(
   projectId: string
 ): Promise<ReturnType<typeof getDb>> {
@@ -573,6 +578,12 @@ function validEmail(value: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)
 }
 
+function normalizedUniqueEmails(values: readonly string[]): readonly string[] {
+  return Array.from(
+    new Set(values.map((email) => email.trim().toLowerCase()))
+  ).filter(validEmail)
+}
+
 function appOrigin(env: unknown): string {
   if (typeof env === "object" && env !== null) {
     const value = Reflect.get(env, "NEXT_PUBLIC_APP_URL")
@@ -584,18 +595,20 @@ function appOrigin(env: unknown): string {
 export async function createProjectRfiEmailDraft(
   projectId: string,
   rfiId: string,
-  recipientEmails: readonly string[]
+  input: ProjectRfiEmailDraftInput
 ): Promise<ProjectRfiEmailDraftResult> {
   try {
     const { db, env, user, orgId, projectNumber } =
       await getProjectUpdateContext(projectId)
-    const to = Array.from(
-      new Set(recipientEmails.map((email) => email.trim().toLowerCase()))
-    ).filter(validEmail)
+    const to = normalizedUniqueEmails(input.to)
     if (to.length === 0) {
       return { success: false, error: "Choose at least one email recipient." }
     }
-    if (to.length > 20) {
+    const toSet = new Set(to)
+    const cc = normalizedUniqueEmails(input.cc).filter(
+      (email) => !toSet.has(email)
+    )
+    if (to.length + cc.length > 20) {
       return { success: false, error: "Choose no more than 20 recipients." }
     }
 
@@ -644,7 +657,7 @@ export async function createProjectRfiEmailDraft(
       success: true,
       href: trackedMailtoHref({
         to,
-        cc: thread.replyToAddress,
+        cc: [...cc, thread.replyToAddress],
         subject,
         body,
       }),

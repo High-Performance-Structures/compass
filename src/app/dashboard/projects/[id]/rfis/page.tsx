@@ -12,14 +12,10 @@ import {
 import {
   getProjectContactsSummary,
   getProjectTaskAssigneeOptions,
-  type ProjectContactItem,
 } from "@/app/actions/project-contacts"
 import { getProjects } from "@/app/actions/projects"
 import { ProjectRfiCreateForm } from "@/components/projects/project-rfi-create-form"
-import {
-  ProjectRfiCommunicationActions,
-  type ProjectRfiEmailRecipientOption,
-} from "@/components/projects/project-rfi-communication-actions"
+import { ProjectRfiCommunicationActions } from "@/components/projects/project-rfi-communication-actions"
 import { ProjectRfiDeleteButton } from "@/components/projects/project-rfi-delete-button"
 import { ProjectRfiEmailSyncButton } from "@/components/projects/project-rfi-email-sync-button"
 import { ProjectRfiResponseComposer } from "@/components/projects/project-rfi-response-composer"
@@ -35,6 +31,7 @@ import {
   rfiMatchesStatusFilter,
   type RfiStatusFilter,
 } from "@/lib/rfis/status"
+import { buildProjectEmailRecipientOptions } from "@/lib/email/recipient-options"
 import { buildRfiContactOptions } from "@/lib/rfis/contact-options"
 import { cn } from "@/lib/utils"
 import { redirectIfFeaturePermissionDenied } from "@/lib/permission-redirect"
@@ -77,52 +74,6 @@ function unique(values: readonly (string | null | undefined)[]): readonly string
 
 function rfiTaskTitle(subject: string): string {
   return `Follow up RFI: ${subject}`
-}
-
-function normalizedMatchValue(value: string | null): string {
-  return value?.trim().toLocaleLowerCase() ?? ""
-}
-
-function rfiEmailRecipients(
-  rfi: {
-    readonly requesterName: string | null
-    readonly assignedToName: string | null
-    readonly companyName: string | null
-  },
-  contacts: readonly ProjectContactItem[]
-): readonly ProjectRfiEmailRecipientOption[] {
-  const targets = [rfi.requesterName, rfi.assignedToName, rfi.companyName]
-    .map(normalizedMatchValue)
-    .filter(Boolean)
-  const byEmail = new Map<string, ProjectRfiEmailRecipientOption>()
-
-  for (const contact of contacts) {
-    const email = contact.email?.trim().toLocaleLowerCase() ?? ""
-    if (!email) continue
-    const contactValues = [contact.displayName, contact.companyName]
-      .map(normalizedMatchValue)
-      .filter(Boolean)
-    const recommended = targets.some((target) =>
-      contactValues.some(
-        (candidate) => target.includes(candidate) || candidate.includes(target)
-      )
-    )
-    const label =
-      contact.companyName && contact.companyName !== contact.displayName
-        ? `${contact.displayName} - ${contact.companyName}`
-        : contact.displayName
-    const existing = byEmail.get(email)
-    if (!existing || (!existing.recommended && recommended)) {
-      byEmail.set(email, { email, label, recommended })
-    }
-  }
-
-  return Array.from(byEmail.values()).sort((first, second) => {
-    if (first.recommended !== second.recommended) {
-      return first.recommended ? -1 : 1
-    }
-    return first.label.localeCompare(second.label)
-  })
 }
 
 const RFI_FILTERS: readonly {
@@ -347,7 +298,14 @@ export default async function ProjectRfisPage({
                       projectId={id}
                       rfiId={rfi.id}
                       rfiNumber={rfi.rfiNumber}
-                      recipientOptions={rfiEmailRecipients(rfi, contacts)}
+                      recipientOptions={buildProjectEmailRecipientOptions(
+                        contacts,
+                        [
+                          rfi.requesterName,
+                          rfi.assignedToName,
+                          rfi.companyName,
+                        ]
+                      )}
                     />
                   </div>
                 </div>

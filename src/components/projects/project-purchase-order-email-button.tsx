@@ -4,6 +4,7 @@ import * as React from "react"
 import { IconCheck, IconMail, IconSend } from "@tabler/icons-react"
 
 import { sendPurchaseOrderEmail } from "@/app/actions/project-operations"
+import { EmailRecipientPicker } from "@/components/email/email-recipient-picker"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -17,6 +18,11 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
+import {
+  isValidRecipientEmail,
+  normalizeRecipientEmail,
+  type EmailRecipientOption,
+} from "@/lib/email/recipient-options"
 
 type EmailStatus =
   | { readonly kind: "idle" }
@@ -51,6 +57,11 @@ function defaultMessage(input: {
     .join("\n")
 }
 
+function defaultSupplierRecipients(email: string | null): readonly string[] {
+  if (!email || !isValidRecipientEmail(email)) return []
+  return [normalizeRecipientEmail(email)]
+}
+
 export function ProjectPurchaseOrderEmailButton({
   projectId,
   purchaseOrderId,
@@ -58,6 +69,7 @@ export function ProjectPurchaseOrderEmailButton({
   projectLabel,
   supplierName,
   supplierEmail,
+  recipientOptions,
 }: {
   readonly projectId: string
   readonly purchaseOrderId: string
@@ -65,10 +77,13 @@ export function ProjectPurchaseOrderEmailButton({
   readonly projectLabel: string
   readonly supplierName: string | null
   readonly supplierEmail: string | null
+  readonly recipientOptions: readonly EmailRecipientOption[]
 }): React.ReactElement {
   const [open, setOpen] = React.useState(false)
-  const [to, setTo] = React.useState(supplierEmail ?? "")
-  const [cc, setCc] = React.useState("")
+  const [to, setTo] = React.useState<readonly string[]>(
+    defaultSupplierRecipients(supplierEmail)
+  )
+  const [cc, setCc] = React.useState<readonly string[]>([])
   const [subject, setSubject] = React.useState(
     defaultSubject({ poNumber, projectLabel })
   )
@@ -77,12 +92,25 @@ export function ProjectPurchaseOrderEmailButton({
   )
   const [status, setStatus] = React.useState<EmailStatus>({ kind: "idle" })
 
-  async function submitEmail(event: React.FormEvent<HTMLFormElement>): Promise<void> {
+  function handleOpenChange(nextOpen: boolean): void {
+    setOpen(nextOpen)
+    if (!nextOpen) return
+
+    setTo(defaultSupplierRecipients(supplierEmail))
+    setCc([])
+    setSubject(defaultSubject({ poNumber, projectLabel }))
+    setMessage(defaultMessage({ supplierName, projectLabel, poNumber }))
+    setStatus({ kind: "idle" })
+  }
+
+  async function submitEmail(
+    event: React.FormEvent<HTMLFormElement>
+  ): Promise<void> {
     event.preventDefault()
     setStatus({ kind: "sending" })
     const result = await sendPurchaseOrderEmail(projectId, purchaseOrderId, {
-      to,
-      cc,
+      to: to.join(", "),
+      cc: cc.join(", "),
       subject,
       message,
     })
@@ -100,9 +128,14 @@ export function ProjectPurchaseOrderEmailButton({
   }
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
-        <Button type="button" variant="outline" size="sm" className="print:hidden">
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="print:hidden"
+        >
           <IconMail className="size-4" />
           Email supplier
         </Button>
@@ -117,26 +150,31 @@ export function ProjectPurchaseOrderEmailButton({
           </DialogHeader>
 
           <div className="grid gap-4 sm:grid-cols-2">
-            <div className="space-y-2">
-              <Label htmlFor={`po-email-to-${purchaseOrderId}`}>To</Label>
-              <Input
-                id={`po-email-to-${purchaseOrderId}`}
-                type="email"
-                value={to}
-                onChange={(event) => setTo(event.target.value)}
-                placeholder="supplier@example.com"
-                required
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor={`po-email-cc-${purchaseOrderId}`}>Cc</Label>
-              <Input
-                id={`po-email-cc-${purchaseOrderId}`}
-                value={cc}
-                onChange={(event) => setCc(event.target.value)}
-                placeholder="optional"
-              />
-            </div>
+            <EmailRecipientPicker
+              id={`po-email-to-${purchaseOrderId}`}
+              label="To"
+              options={recipientOptions}
+              value={to}
+              excludedEmails={cc}
+              onChange={(emails) => {
+                setTo(emails)
+                setStatus({ kind: "idle" })
+              }}
+              placeholder="Choose supplier or enter an email..."
+              required
+            />
+            <EmailRecipientPicker
+              id={`po-email-cc-${purchaseOrderId}`}
+              label="Cc"
+              options={recipientOptions}
+              value={cc}
+              excludedEmails={to}
+              onChange={(emails) => {
+                setCc(emails)
+                setStatus({ kind: "idle" })
+              }}
+              placeholder="Choose an optional contact..."
+            />
           </div>
 
           <div className="space-y-2">
@@ -174,7 +212,11 @@ export function ProjectPurchaseOrderEmailButton({
           <DialogFooter>
             <Button
               type="submit"
-              disabled={status.kind === "sending" || status.kind === "sent"}
+              disabled={
+                to.length === 0 ||
+                status.kind === "sending" ||
+                status.kind === "sent"
+              }
             >
               {status.kind === "sent" ? (
                 <IconCheck className="size-4" />

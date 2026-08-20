@@ -12,6 +12,7 @@ import {
   type ProjectPurchaseOrderItem,
 } from "@/app/actions/project-operations"
 import {
+  getProjectContactsSummary,
   getProjectPurchaseOrderSiteContactOptions,
   getProjectTaskAssigneeOptions,
   type ProjectTaskAssigneeOption,
@@ -45,6 +46,10 @@ import {
 import { canEditPurchaseOrderDraft } from "@/lib/purchase-orders/draft-edit"
 import { resolvedPurchaseOrderShipTo } from "@/lib/purchase-orders/ship-to"
 import { purchaseOrderSiteContactLabel } from "@/lib/purchase-orders/site-contact"
+import {
+  buildProjectEmailRecipientOptions,
+  type EmailRecipientOption,
+} from "@/lib/email/recipient-options"
 import {
   projectBrandFor,
   type ProjectBrand,
@@ -123,6 +128,7 @@ function PurchaseOrderCard({
   isFocused,
   taskAssigneeOptions,
   siteContactOptions,
+  emailRecipientOptions,
   jobsiteAddress,
   phaseOptions,
   costCodeOptions,
@@ -136,6 +142,7 @@ function PurchaseOrderCard({
   readonly isFocused: boolean
   readonly taskAssigneeOptions: readonly ProjectTaskAssigneeOption[]
   readonly siteContactOptions: readonly ProjectTaskAssigneeOption[]
+  readonly emailRecipientOptions: readonly EmailRecipientOption[]
   readonly jobsiteAddress: string | null
   readonly phaseOptions: React.ComponentProps<
     typeof ProjectPurchaseOrderEditForm
@@ -202,6 +209,7 @@ function PurchaseOrderCard({
               projectLabel={projectLabel}
               supplierName={order.companyName}
               supplierEmail={order.vendorEmail}
+              recipientOptions={emailRecipientOptions}
             />
             <ProjectPurchaseOrderDeleteButton
               poNumber={order.sourceRecordNumber}
@@ -446,12 +454,14 @@ export default async function ProjectPurchaseOrdersPage({
     purchaseOrders,
     taskAssigneeOptions,
     siteContactOptions,
+    contactsSummary,
     purchaseOrderCodingOptions,
   ] = await Promise.all([
     getProjects(),
     getProjectPurchaseOrders(id),
     getProjectTaskAssigneeOptions(id),
     getProjectPurchaseOrderSiteContactOptions(id),
+    getProjectContactsSummary(id, "internal"),
     getProjectPurchaseOrderFormOptions(id),
   ]).catch((error: unknown) => {
     redirectIfFeaturePermissionDenied(error)
@@ -466,6 +476,9 @@ export default async function ProjectPurchaseOrdersPage({
     ...taskAssigneeOptions.projectContacts,
     ...taskAssigneeOptions.directoryContacts,
   ]
+  const emailRecipientOptions = buildProjectEmailRecipientOptions(
+    contactsSummary.allContacts
+  )
   const openPurchaseOrders = purchaseOrders.filter(
     (order) => !isClosedProjectOperationStatus(order.status)
   )
@@ -582,6 +595,7 @@ export default async function ProjectPurchaseOrdersPage({
               isFocused={order.id === focusedPurchaseOrderId}
               taskAssigneeOptions={taskAssignees}
               siteContactOptions={siteContactOptions}
+              emailRecipientOptions={emailRecipientOptions}
               jobsiteAddress={purchaseOrderCodingOptions.jobsiteAddress}
               phaseOptions={purchaseOrderCodingOptions.phases}
               costCodeOptions={purchaseOrderCodingOptions.costCodes}
