@@ -18,6 +18,7 @@
 		"db:generate": "drizzle-kit generate",
 		"db:migrate:local": "wrangler d1 migrations apply compass-db --local",
 		"db:migrate:prod": "wrangler d1 migrations apply compass-db --remote",
+		"db:prepare-sage-clients": "bun scripts/import-sage-client-directory.mjs",
 		"db:migrate-orgs": "bun run scripts/migrate-to-orgs.ts",
 		"db:seed-demo": "bun run scripts/seed-demo.ts",
 		"prepare": "husky",

@@ -15,6 +15,7 @@ import Link from "next/link"
 import type {
   ProjectContactDirectoryOption,
   ProjectContactItem,
+  ProjectContactSageOptions,
   ProjectContactsSummary,
 } from "@/app/actions/project-contacts"
 import { ProjectContactEditor } from "@/components/projects/project-contact-management"
@@ -78,7 +79,7 @@ function visibilityLabel(contact: ProjectContactItem): string {
 
 function contactSubtitle(contact: ProjectContactItem): string {
   return [
-    contact.companyName,
+    contact.companyName !== contact.displayName ? contact.companyName : null,
     contact.role,
     contact.trade,
   ].filter(Boolean).join(" · ")
@@ -87,7 +88,15 @@ function contactSubtitle(contact: ProjectContactItem): string {
 function csiLabel(contact: ProjectContactItem): string | null {
   if (!contact.csiDivision || !contact.csiDivisionName) return null
 
-  return `${contact.csiDivision} ${contact.csiDivisionName}`
+  return `${contact.csiDivision} 00 00 - ${contact.csiDivisionName}`
+}
+
+function isCompanyOnlyVendor(contact: ProjectContactItem): boolean {
+  return (
+    (contact.contactType === "supplier" ||
+      contact.contactType === "subcontractor") &&
+    contact.vendorContactId === null
+  )
 }
 
 function accessStatusLabel(contact: ProjectContactItem): string {
@@ -127,12 +136,14 @@ function ContactCard({
   projectLabel,
   compact = false,
   directoryOptions,
+  sageOptions,
 }: {
   readonly contact: ProjectContactItem
   readonly projectId: string
   readonly projectLabel: string
   readonly compact?: boolean
   readonly directoryOptions?: readonly ProjectContactDirectoryOption[]
+  readonly sageOptions?: ProjectContactSageOptions
 }): React.ReactElement {
   return (
     <article className="rounded-md border bg-background p-3">
@@ -163,6 +174,7 @@ function ContactCard({
               projectId={projectId}
               contact={contact}
               directoryOptions={directoryOptions}
+              sageOptions={sageOptions ?? { divisions: [], costCodes: [] }}
             />
           )}
         </div>
@@ -197,8 +209,16 @@ function ContactCard({
         </p>
       )}
 
+      {!compact && isCompanyOnlyVendor(contact) && (
+        <p className="mt-2 text-xs text-muted-foreground">
+          Company assignment only. Select or add a contact person before sending
+          a Compass invitation.
+        </p>
+      )}
+
       {!compact &&
         contact.email &&
+        !isCompanyOnlyVendor(contact) &&
         projectContactCanInvite(contact.accessStatus) && (
           <div className="mt-3 flex justify-end">
             <ProjectContactInviteButton
@@ -221,12 +241,14 @@ export function ProjectContactsPanel({
   summary,
   showOpenLink = true,
   directoryOptions,
+  sageOptions,
 }: {
   readonly projectId: string
   readonly projectLabel?: string
   readonly summary: ProjectContactsSummary | null
   readonly showOpenLink?: boolean
   readonly directoryOptions?: readonly ProjectContactDirectoryOption[]
+  readonly sageOptions?: ProjectContactSageOptions
 }): React.ReactElement {
   if (!summary) {
     return (
@@ -263,6 +285,7 @@ export function ProjectContactsPanel({
             <ProjectContactEditor
               projectId={projectId}
               directoryOptions={directoryOptions}
+              sageOptions={sageOptions ?? { divisions: [], costCodes: [] }}
             />
           )}
           {!showOpenLink && (
@@ -350,6 +373,7 @@ export function ProjectContactsPanel({
               projectLabel={projectLabel}
               compact
               directoryOptions={directoryOptions}
+              sageOptions={sageOptions}
             />
           ))}
         </div>
@@ -375,11 +399,13 @@ export function ProjectContactsDirectory({
   projectLabel,
   summary,
   directoryOptions,
+  sageOptions,
 }: {
   readonly projectId: string
   readonly projectLabel: string
   readonly summary: ProjectContactsSummary
   readonly directoryOptions?: readonly ProjectContactDirectoryOption[]
+  readonly sageOptions?: ProjectContactSageOptions
 }): React.ReactElement {
   const displayGroups = buildDisplayGroups(summary.allContacts)
 
@@ -403,6 +429,7 @@ export function ProjectContactsDirectory({
                   projectId={projectId}
                   projectLabel={projectLabel}
                   directoryOptions={directoryOptions}
+                  sageOptions={sageOptions}
                 />
               ))}
             </div>

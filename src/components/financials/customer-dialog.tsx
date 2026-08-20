@@ -18,10 +18,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import type { Customer } from "@/db/schema"
-import {
-  SAGE_CLIENT_STATUS_OPTIONS,
-  type SageClientStatusId,
-} from "@/lib/sage/client-project-write"
+import type { CustomerRelationshipType } from "@/app/actions/customers"
 
 interface CustomerDialogProps {
   open: boolean
@@ -34,7 +31,7 @@ interface CustomerDialogProps {
     phone: string
     address: string
     notes: string
-    sageClientStatusId: SageClientStatusId
+    relationshipType: CustomerRelationshipType
   }) => void
 }
 
@@ -50,7 +47,8 @@ export function CustomerDialog({
   const [phone, setPhone] = React.useState("")
   const [address, setAddress] = React.useState("")
   const [notes, setNotes] = React.useState("")
-  const [sageClientStatusId, setSageClientStatusId] = React.useState("")
+  const [relationshipType, setRelationshipType] =
+    React.useState<CustomerRelationshipType>("client")
 
   React.useEffect(() => {
     if (initialData) {
@@ -60,7 +58,13 @@ export function CustomerDialog({
       setPhone(initialData.phone ?? "")
       setAddress(initialData.address ?? "")
       setNotes(initialData.notes ?? "")
-      setSageClientStatusId(String(initialData.sageClientStatusId ?? 1))
+      setRelationshipType(
+        initialData.sageClientId || initialData.sageClientNumber
+          ? "client"
+          : initialData.relationshipType === "lead"
+            ? "lead"
+            : "client"
+      )
     } else {
       setName("")
       setCompany("")
@@ -68,17 +72,13 @@ export function CustomerDialog({
       setPhone("")
       setAddress("")
       setNotes("")
-      setSageClientStatusId("")
+      setRelationshipType("client")
     }
   }, [initialData, open])
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     if (!name.trim()) return
-    const selectedStatus = SAGE_CLIENT_STATUS_OPTIONS.find(
-      (option) => String(option.id) === sageClientStatusId
-    )
-    if (!selectedStatus) return
     onSubmit({
       name: name.trim(),
       company: company.trim(),
@@ -86,7 +86,7 @@ export function CustomerDialog({
       phone: phone.trim(),
       address: address.trim(),
       notes: notes.trim(),
-      sageClientStatusId: selectedStatus.id,
+      relationshipType,
     })
   }
 
@@ -94,7 +94,8 @@ export function CustomerDialog({
     <ResponsiveDialog
       open={open}
       onOpenChange={onOpenChange}
-      title={initialData ? "Edit Customer" : "Add Customer"}
+      title={initialData ? "Edit Client / Lead" : "Add Client / Lead Contact"}
+      description="Maintain the directory contact without granting project access or creating a Sage client."
     >
       <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0">
         <ResponsiveDialogBody>
@@ -113,25 +114,33 @@ export function CustomerDialog({
             />
           </div>
           <div className="space-y-1.5">
-            <Label htmlFor="cust-sage-status" className="text-xs">
-              Sage client status *
+            <Label htmlFor="cust-relationship" className="text-xs">
+              Contact status
             </Label>
             <Select
-              value={sageClientStatusId}
-              onValueChange={setSageClientStatusId}
-              required
+              value={relationshipType}
+              onValueChange={(value) => {
+                if (value === "client" || value === "lead") {
+                  setRelationshipType(value)
+                }
+              }}
+              disabled={Boolean(
+                initialData?.sageClientId || initialData?.sageClientNumber
+              )}
             >
-              <SelectTrigger id="cust-sage-status" className="h-9">
-                <SelectValue placeholder="Choose a status" />
+              <SelectTrigger id="cust-relationship" className="h-9">
+                <SelectValue placeholder="Client or lead" />
               </SelectTrigger>
               <SelectContent>
-                {SAGE_CLIENT_STATUS_OPTIONS.map((option) => (
-                  <SelectItem key={option.id} value={String(option.id)}>
-                    {option.id} — {option.name}
-                  </SelectItem>
-                ))}
+                <SelectItem value="client">Client</SelectItem>
+                <SelectItem value="lead">Lead</SelectItem>
               </SelectContent>
             </Select>
+            {initialData?.sageClientId || initialData?.sageClientNumber ? (
+              <p className="text-xs text-muted-foreground">
+                Sage-linked directory records remain clients.
+              </p>
+            ) : null}
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="cust-company" className="text-xs">
@@ -211,9 +220,8 @@ export function CustomerDialog({
           <Button
             type="submit"
             className="h-9"
-            disabled={!initialData && !sageClientStatusId}
           >
-            {initialData ? "Save Changes" : "Create Customer"}
+            {initialData ? "Save Changes" : "Add to Contacts"}
           </Button>
         </ResponsiveDialogFooter>
       </form>
