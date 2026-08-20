@@ -13,8 +13,8 @@ android {
         applicationId "com.hpscolorado.compass"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 15
-        versionName "0.1.0-alpha.15"
+        versionCode 16
+        versionName "0.1.0-alpha.16"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -61,11 +61,19 @@ dependencies {
 
 apply from: 'capacitor.build.gradle'
 
-try {
-    def servicesJSON = file('google-services.json')
-    if (servicesJSON.text) {
-        apply plugin: 'com.google.gms.google-services'
-    }
-} catch(Exception e) {
-    logger.info("google-services.json not found, google-services plugin not applied. Push Notifications won't work")
+def servicesJSON = file('google-services.json')
+def isReleaseBuild = gradle.startParameter.taskNames.any { taskName ->
+    taskName.toLowerCase().contains('release')
+}
+
+if (servicesJSON.exists() && servicesJSON.text.trim()) {
+    apply plugin: 'com.google.gms.google-services'
+} else if (isReleaseBuild) {
+    // A release without Firebase configuration crashes when Android users
+    // grant notification permission and push registration begins.
+    throw new GradleException(
+        "android/app/google-services.json is required for Android release builds"
+    )
+} else {
+    logger.warn("google-services.json not found; Android push notifications are disabled")
 }
