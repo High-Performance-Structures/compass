@@ -18,6 +18,7 @@ import {
   canManageProjectRegistry,
 } from "@/lib/permissions"
 import { projectJobStatusLabel } from "@/lib/project-profile"
+import { isDeveloperModeEnabled } from "@/lib/developer-mode-server"
 
 export type ProjectsHubProject = {
   readonly id: string
@@ -52,16 +53,21 @@ export default async function ProjectsPage({
   >
 }): Promise<React.ReactElement> {
   const params = await searchParams
+  const currentUser = await getCurrentUser()
+  const canCreateOrUpdateProjects = canManageProjectRegistry(currentUser)
+  const developerModeEnabled = await isDeveloperModeEnabled(
+    canCreateOrUpdateProjects,
+  )
   const showRegistry =
-    params.manage !== undefined ||
-    params.department !== undefined ||
-    params.status !== undefined
+    developerModeEnabled &&
+    (params.manage !== undefined ||
+      params.department !== undefined ||
+      params.status !== undefined)
 
   if (!showRegistry) {
-    const [projectList, overview, currentUser, intakeAssignees] = await Promise.all([
+    const [projectList, overview, intakeAssignees] = await Promise.all([
       getProjects(),
       getDashboardOverview(),
-      getCurrentUser(),
       getProjectIntakeAssignees(),
     ])
 
@@ -76,12 +82,8 @@ export default async function ProjectsPage({
   }
 
   let hubProjects: ProjectsHubProject[] = []
-  let canCreateOrUpdateProjects = false
 
   try {
-    const currentUser = await getCurrentUser()
-    canCreateOrUpdateProjects = canManageProjectRegistry(currentUser)
-
     const { env } = await getCloudflareContext()
     if (!env?.DB) throw new Error("D1 not available")
 

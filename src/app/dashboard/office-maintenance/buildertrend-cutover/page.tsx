@@ -1,11 +1,15 @@
 export const dynamic = "force-dynamic"
 
 import Link from "next/link"
+import { redirect } from "next/navigation"
 import { IconArrowLeft, IconDatabase } from "@tabler/icons-react"
 
 import { getBuildertrendCutoverCoverage } from "@/app/actions/buildertrend-cutover-coverage"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { getCurrentUser } from "@/lib/auth"
+import { canManageProjectRegistry } from "@/lib/permissions"
+import { isDeveloperModeEnabled } from "@/lib/developer-mode-server"
 
 function generatedLabel(value: string): string {
   const date = new Date(value)
@@ -13,6 +17,12 @@ function generatedLabel(value: string): string {
 }
 
 export default async function BuildertrendCutoverPage(): Promise<React.ReactElement> {
+  const user = await getCurrentUser()
+  const developerModeEnabled = await isDeveloperModeEnabled(
+    canManageProjectRegistry(user),
+  )
+  if (!developerModeEnabled) redirect("/dashboard")
+
   const coverage = await getBuildertrendCutoverCoverage()
 
   return (

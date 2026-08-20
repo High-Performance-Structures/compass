@@ -7,6 +7,10 @@ import type {
   ProjectChangeOrderItem,
 } from "@/app/actions/project-change-orders"
 import { ProjectChangeOrderEditForm } from "@/components/projects/project-change-order-edit-form"
+import {
+  DeveloperOnly,
+  WorkerOnly,
+} from "@/components/developer-mode-provider"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -117,23 +121,25 @@ export function ProjectChangeOrderDetail({
             </p>
           )}
         </div>
-        <div className="border-y bg-background p-4">
-          <h2 className="text-sm font-semibold">Integration boundaries</h2>
-          <dl className="mt-3 grid gap-3 text-sm">
-            <div>
-              <dt className="text-xs text-muted-foreground">Foxit signature</dt>
-              <dd className="font-medium">{item.foxitStatus}</dd>
-            </div>
-            <div>
-              <dt className="text-xs text-muted-foreground">Sage</dt>
-              <dd className="font-medium">{item.sageStatus}</dd>
-            </div>
-          </dl>
-          <p className="mt-3 text-xs leading-5 text-muted-foreground">
-            Compass records readiness only. No document is sent to Foxit and no
-            accounting record is written to Sage from this workflow.
-          </p>
-        </div>
+        <DeveloperOnly>
+          <div className="border-y bg-background p-4">
+            <h2 className="text-sm font-semibold">Integration boundaries</h2>
+            <dl className="mt-3 grid gap-3 text-sm">
+              <div>
+                <dt className="text-xs text-muted-foreground">Foxit signature</dt>
+                <dd className="font-medium">{item.foxitStatus}</dd>
+              </div>
+              <div>
+                <dt className="text-xs text-muted-foreground">Sage</dt>
+                <dd className="font-medium">{item.sageStatus}</dd>
+              </div>
+            </dl>
+            <p className="mt-3 text-xs leading-5 text-muted-foreground">
+              Compass records readiness only. No document is sent to Foxit and no
+              accounting record is written to Sage from this workflow.
+            </p>
+          </div>
+        </DeveloperOnly>
       </section>
 
       <section className="border-y bg-background p-4">
@@ -146,7 +152,7 @@ export function ProjectChangeOrderDetail({
                   {event.eventType === "status_transition"
                     ? `${event.fromStatus ? historyStatusLabel(event.fromStatus) : "Created"} → ${historyStatusLabel(event.toStatus)}`
                     : event.eventType === "buildertrend_import"
-                      ? "Imported from Buildertrend"
+                      ? <><DeveloperOnly>Imported from Buildertrend</DeveloperOnly><WorkerOnly>Request created</WorkerOnly></>
                     : event.eventType === "created"
                       ? "Request created"
                       : "Request updated"}

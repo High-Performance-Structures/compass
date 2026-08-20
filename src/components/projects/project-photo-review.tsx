@@ -50,6 +50,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { ProjectContextSwitcher } from "@/components/projects/project-context-switcher"
+import { useDeveloperMode } from "@/components/developer-mode-provider"
 import {
   photoLinkHref,
   projectInternalPhotoUrl,
@@ -263,6 +264,7 @@ export function ProjectPhotoReview({
 }: {
   readonly library: ProjectPhotoLibrary
 }): React.ReactElement {
+  const { developerModeEnabled } = useDeveloperMode()
   const router = useRouter()
   const [photos, setPhotos] =
     React.useState<readonly ProjectPhotoLibraryItem[]>(library.photos)
@@ -1024,13 +1026,15 @@ export function ProjectPhotoReview({
                       No link
                     </span>
                   )}
-                  <span
-                    className="flex size-5 shrink-0 items-center justify-center rounded border border-border/70 bg-muted/40 text-[10px] font-semibold text-muted-foreground"
-                    title={`Source: ${sourceName}`}
-                    aria-label={`Source: ${sourceName}`}
-                  >
-                    {sourceInitial(photo.sourceSystem)}
-                  </span>
+                  {developerModeEnabled && (
+                    <span
+                      className="flex size-5 shrink-0 items-center justify-center rounded border border-border/70 bg-muted/40 text-[10px] font-semibold text-muted-foreground"
+                      title={`Source: ${sourceName}`}
+                      aria-label={`Source: ${sourceName}`}
+                    >
+                      {sourceInitial(photo.sourceSystem)}
+                    </span>
+                  )}
                 </div>
               </article>
             )
@@ -1122,9 +1126,11 @@ export function ProjectPhotoReview({
                             of {filteredPhotos.length}
                           </p>
                           <div className="flex flex-wrap gap-1">
-                            <Badge variant="outline">
-                              {sourceLabel(previewPhoto.sourceSystem)}
-                            </Badge>
+                            {developerModeEnabled && (
+                              <Badge variant="outline">
+                                {sourceLabel(previewPhoto.sourceSystem)}
+                              </Badge>
+                            )}
                             <Badge variant="outline">
                               {kindLabel(previewPhoto.photoKind)}
                             </Badge>

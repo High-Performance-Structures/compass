@@ -7,6 +7,7 @@ import {
   updateProjectOperationStatus,
   type ProjectOperationKind,
 } from "@/app/actions/project-operations"
+import { useDeveloperMode } from "@/components/developer-mode-provider"
 import {
   PURCHASE_ORDER_STATUS_OPTIONS,
   RFQ_STATUS_OPTIONS,
@@ -23,6 +24,7 @@ export function ProjectOperationStatusSelect({
   readonly operationKind: ProjectOperationKind
   readonly status: string
 }): React.ReactElement {
+  const { developerModeEnabled } = useDeveloperMode()
   const router = useRouter()
   const [selectedStatus, setSelectedStatus] = React.useState(status)
   const [error, setError] = React.useState<string | null>(null)
@@ -73,7 +75,8 @@ export function ProjectOperationStatusSelect({
       >
         {hasImportedStatus && (
           <option value={selectedStatus}>
-            {selectedStatus.replaceAll("_", " ")} (imported)
+            {selectedStatus.replaceAll("_", " ")}
+            {developerModeEnabled ? " (imported)" : ""}
           </option>
         )}
         {options.map((option) => (

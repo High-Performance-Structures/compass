@@ -20,6 +20,7 @@ import {
   type OwnerProjectUpdateDocument,
 } from "@/app/actions/project-field"
 import { Badge } from "@/components/ui/badge"
+import { useDeveloperMode } from "@/components/developer-mode-provider"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -153,6 +154,7 @@ export function OwnerUpdateDraftEditor({
 }: {
   readonly document: OwnerProjectUpdateDocument
 }): React.ReactElement {
+  const { developerModeEnabled } = useDeveloperMode()
   const router = useRouter()
   const [title, setTitle] = React.useState(document.update.title)
   const [updateDate, setUpdateDate] = React.useState(document.update.updateDate)
@@ -657,14 +659,16 @@ export function OwnerUpdateDraftEditor({
                 Photos &amp; documents
               </h3>
               <p className="mt-1 text-xs text-muted-foreground">
-                Choose existing Compass or Buildertrend photos, attach existing
-                documents, or upload new files directly to this draft.
+                Choose existing photos, attach documents, or upload new files
+                directly to this draft.
               </p>
               <p className="mt-2 text-xs text-muted-foreground">
-                {compassPhotoCount} Compass photo
-                {compassPhotoCount === 1 ? "" : "s"} ·{" "}
-                {buildertrendPhotoCount} Buildertrend photo
-                {buildertrendPhotoCount === 1 ? "" : "s"} ·{" "}
+                {developerModeEnabled && (
+                  <>{compassPhotoCount} Compass photo
+                  {compassPhotoCount === 1 ? "" : "s"} ·{" "}
+                  {buildertrendPhotoCount} Buildertrend photo
+                  {buildertrendPhotoCount === 1 ? "" : "s"} ·{" "}</>
+                )}
                 {document.availableDocuments.length} document
                 {document.availableDocuments.length === 1 ? "" : "s"}
               </p>
@@ -745,9 +749,11 @@ export function OwnerUpdateDraftEditor({
                   <span className="min-w-0 flex-1">
                     <span className="flex flex-wrap items-center gap-2">
                       <span className="text-sm font-medium">{log.logDate}</span>
-                      <Badge variant="outline">
-                        {sourceLabel(log.sourceSystem)}
-                      </Badge>
+                      {developerModeEnabled && (
+                        <Badge variant="outline">
+                          {sourceLabel(log.sourceSystem)}
+                        </Badge>
+                      )}
                       {!log.isClientVisible && (
                         <Badge variant="secondary">Staff-only log</Badge>
                       )}
@@ -806,9 +812,9 @@ export function OwnerUpdateDraftEditor({
             </div>
           </div>
           <p className="mt-1 text-xs text-muted-foreground">
-            Choose Compass or Buildertrend photos for this update. Selecting a
-            photo shares only that photo when the update is published; it does
-            not make its whole daily log visible.
+            Choose photos for this update. Selecting a photo shares only that
+            photo when the update is published; it does not make its whole
+            daily log visible.
           </p>
           {document.availablePhotos.length === 0 ? (
             <p className="mt-3 text-sm text-muted-foreground">
@@ -863,9 +869,11 @@ export function OwnerUpdateDraftEditor({
                       <p className="truncate text-xs font-medium">
                         {photo.caption ?? photo.fileName}
                       </p>
-                      <p className="mt-1 text-[11px] text-muted-foreground">
-                        {sourceLabel(photo.sourceSystem)}
-                      </p>
+                      {developerModeEnabled && (
+                        <p className="mt-1 text-[11px] text-muted-foreground">
+                          {sourceLabel(photo.sourceSystem)}
+                        </p>
+                      )}
                     </div>
                   </article>
                 )
@@ -915,9 +923,11 @@ export function OwnerUpdateDraftEditor({
                     <span className="block truncate text-sm font-medium">
                       {file.caption ?? file.fileName}
                     </span>
-                    <span className="text-xs text-muted-foreground">
-                      {sourceLabel(file.sourceSystem)}
-                    </span>
+                    {developerModeEnabled && (
+                      <span className="text-xs text-muted-foreground">
+                        {sourceLabel(file.sourceSystem)}
+                      </span>
+                    )}
                   </span>
                 </label>
               ))}

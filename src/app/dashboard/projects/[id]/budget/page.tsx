@@ -27,6 +27,9 @@ import { ProjectBudgetPrintButton } from "@/components/projects/project-budget-p
 import { ProjectContextSwitcher } from "@/components/projects/project-context-switcher"
 import { SagePayApplicationSyncControl } from "@/components/projects/sage-pay-application-sync-control"
 import { Badge } from "@/components/ui/badge"
+import { getCurrentUser } from "@/lib/auth"
+import { isDeveloperModeEnabled } from "@/lib/developer-mode-server"
+import { canManageProjectRegistry } from "@/lib/permissions"
 import { projectBrandFor } from "@/lib/project-branding"
 
 export default async function ProjectBudgetPage({
@@ -35,6 +38,10 @@ export default async function ProjectBudgetPage({
   readonly params: Promise<{ id: string }>
 }): Promise<React.ReactElement> {
   const { id } = await params
+  const currentUser = await getCurrentUser()
+  const developerModeEnabled = await isDeveloperModeEnabled(
+    canManageProjectRegistry(currentUser)
+  )
 
   let internalBudget: ProjectBudgetSummary | null = null
   let ownerBudget: ProjectBudgetSummary | null = null
@@ -53,10 +60,12 @@ export default async function ProjectBudgetPage({
   } catch (error) {
     console.warn("Budget unavailable", error)
   }
-  try {
-    sageSyncState = await getSagePayApplicationSyncState(id)
-  } catch (error) {
-    console.warn("Sage sync unavailable", error)
+  if (developerModeEnabled) {
+    try {
+      sageSyncState = await getSagePayApplicationSyncState(id)
+    } catch (error) {
+      console.warn("Sage sync unavailable", error)
+    }
   }
   const brand = projectBrandFor({
     projectId: id,
@@ -104,11 +113,13 @@ export default async function ProjectBudgetPage({
         </div>
       </div>
 
-      {sageSyncState && (
-        <SagePayApplicationSyncControl
-          projectId={id}
-          state={sageSyncState}
-        />
+      {developerModeEnabled && sageSyncState && (
+        <div className="print:hidden">
+          <SagePayApplicationSyncControl
+            projectId={id}
+            state={sageSyncState}
+          />
+        </div>
       )}
 
       <div className="mb-6">
@@ -155,7 +166,7 @@ export default async function ProjectBudgetPage({
           <div className="mb-3 flex items-center justify-between gap-3">
             <div>
               <h2 className="text-sm font-semibold">Internal G703</h2>
-              <p className="text-xs text-muted-foreground">
+              <p className="text-xs text-muted-foreground print:hidden">
                 All mapped lines and internal-only detail. Page access follows
                 the Budget / G703 permission; each Owner/Internal badge is
                 stored on its individual budget line.

@@ -765,7 +765,7 @@ export function ProjectRfqEditForm({
                         <SelectItem key={option.value} value={option.value}>
                           {option.label}
                           {option.needsSageReview
-                            ? " - needs Sage review"
+                            ? " - needs review"
                             : ""}
                         </SelectItem>
                       ))}

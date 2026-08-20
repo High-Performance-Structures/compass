@@ -17,6 +17,7 @@ import { Badge } from "@/components/ui/badge"
 import { toast } from "sonner"
 import { GoogleConnectDialog } from "./connect-dialog"
 import { SharedDrivePicker } from "./shared-drive-picker"
+import { DeveloperOnly } from "@/components/developer-mode-provider"
 
 export function GoogleDriveConnectionStatus() {
   const [status, setStatus] = useState<{
@@ -97,7 +98,9 @@ export function GoogleDriveConnectionStatus() {
 
         {status?.connected && (
           <div className="space-y-1 text-xs text-muted-foreground">
-            <p>Domain: {status.workspaceDomain}</p>
+            <DeveloperOnly>
+              <p>Domain: {status.workspaceDomain}</p>
+            </DeveloperOnly>
             {status.sharedDriveName && (
               <p>Shared drive: {status.sharedDriveName}</p>
             )}

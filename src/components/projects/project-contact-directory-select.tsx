@@ -6,6 +6,7 @@ import { Check, ChevronsUpDown } from "lucide-react"
 
 import type { IndependentContactItem } from "@/app/actions/project-contacts"
 import { Button } from "@/components/ui/button"
+import { useDeveloperMode } from "@/components/developer-mode-provider"
 import {
   Command,
   CommandEmpty,
@@ -45,6 +46,7 @@ export function ProjectContactDirectorySelect({
 }: {
   readonly contacts: readonly IndependentContactItem[]
 }): React.ReactElement {
+  const { developerModeEnabled } = useDeveloperMode()
   const { pending } = useFormStatus()
   const [selectedId, setSelectedId] = React.useState("")
   const [open, setOpen] = React.useState(false)
@@ -54,7 +56,7 @@ export function ProjectContactDirectorySelect({
     return [
       contact.name,
       contactTypeLabel(contact.contactType),
-      sourceLabel(contact),
+      developerModeEnabled ? sourceLabel(contact) : null,
       contact.id,
     ].join(" ")
   }
@@ -87,7 +89,11 @@ export function ProjectContactDirectorySelect({
               {selectedContact
                 ? `${selectedContact.name} - ${contactTypeLabel(
                     selectedContact.contactType
-                  )} - ${sourceLabel(selectedContact)}`
+                  )}${
+                    developerModeEnabled
+                      ? ` - ${sourceLabel(selectedContact)}`
+                      : ""
+                  }`
                 : "Add from directory"}
             </span>
             <ChevronsUpDown className="ml-2 size-4 shrink-0 opacity-50" />
@@ -120,8 +126,10 @@ export function ProjectContactDirectorySelect({
                     <div className="min-w-0">
                       <div className="truncate font-medium">{contact.name}</div>
                       <div className="text-muted-foreground truncate text-xs">
-                        {contactTypeLabel(contact.contactType)} -{" "}
-                        {sourceLabel(contact)}
+                        {contactTypeLabel(contact.contactType)}
+                        {developerModeEnabled
+                          ? ` - ${sourceLabel(contact)}`
+                          : ""}
                       </div>
                     </div>
                   </CommandItem>

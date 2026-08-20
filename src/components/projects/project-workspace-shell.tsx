@@ -23,6 +23,7 @@ import {
 import { ProjectManagerWorkflowPanel } from "@/components/projects/project-manager-workflow-panel"
 import { ProjectRegistryPanel } from "@/components/projects/project-registry-panel"
 import { ProjectSageSyncQueuePanel } from "@/components/projects/project-sage-sync-queue-panel"
+import { useDeveloperMode } from "@/components/developer-mode-provider"
 import {
   PROJECT_WORKFLOW_ROLE_LENSES,
   isProjectWorkflowRoleId,
@@ -34,7 +35,6 @@ import {
 } from "@/lib/project-workflow-roles"
 
 const ROLE_STORAGE_PREFIX = "compass-project-role-lens"
-const MODE_STORAGE_PREFIX = "compass-project-workspace-mode"
 
 function storedWorkflowRole(projectId: string): ProjectWorkflowRoleId | null {
   try {
@@ -46,37 +46,12 @@ function storedWorkflowRole(projectId: string): ProjectWorkflowRoleId | null {
   }
 }
 
-function storedWorkspaceMode(
-  projectId: string,
-  canUseDeveloperMode: boolean,
-): ProjectWorkspaceMode | null {
-  if (!canUseDeveloperMode) return null
-
-  try {
-    const value = window.localStorage.getItem(`${MODE_STORAGE_PREFIX}:${projectId}`)
-    return value === "developer" || value === "worker" ? value : null
-  } catch {
-    return null
-  }
-}
-
 function saveWorkflowRole(
   projectId: string,
   roleId: ProjectWorkflowRoleId,
 ): void {
   try {
     window.localStorage.setItem(`${ROLE_STORAGE_PREFIX}:${projectId}`, roleId)
-  } catch {
-    // Local storage is a convenience, not an app dependency.
-  }
-}
-
-function saveWorkspaceMode(
-  projectId: string,
-  mode: ProjectWorkspaceMode,
-): void {
-  try {
-    window.localStorage.setItem(`${MODE_STORAGE_PREFIX}:${projectId}`, mode)
   } catch {
     // Local storage is a convenience, not an app dependency.
   }
@@ -201,8 +176,14 @@ export function ProjectWorkspaceShell({
 }): ReactElement | null {
   const [activeRoleId, setActiveRoleId] =
     useState<ProjectWorkflowRoleId>(initialRoleId)
-  const [workspaceMode, setWorkspaceMode] =
-    useState<ProjectWorkspaceMode>("worker")
+  const {
+    developerModeEnabled: globalDeveloperModeEnabled,
+    setDeveloperModeEnabled,
+  } = useDeveloperMode()
+  const developerModeEnabled = canEditRegistry && globalDeveloperModeEnabled
+  const workspaceMode: ProjectWorkspaceMode = developerModeEnabled
+    ? "developer"
+    : "worker"
 
   useEffect(() => {
     const savedRole = storedWorkflowRole(projectId)
@@ -210,11 +191,7 @@ export function ProjectWorkspaceShell({
       setActiveRoleId(savedRole)
     }
 
-    const savedMode = storedWorkspaceMode(projectId, canEditRegistry)
-    if (savedMode) setWorkspaceMode(savedMode)
-  }, [allowedRoleIds, canEditRegistry, projectId])
-
-  const developerModeEnabled = canEditRegistry && workspaceMode === "developer"
+  }, [allowedRoleIds, projectId])
 
   function handleRoleChange(roleId: ProjectWorkflowRoleId): void {
     if (!workflowRoleIsAllowed(roleId, allowedRoleIds)) return
@@ -224,9 +201,7 @@ export function ProjectWorkspaceShell({
   }
 
   function handleModeChange(isDeveloperMode: boolean): void {
-    const nextMode = isDeveloperMode ? "developer" : "worker"
-    setWorkspaceMode(nextMode)
-    saveWorkspaceMode(projectId, nextMode)
+    setDeveloperModeEnabled(isDeveloperMode)
   }
 
   if (allowedRoleIds.length === 0) return null

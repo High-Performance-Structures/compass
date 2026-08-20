@@ -30,6 +30,9 @@ import { ProjectTaskCreateButton } from "@/components/projects/project-task-crea
 import { ProjectQuickSwitcher } from "@/components/projects/project-quick-switcher"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { getCurrentUser } from "@/lib/auth"
+import { isDeveloperModeEnabled } from "@/lib/developer-mode-server"
+import { canManageProjectRegistry } from "@/lib/permissions"
 import { cn } from "@/lib/utils"
 import { redirectIfFeaturePermissionDenied } from "@/lib/permission-redirect"
 import {
@@ -120,6 +123,7 @@ function PurchaseOrderCard({
   jobsiteAddress,
   phaseOptions,
   costCodeOptions,
+  developerModeEnabled,
 }: {
   readonly brand: ProjectBrand
   readonly order: ProjectPurchaseOrderItem
@@ -135,6 +139,7 @@ function PurchaseOrderCard({
   readonly costCodeOptions: React.ComponentProps<
     typeof ProjectPurchaseOrderEditForm
   >["costCodeOptions"]
+  readonly developerModeEnabled: boolean
 }): React.ReactElement {
   const deliveryLocation = resolvedPurchaseOrderShipTo({
     storedShipTo: order.sageShipTo,
@@ -169,7 +174,9 @@ function PurchaseOrderCard({
               operationKind="purchase_order"
               status={order.status}
             />
-            <Badge variant="outline">{label(order.syncStatus)}</Badge>
+            {developerModeEnabled && (
+              <Badge variant="outline">{label(order.syncStatus)}</Badge>
+            )}
             {order.priority === "high" && (
               <Badge variant="destructive">High</Badge>
             )}
@@ -241,7 +248,8 @@ function PurchaseOrderCard({
             </p>
           </div>
         )}
-        <div className="mt-3 rounded-md border bg-muted/20 p-3">
+        {developerModeEnabled && (
+          <div className="mt-3 rounded-md border bg-muted/20 p-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <p className="text-xs font-medium uppercase text-muted-foreground">
               Accounting sync
@@ -284,7 +292,8 @@ function PurchaseOrderCard({
               ))}
             </div>
           )}
-        </div>
+          </div>
+        )}
       </div>
 
       <div className="hidden text-[11px] leading-tight text-black print:block">
@@ -338,7 +347,6 @@ function PurchaseOrderCard({
               <p className="whitespace-pre-line font-medium">
                 {deliveryLocation ?? "TBD"}
               </p>
-              <p>Internal Owner: {order.assigneeName ?? "TBD"}</p>
             </div>
           </div>
         </div>
@@ -417,6 +425,10 @@ export default async function ProjectPurchaseOrdersPage({
     ? query.item[0] ?? null
     : query.item ?? null
   const statusFilter = parseProjectOperationStatusFilter(query.status)
+  const currentUser = await getCurrentUser()
+  const developerModeEnabled = await isDeveloperModeEnabled(
+    canManageProjectRegistry(currentUser)
+  )
   const [
     projects,
     purchaseOrders,
@@ -557,6 +569,7 @@ export default async function ProjectPurchaseOrdersPage({
               jobsiteAddress={purchaseOrderCodingOptions.jobsiteAddress}
               phaseOptions={purchaseOrderCodingOptions.phases}
               costCodeOptions={purchaseOrderCodingOptions.costCodes}
+              developerModeEnabled={developerModeEnabled}
             />
           ))
         ) : (

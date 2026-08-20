@@ -43,6 +43,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
+import { useDeveloperMode } from "@/components/developer-mode-provider"
 
 interface CustomersTableProps {
   customers: Customer[]
@@ -56,6 +57,7 @@ export function CustomersTable({
   onDelete,
 }: CustomersTableProps) {
   const isMobile = useIsMobile()
+  const { developerModeEnabled } = useDeveloperMode()
   const [sorting, setSorting] = React.useState<SortingState>([
     { id: "name", desc: false },
   ])
@@ -268,10 +270,13 @@ export function CustomersTable({
       },
     },
   ]
+  const visibleColumns = developerModeEnabled
+    ? columns
+    : columns.filter((column) => column.id !== "source")
 
   const table = useReactTable({
     data: customers,
-    columns,
+    columns: visibleColumns,
     onSortingChange: setSorting,
     onColumnFiltersChange: setColumnFilters,
     getCoreRowModel: getCoreRowModel(),
@@ -424,7 +429,7 @@ export function CustomersTable({
               ) : (
                 <TableRow>
                   <TableCell
-                    colSpan={columns.length}
+                    colSpan={visibleColumns.length}
                     className="h-24 text-center"
                   >
                     No customers found

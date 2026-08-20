@@ -157,7 +157,7 @@ export function ProjectChangeOrderCreateForm({
           <SheetTitle>Request a change order</SheetTitle>
           <SheetDescription>
             Describe the scope, code each cost line, and record any schedule
-            impact. This does not approve work or send anything to Sage or Foxit.
+            impact. This does not approve work or send anything externally.
           </SheetDescription>
         </SheetHeader>
         <form

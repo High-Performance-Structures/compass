@@ -29,6 +29,9 @@ import { ProjectTaskCreateButton } from "@/components/projects/project-task-crea
 import { ProjectQuickSwitcher } from "@/components/projects/project-quick-switcher"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { getCurrentUser } from "@/lib/auth"
+import { isDeveloperModeEnabled } from "@/lib/developer-mode-server"
+import { canManageProjectRegistry } from "@/lib/permissions"
 import { cn } from "@/lib/utils"
 import { redirectIfFeaturePermissionDenied } from "@/lib/permission-redirect"
 import {
@@ -143,6 +146,7 @@ function RfqCard({
   taskAssigneeOptions,
   selectionOptions,
   selectionsSummary,
+  developerModeEnabled,
 }: {
   readonly brand: ProjectBrand
   readonly rfq: ProjectRfqItem
@@ -154,6 +158,7 @@ function RfqCard({
   >["assigneeOptions"]
   readonly selectionOptions: ProjectSelectionOptions
   readonly selectionsSummary: ProjectSelectionsSummary
+  readonly developerModeEnabled: boolean
 }): React.ReactElement {
   return (
     <article
@@ -179,7 +184,9 @@ function RfqCard({
             operationKind="rfq"
             status={rfq.status}
           />
-          <Badge variant="outline">{label(rfq.syncStatus)}</Badge>
+          {developerModeEnabled && (
+            <Badge variant="outline">{label(rfq.syncStatus)}</Badge>
+          )}
           {rfq.priority === "high" || rfq.priority === "critical" ? (
             <Badge variant="destructive">{label(rfq.priority)}</Badge>
           ) : null}
@@ -363,6 +370,10 @@ export default async function ProjectRfqsPage({
     ? query.created[0] ?? null
     : query.created ?? null
   const statusFilter = parseProjectOperationStatusFilter(query.status)
+  const currentUser = await getCurrentUser()
+  const developerModeEnabled = await isDeveloperModeEnabled(
+    canManageProjectRegistry(currentUser)
+  )
   const [projects, rfqs, taskAssigneeOptions, selectionsSummary, selectionOptions] =
     await Promise.all([
     getProjects(),
@@ -487,6 +498,7 @@ export default async function ProjectRfqsPage({
               taskAssigneeOptions={taskAssignees}
               selectionOptions={selectionOptions}
               selectionsSummary={selectionsSummary}
+              developerModeEnabled={developerModeEnabled}
             />
           ))
         ) : (

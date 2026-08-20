@@ -21,6 +21,7 @@ import {
 } from "@/lib/permissions"
 import { USER_ROLE_OPTIONS, userRoleLabel } from "@/lib/user-roles"
 import { Badge } from "@/components/ui/badge"
+import { useDeveloperMode } from "@/components/developer-mode-provider"
 import {
   Select,
   SelectContent,
@@ -195,6 +196,7 @@ function FeatureRow({
   canManage,
   onRoleChange,
   onTeamChange,
+  showInternalDetails,
 }: {
   readonly feature: PermissionFeature
   readonly selectedRole: string
@@ -210,6 +212,7 @@ function FeatureRow({
     feature: PermissionFeature,
     value: typeof TEAM_INHERIT | PermissionAccessLevel
   ) => void
+  readonly showInternalDetails: boolean
 }): React.ReactElement {
   const baselineLevel = getPermissionAccessLevel(selectedRole, feature.resource)
   const accessLevel = roleOverride?.accessLevel ?? baselineLevel
@@ -228,9 +231,11 @@ function FeatureRow({
           </p>
         </div>
       </TableCell>
-      <TableCell className="text-xs text-muted-foreground">
-        {feature.resource}
-      </TableCell>
+      {showInternalDetails && (
+        <TableCell className="text-xs text-muted-foreground">
+          {feature.resource}
+        </TableCell>
+      )}
       <TableCell>
         <Badge
           variant="outline"
@@ -251,9 +256,11 @@ function FeatureRow({
           onChange={(value) => onRoleChange(feature, value)}
         />
       </TableCell>
-      <TableCell>
-        <ActionsList accessLevel={accessLevel} />
-      </TableCell>
+      {showInternalDetails && (
+        <TableCell>
+          <ActionsList accessLevel={accessLevel} />
+        </TableCell>
+      )}
       <TableCell>
         <TeamOverrideSelect
           value={teamChoice}
@@ -271,6 +278,7 @@ function FeatureRow({
 }
 
 export function PermissionsTab(): React.ReactElement {
+  const { developerModeEnabled } = useDeveloperMode()
   const [selectedRole, setSelectedRole] = React.useState("admin")
   const [demoMode, setDemoMode] = React.useState(false)
   const [canManagePermissions, setCanManagePermissions] = React.useState(false)
@@ -454,10 +462,10 @@ export function PermissionsTab(): React.ReactElement {
               <TableHeader className="sticky top-0 z-10 bg-background">
                 <TableRow>
                   <TableHead>Feature</TableHead>
-                  <TableHead>Resource</TableHead>
+                  {developerModeEnabled && <TableHead>Resource</TableHead>}
                   <TableHead>Level</TableHead>
                   <TableHead>Role choice</TableHead>
-                  <TableHead>Current actions</TableHead>
+                  {developerModeEnabled && <TableHead>Current actions</TableHead>}
                   <TableHead>Team override</TableHead>
                 </TableRow>
               </TableHeader>
@@ -466,7 +474,7 @@ export function PermissionsTab(): React.ReactElement {
                   <React.Fragment key={group.group}>
                     <TableRow className="bg-muted/45 hover:bg-muted/45">
                       <TableCell
-                        colSpan={6}
+                        colSpan={developerModeEnabled ? 6 : 4}
                         className="py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground"
                       >
                         {group.group}
@@ -487,6 +495,7 @@ export function PermissionsTab(): React.ReactElement {
                         }
                         onRoleChange={handleRoleChange}
                         onTeamChange={handleTeamChange}
+                        showInternalDetails={developerModeEnabled}
                       />
                     ))}
                   </React.Fragment>

@@ -18,6 +18,7 @@ import {
   type ProjectInformation,
 } from "@/app/actions/project-profile"
 import { Badge } from "@/components/ui/badge"
+import { useDeveloperMode } from "@/components/developer-mode-provider"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -52,6 +53,7 @@ export function ProjectInformationWorkspace({
   readonly followUpOwners: readonly ProjectFollowUpOwner[]
   readonly canManageJobStatuses: boolean
 }): ReactElement {
+  const { developerModeEnabled } = useDeveloperMode()
   const router = useRouter()
   const [pending, startTransition] = useTransition()
   const [projectAddress, setProjectAddress] = useState(
@@ -291,7 +293,9 @@ export function ProjectInformationWorkspace({
                 <span className="whitespace-nowrap text-sm text-muted-foreground">→ {information.project.projectNumber.replace(/-[^-]+$/, `-${addressSuffix || "00"}`)}</span>
               </div>
               <p id="project-number-help" className="text-xs text-muted-foreground">
-                Changing this queues an in-place Google Drive folder rename and Registry/tracker update. Existing folder ID and link are retained.
+                {developerModeEnabled
+                  ? "Changing this queues an in-place Google Drive folder rename and Registry/tracker update. Existing folder ID and link are retained."
+                  : "Changing this updates the project number while retaining existing links."}
               </p>
             </div>
           )}
@@ -303,11 +307,12 @@ export function ProjectInformationWorkspace({
         <section className="rounded-lg border bg-card p-4 sm:p-5">
           <h2 className="font-semibold">Add an organization-specific status</h2>
           <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
-            The Approved job status menu contains Compass’s standard Sage-aligned stages and any organization-specific stages already approved by a registry manager. Use this administrator-only form only when your organization has approved a genuinely missing shared stage. It becomes available to every project in this organization; it does not change Sage automatically.
+            Add a genuinely missing shared stage only after your organization has
+            approved it. The new stage becomes available to every project.
           </p>
           <form className="mt-4 grid gap-3 md:grid-cols-4" onSubmit={createJobStatus}>
             <div className="space-y-2 md:col-span-2"><Label htmlFor="new-job-status">Custom status label</Label><Input id="new-job-status" value={newJobStatusLabel} onChange={(event) => setNewJobStatusLabel(event.target.value)} placeholder="For example: Warranty" aria-describedby="new-job-status-help" required /><p id="new-job-status-help" className="text-xs text-muted-foreground">Use printable basic Latin characters so the organization-wide label is unique.</p></div>
-            <div className="space-y-2"><Label htmlFor="new-job-status-code">Optional Sage reference code</Label><Input id="new-job-status-code" value={newJobStatusSageCode} onChange={(event) => setNewJobStatusSageCode(event.target.value)} /></div>
+            {developerModeEnabled && <div className="space-y-2"><Label htmlFor="new-job-status-code">Optional Sage reference code</Label><Input id="new-job-status-code" value={newJobStatusSageCode} onChange={(event) => setNewJobStatusSageCode(event.target.value)} /></div>}
             <div className="space-y-2"><Label htmlFor="new-job-status-cadence">Follow-up cadence (business days)</Label><Input id="new-job-status-cadence" type="number" min="1" value={newJobStatusCadence} onChange={(event) => setNewJobStatusCadence(event.target.value)} required /></div>
             <div className="md:col-span-4"><Button type="submit" disabled={pending}>Add custom status</Button></div>
           </form>
@@ -357,11 +362,11 @@ export function ProjectInformationWorkspace({
         </section>
         <section className="rounded-lg border bg-card p-4 sm:p-5">
           <h2 className="font-semibold">Meaningful interaction history</h2>
-          <div className="mt-4 space-y-3">{information.interactions.length === 0 ? <p className="text-sm text-muted-foreground">No meaningful client interaction recorded yet.</p> : information.interactions.map((item) => <article className="rounded-md border p-3" key={item.id}><div className="flex items-start justify-between gap-3"><div><Badge variant="outline">{item.direction} · {item.interactionTypeLabel}</Badge><p className="mt-2 whitespace-pre-wrap text-sm">{item.summary}</p></div><Button type="button" size="sm" variant="ghost" disabled={pending} onClick={() => removeInteraction(item.id)}>Delete</Button></div><p className="mt-2 text-xs text-muted-foreground">{item.authorName ?? "Unknown"} · {new Date(item.occurredAt).toLocaleString()} · {item.source}</p></article>)}</div>
+          <div className="mt-4 space-y-3">{information.interactions.length === 0 ? <p className="text-sm text-muted-foreground">No meaningful client interaction recorded yet.</p> : information.interactions.map((item) => <article className="rounded-md border p-3" key={item.id}><div className="flex items-start justify-between gap-3"><div><Badge variant="outline">{item.direction} · {item.interactionTypeLabel}</Badge><p className="mt-2 whitespace-pre-wrap text-sm">{item.summary}</p></div><Button type="button" size="sm" variant="ghost" disabled={pending} onClick={() => removeInteraction(item.id)}>Delete</Button></div><p className="mt-2 text-xs text-muted-foreground">{item.authorName ?? "Unknown"} · {new Date(item.occurredAt).toLocaleString()}{developerModeEnabled ? ` · ${item.source}` : ""}</p></article>)}</div>
         </section>
       </div>
 
-      {information.syncOperations.length > 0 && (
+      {developerModeEnabled && information.syncOperations.length > 0 && (
         <section className="rounded-lg border bg-card p-4 sm:p-5">
           <h2 className="font-semibold">External synchronization</h2>
           <p className="mt-1 text-sm text-muted-foreground">

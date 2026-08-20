@@ -50,6 +50,7 @@ import {
   openHpsProjectManagerWorkWindow,
 } from "@/lib/google/project-manager-app"
 import { cn } from "@/lib/utils"
+import { useDeveloperMode } from "@/components/developer-mode-provider"
 import {
   PROJECT_JOB_STATUS_DEFINITIONS,
   projectClientStatusLabel,
@@ -191,7 +192,6 @@ const PROJECT_STATUS_OPTIONS: readonly ProjectStatusOption[] = [
 const HPS_PROJECT_MANAGER_EDITOR_URL =
   "https://script.google.com/d/1NzKjO6r_WS5optIHxwGxB5mby3PX0TSHhctU73xZIFtWXXgLueksPN-s/edit"
 
-const DASHBOARD_MODE_STORAGE_KEY = "compass-dashboard-workspace-mode"
 
 const DEPARTMENT_TOOLS: readonly (DepartmentTool & {
   readonly departments: readonly DepartmentId[]
@@ -225,16 +225,6 @@ const DEPARTMENT_TOOLS: readonly (DepartmentTool & {
     href: "/dashboard/automations",
   },
 ]
-
-function storedDashboardDeveloperMode(canUseDeveloperMode: boolean): boolean {
-  if (!canUseDeveloperMode) return false
-
-  try {
-    return window.localStorage.getItem(DASHBOARD_MODE_STORAGE_KEY) === "developer"
-  } catch {
-    return false
-  }
-}
 
 function normalizeSearchValue(value: string): string {
   return value
@@ -1048,7 +1038,7 @@ export function ProjectsHub({
   const [projectManagerOpen, setProjectManagerOpen] = React.useState(false)
   const [projectManagerUrlInput, setProjectManagerUrlInput] =
     React.useState("")
-  const [developerModeEnabled, setDeveloperModeEnabled] = React.useState(false)
+  const { developerModeEnabled } = useDeveloperMode()
   const [activeDepartment, setActiveDepartment] = React.useState<
     DepartmentId | "ALL"
   >("ALL")
@@ -1094,12 +1084,6 @@ export function ProjectsHub({
       setActiveStatusFilters(["active"])
     }
   }, [searchParams])
-
-  React.useEffect(() => {
-    setDeveloperModeEnabled(
-      storedDashboardDeveloperMode(canCreateOrUpdateProjects)
-    )
-  }, [canCreateOrUpdateProjects])
 
   function selectStatusFilter(status: ProjectStatusBucket): void {
     setActiveStatusFilters([status])

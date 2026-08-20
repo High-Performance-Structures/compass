@@ -11,6 +11,10 @@ import {
 } from "@tabler/icons-react"
 
 import type { ProjectFieldSummary } from "@/app/actions/project-field"
+import {
+  DeveloperOnly,
+  WorkerOnly,
+} from "@/components/developer-mode-provider"
 import { Badge } from "@/components/ui/badge"
 import {
   photoLinkHref,
@@ -174,7 +178,8 @@ export function ProjectFieldPanel({
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <p className="text-xs font-medium uppercase text-muted-foreground">
-                Buildertrend review photos
+                <WorkerOnly>Photo review folder</WorkerOnly>
+                <DeveloperOnly>Buildertrend review photos</DeveloperOnly>
               </p>
               <p className="mt-1 text-sm">
                 {summary.photoReviewFolder.label}
@@ -219,8 +224,10 @@ export function ProjectFieldPanel({
             <div className="mt-3 space-y-2">
               <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                 <span>{formatDate(summary.latestDailyLog.logDate)}</span>
-                <span>&middot;</span>
-                <span>{sourceLabel(summary.latestDailyLog.sourceSystem)}</span>
+                <DeveloperOnly>
+                  <span>&middot;</span>
+                  <span>{sourceLabel(summary.latestDailyLog.sourceSystem)}</span>
+                </DeveloperOnly>
                 <span>&middot;</span>
                 <span>{statusLabel(summary.latestDailyLog.reviewStatus)}</span>
                 {summary.latestDailyLog.authorName && (
@@ -236,7 +243,7 @@ export function ProjectFieldPanel({
             </div>
           ) : (
             <p className="mt-3 text-sm text-muted-foreground">
-              No daily logs have been imported or created yet.
+              No daily logs have been created yet.
             </p>
           )}
         </div>
@@ -331,8 +338,10 @@ export function ProjectFieldPanel({
                         {photo.caption ?? photo.fileName}
                       </p>
                       <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                        <span>{sourceLabel(photo.sourceSystem)}</span>
-                        <span>&middot;</span>
+                        <DeveloperOnly>
+                          <span>{sourceLabel(photo.sourceSystem)}</span>
+                          <span>&middot;</span>
+                        </DeveloperOnly>
                         <span>{statusLabel(photo.reviewStatus)}</span>
                         {photo.ownerVisible && (
                           <>

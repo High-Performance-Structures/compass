@@ -23,6 +23,7 @@ import {
 } from "@/components/projects/project-contacts-panel"
 import { ProjectContextSwitcher } from "@/components/projects/project-context-switcher"
 import { Badge } from "@/components/ui/badge"
+import { DeveloperOnly } from "@/components/developer-mode-provider"
 
 export default async function ProjectContactsPage({
   params,
@@ -99,10 +100,12 @@ export default async function ProjectContactsPage({
               <IconEye className="mr-1 size-3" />
               Portal visibility
             </Badge>
-            <Badge variant="secondary">
-              <IconUsers className="mr-1 size-3" />
-              Source mapping
-            </Badge>
+            <DeveloperOnly>
+              <Badge variant="secondary">
+                <IconUsers className="mr-1 size-3" />
+                Source mapping
+              </Badge>
+            </DeveloperOnly>
           </div>
         </div>
       </div>

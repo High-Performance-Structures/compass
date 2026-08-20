@@ -160,6 +160,7 @@ export function OwnerUpdateDocument({
                 </h1>
               </div>
               <Badge
+                className="print:hidden"
                 variant={
                   document.update.status === "published"
                     ? "default"

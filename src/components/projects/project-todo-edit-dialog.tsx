@@ -20,6 +20,7 @@ import {
 } from "@/app/actions/project-operations"
 import { ProjectAssigneePicker } from "@/components/projects/project-assignee-picker"
 import { ProjectCompanyPicker } from "@/components/projects/project-company-picker"
+import { useDeveloperMode } from "@/components/developer-mode-provider"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -82,6 +83,7 @@ export function ProjectTodoEditDialog({
   readonly open: boolean
   readonly onOpenChange: (open: boolean) => void
 }): React.ReactElement {
+  const { developerModeEnabled } = useDeveloperMode()
   const router = useRouter()
   const [title, setTitle] = React.useState(item.title)
   const [description, setDescription] = React.useState(item.description ?? "")
@@ -181,12 +183,18 @@ export function ProjectTodoEditDialog({
           <DialogHeader>
             <DialogTitle>Edit to-do</DialogTitle>
             <DialogDescription>
-              {sourceLabel(item)}
-              {item.sourceRecordNumber
-                ? ` · ${item.sourceRecordNumber}`
-                : ""}
-              . Original source identifiers remain preserved when this record is
-              updated in Compass.
+              {developerModeEnabled ? (
+                <>
+                  {sourceLabel(item)}
+                  {item.sourceRecordNumber
+                    ? ` · ${item.sourceRecordNumber}`
+                    : ""}
+                  . Original source identifiers remain preserved when this record
+                  is updated in Compass.
+                </>
+              ) : (
+                "Update assignment, dates, status, and notes."
+              )}
             </DialogDescription>
           </DialogHeader>
 
@@ -369,8 +377,8 @@ export function ProjectTodoEditDialog({
                     <AlertDialogHeader>
                       <AlertDialogTitle>Delete this to-do permanently?</AlertDialogTitle>
                       <AlertDialogDescription>
-                        This cannot be undone. Any preserved import or template
-                        provenance for this to-do will also be removed.
+                        This cannot be undone. The to-do and its history will be
+                        permanently removed.
                       </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
@@ -399,7 +407,7 @@ export function ProjectTodoEditDialog({
                     <AlertDialogTitle>Archive this to-do?</AlertDialogTitle>
                     <AlertDialogDescription>
                       It will leave active work views but remain available in
-                      the Archived filter with its source history intact.
+                      the Archived filter.
                     </AlertDialogDescription>
                   </AlertDialogHeader>
                   <AlertDialogFooter>

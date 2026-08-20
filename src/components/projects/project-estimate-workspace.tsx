@@ -32,6 +32,7 @@ import {
   type ProjectEstimateWorkspace,
 } from "@/app/actions/project-estimates"
 import { Badge } from "@/components/ui/badge"
+import { useDeveloperMode } from "@/components/developer-mode-provider"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
@@ -127,6 +128,7 @@ export function ProjectEstimateWorkspacePanel({
   readonly workspace: ProjectEstimateWorkspace
   readonly estimateTemplates: readonly EstimateTemplateOption[]
 }): React.ReactElement {
+  const { developerModeEnabled } = useDeveloperMode()
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
   const [message, setMessage] = useState<string | null>(null)
@@ -283,7 +285,8 @@ export function ProjectEstimateWorkspacePanel({
       const rounding = result.roundingAdjustmentCents === 0
         ? ""
         : ` A ${money(Math.abs(result.roundingAdjustmentCents))} source-rounding adjustment was recorded.`
-      const mappings = result.missingSageMappingCount === 0
+      const mappings =
+        !developerModeEnabled || result.missingSageMappingCount === 0
         ? ""
         : ` ${result.missingSageMappingCount} source cost codes require Sage mapping before signature.`
       finish(
@@ -384,7 +387,7 @@ export function ProjectEstimateWorkspacePanel({
                   onValueChange={setStartTaxEntityId}
                 >
                   <SelectTrigger>
-                    <SelectValue placeholder="Project Sage tax entity, if applicable" />
+                    <SelectValue placeholder="Project tax entity, if applicable" />
                   </SelectTrigger>
                   <SelectContent>
                     {workspace.taxEntities.map((tax) => (
@@ -397,7 +400,7 @@ export function ProjectEstimateWorkspacePanel({
                 {selectedStartTemplate?.requiresProjectTaxEntity && (
                   <p className="text-xs text-amber-700 dark:text-amber-300">
                     This template contains taxable lines. Select the project’s
-                    Sage tax entity before creating the draft.
+                    tax entity before creating the draft.
                   </p>
                 )}
                 <Button
@@ -430,7 +433,7 @@ export function ProjectEstimateWorkspacePanel({
                 <h3 className="font-medium">Start blank</h3>
               </div>
               <p className="mt-2 text-sm text-muted-foreground">
-                Build the CSI divisions and Sage cost-code lines manually.
+                Build the CSI divisions and cost-code lines manually.
               </p>
               <Button
                 className="mt-4"
@@ -465,8 +468,10 @@ export function ProjectEstimateWorkspacePanel({
               <Badge>{statusLabel(estimate.status)}</Badge>
             </div>
             <p className="mt-1 text-xs text-muted-foreground">
-              {estimate.estimateNumber} · Foxit {statusLabel(estimate.foxitStatus)} ·
-              Sage {statusLabel(estimate.sageStatus)}
+              {estimate.estimateNumber}
+              {developerModeEnabled
+                ? ` · Foxit ${statusLabel(estimate.foxitStatus)} · Sage ${statusLabel(estimate.sageStatus)}`
+                : ""}
             </p>
           </div>
           <Button variant="outline" asChild>
@@ -555,7 +560,7 @@ export function ProjectEstimateWorkspacePanel({
               disabled={!editable}
             >
               <SelectTrigger id="defaultTaxEntityId">
-                <SelectValue placeholder="Select a Sage tax entity" />
+                <SelectValue placeholder="Select a tax entity" />
               </SelectTrigger>
               <SelectContent>
                 {workspace.taxEntities.map((option) => (
@@ -609,7 +614,7 @@ export function ProjectEstimateWorkspacePanel({
           <div>
             <h2 className="font-semibold">CSI estimate</h2>
             <p className="text-xs text-muted-foreground">
-              Select a division first, then add the Sage cost codes needed within
+              Select a division first, then add the cost codes needed within
               it. Each division subtotal updates from its lines.
             </p>
           </div>
@@ -629,7 +634,7 @@ export function ProjectEstimateWorkspacePanel({
         </div>
         <p className="mb-4 text-xs text-muted-foreground">
           Company overhead, margin, and contingency import as clearly labeled
-          contract adjustments; they are not represented as Sage cost-code mappings.
+          contract adjustments rather than cost-code lines.
         </p>
         {groupedLines.length === 0 ? (
           <p className="text-sm text-muted-foreground">No estimate lines yet.</p>
@@ -660,7 +665,7 @@ export function ProjectEstimateWorkspacePanel({
                           <p className="text-sm font-medium">
                             {item.costCode} · {item.description}
                           </p>
-                          {!mappedCostCodes.has(item.costCode) && (
+                          {developerModeEnabled && !mappedCostCodes.has(item.costCode) && (
                             <Badge variant="outline" className="mt-1">
                               Sage mapping required
                             </Badge>

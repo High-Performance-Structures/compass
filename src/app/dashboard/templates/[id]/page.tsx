@@ -8,6 +8,7 @@ import {
 
 import { getEstimateTemplateEditor } from "@/app/actions/estimate-templates"
 import { EstimateTemplateEditorPanel } from "@/components/templates/estimate-template-editor"
+import { DeveloperOnly } from "@/components/developer-mode-provider"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { normalizeTemplateBidPackage } from "@/lib/templates/template-bid-package"
@@ -54,7 +55,10 @@ export default async function EstimateTemplatePage({
               )}
             </div>
             <p className="mt-1 text-sm text-muted-foreground">
-              {preview.tradeCategory ?? "Other"} · version {preview.currentVersionNumber ?? "draft"}
+              {preview.tradeCategory ?? "Other"}
+              <DeveloperOnly>
+                {` · version ${preview.currentVersionNumber ?? "draft"}`}
+              </DeveloperOnly>
             </p>
           </div>
           <Button asChild variant="outline">
@@ -85,6 +89,7 @@ export default async function EstimateTemplatePage({
           )}
 
           {preview.modules.length > 0 && (
+            <DeveloperOnly>
             <section>
               <div className="mb-2 border-b pb-2">
                 <h2 className="font-semibold">Capture review</h2>
@@ -118,6 +123,7 @@ export default async function EstimateTemplatePage({
                 ))}
               </div>
             </section>
+            </DeveloperOnly>
           )}
 
           {moduleNames.map((moduleType) => {

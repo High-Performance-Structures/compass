@@ -349,7 +349,7 @@ export function EstimateTemplateEditorPanel({
                 <h2 className="font-semibold">CSI scope and cost-code lines</h2>
                 <p className="mt-1 text-xs text-muted-foreground">
                   Template amounts may remain zero until the project is priced.
-                  Taxable lines can use the project tax entity or a fixed Sage code.
+                  Taxable lines can use the project tax entity or a fixed tax code.
                 </p>
               </div>
               <Badge variant="outline">
@@ -459,7 +459,7 @@ export function EstimateTemplateEditorPanel({
                   </Select>
                 </div>
                 <div className="space-y-1.5 md:col-span-2">
-                  <Label>Sage cost code</Label>
+                  <Label>Cost code</Label>
                   <Select
                     value={line.costCode}
                     onValueChange={(costCode) =>

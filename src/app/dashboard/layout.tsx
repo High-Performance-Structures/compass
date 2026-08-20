@@ -37,8 +37,14 @@ import {
   canUseFieldDesk,
   canUseOfficeTalk,
   canManageUserAccess,
+  canManageProjectRegistry,
 } from "@/lib/permissions"
 import { isInternalStaffRole } from "@/lib/user-roles"
+import { DeveloperModeProvider } from "@/components/developer-mode-provider"
+import {
+  DEVELOPER_MODE_COOKIE,
+  developerModeFromCookie,
+} from "@/lib/developer-mode"
 
 export default async function DashboardLayout({
   children,
@@ -64,12 +70,21 @@ export default async function DashboardLayout({
     : false
   const canUseDirectMessages = canViewActivity
   const canManageFeedback = canManageUserAccess(authUser)
+  const canUseDeveloperMode = canManageProjectRegistry(authUser)
+  const developerModeEnabled = developerModeFromCookie(
+    cookieStore.get(DEVELOPER_MODE_COOKIE)?.value,
+    canUseDeveloperMode,
+  )
   const offlineScopeKey =
     authUser?.organizationId && authUser.id
       ? `${authUser.organizationId}:${authUser.id}`
       : null
 
   return (
+    <DeveloperModeProvider
+      canUseDeveloperMode={canUseDeveloperMode}
+      initialEnabled={developerModeEnabled}
+    >
     <ChatProvider
       enabled={canUseCompassAgent}
       offlineScopeKey={offlineScopeKey}
@@ -142,5 +157,6 @@ export default async function DashboardLayout({
     </PresenceProvider>
     </ConversationPanelProvider>
     </ChatProvider>
+    </DeveloperModeProvider>
   )
 }

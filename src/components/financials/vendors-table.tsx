@@ -43,6 +43,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
+import { useDeveloperMode } from "@/components/developer-mode-provider"
 
 interface VendorsTableProps {
   vendors: readonly VendorDirectoryCompany[]
@@ -70,6 +71,7 @@ export function VendorsTable({
   onDelete,
 }: VendorsTableProps) {
   const isMobile = useIsMobile()
+  const { developerModeEnabled } = useDeveloperMode()
   const [sorting, setSorting] = React.useState<SortingState>([
     { id: "name", desc: false },
   ])
@@ -277,10 +279,13 @@ export function VendorsTable({
       },
     },
   ]
+  const visibleColumns = developerModeEnabled
+    ? columns
+    : columns.filter((column) => column.id !== "source")
 
   const table = useReactTable({
     data: [...vendors],
-    columns,
+    columns: visibleColumns,
     onSortingChange: setSorting,
     onColumnFiltersChange: setColumnFilters,
     getCoreRowModel: getCoreRowModel(),
@@ -405,9 +410,11 @@ export function VendorsTable({
                         ? `${v.contacts.length} ${v.contacts.length === 1 ? "person" : "people"}`
                         : "No contact people"}
                     </p>
-                    <p className="mt-1 text-[11px] text-muted-foreground">
-                      {vendorSourceLabel(v)} · {vendorSyncLabel(v)}
-                    </p>
+                    {developerModeEnabled && (
+                      <p className="mt-1 text-[11px] text-muted-foreground">
+                        {vendorSourceLabel(v)} · {vendorSyncLabel(v)}
+                      </p>
+                    )}
                   </div>
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
@@ -495,7 +502,7 @@ export function VendorsTable({
               ) : (
                 <TableRow>
                   <TableCell
-                    colSpan={columns.length}
+                    colSpan={visibleColumns.length}
                     className="h-24 text-center"
                   >
                     No vendors found

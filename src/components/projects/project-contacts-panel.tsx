@@ -21,6 +21,7 @@ import type {
 import { ProjectContactEditor } from "@/components/projects/project-contact-management"
 import { ProjectContactInviteButton } from "@/components/projects/project-contact-invite-button"
 import { ProjectContactInviteLauncher } from "@/components/projects/project-contact-invite-launcher"
+import { DeveloperOnly } from "@/components/developer-mode-provider"
 import { Badge } from "@/components/ui/badge"
 import { projectContactCanInvite } from "@/lib/project-contact-access-status"
 
@@ -296,9 +297,11 @@ export function ProjectContactsPanel({
             />
           )}
           <Badge variant="secondary">{summary.totalCount} contacts</Badge>
-          <Badge variant="outline">
-            {summary.matchedSourceCount} Sage/schedule links
-          </Badge>
+          <DeveloperOnly>
+            <Badge variant="outline">
+              {summary.matchedSourceCount} Sage/schedule links
+            </Badge>
+          </DeveloperOnly>
           {reviewCount > 0 && (
             <Badge variant="outline">
               {reviewCount} to review
@@ -310,13 +313,15 @@ export function ProjectContactsPanel({
             </Badge>
           )}
           {reviewCount > 0 && (
-            <Link
-              href={`/dashboard/projects/${projectId}/contacts/review`}
-              className="inline-flex items-center gap-1.5 rounded-md border bg-background px-3 py-1.5 text-xs font-medium transition-colors hover:bg-accent hover:text-accent-foreground"
-            >
-              <IconGitMerge className="size-4" />
-              Review matches
-            </Link>
+            <DeveloperOnly>
+              <Link
+                href={`/dashboard/projects/${projectId}/contacts/review`}
+                className="inline-flex items-center gap-1.5 rounded-md border bg-background px-3 py-1.5 text-xs font-medium transition-colors hover:bg-accent hover:text-accent-foreground"
+              >
+                <IconGitMerge className="size-4" />
+                Review matches
+              </Link>
+            </DeveloperOnly>
           )}
           {showOpenLink && (
             <Link
@@ -383,13 +388,15 @@ export function ProjectContactsPanel({
         </p>
       )}
 
-      <div className="mt-4 flex items-start gap-2 border-t pt-3 text-xs text-muted-foreground">
-        <IconUsers className="mt-0.5 size-4 shrink-0" />
-        <p>
-          This layer will reconcile Buildertrend contacts, Sage vendors, Sage
-          job assignments, and Compass users before granting portal access.
-        </p>
-      </div>
+      <DeveloperOnly>
+        <div className="mt-4 flex items-start gap-2 border-t pt-3 text-xs text-muted-foreground">
+          <IconUsers className="mt-0.5 size-4 shrink-0" />
+          <p>
+            This layer will reconcile Buildertrend contacts, Sage vendors, Sage
+            job assignments, and Compass users before granting portal access.
+          </p>
+        </div>
+      </DeveloperOnly>
     </section>
   )
 }

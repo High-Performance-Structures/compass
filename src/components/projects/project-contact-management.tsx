@@ -282,7 +282,7 @@ function CostCodePicker({
           disabled={options.length === 0 && !value}
         >
           <span className="truncate">
-            {selected?.label ?? (value || "Choose a Sage cost code...")}
+            {selected?.label ?? (value || "Choose a cost code...")}
           </span>
           <IconChevronDown className="ml-2 size-4 shrink-0 opacity-50" />
         </Button>
@@ -292,9 +292,9 @@ function CostCodePicker({
         align="start"
       >
         <Command>
-          <CommandInput placeholder="Search Sage cost codes..." />
+          <CommandInput placeholder="Search cost codes..." />
           <CommandList className="max-h-72">
-            <CommandEmpty>No matching Sage cost code.</CommandEmpty>
+            <CommandEmpty>No matching cost code.</CommandEmpty>
             <CommandGroup>
               {value && (
                 <CommandItem
@@ -849,7 +849,7 @@ export function ProjectContactEditor({
                     searchPlaceholder="Search vendor companies..."
                   />
                   <p className="text-xs text-muted-foreground">
-                    Choose from all {vendorOptions.length} Sage and Compass vendor companies.
+                    Choose from all {vendorOptions.length} vendor companies.
                   </p>
                 </div>
                 {showNewVendor ? (
@@ -1002,8 +1002,8 @@ export function ProjectContactEditor({
                     searchPlaceholder="Search client and lead contacts..."
                   />
                   <p className="text-xs text-muted-foreground">
-                    Choose from {customerOptions.length} Compass and Buildertrend
-                    client/lead contacts. Selection does not grant project access.
+                    Choose from {customerOptions.length} client and lead contacts.
+                    Selection does not grant project access.
                   </p>
                 </div>
                 {showNewCustomer ? (
@@ -1219,13 +1219,13 @@ export function ProjectContactEditor({
                 />
               </div>
               <div className="grid gap-2">
-                <Label htmlFor="project-contact-csi">Sage division</Label>
+                <Label htmlFor="project-contact-csi">Estimating division</Label>
                 <Select
                   value={input.csiDivision || "unassigned"}
                   onValueChange={applyDivision}
                 >
                   <SelectTrigger id="project-contact-csi" className="w-full">
-                    <SelectValue placeholder="Choose a Sage division..." />
+                    <SelectValue placeholder="Choose a division..." />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="unassigned">No division</SelectItem>
@@ -1238,7 +1238,7 @@ export function ProjectContactEditor({
                 </Select>
               </div>
               <div className="grid gap-2">
-                <Label htmlFor="project-contact-cost-code">Sage cost code</Label>
+                <Label htmlFor="project-contact-cost-code">Cost code</Label>
                 <CostCodePicker
                   options={filteredCostCodes}
                   value={input.primaryCostCode}
@@ -1246,7 +1246,7 @@ export function ProjectContactEditor({
                 />
               </div>
               <p className="text-xs text-muted-foreground sm:col-span-2">
-                Choosing a cost code automatically sets its Sage division. Choose a
+                Choosing a cost code automatically sets its division. Choose a
                 division first to narrow the cost-code list.
               </p>
             </div>

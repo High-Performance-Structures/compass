@@ -38,6 +38,7 @@ import { CustomersTable } from "@/components/financials/customers-table"
 import { CustomerDialog } from "@/components/financials/customer-dialog"
 import { VendorsTable } from "@/components/financials/vendors-table"
 import { VendorDialog } from "@/components/financials/vendor-dialog"
+import { useDeveloperMode } from "@/components/developer-mode-provider"
 
 type Tab = "customers" | "vendors" | "internal"
 
@@ -66,6 +67,8 @@ function InternalContactsTable({
 }: {
   readonly contacts: readonly InternalDirectoryContact[]
 }): React.ReactElement {
+  const { developerModeEnabled } = useDeveloperMode()
+
   if (contacts.length === 0) {
     return (
       <div className="rounded-md border border-dashed p-8 text-center">
@@ -86,7 +89,9 @@ function InternalContactsTable({
             <th className="px-3 py-2 text-left font-medium">Company</th>
             <th className="px-3 py-2 text-left font-medium">Role</th>
             <th className="px-3 py-2 text-left font-medium">Contact</th>
-            <th className="px-3 py-2 text-left font-medium">Source</th>
+            {developerModeEnabled && (
+              <th className="px-3 py-2 text-left font-medium">Source</th>
+            )}
           </tr>
         </thead>
         <tbody>
@@ -115,9 +120,11 @@ function InternalContactsTable({
                   ) : null}
                 </div>
               </td>
-              <td className="px-3 py-2">
-                <Badge variant="outline">{contact.sourceLabel}</Badge>
-              </td>
+              {developerModeEnabled && (
+                <td className="px-3 py-2">
+                  <Badge variant="outline">{contact.sourceLabel}</Badge>
+                </td>
+              )}
             </tr>
           ))}
         </tbody>

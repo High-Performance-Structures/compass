@@ -35,6 +35,10 @@ import { TeamTab } from "@/components/settings/team-tab"
 import { useNative } from "@/hooks/use-native"
 import { useBiometricAuth } from "@/hooks/use-biometric-auth"
 import { cn } from "@/lib/utils"
+import {
+  DeveloperOnly,
+  useDeveloperMode,
+} from "@/components/developer-mode-provider"
 
 const SETTINGS_TABS = [
   { value: "team", label: "Team" },
@@ -94,11 +98,6 @@ export function SettingsModal({
   // const [isMobileChatOpen, setIsMobileChatOpen] = React.useState(false)
   // const chatState = useChatStateOptional()
 
-  const menuTabs = React.useMemo(
-    () => [...SETTINGS_TABS, ...customTabs],
-    [customTabs]
-  )
-
   const sendCreateSettingToChat = React.useCallback(() => {
     toast.info("AI chat is currently disabled in settings")
   }, [])
@@ -146,6 +145,22 @@ export function SettingsModal({
 
   const native = useNative()
   const biometric = useBiometricAuth()
+  const { developerModeEnabled } = useDeveloperMode()
+  const menuTabs = React.useMemo(
+    () => [
+      ...SETTINGS_TABS.filter(
+        (tab) => tab.value !== "agent" || developerModeEnabled,
+      ),
+      ...customTabs,
+    ],
+    [customTabs, developerModeEnabled],
+  )
+
+  React.useEffect(() => {
+    if (!developerModeEnabled && activeTab === "agent") {
+      setActiveTab("general")
+    }
+  }, [activeTab, developerModeEnabled])
 
   const renderContent = () => {
     switch (activeTab) {
@@ -255,14 +270,18 @@ export function SettingsModal({
         return (
           <div className="space-y-4 pt-2">
             <GoogleDriveConnectionStatus />
-            <Separator />
-            <NetSuiteConnectionStatus />
-            <SyncControls />
+            <DeveloperOnly>
+              <Separator />
+              <NetSuiteConnectionStatus />
+              <SyncControls />
+            </DeveloperOnly>
           </div>
         )
 
       case "agent":
-        return <div className="flex min-h-0 flex-1 pt-2"><AgentTab /></div>
+        return developerModeEnabled
+          ? <div className="flex min-h-0 flex-1 pt-2"><AgentTab /></div>
+          : null
 
       case CREATE_SETTING_TAB.value:
         return (

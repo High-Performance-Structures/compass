@@ -54,6 +54,7 @@ import {
 } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import { DailyLogPrintDocument } from "@/components/projects/daily-log-print-document"
+import { useDeveloperMode } from "@/components/developer-mode-provider"
 import { useProjectList } from "@/components/project-list-provider"
 import { ProjectContextSwitcher } from "@/components/projects/project-context-switcher"
 import { ProjectTaskCreateButton } from "@/components/projects/project-task-create-button"
@@ -702,6 +703,7 @@ export function ProjectDailyLogWorkspace({
   readonly workspace: ProjectDailyLogWorkspaceData
   readonly assigneeOptions: readonly ProjectTaskAssigneeOption[]
 }): React.ReactElement {
+  const { developerModeEnabled } = useDeveloperMode()
   const router = useRouter()
   const projects = useProjectList()
   const [logs, setLogs] =
@@ -1532,9 +1534,11 @@ export function ProjectDailyLogWorkspace({
                       <h2 className="text-base font-semibold">
                         {formatDate(log.logDate)}
                       </h2>
-                      <Badge variant="outline">
-                        {sourceLabel(log.sourceSystem)}
-                      </Badge>
+                      {developerModeEnabled && (
+                        <Badge variant="outline">
+                          {sourceLabel(log.sourceSystem)}
+                        </Badge>
+                      )}
                       <Badge
                         variant={
                           log.reviewStatus === "approved"

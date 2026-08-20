@@ -15,6 +15,7 @@ import {
 } from "@/app/actions/project-operations"
 import { ProjectTaskCreateButton } from "@/components/projects/project-task-create-button"
 import { ProjectTodoEditDialog } from "@/components/projects/project-todo-edit-dialog"
+import { useDeveloperMode } from "@/components/developer-mode-provider"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -49,7 +50,11 @@ function sourceLabel(item: ProjectOperationItem): string {
   return item.sourceSystem
 }
 
-function todoMatches(item: ProjectOperationItem, query: string): boolean {
+function todoMatches(
+  item: ProjectOperationItem,
+  query: string,
+  includeInternalDetails: boolean
+): boolean {
   const normalizedQuery = normalizeWorkCalendarSearch(query)
   if (!normalizedQuery) return true
 
@@ -63,7 +68,7 @@ function todoMatches(item: ProjectOperationItem, query: string): boolean {
       item.status,
       item.priority,
       projectTodoTypeLabel(item.sourceRecordType),
-      sourceLabel(item),
+      includeInternalDetails ? sourceLabel(item) : null,
     ]
       .filter((value): value is string => Boolean(value))
       .join(" ")
@@ -178,6 +183,7 @@ export function ProjectTodosView({
   readonly assigneeOptions: readonly ProjectTaskAssigneeOption[]
   readonly canManage: boolean
 }): React.ReactElement {
+  const { developerModeEnabled } = useDeveloperMode()
   const initialItem =
     items.find((item) => item.id === initialItemId) ?? null
   const [query, setQuery] = React.useState("")
@@ -198,7 +204,9 @@ export function ProjectTodosView({
     [items]
   )
   const visibleItems = items.filter(
-    (item) => itemMatchesFilter(item, filter) && todoMatches(item, query)
+    (item) =>
+      itemMatchesFilter(item, filter) &&
+      todoMatches(item, query, developerModeEnabled)
   )
 
   React.useEffect(() => {
@@ -216,8 +224,7 @@ export function ProjectTodosView({
           <p className="text-sm text-muted-foreground">{projectLabel}</p>
           <h1 className="text-2xl font-semibold tracking-tight">To-dos</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Edit, assign, complete, or archive project work regardless of
-            whether it began in Compass, Buildertrend, or Sage.
+            Edit, assign, complete, or archive project work in one place.
           </p>
         </div>
         {canManage && (
@@ -244,7 +251,11 @@ export function ProjectTodosView({
           <Input
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="Search title, assignee, company, status, or source…"
+            placeholder={
+              developerModeEnabled
+                ? "Search title, assignee, company, status, or source…"
+                : "Search title, assignee, company, or status…"
+            }
             className="pl-9"
           />
         </div>
@@ -302,9 +313,11 @@ export function ProjectTodosView({
                     <Badge variant="secondary">
                       {projectTodoStatusLabel(item.status)}
                     </Badge>
-                    <span className="text-xs text-muted-foreground">
-                      {sourceLabel(item)}
-                    </span>
+                    {developerModeEnabled && (
+                      <span className="text-xs text-muted-foreground">
+                        {sourceLabel(item)}
+                      </span>
+                    )}
                   </div>
                   {item.description && (
                     <p className="mt-2 line-clamp-3 whitespace-pre-wrap text-sm text-muted-foreground">
@@ -312,7 +325,9 @@ export function ProjectTodosView({
                     </p>
                   )}
                   <p className="mt-2 text-xs text-muted-foreground">
-                    {item.sourceRecordNumber ?? "Compass to-do"}
+                    {developerModeEnabled
+                      ? item.sourceRecordNumber ?? "Compass to-do"
+                      : projectTodoTypeLabel(item.sourceRecordType)}
                     {item.assigneeName ? ` · ${item.assigneeName}` : ""}
                     {item.companyName ? ` · ${item.companyName}` : ""}
                   </p>

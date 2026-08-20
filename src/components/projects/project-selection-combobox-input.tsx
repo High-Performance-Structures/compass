@@ -19,6 +19,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover"
 import { cn } from "@/lib/utils"
+import { useDeveloperMode } from "@/components/developer-mode-provider"
 
 export type SelectionComboboxOption = {
   readonly value: string
@@ -46,6 +47,7 @@ export function ProjectSelectionComboboxInput({
   readonly manualInputLabel?: string
   readonly allowManualInput?: boolean
 }): React.ReactElement {
+  const { developerModeEnabled } = useDeveloperMode()
   const [open, setOpen] = React.useState(false)
   const [inputValue, setInputValue] = React.useState(defaultValue)
   const [searchValue, setSearchValue] = React.useState("")
@@ -121,7 +123,7 @@ export function ProjectSelectionComboboxInput({
                             {option.description}
                           </span>
                         )}
-                        {option.needsSageReview && (
+                        {developerModeEnabled && option.needsSageReview && (
                           <span className="mt-1 block text-xs font-medium text-amber-700">
                             Needs Sage review
                           </span>

@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/select"
 import type { Customer } from "@/db/schema"
 import type { CustomerRelationshipType } from "@/app/actions/customers"
+import { useDeveloperMode } from "@/components/developer-mode-provider"
 
 interface CustomerDialogProps {
   open: boolean
@@ -41,6 +42,7 @@ export function CustomerDialog({
   initialData,
   onSubmit,
 }: CustomerDialogProps) {
+  const { developerModeEnabled } = useDeveloperMode()
   const [name, setName] = React.useState("")
   const [company, setCompany] = React.useState("")
   const [email, setEmail] = React.useState("")
@@ -95,7 +97,11 @@ export function CustomerDialog({
       open={open}
       onOpenChange={onOpenChange}
       title={initialData ? "Edit Client / Lead" : "Add Client / Lead Contact"}
-      description="Maintain the directory contact without granting project access or creating a Sage client."
+      description={
+        developerModeEnabled
+          ? "Maintain the directory contact without granting project access or creating a Sage client."
+          : "Maintain the directory contact without granting project access."
+      }
     >
       <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0">
         <ResponsiveDialogBody>
@@ -136,11 +142,13 @@ export function CustomerDialog({
                 <SelectItem value="lead">Lead</SelectItem>
               </SelectContent>
             </Select>
-            {initialData?.sageClientId || initialData?.sageClientNumber ? (
+            {(initialData?.sageClientId || initialData?.sageClientNumber) && (
               <p className="text-xs text-muted-foreground">
-                Sage-linked directory records remain clients.
+                {developerModeEnabled
+                  ? "Sage-linked directory records remain clients."
+                  : "Linked directory records remain clients."}
               </p>
-            ) : null}
+            )}
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="cust-company" className="text-xs">

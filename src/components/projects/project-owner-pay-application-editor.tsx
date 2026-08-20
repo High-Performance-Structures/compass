@@ -11,6 +11,7 @@ import {
   type ProjectOwnerPayApplicationLine,
 } from "@/app/actions/project-financial-workflows"
 import { Badge } from "@/components/ui/badge"
+import { useDeveloperMode } from "@/components/developer-mode-provider"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
@@ -134,6 +135,7 @@ export function ProjectOwnerPayApplicationEditor({
   readonly projectId: string
   readonly application: ProjectOwnerPayApplicationDraft
 }): React.ReactElement {
+  const { developerModeEnabled } = useDeveloperMode()
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
   const [message, setMessage] = useState<string | null>(null)
@@ -148,7 +150,9 @@ export function ProjectOwnerPayApplicationEditor({
       )
       setMessage(
         result.success
-          ? "Pay application is ready for internal Sage review."
+          ? developerModeEnabled
+            ? "Pay application is ready for internal Sage review."
+            : "Pay application is ready for review."
           : result.error
       )
       router.refresh()
@@ -171,7 +175,8 @@ export function ProjectOwnerPayApplicationEditor({
           </div>
           {editable && (
             <Button onClick={readyForReview} disabled={isPending || application.currentPaymentDue <= 0}>
-              <IconCircleCheck className="size-4" />Ready for Sage review
+              <IconCircleCheck className="size-4" />
+              {developerModeEnabled ? "Ready for Sage review" : "Ready for review"}
             </Button>
           )}
         </div>

@@ -21,6 +21,7 @@ import {
   type ProjectPurchaseOrderPhaseOption,
 } from "@/app/actions/project-operations"
 import { ProjectAssigneePicker } from "@/components/projects/project-assignee-picker"
+import { useDeveloperMode } from "@/components/developer-mode-provider"
 import { Button } from "@/components/ui/button"
 import {
   Command,
@@ -325,6 +326,7 @@ type PurchaseOrderFormProps = SharedPurchaseOrderFormProps &
 function ProjectPurchaseOrderForm(
   props: PurchaseOrderFormProps
 ): React.ReactElement {
+  const { developerModeEnabled } = useDeveloperMode()
   const {
     projectId,
     jobsiteAddress,
@@ -563,15 +565,19 @@ function ProjectPurchaseOrderForm(
                 className="rounded-none border-x-0 border-t-0 px-0 shadow-none focus-visible:ring-0"
               />
             </Field>
-            <Field label="Accounting vendor ID (optional)">
-              <Input
-                name="sageVendorId"
-                value={sageVendorId}
-                onChange={(event) => setSageVendorId(event.target.value)}
-                placeholder="Sage/vendor number if available"
-                className={DOCUMENT_INPUT_CLASS}
-              />
-            </Field>
+            {developerModeEnabled ? (
+              <Field label="Accounting vendor ID (optional)">
+                <Input
+                  name="sageVendorId"
+                  value={sageVendorId}
+                  onChange={(event) => setSageVendorId(event.target.value)}
+                  placeholder="Sage/vendor number if available"
+                  className={DOCUMENT_INPUT_CLASS}
+                />
+              </Field>
+            ) : (
+              <input type="hidden" name="sageVendorId" value={sageVendorId} />
+            )}
             <Field label="Internal owner">
               <ProjectAssigneePicker
                 value={assigneeName}
@@ -808,12 +814,14 @@ function ProjectPurchaseOrderForm(
                 {codedLineCount}/{lines.length} lines coded
               </p>
             </div>
-            <div>
-              <p className="text-xs text-muted-foreground">Accounting sync</p>
-              <p className="font-semibold">
-                {hasVendorId ? "Vendor ID entered" : "Works without vendor ID"}
-              </p>
-            </div>
+            {developerModeEnabled && (
+              <div>
+                <p className="text-xs text-muted-foreground">Accounting sync</p>
+                <p className="font-semibold">
+                  {hasVendorId ? "Vendor ID entered" : "Works without vendor ID"}
+                </p>
+              </div>
+            )}
           </div>
         </div>
 

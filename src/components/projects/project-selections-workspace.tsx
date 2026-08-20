@@ -21,6 +21,10 @@ import { ProjectSelectionDeleteButton } from "@/components/projects/project-sele
 import { ProjectSelectionEditForm } from "@/components/projects/project-selection-edit-form"
 import { ProjectSelectionShareActions } from "@/components/projects/project-selection-share-actions"
 import { ProjectSelectionStatusSelect } from "@/components/projects/project-selection-status-select"
+import {
+  DeveloperOnly,
+  useDeveloperMode,
+} from "@/components/developer-mode-provider"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -297,9 +301,11 @@ function SelectionRow({
       <div className="min-w-0">
         <div className="flex flex-wrap items-center gap-2">
           <p className="font-medium">{selection.name}</p>
-          <Badge variant="outline" className="h-5 px-1.5 text-[10px]">
-            {sourceLabel(selection)}
-          </Badge>
+          <DeveloperOnly>
+            <Badge variant="outline" className="h-5 px-1.5 text-[10px]">
+              {sourceLabel(selection)}
+            </Badge>
+          </DeveloperOnly>
           {selection.parentChoiceValue && (
             <Badge variant="secondary" className="h-5 px-1.5 text-[10px]">
               After {selection.parentChoiceValue}
@@ -317,9 +323,11 @@ function SelectionRow({
             selection.costCode && <span>Cost {selection.costCode}</span>
           )}
           {costCode?.needsSageReview && (
-            <Badge variant="outline" className="border-amber-500 text-amber-700">
-              Needs Sage review
-            </Badge>
+            <DeveloperOnly>
+              <Badge variant="outline" className="border-amber-500 text-amber-700">
+                Needs Sage review
+              </Badge>
+            </DeveloperOnly>
           )}
           {selection.phaseCode && <span>Phase {selection.phaseCode}</span>}
           {selection.productUrl && (
@@ -391,10 +399,12 @@ function SelectionRow({
           </p>
         )}
         {selection.costCode && costCode?.needsSageReview && (
-          <ProjectSelectionCostCodeReviewButton
-            costCode={selection.costCode}
-            projectId={projectId}
-          />
+          <DeveloperOnly>
+            <ProjectSelectionCostCodeReviewButton
+              costCode={selection.costCode}
+              projectId={projectId}
+            />
+          </DeveloperOnly>
         )}
       </div>
 
@@ -531,6 +541,7 @@ export function ProjectSelectionsWorkspace({
   readonly projectLabel: string
   readonly summary: ProjectSelectionsSummary
 }): React.ReactElement {
+  const { developerModeEnabled } = useDeveloperMode()
   const [filters, setFilters] = React.useState<SelectionFilterState>({
     division: ALL,
     costCode: ALL,
@@ -638,7 +649,9 @@ export function ProjectSelectionsWorkspace({
                 {costCodeOptions.map((option) => (
                   <SelectItem key={option.value} value={option.value}>
                     {option.label} ({costCodeCounts.get(option.value) ?? 0})
-                    {option.needsSageReview ? " - needs Sage review" : ""}
+                    {developerModeEnabled && option.needsSageReview
+                      ? " - needs Sage review"
+                      : ""}
                   </SelectItem>
                 ))}
               </SelectContent>

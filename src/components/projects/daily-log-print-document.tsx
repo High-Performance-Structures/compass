@@ -15,12 +15,6 @@ function formatPrintDate(value: string): string {
   }).format(parsed)
 }
 
-function sourceLabel(value: string): string {
-  if (value === "compass") return "Compass"
-  if (value === "buildertrend") return "Buildertrend"
-  return value.replace(/[_-]+/g, " ")
-}
-
 function readableField(value: string | null): string | null {
   const trimmed = value?.trim() ?? ""
   if (trimmed.length === 0 || trimmed === "[]") return null
@@ -126,10 +120,11 @@ export function DailyLogPrintDocument({
                   <h2 className="text-base font-semibold">
                     {formatPrintDate(log.logDate)}
                   </h2>
-                  <p className="mt-1 text-[10px] uppercase tracking-wide">
-                    {sourceLabel(log.sourceSystem)}
-                    {log.authorName ? ` · ${log.authorName}` : ""}
-                  </p>
+                  {log.authorName && (
+                    <p className="mt-1 text-[10px] uppercase tracking-wide">
+                      {log.authorName}
+                    </p>
+                  )}
                 </div>
                 <div className="text-right text-[10px]">
                   {log.weather && <p>{log.weather}</p>}

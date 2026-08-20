@@ -11,6 +11,10 @@ import type {
   ProjectOperationItem,
   ProjectOperationsSummary,
 } from "@/app/actions/project-operations"
+import {
+  DeveloperOnly,
+  WorkerOnly,
+} from "@/components/developer-mode-provider"
 import { Badge } from "@/components/ui/badge"
 
 function money(value: number): string {
@@ -61,9 +65,12 @@ function OperationRow({
           </Badge>
         </div>
         <p className="mt-1 truncate text-xs text-muted-foreground">
-          {item.sourceRecordNumber
-            ? `Sage ${item.sourceRecordNumber}`
-            : "Sage mapped"}
+          <DeveloperOnly>
+            {item.sourceRecordNumber
+              ? `Sage ${item.sourceRecordNumber}`
+              : "Sage mapped"}
+          </DeveloperOnly>
+          <WorkerOnly>{recordTypeLabel(item.sourceRecordType)}</WorkerOnly>
           {item.companyName ? ` · ${item.companyName}` : ""}
           {item.assigneeName ? ` · ${item.assigneeName}` : ""}
         </p>

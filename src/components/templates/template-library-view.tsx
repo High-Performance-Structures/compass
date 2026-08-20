@@ -29,6 +29,7 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
 import { Badge } from "@/components/ui/badge"
+import { useDeveloperMode } from "@/components/developer-mode-provider"
 import { Button } from "@/components/ui/button"
 import { templateDetailHref } from "@/lib/templates/template-detail-route"
 import {
@@ -225,6 +226,7 @@ export function TemplateLibraryView({
   canManage,
   canCreateEstimate,
 }: Props): React.ReactElement {
+  const { developerModeEnabled } = useDeveloperMode()
   const [categoryFilter, setCategoryFilter] = useState("all")
   const categories = useMemo(
     () =>
@@ -273,11 +275,15 @@ export function TemplateLibraryView({
         </div>
         <div className="mt-4 flex flex-wrap gap-x-6 gap-y-2 border-t pt-3 text-sm">
           <span>{templates.length} templates in Compass</span>
-          <span className="text-muted-foreground">{inventoryCount} awaiting content capture</span>
+          {developerModeEnabled && (
+            <span className="text-muted-foreground">{inventoryCount} awaiting content capture</span>
+          )}
           <span className="text-muted-foreground">{readyCount} verified and usable</span>
-          <span className="font-medium text-amber-700 dark:text-amber-300">
-            Archived Buildertrend templates excluded
-          </span>
+          {developerModeEnabled && (
+            <span className="font-medium text-amber-700 dark:text-amber-300">
+              Archived Buildertrend templates excluded
+            </span>
+          )}
         </div>
       </header>
 
@@ -324,12 +330,22 @@ export function TemplateLibraryView({
                       <Badge variant="secondary">{template.tradeCategory ?? "Other"}</Badge>
                     </div>
                     <p className="mt-1 text-xs text-muted-foreground">
-                      {template.scheduleItemCount} schedule items · {contentCount} stored source records
-                      {template.currentVersionNumber ? ` · version ${template.currentVersionNumber}` : " · content capture pending"}
+                      {template.scheduleItemCount} schedule items
+                      {developerModeEnabled
+                        ? ` · ${contentCount} stored source records${
+                            template.currentVersionNumber
+                              ? ` · version ${template.currentVersionNumber}`
+                              : " · content capture pending"
+                          }`
+                        : ""}
                     </p>
                     <div className="mt-2 flex items-center gap-2 text-sm">
                       {ready ? <IconCircleCheck className="size-4 text-emerald-600" /> : <IconClockHour4 className="size-4 text-amber-600" />}
-                      {reviewLabel(template.reviewStatus)}
+                      {developerModeEnabled
+                        ? reviewLabel(template.reviewStatus)
+                        : ready
+                          ? "Ready"
+                          : "Needs setup"}
                     </div>
                   </div>
                   {canManage ? (
@@ -338,7 +354,7 @@ export function TemplateLibraryView({
                     <span className="text-sm text-muted-foreground">{template.tradeCategory ?? "Other"}</span>
                   )}
                   <div className="flex justify-end gap-1">
-                    {canManage &&
+                    {developerModeEnabled && canManage &&
                       template.reviewStatus === "content_captured" &&
                       template.currentVersionStatus === "draft" && (
                         <PublishTemplateButton template={template} />

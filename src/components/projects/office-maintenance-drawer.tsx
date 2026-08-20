@@ -10,6 +10,10 @@ import {
   IconTemplate,
 } from "@tabler/icons-react"
 import { toast } from "sonner"
+import {
+  DeveloperOnly,
+  useDeveloperMode,
+} from "@/components/developer-mode-provider"
 
 import { Button } from "@/components/ui/button"
 import {
@@ -66,6 +70,7 @@ export function OfficeMaintenanceDrawer({
 }: {
   readonly projects: readonly OfficeMaintenanceProject[]
 }): React.ReactElement {
+  const { developerModeEnabled } = useDeveloperMode()
   const [isConnectingGoto, setIsConnectingGoto] = useState(false)
   const [isGotoConnected, setIsGotoConnected] = useState(false)
   const statusCleanupCount = projects.filter((project) =>
@@ -104,30 +109,34 @@ export function OfficeMaintenanceDrawer({
       <SheetTrigger asChild>
         <Button variant="outline" size="sm">
           <IconSettings className="size-4" />
-          Office maintenance
+          {developerModeEnabled ? "Office maintenance" : "Office tools"}
         </Button>
       </SheetTrigger>
       <SheetContent className="w-full sm:max-w-md">
         <SheetHeader>
           <SheetTitle>Office maintenance</SheetTitle>
           <SheetDescription>
-            Project registry cleanup and integration housekeeping.
+            {developerModeEnabled
+              ? "Project registry cleanup and integration housekeeping."
+              : "Review messages, templates, and office workflows."}
           </SheetDescription>
         </SheetHeader>
-        <div className="divide-y border-y px-4">
-          <div className="flex items-center justify-between py-4 text-sm">
-            <span>Statuses needing cleanup</span>
-            <strong>{statusCleanupCount}</strong>
+        <DeveloperOnly>
+          <div className="divide-y border-y px-4">
+            <div className="flex items-center justify-between py-4 text-sm">
+              <span>Statuses needing cleanup</span>
+              <strong>{statusCleanupCount}</strong>
+            </div>
+            <div className="flex items-center justify-between py-4 text-sm">
+              <span>Drive-linked projects</span>
+              <strong>{driveLinkedCount}</strong>
+            </div>
+            <div className="flex items-center justify-between py-4 text-sm">
+              <span>Department assignment needed</span>
+              <strong>{departmentNeededCount}</strong>
+            </div>
           </div>
-          <div className="flex items-center justify-between py-4 text-sm">
-            <span>Drive-linked projects</span>
-            <strong>{driveLinkedCount}</strong>
-          </div>
-          <div className="flex items-center justify-between py-4 text-sm">
-            <span>Department assignment needed</span>
-            <strong>{departmentNeededCount}</strong>
-          </div>
-        </div>
+        </DeveloperOnly>
         <div className="space-y-2 px-4">
           <Button asChild variant="outline" className="w-full justify-start">
             <Link href="/dashboard/office-maintenance/inbound-email">
@@ -141,12 +150,14 @@ export function OfficeMaintenanceDrawer({
               Open Staff Message Desk
             </Link>
           </Button>
-          <Button asChild variant="outline" className="w-full justify-start">
-            <Link href="/dashboard/office-maintenance/buildertrend-cutover">
-              <IconDatabase className="size-4" />
-              Buildertrend cutover coverage
-            </Link>
-          </Button>
+          <DeveloperOnly>
+            <Button asChild variant="outline" className="w-full justify-start">
+              <Link href="/dashboard/office-maintenance/buildertrend-cutover">
+                <IconDatabase className="size-4" />
+                Buildertrend cutover coverage
+              </Link>
+            </Button>
+          </DeveloperOnly>
           <div className="space-y-2 border p-3">
             <div>
               <p className="text-sm font-medium">GoTo text routing</p>
@@ -174,11 +185,13 @@ export function OfficeMaintenanceDrawer({
               Open Template Library
             </Link>
           </Button>
-          <Button asChild className="w-full">
-            <Link href="/dashboard/projects?manage=1">
-              Open advanced registry tools
-            </Link>
-          </Button>
+          <DeveloperOnly>
+            <Button asChild className="w-full">
+              <Link href="/dashboard/projects?manage=1">
+                Open advanced registry tools
+              </Link>
+            </Button>
+          </DeveloperOnly>
         </div>
       </SheetContent>
     </Sheet>

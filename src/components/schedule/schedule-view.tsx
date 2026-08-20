@@ -820,7 +820,7 @@ export function ScheduleView({
 
       {projectId && publicationStatus && (
         <div
-          className="mb-1 flex h-8 shrink-0 min-w-0 flex-nowrap items-center gap-2 overflow-x-auto text-xs"
+          className="mb-1 flex h-8 shrink-0 min-w-0 flex-nowrap items-center gap-2 overflow-x-auto text-xs print:hidden"
           data-schedule-publication-controls
         >
           <span className="shrink-0 text-muted-foreground">

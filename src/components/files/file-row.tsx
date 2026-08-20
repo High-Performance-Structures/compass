@@ -16,6 +16,7 @@ import {
 import { FileIcon } from "./file-icon"
 import { useFiles } from "@/hooks/use-files"
 import { TableCell, TableRow } from "@/components/ui/table"
+import { useDeveloperMode } from "@/components/developer-mode-provider"
 import { cn } from "@/lib/utils"
 
 export const FileRow = forwardRef<
@@ -29,10 +30,12 @@ export const FileRow = forwardRef<
   { file, selected, onClick, ...props },
   ref
 ) {
+  const { developerModeEnabled } = useDeveloperMode()
   const router = useRouter()
   const { starFile, state, dispatch } = useFiles()
   const projectCaption =
-    file.projectFile?.sourceLabel ??
+    (developerModeEnabled ? file.projectFile?.sourceLabel : null) ??
+    file.projectFile?.projectNumber ??
     file.projectFile?.categoryLabel
 
   const handleDoubleClick = () => {

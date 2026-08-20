@@ -12,6 +12,7 @@ import type { FileItem as FileItemType } from "@/lib/files-data"
 import { formatRelativeDate } from "@/lib/file-utils"
 import { FileIcon } from "./file-icon"
 import { useFiles } from "@/hooks/use-files"
+import { useDeveloperMode } from "@/components/developer-mode-provider"
 import { cn } from "@/lib/utils"
 
 const fileTypeColors: Record<string, string> = {
@@ -37,11 +38,12 @@ export const FolderCard = forwardRef<
   { file, selected, onClick, ...props },
   ref
 ) {
+  const { developerModeEnabled } = useDeveloperMode()
   const router = useRouter()
   const { starFile, state, dispatch } = useFiles()
   const projectCaption =
     file.projectFile?.projectNumber ??
-    file.projectFile?.sourceLabel ??
+    (developerModeEnabled ? file.projectFile?.sourceLabel : null) ??
     file.projectFile?.categoryLabel
 
   const handleDoubleClick = () => {

@@ -11,6 +11,7 @@ import {
 } from "@/app/actions/google-calendar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { DeveloperOnly } from "@/components/developer-mode-provider"
 
 const GOOGLE_CALENDAR_CALLBACK_MESSAGES: Readonly<
   Record<string, { readonly type: "success" | "error"; readonly message: string }>
@@ -143,19 +144,23 @@ export function GoogleCalendarConnectionCard(): React.ReactElement {
               <dt>Account:</dt>
               <dd className="text-foreground">{status.accountEmail}</dd>
             </div>
-            <div className="flex gap-2">
-              <dt>Calendar sync:</dt>
-              <dd className="text-foreground">
-                {status.calendarSyncEnabled
-                  ? "Enabled"
-                  : "Calendar selection required"}
-              </dd>
-            </div>
+            <DeveloperOnly>
+              <div className="flex gap-2">
+                <dt>Calendar sync:</dt>
+                <dd className="text-foreground">
+                  {status.calendarSyncEnabled
+                    ? "Enabled"
+                    : "Calendar selection required"}
+                </dd>
+              </div>
+            </DeveloperOnly>
           </dl>
           {status.lastError ? (
-            <p className="text-xs text-destructive">
-              Last sync issue: {status.lastError}
-            </p>
+            <DeveloperOnly>
+              <p className="text-xs text-destructive">
+                Last sync issue: {status.lastError}
+              </p>
+            </DeveloperOnly>
           ) : null}
           <Button
             type="button"

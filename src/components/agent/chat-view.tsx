@@ -22,6 +22,7 @@ import {
   IconEye,
 } from "@tabler/icons-react"
 import type { AgentMessage } from "@/lib/agent/message-types"
+import { useDeveloperMode } from "@/components/developer-mode-provider"
 import { cn } from "@/lib/utils"
 import {
   Reasoning,
@@ -115,7 +116,10 @@ const LOGO_MASK = {
   WebkitMaskRepeat: "no-repeat",
 } as React.CSSProperties
 
-function getSuggestionsForPath(pathname: string): string[] {
+function getSuggestionsForPath(
+  pathname: string,
+  developerModeEnabled: boolean
+): string[] {
   if (pathname.includes("/customers")) {
     return [
       "Show me all customers",
@@ -151,7 +155,7 @@ function getSuggestionsForPath(pathname: string): string[] {
       "Which projects are behind schedule?",
     ]
   }
-  if (pathname.includes("/netsuite")) {
+  if (developerModeEnabled && pathname.includes("/netsuite")) {
     return [
       "Sync customers from NetSuite",
       "Check for sync conflicts",
@@ -184,13 +188,6 @@ interface ChatMessageProps {
   readonly isStreaming?: boolean
 }
 
-function extractToolName(part: AgentMessage["parts"][number]): string {
-  if (part.type === "tool-call") {
-    return part.toolName
-  }
-  return ""
-}
-
 // renders parts in their natural order from the AI SDK
 const ChatMessage = memo(
   function ChatMessage({
@@ -198,8 +195,8 @@ const ChatMessage = memo(
     copiedId,
     onCopy,
     onRegenerate,
-    isStreaming: msgStreaming = false,
   }: ChatMessageProps) {
+    const { developerModeEnabled } = useDeveloperMode()
     if (msg.role === "user") {
       const text = msg.parts
         .filter((p) => p.type === "text")
@@ -251,14 +248,12 @@ const ChatMessage = memo(
     let pendingReasoning = ""
     let reasoningStreaming = false
 
-    let sawToolPart = false
-
     const flushThinking = (
       text: string,
       idx: number,
       streaming = false
     ) => {
-      if (!text) return
+      if (!developerModeEnabled || !text) return
       elements.push(
         <Reasoning
           key={`think-${idx}`}
@@ -292,6 +287,7 @@ const ChatMessage = memo(
       const part = msg.parts[i]
 
       if (part.type === "reasoning") {
+        if (!developerModeEnabled) continue
         pendingReasoning += part.text
         reasoningStreaming = part.state === "streaming"
         continue
@@ -304,7 +300,13 @@ const ChatMessage = memo(
       }
 
       if (part.type === "tool-call") {
-        sawToolPart = true
+        if (!developerModeEnabled) {
+          pendingReasoning = ""
+          reasoningStreaming = false
+          pendingText = ""
+          allText = ""
+          continue
+        }
         // flush reasoning accumulated before this tool
         flushThinking(pendingReasoning, i, reasoningStreaming)
         pendingReasoning = ""
@@ -575,6 +577,7 @@ export function ChatView({
   onActivate,
   inputPlaceholder,
 }: ChatViewProps) {
+  const { developerModeEnabled } = useDeveloperMode()
   const chat = useChatState()
   const isPage = variant === "page"
   const textareaRef = useRef<HTMLTextAreaElement>(null)
@@ -583,10 +586,10 @@ export function ChatView({
   const [stats, setStats] = useState<RepoStats | null>(null)
   const statsFetched = useRef(false)
   useEffect(() => {
-    if (!isPage || statsFetched.current) return
+    if (!isPage || !developerModeEnabled || statsFetched.current) return
     statsFetched.current = true
     getRepoStats().then(setStats)
-  }, [isPage])
+  }, [developerModeEnabled, isPage])
 
   const handleTranscription = useCallback(
     (text: string) => {
@@ -729,7 +732,7 @@ export function ChatView({
 
   const suggestions = isPage
     ? DASHBOARD_SUGGESTIONS
-    : getSuggestionsForPath(chat.pathname)
+    : getSuggestionsForPath(chat.pathname, developerModeEnabled)
 
   // --- PAGE variant ---
   if (isPage) {
@@ -790,7 +793,7 @@ export function ChatView({
                 className="mt-[6rem] rounded-lg"
               />
 
-              {stats && (
+              {developerModeEnabled && stats && (
                 <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2 text-xs text-muted-foreground/70">
                   <a
                     href={GITHUB_URL}

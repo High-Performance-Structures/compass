@@ -39,6 +39,10 @@ import {
 } from "@/app/actions/cherish-pulse"
 import { useRenderState } from "@/components/agent/chat-provider"
 import { RenderedView } from "@/components/agent/rendered-view"
+import {
+  DeveloperOnly,
+  useDeveloperMode,
+} from "@/components/developer-mode-provider"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -109,7 +113,6 @@ type DashboardField = {
 }
 
 const DASHBOARD_ROLE_STORAGE_KEY = "compass-dashboard-role-lens"
-const DASHBOARD_MODE_STORAGE_KEY = "compass-dashboard-workspace-mode"
 
 const CHERISH_VALUES: readonly CherishValue[] = [
   "Camaraderie",
@@ -165,30 +168,9 @@ function storedDashboardRole(
   }
 }
 
-function storedDashboardMode(
-  canUseDeveloperMode: boolean
-): ProjectWorkspaceMode | null {
-  if (!canUseDeveloperMode) return null
-
-  try {
-    const value = window.localStorage.getItem(DASHBOARD_MODE_STORAGE_KEY)
-    return value === "developer" || value === "worker" ? value : null
-  } catch {
-    return null
-  }
-}
-
 function saveDashboardRole(roleId: ProjectWorkflowRoleId): void {
   try {
     window.localStorage.setItem(DASHBOARD_ROLE_STORAGE_KEY, roleId)
-  } catch {
-    // Local storage is a convenience, not an app dependency.
-  }
-}
-
-function saveDashboardMode(mode: ProjectWorkspaceMode): void {
-  try {
-    window.localStorage.setItem(DASHBOARD_MODE_STORAGE_KEY, mode)
   } catch {
     // Local storage is a convenience, not an app dependency.
   }
@@ -393,6 +375,7 @@ function DashboardCommandCenter({
 }: {
   readonly overview: DashboardOverview
 }) {
+  const { developerModeEnabled } = useDeveloperMode()
   const nextTask = overview.upcomingTasks[0]
   const topProject = overview.projects[0]
   const topRfi = overview.openRfis[0]
@@ -460,6 +443,9 @@ function DashboardCommandCenter({
       icon: <IconDatabaseImport className="size-4" />,
     },
   ]
+  const visiblePrioritySignals = developerModeEnabled
+    ? prioritySignals
+    : prioritySignals.filter((signal) => signal.label !== "Sage Sync")
 
   const dashboardFields: readonly DashboardField[] = [
     {
@@ -508,7 +494,7 @@ function DashboardCommandCenter({
           </p>
         </div>
         <div className="grid gap-2 sm:grid-cols-2 2xl:grid-cols-4">
-          {prioritySignals.map((signal) => (
+          {visiblePrioritySignals.map((signal) => (
             <PriorityRailItem key={signal.label} signal={signal} />
           ))}
         </div>
@@ -1135,9 +1121,11 @@ function CherishPulse(): React.ReactElement {
                     <Badge variant={response.visibility === "private" ? "secondary" : "outline"}>
                       {CHERISH_RESPONSE_COPY[response.responseType].label}
                     </Badge>
-                    <span className="text-xs text-muted-foreground">
-                      {sourceLabel(response.source)}
-                    </span>
+                    <DeveloperOnly>
+                      <span className="text-xs text-muted-foreground">
+                        {sourceLabel(response.source)}
+                      </span>
+                    </DeveloperOnly>
                   </div>
                   <p className="mt-2 line-clamp-2 text-xs text-muted-foreground">
                     {response.message}
@@ -1504,14 +1492,16 @@ export function OperationalDashboard({
 }: {
   readonly overview: DashboardOverview
 }) {
+  const { developerModeEnabled, setDeveloperModeEnabled } = useDeveloperMode()
   const { spec, isRendering } = useRenderState()
   const [layoutMode, setLayoutMode] =
     useState<DashboardLayoutMode>("list")
   const [activeRoleId, setActiveRoleId] = useState<ProjectWorkflowRoleId>(
     overview.user.defaultWorkflowRoleId
   )
-  const [workspaceMode, setWorkspaceMode] =
-    useState<ProjectWorkspaceMode>("worker")
+  const workspaceMode: ProjectWorkspaceMode = developerModeEnabled
+    ? "developer"
+    : "worker"
   const hasRenderedUI = !!spec?.root || isRendering
   const allowedRoleIds = overview.user.allowedWorkflowRoleIds
 
@@ -1527,11 +1517,6 @@ export function OperationalDashboard({
     }
   }, [activeRoleId, allowedRoleIds, overview.user.defaultWorkflowRoleId])
 
-  useEffect(() => {
-    const savedMode = storedDashboardMode(overview.user.canUseDeveloperMode)
-    if (savedMode) setWorkspaceMode(savedMode)
-  }, [overview.user.canUseDeveloperMode])
-
   function handleDashboardRoleChange(roleId: ProjectWorkflowRoleId): void {
     if (!workflowRoleIsAllowed(roleId, allowedRoleIds)) return
 
@@ -1540,14 +1525,8 @@ export function OperationalDashboard({
   }
 
   function handleDashboardModeChange(mode: ProjectWorkspaceMode): void {
-    if (!overview.user.canUseDeveloperMode && mode === "developer") return
-
-    setWorkspaceMode(mode)
-    saveDashboardMode(mode)
+    setDeveloperModeEnabled(mode === "developer")
   }
-
-  const developerModeEnabled =
-    overview.user.canUseDeveloperMode && workspaceMode === "developer"
 
   const attentionProjects = useMemo(
     () =>
@@ -1610,10 +1589,12 @@ export function OperationalDashboard({
               <IconLayoutList className="size-4" />
               List
             </ToggleGroupItem>
-            <ToggleGroupItem value="compass" aria-label="Compass dashboard">
-              <IconTargetArrow className="size-4" />
-              Compass
-            </ToggleGroupItem>
+            {developerModeEnabled && (
+              <ToggleGroupItem value="compass" aria-label="Compass dashboard">
+                <IconTargetArrow className="size-4" />
+                Compass
+              </ToggleGroupItem>
+            )}
           </ToggleGroup>
           <Button asChild size="sm">
             <Link href="/dashboard/projects">
@@ -1632,9 +1613,11 @@ export function OperationalDashboard({
         onWorkspaceModeChange={handleDashboardModeChange}
       />
 
-      {layoutMode === "compass" && <CompassDashboard overview={overview} />}
+      {developerModeEnabled && layoutMode === "compass" && (
+        <CompassDashboard overview={overview} />
+      )}
 
-      {layoutMode === "list" && (
+      {(!developerModeEnabled || layoutMode === "list") && (
         <>
       <ProjectPulse overview={overview} />
 

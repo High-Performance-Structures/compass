@@ -10,6 +10,7 @@ import {
   type SyncStatus,
 } from "@/hooks/use-sync-status"
 import { Button } from "@/components/ui/button"
+import { useDeveloperMode } from "@/components/developer-mode-provider"
 import {
   Tooltip,
   TooltipContent,
@@ -58,6 +59,7 @@ export function SyncIndicator({
   className,
   showLabel = true,
 }: SyncIndicatorProps) {
+  const { developerModeEnabled } = useDeveloperMode()
   const isDesktop = useDesktop()
   const { status, pendingCount, lastSyncTime } = useSyncStatus()
   const triggerSync = useTriggerSync()
@@ -70,6 +72,32 @@ export function SyncIndicator({
 
   // Don't render on non-desktop
   if (!isDesktop) return null
+
+  if (!developerModeEnabled) {
+    if (status === "idle" && pendingCount === 0) return null
+
+    const workerLabel =
+      status === "offline"
+        ? "Offline — changes saved"
+        : status === "error"
+          ? "Unable to send changes"
+          : "Changes waiting to send"
+
+    return (
+      <div
+        className={cn(
+          "flex h-7 items-center gap-1.5 px-2 text-xs text-muted-foreground",
+          status === "error" && "text-destructive",
+          status === "offline" && "text-amber-500",
+          className
+        )}
+        role="status"
+      >
+        {getStatusIcon(status)}
+        {showLabel && <span>{workerLabel}</span>}
+      </div>
+    )
+  }
 
   const lastSyncText = lastSyncTime
     ? `Last sync: ${new Date(lastSyncTime).toLocaleTimeString()}`

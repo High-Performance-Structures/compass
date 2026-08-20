@@ -7,6 +7,7 @@ import {
   IconShieldCheck,
 } from "@tabler/icons-react"
 import Link from "next/link"
+import { redirect } from "next/navigation"
 
 import {
   getProjectContactMatchReview,
@@ -14,6 +15,9 @@ import {
 } from "@/app/actions/project-contacts"
 import { ProjectContactMatchReviewPanel } from "@/components/projects/project-contact-match-review"
 import { Badge } from "@/components/ui/badge"
+import { getCurrentUser } from "@/lib/auth"
+import { isDeveloperModeEnabled } from "@/lib/developer-mode-server"
+import { canManageProjectRegistry } from "@/lib/permissions"
 
 export default async function ProjectContactMatchReviewPage({
   params,
@@ -21,6 +25,11 @@ export default async function ProjectContactMatchReviewPage({
   readonly params: Promise<{ id: string }>
 }): Promise<React.ReactElement> {
   const { id } = await params
+  const currentUser = await getCurrentUser()
+  const developerModeEnabled = await isDeveloperModeEnabled(
+    canManageProjectRegistry(currentUser)
+  )
+  if (!developerModeEnabled) redirect(`/dashboard/projects/${id}/contacts`)
 
   let review: ProjectContactMatchReview | null = null
   let reviewError: string | null = null

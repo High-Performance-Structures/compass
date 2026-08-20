@@ -14,6 +14,7 @@ import { getCurrentUser } from "@/lib/auth"
 import { canManageProjectRegistry } from "@/lib/permissions"
 import { getProjectAccessRecord } from "@/lib/project-access"
 import { projectAudiencePreviewHref } from "@/lib/project-audience-preview-routes"
+import { isDeveloperModeEnabled } from "@/lib/developer-mode-server"
 import { and, eq } from "drizzle-orm"
 import { notFound, redirect } from "next/navigation"
 import Link from "next/link"
@@ -152,12 +153,14 @@ export default async function ProjectSummaryPage({
   let sageSyncQueue: ProjectSageSyncQueue | null = null
   let rfiSummary: ProjectRfiSummary | null = null
   let canEditRegistry = false
+  let developerModeEnabled = false
   let userRole: string | null = null
   let projectRole: string | null = null
 
   try {
     const currentUser = await getCurrentUser()
     canEditRegistry = canManageProjectRegistry(currentUser)
+    developerModeEnabled = await isDeveloperModeEnabled(canEditRegistry)
     userRole = currentUser?.role ?? null
 
     const { env } = await getCloudflareContext()
@@ -306,10 +309,10 @@ export default async function ProjectSummaryPage({
       loadedOperationsSummary,
       loadedRfiSummary,
     ] = await Promise.all([
-      canEditRegistry
+      developerModeEnabled
         ? loadOptionalSummary("registry", () => getProjectRegistry(id))
         : Promise.resolve(null),
-      canEditRegistry
+      developerModeEnabled
         ? loadOptionalSummary("Sage sync queue", () => getProjectSageSyncQueue(id))
         : Promise.resolve(null),
       loadOptionalSummary("field summary", () => getProjectFieldSummary(id)),

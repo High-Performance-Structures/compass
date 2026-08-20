@@ -245,7 +245,7 @@ export function ProjectSelectionCreateForm({
         <SheetHeader className="border-b px-5 py-4">
           <SheetTitle>Add Finish Selection</SheetTitle>
           <SheetDescription>
-            Capture one selection with room context, product detail, and Sage-ready cost coding.
+            Capture one selection with room context, product detail, and cost coding.
           </SheetDescription>
         </SheetHeader>
 

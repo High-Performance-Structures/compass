@@ -14,6 +14,7 @@ import { ProjectBrandLogo } from "@/components/projects/project-brand-logo"
 import { ProjectContextWatermarkShell } from "@/components/projects/project-context-watermark-shell"
 import { ProjectQuickSwitcher } from "@/components/projects/project-quick-switcher"
 import { ProjectSelectionsWorkspace } from "@/components/projects/project-selections-workspace"
+import { DeveloperOnly } from "@/components/developer-mode-provider"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { redirectIfFeaturePermissionDenied } from "@/lib/permission-redirect"
@@ -108,10 +109,12 @@ export default async function ProjectSelectionsPage({
               {summary.roomCount} room{summary.roomCount === 1 ? "" : "s"}
             </Badge>
             {summary.sourceWorkbookCount > 0 && (
-              <Badge variant="outline">
-                {summary.sourceWorkbookCount} workbook
-                {summary.sourceWorkbookCount === 1 ? "" : "s"}
-              </Badge>
+              <DeveloperOnly>
+                <Badge variant="outline">
+                  {summary.sourceWorkbookCount} workbook
+                  {summary.sourceWorkbookCount === 1 ? "" : "s"}
+                </Badge>
+              </DeveloperOnly>
             )}
             <Badge variant="secondary">{summary.totalCount} total</Badge>
             <Badge variant="outline">

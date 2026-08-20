@@ -23,6 +23,7 @@ import type {
   WorkCalendarData,
 } from "@/app/actions/work-calendar"
 import { Badge } from "@/components/ui/badge"
+import { useDeveloperMode } from "@/components/developer-mode-provider"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -249,6 +250,7 @@ function WorkItem({
   readonly onEditEvent: (event: CalendarEventEntry) => void
   readonly canManageEvents: boolean
 }): React.ReactElement {
+  const { developerModeEnabled } = useDeveloperMode()
   const className = cn(
     "block w-full rounded-lg border bg-background p-3 text-left transition-all duration-200 hover:-translate-y-0.5 hover:bg-muted/60 hover:shadow-md",
     compact && "border-l-4 p-2",
@@ -263,7 +265,8 @@ function WorkItem({
             {entry.title}
           </p>
           <p className="mt-1 truncate text-xs text-muted-foreground">
-            {entry.projectLabel} · {entry.sourceLabel}
+            {entry.projectLabel}
+            {developerModeEnabled ? ` · ${entry.sourceLabel}` : ""}
           </p>
         </div>
         {!compact && (

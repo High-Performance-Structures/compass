@@ -23,6 +23,7 @@ import {
   type ProjectFinancialWorkflowItem,
 } from "@/app/actions/project-financial-workflows"
 import { ProjectSelectionComboboxInput } from "@/components/projects/project-selection-combobox-input"
+import { useDeveloperMode } from "@/components/developer-mode-provider"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -156,6 +157,7 @@ export function ProjectFinancialWorkspace({
   readonly costCodeOptions: readonly ProjectFinancialCostCodeOption[]
   readonly projectDriveFolderId: string | null
 }): ReactElement {
+  const { developerModeEnabled } = useDeveloperMode()
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
   const [message, setMessage] = useState<string | null>(null)
@@ -222,7 +224,11 @@ export function ProjectFinancialWorkspace({
         <FinancialFormPanel
           key={`vendor-bill-${vendorBillFormVersion}`}
           title="Enter Vendor Bill"
-          description="Stage a project bill for Sage review."
+          description={
+            developerModeEnabled
+              ? "Stage a project bill for Sage review."
+              : "Stage a project bill for review."
+          }
           accentClassName="border-l-brand-compass-blue"
           icon={<IconReceipt className="size-5" />}
           actionLabel="Stage Bill"
@@ -293,7 +299,7 @@ export function ProjectFinancialWorkspace({
             <p className="text-xs text-muted-foreground">
               Contract value, approved changes, prior billing, and cost-code
               lines come from the locked budget revision. Enter current work
-              and stored materials on the generated G703 before Sage review.
+              and stored materials on the generated G703 before review.
             </p>
             <FormField label="Notes" htmlFor="payApplicationNotes">
               <Textarea id="payApplicationNotes" name="notes" rows={7} />
@@ -325,7 +331,9 @@ export function ProjectFinancialWorkspace({
           <div>
             <h2 className="text-sm font-semibold">Project Financial Queue</h2>
             <p className="text-xs text-muted-foreground">
-              Drafts entered here feed developer-mode Sage sync review.
+              {developerModeEnabled
+                ? "Drafts entered here feed developer-mode Sage sync review."
+                : "Review project financial drafts and their current status."}
             </p>
           </div>
           <Badge variant="outline">{items.length} records</Badge>
@@ -423,7 +431,9 @@ export function ProjectFinancialWorkspace({
                     <span>{dateText(item.dueDate)}</span>
                     <div className="flex flex-wrap gap-2">
                       <Badge variant="outline">{item.status}</Badge>
-                      <Badge variant="secondary">{syncLabel(item)}</Badge>
+                      {developerModeEnabled && (
+                        <Badge variant="secondary">{syncLabel(item)}</Badge>
+                      )}
                     </div>
                   </div>
                 )

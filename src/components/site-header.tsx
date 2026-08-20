@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation"
 import { useTheme } from "@/components/theme-provider"
 import {
   IconLogout,
+  IconCode,
   IconMenu2,
   IconMessageCircle,
   IconMoon,
@@ -35,6 +36,7 @@ import { AccountModal } from "@/components/account-modal"
 import { useConversationPanelOptional } from "@/components/conversations/conversation-panel-provider"
 import { getInitials } from "@/lib/utils"
 import type { SidebarUser } from "@/lib/auth"
+import { useDeveloperMode } from "@/components/developer-mode-provider"
 
 const OFFICE_TALK_MEETING_HREF =
   "/dashboard/conversations/voice-office-talk-0a72accb-1cd1-4d2d-86d7-88b0e26a8899/meeting"
@@ -91,6 +93,11 @@ export function SiteHeader({
   const [isLoggingOut, startLogoutTransition] = React.useTransition()
   const { toggleSidebar } = useSidebar()
   const pathname = usePathname()
+  const {
+    canUseDeveloperMode,
+    developerModeEnabled,
+    setDeveloperModeEnabled,
+  } = useDeveloperMode()
 
   if (pathname.startsWith("/dashboard/field")) return null
 
@@ -195,6 +202,18 @@ export function SiteHeader({
                 <IconMoon className="size-4 block dark:hidden" />
                 <span>Toggle theme</span>
               </DropdownMenuItem>
+              {canUseDeveloperMode && (
+                <DropdownMenuItem
+                  onSelect={() =>
+                    setDeveloperModeEnabled(!developerModeEnabled)
+                  }
+                >
+                  <IconCode />
+                  {developerModeEnabled
+                    ? "Turn off developer mode"
+                    : "Turn on developer mode"}
+                </DropdownMenuItem>
+              )}
               <DropdownMenuSeparator />
               <DropdownMenuItem disabled={isLoggingOut} onSelect={handleLogout}>
                 <IconLogout />
@@ -246,6 +265,22 @@ export function SiteHeader({
         </div>
 
         <div className="flex shrink-0 items-center justify-end gap-0.5">
+          {canUseDeveloperMode && (
+            <Button
+              variant={developerModeEnabled ? "secondary" : "ghost"}
+              size="sm"
+              className="h-7 gap-1.5 px-2 text-xs print:hidden"
+              onClick={() =>
+                setDeveloperModeEnabled(!developerModeEnabled)
+              }
+              aria-pressed={developerModeEnabled}
+              aria-label="Toggle developer mode"
+              title={developerModeEnabled ? "Developer mode on" : "Developer mode off"}
+            >
+              <IconCode className="size-4" />
+              <span className="hidden xl:inline">Developer</span>
+            </Button>
+          )}
           <NotificationsPopover />
           {canUseOfficeTalk && (
             <Button

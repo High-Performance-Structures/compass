@@ -30,6 +30,10 @@ import { NetSuiteConnectionStatus } from "@/components/netsuite/connection-statu
 import { SyncControls } from "@/components/netsuite/sync-controls"
 import { GoogleDriveConnectionStatus } from "@/components/google/connection-status"
 import { GoogleCalendarConnectionCard } from "@/components/google/calendar-connection-status"
+import {
+  DeveloperOnly,
+  useDeveloperMode,
+} from "@/components/developer-mode-provider"
 
 const SETTINGS_TABS = [
   { value: "preferences", label: "Preferences", icon: IconAdjustments },
@@ -53,9 +57,11 @@ function IntegrationsSection() {
       <GoogleDriveConnectionStatus />
       <Separator />
       <GoogleCalendarConnectionCard />
-      <Separator />
-      <NetSuiteConnectionStatus />
-      <SyncControls />
+      <DeveloperOnly>
+        <Separator />
+        <NetSuiteConnectionStatus />
+        <SyncControls />
+      </DeveloperOnly>
     </div>
   )
 }
@@ -64,6 +70,10 @@ export default function SettingsPage() {
   const [activeSection, setActiveSection] =
     React.useState<SectionValue>("preferences")
   const isMobile = useIsMobile()
+  const { developerModeEnabled } = useDeveloperMode()
+  const visibleTabs = SETTINGS_TABS.filter(
+    (tab) => tab.value !== "agent" || developerModeEnabled,
+  )
 
   React.useEffect(() => {
     const params = new URLSearchParams(window.location.search)
@@ -71,6 +81,12 @@ export default function SettingsPage() {
       setActiveSection("integrations")
     }
   }, [])
+
+  React.useEffect(() => {
+    if (!developerModeEnabled && activeSection === "agent") {
+      setActiveSection("preferences")
+    }
+  }, [activeSection, developerModeEnabled])
 
   const isWide = WIDE_SECTIONS.has(activeSection)
 
@@ -85,7 +101,7 @@ export default function SettingsPage() {
       case "permissions":
         return <PermissionsTab />
       case "agent":
-        return <AgentTab />
+        return developerModeEnabled ? <AgentTab /> : null
       case "integrations":
         return <IntegrationsSection />
       default:
@@ -110,7 +126,7 @@ export default function SettingsPage() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {SETTINGS_TABS.map((tab) => (
+                  {visibleTabs.map((tab) => (
                     <SelectItem key={tab.value} value={tab.value}>
                       {tab.label}
                     </SelectItem>
@@ -120,7 +136,7 @@ export default function SettingsPage() {
             </div>
           ) : (
             <nav className="flex items-end gap-0.5 -mb-px">
-              {SETTINGS_TABS.map((tab) => {
+            {visibleTabs.map((tab) => {
                 const isActive = activeSection === tab.value
                 return (
                   <button

@@ -1,4 +1,5 @@
 import Link from "next/link"
+import { redirect } from "next/navigation"
 import {
   IconAutomation,
   IconBrandGoogleDrive,
@@ -24,6 +25,7 @@ import {
   CardTitle,
 } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
+import { isDeveloperModeEnabled } from "@/lib/developer-mode-server"
 
 type ScriptStatus = "google-native" | "bridge-candidate" | "retire-later"
 
@@ -153,29 +155,9 @@ const GENERIC_HANDOFF_URL = "/api/google/script-handoff"
 export default async function AutomationsPage() {
   const user = await getCurrentUser()
   const canManageAutomations = canManageProjectRegistry(user)
+  const developerModeEnabled = await isDeveloperModeEnabled(canManageAutomations)
 
-  if (!canManageAutomations) {
-    return (
-      <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-4 p-4 sm:p-6">
-        <Card className="rounded-lg">
-          <CardHeader>
-            <div className="flex items-center gap-2">
-              <IconShieldLock className="size-5 text-muted-foreground" />
-              <CardTitle>Automation Center</CardTitle>
-            </div>
-            <CardDescription>
-              Admin access is required for Google script and workflow controls.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Button asChild variant="outline">
-              <Link href="/dashboard">Back to dashboard</Link>
-            </Button>
-          </CardContent>
-        </Card>
-      </div>
-    )
-  }
+  if (!developerModeEnabled) redirect("/dashboard")
 
   return (
     <div className="mx-auto flex w-full max-w-7xl flex-col gap-4 p-3 sm:p-4 lg:p-6">

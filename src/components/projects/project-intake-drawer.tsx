@@ -15,6 +15,7 @@ import {
   type ProjectIntakeAssignee,
 } from "@/app/actions/projects"
 import { ProjectSelectionComboboxInput } from "@/components/projects/project-selection-combobox-input"
+import { useDeveloperMode } from "@/components/developer-mode-provider"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -90,6 +91,7 @@ export function ProjectIntakeDrawer({
 }: {
   readonly assignees: readonly ProjectIntakeAssignee[]
 }): React.ReactElement {
+  const { developerModeEnabled } = useDeveloperMode()
   const router = useRouter()
   const formRef = useRef<HTMLFormElement>(null)
   const [open, setOpen] = useState(false)
@@ -103,7 +105,7 @@ export function ProjectIntakeDrawer({
   function submitProject(event: React.FormEvent<HTMLFormElement>): void {
     event.preventDefault()
     if (!sageClientStatusId || !sageJobStatusId || !sageJobType) {
-      toast.error("Choose the Sage client status, job status, and job type.")
+      toast.error("Choose the client status, job status, and job type.")
       return
     }
     const formData = new FormData(event.currentTarget)
@@ -136,9 +138,11 @@ export function ProjectIntakeDrawer({
         if (result.warning) toast.warning(result.warning)
         else {
           toast.success(
-            result.sageStatus === "queued"
-              ? `${result.projectNumber} created; the Sage client/job write is queued.`
-              : `${result.projectNumber} created in Compass; the Sage write requires an approved user.`
+            developerModeEnabled
+              ? result.sageStatus === "queued"
+                ? `${result.projectNumber} created; the Sage client/job write is queued.`
+                : `${result.projectNumber} created in Compass; the Sage write requires an approved user.`
+              : `${result.projectNumber} created.`
           )
         }
         formRef.current?.reset()
@@ -169,16 +173,22 @@ export function ProjectIntakeDrawer({
         <SheetHeader className="border-b px-5 py-4 text-left">
           <SheetTitle>New Project</SheetTitle>
           <SheetDescription>
-            Create the Compass project and update the Developer Project Registry and department tracker in one step.
+            {developerModeEnabled
+              ? "Create the Compass project and update the Developer Project Registry and department tracker in one step."
+              : "Create a project and its shared workspace in one step."}
           </SheetDescription>
         </SheetHeader>
 
         <form ref={formRef} onSubmit={submitProject} className="space-y-6 px-5 pb-6">
           <Alert className="rounded-none border-x-0 border-t-0">
             <IconDatabase className="size-4" />
-            <AlertTitle>One intake, both systems</AlertTitle>
+            <AlertTitle>
+              {developerModeEnabled ? "One intake, both systems" : "Project setup"}
+            </AlertTitle>
             <AlertDescription>
-              Compass assigns the next department project number, provisions the department Drive folder, and stages Sage review.
+              {developerModeEnabled
+                ? "Compass assigns the next department project number, provisions the department Drive folder, and stages Sage review."
+                : "Compass assigns the project number and prepares the shared project workspace."}
             </AlertDescription>
           </Alert>
 
@@ -220,7 +230,7 @@ export function ProjectIntakeDrawer({
               The official number is assigned from the live department sequence when you submit.
             </p>
             <div className="grid gap-4 sm:grid-cols-3">
-              <Field label="Sage client status *">
+              <Field label={developerModeEnabled ? "Sage client status *" : "Client status *"}>
                 <Select
                   value={sageClientStatusId ? String(sageClientStatusId) : ""}
                   onValueChange={(value) => {
@@ -235,13 +245,13 @@ export function ProjectIntakeDrawer({
                   <SelectContent>
                     {SAGE_CLIENT_STATUS_OPTIONS.map((option) => (
                       <SelectItem key={option.id} value={String(option.id)}>
-                        {option.id} — {option.name}
+                        {developerModeEnabled ? `${option.id} — ` : ""}{option.name}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
               </Field>
-              <Field label="Sage job status *">
+              <Field label={developerModeEnabled ? "Sage job status *" : "Job status *"}>
                 <Select
                   value={sageJobStatusId}
                   onValueChange={setSageJobStatusId}
@@ -257,7 +267,7 @@ export function ProjectIntakeDrawer({
                   </SelectContent>
                 </Select>
               </Field>
-              <Field label="Sage job type *">
+              <Field label={developerModeEnabled ? "Sage job type *" : "Job type *"}>
                 <Select
                   value={sageJobType ?? ""}
                   onValueChange={(value) => {
@@ -352,9 +362,9 @@ export function ProjectIntakeDrawer({
           </section>
 
           <div className="grid gap-2 border-y py-4 text-sm sm:grid-cols-3">
-            <span className="flex items-center gap-2"><IconCheck className="size-4 text-emerald-700" /> Compass registry</span>
-            <span className="flex items-center gap-2"><IconCheck className="size-4 text-emerald-700" /> Project Registry + department tracker</span>
-            <span className="flex items-center gap-2"><IconCheck className="size-4 text-emerald-700" /> Drive folder + Sage review</span>
+            <span className="flex items-center gap-2"><IconCheck className="size-4 text-emerald-700" /> Project created</span>
+            <span className="flex items-center gap-2"><IconCheck className="size-4 text-emerald-700" /> Team workspace ready</span>
+            <span className="flex items-center gap-2"><IconCheck className="size-4 text-emerald-700" /> Ready for review</span>
           </div>
 
           <SheetFooter className="px-0">

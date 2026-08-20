@@ -285,9 +285,8 @@ function ConversationPanelContent() {
               </div>
             ) : isBuildertrendArchiveChannelId(data.channel.id) ? (
               <div className="border-t bg-muted/30 px-4 py-3 text-sm text-muted-foreground">
-                Open this conversation in the center to reply within an archived
-                Buildertrend message thread. Replies stay internal; mention an internal
-                teammate to notify them.
+                Open this conversation in the center to reply within the archived
+                message thread. Replies stay internal; mention a teammate to notify them.
               </div>
             ) : (
               <MessageComposer
