@@ -20,18 +20,12 @@ export function useNativePush() {
         "@capacitor/push-notifications"
       )
 
-      const permResult =
-        await PushNotifications.requestPermissions()
-      if (permResult.receive !== "granted") return
-
-      await PushNotifications.register()
-
       const regListener =
         await PushNotifications.addListener(
           "registration",
           async (token) => {
             try {
-              await fetch("/api/push/register", {
+              const response = await fetch("/api/push/register", {
                 method: "POST",
                 headers: {
                   "Content-Type": "application/json",
@@ -44,6 +38,11 @@ export function useNativePush() {
                       : platform,
                 }),
               })
+              if (!response.ok) {
+                throw new Error(
+                  `Push token registration returned ${response.status}`
+                )
+              }
               registered.current = true
             } catch (err) {
               console.error(
@@ -92,9 +91,19 @@ export function useNativePush() {
         receivedListener.remove()
         actionListener.remove()
       }
+
+      // Install listeners before registering. Native platforms can emit the
+      // token immediately, and the old ordering could miss that one event.
+      const permResult =
+        await PushNotifications.requestPermissions()
+      if (permResult.receive !== "granted") return
+
+      await PushNotifications.register()
     }
 
-    setup()
+    setup().catch((error: unknown) => {
+      console.error("Push notification setup failed:", error)
+    })
 
     return () => cleanup?.()
   }, [native, platform, router])

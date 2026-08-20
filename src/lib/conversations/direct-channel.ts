@@ -7,8 +7,33 @@ export function directParticipantIds(
 
 const DIRECT_CHANNEL_ID_PATTERN = /^direct-[a-f0-9]{32}$/
 
+export type DirectConversationChannel = Readonly<{
+  id: string
+  audience: string
+  isPrivate: boolean
+  projectId: string | null
+  description: string | null
+}>
+
 export function isDirectChannelId(channelId: string): boolean {
   return DIRECT_CHANNEL_ID_PATTERN.test(channelId)
+}
+
+export function isDirectConversationChannel(
+  channel: DirectConversationChannel
+): boolean {
+  if (isDirectChannelId(channel.id) || channel.audience === "direct") {
+    return true
+  }
+
+  // The original mobile direct-message flow created UUID channels before the
+  // dedicated direct audience existed. Preserve those conversations without
+  // treating every private staff channel as a direct message.
+  return (
+    channel.isPrivate &&
+    channel.projectId === null &&
+    channel.description?.trim().toLowerCase() === "direct conversation"
+  )
 }
 
 export async function directChannelId(

@@ -1,4 +1,7 @@
-import { isDirectChannelId } from "@/lib/conversations/direct-channel"
+import {
+  isDirectConversationChannel,
+  type DirectConversationChannel,
+} from "@/lib/conversations/direct-channel"
 
 export type NotificationDelivery = {
   readonly inApp: boolean
@@ -7,12 +10,12 @@ export type NotificationDelivery = {
 }
 
 export function channelMessageNotificationDelivery(
-  channelId: string
+  channel: DirectConversationChannel
 ): NotificationDelivery {
   return {
     inApp: true,
     email: false,
-    push: isDirectChannelId(channelId),
+    push: isDirectConversationChannel(channel),
   }
 }
 

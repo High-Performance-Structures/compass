@@ -29,10 +29,33 @@ describe("SMS notification policy", () => {
   it("keeps direct conversations out of GoTo without disabling other SMS", () => {
     expect(
       isConversationSmsEligibleChannel(
-        "direct-0123456789abcdef0123456789abcdef"
+        {
+          id: "direct-0123456789abcdef0123456789abcdef",
+          audience: "direct",
+          isPrivate: true,
+          projectId: null,
+          description: "Private direct message",
+        }
       )
     ).toBe(false)
-    expect(isConversationSmsEligibleChannel("project-channel-1")).toBe(true)
+    expect(
+      isConversationSmsEligibleChannel({
+        id: "legacy-direct-channel",
+        audience: "staff",
+        isPrivate: true,
+        projectId: null,
+        description: "Direct conversation",
+      })
+    ).toBe(false)
+    expect(
+      isConversationSmsEligibleChannel({
+        id: "project-channel-1",
+        audience: "staff",
+        isPrivate: false,
+        projectId: "project-1",
+        description: null,
+      })
+    ).toBe(true)
   })
 
   it("allows opted-in live project messages", () => {

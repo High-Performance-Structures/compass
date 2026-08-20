@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest"
 import {
   directChannelId,
   directParticipantIds,
+  isDirectConversationChannel,
   isDirectChannelId,
 } from "@/lib/conversations/direct-channel"
 
@@ -35,5 +36,35 @@ describe("direct conversation identity", () => {
     expect(isDirectChannelId(directId)).toBe(true)
     expect(isDirectChannelId("private-leadership")).toBe(false)
     expect(isDirectChannelId("direct-not-a-valid-hash")).toBe(false)
+  })
+
+  it("recognizes both current and legacy direct-conversation metadata", () => {
+    expect(
+      isDirectConversationChannel({
+        id: "legacy-uuid",
+        audience: "staff",
+        isPrivate: true,
+        projectId: null,
+        description: "Direct conversation",
+      })
+    ).toBe(true)
+    expect(
+      isDirectConversationChannel({
+        id: "another-legacy-uuid",
+        audience: "staff",
+        isPrivate: true,
+        projectId: null,
+        description: "Private staff room",
+      })
+    ).toBe(false)
+    expect(
+      isDirectConversationChannel({
+        id: "audience-direct-without-canonical-id",
+        audience: "direct",
+        isPrivate: true,
+        projectId: null,
+        description: null,
+      })
+    ).toBe(true)
   })
 })

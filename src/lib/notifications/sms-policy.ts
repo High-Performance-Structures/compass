@@ -1,4 +1,7 @@
-import { isDirectChannelId } from "@/lib/conversations/direct-channel"
+import {
+  isDirectConversationChannel,
+  type DirectConversationChannel,
+} from "@/lib/conversations/direct-channel"
 import { hasCurrentSmsConsent } from "@/lib/notifications/sms-consent"
 
 export type SmsPolicyPreferences = {
@@ -94,9 +97,9 @@ export function isProjectActivitySmsEvent(eventType: string): boolean {
 }
 
 export function isConversationSmsEligibleChannel(
-  channelId: string
+  channel: DirectConversationChannel
 ): boolean {
-  return !isDirectChannelId(channelId)
+  return !isDirectConversationChannel(channel)
 }
 
 export function shouldUseProjectActivitySmsRoute(input: {

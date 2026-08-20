@@ -8,7 +8,7 @@ import {
   projects,
   users,
 } from "@/db/schema"
-import { channelMembers } from "@/db/schema-conversations"
+import { channelMembers, channels } from "@/db/schema-conversations"
 import type { AuthUser } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
 import {
@@ -217,10 +217,19 @@ export async function notifyChannelMessage(
       userId: channelMembers.userId,
       notifyLevel: channelMembers.notifyLevel,
       email: users.email,
+      channelId: channels.id,
+      channelAudience: channels.audience,
+      channelIsPrivate: channels.isPrivate,
+      channelProjectId: channels.projectId,
+      channelDescription: channels.description,
     })
     .from(channelMembers)
     .innerJoin(users, eq(users.id, channelMembers.userId))
+    .innerJoin(channels, eq(channels.id, channelMembers.channelId))
     .where(eq(channelMembers.channelId, input.channelId))
+
+  const channel = members[0]
+  if (!channel) return
 
   const recipients = channelNotificationRecipients(
     members,
@@ -249,7 +258,13 @@ export async function notifyChannelMessage(
     audience: "channel",
     createdBy: input.sender.id,
     recipients,
-    delivery: channelMessageNotificationDelivery(input.channelId),
+    delivery: channelMessageNotificationDelivery({
+      id: channel.channelId,
+      audience: channel.channelAudience,
+      isPrivate: channel.channelIsPrivate,
+      projectId: channel.channelProjectId,
+      description: channel.channelDescription,
+    }),
   })
 }
 

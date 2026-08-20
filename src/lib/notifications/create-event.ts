@@ -522,6 +522,10 @@ async function isEligibleLiveMessageSmsRecipient(
     .select({
       channelId: channels.id,
       channelType: channels.type,
+      channelAudience: channels.audience,
+      channelIsPrivate: channels.isPrivate,
+      channelProjectId: channels.projectId,
+      channelDescription: channels.description,
     })
     .from(messages)
     .innerJoin(channels, eq(channels.id, messages.channelId))
@@ -548,7 +552,17 @@ async function isEligibleLiveMessageSmsRecipient(
 
   // Direct conversations stay inside Compass. They use in-app/native push
   // delivery and must never create a parallel GoTo SMS conversation.
-  if (!isConversationSmsEligibleChannel(source.channelId)) return false
+  if (
+    !isConversationSmsEligibleChannel({
+      id: source.channelId,
+      audience: source.channelAudience,
+      isPrivate: source.channelIsPrivate,
+      projectId: source.channelProjectId,
+      description: source.channelDescription,
+    })
+  ) {
+    return false
+  }
 
   if (!isProjectActivitySmsEvent(input.eventType)) return true
   // Announcements and mentions have their own explicit SMS switches. Do not
