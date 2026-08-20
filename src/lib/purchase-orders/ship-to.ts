@@ -63,3 +63,19 @@ export function purchaseOrderShipToValue({
   if (state.choice === "pickup") return "Pick-Up"
   return cleanText(state.otherAddress)
 }
+
+export function resolvedPurchaseOrderShipTo({
+  storedShipTo,
+  jobsiteAddress,
+}: {
+  readonly storedShipTo: string | null
+  readonly jobsiteAddress: string | null
+}): string | null {
+  const savedValue = cleanText(storedShipTo)
+  if (savedValue === null) return null
+  if (!isJobsiteValue(savedValue)) return savedValue
+
+  // Older imported POs may only say "Jobsite". Resolve that marker at output
+  // time so printed and emailed copies contain an actionable street address.
+  return cleanText(jobsiteAddress) ?? savedValue
+}

@@ -38,6 +38,7 @@ import {
   type ProjectOperationStatusFilter,
 } from "@/lib/project-operations/status"
 import { canEditPurchaseOrderDraft } from "@/lib/purchase-orders/draft-edit"
+import { resolvedPurchaseOrderShipTo } from "@/lib/purchase-orders/ship-to"
 import {
   projectBrandFor,
   type ProjectBrand,
@@ -134,6 +135,11 @@ function PurchaseOrderCard({
     typeof ProjectPurchaseOrderEditForm
   >["costCodeOptions"]
 }): React.ReactElement {
+  const deliveryLocation = resolvedPurchaseOrderShipTo({
+    storedShipTo: order.sageShipTo,
+    jobsiteAddress,
+  })
+
   return (
     <article
       id={`purchase-order-${order.id}`}
@@ -321,11 +327,16 @@ function PurchaseOrderCard({
           </div>
           <div className="border border-black">
             <div className="border-b border-black px-2 py-1 text-xs font-bold uppercase">
-              Project / Pickup
+              Project / Delivery
             </div>
             <div className="min-h-20 p-2">
               <p className="font-semibold">{projectLabel}</p>
-              <p>Ship To / Pickup: {order.sageShipTo ?? "TBD"}</p>
+              <p className="mt-2 text-[10px] font-bold uppercase">
+                Delivery Location
+              </p>
+              <p className="whitespace-pre-line font-medium">
+                {deliveryLocation ?? "TBD"}
+              </p>
               <p>Internal Owner: {order.assigneeName ?? "TBD"}</p>
             </div>
           </div>

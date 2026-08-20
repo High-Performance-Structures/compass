@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest"
 import {
   initialPurchaseOrderShipToState,
   purchaseOrderShipToValue,
+  resolvedPurchaseOrderShipTo,
 } from "@/lib/purchase-orders/ship-to"
 
 describe("initialPurchaseOrderShipToState", () => {
@@ -96,5 +97,40 @@ describe("purchaseOrderShipToValue", () => {
         jobsiteAddress: null,
       })
     ).toBeNull()
+  })
+})
+
+describe("resolvedPurchaseOrderShipTo", () => {
+  it("replaces a legacy Jobsite marker with the current project address", () => {
+    expect(
+      resolvedPurchaseOrderShipTo({
+        storedShipTo: "Job Site",
+        jobsiteAddress: "123 Main St, Denver, CO",
+      })
+    ).toBe("123 Main St, Denver, CO")
+  })
+
+  it("preserves pickup and custom delivery locations", () => {
+    expect(
+      resolvedPurchaseOrderShipTo({
+        storedShipTo: "Pick-Up",
+        jobsiteAddress: "123 Main St",
+      })
+    ).toBe("Pick-Up")
+    expect(
+      resolvedPurchaseOrderShipTo({
+        storedShipTo: "456 Supplier Ave",
+        jobsiteAddress: "123 Main St",
+      })
+    ).toBe("456 Supplier Ave")
+  })
+
+  it("keeps the Jobsite marker when no project address is available", () => {
+    expect(
+      resolvedPurchaseOrderShipTo({
+        storedShipTo: "Jobsite",
+        jobsiteAddress: null,
+      })
+    ).toBe("Jobsite")
   })
 })
