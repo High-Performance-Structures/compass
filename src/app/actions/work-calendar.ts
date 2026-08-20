@@ -33,6 +33,7 @@ import {
   deleteLinkedWorkCalendarEventFromGoogle,
   publishWorkCalendarEventToGoogle,
 } from "@/lib/google/calendar/sync"
+import { activeGoogleProjectCalendarSelectionId } from "@/lib/google/calendar/project-routing"
 import { createNotificationEvent } from "@/lib/notifications/events"
 import { eventAttendeeNotificationRecipients } from "@/lib/notifications/audience"
 import { requireOrg } from "@/lib/org-scope"
@@ -1695,6 +1696,13 @@ export async function createWorkCalendarEvent(
       return { success: false, error: "Permission denied" }
     }
     const validated = await validateEventInput(db, orgId, input)
+    const projectCalendarSelectionId = calendarDestination
+      ? null
+      : await activeGoogleProjectCalendarSelectionId(
+          db,
+          orgId,
+          validated.project.id,
+        )
     const organizationCalendar =
       calendarDestination?.calendarScope === "organization"
     const targetProject = organizationCalendar ? null : validated.project
@@ -1734,13 +1742,15 @@ export async function createWorkCalendarEvent(
     })
     await syncEventAttendees(db, id, [], validated.attendees, now)
     let warning: string | undefined
-    if (calendarDestination) {
+    const publishSelectionId =
+      calendarDestination?.selectionId ?? projectCalendarSelectionId
+    if (publishSelectionId) {
       try {
         await publishWorkCalendarEventToGoogle(
           db,
           env,
           id,
-          calendarDestination.selectionId,
+          publishSelectionId,
         )
       } catch (error) {
         warning =
@@ -1906,13 +1916,21 @@ export async function updateWorkCalendarEvent(
       now
     )
     let warning: string | undefined
-    if (googleLink) {
+    const projectCalendarSelectionId = googleLink
+      ? null
+      : await activeGoogleProjectCalendarSelectionId(
+          db,
+          orgId,
+          targetProject?.id ?? null,
+        )
+    const publishSelectionId = googleLink?.selectionId ?? projectCalendarSelectionId
+    if (publishSelectionId) {
       try {
         await publishWorkCalendarEventToGoogle(
           db,
           env,
           eventId,
-          googleLink.selectionId,
+          publishSelectionId,
         )
       } catch (error) {
         warning =

@@ -6,6 +6,7 @@ import {
   googleCalendarEntityLinks,
   googleCalendarEvents,
   googleCalendarSelections,
+  googleProjectCalendars,
   users,
   workCalendarEventAttendees,
   workCalendarEvents,
@@ -274,6 +275,12 @@ async function syncOrganizationEvent(
   }
 
   if (event.status === "cancelled") return "updated"
+  const managedProject = await db
+    .select({ projectId: googleProjectCalendars.projectId })
+    .from(googleProjectCalendars)
+    .where(eq(googleProjectCalendars.selectionId, selection.selectionId))
+    .limit(1)
+    .then((rows) => rows[0] ?? null)
   const localId = crypto.randomUUID()
   await db.insert(workCalendarEvents).values({
     id: localId,
@@ -281,7 +288,7 @@ async function syncOrganizationEvent(
       db,
       selection.connectionId,
     ),
-    projectId: null,
+    projectId: managedProject?.projectId ?? null,
     title: event.summary,
     eventType: event.meetingUrl ? "meeting" : "other",
     visibility: localVisibility(selection, event),
@@ -467,6 +474,15 @@ export async function publishWorkCalendarEventToGoogle(
   eventId: string,
   selectionId: string,
 ): Promise<void> {
+  const managedProjectCalendar = await db
+    .select({ status: googleProjectCalendars.status })
+    .from(googleProjectCalendars)
+    .where(eq(googleProjectCalendars.selectionId, selectionId))
+    .limit(1)
+    .then((rows) => rows[0] ?? null)
+  if (managedProjectCalendar && managedProjectCalendar.status !== "active") {
+    throw new Error("Project Google Calendar publishing is paused.")
+  }
   const token = await googleCalendarAccessToken(db, env, selectionId)
   const event = await db
     .select()

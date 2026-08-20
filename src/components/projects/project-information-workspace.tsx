@@ -24,6 +24,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { customProjectInteractionType } from "@/lib/project-profile"
+import { ProjectGoogleCalendarCard } from "@/components/projects/project-google-calendar-card"
 
 const CUSTOM_INTERACTION_TYPE_OPTION = "__custom__"
 
@@ -245,6 +246,8 @@ export function ProjectInformationWorkspace({
           {message}
         </p>
       )}
+
+      <ProjectGoogleCalendarCard projectId={information.project.id} />
 
       <form className="rounded-lg border bg-card p-4 sm:p-5" onSubmit={saveProfile}>
         <div className="mb-4 flex flex-wrap items-center justify-between gap-2">

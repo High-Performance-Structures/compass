@@ -1,6 +1,6 @@
 # Google Calendar Sync
 
-Status: managed calendar sync implementation in progress
+Status: managed calendar sync and project calendar publishing implemented
 
 Owner: Compass product and engineering
 
@@ -47,6 +47,14 @@ write-through behavior:
   personal or organization Google calendar;
 - linked create/update/delete calls so Google-backed Work Calendar events stay
   synchronized when the calendar policy permits the action;
+- organization-owned, on-demand project Google calendars that automatically
+  receive project-scoped Compass events;
+- office-staff enable/pause/access-sync controls, administrator delete controls,
+  and per-user “Add to my Google Calendar” subscriptions;
+- project-level event sync that preserves the Compass project scope for events
+  created or edited from the shared Google calendar;
+- Google ACL roles derived from Compass access: office staff can edit events
+  without managing sharing, while field and external project members are readers;
 - an integration status surface that remains safe when Google OAuth is not configured;
 - tests for privacy, idempotency, and two-way conflict behavior.
 
@@ -66,11 +74,16 @@ the approved local development callback. Configure:
 The encryption key must be independent from the OAuth client secret. Store all
 production values as Cloudflare secrets. Do not commit them to source control.
 
-The initial consent request is intentionally limited to:
+The consent request is intentionally limited to:
 
 - OpenID email identity;
-- read access to the user's calendar list; and
-- event read/write access.
+- read/write access to the user's subscribed calendar list;
+- event read/write access;
+- creation and management of calendars created by Compass; and
+- ACL management for calendars owned by the connected organization account.
+
+Existing connections created before project calendar publishing must reconnect
+once to grant the added Calendar List, app-created calendar, and ACL scopes.
 
 Google Tasks permissions are added only when the Tasks phase is implemented.
 
@@ -84,6 +97,9 @@ Google Tasks permissions are added only when the Tasks phase is implemented.
   meeting URL, or Google link.
 - Organization calendar visibility is configured independently as details or
   busy-only.
+- Managed project calendars preserve project access when their events are
+  synchronized into the Work Calendar; they are not treated as general
+  organization events.
 - Private Compass events are hidden from nonparticipants.
 - Guests cannot connect a Google account or view private staff-calendar data.
 - Tokens, private descriptions, and attendee contact details must never appear
@@ -109,7 +125,8 @@ remain follow-up work.
 
 ## Follow-up Slices
 
-1. Scheduled sync, retries, incremental sync tokens, renewable watches, and a
+1. Scheduled event/access reconciliation, retries, incremental sync tokens,
+   renewable watches, and a
    conflict-resolution UI.
 2. Google Meet conference creation (existing Meet links already round-trip).
 3. Remaining robust event fields: recurrence exceptions, external attendees,

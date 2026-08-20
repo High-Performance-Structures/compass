@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest"
+import { afterEach, describe, expect, it } from "vitest"
 
 import {
   GOOGLE_CALENDAR_SCOPES,
@@ -13,12 +13,21 @@ import {
   decideGoogleCalendarSyncAction,
   googleEventIdForCompass,
 } from "@/lib/google/calendar/sync-policy"
-import { parseGoogleCalendarEvent } from "@/lib/google/calendar/client"
+import {
+  addGoogleCalendarToList,
+  createGoogleCalendar,
+  parseGoogleCalendarEvent,
+} from "@/lib/google/calendar/client"
 import {
   canConnectGoogleCalendar,
   canManageOrganizationCalendars,
   canWriteGoogleCalendar,
 } from "@/lib/google/calendar/policy"
+import {
+  canDeleteGoogleProjectCalendar,
+  canEnableGoogleProjectCalendar,
+  googleProjectCalendarAclRole,
+} from "@/lib/google/calendar/project-policy"
 
 describe("Google Calendar OAuth configuration", () => {
   it("fails closed when required secrets are missing", () => {
@@ -81,10 +90,88 @@ describe("Google Calendar OAuth configuration", () => {
       hasRequiredGoogleCalendarScopes([
         "openid",
         "https://www.googleapis.com/auth/userinfo.email",
-        "https://www.googleapis.com/auth/calendar.calendarlist.readonly",
+        "https://www.googleapis.com/auth/calendar.calendarlist",
         "https://www.googleapis.com/auth/calendar.events",
+        "https://www.googleapis.com/auth/calendar.app.created",
+        "https://www.googleapis.com/auth/calendar.acls",
       ]),
     ).toBe(true)
+  })
+})
+
+describe("managed Google Calendar API requests", () => {
+  const originalFetch = globalThis.fetch
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch
+  })
+
+  it("creates an app-owned secondary calendar", async () => {
+    let requestUrl = ""
+    let requestMethod = ""
+    let requestBody = ""
+    globalThis.fetch = async (
+      input: string | URL | Request,
+      init?: RequestInit,
+    ): Promise<Response> => {
+      requestUrl = input.toString()
+      requestMethod = init?.method ?? "GET"
+      requestBody = typeof init?.body === "string" ? init.body : ""
+      return Response.json({
+        id: "project-calendar@example.com",
+        summary: "Compass – 24-100 Smith",
+        description: "Managed by Compass",
+        timeZone: "America/Denver",
+      })
+    }
+
+    const calendar = await createGoogleCalendar("access-token", {
+      summary: "Compass – 24-100 Smith",
+      description: "Managed by Compass",
+      timeZone: "America/Denver",
+    })
+
+    expect(requestUrl).toBe("https://www.googleapis.com/calendar/v3/calendars")
+    expect(requestMethod).toBe("POST")
+    expect(JSON.parse(requestBody)).toEqual({
+      summary: "Compass – 24-100 Smith",
+      description: "Managed by Compass",
+      timeZone: "America/Denver",
+    })
+    expect(calendar.id).toBe("project-calendar@example.com")
+  })
+
+  it("treats an existing user subscription as success", async () => {
+    globalThis.fetch = async (): Promise<Response> =>
+      Response.json(
+        { error: { message: "Calendar already exists in calendar list." } },
+        { status: 409 },
+      )
+
+    await expect(
+      addGoogleCalendarToList("access-token", "project-calendar@example.com"),
+    ).resolves.toBeUndefined()
+  })
+})
+
+describe("managed project calendar policy", () => {
+  it("allows office staff, but not field-only or external roles, to enable calendars", () => {
+    expect(canEnableGoogleProjectCalendar("office")).toBe(true)
+    expect(canEnableGoogleProjectCalendar("project_manager")).toBe(true)
+    expect(canEnableGoogleProjectCalendar("field_superintendent")).toBe(false)
+    expect(canEnableGoogleProjectCalendar("owner")).toBe(false)
+  })
+
+  it("reserves destructive calendar controls for administrators", () => {
+    expect(canDeleteGoogleProjectCalendar("admin")).toBe(true)
+    expect(canDeleteGoogleProjectCalendar("office")).toBe(false)
+  })
+
+  it("maps office members to event writers and other project members to readers", () => {
+    expect(googleProjectCalendarAclRole("project_manager")).toBe(
+      "writerWithoutPrivateAccess",
+    )
+    expect(googleProjectCalendarAclRole("subcontractor")).toBe("reader")
   })
 })
 
