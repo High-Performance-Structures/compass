@@ -22,6 +22,7 @@ import {
 } from "@/db/schema"
 import { requireAuth } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
+import { chunkD1Values } from "@/lib/d1-query"
 import { isDemoUser } from "@/lib/demo"
 import { calendarDetailLevel } from "@/lib/google/calendar/sync-policy"
 import {
@@ -698,63 +699,81 @@ export async function getWorkCalendar(
       asc(workCalendarEvents.title)
     )
   const eventIds = eventRows.map((event) => event.id)
+  // D1 accepts at most 100 bound parameters per statement. Leave room for
+  // the organization and source-type predicates in the linked-event query.
+  const eventIdChunks = chunkD1Values(eventIds)
   const linkedEventRows =
     eventIds.length === 0
       ? []
-      : await db
-          .select({
-            eventId: googleCalendarEntityLinks.sourceId,
-            ownerUserId: googleCalendarConnections.userId,
-            calendarScope: googleCalendarSelections.calendarScope,
-            internalCanEdit: googleCalendarSelections.internalCanEdit,
-          })
-          .from(googleCalendarEntityLinks)
-          .innerJoin(
-            googleCalendarConnections,
-            eq(
-              googleCalendarConnections.id,
-              googleCalendarEntityLinks.connectionId,
+      : (
+          await Promise.all(
+            eventIdChunks.map((eventIdChunk) =>
+              db
+                .select({
+                  eventId: googleCalendarEntityLinks.sourceId,
+                  ownerUserId: googleCalendarConnections.userId,
+                  calendarScope: googleCalendarSelections.calendarScope,
+                  internalCanEdit: googleCalendarSelections.internalCanEdit,
+                })
+                .from(googleCalendarEntityLinks)
+                .innerJoin(
+                  googleCalendarConnections,
+                  eq(
+                    googleCalendarConnections.id,
+                    googleCalendarEntityLinks.connectionId,
+                  ),
+                )
+                .innerJoin(
+                  googleCalendarSelections,
+                  and(
+                    eq(
+                      googleCalendarSelections.connectionId,
+                      googleCalendarEntityLinks.connectionId,
+                    ),
+                    eq(
+                      googleCalendarSelections.googleCalendarId,
+                      googleCalendarEntityLinks.googleCalendarId,
+                    ),
+                  ),
+                )
+                .where(
+                  and(
+                    eq(googleCalendarConnections.organizationId, orgId),
+                    eq(
+                      googleCalendarEntityLinks.sourceType,
+                      "work_calendar_event",
+                    ),
+                    inArray(googleCalendarEntityLinks.sourceId, eventIdChunk),
+                  ),
+                ),
             ),
           )
-          .innerJoin(
-            googleCalendarSelections,
-            and(
-              eq(
-                googleCalendarSelections.connectionId,
-                googleCalendarEntityLinks.connectionId,
-              ),
-              eq(
-                googleCalendarSelections.googleCalendarId,
-                googleCalendarEntityLinks.googleCalendarId,
-              ),
-            ),
-          )
-          .where(
-            and(
-              eq(googleCalendarConnections.organizationId, orgId),
-              eq(googleCalendarEntityLinks.sourceType, "work_calendar_event"),
-              inArray(googleCalendarEntityLinks.sourceId, eventIds),
-            ),
-          )
+        ).flat()
   const linkedEventById = new Map(
     linkedEventRows.map((link) => [link.eventId, link]),
   )
   const attendeeRows =
     eventIds.length === 0
       ? []
-      : await db
-          .select({
-            eventId: workCalendarEventAttendees.eventId,
-            userId: users.id,
-            email: users.email,
-            displayName: users.displayName,
-            firstName: users.firstName,
-            lastName: users.lastName,
-          })
-          .from(workCalendarEventAttendees)
-          .innerJoin(users, eq(users.id, workCalendarEventAttendees.userId))
-          .where(inArray(workCalendarEventAttendees.eventId, eventIds))
-          .orderBy(asc(users.displayName), asc(users.email))
+      : (
+          await Promise.all(
+            eventIdChunks.map((eventIdChunk) =>
+              db
+                .select({
+                  eventId: workCalendarEventAttendees.eventId,
+                  userId: users.id,
+                  email: users.email,
+                  displayName: users.displayName,
+                  firstName: users.firstName,
+                  lastName: users.lastName,
+                })
+                .from(workCalendarEventAttendees)
+                .innerJoin(users, eq(users.id, workCalendarEventAttendees.userId))
+                .where(inArray(workCalendarEventAttendees.eventId, eventIdChunk))
+                .orderBy(asc(users.displayName), asc(users.email)),
+            ),
+          )
+        ).flat()
   const attendeesByEventId = new Map<
     string,
     WorkCalendarEventAttendee[]
