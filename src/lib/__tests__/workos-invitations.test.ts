@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
 const workosMocks = vi.hoisted(() => ({
+  listUsers: vi.fn(),
   listInvitations: vi.fn(),
   resendInvitation: vi.fn(),
   sendInvitation: vi.fn(),
@@ -17,6 +18,7 @@ import { sendOrResendWorkOSInvitation } from "../workos-invitations"
 describe("sendOrResendWorkOSInvitation", () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    workosMocks.listUsers.mockResolvedValue({ data: [] })
   })
 
   it("resends a pending invitation", async () => {
@@ -29,7 +31,7 @@ describe("sendOrResendWorkOSInvitation", () => {
       email: "staff@example.com",
     })
 
-    expect(result).toEqual({ success: true })
+    expect(result).toEqual({ success: true, outcome: "invitation_sent" })
     expect(workosMocks.resendInvitation).toHaveBeenCalledWith(
       "invitation_pending"
     )
@@ -46,7 +48,7 @@ describe("sendOrResendWorkOSInvitation", () => {
       email: "staff@example.com",
     })
 
-    expect(result).toEqual({ success: true })
+    expect(result).toEqual({ success: true, outcome: "invitation_sent" })
     expect(workosMocks.sendInvitation).toHaveBeenCalledWith({
       email: "staff@example.com",
     })
@@ -70,5 +72,40 @@ describe("sendOrResendWorkOSInvitation", () => {
     })
     expect(workosMocks.sendInvitation).not.toHaveBeenCalled()
     expect(workosMocks.resendInvitation).not.toHaveBeenCalled()
+  })
+
+  it("returns an existing WorkOS user instead of sending another invitation", async () => {
+    workosMocks.listUsers.mockResolvedValue({
+      data: [
+        {
+          id: "user_isabel",
+          email: "isabel@example.com",
+          firstName: "Isabel",
+          lastName: "Araguz",
+          profilePictureUrl: null,
+          lastSignInAt: "2026-08-01T00:00:00.000Z",
+        },
+      ],
+    })
+
+    const result = await sendOrResendWorkOSInvitation({
+      apiKey: "test-key",
+      email: "ISABEL@example.com",
+    })
+
+    expect(result).toEqual({
+      success: true,
+      outcome: "existing_user",
+      user: {
+        id: "user_isabel",
+        email: "isabel@example.com",
+        firstName: "Isabel",
+        lastName: "Araguz",
+        profilePictureUrl: null,
+        lastSignInAt: "2026-08-01T00:00:00.000Z",
+      },
+    })
+    expect(workosMocks.listInvitations).not.toHaveBeenCalled()
+    expect(workosMocks.sendInvitation).not.toHaveBeenCalled()
   })
 })

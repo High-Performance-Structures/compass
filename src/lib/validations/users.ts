@@ -26,6 +26,12 @@ export type DeactivateUserInput = z.infer<typeof deactivateUserSchema>
 // --- Invite user ---
 
 export const inviteUserSchema = z.object({
+  displayName: z
+    .string()
+    .trim()
+    .min(1, "Name is required")
+    .max(120, "Name is too long")
+    .optional(),
   email: emailSchema,
   role: userRoleSchema,
   organizationId: databaseIdSchema.optional(),

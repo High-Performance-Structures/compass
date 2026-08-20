@@ -30,7 +30,7 @@ import {
 interface InviteDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
-  onUserInvited?: () => void
+  onUserInvited?: () => void | Promise<void>
 }
 
 export function InviteDialog({
@@ -38,6 +38,7 @@ export function InviteDialog({
   onOpenChange,
   onUserInvited,
 }: InviteDialogProps) {
+  const [displayName, setDisplayName] = React.useState("")
   const [email, setEmail] = React.useState("")
   const [role, setRole] = React.useState("office")
   const [organizationId, setOrganizationId] = React.useState<string>("none")
@@ -63,6 +64,11 @@ export function InviteDialog({
   }
 
   const handleInvite = async () => {
+    if (!displayName.trim()) {
+      toast.error("Please enter the user's name")
+      return
+    }
+
     if (!email) {
       toast.error("Please enter an email address")
       return
@@ -75,16 +81,23 @@ export function InviteDialog({
 
     setLoading(true)
     try {
-      const result = await inviteUser(
+      const result = await inviteUser({
+        displayName,
         email,
         role,
-        organizationId === "none" ? undefined : organizationId
-      )
+        organizationId:
+          organizationId === "none" ? undefined : organizationId,
+      })
       if (result.success) {
-        toast.success("User invited successfully")
-        onUserInvited?.()
+        toast.success(
+          result.accessStatus === "invited"
+            ? "Invitation sent — pending acceptance"
+            : "Existing user added to the team"
+        )
+        await onUserInvited?.()
         onOpenChange(false)
         // reset form
+        setDisplayName("")
         setEmail("")
         setRole("office")
         setOrganizationId("none")
@@ -110,6 +123,17 @@ export function InviteDialog({
         </DialogHeader>
 
         <div className="space-y-4 py-4">
+          <div className="space-y-2">
+            <Label htmlFor="display-name">Name *</Label>
+            <Input
+              id="display-name"
+              placeholder="Stanley Platt"
+              value={displayName}
+              onChange={(event) => setDisplayName(event.target.value)}
+              disabled={loading}
+            />
+          </div>
+
           <div className="space-y-2">
             <Label htmlFor="email">Email Address *</Label>
             <Input
