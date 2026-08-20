@@ -16,7 +16,8 @@ import {
 import { getCurrentUser } from "@/lib/auth"
 import { canManageUserAccess, requirePermission } from "@/lib/permissions"
 import { isDemoOrg, isDemoUser } from "@/lib/demo"
-import { eq, and, getTableColumns } from "drizzle-orm"
+import { sendOrResendWorkOSInvitation } from "@/lib/workos-invitations"
+import { eq, and, getTableColumns, or, sql } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import {
   updateUserRoleSchema,
@@ -32,9 +33,20 @@ export type UserWithRelations = User & {
   groups: { id: string; name: string; color: string | null }[]
   projectCount: number
   organizationCount: number
+  accessStatus: "active" | "invited"
 }
 
-export async function getUsers(): Promise<UserWithRelations[]> {
+function isPendingInvitationPlaceholder(user: User): boolean {
+  return (
+    !user.isActive &&
+    user.lastLoginAt === null &&
+    !user.id.startsWith("user_")
+  )
+}
+
+async function getOrganizationUsers(
+  includeInvited: boolean
+): Promise<UserWithRelations[]> {
   try {
     const currentUser = await getCurrentUser()
     requirePermission(currentUser, "user", "read")
@@ -51,6 +63,16 @@ export async function getUsers(): Promise<UserWithRelations[]> {
 
     const db = getDb(env.DB)
     const organizationId = currentUser.organizationId
+    const availabilityCondition = includeInvited
+      ? or(
+          eq(users.isActive, true),
+          and(
+            eq(users.isActive, false),
+            sql`${users.lastLoginAt} IS NULL`,
+            sql`${users.id} NOT LIKE 'user\_%' ESCAPE '\'`
+          )
+        )
+      : eq(users.isActive, true)
 
     // Never expose users from another organization in the people directory.
     const allUsers = await db
@@ -59,7 +81,7 @@ export async function getUsers(): Promise<UserWithRelations[]> {
       .innerJoin(organizationMembers, eq(organizationMembers.userId, users.id))
       .where(
         and(
-          eq(users.isActive, true),
+          availabilityCondition,
           eq(organizationMembers.organizationId, organizationId)
         )
       )
@@ -67,6 +89,9 @@ export async function getUsers(): Promise<UserWithRelations[]> {
     // for each user, fetch their teams, groups, and counts
     const usersWithRelations = await Promise.all(
       allUsers.map(async (user) => {
+        const accessStatus: UserWithRelations["accessStatus"] = user.isActive
+          ? "active"
+          : "invited"
         // get teams
         const userTeams = await db
           .select({ id: teams.id, name: teams.name })
@@ -116,6 +141,7 @@ export async function getUsers(): Promise<UserWithRelations[]> {
           groups: userGroups,
           projectCount,
           organizationCount,
+          accessStatus,
         }
       })
     )
@@ -125,6 +151,16 @@ export async function getUsers(): Promise<UserWithRelations[]> {
     console.error("Error fetching users:", error)
     return []
   }
+}
+
+/** Active users available to collaboration and assignment surfaces. */
+export async function getUsers(): Promise<UserWithRelations[]> {
+  return getOrganizationUsers(false)
+}
+
+/** Settings roster, including pending invitation placeholders. */
+export async function getSettingsUsers(): Promise<UserWithRelations[]> {
+  return getOrganizationUsers(true)
 }
 
 export async function updateUserRole(
@@ -459,6 +495,7 @@ export async function inviteUser(
   }
 
   const validated = parseResult.data
+  const normalizedEmail = validated.email.trim().toLowerCase()
 
   try {
     const currentUser = await getCurrentUser()
@@ -488,11 +525,11 @@ export async function inviteUser(
     const now = new Date().toISOString()
 
     // check if user already exists
-    const existing = await db.select().from(users).where(eq(users.email, validated.email)).get()
-
-    if (existing) {
-      return { success: false, error: "User already exists" }
-    }
+    const existing = await db
+      .select()
+      .from(users)
+      .where(sql`lower(trim(${users.email})) = ${normalizedEmail}`)
+      .get()
 
     // check if workos is configured
     const envRecord = env as unknown as Record<string, string>
@@ -504,27 +541,66 @@ export async function inviteUser(
     if (isWorkOSConfigured) {
       // send invitation through workos
       try {
-        const { WorkOS } = await import("@workos-inc/node")
-        const workos = new WorkOS(envRecord.WORKOS_API_KEY)
+        if (existing) {
+          if (!isPendingInvitationPlaceholder(existing)) {
+            return { success: false, error: "User already exists" }
+          }
+          const existingMembership = await db
+            .select({ id: organizationMembers.id })
+            .from(organizationMembers)
+            .where(
+              and(
+                eq(organizationMembers.userId, existing.id),
+                eq(organizationMembers.organizationId, targetOrganizationId)
+              )
+            )
+            .get()
+          if (!existingMembership) {
+            return {
+              success: false,
+              error: "This pending user belongs to another organization",
+            }
+          }
 
-        // send invitation via workos
-        // note: when user accepts, they'll be created in workos
-        // and on first login, ensureUserExists() will sync them to our db
-        await workos.userManagement.sendInvitation({
-          email: validated.email,
+          const resendResult = await sendOrResendWorkOSInvitation({
+            apiKey: envRecord.WORKOS_API_KEY,
+            email: normalizedEmail,
+          })
+          if (!resendResult.success) return resendResult
+
+          await db
+            .update(users)
+            .set({ role: validated.role, updatedAt: now })
+            .where(eq(users.id, existing.id))
+            .run()
+          await db
+            .update(organizationMembers)
+            .set({ role: validated.role })
+            .where(eq(organizationMembers.id, existingMembership.id))
+            .run()
+          revalidatePath("/dashboard/settings")
+          revalidatePath("/dashboard/people")
+          return { success: true }
+        }
+
+        // On first login, ensureUserExists() activates the pending local row.
+        const invitationResult = await sendOrResendWorkOSInvitation({
+          apiKey: envRecord.WORKOS_API_KEY,
+          email: normalizedEmail,
         })
+        if (!invitationResult.success) return invitationResult
 
         // create pending user record in our db
         const newUser: NewUser = {
           id: crypto.randomUUID(), // temporary until workos creates real user
-          email: validated.email,
+          email: normalizedEmail,
           role: validated.role,
           isActive: false, // inactive until they accept invite
           createdAt: now,
           updatedAt: now,
           firstName: null,
           lastName: null,
-          displayName: validated.email.split("@")[0],
+          displayName: normalizedEmail.split("@")[0],
           avatarUrl: null,
           lastLoginAt: null,
         }
@@ -543,6 +619,7 @@ export async function inviteUser(
           })
           .run()
 
+        revalidatePath("/dashboard/settings")
         revalidatePath("/dashboard/people")
         return { success: true }
       } catch (workosError) {
@@ -553,17 +630,20 @@ export async function inviteUser(
         }
       }
     } else {
+      if (existing) {
+        return { success: false, error: "User already exists" }
+      }
       // development mode: just create user in db without sending email
       const newUser: NewUser = {
         id: crypto.randomUUID(),
-        email: validated.email,
+        email: normalizedEmail,
         role: validated.role,
         isActive: true, // active immediately in dev mode
         createdAt: now,
         updatedAt: now,
         firstName: null,
         lastName: null,
-        displayName: validated.email.split("@")[0],
+        displayName: normalizedEmail.split("@")[0],
         avatarUrl: null,
         lastLoginAt: null,
       }
@@ -581,6 +661,7 @@ export async function inviteUser(
         })
         .run()
 
+      revalidatePath("/dashboard/settings")
       revalidatePath("/dashboard/people")
       return { success: true }
     }
