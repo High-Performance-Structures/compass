@@ -41,4 +41,34 @@ describe("purchase order form options", () => {
       )
     ).toEqual(["06-100", "06-200"])
   })
+
+  it("normalizes single-digit and labeled phase values", () => {
+    const costCodes = [
+      { value: "03-100", divisionCode: "03" },
+      { value: "06-100", divisionCode: "6" },
+    ]
+
+    expect(
+      purchaseOrderCostCodesForPhase(costCodes, "6").map(
+        (option) => option.value
+      )
+    ).toEqual(["06-100"])
+    expect(
+      purchaseOrderCostCodesForPhase(costCodes, "06 00 00 Wood and Plastics").map(
+        (option) => option.value
+      )
+    ).toEqual(["06-100"])
+  })
+
+  it("keeps cost codes available for imported or typed phases without a match", () => {
+    const costCodes = [
+      { value: "03-100", divisionCode: "03" },
+      { value: "06-100", divisionCode: "06" },
+    ]
+
+    expect(purchaseOrderCostCodesForPhase(costCodes, "Concrete")).toEqual(
+      costCodes
+    )
+    expect(purchaseOrderCostCodesForPhase(costCodes, "99")).toEqual(costCodes)
+  })
 })

@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Sora, IBM_Plex_Mono, Playfair_Display } from "next/font/google";
 import { AuthKitProvider } from "@workos-inc/authkit-nextjs/components";
+import { DeploymentRefreshPrompt } from "@/components/deployment-refresh-prompt";
 import { ThemeProvider } from "@/components/theme-provider";
 import { isWorkOSConfigured } from "@/lib/auth-config";
 import "./globals.css";
@@ -43,7 +44,12 @@ export default function RootLayout({
 }: Readonly<{
 	children: React.ReactNode;
 }>) {
-	const content = <ThemeProvider>{children}</ThemeProvider>;
+	const content = (
+		<ThemeProvider>
+			<DeploymentRefreshPrompt />
+			{children}
+		</ThemeProvider>
+	);
 
 	return (
 		<html lang="en" suppressHydrationWarning>
