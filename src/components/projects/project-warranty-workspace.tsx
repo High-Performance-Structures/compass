@@ -22,6 +22,7 @@ import {
   type WarrantyClaimItem,
   type WarrantyWorkspace,
 } from "@/app/actions/project-warranty"
+import { SearchableComboboxField } from "@/components/searchable-combobox"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -67,6 +68,21 @@ function label(value: string): string {
     .map((part) => `${part.slice(0, 1).toUpperCase()}${part.slice(1)}`)
     .join(" ")
 }
+
+const CATEGORY_OPTIONS = CATEGORIES.map((category) => ({
+  value: category,
+  label: category,
+}))
+
+const PRIORITY_OPTIONS = WARRANTY_CLAIM_PRIORITIES.map((priority) => ({
+  value: priority,
+  label: label(priority),
+}))
+
+const STATUS_OPTIONS = WARRANTY_CLAIM_STATUSES.map((status) => ({
+  value: status,
+  label: label(status),
+}))
 
 function formatDate(value: string | null): string {
   if (!value) return "Not scheduled"
@@ -172,17 +188,18 @@ function ClaimCreateSheet({
           <Input name="title" placeholder="Short issue title" required />
           <div className="grid gap-3 sm:grid-cols-2">
             <Input name="location" placeholder="Location (room or area)" />
-            <select
+            <SearchableComboboxField
               name="category"
+              ariaLabel="Warranty category"
+              options={CATEGORY_OPTIONS}
+              placeholder="Choose category"
+              searchPlaceholder="Type a warranty category..."
+              emptyMessage="No matching warranty categories."
+              groupHeading="Categories"
               defaultValue=""
               required
-              className="flex h-9 w-full rounded-md border bg-background px-3 text-sm"
-            >
-              <option value="" disabled>Choose category</option>
-              {CATEGORIES.map((category) => (
-                <option key={category} value={category}>{category}</option>
-              ))}
-            </select>
+              className="h-9"
+            />
           </div>
           <Textarea
             name="description"
@@ -191,15 +208,17 @@ function ClaimCreateSheet({
             required
           />
           <div className="grid gap-3 sm:grid-cols-2">
-            <select
+            <SearchableComboboxField
               name="priority"
+              ariaLabel="Warranty priority"
+              options={PRIORITY_OPTIONS}
+              placeholder="Choose priority"
+              searchPlaceholder="Type a priority..."
+              emptyMessage="No matching priorities."
+              groupHeading="Priorities"
               defaultValue="normal"
-              className="flex h-9 w-full rounded-md border bg-background px-3 text-sm"
-            >
-              {WARRANTY_CLAIM_PRIORITIES.map((priority) => (
-                <option key={priority} value={priority}>{label(priority)} priority</option>
-              ))}
-            </select>
+              className="h-9"
+            />
             {viewerIsInternal && (
               <Input name="claimantName" placeholder="Owner / claimant name" />
             )}
@@ -300,26 +319,48 @@ function ClaimActions({
         <div className="grid gap-3 md:grid-cols-3">
           <label className="space-y-1 text-xs font-medium text-muted-foreground">
             Status
-            <select name="status" defaultValue={claim.status} className="flex h-9 w-full rounded-md border bg-background px-3 text-sm text-foreground">
-              {WARRANTY_CLAIM_STATUSES.map((status) => (
-                <option key={status} value={status}>{label(status)}</option>
-              ))}
-            </select>
+            <SearchableComboboxField
+              name="status"
+              defaultValue={claim.status}
+              ariaLabel={`Status for ${claim.claimNumber}`}
+              options={STATUS_OPTIONS}
+              placeholder="Choose status"
+              searchPlaceholder="Type a claim status..."
+              emptyMessage="No matching statuses."
+              groupHeading="Statuses"
+              className="h-9 text-foreground"
+            />
           </label>
           <label className="space-y-1 text-xs font-medium text-muted-foreground">
             Priority
-            <select name="priority" defaultValue={claim.priority} className="flex h-9 w-full rounded-md border bg-background px-3 text-sm text-foreground">
-              {WARRANTY_CLAIM_PRIORITIES.map((priority) => (
-                <option key={priority} value={priority}>{label(priority)}</option>
-              ))}
-            </select>
+            <SearchableComboboxField
+              name="priority"
+              defaultValue={claim.priority}
+              ariaLabel={`Priority for ${claim.claimNumber}`}
+              options={PRIORITY_OPTIONS}
+              placeholder="Choose priority"
+              searchPlaceholder="Type a priority..."
+              emptyMessage="No matching priorities."
+              groupHeading="Priorities"
+              className="h-9 text-foreground"
+            />
           </label>
           <label className="space-y-1 text-xs font-medium text-muted-foreground">
             Assigned to
-            <select name="assignedName" defaultValue={claim.assignedName ?? ""} className="flex h-9 w-full rounded-md border bg-background px-3 text-sm text-foreground">
-              <option value="">Unassigned</option>
-              {assigneeNames.map((name) => <option key={name} value={name}>{name}</option>)}
-            </select>
+            <SearchableComboboxField
+              name="assignedName"
+              defaultValue={claim.assignedName ?? ""}
+              ariaLabel={`Assign ${claim.claimNumber}`}
+              options={[
+                { value: "", label: "Unassigned" },
+                ...assigneeNames.map((name) => ({ value: name, label: name })),
+              ]}
+              placeholder="Unassigned"
+              searchPlaceholder="Type an assignee name..."
+              emptyMessage="No matching assignees."
+              groupHeading="Assignees"
+              className="h-9 text-foreground"
+            />
           </label>
         </div>
         <label className="space-y-1 text-xs font-medium text-muted-foreground">
