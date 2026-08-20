@@ -125,6 +125,7 @@ let messageActionError = ""
 let directMessageStatus = ""
 let startingConversation = false
 let refreshingProject = false
+let projectRefreshRequested = false
 let directRecipientId = ""
 let directMessageDraft = ""
 let projectMessageDraft = ""
@@ -615,6 +616,7 @@ function bindEvents(): void {
   document.querySelector<HTMLButtonElement>("#field-notifications")?.addEventListener("click", () => {
     activeTab = "notifications"
     render()
+    if (online) void refreshProjectPacket(false)
   })
   document.querySelector<HTMLButtonElement>("#field-settings")?.addEventListener("click", () => {
     activeTab = "settings"
@@ -727,7 +729,11 @@ function refreshProjectPickerResults(): void {
 }
 
 async function refreshProjectPacket(showProgress = true): Promise<void> {
-  if (!packet || !online || refreshingProject) return
+  if (!packet || !online) return
+  if (refreshingProject) {
+    projectRefreshRequested = true
+    return
+  }
   const projectId = packet.project.id
   refreshingProject = true
   messageActionError = ""
@@ -758,6 +764,10 @@ async function refreshProjectPacket(showProgress = true): Promise<void> {
   } finally {
     refreshingProject = false
     render()
+    if (projectRefreshRequested) {
+      projectRefreshRequested = false
+      void refreshProjectPacket(false)
+    }
   }
 }
 

@@ -608,6 +608,13 @@ export async function sendMessage(data: {
     }
 
     await db.insert(messages).values(newMessage)
+    // Keep conversation lists ordered by actual activity. Direct-message
+    // channels are long-lived, so their creation time does not identify the
+    // thread containing the newest message.
+    await db
+      .update(channels)
+      .set({ updatedAt: now })
+      .where(eq(channels.id, data.channelId))
     await recordActivityEvent({
       db,
       organizationId: activityChannel.organizationId,
