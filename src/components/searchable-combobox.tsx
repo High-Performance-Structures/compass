@@ -99,7 +99,7 @@ export function SearchableCombobox({
       <PopoverContent
         align="start"
         className={cn(
-          "w-[var(--radix-popover-trigger-width)] min-w-[18rem] p-0",
+          "w-[var(--radix-popover-trigger-width)] min-w-[18rem] max-w-[calc(100vw-2rem)] p-0",
           popoverClassName
         )}
       >
