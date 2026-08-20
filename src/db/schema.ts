@@ -2111,22 +2111,44 @@ export const schedulePublications = sqliteTable(
   ]
 )
 
-export const customers = sqliteTable("customers", {
-  id: text("id").primaryKey(),
-  name: text("name").notNull(),
-  company: text("company"),
-  email: text("email"),
-  phone: text("phone"),
-  address: text("address"),
-  notes: text("notes"),
-  netsuiteId: text("netsuite_id"),
-  sageClientId: text("sage_client_id"),
-  sageClientNumber: text("sage_client_number"),
-  sageClientStatusId: integer("sage_client_status_id"),
-  organizationId: text("organization_id").references(() => organizations.id),
-  createdAt: text("created_at").notNull(),
-  updatedAt: text("updated_at"),
-})
+export const customers = sqliteTable(
+  "customers",
+  {
+    id: text("id").primaryKey(),
+    name: text("name").notNull(),
+    company: text("company"),
+    email: text("email"),
+    phone: text("phone"),
+    address: text("address"),
+    notes: text("notes"),
+    netsuiteId: text("netsuite_id"),
+    sageClientId: text("sage_client_id"),
+    sageClientNumber: text("sage_client_number"),
+    sageClientStatusId: integer("sage_client_status_id"),
+    buildertrendContactId: text("buildertrend_contact_id"),
+    relationshipType: text("relationship_type").notNull().default("client"),
+    organizationId: text("organization_id").references(() => organizations.id),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at"),
+  },
+  (table) => [
+    uniqueIndex("customers_org_sage_client_id_unique")
+      .on(table.organizationId, table.sageClientId)
+      .where(
+        sql`${table.sageClientId} IS NOT NULL AND trim(${table.sageClientId}) <> ''`
+      ),
+    uniqueIndex("customers_org_sage_client_number_unique")
+      .on(table.organizationId, table.sageClientNumber)
+      .where(
+        sql`${table.sageClientNumber} IS NOT NULL AND trim(${table.sageClientNumber}) <> ''`
+      ),
+    uniqueIndex("customers_org_buildertrend_contact_unique")
+      .on(table.organizationId, table.buildertrendContactId)
+      .where(
+        sql`${table.buildertrendContactId} IS NOT NULL AND trim(${table.buildertrendContactId}) <> ''`
+      ),
+  ]
+)
 
 export const vendors = sqliteTable("vendors", {
   id: text("id").primaryKey(),

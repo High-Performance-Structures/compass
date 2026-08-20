@@ -18,6 +18,7 @@ import type { Customer } from "@/db/schema"
 import { useIsMobile } from "@/hooks/use-mobile"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
 import { Checkbox } from "@/components/ui/checkbox"
 import {
   DropdownMenu,
@@ -182,6 +183,48 @@ export function CustomersTable({
       },
     },
     {
+      accessorKey: "relationshipType",
+      header: "Status",
+      cell: ({ row }) => (
+        <Badge
+          variant={
+            row.original.relationshipType === "lead" ? "secondary" : "outline"
+          }
+        >
+          {row.original.relationshipType === "lead" ? "Lead" : "Client"}
+        </Badge>
+      ),
+    },
+    {
+      id: "source",
+      header: "Source",
+      cell: ({ row }) => {
+        const customer = row.original
+        const isSageLinked = Boolean(
+          customer.sageClientId || customer.sageClientNumber
+        )
+        const isBuildertrendLinked = Boolean(customer.buildertrendContactId)
+        return (
+          <div className="flex flex-wrap gap-1">
+            {isSageLinked ? (
+              <Badge variant="outline">
+                Sage
+                {customer.sageClientNumber
+                  ? ` #${customer.sageClientNumber}`
+                  : ""}
+              </Badge>
+            ) : null}
+            {isBuildertrendLinked ? (
+              <Badge variant="outline">Buildertrend</Badge>
+            ) : null}
+            {!isSageLinked && !isBuildertrendLinked ? (
+              <Badge variant="outline">Compass</Badge>
+            ) : null}
+          </div>
+        )
+      },
+    },
+    {
       accessorKey: "createdAt",
       header: "Added",
       cell: ({ row }) => {
@@ -242,9 +285,9 @@ export function CustomersTable({
 
   const emptyState = (
     <div className="rounded-md border border-dashed p-8 text-center">
-      <p className="text-muted-foreground">No customers yet</p>
+      <p className="text-muted-foreground">No client or lead contacts yet</p>
       <p className="text-sm text-muted-foreground/70 mt-1">
-        Add your first customer to start tracking contacts and invoices.
+        Add a contact to associate them with projects when ready.
       </p>
     </div>
   )
@@ -254,7 +297,7 @@ export function CustomersTable({
     return (
       <div className="space-y-3">
         <Input
-          placeholder="Search customers..."
+          placeholder="Search clients and leads..."
           value={
             (table.getColumn("name")?.getFilterValue() as string) ?? ""
           }

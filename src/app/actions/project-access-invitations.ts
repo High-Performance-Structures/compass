@@ -267,6 +267,17 @@ export async function sendProjectAccessInvitation(
     if (!row || !row.organizationId) {
       return { success: false, error: "Project contact not found." }
     }
+    if (
+      (row.contact.contactType === "supplier" ||
+        row.contact.contactType === "subcontractor") &&
+      !row.contact.vendorContactId
+    ) {
+      return {
+        success: false,
+        error:
+          "Select or add a contact person for this vendor before inviting them.",
+      }
+    }
 
     const directoryIdentity =
       row.contact.vendorContactId
