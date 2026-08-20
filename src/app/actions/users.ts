@@ -17,7 +17,8 @@ import { getCurrentUser } from "@/lib/auth"
 import { canManageUserAccess, requirePermission } from "@/lib/permissions"
 import { isDemoOrg, isDemoUser } from "@/lib/demo"
 import { sendOrResendWorkOSInvitation } from "@/lib/workos-invitations"
-import { eq, and, getTableColumns, or, sql } from "drizzle-orm"
+import { getUserAvailabilityCondition } from "@/lib/user-availability"
+import { eq, and, getTableColumns, sql } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import {
   updateUserRoleSchema,
@@ -63,16 +64,7 @@ async function getOrganizationUsers(
 
     const db = getDb(env.DB)
     const organizationId = currentUser.organizationId
-    const availabilityCondition = includeInvited
-      ? or(
-          eq(users.isActive, true),
-          and(
-            eq(users.isActive, false),
-            sql`${users.lastLoginAt} IS NULL`,
-            sql`${users.id} NOT LIKE 'user\_%' ESCAPE '\'`
-          )
-        )
-      : eq(users.isActive, true)
+    const availabilityCondition = getUserAvailabilityCondition(includeInvited)
 
     // Never expose users from another organization in the people directory.
     const allUsers = await db
