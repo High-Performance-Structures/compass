@@ -92,6 +92,7 @@ export default async function SchedulePage({
     readonly project?: string | readonly string[]
     readonly projects?: string | readonly string[]
     readonly department?: string | readonly string[]
+    readonly people?: string | readonly string[]
   }>
 }): Promise<React.ReactElement> {
   const query = await searchParams
@@ -214,7 +215,9 @@ export default async function SchedulePage({
     typeof query.date === "string" ? query.date : query.date?.[0]
   const initialDate =
     requestedDate && isValidDateKey(requestedDate) ? requestedDate : undefined
-  const data = await getWorkCalendar(initialDate)
+  const data = await getWorkCalendar(initialDate, {
+    googlePeople: firstValue(query.people),
+  })
 
   const initialItemId =
     typeof query.item === "string" ? query.item : query.item?.[0] ?? null

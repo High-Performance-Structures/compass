@@ -7,6 +7,10 @@ import { getDb } from "@/db"
 import {
   organizationCalendarSettings,
   organizationMembers,
+  googleCalendarConnections,
+  googleCalendarEntityLinks,
+  googleCalendarEvents,
+  googleCalendarSelections,
   projectMembers,
   projectOperations,
   projectRfis,
@@ -20,6 +24,14 @@ import { requireAuth } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
 import { isDemoUser } from "@/lib/demo"
 import { calendarDetailLevel } from "@/lib/google/calendar/sync-policy"
+import {
+  canManageOrganizationCalendars,
+  canWriteGoogleCalendar,
+} from "@/lib/google/calendar/policy"
+import {
+  deleteLinkedWorkCalendarEventFromGoogle,
+  publishWorkCalendarEventToGoogle,
+} from "@/lib/google/calendar/sync"
 import { createNotificationEvent } from "@/lib/notifications/events"
 import { eventAttendeeNotificationRecipients } from "@/lib/notifications/audience"
 import { requireOrg } from "@/lib/org-scope"
@@ -125,6 +137,20 @@ export type WorkCalendarData = {
   readonly canCreateEvents: boolean
   readonly canCreateTodos: boolean
   readonly canManageEvents: boolean
+  readonly googlePeople: readonly GoogleCalendarPerson[]
+  readonly activeGooglePeopleFilter: string
+  readonly googleDestinations: readonly GoogleCalendarDestination[]
+}
+
+export type GoogleCalendarPerson = {
+  readonly userId: string
+  readonly name: string
+}
+
+export type GoogleCalendarDestination = {
+  readonly selectionId: string
+  readonly label: string
+  readonly calendarScope: "personal" | "organization"
 }
 
 export type ProjectRow = {
@@ -237,6 +263,7 @@ export async function getWorkCalendar(
   referenceDate?: string,
   options?: {
     readonly eventsOnly?: boolean
+    readonly googlePeople?: string
   },
 ): Promise<WorkCalendarData> {
   const user = await requireAuth()
@@ -244,8 +271,10 @@ export async function getWorkCalendar(
   const orgId = requireOrg(user)
   const canManageEvents =
     !isDemoUser(user.id) && canManageWorkCalendarEvents(user)
-  const canCreateEvents =
+  const canCreateCompassEvents =
     canManageEvents && can(user, "schedule", "create")
+  const canUseManagedGoogleCalendar =
+    isInternalStaffRole(user.role) || user.role === "developer"
   const canCreateTodos =
     !isDemoUser(user.id) && (await canFeature(user, "tasks", "update"))
 
@@ -305,7 +334,7 @@ export async function getWorkCalendar(
       : null
   const defaultProjectId =
     configuredDefaultProjectId ?? resolveHOfficeProjectId(projectRows)
-  const organizationUsers = canManageEvents
+  const organizationUsers = canManageEvents || canUseManagedGoogleCalendar
     ? await db
         .select({
           id: users.id,
@@ -329,6 +358,83 @@ export async function getWorkCalendar(
     name: userDisplayName(member),
     email: member.email,
   }))
+  const connectedPeopleRows = canUseManagedGoogleCalendar
+    ? await db
+        .select({
+          userId: googleCalendarConnections.userId,
+          email: users.email,
+          displayName: users.displayName,
+          firstName: users.firstName,
+          lastName: users.lastName,
+        })
+        .from(googleCalendarConnections)
+        .innerJoin(users, eq(users.id, googleCalendarConnections.userId))
+        .where(
+          and(
+            eq(googleCalendarConnections.organizationId, orgId),
+            eq(googleCalendarConnections.status, "connected"),
+            eq(users.isActive, true),
+          ),
+        )
+        .orderBy(asc(users.displayName), asc(users.email))
+    : []
+  const googlePeople = connectedPeopleRows.map((member) => ({
+    userId: member.userId,
+    name: userDisplayName(member),
+  }))
+  const requestedPeopleFilter = options?.googlePeople ?? "me"
+  const activeGooglePeopleFilter =
+    requestedPeopleFilter === "all" ||
+    requestedPeopleFilter === "me" ||
+    googlePeople.some((person) => person.userId === requestedPeopleFilter)
+      ? requestedPeopleFilter
+      : "me"
+  const destinationRows = canUseManagedGoogleCalendar
+    ? await db
+        .select({
+          selectionId: googleCalendarSelections.id,
+          summary: googleCalendarSelections.summary,
+          calendarScope: googleCalendarSelections.calendarScope,
+          accessRole: googleCalendarSelections.accessRole,
+          ownerUserId: googleCalendarConnections.userId,
+          internalCanCreate: googleCalendarSelections.internalCanCreate,
+        })
+        .from(googleCalendarSelections)
+        .innerJoin(
+          googleCalendarConnections,
+          eq(
+            googleCalendarConnections.id,
+            googleCalendarSelections.connectionId,
+          ),
+        )
+        .where(
+          and(
+            eq(googleCalendarConnections.organizationId, orgId),
+            eq(googleCalendarSelections.selected, true),
+            eq(googleCalendarSelections.exportCompassEvents, true),
+            eq(googleCalendarSelections.isCompassDestination, true),
+          ),
+        )
+    : []
+  const googleDestinations = destinationRows
+    .filter((destination) => {
+      if (!canWriteGoogleCalendar(destination.accessRole)) return false
+      if (destination.calendarScope === "organization") {
+        return destination.internalCanCreate
+      }
+      return destination.ownerUserId === user.id
+    })
+    .map((destination): GoogleCalendarDestination => ({
+      selectionId: destination.selectionId,
+      label: destination.summary,
+      calendarScope:
+        destination.calendarScope === "organization" ? "organization" : "personal",
+    }))
+  const canCreateEvents =
+    canCreateCompassEvents ||
+    (!isDemoUser(user.id) &&
+      canUseManagedGoogleCalendar &&
+      googleDestinations.length > 0)
   const dedicatedEventIds = new Set(
     (
       await db
@@ -571,6 +677,47 @@ export async function getWorkCalendar(
       asc(workCalendarEvents.title)
     )
   const eventIds = eventRows.map((event) => event.id)
+  const linkedEventRows =
+    eventIds.length === 0
+      ? []
+      : await db
+          .select({
+            eventId: googleCalendarEntityLinks.sourceId,
+            ownerUserId: googleCalendarConnections.userId,
+            calendarScope: googleCalendarSelections.calendarScope,
+            internalCanEdit: googleCalendarSelections.internalCanEdit,
+          })
+          .from(googleCalendarEntityLinks)
+          .innerJoin(
+            googleCalendarConnections,
+            eq(
+              googleCalendarConnections.id,
+              googleCalendarEntityLinks.connectionId,
+            ),
+          )
+          .innerJoin(
+            googleCalendarSelections,
+            and(
+              eq(
+                googleCalendarSelections.connectionId,
+                googleCalendarEntityLinks.connectionId,
+              ),
+              eq(
+                googleCalendarSelections.googleCalendarId,
+                googleCalendarEntityLinks.googleCalendarId,
+              ),
+            ),
+          )
+          .where(
+            and(
+              eq(googleCalendarConnections.organizationId, orgId),
+              eq(googleCalendarEntityLinks.sourceType, "work_calendar_event"),
+              inArray(googleCalendarEntityLinks.sourceId, eventIds),
+            ),
+          )
+  const linkedEventById = new Map(
+    linkedEventRows.map((link) => [link.eventId, link]),
+  )
   const attendeeRows =
     eventIds.length === 0
       ? []
@@ -642,6 +789,17 @@ export async function getWorkCalendar(
     })
     if (detailLevel === "hidden") continue
     const showDetails = detailLevel === "full"
+    const linkedEvent = linkedEventById.get(event.id) ?? null
+    const canEditEvent = linkedEvent
+      ? canUseManagedGoogleCalendar &&
+        canChangeLinkedGoogleEvent({
+          role: user.role,
+          userId: user.id,
+          ownerUserId: linkedEvent.ownerUserId,
+          calendarScope: linkedEvent.calendarScope,
+          allowedForInternalUsers: linkedEvent.internalCanEdit,
+        })
+      : canManageEvents
     const eventType = isWorkCalendarEventType(event.eventType)
       ? event.eventType
       : "other"
@@ -752,10 +910,144 @@ export async function getWorkCalendar(
           recurrenceUntil: showDetails ? event.recurrenceUntil : null,
           attendees: showDetails ? attendees : [],
           version: event.version,
-          managed: showDetails,
+          managed: showDetails && canEditEvent,
         },
       })
     }
+  }
+
+  const personalGoogleEvents = canUseManagedGoogleCalendar
+    ? await db
+        .select({
+          id: googleCalendarEvents.id,
+          ownerUserId: googleCalendarConnections.userId,
+          ownerEmail: users.email,
+          ownerDisplayName: users.displayName,
+          ownerFirstName: users.firstName,
+          ownerLastName: users.lastName,
+          calendarName: googleCalendarSelections.summary,
+          title: googleCalendarEvents.title,
+          description: googleCalendarEvents.description,
+          location: googleCalendarEvents.location,
+          htmlLink: googleCalendarEvents.htmlLink,
+          meetingUrl: googleCalendarEvents.meetingUrl,
+          startDate: googleCalendarEvents.startDate,
+          endDateExclusive: googleCalendarEvents.endDateExclusive,
+          startsAt: googleCalendarEvents.startsAt,
+          endsAt: googleCalendarEvents.endsAt,
+          allDay: googleCalendarEvents.allDay,
+          timeZone: googleCalendarEvents.timeZone,
+          visibility: googleCalendarEvents.visibility,
+          transparency: googleCalendarEvents.transparency,
+          status: googleCalendarEvents.status,
+        })
+        .from(googleCalendarEvents)
+        .innerJoin(
+          googleCalendarSelections,
+          eq(googleCalendarSelections.id, googleCalendarEvents.selectionId),
+        )
+        .innerJoin(
+          googleCalendarConnections,
+          eq(
+            googleCalendarConnections.id,
+            googleCalendarSelections.connectionId,
+          ),
+        )
+        .innerJoin(users, eq(users.id, googleCalendarConnections.userId))
+        .where(
+          and(
+            eq(googleCalendarConnections.organizationId, orgId),
+            eq(googleCalendarSelections.selected, true),
+            eq(googleCalendarSelections.importEvents, true),
+            eq(googleCalendarSelections.calendarScope, "personal"),
+          ),
+        )
+    : []
+
+  for (const googleEvent of personalGoogleEvents) {
+    if (googleEvent.status === "cancelled") continue
+    const selectedOwner =
+      activeGooglePeopleFilter === "all" ||
+      (activeGooglePeopleFilter === "me"
+        ? googleEvent.ownerUserId === user.id
+        : googleEvent.ownerUserId === activeGooglePeopleFilter)
+    if (!selectedOwner) continue
+    const startDate = googleEvent.allDay
+      ? googleEvent.startDate
+      : googleEvent.startsAt
+        ? dateKeyInTimeZone(
+            new Date(googleEvent.startsAt),
+            googleEvent.timeZone ?? defaultTimeZone,
+          )
+        : null
+    const endDate = googleEvent.allDay
+      ? googleEvent.endDateExclusive
+        ? inclusiveEndDateFromExclusive(googleEvent.endDateExclusive)
+        : null
+      : googleEvent.endsAt
+        ? dateKeyInTimeZone(
+            new Date(new Date(googleEvent.endsAt).getTime() - 1),
+            googleEvent.timeZone ?? defaultTimeZone,
+          )
+        : null
+    if (
+      !startDate ||
+      !endDate ||
+      !intersectsCalendarWindow(startDate, endDate, rangeStart, rangeEnd, today)
+    ) {
+      continue
+    }
+    const viewerIsOwner = googleEvent.ownerUserId === user.id
+    const ownerName = userDisplayName({
+      displayName: googleEvent.ownerDisplayName,
+      firstName: googleEvent.ownerFirstName,
+      lastName: googleEvent.ownerLastName,
+      email: googleEvent.ownerEmail,
+    })
+    const fullDetails = viewerIsOwner
+    if (!fullDetails && googleEvent.transparency === "transparent") continue
+    const calendarLabel = fullDetails ? googleEvent.calendarName : "Google Calendar"
+    entries.push({
+      id: `google-${googleEvent.id}`,
+      kind: "event",
+      projectId: null,
+      projectLabel: ownerName,
+      projectName: calendarLabel,
+      title: fullDetails ? googleEvent.title : "Busy",
+      status: "open",
+      priority: "normal",
+      startDate,
+      endDate,
+      assignedTo: ownerName,
+      companyName: null,
+      sourceLabel: `${ownerName} · ${calendarLabel}`,
+      href: fullDetails && googleEvent.htmlLink ? googleEvent.htmlLink : "/dashboard/schedule",
+      eventDetails: {
+        masterEventId: `google-${googleEvent.id}`,
+        eventType: fullDetails && googleEvent.meetingUrl ? "meeting" : "other",
+        visibility: fullDetails ? "private" : "busy",
+        description: fullDetails ? googleEvent.description : null,
+        startDate,
+        endDate,
+        startTime: googleEvent.allDay
+          ? ""
+          : localTimeInZone(googleEvent.startsAt, googleEvent.timeZone ?? defaultTimeZone),
+        endTime: googleEvent.allDay
+          ? ""
+          : localTimeInZone(googleEvent.endsAt, googleEvent.timeZone ?? defaultTimeZone),
+        startsAt: googleEvent.startsAt,
+        endsAt: googleEvent.endsAt,
+        allDay: googleEvent.allDay,
+        timeZone: googleEvent.timeZone ?? defaultTimeZone,
+        location: fullDetails ? googleEvent.location : null,
+        meetingUrl: fullDetails ? googleEvent.meetingUrl : null,
+        recurrence: "none",
+        recurrenceUntil: null,
+        attendees: [],
+        version: 0,
+        managed: false,
+      },
+    })
   }
 
   entries.sort((left, right) => {
@@ -778,6 +1070,9 @@ export async function getWorkCalendar(
     canCreateEvents,
     canCreateTodos,
     canManageEvents,
+    googlePeople,
+    activeGooglePeopleFilter,
+    googleDestinations,
   }
 }
 
@@ -800,10 +1095,11 @@ export type WorkCalendarEventMutationInput = {
   readonly recurrence: WorkCalendarRecurrence
   readonly recurrenceUntil: string | null
   readonly attendeeUserIds: readonly string[]
+  readonly calendarSelectionId: string | null
 }
 
 type WorkCalendarEventMutationResult =
-  | { readonly success: true; readonly id: string }
+  | { readonly success: true; readonly id: string; readonly warning?: string }
   | { readonly success: false; readonly error: string }
 
 type ValidatedEventInput = {
@@ -1044,6 +1340,130 @@ async function validateEventInput(
   }
 }
 
+async function validateGoogleCalendarDestination(input: {
+  readonly db: ReturnType<typeof getDb>
+  readonly organizationId: string
+  readonly userId: string
+  readonly selectionId: string | null
+}): Promise<{
+  readonly selectionId: string
+  readonly calendarScope: string
+  readonly internalVisibility: string
+} | null> {
+  const selectionId = input.selectionId?.trim() ?? ""
+  if (!selectionId) return null
+  const destination = await input.db
+    .select({
+      id: googleCalendarSelections.id,
+      ownerUserId: googleCalendarConnections.userId,
+      calendarScope: googleCalendarSelections.calendarScope,
+      accessRole: googleCalendarSelections.accessRole,
+      selected: googleCalendarSelections.selected,
+      exportCompassEvents: googleCalendarSelections.exportCompassEvents,
+      isCompassDestination: googleCalendarSelections.isCompassDestination,
+      internalCanCreate: googleCalendarSelections.internalCanCreate,
+      internalVisibility: googleCalendarSelections.internalVisibility,
+    })
+    .from(googleCalendarSelections)
+    .innerJoin(
+      googleCalendarConnections,
+      eq(googleCalendarConnections.id, googleCalendarSelections.connectionId),
+    )
+    .where(
+      and(
+        eq(googleCalendarSelections.id, selectionId),
+        eq(googleCalendarConnections.organizationId, input.organizationId),
+      ),
+    )
+    .limit(1)
+    .then((rows) => rows[0] ?? null)
+  if (
+    !destination ||
+    !destination.selected ||
+    !destination.exportCompassEvents ||
+    !destination.isCompassDestination ||
+    !canWriteGoogleCalendar(destination.accessRole)
+  ) {
+    throw new Error("The selected Google Calendar destination is unavailable.")
+  }
+  const canCreate =
+    destination.calendarScope === "organization"
+      ? destination.internalCanCreate
+      : destination.ownerUserId === input.userId
+  if (!canCreate) {
+    throw new Error("You cannot create events in this Google calendar.")
+  }
+  return {
+    selectionId: destination.id,
+    calendarScope: destination.calendarScope,
+    internalVisibility: destination.internalVisibility,
+  }
+}
+
+async function linkedGoogleCalendarPermissions(input: {
+  readonly db: ReturnType<typeof getDb>
+  readonly organizationId: string
+  readonly eventId: string
+}): Promise<{
+  readonly selectionId: string
+  readonly ownerUserId: string
+  readonly calendarScope: string
+  readonly internalCanEdit: boolean
+  readonly internalCanDelete: boolean
+  readonly internalVisibility: string
+} | null> {
+  return input.db
+    .select({
+      selectionId: googleCalendarSelections.id,
+      ownerUserId: googleCalendarConnections.userId,
+      calendarScope: googleCalendarSelections.calendarScope,
+      internalCanEdit: googleCalendarSelections.internalCanEdit,
+      internalCanDelete: googleCalendarSelections.internalCanDelete,
+      internalVisibility: googleCalendarSelections.internalVisibility,
+    })
+    .from(googleCalendarEntityLinks)
+    .innerJoin(
+      googleCalendarConnections,
+      eq(googleCalendarConnections.id, googleCalendarEntityLinks.connectionId),
+    )
+    .innerJoin(
+      googleCalendarSelections,
+      and(
+        eq(
+          googleCalendarSelections.connectionId,
+          googleCalendarEntityLinks.connectionId,
+        ),
+        eq(
+          googleCalendarSelections.googleCalendarId,
+          googleCalendarEntityLinks.googleCalendarId,
+        ),
+      ),
+    )
+    .where(
+      and(
+        eq(googleCalendarConnections.organizationId, input.organizationId),
+        eq(googleCalendarEntityLinks.sourceType, "work_calendar_event"),
+        eq(googleCalendarEntityLinks.sourceId, input.eventId),
+      ),
+    )
+    .limit(1)
+    .then((rows) => rows[0] ?? null)
+}
+
+function canChangeLinkedGoogleEvent(input: {
+  readonly role: string
+  readonly userId: string
+  readonly ownerUserId: string
+  readonly calendarScope: string
+  readonly allowedForInternalUsers: boolean
+}): boolean {
+  if (input.ownerUserId === input.userId) return true
+  if (input.calendarScope !== "organization") return false
+  return (
+    input.allowedForInternalUsers || canManageOrganizationCalendars(input.role)
+  )
+}
+
 async function syncEventAttendees(
   db: ReturnType<typeof getDb>,
   eventId: string,
@@ -1213,26 +1633,45 @@ export async function createWorkCalendarEvent(
 ): Promise<WorkCalendarEventMutationResult> {
   try {
     const user = await requireAuth()
-    if (!canManageWorkCalendarEvents(user)) {
-      return { success: false, error: "Permission denied" }
-    }
     if (isDemoUser(user.id)) {
       return { success: false, error: "DEMO_READ_ONLY" }
     }
-    requirePermission(user, "schedule", "create")
+    requirePermission(user, "schedule", "read")
     const orgId = requireOrg(user)
     const { env } = await getCloudflareContext()
     const db = getDb(env.DB)
+    const calendarDestination = await validateGoogleCalendarDestination({
+      db,
+      organizationId: orgId,
+      userId: user.id,
+      selectionId: input.calendarSelectionId,
+    })
+    const canCreateCompassEvent =
+      canManageWorkCalendarEvents(user) && can(user, "schedule", "create")
+    const canCreateManagedGoogleEvent =
+      calendarDestination !== null &&
+      (isInternalStaffRole(user.role) || user.role === "developer")
+    if (!canCreateCompassEvent && !canCreateManagedGoogleEvent) {
+      return { success: false, error: "Permission denied" }
+    }
     const validated = await validateEventInput(db, orgId, input)
+    const organizationCalendar =
+      calendarDestination?.calendarScope === "organization"
+    const targetProject = organizationCalendar ? null : validated.project
+    const targetVisibility: WorkCalendarEventVisibility = organizationCalendar
+      ? calendarDestination.internalVisibility === "details"
+        ? "organization"
+        : "busy"
+      : validated.visibility
     const id = crypto.randomUUID()
     const now = new Date().toISOString()
     await db.insert(workCalendarEvents).values({
       id,
       organizationId: orgId,
-      projectId: validated.project.id,
+      projectId: targetProject?.id ?? null,
       title: validated.title,
       eventType: validated.eventType,
-      visibility: validated.visibility,
+      visibility: targetVisibility,
       description: validated.description,
       startDate: validated.startDate,
       endDateExclusive: validated.endDateExclusive,
@@ -1254,10 +1693,26 @@ export async function createWorkCalendarEvent(
       updatedAt: now,
     })
     await syncEventAttendees(db, id, [], validated.attendees, now)
+    let warning: string | undefined
+    if (calendarDestination) {
+      try {
+        await publishWorkCalendarEventToGoogle(
+          db,
+          env,
+          id,
+          calendarDestination.selectionId,
+        )
+      } catch (error) {
+        warning =
+          error instanceof Error
+            ? `Saved in Compass, but Google Calendar did not update: ${error.message}`
+            : "Saved in Compass, but Google Calendar did not update."
+      }
+    }
     await notifyEventParticipants({
       organizationId: orgId,
-      projectId: validated.project.id,
-      project: validated.project,
+      projectId: targetProject?.id ?? null,
+      project: targetProject,
       eventId: id,
       eventTitle: validated.title,
       startLabel: eventStartLabel(validated),
@@ -1267,8 +1722,8 @@ export async function createWorkCalendarEvent(
       attendees: validated.attendees,
     })
 
-    revalidateEventPaths([validated.project.id])
-    return { success: true, id }
+    revalidateEventPaths([targetProject?.id ?? null])
+    return { success: true, id, warning }
   } catch (error) {
     return {
       success: false,
@@ -1285,16 +1740,37 @@ export async function updateWorkCalendarEvent(
 ): Promise<WorkCalendarEventMutationResult> {
   try {
     const user = await requireAuth()
-    if (!canManageWorkCalendarEvents(user)) {
-      return { success: false, error: "Permission denied" }
-    }
     if (isDemoUser(user.id)) {
       return { success: false, error: "DEMO_READ_ONLY" }
     }
     requirePermission(user, "schedule", "update")
+    const canManageCompassEvent = canManageWorkCalendarEvents(user)
+    const canUseManagedGoogleCalendar =
+      isInternalStaffRole(user.role) || user.role === "developer"
     const orgId = requireOrg(user)
     const { env } = await getCloudflareContext()
     const db = getDb(env.DB)
+
+    const googleLink = await linkedGoogleCalendarPermissions({
+      db,
+      organizationId: orgId,
+      eventId,
+    })
+    if (!canManageCompassEvent && (!googleLink || !canUseManagedGoogleCalendar)) {
+      return { success: false, error: "Permission denied" }
+    }
+    if (
+      googleLink &&
+      !canChangeLinkedGoogleEvent({
+        role: user.role,
+        userId: user.id,
+        ownerUserId: googleLink.ownerUserId,
+        calendarScope: googleLink.calendarScope,
+        allowedForInternalUsers: googleLink.internalCanEdit,
+      })
+    ) {
+      return { success: false, error: "You cannot edit events in this Google calendar." }
+    }
 
     const existing = await db
       .select({
@@ -1335,14 +1811,21 @@ export async function updateWorkCalendarEvent(
 
     const previousAttendees = await eventAttendees(db, eventId)
     const validated = await validateEventInput(db, orgId, input)
+    const organizationCalendar = googleLink?.calendarScope === "organization"
+    const targetProject = organizationCalendar ? null : validated.project
+    const targetVisibility: WorkCalendarEventVisibility = organizationCalendar
+      ? googleLink?.internalVisibility === "details"
+        ? "organization"
+        : "busy"
+      : validated.visibility
     const now = new Date().toISOString()
     const updated = await db
       .update(workCalendarEvents)
       .set({
-        projectId: validated.project.id,
+        projectId: targetProject?.id ?? null,
         title: validated.title,
         eventType: validated.eventType,
-        visibility: validated.visibility,
+        visibility: targetVisibility,
         description: validated.description,
         startDate: validated.startDate,
         endDateExclusive: validated.endDateExclusive,
@@ -1382,6 +1865,22 @@ export async function updateWorkCalendarEvent(
       validated.attendees,
       now
     )
+    let warning: string | undefined
+    if (googleLink) {
+      try {
+        await publishWorkCalendarEventToGoogle(
+          db,
+          env,
+          eventId,
+          googleLink.selectionId,
+        )
+      } catch (error) {
+        warning =
+          error instanceof Error
+            ? `Updated in Compass, but Google Calendar did not update: ${error.message}`
+            : "Updated in Compass, but Google Calendar did not update."
+      }
+    }
 
     const notificationAttendees = new Map<
       string,
@@ -1395,8 +1894,8 @@ export async function updateWorkCalendarEvent(
     }
     await notifyEventParticipants({
       organizationId: orgId,
-      projectId: validated.project.id,
-      project: validated.project,
+      projectId: targetProject?.id ?? null,
+      project: targetProject,
       eventId,
       eventTitle: validated.title,
       startLabel: eventStartLabel(validated),
@@ -1406,8 +1905,8 @@ export async function updateWorkCalendarEvent(
       attendees: Array.from(notificationAttendees.values()),
     })
 
-    revalidateEventPaths([existing.projectId, validated.project.id])
-    return { success: true, id: eventId }
+    revalidateEventPaths([existing.projectId, targetProject?.id ?? null])
+    return { success: true, id: eventId, warning }
   } catch (error) {
     return {
       success: false,
@@ -1423,16 +1922,37 @@ export async function cancelWorkCalendarEvent(
 ): Promise<WorkCalendarEventMutationResult> {
   try {
     const user = await requireAuth()
-    if (!canManageWorkCalendarEvents(user)) {
-      return { success: false, error: "Permission denied" }
-    }
     if (isDemoUser(user.id)) {
       return { success: false, error: "DEMO_READ_ONLY" }
     }
     requirePermission(user, "schedule", "update")
+    const canManageCompassEvent = canManageWorkCalendarEvents(user)
+    const canUseManagedGoogleCalendar =
+      isInternalStaffRole(user.role) || user.role === "developer"
     const orgId = requireOrg(user)
     const { env } = await getCloudflareContext()
     const db = getDb(env.DB)
+
+    const googleLink = await linkedGoogleCalendarPermissions({
+      db,
+      organizationId: orgId,
+      eventId,
+    })
+    if (!canManageCompassEvent && (!googleLink || !canUseManagedGoogleCalendar)) {
+      return { success: false, error: "Permission denied" }
+    }
+    if (
+      googleLink &&
+      !canChangeLinkedGoogleEvent({
+        role: user.role,
+        userId: user.id,
+        ownerUserId: googleLink.ownerUserId,
+        calendarScope: googleLink.calendarScope,
+        allowedForInternalUsers: googleLink.internalCanDelete,
+      })
+    ) {
+      return { success: false, error: "You cannot delete events from this Google calendar." }
+    }
 
     const existing = await db
       .select({
@@ -1507,6 +2027,17 @@ export async function cancelWorkCalendarEvent(
           "This event changed after you opened it. Refresh and try again.",
       }
     }
+    let warning: string | undefined
+    if (googleLink) {
+      try {
+        await deleteLinkedWorkCalendarEventFromGoogle(db, env, eventId)
+      } catch (error) {
+        warning =
+          error instanceof Error
+            ? `Cancelled in Compass, but Google Calendar did not update: ${error.message}`
+            : "Cancelled in Compass, but Google Calendar did not update."
+      }
+    }
     await notifyEventParticipants({
       organizationId: orgId,
       projectId: existing.projectId,
@@ -1521,7 +2052,7 @@ export async function cancelWorkCalendarEvent(
     })
 
     revalidateEventPaths([existing.projectId])
-    return { success: true, id: eventId }
+    return { success: true, id: eventId, warning }
   } catch (error) {
     return {
       success: false,

@@ -1348,6 +1348,19 @@ export const googleCalendarSelections = sqliteTable(
     })
       .notNull()
       .default(false),
+    calendarScope: text("calendar_scope").notNull().default("personal"),
+    internalVisibility: text("internal_visibility")
+      .notNull()
+      .default("busy"),
+    internalCanCreate: integer("internal_can_create", { mode: "boolean" })
+      .notNull()
+      .default(false),
+    internalCanEdit: integer("internal_can_edit", { mode: "boolean" })
+      .notNull()
+      .default(false),
+    internalCanDelete: integer("internal_can_delete", { mode: "boolean" })
+      .notNull()
+      .default(false),
     syncToken: text("sync_token"),
     watchChannelId: text("watch_channel_id"),
     watchResourceId: text("watch_resource_id"),
@@ -1366,6 +1379,55 @@ export const googleCalendarSelections = sqliteTable(
       table.connectionId,
       table.selected,
     ),
+  ],
+)
+
+export const googleCalendarEvents = sqliteTable(
+  "google_calendar_events",
+  {
+    id: text("id").primaryKey(),
+    selectionId: text("selection_id")
+      .notNull()
+      .references(() => googleCalendarSelections.id, {
+        onDelete: "cascade",
+      }),
+    googleEventId: text("google_event_id").notNull(),
+    googleICalUid: text("google_ical_uid"),
+    recurringEventId: text("recurring_event_id"),
+    status: text("status").notNull().default("confirmed"),
+    title: text("title").notNull(),
+    description: text("description"),
+    location: text("location"),
+    htmlLink: text("html_link"),
+    meetingUrl: text("meeting_url"),
+    startDate: text("start_date"),
+    endDateExclusive: text("end_date_exclusive"),
+    startsAt: text("starts_at"),
+    endsAt: text("ends_at"),
+    allDay: integer("all_day", { mode: "boolean" })
+      .notNull()
+      .default(false),
+    timeZone: text("time_zone"),
+    visibility: text("visibility").notNull().default("default"),
+    transparency: text("transparency").notNull().default("opaque"),
+    organizerEmail: text("organizer_email"),
+    googleEtag: text("google_etag"),
+    googleUpdatedAt: text("google_updated_at"),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("google_calendar_event_unique").on(
+      table.selectionId,
+      table.googleEventId,
+    ),
+    index("idx_google_calendar_events_start").on(
+      table.selectionId,
+      table.status,
+      table.startDate,
+      table.startsAt,
+    ),
+    index("idx_google_calendar_events_ical_uid").on(table.googleICalUid),
   ],
 )
 
@@ -2246,6 +2308,8 @@ export type GoogleCalendarSelection =
   typeof googleCalendarSelections.$inferSelect
 export type NewGoogleCalendarSelection =
   typeof googleCalendarSelections.$inferInsert
+export type GoogleCalendarEvent = typeof googleCalendarEvents.$inferSelect
+export type NewGoogleCalendarEvent = typeof googleCalendarEvents.$inferInsert
 export type GoogleCalendarEntityLink =
   typeof googleCalendarEntityLinks.$inferSelect
 export type NewGoogleCalendarEntityLink =

@@ -1,10 +1,10 @@
 # Google Calendar Sync
 
-Status: foundation in progress
+Status: managed calendar sync implementation in progress
 
 Owner: Compass product and engineering
 
-Tracking branch: `martinevogel/google-calendar-sync`
+Tracking branch: `martine/google-calendar-managed-sync`
 
 ## Decision
 
@@ -24,9 +24,10 @@ The Work Calendar presents these sources together without changing their source
 of truth. H-Office remains the default project for office events and receives
 priority in Office mode.
 
-## First Reviewable Slice
+## Implemented Slice
 
-The first slice establishes safe boundaries before external writes:
+The current slice includes the OAuth foundation plus managed import and
+write-through behavior:
 
 - per-user Google connection records with encrypted refresh credentials;
 - selected Google calendars and incremental sync/watch metadata;
@@ -35,12 +36,22 @@ The first slice establishes safe boundaries before external writes:
 - explicit privacy projection and conflict-decision helpers;
 - event type, visibility, and meeting-link fields in the existing scheduler;
 - project-access-aware event projection that hides or reduces private details;
-- an integration status surface that remains safe when Google OAuth is not
-  configured;
+- calendar discovery and per-calendar import/export configuration;
+- personal-calendar caches that remain owner-scoped and project other users'
+  events as `Busy`;
+- a Work Calendar people filter for the current user, one internal user, or all
+  connected internal users;
+- organization calendars (such as ORC Master) that import into the shared Work
+  Calendar and carry explicit detail/create/edit/delete permissions;
+- an event destination selector that can publish Compass events to a writable
+  personal or organization Google calendar;
+- linked create/update/delete calls so Google-backed Work Calendar events stay
+  synchronized when the calendar policy permits the action;
+- an integration status surface that remains safe when Google OAuth is not configured;
 - tests for privacy, idempotency, and two-way conflict behavior.
 
-External calendar writes, staff-wide enablement, and the production migration
-are separate approval points.
+The production D1 migration and OAuth secret configuration remain deployment
+approval points.
 
 ## Google Cloud Configuration
 
@@ -68,7 +79,12 @@ Google Tasks permissions are added only when the Tasks phase is implemented.
 - A project-scoped event is hidden from users without access to that project.
 - Event owners and participants see full details.
 - Participant-only and busy events appear as `Busy` to other authorized staff.
-- Private events are hidden from nonparticipants.
+- Personal Google events always show full details only to their owner. Other
+  internal users receive a `Busy` projection without description, location,
+  meeting URL, or Google link.
+- Organization calendar visibility is configured independently as details or
+  busy-only.
+- Private Compass events are hidden from nonparticipants.
 - Guests cannot connect a Google account or view private staff-calendar data.
 - Tokens, private descriptions, and attendee contact details must never appear
   in sync logs.
@@ -87,12 +103,15 @@ Google Tasks permissions are added only when the Tasks phase is implemented.
 - A failed webhook is only a signal to run incremental sync; webhook requests
   are not trusted as event payloads.
 
+The current implementation uses a bounded manual sync window (90 days in the
+past through two years in the future). Incremental sync tokens and push watches
+remain follow-up work.
+
 ## Follow-up Slices
 
-1. Calendar selection and staff-wide enablement of the completed OAuth flow.
-2. Dedicated Compass Google calendar creation and event publishing.
-3. Imported Google events in the user's Work Calendar with busy projection.
-4. Push notifications, incremental sync, retries, and conflict UI.
-5. Remaining robust event fields: recurrence, exceptions, external attendees,
+1. Scheduled sync, retries, incremental sync tokens, renewable watches, and a
+   conflict-resolution UI.
+2. Google Meet conference creation (existing Meet links already round-trip).
+3. Remaining robust event fields: recurrence exceptions, external attendees,
    reminders, attachments, and related Compass records.
-6. Google Tasks synchronization after calendar behavior is stable.
+4. Google Tasks synchronization after calendar behavior is stable.

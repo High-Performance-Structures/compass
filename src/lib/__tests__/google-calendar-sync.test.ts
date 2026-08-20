@@ -13,6 +13,12 @@ import {
   decideGoogleCalendarSyncAction,
   googleEventIdForCompass,
 } from "@/lib/google/calendar/sync-policy"
+import { parseGoogleCalendarEvent } from "@/lib/google/calendar/client"
+import {
+  canConnectGoogleCalendar,
+  canManageOrganizationCalendars,
+  canWriteGoogleCalendar,
+} from "@/lib/google/calendar/policy"
 
 describe("Google Calendar OAuth configuration", () => {
   it("fails closed when required secrets are missing", () => {
@@ -201,5 +207,64 @@ describe("Google Calendar event IDs", () => {
     )
 
     expect(new Set([eventId, taskId, otherAccountId]).size).toBe(3)
+  })
+})
+
+describe("managed Google Calendar policy", () => {
+  it("lets developers manage a shared organization calendar", () => {
+    expect(
+      canConnectGoogleCalendar({ userId: "developer-1", role: "developer" }),
+    ).toBe(true)
+    expect(canManageOrganizationCalendars("developer")).toBe(true)
+    expect(canManageOrganizationCalendars("office")).toBe(false)
+  })
+
+  it("requires Google writer access for Compass destinations", () => {
+    expect(canWriteGoogleCalendar("owner")).toBe(true)
+    expect(canWriteGoogleCalendar("writer")).toBe(true)
+    expect(canWriteGoogleCalendar("reader")).toBe(false)
+  })
+})
+
+describe("Google Calendar event parsing", () => {
+  it("normalizes a timed Google Meet event", () => {
+    expect(
+      parseGoogleCalendarEvent({
+        id: "google-event-1",
+        etag: "etag-1",
+        summary: "Owner meeting",
+        status: "confirmed",
+        hangoutLink: "https://meet.google.com/abc-defg-hij",
+        start: {
+          dateTime: "2026-08-20T09:00:00-06:00",
+          timeZone: "America/Denver",
+        },
+        end: {
+          dateTime: "2026-08-20T10:00:00-06:00",
+          timeZone: "America/Denver",
+        },
+      }),
+    ).toMatchObject({
+      id: "google-event-1",
+      summary: "Owner meeting",
+      allDay: false,
+      meetingUrl: "https://meet.google.com/abc-defg-hij",
+      timeZone: "America/Denver",
+    })
+  })
+
+  it("uses exclusive end dates for all-day events", () => {
+    expect(
+      parseGoogleCalendarEvent({
+        id: "holiday-1",
+        start: { date: "2026-12-24" },
+        end: { date: "2026-12-26" },
+      }),
+    ).toMatchObject({
+      summary: "Busy",
+      startDate: "2026-12-24",
+      endDateExclusive: "2026-12-26",
+      allDay: true,
+    })
   })
 })

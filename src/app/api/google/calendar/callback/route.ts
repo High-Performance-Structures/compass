@@ -6,7 +6,6 @@ import { googleCalendarConnections } from "@/db/schema"
 import { getCurrentUser } from "@/lib/auth"
 import { encrypt } from "@/lib/crypto"
 import { getCloudflareContext } from "@/lib/db"
-import { isDemoUser } from "@/lib/demo"
 import {
   getGoogleCalendarOAuthConfig,
   googleCalendarTokenSalt,
@@ -16,8 +15,8 @@ import {
   getGoogleAccountIdentity,
   hasRequiredGoogleCalendarScopes,
 } from "@/lib/google/calendar/oauth"
+import { canConnectGoogleCalendar } from "@/lib/google/calendar/policy"
 import { can } from "@/lib/permissions"
-import { isInternalStaffRole } from "@/lib/user-roles"
 
 const OAUTH_STATE_COOKIE = "compass_google_calendar_oauth_state"
 
@@ -46,8 +45,7 @@ export async function GET(request: NextRequest): Promise<Response> {
   const user = await getCurrentUser()
   if (
     !user ||
-    isDemoUser(user.id) ||
-    !isInternalStaffRole(user.role) ||
+    !canConnectGoogleCalendar({ userId: user.id, role: user.role }) ||
     !can(user, "schedule", "read") ||
     !user.organizationId
   ) {
