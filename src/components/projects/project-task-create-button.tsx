@@ -53,6 +53,7 @@ type ProjectTaskCreateButtonProps = {
   readonly defaultTaskType?: ProjectTaskRecordType
   readonly assigneeOptions?: readonly ProjectTaskAssigneeOption[]
   readonly compact?: boolean
+  readonly onCreated?: (todoId: string) => void
 }
 
 function cleanValue(value: string): string | null {
@@ -100,6 +101,7 @@ export function ProjectTaskCreateButton({
   defaultTaskType = "staff_task",
   assigneeOptions = [],
   compact = false,
+  onCreated,
 }: ProjectTaskCreateButtonProps): React.ReactElement {
   const router = useRouter()
   const [open, setOpen] = React.useState(false)
@@ -183,6 +185,7 @@ export function ProjectTaskCreateButton({
       kind: "saved",
       message: "To-do created and added to the project work queue.",
     })
+    onCreated?.(result.id)
     router.refresh()
   }
 

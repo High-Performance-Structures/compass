@@ -53,6 +53,7 @@ import {
   type BulkScheduleTemplateSelection
 } from "@/lib/templates/schedule-template-bulk-selection"
 import { isOwnerScheduleView, type OwnerScheduleView } from "@/lib/schedule/owner-visibility"
+import { linkedTodoDateUpdateStatement } from "@/lib/schedule/linked-todo-sync"
 import type {
   TaskStatus,
   DependencyType,
@@ -66,7 +67,53 @@ import type {
 
 function revalidateSchedulePaths(projectId: string): void {
   revalidatePath(`/dashboard/projects/${projectId}/schedule`)
+  revalidatePath(`/dashboard/projects/${projectId}/todos`)
+  revalidatePath("/dashboard")
   revalidatePath("/dashboard/schedule")
+}
+
+async function persistScheduleDateUpdates(
+  database: D1Database,
+  projectId: string,
+  updates: ReadonlyMap<
+    string,
+    {
+      readonly startDate: string
+      readonly endDateCalculated: string
+    }
+  >,
+  updatedAt: string
+): Promise<void> {
+  const entries = [...updates]
+  // Two statements are required per item. Keep batches below D1's statement
+  // ceiling while preserving the linked-to-do update before its schedule row.
+  for (const entryChunk of chunkValues(entries, 40)) {
+    const statements = entryChunk.flatMap(([taskId, dates]) => [
+      linkedTodoDateUpdateStatement(database, {
+        scheduleTaskId: taskId,
+        nextStartDate: dates.startDate,
+        nextEndDate: dates.endDateCalculated,
+        updatedAt,
+      }),
+      database
+        .prepare(
+          `UPDATE schedule_tasks
+           SET start_date = ?, end_date_calculated = ?, updated_at = ?
+           WHERE id = ? AND project_id = ?`
+        )
+        .bind(
+          dates.startDate,
+          dates.endDateCalculated,
+          updatedAt,
+          taskId,
+          projectId
+        ),
+    ])
+    const results = await database.batch(statements)
+    if (results.some((result) => !result.success)) {
+      throw new Error("Schedule date update batch failed")
+    }
+  }
 }
 
 function revalidateOwnerSchedulePaths(projectId: string): void {
@@ -1115,7 +1162,8 @@ export async function updateTask(
       return { success: false, error: "Access denied" }
     }
 
-    const exceptions = await fetchExceptions(db, task.projectId)
+    const schedule = await getSchedule(task.projectId)
+    const exceptions = schedule.exceptions
     const startDate = data.startDate ?? task.startDate
     const workdays = data.workdays ?? task.workdays
     const endDate = calculateEndDate(startDate, workdays, exceptions)
@@ -1144,13 +1192,30 @@ export async function updateTask(
       now
     })
 
+    // propagate date changes to downstream tasks
+    const updatedTask = {
+      ...task,
+      status: progress.status,
+      percentComplete: progress.percentComplete,
+      startDate,
+      workdays,
+      endDateCalculated: endDate
+    }
+    const allTasks = schedule.tasks.map((t) => (t.id === taskId ? updatedTask : t))
+    const { updatedTasks } = propagateDates(taskId, allTasks, schedule.dependencies, exceptions)
+    const dateUpdates = new Map(updatedTasks)
+    dateUpdates.set(taskId, {
+      startDate,
+      endDateCalculated: endDate,
+    })
+
+    // Leave dates untouched until the paired D1 batch below. Linked to-dos
+    // must calculate their offsets from the previous schedule dates.
     await db
       .update(scheduleTasks)
       .set({
         ...(data.title && { title: data.title }),
-        startDate,
         workdays,
-        endDateCalculated: endDate,
         ...(data.phase && { phase: data.phase }),
         ...(data.displayColor && { displayColor: data.displayColor }),
         status: progress.status,
@@ -1184,6 +1249,12 @@ export async function updateTask(
         updatedAt: now
       })
       .where(eq(scheduleTasks.id, taskId))
+    await persistScheduleDateUpdates(
+      env.DB,
+      task.projectId,
+      dateUpdates,
+      now
+    )
 
     await recordActivityEvent({
       db,
@@ -1196,30 +1267,6 @@ export async function updateTask(
       entityId: taskId,
       summary: `Updated schedule item “${data.title ?? task.title}”.`
     })
-
-    // propagate date changes to downstream tasks
-    const schedule = await getSchedule(task.projectId)
-    const updatedTask = {
-      ...task,
-      status: progress.status,
-      percentComplete: progress.percentComplete,
-      startDate,
-      workdays,
-      endDateCalculated: endDate
-    }
-    const allTasks = schedule.tasks.map((t) => (t.id === taskId ? updatedTask : t))
-    const { updatedTasks } = propagateDates(taskId, allTasks, schedule.dependencies, exceptions)
-
-    for (const [id, dates] of updatedTasks) {
-      await db
-        .update(scheduleTasks)
-        .set({
-          startDate: dates.startDate,
-          endDateCalculated: dates.endDateCalculated,
-          updatedAt: new Date().toISOString()
-        })
-        .where(eq(scheduleTasks.id, id))
-    }
 
     await recalcCriticalPath(db, task.projectId)
     revalidateSchedulePaths(task.projectId)
@@ -1703,17 +1750,12 @@ export async function createDependency(data: {
       updatedSchedule.dependencies,
       updatedSchedule.exceptions
     )
-
-    for (const [id, dates] of updatedTasks) {
-      await db
-        .update(scheduleTasks)
-        .set({
-          startDate: dates.startDate,
-          endDateCalculated: dates.endDateCalculated,
-          updatedAt: new Date().toISOString()
-        })
-        .where(eq(scheduleTasks.id, id))
-    }
+    await persistScheduleDateUpdates(
+      env.DB,
+      data.projectId,
+      updatedTasks,
+      new Date().toISOString()
+    )
 
     await recordActivityEvent({
       db,
@@ -1836,6 +1878,12 @@ export async function updateDependency(data: {
 
     for (const [taskId, dates] of recalculated.updatedTasks) {
       statements.push(
+        linkedTodoDateUpdateStatement(env.DB, {
+          scheduleTaskId: taskId,
+          nextStartDate: dates.startDate,
+          nextEndDate: dates.endDateCalculated,
+          updatedAt,
+        }),
         env.DB.prepare(
           `UPDATE schedule_tasks
            SET start_date = ?, end_date_calculated = ?, updated_at = ?

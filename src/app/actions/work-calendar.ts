@@ -45,6 +45,10 @@ import {
   type WorkCalendarEventVisibility,
 } from "@/lib/work-calendar"
 import { isProjectTodoRecordType } from "@/lib/project-todos"
+import {
+  linkedScheduleTaskId,
+  linkedTodoSourceLabel,
+} from "@/lib/schedule/linked-todos"
 import { isInternalStaffRole } from "@/lib/user-roles"
 import {
   expandWorkCalendarRecurrence,
@@ -356,6 +360,10 @@ export async function getWorkCalendar(
       .from(scheduleTasks)
       .where(eq(scheduleTasks.projectId, project.id))
       .orderBy(asc(scheduleTasks.startDate), asc(scheduleTasks.sortOrder))
+    const scheduleTaskById = new Map(
+      taskRows.map((scheduleTask) => [scheduleTask.id, scheduleTask])
+    )
+    const scheduleTaskIds = new Set(scheduleTaskById.keys())
 
     for (const task of taskRows) {
       if (isClosedStatus(task.status)) continue
@@ -443,6 +451,7 @@ export async function getWorkCalendar(
       .select({
         id: projectOperations.id,
         sourceRecordType: projectOperations.sourceRecordType,
+        sourceRecordId: projectOperations.sourceRecordId,
         sourceRecordNumber: projectOperations.sourceRecordNumber,
         title: projectOperations.title,
         status: projectOperations.status,
@@ -518,6 +527,13 @@ export async function getWorkCalendar(
         continue
       }
       if (isClosedStatus(operation.status)) continue
+      const relatedScheduleTaskId = linkedScheduleTaskId(
+        operation,
+        scheduleTaskIds
+      )
+      const relatedScheduleTask = relatedScheduleTaskId
+        ? scheduleTaskById.get(relatedScheduleTaskId) ?? null
+        : null
       const startDate = operation.startDate ?? operation.dueDate
       const endDate = operation.dueDate ?? operation.startDate
       if (!startDate || !endDate) continue
@@ -546,10 +562,15 @@ export async function getWorkCalendar(
         endDate,
         assignedTo: operation.assigneeName,
         companyName: operation.companyName,
-        sourceLabel: operationSourceLabel(
-          operation.sourceRecordType,
-          operation.sourceRecordNumber
-        ),
+        sourceLabel: relatedScheduleTask
+          ? linkedTodoSourceLabel(
+              relatedScheduleTask.title,
+              operation.sourceRecordNumber
+            )
+          : operationSourceLabel(
+              operation.sourceRecordType,
+              operation.sourceRecordNumber
+            ),
         href:
           operation.sourceRecordType === "purchase_order"
             ? projectPurchaseOrderHref(project.id, operation.id)

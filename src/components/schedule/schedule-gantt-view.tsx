@@ -90,6 +90,7 @@ import { ProjectTaskCreateButton } from "@/components/projects/project-task-crea
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import { format } from "date-fns"
+import { scheduleItemHref } from "@/lib/work-calendar"
 import type { ScheduleProjectData } from "@/lib/schedule/project-scope"
 import { projectScheduleLabel } from "@/lib/schedule/project-scope"
 import {
@@ -779,7 +780,7 @@ export function ScheduleGanttView({
                     sourceLabel="Schedule item"
                     sourceRecordId={task.id}
                     sourceRecordNumber={null}
-                    sourceHref={`/dashboard/projects/${task.projectId}/schedule`}
+                    sourceHref={scheduleItemHref(task.projectId, task.id)}
                     defaultTitle={`Follow up: ${task.title}`}
                     defaultDescription={`${task.phase} schedule item.`}
                     defaultAssigneeName={task.assignedTo}

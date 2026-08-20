@@ -55,6 +55,7 @@ import { toast } from "sonner"
 import { format, parseISO } from "date-fns"
 import { useScheduleDisplayPalette } from "@/hooks/use-schedule-display-palette"
 import { cn } from "@/lib/utils"
+import { scheduleItemHref } from "@/lib/work-calendar"
 import {
   getScheduleItemDisplayColor,
   type DisplayColorPalette,
@@ -329,7 +330,10 @@ export function ScheduleListView({
               sourceLabel="Schedule item"
               sourceRecordId={row.original.id}
               sourceRecordNumber={null}
-              sourceHref={`/dashboard/projects/${row.original.projectId}/schedule`}
+              sourceHref={scheduleItemHref(
+                row.original.projectId,
+                row.original.id
+              )}
               defaultTitle={`Follow up: ${row.original.title}`}
               defaultDescription={`${row.original.phase} schedule item.`}
               defaultAssigneeName={row.original.assignedTo}

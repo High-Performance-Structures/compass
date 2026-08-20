@@ -287,17 +287,18 @@ const upsert = db.transaction(() => {
 
   db.prepare(`
     INSERT INTO project_operations (
-      id, project_id, source_system, source_record_type, source_record_number,
-      title, description, status, priority, assignee_type, assignee_name,
-      company_name, due_date, sage_write_status, sync_direction, sync_status,
-      created_at, updated_at
+      id, project_id, source_system, source_record_type, source_record_id,
+      source_record_number, title, description, status, priority,
+      assignee_type, assignee_name, company_name, due_date,
+      sage_write_status, sync_direction, sync_status, created_at, updated_at
     ) VALUES (
-      'e2e-todo-001', 'e2e-project-001', 'compass', 'todo', 'E2E-TODO-001',
-      'Regression follow-up', 'Seeded task for read-only workflow checks.',
-      'open', 'normal', 'user', 'Demo User', 'Compass Demo Client', ?,
-      'not_ready', 'read', 'synced', ?, ?
+      'e2e-todo-001', 'e2e-project-001', 'compass', 'todo',
+      'e2e-schedule-001', 'E2E-TODO-001', 'Regression follow-up',
+      'Seeded task for read-only workflow checks.', 'open', 'normal', 'user',
+      'Demo User', 'Compass Demo Client', ?, 'not_ready', 'read', 'synced', ?, ?
     )
     ON CONFLICT(id) DO UPDATE SET
+      source_record_id = excluded.source_record_id,
       title = excluded.title,
       status = excluded.status,
       due_date = excluded.due_date,
