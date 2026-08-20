@@ -1292,6 +1292,11 @@ export const googleCalendarConnections = sqliteTable(
     tasksSyncEnabled: integer("tasks_sync_enabled", { mode: "boolean" })
       .notNull()
       .default(false),
+    isOrganizationCalendarOwner: integer("is_organization_calendar_owner", {
+      mode: "boolean",
+    })
+      .notNull()
+      .default(false),
     connectedAt: text("connected_at").notNull(),
     lastSyncedAt: text("last_synced_at"),
     lastError: text("last_error"),
@@ -1378,6 +1383,100 @@ export const googleCalendarSelections = sqliteTable(
     index("idx_google_calendar_selections_selected").on(
       table.connectionId,
       table.selected,
+    ),
+  ],
+)
+
+export const googleProjectCalendars = sqliteTable(
+  "google_project_calendars",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    ownerConnectionId: text("owner_connection_id")
+      .notNull()
+      .references(() => googleCalendarConnections.id, { onDelete: "cascade" }),
+    selectionId: text("selection_id")
+      .notNull()
+      .references(() => googleCalendarSelections.id, { onDelete: "cascade" }),
+    googleCalendarId: text("google_calendar_id").notNull(),
+    summary: text("summary").notNull(),
+    timeZone: text("time_zone").notNull(),
+    status: text("status").notNull().default("active"),
+    lastAclSyncedAt: text("last_acl_synced_at"),
+    lastSyncedAt: text("last_synced_at"),
+    lastError: text("last_error"),
+    createdBy: text("created_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    updatedBy: text("updated_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("google_project_calendar_project_unique").on(table.projectId),
+    uniqueIndex("google_project_calendar_google_unique").on(
+      table.ownerConnectionId,
+      table.googleCalendarId,
+    ),
+    index("idx_google_project_calendars_org_status").on(
+      table.organizationId,
+      table.status,
+    ),
+  ],
+)
+
+export const googleProjectCalendarAclMembers = sqliteTable(
+  "google_project_calendar_acl_members",
+  {
+    id: text("id").primaryKey(),
+    projectCalendarId: text("project_calendar_id")
+      .notNull()
+      .references(() => googleProjectCalendars.id, { onDelete: "cascade" }),
+    userId: text("user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    email: text("email").notNull(),
+    googleAclRuleId: text("google_acl_rule_id").notNull(),
+    role: text("role").notNull(),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("google_project_calendar_acl_email_unique").on(
+      table.projectCalendarId,
+      table.email,
+    ),
+    index("idx_google_project_calendar_acl_user").on(table.userId),
+  ],
+)
+
+export const googleProjectCalendarSubscriptions = sqliteTable(
+  "google_project_calendar_subscriptions",
+  {
+    id: text("id").primaryKey(),
+    projectCalendarId: text("project_calendar_id")
+      .notNull()
+      .references(() => googleProjectCalendars.id, { onDelete: "cascade" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    connectionId: text("connection_id")
+      .notNull()
+      .references(() => googleCalendarConnections.id, { onDelete: "cascade" }),
+    subscribedAt: text("subscribed_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("google_project_calendar_subscription_unique").on(
+      table.projectCalendarId,
+      table.userId,
     ),
   ],
 )

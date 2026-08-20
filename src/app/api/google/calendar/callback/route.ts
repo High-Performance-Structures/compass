@@ -2,7 +2,7 @@ import { and, eq } from "drizzle-orm"
 import { type NextRequest, NextResponse } from "next/server"
 
 import { getDb } from "@/db"
-import { googleCalendarConnections } from "@/db/schema"
+import { googleCalendarConnections, googleProjectCalendars } from "@/db/schema"
 import { getCurrentUser } from "@/lib/auth"
 import { encrypt } from "@/lib/crypto"
 import { getCloudflareContext } from "@/lib/db"
@@ -85,6 +85,7 @@ export async function GET(request: NextRequest): Promise<Response> {
         refreshTokenEncrypted:
           googleCalendarConnections.refreshTokenEncrypted,
         createdAt: googleCalendarConnections.createdAt,
+        googleAccountId: googleCalendarConnections.googleAccountId,
       })
       .from(googleCalendarConnections)
       .where(
@@ -109,6 +110,25 @@ export async function GET(request: NextRequest): Promise<Response> {
     const identity = await getGoogleAccountIdentity(grant.accessToken)
     if (!identity.emailVerified) {
       return redirectAndClearState(request, "email-not-verified")
+    }
+    if (
+      existingConnection &&
+      existingConnection.googleAccountId !== identity.subject
+    ) {
+      const managedCalendar = await db
+        .select({ id: googleProjectCalendars.id })
+        .from(googleProjectCalendars)
+        .where(
+          eq(
+            googleProjectCalendars.ownerConnectionId,
+            existingConnection.id,
+          ),
+        )
+        .limit(1)
+        .then((rows) => rows[0] ?? null)
+      if (managedCalendar) {
+        return redirectAndClearState(request, "owner-account-mismatch")
+      }
     }
 
     const encryptedRefreshToken = grant.refreshToken

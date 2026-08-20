@@ -4,7 +4,11 @@ import { and, eq } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
 import { getDb } from "@/db"
-import { googleCalendarConnections, googleCalendarSelections } from "@/db/schema"
+import {
+  googleCalendarConnections,
+  googleCalendarSelections,
+  googleProjectCalendars,
+} from "@/db/schema"
 import { requireAuth } from "@/lib/auth"
 import { decrypt } from "@/lib/crypto"
 import { getCloudflareContext } from "@/lib/db"
@@ -14,6 +18,7 @@ import {
   googleCalendarTokenSalt,
 } from "@/lib/google/calendar/config"
 import { refreshGoogleAccessToken } from "@/lib/google/calendar/oauth"
+import { hasRequiredGoogleCalendarScopes } from "@/lib/google/calendar/oauth"
 import {
   canConnectGoogleCalendar,
   canManageOrganizationCalendars,
@@ -50,6 +55,9 @@ export type GoogleCalendarConnectionStatus = {
   readonly canConnect: boolean
   readonly canManageOrganizationCalendars: boolean
   readonly connected: boolean
+  readonly requiresReconnect: boolean
+  readonly isOrganizationCalendarOwner: boolean
+  readonly organizationOwnerAccountEmail: string | null
   readonly accountEmail: string | null
   readonly status: string | null
   readonly calendarSyncEnabled: boolean
@@ -114,12 +122,26 @@ export async function getGoogleCalendarConnectionStatus(): Promise<GoogleCalenda
       tasksSyncEnabled: googleCalendarConnections.tasksSyncEnabled,
       lastSyncedAt: googleCalendarConnections.lastSyncedAt,
       lastError: googleCalendarConnections.lastError,
+      grantedScopes: googleCalendarConnections.grantedScopes,
+      isOrganizationCalendarOwner:
+        googleCalendarConnections.isOrganizationCalendarOwner,
     })
     .from(googleCalendarConnections)
     .where(
       and(
         eq(googleCalendarConnections.organizationId, organizationId),
         eq(googleCalendarConnections.userId, user.id),
+      ),
+    )
+    .limit(1)
+    .then((rows) => rows[0] ?? null)
+  const organizationOwner = await db
+    .select({ accountEmail: googleCalendarConnections.googleAccountEmail })
+    .from(googleCalendarConnections)
+    .where(
+      and(
+        eq(googleCalendarConnections.organizationId, organizationId),
+        eq(googleCalendarConnections.isOrganizationCalendarOwner, true),
       ),
     )
     .limit(1)
@@ -156,6 +178,14 @@ export async function getGoogleCalendarConnectionStatus(): Promise<GoogleCalenda
     canConnect: canConnectGoogleCalendar({ userId: user.id, role: user.role }),
     canManageOrganizationCalendars: canManageOrganizationCalendars(user.role),
     connected: connection !== null,
+    requiresReconnect:
+      connection !== null &&
+      !hasRequiredGoogleCalendarScopes(
+        connection.grantedScopes.split(/\s+/).filter(Boolean),
+      ),
+    isOrganizationCalendarOwner:
+      connection?.isOrganizationCalendarOwner ?? false,
+    organizationOwnerAccountEmail: organizationOwner?.accountEmail ?? null,
     accountEmail: connection?.accountEmail ?? null,
     status: connection?.status ?? null,
     calendarSyncEnabled: connection?.calendarSyncEnabled ?? false,
@@ -379,6 +409,18 @@ export async function disconnectGoogleCalendar(): Promise<
     const db = getDb(env.DB)
     const connection = await ownConnection(organizationId, user.id)
     if (!connection) return { success: true, revoked: true }
+    const managedProjectCalendar = await db
+      .select({ id: googleProjectCalendars.id })
+      .from(googleProjectCalendars)
+      .where(eq(googleProjectCalendars.ownerConnectionId, connection.id))
+      .limit(1)
+      .then((rows) => rows[0] ?? null)
+    if (managedProjectCalendar) {
+      return {
+        success: false,
+        error: "This account owns managed project calendars. Delete those calendars before disconnecting this Google account.",
+      }
+    }
     let revoked = false
     const configuration = getGoogleCalendarOAuthConfig(env)
     if (configuration.configured) {

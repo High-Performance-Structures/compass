@@ -1,8 +1,10 @@
 export const GOOGLE_CALENDAR_SCOPES = [
   "openid",
   "email",
-  "https://www.googleapis.com/auth/calendar.calendarlist.readonly",
+  "https://www.googleapis.com/auth/calendar.calendarlist",
   "https://www.googleapis.com/auth/calendar.events",
+  "https://www.googleapis.com/auth/calendar.app.created",
+  "https://www.googleapis.com/auth/calendar.acls",
 ] as const
 
 export const GOOGLE_OAUTH_AUTHORIZATION_URL =

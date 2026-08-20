@@ -51,6 +51,24 @@ export type GoogleCalendarEventWrite = {
   readonly attendeeEmails: readonly string[]
 }
 
+export type GoogleCalendarAclRole =
+  | "reader"
+  | "writerWithoutPrivateAccess"
+  | "writer"
+
+export type GoogleCalendarAclRule = {
+  readonly id: string
+  readonly email: string
+  readonly role: string
+}
+
+export type GoogleCreatedCalendar = {
+  readonly id: string
+  readonly summary: string
+  readonly description: string | null
+  readonly timeZone: string | null
+}
+
 function isRecord(value: unknown): value is JsonRecord {
   return typeof value === "object" && value !== null && !Array.isArray(value)
 }
@@ -122,6 +140,150 @@ function parseCalendar(value: unknown): GoogleCalendarListEntry | null {
 
 function endpoint(path: string): URL {
   return new URL(`${GOOGLE_CALENDAR_API}${path}`)
+}
+
+export async function createGoogleCalendar(
+  accessToken: string,
+  input: {
+    readonly summary: string
+    readonly description: string
+    readonly timeZone: string
+  },
+): Promise<GoogleCreatedCalendar> {
+  const payload = await googleRequest(accessToken, endpoint("/calendars"), {
+    method: "POST",
+    body: JSON.stringify(input),
+  })
+  if (!isRecord(payload)) throw new Error("Google returned an invalid calendar.")
+  const id = stringValue(payload, "id")
+  const summary = stringValue(payload, "summary")
+  if (!id || !summary) throw new Error("Google returned an incomplete calendar.")
+  return {
+    id,
+    summary,
+    description: stringValue(payload, "description"),
+    timeZone: stringValue(payload, "timeZone"),
+  }
+}
+
+export async function deleteGoogleCalendar(
+  accessToken: string,
+  calendarId: string,
+): Promise<void> {
+  const response = await fetch(
+    endpoint(`/calendars/${encodeURIComponent(calendarId)}`),
+    {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${accessToken}` },
+    },
+  )
+  const payload = await responsePayload(response)
+  if (!response.ok && response.status !== 404) {
+    throw new Error(
+      googleError(payload, `Google Calendar request failed (${response.status}).`),
+    )
+  }
+}
+
+export async function listGoogleCalendarAclRules(
+  accessToken: string,
+  calendarId: string,
+): Promise<readonly GoogleCalendarAclRule[]> {
+  const rules: GoogleCalendarAclRule[] = []
+  let pageToken: string | null = null
+  do {
+    const url = endpoint(`/calendars/${encodeURIComponent(calendarId)}/acl`)
+    url.searchParams.set("maxResults", "250")
+    if (pageToken) url.searchParams.set("pageToken", pageToken)
+    const payload = await googleRequest(accessToken, url)
+    if (!isRecord(payload)) throw new Error("Google returned an invalid calendar access list.")
+    if (Array.isArray(payload.items)) {
+      for (const item of payload.items) {
+        if (!isRecord(item) || !isRecord(item.scope)) continue
+        if (stringValue(item.scope, "type") !== "user") continue
+        const id = stringValue(item, "id")
+        const email = stringValue(item.scope, "value")
+        const role = stringValue(item, "role")
+        if (id && email && role) rules.push({ id, email, role })
+      }
+    }
+    pageToken = stringValue(payload, "nextPageToken")
+  } while (pageToken)
+  return rules
+}
+
+export async function upsertGoogleCalendarAclRule(
+  accessToken: string,
+  calendarId: string,
+  email: string,
+  role: GoogleCalendarAclRole,
+  knownRules?: readonly GoogleCalendarAclRule[],
+): Promise<GoogleCalendarAclRule> {
+  const existing = (knownRules ?? await listGoogleCalendarAclRules(accessToken, calendarId))
+    .find((rule) => rule.email.toLowerCase() === email.toLowerCase())
+  if (existing?.role === role) return existing
+  const url = existing
+    ? endpoint(`/calendars/${encodeURIComponent(calendarId)}/acl/${encodeURIComponent(existing.id)}`)
+    : endpoint(`/calendars/${encodeURIComponent(calendarId)}/acl`)
+  const payload = await googleRequest(accessToken, url, {
+    method: existing ? "PUT" : "POST",
+    body: JSON.stringify(
+      existing
+        ? { role, scope: { type: "user", value: existing.email } }
+        : { role, scope: { type: "user", value: email } },
+    ),
+  })
+  if (!isRecord(payload)) throw new Error("Google returned an invalid calendar access rule.")
+  const id = stringValue(payload, "id")
+  const resultRole = stringValue(payload, "role")
+  const scope = isRecord(payload.scope) ? payload.scope : null
+  const resultEmail = scope ? stringValue(scope, "value") : email
+  if (!id || !resultEmail || !resultRole) {
+    throw new Error("Google returned an incomplete calendar access rule.")
+  }
+  return { id, email: resultEmail, role: resultRole }
+}
+
+export async function deleteGoogleCalendarAclRule(
+  accessToken: string,
+  calendarId: string,
+  ruleId: string,
+): Promise<void> {
+  const response = await fetch(
+    endpoint(`/calendars/${encodeURIComponent(calendarId)}/acl/${encodeURIComponent(ruleId)}`),
+    {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${accessToken}` },
+    },
+  )
+  const payload = await responsePayload(response)
+  if (!response.ok && response.status !== 404) {
+    throw new Error(
+      googleError(payload, `Google Calendar request failed (${response.status}).`),
+    )
+  }
+}
+
+export async function addGoogleCalendarToList(
+  accessToken: string,
+  calendarId: string,
+): Promise<void> {
+  const url = endpoint("/users/me/calendarList")
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ id: calendarId, selected: true }),
+  })
+  const payload = await responsePayload(response)
+  // CalendarList.insert is idempotent from Compass' perspective.
+  if (!response.ok && response.status !== 409) {
+    throw new Error(
+      googleError(payload, `Google Calendar request failed (${response.status}).`),
+    )
+  }
 }
 
 export async function listGoogleCalendars(
