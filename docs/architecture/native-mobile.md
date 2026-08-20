@@ -232,7 +232,7 @@ Android push notifications go through Firebase Cloud Messaging, even if they ori
 
 1. Create a Firebase project at console.firebase.google.com
 2. Add an Android app with package name `com.hpscolorado.compass`
-3. Download `google-services.json` and place it at `android/app/google-services.json`
+3. Download `google-services.json` and place it at `android/app/google-services.json`. The file is intentionally gitignored; Android release builds fail if it is missing so a notification-registration crash cannot be shipped.
 4. The `classpath 'com.google.gms:google-services'` line needs to be added to `android/build.gradle`
 5. Add `apply plugin: 'com.google.gms.google-services'` at the bottom of `android/app/build.gradle`
 
