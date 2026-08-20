@@ -437,7 +437,8 @@ export function PreferencesTab() {
               <div>
                 <Label className="text-xs">Project messages</Label>
                 <p className="text-muted-foreground text-xs">
-                  New messages in project channels you follow.
+                  New messages in project channels you follow. Direct messages
+                  stay in Compass and use mobile push instead of SMS.
                 </p>
               </div>
               <div className="flex items-center justify-between gap-3">

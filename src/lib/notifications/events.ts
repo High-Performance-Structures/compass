@@ -15,6 +15,7 @@ import {
   createNotificationEvent,
   type NotificationRecipientInput,
 } from "@/lib/notifications/create-event"
+import { channelMessageNotificationDelivery } from "@/lib/notifications/delivery"
 import {
   channelNotificationRecipients,
   type ChannelMessageMention,
@@ -248,11 +249,7 @@ export async function notifyChannelMessage(
     audience: "channel",
     createdBy: input.sender.id,
     recipients,
-    delivery: {
-      inApp: true,
-      email: false,
-      push: false,
-    },
+    delivery: channelMessageNotificationDelivery(input.channelId),
   })
 }
 

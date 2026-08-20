@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest"
 
 import {
+  isConversationSmsEligibleChannel,
   isDuringSmsQuietHours,
   isValidSmsQuietHoursTime,
   shouldSendSmsNotification,
@@ -25,6 +26,15 @@ const ENABLED_PREFERENCES: SmsPolicyPreferences = {
 }
 
 describe("SMS notification policy", () => {
+  it("keeps direct conversations out of GoTo without disabling other SMS", () => {
+    expect(
+      isConversationSmsEligibleChannel(
+        "direct-0123456789abcdef0123456789abcdef"
+      )
+    ).toBe(false)
+    expect(isConversationSmsEligibleChannel("project-channel-1")).toBe(true)
+  })
+
   it("allows opted-in live project messages", () => {
     expect(
       shouldSendSmsNotification(ENABLED_PREFERENCES, {

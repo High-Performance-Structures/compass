@@ -2,6 +2,7 @@ import { getDb } from "@/db"
 import { channelMembers, userPresence } from "@/db/schema-conversations"
 import { eq } from "drizzle-orm"
 import { sendPushNotification } from "@/lib/push/send"
+import { isDirectChannelId } from "@/lib/conversations/direct-channel"
 
 type MentionTarget = Readonly<{
   mentionType: "user" | "channel" | "here" | "agent"
@@ -16,6 +17,10 @@ export async function notifyMentionedUsers(
   senderName: string,
   mentions: ReadonlyArray<MentionTarget>,
 ): Promise<void> {
+  // Direct conversations receive one push through the normal channel
+  // notification event, including messages that contain mentions.
+  if (isDirectChannelId(channelId)) return
+
   // resolve each mention to a set of userIds
   const db = getDb(env.DB)
   const notifyUserIds = new Set<string>()

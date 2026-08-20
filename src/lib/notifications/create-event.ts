@@ -30,6 +30,7 @@ import {
 import { requireOrg } from "@/lib/org-scope"
 import { sendPushNotification } from "@/lib/push/send"
 import {
+  isConversationSmsEligibleChannel,
   isProjectActivitySmsEvent,
   shouldSendSmsNotification,
   shouldUseProjectActivitySmsRoute,
@@ -519,6 +520,7 @@ async function isEligibleLiveMessageSmsRecipient(
 
   const source = await db
     .select({
+      channelId: channels.id,
       channelType: channels.type,
     })
     .from(messages)
@@ -543,6 +545,10 @@ async function isEligibleLiveMessageSmsRecipient(
     .limit(1)
     .then((rows) => rows[0] ?? null)
   if (!source) return false
+
+  // Direct conversations stay inside Compass. They use in-app/native push
+  // delivery and must never create a parallel GoTo SMS conversation.
+  if (!isConversationSmsEligibleChannel(source.channelId)) return false
 
   if (!isProjectActivitySmsEvent(input.eventType)) return true
   // Announcements and mentions have their own explicit SMS switches. Do not

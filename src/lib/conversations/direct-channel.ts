@@ -5,6 +5,12 @@ export function directParticipantIds(
   return Array.from(new Set([currentUserId, ...targetUserIds])).sort()
 }
 
+const DIRECT_CHANNEL_ID_PATTERN = /^direct-[a-f0-9]{32}$/
+
+export function isDirectChannelId(channelId: string): boolean {
+  return DIRECT_CHANNEL_ID_PATTERN.test(channelId)
+}
+
 export async function directChannelId(
   organizationId: string,
   participantIds: readonly string[]

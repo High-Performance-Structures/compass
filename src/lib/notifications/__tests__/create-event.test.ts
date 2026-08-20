@@ -1,8 +1,24 @@
 import { describe, expect, it } from "vitest"
 
-import { resolveNotificationDelivery } from "@/lib/notifications/delivery"
+import {
+  channelMessageNotificationDelivery,
+  resolveNotificationDelivery,
+} from "@/lib/notifications/delivery"
 
 describe("notification delivery", () => {
+  it("uses native push for direct messages without changing project-channel delivery", () => {
+    expect(
+      channelMessageNotificationDelivery(
+        "direct-0123456789abcdef0123456789abcdef"
+      )
+    ).toEqual({ inApp: true, email: false, push: true })
+    expect(channelMessageNotificationDelivery("project-channel-1")).toEqual({
+      inApp: true,
+      email: false,
+      push: false,
+    })
+  })
+
   it("keeps ordinary channel messages in the notification bell", () => {
     expect(
       resolveNotificationDelivery(

@@ -3,7 +3,14 @@ import "server-only"
 import { and, eq, isNotNull } from "drizzle-orm"
 
 import type { getDb } from "@/db"
-import { gotoInboundEvents, projectContacts, projects } from "@/db/schema"
+import {
+  gotoInboundEvents,
+  notificationPreferences,
+  organizationMembers,
+  projectContacts,
+  projects,
+  users,
+} from "@/db/schema"
 import { recordActivityEvent } from "@/lib/activity-log"
 import type {
   InboundAttachment,
@@ -12,6 +19,7 @@ import type {
 import { projectInboundEmailAddress } from "@/lib/email/project-address"
 import { routeProjectInboundSms } from "@/lib/email/project-inbound-routing"
 import { gotoAttachmentMimeType } from "@/lib/goto/mime-type"
+import { isKnownInternalSmsSender } from "@/lib/goto/internal-sender"
 import {
   gotoSenderNumberForProject,
   normalizeSmsPhoneNumber,
@@ -28,6 +36,33 @@ type Db = ReturnType<typeof getDb>
 
 function regexEscape(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+}
+
+async function isInternalSender(input: {
+  readonly db: Db
+  readonly organizationId: string
+  readonly senderPhone: string
+}): Promise<boolean> {
+  const candidates = await input.db
+    .select({
+      role: organizationMembers.role,
+      profilePhone: users.phone,
+      smsPhoneNumber: notificationPreferences.smsPhoneNumber,
+    })
+    .from(organizationMembers)
+    .innerJoin(users, eq(users.id, organizationMembers.userId))
+    .leftJoin(
+      notificationPreferences,
+      eq(notificationPreferences.userId, users.id)
+    )
+    .where(
+      and(
+        eq(organizationMembers.organizationId, input.organizationId),
+        eq(users.isActive, true)
+      )
+    )
+
+  return isKnownInternalSmsSender(input.senderPhone, candidates)
 }
 
 async function projectForMessage(input: {
@@ -169,13 +204,33 @@ export async function processGotoInboundMessage(input: {
   readonly message: GotoInboundMessage
 }): Promise<{
   readonly projectId: string | null
-  readonly status: "processed" | "needs_review"
+  readonly status: "dismissed" | "processed" | "needs_review"
   readonly reviewReason:
     | "missing_project"
     | "ambiguous_project"
     | "routing_review"
+    | "internal_sender"
     | null
 }> {
+  if (
+    await isInternalSender({
+      db: input.db,
+      organizationId: input.organizationId,
+      senderPhone: input.message.senderPhone,
+    })
+  ) {
+    const senderDigits = input.message.senderPhone.replace(/\D/g, "")
+    console.info("[goto-inbound] Internal staff SMS auto-dismissed", {
+      messageId: input.message.messageId,
+      senderSuffix: senderDigits.slice(-4) || "unknown",
+    })
+    return {
+      projectId: null,
+      status: "dismissed",
+      reviewReason: "internal_sender",
+    }
+  }
+
   const project = await projectForMessage({
     env: input.env,
     db: input.db,

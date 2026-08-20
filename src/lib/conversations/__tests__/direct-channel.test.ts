@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest"
 import {
   directChannelId,
   directParticipantIds,
+  isDirectChannelId,
 } from "@/lib/conversations/direct-channel"
 
 describe("direct conversation identity", () => {
@@ -26,5 +27,13 @@ describe("direct conversation identity", () => {
     const second = await directChannelId("org-1", ["user-a", "user-b", "user-c"])
 
     expect(second).not.toBe(first)
+  })
+
+  it("distinguishes Compass direct conversations from other private channels", async () => {
+    const directId = await directChannelId("org-1", ["user-a", "user-b"])
+
+    expect(isDirectChannelId(directId)).toBe(true)
+    expect(isDirectChannelId("private-leadership")).toBe(false)
+    expect(isDirectChannelId("direct-not-a-valid-hash")).toBe(false)
   })
 })
