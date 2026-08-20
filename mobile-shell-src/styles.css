@@ -11,6 +11,7 @@
 }
 
 * { box-sizing: border-box; }
+html, body { width: 100%; max-width: 100%; overflow-x: hidden; }
 body { margin: 0; min-height: 100vh; background: #f8f8f5; }
 button, input, textarea, select { font: inherit; }
 button { cursor: pointer; }
@@ -60,7 +61,7 @@ button { cursor: pointer; }
   font-weight: 800;
 }
 
-.shell { min-height: 100vh; padding-bottom: calc(76px + env(safe-area-inset-bottom)); }
+.shell { width: 100%; max-width: 100%; min-height: 100vh; padding-bottom: calc(76px + env(safe-area-inset-bottom)); }
 .shell-header {
   position: sticky;
   top: 0;
@@ -87,7 +88,7 @@ button { cursor: pointer; }
 @keyframes icon-spin { to { transform: rotate(360deg); } }
 .notification-state { color: var(--green); font-size: 12px; font-weight: 800; }
 
-.content { width: min(100%, 760px); margin: 0 auto; padding: 20px 18px 32px; }
+.content { width: min(100%, 760px); max-width: 100%; min-width: 0; margin: 0 auto; padding: 20px 18px 32px; }
 .section-head { padding-bottom: 12px; border-bottom: 1px solid var(--line); }
 .section-head h2 { margin: 0; font-size: 20px; }
 .section-head p { margin: 5px 0 0; color: var(--muted); font-size: 14px; }
@@ -139,6 +140,8 @@ button { cursor: pointer; }
   background: #fff;
   padding: 11px 12px;
   color: #18211c;
+  /* iOS zooms focused form controls below 16px; keep deliberate pinch zoom instead. */
+  font-size: 16px;
 }
 .field textarea { min-height: 94px; resize: vertical; }
 .field select { appearance: auto; }
@@ -205,15 +208,16 @@ button { cursor: pointer; }
 .message-tools { margin-bottom: 22px; border-bottom: 1px solid var(--line); }
 .message-tools summary { padding: 16px 0; color: var(--green); font-size: 14px; font-weight: 800; cursor: pointer; }
 .direct-message-form { display: grid; gap: 14px; padding: 0 0 18px; }
-.direct-history { margin-bottom: 18px; padding-bottom: 18px; border-bottom: 1px solid var(--line); }
-.direct-history > h2 { margin: 0 0 12px; font-size: 16px; }
-.direct-thread { border-top: 1px solid var(--line); }
-.direct-thread:last-child { border-bottom: 1px solid var(--line); }
-.direct-thread > summary { display: flex; min-height: 48px; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 0; cursor: pointer; font-weight: 800; }
-.direct-thread > summary strong { color: var(--green); font-size: 12px; }
-.direct-thread-messages { padding: 4px 0 12px; border-top: 1px solid var(--line); }
+.conversation-picker { margin-bottom: 18px; padding-bottom: 18px; border-bottom: 1px solid var(--line); }
+.conversation-picker .field { gap: 8px; }
+.conversation-count { color: var(--muted); font-size: 12px; font-weight: 600; }
+.active-conversation { min-width: 0; }
+.active-conversation-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding-bottom: 10px; border-bottom: 1px solid var(--line); }
+.active-conversation-head h2 { min-width: 0; margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 17px; }
+.active-conversation-head span { flex: 0 0 auto; color: var(--muted); font-size: 12px; font-weight: 700; }
+.direct-thread-messages { padding: 4px 0 12px; }
 .direct-reply-form { display: grid; gap: 10px; padding: 0 0 16px; }
-.direct-reply-form textarea { width: 100%; min-height: 76px; border: 1px solid #aeb8b1; border-radius: 3px; padding: 10px; }
+.direct-reply-form textarea { width: 100%; min-height: 76px; border: 1px solid #aeb8b1; border-radius: 3px; padding: 10px; font-size: 16px; }
 .message { padding: 14px 0; border-bottom: 1px solid var(--line); }
 .message-meta { display: flex; justify-content: space-between; gap: 12px; font-size: 12px; }
 .message-author { font-weight: 800; }
@@ -224,7 +228,7 @@ button { cursor: pointer; }
 .chat-compose { padding: 0 0 18px; }
 .keyboard-toolbar { display: none; align-items: center; justify-content: space-between; margin-bottom: 8px; color: var(--muted); font-size: 12px; font-weight: 750; }
 .keyboard-toolbar button { min-height: 36px; border: 0; background: transparent; color: var(--green); font: inherit; font-size: 15px; }
-.chat-compose textarea { width: 100%; min-height: 82px; border: 1px solid #aeb8b1; border-radius: 3px; padding: 10px; }
+.chat-compose textarea { width: 100%; min-height: 82px; border: 1px solid #aeb8b1; border-radius: 3px; padding: 10px; font-size: 16px; }
 .keyboard-open .shell { padding-bottom: calc(var(--keyboard-height, 0px) + 210px); }
 .keyboard-open .tabbar { display: none; }
 .keyboard-open .keyboard-toolbar { display: flex; }
@@ -235,6 +239,6 @@ button { cursor: pointer; }
   :root { color-scheme: dark; background: #111713; color: #edf3ef; --green-light: #1e3529; --line: #35423a; --muted: #a7b2aa; }
   body, .shell-header, .chat-compose { background: #111713; }
   .tabbar { background: #151d18; }
-  .field input, .field textarea, .field select, .chat-compose textarea { background: #19231c; border-color: #546158; color: #edf3ef; }
+  .field input, .field textarea, .field select, .direct-reply-form textarea, .chat-compose textarea { background: #19231c; border-color: #546158; color: #edf3ef; }
   .live-button { color: #8dd2aa; }
 }

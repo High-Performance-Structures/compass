@@ -3,7 +3,9 @@ import { describe, expect, it } from "vitest"
 import type { FieldProjectPacket } from "../src/lib/field/types"
 import {
   appendOptimisticDirectMessage,
+  PROJECT_CONVERSATION_KEY,
   pushNotificationHref,
+  resolveConversationSelection,
 } from "./conversation-state"
 
 function packet(): FieldProjectPacket {
@@ -59,5 +61,37 @@ describe("pushNotificationHref", () => {
   it("rejects invalid push data", () => {
     expect(pushNotificationHref(null)).toBeNull()
     expect(pushNotificationHref({ url: 42 })).toBeNull()
+  })
+})
+
+describe("resolveConversationSelection", () => {
+  it("keeps a requested direct conversation selected", () => {
+    expect(resolveConversationSelection(packet(), "channel-2")).toBe("channel-2")
+  })
+
+  it("uses the project conversation by default when it exists", () => {
+    const withProjectChannel = {
+      ...packet(),
+      channel: { id: "project-channel", name: "Project team" },
+    }
+
+    expect(resolveConversationSelection(withProjectChannel, null)).toBe(
+      PROJECT_CONVERSATION_KEY
+    )
+  })
+
+  it("falls back to the first direct conversation without a project channel", () => {
+    expect(resolveConversationSelection(packet(), "missing-channel")).toBe(
+      "channel-1"
+    )
+  })
+
+  it("returns no selection before any conversation exists", () => {
+    const withoutConversations = {
+      ...packet(),
+      directConversations: [],
+    }
+
+    expect(resolveConversationSelection(withoutConversations, null)).toBeNull()
   })
 })
