@@ -114,6 +114,7 @@ export type ProjectPurchaseOrderCostCodeOption = {
 }
 
 export type ProjectPurchaseOrderFormOptions = {
+  readonly jobsiteAddress: string | null
   readonly phases: readonly ProjectPurchaseOrderPhaseOption[]
   readonly costCodes: readonly ProjectPurchaseOrderCostCodeOption[]
 }
@@ -1579,7 +1580,12 @@ export async function getProjectPurchaseOrderFormOptions(
   projectId: string
 ): Promise<ProjectPurchaseOrderFormOptions> {
   const db = await verifyProjectAccess(projectId, "purchase-orders")
-  const [sageRows, budgetRows] = await Promise.all([
+  const [projectRows, sageRows, budgetRows] = await Promise.all([
+    db
+      .select({ address: projects.address })
+      .from(projects)
+      .where(eq(projects.id, projectId))
+      .limit(1),
     db
       .select({
         code: sageCostCodes.code,
@@ -1640,6 +1646,7 @@ export async function getProjectPurchaseOrderFormOptions(
   }
 
   return {
+    jobsiteAddress: cleanText(projectRows[0]?.address ?? null),
     phases: Array.from(phaseMap.values()).sort((left, right) =>
       left.label.localeCompare(right.label)
     ),

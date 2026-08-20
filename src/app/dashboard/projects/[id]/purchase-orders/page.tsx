@@ -115,6 +115,7 @@ function PurchaseOrderCard({
   isCreated,
   isFocused,
   taskAssigneeOptions,
+  jobsiteAddress,
   phaseOptions,
   costCodeOptions,
 }: {
@@ -125,6 +126,7 @@ function PurchaseOrderCard({
   readonly isCreated: boolean
   readonly isFocused: boolean
   readonly taskAssigneeOptions: readonly ProjectTaskAssigneeOption[]
+  readonly jobsiteAddress: string | null
   readonly phaseOptions: React.ComponentProps<
     typeof ProjectPurchaseOrderEditForm
   >["phaseOptions"]
@@ -169,6 +171,7 @@ function PurchaseOrderCard({
                 projectId={projectId}
                 purchaseOrder={order}
                 contactOptions={taskAssigneeOptions}
+                jobsiteAddress={jobsiteAddress}
                 phaseOptions={phaseOptions}
                 costCodeOptions={costCodeOptions}
               />
@@ -494,6 +497,7 @@ export default async function ProjectPurchaseOrdersPage({
             </Button>
             <ProjectPurchaseOrderCreateForm
               projectId={id}
+              jobsiteAddress={purchaseOrderCodingOptions.jobsiteAddress}
               contactOptions={taskAssignees}
               phaseOptions={purchaseOrderCodingOptions.phases}
               costCodeOptions={purchaseOrderCodingOptions.costCodes}
@@ -541,6 +545,7 @@ export default async function ProjectPurchaseOrdersPage({
               isCreated={order.id === createdPurchaseOrderId}
               isFocused={order.id === focusedPurchaseOrderId}
               taskAssigneeOptions={taskAssignees}
+              jobsiteAddress={purchaseOrderCodingOptions.jobsiteAddress}
               phaseOptions={purchaseOrderCodingOptions.phases}
               costCodeOptions={purchaseOrderCodingOptions.costCodes}
             />

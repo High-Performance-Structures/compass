@@ -50,6 +50,11 @@ import {
   purchaseOrderInternalOwnerOptions,
   purchaseOrderVendorOptions,
 } from "@/lib/purchase-orders/form-options"
+import {
+  initialPurchaseOrderShipToState,
+  purchaseOrderShipToValue,
+  type PurchaseOrderShipToState,
+} from "@/lib/purchase-orders/ship-to"
 
 type DraftPurchaseOrderLine = {
   readonly id: string
@@ -302,6 +307,7 @@ function Field({
 
 type SharedPurchaseOrderFormProps = {
   readonly projectId: string
+  readonly jobsiteAddress: string | null
   readonly contactOptions: readonly ProjectTaskAssigneeOption[]
   readonly phaseOptions: readonly ProjectPurchaseOrderPhaseOption[]
   readonly costCodeOptions: readonly ProjectPurchaseOrderCostCodeOption[]
@@ -319,7 +325,13 @@ type PurchaseOrderFormProps = SharedPurchaseOrderFormProps &
 function ProjectPurchaseOrderForm(
   props: PurchaseOrderFormProps
 ): React.ReactElement {
-  const { projectId, contactOptions, phaseOptions, costCodeOptions } = props
+  const {
+    projectId,
+    jobsiteAddress,
+    contactOptions,
+    phaseOptions,
+    costCodeOptions,
+  } = props
   const purchaseOrder = props.kind === "edit" ? props.purchaseOrder : null
   const router = useRouter()
   const formRef = React.useRef<HTMLFormElement>(null)
@@ -334,6 +346,12 @@ function ProjectPurchaseOrderForm(
   )
   const [assigneeName, setAssigneeName] = React.useState(
     purchaseOrder?.assigneeName ?? ""
+  )
+  const [shipTo, setShipTo] = React.useState<PurchaseOrderShipToState>(() =>
+    initialPurchaseOrderShipToState({
+      storedShipTo: purchaseOrder?.sageShipTo ?? null,
+      jobsiteAddress,
+    })
   )
   const [submitting, setSubmitting] = React.useState(false)
   const [message, setMessage] = React.useState<string | null>(null)
@@ -388,6 +406,12 @@ function ProjectPurchaseOrderForm(
         setSageVendorId(purchaseOrder.sageVendorId ?? "")
         setCompanyName(purchaseOrder.companyName ?? "")
         setAssigneeName(purchaseOrder.assigneeName ?? "")
+        setShipTo(
+          initialPurchaseOrderShipToState({
+            storedShipTo: purchaseOrder.sageShipTo,
+            jobsiteAddress,
+          })
+        )
       }
     }
     setOpen(nextOpen)
@@ -411,7 +435,7 @@ function ProjectPurchaseOrderForm(
         companyName: cleanText(companyName),
         sageVendorId: cleanText(String(formData.get("sageVendorId") ?? "")),
         assigneeName: cleanText(assigneeName),
-        shipTo: cleanText(String(formData.get("shipTo") ?? "")),
+        shipTo: purchaseOrderShipToValue({ state: shipTo, jobsiteAddress }),
         orderDate: cleanText(String(formData.get("orderDate") ?? "")),
         dueDate: cleanText(String(formData.get("dueDate") ?? "")),
         priority: String(formData.get("priority") ?? "normal"),
@@ -435,6 +459,12 @@ function ProjectPurchaseOrderForm(
         setSageVendorId("")
         setCompanyName("")
         setAssigneeName("")
+        setShipTo(
+          initialPurchaseOrderShipToState({
+            storedShipTo: null,
+            jobsiteAddress,
+          })
+        )
       }
       setMessage(
         purchaseOrder === null
@@ -551,14 +581,63 @@ function ProjectPurchaseOrderForm(
                 className="rounded-none border-x-0 border-t-0 px-0 shadow-none focus-visible:ring-0"
               />
             </Field>
-            <Field label="Ship to / delivery location">
-              <Input
-                name="shipTo"
-                defaultValue={purchaseOrder?.sageShipTo ?? ""}
-                placeholder="Jobsite, office, or pickup"
-                className={DOCUMENT_INPUT_CLASS}
-              />
-            </Field>
+            <div className="space-y-2">
+              <Field label="Ship to / delivery location">
+                <select
+                  value={shipTo.choice}
+                  onChange={(event) => {
+                    const choice = event.target.value
+                    if (choice === "jobsite") {
+                      setShipTo((current) => ({ ...current, choice: "jobsite" }))
+                    } else if (choice === "pickup") {
+                      setShipTo((current) => ({ ...current, choice: "pickup" }))
+                    } else if (choice === "other") {
+                      setShipTo((current) => ({ ...current, choice: "other" }))
+                    }
+                  }}
+                  className={DOCUMENT_SELECT_CLASS}
+                >
+                  <option value="jobsite" disabled={jobsiteAddress === null}>
+                    Jobsite
+                  </option>
+                  <option value="pickup">Pick-Up</option>
+                  <option value="other">Other</option>
+                </select>
+              </Field>
+              {shipTo.choice === "jobsite" && jobsiteAddress !== null && (
+                <Input
+                  aria-label="Jobsite shipping address"
+                  value={jobsiteAddress}
+                  readOnly
+                  className={DOCUMENT_INPUT_CLASS}
+                />
+              )}
+              {shipTo.choice === "pickup" && (
+                <p className="text-xs text-muted-foreground">
+                  Supplier pickup; no delivery address required.
+                </p>
+              )}
+              {shipTo.choice === "other" && (
+                <Input
+                  aria-label="Other shipping address"
+                  value={shipTo.otherAddress}
+                  onChange={(event) =>
+                    setShipTo((current) => ({
+                      ...current,
+                      otherAddress: event.target.value,
+                    }))
+                  }
+                  placeholder="Enter another delivery address"
+                  className={DOCUMENT_INPUT_CLASS}
+                  required
+                />
+              )}
+              {jobsiteAddress === null && (
+                <p className="text-xs text-muted-foreground">
+                  Add a project address to enable Jobsite delivery.
+                </p>
+              )}
+            </div>
             <Field label="P.O. date">
               <Input
                 name="orderDate"
