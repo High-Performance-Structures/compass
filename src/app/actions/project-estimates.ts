@@ -186,6 +186,29 @@ export type ProjectEstimateImportActionResult =
     }
   | { readonly success: false; readonly error: string }
 
+export type ProjectEstimatePlanSwiftImportLine = {
+  readonly rowNumber: number
+  readonly costCode: string
+  readonly description: string
+  readonly notes: string | null
+  readonly amount: number
+}
+
+export type ProjectEstimatePlanSwiftImportInput = {
+  readonly sourceFileName: string
+  readonly sourceSheetName: string
+  readonly lines: readonly ProjectEstimatePlanSwiftImportLine[]
+}
+
+export type ProjectEstimatePlanSwiftImportResult =
+  | {
+      readonly success: true
+      readonly id: string
+      readonly lineCount: number
+      readonly totalCents: number
+    }
+  | { readonly success: false; readonly error: string }
+
 const PROJECT_TOTALS_RANGE = "Project Totals!A1:AA506"
 
 type CompassDb = ReturnType<typeof getDb>
@@ -756,6 +779,167 @@ export async function importProjectEstimateFromGoogleSheet(
       success: false,
       error:
         error instanceof Error ? error.message : "Unable to import source CSI.",
+    }
+  }
+}
+
+export async function importPlanSwiftEstimateLines(
+  projectId: string,
+  estimateId: string,
+  input: ProjectEstimatePlanSwiftImportInput
+): Promise<ProjectEstimatePlanSwiftImportResult> {
+  try {
+    const access = await estimateAccess(projectId, true)
+    await requireEditableEstimate(access.db, projectId, estimateId)
+    if (input.lines.length === 0) {
+      throw new Error("Select at least one PlanSwift row to import.")
+    }
+    if (input.lines.length > 2_000) {
+      throw new Error("PlanSwift imports are limited to 2,000 rows.")
+    }
+
+    const sourceFileName = requiredText(
+      input.sourceFileName.slice(0, 200),
+      "Source file name"
+    )
+    const sourceSheetName = requiredText(
+      input.sourceSheetName.slice(0, 200),
+      "Source sheet name"
+    )
+    const normalizedLines = input.lines.map((line) => {
+      const rowNumber = Math.round(line.rowNumber)
+      const amountCents = Math.round(line.amount * 100)
+      if (!Number.isFinite(line.rowNumber) || rowNumber < 1) {
+        throw new Error("Every imported row must have a valid source row number.")
+      }
+      if (!Number.isFinite(line.amount) || amountCents <= 0) {
+        throw new Error(`PlanSwift row ${rowNumber} must have a positive amount.`)
+      }
+      if (amountCents > 10_000_000_000) {
+        throw new Error(`PlanSwift row ${rowNumber} exceeds the import amount limit.`)
+      }
+      return {
+        rowNumber,
+        costCode: requiredText(
+          line.costCode.slice(0, 100),
+          `Cost code on row ${rowNumber}`
+        ),
+        description: requiredText(
+          line.description.slice(0, 500),
+          `Description on row ${rowNumber}`
+        ),
+        notes: cleanText(line.notes?.slice(0, 5_000) ?? null),
+        amountCents,
+      }
+    })
+
+    const contractAdjustments = new Map<
+      string,
+      (typeof CONTRACT_ADJUSTMENT_COST_CODES)[number]
+    >()
+    for (const item of CONTRACT_ADJUSTMENT_COST_CODES) {
+      contractAdjustments.set(item.value, item)
+    }
+    const sourceCostCodes = [...new Set(normalizedLines.map((line) => line.costCode))]
+    const costRows = await access.db
+      .select()
+      .from(sageCostCodes)
+      .where(eq(sageCostCodes.active, true))
+    const costCodeMap = new Map(costRows.map((row) => [row.code, row]))
+    const unknownCostCodes = sourceCostCodes.filter(
+      (costCode) =>
+        !costCodeMap.has(costCode) && !contractAdjustments.has(costCode)
+    )
+    if (unknownCostCodes.length > 0) {
+      const examples = unknownCostCodes.slice(0, 5).join(", ")
+      throw new Error(
+        `Map every row to an active cost code before importing. Not found: ${examples}.`
+      )
+    }
+
+    const existingRows = await access.db
+      .select()
+      .from(projectEstimateLines)
+      .where(eq(projectEstimateLines.estimateId, estimateId))
+    const priorSortOrder = existingRows.reduce(
+      (highest, row) => Math.max(highest, row.sortOrder),
+      0
+    )
+    const now = new Date().toISOString()
+    const lineValues = normalizedLines.map((line, index) => {
+      const cost = costCodeMap.get(line.costCode)
+      const adjustment = contractAdjustments.get(line.costCode)
+      const sourceNote = `PlanSwift source: ${sourceFileName} · ${sourceSheetName} · row ${line.rowNumber}`
+      return {
+        id: crypto.randomUUID(),
+        projectId,
+        estimateId,
+        templateLineId: null,
+        divisionCode: cost?.divisionCode ?? "99",
+        divisionName: cost?.divisionDescription ?? "Contract Adjustments",
+        costCode: cost?.code ?? adjustment?.value ?? line.costCode,
+        costCodeName:
+          cost?.description ?? adjustment?.description ?? line.costCode,
+        description: line.description,
+        specifications: [line.notes, sourceNote].filter(Boolean).join("\n"),
+        quantity: 1,
+        unit: "LS",
+        unitCostCents: line.amountCents,
+        directCostCents: line.amountCents,
+        markupRateBasisPoints: 0,
+        markupCents: 0,
+        taxable: false,
+        taxEntityId: null,
+        taxCode: null,
+        taxName: null,
+        taxRateBasisPoints: 0,
+        taxCents: 0,
+        lineTotalCents: line.amountCents,
+        ownerVisible: false,
+        sortOrder: priorSortOrder + index + 1,
+        createdAt: now,
+        updatedAt: now,
+      }
+    })
+    const totals = calculateEstimateTotals([
+      ...existingRows.map(ledgerLine),
+      ...lineValues.map(ledgerLine),
+    ])
+    // D1 permits at most 100 bound parameters per statement. Each estimate
+    // line binds 27 columns, so three rows keep every insert below the limit.
+    const firstChunk = lineValues.slice(0, 3)
+    const remainingChunks: Array<typeof lineValues> = []
+    for (let index = 3; index < lineValues.length; index += 3) {
+      remainingChunks.push(lineValues.slice(index, index + 3))
+    }
+    await access.db.batch([
+      access.db.insert(projectEstimateLines).values(firstChunk),
+      ...remainingChunks.map((chunk) =>
+        access.db.insert(projectEstimateLines).values(chunk)
+      ),
+      access.db
+        .update(projectEstimates)
+        .set({ ...totals, updatedAt: now })
+        .where(eq(projectEstimates.id, estimateId)),
+    ])
+
+    revalidateEstimate(projectId)
+    return {
+      success: true,
+      id: estimateId,
+      lineCount: lineValues.length,
+      totalCents: lineValues.reduce(
+        (total, line) => total + line.lineTotalCents,
+        0
+      ),
+    }
+  } catch (error) {
+    return {
+      success: false,
+      error:
+        error instanceof Error
+          ? error.message
+          : "Unable to import the PlanSwift workbook.",
     }
   }
 }
