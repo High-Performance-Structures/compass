@@ -10,6 +10,9 @@ const deploymentId =
 const nextConfig: NextConfig = {
     allowedDevOrigins: ["127.0.0.1"],
     deploymentId,
+    env: {
+        NEXT_PUBLIC_COMPASS_DEPLOYMENT_ID: deploymentId ?? "development",
+    },
     transpilePackages: ["agent-core"],
     experimental: {
         proxyClientMaxBodySize: "100mb",

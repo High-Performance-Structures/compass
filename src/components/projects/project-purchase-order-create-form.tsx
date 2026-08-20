@@ -46,6 +46,11 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet"
 import { Textarea } from "@/components/ui/textarea"
+import { reportStaleDeployment } from "@/lib/deployment/version"
+import {
+  isStaleServerActionError,
+  purchaseOrderSubmissionErrorMessage,
+} from "@/lib/purchase-orders/action-errors"
 import {
   purchaseOrderCostCodesForPhase,
   purchaseOrderSiteContactOptions,
@@ -492,12 +497,13 @@ function ProjectPurchaseOrderForm(
       }
       router.refresh()
     } catch (error) {
+      const isStaleAction = isStaleServerActionError(error)
+      if (isStaleAction) reportStaleDeployment()
       setMessage(
-        error instanceof Error
-          ? error.message
-          : purchaseOrder === null
-            ? "Could not stage the P.O. request."
-            : "Could not update the purchase order draft."
+        purchaseOrderSubmissionErrorMessage(
+          error,
+          purchaseOrder === null ? "create" : "update"
+        )
       )
     } finally {
       setSubmitting(false)
@@ -854,7 +860,10 @@ function ProjectPurchaseOrderForm(
         </div>
 
         {message && (
-          <p className="border-l-2 border-l-primary px-3 py-2 text-sm text-muted-foreground">
+          <p
+            role="alert"
+            className="border-l-2 border-l-primary px-3 py-2 text-sm text-muted-foreground"
+          >
             {message}
           </p>
         )}
