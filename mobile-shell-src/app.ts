@@ -38,6 +38,11 @@ import {
   resolveConversationSelection,
 } from "./conversation-state"
 import {
+  FIELD_NOTIFICATION_REFRESH_DELAYS_MS,
+  fieldPacketRefreshUrl,
+  shouldLockFieldAppAfterBackground,
+} from "./field-refresh"
+import {
   filterFieldProjects,
   isProjectCompanyFilter,
   PROJECT_COMPANY_OPTIONS,
@@ -126,6 +131,7 @@ let directMessageStatus = ""
 let startingConversation = false
 let refreshingProject = false
 let projectRefreshRequested = false
+let notificationRefreshTimeouts: number[] = []
 let directRecipientId = ""
 let directMessageDraft = ""
 let projectMessageDraft = ""
@@ -564,7 +570,7 @@ async function unlockCompass(): Promise<boolean> {
       await handleAppUrl(destination)
       return true
     }
-    void refreshConnectivityAndSync()
+    void refreshFieldDataAfterActivation()
     return true
   } catch {
     biometricLocked = true
@@ -740,7 +746,14 @@ async function refreshProjectPacket(showProgress = true): Promise<void> {
   if (showProgress) render()
   try {
     const response = await CapacitorHttp.get({
-      url: `${LIVE_URL}/api/field/projects/${encodeURIComponent(projectId)}`,
+      // CapacitorHttp uses the native URL cache on iOS. A unique URL plus
+      // explicit request headers prevents a previous project packet from
+      // hiding a newly delivered message or notification.
+      url: fieldPacketRefreshUrl(LIVE_URL, projectId, Date.now()),
+      headers: {
+        "Cache-Control": "no-cache",
+        Pragma: "no-cache",
+      },
       responseType: "json",
     })
     const result = z.object({
@@ -769,6 +782,30 @@ async function refreshProjectPacket(showProgress = true): Promise<void> {
       void refreshProjectPacket(false)
     }
   }
+}
+
+async function refreshFieldDataAfterNotification(): Promise<void> {
+  const status = await Network.getStatus()
+  const connectionChanged = online !== status.connected
+  online = status.connected
+  if (connectionChanged) render()
+  if (packet && online) await refreshProjectPacket(false)
+}
+
+async function refreshFieldDataAfterActivation(): Promise<void> {
+  await refreshConnectivityAndSync()
+  if (packet && online) await refreshProjectPacket(false)
+}
+
+function scheduleNotificationRefreshes(): void {
+  for (const timeoutId of notificationRefreshTimeouts) {
+    window.clearTimeout(timeoutId)
+  }
+  notificationRefreshTimeouts = FIELD_NOTIFICATION_REFRESH_DELAYS_MS.map(
+    (delay) => window.setTimeout(() => {
+      void refreshFieldDataAfterNotification()
+    }, delay)
+  )
 }
 
 async function openNotification(button: HTMLButtonElement): Promise<void> {
@@ -1285,7 +1322,7 @@ async function setupPushNotifications(): Promise<void> {
       if (activeTab === "settings") render()
     })
     await PushNotifications.addListener("pushNotificationReceived", () => {
-      if (packet && online) void refreshProjectPacket(false)
+      scheduleNotificationRefreshes()
     })
     await PushNotifications.addListener("pushNotificationActionPerformed", (action) => {
       const href = pushNotificationHref(action.notification.data)
@@ -1293,7 +1330,7 @@ async function setupPushNotifications(): Promise<void> {
       const channelId = conversationChannelIdFromNotificationHref(href)
       if (channelId) {
         openDirectConversation(channelId)
-        if (packet && online) void refreshProjectPacket(false)
+        scheduleNotificationRefreshes()
         return
       }
       if (href.startsWith("/dashboard/")) window.location.assign(liveAppUrl(href))
@@ -1952,12 +1989,21 @@ async function initialize(): Promise<void> {
     }
     const elapsed = backgroundedAt === null ? 0 : Date.now() - backgroundedAt
     backgroundedAt = null
-    if (elapsed > BACKGROUND_LOCK_THRESHOLD_MS) {
+    if (
+      shouldLockFieldAppAfterBackground(
+        biometricEnabled,
+        elapsed,
+        BACKGROUND_LOCK_THRESHOLD_MS
+      )
+    ) {
       void lockCompassIfEnabled()
       return
     }
     window.setTimeout(resetAbandonedSignIn, 1_000)
-    void refreshConnectivityAndSync()
+    // A background push does not invoke pushNotificationReceived on every
+    // native lifecycle path. Refresh whenever Field Mode becomes active so its
+    // bell and message list catch up even when no alert was tapped.
+    void refreshFieldDataAfterActivation()
   })
   const launchUrl = await App.getLaunchUrl()
   const launchUrlQueued = Boolean(launchUrl?.url && biometricLocked)
