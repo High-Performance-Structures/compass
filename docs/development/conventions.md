@@ -212,19 +212,23 @@ React Hook Form with Zod resolvers. The validation schemas from `src/lib/validat
 
 ### Dropdowns and comboboxes
 
-Use a searchable combobox for entity lists that can grow or need recognition
-by more than one field: projects, people, companies, templates, cost codes, and
-similar records. Search values should include the identifiers and secondary
-labels users recognize, not only the displayed name. Project selectors use
+`SearchableCombobox` is the default Compass value selector. Users must be able
+to open a selector, type to filter its choices, move through results with the
+keyboard, and select a value consistently. This includes entity lists and
+workflow vocabularies such as status, priority, category, visibility, and sort
+order. Search values should include the identifiers and secondary labels users
+recognize, not only the displayed name. Project selectors use
 `ProjectCombobox`, which searches project number, name, client, and ID.
 
-Keep the ordinary shadcn `Select` for short, fixed vocabularies such as status,
-priority, visibility, recurrence, and sort order. Action menus remain
-`DropdownMenu`; they are commands rather than value selectors. This distinction
-keeps small controls fast while preventing long business-data lists from
-becoming scroll-only pickers.
+Use `SearchableComboboxField` when a selector submits through native
+`FormData`; it keeps the selected value in a named hidden field. Use the
+controlled `SearchableCombobox` with React state or form-controller fields.
+Do not add native HTML `select` controls or new shadcn `Select` value pickers
+without a documented accessibility or platform reason. Existing compact fixed
+selectors may be migrated as their owning workflow is touched. Action menus
+remain `DropdownMenu`; they issue commands rather than select values.
 
-Entity combobox options must come from the current server result or current
+Live combobox options must come from the current server result or current
 component props; do not copy them into a one-time hard-coded list. Refresh the
 source whenever the owning dialog or page reloads, and revalidate affected
 paths after mutations. Dependent comboboxes (for example division → cost code
