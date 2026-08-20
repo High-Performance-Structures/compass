@@ -15,6 +15,11 @@ export type GoogleTokenGrant = {
   readonly scopes: readonly string[]
 }
 
+export type GoogleAccessToken = {
+  readonly accessToken: string
+  readonly expiresIn: number
+}
+
 export type GoogleAccountIdentity = {
   readonly subject: string
   readonly email: string
@@ -132,6 +137,40 @@ export async function exchangeGoogleAuthorizationCode(
       ? scope.split(/\s+/).filter(Boolean)
       : [...GOOGLE_CALENDAR_SCOPES],
   }
+}
+
+export async function refreshGoogleAccessToken(
+  config: GoogleCalendarOAuthConfig,
+  refreshToken: string,
+): Promise<GoogleAccessToken> {
+  const response = await fetch(GOOGLE_OAUTH_TOKEN_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+    body: new URLSearchParams({
+      client_id: config.clientId,
+      client_secret: config.clientSecret,
+      refresh_token: refreshToken,
+      grant_type: "refresh_token",
+    }),
+  })
+  const payload = await responseJson(response)
+  if (!response.ok || !isRecord(payload)) {
+    throw new Error(`Google token refresh failed (${response.status}).`)
+  }
+
+  const accessToken = requiredString(payload, "access_token")
+  const expiresIn = payload.expires_in
+  if (
+    !accessToken ||
+    typeof expiresIn !== "number" ||
+    !Number.isFinite(expiresIn)
+  ) {
+    throw new Error("Google returned an incomplete refreshed token.")
+  }
+
+  return { accessToken, expiresIn }
 }
 
 export async function getGoogleAccountIdentity(

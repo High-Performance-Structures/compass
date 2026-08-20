@@ -33,6 +33,13 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { cn } from "@/lib/utils"
 import { workCalendarEntryMatches } from "@/lib/work-calendar"
 import { WorkCalendarEventDialog } from "./work-calendar-event-dialog"
@@ -242,13 +249,11 @@ function WorkItem({
   compact = false,
   focused = false,
   onEditEvent,
-  canManageEvents,
 }: {
   readonly entry: WorkCalendarEntry
   readonly compact?: boolean
   readonly focused?: boolean
   readonly onEditEvent: (event: CalendarEventEntry) => void
-  readonly canManageEvents: boolean
 }): React.ReactElement {
   const { developerModeEnabled } = useDeveloperMode()
   const className = cn(
@@ -317,8 +322,7 @@ function WorkItem({
 
   if (
     entry.kind === "event" &&
-    entry.eventDetails.managed &&
-    canManageEvents
+    entry.eventDetails.managed
   ) {
     return (
       <button
@@ -443,6 +447,14 @@ export function WorkCalendar({
     })
   }
 
+  function changePeopleFilter(value: string): void {
+    const params = new URLSearchParams(searchParams.toString())
+    if (value === "me") params.delete("people")
+    else params.set("people", value)
+    params.delete("item")
+    router.replace(`/dashboard/schedule?${params.toString()}`, { scroll: false })
+  }
+
   React.useEffect(() => {
     if (!initialItemId) return
     document
@@ -507,6 +519,31 @@ export function WorkCalendar({
               className="pl-9"
             />
           </div>
+          {data.googlePeople.length > 0 ? (
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-xs font-medium text-muted-foreground">Google calendars</span>
+              <Select
+                value={data.activeGooglePeopleFilter}
+                onValueChange={changePeopleFilter}
+              >
+                <SelectTrigger size="sm" className="w-[240px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="me">My Google calendars</SelectItem>
+                  <SelectItem value="all">All staff availability</SelectItem>
+                  {data.googlePeople.map((person) => (
+                    <SelectItem key={person.userId} value={person.userId}>
+                      {person.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <span className="text-xs text-muted-foreground">
+                Other users' personal events are shown as Busy.
+              </span>
+            </div>
+          ) : null}
           <div className="flex flex-wrap gap-2">
             <Button asChild size="sm" variant="outline">
               <Link href="/dashboard/schedule?mode=projects&scope=all&view=gantt">
@@ -521,6 +558,7 @@ export function WorkCalendar({
                 defaultProjectId={data.defaultProjectId}
                 defaultTimeZone={data.defaultTimeZone}
                 today={data.today}
+                googleDestinations={data.googleDestinations}
               />
             )}
             {data.canCreateTodos && (
@@ -676,7 +714,6 @@ export function WorkCalendar({
                         compact={activeView !== "today"}
                         focused={entry.id === initialItemId}
                         onEditEvent={setEditingEvent}
-                        canManageEvents={data.canManageEvents}
                       />
                     ))}
                     {activeView !== "today" && dayEntries.length > 3 && (
@@ -712,7 +749,6 @@ export function WorkCalendar({
                     entry={entry}
                     focused={entry.id === initialItemId}
                     onEditEvent={setEditingEvent}
-                    canManageEvents={data.canManageEvents}
                   />
                 ))
               ) : (
@@ -782,13 +818,12 @@ export function WorkCalendar({
                   setExpandedDay(null)
                   setEditingEvent(event)
                 }}
-                canManageEvents={data.canManageEvents}
               />
             ))}
           </div>
         </DialogContent>
       </Dialog>
-      {editingEvent && data.canManageEvents && (
+      {editingEvent && editingEvent.eventDetails.managed && (
         <WorkCalendarEventDialog
           key={`${editingEvent.id}-${editingEvent.eventDetails.version}`}
           variant="edit"
@@ -802,6 +837,7 @@ export function WorkCalendar({
           defaultProjectId={data.defaultProjectId}
           defaultTimeZone={data.defaultTimeZone}
           today={data.today}
+          googleDestinations={data.googleDestinations}
         />
       )}
     </div>

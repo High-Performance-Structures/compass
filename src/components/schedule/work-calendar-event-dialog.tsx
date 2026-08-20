@@ -16,6 +16,7 @@ import {
   type ProjectRow,
   type WorkCalendarEntry,
   type WorkCalendarEventAttendee,
+  type GoogleCalendarDestination,
 } from "@/app/actions/work-calendar"
 import {
   AlertDialog,
@@ -62,6 +63,7 @@ import {
 } from "@/lib/work-calendar-recurrence"
 
 const DEFAULT_PROJECT_VALUE = "__h_office_default__"
+const COMPASS_DESTINATION_VALUE = "__compass__"
 
 type CalendarEventEntry = Extract<WorkCalendarEntry, { kind: "event" }>
 
@@ -71,6 +73,7 @@ type CommonProps = {
   readonly defaultProjectId: string | null
   readonly defaultTimeZone: string
   readonly today: string
+  readonly googleDestinations: readonly GoogleCalendarDestination[]
 }
 
 type WorkCalendarEventDialogProps = CommonProps &
@@ -103,6 +106,7 @@ type EventFormSeed = {
   readonly recurrence: WorkCalendarRecurrence
   readonly recurrenceUntil: string
   readonly attendeeUserIds: readonly string[]
+  readonly calendarSelectionId: string
 }
 
 function projectLabel(project: ProjectRow): string {
@@ -137,6 +141,7 @@ function formSeed(
       attendeeUserIds: details.attendees.map(
         (attendee) => attendee.userId
       ),
+      calendarSelectionId: COMPASS_DESTINATION_VALUE,
     }
   }
 
@@ -159,6 +164,7 @@ function formSeed(
     recurrence: "none",
     recurrenceUntil: "",
     attendeeUserIds: [],
+    calendarSelectionId: COMPASS_DESTINATION_VALUE,
   }
 }
 
@@ -189,6 +195,9 @@ export function WorkCalendarEventDialog(
   const [attendeeUserIds, setAttendeeUserIds] = React.useState<
     readonly string[]
   >(seed.attendeeUserIds)
+  const [calendarSelectionId, setCalendarSelectionId] = React.useState(
+    seed.calendarSelectionId,
+  )
 
   const open = props.variant === "create" ? createOpen : props.open
 
@@ -210,6 +219,7 @@ export function WorkCalendarEventDialog(
     setRecurrence(next.recurrence)
     setRecurrenceUntil(next.recurrenceUntil)
     setAttendeeUserIds(next.attendeeUserIds)
+    setCalendarSelectionId(next.calendarSelectionId)
   }
 
   function changeOpen(nextOpen: boolean): void {
@@ -271,6 +281,10 @@ export function WorkCalendarEventDialog(
       recurrence,
       recurrenceUntil: recurrence === "none" ? null : recurrenceUntil,
       attendeeUserIds,
+      calendarSelectionId:
+        calendarSelectionId === COMPASS_DESTINATION_VALUE
+          ? null
+          : calendarSelectionId,
     }
 
     startTransition(async () => {
@@ -288,11 +302,14 @@ export function WorkCalendarEventDialog(
         return
       }
 
-      toast.success(
-        props.variant === "create"
-          ? "Event added to the work calendar."
-          : "Event updated."
-      )
+      if (result.warning) toast.warning(result.warning)
+      else {
+        toast.success(
+          props.variant === "create"
+            ? "Event added to the work calendar."
+            : "Event updated."
+        )
+      }
       changeOpen(false)
       router.refresh()
     })
@@ -309,7 +326,8 @@ export function WorkCalendarEventDialog(
         toast.error(result.error)
         return
       }
-      toast.success("Event cancelled.")
+      if (result.warning) toast.warning(result.warning)
+      else toast.success("Event cancelled.")
       changeOpen(false)
       router.refresh()
     })
@@ -340,6 +358,28 @@ export function WorkCalendarEventDialog(
           </DialogHeader>
 
           <div className="grid gap-4 py-5">
+            {props.variant === "create" && props.googleDestinations.length > 0 ? (
+              <div className="grid gap-2">
+                <Label htmlFor="work-calendar-event-destination">Calendar</Label>
+                <Select value={calendarSelectionId} onValueChange={setCalendarSelectionId}>
+                  <SelectTrigger id="work-calendar-event-destination">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={COMPASS_DESTINATION_VALUE}>Compass Work Calendar only</SelectItem>
+                    {props.googleDestinations.map((destination) => (
+                      <SelectItem key={destination.selectionId} value={destination.selectionId}>
+                        {destination.label}
+                        {destination.calendarScope === "organization" ? " (shared)" : " (personal)"}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  Google destinations also keep a linked Compass event for permissions and filtering.
+                </p>
+              </div>
+            ) : null}
             <div className="grid gap-2">
               <Label htmlFor={`work-calendar-event-title-${props.variant}`}>
                 Title
