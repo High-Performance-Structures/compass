@@ -1,5 +1,17 @@
 export type WorkOSInvitationDeliveryResult =
-  | { readonly success: true }
+  | { readonly success: true; readonly outcome: "invitation_sent" }
+  | {
+      readonly success: true
+      readonly outcome: "existing_user"
+      readonly user: {
+        readonly id: string
+        readonly email: string
+        readonly firstName: string | null
+        readonly lastName: string | null
+        readonly profilePictureUrl: string | null
+        readonly lastSignInAt: string | null
+      }
+    }
   | { readonly success: false; readonly error: string }
 
 /** Resends a pending invitation or creates a replacement for an expired one. */
@@ -9,6 +21,29 @@ export async function sendOrResendWorkOSInvitation(input: {
 }): Promise<WorkOSInvitationDeliveryResult> {
   const { WorkOS } = await import("@workos-inc/node")
   const workos = new WorkOS(input.apiKey)
+  const workosUsers = await workos.userManagement.listUsers({
+    email: input.email,
+    limit: 100,
+  })
+  const existingUser = workosUsers.data.find(
+    (user) => user.email.trim().toLowerCase() === input.email.trim().toLowerCase()
+  )
+
+  if (existingUser) {
+    return {
+      success: true,
+      outcome: "existing_user",
+      user: {
+        id: existingUser.id,
+        email: existingUser.email,
+        firstName: existingUser.firstName,
+        lastName: existingUser.lastName,
+        profilePictureUrl: existingUser.profilePictureUrl,
+        lastSignInAt: existingUser.lastSignInAt,
+      },
+    }
+  }
+
   const invitations = await workos.userManagement.listInvitations({
     email: input.email,
     limit: 100,
@@ -20,7 +55,7 @@ export async function sendOrResendWorkOSInvitation(input: {
 
   if (pendingInvitation) {
     await workos.userManagement.resendInvitation(pendingInvitation.id)
-    return { success: true }
+    return { success: true, outcome: "invitation_sent" }
   }
 
   if (
@@ -34,5 +69,5 @@ export async function sendOrResendWorkOSInvitation(input: {
   }
 
   await workos.userManagement.sendInvitation({ email: input.email })
-  return { success: true }
+  return { success: true, outcome: "invitation_sent" }
 }

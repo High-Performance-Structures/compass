@@ -96,6 +96,16 @@ export function PeopleTable({
     {
       accessorKey: "displayName",
       header: "Name",
+      filterFn: (row, _columnId, value) => {
+        const query = String(value).trim().toLowerCase()
+        if (!query) return true
+
+        const user = row.original
+        return (
+          (user.displayName ?? "").toLowerCase().includes(query) ||
+          user.email.toLowerCase().includes(query)
+        )
+      },
       cell: ({ row }) => {
         const user = row.original
         return (
@@ -115,7 +125,7 @@ export function PeopleTable({
                   {user.displayName || user.email.split("@")[0]}
                 </span>
                 {user.accessStatus === "invited" && (
-                  <Badge variant="secondary">Invited</Badge>
+                  <Badge variant="secondary">Invitation pending</Badge>
                 )}
               </div>
               <span className="text-sm text-muted-foreground flex items-center gap-1">
@@ -318,20 +328,35 @@ export function PeopleTable({
                   title={user.displayName || user.email.split("@")[0]}
                   subtitle={user.email}
                   metadata={[
+                    ...(user.accessStatus === "invited"
+                      ? ["Invitation pending"]
+                      : []),
                     roleLabel,
                     ...(teamNames ? [teamNames] : []),
                     ...(user.projectCount > 0 ? [`${user.projectCount} projects`] : []),
                   ]}
-                  actions={[
-                    { label: "Edit User", onClick: () => onEditUser?.(user) },
-                    { label: "Assign to Project", onClick: () => {} },
-                    { label: "Assign to Team", onClick: () => {} },
-                    {
-                      label: "Deactivate",
-                      onClick: () => onDeactivateUser?.(user.id),
-                      destructive: true,
-                    },
-                  ]}
+                  actions={
+                    user.accessStatus === "invited"
+                      ? [
+                          {
+                            label: "Send invitation again",
+                            onClick: () => onReinviteUser?.(user),
+                          },
+                        ]
+                      : [
+                          {
+                            label: "Edit User",
+                            onClick: () => onEditUser?.(user),
+                          },
+                          { label: "Assign to Project", onClick: () => {} },
+                          { label: "Assign to Team", onClick: () => {} },
+                          {
+                            label: "Deactivate",
+                            onClick: () => onDeactivateUser?.(user.id),
+                            destructive: true,
+                          },
+                        ]
+                  }
                 />
               )
             })

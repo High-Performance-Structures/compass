@@ -17,7 +17,10 @@ import { getCurrentUser } from "@/lib/auth"
 import { canManageUserAccess, requirePermission } from "@/lib/permissions"
 import { isDemoOrg, isDemoUser } from "@/lib/demo"
 import { sendOrResendWorkOSInvitation } from "@/lib/workos-invitations"
-import { getUserAvailabilityCondition } from "@/lib/user-availability"
+import {
+  getUserAvailabilityCondition,
+  sortSettingsRosterUsers,
+} from "@/lib/user-availability"
 import { eq, and, getTableColumns, sql } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import {
@@ -138,7 +141,9 @@ async function getOrganizationUsers(
       })
     )
 
-    return usersWithRelations
+    return includeInvited
+      ? sortSettingsRosterUsers(usersWithRelations)
+      : usersWithRelations
   } catch (error) {
     console.error("Error fetching users:", error)
     return []
@@ -474,13 +479,17 @@ export async function assignUserToGroup(
   }
 }
 
-export async function inviteUser(
-  email: string,
-  role: string,
-  organizationId?: string
-): Promise<{ success: boolean; error?: string }> {
+export async function inviteUser(input: {
+  readonly displayName?: string
+  readonly email: string
+  readonly role: string
+  readonly organizationId?: string
+}): Promise<
+  | { readonly success: true; readonly accessStatus: "active" | "invited" }
+  | { readonly success: false; readonly error: string }
+> {
   // validate input
-  const parseResult = inviteUserSchema.safeParse({ email, role, organizationId })
+  const parseResult = inviteUserSchema.safeParse(input)
   if (!parseResult.success) {
     const firstIssue = parseResult.error.issues[0]
     return { success: false, error: firstIssue?.message || "Invalid input" }
@@ -560,9 +569,31 @@ export async function inviteUser(
           })
           if (!resendResult.success) return resendResult
 
+          const workosUser =
+            resendResult.outcome === "existing_user"
+              ? resendResult.user
+              : null
+          const workosDisplayName = workosUser
+            ? [workosUser.firstName, workosUser.lastName]
+                .filter((part): part is string => Boolean(part?.trim()))
+                .join(" ")
+            : ""
+
           await db
             .update(users)
-            .set({ role: validated.role, updatedAt: now })
+            .set({
+              role: validated.role,
+              displayName:
+                validated.displayName ||
+                workosDisplayName ||
+                existing.displayName,
+              firstName: workosUser?.firstName ?? existing.firstName,
+              lastName: workosUser?.lastName ?? existing.lastName,
+              avatarUrl: workosUser?.profilePictureUrl ?? existing.avatarUrl,
+              isActive: workosUser ? true : existing.isActive,
+              lastLoginAt: workosUser?.lastSignInAt ?? existing.lastLoginAt,
+              updatedAt: now,
+            })
             .where(eq(users.id, existing.id))
             .run()
           await db
@@ -572,7 +603,10 @@ export async function inviteUser(
             .run()
           revalidatePath("/dashboard/settings")
           revalidatePath("/dashboard/people")
-          return { success: true }
+          return {
+            success: true,
+            accessStatus: workosUser ? "active" : "invited",
+          }
         }
 
         // On first login, ensureUserExists() activates the pending local row.
@@ -581,6 +615,45 @@ export async function inviteUser(
           email: normalizedEmail,
         })
         if (!invitationResult.success) return invitationResult
+
+        if (invitationResult.outcome === "existing_user") {
+          const workosUser = invitationResult.user
+          const workosDisplayName = [workosUser.firstName, workosUser.lastName]
+            .filter((part): part is string => Boolean(part?.trim()))
+            .join(" ")
+          const newUser: NewUser = {
+            id: workosUser.id,
+            email: normalizedEmail,
+            role: validated.role,
+            isActive: true,
+            createdAt: now,
+            updatedAt: now,
+            firstName: workosUser.firstName,
+            lastName: workosUser.lastName,
+            displayName:
+              validated.displayName ||
+              workosDisplayName ||
+              normalizedEmail.split("@")[0],
+            avatarUrl: workosUser.profilePictureUrl,
+            lastLoginAt: workosUser.lastSignInAt,
+          }
+
+          await db.insert(users).values(newUser).run()
+          await db
+            .insert(organizationMembers)
+            .values({
+              id: crypto.randomUUID(),
+              organizationId: targetOrganizationId,
+              userId: newUser.id,
+              role: validated.role,
+              joinedAt: now,
+            })
+            .run()
+
+          revalidatePath("/dashboard/settings")
+          revalidatePath("/dashboard/people")
+          return { success: true, accessStatus: "active" }
+        }
 
         // create pending user record in our db
         const newUser: NewUser = {
@@ -592,7 +665,8 @@ export async function inviteUser(
           updatedAt: now,
           firstName: null,
           lastName: null,
-          displayName: normalizedEmail.split("@")[0],
+          displayName:
+            validated.displayName ?? normalizedEmail.split("@")[0],
           avatarUrl: null,
           lastLoginAt: null,
         }
@@ -613,7 +687,7 @@ export async function inviteUser(
 
         revalidatePath("/dashboard/settings")
         revalidatePath("/dashboard/people")
-        return { success: true }
+        return { success: true, accessStatus: "invited" }
       } catch (workosError) {
         console.error("WorkOS invitation error:", workosError)
         return {
@@ -635,7 +709,7 @@ export async function inviteUser(
         updatedAt: now,
         firstName: null,
         lastName: null,
-        displayName: normalizedEmail.split("@")[0],
+        displayName: validated.displayName ?? normalizedEmail.split("@")[0],
         avatarUrl: null,
         lastLoginAt: null,
       }
@@ -655,7 +729,7 @@ export async function inviteUser(
 
       revalidatePath("/dashboard/settings")
       revalidatePath("/dashboard/people")
-      return { success: true }
+      return { success: true, accessStatus: "active" }
     }
   } catch (error) {
     console.error("Error inviting user:", error)

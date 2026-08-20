@@ -62,7 +62,11 @@ export function TeamTab() {
 
   const handleReinviteUser = async (user: UserWithRelations) => {
     try {
-      const result = await inviteUser(user.email, user.role)
+      const result = await inviteUser({
+        displayName: user.displayName ?? undefined,
+        email: user.email,
+        role: user.role,
+      })
       if (result.success) {
         toast.success("Invitation sent again")
         await loadUsers()

@@ -3,7 +3,10 @@ import { drizzle } from "drizzle-orm/better-sqlite3"
 import { describe, expect, it } from "vitest"
 
 import { users } from "@/db/schema"
-import { getUserAvailabilityCondition } from "@/lib/user-availability"
+import {
+  getUserAvailabilityCondition,
+  sortSettingsRosterUsers,
+} from "@/lib/user-availability"
 
 function createUsersDatabase(): InstanceType<typeof Database> {
   const sqlite = new Database(":memory:")
@@ -56,5 +59,38 @@ describe("getUserAvailabilityCondition", () => {
     } finally {
       sqlite.close()
     }
+  })
+})
+
+describe("sortSettingsRosterUsers", () => {
+  it("puts pending invitations before the paginated active roster", () => {
+    const rosterUsers: Array<{
+      accessStatus: "active" | "invited"
+      displayName: string
+      email: string
+    }> = [
+      {
+        accessStatus: "active",
+        displayName: "Zoe Active",
+        email: "zoe@example.com",
+      },
+      {
+        accessStatus: "invited",
+        displayName: "Stanley Platt",
+        email: "stanley@example.com",
+      },
+      {
+        accessStatus: "active",
+        displayName: "Alice Active",
+        email: "alice@example.com",
+      },
+    ]
+    const result = sortSettingsRosterUsers(rosterUsers)
+
+    expect(result.map((user) => user.displayName)).toEqual([
+      "Stanley Platt",
+      "Alice Active",
+      "Zoe Active",
+    ])
   })
 })
