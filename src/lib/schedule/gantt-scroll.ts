@@ -5,6 +5,11 @@ interface WheelDelta {
   readonly deltaY: number
 }
 
+export interface GanttWheelIntent {
+  readonly axis: GanttScrollAxis
+  readonly delta: number
+}
+
 interface ScheduleRowDateRange {
   readonly startDate: string
   readonly endDate: string
@@ -33,6 +38,22 @@ export function lockWheelToDominantAxis(
     return { deltaX: 0, deltaY }
   }
   return { deltaX: 0, deltaY: 0 }
+}
+
+export function ganttWheelIntent(
+  deltaX: number,
+  deltaY: number,
+  shiftKey: boolean
+): GanttWheelIntent | null {
+  if (shiftKey) {
+    if (deltaX === 0 && deltaY === 0) return null
+    return {
+      axis: "horizontal",
+      delta: Math.abs(deltaX) >= Math.abs(deltaY) ? deltaX : deltaY,
+    }
+  }
+  if (deltaY === 0) return null
+  return { axis: "vertical", delta: deltaY }
 }
 
 export function normalizeWheelDelta(

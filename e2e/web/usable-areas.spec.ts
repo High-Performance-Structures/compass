@@ -430,7 +430,7 @@ test.describe("usable Compass areas", () => {
     await page.keyboard.press("Escape")
   })
 
-  test("Gantt lets each user choose synchronized or independent vertical panes", async ({
+  test("Gantt keeps rows synchronized and reserves horizontal scrolling for Shift", async ({
     page,
   }) => {
     await page.setViewportSize({ width: 1366, height: 768 })
@@ -443,17 +443,8 @@ test.describe("usable Compass areas", () => {
       "/dashboard/projects/e2e-project-001/schedule"
     )
 
-    await page.getByRole("button", { name: "Gantt settings" }).click()
-    const powerUserSwitch = page.getByRole("switch", {
-      name: "Use power-user Gantt scrolling",
-    })
-    await expect(powerUserSwitch).toBeVisible()
-    const taskList = page.locator(".schedule-gantt-task-list")
-    const chart = page.locator(".gantt-container")
-    if (await powerUserSwitch.isChecked()) {
-      await powerUserSwitch.click()
-    }
-    await expect(powerUserSwitch).not.toBeChecked()
+    const taskList = page.locator(".schedule-gantt-task-list:visible").first()
+    const chart = page.locator(".gantt-container:visible").first()
     await expect(taskList).toBeVisible()
     await expect(chart).toBeVisible()
     await taskList.evaluate((element) => {
@@ -465,7 +456,6 @@ test.describe("usable Compass areas", () => {
       element.scrollTop = 0
     })
 
-    await page.keyboard.press("Escape")
     await page.getByRole("button", { name: "Gantt controls" }).click()
     await page.getByRole("menuitem", { name: "Today" }).click()
     await expect
@@ -474,41 +464,56 @@ test.describe("usable Compass areas", () => {
     await expect
       .poll(() => chart.evaluate((element) => element.scrollTop))
       .toBeGreaterThan(0)
+    // Today centers the timeline smoothly; wait for that horizontal animation
+    // to settle before asserting that a regular wheel leaves it anchored.
+    await page.waitForTimeout(750)
 
-    await taskList.evaluate((element) => {
-      element.scrollTop = Math.min(96, element.scrollHeight - element.clientHeight)
-      element.dispatchEvent(new Event("scroll"))
-    })
-    const synchronizedChartTop = await chart.evaluate((element) => element.scrollTop)
-    expect(synchronizedChartTop).toBeGreaterThan(0)
-
-    await page.getByRole("button", { name: "Gantt settings" }).click()
-    await expect(powerUserSwitch).toBeVisible()
-    await powerUserSwitch.click()
-    await expect(powerUserSwitch).toBeChecked()
-    await taskList.evaluate((element) => {
-      element.scrollTop = 0
-    })
+    const ordinaryWheelStart = await chart.evaluate((element) => ({
+      left: element.scrollLeft,
+      top: element.scrollTop,
+    }))
     await chart.evaluate((element) => {
-      element.scrollTop = 0
+      const deltaY = element.scrollTop > 0 ? -48 : 48
+      element.dispatchEvent(
+        new WheelEvent("wheel", {
+          bubbles: true,
+          cancelable: true,
+          deltaX: 120,
+          deltaY,
+        })
+      )
     })
-
-    await page.keyboard.press("Escape")
-    await page.getByRole("button", { name: "Gantt controls" }).click()
-    await page.getByRole("menuitem", { name: "Today" }).click()
     await expect
       .poll(() => chart.evaluate((element) => element.scrollTop))
+      .not.toBe(ordinaryWheelStart.top)
+    expect(await chart.evaluate((element) => element.scrollLeft)).toBe(
+      ordinaryWheelStart.left
+    )
+    await expect
+      .poll(() => taskList.evaluate((element) => element.scrollTop))
       .toBeGreaterThan(0)
-    expect(await taskList.evaluate((element) => element.scrollTop)).toBe(0)
 
-    await taskList.evaluate((element) => {
-      element.scrollTop = Math.min(96, element.scrollHeight - element.clientHeight)
-      element.dispatchEvent(new Event("scroll"))
+    const shiftWheelStart = await chart.evaluate((element) => ({
+      left: element.scrollLeft,
+      top: element.scrollTop,
+    }))
+    await chart.evaluate((element) => {
+      const deltaY = element.scrollLeft > 0 ? -96 : 96
+      element.dispatchEvent(
+        new WheelEvent("wheel", {
+          bubbles: true,
+          cancelable: true,
+          deltaY,
+          shiftKey: true,
+        })
+      )
     })
-    const listTop = await taskList.evaluate((element) => element.scrollTop)
-    const chartTop = await chart.evaluate((element) => element.scrollTop)
-    expect(listTop).toBeGreaterThan(0)
-    expect(chartTop).toBeGreaterThan(0)
+    await expect
+      .poll(() => chart.evaluate((element) => element.scrollLeft))
+      .not.toBe(shiftWheelStart.left)
+    expect(await chart.evaluate((element) => element.scrollTop)).toBe(
+      shiftWheelStart.top
+    )
   })
 
   test("Gantt releases edge wheel input to the surrounding Schedule workspace", async ({

@@ -8,7 +8,7 @@ import {
   dominantScrollAxis,
   clampGanttScrollOffset,
   canScrollGanttAxis,
-  lockWheelToDominantAxis,
+  ganttWheelIntent,
   normalizeWheelDelta,
   paddingToIncludeDate,
   type GanttScrollAxis,
@@ -300,53 +300,50 @@ export function GanttChart({
 
       const container = ganttContainerRef.current
       if (!container) return
-      const pageSize = Math.max(
-        container.clientWidth,
-        container.clientHeight
-      )
-      const rawDeltaX =
-        e.shiftKey && e.deltaX === 0 ? e.deltaY : e.deltaX
-      const rawDeltaY =
-        e.shiftKey && e.deltaX === 0 ? 0 : e.deltaY
-      const locked = lockWheelToDominantAxis(
-        normalizeWheelDelta(rawDeltaX, e.deltaMode, pageSize),
-        normalizeWheelDelta(rawDeltaY, e.deltaMode, pageSize)
-      )
-      if (locked.deltaX === 0 && locked.deltaY === 0) return
-      const canScrollHorizontally = canScrollGanttAxis(
-        container.scrollLeft,
-        container.scrollWidth,
-        container.clientWidth,
-        locked.deltaX
-      )
-      const canScrollVertically = canScrollGanttAxis(
-        container.scrollTop,
-        container.scrollHeight,
-        container.clientHeight,
-        locked.deltaY
-      )
-      if (!canScrollHorizontally && !canScrollVertically) {
+      const intent = ganttWheelIntent(e.deltaX, e.deltaY, e.shiftKey)
+      if (!intent) return
+      const pageSize =
+        intent.axis === "vertical"
+          ? container.clientHeight
+          : container.clientWidth
+      const delta = normalizeWheelDelta(intent.delta, e.deltaMode, pageSize)
+      const canScroll =
+        intent.axis === "vertical"
+          ? canScrollGanttAxis(
+              container.scrollTop,
+              container.scrollHeight,
+              container.clientHeight,
+              delta
+            )
+          : canScrollGanttAxis(
+              container.scrollLeft,
+              container.scrollWidth,
+              container.clientWidth,
+              delta
+            )
+      if (!canScroll) {
         const workspace = wrapper.closest<HTMLElement>(
           '[data-dashboard-scroll-region="schedule"]'
         )
         if (
+          intent.axis === "vertical" &&
           workspace &&
           canScrollGanttAxis(
             workspace.scrollTop,
             workspace.scrollHeight,
             workspace.clientHeight,
-            locked.deltaY
+            delta
           )
         ) {
           e.preventDefault()
-          workspace.scrollTop += locked.deltaY
+          workspace.scrollTop += delta
         }
         return
       }
 
       e.preventDefault()
-      container.scrollLeft += locked.deltaX
-      container.scrollTop += locked.deltaY
+      if (intent.axis === "vertical") container.scrollTop += delta
+      else container.scrollLeft += delta
     }
 
     wrapper.addEventListener("wheel", handleWheel, { passive: false })
