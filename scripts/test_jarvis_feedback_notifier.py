@@ -33,13 +33,19 @@ class RoutingTests(unittest.TestCase):
             "id": "event-1",
             "eventType": "feedback.status_changed",
             "source": "telegram",
-            "payload": {
-                "message": "Your request was received.",
-                "reporter": {"externalActorId": "123456"},
-            },
+            "payload": {},
         }
-
-        with patch.object(MODULE, "send_via_hermes") as sender:
+        with (
+            patch.object(
+                MODULE,
+                "delivery_details",
+                return_value={
+                    "message": "Your request was received.",
+                    "deliveryTarget": {"externalActorId": "123456"},
+                },
+            ),
+            patch.object(MODULE, "send_via_hermes") as sender,
+        ):
             requires_ack = MODULE.deliver_event(event)
 
         self.assertTrue(requires_ack)
@@ -53,15 +59,20 @@ class RoutingTests(unittest.TestCase):
             "id": "event-telegram-username",
             "eventType": "feedback.status_changed",
             "source": "telegram",
-            "payload": {
-                "message": "Your request was closed.",
-                "reporter": {
-                    "externalActorId": "telegram:martinevogel"
-                },
-            },
+            "payload": {},
         }
 
-        with patch.object(MODULE, "send_via_hermes") as sender:
+        with (
+            patch.object(
+                MODULE,
+                "delivery_details",
+                return_value={
+                    "message": "Your request was closed.",
+                    "deliveryTarget": {"externalActorId": "telegram:martinevogel"},
+                },
+            ),
+            patch.object(MODULE, "send_via_hermes") as sender,
+        ):
             requires_ack = MODULE.deliver_event(event)
 
         self.assertTrue(requires_ack)
@@ -75,13 +86,20 @@ class RoutingTests(unittest.TestCase):
             "id": "event-2",
             "eventType": "feedback.status_changed",
             "source": "jarvis-email",
-            "payload": {
-                "message": "Your request is ready for testing.",
-                "reporter": {"email": "staff@example.com"},
-            },
+            "payload": {},
         }
 
-        with patch.object(MODULE, "send_via_hermes") as sender:
+        with (
+            patch.object(
+                MODULE,
+                "delivery_details",
+                return_value={
+                    "message": "Your request is ready for testing.",
+                    "deliveryTarget": {"email": "staff@example.com"},
+                },
+            ),
+            patch.object(MODULE, "send_via_hermes") as sender,
+        ):
             requires_ack = MODULE.deliver_event(event)
 
         self.assertTrue(requires_ack)
@@ -95,10 +113,17 @@ class RoutingTests(unittest.TestCase):
             "id": "event-3",
             "eventType": "feedback.status_changed",
             "source": "compass-conversation",
-            "payload": {"message": "Development has started."},
+            "payload": {},
         }
 
-        with patch.object(MODULE, "reply_to_compass") as reply:
+        with (
+            patch.object(
+                MODULE,
+                "delivery_details",
+                return_value={"message": "Development has started."},
+            ),
+            patch.object(MODULE, "reply_to_compass") as reply,
+        ):
             requires_ack = MODULE.deliver_event(event)
 
         self.assertFalse(requires_ack)

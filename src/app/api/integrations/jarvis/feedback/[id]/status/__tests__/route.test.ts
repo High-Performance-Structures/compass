@@ -46,6 +46,14 @@ function configureDb() {
   })
 }
 
+function configureDuplicateDb() {
+  const get = vi.fn().mockResolvedValue({ id: "inbound-duplicate" })
+  const chain = { from: vi.fn(), where: vi.fn(), get }
+  chain.from.mockReturnValue(chain)
+  chain.where.mockReturnValue(chain)
+  mocks.getDb.mockReturnValue({ select: vi.fn().mockReturnValue(chain) })
+}
+
 describe("POST /api/integrations/jarvis/feedback/:id/status", () => {
   beforeEach(() => {
     configureDb()
@@ -82,6 +90,21 @@ describe("POST /api/integrations/jarvis/feedback/:id/status", () => {
     await expect(response.json()).resolves.toEqual({
       error: "A bug must have a complete durable delivery graph before implementation starts",
     })
+    expect(mocks.applyFeedbackLifecycleUpdate).not.toHaveBeenCalled()
+  })
+
+  it("does not publish a second requester update for an idempotent retry", async () => {
+    configureDuplicateDb()
+    const response = await POST(
+      new Request("https://compass.example/api/integrations/jarvis/feedback/feedback-1/status", {
+        method: "POST",
+        body: JSON.stringify({ idempotencyKey: "callback-1", status: "triaged" }),
+      }),
+      { params: Promise.resolve({ id: "feedback-1" }) },
+    )
+
+    expect(response.status).toBe(200)
+    await expect(response.json()).resolves.toEqual({ success: true, duplicate: true })
     expect(mocks.applyFeedbackLifecycleUpdate).not.toHaveBeenCalled()
   })
 

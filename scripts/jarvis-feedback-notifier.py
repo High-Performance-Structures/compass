@@ -157,6 +157,17 @@ def acknowledge(
     )
 
 
+def delivery_details(event_id: str) -> dict[str, Any]:
+    escaped_id = urllib.parse.quote(event_id, safe="")
+    response = compass_request(
+        "GET",
+        f"/api/integrations/jarvis/events/{escaped_id}/delivery",
+    )
+    if not isinstance(response, dict):
+        raise RetryableError("Compass returned invalid feedback delivery details")
+    return response
+
+
 def metadata_object(payload: dict[str, Any]) -> dict[str, Any]:
     metadata = payload.get("metadata")
     if isinstance(metadata, dict):
@@ -282,18 +293,32 @@ def deliver_event(event: dict[str, Any]) -> bool:
     ):
         raise RuntimeError("Invalid feedback lifecycle event")
 
-    message = message_text(payload)
+    details = delivery_details(event_id)
+    message_value = details.get("message")
+    if not isinstance(message_value, str) or not message_value.strip():
+        raise RuntimeError("Compass feedback delivery has no requester message")
+    message = message_value.strip()[:2_000]
+    target_details = details.get("deliveryTarget")
+    target = target_details if isinstance(target_details, dict) else {}
     if source == "telegram":
-        target = telegram_delivery_target(payload)
-        if target is None:
+        actor_id = target.get("externalActorId")
+        if not isinstance(actor_id, str) or not actor_id.strip():
             raise RuntimeError("Telegram feedback has no valid reply target")
-        send_via_hermes(target, message)
+        normalized_payload = {"reporter": {"externalActorId": actor_id}}
+        telegram_target = telegram_delivery_target(normalized_payload)
+        if telegram_target is None:
+            raise RuntimeError("Telegram feedback has no valid reply target")
+        send_via_hermes(telegram_target, message)
         return True
     if source == "jarvis-email":
-        target = reporter_email(payload)
-        if target is None:
+        email = target.get("email")
+        if not isinstance(email, str) or not email.strip():
             raise RuntimeError("Email feedback has no valid reply target")
-        send_via_hermes(f"email:{target}", message)
+        normalized_payload = {"reporter": {"email": email}}
+        email_target = reporter_email(normalized_payload)
+        if email_target is None:
+            raise RuntimeError("Email feedback has no valid reply target")
+        send_via_hermes(f"email:{email_target}", message)
         return True
     if source == "compass-conversation":
         reply_to_compass(event_id, message)
