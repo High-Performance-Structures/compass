@@ -740,8 +740,8 @@ function ProjectAudienceGantt({
                     style={{
                       left,
                       width,
-                      borderColor: displayColor,
-                      backgroundColor: `${displayColor}33`,
+                      borderColor: `color-mix(in srgb, ${displayColor} 78%, black)`,
+                      backgroundColor: displayColor,
                     }}
                     title={`${item.title}: ${percentComplete}% complete`}
                   >
@@ -749,7 +749,7 @@ function ProjectAudienceGantt({
                       className="h-full"
                       style={{
                         width: `${percentComplete}%`,
-                        backgroundColor: `${displayColor}80`,
+                        backgroundColor: `color-mix(in srgb, ${displayColor} 68%, black)`,
                       }}
                     />
                     <span className="absolute inset-0 flex items-center px-2 text-[10px] font-medium">
