@@ -4,8 +4,10 @@ import * as React from "react"
 import { useRouter } from "next/navigation"
 import {
   IconCalendarPlus,
+  IconExternalLink,
   IconPencil,
   IconTrash,
+  IconVideoPlus,
 } from "@tabler/icons-react"
 import { toast } from "sonner"
 
@@ -104,6 +106,7 @@ type EventFormSeed = {
   readonly timeZone: string
   readonly location: string
   readonly meetingUrl: string
+  readonly createGoogleMeet: boolean
   readonly recurrence: WorkCalendarRecurrence
   readonly recurrenceUntil: string
   readonly attendeeUserIds: readonly string[]
@@ -131,6 +134,7 @@ function formSeed(
       timeZone: details.timeZone,
       location: details.location ?? "",
       meetingUrl: details.meetingUrl ?? "",
+      createGoogleMeet: false,
       recurrence: details.recurrence,
       recurrenceUntil: details.recurrenceUntil ?? "",
       attendeeUserIds: details.attendees.map(
@@ -156,6 +160,7 @@ function formSeed(
     timeZone: props.defaultTimeZone,
     location: "",
     meetingUrl: "",
+    createGoogleMeet: false,
     recurrence: "none",
     recurrenceUntil: "",
     attendeeUserIds: [],
@@ -183,6 +188,9 @@ export function WorkCalendarEventDialog(
   const [timeZone, setTimeZone] = React.useState(seed.timeZone)
   const [location, setLocation] = React.useState(seed.location)
   const [meetingUrl, setMeetingUrl] = React.useState(seed.meetingUrl)
+  const [createGoogleMeet, setCreateGoogleMeet] = React.useState(
+    seed.createGoogleMeet,
+  )
   const [recurrence, setRecurrence] = React.useState(seed.recurrence)
   const [recurrenceUntil, setRecurrenceUntil] = React.useState(
     seed.recurrenceUntil
@@ -211,6 +219,7 @@ export function WorkCalendarEventDialog(
     setTimeZone(next.timeZone)
     setLocation(next.location)
     setMeetingUrl(next.meetingUrl)
+    setCreateGoogleMeet(next.createGoogleMeet)
     setRecurrence(next.recurrence)
     setRecurrenceUntil(next.recurrenceUntil)
     setAttendeeUserIds(next.attendeeUserIds)
@@ -273,6 +282,7 @@ export function WorkCalendarEventDialog(
       timeZone,
       location: location || null,
       meetingUrl: meetingUrl || null,
+      createGoogleMeet,
       recurrence,
       recurrenceUntil: recurrence === "none" ? null : recurrenceUntil,
       attendeeUserIds,
@@ -397,7 +407,9 @@ export function WorkCalendarEventDialog(
                 <Select
                   value={eventType}
                   onValueChange={(value) => {
-                    if (isWorkCalendarEventType(value)) setEventType(value)
+                    if (!isWorkCalendarEventType(value)) return
+                    setEventType(value)
+                    if (value !== "meeting") setCreateGoogleMeet(false)
                   }}
                 >
                   <SelectTrigger
@@ -619,14 +631,60 @@ export function WorkCalendarEventDialog(
               >
                 Meeting link
               </Label>
-              <Input
-                id={`work-calendar-event-meeting-link-${props.variant}`}
-                type="url"
-                value={meetingUrl}
-                onChange={(event) => setMeetingUrl(event.target.value)}
-                placeholder="https://meet.google.com/..."
-                maxLength={2_000}
-              />
+              <div className="flex gap-2">
+                <Input
+                  id={`work-calendar-event-meeting-link-${props.variant}`}
+                  type="url"
+                  value={meetingUrl}
+                  onChange={(event) => setMeetingUrl(event.target.value)}
+                  placeholder={
+                    createGoogleMeet
+                      ? "Google will create the Meet link"
+                      : "https://meet.google.com/..."
+                  }
+                  maxLength={2_000}
+                  disabled={createGoogleMeet}
+                />
+                {meetingUrl && (
+                  <Button asChild type="button" variant="outline">
+                    <a
+                      href={meetingUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      <IconExternalLink className="size-4" />
+                      Join
+                    </a>
+                  </Button>
+                )}
+              </div>
+              {eventType === "meeting" && !meetingUrl && (
+                <label className="flex items-start gap-3 rounded-md border bg-muted/20 p-3">
+                  <Checkbox
+                    checked={createGoogleMeet}
+                    onCheckedChange={(checked) =>
+                      setCreateGoogleMeet(checked === true)
+                    }
+                  />
+                  <span className="min-w-0 text-sm">
+                    <span className="flex items-center gap-2 font-medium">
+                      <IconVideoPlus className="size-4" />
+                      Add Google Meet
+                    </span>
+                    <span className="mt-1 block text-xs text-muted-foreground">
+                      Google Calendar creates the link. Participants open Meet
+                      in a separate tab or the Google Meet app; Compass does not
+                      embed the call.
+                    </span>
+                  </span>
+                </label>
+              )}
+              {createGoogleMeet && (
+                <p className="text-xs text-muted-foreground">
+                  Requires a writable Google Calendar destination or an enabled
+                  Google project calendar.
+                </p>
+              )}
             </div>
 
             <fieldset className="grid gap-2">

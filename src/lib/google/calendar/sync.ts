@@ -473,7 +473,11 @@ export async function publishWorkCalendarEventToGoogle(
   env: object,
   eventId: string,
   selectionId: string,
-): Promise<void> {
+  options?: { readonly createGoogleMeet: boolean },
+): Promise<{
+  readonly meetingUrl: string | null
+  readonly conferenceStatus: string | null
+}> {
   const managedProjectCalendar = await db
     .select({ status: googleProjectCalendars.status })
     .from(googleProjectCalendars)
@@ -491,6 +495,14 @@ export async function publishWorkCalendarEventToGoogle(
     .limit(1)
     .then((rows) => rows[0] ?? null)
   if (!event) throw new Error("Work Calendar event was not found.")
+  const conferenceRequestId =
+    options?.createGoogleMeet && !event.meetingUrl
+      ? await googleEventIdForCompass(
+          "work_calendar_event",
+          `${eventId}:meet:${event.version}`,
+          token.selection.connectionId,
+        )
+      : null
   const attendeeRows = await db
     .select({ email: users.email })
     .from(workCalendarEventAttendees)
@@ -508,6 +520,7 @@ export async function publishWorkCalendarEventToGoogle(
     visibility: event.visibility === "private" ? "private" : "default",
     recurrence: googleRecurrence(event),
     attendeeEmails: attendeeRows.map((attendee) => attendee.email),
+    conferenceRequestId,
   }
   const link = await db
     .select({
@@ -559,26 +572,36 @@ export async function publishWorkCalendarEventToGoogle(
         updatedAt: now,
       })
       .where(eq(googleCalendarEntityLinks.id, link.id))
-    return
+  } else {
+    await db.insert(googleCalendarEntityLinks).values({
+      id: crypto.randomUUID(),
+      connectionId: token.selection.connectionId,
+      googleCalendarId: token.selection.calendarId,
+      googleEventId: googleEvent.id,
+      googleICalUid: googleEvent.iCalUID,
+      sourceType: "work_calendar_event",
+      sourceId: eventId,
+      syncDirection: "two_way",
+      syncStatus: "synced",
+      googleEtag: googleEvent.etag,
+      googleUpdatedAt: googleEvent.updatedAt,
+      compassVersion: event.version,
+      lastSyncedAt: now,
+      lastError: null,
+      createdAt: now,
+      updatedAt: now,
+    })
   }
-  await db.insert(googleCalendarEntityLinks).values({
-    id: crypto.randomUUID(),
-    connectionId: token.selection.connectionId,
-    googleCalendarId: token.selection.calendarId,
-    googleEventId: googleEvent.id,
-    googleICalUid: googleEvent.iCalUID,
-    sourceType: "work_calendar_event",
-    sourceId: eventId,
-    syncDirection: "two_way",
-    syncStatus: "synced",
-    googleEtag: googleEvent.etag,
-    googleUpdatedAt: googleEvent.updatedAt,
-    compassVersion: event.version,
-    lastSyncedAt: now,
-    lastError: null,
-    createdAt: now,
-    updatedAt: now,
-  })
+  if (googleEvent.meetingUrl && googleEvent.meetingUrl !== event.meetingUrl) {
+    await db
+      .update(workCalendarEvents)
+      .set({ meetingUrl: googleEvent.meetingUrl })
+      .where(eq(workCalendarEvents.id, eventId))
+  }
+  return {
+    meetingUrl: googleEvent.meetingUrl,
+    conferenceStatus: googleEvent.conferenceStatus,
+  }
 }
 
 export async function deleteLinkedWorkCalendarEventFromGoogle(
