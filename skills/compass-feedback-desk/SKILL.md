@@ -124,6 +124,48 @@ python scripts/compass_feedback_bridge.py pull --limit 20
 
 Do not invoke a model when the response contains no events.
 
+## Update a Feedback Desk lifecycle status
+
+Scheduled or otherwise approved private-runtime operations may update one
+existing Feedback Desk item only through the fixed Compass lifecycle endpoint.
+Use the helper's structured arguments:
+
+```bash
+python scripts/compass_feedback_bridge.py status \
+  --item-id UUID \
+  --status in_progress \
+  --message "The fix is in progress." \
+  --priority normal \
+  --github-issue-url https://github.com/OWNER/REPO/issues/123 \
+  --draft-pull-request-url https://github.com/OWNER/REPO/pull/456 \
+  --idempotency-key feedback-UUID-status-v1
+```
+
+For a scheduled job, write the same fields as a JSON object with a safe file
+writer and use `--payload-file /absolute/path/to/payload.json` instead. The
+payload file is bounded and validated before it is sent. Do not interpolate
+requester text into shell commands, pass a target/path/header/command option,
+or call the generic request function directly. The helper constructs only
+`POST /api/integrations/jarvis/feedback/<UUID>/status`, signs it with the
+injected `JARVIS_BRIDGE_SECRET`, and retries at most once with the same
+idempotency key. Compass remains responsible for organization authorization,
+evidence gates, D1 persistence, and source-specific requester delivery.
+
+The command prints only a compact JSON result containing endpoint acceptance,
+duplicate status, lifecycle status, notification count, and whether a
+requester update was queued. It never prints response bodies, request data,
+or secret material. A `duplicate: true` result is a successful idempotent
+replay, not permission to generate a new key.
+
+To remove the operation, stop the scheduled caller, delete its `status`
+invocation and any temporary payload files, and replace the private installed
+helper with the prior approved version. Do not delete or edit Compass D1
+records as part of removal. To rotate credentials, follow the temporary
+dual-secret procedure in the bridge architecture document: provision the new
+secondary secret, verify both callers, switch the private runtime, then remove
+the retired binding and operator copy. Never print, commit, or place either
+secret in a payload, ticket, or log.
+
 ## Configure the private runtime
 
 For first-time setup, use the helper's `configure` command with an ephemeral

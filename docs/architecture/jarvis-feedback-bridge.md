@@ -430,6 +430,42 @@ My requests / All requests filter for organization-wide investigation. Only
 administrators can mutate the organization-wide desk at
 `/dashboard/requests/manage`.
 
+Private scheduled lifecycle operation
+---
+
+The approved private runtime helper at
+`skills/compass-feedback-desk/scripts/compass_feedback_bridge.py` exposes a
+single `status` operation for scheduled or explicitly authorized lifecycle
+work. Install the helper under the private runtime's
+`~/.local/lib/compass/` path, keep `COMPASS_BASE_URL` and
+`JARVIS_BRIDGE_SECRET` in its protected environment, and invoke it with
+structured arguments or a bounded JSON payload file:
+
+```bash
+python ~/.local/lib/compass/compass_feedback_bridge.py status \
+  --item-id <uuid> \
+  --status in_progress \
+  --idempotency-key feedback-<uuid>-status-v1
+```
+
+The helper accepts only the visible lifecycle statuses, bounded requester
+message and priority values, fixed HTTPS GitHub issue/PR URL schemas, and an
+idempotency key. It constructs and signs only
+`POST /api/integrations/jarvis/feedback/<uuid>/status`; it has no target,
+path, header, command, shell, D1, or cross-channel delivery input. A retry
+reuses the same idempotency key, and the compact JSON result reports only
+acceptance, duplicate status, lifecycle status, notification count, and
+requester-update queuing. Compass still performs all organization,
+authorization, evidence, persistence, source-routing, and delivery checks.
+
+To remove the operation, stop the scheduled caller, remove its invocation and
+temporary payload files, and restore the prior approved private helper. Do not
+delete Feedback Desk records or bypass the lifecycle endpoint. To rotate the
+credential, use the temporary dual-secret rollover above, verify both the
+existing poller/notifier and the scheduled caller, then remove the retired
+Worker binding and operator-side copy. Never place a secret in a payload,
+ticket, command output, or log.
+
 Scheduled reconciliation and administration
 ---
 
