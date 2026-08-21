@@ -33,6 +33,7 @@ import {
 } from "@/app/actions/project-estimates"
 import { Badge } from "@/components/ui/badge"
 import { useDeveloperMode } from "@/components/developer-mode-provider"
+import { ProjectEstimatePlanSwiftImport } from "@/components/projects/project-estimate-planswift-import"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
@@ -618,18 +619,28 @@ export function ProjectEstimateWorkspacePanel({
               it. Each division subtotal updates from its lines.
             </p>
           </div>
-          {editable && estimate.sourceWorkbookUrl && (
-            <Button
-              type="button"
-              variant="outline"
-              onClick={importSourceCsi}
-              disabled={isPending}
-            >
-              <IconRefresh
-                className={isPending ? "size-4 animate-spin" : "size-4"}
+          {editable && (
+            <div className="flex flex-wrap gap-2">
+              <ProjectEstimatePlanSwiftImport
+                projectId={projectId}
+                estimateId={estimate.id}
+                costCodes={workspace.costCodes}
+                existingLineCount={workspace.lines.length}
               />
-              Import source CSI
-            </Button>
+              {estimate.sourceWorkbookUrl && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={importSourceCsi}
+                  disabled={isPending}
+                >
+                  <IconRefresh
+                    className={isPending ? "size-4 animate-spin" : "size-4"}
+                  />
+                  Import source CSI
+                </Button>
+              )}
+            </div>
           )}
         </div>
         <p className="mb-4 text-xs text-muted-foreground">
