@@ -1,10 +1,10 @@
 "use server"
 
-import { and, asc, desc, eq, inArray, ne } from "drizzle-orm"
+import { and, asc, desc, eq, like, ne } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
 import { getDb } from "@/db"
-import { projects, sageCostCodes } from "@/db/schema"
+import { projectBudgetLines, projects, sageCostCodes } from "@/db/schema"
 import {
   estimateTermsTemplates,
   projectEstimateBasisDocuments,
@@ -30,6 +30,10 @@ import {
   parseProjectTotalsRows,
   spreadsheetIdFromUrl,
 } from "@/lib/financials/project-totals-import"
+import {
+  projectEstimateCostCodeCatalog,
+  type ProjectEstimateCostCodeCatalogItem,
+} from "@/lib/estimates/project-cost-code-catalog"
 import { SheetsClient } from "@/lib/google/client/sheets-client"
 import {
   getGoogleConfig,
@@ -426,6 +430,44 @@ async function refreshEstimateTotals(
     .run()
 }
 
+async function loadProjectEstimateCostCodes(
+  db: CompassDb
+): Promise<readonly ProjectEstimateCostCodeCatalogItem[]> {
+  const [sageRows, namedSageRows] = await Promise.all([
+    db
+      .select()
+      .from(sageCostCodes)
+      .where(eq(sageCostCodes.active, true))
+      .orderBy(
+        asc(sageCostCodes.divisionCode),
+        asc(sageCostCodes.displayLabel)
+      ),
+    db
+      .select({
+        sourceSystem: projectBudgetLines.sourceSystem,
+        costCode: projectBudgetLines.costCode,
+        description: projectBudgetLines.description,
+        divisionName: projectBudgetLines.csiDivisionName,
+      })
+      .from(projectBudgetLines)
+      .where(
+        and(
+          eq(projectBudgetLines.sourceSystem, "sage_read_snapshot"),
+          like(projectBudgetLines.description, "01 %")
+        )
+      )
+      .groupBy(
+        projectBudgetLines.sourceSystem,
+        projectBudgetLines.costCode,
+        projectBudgetLines.description,
+        projectBudgetLines.csiDivisionName
+      )
+      .orderBy(asc(projectBudgetLines.description)),
+  ])
+
+  return projectEstimateCostCodeCatalog(sageRows, namedSageRows)
+}
+
 export async function getProjectEstimateWorkspace(
   projectId: string,
   estimateId?: string
@@ -442,7 +484,7 @@ export async function getProjectEstimateWorkspace(
     )
   const estimates = estimateRows.map(estimateSummary)
   const selected = activeEstimate(estimates, estimateId)
-  const [lineRows, basisRows, costCodeRows, taxRows, templateRows] =
+  const [lineRows, basisRows, estimateCostCodes, taxRows, templateRows] =
     await Promise.all([
       selected
         ? access.db
@@ -461,14 +503,7 @@ export async function getProjectEstimateWorkspace(
             .where(eq(projectEstimateBasisDocuments.estimateId, selected.id))
             .orderBy(asc(projectEstimateBasisDocuments.sortOrder))
         : Promise.resolve([]),
-      access.db
-        .select()
-        .from(sageCostCodes)
-        .where(eq(sageCostCodes.active, true))
-        .orderBy(
-          asc(sageCostCodes.divisionCode),
-          asc(sageCostCodes.displayLabel)
-        ),
+      loadProjectEstimateCostCodes(access.db),
       access.db
         .select()
         .from(sageTaxEntities)
@@ -509,7 +544,7 @@ export async function getProjectEstimateWorkspace(
       sortOrder: row.sortOrder,
     })),
     costCodes: [
-      ...costCodeRows.map((row) => ({
+      ...estimateCostCodes.map((row) => ({
         value: row.code,
         label: row.displayLabel,
         description: row.description,
@@ -684,18 +719,8 @@ export async function importProjectEstimateFromGoogleSheet(
     const sourceCostCodes = parsed.lines
       .filter((line) => line.divisionCode !== "99")
       .map((line) => line.costCode)
-    const activeCostCodeRows = sourceCostCodes.length > 0
-      ? await access.db
-          .select({ code: sageCostCodes.code })
-          .from(sageCostCodes)
-          .where(
-            and(
-              eq(sageCostCodes.active, true),
-              inArray(sageCostCodes.code, sourceCostCodes)
-            )
-          )
-      : []
-    const activeCostCodes = new Set(activeCostCodeRows.map((row) => row.code))
+    const costCodeCatalog = await loadProjectEstimateCostCodes(access.db)
+    const activeCostCodes = new Set(costCodeCatalog.map((row) => row.code))
     const missingCostCodes = sourceCostCodes.filter(
       (code) => !activeCostCodes.has(code)
     )
@@ -841,11 +866,10 @@ export async function importPlanSwiftEstimateLines(
       contractAdjustments.set(item.value, item)
     }
     const sourceCostCodes = [...new Set(normalizedLines.map((line) => line.costCode))]
-    const costRows = await access.db
-      .select()
-      .from(sageCostCodes)
-      .where(eq(sageCostCodes.active, true))
-    const costCodeMap = new Map(costRows.map((row) => [row.code, row]))
+    const costRows = await loadProjectEstimateCostCodes(access.db)
+    const costCodeMap = new Map(
+      costRows.map((row) => [row.code, row])
+    )
     const unknownCostCodes = sourceCostCodes.filter(
       (costCode) =>
         !costCodeMap.has(costCode) && !contractAdjustments.has(costCode)
@@ -853,7 +877,7 @@ export async function importPlanSwiftEstimateLines(
     if (unknownCostCodes.length > 0) {
       const examples = unknownCostCodes.slice(0, 5).join(", ")
       throw new Error(
-        `Map every row to an active cost code before importing. Not found: ${examples}.`
+        `Map every row to an active Sage cost code before importing. Not found: ${examples}.`
       )
     }
 
@@ -963,17 +987,8 @@ export async function saveProjectEstimateLine(
     )
     const costRows = contractAdjustment
       ? []
-      : await access.db
-          .select()
-          .from(sageCostCodes)
-          .where(
-            and(
-              eq(sageCostCodes.code, costCode),
-              eq(sageCostCodes.active, true)
-            )
-          )
-          .limit(1)
-    const cost = costRows[0]
+      : await loadProjectEstimateCostCodes(access.db)
+    const cost = costRows.find((row) => row.code === costCode)
     if (!cost && !contractAdjustment) {
       throw new Error("Choose an active Sage cost code.")
     }
@@ -1169,18 +1184,8 @@ export async function prepareProjectEstimateForFoxit(
           .map((line) => line.costCode)
       ),
     ]
-    const activeCostCodeRows = sourceCostCodes.length > 0
-      ? await access.db
-          .select({ code: sageCostCodes.code })
-          .from(sageCostCodes)
-          .where(
-            and(
-              eq(sageCostCodes.active, true),
-              inArray(sageCostCodes.code, sourceCostCodes)
-            )
-          )
-      : []
-    const activeCostCodes = new Set(activeCostCodeRows.map((row) => row.code))
+    const costCodeCatalog = await loadProjectEstimateCostCodes(access.db)
+    const activeCostCodes = new Set(costCodeCatalog.map((row) => row.code))
     const missingCostCodes = sourceCostCodes.filter(
       (code) => !activeCostCodes.has(code)
     )
