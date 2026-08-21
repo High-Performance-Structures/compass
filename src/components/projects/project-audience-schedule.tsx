@@ -9,6 +9,7 @@ import {
   IconChevronRight,
   IconList,
   IconPencil,
+  IconPrinter,
   IconTimeline,
   IconX,
 } from "@tabler/icons-react"
@@ -32,7 +33,12 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
+import {
+  printScheduleDocument,
+  SchedulePrintDocument,
+} from "@/components/schedule/schedule-print-document"
 import { useScheduleDisplayPalette } from "@/hooks/use-schedule-display-palette"
+import { projectBrandFor } from "@/lib/project-branding"
 import { getScheduleItemDisplayColor } from "@/lib/schedule/appearance"
 import {
   centeredTimelineScrollLeft,
@@ -790,15 +796,22 @@ function ProjectAudienceGantt({
 }
 
 export function ProjectAudienceSchedule({
+  audienceLabel,
   items,
   projectId,
+  projectName,
+  projectNumber,
   presentation = "items",
 }: {
+  readonly audienceLabel: string
   readonly items: readonly AudienceScheduleItem[]
   readonly projectId: string
+  readonly projectName: string
+  readonly projectNumber: string | null
   readonly presentation?: OwnerScheduleView
 }): React.ReactElement {
   const displayColorPalette = useScheduleDisplayPalette(projectId)
+  const printBrand = projectBrandFor({ projectId, projectNumber })
   const [view, setView] = React.useState<ScheduleView>("list")
   const [visibleMonth, setVisibleMonth] = React.useState(() =>
     monthStart(new Date())
@@ -816,7 +829,8 @@ export function ProjectAudienceSchedule({
   const today = dateKey(new Date())
 
   return (
-    <section id="schedule" className="scroll-mt-24 border bg-background">
+    <>
+      <section id="schedule" className="scroll-mt-24 border bg-background">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b px-4 py-3 sm:px-5">
         <div>
           <h2 className="text-sm font-semibold">Project Schedule</h2>
@@ -825,34 +839,45 @@ export function ProjectAudienceSchedule({
             {items.length === 1 ? "" : "s"} · Read only
           </p>
         </div>
-        <div className="flex items-center border">
+        <div className="flex flex-wrap items-center gap-2">
           <Button
-            variant={view === "list" ? "secondary" : "ghost"}
+            type="button"
+            variant="outline"
             size="sm"
-            className="rounded-none"
-            onClick={() => setView("list")}
+            onClick={() => void printScheduleDocument()}
           >
-            <IconList className="size-4" />
-            List
+            <IconPrinter className="size-4" />
+            Print
           </Button>
-          <Button
-            variant={view === "calendar" ? "secondary" : "ghost"}
-            size="sm"
-            className="rounded-none border-l"
-            onClick={() => setView("calendar")}
-          >
-            <IconCalendar className="size-4" />
-            Calendar
-          </Button>
-          <Button
-            variant={view === "gantt" ? "secondary" : "ghost"}
-            size="sm"
-            className="rounded-none border-l"
-            onClick={() => setView("gantt")}
-          >
-            <IconTimeline className="size-4" />
-            Gantt
-          </Button>
+          <div className="flex items-center border">
+            <Button
+              variant={view === "list" ? "secondary" : "ghost"}
+              size="sm"
+              className="rounded-none"
+              onClick={() => setView("list")}
+            >
+              <IconList className="size-4" />
+              List
+            </Button>
+            <Button
+              variant={view === "calendar" ? "secondary" : "ghost"}
+              size="sm"
+              className="rounded-none border-l"
+              onClick={() => setView("calendar")}
+            >
+              <IconCalendar className="size-4" />
+              Calendar
+            </Button>
+            <Button
+              variant={view === "gantt" ? "secondary" : "ghost"}
+              size="sm"
+              className="rounded-none border-l"
+              onClick={() => setView("gantt")}
+            >
+              <IconTimeline className="size-4" />
+              Gantt
+            </Button>
+          </div>
         </div>
       </div>
 
@@ -1014,6 +1039,15 @@ export function ProjectAudienceSchedule({
       ) : (
         <ProjectAudienceGantt items={sortedItems} projectId={projectId} />
       )}
-    </section>
+      </section>
+      <SchedulePrintDocument
+        audienceLabel={audienceLabel}
+        brand={printBrand}
+        items={sortedItems}
+        paletteScopeId={projectId}
+        projectName={projectName}
+        projectNumber={projectNumber}
+      />
+    </>
   )
 }
