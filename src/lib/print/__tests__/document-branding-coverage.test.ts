@@ -9,7 +9,7 @@ const REACT_PRINT_DOCUMENTS = [
   "src/app/print/projects/[id]/estimate/page.tsx",
   "src/components/projects/daily-log-print-document.tsx",
   "src/components/projects/owner-update-document.tsx",
-  "src/components/schedule/schedule-view.tsx",
+  "src/components/schedule/schedule-print-document.tsx",
 ] as const
 
 const GENERATED_PRINT_DOCUMENTS = [
