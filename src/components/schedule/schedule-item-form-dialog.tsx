@@ -54,7 +54,12 @@ import {
   saveSchedulePhaseOption,
   type ReusableSchedulePhaseOption,
 } from "@/app/actions/schedule-phases"
-import { sendScheduleTaskReminder } from "@/app/actions/schedule-confirmations"
+import {
+  getScheduleTaskChangeProposal,
+  rejectScheduleTaskChangeProposal,
+  sendScheduleTaskReminder,
+  type ScheduleTaskChangeProposal,
+} from "@/app/actions/schedule-confirmations"
 import { calculateEndDate } from "@/lib/schedule/business-days"
 import type {
   ScheduleTaskData,
@@ -178,6 +183,11 @@ export function ScheduleItemFormDialog({
   const [linkedTodosLoading, setLinkedTodosLoading] = useState(false)
   const [linkedTodosError, setLinkedTodosError] = useState<string | null>(null)
   const [linkedTodosRefreshKey, setLinkedTodosRefreshKey] = useState(0)
+  const [changeProposal, setChangeProposal] =
+    useState<ScheduleTaskChangeProposal | null>(null)
+  const [proposalLoading, setProposalLoading] = useState(false)
+  const [proposalActionPending, setProposalActionPending] = useState(false)
+  const [acceptProposalOnSave, setAcceptProposalOnSave] = useState(false)
 
   const existingPredecessors = useMemo(() => {
     if (!editingTask) return []
@@ -308,6 +318,7 @@ export function ScheduleItemFormDialog({
     setCustomPhaseName("")
     setSaveCustomPhase(true)
     setPendingPredecessors([])
+    setAcceptProposalOnSave(false)
   }, [assigneeOptions, editingTask, form, open])
 
   useEffect(() => {
@@ -363,6 +374,34 @@ export function ScheduleItemFormDialog({
       cancelled = true
     }
   }, [editingTask, linkedTodosRefreshKey, open, projectId])
+
+  useEffect(() => {
+    let cancelled = false
+    if (!open || !editingTask) {
+      setChangeProposal(null)
+      setProposalLoading(false)
+      return () => {
+        cancelled = true
+      }
+    }
+
+    setProposalLoading(true)
+    void getScheduleTaskChangeProposal(editingTask.id)
+      .then((proposal) => {
+        if (!cancelled) setChangeProposal(proposal)
+      })
+      .catch((error: unknown) => {
+        console.error("Unable to load schedule change proposal", error)
+        if (!cancelled) toast.error("The subcontractor proposal could not be loaded.")
+      })
+      .finally(() => {
+        if (!cancelled) setProposalLoading(false)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [editingTask, open])
 
   const watchedStart = form.watch("startDate")
   const watchedWorkdays = form.watch("workdays")
@@ -459,7 +498,8 @@ export function ScheduleItemFormDialog({
       const result = await updateTask(editingTask.id, {
         ...taskValues,
         assignedTo: taskValues.assignedTo || null,
-        assignedOptionId
+        assignedOptionId,
+        acceptChangeProposal: acceptProposalOnSave
       })
       if (!result.success) {
         toast.error(result.error)
@@ -623,6 +663,35 @@ export function ScheduleItemFormDialog({
       return
     }
     toast.success("Confirmation reminder sent.")
+    router.refresh()
+  }
+
+  function useProposedDates(): void {
+    if (!changeProposal) return
+    form.setValue("startDate", changeProposal.startDate, {
+      shouldDirty: true,
+      shouldValidate: true,
+    })
+    form.setValue("workdays", changeProposal.workdays, {
+      shouldDirty: true,
+      shouldValidate: true,
+    })
+    setAcceptProposalOnSave(true)
+    toast.info("Proposed dates loaded. Review them, then save the schedule item.")
+  }
+
+  async function rejectProposedDates(): Promise<void> {
+    if (!editingTask || !changeProposal) return
+    setProposalActionPending(true)
+    const result = await rejectScheduleTaskChangeProposal(editingTask.id)
+    setProposalActionPending(false)
+    if (!result.success) {
+      toast.error(result.error)
+      return
+    }
+    setChangeProposal(null)
+    setAcceptProposalOnSave(false)
+    toast.success("The proposed dates were declined. The subcontractor can respond again.")
     router.refresh()
   }
 
@@ -1221,6 +1290,56 @@ export function ScheduleItemFormDialog({
                         )}
                       />
                     </div>
+                    {proposalLoading && (
+                      <p className="mt-3 border bg-muted/20 px-3 py-3 text-xs text-muted-foreground">
+                        Loading subcontractor proposal…
+                      </p>
+                    )}
+                    {changeProposal && (
+                      <div className="mt-3 space-y-3 border border-amber-400/50 bg-amber-500/5 px-3 py-3">
+                        <div>
+                          <p className="text-xs font-medium">
+                            Subcontractor proposed new dates
+                          </p>
+                          <p className="mt-1 text-xs text-muted-foreground">
+                            {format(parseISO(changeProposal.startDate), "MMM d, yyyy")} ·{" "}
+                            {changeProposal.workdays} workday
+                            {changeProposal.workdays === 1 ? "" : "s"}
+                          </p>
+                          {changeProposal.note && (
+                            <p className="mt-2 whitespace-pre-wrap text-xs">
+                              {changeProposal.note}
+                            </p>
+                          )}
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          <Button
+                            type="button"
+                            size="sm"
+                            disabled={proposalActionPending}
+                            onClick={useProposedDates}
+                          >
+                            {acceptProposalOnSave ? "Proposal loaded" : "Use proposed dates"}
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            disabled={proposalActionPending}
+                            onClick={rejectProposedDates}
+                          >
+                            Decline proposal
+                          </Button>
+                        </div>
+                        {acceptProposalOnSave && (
+                          <p className="text-[11px] text-muted-foreground">
+                            Saving applies these dates through the normal dependency and
+                            related to-do updates. Publish afterward to make them visible
+                            externally.
+                          </p>
+                        )}
+                      </div>
+                    )}
                     {isEditing && editingTask.confirmationRequired && (
                       <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs">
                         <span className="text-muted-foreground">

@@ -18,6 +18,7 @@ const ITEMS: readonly OwnerScheduleSourceItem[] = [
     percentComplete: 100,
     isMilestone: false,
     workdays: 5,
+    displayColor: null,
   },
   {
     id: "task-2",
@@ -30,6 +31,7 @@ const ITEMS: readonly OwnerScheduleSourceItem[] = [
     percentComplete: 50,
     isMilestone: false,
     workdays: 10,
+    displayColor: null,
   },
   {
     id: "task-3",
@@ -42,6 +44,7 @@ const ITEMS: readonly OwnerScheduleSourceItem[] = [
     percentComplete: 0,
     isMilestone: false,
     workdays: 5,
+    displayColor: null,
   },
 ]
 
@@ -66,6 +69,8 @@ describe("owner schedule visibility", () => {
         assignedTo: null,
         percentComplete: 67,
         isMilestone: false,
+        workdays: 15,
+        displayColor: null,
       },
       {
         id: "owner-phase-custom-phase",
@@ -77,6 +82,8 @@ describe("owner schedule visibility", () => {
         assignedTo: null,
         percentComplete: 0,
         isMilestone: false,
+        workdays: 5,
+        displayColor: null,
       },
     ])
   })

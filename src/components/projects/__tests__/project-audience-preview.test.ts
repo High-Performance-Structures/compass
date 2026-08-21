@@ -15,14 +15,20 @@ function scheduleItem(
     title: id,
     startDate,
     endDate,
+    workdays: 1,
     status,
     phase: "Construction",
+    displayColor: "blue",
     assignedTo: null,
     percentComplete,
     isMilestone: false,
     confirmationRequired: false,
     confirmationStatus: "not_requested",
     viewerCanConfirm: false,
+    proposedStartDate: null,
+    proposedWorkdays: null,
+    proposalNote: null,
+    proposalSubmittedAt: null,
   }
 }
 
