@@ -824,11 +824,12 @@ test.describe("usable Compass areas", () => {
     try {
       const ownerResponse = await ownerPage.goto(ownerPath)
       await expectHealthyNavigation(ownerPage, ownerResponse, ownerPath)
+      const ownerSchedule = ownerPage.locator("#schedule")
       await expect(
-        ownerPage.getByText("Published schedule commitment", { exact: true })
+        ownerSchedule.getByText("Published schedule commitment", { exact: true })
       ).toBeVisible()
       await expect(
-        ownerPage.getByText("Owner-visible published milestone", {
+        ownerSchedule.getByText("Owner-visible published milestone", {
           exact: true,
         })
       ).toBeVisible()
@@ -857,11 +858,14 @@ test.describe("usable Compass areas", () => {
     try {
       const partnerResponse = await partnerPage.goto(partnerPath)
       await expectHealthyNavigation(partnerPage, partnerResponse, partnerPath)
+      const partnerSchedule = partnerPage.locator("#schedule")
       await expect(
-        partnerPage.getByText("Published schedule commitment", { exact: true })
+        partnerSchedule.getByText("Published schedule commitment", {
+          exact: true,
+        })
       ).toBeVisible()
       await expect(
-        partnerPage.getByText("Partner-visible published delivery", {
+        partnerSchedule.getByText("Partner-visible published delivery", {
           exact: true,
         })
       ).toBeVisible()
