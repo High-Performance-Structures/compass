@@ -42,7 +42,12 @@ export const estimateTermsTemplates = sqliteTable(
       .notNull()
       .references(() => organizations.id, { onDelete: "cascade" }),
     name: text("name").notNull(),
+    departmentCode: text("department_code"),
+    templateType: text("template_type").notNull().default("terms"),
     body: text("body").notNull(),
+    sourceDocumentId: text("source_document_id"),
+    sourceUrl: text("source_url"),
+    sortOrder: integer("sort_order").notNull().default(0),
     active: integer("active", { mode: "boolean" }).notNull().default(true),
     createdBy: text("created_by").references(() => users.id, {
       onDelete: "set null",
@@ -51,12 +56,16 @@ export const estimateTermsTemplates = sqliteTable(
     updatedAt: text("updated_at").notNull(),
   },
   (table) => [
-    uniqueIndex("estimate_terms_templates_org_name_uq").on(
+    uniqueIndex("estimate_terms_templates_org_department_type_name_uq").on(
       table.organizationId,
+      table.departmentCode,
+      table.templateType,
       table.name
     ),
     index("estimate_terms_templates_org_active_idx").on(
       table.organizationId,
+      table.departmentCode,
+      table.templateType,
       table.active
     ),
   ]
@@ -101,6 +110,16 @@ export const projectEstimates = sqliteTable(
       { onDelete: "set null" }
     ),
     contractTerms: text("contract_terms"),
+    introductionTemplateId: text("introduction_template_id").references(
+      () => estimateTermsTemplates.id,
+      { onDelete: "set null" }
+    ),
+    introductionText: text("introduction_text"),
+    closingTemplateId: text("closing_template_id").references(
+      () => estimateTermsTemplates.id,
+      { onDelete: "set null" }
+    ),
+    closingText: text("closing_text"),
     directCostCents: integer("direct_cost_cents").notNull().default(0),
     markupCents: integer("markup_cents").notNull().default(0),
     taxCents: integer("tax_cents").notNull().default(0),
@@ -134,6 +153,65 @@ export const projectEstimates = sqliteTable(
       table.projectId,
       table.status,
       table.versionNumber
+    ),
+  ]
+)
+
+export const projectEstimatePhaseDescriptions = sqliteTable(
+  "project_estimate_phase_descriptions",
+  {
+    id: text("id").primaryKey(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    estimateId: text("estimate_id")
+      .notNull()
+      .references(() => projectEstimates.id, { onDelete: "cascade" }),
+    divisionCode: text("division_code").notNull(),
+    description: text("description").notNull(),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("project_estimate_phase_description_uq").on(
+      table.estimateId,
+      table.divisionCode
+    ),
+    index("project_estimate_phase_descriptions_project_idx").on(
+      table.projectId,
+      table.estimateId
+    ),
+  ]
+)
+
+export const projectEstimateAcknowledgements = sqliteTable(
+  "project_estimate_acknowledgements",
+  {
+    id: text("id").primaryKey(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    estimateId: text("estimate_id")
+      .notNull()
+      .references(() => projectEstimates.id, { onDelete: "cascade" }),
+    templateId: text("template_id").notNull(),
+    title: text("title").notNull(),
+    body: text("body").notNull(),
+    sourceDocumentId: text("source_document_id"),
+    sourceUrl: text("source_url"),
+    sortOrder: integer("sort_order").notNull().default(0),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => [
+    uniqueIndex("project_estimate_acknowledgements_template_uq").on(
+      table.estimateId,
+      table.templateId
+    ),
+    index("project_estimate_acknowledgements_project_idx").on(
+      table.projectId,
+      table.estimateId,
+      table.sortOrder
     ),
   ]
 )
@@ -352,6 +430,10 @@ export type ProjectEstimate = typeof projectEstimates.$inferSelect
 export type ProjectEstimateLine = typeof projectEstimateLines.$inferSelect
 export type ProjectEstimateBasisDocument =
   typeof projectEstimateBasisDocuments.$inferSelect
+export type ProjectEstimatePhaseDescription =
+  typeof projectEstimatePhaseDescriptions.$inferSelect
+export type ProjectEstimateAcknowledgement =
+  typeof projectEstimateAcknowledgements.$inferSelect
 export type ProjectContractBudgetRevision =
   typeof projectContractBudgetRevisions.$inferSelect
 export type ProjectContractBudgetLine =

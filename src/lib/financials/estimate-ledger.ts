@@ -271,7 +271,10 @@ export async function estimateSourceHash(input: {
   readonly estimateId: string
   readonly versionNumber: number
   readonly title: string
+  readonly reportMode: string
+  readonly introductionText: string | null
   readonly contractTerms: string | null
+  readonly closingText: string | null
   readonly lines: readonly {
     readonly id: string
     readonly divisionCode: string
@@ -300,6 +303,16 @@ export async function estimateSourceHash(input: {
     readonly notes: string | null
     readonly sortOrder: number
   }[]
+  readonly phaseDescriptions: readonly {
+    readonly divisionCode: string
+    readonly description: string
+  }[]
+  readonly acknowledgements: readonly {
+    readonly templateId: string
+    readonly title: string
+    readonly body: string
+    readonly sortOrder: number
+  }[]
 }): Promise<string> {
   const lines = [...input.lines]
     .sort((left, right) => {
@@ -310,14 +323,25 @@ export async function estimateSourceHash(input: {
   const basisDocuments = [...input.basisDocuments].sort(
     (left, right) => left.sortOrder - right.sortOrder
   )
+  const phaseDescriptions = [...input.phaseDescriptions].sort((left, right) =>
+    left.divisionCode.localeCompare(right.divisionCode)
+  )
+  const acknowledgements = [...input.acknowledgements].sort(
+    (left, right) => left.sortOrder - right.sortOrder
+  )
   const bytes = new TextEncoder().encode(
     JSON.stringify({
       estimateId: input.estimateId,
       versionNumber: input.versionNumber,
       title: input.title,
+      reportMode: input.reportMode,
+      introductionText: input.introductionText,
       contractTerms: input.contractTerms,
+      closingText: input.closingText,
       lines,
       basisDocuments,
+      phaseDescriptions,
+      acknowledgements,
     })
   )
   const digest = await crypto.subtle.digest("SHA-256", bytes)
