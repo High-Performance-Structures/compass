@@ -4,6 +4,7 @@ const mocks = vi.hoisted(() => ({
   applyFeedbackLifecycleUpdate: vi.fn(),
   getCloudflareContext: vi.fn(),
   getDb: vi.fn(),
+  getJarvisBridgeSecrets: vi.fn(),
   getJarvisEnvValue: vi.fn(),
   readBoundedBody: vi.fn(),
   verifyJarvisRequest: vi.fn(),
@@ -12,6 +13,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock("@/lib/db", () => ({ getCloudflareContext: mocks.getCloudflareContext }))
 vi.mock("@/db", () => ({ getDb: mocks.getDb }))
 vi.mock("@/lib/jarvis/auth", () => ({
+  getJarvisBridgeSecrets: mocks.getJarvisBridgeSecrets,
   getJarvisEnvValue: mocks.getJarvisEnvValue,
   readBoundedBody: mocks.readBoundedBody,
   verifyJarvisRequest: mocks.verifyJarvisRequest,
@@ -55,6 +57,7 @@ describe("POST /api/integrations/jarvis/feedback/:id/status", () => {
       if (key === "JARVIS_BRIDGE_ORGANIZATION_ID") return "org-1"
       return null
     })
+    mocks.getJarvisBridgeSecrets.mockReturnValue(["secret"])
     mocks.readBoundedBody.mockImplementation(async (request: Request) => ({
       success: true,
       rawBody: await request.text(),

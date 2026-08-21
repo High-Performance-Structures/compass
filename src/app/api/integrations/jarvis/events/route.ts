@@ -7,6 +7,7 @@ import {
 } from "@/db/schema-jarvis"
 import { getCloudflareContext } from "@/lib/db"
 import {
+  getJarvisBridgeSecrets,
   getJarvisEnvValue,
   readBoundedBody,
   verifyJarvisRequest,
@@ -67,8 +68,8 @@ function unauthorized(error: string): Response {
 
 export async function GET(request: Request): Promise<Response> {
   const { env } = await getCloudflareContext()
-  const secret = getJarvisEnvValue(env, "JARVIS_BRIDGE_SECRET")
-  if (!secret) {
+  const secrets = getJarvisBridgeSecrets(env)
+  if (!secrets) {
     return Response.json(
       { error: "Jarvis bridge is not configured" },
       { status: 503 },
@@ -77,7 +78,7 @@ export async function GET(request: Request): Promise<Response> {
 
   const verification = await verifyJarvisRequest(
     request,
-    secret,
+    secrets,
     "",
   )
   if (!verification.success) {
@@ -187,8 +188,8 @@ export async function POST(request: Request): Promise<Response> {
   }
 
   const { env } = await getCloudflareContext()
-  const secret = getJarvisEnvValue(env, "JARVIS_BRIDGE_SECRET")
-  if (!secret) {
+  const secrets = getJarvisBridgeSecrets(env)
+  if (!secrets) {
     return Response.json(
       { error: "Jarvis bridge is not configured" },
       { status: 503 },
@@ -197,7 +198,7 @@ export async function POST(request: Request): Promise<Response> {
 
   const verification = await verifyJarvisRequest(
     request,
-    secret,
+    secrets,
     bodyResult.rawBody,
   )
   if (!verification.success) {

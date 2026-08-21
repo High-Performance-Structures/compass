@@ -4,7 +4,7 @@ import { getDb } from "@/db"
 import { feedbackDeskItems, jarvisBridgeEvents } from "@/db/schema-jarvis"
 import { getCloudflareContext } from "@/lib/db"
 import {
-  getJarvisEnvValue,
+  getJarvisBridgeSecrets,
   readBoundedBody,
   verifyJarvisRequest,
 } from "@/lib/jarvis/auth"
@@ -33,8 +33,8 @@ export async function POST(
   }
 
   const { env } = await getCloudflareContext()
-  const secret = getJarvisEnvValue(env, "JARVIS_BRIDGE_SECRET")
-  if (!secret) {
+  const secrets = getJarvisBridgeSecrets(env)
+  if (!secrets) {
     return Response.json(
       { error: "Jarvis bridge is not configured" },
       { status: 503 },
@@ -43,7 +43,7 @@ export async function POST(
 
   const verification = await verifyJarvisRequest(
     request,
-    secret,
+    secrets,
     bodyResult.rawBody,
   )
   if (!verification.success) {

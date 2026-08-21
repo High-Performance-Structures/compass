@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 const mocks = vi.hoisted(() => ({
   getCloudflareContext: vi.fn(),
   getDb: vi.fn(),
+  getJarvisBridgeSecrets: vi.fn(),
   getJarvisEnvValue: vi.fn(),
   readBoundedBody: vi.fn(),
   verifyJarvisRequest: vi.fn(),
@@ -11,6 +12,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock("@/lib/db", () => ({ getCloudflareContext: mocks.getCloudflareContext }))
 vi.mock("@/db", () => ({ getDb: mocks.getDb }))
 vi.mock("@/lib/jarvis/auth", () => ({
+  getJarvisBridgeSecrets: mocks.getJarvisBridgeSecrets,
   getJarvisEnvValue: mocks.getJarvisEnvValue,
   readBoundedBody: mocks.readBoundedBody,
   verifyJarvisRequest: mocks.verifyJarvisRequest,
@@ -82,6 +84,7 @@ describe("POST /api/integrations/jarvis/events/:id/ack", () => {
     mocks.getJarvisEnvValue.mockImplementation((_env: unknown, key: string) =>
       key === "JARVIS_BRIDGE_SECRET" ? "secret" : null,
     )
+    mocks.getJarvisBridgeSecrets.mockReturnValue(["secret"])
     mocks.readBoundedBody.mockImplementation(async (request: Request) => ({
       success: true,
       rawBody: await request.text(),

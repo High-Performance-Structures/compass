@@ -170,6 +170,43 @@ Authentication
 Every adapter request is signed with HMAC-SHA256. Configure the same
 `JARVIS_BRIDGE_SECRET` as a secret in Compass and the private adapter.
 
+Temporary dual-secret rollover
+---
+
+Use `JARVIS_BRIDGE_SECONDARY_SECRET` only for a time-bounded, approved
+operator rollover. It is an additional Cloudflare secret binding, not a
+replacement for `JARVIS_BRIDGE_SECRET`; the existing primary-signed poller
+and notifier continue to work unchanged. The shared verifier checks the
+primary and secondary candidates with constant-time comparisons, and only the
+existing Jarvis integration and signed maintenance endpoints use that verifier.
+
+1. Generate a new random value independently of the primary, for example with
+   `openssl rand -hex 32`. Do not print it, place it in a repository or local
+   environment file, or include it in logs, tickets, screenshots, or command
+   history.
+2. Deploy the verifier change while the secondary binding is absent. This
+   preserves the existing primary-only behavior during the code rollout.
+3. Provision the generated value as the production
+   `JARVIS_BRIDGE_SECONDARY_SECRET` secret and, separately, in the approved
+   operator credential store. The operator process may use the secondary value
+   as its local `JARVIS_BRIDGE_SECRET`; do not replace the primary value used
+   by the existing poller or notifier.
+4. Exercise only the required existing Jarvis endpoint(s), using the normal
+   timestamp, raw-body, path, idempotency, and authorization contracts. Verify
+   the primary path still succeeds and the secondary path succeeds before any
+   operational use. Do not add a new endpoint or broaden the route scope.
+5. When the operator task is complete, stop using the secondary credential,
+   remove `JARVIS_BRIDGE_SECONDARY_SECRET` from the production Worker, and
+   revoke/delete the operator-side copy. Confirm that a request signed only
+   with the retired value receives HTTP 401, while the primary poller and
+   notifier still succeed.
+
+If the temporary credential may have been exposed, treat it as compromised:
+remove it immediately and generate a new primary/secondary pair according to
+the approved incident procedure. Do not rely on application logs to identify
+which secret signed a request; the bridge deliberately does not log secret
+material or secret identifiers.
+
 Set `JARVIS_AGENT_BRIDGE_ENABLED=true` in Compass only after the private
 poller and loopback-only Hermes API are healthy. Setting it to `false`
 immediately restores the direct provider route.
