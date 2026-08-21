@@ -141,7 +141,10 @@ describe("estimate ledger", () => {
       estimateId: "estimate-1",
       versionNumber: 1,
       title: "CA22 Construction Estimate",
+      reportMode: "ca22",
+      introductionText: "Thank you for the opportunity to estimate the work.",
       contractTerms: "Base terms",
+      closingText: "Please contact us with any questions.",
       lines: [
         {
           id: "line-1",
@@ -174,6 +177,10 @@ describe("estimate ledger", () => {
           sortOrder: 1,
         },
       ],
+      phaseDescriptions: [
+        { divisionCode: "03", description: "Concrete structure" },
+      ],
+      acknowledgements: [],
     }
     const original = await estimateSourceHash(input)
     const revised = await estimateSourceHash({
@@ -186,8 +193,15 @@ describe("estimate ledger", () => {
         { ...input.basisDocuments[0], documentDate: "2026-07-31" },
       ],
     })
+    const differentPresentation = await estimateSourceHash({
+      ...input,
+      phaseDescriptions: [
+        { divisionCode: "03", description: "Concrete foundations" },
+      ],
+    })
 
     expect(revised).not.toBe(original)
     expect(differentBasis).not.toBe(original)
+    expect(differentPresentation).not.toBe(original)
   })
 })

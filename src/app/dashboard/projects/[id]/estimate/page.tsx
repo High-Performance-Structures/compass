@@ -33,7 +33,7 @@ export default async function ProjectEstimatePage({
             <h1 className="text-2xl font-semibold tracking-tight">Estimate</h1>
           </div>
           <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
-            Division-first CA22 estimate, contract basis, approval, and budget handoff.
+            Department-specific client estimate, contract basis, approval, and budget handoff.
           </p>
         </div>
         <ProjectContextSwitcher currentProjectId={id} targetSection="estimate" placeholder="Switch estimate project..." className="w-full sm:w-[280px]" />

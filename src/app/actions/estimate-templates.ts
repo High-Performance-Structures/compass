@@ -20,10 +20,12 @@ import { recordActivityEvent } from "@/lib/activity-log"
 import { requireAuth } from "@/lib/auth"
 import { getCloudflareContext } from "@/lib/db"
 import { isDemoUser } from "@/lib/demo"
+import { estimateTitleForDepartment } from "@/lib/estimates/client-report"
 import { CONTRACT_ADJUSTMENT_COST_CODES } from "@/lib/financials/project-totals-import"
 import { requireOrg } from "@/lib/org-scope"
 import { can, requirePermission } from "@/lib/permissions"
 import { assertProjectAccess } from "@/lib/project-access"
+import { projectDepartment } from "@/lib/project-branding"
 import {
   buildEstimateTemplateApplication,
   type EstimateTemplateSourceLine,
@@ -985,6 +987,13 @@ export async function createProjectEstimateFromTemplate(input: {
     const now = new Date().toISOString()
     const estimateDate = now.slice(0, 10)
     const estimateVersion = (priorEstimate?.versionNumber ?? 0) + 1
+    const documentTitle = estimateTitleForDepartment({
+      department: projectDepartment({
+        projectId: project.id,
+        projectNumber: project.projectNumber,
+      }),
+      requestedTitle: defaults.documentTitle,
+    })
     const statements: D1PreparedStatement[] = [
       access.env.DB.prepare(
         `INSERT INTO project_template_applications (
@@ -1019,7 +1028,7 @@ export async function createProjectEstimateFromTemplate(input: {
         input.projectId,
         `${project.projectNumber ?? "PROJECT"}-00`,
         estimateVersion,
-        defaults.documentTitle,
+        documentTitle,
         estimateDate,
         `${template.name} v${version.versionNumber}`,
         version.id,

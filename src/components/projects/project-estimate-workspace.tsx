@@ -33,6 +33,7 @@ import {
 } from "@/app/actions/project-estimates"
 import { Badge } from "@/components/ui/badge"
 import { useDeveloperMode } from "@/components/developer-mode-provider"
+import { ProjectEstimateClientReportSettings } from "@/components/projects/project-estimate-client-report-settings"
 import { ProjectEstimatePlanSwiftImport } from "@/components/projects/project-estimate-planswift-import"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -217,6 +218,13 @@ export function ProjectEstimateWorkspacePanel({
         defaultTaxEntityId: formText(formData, "defaultTaxEntityId"),
         termsTemplateId: formText(formData, "termsTemplateId"),
         contractTerms: formText(formData, "contractTerms"),
+        introductionTemplateId: formText(
+          formData,
+          "introductionTemplateId"
+        ),
+        introductionText: formText(formData, "introductionText"),
+        closingTemplateId: formText(formData, "closingTemplateId"),
+        closingText: formText(formData, "closingText"),
       })
       finish(result.success ? "Estimate details saved." : result.error)
     })
@@ -327,7 +335,7 @@ export function ProjectEstimateWorkspacePanel({
       const result = await prepareProjectEstimateForFoxit(projectId, estimate.id)
       finish(
         result.success
-          ? "CA22 estimate locked and ready for Foxit signature handoff."
+          ? "Client estimate locked and ready for Foxit signature handoff."
           : result.error
       )
     })
@@ -481,7 +489,7 @@ export function ProjectEstimateWorkspacePanel({
               target="_blank"
             >
               <IconFileExport className="size-4" />
-              CA22 preview
+              Client report preview
             </Link>
           </Button>
         </div>
@@ -590,6 +598,65 @@ export function ProjectEstimateWorkspacePanel({
                 ))}
               </SelectContent>
             </Select>
+            {workspace.termsTemplates.length === 0 && (
+              <p className="text-xs text-muted-foreground">
+                No {workspace.department}-department terms templates are
+                available yet. Enter estimate-specific terms below.
+              </p>
+            )}
+          </div>
+          <div className="space-y-1.5 md:col-span-2">
+            <Label htmlFor="introductionTemplateId">
+              Introductory text template
+            </Label>
+            <Select
+              name="introductionTemplateId"
+              defaultValue={estimate.introductionTemplateId ?? undefined}
+              disabled={!editable || workspace.introductionTemplates.length === 0}
+            >
+              <SelectTrigger id="introductionTemplateId">
+                <SelectValue placeholder="Choose introductory copy" />
+              </SelectTrigger>
+              <SelectContent>
+                {workspace.introductionTemplates.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1.5 md:col-span-2">
+            <Label htmlFor="closingTemplateId">Closing text template</Label>
+            <Select
+              name="closingTemplateId"
+              defaultValue={estimate.closingTemplateId ?? undefined}
+              disabled={!editable || workspace.closingTemplates.length === 0}
+            >
+              <SelectTrigger id="closingTemplateId">
+                <SelectValue placeholder="Choose closing copy" />
+              </SelectTrigger>
+              <SelectContent>
+                {workspace.closingTemplates.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1.5 md:col-span-2 xl:col-span-4">
+            <Label htmlFor="introductionText">
+              Client report introduction
+            </Label>
+            <Textarea
+              id="introductionText"
+              name="introductionText"
+              rows={4}
+              defaultValue={estimate.introductionText ?? ""}
+              disabled={!editable}
+              placeholder="Optional editable text shown before the estimate detail."
+            />
           </div>
           <div className="space-y-1.5 md:col-span-2 xl:col-span-4">
             <Label htmlFor="contractTerms">Pertinent contract terms</Label>
@@ -602,6 +669,17 @@ export function ProjectEstimateWorkspacePanel({
               placeholder="Use a template or draft the estimate-specific terms here."
             />
           </div>
+          <div className="space-y-1.5 md:col-span-2 xl:col-span-4">
+            <Label htmlFor="closingText">Client report closing text</Label>
+            <Textarea
+              id="closingText"
+              name="closingText"
+              rows={4}
+              defaultValue={estimate.closingText ?? ""}
+              disabled={!editable}
+              placeholder="Optional editable text shown after the estimate detail."
+            />
+          </div>
         </div>
         {editable && (
           <div className="mt-4 flex justify-end">
@@ -609,6 +687,13 @@ export function ProjectEstimateWorkspacePanel({
           </div>
         )}
       </form>
+
+      <ProjectEstimateClientReportSettings
+        projectId={projectId}
+        workspace={workspace}
+        estimate={estimate}
+        editable={editable}
+      />
 
       <section className="clarity-panel-strong p-4">
         <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
@@ -868,7 +953,7 @@ export function ProjectEstimateWorkspacePanel({
             </p>
             {editable && (
               <Button className="mt-3" onClick={prepareFoxit} disabled={isPending || workspace.lines.length === 0}>
-                <IconSend className="size-4" />Prepare CA22 for Foxit
+                <IconSend className="size-4" />Prepare client estimate for Foxit
               </Button>
             )}
             {estimate.status === "signature_pending" && workspace.canEdit && (

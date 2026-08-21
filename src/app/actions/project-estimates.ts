@@ -7,8 +7,10 @@ import { getDb } from "@/db"
 import { projectBudgetLines, projects, sageCostCodes } from "@/db/schema"
 import {
   estimateTermsTemplates,
+  projectEstimateAcknowledgements,
   projectEstimateBasisDocuments,
   projectEstimateLines,
+  projectEstimatePhaseDescriptions,
   projectEstimates,
   sageTaxEntities,
 } from "@/db/schema-estimates"
@@ -31,6 +33,16 @@ import {
   spreadsheetIdFromUrl,
 } from "@/lib/financials/project-totals-import"
 import {
+  builtInEstimateTextTemplates,
+  defaultEstimateTitle,
+  estimateClientReportMode,
+  estimateTitleForDepartment,
+  isEstimateTextTemplateType,
+  type EstimateClientReportMode,
+  type EstimateTextTemplateOption,
+  type EstimateTextTemplateType,
+} from "@/lib/estimates/client-report"
+import {
   projectEstimateCostCodeCatalog,
   type ProjectEstimateCostCodeCatalogItem,
 } from "@/lib/estimates/project-cost-code-catalog"
@@ -42,6 +54,10 @@ import {
 } from "@/lib/google/config"
 import { requirePermission } from "@/lib/permissions"
 import { assertProjectAccess } from "@/lib/project-access"
+import {
+  projectDepartment,
+  type ProjectDepartment,
+} from "@/lib/project-branding"
 import { isInternalStaffRole } from "@/lib/user-roles"
 
 export type ProjectEstimateSummary = {
@@ -59,6 +75,10 @@ export type ProjectEstimateSummary = {
   readonly defaultTaxRateBasisPoints: number
   readonly termsTemplateId: string | null
   readonly contractTerms: string | null
+  readonly introductionTemplateId: string | null
+  readonly introductionText: string | null
+  readonly closingTemplateId: string | null
+  readonly closingText: string | null
   readonly directCostCents: number
   readonly markupCents: number
   readonly taxCents: number
@@ -126,13 +146,34 @@ export type ProjectEstimateTaxOption = {
 export type ProjectEstimateTermsOption = {
   readonly value: string
   readonly label: string
+  readonly departmentCode: ProjectDepartment | null
+  readonly templateType: EstimateTextTemplateType
   readonly body: string
+  readonly sourceDocumentId: string | null
+  readonly sourceUrl: string | null
+}
+
+export type ProjectEstimatePhaseDescriptionItem = {
+  readonly divisionCode: string
+  readonly description: string
+}
+
+export type ProjectEstimateAcknowledgementItem = {
+  readonly id: string
+  readonly templateId: string
+  readonly title: string
+  readonly body: string
+  readonly sourceDocumentId: string | null
+  readonly sourceUrl: string | null
+  readonly sortOrder: number
 }
 
 export type ProjectEstimateWorkspace = {
   readonly canEdit: boolean
   readonly projectNumber: string | null
   readonly projectName: string
+  readonly department: ProjectDepartment
+  readonly reportMode: EstimateClientReportMode
   readonly estimates: readonly ProjectEstimateSummary[]
   readonly activeEstimate: ProjectEstimateSummary | null
   readonly lines: readonly ProjectEstimateLineItem[]
@@ -140,6 +181,11 @@ export type ProjectEstimateWorkspace = {
   readonly costCodes: readonly ProjectEstimateCostCodeOption[]
   readonly taxEntities: readonly ProjectEstimateTaxOption[]
   readonly termsTemplates: readonly ProjectEstimateTermsOption[]
+  readonly introductionTemplates: readonly ProjectEstimateTermsOption[]
+  readonly closingTemplates: readonly ProjectEstimateTermsOption[]
+  readonly acknowledgementTemplates: readonly ProjectEstimateTermsOption[]
+  readonly phaseDescriptions: readonly ProjectEstimatePhaseDescriptionItem[]
+  readonly selectedAcknowledgements: readonly ProjectEstimateAcknowledgementItem[]
 }
 
 export type ProjectEstimateHeaderInput = {
@@ -151,6 +197,10 @@ export type ProjectEstimateHeaderInput = {
   readonly defaultTaxEntityId: string | null
   readonly termsTemplateId: string | null
   readonly contractTerms: string | null
+  readonly introductionTemplateId: string | null
+  readonly introductionText: string | null
+  readonly closingTemplateId: string | null
+  readonly closingText: string | null
 }
 
 export type ProjectEstimateLineInput = {
@@ -223,6 +273,7 @@ type EstimateAccess = {
   readonly projectNumber: string | null
   readonly projectName: string
   readonly organizationId: string | null
+  readonly department: ProjectDepartment
   readonly canEdit: boolean
 }
 
@@ -255,6 +306,10 @@ async function estimateAccess(
     projectNumber: access.projectNumber,
     projectName: project.name,
     organizationId: project.organizationId,
+    department: projectDepartment({
+      projectId,
+      projectNumber: access.projectNumber,
+    }),
     canEdit,
   }
 }
@@ -282,14 +337,39 @@ function safeUrl(value: string | null): string | null {
   }
 }
 
+function templateDepartment(value: string | null): ProjectDepartment | null {
+  if (value === "O" || value === "H" || value === "N" || value === "D") {
+    return value
+  }
+  return null
+}
+
+function templateOption(
+  template: EstimateTextTemplateOption
+): ProjectEstimateTermsOption {
+  return {
+    value: template.id,
+    label: template.name,
+    departmentCode: template.departmentCode,
+    templateType: template.templateType,
+    body: template.body,
+    sourceDocumentId: template.sourceDocumentId,
+    sourceUrl: template.sourceUrl,
+  }
+}
+
 function estimateSummary(
-  row: typeof projectEstimates.$inferSelect
+  row: typeof projectEstimates.$inferSelect,
+  department: ProjectDepartment
 ): ProjectEstimateSummary {
   return {
     id: row.id,
     estimateNumber: row.estimateNumber,
     versionNumber: row.versionNumber,
-    title: row.title,
+    title: estimateTitleForDepartment({
+      department,
+      requestedTitle: row.title,
+    }),
     status: row.status,
     estimateDate: row.estimateDate,
     clientName: row.clientName,
@@ -300,6 +380,10 @@ function estimateSummary(
     defaultTaxRateBasisPoints: row.defaultTaxRateBasisPoints,
     termsTemplateId: row.termsTemplateId,
     contractTerms: row.contractTerms,
+    introductionTemplateId: row.introductionTemplateId,
+    introductionText: row.introductionText,
+    closingTemplateId: row.closingTemplateId,
+    closingText: row.closingText,
     directCostCents: row.directCostCents,
     markupCents: row.markupCents,
     taxCents: row.taxCents,
@@ -381,6 +465,7 @@ function activeEstimate(
 
 function revalidateEstimate(projectId: string): void {
   revalidatePath(`/dashboard/projects/${projectId}/estimate`)
+  revalidatePath(`/print/projects/${projectId}/estimate`)
   revalidatePath(`/dashboard/projects/${projectId}/budget`)
   revalidatePath(`/dashboard/projects/${projectId}/financials`)
   revalidatePath(`/dashboard/projects/${projectId}/preview/owner`)
@@ -468,6 +553,40 @@ async function loadProjectEstimateCostCodes(
   return projectEstimateCostCodeCatalog(sageRows, namedSageRows)
 }
 
+async function loadEstimateTextTemplate(input: {
+  readonly db: CompassDb
+  readonly organizationId: string | null
+  readonly department: ProjectDepartment
+  readonly templateId: string | null
+  readonly templateType: EstimateTextTemplateType
+}): Promise<typeof estimateTermsTemplates.$inferSelect | null> {
+  if (!input.templateId) return null
+  if (!input.organizationId) {
+    throw new Error("The project organization is required for text templates.")
+  }
+  const rows = await input.db
+    .select()
+    .from(estimateTermsTemplates)
+    .where(
+      and(
+        eq(estimateTermsTemplates.id, input.templateId),
+        eq(estimateTermsTemplates.organizationId, input.organizationId),
+        eq(estimateTermsTemplates.active, true)
+      )
+    )
+    .limit(1)
+  const template = rows[0]
+  if (
+    !template ||
+    template.templateType !== input.templateType ||
+    (template.departmentCode !== null &&
+      template.departmentCode !== input.department)
+  ) {
+    throw new Error(`Choose an available ${input.templateType} template.`)
+  }
+  return template
+}
+
 export async function getProjectEstimateWorkspace(
   projectId: string,
   estimateId?: string
@@ -482,9 +601,19 @@ export async function getProjectEstimateWorkspace(
       desc(projectEstimates.versionNumber),
       desc(projectEstimates.updatedAt)
     )
-  const estimates = estimateRows.map(estimateSummary)
+  const estimates = estimateRows.map((row) =>
+    estimateSummary(row, access.department)
+  )
   const selected = activeEstimate(estimates, estimateId)
-  const [lineRows, basisRows, estimateCostCodes, taxRows, templateRows] =
+  const [
+    lineRows,
+    basisRows,
+    estimateCostCodes,
+    taxRows,
+    templateRows,
+    phaseRows,
+    acknowledgementRows,
+  ] =
     await Promise.all([
       selected
         ? access.db
@@ -522,14 +651,66 @@ export async function getProjectEstimateWorkspace(
                 eq(estimateTermsTemplates.active, true)
               )
             )
-            .orderBy(asc(estimateTermsTemplates.name))
+            .orderBy(
+              asc(estimateTermsTemplates.sortOrder),
+              asc(estimateTermsTemplates.name)
+            )
+        : Promise.resolve([]),
+      selected
+        ? access.db
+            .select()
+            .from(projectEstimatePhaseDescriptions)
+            .where(
+              eq(projectEstimatePhaseDescriptions.estimateId, selected.id)
+            )
+            .orderBy(asc(projectEstimatePhaseDescriptions.divisionCode))
+        : Promise.resolve([]),
+      selected
+        ? access.db
+            .select()
+            .from(projectEstimateAcknowledgements)
+            .where(eq(projectEstimateAcknowledgements.estimateId, selected.id))
+            .orderBy(asc(projectEstimateAcknowledgements.sortOrder))
         : Promise.resolve([]),
     ])
+
+  const databaseTemplates = templateRows.flatMap(
+    (row): readonly EstimateTextTemplateOption[] => {
+      if (!isEstimateTextTemplateType(row.templateType)) return []
+      const departmentCode = templateDepartment(row.departmentCode)
+      if (departmentCode !== null && departmentCode !== access.department) {
+        return []
+      }
+      return [
+        {
+          id: row.id,
+          name: row.name,
+          departmentCode,
+          templateType: row.templateType,
+          body: row.body,
+          sourceDocumentId: row.sourceDocumentId,
+          sourceUrl: row.sourceUrl,
+        },
+      ]
+    }
+  )
+  const availableTemplates = [
+    ...databaseTemplates,
+    ...builtInEstimateTextTemplates({ department: access.department }),
+  ]
+  const templatesByType = (
+    templateType: EstimateTextTemplateType
+  ): readonly ProjectEstimateTermsOption[] =>
+    availableTemplates
+      .filter((template) => template.templateType === templateType)
+      .map(templateOption)
 
   return {
     canEdit,
     projectNumber: access.projectNumber,
     projectName: access.projectName,
+    department: access.department,
+    reportMode: estimateClientReportMode(access.department),
     estimates,
     activeEstimate: selected,
     lines: lineRows.map(estimateLineItem),
@@ -567,10 +748,22 @@ export async function getProjectEstimateWorkspace(
       code: row.code,
       rateBasisPoints: row.rateBasisPoints,
     })),
-    termsTemplates: templateRows.map((row) => ({
-      value: row.id,
-      label: row.name,
+    termsTemplates: templatesByType("terms"),
+    introductionTemplates: templatesByType("introduction"),
+    closingTemplates: templatesByType("closing"),
+    acknowledgementTemplates: templatesByType("acknowledgement"),
+    phaseDescriptions: phaseRows.map((row) => ({
+      divisionCode: row.divisionCode,
+      description: row.description,
+    })),
+    selectedAcknowledgements: acknowledgementRows.map((row) => ({
+      id: row.id,
+      templateId: row.templateId,
+      title: row.title,
       body: row.body,
+      sourceDocumentId: row.sourceDocumentId,
+      sourceUrl: row.sourceUrl,
+      sortOrder: row.sortOrder,
     })),
   }
 }
@@ -595,7 +788,7 @@ export async function createProjectEstimateDraft(
       projectId,
       estimateNumber,
       versionNumber,
-      title: "CA22 Construction Estimate",
+      title: defaultEstimateTitle(access.department),
       status: "draft",
       estimateDate: now.slice(0, 10),
       sourceSystem: "compass",
@@ -630,16 +823,36 @@ export async function updateProjectEstimateHeader(
           .limit(1)
       : []
     const taxEntity = taxEntityRows[0]
-    const termsTemplateRows = input.termsTemplateId
-      ? await access.db
-          .select()
-          .from(estimateTermsTemplates)
-          .where(eq(estimateTermsTemplates.id, input.termsTemplateId))
-          .limit(1)
-      : []
-    const termsTemplate = termsTemplateRows[0]
+    const [termsTemplate, introductionTemplate, closingTemplate] =
+      await Promise.all([
+        loadEstimateTextTemplate({
+          db: access.db,
+          organizationId: access.organizationId,
+          department: access.department,
+          templateId: input.termsTemplateId,
+          templateType: "terms",
+        }),
+        loadEstimateTextTemplate({
+          db: access.db,
+          organizationId: access.organizationId,
+          department: access.department,
+          templateId: input.introductionTemplateId,
+          templateType: "introduction",
+        }),
+        loadEstimateTextTemplate({
+          db: access.db,
+          organizationId: access.organizationId,
+          department: access.department,
+          templateId: input.closingTemplateId,
+          templateType: "closing",
+        }),
+      ])
     const contractTerms =
       cleanText(input.contractTerms) ?? termsTemplate?.body ?? null
+    const introductionText =
+      cleanText(input.introductionText) ?? introductionTemplate?.body ?? null
+    const closingText =
+      cleanText(input.closingText) ?? closingTemplate?.body ?? null
     await access.db
       .update(projectEstimates)
       .set({
@@ -654,6 +867,10 @@ export async function updateProjectEstimateHeader(
         defaultTaxRateBasisPoints: taxEntity?.rateBasisPoints ?? 0,
         termsTemplateId: termsTemplate?.id ?? null,
         contractTerms,
+        introductionTemplateId: introductionTemplate?.id ?? null,
+        introductionText,
+        closingTemplateId: closingTemplate?.id ?? null,
+        closingText,
         updatedAt: new Date().toISOString(),
       })
       .where(eq(projectEstimates.id, estimateId))
@@ -665,6 +882,237 @@ export async function updateProjectEstimateHeader(
       success: false,
       error:
         error instanceof Error ? error.message : "Unable to save estimate.",
+    }
+  }
+}
+
+export async function saveProjectEstimatePhaseDescription(
+  projectId: string,
+  estimateId: string,
+  input: {
+    readonly divisionCode: string | null
+    readonly description: string | null
+  }
+): Promise<ProjectEstimateActionResult> {
+  try {
+    const access = await estimateAccess(projectId, true)
+    await requireEditableEstimate(access.db, projectId, estimateId)
+    const divisionCode = requiredText(input.divisionCode, "Phase")
+    const matchingLine = await access.db
+      .select({ id: projectEstimateLines.id })
+      .from(projectEstimateLines)
+      .where(
+        and(
+          eq(projectEstimateLines.estimateId, estimateId),
+          eq(projectEstimateLines.divisionCode, divisionCode)
+        )
+      )
+      .limit(1)
+    if (!matchingLine[0]) {
+      throw new Error("Choose a phase used by this estimate.")
+    }
+    const description = cleanText(input.description)
+    if (!description) {
+      await access.db
+        .delete(projectEstimatePhaseDescriptions)
+        .where(
+          and(
+            eq(projectEstimatePhaseDescriptions.estimateId, estimateId),
+            eq(projectEstimatePhaseDescriptions.divisionCode, divisionCode)
+          )
+        )
+        .run()
+      revalidateEstimate(projectId)
+      return { success: true, id: estimateId }
+    }
+    const now = new Date().toISOString()
+    await access.db
+      .insert(projectEstimatePhaseDescriptions)
+      .values({
+        id: crypto.randomUUID(),
+        projectId,
+        estimateId,
+        divisionCode,
+        description,
+        createdAt: now,
+        updatedAt: now,
+      })
+      .onConflictDoUpdate({
+        target: [
+          projectEstimatePhaseDescriptions.estimateId,
+          projectEstimatePhaseDescriptions.divisionCode,
+        ],
+        set: { description, updatedAt: now },
+      })
+      .run()
+    revalidateEstimate(projectId)
+    return { success: true, id: estimateId }
+  } catch (error) {
+    return {
+      success: false,
+      error:
+        error instanceof Error
+          ? error.message
+          : "Unable to save the phase description.",
+    }
+  }
+}
+
+export async function setProjectEstimateAcknowledgements(
+  projectId: string,
+  estimateId: string,
+  templateIds: readonly string[]
+): Promise<ProjectEstimateActionResult> {
+  try {
+    const access = await estimateAccess(projectId, true)
+    await requireEditableEstimate(access.db, projectId, estimateId)
+    if (access.department !== "N") {
+      throw new Error("Acknowledgements are available for Nu-Tech estimates.")
+    }
+    const uniqueTemplateIds = [...new Set(templateIds)].slice(0, 10)
+    const databaseRows = access.organizationId
+      ? await access.db
+          .select()
+          .from(estimateTermsTemplates)
+          .where(
+            and(
+              eq(
+                estimateTermsTemplates.organizationId,
+                access.organizationId
+              ),
+              eq(estimateTermsTemplates.active, true),
+              eq(estimateTermsTemplates.templateType, "acknowledgement")
+            )
+          )
+      : []
+    const databaseTemplates = databaseRows.flatMap(
+      (row): readonly EstimateTextTemplateOption[] => {
+        const departmentCode = templateDepartment(row.departmentCode)
+        if (departmentCode !== null && departmentCode !== access.department) {
+          return []
+        }
+        return [
+          {
+            id: row.id,
+            name: row.name,
+            departmentCode,
+            templateType: "acknowledgement",
+            body: row.body,
+            sourceDocumentId: row.sourceDocumentId,
+            sourceUrl: row.sourceUrl,
+          },
+        ]
+      }
+    )
+    const availableTemplates = [
+      ...databaseTemplates,
+      ...builtInEstimateTextTemplates({
+        department: access.department,
+        templateType: "acknowledgement",
+      }),
+    ]
+    const selectedTemplates = uniqueTemplateIds.map((templateId) => {
+      const template = availableTemplates.find(
+        (candidate) => candidate.id === templateId
+      )
+      if (!template) throw new Error("Choose an available acknowledgement.")
+      return template
+    })
+    const now = new Date().toISOString()
+    await access.db
+      .delete(projectEstimateAcknowledgements)
+      .where(eq(projectEstimateAcknowledgements.estimateId, estimateId))
+      .run()
+    if (selectedTemplates.length > 0) {
+      await access.db
+        .insert(projectEstimateAcknowledgements)
+        .values(
+          selectedTemplates.map((template, sortOrder) => ({
+            id: crypto.randomUUID(),
+            projectId,
+            estimateId,
+            templateId: template.id,
+            title: template.name,
+            body: template.body,
+            sourceDocumentId: template.sourceDocumentId,
+            sourceUrl: template.sourceUrl,
+            sortOrder,
+            createdAt: now,
+            updatedAt: now,
+          }))
+        )
+        .run()
+    }
+    revalidateEstimate(projectId)
+    return { success: true, id: estimateId }
+  } catch (error) {
+    return {
+      success: false,
+      error:
+        error instanceof Error
+          ? error.message
+          : "Unable to save acknowledgements.",
+    }
+  }
+}
+
+export async function saveEstimateTextTemplate(
+  projectId: string,
+  input: {
+    readonly name: string | null
+    readonly templateType: string | null
+    readonly body: string | null
+    readonly sourceUrl: string | null
+  }
+): Promise<ProjectEstimateActionResult> {
+  try {
+    const access = await estimateAccess(projectId, true)
+    if (!access.organizationId) {
+      throw new Error("The project organization is required for templates.")
+    }
+    const name = requiredText(input.name, "Template name")
+    const templateType = requiredText(input.templateType, "Template type")
+    if (!isEstimateTextTemplateType(templateType)) {
+      throw new Error("Choose a supported estimate text template type.")
+    }
+    const body = requiredText(input.body, "Template text")
+    const sourceUrl = safeUrl(input.sourceUrl)
+    const now = new Date().toISOString()
+    const id = crypto.randomUUID()
+    await access.db
+      .insert(estimateTermsTemplates)
+      .values({
+        id,
+        organizationId: access.organizationId,
+        name,
+        departmentCode: access.department,
+        templateType,
+        body,
+        sourceUrl,
+        active: true,
+        createdBy: access.user.id,
+        createdAt: now,
+        updatedAt: now,
+      })
+      .onConflictDoUpdate({
+        target: [
+          estimateTermsTemplates.organizationId,
+          estimateTermsTemplates.departmentCode,
+          estimateTermsTemplates.templateType,
+          estimateTermsTemplates.name,
+        ],
+        set: { body, sourceUrl, active: true, updatedAt: now },
+      })
+      .run()
+    revalidateEstimate(projectId)
+    return { success: true, id }
+  } catch (error) {
+    return {
+      success: false,
+      error:
+        error instanceof Error
+          ? error.message
+          : "Unable to save the estimate text template.",
     }
   }
 }
@@ -1166,16 +1614,29 @@ export async function prepareProjectEstimateForFoxit(
       projectId,
       estimateId
     )
-    const lines = await access.db
-      .select()
-      .from(projectEstimateLines)
-      .where(eq(projectEstimateLines.estimateId, estimateId))
-      .orderBy(asc(projectEstimateLines.sortOrder))
-    const basisDocuments = await access.db
-      .select()
-      .from(projectEstimateBasisDocuments)
-      .where(eq(projectEstimateBasisDocuments.estimateId, estimateId))
-      .orderBy(asc(projectEstimateBasisDocuments.sortOrder))
+    const [lines, basisDocuments, phaseDescriptions, acknowledgements] =
+      await Promise.all([
+        access.db
+          .select()
+          .from(projectEstimateLines)
+          .where(eq(projectEstimateLines.estimateId, estimateId))
+          .orderBy(asc(projectEstimateLines.sortOrder)),
+        access.db
+          .select()
+          .from(projectEstimateBasisDocuments)
+          .where(eq(projectEstimateBasisDocuments.estimateId, estimateId))
+          .orderBy(asc(projectEstimateBasisDocuments.sortOrder)),
+        access.db
+          .select()
+          .from(projectEstimatePhaseDescriptions)
+          .where(eq(projectEstimatePhaseDescriptions.estimateId, estimateId))
+          .orderBy(asc(projectEstimatePhaseDescriptions.divisionCode)),
+        access.db
+          .select()
+          .from(projectEstimateAcknowledgements)
+          .where(eq(projectEstimateAcknowledgements.estimateId, estimateId))
+          .orderBy(asc(projectEstimateAcknowledgements.sortOrder)),
+      ])
     if (lines.length === 0) throw new Error("Add estimate lines before signature.")
     const sourceCostCodes = [
       ...new Set(
@@ -1197,11 +1658,18 @@ export async function prepareProjectEstimateForFoxit(
     if (!cleanText(estimate.contractTerms)) {
       throw new Error("Add the contract terms before signature.")
     }
+    const reportTitle = estimateTitleForDepartment({
+      department: access.department,
+      requestedTitle: estimate.title,
+    })
     const sourceHash = await estimateSourceHash({
       estimateId,
       versionNumber: estimate.versionNumber,
-      title: estimate.title,
+      title: reportTitle,
+      reportMode: estimateClientReportMode(access.department),
+      introductionText: estimate.introductionText,
       contractTerms: estimate.contractTerms,
+      closingText: estimate.closingText,
       lines: lines.map((line) => ({
         id: line.id,
         divisionCode: line.divisionCode,
@@ -1230,11 +1698,22 @@ export async function prepareProjectEstimateForFoxit(
         notes: document.notes,
         sortOrder: document.sortOrder,
       })),
+      phaseDescriptions: phaseDescriptions.map((phase) => ({
+        divisionCode: phase.divisionCode,
+        description: phase.description,
+      })),
+      acknowledgements: acknowledgements.map((acknowledgement) => ({
+        templateId: acknowledgement.templateId,
+        title: acknowledgement.title,
+        body: acknowledgement.body,
+        sortOrder: acknowledgement.sortOrder,
+      })),
     })
     const now = new Date().toISOString()
     await access.db
       .update(projectEstimates)
       .set({
+        title: reportTitle,
         status: "signature_pending",
         foxitStatus: "handoff_ready",
         signatureRequestedAt: now,
