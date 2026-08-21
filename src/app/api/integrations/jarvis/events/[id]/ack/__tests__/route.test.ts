@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
   getDb: vi.fn(),
   getJarvisBridgeSecrets: vi.fn(),
   getJarvisEnvValue: vi.fn(),
+  applyFeedbackLifecycleUpdate: vi.fn(),
   readBoundedBody: vi.fn(),
   verifyJarvisRequest: vi.fn(),
 }))
@@ -19,6 +20,9 @@ vi.mock("@/lib/jarvis/auth", () => ({
 }))
 vi.mock("@/lib/jarvis/visual-context", () => ({
   jarvisPayloadAfterCompletion: vi.fn((payload: string) => payload),
+}))
+vi.mock("@/lib/jarvis/feedback-status-update", () => ({
+  applyFeedbackLifecycleUpdate: mocks.applyFeedbackLifecycleUpdate,
 }))
 
 import { POST } from "../route"
@@ -76,8 +80,19 @@ async function acknowledge() {
   )
 }
 
+async function acknowledgeFailure() {
+  return POST(
+    new Request("https://compass.example/api/integrations/jarvis/events/event-1/ack", {
+      method: "POST",
+      body: JSON.stringify({ status: "failed", error: "worker unavailable" }),
+    }),
+    { params: Promise.resolve({ id: "event-1" }) },
+  )
+}
+
 describe("POST /api/integrations/jarvis/events/:id/ack", () => {
   beforeEach(() => {
+    mocks.applyFeedbackLifecycleUpdate.mockReset()
     mocks.getCloudflareContext.mockResolvedValue({
       env: { DB: {}, JARVIS_BRIDGE_SECRET: "secret" },
     })
@@ -123,5 +138,22 @@ describe("POST /api/integrations/jarvis/events/:id/ack", () => {
     expect(db.set).toHaveBeenCalledWith(expect.objectContaining({
       status: "completed",
     }))
+  })
+
+  it("routes graph failures through the lifecycle so the requester is notified", async () => {
+    configureDb({ ...completeItem, status: "triaged" })
+
+    const response = await acknowledgeFailure()
+
+    expect(response.status).toBe(200)
+    expect(mocks.applyFeedbackLifecycleUpdate).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ id: "feedback-1" }),
+      expect.objectContaining({
+        status: "triaged",
+        deliveryRoute: "engineering",
+        deliveryGraph: expect.objectContaining({ status: "failed" }),
+      }),
+    )
   })
 })

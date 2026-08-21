@@ -8,6 +8,40 @@ export type FeedbackDeliveryGraphItem = Readonly<{
   channelId?: string | null
 }>
 
+export type FeedbackDeliveryRoute =
+  | "engineering"
+  | "response"
+  | "feature_decision"
+
+export type FeedbackResponseClosure = Readonly<{
+  status: "closed"
+  message: string
+}>
+
+export function feedbackDeliveryRoute(
+  item: Readonly<{
+    kind: string
+    requiresEngineering?: boolean
+  }>,
+): FeedbackDeliveryRoute {
+  if (item.kind === "feature") return "feature_decision"
+  if (item.kind === "bug" || item.requiresEngineering === true) {
+    return "engineering"
+  }
+  return "response"
+}
+
+export function feedbackResponseClosure(
+  item: Pick<FeedbackDeliveryGraphItem, "id" | "kind" | "status">,
+): FeedbackResponseClosure {
+  void item
+  return {
+    status: "closed",
+    message:
+      "The Feedback Desk reviewed this request and provided an accountable response. No Compass code change was required.",
+  }
+}
+
 export type FeedbackDeliveryGraphEvent = Readonly<{
   eventType: "feedback.delivery_requested"
   idempotencyKey: string
@@ -15,7 +49,7 @@ export type FeedbackDeliveryGraphEvent = Readonly<{
     schemaVersion: 1
     feedbackDeskItemId: string
     reference: string
-    kind: "bug"
+    kind: string
   }>
 }>
 
@@ -31,8 +65,9 @@ export type FeedbackDeliveryGraphUpdate = Readonly<{
 export function shouldRequestFeedbackDeliveryGraph(
   item: Pick<FeedbackDeliveryGraphItem, "kind" | "status">,
   nextStatus: string,
+  route?: FeedbackDeliveryRoute,
 ): boolean {
-  return item.kind === "bug" &&
+  return (route ?? feedbackDeliveryRoute(item)) === "engineering" &&
     item.status !== "triaged" &&
     nextStatus === "triaged"
 }
@@ -47,7 +82,7 @@ export function feedbackDeliveryGraphEvent(
       schemaVersion: 1,
       feedbackDeskItemId: item.id,
       reference: `CFD-${item.id}`,
-      kind: "bug",
+      kind: item.kind,
     },
   }
 }

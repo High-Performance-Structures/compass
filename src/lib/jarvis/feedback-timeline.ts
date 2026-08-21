@@ -44,6 +44,16 @@ function recordString(
     : null
 }
 
+function timelineLabel(status: string, notificationKind: string | null): string {
+  if (notificationKind === "delivery_graph_created") {
+    return "Engineering work set up"
+  }
+  if (notificationKind === "delivery_graph_failed") {
+    return "Engineering work retrying"
+  }
+  return feedbackStatusLabel(status)
+}
+
 export function feedbackTimeline(
   item: FeedbackTimelineItem,
   events: readonly FeedbackTimelineEvent[],
@@ -63,6 +73,7 @@ export function feedbackTimeline(
     const data = recordFromJson(event.result) ?? recordFromJson(event.payload)
     const status = recordString(data, "status")
     if (!status) continue
+    const notificationKind = recordString(data, "notificationKind")
     const message =
       recordString(data, "message") ??
       `Request status changed to ${feedbackStatusLabel(status)}.`
@@ -74,7 +85,7 @@ export function feedbackTimeline(
     entries.push({
       id: `${event.eventType}:${occurredAt}:${status}`,
       status,
-      label: feedbackStatusLabel(status),
+      label: timelineLabel(status, notificationKind),
       message,
       occurredAt,
     })
