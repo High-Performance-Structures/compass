@@ -103,4 +103,36 @@ describe("estimate client report profiles", () => {
       })
     ).toEqual([])
   })
+
+  it("offers the default introduction to every department", () => {
+    for (const department of ["H", "O", "N", "D"] as const) {
+      const templates = builtInEstimateTextTemplates({
+        department,
+        templateType: "introduction",
+      })
+      expect(templates).toHaveLength(1)
+      expect(templates[0]?.name).toBe("Default Introductory Text")
+      expect(templates[0]?.body).toContain(
+        "Thank you for the opportunity to provide you with an estimate"
+      )
+    }
+  })
+
+  it("limits the HPS closing text to H and O estimates", () => {
+    for (const department of ["H", "O"] as const) {
+      const templates = builtInEstimateTextTemplates({
+        department,
+        templateType: "closing",
+      })
+      expect(templates).toHaveLength(1)
+      expect(templates[0]?.body).toContain("General Exclusions:")
+      expect(templates[0]?.body).toContain("Payment Terms:")
+    }
+    expect(
+      builtInEstimateTextTemplates({
+        department: "N",
+        templateType: "closing",
+      })
+    ).toEqual([])
+  })
 })

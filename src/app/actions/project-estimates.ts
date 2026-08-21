@@ -559,8 +559,17 @@ async function loadEstimateTextTemplate(input: {
   readonly department: ProjectDepartment
   readonly templateId: string | null
   readonly templateType: EstimateTextTemplateType
-}): Promise<typeof estimateTermsTemplates.$inferSelect | null> {
+}): Promise<{ readonly id: string | null; readonly body: string } | null> {
   if (!input.templateId) return null
+  const builtInTemplate = builtInEstimateTextTemplates({
+    department: input.department,
+    templateType: input.templateType,
+  }).find((template) => template.id === input.templateId)
+  if (builtInTemplate) {
+    // Built-ins are code-backed rather than database rows, so only snapshot
+    // their body onto the estimate and leave the foreign key unset.
+    return { id: null, body: builtInTemplate.body }
+  }
   if (!input.organizationId) {
     throw new Error("The project organization is required for text templates.")
   }
