@@ -4,7 +4,7 @@ import { getDb } from "@/db"
 import { jarvisBridgeEvents } from "@/db/schema-jarvis"
 import { getCloudflareContext } from "@/lib/db"
 import {
-  getJarvisEnvValue,
+  getJarvisBridgeSecrets,
   verifyJarvisRequest,
 } from "@/lib/jarvis/auth"
 import { canSearchCompassRole } from "@/lib/jarvis/search"
@@ -33,15 +33,15 @@ export async function GET(
   },
 ): Promise<Response> {
   const { env } = await getCloudflareContext()
-  const secret = getJarvisEnvValue(env, "JARVIS_BRIDGE_SECRET")
-  if (!secret) {
+  const secrets = getJarvisBridgeSecrets(env)
+  if (!secrets) {
     return Response.json(
       { error: "Jarvis bridge is not configured" },
       { status: 503 },
     )
   }
 
-  const verification = await verifyJarvisRequest(request, secret, "")
+  const verification = await verifyJarvisRequest(request, secrets, "")
   if (!verification.success) {
     return Response.json({ error: verification.error }, { status: 401 })
   }

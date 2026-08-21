@@ -143,6 +143,7 @@ decision reactivates NetSuite for a specific workflow.
 | Variable | Description |
 |----------|-------------|
 | `JARVIS_BRIDGE_SECRET` | Shared HMAC-SHA256 secret used to authenticate bridge requests. Generate with `openssl rand -hex 32` and store it as a secret on both sides. |
+| `JARVIS_BRIDGE_SECONDARY_SECRET` | Optional, temporary rollover secret accepted alongside the primary. Provision only for an approved operator rollover and remove it when that work is complete. |
 | `JARVIS_BRIDGE_ORGANIZATION_ID` | Compass organization that receives inbound Telegram and Jarvis mailbox feedback. |
 | `JARVIS_AGENT_BRIDGE_ENABLED` | Set to `true` to route authenticated Ask Jarvis chat through the private Signet/Hermes bridge. |
 | `JARVIS_SERVICE_USER_ID` | Active Compass service user used for Jarvis replies. It must belong to the configured organization and each channel where it may reply. |

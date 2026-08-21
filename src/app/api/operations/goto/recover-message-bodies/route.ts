@@ -2,7 +2,7 @@ import { getDb } from "@/db"
 import { getCloudflareContext } from "@/lib/db"
 import { recoverLegacyGotoMessageBodies } from "@/lib/goto/message-recovery"
 import {
-  getJarvisEnvValue,
+  getJarvisBridgeSecrets,
   readBoundedBody,
   verifyJarvisRequest,
 } from "@/lib/jarvis/auth"
@@ -13,8 +13,8 @@ export async function POST(request: Request): Promise<Response> {
     return Response.json({ error: body.error }, { status: 413 })
   }
   const { env } = await getCloudflareContext()
-  const secret = getJarvisEnvValue(env, "JARVIS_BRIDGE_SECRET")
-  if (!secret) {
+  const secrets = getJarvisBridgeSecrets(env)
+  if (!secrets) {
     return Response.json(
       { error: "Maintenance authentication is not configured" },
       { status: 503 }
@@ -22,7 +22,7 @@ export async function POST(request: Request): Promise<Response> {
   }
   const verification = await verifyJarvisRequest(
     request,
-    secret,
+    secrets,
     body.rawBody
   )
   if (!verification.success) {

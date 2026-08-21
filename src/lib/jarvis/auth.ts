@@ -7,6 +7,8 @@ type VerificationResult =
   | { readonly success: true }
   | { readonly success: false; readonly error: string }
 
+export type JarvisBridgeSecrets = string | readonly string[]
+
 function bytesToHex(bytes: Uint8Array): string {
   return Array.from(bytes)
     .map((byte) => byte.toString(16).padStart(2, "0"))
@@ -14,11 +16,12 @@ function bytesToHex(bytes: Uint8Array): string {
 }
 
 function constantTimeEqual(left: string, right: string): boolean {
-  if (left.length !== right.length) return false
-
-  let difference = 0
-  for (let index = 0; index < left.length; index += 1) {
-    difference |= left.charCodeAt(index) ^ right.charCodeAt(index)
+  const length = Math.max(left.length, right.length)
+  let difference = left.length ^ right.length
+  for (let index = 0; index < length; index += 1) {
+    const leftCode = index < left.length ? left.charCodeAt(index) : 0
+    const rightCode = index < right.length ? right.charCodeAt(index) : 0
+    difference |= leftCode ^ rightCode
   }
   return difference === 0
 }
@@ -60,7 +63,7 @@ export async function createJarvisSignature(
 
 export async function verifyJarvisRequest(
   request: Request,
-  secret: string,
+  secret: JarvisBridgeSecrets,
   rawBody: string,
   now = Date.now(),
 ): Promise<VerificationResult> {
@@ -86,15 +89,22 @@ export async function verifyJarvisRequest(
 
   const url = new URL(request.url)
   const target = `${url.pathname}${url.search}`
-  const expectedSignature = await createJarvisSignature(
-    secret,
-    timestamp,
-    request.method,
-    target,
-    rawBody,
-  )
+  const secrets = typeof secret === "string" ? [secret] : secret
+  let signatureMatches = false
+  for (const candidate of secrets) {
+    const expectedSignature = await createJarvisSignature(
+      candidate,
+      timestamp,
+      request.method,
+      target,
+      rawBody,
+    )
+    if (constantTimeEqual(expectedSignature, suppliedSignature)) {
+      signatureMatches = true
+    }
+  }
 
-  if (!constantTimeEqual(expectedSignature, suppliedSignature)) {
+  if (!signatureMatches) {
     return { success: false, error: "Invalid bridge signature" }
   }
 
@@ -136,4 +146,18 @@ export function getJarvisEnvValue(
   return typeof value === "string" && value.length > 0
     ? value
     : null
+}
+
+export function getJarvisBridgeSecrets(
+  env: CloudflareEnv,
+): readonly string[] | null {
+  const primary = getJarvisEnvValue(env, "JARVIS_BRIDGE_SECRET")
+  if (!primary) return null
+
+  const secondary = getJarvisEnvValue(
+    env,
+    "JARVIS_BRIDGE_SECONDARY_SECRET",
+  )
+  if (!secondary || secondary === primary) return [primary]
+  return [primary, secondary]
 }

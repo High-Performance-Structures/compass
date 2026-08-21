@@ -3,6 +3,7 @@ import { z } from "zod/v4"
 import { getDb } from "@/db"
 import { getCloudflareContext } from "@/lib/db"
 import {
+  getJarvisBridgeSecrets,
   getJarvisEnvValue,
   readBoundedBody,
   verifyJarvisRequest,
@@ -20,12 +21,12 @@ export async function POST(request: Request): Promise<Response> {
   const body = await readBoundedBody(request)
   if (!body.success) return Response.json({ error: body.error }, { status: 413 })
   const { env } = await getCloudflareContext()
-  const secret = getJarvisEnvValue(env, "JARVIS_BRIDGE_SECRET")
+  const secrets = getJarvisBridgeSecrets(env)
   const organizationId = getJarvisEnvValue(env, "JARVIS_BRIDGE_ORGANIZATION_ID")
-  if (!secret || !organizationId) {
+  if (!secrets || !organizationId) {
     return Response.json({ error: "Jarvis health bridge is not configured" }, { status: 503 })
   }
-  const verification = await verifyJarvisRequest(request, secret, body.rawBody)
+  const verification = await verifyJarvisRequest(request, secrets, body.rawBody)
   if (!verification.success) {
     return Response.json({ error: verification.error }, { status: 401 })
   }
