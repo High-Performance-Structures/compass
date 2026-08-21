@@ -53,6 +53,10 @@ write-through behavior:
   and per-user “Add to my Google Calendar” subscriptions;
 - project-level event sync that preserves the Compass project scope for events
   created or edited from the shared Google calendar;
+- optional Google Meet conference creation for Compass events published to a
+  writable Google calendar, with the returned Meet URL stored in Compass;
+- external Meet launch actions that open Google Meet in a separate tab or
+  native app rather than embedding the call in Compass;
 - Google ACL roles derived from Compass access: office staff can edit events
   without managing sharing, while field and external project members are readers;
 - an integration status surface that remains safe when Google OAuth is not configured;
@@ -128,7 +132,6 @@ remain follow-up work.
 1. Scheduled event/access reconciliation, retries, incremental sync tokens,
    renewable watches, and a
    conflict-resolution UI.
-2. Google Meet conference creation (existing Meet links already round-trip).
-3. Remaining robust event fields: recurrence exceptions, external attendees,
+2. Remaining robust event fields: recurrence exceptions, external attendees,
    reminders, attachments, and related Compass records.
-4. Google Tasks synchronization after calendar behavior is stable.
+3. Google Tasks synchronization after calendar behavior is stable.

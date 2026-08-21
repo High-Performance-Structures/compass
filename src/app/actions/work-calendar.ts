@@ -1133,6 +1133,7 @@ export type WorkCalendarEventMutationInput = {
   readonly timeZone: string
   readonly location: string | null
   readonly meetingUrl: string | null
+  readonly createGoogleMeet: boolean
   readonly recurrence: WorkCalendarRecurrence
   readonly recurrenceUntil: string | null
   readonly attendeeUserIds: readonly string[]
@@ -1157,6 +1158,7 @@ type ValidatedEventInput = {
   readonly timeZone: string
   readonly location: string | null
   readonly meetingUrl: string | null
+  readonly createGoogleMeet: boolean
   readonly recurrence: WorkCalendarRecurrence
   readonly recurrenceUntil: string | null
   readonly attendees: readonly WorkCalendarEventAttendee[]
@@ -1356,6 +1358,16 @@ async function validateEventInput(
       throw new Error("A recurring series can span up to 10 years")
     }
   }
+  if (typeof input.createGoogleMeet !== "boolean") {
+    throw new Error("Select whether Google Meet should be added")
+  }
+  const meetingUrl = cleanOptionalUrl(input.meetingUrl, "Meeting link")
+  if (input.createGoogleMeet && input.eventType !== "meeting") {
+    throw new Error("Google Meet can only be added to meeting events")
+  }
+  if (input.createGoogleMeet && meetingUrl) {
+    throw new Error("Clear the meeting link before asking Google to create one")
+  }
 
   return {
     project,
@@ -1370,7 +1382,8 @@ async function validateEventInput(
     allDay: input.allDay,
     timeZone: timing.timeZone,
     location: cleanOptionalText(input.location, "Location", 500),
-    meetingUrl: cleanOptionalUrl(input.meetingUrl, "Meeting link"),
+    meetingUrl,
+    createGoogleMeet: input.createGoogleMeet === true,
     recurrence: input.recurrence,
     recurrenceUntil: recurrenceUntil || null,
     attendees: await validateAttendees(
@@ -1711,6 +1724,15 @@ export async function createWorkCalendarEvent(
         ? "organization"
         : "busy"
       : validated.visibility
+    const publishSelectionId =
+      calendarDestination?.selectionId ?? projectCalendarSelectionId
+    if (validated.createGoogleMeet && !publishSelectionId) {
+      return {
+        success: false,
+        error:
+          "Select a writable Google Calendar or enable the project's Google Calendar before adding Google Meet.",
+      }
+    }
     const id = crypto.randomUUID()
     const now = new Date().toISOString()
     await db.insert(workCalendarEvents).values({
@@ -1742,16 +1764,20 @@ export async function createWorkCalendarEvent(
     })
     await syncEventAttendees(db, id, [], validated.attendees, now)
     let warning: string | undefined
-    const publishSelectionId =
-      calendarDestination?.selectionId ?? projectCalendarSelectionId
     if (publishSelectionId) {
       try {
-        await publishWorkCalendarEventToGoogle(
+        const published = await publishWorkCalendarEventToGoogle(
           db,
           env,
           id,
           publishSelectionId,
+          { createGoogleMeet: validated.createGoogleMeet },
         )
+        if (validated.createGoogleMeet && !published.meetingUrl) {
+          warning = published.conferenceStatus === "failure"
+            ? "Event saved, but Google Calendar could not create the Meet link. Edit the event and try Add Google Meet again."
+            : "Event saved and Google Meet creation is still processing. Sync the Google Calendar shortly to retrieve the link."
+        }
       } catch (error) {
         warning =
           error instanceof Error
@@ -1868,6 +1894,21 @@ export async function updateWorkCalendarEvent(
         ? "organization"
         : "busy"
       : validated.visibility
+    const projectCalendarSelectionId = googleLink
+      ? null
+      : await activeGoogleProjectCalendarSelectionId(
+          db,
+          orgId,
+          targetProject?.id ?? null,
+        )
+    const publishSelectionId = googleLink?.selectionId ?? projectCalendarSelectionId
+    if (validated.createGoogleMeet && !publishSelectionId) {
+      return {
+        success: false,
+        error:
+          "This event must be linked to a writable Google Calendar before adding Google Meet.",
+      }
+    }
     const now = new Date().toISOString()
     const updated = await db
       .update(workCalendarEvents)
@@ -1916,22 +1957,20 @@ export async function updateWorkCalendarEvent(
       now
     )
     let warning: string | undefined
-    const projectCalendarSelectionId = googleLink
-      ? null
-      : await activeGoogleProjectCalendarSelectionId(
-          db,
-          orgId,
-          targetProject?.id ?? null,
-        )
-    const publishSelectionId = googleLink?.selectionId ?? projectCalendarSelectionId
     if (publishSelectionId) {
       try {
-        await publishWorkCalendarEventToGoogle(
+        const published = await publishWorkCalendarEventToGoogle(
           db,
           env,
           eventId,
           publishSelectionId,
+          { createGoogleMeet: validated.createGoogleMeet },
         )
+        if (validated.createGoogleMeet && !published.meetingUrl) {
+          warning = published.conferenceStatus === "failure"
+            ? "Event updated, but Google Calendar could not create the Meet link. Edit the event and try Add Google Meet again."
+            : "Event updated and Google Meet creation is still processing. Sync the Google Calendar shortly to retrieve the link."
+        }
       } catch (error) {
         warning =
           error instanceof Error

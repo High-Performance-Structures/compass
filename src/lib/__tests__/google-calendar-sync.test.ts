@@ -16,6 +16,7 @@ import {
 import {
   addGoogleCalendarToList,
   createGoogleCalendar,
+  createGoogleCalendarEvent,
   parseGoogleCalendarEvent,
 } from "@/lib/google/calendar/client"
 import {
@@ -151,6 +152,105 @@ describe("managed Google Calendar API requests", () => {
     await expect(
       addGoogleCalendarToList("access-token", "project-calendar@example.com"),
     ).resolves.toBeUndefined()
+  })
+
+  it("requests a Google Meet conference when publishing an event", async () => {
+    let requestUrl = ""
+    let requestBody = ""
+    globalThis.fetch = async (
+      input: string | URL | Request,
+      init?: RequestInit,
+    ): Promise<Response> => {
+      requestUrl = input.toString()
+      requestBody = typeof init?.body === "string" ? init.body : ""
+      return Response.json({
+        id: "google-event-1",
+        summary: "Owner meeting",
+        hangoutLink: "https://meet.google.com/abc-defg-hij",
+        start: { dateTime: "2026-08-20T15:00:00.000Z" },
+        end: { dateTime: "2026-08-20T16:00:00.000Z" },
+      })
+    }
+
+    const event = await createGoogleCalendarEvent(
+      "access-token",
+      "project-calendar@example.com",
+      {
+        summary: "Owner meeting",
+        description: null,
+        location: null,
+        startDate: null,
+        endDateExclusive: null,
+        startsAt: "2026-08-20T15:00:00.000Z",
+        endsAt: "2026-08-20T16:00:00.000Z",
+        timeZone: "America/Denver",
+        visibility: "default",
+        recurrence: [],
+        attendeeEmails: ["owner@example.com"],
+        conferenceRequestId: "cmpmeetrequest1",
+      },
+    )
+
+    const url = new URL(requestUrl)
+    expect(url.searchParams.get("conferenceDataVersion")).toBe("1")
+    expect(url.searchParams.get("sendUpdates")).toBe("all")
+    expect(JSON.parse(requestBody)).toMatchObject({
+      conferenceData: {
+        createRequest: {
+          requestId: "cmpmeetrequest1",
+          conferenceSolutionKey: { type: "hangoutsMeet" },
+        },
+      },
+      attendees: [{ email: "owner@example.com" }],
+    })
+    expect(event.meetingUrl).toBe("https://meet.google.com/abc-defg-hij")
+  })
+
+  it("converges a retried deterministic event create on the existing event", async () => {
+    const methods: string[] = []
+    globalThis.fetch = async (
+      _input: string | URL | Request,
+      init?: RequestInit,
+    ): Promise<Response> => {
+      methods.push(init?.method ?? "GET")
+      if (methods.length === 1) {
+        return Response.json(
+          { error: { message: "The requested identifier already exists." } },
+          { status: 409 },
+        )
+      }
+      return Response.json({
+        id: "cmpexistingevent",
+        summary: "Owner meeting",
+        hangoutLink: "https://meet.google.com/retry-link",
+        start: { dateTime: "2026-08-20T15:00:00.000Z" },
+        end: { dateTime: "2026-08-20T16:00:00.000Z" },
+      })
+    }
+
+    const event = await createGoogleCalendarEvent(
+      "access-token",
+      "project-calendar@example.com",
+      {
+        id: "cmpexistingevent",
+        summary: "Owner meeting",
+        description: null,
+        location: null,
+        startDate: null,
+        endDateExclusive: null,
+        startsAt: "2026-08-20T15:00:00.000Z",
+        endsAt: "2026-08-20T16:00:00.000Z",
+        timeZone: "America/Denver",
+        visibility: "default",
+        recurrence: [],
+        attendeeEmails: [],
+        conferenceRequestId: "cmpretryrequest",
+      },
+    )
+
+    expect(methods).toEqual(["POST", "PATCH"])
+    expect(event.id).toBe("cmpexistingevent")
+    expect(event.meetingUrl).toBe("https://meet.google.com/retry-link")
   })
 })
 
@@ -352,6 +452,25 @@ describe("Google Calendar event parsing", () => {
       startDate: "2026-12-24",
       endDateExclusive: "2026-12-26",
       allDay: true,
+    })
+  })
+
+  it("exposes a failed Google Meet creation status without losing the event", () => {
+    expect(
+      parseGoogleCalendarEvent({
+        id: "google-event-with-failed-meet",
+        conferenceData: {
+          createRequest: {
+            status: { statusCode: "failure" },
+          },
+        },
+        start: { dateTime: "2026-08-20T15:00:00.000Z" },
+        end: { dateTime: "2026-08-20T16:00:00.000Z" },
+      }),
+    ).toMatchObject({
+      id: "google-event-with-failed-meet",
+      meetingUrl: null,
+      conferenceStatus: "failure",
     })
   })
 })

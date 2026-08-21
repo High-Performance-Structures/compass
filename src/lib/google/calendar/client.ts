@@ -24,6 +24,7 @@ export type GoogleCalendarEventItem = {
   readonly location: string | null
   readonly htmlLink: string | null
   readonly meetingUrl: string | null
+  readonly conferenceStatus: string | null
   readonly startDate: string | null
   readonly endDateExclusive: string | null
   readonly startsAt: string | null
@@ -49,6 +50,7 @@ export type GoogleCalendarEventWrite = {
   readonly visibility: "default" | "public" | "private"
   readonly recurrence: readonly string[]
   readonly attendeeEmails: readonly string[]
+  readonly conferenceRequestId: string | null
 }
 
 export type GoogleCalendarAclRole =
@@ -361,6 +363,7 @@ export function parseGoogleCalendarEvent(
     location: stringValue(value, "location"),
     htmlLink: stringValue(value, "htmlLink"),
     meetingUrl: conferenceMeetingUrl(value),
+    conferenceStatus: conferenceRequestStatus(value),
     startDate,
     endDateExclusive,
     startsAt,
@@ -426,8 +429,49 @@ function eventBody(input: GoogleCalendarEventWrite): JsonRecord {
   if (input.attendeeEmails.length > 0) {
     body.attendees = input.attendeeEmails.map((email) => ({ email }))
   }
+  if (input.conferenceRequestId) {
+    body.conferenceData = {
+      createRequest: {
+        requestId: input.conferenceRequestId,
+        conferenceSolutionKey: { type: "hangoutsMeet" },
+      },
+    }
+  }
   if (input.id) body.id = input.id
   return body
+}
+
+function conferenceRequestStatus(value: unknown): string | null {
+  if (!isRecord(value) || !isRecord(value.conferenceData)) return null
+  const createRequest = value.conferenceData.createRequest
+  if (!isRecord(createRequest) || !isRecord(createRequest.status)) return null
+  return stringValue(createRequest.status, "statusCode")
+}
+
+async function waitForGoogleMeet(
+  accessToken: string,
+  calendarId: string,
+  event: GoogleCalendarEventItem,
+  conferenceRequestId: string | null,
+): Promise<GoogleCalendarEventItem> {
+  if (!conferenceRequestId || event.meetingUrl) return event
+
+  let latest = event
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    // Google can acknowledge conference creation before the Meet URL is ready.
+    await new Promise((resolve) => setTimeout(resolve, 200 * (attempt + 1)))
+    const url = endpoint(
+      `/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(event.id)}`,
+    )
+    url.searchParams.set("conferenceDataVersion", "1")
+    const payload = await googleRequest(accessToken, url)
+    const parsed = parseGoogleCalendarEvent(payload)
+    if (!parsed) throw new Error("Google returned an invalid calendar event.")
+    latest = parsed
+    if (latest.meetingUrl) return latest
+    if (latest.conferenceStatus === "failure") return latest
+  }
+  return latest
 }
 
 export async function createGoogleCalendarEvent(
@@ -436,17 +480,42 @@ export async function createGoogleCalendarEvent(
   input: GoogleCalendarEventWrite,
 ): Promise<GoogleCalendarEventItem> {
   const url = endpoint(`/calendars/${encodeURIComponent(calendarId)}/events`)
+  url.searchParams.set("conferenceDataVersion", "1")
   url.searchParams.set(
     "sendUpdates",
     input.attendeeEmails.length > 0 ? "all" : "none",
   )
-  const payload = await googleRequest(accessToken, url, {
+  const response = await fetch(url, {
     method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
     body: JSON.stringify(eventBody(input)),
   })
+  const payload = await responsePayload(response)
+  if (response.status === 409 && input.id) {
+    // Deterministic Compass IDs make retries converge on the existing event.
+    return updateGoogleCalendarEvent(
+      accessToken,
+      calendarId,
+      input.id,
+      { ...input, id: undefined },
+    )
+  }
+  if (!response.ok) {
+    throw new Error(
+      googleError(payload, `Google Calendar request failed (${response.status}).`),
+    )
+  }
   const event = parseGoogleCalendarEvent(payload)
   if (!event) throw new Error("Google returned an invalid created event.")
-  return event
+  return waitForGoogleMeet(
+    accessToken,
+    calendarId,
+    event,
+    input.conferenceRequestId,
+  )
 }
 
 export async function updateGoogleCalendarEvent(
@@ -458,6 +527,7 @@ export async function updateGoogleCalendarEvent(
   const url = endpoint(
     `/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(googleEventId)}`,
   )
+  url.searchParams.set("conferenceDataVersion", "1")
   url.searchParams.set(
     "sendUpdates",
     input.attendeeEmails.length > 0 ? "all" : "none",
@@ -468,7 +538,12 @@ export async function updateGoogleCalendarEvent(
   })
   const event = parseGoogleCalendarEvent(payload)
   if (!event) throw new Error("Google returned an invalid updated event.")
-  return event
+  return waitForGoogleMeet(
+    accessToken,
+    calendarId,
+    event,
+    input.conferenceRequestId,
+  )
 }
 
 export async function deleteGoogleCalendarEvent(
