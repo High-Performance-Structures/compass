@@ -83,9 +83,11 @@ import { ScheduleBaselineView } from "./schedule-baseline-view"
 import { ScheduleItemFormDialog } from "./schedule-item-form-dialog"
 import { ScheduleTemplateDialog } from "./schedule-template-dialog"
 import { ScheduleTemplateBulkImportDialog } from "./schedule-template-bulk-import-dialog"
-import { ProjectBrandContactDetails } from "@/components/projects/project-brand-contact-details"
-import { ProjectBrandLogo } from "@/components/projects/project-brand-logo"
 import { ProjectQuickSwitcher } from "@/components/projects/project-quick-switcher"
+import {
+  printScheduleDocument,
+  SchedulePrintDocument,
+} from "./schedule-print-document"
 import { ScheduleScopeSwitcher } from "./schedule-scope-switcher"
 import { OwnerScheduleVisibilityControl } from "./owner-schedule-visibility-control"
 import type { ProjectListItem } from "@/app/actions/projects"
@@ -113,8 +115,6 @@ import {
 import type { OwnerScheduleView } from "@/lib/schedule/owner-visibility"
 import type { GanttScrollMode } from "@/lib/schedule/gantt-interaction-mode"
 import { projectBrandFor } from "@/lib/project-branding"
-import { requiresSynchronousPrint } from "@/lib/print/ios-print"
-import { waitForPrintLayout } from "@/lib/print/readiness"
 import {
   deleteScheduleView,
   saveScheduleView,
@@ -434,6 +434,24 @@ export function ScheduleView({
     preset,
     scheduleProjects,
   ])
+  const printItems = useMemo(
+    () =>
+      filteredTasks.map((task) => ({
+        id: task.id,
+        projectId: task.projectId,
+        title: task.title,
+        startDate: task.startDate,
+        endDate: task.endDateCalculated,
+        workdays: task.workdays,
+        status: task.status,
+        phase: task.phase,
+        displayColor: task.displayColor,
+        assignedTo: task.assignedTo,
+        percentComplete: task.percentComplete,
+        isMilestone: task.isMilestone,
+      })),
+    [filteredTasks]
+  )
 
   const activeFilterCount =
     filters.status.length +
@@ -666,46 +684,23 @@ export function ScheduleView({
   }
 
   async function printSchedule(): Promise<void> {
-    const printRoot = document.querySelector(
-      '[data-project-schedule-print-root="true"]'
-    )
-    if (
-      printRoot instanceof HTMLElement &&
-      !requiresSynchronousPrint(window.navigator)
-    ) {
-      await waitForPrintLayout(printRoot)
-    }
-    window.print()
+    await printScheduleDocument()
   }
 
   return (
     <div
       className="flex min-h-full min-w-[960px] flex-col"
       data-schedule-workspace
-      data-project-schedule-print-root="true"
     >
-      {printBrand && (
-        <header className="hidden border-b-2 border-black pb-3 text-black print:flex print:items-start print:justify-between print:gap-4">
-          <div className="flex items-center gap-3">
-            <ProjectBrandLogo
-              brand={printBrand}
-              size={56}
-              className="size-14 object-contain"
-            />
-            <div>
-              <p className="text-sm font-bold uppercase">
-                {printBrand.companyName}
-              </p>
-              <ProjectBrandContactDetails
-                brand={printBrand}
-                lineClassName="text-xs"
-              />
-              <p className="text-xs">Project Schedule</p>
-            </div>
-          </div>
-          <p className="text-right text-xs font-semibold">{projectName}</p>
-        </header>
-      )}
+      <SchedulePrintDocument
+        audienceLabel={projectId ? "Project schedule" : "Company schedule"}
+        brand={printBrand}
+        items={printItems}
+        paletteScopeId={preferenceScopeKey}
+        projectName={projectName}
+        projectNumber={activeProject?.projectNumber}
+        projects={scheduleProjects}
+      />
       <div
         className="mb-1 flex h-8 w-max min-w-full shrink-0 flex-nowrap items-center gap-1"
         data-schedule-controls

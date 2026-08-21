@@ -436,6 +436,10 @@ em-emoji-picker {
   display: none;
 }
 
+.schedule-print-document {
+  display: none;
+}
+
 @media print {
   @page {
     margin: 0.5in;
@@ -444,6 +448,160 @@ em-emoji-picker {
   @page owner-budget {
     size: landscape;
     margin: 0.35in;
+  }
+
+  @page schedule-report {
+    size: landscape;
+    margin: 0.35in;
+  }
+
+  body.schedule-printing > :not([data-project-schedule-print-document="true"]) {
+    display: none !important;
+  }
+
+  body.schedule-printing,
+  body.schedule-printing [data-project-schedule-print-document="true"] {
+    background: #ffffff !important;
+    color: #111111 !important;
+    height: auto !important;
+    max-height: none !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+  }
+
+  body.schedule-printing [data-project-schedule-print-document="true"] {
+    display: block !important;
+    font-family: Arial, sans-serif;
+    page: schedule-report;
+    position: static !important;
+    width: 100%;
+  }
+
+  .schedule-print-header {
+    align-items: flex-start;
+    border-bottom: 2px solid #111111;
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 0.14in;
+    padding-bottom: 0.1in;
+  }
+
+  .schedule-print-brand {
+    align-items: flex-start;
+    display: flex;
+    gap: 0.1in;
+  }
+
+  .schedule-print-logo {
+    height: 0.48in !important;
+    object-fit: contain;
+    width: 0.48in !important;
+  }
+
+  .schedule-print-company,
+  .schedule-print-contact-line,
+  .schedule-print-title p,
+  .schedule-print-title h1,
+  .schedule-print-title span {
+    margin: 0;
+  }
+
+  .schedule-print-company {
+    font-size: 10pt;
+    font-weight: 800;
+    text-transform: uppercase;
+  }
+
+  .schedule-print-contact-line {
+    font-size: 6.5pt;
+    line-height: 1.3;
+  }
+
+  .schedule-print-title {
+    max-width: 55%;
+    text-align: right;
+  }
+
+  .schedule-print-title p {
+    font-size: 7pt;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  .schedule-print-title h1 {
+    font-size: 14pt;
+    line-height: 1.15;
+    margin-top: 0.03in;
+  }
+
+  .schedule-print-title span {
+    display: block;
+    font-size: 7pt;
+    margin-top: 0.03in;
+  }
+
+  .schedule-print-table {
+    border-collapse: collapse;
+    font-size: 7.5pt;
+    table-layout: fixed;
+    width: 100%;
+  }
+
+  .schedule-print-table thead {
+    display: table-header-group;
+  }
+
+  .schedule-print-table tr {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  .schedule-print-table th,
+  .schedule-print-table td {
+    border: 1px solid #a3a3a3;
+    padding: 0.055in 0.06in;
+    text-align: left;
+    vertical-align: top;
+  }
+
+  .schedule-print-table th {
+    background: #e5e7eb !important;
+    font-size: 6.5pt;
+    font-weight: 800;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+
+  .schedule-print-table th:first-child {
+    width: 24%;
+  }
+
+  .schedule-print-table td:first-child {
+    font-weight: 700;
+  }
+
+  .schedule-print-color {
+    border: 1px solid rgb(0 0 0 / 0.25);
+    border-radius: 999px;
+    display: inline-block;
+    height: 0.08in;
+    margin-right: 0.05in;
+    vertical-align: 0.01in;
+    width: 0.08in;
+  }
+
+  .schedule-print-document,
+  .schedule-print-document * {
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+
+  .schedule-print-footer {
+    display: flex;
+    font-size: 6.5pt;
+    justify-content: space-between;
+    margin-top: 0.08in;
   }
 
   body.po-printing-selected > * {

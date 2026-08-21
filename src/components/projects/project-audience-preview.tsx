@@ -837,8 +837,11 @@ function OwnerProjectPreview({
 
         {section === "schedule" && (
         <ProjectAudienceSchedule
+          audienceLabel="Client schedule"
           items={data.scheduleItems}
           projectId={data.project.id}
+          projectName={data.project.name}
+          projectNumber={data.project.projectNumber}
           presentation={data.project.ownerScheduleView}
         />
         )}
@@ -1057,8 +1060,11 @@ export function ProjectAudiencePreview({
 
         {section === "schedule" && (
           <ProjectAudienceSchedule
+            audienceLabel="Sub/vendor schedule"
             items={data.scheduleItems}
             projectId={data.project.id}
+            projectName={data.project.name}
+            projectNumber={data.project.projectNumber}
           />
         )}
 
