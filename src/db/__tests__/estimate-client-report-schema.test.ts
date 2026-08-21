@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest"
+import { readFileSync } from "node:fs"
+import { resolve } from "node:path"
 
 import {
   estimateTermsTemplates,
@@ -19,6 +21,17 @@ describe("estimate client report persistence contract", () => {
   it("stores editable opening and closing estimate copy", () => {
     expect(projectEstimates.introductionText.name).toBe("introduction_text")
     expect(projectEstimates.closingText.name).toBe("closing_text")
+    expect(projectEstimates.clientReportMode.name).toBe("client_report_mode")
+  })
+
+  it("migrates report choice and repairs prior PlanSwift visibility", () => {
+    const migration = readFileSync(
+      resolve(process.cwd(), "drizzle/0125_estimate_client_report_mode.sql"),
+      "utf8"
+    )
+    expect(migration).toContain("ADD `client_report_mode` text")
+    expect(migration).toContain("`specifications` LIKE '%PlanSwift source:%'")
+    expect(migration).toContain("SET `owner_visible` = 1")
   })
 
   it("snapshots phase descriptions and selected acknowledgements", () => {

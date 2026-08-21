@@ -5,6 +5,7 @@ import {
   clientEstimatePhases,
   defaultEstimateTitle,
   estimateClientReportMode,
+  mergeEstimateTextTemplates,
   estimateTitleForDepartment,
   type ClientEstimateLine,
 } from "@/lib/estimates/client-report"
@@ -19,6 +20,9 @@ function line(
     costCode: "03 30 00",
     description: "Cast-in-place concrete",
     specifications: null,
+    quantity: 2,
+    unit: "CY",
+    unitCostCents: 5_000,
     lineTotalCents: 10_000,
     ownerVisible: true,
     sortOrder: 0,
@@ -29,9 +33,9 @@ function line(
 describe("estimate client report profiles", () => {
   it("selects the department-specific client detail level", () => {
     expect(estimateClientReportMode("H")).toBe("phase_summary")
-    expect(estimateClientReportMode("O")).toBe("ca22")
-    expect(estimateClientReportMode("N")).toBe("cost_code")
-    expect(estimateClientReportMode("D")).toBe("ca22")
+    expect(estimateClientReportMode("O")).toBe("line_items")
+    expect(estimateClientReportMode("N")).toBe("line_items")
+    expect(estimateClientReportMode("D")).toBe("division_summary")
   })
 
   it("does not label H or N estimates as CA22 by default", () => {
@@ -134,5 +138,36 @@ describe("estimate client report profiles", () => {
         templateType: "closing",
       })
     ).toEqual([])
+  })
+
+  it("lets an organization template override matching built-in copy", () => {
+    const builtIns = builtInEstimateTextTemplates({ department: "H" })
+    const defaultIntroduction = builtIns.find(
+      (template) => template.name === "Default Introductory Text"
+    )
+    expect(defaultIntroduction).toBeDefined()
+    if (!defaultIntroduction) return
+
+    const templates = mergeEstimateTextTemplates({
+      organizationTemplates: [
+        {
+          ...defaultIntroduction,
+          id: "organization-introduction",
+          body: "Our organization-wide revised introduction.",
+        },
+      ],
+      builtInTemplates: builtIns,
+    })
+
+    expect(
+      templates.filter(
+        (template) => template.name === "Default Introductory Text"
+      )
+    ).toEqual([
+      expect.objectContaining({
+        id: "organization-introduction",
+        body: "Our organization-wide revised introduction.",
+      }),
+    ])
   })
 })

@@ -1,5 +1,7 @@
 export const dynamic = "force-dynamic"
 
+import { Fragment } from "react"
+
 import { getProjectEstimateWorkspace } from "@/app/actions/project-estimates"
 import { getProjects } from "@/app/actions/projects"
 import { ProjectBrandContactDetails } from "@/components/projects/project-brand-contact-details"
@@ -14,6 +16,12 @@ function money(cents: number): string {
     currency: "USD",
     maximumFractionDigits: 2,
   }).format(cents / 100)
+}
+
+function quantity(value: number): string {
+  return new Intl.NumberFormat("en-US", {
+    maximumFractionDigits: 4,
+  }).format(value)
 }
 
 export default async function ProjectEstimatePrintPage({
@@ -49,8 +57,10 @@ export default async function ProjectEstimatePrintPage({
     lines: workspace.lines,
     phaseDescriptions,
   })
-  const visibleLines = phases.flatMap((phase) => phase.lines)
-
+  const clientTotalCents = phases.reduce(
+    (total, phase) => total + phase.subtotalCents,
+    0
+  )
   return (
     <>
       <style>{`
@@ -116,10 +126,15 @@ export default async function ProjectEstimatePrintPage({
           </section>
         )}
 
-        {workspace.reportMode === "phase_summary" && (
+        {(workspace.reportMode === "division_summary" ||
+          workspace.reportMode === "phase_summary") && (
           <section className="mt-6">
             <div className="grid grid-cols-[1fr_1.2in] border-b border-black pb-1 text-xs font-semibold uppercase tracking-wide">
-              <span>Phase description</span>
+              <span>
+                {workspace.reportMode === "phase_summary"
+                  ? "Phase description"
+                  : "Division"}
+              </span>
               <span className="text-right">Subtotal</span>
             </div>
             {phases.map((phase) => (
@@ -128,9 +143,16 @@ export default async function ProjectEstimatePrintPage({
                 className="grid break-inside-avoid grid-cols-[1fr_1.2in] gap-3 border-b py-3 text-sm"
               >
                 <div>
-                  <p className="font-semibold">{phase.description}</p>
+                  <p className="font-semibold">
+                    {workspace.reportMode === "phase_summary"
+                      ? phase.description
+                      : phase.divisionName}
+                  </p>
                   <p className="text-xs text-neutral-600">
-                    Phase {phase.divisionCode}
+                    {workspace.reportMode === "phase_summary"
+                      ? "Phase"
+                      : "Division"}{" "}
+                    {phase.divisionCode}
                   </p>
                 </div>
                 <span className="text-right font-semibold">
@@ -141,84 +163,69 @@ export default async function ProjectEstimatePrintPage({
           </section>
         )}
 
-        {workspace.reportMode === "ca22" && (
+        {workspace.reportMode === "line_items" && (
           <section className="mt-6">
-            <div className="grid grid-cols-[1fr_1.2in] border-b border-black pb-1 text-xs font-semibold uppercase tracking-wide">
-              <span>Phase and cost code</span>
-              <span className="text-right">Amount</span>
-            </div>
+            <table className="w-full border-collapse text-sm">
+              <thead>
+                <tr className="border-b border-black text-left text-xs font-semibold uppercase tracking-wide">
+                  <th className="pb-1 pr-2">Cost code</th>
+                  <th className="pb-1 pr-2">Description</th>
+                  <th className="pb-1 pr-2 text-right">Quantity</th>
+                  <th className="pb-1 pr-2">Unit</th>
+                  <th className="pb-1 pr-2 text-right">Unit cost</th>
+                  <th className="pb-1 text-right">Total cost</th>
+                </tr>
+              </thead>
+              <tbody>
             {phases.map((phase) => (
-              <div
-                key={phase.divisionCode}
-                className="break-inside-avoid border-b py-3"
-              >
-                <div className="flex items-start justify-between gap-3 font-semibold">
-                  <div>
-                    <p>{phase.description}</p>
-                    <p className="text-xs font-normal text-neutral-600">
-                      Phase {phase.divisionCode}
-                    </p>
-                  </div>
-                  <span>{money(phase.subtotalCents)}</span>
-                </div>
-                <div className="mt-2 space-y-1.5">
+              <Fragment key={phase.divisionCode}>
+                <tr className="break-inside-avoid border-b bg-neutral-100 font-semibold">
+                  <td className="py-2 pr-2" colSpan={6}>
+                    {phase.divisionCode} · {phase.description}
+                  </td>
+                </tr>
                   {phase.lines.map((line) => (
-                    <div
+                    <tr
                       key={line.id}
-                      className="grid grid-cols-[1fr_1.2in] gap-3 pl-3 text-sm"
+                      className="break-inside-avoid border-b"
                     >
-                      <div>
-                        <span className="font-medium">{line.costCode}</span>
-                        <span> - {line.description}</span>
-                        {line.specifications && (
-                          <p className="text-xs text-neutral-600">
-                            {line.specifications}
-                          </p>
-                        )}
-                      </div>
-                      <span className="text-right">
+                      <td className="py-2 pr-2 align-top font-medium">
+                        {line.costCode}
+                      </td>
+                      <td className="py-2 pr-2 align-top">
+                        {line.description}
+                      </td>
+                      <td className="py-2 pr-2 text-right align-top">
+                        {quantity(line.quantity)}
+                      </td>
+                      <td className="py-2 pr-2 align-top">{line.unit}</td>
+                      <td className="py-2 pr-2 text-right align-top">
+                        {money(line.unitCostCents)}
+                      </td>
+                      <td className="py-2 text-right align-top">
                         {money(line.lineTotalCents)}
-                      </span>
-                    </div>
+                      </td>
+                    </tr>
                   ))}
-                </div>
-              </div>
+                <tr className="break-inside-avoid border-b-2 border-black font-semibold">
+                  <td className="py-2" colSpan={5}>
+                    Total: {phase.divisionCode} · {phase.description}
+                  </td>
+                  <td className="py-2 text-right">
+                    {money(phase.subtotalCents)}
+                  </td>
+                </tr>
+              </Fragment>
             ))}
-          </section>
-        )}
-
-        {workspace.reportMode === "cost_code" && (
-          <section className="mt-6">
-            <div className="grid grid-cols-[1fr_1.2in] border-b border-black pb-1 text-xs font-semibold uppercase tracking-wide">
-              <span>Cost code and description</span>
-              <span className="text-right">Amount</span>
-            </div>
-            {visibleLines.map((line) => (
-              <div
-                key={line.id}
-                className="grid break-inside-avoid grid-cols-[1fr_1.2in] gap-3 border-b py-3 text-sm"
-              >
-                <div>
-                  <span className="font-medium">{line.costCode}</span>
-                  <span> - {line.description}</span>
-                  {line.specifications && (
-                    <p className="text-xs text-neutral-600">
-                      {line.specifications}
-                    </p>
-                  )}
-                </div>
-                <span className="text-right font-medium">
-                  {money(line.lineTotalCents)}
-                </span>
-              </div>
-            ))}
+              </tbody>
+            </table>
           </section>
         )}
 
         <section className="ml-auto mt-5 w-full max-w-sm text-sm">
           <div className="flex justify-between border-t border-black pt-2 text-base font-bold">
             <span>Estimate total</span>
-            <span>{money(estimate.estimateTotalCents)}</span>
+            <span>{money(clientTotalCents)}</span>
           </div>
         </section>
 

@@ -1,8 +1,9 @@
 "use server"
 
-import { and, asc, desc, eq, like, ne } from "drizzle-orm"
+import { and, asc, desc, eq, gt, like, ne, sql } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
+import { saveEstimateTextTemplateLibraryItem } from "@/app/actions/estimate-text-templates"
 import { getDb } from "@/db"
 import { projectBudgetLines, projects, sageCostCodes } from "@/db/schema"
 import {
@@ -37,7 +38,9 @@ import {
   defaultEstimateTitle,
   estimateClientReportMode,
   estimateTitleForDepartment,
+  isEstimateClientReportMode,
   isEstimateTextTemplateType,
+  mergeEstimateTextTemplates,
   type EstimateClientReportMode,
   type EstimateTextTemplateOption,
   type EstimateTextTemplateType,
@@ -79,6 +82,7 @@ export type ProjectEstimateSummary = {
   readonly introductionText: string | null
   readonly closingTemplateId: string | null
   readonly closingText: string | null
+  readonly clientReportMode: EstimateClientReportMode
   readonly directCostCents: number
   readonly markupCents: number
   readonly taxCents: number
@@ -214,6 +218,7 @@ export type ProjectEstimateLineInput = {
   readonly taxable: boolean
   readonly taxEntityId: string | null
   readonly ownerVisible: boolean
+  readonly insertAfterLineId: string | null
 }
 
 export type ProjectEstimateBasisInput = {
@@ -245,12 +250,17 @@ export type ProjectEstimatePlanSwiftImportLine = {
   readonly costCode: string
   readonly description: string
   readonly notes: string | null
+  readonly quantity: number | null
+  readonly unit: string | null
+  readonly unitCost: number | null
+  readonly markupPercentage: number
   readonly amount: number
 }
 
 export type ProjectEstimatePlanSwiftImportInput = {
   readonly sourceFileName: string
   readonly sourceSheetName: string
+  readonly replaceExistingPlanSwiftLines: boolean
   readonly lines: readonly ProjectEstimatePlanSwiftImportLine[]
 }
 
@@ -384,6 +394,9 @@ function estimateSummary(
     introductionText: row.introductionText,
     closingTemplateId: row.closingTemplateId,
     closingText: row.closingText,
+    clientReportMode: isEstimateClientReportMode(row.clientReportMode)
+      ? row.clientReportMode
+      : estimateClientReportMode(department),
     directCostCents: row.directCostCents,
     markupCents: row.markupCents,
     taxCents: row.taxCents,
@@ -703,10 +716,12 @@ export async function getProjectEstimateWorkspace(
       ]
     }
   )
-  const availableTemplates = [
-    ...databaseTemplates,
-    ...builtInEstimateTextTemplates({ department: access.department }),
-  ]
+  const availableTemplates = mergeEstimateTextTemplates({
+    organizationTemplates: databaseTemplates,
+    builtInTemplates: builtInEstimateTextTemplates({
+      department: access.department,
+    }),
+  })
   const templatesByType = (
     templateType: EstimateTextTemplateType
   ): readonly ProjectEstimateTermsOption[] =>
@@ -719,7 +734,8 @@ export async function getProjectEstimateWorkspace(
     projectNumber: access.projectNumber,
     projectName: access.projectName,
     department: access.department,
-    reportMode: estimateClientReportMode(access.department),
+    reportMode:
+      selected?.clientReportMode ?? estimateClientReportMode(access.department),
     estimates,
     activeEstimate: selected,
     lines: lineRows.map(estimateLineItem),
@@ -891,6 +907,35 @@ export async function updateProjectEstimateHeader(
       success: false,
       error:
         error instanceof Error ? error.message : "Unable to save estimate.",
+    }
+  }
+}
+
+export async function setProjectEstimateClientReportMode(
+  projectId: string,
+  estimateId: string,
+  mode: string
+): Promise<ProjectEstimateActionResult> {
+  try {
+    const access = await estimateAccess(projectId, true)
+    await requireEditableEstimate(access.db, projectId, estimateId)
+    if (!isEstimateClientReportMode(mode)) {
+      throw new Error("Choose an available client report view.")
+    }
+    await access.db
+      .update(projectEstimates)
+      .set({ clientReportMode: mode, updatedAt: new Date().toISOString() })
+      .where(eq(projectEstimates.id, estimateId))
+      .run()
+    revalidateEstimate(projectId)
+    return { success: true, id: estimateId }
+  } catch (error) {
+    return {
+      success: false,
+      error:
+        error instanceof Error
+          ? error.message
+          : "Unable to save the client report view.",
     }
   }
 }
@@ -1071,50 +1116,20 @@ export async function saveEstimateTextTemplate(
     readonly name: string | null
     readonly templateType: string | null
     readonly body: string | null
-    readonly sourceUrl: string | null
   }
 ): Promise<ProjectEstimateActionResult> {
   try {
     const access = await estimateAccess(projectId, true)
-    if (!access.organizationId) {
-      throw new Error("The project organization is required for templates.")
-    }
-    const name = requiredText(input.name, "Template name")
-    const templateType = requiredText(input.templateType, "Template type")
-    if (!isEstimateTextTemplateType(templateType)) {
-      throw new Error("Choose a supported estimate text template type.")
-    }
-    const body = requiredText(input.body, "Template text")
-    const sourceUrl = safeUrl(input.sourceUrl)
-    const now = new Date().toISOString()
-    const id = crypto.randomUUID()
-    await access.db
-      .insert(estimateTermsTemplates)
-      .values({
-        id,
-        organizationId: access.organizationId,
-        name,
-        departmentCode: access.department,
-        templateType,
-        body,
-        sourceUrl,
-        active: true,
-        createdBy: access.user.id,
-        createdAt: now,
-        updatedAt: now,
-      })
-      .onConflictDoUpdate({
-        target: [
-          estimateTermsTemplates.organizationId,
-          estimateTermsTemplates.departmentCode,
-          estimateTermsTemplates.templateType,
-          estimateTermsTemplates.name,
-        ],
-        set: { body, sourceUrl, active: true, updatedAt: now },
-      })
-      .run()
+    const result = await saveEstimateTextTemplateLibraryItem({
+      templateId: null,
+      name: input.name,
+      departmentCode: access.department,
+      templateType: input.templateType,
+      body: input.body,
+    })
+    if (!result.success) return result
     revalidateEstimate(projectId)
-    return { success: true, id }
+    return { success: true, id: result.id }
   } catch (error) {
     return {
       success: false,
@@ -1300,6 +1315,25 @@ export async function importPlanSwiftEstimateLines(
       if (amountCents > 10_000_000_000) {
         throw new Error(`PlanSwift row ${rowNumber} exceeds the import amount limit.`)
       }
+      const quantity = line.quantity ?? 1
+      if (!Number.isFinite(quantity) || quantity <= 0) {
+        throw new Error(`PlanSwift row ${rowNumber} must have a positive quantity.`)
+      }
+      const markupRateBasisPoints = Math.round(line.markupPercentage * 100)
+      if (
+        !Number.isFinite(line.markupPercentage) ||
+        markupRateBasisPoints < 0 ||
+        markupRateBasisPoints > 1_000_000
+      ) {
+        throw new Error(`PlanSwift row ${rowNumber} has an invalid markup.`)
+      }
+      const unitCostCents =
+        line.unitCost !== null && line.unitCost > 0
+          ? Math.round(line.unitCost * 100)
+          : Math.round(amountCents / quantity / (1 + line.markupPercentage / 100))
+      if (!Number.isFinite(unitCostCents) || unitCostCents <= 0) {
+        throw new Error(`PlanSwift row ${rowNumber} must have a positive unit cost.`)
+      }
       return {
         rowNumber,
         costCode: requiredText(
@@ -1311,6 +1345,10 @@ export async function importPlanSwiftEstimateLines(
           `Description on row ${rowNumber}`
         ),
         notes: cleanText(line.notes?.slice(0, 5_000) ?? null),
+        quantity,
+        unit: cleanText(line.unit?.slice(0, 40) ?? null) ?? "LS",
+        unitCostCents,
+        markupRateBasisPoints,
         amountCents,
       }
     })
@@ -1342,7 +1380,12 @@ export async function importPlanSwiftEstimateLines(
       .select()
       .from(projectEstimateLines)
       .where(eq(projectEstimateLines.estimateId, estimateId))
-    const priorSortOrder = existingRows.reduce(
+    const retainedRows = input.replaceExistingPlanSwiftLines
+      ? existingRows.filter(
+          (row) => !row.specifications?.includes("PlanSwift source:")
+        )
+      : existingRows
+    const priorSortOrder = retainedRows.reduce(
       (highest, row) => Math.max(highest, row.sortOrder),
       0
     )
@@ -1351,6 +1394,13 @@ export async function importPlanSwiftEstimateLines(
       const cost = costCodeMap.get(line.costCode)
       const adjustment = contractAdjustments.get(line.costCode)
       const sourceNote = `PlanSwift source: ${sourceFileName} · ${sourceSheetName} · row ${line.rowNumber}`
+      const calculation = calculateEstimateLine({
+        quantity: line.quantity,
+        unitCostCents: line.unitCostCents,
+        markupRateBasisPoints: line.markupRateBasisPoints,
+        taxable: false,
+        taxRateBasisPoints: 0,
+      })
       return {
         id: crypto.randomUUID(),
         projectId,
@@ -1363,27 +1413,27 @@ export async function importPlanSwiftEstimateLines(
           cost?.description ?? adjustment?.description ?? line.costCode,
         description: line.description,
         specifications: [line.notes, sourceNote].filter(Boolean).join("\n"),
-        quantity: 1,
-        unit: "LS",
-        unitCostCents: line.amountCents,
-        directCostCents: line.amountCents,
-        markupRateBasisPoints: 0,
-        markupCents: 0,
+        quantity: line.quantity,
+        unit: line.unit,
+        unitCostCents: line.unitCostCents,
+        directCostCents: calculation.directCostCents,
+        markupRateBasisPoints: line.markupRateBasisPoints,
+        markupCents: calculation.markupCents,
         taxable: false,
         taxEntityId: null,
         taxCode: null,
         taxName: null,
         taxRateBasisPoints: 0,
-        taxCents: 0,
-        lineTotalCents: line.amountCents,
-        ownerVisible: false,
+        taxCents: calculation.taxCents,
+        lineTotalCents: calculation.lineTotalCents,
+        ownerVisible: true,
         sortOrder: priorSortOrder + index + 1,
         createdAt: now,
         updatedAt: now,
       }
     })
     const totals = calculateEstimateTotals([
-      ...existingRows.map(ledgerLine),
+      ...retainedRows.map(ledgerLine),
       ...lineValues.map(ledgerLine),
     ])
     // D1 permits at most 100 bound parameters per statement. Each estimate
@@ -1393,16 +1443,34 @@ export async function importPlanSwiftEstimateLines(
     for (let index = 3; index < lineValues.length; index += 3) {
       remainingChunks.push(lineValues.slice(index, index + 3))
     }
-    await access.db.batch([
-      access.db.insert(projectEstimateLines).values(firstChunk),
-      ...remainingChunks.map((chunk) =>
-        access.db.insert(projectEstimateLines).values(chunk)
-      ),
-      access.db
-        .update(projectEstimates)
-        .set({ ...totals, updatedAt: now })
-        .where(eq(projectEstimates.id, estimateId)),
-    ])
+    const firstInsert = access.db
+      .insert(projectEstimateLines)
+      .values(firstChunk)
+    const remainingInserts = remainingChunks.map((chunk) =>
+      access.db.insert(projectEstimateLines).values(chunk)
+    )
+    const totalsUpdate = access.db
+      .update(projectEstimates)
+      .set({ ...totals, updatedAt: now })
+      .where(eq(projectEstimates.id, estimateId))
+    if (input.replaceExistingPlanSwiftLines) {
+      const deletePriorImports = access.db
+        .delete(projectEstimateLines)
+        .where(
+          and(
+            eq(projectEstimateLines.estimateId, estimateId),
+            like(projectEstimateLines.specifications, "%PlanSwift source:%")
+          )
+        )
+      await access.db.batch([
+        deletePriorImports,
+        firstInsert,
+        ...remainingInserts,
+        totalsUpdate,
+      ])
+    } else {
+      await access.db.batch([firstInsert, ...remainingInserts, totalsUpdate])
+    }
 
     revalidateEstimate(projectId)
     return {
@@ -1476,12 +1544,16 @@ export async function saveProjectEstimateLine(
     }
     const now = new Date().toISOString()
     const id = lineId ?? crypto.randomUUID()
-    const prior = await access.db
-      .select({ sortOrder: projectEstimateLines.sortOrder })
-      .from(projectEstimateLines)
-      .where(eq(projectEstimateLines.estimateId, estimateId))
-      .orderBy(desc(projectEstimateLines.sortOrder))
-      .limit(1)
+    const prior = lineId
+      ? []
+      : await access.db
+          .select({
+            id: projectEstimateLines.id,
+            sortOrder: projectEstimateLines.sortOrder,
+          })
+          .from(projectEstimateLines)
+          .where(eq(projectEstimateLines.estimateId, estimateId))
+          .orderBy(desc(projectEstimateLines.sortOrder))
     const values = {
       divisionCode: cost?.divisionCode ?? "99",
       divisionName: cost?.divisionDescription ?? "Contract Adjustments",
@@ -1521,12 +1593,36 @@ export async function saveProjectEstimateLine(
         .where(eq(projectEstimateLines.id, lineId))
         .run()
     } else {
+      const insertionTarget = input.insertAfterLineId
+        ? prior.find((item) => item.id === input.insertAfterLineId)
+        : null
+      if (input.insertAfterLineId && !insertionTarget) {
+        throw new Error("The selected insertion point is no longer available.")
+      }
+      const sortOrder = insertionTarget
+        ? insertionTarget.sortOrder + 1
+        : (prior[0]?.sortOrder ?? 0) + 1
+      if (insertionTarget) {
+        await access.db
+          .update(projectEstimateLines)
+          .set({
+            sortOrder: sql`${projectEstimateLines.sortOrder} + 1`,
+            updatedAt: now,
+          })
+          .where(
+            and(
+              eq(projectEstimateLines.estimateId, estimateId),
+              gt(projectEstimateLines.sortOrder, insertionTarget.sortOrder)
+            )
+          )
+          .run()
+      }
       await access.db.insert(projectEstimateLines).values({
         id,
         projectId,
         estimateId,
         ...values,
-        sortOrder: (prior[0]?.sortOrder ?? 0) + 1,
+        sortOrder,
         createdAt: now,
       })
     }
@@ -1675,7 +1771,9 @@ export async function prepareProjectEstimateForFoxit(
       estimateId,
       versionNumber: estimate.versionNumber,
       title: reportTitle,
-      reportMode: estimateClientReportMode(access.department),
+      reportMode: isEstimateClientReportMode(estimate.clientReportMode)
+        ? estimate.clientReportMode
+        : estimateClientReportMode(access.department),
       introductionText: estimate.introductionText,
       contractTerms: estimate.contractTerms,
       closingText: estimate.closingText,

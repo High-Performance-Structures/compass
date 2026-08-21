@@ -17,6 +17,7 @@ import {
   updateProjectTemplateCategory,
   type ProjectTemplateLibraryItem,
 } from "@/app/actions/project-templates"
+import type { EstimateTextTemplateLibraryItem } from "@/app/actions/estimate-text-templates"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -40,6 +41,8 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { EstimateTemplateCreateDialog } from "./estimate-template-create-dialog"
+import { EstimateTextTemplateLibrary } from "./estimate-text-template-library"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 
 export const TEMPLATE_CATEGORIES = [
   "Concrete",
@@ -57,8 +60,10 @@ export const TEMPLATE_CATEGORIES = [
 
 type Props = {
   readonly templates: readonly ProjectTemplateLibraryItem[]
+  readonly estimateTextTemplates: readonly EstimateTextTemplateLibraryItem[]
   readonly canManage: boolean
   readonly canCreateEstimate: boolean
+  readonly canManageEstimateText: boolean
 }
 
 function reviewLabel(reviewStatus: string): string {
@@ -223,8 +228,10 @@ function PublishTemplateButton({
 
 export function TemplateLibraryView({
   templates,
+  estimateTextTemplates,
   canManage,
   canCreateEstimate,
+  canManageEstimateText,
 }: Props): React.ReactElement {
   const { developerModeEnabled } = useDeveloperMode()
   const [categoryFilter, setCategoryFilter] = useState("all")
@@ -288,27 +295,35 @@ export function TemplateLibraryView({
       </header>
 
       <main className="flex-1 overflow-y-auto px-4 py-5 sm:px-6">
-        <div className="mb-5 border-y py-3 sm:max-w-sm">
-          <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-            <SelectTrigger aria-label="Filter templates by category">
-              <SelectValue placeholder="All categories" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All categories</SelectItem>
-              {categories.map((category) => (
-                <SelectItem key={category} value={category}>{category}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
+        <Tabs defaultValue="project-content">
+          <TabsList>
+            <TabsTrigger value="project-content">Project content</TabsTrigger>
+            <TabsTrigger value="estimate-report-text">
+              Estimate report text
+            </TabsTrigger>
+          </TabsList>
+          <TabsContent value="project-content" className="mt-5">
+            <div className="mb-5 border-y py-3 sm:max-w-sm">
+              <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+                <SelectTrigger aria-label="Filter templates by category">
+                  <SelectValue placeholder="All categories" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All categories</SelectItem>
+                  {categories.map((category) => (
+                    <SelectItem key={category} value={category}>{category}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
 
-        {filtered.length === 0 ? (
-          <div className="border-y py-10 text-sm text-muted-foreground">
-            No templates match those filters.
-          </div>
-        ) : (
-          <div className="divide-y border-y">
-            {filtered.map((template) => {
+            {filtered.length === 0 ? (
+              <div className="border-y py-10 text-sm text-muted-foreground">
+                No templates match those filters.
+              </div>
+            ) : (
+              <div className="divide-y border-y">
+                {filtered.map((template) => {
               const ready =
                 template.lifecycleStatus === "active" &&
                 template.reviewStatus === "verified" &&
@@ -317,8 +332,8 @@ export function TemplateLibraryView({
                 (total, module) => total + module.sourceItemCount,
                 0
               )
-              return (
-                <article key={template.id} className="grid gap-4 py-4 xl:grid-cols-[minmax(0,1fr)_24rem_auto] xl:items-center">
+                  return (
+                    <article key={template.id} className="grid gap-4 py-4 xl:grid-cols-[minmax(0,1fr)_24rem_auto] xl:items-center">
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
                       <Link className="truncate font-medium hover:underline" href={templateDetailHref(template.id)}>
@@ -364,11 +379,19 @@ export function TemplateLibraryView({
                     </Button>
                     {canManage && <DeleteTemplateButton template={template} />}
                   </div>
-                </article>
-              )
-            })}
-          </div>
-        )}
+                    </article>
+                  )
+                })}
+              </div>
+            )}
+          </TabsContent>
+          <TabsContent value="estimate-report-text" className="mt-5">
+            <EstimateTextTemplateLibrary
+              templates={estimateTextTemplates}
+              canManage={canManageEstimateText}
+            />
+          </TabsContent>
+        </Tabs>
       </main>
     </div>
   )

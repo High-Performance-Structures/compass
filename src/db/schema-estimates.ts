@@ -120,6 +120,7 @@ export const projectEstimates = sqliteTable(
       { onDelete: "set null" }
     ),
     closingText: text("closing_text"),
+    clientReportMode: text("client_report_mode"),
     directCostCents: integer("direct_cost_cents").notNull().default(0),
     markupCents: integer("markup_cents").notNull().default(0),
     taxCents: integer("tax_cents").notNull().default(0),

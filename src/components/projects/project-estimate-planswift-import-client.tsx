@@ -65,6 +65,10 @@ type ParsedWorkbook = {
 type EditablePreviewRow = {
   readonly costCode: string;
   readonly description: string;
+  readonly quantity: string;
+  readonly unit: string;
+  readonly unitCost: string;
+  readonly markupPercentage: string;
   readonly amount: string;
 };
 
@@ -121,10 +125,17 @@ function applyEdits(
 ): PlanSwiftImportPreviewRow {
   if (!edit) return row;
   const amount = Number(edit.amount);
+  const quantity = edit.quantity.trim() ? Number(edit.quantity) : null;
+  const unitCost = edit.unitCost.trim() ? Number(edit.unitCost) : null;
+  const markupPercentage = Number(edit.markupPercentage) || 0;
   return {
     ...row,
     costCode: edit.costCode,
     description: edit.description,
+    quantity,
+    unit: edit.unit.trim() || null,
+    unitCost,
+    markupPercentage,
     amount,
     issues: planSwiftPreviewIssues({
       costCode: edit.costCode,
@@ -163,6 +174,8 @@ export function ProjectEstimatePlanSwiftImportClient({
   const [excludedRows, setExcludedRows] = React.useState<ReadonlySet<number>>(
     new Set(),
   );
+  const [replaceExistingPlanSwiftLines, setReplaceExistingPlanSwiftLines] =
+    React.useState(false);
 
   const sheet = selectedSheet(workbook, sheetName);
   const sheetRows = sheet?.rows ?? EMPTY_ROWS;
@@ -184,6 +197,9 @@ export function ProjectEstimatePlanSwiftImportClient({
     (row) => row.issues.length > 0,
   ).length;
   const knownCostCodes = new Set(costCodes.map((option) => option.value));
+  const costCodeOptions = new Map(
+    costCodes.map((option) => [option.value, option]),
+  );
   const unmatchedCostCodeCount = selectedRows.filter(
     (row) => !knownCostCodes.has(row.costCode),
   ).length;
@@ -196,6 +212,7 @@ export function ProjectEstimatePlanSwiftImportClient({
     setMappings(autoMapPlanSwiftColumns([]));
     setEdits({});
     setExcludedRows(new Set());
+    setReplaceExistingPlanSwiftLines(false);
   }
 
   function configureSheet(nextSheet: ParsedSheet): void {
@@ -321,13 +338,44 @@ export function ProjectEstimatePlanSwiftImportClient({
           ? {
               costCode: parsedRow.costCode,
               description: parsedRow.description,
+              quantity:
+                parsedRow.quantity === null ? "" : String(parsedRow.quantity),
+              unit: parsedRow.unit ?? "",
+              unitCost:
+                parsedRow.unitCost === null ? "" : String(parsedRow.unitCost),
+              markupPercentage: String(parsedRow.markupPercentage),
               amount: parsedRow.amount > 0 ? String(parsedRow.amount) : "",
             }
           : null);
       if (!currentRow) return current;
+      const nextRow = { ...currentRow, [field]: value };
+      if (
+        field === "quantity" ||
+        field === "unitCost" ||
+        field === "markupPercentage"
+      ) {
+        const quantity = Number(nextRow.quantity);
+        const unitCost = Number(nextRow.unitCost);
+        const markup = Number(nextRow.markupPercentage) || 0;
+        if (quantity > 0 && unitCost > 0) {
+          nextRow.amount = String(
+            Math.round(quantity * unitCost * (1 + markup / 100) * 100) / 100,
+          );
+        }
+      }
+      if (field === "amount") {
+        const amount = Number(nextRow.amount);
+        const quantity = Number(nextRow.quantity) || 1;
+        const markup = Number(nextRow.markupPercentage) || 0;
+        if (amount > 0) {
+          nextRow.unitCost = String(
+            Math.round((amount / quantity / (1 + markup / 100)) * 100) / 100,
+          );
+        }
+      }
       return {
         ...current,
-        [rowNumber]: { ...currentRow, [field]: value },
+        [rowNumber]: nextRow,
       };
     });
   }
@@ -356,11 +404,16 @@ export function ProjectEstimatePlanSwiftImportClient({
       const result = await importPlanSwiftEstimateLines(projectId, estimateId, {
         sourceFileName: workbook.fileName,
         sourceSheetName: sheet.name,
+        replaceExistingPlanSwiftLines,
         lines: selectedRows.map((row) => ({
           rowNumber: row.rowNumber,
           costCode: row.costCode,
           description: row.description,
           notes: row.notes,
+          quantity: row.quantity,
+          unit: row.unit,
+          unitCost: row.unitCost,
+          markupPercentage: row.markupPercentage,
           amount: row.amount,
         })),
       });
@@ -574,9 +627,19 @@ export function ProjectEstimatePlanSwiftImportClient({
                   <IconAlertTriangle />
                   <AlertTitle>This estimate already has draft lines.</AlertTitle>
                   <AlertDescription>
-                    The selected PlanSwift rows will be appended to the existing
-                    {` ${existingLineCount} `}working estimate lines.
+                    Choose whether to append these rows or replace only the
+                    estimate lines previously imported from PlanSwift. Manual
+                    estimate lines are never removed by this option.
                   </AlertDescription>
+                  <label className="mt-3 flex items-center gap-2 text-sm">
+                    <Checkbox
+                      checked={replaceExistingPlanSwiftLines}
+                      onCheckedChange={(checked) =>
+                        setReplaceExistingPlanSwiftLines(checked === true)
+                      }
+                    />
+                    Replace prior PlanSwift-imported lines
+                  </label>
                 </Alert>
               )}
               {unmatchedCostCodeCount > 0 && (
@@ -607,13 +670,17 @@ export function ProjectEstimatePlanSwiftImportClient({
               </div>
 
               <div className="overflow-x-auto border">
-                <table className="w-full min-w-[900px] text-sm">
+                <table className="w-full min-w-[1320px] text-sm">
                   <thead className="sticky top-0 z-10 bg-muted">
                     <tr>
                       <th className="w-16 px-2 py-2 text-center font-medium">Use</th>
                       <th className="w-16 px-2 py-2 text-left font-medium">Row</th>
                       <th className="w-44 px-2 py-2 text-left font-medium">Cost code</th>
+                      <th className="w-44 px-2 py-2 text-left font-medium">Division</th>
                       <th className="px-2 py-2 text-left font-medium">Description</th>
+                      <th className="w-28 px-2 py-2 text-right font-medium">Quantity</th>
+                      <th className="w-28 px-2 py-2 text-left font-medium">Unit</th>
+                      <th className="w-32 px-2 py-2 text-right font-medium">Unit cost</th>
                       <th className="w-40 px-2 py-2 text-right font-medium">Amount</th>
                       <th className="w-56 px-2 py-2 text-left font-medium">Review</th>
                     </tr>
@@ -623,6 +690,7 @@ export function ProjectEstimatePlanSwiftImportClient({
                       const included = !excludedRows.has(row.rowNumber);
                       const knownCode =
                         knownCostCodes.has(row.costCode);
+                      const costCodeOption = costCodeOptions.get(row.costCode);
                       return (
                         <tr key={row.rowNumber} className="border-t align-top">
                           <td className="px-2 py-2 text-center">
@@ -657,6 +725,11 @@ export function ProjectEstimatePlanSwiftImportClient({
                               </p>
                             )}
                           </td>
+                          <td className="px-2 py-3 text-xs">
+                            {costCodeOption
+                              ? `${costCodeOption.divisionCode} · ${costCodeOption.divisionName}`
+                              : "Select a mapped cost code"}
+                          </td>
                           <td className="px-2 py-2">
                             <Input
                               value={row.description}
@@ -674,6 +747,40 @@ export function ProjectEstimatePlanSwiftImportClient({
                                 {row.notes}
                               </p>
                             )}
+                          </td>
+                          <td className="px-2 py-2">
+                            <Input
+                              type="number"
+                              inputMode="decimal"
+                              min="0.0001"
+                              step="any"
+                              className="text-right"
+                              value={row.quantity === null ? "" : String(row.quantity)}
+                              onChange={(event) =>
+                                changeRow(row.rowNumber, "quantity", event.target.value)
+                              }
+                            />
+                          </td>
+                          <td className="px-2 py-2">
+                            <Input
+                              value={row.unit ?? ""}
+                              onChange={(event) =>
+                                changeRow(row.rowNumber, "unit", event.target.value)
+                              }
+                            />
+                          </td>
+                          <td className="px-2 py-2">
+                            <Input
+                              type="number"
+                              inputMode="decimal"
+                              min="0.01"
+                              step="0.01"
+                              className="text-right"
+                              value={row.unitCost === null ? "" : String(row.unitCost)}
+                              onChange={(event) =>
+                                changeRow(row.rowNumber, "unitCost", event.target.value)
+                              }
+                            />
                           </td>
                           <td className="px-2 py-2">
                             <Input
