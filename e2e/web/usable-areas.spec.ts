@@ -516,6 +516,48 @@ test.describe("usable Compass areas", () => {
     )
   })
 
+  test("Gantt keeps its horizontal position across a schedule refresh", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1366, height: 768 })
+    const schedulePath =
+      "/dashboard/projects/e2e-project-001/schedule?view=gantt&order=chronological"
+    const response = await page.goto(schedulePath)
+    await expectHealthyNavigation(page, response, schedulePath)
+
+    const chart = page.locator(".gantt-container:visible").first()
+    await expect(chart).toBeVisible()
+
+    const expectedLeft = await chart.evaluate((element) => {
+      const maximumLeft = element.scrollWidth - element.clientWidth
+      element.scrollLeft = Math.max(1, Math.round(maximumLeft * 0.7))
+      return element.scrollLeft
+    })
+    expect(expectedLeft).toBeGreaterThan(0)
+    await expect
+      .poll(() =>
+        page.evaluate(() => {
+          const stored = window.sessionStorage.getItem(
+            "compass:schedule-scroll:e2e-project-001"
+          )
+          if (!stored) return 0
+          const parsed: unknown = JSON.parse(stored)
+          if (!parsed || typeof parsed !== "object" || !("left" in parsed)) {
+            return 0
+          }
+          return typeof parsed.left === "number" ? parsed.left : 0
+        })
+      )
+      .toBeGreaterThan(0)
+
+    await page.reload()
+    await expect(chart).toBeVisible()
+
+    await expect
+      .poll(() => chart.evaluate((element) => element.scrollLeft))
+      .toBeGreaterThan(expectedLeft * 0.5)
+  })
+
   test("Gantt releases edge wheel input to the surrounding Schedule workspace", async ({
     page,
   }) => {
