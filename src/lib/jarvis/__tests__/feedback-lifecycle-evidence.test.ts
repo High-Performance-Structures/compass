@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest"
 import {
   feedbackBugTransitionIsBlocked,
   feedbackDeliveryGraphIsComplete,
+  feedbackEngineeringTransitionIsBlocked,
 } from "@/lib/jarvis/feedback-lifecycle-evidence"
 
 const completeGraph = {
@@ -89,5 +90,27 @@ describe("Feedback Desk lifecycle evidence", () => {
       deliveryGraphStatus: null,
       githubDraftPullRequestUrl: null,
     })).toBeNull()
+  })
+
+  it("applies the same evidence gates to an explicitly engineering-required question", () => {
+    expect(feedbackEngineeringTransitionIsBlocked({
+      kind: "question",
+      status: "triaged",
+      nextStatus: "in_progress",
+      deliveryRoute: "engineering",
+      ...completeGraph,
+      githubDraftPullRequestUrl: null,
+    })).toBeNull()
+    expect(feedbackEngineeringTransitionIsBlocked({
+      kind: "question",
+      status: "triaged",
+      nextStatus: "in_progress",
+      deliveryRoute: "engineering",
+      ...completeGraph,
+      deliveryGraphImplementationTaskId: null,
+      githubDraftPullRequestUrl: null,
+    })).toBe(
+      "An engineering request must have a complete durable delivery graph before implementation starts",
+    )
   })
 })
