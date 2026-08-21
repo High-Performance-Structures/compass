@@ -25,6 +25,8 @@ vi.mock("sonner", () => ({
   toast: { error: vi.fn(), success: vi.fn(), warning: vi.fn() },
 }))
 
+vi.mock("@/lib/permission-enforcement", () => ({}))
+
 vi.mock("@/app/actions/schedule", () => ({
   createTask: vi.fn(),
   updateTask: vi.fn(),
