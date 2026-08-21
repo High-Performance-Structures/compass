@@ -219,6 +219,14 @@ class FeedbackStatusTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             MODULE.validate_feedback_status_payload(payload)
 
+        payload = self.valid_payload()
+        payload["githubIssueUrl"] = (
+            "https://github.com/High-Performance-Structures/compass/issues/"
+            + "1" * MODULE.MAX_FEEDBACK_URL_CHARS
+        )
+        with self.assertRaises(ValueError):
+            MODULE.validate_feedback_status_payload(payload)
+
     def test_retries_use_the_same_idempotency_key_and_body(self) -> None:
         payload = self.valid_payload()
         with patch.dict(
@@ -322,6 +330,83 @@ class FeedbackStatusTests(unittest.TestCase):
         )
         self.assertEqual(result["requesterUpdateQueued"], True)
         self.assertNotIn(secret, json.dumps(result))
+
+    def test_status_does_not_follow_redirects_with_bridge_signature(self) -> None:
+        payload = self.valid_payload()
+        primary_observed: dict[str, object] = {}
+        redirected_observed: dict[str, object] = {}
+
+        class RedirectedHandler(BaseHTTPRequestHandler):
+            def do_GET(self) -> None:
+                redirected_observed["headers"] = dict(self.headers)
+                self.send_response(200)
+                self.end_headers()
+
+            def do_POST(self) -> None:
+                redirected_observed["headers"] = dict(self.headers)
+                self.send_response(200)
+                self.end_headers()
+
+            def log_message(self, format: str, *args: object) -> None:
+                return
+
+        redirected_server = HTTPServer(("127.0.0.1", 0), RedirectedHandler)
+        redirected_thread = threading.Thread(
+            target=redirected_server.serve_forever,
+            daemon=True,
+        )
+        redirected_thread.start()
+
+        redirect_target = (
+            f"http://127.0.0.1:{redirected_server.server_port}/off-origin"
+        )
+
+        class PrimaryHandler(BaseHTTPRequestHandler):
+            def do_POST(self) -> None:
+                primary_observed["path"] = self.path
+                primary_observed["signature"] = self.headers.get(
+                    "X-Compass-Signature"
+                )
+                self.send_response(302)
+                self.send_header("Location", redirect_target)
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+
+            def log_message(self, format: str, *args: object) -> None:
+                return
+
+        primary_server = HTTPServer(("127.0.0.1", 0), PrimaryHandler)
+        primary_thread = threading.Thread(
+            target=primary_server.serve_forever,
+            daemon=True,
+        )
+        primary_thread.start()
+        try:
+            base_url = f"http://127.0.0.1:{primary_server.server_port}"
+            with patch.dict(
+                os.environ,
+                {
+                    "COMPASS_BASE_URL": base_url,
+                    "JARVIS_BRIDGE_SECRET": "redirect-test-secret",
+                },
+            ):
+                with patch.object(MODULE, "COMPASS_PRODUCTION_BASE_URL", base_url):
+                    with self.assertRaises(RuntimeError):
+                        MODULE.request_feedback_status(payload, max_attempts=1)
+        finally:
+            primary_server.shutdown()
+            primary_thread.join(timeout=2)
+            primary_server.server_close()
+            redirected_server.shutdown()
+            redirected_thread.join(timeout=2)
+            redirected_server.server_close()
+
+        self.assertEqual(
+            primary_observed["path"],
+            "/api/integrations/jarvis/feedback/123e4567-e89b-12d3-a456-426614174000/status",
+        )
+        self.assertIsInstance(primary_observed["signature"], str)
+        self.assertEqual(redirected_observed, {})
 
 
 if __name__ == "__main__":

@@ -24,6 +24,7 @@ from typing import Any
 MAX_BODY_BYTES = 64 * 1024
 MAX_VISUAL_RESPONSE_BYTES = 3 * 1024 * 1024
 MAX_FEEDBACK_MESSAGE_CHARS = 2_000
+MAX_FEEDBACK_URL_CHARS = 2_048
 COMPASS_PRODUCTION_BASE_URL = "https://compass.openrangeconstruction.ltd"
 FEEDBACK_STATUS_PATH = "/api/integrations/jarvis/feedback/{item_id}/status"
 FEEDBACK_STATUSES = frozenset(
@@ -215,7 +216,9 @@ def validate_feedback_status_payload(payload: object) -> dict[str, object]:
     ):
         value = payload.get(key)
         if value is not None and (
-            not isinstance(value, str) or pattern.fullmatch(value) is None
+            not isinstance(value, str)
+            or len(value) > MAX_FEEDBACK_URL_CHARS
+            or pattern.fullmatch(value) is None
         ):
             raise ValueError(f"{key} is invalid")
 
@@ -300,7 +303,12 @@ def request_feedback_status(
     attempts = max(1, min(2, max_attempts))
     for attempt in range(attempts):
         try:
-            response = request_json("POST", target, body)
+            response = request_json(
+                "POST",
+                target,
+                body,
+                follow_redirects=False,
+            )
             return redact_feedback_status_response(response)
         except (TimeoutError, urllib.error.URLError) as error:
             if attempt + 1 == attempts:
@@ -339,11 +347,27 @@ def feedback_status_payload_from_args(args: argparse.Namespace) -> dict[str, obj
     return validate_feedback_status_payload(payload)
 
 
+class _NoRedirectHandler(urllib.request.HTTPRedirectHandler):
+    """Reject redirects so signed lifecycle headers cannot cross origins."""
+
+    def redirect_request(
+        self,
+        req: urllib.request.Request,
+        fp: object,
+        code: int,
+        msg: str,
+        headers: object,
+        newurl: str,
+    ) -> None:
+        return None
+
+
 def request_json(
     method: str,
     target: str,
     body: bytes = b"",
     max_response_bytes: int = MAX_BODY_BYTES,
+    follow_redirects: bool = True,
 ) -> Any:
     base_url = os.environ.get("COMPASS_BASE_URL", "").rstrip("/")
     secret = os.environ.get("JARVIS_BRIDGE_SECRET", "")
@@ -380,8 +404,13 @@ def request_json(
         headers=headers,
         method=method,
     )
+    opener = (
+        urllib.request.build_opener()
+        if follow_redirects
+        else urllib.request.build_opener(_NoRedirectHandler())
+    )
     try:
-        with urllib.request.urlopen(request, timeout=30) as response:
+        with opener.open(request, timeout=30) as response:
             response_status = response.status
             response_type = response.headers.get("Content-Type", "unknown")
             response_body = response.read(max_response_bytes + 1)
