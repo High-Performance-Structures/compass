@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState, useTransition, type FormEvent } from "react"
+import { useEffect, useMemo, useState, useTransition, type FormEvent } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { IconExternalLink, IconFileDescription } from "@tabler/icons-react"
@@ -8,10 +8,15 @@ import { IconExternalLink, IconFileDescription } from "@tabler/icons-react"
 import {
   saveEstimateTextTemplate,
   saveProjectEstimatePhaseDescription,
+  setProjectEstimateClientReportMode,
   setProjectEstimateAcknowledgements,
   type ProjectEstimateSummary,
   type ProjectEstimateWorkspace,
 } from "@/app/actions/project-estimates"
+import {
+  isEstimateClientReportMode,
+  type EstimateClientReportMode,
+} from "@/lib/estimates/client-report"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -26,14 +31,10 @@ import {
 } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 
-function reportModeLabel(workspace: ProjectEstimateWorkspace): string {
-  if (workspace.reportMode === "phase_summary") {
-    return "Phase subtotals only"
-  }
-  if (workspace.reportMode === "cost_code") {
-    return "Individual cost codes"
-  }
-  return "CA22 phase and cost-code detail"
+function reportModeLabel(mode: EstimateClientReportMode): string {
+  if (mode === "division_summary") return "Division subtotals + grand total"
+  if (mode === "phase_summary") return "Phase subtotals + grand total"
+  return "Line items + division totals"
 }
 
 export function ProjectEstimateClientReportSettings({
@@ -50,9 +51,13 @@ export function ProjectEstimateClientReportSettings({
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
   const [message, setMessage] = useState<string | null>(null)
+  const [reportMode, setReportMode] = useState(workspace.reportMode)
   const [acknowledgementIds, setAcknowledgementIds] = useState<readonly string[]>(
     workspace.selectedAcknowledgements.map((item) => item.templateId)
   )
+  useEffect(() => {
+    setReportMode(workspace.reportMode)
+  }, [workspace.reportMode])
   const phases = useMemo(() => {
     const groups = new Map<string, string>()
     for (const line of workspace.lines) {
@@ -90,6 +95,19 @@ export function ProjectEstimateClientReportSettings({
       setMessage(
         result.success ? "Phase description saved." : result.error
       )
+      if (result.success) router.refresh()
+    })
+  }
+
+  function saveReportMode(): void {
+    setMessage(null)
+    startTransition(async () => {
+      const result = await setProjectEstimateClientReportMode(
+        projectId,
+        estimate.id,
+        reportMode
+      )
+      setMessage(result.success ? "Client report view saved." : result.error)
       if (result.success) router.refresh()
     })
   }
@@ -151,12 +169,13 @@ export function ProjectEstimateClientReportSettings({
             <h2 className="font-semibold">Client report presentation</h2>
             <p className="mt-1 text-sm text-muted-foreground">
               The client view follows the {workspace.department}-department
-              estimate format. Internal quantities, markup, and tax details stay
-              in the working estimate.
+              estimate format. Internal markup and tax details stay in the
+              working estimate; quantity and unit cost appear only in the
+              line-item report view.
             </p>
           </div>
         </div>
-        <Badge variant="outline">{reportModeLabel(workspace)}</Badge>
+        <Badge variant="outline">{reportModeLabel(workspace.reportMode)}</Badge>
       </div>
 
       {message && (
@@ -165,7 +184,45 @@ export function ProjectEstimateClientReportSettings({
         </p>
       )}
 
-      {workspace.reportMode !== "cost_code" && phases.length > 0 && (
+      <div className="mt-5 grid gap-3 border-t pt-4 md:grid-cols-[minmax(0,1fr)_auto] md:items-end">
+        <div className="space-y-1.5">
+          <Label htmlFor="client-report-view">Client report detail</Label>
+          <Select
+            value={reportMode}
+            onValueChange={(value) => {
+              if (isEstimateClientReportMode(value)) setReportMode(value)
+            }}
+            disabled={!editable}
+          >
+            <SelectTrigger id="client-report-view">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="division_summary">
+                Division subtotals and grand total
+              </SelectItem>
+              <SelectItem value="phase_summary">
+                Phase descriptions, subtotals, and grand total
+              </SelectItem>
+              <SelectItem value="line_items">
+                Individual line items with division totals
+              </SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        {editable && (
+          <Button
+            type="button"
+            variant="outline"
+            disabled={isPending || reportMode === workspace.reportMode}
+            onClick={saveReportMode}
+          >
+            Save report view
+          </Button>
+        )}
+      </div>
+
+      {workspace.reportMode !== "division_summary" && phases.length > 0 && (
         <div className="mt-5 space-y-3 border-t pt-4">
           <div>
             <h3 className="text-sm font-semibold">Phase descriptions</h3>

@@ -3,6 +3,7 @@
 import {
   useEffect,
   useMemo,
+  useRef,
   useState,
   useTransition,
   type FormEvent,
@@ -150,6 +151,8 @@ export function ProjectEstimateWorkspacePanel({
   const [isPending, startTransition] = useTransition()
   const [message, setMessage] = useState<string | null>(null)
   const [line, setLine] = useState<LineDraft>(EMPTY_LINE)
+  const [insertAfterLineId, setInsertAfterLineId] = useState<string | null>(null)
+  const lineEditorRef = useRef<HTMLFormElement>(null)
   const [startTemplateId, setStartTemplateId] = useState("")
   const [startTaxEntityId, setStartTaxEntityId] = useState("")
   const [termsTemplateId, setTermsTemplateId] = useState(
@@ -298,9 +301,13 @@ export function ProjectEstimateWorkspacePanel({
           taxable: line.taxable,
           taxEntityId: line.taxEntityId || null,
           ownerVisible: line.ownerVisible,
+          insertAfterLineId,
         }
       )
-      if (result.success) setLine(EMPTY_LINE)
+      if (result.success) {
+        setLine(EMPTY_LINE)
+        setInsertAfterLineId(null)
+      }
       finish(result.success ? "Estimate line saved." : result.error)
     })
   }
@@ -315,6 +322,20 @@ export function ProjectEstimateWorkspacePanel({
         lineId
       )
       finish(result.success ? "Estimate line removed." : result.error)
+    })
+  }
+
+  function openLineEditor(
+    nextLine: LineDraft,
+    insertionPoint: string | null = null
+  ): void {
+    setLine(nextLine)
+    setInsertAfterLineId(insertionPoint)
+    window.requestAnimationFrame(() => {
+      lineEditorRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })
+      lineEditorRef.current
+        ?.querySelector<HTMLInputElement>("#estimateDescription")
+        ?.focus({ preventScroll: true })
     })
   }
 
@@ -780,6 +801,14 @@ export function ProjectEstimateWorkspacePanel({
                 costCodes={workspace.costCodes}
                 existingLineCount={workspace.lines.length}
               />
+              <Button
+                type="button"
+                size="sm"
+                onClick={() => openLineEditor(EMPTY_LINE)}
+              >
+                <IconPlus className="size-4" />
+                Add estimate line
+              </Button>
               {estimate.sourceWorkbookUrl && (
                 <Button
                   type="button"
@@ -850,9 +879,25 @@ export function ProjectEstimateWorkspacePanel({
                                 type="button"
                                 size="sm"
                                 variant="outline"
-                                onClick={() => setLine(lineDraft(item))}
+                                onClick={() => openLineEditor(lineDraft(item))}
                               >
                                 Edit
+                              </Button>
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="ghost"
+                                onClick={() =>
+                                  openLineEditor(
+                                    {
+                                      ...EMPTY_LINE,
+                                      divisionCode: item.divisionCode,
+                                    },
+                                    item.id
+                                  )
+                                }
+                              >
+                                Insert below
                               </Button>
                               <Button
                                 type="button"
@@ -876,9 +921,17 @@ export function ProjectEstimateWorkspacePanel({
         )}
 
         {editable && (
-          <form className="mt-5 border-t pt-4" onSubmit={saveLine}>
+          <form
+            ref={lineEditorRef}
+            className="mt-5 scroll-mt-6 border-t pt-4"
+            onSubmit={saveLine}
+          >
             <h3 className="mb-3 text-sm font-semibold">
-              {line.id ? "Edit estimate line" : "Add estimate line"}
+              {line.id
+                ? "Edit estimate line"
+                : insertAfterLineId
+                  ? "Insert estimate line"
+                  : "Add estimate line"}
             </h3>
             <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
               <div className="space-y-1.5">
@@ -960,9 +1013,9 @@ export function ProjectEstimateWorkspacePanel({
                 Owner-visible
               </label>
               <div className="ml-auto flex gap-2">
-                {line.id && <Button type="button" variant="ghost" onClick={() => setLine(EMPTY_LINE)}>Cancel edit</Button>}
+                {(line.id || insertAfterLineId) && <Button type="button" variant="ghost" onClick={() => { setLine(EMPTY_LINE); setInsertAfterLineId(null) }}>Cancel</Button>}
                 <Button type="submit" disabled={isPending || !line.costCode}>
-                  <IconPlus className="size-4" /> {line.id ? "Save line" : "Add line"}
+                  <IconPlus className="size-4" /> {line.id ? "Save line" : insertAfterLineId ? "Insert line" : "Add line"}
                 </Button>
               </div>
             </div>

@@ -10,10 +10,14 @@ export const ESTIMATE_TEXT_TEMPLATE_TYPES = [
 export type EstimateTextTemplateType =
   (typeof ESTIMATE_TEXT_TEMPLATE_TYPES)[number]
 
+export const ESTIMATE_CLIENT_REPORT_MODES = [
+  "division_summary",
+  "phase_summary",
+  "line_items",
+] as const
+
 export type EstimateClientReportMode =
-  | "phase_summary"
-  | "ca22"
-  | "cost_code"
+  (typeof ESTIMATE_CLIENT_REPORT_MODES)[number]
 
 export type EstimateTextTemplateOption = {
   readonly id: string
@@ -32,6 +36,9 @@ export type ClientEstimateLine = {
   readonly costCode: string
   readonly description: string
   readonly specifications: string | null
+  readonly quantity: number
+  readonly unit: string
+  readonly unitCostCents: number
   readonly lineTotalCents: number
   readonly ownerVisible: boolean
   readonly sortOrder: number
@@ -170,8 +177,14 @@ export function estimateClientReportMode(
   department: ProjectDepartment
 ): EstimateClientReportMode {
   if (department === "H") return "phase_summary"
-  if (department === "N") return "cost_code"
-  return "ca22"
+  if (department === "O" || department === "N") return "line_items"
+  return "division_summary"
+}
+
+export function isEstimateClientReportMode(
+  value: string | null
+): value is EstimateClientReportMode {
+  return ESTIMATE_CLIENT_REPORT_MODES.some((mode) => mode === value)
 }
 
 export function defaultEstimateTitle(
