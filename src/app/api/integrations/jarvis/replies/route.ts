@@ -8,7 +8,10 @@ import {
   channels,
   messages,
 } from "@/db/schema-conversations"
-import { jarvisBridgeEvents } from "@/db/schema-jarvis"
+import {
+  feedbackDeskItems,
+  jarvisBridgeEvents,
+} from "@/db/schema-jarvis"
 import { getCloudflareContext } from "@/lib/db"
 import {
   getJarvisBridgeSecrets,
@@ -125,6 +128,7 @@ export async function POST(request: Request): Promise<Response> {
       eventType: jarvisBridgeEvents.eventType,
       source: jarvisBridgeEvents.source,
       payload: jarvisBridgeEvents.payload,
+      feedbackDeskItemId: jarvisBridgeEvents.feedbackDeskItemId,
     })
     .from(jarvisBridgeEvents)
     .where(
@@ -156,7 +160,26 @@ export async function POST(request: Request): Promise<Response> {
     )
   }
 
-  const target = replyTarget(sourceEvent.payload)
+  const feedbackItem = sourceEvent.feedbackDeskItemId
+    ? await db
+      .select({
+        organizationId: feedbackDeskItems.organizationId,
+        channelId: feedbackDeskItems.channelId,
+        messageId: feedbackDeskItems.messageId,
+      })
+      .from(feedbackDeskItems)
+      .where(eq(feedbackDeskItems.id, sourceEvent.feedbackDeskItemId))
+      .get()
+    : null
+  const target = sourceEvent.eventType === "feedback.status_changed"
+    ? feedbackItem?.organizationId && feedbackItem.channelId && feedbackItem.messageId
+      ? {
+          organizationId: feedbackItem.organizationId,
+          channelId: feedbackItem.channelId,
+          messageId: feedbackItem.messageId,
+        }
+      : null
+    : replyTarget(sourceEvent.payload)
   if (!target) {
     return Response.json(
       { error: "Request has no Compass reply target" },

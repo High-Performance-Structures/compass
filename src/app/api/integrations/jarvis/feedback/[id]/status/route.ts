@@ -12,8 +12,13 @@ import {
 } from "@/lib/jarvis/auth"
 import { FEEDBACK_DESK_STATUSES } from "@/lib/jarvis/feedback-lifecycle"
 import { applyFeedbackLifecycleUpdate } from "@/lib/jarvis/feedback-status-update"
-import { feedbackDeliveryGraphUpdate } from "@/lib/jarvis/feedback-delivery"
-import { feedbackBugTransitionIsBlocked } from "@/lib/jarvis/feedback-lifecycle-evidence"
+import {
+  feedbackDeliveryGraphUpdate,
+  feedbackDeliveryRoute,
+} from "@/lib/jarvis/feedback-delivery"
+import {
+  feedbackEngineeringTransitionIsBlocked,
+} from "@/lib/jarvis/feedback-lifecycle-evidence"
 
 const statusUpdateSchema = z.object({
   idempotencyKey: z.string().min(1).max(256),
@@ -42,6 +47,7 @@ const statusUpdateSchema = z.object({
     releaseTaskId: z.string().min(1).max(256).optional(),
     error: z.string().max(2_000).optional(),
   }).optional(),
+  deliveryRoute: z.enum(["engineering", "response"]).optional(),
 })
 
 export async function POST(
@@ -116,15 +122,17 @@ export async function POST(
   if (!item) {
     return Response.json({ error: "Feedback request not found" }, { status: 404 })
   }
-  if (deliveryGraph && (item.kind !== "bug" || item.status !== "triaged")) {
+  const deliveryRoute = parsed.data.deliveryRoute ?? feedbackDeliveryRoute(item)
+  if (deliveryGraph && (deliveryRoute !== "engineering" || item.status !== "triaged")) {
     return Response.json(
-      { error: "Only an already-triaged bug can receive a delivery graph" },
+      { error: "Only an already-triaged engineering request can receive a delivery graph" },
       { status: 409 },
     )
   }
-  const evidenceError = feedbackBugTransitionIsBlocked({
+  const evidenceError = feedbackEngineeringTransitionIsBlocked({
     ...item,
     nextStatus: parsed.data.status,
+    deliveryRoute,
     githubDraftPullRequestUrl:
       parsed.data.draftPullRequestUrl === undefined
         ? item.githubDraftPullRequestUrl
@@ -143,6 +151,7 @@ export async function POST(
       githubIssueUrl: parsed.data.githubIssueUrl,
       draftPullRequestUrl: parsed.data.draftPullRequestUrl,
       deliveryGraph,
+      deliveryRoute,
       actorSource: "signet",
       idempotencyKey: eventKey,
     })
