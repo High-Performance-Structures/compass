@@ -1,8 +1,13 @@
 import importlib.util
+import json
+import os
 import subprocess
 import tempfile
+import threading
 import unittest
 from pathlib import Path
+from unittest.mock import patch
+from http.server import BaseHTTPRequestHandler, HTTPServer
 
 
 SCRIPT_PATH = (
@@ -71,7 +76,6 @@ class SignatureTests(unittest.TestCase):
                 [
                     "openssl",
                     "genpkey",
-                    "-quiet",
                     "-algorithm",
                     "RSA",
                     "-pkeyopt",
@@ -140,6 +144,184 @@ class SignatureTests(unittest.TestCase):
             MODULE.MAX_VISUAL_RESPONSE_BYTES,
             MODULE.MAX_BODY_BYTES,
         )
+
+
+class FeedbackStatusTests(unittest.TestCase):
+    def valid_payload(self) -> dict[str, object]:
+        return {
+            "itemId": "123e4567-e89b-12d3-a456-426614174000",
+            "status": "in_progress",
+            "message": "The fix is in progress.",
+            "priority": "high",
+            "githubIssueUrl": "https://github.com/High-Performance-Structures/compass/issues/468",
+            "draftPullRequestUrl": "https://github.com/High-Performance-Structures/compass/pull/469",
+            "idempotencyKey": "feedback-468-status-v1",
+        }
+
+    def test_valid_status_payload_signs_only_the_fixed_lifecycle_target(self) -> None:
+        payload = self.valid_payload()
+        with patch.dict(
+            os.environ,
+            {
+                "COMPASS_BASE_URL": MODULE.COMPASS_PRODUCTION_BASE_URL,
+                "JARVIS_BRIDGE_SECRET": "test-secret",
+            },
+        ):
+            with patch.object(
+                MODULE,
+                "request_json",
+                return_value={
+                    "success": True,
+                    "feedbackDeskItemId": payload["itemId"],
+                    "status": payload["status"],
+                    "notifiedUserCount": 1,
+                    "requesterUpdateQueued": True,
+                    "secret": "must-not-leak",
+                },
+            ) as request:
+                result = MODULE.request_feedback_status(payload)
+
+        target = request.call_args.args[1]
+        body = request.call_args.args[2]
+        self.assertEqual(
+            target,
+            "/api/integrations/jarvis/feedback/123e4567-e89b-12d3-a456-426614174000/status",
+        )
+        self.assertEqual(json.loads(body), payload)
+        self.assertEqual(
+            result,
+            {
+                "success": True,
+                "feedbackDeskItemId": payload["itemId"],
+                "status": payload["status"],
+                "notifiedUserCount": 1,
+                "requesterUpdateQueued": True,
+            },
+        )
+        self.assertNotIn("secret", result)
+
+    def test_status_payload_rejects_invalid_uuid_and_arbitrary_target_fields(self) -> None:
+        payload = self.valid_payload()
+        payload["itemId"] = "../../api/bridge/tools"
+        payload["target"] = "https://attacker.example/steal"
+
+        with self.assertRaises(ValueError):
+            MODULE.validate_feedback_status_payload(payload)
+
+    def test_status_payload_rejects_oversize_message_and_invalid_urls(self) -> None:
+        payload = self.valid_payload()
+        payload["message"] = "x" * 2_001
+        with self.assertRaises(ValueError):
+            MODULE.validate_feedback_status_payload(payload)
+
+        payload = self.valid_payload()
+        payload["githubIssueUrl"] = "http://attacker.example/468"
+        with self.assertRaises(ValueError):
+            MODULE.validate_feedback_status_payload(payload)
+
+    def test_retries_use_the_same_idempotency_key_and_body(self) -> None:
+        payload = self.valid_payload()
+        with patch.dict(
+            os.environ,
+            {
+                "COMPASS_BASE_URL": MODULE.COMPASS_PRODUCTION_BASE_URL,
+                "JARVIS_BRIDGE_SECRET": "test-secret",
+            },
+        ):
+            with patch.object(
+                MODULE,
+                "request_json",
+                side_effect=[
+                    MODULE.urllib.error.URLError("temporary"),
+                    {"success": True, "duplicate": True},
+                ],
+            ) as request:
+                result = MODULE.request_feedback_status(payload)
+
+        self.assertEqual(result, {"success": True, "duplicate": True})
+        self.assertEqual(request.call_count, 2)
+        self.assertEqual(request.call_args_list[0].args[1:], request.call_args_list[1].args[1:])
+
+    def test_payload_file_is_bounded_before_json_parsing(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            payload_path = Path(directory) / "payload.json"
+            payload_path.write_bytes(b"{" + b'"x":"' + b"x" * MODULE.MAX_BODY_BYTES + b'"}')
+
+            with self.assertRaises(ValueError):
+                MODULE.load_feedback_status_payload(str(payload_path))
+
+    def test_local_integration_signs_the_fixed_path_and_redacts_response(self) -> None:
+        payload = self.valid_payload()
+        observed: dict[str, object] = {}
+        secret = "integration-only-secret"
+
+        class Handler(BaseHTTPRequestHandler):
+            def do_POST(self) -> None:
+                body = self.rfile.read(int(self.headers["Content-Length"]))
+                observed["path"] = self.path
+                observed["body"] = body
+                observed["timestamp"] = self.headers["X-Compass-Timestamp"]
+                observed["signature"] = self.headers["X-Compass-Signature"]
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(
+                    json.dumps(
+                        {
+                            "success": True,
+                            "feedbackDeskItemId": payload["itemId"],
+                            "status": payload["status"],
+                            "notifiedUserCount": 1,
+                            "requesterUpdateQueued": True,
+                            "bridgeSecret": secret,
+                        }
+                    ).encode("utf-8")
+                )
+
+            def log_message(self, format: str, *args: object) -> None:
+                return
+
+        server = HTTPServer(("127.0.0.1", 0), Handler)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            with patch.dict(
+                os.environ,
+                {
+                    "COMPASS_BASE_URL": f"http://127.0.0.1:{server.server_port}",
+                    "JARVIS_BRIDGE_SECRET": secret,
+                },
+            ):
+                with patch.object(
+                    MODULE,
+                    "COMPASS_PRODUCTION_BASE_URL",
+                    f"http://127.0.0.1:{server.server_port}",
+                ):
+                    result = MODULE.request_feedback_status(payload, max_attempts=1)
+        finally:
+            server.shutdown()
+            thread.join(timeout=2)
+            server.server_close()
+
+        body = observed.get("body")
+        timestamp = observed.get("timestamp")
+        path = observed.get("path")
+        signature = observed.get("signature")
+        if not isinstance(body, bytes) or not isinstance(timestamp, str):
+            raise AssertionError("local server did not capture the signed request")
+        if not isinstance(path, str) or not isinstance(signature, str):
+            raise AssertionError("local server did not capture bridge headers")
+        self.assertEqual(
+            path,
+            "/api/integrations/jarvis/feedback/123e4567-e89b-12d3-a456-426614174000/status",
+        )
+        self.assertEqual(json.loads(body), payload)
+        self.assertEqual(
+            signature,
+            MODULE.signature(secret, timestamp, "POST", path, body),
+        )
+        self.assertEqual(result["requesterUpdateQueued"], True)
+        self.assertNotIn(secret, json.dumps(result))
 
 
 if __name__ == "__main__":

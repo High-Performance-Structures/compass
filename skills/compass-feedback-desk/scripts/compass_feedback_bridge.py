@@ -9,6 +9,7 @@ import hashlib
 import hmac
 import json
 import os
+import re
 import secrets
 import subprocess
 import sys
@@ -22,6 +23,44 @@ from typing import Any
 
 MAX_BODY_BYTES = 64 * 1024
 MAX_VISUAL_RESPONSE_BYTES = 3 * 1024 * 1024
+MAX_FEEDBACK_MESSAGE_CHARS = 2_000
+COMPASS_PRODUCTION_BASE_URL = "https://compass.openrangeconstruction.ltd"
+FEEDBACK_STATUS_PATH = "/api/integrations/jarvis/feedback/{item_id}/status"
+FEEDBACK_STATUSES = frozenset(
+    {
+        "new",
+        "triaged",
+        "needs_info",
+        "planned",
+        "in_progress",
+        "testing",
+        "deployed",
+        "closed",
+    }
+)
+FEEDBACK_PRIORITIES = frozenset({"low", "normal", "high", "urgent"})
+FEEDBACK_STATUS_KEYS = frozenset(
+    {
+        "itemId",
+        "status",
+        "message",
+        "priority",
+        "githubIssueUrl",
+        "draftPullRequestUrl",
+        "idempotencyKey",
+    }
+)
+UUID_PATTERN = re.compile(
+    r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-"
+    r"[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+)
+IDEMPOTENCY_KEY_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$")
+GITHUB_ISSUE_PATTERN = re.compile(
+    r"^https://github\.com/[^/\s]+/[^/\s]+/issues/[1-9][0-9]*(?:/)?$"
+)
+GITHUB_PULL_REQUEST_PATTERN = re.compile(
+    r"^https://github\.com/[^/\s]+/[^/\s]+/pull/[1-9][0-9]*(?:/)?$"
+)
 
 
 def update_env_file(path: Path, values: dict[str, str]) -> None:
@@ -58,10 +97,28 @@ def encrypt_for_transfer(secret: str, public_key_der: str) -> str:
     with tempfile.TemporaryDirectory(prefix="compass-bridge-") as directory:
         temporary = Path(directory)
         public_key_path = temporary / "public.der"
+        public_pem_path = temporary / "public.pem"
         secret_path = temporary / "secret"
         encrypted_path = temporary / "secret.enc"
         public_key_path.write_bytes(public_key)
         secret_path.write_bytes(secret.encode("utf-8"))
+        convert_result = subprocess.run(
+            [
+                "openssl",
+                "pkey",
+                "-pubin",
+                "-inform",
+                "DER",
+                "-in",
+                str(public_key_path),
+                "-out",
+                str(public_pem_path),
+            ],
+            capture_output=True,
+            check=False,
+        )
+        if convert_result.returncode != 0:
+            raise RuntimeError("OpenSSL could not read the bridge public key")
         result = subprocess.run(
             [
                 "openssl",
@@ -69,9 +126,7 @@ def encrypt_for_transfer(secret: str, public_key_der: str) -> str:
                 "-encrypt",
                 "-pubin",
                 "-inkey",
-                str(public_key_path),
-                "-keyform",
-                "DER",
+                str(public_pem_path),
                 "-pkeyopt",
                 "rsa_padding_mode:oaep",
                 "-pkeyopt",
@@ -115,6 +170,173 @@ def load_payload(path: str) -> bytes:
         separators=(",", ":"),
         ensure_ascii=False,
     ).encode("utf-8")
+
+
+def validate_feedback_status_payload(payload: object) -> dict[str, object]:
+    """Validate the only structured payload accepted by the lifecycle command."""
+    if not isinstance(payload, dict):
+        raise ValueError("Feedback status payload must be a JSON object")
+    unknown_keys = set(payload) - FEEDBACK_STATUS_KEYS
+    if unknown_keys:
+        raise ValueError("Feedback status payload contains unsupported fields")
+
+    item_id = payload.get("itemId")
+    if not isinstance(item_id, str) or UUID_PATTERN.fullmatch(item_id) is None:
+        raise ValueError("itemId must be a UUID")
+
+    status = payload.get("status")
+    if not isinstance(status, str) or status not in FEEDBACK_STATUSES:
+        raise ValueError("status is not an allowed Feedback Desk lifecycle status")
+
+    idempotency_key = payload.get("idempotencyKey")
+    if (
+        not isinstance(idempotency_key, str)
+        or IDEMPOTENCY_KEY_PATTERN.fullmatch(idempotency_key) is None
+    ):
+        raise ValueError("idempotencyKey is invalid")
+
+    message = payload.get("message")
+    if message is not None and (
+        not isinstance(message, str)
+        or not message.strip()
+        or len(message) > MAX_FEEDBACK_MESSAGE_CHARS
+    ):
+        raise ValueError("message is invalid or too long")
+
+    priority = payload.get("priority")
+    if priority is not None and (
+        not isinstance(priority, str) or priority not in FEEDBACK_PRIORITIES
+    ):
+        raise ValueError("priority is invalid")
+
+    for key, pattern in (
+        ("githubIssueUrl", GITHUB_ISSUE_PATTERN),
+        ("draftPullRequestUrl", GITHUB_PULL_REQUEST_PATTERN),
+    ):
+        value = payload.get(key)
+        if value is not None and (
+            not isinstance(value, str) or pattern.fullmatch(value) is None
+        ):
+            raise ValueError(f"{key} is invalid")
+
+    normalized = dict(payload)
+    body = json.dumps(
+        normalized,
+        separators=(",", ":"),
+        ensure_ascii=False,
+    ).encode("utf-8")
+    if len(body) > MAX_BODY_BYTES:
+        raise ValueError("Feedback status payload exceeds the 64 KiB bridge limit")
+    return normalized
+
+
+def load_feedback_status_payload(path: str) -> dict[str, object]:
+    """Load and validate a bounded JSON file without invoking a shell."""
+    data = Path(path).read_bytes()
+    if len(data) > MAX_BODY_BYTES:
+        raise ValueError("Feedback status payload exceeds the 64 KiB bridge limit")
+    try:
+        parsed = json.loads(data)
+    except json.JSONDecodeError as error:
+        raise ValueError("Feedback status payload is not valid JSON") from error
+    return validate_feedback_status_payload(parsed)
+
+
+def feedback_status_target(item_id: str) -> str:
+    """Build the fixed lifecycle path only after UUID validation."""
+    if UUID_PATTERN.fullmatch(item_id) is None:
+        raise ValueError("itemId must be a UUID")
+    return FEEDBACK_STATUS_PATH.format(item_id=urllib.parse.quote(item_id, safe=""))
+
+
+def redact_feedback_status_response(response: object) -> dict[str, object]:
+    """Return only the documented, non-sensitive lifecycle result fields."""
+    if not isinstance(response, dict) or response.get("success") is not True:
+        return {"success": False, "error": "compass_rejected_feedback_status"}
+    result: dict[str, object] = {"success": True}
+    for key in (
+        "duplicate",
+        "feedbackDeskItemId",
+        "status",
+        "notifiedUserCount",
+        "requesterUpdateQueued",
+    ):
+        if key in response:
+            result[key] = response[key]
+    return result
+
+
+def require_feedback_status_production_origin() -> None:
+    """Prevent the lifecycle command from being redirected to another host."""
+    configured = os.environ.get("COMPASS_BASE_URL", "").rstrip("/")
+    expected = COMPASS_PRODUCTION_BASE_URL
+    parsed = urllib.parse.urlsplit(configured)
+    expected_parsed = urllib.parse.urlsplit(expected)
+    if (
+        configured != expected
+        or parsed.scheme != expected_parsed.scheme
+        or parsed.hostname != expected_parsed.hostname
+        or parsed.port != expected_parsed.port
+        or parsed.path not in {"", "/"}
+        or parsed.query
+        or parsed.fragment
+    ):
+        raise RuntimeError("Feedback status requires the production Compass endpoint")
+
+
+def request_feedback_status(
+    payload: object,
+    max_attempts: int = 2,
+) -> dict[str, object]:
+    """Submit one fixed lifecycle request; retries reuse its idempotency key."""
+    normalized = validate_feedback_status_payload(payload)
+    body = json.dumps(
+        normalized,
+        separators=(",", ":"),
+        ensure_ascii=False,
+    ).encode("utf-8")
+    target = feedback_status_target(str(normalized["itemId"]))
+    require_feedback_status_production_origin()
+    attempts = max(1, min(2, max_attempts))
+    for attempt in range(attempts):
+        try:
+            response = request_json("POST", target, body)
+            return redact_feedback_status_response(response)
+        except (TimeoutError, urllib.error.URLError) as error:
+            if attempt + 1 == attempts:
+                raise RuntimeError("Feedback status request failed") from error
+    raise RuntimeError("Feedback status request failed")
+
+
+def feedback_status_payload_from_args(args: argparse.Namespace) -> dict[str, object]:
+    """Convert explicit CLI fields or one safe JSON file into one payload."""
+    direct_fields = (
+        args.item_id,
+        args.status,
+        args.message,
+        args.priority,
+        args.github_issue_url,
+        args.draft_pull_request_url,
+        args.idempotency_key,
+    )
+    if args.payload_file:
+        if any(value is not None for value in direct_fields):
+            raise ValueError("Use --payload-file or structured fields, not both")
+        return load_feedback_status_payload(args.payload_file)
+    payload = {
+        key: value
+        for key, value in {
+            "itemId": args.item_id,
+            "status": args.status,
+            "message": args.message,
+            "priority": args.priority,
+            "githubIssueUrl": args.github_issue_url,
+            "draftPullRequestUrl": args.draft_pull_request_url,
+            "idempotencyKey": args.idempotency_key,
+        }.items()
+        if value is not None
+    }
+    return validate_feedback_status_payload(payload)
 
 
 def request_json(
@@ -206,6 +428,19 @@ def build_parser() -> argparse.ArgumentParser:
     visuals.add_argument("--event-id", required=True)
     visuals.add_argument("--output-dir", required=True)
 
+    status = commands.add_parser(
+        "status",
+        help="update one Feedback Desk item through the fixed lifecycle endpoint",
+    )
+    status.add_argument("--payload-file")
+    status.add_argument("--item-id")
+    status.add_argument("--status")
+    status.add_argument("--message")
+    status.add_argument("--priority")
+    status.add_argument("--github-issue-url")
+    status.add_argument("--draft-pull-request-url")
+    status.add_argument("--idempotency-key")
+
     configure = commands.add_parser("configure")
     configure.add_argument("--base-url", required=True)
     configure.add_argument("--env-file", required=True)
@@ -216,6 +451,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main() -> int:
     args = build_parser().parse_args()
+    return_code = 0
 
     if args.command == "configure":
         parsed_base_url = urllib.parse.urlsplit(args.base_url)
@@ -306,6 +542,23 @@ def main() -> int:
             "count": len(written),
             "explicitUserAttachments": True,
         }
+    elif args.command == "status":
+        try:
+            result = request_feedback_status(
+                feedback_status_payload_from_args(args),
+            )
+        except (OSError, ValueError):
+            result = {
+                "success": False,
+                "error": "invalid_feedback_status_input",
+            }
+            return_code = 2
+        except RuntimeError:
+            result = {
+                "success": False,
+                "error": "feedback_status_request_failed",
+            }
+            return_code = 1
     else:
         result = request_json(
             "POST",
@@ -314,7 +567,7 @@ def main() -> int:
         )
 
     print(json.dumps(result, separators=(",", ":"), ensure_ascii=False))
-    return 0
+    return return_code
 
 
 if __name__ == "__main__":
