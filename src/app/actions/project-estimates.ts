@@ -3,6 +3,7 @@
 import { and, asc, desc, eq, like, ne } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
+import { saveEstimateTextTemplateLibraryItem } from "@/app/actions/estimate-text-templates"
 import { getDb } from "@/db"
 import { projectBudgetLines, projects, sageCostCodes } from "@/db/schema"
 import {
@@ -38,6 +39,7 @@ import {
   estimateClientReportMode,
   estimateTitleForDepartment,
   isEstimateTextTemplateType,
+  mergeEstimateTextTemplates,
   type EstimateClientReportMode,
   type EstimateTextTemplateOption,
   type EstimateTextTemplateType,
@@ -703,10 +705,12 @@ export async function getProjectEstimateWorkspace(
       ]
     }
   )
-  const availableTemplates = [
-    ...databaseTemplates,
-    ...builtInEstimateTextTemplates({ department: access.department }),
-  ]
+  const availableTemplates = mergeEstimateTextTemplates({
+    organizationTemplates: databaseTemplates,
+    builtInTemplates: builtInEstimateTextTemplates({
+      department: access.department,
+    }),
+  })
   const templatesByType = (
     templateType: EstimateTextTemplateType
   ): readonly ProjectEstimateTermsOption[] =>
@@ -1071,50 +1075,20 @@ export async function saveEstimateTextTemplate(
     readonly name: string | null
     readonly templateType: string | null
     readonly body: string | null
-    readonly sourceUrl: string | null
   }
 ): Promise<ProjectEstimateActionResult> {
   try {
     const access = await estimateAccess(projectId, true)
-    if (!access.organizationId) {
-      throw new Error("The project organization is required for templates.")
-    }
-    const name = requiredText(input.name, "Template name")
-    const templateType = requiredText(input.templateType, "Template type")
-    if (!isEstimateTextTemplateType(templateType)) {
-      throw new Error("Choose a supported estimate text template type.")
-    }
-    const body = requiredText(input.body, "Template text")
-    const sourceUrl = safeUrl(input.sourceUrl)
-    const now = new Date().toISOString()
-    const id = crypto.randomUUID()
-    await access.db
-      .insert(estimateTermsTemplates)
-      .values({
-        id,
-        organizationId: access.organizationId,
-        name,
-        departmentCode: access.department,
-        templateType,
-        body,
-        sourceUrl,
-        active: true,
-        createdBy: access.user.id,
-        createdAt: now,
-        updatedAt: now,
-      })
-      .onConflictDoUpdate({
-        target: [
-          estimateTermsTemplates.organizationId,
-          estimateTermsTemplates.departmentCode,
-          estimateTermsTemplates.templateType,
-          estimateTermsTemplates.name,
-        ],
-        set: { body, sourceUrl, active: true, updatedAt: now },
-      })
-      .run()
+    const result = await saveEstimateTextTemplateLibraryItem({
+      templateId: null,
+      name: input.name,
+      departmentCode: access.department,
+      templateType: input.templateType,
+      body: input.body,
+    })
+    if (!result.success) return result
     revalidateEstimate(projectId)
-    return { success: true, id }
+    return { success: true, id: result.id }
   } catch (error) {
     return {
       success: false,

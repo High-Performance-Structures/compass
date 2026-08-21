@@ -209,6 +209,34 @@ export function builtInEstimateTextTemplates(input: {
   )
 }
 
+export function estimateTextTemplateIdentity(
+  template: Pick<
+    EstimateTextTemplateOption,
+    "departmentCode" | "templateType" | "name"
+  >
+): string {
+  return [
+    template.departmentCode ?? "all",
+    template.templateType,
+    template.name.trim().toLocaleLowerCase(),
+  ].join(":")
+}
+
+export function mergeEstimateTextTemplates(input: {
+  readonly organizationTemplates: readonly EstimateTextTemplateOption[]
+  readonly builtInTemplates: readonly EstimateTextTemplateOption[]
+}): readonly EstimateTextTemplateOption[] {
+  const organizationKeys = new Set(
+    input.organizationTemplates.map(estimateTextTemplateIdentity)
+  )
+  return [
+    ...input.organizationTemplates,
+    ...input.builtInTemplates.filter(
+      (template) => !organizationKeys.has(estimateTextTemplateIdentity(template))
+    ),
+  ]
+}
+
 export function clientEstimatePhases(input: {
   readonly lines: readonly ClientEstimateLine[]
   readonly phaseDescriptions: Readonly<Record<string, string>>

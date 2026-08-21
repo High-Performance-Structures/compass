@@ -5,6 +5,7 @@ import {
   clientEstimatePhases,
   defaultEstimateTitle,
   estimateClientReportMode,
+  mergeEstimateTextTemplates,
   estimateTitleForDepartment,
   type ClientEstimateLine,
 } from "@/lib/estimates/client-report"
@@ -134,5 +135,36 @@ describe("estimate client report profiles", () => {
         templateType: "closing",
       })
     ).toEqual([])
+  })
+
+  it("lets an organization template override matching built-in copy", () => {
+    const builtIns = builtInEstimateTextTemplates({ department: "H" })
+    const defaultIntroduction = builtIns.find(
+      (template) => template.name === "Default Introductory Text"
+    )
+    expect(defaultIntroduction).toBeDefined()
+    if (!defaultIntroduction) return
+
+    const templates = mergeEstimateTextTemplates({
+      organizationTemplates: [
+        {
+          ...defaultIntroduction,
+          id: "organization-introduction",
+          body: "Our organization-wide revised introduction.",
+        },
+      ],
+      builtInTemplates: builtIns,
+    })
+
+    expect(
+      templates.filter(
+        (template) => template.name === "Default Introductory Text"
+      )
+    ).toEqual([
+      expect.objectContaining({
+        id: "organization-introduction",
+        body: "Our organization-wide revised introduction.",
+      }),
+    ])
   })
 })

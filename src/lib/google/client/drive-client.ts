@@ -329,6 +329,29 @@ export class DriveClient {
     return response.json() as Promise<DriveFile>
   }
 
+  async updateFileContent(
+    userEmail: string,
+    fileId: string,
+    data: Blob,
+    mimeType: string
+  ): Promise<DriveFile> {
+    const params = new URLSearchParams({
+      uploadType: "media",
+      supportsAllDrives: "true",
+      fields: DRIVE_FILE_FIELDS,
+    })
+    return this.request<DriveFile>(
+      userEmail,
+      `/files/${fileId}?${params.toString()}`,
+      {
+        method: "PATCH",
+        headers: { "Content-Type": mimeType },
+        body: data,
+      },
+      true
+    )
+  }
+
   async downloadFile(
     userEmail: string,
     fileId: string,

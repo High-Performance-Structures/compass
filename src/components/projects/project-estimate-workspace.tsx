@@ -1,6 +1,12 @@
 "use client"
 
-import { useMemo, useState, useTransition, type FormEvent } from "react"
+import {
+  useEffect,
+  useMemo,
+  useState,
+  useTransition,
+  type FormEvent,
+} from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import {
@@ -29,6 +35,7 @@ import {
   saveProjectEstimateLine,
   updateProjectEstimateHeader,
   type ProjectEstimateLineItem,
+  type ProjectEstimateTermsOption,
   type ProjectEstimateWorkspace,
 } from "@/app/actions/project-estimates"
 import { Badge } from "@/components/ui/badge"
@@ -72,6 +79,13 @@ function formNumber(formData: FormData, name: string): number | null {
 
 function statusLabel(value: string): string {
   return value.replaceAll("_", " ")
+}
+
+function selectedTemplateBody(
+  options: readonly ProjectEstimateTermsOption[],
+  templateId: string
+): string {
+  return options.find((option) => option.value === templateId)?.body ?? ""
 }
 
 type LineDraft = {
@@ -132,15 +146,48 @@ export function ProjectEstimateWorkspacePanel({
 }): React.ReactElement {
   const { developerModeEnabled } = useDeveloperMode()
   const router = useRouter()
+  const estimate = workspace.activeEstimate
   const [isPending, startTransition] = useTransition()
   const [message, setMessage] = useState<string | null>(null)
   const [line, setLine] = useState<LineDraft>(EMPTY_LINE)
   const [startTemplateId, setStartTemplateId] = useState("")
   const [startTaxEntityId, setStartTaxEntityId] = useState("")
-  const estimate = workspace.activeEstimate
+  const [termsTemplateId, setTermsTemplateId] = useState(
+    estimate?.termsTemplateId ?? ""
+  )
+  const [contractTerms, setContractTerms] = useState(
+    estimate?.contractTerms ?? ""
+  )
+  const [introductionTemplateId, setIntroductionTemplateId] = useState(
+    estimate?.introductionTemplateId ?? ""
+  )
+  const [introductionText, setIntroductionText] = useState(
+    estimate?.introductionText ?? ""
+  )
+  const [closingTemplateId, setClosingTemplateId] = useState(
+    estimate?.closingTemplateId ?? ""
+  )
+  const [closingText, setClosingText] = useState(estimate?.closingText ?? "")
   const editable =
     workspace.canEdit &&
     Boolean(estimate && ["draft", "internal_review"].includes(estimate.status))
+
+  useEffect(() => {
+    setTermsTemplateId(estimate?.termsTemplateId ?? "")
+    setContractTerms(estimate?.contractTerms ?? "")
+    setIntroductionTemplateId(estimate?.introductionTemplateId ?? "")
+    setIntroductionText(estimate?.introductionText ?? "")
+    setClosingTemplateId(estimate?.closingTemplateId ?? "")
+    setClosingText(estimate?.closingText ?? "")
+  }, [
+    estimate?.id,
+    estimate?.termsTemplateId,
+    estimate?.contractTerms,
+    estimate?.introductionTemplateId,
+    estimate?.introductionText,
+    estimate?.closingTemplateId,
+    estimate?.closingText,
+  ])
 
   const divisions = useMemo(() => {
     const options = new Map<string, string>()
@@ -584,7 +631,13 @@ export function ProjectEstimateWorkspacePanel({
             <Label htmlFor="termsTemplateId">Contract terms template</Label>
             <Select
               name="termsTemplateId"
-              defaultValue={estimate.termsTemplateId ?? undefined}
+              value={termsTemplateId}
+              onValueChange={(value) => {
+                setTermsTemplateId(value)
+                setContractTerms(
+                  selectedTemplateBody(workspace.termsTemplates, value)
+                )
+              }}
               disabled={!editable}
             >
               <SelectTrigger id="termsTemplateId">
@@ -611,7 +664,13 @@ export function ProjectEstimateWorkspacePanel({
             </Label>
             <Select
               name="introductionTemplateId"
-              defaultValue={estimate.introductionTemplateId ?? undefined}
+              value={introductionTemplateId}
+              onValueChange={(value) => {
+                setIntroductionTemplateId(value)
+                setIntroductionText(
+                  selectedTemplateBody(workspace.introductionTemplates, value)
+                )
+              }}
               disabled={!editable || workspace.introductionTemplates.length === 0}
             >
               <SelectTrigger id="introductionTemplateId">
@@ -630,7 +689,13 @@ export function ProjectEstimateWorkspacePanel({
             <Label htmlFor="closingTemplateId">Closing text template</Label>
             <Select
               name="closingTemplateId"
-              defaultValue={estimate.closingTemplateId ?? undefined}
+              value={closingTemplateId}
+              onValueChange={(value) => {
+                setClosingTemplateId(value)
+                setClosingText(
+                  selectedTemplateBody(workspace.closingTemplates, value)
+                )
+              }}
               disabled={!editable || workspace.closingTemplates.length === 0}
             >
               <SelectTrigger id="closingTemplateId">
@@ -653,7 +718,8 @@ export function ProjectEstimateWorkspacePanel({
               id="introductionText"
               name="introductionText"
               rows={4}
-              defaultValue={estimate.introductionText ?? ""}
+              value={introductionText}
+              onChange={(event) => setIntroductionText(event.target.value)}
               disabled={!editable}
               placeholder="Optional editable text shown before the estimate detail."
             />
@@ -664,7 +730,8 @@ export function ProjectEstimateWorkspacePanel({
               id="contractTerms"
               name="contractTerms"
               rows={6}
-              defaultValue={estimate.contractTerms ?? ""}
+              value={contractTerms}
+              onChange={(event) => setContractTerms(event.target.value)}
               disabled={!editable}
               placeholder="Use a template or draft the estimate-specific terms here."
             />
@@ -675,7 +742,8 @@ export function ProjectEstimateWorkspacePanel({
               id="closingText"
               name="closingText"
               rows={4}
-              defaultValue={estimate.closingText ?? ""}
+              value={closingText}
+              onChange={(event) => setClosingText(event.target.value)}
               disabled={!editable}
               placeholder="Optional editable text shown after the estimate detail."
             />

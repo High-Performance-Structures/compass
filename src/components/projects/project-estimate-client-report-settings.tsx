@@ -129,7 +129,6 @@ export function ProjectEstimateClientReportSettings({
         name: value("templateName"),
         templateType: value("templateType"),
         body: value("templateBody"),
-        sourceUrl: value("templateSourceUrl"),
       })
       setMessage(
         result.success
@@ -270,7 +269,8 @@ export function ProjectEstimateClientReportSettings({
           </h3>
           <p className="mt-1 text-xs text-muted-foreground">
             Department templates become available in future estimates without
-            changing any estimate that has already been issued.
+            changing any estimate that has already been issued. Compass also
+            saves the template in Google Drive under Compass / Template Library.
           </p>
           <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
             <div className="space-y-1.5">
@@ -300,16 +300,7 @@ export function ProjectEstimateClientReportSettings({
                 required
               />
             </div>
-            <div className="space-y-1.5 md:col-span-2 xl:col-span-3">
-              <Label htmlFor="estimate-template-source">Source link</Label>
-              <Input
-                id="estimate-template-source"
-                name="templateSourceUrl"
-                type="url"
-                placeholder="Optional Google Drive source"
-              />
-            </div>
-            <div className="flex items-end">
+            <div className="flex items-end md:col-span-2 xl:col-span-4">
               <Button type="submit" disabled={isPending}>
                 Save department template
               </Button>

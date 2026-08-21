@@ -199,6 +199,21 @@ Field Mode intentionally exposes only the canonical
 descendants. Full Compass retains the complete project-folder view.
 
 
+estimate report text library
+---
+
+Organization-wide estimate introductions, closing text, terms, and
+acknowledgements are managed from the Estimate report text tab at
+`/dashboard/templates`. Saving creates or updates a plain-text source file in
+`________Developer/Compass/Template Library` through the organization Drive
+connection. Compass stores the same wording in `estimate_terms_templates` for
+fast selectors and records the Drive file ID and link on that row.
+
+Applying report text to a project estimate snapshots the selected wording.
+Later library edits therefore affect future selections without silently
+changing an estimate that was already prepared or issued.
+
+
 schema
 ---
 
