@@ -3,7 +3,6 @@ import Link from "next/link"
 import {
   IconArrowRight,
   IconCalendarStats,
-  IconChevronDown,
   IconClipboardCheck,
   IconExternalLink,
   IconFolder,
@@ -28,13 +27,8 @@ import type {
 } from "@/app/actions/project-audience-preview"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
 import { OwnerCoverPhotoControl } from "@/components/projects/owner-cover-photo-control"
+import { ProjectAudienceSwitcher } from "@/components/projects/project-audience-switcher"
 import { ProjectEmailAddressCard } from "@/components/projects/project-email-address-card"
 import { ProjectAudienceMessageLauncher } from "@/components/projects/project-audience-message-launcher"
 import { ProjectAudiencePhotoGallery } from "@/components/projects/project-audience-photo-gallery"
@@ -46,7 +40,6 @@ import { ProjectAudienceSchedule } from "@/components/projects/project-audience-
 import {
   ownerUpdatePreviewHref,
   projectAudienceConversationHref,
-  projectAudiencePreviewHref,
   projectAudienceSectionHref,
   type ProjectAudienceWorkspaceSection,
 } from "@/lib/project-audience-preview-routes"
@@ -89,12 +82,6 @@ function projectOptionLabel(project: AudienceProjectOption): string {
   return project.projectNumber
     ? `${project.projectNumber} · ${project.name}`
     : project.name
-}
-
-function previewPath(projectId: string, audience: ProjectAudience): string {
-  return audience === "owner"
-    ? projectAudiencePreviewHref(projectId, "owner")
-    : projectAudiencePreviewHref(projectId, "sub-vendor")
 }
 
 function recordTypeLabel(value: string): string {
@@ -1023,38 +1010,13 @@ export function ProjectAudiencePreview({
                 </p>
               </div>
               {data.projectOptions.length > 1 ? (
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="outline" size="sm" className="h-8">
-                      Switch project
-                      <IconChevronDown className="size-4" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="w-72">
-                    {data.projectOptions.map((project) => {
-                      const active = project.id === data.project.id
-
-                      return (
-                        <DropdownMenuItem key={project.id} asChild>
-                          <Link
-                            href={previewPath(project.id, data.audience)}
-                            className="flex items-center justify-between gap-3"
-                          >
-                            <span className="min-w-0">
-                              <span className="block truncate text-sm font-medium">
-                                {projectOptionLabel(project)}
-                              </span>
-                              <span className="block truncate text-xs text-muted-foreground">
-                                {project.status}
-                              </span>
-                            </span>
-                            {active && <Badge variant="secondary">Current</Badge>}
-                          </Link>
-                        </DropdownMenuItem>
-                      )
-                    })}
-                  </DropdownMenuContent>
-                </DropdownMenu>
+                <ProjectAudienceSwitcher
+                  projects={data.projectOptions}
+                  currentProjectId={data.project.id}
+                  audience="sub-vendor"
+                  section="overview"
+                  className="h-8 w-auto max-w-[18rem]"
+                />
               ) : (
                 <Badge variant="outline">Project scoped</Badge>
               )}

@@ -10,6 +10,7 @@ import {
   type ProjectSelectionStatus
 } from "@/app/actions/project-selections"
 import { ProjectSelectionComboboxInput } from "@/components/projects/project-selection-combobox-input"
+import { SearchableCombobox } from "@/components/searchable-combobox"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import {
@@ -130,7 +131,7 @@ export function ProjectSelectionCreateForm({
   )
 
   React.useEffect(() => {
-    if (!open || templateGroups !== null) return
+    if (!open) return
     let cancelled = false
     setTemplateLoading(true)
     void getFinishSelectionTemplateImportOptions()
@@ -153,7 +154,7 @@ export function ProjectSelectionCreateForm({
     return () => {
       cancelled = true
     }
-  }, [open, templateGroups])
+  }, [open])
 
   function setFormFieldValue(name: string, value: string): void {
     const field = formRef.current?.elements.namedItem(name)
@@ -266,41 +267,33 @@ export function ProjectSelectionCreateForm({
               </p>
             ) : (
               <div className="grid gap-2 sm:grid-cols-2">
-                <Select
+                <SearchableCombobox
                   value={selectedTemplateId}
                   onValueChange={(value) => {
                     setSelectedTemplateId(value)
                     setSelectedTemplateSelectionId("")
                     setTemplateCostCode("")
                   }}
-                >
-                  <SelectTrigger aria-label="Choose finish selection template">
-                    <SelectValue placeholder="Choose template" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {(templateGroups ?? []).map((group) => (
-                      <SelectItem key={group.templateId} value={group.templateId}>
-                        {group.templateName}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <Select
+                  ariaLabel="Choose finish selection template"
+                  placeholder="Choose template"
+                  searchPlaceholder="Search templates..."
+                  options={(templateGroups ?? []).map((group) => ({
+                    value: group.templateId,
+                    label: group.templateName,
+                  }))}
+                />
+                <SearchableCombobox
                   value={selectedTemplateSelectionId}
                   onValueChange={applyTemplateSelection}
                   disabled={!selectedTemplateGroup}
-                >
-                  <SelectTrigger aria-label="Choose template finish selection">
-                    <SelectValue placeholder="Choose selection" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {(selectedTemplateGroup?.selections ?? []).map((selection) => (
-                      <SelectItem key={selection.id} value={selection.id}>
-                        {selection.title}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                  ariaLabel="Choose template finish selection"
+                  placeholder="Choose selection"
+                  searchPlaceholder="Search selections..."
+                  options={(selectedTemplateGroup?.selections ?? []).map((selection) => ({
+                    value: selection.id,
+                    label: selection.title,
+                  }))}
+                />
               </div>
             )}
             {selectedTemplateSelection && (
@@ -342,18 +335,15 @@ export function ProjectSelectionCreateForm({
                 />
               </Field>
               <Field label="Room type">
-                <Select value={selectedRoomType} onValueChange={setSelectedRoomType}>
-                  <SelectTrigger className={DOCUMENT_SELECT_CLASS}>
-                    <SelectValue placeholder="Select room type" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {options.roomTypes.map((option) => (
-                      <SelectItem key={option.value} value={option.value}>
-                        {option.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <SearchableCombobox
+                  value={selectedRoomType}
+                  onValueChange={setSelectedRoomType}
+                  ariaLabel="Room type"
+                  placeholder="Select room type"
+                  searchPlaceholder="Search room types..."
+                  className={DOCUMENT_SELECT_CLASS}
+                  options={options.roomTypes}
+                />
                 <input type="hidden" name="roomType" value={selectedRoomType} />
               </Field>
               <Field label="Status">
@@ -426,29 +416,32 @@ export function ProjectSelectionCreateForm({
           <div className="border-y py-3">
             <div className="grid gap-3 sm:grid-cols-[minmax(0,.85fr)_minmax(0,1fr)_minmax(0,.65fr)]">
               <Field label="Division">
-                <Select value={division} onValueChange={setDivision}>
-                  <SelectTrigger className={DOCUMENT_SELECT_CLASS}>
-                    <SelectValue placeholder="All divisions" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All divisions</SelectItem>
-                    {options.divisions.map((option) => (
-                      <SelectItem key={option.value} value={option.value}>
-                        {option.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <SearchableCombobox
+                  value={division}
+                  onValueChange={setDivision}
+                  ariaLabel="Division"
+                  placeholder="All divisions"
+                  searchPlaceholder="Search divisions..."
+                  className={DOCUMENT_SELECT_CLASS}
+                  options={[
+                    { value: "all", label: "All divisions" },
+                    ...options.divisions,
+                  ]}
+                />
               </Field>
               <Field label="Cost code">
                 <ProjectSelectionComboboxInput
-                  key={`selection-cost-code-${templateCostCode}`}
+                  key={`selection-cost-code-${division}-${templateCostCode}`}
                   id="selection-cost-code"
                   name="costCode"
                   options={costCodeOptions}
                   placeholder="Search cost code"
                   emptyMessage="No cost codes in this division."
-                  defaultValue={templateCostCode}
+                  defaultValue={
+                    costCodeOptions.some((option) => option.value === templateCostCode)
+                      ? templateCostCode
+                      : ""
+                  }
                 />
               </Field>
               <Field label="Phase">

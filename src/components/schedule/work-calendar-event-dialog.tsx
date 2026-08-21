@@ -31,6 +31,7 @@ import {
 } from "@/components/ui/alert-dialog"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
+import { ProjectCombobox } from "@/components/projects/project-combobox"
 import {
   Dialog,
   DialogContent,
@@ -107,12 +108,6 @@ type EventFormSeed = {
   readonly recurrenceUntil: string
   readonly attendeeUserIds: readonly string[]
   readonly calendarSelectionId: string
-}
-
-function projectLabel(project: ProjectRow): string {
-  return project.projectNumber
-    ? `${project.projectNumber} — ${project.name}`
-    : project.name
 }
 
 function formSeed(
@@ -460,25 +455,24 @@ export function WorkCalendarEventDialog(
               <Label htmlFor={`work-calendar-event-project-${props.variant}`}>
                 Project
               </Label>
-              <Select value={projectValue} onValueChange={setProjectValue}>
-                <SelectTrigger
-                  id={`work-calendar-event-project-${props.variant}`}
-                >
-                  <SelectValue placeholder="Select a project" />
-                </SelectTrigger>
-                <SelectContent>
-                  {props.defaultProjectId && (
-                    <SelectItem value={DEFAULT_PROJECT_VALUE}>
-                      H-Office (default)
-                    </SelectItem>
-                  )}
-                  {props.projects.map((project) => (
-                    <SelectItem key={project.id} value={project.id}>
-                      {projectLabel(project)}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <ProjectCombobox
+                id={`work-calendar-event-project-${props.variant}`}
+                ariaLabel="Choose event project"
+                projects={props.projects}
+                value={projectValue}
+                onValueChange={setProjectValue}
+                specialOptions={
+                  props.defaultProjectId
+                    ? [
+                        {
+                          value: DEFAULT_PROJECT_VALUE,
+                          label: "H-Office (default)",
+                          keywords: "office company default",
+                        },
+                      ]
+                    : []
+                }
+              />
               {!props.defaultProjectId && (
                 <p className="text-xs text-muted-foreground">
                   Compass could not identify one unique H-Office project, so a

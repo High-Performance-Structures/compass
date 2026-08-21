@@ -13,14 +13,16 @@ let scheduleTemplateOptionsLoadedAt: number | null = null
 const SCHEDULE_TEMPLATE_OPTIONS_CACHE_MS = 30_000
 
 /**
- * Share one options request between the single-item and bulk import dialogs.
+ * Share one in-flight options request between the single-item and bulk import dialogs.
  * The single-item dialog often starts loading immediately before the user opens
  * the bulk importer, so issuing a second Server Action request here is both
- * wasteful and vulnerable to a deployment changing the action manifest.
+ * wasteful and vulnerable to a deployment changing the action manifest. Dialogs
+ * request a refresh when opened so newly published template data is not hidden by
+ * the short reuse window.
  */
-export function loadScheduleTemplateImportOptions(): Promise<
-  readonly ScheduleTemplateImportGroup[]
-> {
+export function loadScheduleTemplateImportOptions(options?: {
+  readonly refresh?: boolean
+}): Promise<readonly ScheduleTemplateImportGroup[]> {
   const cacheIsFresh =
     scheduleTemplateOptionsLoadedAt !== null &&
     Date.now() - scheduleTemplateOptionsLoadedAt <
@@ -28,6 +30,9 @@ export function loadScheduleTemplateImportOptions(): Promise<
   const requestIsInFlight =
     scheduleTemplateOptionsPromise !== null &&
     scheduleTemplateOptionsLoadedAt === null
+  if (options?.refresh === true && !requestIsInFlight) {
+    clearScheduleTemplateImportOptions()
+  }
   if (
     !requestIsInFlight &&
     (scheduleTemplateOptionsPromise === null || !cacheIsFresh)

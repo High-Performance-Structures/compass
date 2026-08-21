@@ -3,7 +3,6 @@ import Image from "next/image"
 import Link from "next/link"
 import {
   IconCalendar,
-  IconChevronDown,
   IconClipboardCheck,
   IconEye,
   IconFileDollar,
@@ -25,12 +24,7 @@ import {
   type ProjectAudienceWorkspaceSection,
 } from "@/lib/project-audience-preview-routes"
 import { Button } from "@/components/ui/button"
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
+import { ProjectAudienceSwitcher } from "@/components/projects/project-audience-switcher"
 import { ProjectAudiencePreviewWindowControls } from "@/components/projects/project-audience-preview-window-controls"
 import { ProjectAudienceHeaderControls } from "@/components/projects/project-audience-header-controls"
 import { ProjectAudienceSidebarProfile } from "@/components/projects/project-audience-sidebar-profile"
@@ -144,12 +138,6 @@ function audienceRoute(audience: ProjectAudience): "owner" | "sub-vendor" {
   return audience === "owner" ? "owner" : "sub-vendor"
 }
 
-function projectOptionLabel(project: AudienceProjectOption): string {
-  return project.projectNumber
-    ? `${project.projectNumber} · ${project.name}`
-    : project.name
-}
-
 export function ProjectAudiencePreviewShell({
   audience,
   projectId,
@@ -227,39 +215,18 @@ export function ProjectAudiencePreviewShell({
 
         <div className="border-b border-sidebar-border p-3">
           {projectOptions.length > 1 ? (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  variant="ghost"
-                  className="h-auto w-full justify-between px-2 py-2 text-left"
-                >
-                  <span className="min-w-0">
-                    <span className="block truncate text-xs text-sidebar-foreground/60">
-                      Current project
-                    </span>
-                    <span className="mt-1 block truncate text-sm font-medium">
-                      {projectNumber ?? projectName}
-                    </span>
-                  </span>
-                  <IconChevronDown className="size-4 shrink-0" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent side="right" align="start" className="w-80">
-                {projectOptions.map((project) => (
-                  <DropdownMenuItem key={project.id} asChild>
-                    <Link
-                      href={projectAudienceSectionHref(
-                        project.id,
-                        routeAudience,
-                        activeSection
-                      )}
-                    >
-                      {projectOptionLabel(project)}
-                    </Link>
-                  </DropdownMenuItem>
-                ))}
-              </DropdownMenuContent>
-            </DropdownMenu>
+            <div className="grid gap-1">
+              <p className="px-2 text-xs text-sidebar-foreground/60">
+                Current project
+              </p>
+              <ProjectAudienceSwitcher
+                projects={projectOptions}
+                currentProjectId={projectId}
+                audience={routeAudience}
+                section={activeSection}
+                className="h-9 border-sidebar-border bg-sidebar text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+              />
+            </div>
           ) : (
             <div className="px-2 py-2">
               <p className="text-xs text-sidebar-foreground/60">

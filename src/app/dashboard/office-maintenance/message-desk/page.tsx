@@ -10,6 +10,7 @@ import {
 } from "@/app/actions/staff-message-desk"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { SearchableComboboxField } from "@/components/searchable-combobox"
 
 function fieldClassName(): string {
   return "h-10 border bg-background px-3 text-sm"
@@ -70,12 +71,20 @@ export default async function StaffMessageDeskPage(): Promise<React.ReactElement
             </label>
             <label className="flex flex-col gap-1 text-sm font-medium">
               Assign to one staff member
-              <select name="assigneeUserId" required defaultValue="" className={fieldClassName()}>
-                <option value="" disabled>Select a recipient…</option>
-                {assignees.map((assignee) => (
-                  <option key={assignee.id} value={assignee.id}>{assignee.name} · {assignee.email}</option>
-                ))}
-              </select>
+              <SearchableComboboxField
+                name="assigneeUserId"
+                ariaLabel="Assign message to staff member"
+                options={assignees.map((assignee) => ({
+                  value: assignee.id,
+                  label: assignee.name,
+                  description: assignee.email,
+                }))}
+                placeholder="Select a recipient…"
+                searchPlaceholder="Search internal staff..."
+                emptyMessage="No matching staff."
+                groupHeading="Internal staff"
+                required
+              />
             </label>
             <label className="flex flex-col gap-1 text-sm font-medium">
               Caller / contact name
@@ -170,12 +179,20 @@ export default async function StaffMessageDeskPage(): Promise<React.ReactElement
                 <input type="hidden" name="eventId" value={item.id} />
                 <label className="flex flex-1 flex-col gap-1 text-sm font-medium">
                   Route to one staff member
-                  <select name="assigneeUserId" required defaultValue="" className={fieldClassName()}>
-                    <option value="" disabled>Select a recipient…</option>
-                    {assignees.map((assignee) => (
-                      <option key={assignee.id} value={assignee.id}>{assignee.name} · {assignee.email}</option>
-                    ))}
-                  </select>
+                  <SearchableComboboxField
+                    name="assigneeUserId"
+                    ariaLabel="Route text to staff member"
+                    options={assignees.map((assignee) => ({
+                      value: assignee.id,
+                      label: assignee.name,
+                      description: assignee.email,
+                    }))}
+                    placeholder="Select a recipient…"
+                    searchPlaceholder="Search internal staff..."
+                    emptyMessage="No matching staff."
+                    groupHeading="Internal staff"
+                    required
+                  />
                 </label>
                 <Button type="submit">Route to Message Desk</Button>
               </form>

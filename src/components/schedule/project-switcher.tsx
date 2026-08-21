@@ -1,13 +1,9 @@
 "use client"
 
 import { useRouter } from "next/navigation"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-} from "@/components/ui/select"
-import { IconChevronDown, IconBuilding } from "@tabler/icons-react"
+import { IconBuilding } from "@tabler/icons-react"
+
+import { ProjectCombobox } from "@/components/projects/project-combobox"
 
 interface ProjectSwitcherProps {
   readonly projects: readonly {
@@ -42,19 +38,13 @@ export function ProjectSwitcher({
   }
 
   return (
-    <Select value={currentProjectId} onValueChange={handleProjectChange}>
-      <SelectTrigger className="h-9 w-auto border border-input bg-background hover:bg-accent hover:text-accent-foreground gap-2 px-3 max-w-[280px]">
-        <IconBuilding className="size-4 text-muted-foreground shrink-0" />
-        <span className="truncate font-medium">{currentProjectName}</span>
-        <IconChevronDown className="size-4 text-muted-foreground shrink-0 ml-auto" />
-      </SelectTrigger>
-      <SelectContent>
-        {projects.map((project) => (
-          <SelectItem key={project.id} value={project.id}>
-            {project.projectNumber ?? project.name}
-          </SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
+    <ProjectCombobox
+      projects={projects}
+      value={currentProjectId}
+      onValueChange={handleProjectChange}
+      ariaLabel="Switch project"
+      className="h-9 w-auto max-w-[280px] gap-2 font-medium"
+      popoverClassName="w-[min(24rem,calc(100vw-3rem))]"
+    />
   )
 }

@@ -12,6 +12,7 @@ import {
 import { createProjectTask } from "@/app/actions/project-operations"
 import type { ProjectRow } from "@/app/actions/work-calendar"
 import { ProjectAssigneePicker } from "@/components/projects/project-assignee-picker"
+import { ProjectCombobox } from "@/components/projects/project-combobox"
 import { ProjectCompanyPicker } from "@/components/projects/project-company-picker"
 import { Button } from "@/components/ui/button"
 import {
@@ -33,12 +34,6 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
-
-function projectLabel(project: ProjectRow): string {
-  return project.projectNumber
-    ? `${project.projectNumber} — ${project.name}`
-    : project.name
-}
 
 export function WorkCalendarTodoDialog({
   projects,
@@ -163,25 +158,17 @@ export function WorkCalendarTodoDialog({
           <div className="grid gap-4 py-5">
             <div className="grid gap-2">
               <Label htmlFor="calendar-todo-project">Project</Label>
-              <Select
+              <ProjectCombobox
+                id="calendar-todo-project"
+                ariaLabel="Choose to-do project"
+                projects={projects}
                 value={projectId}
                 onValueChange={(value) => {
                   setProjectId(value)
                   setAssigneeName("")
                   setCompanyName("")
                 }}
-              >
-                <SelectTrigger id="calendar-todo-project">
-                  <SelectValue placeholder="Select a project" />
-                </SelectTrigger>
-                <SelectContent>
-                  {projects.map((project) => (
-                    <SelectItem key={project.id} value={project.id}>
-                      {projectLabel(project)}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              />
             </div>
             <div className="grid gap-2">
               <Label htmlFor="calendar-todo-title">Title</Label>

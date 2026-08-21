@@ -23,13 +23,7 @@ import {
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
+import { SearchableCombobox } from "@/components/searchable-combobox"
 
 type ScheduleTemplateDialogProps = {
   readonly open: boolean
@@ -151,18 +145,20 @@ export function ScheduleTemplateDialog({
           <div className="space-y-5 py-2">
             <div className="space-y-2">
               <Label htmlFor="schedule-template">Template</Label>
-              <Select value={templateId} onValueChange={setTemplateId}>
-                <SelectTrigger id="schedule-template">
-                  <SelectValue placeholder="Choose a verified template…" />
-                </SelectTrigger>
-                <SelectContent>
-                  {readyTemplates.map((template) => (
-                    <SelectItem key={template.id} value={template.id}>
-                      {template.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <SearchableCombobox
+                id="schedule-template"
+                ariaLabel="Choose verified schedule template"
+                options={readyTemplates.map((template) => ({
+                  value: template.id,
+                  label: template.name,
+                }))}
+                value={templateId}
+                onValueChange={setTemplateId}
+                placeholder="Choose a verified template…"
+                searchPlaceholder="Search templates..."
+                emptyMessage="No matching templates."
+                groupHeading="Templates"
+              />
             </div>
             <div className="space-y-2">
               <Label htmlFor="template-anchor-date">New start date</Label>

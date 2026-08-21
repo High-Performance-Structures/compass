@@ -5,6 +5,7 @@ import { IconActivity, IconChevronRight } from "@tabler/icons-react"
 import { getActivityEvents } from "@/app/actions/activity"
 import { getProjects } from "@/app/actions/projects"
 import { Badge } from "@/components/ui/badge"
+import { SearchableComboboxField } from "@/components/searchable-combobox"
 import { getCurrentUser } from "@/lib/auth"
 import {
   ACTIVITY_CATEGORIES,
@@ -90,21 +91,23 @@ export default async function ActivityPage({
               </option>
             ))}
           </select>
-          <select
+          <SearchableComboboxField
             name="project"
             defaultValue={params.project ?? ""}
-            aria-label="Filter activity by project"
-            className="h-9 min-w-56 border bg-background px-3 text-sm"
-          >
-            <option value="">All projects</option>
-            {projects.map((project) => (
-              <option key={project.id} value={project.id}>
-                {project.projectNumber
-                  ? `${project.projectNumber} · ${project.name}`
-                  : project.name}
-              </option>
-            ))}
-          </select>
+            ariaLabel="Filter activity by project"
+            placeholder="All projects"
+            searchPlaceholder="Search projects..."
+            className="h-9 min-w-56"
+            options={[
+              { value: "", label: "All projects" },
+              ...projects.map((project) => ({
+                value: project.id,
+                label: project.name,
+                description: project.projectNumber ?? undefined,
+                keywords: project.projectNumber ?? undefined,
+              })),
+            ]}
+          />
           <button
             type="submit"
             className="h-9 border bg-background px-4 text-sm font-medium hover:bg-muted"

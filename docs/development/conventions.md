@@ -210,6 +210,31 @@ Built on `@tanstack/react-table`. The pattern uses a `DataTable` component that 
 
 React Hook Form with Zod resolvers. The validation schemas from `src/lib/validations/` plug directly into form configuration.
 
+### Dropdowns and comboboxes
+
+`SearchableCombobox` is the default Compass value selector. Users must be able
+to open a selector, type to filter its choices, move through results with the
+keyboard, and select a value consistently. This includes entity lists and
+workflow vocabularies such as status, priority, category, visibility, and sort
+order. Search values should include the identifiers and secondary labels users
+recognize, not only the displayed name. Project selectors use
+`ProjectCombobox`, which searches project number, name, client, and ID.
+
+Use `SearchableComboboxField` when a selector submits through native
+`FormData`; it keeps the selected value in a named hidden field. Use the
+controlled `SearchableCombobox` with React state or form-controller fields.
+Do not add native HTML `select` controls or new shadcn `Select` value pickers
+without a documented accessibility or platform reason. Existing compact fixed
+selectors may be migrated as their owning workflow is touched. Action menus
+remain `DropdownMenu`; they issue commands rather than select values.
+
+Live combobox options must come from the current server result or current
+component props; do not copy them into a one-time hard-coded list. Refresh the
+source whenever the owning dialog or page reloads, and revalidate affected
+paths after mutations. Dependent comboboxes (for example division → cost code
+or template → template item) must recompute from the current parent value and
+clear a child selection when it is no longer available.
+
 ### Information density and responsive text
 
 Keep Compass clean, crisp, professional, and easy to scan. Rounded cards,
