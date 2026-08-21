@@ -33,13 +33,18 @@ export type FeedbackRequesterUpdateKind =
   | "status_changed"
   | "draft_pull_request_opened"
   | "draft_pull_request_updated"
+  | "delivery_graph_created"
+  | "delivery_graph_failed"
 
 export function feedbackRequesterUpdateKind(
   previousStatus: string,
   nextStatus: string,
   previousDraftPullRequestUrl: string | null,
   nextDraftPullRequestUrl: string | null,
+  deliveryGraphStatus: "created" | "failed" | null = null,
 ): FeedbackRequesterUpdateKind | null {
+  if (deliveryGraphStatus === "created") return "delivery_graph_created"
+  if (deliveryGraphStatus === "failed") return "delivery_graph_failed"
   if (
     nextDraftPullRequestUrl !== null &&
     nextDraftPullRequestUrl !== previousDraftPullRequestUrl
@@ -97,8 +102,12 @@ export function feedbackStaffStage(status: string): FeedbackStaffStage {
 
 export function feedbackStatusMessage(
   status: FeedbackDeskStatus,
-  title: string
+  title: string,
+  kind = "bug",
 ): string {
+  if (kind !== "bug" && status === "closed") {
+    return "The Feedback Desk reviewed this request and provided an accountable response. No Compass code change was required."
+  }
   switch (status) {
     case "new":
       return `Your request “${title}” has been received.`
@@ -117,6 +126,23 @@ export function feedbackStatusMessage(
     case "closed":
       return `Your request “${title}” has been completed and closed.`
   }
+}
+
+export function feedbackNonEngineeringTransitionIsBlocked(
+  transition: Readonly<{
+    kind: string
+    status: string
+    nextStatus: string
+    deliveryRoute: "engineering" | "response" | "feature_decision"
+  }>,
+): string | null {
+  if (transition.kind === "feature" || transition.deliveryRoute !== "response") {
+    return null
+  }
+  if (["planned", "in_progress", "testing", "deployed"].includes(transition.nextStatus)) {
+    return "A response-only request cannot enter an engineering lifecycle"
+  }
+  return null
 }
 
 export function feedbackDraftPullRequestMessage(

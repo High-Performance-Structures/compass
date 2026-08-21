@@ -15,15 +15,21 @@ import {
   feedbackStatusLabel,
   feedbackStatusMessage,
   feedbackStatusUsesEmail,
+  feedbackNonEngineeringTransitionIsBlocked,
   type FeedbackDeskStatus,
 } from "@/lib/jarvis/feedback-lifecycle"
 import { feedbackFeatureTransitionIsBlocked } from "@/lib/jarvis/feedback-feature-priority"
 import {
   feedbackDeliveryGraphEvent,
+  feedbackDeliveryRoute,
+  feedbackResponseClosure,
   shouldRequestFeedbackDeliveryGraph,
   type FeedbackDeliveryGraphUpdate,
+  type FeedbackDeliveryRoute,
 } from "@/lib/jarvis/feedback-delivery"
-import { feedbackBugTransitionIsBlocked } from "@/lib/jarvis/feedback-lifecycle-evidence"
+import {
+  feedbackEngineeringTransitionIsBlocked,
+} from "@/lib/jarvis/feedback-lifecycle-evidence"
 import { createSystemNotificationEvent } from "@/lib/notifications/events"
 
 type CompassDb = ReturnType<typeof getDb>
@@ -86,6 +92,7 @@ export type FeedbackLifecycleUpdate = Readonly<{
   githubIssueNodeId?: string | null
   draftPullRequestUrl?: string | null
   deliveryGraph?: FeedbackDeliveryGraphUpdate
+  deliveryRoute?: FeedbackDeliveryRoute
   assignedToUserId?: string | null
   assignedToName?: string | null
   actorSource: string
@@ -101,6 +108,14 @@ export async function applyFeedbackLifecycleUpdate(
   notifiedUserCount: number
   requesterUpdateQueued: boolean
 }>> {
+  const duplicate = await db
+    .select({ id: jarvisBridgeEvents.id })
+    .from(jarvisBridgeEvents)
+    .where(eq(jarvisBridgeEvents.idempotencyKey, update.idempotencyKey))
+    .get()
+  if (duplicate) {
+    return { changed: false, notifiedUserCount: 0, requesterUpdateQueued: false }
+  }
   if (feedbackFeatureTransitionIsBlocked({
     currentStatus: item.status,
     featurePriorityApprovedAt: item.featurePriorityApprovedAt,
@@ -152,7 +167,19 @@ export async function applyFeedbackLifecycleUpdate(
   const deliveryGraphUpdatedAt = update.deliveryGraph
     ? new Date().toISOString()
     : item.deliveryGraphUpdatedAt
-  const evidenceError = feedbackBugTransitionIsBlocked({
+  const deliveryRoute = update.deliveryRoute ?? (
+    item.deliveryGraphId !== null
+      ? "engineering"
+      : feedbackDeliveryRoute(item)
+  )
+  const nonEngineeringError = feedbackNonEngineeringTransitionIsBlocked({
+    kind: item.kind,
+    status: item.status,
+    nextStatus: update.status,
+    deliveryRoute,
+  })
+  if (nonEngineeringError) throw new Error(nonEngineeringError)
+  const evidenceError = feedbackEngineeringTransitionIsBlocked({
     kind: item.kind,
     status: item.status,
     nextStatus: update.status,
@@ -162,6 +189,7 @@ export async function applyFeedbackLifecycleUpdate(
     deliveryGraphReviewTaskId,
     deliveryGraphReleaseTaskId,
     githubDraftPullRequestUrl: draftUrl,
+    deliveryRoute,
   })
   if (evidenceError) throw new Error(evidenceError)
   const lifecycleUpdateKind = feedbackRequesterUpdateKind(
@@ -169,6 +197,7 @@ export async function applyFeedbackLifecycleUpdate(
     update.status,
     item.githubDraftPullRequestUrl,
     draftUrl,
+    update.deliveryGraph?.status ?? null,
   )
   const requesterUpdateKind = lifecycleUpdateKind ?? (
     update.message?.trim() ? "status_changed" : null
@@ -200,10 +229,25 @@ export async function applyFeedbackLifecycleUpdate(
   const priorityChanged = item.priority !== priority
   const hasDraftUpdate = draftUrl !== null && draftUrl !== item.githubDraftPullRequestUrl
   const message = update.message ?? (
-    hasDraftUpdate
-      ? feedbackDraftPullRequestMessage(item.title, draftUrl)
-      : feedbackStatusMessage(update.status, item.title)
+    update.deliveryGraph?.status === "created"
+      ? `Engineering work for “${item.title}” has been set up with implementation, review, and release accountability.`
+      : update.deliveryGraph?.status === "failed"
+        ? `Engineering work for “${item.title}” could not be set up yet and will be retried.`
+        : hasDraftUpdate
+          ? feedbackDraftPullRequestMessage(item.title, draftUrl)
+          : deliveryRoute === "response" && update.status === "closed"
+            ? feedbackResponseClosure({
+                id: item.id,
+                kind: item.kind,
+                status: item.status,
+              }).message
+            : feedbackStatusMessage(update.status, item.title, item.kind)
   )
+  const eventMessage = requesterUpdateKind === "delivery_graph_created"
+    ? "Your Compass request now has accountable engineering work."
+    : requesterUpdateKind === "delivery_graph_failed"
+      ? "Your Compass request could not enter engineering work yet and will be retried."
+      : `Your Compass request was updated: ${feedbackStatusLabel(update.status)}.`
 
   const updateStatement = db.update(feedbackDeskItems).set({
     status: update.status,
@@ -238,26 +282,9 @@ export async function applyFeedbackLifecycleUpdate(
   const payload = JSON.stringify({
     schemaVersion: 1,
     feedbackDeskItemId: item.id,
-    source: item.source,
-    sourceId: item.sourceId,
     status: update.status,
-    title: item.title,
-    message,
-    reporter: {
-      name: item.reporterName,
-      email: item.reporterEmail,
-      externalActorId: metadataActorId(item.metadata),
-    },
-    compass: {
-      organizationId: item.organizationId,
-      channelId: item.channelId,
-      messageId: item.messageId,
-      threadId: item.threadId,
-    },
-    metadata: item.metadata,
-    githubIssueUrl: issueUrl,
-    draftPullRequestUrl: draftUrl,
     notificationKind: requesterUpdateKind,
+    message: eventMessage,
     updatedAt: now,
   })
   const inboundStatement = db.insert(jarvisBridgeEvents).values({
@@ -276,7 +303,11 @@ export async function applyFeedbackLifecycleUpdate(
     createdAt: now,
     updatedAt: now,
   }).onConflictDoNothing()
-  const deliveryEvent = shouldRequestFeedbackDeliveryGraph(item, update.status)
+  const deliveryEvent = shouldRequestFeedbackDeliveryGraph(
+    item,
+    update.status,
+    deliveryRoute,
+  )
     ? feedbackDeliveryGraphEvent(item)
     : null
   const deliveryStatement = deliveryEvent
