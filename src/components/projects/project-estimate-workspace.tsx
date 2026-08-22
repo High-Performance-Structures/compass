@@ -43,6 +43,7 @@ import { Badge } from "@/components/ui/badge"
 import { useDeveloperMode } from "@/components/developer-mode-provider"
 import { ProjectEstimateClientReportSettings } from "@/components/projects/project-estimate-client-report-settings"
 import { ProjectEstimatePlanSwiftImport } from "@/components/projects/project-estimate-planswift-import"
+import { ProjectEstimateVersionControls } from "@/components/projects/project-estimate-version-controls"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
@@ -551,15 +552,23 @@ export function ProjectEstimateWorkspacePanel({
                 : ""}
             </p>
           </div>
-          <Button variant="outline" asChild>
-            <Link
-              href={`/print/projects/${projectId}/estimate?estimateId=${estimate.id}`}
-              target="_blank"
-            >
-              <IconFileExport className="size-4" />
-              Client report preview
-            </Link>
-          </Button>
+          <div className="flex flex-wrap justify-end gap-2">
+            <ProjectEstimateVersionControls
+              projectId={projectId}
+              estimates={workspace.estimates}
+              activeEstimate={estimate}
+              canEdit={workspace.canEdit}
+            />
+            <Button variant="outline" asChild>
+              <Link
+                href={`/print/projects/${projectId}/estimate?estimateId=${estimate.id}`}
+                target="_blank"
+              >
+                <IconFileExport className="size-4" />
+                Client report preview
+              </Link>
+            </Button>
+          </div>
         </div>
         <div className="grid divide-y sm:grid-cols-2 sm:divide-x sm:divide-y-0 xl:grid-cols-4">
           {[
