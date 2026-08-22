@@ -8,6 +8,7 @@ import {
   globalShortcut,
   ipcMain,
   shell,
+  type BrowserWindowConstructorOptions,
   type IpcMainInvokeEvent,
 } from "electron"
 import log from "electron-log"
@@ -30,6 +31,8 @@ const AUTH_NAVIGATION_HOSTS = new Set([
   "appleid.apple.com",
   "login.microsoftonline.com",
 ])
+const PROJECT_AUDIENCE_PREVIEW_PATH =
+  /^\/preview\/projects\/[^/]+\/(?:owner|sub-vendor)(?:\/|$)/
 
 const syncState: DesktopSyncState = {
   status: "idle",
@@ -125,7 +128,58 @@ async function createMainWindow(): Promise<void> {
     },
   })
 
-  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+  configureWindowNavigation(mainWindow)
+
+  mainWindow.once("ready-to-show", () => {
+    mainWindow?.show()
+  })
+
+  await mainWindow.loadURL(appUrl)
+}
+
+function isProjectAudiencePreviewUrl(url: string): boolean {
+  if (!isAllowedAppNavigationUrl(url)) return false
+  try {
+    return PROJECT_AUDIENCE_PREVIEW_PATH.test(new URL(url).pathname)
+  } catch {
+    return false
+  }
+}
+
+function previewWindowOptions(): BrowserWindowConstructorOptions {
+  return {
+    parent: mainWindow ?? undefined,
+    modal: false,
+    width: 1180,
+    height: 800,
+    minWidth: 800,
+    minHeight: 600,
+    title: "Compass",
+    autoHideMenuBar: true,
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true,
+      sandbox: true,
+      webSecurity: true,
+    },
+  }
+}
+
+function restoreMainWindowFocus(): void {
+  if (!mainWindow || mainWindow.isDestroyed()) return
+  if (mainWindow.isMinimized()) mainWindow.restore()
+  mainWindow.show()
+  mainWindow.focus()
+}
+
+function configureWindowNavigation(window: BrowserWindow): void {
+  window.webContents.setWindowOpenHandler(({ url }) => {
+    if (isProjectAudiencePreviewUrl(url)) {
+      return {
+        action: "allow",
+        overrideBrowserWindowOptions: previewWindowOptions(),
+      }
+    }
     if (isAllowedAppNavigationUrl(url) || isAllowedAuthNavigationUrl(url)) {
       return { action: "allow" }
     }
@@ -135,17 +189,17 @@ async function createMainWindow(): Promise<void> {
     return { action: "deny" }
   })
 
-  mainWindow.webContents.on("will-navigate", (event, url) => {
+  window.webContents.on("will-navigate", (event, url) => {
     if (!isAllowedAppNavigationUrl(url) && !isAllowedAuthNavigationUrl(url)) {
       event.preventDefault()
     }
   })
 
-  mainWindow.once("ready-to-show", () => {
-    mainWindow?.show()
+  window.webContents.on("did-create-window", (childWindow, details) => {
+    configureWindowNavigation(childWindow)
+    if (!isProjectAudiencePreviewUrl(details.url)) return
+    childWindow.once("closed", restoreMainWindowFocus)
   })
-
-  await mainWindow.loadURL(appUrl)
 }
 
 function isAllowedExternalUrl(url: string): boolean {

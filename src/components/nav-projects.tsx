@@ -34,6 +34,7 @@ import {
   SidebarMenuItem,
 } from "@/components/ui/sidebar"
 import { ProjectQuickSwitcher } from "@/components/projects/project-quick-switcher"
+import { ProjectAudiencePreviewLink } from "@/components/projects/project-audience-preview-link"
 import { cn } from "@/lib/utils"
 import type { ProjectListItem } from "@/app/actions/projects"
 import { projectAudiencePreviewHref } from "@/lib/project-audience-preview-routes"
@@ -202,10 +203,6 @@ function projectSectionHref(projectId: string, suffix: string): string {
   return suffix ? `${baseHref}/${suffix}` : baseHref
 }
 
-function isPreviewSection(section: ProjectSectionKey): boolean {
-  return section === "preview-owner" || section === "preview-sub-vendor"
-}
-
 function projectTargetSection(
   section: ProjectSectionKey
 ): string | undefined {
@@ -306,31 +303,43 @@ export function NavProjects({
                 </SidebarMenuButton>
               </SidebarMenuItem>
             ) : (
-              PROJECT_SECTION_ITEMS.map((item) => (
-                <SidebarMenuItem key={`${activeId}-${item.section}`}>
-                  <SidebarMenuButton
-                    asChild
-                    tooltip={item.title}
-                    className={cn(
-                      activeSection === item.section &&
-                        "bg-sidebar-foreground/10 font-medium"
-                    )}
-                  >
-                    <Link
-                      href={projectSectionHref(activeId, item.hrefSuffix)}
-                      target={isPreviewSection(item.section) ? "_blank" : undefined}
-                      rel={
-                        isPreviewSection(item.section)
-                          ? "noopener noreferrer"
-                          : undefined
-                      }
+              PROJECT_SECTION_ITEMS.map((item) => {
+                const previewAudience =
+                  item.section === "preview-owner"
+                    ? "owner"
+                    : item.section === "preview-sub-vendor"
+                      ? "sub-vendor"
+                      : null
+                return (
+                  <SidebarMenuItem key={`${activeId}-${item.section}`}>
+                    <SidebarMenuButton
+                      asChild
+                      tooltip={item.title}
+                      className={cn(
+                        activeSection === item.section &&
+                          "bg-sidebar-foreground/10 font-medium"
+                      )}
                     >
-                      <item.icon />
-                      <span>{item.title}</span>
-                    </Link>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              ))
+                      {previewAudience ? (
+                        <ProjectAudiencePreviewLink
+                          audience={previewAudience}
+                          projectId={activeId}
+                        >
+                          <item.icon />
+                          <span>{item.title}</span>
+                        </ProjectAudiencePreviewLink>
+                      ) : (
+                        <Link
+                          href={projectSectionHref(activeId, item.hrefSuffix)}
+                        >
+                          <item.icon />
+                          <span>{item.title}</span>
+                        </Link>
+                      )}
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                )
+              })
             )}
           </SidebarMenu>
         </SidebarGroupContent>

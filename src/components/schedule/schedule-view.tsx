@@ -9,6 +9,7 @@ import {
 } from "react"
 import Link from "next/link"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
+import { flushSync } from "react-dom"
 import { useIsMobile } from "@/hooks/use-mobile"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
@@ -88,6 +89,10 @@ import {
   printScheduleDocument,
   SchedulePrintDocument,
 } from "./schedule-print-document"
+import {
+  SchedulePrintDialog,
+  type SchedulePrintSelection,
+} from "./schedule-print-dialog"
 import { ScheduleScopeSwitcher } from "./schedule-scope-switcher"
 import { OwnerScheduleVisibilityControl } from "./owner-schedule-visibility-control"
 import type { ProjectListItem } from "@/app/actions/projects"
@@ -243,6 +248,9 @@ export function ScheduleView({
   const [baselinesOpen, setBaselinesOpen] = useState(false)
   const [exceptionsOpen, setExceptionsOpen] = useState(false)
   const [importDialogOpen, setImportDialogOpen] = useState(false)
+  const [printDialogOpen, setPrintDialogOpen] = useState(false)
+  const [printSelection, setPrintSelection] =
+    useState<SchedulePrintSelection | null>(null)
   const [templateDialogOpen, setTemplateDialogOpen] = useState(false)
   const [bulkTemplateDialogOpen, setBulkTemplateDialogOpen] = useState(false)
   const [isImporting, setIsImporting] = useState(false)
@@ -683,8 +691,14 @@ export function ScheduleView({
     }
   }
 
-  async function printSchedule(): Promise<void> {
-    await printScheduleDocument()
+  function printSchedule(selection: SchedulePrintSelection): void {
+    // Commit the selected print layout before invoking the synchronous iOS
+    // print path; desktop browsers can still await layout readiness normally.
+    flushSync(() => {
+      setPrintDialogOpen(false)
+      setPrintSelection(selection)
+    })
+    void printScheduleDocument().finally(() => setPrintSelection(null))
   }
 
   return (
@@ -696,10 +710,19 @@ export function ScheduleView({
         audienceLabel={projectId ? "Project schedule" : "Company schedule"}
         brand={printBrand}
         items={printItems}
+        layout={printSelection?.layout}
         paletteScopeId={preferenceScopeKey}
         projectName={projectName}
         projectNumber={activeProject?.projectNumber}
         projects={scheduleProjects}
+        range={printSelection?.range}
+      />
+      <SchedulePrintDialog
+        defaultLayout={view}
+        items={printItems}
+        onOpenChange={setPrintDialogOpen}
+        onPrint={printSchedule}
+        open={printDialogOpen}
       />
       <div
         className="mb-1 flex h-8 w-max min-w-full shrink-0 flex-nowrap items-center gap-1"
@@ -1177,9 +1200,9 @@ export function ScheduleView({
                 <IconUpload className="size-4 mr-2" />
                 Import CSV
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={printSchedule}>
+              <DropdownMenuItem onClick={() => setPrintDialogOpen(true)}>
                 <IconPrinter className="size-4 mr-2" />
-                Print
+                Print timeframe…
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem onClick={() => setBaselinesOpen(true)}>

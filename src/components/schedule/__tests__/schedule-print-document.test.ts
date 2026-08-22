@@ -103,4 +103,54 @@ describe("SchedulePrintDocument", () => {
     window.dispatchEvent(new Event("afterprint"))
     expect(document.body.classList.contains("schedule-printing")).toBe(false)
   })
+
+  it("renders only overlapping items in the selected Gantt timeframe", async () => {
+    const items = [
+      ...scheduleItems(1),
+      {
+        ...scheduleItems(1)[0],
+        id: "outside-range",
+        title: "Outside range",
+        startDate: "2026-09-10",
+        endDate: "2026-09-12",
+      },
+    ]
+    await act(async () => {
+      root.render(
+        React.createElement(SchedulePrintDocument, {
+          audienceLabel: "Project schedule",
+          brand: null,
+          items,
+          layout: "gantt",
+          paletteScopeId: "project-202",
+          projectName: "Bishop and Loeffler",
+          range: { start: "2026-08-21", end: "2026-08-27" },
+        })
+      )
+    })
+
+    expect(
+      document.querySelectorAll(".schedule-print-gantt-row")
+    ).toHaveLength(1)
+    expect(document.body.textContent).not.toContain("Outside range")
+  })
+
+  it("renders the selected calendar timeframe", async () => {
+    await act(async () => {
+      root.render(
+        React.createElement(SchedulePrintDocument, {
+          audienceLabel: "Project schedule",
+          brand: null,
+          items: scheduleItems(2),
+          layout: "calendar",
+          paletteScopeId: "project-202",
+          projectName: "Bishop and Loeffler",
+          range: { start: "2026-08-21", end: "2026-08-27" },
+        })
+      )
+    })
+
+    expect(document.querySelectorAll(".schedule-print-week")).toHaveLength(2)
+    expect(document.body.textContent).toContain("Aug 21, 2026 – Aug 27, 2026")
+  })
 })
