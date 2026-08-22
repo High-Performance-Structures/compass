@@ -1,6 +1,6 @@
 "use server"
 
-import { and, asc, desc, eq, gt, like, ne, sql } from "drizzle-orm"
+import { and, asc, desc, eq, gt, inArray, like, ne, sql } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
 import { saveEstimateTextTemplateLibraryItem } from "@/app/actions/estimate-text-templates"
@@ -49,6 +49,10 @@ import {
   projectEstimateCostCodeCatalog,
   type ProjectEstimateCostCodeCatalogItem,
 } from "@/lib/estimates/project-cost-code-catalog"
+import {
+  compareEstimateVersions,
+  type EstimateVersionComparison,
+} from "@/lib/estimates/version-comparison"
 import { SheetsClient } from "@/lib/google/client/sheets-client"
 import {
   getGoogleConfig,
@@ -93,6 +97,8 @@ export type ProjectEstimateSummary = {
   readonly signedAt: string | null
   readonly acceptedAt: string | null
   readonly sageStatus: string
+  readonly createdAt: string
+  readonly updatedAt: string
 }
 
 export type ProjectEstimateLineItem = {
@@ -192,6 +198,16 @@ export type ProjectEstimateWorkspace = {
   readonly selectedAcknowledgements: readonly ProjectEstimateAcknowledgementItem[]
 }
 
+export type ProjectEstimateVersionComparison = {
+  readonly canEdit: boolean
+  readonly projectNumber: string | null
+  readonly projectName: string
+  readonly estimates: readonly ProjectEstimateSummary[]
+  readonly baseEstimate: ProjectEstimateSummary | null
+  readonly revisedEstimate: ProjectEstimateSummary | null
+  readonly comparison: EstimateVersionComparison | null
+}
+
 export type ProjectEstimateHeaderInput = {
   readonly estimateNumber: string | null
   readonly title: string | null
@@ -279,6 +295,7 @@ type CompassDb = ReturnType<typeof getDb>
 
 type EstimateAccess = {
   readonly db: CompassDb
+  readonly rawDb: D1Database
   readonly user: AuthUser
   readonly projectNumber: string | null
   readonly projectName: string
@@ -312,6 +329,7 @@ async function estimateAccess(
   }
   return {
     db,
+    rawDb: env.DB,
     user,
     projectNumber: access.projectNumber,
     projectName: project.name,
@@ -407,6 +425,8 @@ function estimateSummary(
     signedAt: row.signedAt,
     acceptedAt: row.acceptedAt,
     sageStatus: row.sageStatus,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
   }
 }
 
@@ -478,7 +498,9 @@ function activeEstimate(
 
 function revalidateEstimate(projectId: string): void {
   revalidatePath(`/dashboard/projects/${projectId}/estimate`)
+  revalidatePath(`/dashboard/projects/${projectId}/estimate/compare`)
   revalidatePath(`/print/projects/${projectId}/estimate`)
+  revalidatePath(`/print/projects/${projectId}/estimate/compare`)
   revalidatePath(`/dashboard/projects/${projectId}/budget`)
   revalidatePath(`/dashboard/projects/${projectId}/financials`)
   revalidatePath(`/dashboard/projects/${projectId}/preview/owner`)
@@ -832,6 +854,237 @@ export async function createProjectEstimateDraft(
   }
 }
 
+export async function duplicateProjectEstimate(
+  projectId: string,
+  sourceEstimateId: string
+): Promise<ProjectEstimateActionResult> {
+  try {
+    const access = await estimateAccess(projectId, true)
+    const sourceRows = await access.db
+      .select()
+      .from(projectEstimates)
+      .where(
+        and(
+          eq(projectEstimates.id, sourceEstimateId),
+          eq(projectEstimates.projectId, projectId)
+        )
+      )
+      .limit(1)
+    const source = sourceRows[0]
+    if (!source || !isEstimateStatus(source.status)) {
+      throw new Error("Estimate version not found.")
+    }
+
+    const priorVersions = await access.db
+      .select({ versionNumber: projectEstimates.versionNumber })
+      .from(projectEstimates)
+      .where(
+        and(
+          eq(projectEstimates.projectId, projectId),
+          eq(projectEstimates.estimateNumber, source.estimateNumber)
+        )
+      )
+      .orderBy(desc(projectEstimates.versionNumber))
+      .limit(1)
+    const id = crypto.randomUUID()
+    const now = new Date().toISOString()
+    const versionNumber = (priorVersions[0]?.versionNumber ?? 0) + 1
+    const copyStatements: D1PreparedStatement[] = [
+      access.rawDb
+        .prepare(
+          `UPDATE project_estimates
+           SET status = 'superseded', updated_at = ?
+           WHERE project_id = ? AND estimate_number = ?
+             AND status IN ('draft', 'internal_review', 'signature_pending')`
+        )
+        .bind(now, projectId, source.estimateNumber),
+      access.rawDb
+        .prepare(
+          `INSERT INTO project_estimates (
+             id, project_id, estimate_number, version_number, title, status,
+             estimate_date, client_name, source_system, source_workbook_id,
+             source_workbook_url, source_revision, template_version_id,
+             template_application_id, default_tax_entity_id, default_tax_code,
+             default_tax_name, default_tax_rate_basis_points, terms_template_id,
+             contract_terms, introduction_template_id, introduction_text,
+             closing_template_id, closing_text, client_report_mode,
+             direct_cost_cents, markup_cents, tax_cents, estimate_total_cents,
+             foxit_status, foxit_envelope_id, signature_package_url,
+             signature_requested_at, signed_at, accepted_at, accepted_by,
+             sage_status, sage_record_id, last_sage_sync_at, source_hash,
+             created_by, created_at, updated_at
+           )
+           SELECT ?, project_id, estimate_number, ?, title, 'draft', ?,
+             client_name, 'compass_revision', source_workbook_id,
+             source_workbook_url, ?, template_version_id,
+             template_application_id, default_tax_entity_id, default_tax_code,
+             default_tax_name, default_tax_rate_basis_points, terms_template_id,
+             contract_terms, introduction_template_id, introduction_text,
+             closing_template_id, closing_text, client_report_mode,
+             direct_cost_cents, markup_cents, tax_cents, estimate_total_cents,
+             'not_started', NULL, NULL, NULL, NULL, NULL, NULL,
+             'not_ready', NULL, NULL, NULL, ?, ?, ?
+           FROM project_estimates
+           WHERE id = ? AND project_id = ?`
+        )
+        .bind(
+          id,
+          versionNumber,
+          now.slice(0, 10),
+          `Duplicated from version ${source.versionNumber} on ${now.slice(0, 10)}`,
+          access.user.id,
+          now,
+          now,
+          sourceEstimateId,
+          projectId
+        ),
+      access.rawDb
+        .prepare(
+          `INSERT INTO project_estimate_lines (
+             id, project_id, estimate_id, template_line_id, division_code,
+             division_name, cost_code, cost_code_name, description,
+             specifications, quantity, unit, unit_cost_cents, direct_cost_cents,
+             markup_rate_basis_points, markup_cents, taxable, tax_entity_id,
+             tax_code, tax_name, tax_rate_basis_points, tax_cents,
+             line_total_cents, owner_visible, sort_order, created_at, updated_at
+           )
+           SELECT lower(hex(randomblob(16))), project_id, ?, template_line_id,
+             division_code, division_name, cost_code, cost_code_name,
+             description, specifications, quantity, unit, unit_cost_cents,
+             direct_cost_cents, markup_rate_basis_points, markup_cents, taxable,
+             tax_entity_id, tax_code, tax_name, tax_rate_basis_points, tax_cents,
+             line_total_cents, owner_visible, sort_order, ?, ?
+           FROM project_estimate_lines
+           WHERE estimate_id = ? AND project_id = ?`
+        )
+        .bind(id, now, now, sourceEstimateId, projectId),
+      access.rawDb
+        .prepare(
+          `INSERT INTO project_estimate_basis_documents (
+             id, project_id, estimate_id, document_type, title, document_date,
+             revision, drive_file_id, drive_url, notes, sort_order, created_at,
+             updated_at
+           )
+           SELECT lower(hex(randomblob(16))), project_id, ?, document_type,
+             title, document_date, revision, drive_file_id, drive_url, notes,
+             sort_order, ?, ?
+           FROM project_estimate_basis_documents
+           WHERE estimate_id = ? AND project_id = ?`
+        )
+        .bind(id, now, now, sourceEstimateId, projectId),
+      access.rawDb
+        .prepare(
+          `INSERT INTO project_estimate_phase_descriptions (
+             id, project_id, estimate_id, division_code, description,
+             created_at, updated_at
+           )
+           SELECT lower(hex(randomblob(16))), project_id, ?, division_code,
+             description, ?, ?
+           FROM project_estimate_phase_descriptions
+           WHERE estimate_id = ? AND project_id = ?`
+        )
+        .bind(id, now, now, sourceEstimateId, projectId),
+      access.rawDb
+        .prepare(
+          `INSERT INTO project_estimate_acknowledgements (
+             id, project_id, estimate_id, template_id, title, body,
+             source_document_id, source_url, sort_order, created_at, updated_at
+           )
+           SELECT lower(hex(randomblob(16))), project_id, ?, template_id, title,
+             body, source_document_id, source_url, sort_order, ?, ?
+           FROM project_estimate_acknowledgements
+           WHERE estimate_id = ? AND project_id = ?`
+        )
+        .bind(id, now, now, sourceEstimateId, projectId),
+    ]
+    const copyResults = await access.rawDb.batch(copyStatements)
+    if (copyResults.some((result) => !result.success)) {
+      throw new Error("The estimate version copy did not complete.")
+    }
+
+    revalidateEstimate(projectId)
+    return { success: true, id }
+  } catch (error) {
+    return {
+      success: false,
+      error:
+        error instanceof Error
+          ? error.message
+          : "Unable to create the next estimate version.",
+    }
+  }
+}
+
+export async function getProjectEstimateVersionComparison(
+  projectId: string,
+  baseEstimateId?: string,
+  revisedEstimateId?: string
+): Promise<ProjectEstimateVersionComparison> {
+  const access = await estimateAccess(projectId, false)
+  const estimateRows = await access.db
+    .select()
+    .from(projectEstimates)
+    .where(eq(projectEstimates.projectId, projectId))
+    .orderBy(
+      desc(projectEstimates.versionNumber),
+      desc(projectEstimates.updatedAt)
+    )
+  const estimates = estimateRows.map((row) =>
+    estimateSummary(row, access.department)
+  )
+  const revisedEstimate =
+    estimates.find((estimate) => estimate.id === revisedEstimateId) ??
+    estimates[0] ??
+    null
+  const baseEstimate =
+    estimates.find(
+      (estimate) =>
+        estimate.id === baseEstimateId && estimate.id !== revisedEstimate?.id
+    ) ??
+    estimates.find((estimate) => estimate.id !== revisedEstimate?.id) ??
+    null
+  const selectedIds = [baseEstimate?.id, revisedEstimate?.id].filter(
+    (id): id is string => Boolean(id)
+  )
+  const lineRows =
+    selectedIds.length === 2
+      ? await access.db
+          .select()
+          .from(projectEstimateLines)
+          .where(
+            and(
+              eq(projectEstimateLines.projectId, projectId),
+              inArray(projectEstimateLines.estimateId, selectedIds)
+            )
+          )
+          .orderBy(
+            asc(projectEstimateLines.divisionCode),
+            asc(projectEstimateLines.sortOrder)
+          )
+      : []
+  const comparison =
+    baseEstimate && revisedEstimate
+      ? compareEstimateVersions({
+          baseLines: lineRows.filter(
+            (line) => line.estimateId === baseEstimate.id
+          ),
+          revisedLines: lineRows.filter(
+            (line) => line.estimateId === revisedEstimate.id
+          ),
+        })
+      : null
+
+  return {
+    canEdit: isInternalStaffRole(access.user.role),
+    projectNumber: access.projectNumber,
+    projectName: access.projectName,
+    estimates,
+    baseEstimate,
+    revisedEstimate,
+    comparison,
+  }
+}
+
 export async function updateProjectEstimateHeader(
   projectId: string,
   estimateId: string,
@@ -883,7 +1136,7 @@ export async function updateProjectEstimateHeader(
       .set({
         estimateNumber: requiredText(input.estimateNumber, "Estimate number"),
         title: requiredText(input.title, "Estimate title"),
-        estimateDate: cleanText(input.estimateDate),
+        estimateDate: requiredText(input.estimateDate, "Estimate date"),
         clientName: cleanText(input.clientName),
         sourceWorkbookUrl: safeUrl(input.sourceWorkbookUrl),
         defaultTaxEntityId: taxEntity?.id ?? null,
@@ -1743,6 +1996,9 @@ export async function prepareProjectEstimateForFoxit(
           .orderBy(asc(projectEstimateAcknowledgements.sortOrder)),
       ])
     if (lines.length === 0) throw new Error("Add estimate lines before signature.")
+    if (!cleanText(estimate.estimateDate)) {
+      throw new Error("Add the estimate date before signature.")
+    }
     const sourceCostCodes = [
       ...new Set(
         lines

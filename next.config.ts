@@ -10,6 +10,16 @@ const deploymentId =
 const nextConfig: NextConfig = {
     allowedDevOrigins: ["127.0.0.1"],
     deploymentId,
+    // OpenNext sets this flag before its Next.js build. Keep the native SQLite
+    // shim out of Workers without breaking production-mode local/E2E builds.
+    turbopack: {
+        resolveAlias: {
+            "@/lib/cloudflare-context":
+                process.env.NEXT_PRIVATE_STANDALONE === "true"
+                    ? "./src/lib/cloudflare-context.production.ts"
+                    : "./src/lib/cloudflare-context.ts",
+        },
+    },
     env: {
         NEXT_PUBLIC_COMPASS_DEPLOYMENT_ID: deploymentId ?? "development",
     },

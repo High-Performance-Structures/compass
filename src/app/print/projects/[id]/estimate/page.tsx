@@ -24,6 +24,17 @@ function quantity(value: number): string {
   }).format(value)
 }
 
+function estimateDate(value: string | null, createdAt: string): string {
+  const dateValue = value ?? createdAt.slice(0, 10)
+  const date = new Date(`${dateValue}T12:00:00`)
+  if (Number.isNaN(date.valueOf())) return dateValue
+  return new Intl.DateTimeFormat("en-US", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  }).format(date)
+}
+
 export default async function ProjectEstimatePrintPage({
   params,
   searchParams,
@@ -116,7 +127,10 @@ export default async function ProjectEstimatePrintPage({
             <p className="mt-1 font-semibold">
               {estimate.clientName ?? "Project client"}
             </p>
-            <p>{estimate.estimateDate ?? ""}</p>
+            <p className="mt-2 text-xs font-semibold uppercase tracking-wide">
+              Estimate date
+            </p>
+            <p>{estimateDate(estimate.estimateDate, estimate.createdAt)}</p>
           </div>
         </section>
 
@@ -264,7 +278,8 @@ export default async function ProjectEstimatePrintPage({
         )}
 
         <footer className="mt-10 border-t pt-3 text-xs text-neutral-600">
-          Estimate {estimate.estimateNumber}, version {estimate.versionNumber}.
+          Estimate {estimate.estimateNumber}, version {estimate.versionNumber}, dated{" "}
+          {estimateDate(estimate.estimateDate, estimate.createdAt)}.
         </footer>
 
         {workspace.selectedAcknowledgements.map((acknowledgement) => (
