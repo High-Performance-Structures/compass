@@ -235,6 +235,7 @@ export async function processFeedbackRequesterNotification(
     const recipients = await requesterRecipients(db, item)
     if (recipients.length > 0 && item.organizationId) {
       await persistNotification({
+        idempotencyKey: notificationEvent.id,
         organizationId: item.organizationId,
         projectId: null,
         eventType: `feedback.status.${payload.status}`,

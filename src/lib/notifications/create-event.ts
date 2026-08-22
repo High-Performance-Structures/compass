@@ -67,6 +67,7 @@ export type NotificationRecipientInput = {
 }
 
 export type CreateNotificationInput = {
+  readonly idempotencyKey?: string
   readonly organizationId: string
   readonly projectId: string | null
   readonly eventType: string
@@ -651,7 +652,9 @@ async function persistNotificationEvent(
     : null
   const occurredAt = new Date()
   const now = occurredAt.toISOString()
-  const eventId = crypto.randomUUID()
+  const eventId = input.idempotencyKey === undefined
+    ? crypto.randomUUID()
+    : `notification:${input.idempotencyKey}`
   try {
     await db.insert(notificationEvents).values({
       id: eventId,
@@ -667,7 +670,7 @@ async function persistNotificationEvent(
       audience: input.audience,
       createdBy: input.createdBy,
       createdAt: now,
-    })
+    }).onConflictDoNothing().run()
 
     for (const recipient of recipients) {
       const preferences = await getPreferenceForUser(
@@ -715,8 +718,8 @@ async function persistNotificationEvent(
         continue
       }
 
-      const recipientId = crypto.randomUUID()
-      await db.insert(notificationRecipients).values({
+      const recipientId = `notification-recipient:${eventId}:${recipient.userId}`
+      const recipientInserted = await db.insert(notificationRecipients).values({
         id: recipientId,
         eventId,
         userId: recipient.userId,
@@ -727,7 +730,8 @@ async function persistNotificationEvent(
         readAt: null,
         dismissedAt: null,
         createdAt: now,
-      })
+      }).onConflictDoNothing().run()
+      if (recipientInserted.meta.changes !== 1) continue
 
       if (emailEnabled) {
         const emailDelivery = await sendResendEmail(
@@ -737,7 +741,7 @@ async function persistNotificationEvent(
           notificationEmailBody(input)
         )
         await db.insert(notificationDeliveries).values({
-          id: crypto.randomUUID(),
+          id: `${eventId}:${recipient.userId}:email`,
           eventId,
           recipientId,
           userId: recipient.userId,
@@ -761,7 +765,7 @@ async function persistNotificationEvent(
           projectNumber
         )
         await db.insert(notificationDeliveries).values({
-          id: crypto.randomUUID(),
+          id: `${eventId}:${recipient.userId}:sms`,
           eventId,
           recipientId,
           userId: recipient.userId,
@@ -809,7 +813,7 @@ async function persistNotificationEvent(
         }
 
         await db.insert(notificationDeliveries).values({
-          id: crypto.randomUUID(),
+          id: `${eventId}:${recipient.userId}:push`,
           eventId,
           recipientId,
           userId: recipient.userId,
