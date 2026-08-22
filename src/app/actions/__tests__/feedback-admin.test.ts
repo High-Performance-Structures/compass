@@ -139,4 +139,31 @@ describe("queueFeedbackLifecycleRequest", () => {
     })
     expect(insert).not.toHaveBeenCalled()
   })
+
+  it.each([
+    {
+      name: "idempotency keys outside the executor pattern",
+      input: { idempotencyKey: "scheduled key" },
+    },
+    {
+      name: "blank lifecycle messages",
+      input: { idempotencyKey: "scheduled-message", message: "   " },
+    },
+    {
+      name: "zero-number GitHub issue URLs",
+      input: {
+        idempotencyKey: "scheduled-issue",
+        githubIssueUrl: "https://github.com/High-Performance-Structures/compass/issues/0",
+      },
+    },
+  ])("rejects $name before authentication or persistence", async ({ input }) => {
+    const result = await queueFeedbackLifecycleRequest({
+      id: "123e4567-e89b-12d3-a456-426614174000",
+      status: "planned",
+      ...input,
+    })
+
+    expect(result.success).toBe(false)
+    expect(mocks.requireAuth).not.toHaveBeenCalled()
+  })
 })

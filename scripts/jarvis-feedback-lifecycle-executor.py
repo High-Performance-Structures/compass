@@ -161,6 +161,19 @@ def lifecycle_target(item_id: object) -> str:
     )
 
 
+def _is_retryable_http_error(error: urllib.error.HTTPError) -> bool:
+    return error.code in {408, 425, 429} or error.code >= 500
+
+
+def _is_retryable_bridge_error(error: BaseException) -> bool:
+    if isinstance(error, urllib.error.HTTPError):
+        return _is_retryable_http_error(error)
+    cause = error.__cause__
+    if isinstance(cause, urllib.error.HTTPError):
+        return _is_retryable_http_error(cause)
+    return isinstance(error, (TimeoutError, urllib.error.URLError))
+
+
 def validate_lifecycle_payload(payload: object) -> dict[str, object]:
     if not isinstance(payload, dict):
         raise InvalidLifecycleRequest("Lifecycle request must be an object")
@@ -168,9 +181,11 @@ def validate_lifecycle_payload(payload: object) -> dict[str, object]:
         raise InvalidLifecycleRequest("Lifecycle request contains unsupported fields")
     if payload.get("schemaVersion") != 1:
         raise InvalidLifecycleRequest("Unsupported lifecycle request schema")
-    if payload.get("kind") not in ALLOWED_KINDS:
+    kind = payload.get("kind")
+    if not isinstance(kind, str) or kind not in ALLOWED_KINDS:
         raise InvalidLifecycleRequest("Only approved non-feature requests are supported")
-    if payload.get("status") not in ALLOWED_STATUSES:
+    status = payload.get("status")
+    if not isinstance(status, str) or status not in ALLOWED_STATUSES:
         raise InvalidLifecycleRequest("Lifecycle status is not allowed")
     idempotency_key = payload.get("idempotencyKey")
     if (
@@ -185,7 +200,9 @@ def validate_lifecycle_payload(payload: object) -> dict[str, object]:
     ):
         raise InvalidLifecycleRequest("message is invalid")
     priority = payload.get("priority")
-    if priority is not None and priority not in ALLOWED_PRIORITIES:
+    if priority is not None and (
+        not isinstance(priority, str) or priority not in ALLOWED_PRIORITIES
+    ):
         raise InvalidLifecycleRequest("priority is invalid")
     for key, pattern in (
         ("githubIssueUrl", GITHUB_ISSUE_PATTERN),
@@ -255,7 +272,7 @@ def compass_request(
             if len(raw) > MAX_RESPONSE_BYTES:
                 raise TerminalExecutionError("Compass response exceeded the allowed size")
     except urllib.error.HTTPError as error:
-        if error.code in {408, 425, 429} or error.code >= 500:
+        if _is_retryable_http_error(error):
             raise RetryableExecutionError("Compass temporarily rejected the request") from error
         raise TerminalExecutionError("Compass rejected the bridge request") from error
     except (TimeoutError, urllib.error.URLError) as error:
@@ -306,12 +323,16 @@ def execute_lifecycle(payload: object) -> dict[str, object]:
     }
     try:
         response = request_feedback_status(helper_payload)
+    except urllib.error.HTTPError as error:
+        if _is_retryable_http_error(error):
+            raise RetryableExecutionError("Lifecycle endpoint is temporarily unavailable") from error
+        raise TerminalExecutionError("Lifecycle endpoint rejected the request") from error
     except (TimeoutError, urllib.error.URLError) as error:
         raise RetryableExecutionError("Lifecycle endpoint is temporarily unavailable") from error
     except ValueError as error:
         raise TerminalExecutionError("Lifecycle endpoint rejected the request") from error
     except RuntimeError as error:
-        if isinstance(error.__cause__, (TimeoutError, urllib.error.URLError)):
+        if _is_retryable_bridge_error(error):
             raise RetryableExecutionError("Lifecycle endpoint is temporarily unavailable") from error
         raise TerminalExecutionError("Lifecycle endpoint rejected the request") from error
     return redact_result(response)
@@ -360,7 +381,7 @@ def handle_event(event: dict[str, object]) -> None:
     acknowledge(event_id, {"status": "completed", "result": result})
 
 
-def heartbeat(status: str, error: str | None = None) -> None:
+def heartbeat(status: str, error: str | None = None) -> bool:
     try:
         compass_request(
             "POST",
@@ -371,8 +392,10 @@ def heartbeat(status: str, error: str | None = None) -> None:
                 "error": error[:2000] if error else None,
             },
         )
+        return True
     except Exception:
-        LOGGER.debug("Could not record lifecycle executor heartbeat", exc_info=True)
+        LOGGER.warning("Could not record lifecycle executor heartbeat", exc_info=True)
+        return False
 
 
 def run_once() -> None:

@@ -1,7 +1,10 @@
 import importlib.util
+import io
 import os
 import threading
+import urllib.error
 import unittest
+from email.message import Message
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from unittest.mock import patch
@@ -123,6 +126,76 @@ class LifecycleExecutorTests(unittest.TestCase):
                 },
             ),
         ])
+
+    def test_http_policy_rejections_are_terminal_but_transient_statuses_retry(self) -> None:
+        terminal_statuses = (400, 401, 404, 409)
+        retryable_statuses = (408, 425, 429, 500, 503)
+
+        for status in terminal_statuses:
+            with self.subTest(status=status), patch.object(
+                MODULE,
+                "request_feedback_status",
+                side_effect=urllib.error.HTTPError(
+                    "https://compass.example/status",
+                    status,
+                    "rejected",
+                    Message(),
+                    io.BytesIO(),
+                ),
+            ):
+                with self.assertRaises(MODULE.TerminalExecutionError):
+                    MODULE.execute_lifecycle(self.valid_payload())
+
+        for status in retryable_statuses:
+            with self.subTest(status=status), patch.object(
+                MODULE,
+                "request_feedback_status",
+                side_effect=urllib.error.HTTPError(
+                    "https://compass.example/status",
+                    status,
+                    "temporary",
+                    Message(),
+                    io.BytesIO(),
+                ),
+            ):
+                with self.assertRaises(MODULE.RetryableExecutionError):
+                    MODULE.execute_lifecycle(self.valid_payload())
+
+    def test_unhashable_lifecycle_values_are_terminal_acknowledged_events(self) -> None:
+        for field in ("kind", "status", "priority"):
+            for malformed_value in ([], {}):
+                with self.subTest(field=field, malformed_value=malformed_value):
+                    event = self.event()
+                    event["id"] = "123e4567-e89b-12d3-a456-426614174000"
+                    payload = self.valid_payload()
+                    payload[field] = malformed_value
+                    event["payload"] = payload
+                    acknowledgements: list[tuple[str, dict[str, object]]] = []
+
+                    with patch.object(
+                        MODULE,
+                        "acknowledge",
+                        side_effect=lambda event_id, body: acknowledgements.append((event_id, body)),
+                    ):
+                        MODULE.handle_event(event)
+
+                    self.assertEqual(acknowledgements, [
+                        (
+                            "123e4567-e89b-12d3-a456-426614174000",
+                            {
+                                "status": "failed",
+                                "error": "invalid_lifecycle_request",
+                            },
+                        ),
+                    ])
+
+    def test_heartbeat_failure_is_observable(self) -> None:
+        with patch.object(MODULE, "compass_request", side_effect=RuntimeError("offline")):
+            with self.assertLogs(MODULE.LOGGER, level="WARNING") as logs:
+                result = MODULE.heartbeat("healthy")
+
+        self.assertFalse(result)
+        self.assertTrue(any("Could not record lifecycle executor heartbeat" in line for line in logs.output))
 
     def test_execution_preserves_one_idempotency_key_across_retries(self) -> None:
         payloads: list[dict[str, object]] = []
