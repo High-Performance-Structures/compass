@@ -5,7 +5,6 @@ import { feedbackDeskItems, jarvisBridgeEvents } from "@/db/schema-jarvis"
 import { getCloudflareContext } from "@/lib/db"
 import {
   getJarvisBridgeSecrets,
-  readBoundedBody,
   verifyJarvisRequest,
 } from "@/lib/jarvis/auth"
 import {
@@ -57,10 +56,6 @@ export async function GET(
   request: Request,
   { params }: { readonly params: Promise<{ readonly id: string }> },
 ): Promise<Response> {
-  const bodyResult = await readBoundedBody(request)
-  if (!bodyResult.success) {
-    return Response.json({ error: bodyResult.error }, { status: 413 })
-  }
   const { env } = await getCloudflareContext()
   const secrets = getJarvisBridgeSecrets(env)
   if (!secrets) {
@@ -69,7 +64,7 @@ export async function GET(
   const verification = await verifyJarvisRequest(
     request,
     secrets,
-    bodyResult.rawBody,
+    "",
   )
   if (!verification.success) {
     return Response.json({ error: verification.error }, { status: 401 })
