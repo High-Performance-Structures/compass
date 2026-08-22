@@ -92,6 +92,17 @@ export type FeedbackLifecycleUpdate = Readonly<{
   idempotencyKey: string
 }>
 
+export async function runFeedbackRequesterNotification(
+  insertEvent: () => Promise<Readonly<{ readonly changes: number }>>,
+  notify: () => Promise<void>,
+): Promise<boolean> {
+  // The unique bridge-event insert is the atomic gate for every notification channel.
+  const result = await insertEvent()
+  if (result.changes !== 1) return false
+  await notify()
+  return true
+}
+
 export async function applyFeedbackLifecycleUpdate(
   db: CompassDb,
   item: FeedbackDeskItem,
@@ -295,56 +306,57 @@ export async function applyFeedbackLifecycleUpdate(
       }).onConflictDoNothing()
     : null
   if (requesterUpdateKind) {
-    const outboundStatement = db.insert(jarvisBridgeEvents).values({
-      id: crypto.randomUUID(),
-      organizationId: item.organizationId,
-      direction: "outbound",
-      source: item.source,
-      eventType: "feedback.status_changed",
-      idempotencyKey: `notify:${update.idempotencyKey}`,
-      feedbackDeskItemId: item.id,
-      payload,
-      availableAt: now,
-      createdAt: now,
-      updatedAt: now,
-    }).onConflictDoNothing()
-    if (deliveryStatement) {
-      await db.batch([updateStatement, inboundStatement, outboundStatement, deliveryStatement])
-    } else {
-      await db.batch([updateStatement, inboundStatement, outboundStatement])
-    }
-  } else if (deliveryStatement) {
+    await runFeedbackRequesterNotification(
+      async () => {
+        const result = await db.insert(jarvisBridgeEvents).values({
+          id: crypto.randomUUID(),
+          organizationId: item.organizationId,
+          direction: "outbound",
+          source: item.source,
+          eventType: "feedback.status_changed",
+          idempotencyKey: `notify:${update.idempotencyKey}`,
+          feedbackDeskItemId: item.id,
+          payload,
+          availableAt: now,
+          createdAt: now,
+          updatedAt: now,
+        }).onConflictDoNothing().run()
+        return { changes: result.meta.changes }
+      },
+      async () => {
+        if (!item.organizationId || recipients.length === 0) return
+        try {
+          await createSystemNotificationEvent({
+            organizationId: item.organizationId,
+            projectId: null,
+            eventType: `feedback.status.${update.status}`,
+            sourceType: "feedback",
+            sourceId: item.id,
+            title: `Request update: ${feedbackStatusLabel(update.status)}`,
+            body: message,
+            href: `/dashboard/requests/${encodeURIComponent(item.id)}`,
+            priority: update.status === "needs_info" ? "high" : "normal",
+            audience: "requester",
+            recipients,
+            delivery: {
+              inApp: true,
+              email: feedbackStatusUsesEmail(update.status),
+              push: feedbackStatusUsesEmail(update.status),
+            },
+          })
+        } catch (error) {
+          console.error("feedback_lifecycle_notification_failed", {
+            feedbackDeskItemId: item.id,
+            error: error instanceof Error ? error.message : "Unknown error",
+          })
+        }
+      },
+    )
+  }
+  if (deliveryStatement) {
     await db.batch([updateStatement, inboundStatement, deliveryStatement])
   } else {
     await db.batch([updateStatement, inboundStatement])
-  }
-
-  if (requesterUpdateKind && item.organizationId && recipients.length > 0) {
-    try {
-      await createSystemNotificationEvent({
-        organizationId: item.organizationId,
-        projectId: null,
-        eventType: `feedback.status.${update.status}`,
-        sourceType: "feedback",
-        sourceId: item.id,
-        title: `Request update: ${feedbackStatusLabel(update.status)}`,
-        body: message,
-        href: `/dashboard/requests/${encodeURIComponent(item.id)}`,
-        priority: update.status === "needs_info" ? "high" : "normal",
-        audience: "requester",
-        recipients,
-        delivery: {
-          inApp: true,
-          email: feedbackStatusUsesEmail(update.status),
-          push: feedbackStatusUsesEmail(update.status),
-        },
-      })
-    } catch (error) {
-      console.error("feedback_lifecycle_notification_failed", {
-        feedbackDeskItemId: item.id,
-        error: error instanceof Error ? error.message : "Unknown error",
-      })
-    }
   }
 
   return {

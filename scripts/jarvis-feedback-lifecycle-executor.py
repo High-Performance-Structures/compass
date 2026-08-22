@@ -165,13 +165,45 @@ def _is_retryable_http_error(error: urllib.error.HTTPError) -> bool:
     return error.code in {408, 425, 429} or error.code >= 500
 
 
+def _exception_chain(error: BaseException) -> list[BaseException]:
+    chain: list[BaseException] = []
+    pending: list[BaseException] = [error]
+    seen: set[int] = set()
+    while pending:
+        current = pending.pop()
+        if id(current) in seen:
+            continue
+        seen.add(id(current))
+        chain.append(current)
+        cause = current.__cause__
+        context = current.__context__
+        if cause is not None:
+            pending.append(cause)
+        if context is not None:
+            pending.append(context)
+        pending.extend(
+            value
+            for value in current.args
+            if isinstance(value, BaseException)
+        )
+    return chain
+
+
 def _is_retryable_bridge_error(error: BaseException) -> bool:
-    if isinstance(error, urllib.error.HTTPError):
-        return _is_retryable_http_error(error)
-    cause = error.__cause__
-    if isinstance(cause, urllib.error.HTTPError):
-        return _is_retryable_http_error(cause)
-    return isinstance(error, (TimeoutError, urllib.error.URLError))
+    chain = _exception_chain(error)
+    http_errors = [
+        candidate
+        for candidate in chain
+        if isinstance(candidate, urllib.error.HTTPError)
+    ]
+    if any(not _is_retryable_http_error(candidate) for candidate in http_errors):
+        return False
+    if any(_is_retryable_http_error(candidate) for candidate in http_errors):
+        return True
+    return any(
+        isinstance(candidate, (TimeoutError, urllib.error.URLError))
+        for candidate in chain
+    )
 
 
 def validate_lifecycle_payload(payload: object) -> dict[str, object]:
