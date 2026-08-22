@@ -19,6 +19,7 @@ import {
   readBoundedBody,
   verifyJarvisRequest,
 } from "@/lib/jarvis/auth"
+import { processFeedbackRequesterNotification } from "@/lib/jarvis/feedback-status-update"
 
 const replySchema = z.object({
   eventId: z.string().min(1).max(128),
@@ -127,6 +128,7 @@ export async function POST(request: Request): Promise<Response> {
       id: jarvisBridgeEvents.id,
       eventType: jarvisBridgeEvents.eventType,
       source: jarvisBridgeEvents.source,
+      idempotencyKey: jarvisBridgeEvents.idempotencyKey,
       payload: jarvisBridgeEvents.payload,
       feedbackDeskItemId: jarvisBridgeEvents.feedbackDeskItemId,
     })
@@ -248,37 +250,52 @@ export async function POST(request: Request): Promise<Response> {
     .from(messages)
     .where(eq(messages.id, messageId))
     .get()
-  if (duplicate) {
-    return Response.json({
-      success: true,
-      messageId,
-      duplicate: true,
-    })
+  if (
+    sourceEvent.eventType === "feedback.status_changed" &&
+    sourceEvent.feedbackDeskItemId
+  ) {
+    try {
+      await processFeedbackRequesterNotification(db, {
+        id: sourceEvent.id,
+        idempotencyKey: sourceEvent.idempotencyKey,
+        feedbackDeskItemId: sourceEvent.feedbackDeskItemId,
+      })
+    } catch (error) {
+      return Response.json({
+        success: false,
+        retryable: true,
+        error: error instanceof Error
+          ? error.message
+          : "Requester notification persistence failed",
+      }, { status: 503 })
+    }
   }
 
   const now = new Date().toISOString()
-  await db.insert(messages).values({
-    id: messageId,
-    channelId: target.channelId,
-    threadId: target.messageId,
-    userId: serviceUserId,
-    content: parsed.data.content,
-    contentHtml: null,
-    editedAt: null,
-    deletedAt: null,
-    deletedBy: null,
-    isPinned: false,
-    replyCount: 0,
-    lastReplyAt: null,
-    createdAt: now,
-  })
-  await db
-    .update(messages)
-    .set({
-      replyCount: sql`${messages.replyCount} + 1`,
-      lastReplyAt: now,
+  if (!duplicate) {
+    await db.insert(messages).values({
+      id: messageId,
+      channelId: target.channelId,
+      threadId: target.messageId,
+      userId: serviceUserId,
+      content: parsed.data.content,
+      contentHtml: null,
+      editedAt: null,
+      deletedAt: null,
+      deletedBy: null,
+      isPinned: false,
+      replyCount: 0,
+      lastReplyAt: null,
+      createdAt: now,
     })
-    .where(eq(messages.id, target.messageId))
+    await db
+      .update(messages)
+      .set({
+        replyCount: sql`${messages.replyCount} + 1`,
+        lastReplyAt: now,
+      })
+      .where(eq(messages.id, target.messageId))
+  }
 
   await db
     .insert(jarvisBridgeEvents)
@@ -311,5 +328,5 @@ export async function POST(request: Request): Promise<Response> {
     .where(eq(jarvisBridgeEvents.id, sourceEvent.id))
 
   revalidatePath("/dashboard/conversations")
-  return Response.json({ success: true, messageId })
+  return Response.json({ success: true, messageId, ...(duplicate ? { duplicate: true } : {}) })
 }
