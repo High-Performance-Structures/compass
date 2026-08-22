@@ -53,6 +53,51 @@ export type FeedbackDeliveryGraphEvent = Readonly<{
   }>
 }>
 
+export type FeedbackDeskOutboundPayload = Readonly<{
+  schemaVersion: 1
+  feedbackDeskItemId: string
+  reference: string
+  kind: string
+  status: string
+  notificationKind: string | null
+}>
+
+export function feedbackDeskOutboundPayload(input: Readonly<{
+  id: string
+  kind: string
+  status: string
+  notificationKind: string | null
+}>): FeedbackDeskOutboundPayload {
+  return {
+    schemaVersion: 1,
+    feedbackDeskItemId: input.id,
+    reference: `CFD-${input.id}`,
+    kind: input.kind,
+    status: input.status,
+    notificationKind: input.notificationKind,
+  }
+}
+
+export type FeedbackRequesterNotificationEvent = Readonly<{
+  eventType: "feedback.requester_notification"
+  idempotencyKey: string
+  payload: FeedbackDeskOutboundPayload
+}>
+
+export function feedbackRequesterNotificationEvent(input: Readonly<{
+  id: string
+  kind: string
+  status: string
+  notificationKind: string
+  idempotencyKey: string
+}>): FeedbackRequesterNotificationEvent {
+  return {
+    eventType: "feedback.requester_notification",
+    idempotencyKey: `feedback-requester-notification:${input.idempotencyKey}`,
+    payload: feedbackDeskOutboundPayload(input),
+  }
+}
+
 export type FeedbackDeliveryGraphUpdate = Readonly<{
   status: "created" | "failed"
   graphId: string | null
