@@ -77,6 +77,10 @@ export default async function ProjectEstimatePrintPage({
     0
   )
   const clientTotalCents = clientSubtotalCents + estimate.builderFeeCents
+  const builderFeeRateBasisPoints =
+    estimate.overheadRateBasisPoints +
+    estimate.marginRateBasisPoints +
+    estimate.contingencyRateBasisPoints
   const builderFeeExclusions = phases.flatMap((phase) =>
     phase.lines.filter((line) => !line.includeInBuilderFee)
   )
@@ -249,37 +253,49 @@ export default async function ProjectEstimatePrintPage({
           </section>
         )}
 
-        <section className="ml-auto mt-5 w-full max-w-sm text-sm">
-          <div className="flex justify-between border-t border-black pt-2">
-            <span>Project subtotal</span>
+        <section className="ml-auto mt-6 w-full max-w-lg break-inside-avoid text-sm">
+          <div className="flex justify-between border-t border-black py-2 font-semibold">
+            <span>Project Subtotal:</span>
             <span>{money(clientSubtotalCents)}</span>
           </div>
-          {estimate.overheadRateBasisPoints > 0 && (
-            <div className="mt-1 flex justify-between">
-              <span>Company overhead ({percent(estimate.overheadRateBasisPoints)})</span>
-              <span>{money(estimate.overheadCents)}</span>
-            </div>
-          )}
-          {estimate.marginRateBasisPoints > 0 && (
-            <div className="mt-1 flex justify-between">
-              <span>Company margin ({percent(estimate.marginRateBasisPoints)})</span>
-              <span>{money(estimate.marginCents)}</span>
-            </div>
-          )}
-          {estimate.contingencyRateBasisPoints > 0 && (
-            <div className="mt-1 flex justify-between">
-              <span>Contingency reserve ({percent(estimate.contingencyRateBasisPoints)})</span>
-              <span>{money(estimate.contingencyCents)}</span>
-            </div>
-          )}
           {estimate.builderFeeCents > 0 && (
-            <div className="mt-1 flex justify-between font-semibold">
-              <span>Builder fee</span>
-              <span>{money(estimate.builderFeeCents)}</span>
-            </div>
+            <>
+              <div className="flex justify-between border-y border-black py-2 font-semibold">
+                <span>Company Overhead &amp; Margin</span>
+                <span>{percent(builderFeeRateBasisPoints)} Builder Fee</span>
+              </div>
+              {estimate.overheadRateBasisPoints > 0 && (
+                <div className="flex justify-between py-1">
+                  <span>
+                    Company Overhead ({percent(estimate.overheadRateBasisPoints)})
+                  </span>
+                  <span>{money(estimate.overheadCents)}</span>
+                </div>
+              )}
+              {estimate.marginRateBasisPoints > 0 && (
+                <div className="flex justify-between py-1">
+                  <span>
+                    Company Margin ({percent(estimate.marginRateBasisPoints)})
+                  </span>
+                  <span>{money(estimate.marginCents)}</span>
+                </div>
+              )}
+              {estimate.contingencyRateBasisPoints > 0 && (
+                <div className="flex justify-between py-1">
+                  <span>
+                    Contingency Reserve ({percent(estimate.contingencyRateBasisPoints)})
+                  </span>
+                  <span>{money(estimate.contingencyCents)}</span>
+                </div>
+              )}
+              <div className="flex justify-between border-t border-black py-2 font-semibold">
+                <span>Total: Company Overhead &amp; Margin</span>
+                <span>{money(estimate.builderFeeCents)}</span>
+              </div>
+            </>
           )}
-          <div className="flex justify-between border-t border-black pt-2 text-base font-bold">
-            <span>Estimate total</span>
+          <div className="flex justify-between border-y-2 border-black py-2 text-base font-bold">
+            <span>Project Total:</span>
             <span>{money(clientTotalCents)}</span>
           </div>
         </section>
