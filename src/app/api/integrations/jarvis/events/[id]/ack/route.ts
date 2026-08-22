@@ -10,7 +10,10 @@ import {
 } from "@/lib/jarvis/auth"
 import { knownFeedbackStatus } from "@/lib/jarvis/feedback-lifecycle"
 import { feedbackDeliveryGraphIsComplete } from "@/lib/jarvis/feedback-lifecycle-evidence"
-import { applyFeedbackLifecycleUpdate } from "@/lib/jarvis/feedback-status-update"
+import {
+  applyFeedbackLifecycleUpdate,
+  processFeedbackRequesterNotification,
+} from "@/lib/jarvis/feedback-status-update"
 import { feedbackDeliveryGraphUpdate } from "@/lib/jarvis/feedback-delivery"
 import { jarvisPayloadAfterCompletion } from "@/lib/jarvis/visual-context"
 
@@ -89,6 +92,7 @@ export async function POST(
     .select({
       id: jarvisBridgeEvents.id,
       eventType: jarvisBridgeEvents.eventType,
+      idempotencyKey: jarvisBridgeEvents.idempotencyKey,
       payload: jarvisBridgeEvents.payload,
       feedbackDeskItemId: jarvisBridgeEvents.feedbackDeskItemId,
     })
@@ -110,6 +114,27 @@ export async function POST(
       .where(eq(feedbackDeskItems.id, existing.feedbackDeskItemId))
       .get()
     : null
+
+  if (
+    existing.eventType === "feedback.status_changed" &&
+    existing.feedbackDeskItemId
+  ) {
+    try {
+      await processFeedbackRequesterNotification(db, {
+        id: existing.id,
+        idempotencyKey: existing.idempotencyKey,
+        feedbackDeskItemId: existing.feedbackDeskItemId,
+      })
+    } catch (error) {
+      return Response.json({
+        success: false,
+        retryable: true,
+        error: error instanceof Error
+          ? error.message
+          : "Requester notification persistence failed",
+      }, { status: 503 })
+    }
+  }
 
   if (
     existing.eventType === "feedback.delivery_requested" &&

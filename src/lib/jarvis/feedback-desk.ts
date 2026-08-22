@@ -6,23 +6,9 @@ import {
   type FeedbackDeskItem,
 } from "@/db/schema-jarvis"
 import { feedbackSlaTarget } from "@/lib/jarvis/feedback-lifecycle"
+import { feedbackDeskOutboundPayload } from "@/lib/jarvis/feedback-delivery"
 
 type CompassDb = ReturnType<typeof getDb>
-
-function metadataExternalActorId(metadata: string | null): string | null {
-  if (!metadata) return null
-  let parsed: unknown
-  try {
-    parsed = JSON.parse(metadata)
-  } catch {
-    return null
-  }
-  if (typeof parsed !== "object" || parsed === null) return null
-  const externalActorId = Reflect.get(parsed, "externalActorId")
-  return typeof externalActorId === "string" && externalActorId.length > 0
-    ? externalActorId
-    : null
-}
 
 export type FeedbackDeskSource =
   | "compass-conversation"
@@ -60,28 +46,12 @@ export async function enqueueFeedbackReceipt(
   item: FeedbackDeskItem,
 ): Promise<void> {
   const now = new Date().toISOString()
-  const receiptPayload = {
-    schemaVersion: 1,
-    feedbackDeskItemId: item.id,
-    source: item.source,
-    sourceId: item.sourceId,
+  const receiptPayload = feedbackDeskOutboundPayload({
+    id: item.id,
+    kind: item.kind,
     status: "new",
-    title: item.title,
-    message: `Your request “${item.title}” has been received.`,
-    reporter: {
-      name: item.reporterName,
-      email: item.reporterEmail,
-      externalActorId: metadataExternalActorId(item.metadata),
-    },
-    compass: {
-      organizationId: item.organizationId,
-      channelId: item.channelId,
-      messageId: item.messageId,
-      threadId: item.threadId,
-    },
-    metadata: item.metadata,
-    createdAt: item.createdAt,
-  }
+    notificationKind: null,
+  })
 
   await db
     .insert(jarvisBridgeEvents)
@@ -159,27 +129,12 @@ export async function enqueueFeedbackDeskItem(
   // or receipt notifications as if the request had just been submitted.
   if (input.historicalImport) return item
 
-  const payload = {
-    schemaVersion: 1,
-    feedbackDeskItemId: item.id,
-    source: input.source,
-    sourceId: input.sourceId,
-    kind: input.kind,
-    title: input.title,
-    description: input.description,
-    reporter: {
-      name: input.reporterName ?? null,
-      email: input.reporterEmail ?? null,
-    },
-    compass: {
-      organizationId: input.organizationId,
-      channelId: input.channelId ?? null,
-      messageId: input.messageId ?? null,
-      threadId: input.threadId ?? null,
-    },
-    metadata: input.metadata ?? {},
-    createdAt: item.createdAt,
-  }
+  const payload = feedbackDeskOutboundPayload({
+    id: item.id,
+    kind: item.kind,
+    status: "new",
+    notificationKind: null,
+  })
 
   await db
     .insert(jarvisBridgeEvents)

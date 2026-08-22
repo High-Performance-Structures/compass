@@ -24,6 +24,7 @@ import { isInternalStaffRole } from "@/lib/user-roles"
 
 export {
   createNotificationEvent,
+  createStrictSystemNotificationEvent,
   createSystemNotificationEvent,
   isMissingNotificationTableError,
   queueSmsDelivery,
