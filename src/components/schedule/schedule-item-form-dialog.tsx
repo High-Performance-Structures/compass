@@ -81,6 +81,7 @@ import {
 import { ProjectAssigneePicker } from "@/components/projects/project-assignee-picker"
 import { ProjectTaskCreateButton } from "@/components/projects/project-task-create-button"
 import { ScheduleItemLinks } from "@/components/schedule/schedule-item-links"
+import { DEFAULT_NEW_SCHEDULE_ITEM_WORKDAYS } from "@/components/schedule/schedule-item-defaults"
 import type { ScheduleTemplateImportGroup } from "@/app/actions/template-import-options"
 import {
   clearScheduleTemplateImportOptions,
@@ -203,7 +204,7 @@ export function ScheduleItemFormDialog({
     defaultValues: {
       title: "",
       startDate: new Date().toISOString().split("T")[0],
-      workdays: 5,
+      workdays: DEFAULT_NEW_SCHEDULE_ITEM_WORKDAYS,
       phase: "preconstruction",
       displayColor: DEFAULT_DISPLAY_COLOR,
       status: "PENDING",
@@ -295,7 +296,7 @@ export function ScheduleItemFormDialog({
       form.reset({
         title: "",
         startDate: new Date().toISOString().split("T")[0],
-        workdays: 5,
+        workdays: DEFAULT_NEW_SCHEDULE_ITEM_WORKDAYS,
         phase: "preconstruction",
         displayColor: DEFAULT_DISPLAY_COLOR,
         status: "PENDING",
@@ -441,7 +442,7 @@ export function ScheduleItemFormDialog({
     setSelectedTemplateTodoIds([])
     setTemplateTodosOpen(false)
     form.setValue("title", "", { shouldDirty: true })
-    form.setValue("workdays", 5, { shouldDirty: true })
+    form.setValue("workdays", DEFAULT_NEW_SCHEDULE_ITEM_WORKDAYS, { shouldDirty: true })
     form.setValue("phase", "preconstruction", { shouldDirty: true })
     form.setValue("displayColor", DEFAULT_DISPLAY_COLOR, {
       shouldDirty: true
