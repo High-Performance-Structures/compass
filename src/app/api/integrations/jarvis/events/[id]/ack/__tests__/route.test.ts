@@ -2,6 +2,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 import Database from "better-sqlite3"
 import { drizzle } from "drizzle-orm/better-sqlite3"
 
+import {
+  assertBridgeReservationOwnership,
+  type BridgeReservationOwnership,
+} from "@/lib/jarvis/bridge-reservation"
+
 const mocks = vi.hoisted(() => ({
   getCloudflareContext: vi.fn(),
   getDb: vi.fn(),
@@ -166,7 +171,7 @@ function configureSqliteMutationDb(
     select: vi.fn().mockReturnValue(selectChain),
     update,
   })
-  return { sqlite, update }
+  return { sqlite, db, update }
 }
 
 async function acknowledge(
@@ -277,6 +282,10 @@ describe("POST /api/integrations/jarvis/events/:id/ack", () => {
         deliveryRoute: "engineering",
         deliveryGraph: expect.objectContaining({ status: "failed" }),
       }),
+      expect.objectContaining({
+        eventId: "event-1",
+        reservationResult: JSON.stringify({ acknowledgement: "reserved" }),
+      }),
     )
   })
 
@@ -351,6 +360,129 @@ describe("POST /api/integrations/jarvis/events/:id/ack", () => {
     expect(response.status).toBe(409)
     expect(db.mutationGet).toHaveBeenCalledOnce()
     expect(mocks.processFeedbackRequesterNotification).not.toHaveBeenCalled()
+  })
+
+  it("rejects requester notification effects after a reserved claim expires and is replaced", async () => {
+    const statusEvent = {
+      ...event,
+      eventType: "feedback.status_changed",
+      idempotencyKey: "notify:feedback-1",
+    }
+    const db = configureDb(
+      completeItem,
+      [{ id: "event-1" }, null],
+      statusEvent,
+    )
+
+    const response = await acknowledge()
+
+    expect(response.status).toBe(409)
+    await expect(response.json()).resolves.toEqual({
+      error: "Event claim is no longer active",
+    })
+    expect(db.mutationGet).toHaveBeenCalledTimes(2)
+    expect(mocks.processFeedbackRequesterNotification).not.toHaveBeenCalled()
+  })
+
+  it("rejects delivery lifecycle effects after a reserved claim expires and is replaced", async () => {
+    const db = configureDb(
+      { ...completeItem, status: "triaged" },
+      [{ id: "event-1" }, null],
+    )
+
+    const response = await acknowledgeFailure()
+
+    expect(response.status).toBe(409)
+    await expect(response.json()).resolves.toEqual({
+      error: "Event claim is no longer active",
+    })
+    expect(db.mutationGet).toHaveBeenCalledTimes(2)
+    expect(mocks.applyFeedbackLifecycleUpdate).not.toHaveBeenCalled()
+  })
+
+  it("rejects a paused requester notification in SQLite after replacement", async () => {
+    const statusEvent = {
+      ...event,
+      eventType: "feedback.status_changed",
+      idempotencyKey: "notify:feedback-1",
+    }
+    const state = configureSqliteMutationDb(
+      completeItem,
+      statusEvent,
+      () => {},
+    )
+    mocks.processFeedbackRequesterNotification.mockImplementation(
+      (
+        _db: unknown,
+        _source: unknown,
+        _persist: unknown,
+        ownership: BridgeReservationOwnership,
+      ) => {
+        state.sqlite.prepare(`
+          UPDATE jarvis_bridge_events
+          SET claim_token = 'replacement-claim'
+          WHERE id = 'event-1'
+        `).run()
+        assertBridgeReservationOwnership(state.db, ownership).run()
+        return Promise.resolve({
+          queued: true,
+          claimed: true,
+          notifiedUserCount: 1,
+        })
+      },
+    )
+
+    try {
+      const response = await acknowledge()
+
+      expect(response.status).toBe(409)
+      expect(state.sqlite.prepare(`
+        SELECT claim_token AS claimToken
+        FROM jarvis_bridge_events WHERE id = 'event-1'
+      `).get()).toEqual({ claimToken: "replacement-claim" })
+    } finally {
+      state.sqlite.close()
+    }
+  })
+
+  it("rejects a paused lifecycle batch in SQLite after replacement", async () => {
+    const state = configureSqliteMutationDb(
+      { ...completeItem, status: "triaged" },
+      event,
+      () => {},
+    )
+    mocks.applyFeedbackLifecycleUpdate.mockImplementation(
+      (
+        _db: unknown,
+        _item: unknown,
+        _update: unknown,
+        ownership: BridgeReservationOwnership,
+      ) => {
+        state.sqlite.prepare(`
+          UPDATE jarvis_bridge_events
+          SET claim_token = 'replacement-claim'
+          WHERE id = 'event-1'
+        `).run()
+        assertBridgeReservationOwnership(state.db, ownership).run()
+        return Promise.resolve({
+          changed: true,
+          notifiedUserCount: 0,
+          requesterUpdateQueued: false,
+        })
+      },
+    )
+
+    try {
+      const response = await acknowledgeFailure()
+
+      expect(response.status).toBe(409)
+      expect(state.sqlite.prepare(`
+        SELECT claim_token AS claimToken
+        FROM jarvis_bridge_events WHERE id = 'event-1'
+      `).get()).toEqual({ claimToken: "replacement-claim" })
+    } finally {
+      state.sqlite.close()
+    }
   })
 
   it("rejects another event's active token in SQLite", async () => {
@@ -578,7 +710,16 @@ describe("POST /api/integrations/jarvis/events/:id/ack", () => {
     const response = await acknowledge()
 
     expect(response.status).toBe(503)
-    expect(db.mutationGet).toHaveBeenCalledTimes(2)
+    expect(mocks.processFeedbackRequesterNotification).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ id: "event-1" }),
+      undefined,
+      expect.objectContaining({
+        eventId: "event-1",
+        reservationResult: JSON.stringify({ acknowledgement: "reserved" }),
+      }),
+    )
+    expect(db.mutationGet).toHaveBeenCalledTimes(3)
     expect(db.set).toHaveBeenLastCalledWith(expect.objectContaining({
       status: "pending",
       claimToken: null,

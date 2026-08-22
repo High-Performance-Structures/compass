@@ -84,9 +84,17 @@ describe("Feedback Desk requester notification outbox", () => {
     const first = database(shared)
     const second = database(shared)
     let notificationCallCount = 0
-    const persistNotification = async (input: Readonly<Record<string, unknown>>) => {
+    const persistNotification = async (
+      input: Readonly<Record<string, unknown>>,
+      ownership?: Readonly<Record<string, unknown>>,
+    ) => {
       notificationCallCount += 1
       expect(input.idempotencyKey).toBe("notification-event-1")
+      expect(ownership).toEqual(expect.objectContaining({
+        eventId: "notification-event-1",
+        claimToken: expect.any(String),
+        reservationResult: null,
+      }))
     }
 
     const { processFeedbackRequesterNotification } = await import(

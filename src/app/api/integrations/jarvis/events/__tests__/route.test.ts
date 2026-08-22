@@ -276,7 +276,7 @@ describe("GET /api/integrations/jarvis/events", () => {
     }
   })
 
-  it("does not reclaim an acknowledgement whose side effect is reserved", async () => {
+  it("reclaims an expired acknowledgement reservation", async () => {
     const sqlite = new Database(":memory:")
     sqlite.exec(`
       CREATE TABLE jarvis_bridge_events (
@@ -320,11 +320,90 @@ describe("GET /api/integrations/jarvis/events", () => {
       ))
 
       expect(response.status).toBe(200)
-      await expect(response.json()).resolves.toEqual({ events: [] })
+      const body: unknown = await response.json()
+      const events = typeof body === "object" && body !== null
+        ? Reflect.get(body, "events")
+        : null
+      if (!Array.isArray(events)) throw new Error("Expected reclaimed event array")
+      expect(events).toHaveLength(1)
+      const replacementClaim = Reflect.get(events[0], "claimToken")
+      expect(replacementClaim).toEqual(expect.any(String))
+      expect(replacementClaim).not.toBe("ack-owner")
       expect(sqlite.prepare(`
-        SELECT status, claim_token AS claimToken
+        SELECT status, claim_token AS claimToken, result, attempt_count AS attemptCount
         FROM jarvis_bridge_events WHERE id = 'event-ack'
-      `).get()).toEqual({ status: "processing", claimToken: "ack-owner" })
+      `).get()).toEqual({
+        status: "processing",
+        claimToken: replacementClaim,
+        result: '{"acknowledgement":"reserved"}',
+        attemptCount: 1,
+      })
+    } finally {
+      sqlite.close()
+    }
+  })
+
+  it("reclaims an expired reply reservation", async () => {
+    const sqlite = new Database(":memory:")
+    sqlite.exec(`
+      CREATE TABLE jarvis_bridge_events (
+        id TEXT PRIMARY KEY NOT NULL,
+        organization_id TEXT,
+        direction TEXT NOT NULL,
+        source TEXT NOT NULL,
+        event_type TEXT NOT NULL,
+        status TEXT NOT NULL,
+        idempotency_key TEXT NOT NULL UNIQUE,
+        payload TEXT NOT NULL,
+        result TEXT,
+        last_error TEXT,
+        attempt_count INTEGER NOT NULL DEFAULT 0,
+        available_at TEXT NOT NULL,
+        claim_token TEXT,
+        claimed_at TEXT,
+        feedback_desk_item_id TEXT,
+        completed_at TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+      INSERT INTO jarvis_bridge_events (
+        id, direction, source, event_type, status, idempotency_key,
+        payload, result, available_at, claim_token, claimed_at,
+        created_at, updated_at
+      ) VALUES (
+        'event-reply', 'outbound', 'compass-conversation',
+        'feedback.status_changed', 'processing', 'status:event-reply', '{}',
+        '{"reply":"reserved"}',
+        '2020-01-01T00:00:00.000Z', 'reply-owner',
+        '2020-01-01T00:00:00.000Z',
+        '2020-01-01T00:00:00.000Z', '2020-01-01T00:00:00.000Z'
+      );
+    `)
+    mocks.getDb.mockReturnValue(drizzle(sqlite))
+
+    try {
+      const response = await GET(new Request(
+        "https://compass.example/api/integrations/jarvis/events?eventType=feedback.status_changed",
+      ))
+
+      const body: unknown = await response.json()
+      const events = typeof body === "object" && body !== null
+        ? Reflect.get(body, "events")
+        : null
+      if (!Array.isArray(events)) throw new Error("Expected reclaimed event array")
+      expect(response.status).toBe(200)
+      expect(events).toHaveLength(1)
+      const replacementClaim = Reflect.get(events[0], "claimToken")
+      expect(replacementClaim).toEqual(expect.any(String))
+      expect(replacementClaim).not.toBe("reply-owner")
+      expect(sqlite.prepare(`
+        SELECT claim_token AS claimToken, result, attempt_count AS attemptCount
+        FROM jarvis_bridge_events WHERE id = 'event-reply'
+      `).get()).toEqual({
+        claimToken: replacementClaim,
+        result: '{"reply":"reserved"}',
+        attemptCount: 1,
+      })
     } finally {
       sqlite.close()
     }

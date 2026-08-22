@@ -55,6 +55,42 @@ function databaseWithClaimedRecipient() {
   return { select, insert }
 }
 
+function databaseWithGuardedDeliveryReservation() {
+  const select = vi.fn()
+    .mockReturnValueOnce(queryResult([{
+      userId: "requester-1",
+      email: "requester@example.com",
+      googleEmail: null,
+    }]))
+    .mockReturnValueOnce(queryResult([]))
+    .mockReturnValueOnce(queryResult([
+      { id: "delivery-email", channel: "email", status: "attempting" },
+      { id: "delivery-push", channel: "push", status: "attempting" },
+    ]))
+  const statement = { run: vi.fn() }
+  const insert = vi.fn(() => ({
+    select: vi.fn(() => statement),
+    values: vi.fn(() => ({
+      onConflictDoNothing: vi.fn(() => statement),
+    })),
+  }))
+  const batch = vi.fn()
+    .mockResolvedValueOnce([
+      { meta: { changes: 0 } },
+      { meta: { changes: 1 } },
+    ])
+    .mockResolvedValueOnce([
+      { meta: { changes: 0 } },
+      { meta: { changes: 0 } },
+      { meta: { changes: 0 } },
+      { meta: { changes: 0 } },
+    ])
+  const updateWhere = vi.fn().mockResolvedValue(undefined)
+  const updateSet = vi.fn(() => ({ where: updateWhere }))
+  const update = vi.fn(() => ({ set: updateSet }))
+  return { select, insert, update, batch }
+}
+
 describe("strict notification idempotency", () => {
   beforeEach(() => {
     mocks.getCloudflareContext.mockReset()
@@ -86,5 +122,37 @@ describe("strict notification idempotency", () => {
     })).rejects.toThrow("delivery is still in progress")
 
     expect(mocks.revalidatePath).not.toHaveBeenCalled()
+  })
+
+  it("recovers guarded multi-channel delivery reservations", async () => {
+    const db = databaseWithGuardedDeliveryReservation()
+    mocks.getDb.mockReturnValue(db)
+
+    await expect(createStrictSystemNotificationEvent({
+      organizationId: "organization-1",
+      projectId: null,
+      eventType: "feedback.status_changed",
+      sourceType: "feedback_desk",
+      sourceId: "feedback-1",
+      title: "Feedback request updated",
+      body: "Your request moved to testing.",
+      href: "/dashboard/feedback",
+      priority: "normal",
+      audience: "individual",
+      recipients: [{
+        userId: "requester-1",
+        email: "requester@example.com",
+      }],
+      delivery: { inApp: true, email: true, push: true },
+      idempotencyKey: "feedback-requester:event-1",
+    }, {
+      eventId: "notification-event-1",
+      claimToken: "notification-claim-1",
+      reservationResult: null,
+    })).resolves.toBeUndefined()
+
+    expect(db.batch).toHaveBeenCalledTimes(2)
+    expect(db.batch.mock.calls[1]?.[0]).toHaveLength(4)
+    expect(db.update).toHaveBeenCalledTimes(2)
   })
 })

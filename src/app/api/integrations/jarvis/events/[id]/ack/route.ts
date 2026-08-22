@@ -8,6 +8,10 @@ import {
   readBoundedBody,
   verifyJarvisRequest,
 } from "@/lib/jarvis/auth"
+import {
+  ACKNOWLEDGEMENT_RESERVATION_RESULT,
+  renewBridgeReservation,
+} from "@/lib/jarvis/bridge-reservation"
 import { knownFeedbackStatus } from "@/lib/jarvis/feedback-lifecycle"
 import { feedbackDeliveryGraphIsComplete } from "@/lib/jarvis/feedback-lifecycle-evidence"
 import {
@@ -171,13 +175,25 @@ export async function POST(
       .set({
         claimToken: acknowledgementClaimToken,
         claimedAt: nowIso,
-        result: JSON.stringify({ acknowledgement: "reserved" }),
+        result: ACKNOWLEDGEMENT_RESERVATION_RESULT,
         updatedAt: nowIso,
       })
       .where(activeClaimPredicate(id, claimToken))
       .returning({ id: jarvisBridgeEvents.id })
       .get()
     if (!locked) return inactiveClaimResponse()
+  }
+
+  if (
+    requiresSideEffectLock &&
+    !await renewBridgeReservation(db, {
+      eventId: id,
+      claimToken: acknowledgementClaimToken,
+      reservationResult: ACKNOWLEDGEMENT_RESERVATION_RESULT,
+      now: new Date().toISOString(),
+    })
+  ) {
+    return inactiveClaimResponse()
   }
 
   if (
@@ -189,6 +205,10 @@ export async function POST(
         id: existing.id,
         idempotencyKey: existing.idempotencyKey,
         feedbackDeskItemId: existing.feedbackDeskItemId,
+      }, undefined, {
+        eventId: id,
+        claimToken: acknowledgementClaimToken,
+        reservationResult: ACKNOWLEDGEMENT_RESERVATION_RESULT,
       })
     } catch (error) {
       const notificationRetryAt = new Date(
@@ -244,6 +264,10 @@ export async function POST(
             deliveryRoute: "engineering",
             actorSource: "jarvis",
             idempotencyKey: failureIdempotencyKey,
+          }, {
+            eventId: id,
+            claimToken: acknowledgementClaimToken,
+            reservationResult: ACKNOWLEDGEMENT_RESERVATION_RESULT,
           })
         }
       }
