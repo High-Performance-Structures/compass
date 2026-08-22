@@ -31,6 +31,23 @@ test.describe("Electron runtime", () => {
           page.evaluate(() => window.compassDesktop?.window.isFocused()),
         )
         .toBe(true)
+
+      const previewWindowPromise = app.waitForEvent("window")
+      await page.evaluate(() => {
+        window.open(
+          `${window.location.origin}/preview/projects/desktop-preview-test/owner`,
+          "compass-project-audience-preview",
+          "popup=yes,width=1180,height=800"
+        )
+      })
+      const previewWindow = await previewWindowPromise
+      await previewWindow.close()
+
+      await expect
+        .poll(async () =>
+          page.evaluate(() => window.compassDesktop?.window.isFocused())
+        )
+        .toBe(true)
     } finally {
       await app.close()
     }

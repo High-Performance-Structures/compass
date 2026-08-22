@@ -604,6 +604,164 @@ em-emoji-picker {
     margin-top: 0.08in;
   }
 
+  .schedule-print-gantt {
+    border: 1px solid #a3a3a3;
+    font-size: 7pt;
+  }
+
+  .schedule-print-gantt-header,
+  .schedule-print-gantt-row {
+    display: grid;
+    grid-template-columns: 2.1in minmax(0, 1fr);
+  }
+
+  .schedule-print-gantt-header {
+    background: #e5e7eb !important;
+    border-bottom: 1px solid #a3a3a3;
+    font-size: 6.5pt;
+    font-weight: 800;
+    min-height: 0.3in;
+    text-transform: uppercase;
+  }
+
+  .schedule-print-gantt-header > div:first-child,
+  .schedule-print-task-label {
+    border-right: 1px solid #a3a3a3;
+    padding: 0.055in 0.06in;
+  }
+
+  .schedule-print-gantt-row {
+    border-bottom: 1px solid #d4d4d4;
+    break-inside: avoid;
+    min-height: 0.34in;
+    page-break-inside: avoid;
+  }
+
+  .schedule-print-gantt-row:last-child {
+    border-bottom: 0;
+  }
+
+  .schedule-print-task-label strong,
+  .schedule-print-task-label span {
+    display: block;
+  }
+
+  .schedule-print-task-label span {
+    color: #525252 !important;
+    font-size: 5.8pt;
+    margin-top: 0.02in;
+  }
+
+  .schedule-print-timeline-header,
+  .schedule-print-timeline-row {
+    min-width: 0;
+    position: relative;
+  }
+
+  .schedule-print-timeline-header span {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    white-space: nowrap;
+  }
+
+  .schedule-print-timeline-row {
+    background-image: repeating-linear-gradient(
+      to right,
+      transparent,
+      transparent calc(14.285% - 1px),
+      #e5e5e5 calc(14.285% - 1px),
+      #e5e5e5 14.285%
+    ) !important;
+  }
+
+  .schedule-print-bar {
+    border: 1px solid rgb(0 0 0 / 0.2);
+    border-radius: 2px;
+    color: #ffffff !important;
+    font-size: 5.8pt;
+    font-weight: 700;
+    line-height: 0.18in;
+    min-width: 1px;
+    overflow: hidden;
+    padding: 0 0.035in;
+    position: absolute;
+    text-overflow: ellipsis;
+    top: 0.075in;
+    white-space: nowrap;
+  }
+
+  .schedule-print-empty {
+    margin: 0;
+    padding: 0.3in;
+    text-align: center;
+  }
+
+  .schedule-print-calendar {
+    border-left: 1px solid #a3a3a3;
+    border-top: 1px solid #a3a3a3;
+  }
+
+  .schedule-print-weekdays,
+  .schedule-print-week {
+    display: grid;
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+  }
+
+  .schedule-print-weekdays {
+    background: #e5e7eb !important;
+    font-size: 6pt;
+    font-weight: 800;
+    text-align: center;
+    text-transform: uppercase;
+  }
+
+  .schedule-print-weekdays > div,
+  .schedule-print-day {
+    border-bottom: 1px solid #a3a3a3;
+    border-right: 1px solid #a3a3a3;
+    padding: 0.04in;
+  }
+
+  .schedule-print-week {
+    break-inside: avoid;
+    min-height: 0.82in;
+    page-break-inside: avoid;
+  }
+
+  .schedule-print-day {
+    font-size: 6pt;
+    min-width: 0;
+  }
+
+  .schedule-print-day-outside {
+    background: #f5f5f5 !important;
+    color: #a3a3a3 !important;
+  }
+
+  .schedule-print-day-items {
+    display: grid;
+    gap: 0.02in;
+    margin-top: 0.035in;
+  }
+
+  .schedule-print-calendar-item {
+    background: #f5f5f5 !important;
+    border-left: 0.035in solid #737373;
+    font-size: 5.5pt;
+    line-height: 1.2;
+    overflow-wrap: anywhere;
+    padding: 0.025in 0.03in;
+  }
+
+  .schedule-print-task-complete {
+    opacity: 0.72;
+  }
+
+  .schedule-print-task-blocked {
+    outline: 1px solid #b91c1c;
+  }
+
   body.po-printing-selected > * {
     visibility: hidden;
   }
