@@ -324,6 +324,14 @@ export async function estimateSourceHash(input: {
   readonly introductionText: string | null
   readonly contractTerms: string | null
   readonly closingText: string | null
+  readonly signers: {
+    readonly clientName: string | null
+    readonly clientTitle: string | null
+    readonly clientEmail: string | null
+    readonly companyName: string | null
+    readonly companyTitle: string | null
+    readonly companyEmail: string | null
+  }
   readonly overheadRateBasisPoints: number
   readonly marginRateBasisPoints: number
   readonly contingencyRateBasisPoints: number
@@ -391,6 +399,7 @@ export async function estimateSourceHash(input: {
       introductionText: input.introductionText,
       contractTerms: input.contractTerms,
       closingText: input.closingText,
+      signers: input.signers,
       overheadRateBasisPoints: input.overheadRateBasisPoints,
       marginRateBasisPoints: input.marginRateBasisPoints,
       contingencyRateBasisPoints: input.contingencyRateBasisPoints,

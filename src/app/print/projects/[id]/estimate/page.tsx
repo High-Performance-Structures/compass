@@ -351,6 +351,40 @@ export default async function ProjectEstimatePrintPage({
           </section>
         )}
 
+        <section className="mt-12 break-inside-avoid">
+          <h2 className="border-b pb-1 text-sm font-bold uppercase tracking-wide">
+            Acceptance and authorization
+          </h2>
+          <div className="mt-8 grid grid-cols-2 gap-10 text-sm">
+            <div>
+              <p className="font-semibold">Client / Owner</p>
+              <div className="mt-10 border-b border-black" />
+              <p className="mt-1 text-xs">Signature</p>
+              <p className="mt-4 font-medium">
+                {estimate.clientSignerName ?? "Client signer"}
+              </p>
+              {estimate.clientSignerTitle && (
+                <p className="text-xs">{estimate.clientSignerTitle}</p>
+              )}
+              <div className="mt-7 border-b border-black" />
+              <p className="mt-1 text-xs">Date</p>
+            </div>
+            <div>
+              <p className="font-semibold">{brand.companyName}</p>
+              <div className="mt-10 border-b border-black" />
+              <p className="mt-1 text-xs">Company representative signature</p>
+              <p className="mt-4 font-medium">
+                {estimate.companySignerName ?? "Company representative"}
+              </p>
+              {estimate.companySignerTitle && (
+                <p className="text-xs">{estimate.companySignerTitle}</p>
+              )}
+              <div className="mt-7 border-b border-black" />
+              <p className="mt-1 text-xs">Date</p>
+            </div>
+          </div>
+        </section>
+
         <footer className="mt-10 border-t pt-3 text-xs text-neutral-600">
           Estimate {estimate.estimateNumber}, version {estimate.versionNumber}, dated{" "}
           {estimateDate(estimate.estimateDate, estimate.createdAt)}.

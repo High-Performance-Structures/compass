@@ -47,6 +47,10 @@ import { uploadEstimateAcceptanceEvidence } from "@/components/projects/project-
 import { Badge } from "@/components/ui/badge"
 import { useDeveloperMode } from "@/components/developer-mode-provider"
 import { ProjectEstimateClientReportSettings } from "@/components/projects/project-estimate-client-report-settings"
+import {
+  ProjectEstimateSignerPicker,
+  type ProjectEstimateSignerValue,
+} from "@/components/projects/project-estimate-signer-picker"
 import { ProjectEstimatePlanSwiftImport } from "@/components/projects/project-estimate-planswift-import"
 import { ProjectEstimateVersionControls } from "@/components/projects/project-estimate-version-controls"
 import { Button } from "@/components/ui/button"
@@ -193,6 +197,19 @@ export function ProjectEstimateWorkspacePanel({
     estimate?.closingTemplateId ?? ""
   )
   const [closingText, setClosingText] = useState(estimate?.closingText ?? "")
+  const [clientSigner, setClientSigner] = useState<ProjectEstimateSignerValue>({
+    contactId: estimate?.clientSignerContactId ?? null,
+    name: estimate?.clientSignerName ?? "",
+    title: estimate?.clientSignerTitle ?? "",
+    email: estimate?.clientSignerEmail ?? "",
+  })
+  const [companySigner, setCompanySigner] =
+    useState<ProjectEstimateSignerValue>({
+      contactId: estimate?.companySignerContactId ?? null,
+      name: estimate?.companySignerName ?? "",
+      title: estimate?.companySignerTitle ?? "",
+      email: estimate?.companySignerEmail ?? "",
+    })
   const editable =
     workspace.canEdit &&
     Boolean(estimate && ["draft", "internal_review"].includes(estimate.status))
@@ -204,6 +221,18 @@ export function ProjectEstimateWorkspacePanel({
     setIntroductionText(estimate?.introductionText ?? "")
     setClosingTemplateId(estimate?.closingTemplateId ?? "")
     setClosingText(estimate?.closingText ?? "")
+    setClientSigner({
+      contactId: estimate?.clientSignerContactId ?? null,
+      name: estimate?.clientSignerName ?? "",
+      title: estimate?.clientSignerTitle ?? "",
+      email: estimate?.clientSignerEmail ?? "",
+    })
+    setCompanySigner({
+      contactId: estimate?.companySignerContactId ?? null,
+      name: estimate?.companySignerName ?? "",
+      title: estimate?.companySignerTitle ?? "",
+      email: estimate?.companySignerEmail ?? "",
+    })
   }, [
     estimate?.id,
     estimate?.termsTemplateId,
@@ -212,6 +241,14 @@ export function ProjectEstimateWorkspacePanel({
     estimate?.introductionText,
     estimate?.closingTemplateId,
     estimate?.closingText,
+    estimate?.clientSignerContactId,
+    estimate?.clientSignerName,
+    estimate?.clientSignerTitle,
+    estimate?.clientSignerEmail,
+    estimate?.companySignerContactId,
+    estimate?.companySignerName,
+    estimate?.companySignerTitle,
+    estimate?.companySignerEmail,
   ])
 
   const divisions = useMemo(() => {
@@ -291,6 +328,14 @@ export function ProjectEstimateWorkspacePanel({
         title: formText(formData, "title"),
         estimateDate: formText(formData, "estimateDate"),
         clientName: formText(formData, "clientName"),
+        clientSignerContactId: clientSigner.contactId,
+        clientSignerName: clientSigner.name,
+        clientSignerTitle: clientSigner.title,
+        clientSignerEmail: clientSigner.email,
+        companySignerContactId: companySigner.contactId,
+        companySignerName: companySigner.name,
+        companySignerTitle: companySigner.title,
+        companySignerEmail: companySigner.email,
         sourceWorkbookUrl: formText(formData, "sourceWorkbookUrl"),
         defaultTaxEntityId: formText(formData, "defaultTaxEntityId"),
         termsTemplateId: formText(formData, "termsTemplateId"),
@@ -762,6 +807,101 @@ export function ProjectEstimateWorkspacePanel({
               defaultValue={estimate.sourceWorkbookUrl ?? ""}
               disabled={!editable}
             />
+          </div>
+          <div className="border-t pt-4 md:col-span-2 xl:col-span-4">
+            <h3 className="text-sm font-semibold">Contract signers</h3>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Choose a project contact or type a name. These details are
+              snapshotted when the estimate is locked for signature.
+            </p>
+          </div>
+          <div className="space-y-3 md:col-span-2">
+            <div className="space-y-1.5">
+              <Label htmlFor="clientSignerName">Client / owner signer</Label>
+              <ProjectEstimateSignerPicker
+                id="clientSignerName"
+                value={clientSigner}
+                options={workspace.signerContacts}
+                onValueChange={setClientSigner}
+                placeholder="Choose client signer or type a name..."
+                disabled={!editable}
+              />
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="space-y-1.5">
+                <Label htmlFor="clientSignerTitle">Title</Label>
+                <Input
+                  id="clientSignerTitle"
+                  value={clientSigner.title}
+                  onChange={(event) =>
+                    setClientSigner({
+                      ...clientSigner,
+                      title: event.target.value,
+                    })
+                  }
+                  disabled={!editable}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="clientSignerEmail">Email</Label>
+                <Input
+                  id="clientSignerEmail"
+                  type="email"
+                  value={clientSigner.email}
+                  onChange={(event) =>
+                    setClientSigner({
+                      ...clientSigner,
+                      email: event.target.value,
+                    })
+                  }
+                  disabled={!editable}
+                />
+              </div>
+            </div>
+          </div>
+          <div className="space-y-3 md:col-span-2">
+            <div className="space-y-1.5">
+              <Label htmlFor="companySignerName">Company representative</Label>
+              <ProjectEstimateSignerPicker
+                id="companySignerName"
+                value={companySigner}
+                options={workspace.signerContacts}
+                onValueChange={setCompanySigner}
+                placeholder="Choose company representative or type a name..."
+                disabled={!editable}
+              />
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="space-y-1.5">
+                <Label htmlFor="companySignerTitle">Title</Label>
+                <Input
+                  id="companySignerTitle"
+                  value={companySigner.title}
+                  onChange={(event) =>
+                    setCompanySigner({
+                      ...companySigner,
+                      title: event.target.value,
+                    })
+                  }
+                  disabled={!editable}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="companySignerEmail">Email</Label>
+                <Input
+                  id="companySignerEmail"
+                  type="email"
+                  value={companySigner.email}
+                  onChange={(event) =>
+                    setCompanySigner({
+                      ...companySigner,
+                      email: event.target.value,
+                    })
+                  }
+                  disabled={!editable}
+                />
+              </div>
+            </div>
           </div>
           <div className="space-y-1.5 md:col-span-2">
             <Label htmlFor="defaultTaxEntityId">Project tax entity</Label>
@@ -1321,7 +1461,7 @@ export function ProjectEstimateWorkspacePanel({
                       </Select>
                     </div>
                     <div className="space-y-1.5">
-                      <Label htmlFor="clientAcceptedAt">Client acceptance date</Label>
+                      <Label htmlFor="clientAcceptedAt">Contract execution date</Label>
                       <Input id="clientAcceptedAt" name="clientAcceptedAt" type="date" max={localDateInput()} defaultValue={localDateInput()} required />
                     </div>
                     <div className="space-y-1.5">
@@ -1346,12 +1486,13 @@ export function ProjectEstimateWorkspacePanel({
                   <div className="flex items-start gap-2 border-t pt-3">
                     <Checkbox id="manualAcceptanceAttestation" checked={manualAcceptanceAttested} onCheckedChange={(checked) => setManualAcceptanceAttested(checked === true)} />
                     <Label htmlFor="manualAcceptanceAttestation" className="max-w-3xl text-sm font-normal leading-5">
-                      I confirm this saved signed document is proof of the
-                      client&apos;s acceptance and matches this locked estimate version.
+                      I confirm this document contains the required client and
+                      company representative signatures and matches this locked
+                      estimate version.
                     </Label>
                   </div>
                   <Button type="submit" variant="outline" disabled={isPending || !manualAcceptanceAttested}>
-                    <IconUpload className="size-4" />Record client acceptance and create Budget/G703
+                    <IconUpload className="size-4" />Record executed contract and create Budget/G703
                   </Button>
                 </form>
               </div>
@@ -1359,7 +1500,7 @@ export function ProjectEstimateWorkspacePanel({
             {estimate.status === "accepted" && (
               <div className="mt-4 border-t pt-4 text-sm">
                 <p className="font-medium text-emerald-700">
-                  Client-accepted estimate is locked. Budget changes now require an executed change order.
+                  Fully executed estimate is locked. Budget changes now require an executed change order.
                 </p>
                 <dl className="mt-3 grid gap-x-6 gap-y-2 md:grid-cols-2">
                   <div>
@@ -1371,7 +1512,7 @@ export function ProjectEstimateWorkspacePanel({
                     </dd>
                   </div>
                   <div>
-                    <dt className="text-xs text-muted-foreground">Client accepted</dt>
+                      <dt className="text-xs text-muted-foreground">Contract executed</dt>
                     <dd>{estimate.signedAt ? new Date(estimate.signedAt).toLocaleDateString() : "Date not recorded"}</dd>
                   </div>
                   {estimate.acceptanceRecordedByName && (

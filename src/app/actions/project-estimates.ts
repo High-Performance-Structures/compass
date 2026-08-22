@@ -6,7 +6,12 @@ import { revalidatePath } from "next/cache"
 import { saveEstimateTextTemplateLibraryItem } from "@/app/actions/estimate-text-templates"
 import { getUploadSessionUrl } from "@/app/actions/google-drive"
 import { getDb } from "@/db"
-import { projectBudgetLines, projects, sageCostCodes } from "@/db/schema"
+import {
+  projectBudgetLines,
+  projectContacts,
+  projects,
+  sageCostCodes,
+} from "@/db/schema"
 import {
   estimateTermsTemplates,
   projectEstimateAcknowledgements,
@@ -84,6 +89,14 @@ export type ProjectEstimateSummary = {
   readonly status: string
   readonly estimateDate: string | null
   readonly clientName: string | null
+  readonly clientSignerContactId: string | null
+  readonly clientSignerName: string | null
+  readonly clientSignerTitle: string | null
+  readonly clientSignerEmail: string | null
+  readonly companySignerContactId: string | null
+  readonly companySignerName: string | null
+  readonly companySignerTitle: string | null
+  readonly companySignerEmail: string | null
   readonly sourceWorkbookUrl: string | null
   readonly defaultTaxEntityId: string | null
   readonly defaultTaxCode: string | null
@@ -201,6 +214,15 @@ export type ProjectEstimateAcknowledgementItem = {
   readonly sortOrder: number
 }
 
+export type ProjectEstimateSignerOption = {
+  readonly id: string
+  readonly name: string
+  readonly title: string | null
+  readonly companyName: string | null
+  readonly email: string | null
+  readonly contactType: string
+}
+
 export type ProjectEstimateWorkspace = {
   readonly canEdit: boolean
   readonly projectNumber: string | null
@@ -219,6 +241,7 @@ export type ProjectEstimateWorkspace = {
   readonly acknowledgementTemplates: readonly ProjectEstimateTermsOption[]
   readonly phaseDescriptions: readonly ProjectEstimatePhaseDescriptionItem[]
   readonly selectedAcknowledgements: readonly ProjectEstimateAcknowledgementItem[]
+  readonly signerContacts: readonly ProjectEstimateSignerOption[]
 }
 
 export type ProjectEstimateManualAcceptanceInput = {
@@ -249,6 +272,14 @@ export type ProjectEstimateHeaderInput = {
   readonly title: string | null
   readonly estimateDate: string | null
   readonly clientName: string | null
+  readonly clientSignerContactId: string | null
+  readonly clientSignerName: string | null
+  readonly clientSignerTitle: string | null
+  readonly clientSignerEmail: string | null
+  readonly companySignerContactId: string | null
+  readonly companySignerName: string | null
+  readonly companySignerTitle: string | null
+  readonly companySignerEmail: string | null
   readonly sourceWorkbookUrl: string | null
   readonly defaultTaxEntityId: string | null
   readonly termsTemplateId: string | null
@@ -390,6 +421,29 @@ function cleanText(value: string | null): string | null {
   return cleaned.length > 0 ? cleaned : null
 }
 
+async function validatedSignerContactId(
+  db: CompassDb,
+  projectId: string,
+  contactId: string | null,
+  label: string
+): Promise<string | null> {
+  const cleaned = cleanText(contactId)
+  if (!cleaned) return null
+  const rows = await db
+    .select({ id: projectContacts.id })
+    .from(projectContacts)
+    .where(
+      and(
+        eq(projectContacts.id, cleaned),
+        eq(projectContacts.projectId, projectId),
+        eq(projectContacts.active, true)
+      )
+    )
+    .limit(1)
+  if (!rows[0]) throw new Error(`Choose an active project contact for ${label}.`)
+  return cleaned
+}
+
 function requiredText(value: string | null, label: string): string {
   const cleaned = cleanText(value)
   if (!cleaned) throw new Error(`${label} is required.`)
@@ -479,6 +533,14 @@ function estimateSummary(
     status: row.status,
     estimateDate: row.estimateDate,
     clientName: row.clientName,
+    clientSignerContactId: row.clientSignerContactId,
+    clientSignerName: row.clientSignerName,
+    clientSignerTitle: row.clientSignerTitle,
+    clientSignerEmail: row.clientSignerEmail,
+    companySignerContactId: row.companySignerContactId,
+    companySignerName: row.companySignerName,
+    companySignerTitle: row.companySignerTitle,
+    companySignerEmail: row.companySignerEmail,
     sourceWorkbookUrl: row.sourceWorkbookUrl,
     defaultTaxEntityId: row.defaultTaxEntityId,
     defaultTaxCode: row.defaultTaxCode,
@@ -788,6 +850,7 @@ export async function getProjectEstimateWorkspace(
     templateRows,
     phaseRows,
     acknowledgementRows,
+    signerContactRows,
   ] =
     await Promise.all([
       selected
@@ -847,6 +910,29 @@ export async function getProjectEstimateWorkspace(
             .where(eq(projectEstimateAcknowledgements.estimateId, selected.id))
             .orderBy(asc(projectEstimateAcknowledgements.sortOrder))
         : Promise.resolve([]),
+      access.db
+        .select({
+          id: projectContacts.id,
+          name: projectContacts.displayName,
+          title: projectContacts.role,
+          companyName: projectContacts.companyName,
+          email: projectContacts.email,
+          contactType: projectContacts.contactType,
+          primaryContact: projectContacts.primaryContact,
+          sortOrder: projectContacts.sortOrder,
+        })
+        .from(projectContacts)
+        .where(
+          and(
+            eq(projectContacts.projectId, projectId),
+            eq(projectContacts.active, true)
+          )
+        )
+        .orderBy(
+          desc(projectContacts.primaryContact),
+          asc(projectContacts.sortOrder),
+          asc(projectContacts.displayName)
+        ),
     ])
 
   const databaseTemplates = templateRows.flatMap(
@@ -938,6 +1024,14 @@ export async function getProjectEstimateWorkspace(
       sourceUrl: row.sourceUrl,
       sortOrder: row.sortOrder,
     })),
+    signerContacts: signerContactRows.map((row) => ({
+      id: row.id,
+      name: row.name,
+      title: row.title,
+      companyName: row.companyName,
+      email: row.email,
+      contactType: row.contactType,
+    })),
   }
 }
 
@@ -956,6 +1050,25 @@ export async function createProjectEstimateDraft(
     const estimateNumber = `${access.projectNumber ?? "PROJECT"}-00`
     const id = crypto.randomUUID()
     const now = new Date().toISOString()
+    const contactRows = await access.db
+      .select()
+      .from(projectContacts)
+      .where(
+        and(
+          eq(projectContacts.projectId, projectId),
+          eq(projectContacts.active, true)
+        )
+      )
+      .orderBy(
+        desc(projectContacts.primaryContact),
+        asc(projectContacts.sortOrder)
+      )
+    const clientSigner = contactRows.find(
+      (contact) => contact.contactType === "owner"
+    )
+    const companySigner = contactRows.find(
+      (contact) => contact.contactType === "internal"
+    )
     await access.db.insert(projectEstimates).values({
       id,
       projectId,
@@ -964,6 +1077,14 @@ export async function createProjectEstimateDraft(
       title: defaultEstimateTitle(access.department),
       status: "draft",
       estimateDate: now.slice(0, 10),
+      clientSignerContactId: clientSigner?.id ?? null,
+      clientSignerName: clientSigner?.displayName ?? null,
+      clientSignerTitle: clientSigner?.role ?? null,
+      clientSignerEmail: clientSigner?.email ?? null,
+      companySignerContactId: companySigner?.id ?? null,
+      companySignerName: companySigner?.displayName ?? null,
+      companySignerTitle: companySigner?.role ?? null,
+      companySignerEmail: companySigner?.email ?? null,
       sourceSystem: "compass",
       createdBy: access.user.id,
       createdAt: now,
@@ -1028,7 +1149,11 @@ export async function duplicateProjectEstimate(
         .prepare(
           `INSERT INTO project_estimates (
              id, project_id, estimate_number, version_number, title, status,
-             estimate_date, client_name, source_system, source_workbook_id,
+             estimate_date, client_name, client_signer_contact_id,
+             client_signer_name, client_signer_title, client_signer_email,
+             company_signer_contact_id, company_signer_name,
+             company_signer_title, company_signer_email,
+             source_system, source_workbook_id,
              source_workbook_url, source_revision, template_version_id,
              template_application_id, default_tax_entity_id, default_tax_code,
              default_tax_name, default_tax_rate_basis_points, terms_template_id,
@@ -1045,7 +1170,11 @@ export async function duplicateProjectEstimate(
              created_by, created_at, updated_at
            )
            SELECT ?, project_id, estimate_number, ?, title, 'draft', ?,
-             client_name, 'compass_revision', source_workbook_id,
+             client_name, client_signer_contact_id, client_signer_name,
+             client_signer_title, client_signer_email,
+             company_signer_contact_id, company_signer_name,
+             company_signer_title, company_signer_email,
+             'compass_revision', source_workbook_id,
              source_workbook_url, ?, template_version_id,
              template_application_id, default_tax_entity_id, default_tax_code,
              default_tax_name, default_tax_rate_basis_points, terms_template_id,
@@ -1269,6 +1398,20 @@ export async function updateProjectEstimateHeader(
       cleanText(input.introductionText) ?? introductionTemplate?.body ?? null
     const closingText =
       cleanText(input.closingText) ?? closingTemplate?.body ?? null
+    const [clientSignerContactId, companySignerContactId] = await Promise.all([
+      validatedSignerContactId(
+        access.db,
+        projectId,
+        input.clientSignerContactId,
+        "the client signer"
+      ),
+      validatedSignerContactId(
+        access.db,
+        projectId,
+        input.companySignerContactId,
+        "the company representative"
+      ),
+    ])
     await access.db
       .update(projectEstimates)
       .set({
@@ -1276,6 +1419,38 @@ export async function updateProjectEstimateHeader(
         title: requiredText(input.title, "Estimate title"),
         estimateDate: requiredText(input.estimateDate, "Estimate date"),
         clientName: cleanText(input.clientName),
+        clientSignerContactId,
+        clientSignerName: limitedText(
+          input.clientSignerName,
+          "Client signer name",
+          200
+        ),
+        clientSignerTitle: limitedText(
+          input.clientSignerTitle,
+          "Client signer title",
+          200
+        ),
+        clientSignerEmail: limitedText(
+          input.clientSignerEmail,
+          "Client signer email",
+          320
+        ),
+        companySignerContactId,
+        companySignerName: limitedText(
+          input.companySignerName,
+          "Company representative name",
+          200
+        ),
+        companySignerTitle: limitedText(
+          input.companySignerTitle,
+          "Company representative title",
+          200
+        ),
+        companySignerEmail: limitedText(
+          input.companySignerEmail,
+          "Company representative email",
+          320
+        ),
         sourceWorkbookUrl: safeUrl(input.sourceWorkbookUrl),
         defaultTaxEntityId: taxEntity?.id ?? null,
         defaultTaxCode: taxEntity?.code ?? null,
@@ -2273,6 +2448,14 @@ export async function prepareProjectEstimateForClientSignature(
     if (!cleanText(estimate.estimateDate)) {
       throw new Error("Add the estimate date before signature.")
     }
+    if (!cleanText(estimate.clientSignerName)) {
+      throw new Error("Choose or type the client signer before signature.")
+    }
+    if (!cleanText(estimate.companySignerName)) {
+      throw new Error(
+        "Choose or type the company representative before signature."
+      )
+    }
     const sourceCostCodes = [
       ...new Set(
         lines
@@ -2309,6 +2492,14 @@ export async function prepareProjectEstimateForClientSignature(
       introductionText: estimate.introductionText,
       contractTerms: estimate.contractTerms,
       closingText: estimate.closingText,
+      signers: {
+        clientName: estimate.clientSignerName,
+        clientTitle: estimate.clientSignerTitle,
+        clientEmail: estimate.clientSignerEmail,
+        companyName: estimate.companySignerName,
+        companyTitle: estimate.companySignerTitle,
+        companyEmail: estimate.companySignerEmail,
+      },
       overheadRateBasisPoints: estimate.overheadRateBasisPoints,
       marginRateBasisPoints: estimate.marginRateBasisPoints,
       contingencyRateBasisPoints: estimate.contingencyRateBasisPoints,
@@ -2528,7 +2719,7 @@ export async function recordManualProjectEstimateAcceptance(
     const estimate = await signaturePendingEstimate(access, projectId, estimateId)
     if (!input.attested) {
       throw new Error(
-        "Confirm that the saved signed document is proof of the client's acceptance."
+        "Confirm that the document contains the required client and company representative signatures."
       )
     }
     if (
