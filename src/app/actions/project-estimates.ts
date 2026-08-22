@@ -535,9 +535,9 @@ function builderFeeComparisonLines(
     return amount === 0
       ? []
       : [{
-          divisionCode: "99",
-          divisionName: "Builder Fee",
-          costCode: item.value,
+          divisionCode: "00",
+          divisionName: "Procurement Requirements",
+          costCode: item.description,
           description: item.description,
           lineTotalCents: amount,
         }]

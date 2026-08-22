@@ -50,6 +50,7 @@ import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { SearchableCombobox } from "@/components/searchable-combobox"
 import {
   Select,
   SelectContent,
@@ -934,7 +935,7 @@ export function ProjectEstimateWorkspacePanel({
                 <p className="text-xs text-muted-foreground">{money(estimate.marginCents)}</p>
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="contingencyPercent">Contingency %</Label>
+                <Label htmlFor="contingencyPercent">Contingency reserve %</Label>
                 <Input id="contingencyPercent" name="contingencyPercent" inputMode="decimal" defaultValue={estimate.contingencyRateBasisPoints / 100} disabled={!editable} />
                 <p className="text-xs text-muted-foreground">{money(estimate.contingencyCents)}</p>
               </div>
@@ -1088,20 +1089,16 @@ export function ProjectEstimateWorkspacePanel({
               </div>
               <div className="space-y-1.5 xl:col-span-2">
                 <Label>Cost code</Label>
-                <Select
+                <SearchableCombobox
+                  ariaLabel="Estimate cost code"
+                  options={availableCostCodes}
                   value={line.costCode}
                   onValueChange={(value) => setLine({ ...line, costCode: value })}
                   disabled={!line.divisionCode}
-                >
-                  <SelectTrigger><SelectValue placeholder="Choose cost code" /></SelectTrigger>
-                  <SelectContent>
-                    {availableCostCodes.map((option) => (
-                      <SelectItem key={option.value} value={option.value}>
-                        {option.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                  placeholder="Choose cost code"
+                  searchPlaceholder="Search Sage cost codes..."
+                  emptyMessage="No matching Sage cost codes."
+                />
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="estimateUnit">Unit</Label>

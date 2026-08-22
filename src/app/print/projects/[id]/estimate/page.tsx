@@ -268,7 +268,7 @@ export default async function ProjectEstimatePrintPage({
           )}
           {estimate.contingencyRateBasisPoints > 0 && (
             <div className="mt-1 flex justify-between">
-              <span>Contingency ({percent(estimate.contingencyRateBasisPoints)})</span>
+              <span>Contingency reserve ({percent(estimate.contingencyRateBasisPoints)})</span>
               <span>{money(estimate.contingencyCents)}</span>
             </div>
           )}

@@ -28,14 +28,17 @@ export const CONTRACT_ADJUSTMENT_COST_CODES = [
   {
     value: "99 10 00",
     description: "Company Overhead",
+    sourceLabels: ["Company Overhead"],
   },
   {
     value: "99 20 00",
     description: "Company Margin",
+    sourceLabels: ["Company Margin"],
   },
   {
     value: "99 30 00",
-    description: "Contingency",
+    description: "Contingency Reserve",
+    sourceLabels: ["Contingency Reserve", "Contingency"],
   },
 ] as const
 
@@ -104,7 +107,8 @@ function adjustmentForLabel(
   const normalized = value.trim().toLowerCase()
   return (
     CONTRACT_ADJUSTMENT_COST_CODES.find(
-      (item) => item.description.toLowerCase() === normalized
+      (item) =>
+        item.sourceLabels.some((label) => label.toLowerCase() === normalized)
     ) ?? null
   )
 }
