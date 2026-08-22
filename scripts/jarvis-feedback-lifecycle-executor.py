@@ -259,13 +259,11 @@ def validate_lifecycle_payload(payload: object) -> dict[str, object]:
 def _allowed_target(target: str) -> bool:
     if target == PULL_TARGET or target == HEALTH_TARGET:
         return True
-    return bool(
-        re.fullmatch(
-            r"/api/integrations/jarvis/events/"
-            r"[0-9a-fA-F-]{36}/ack",
-            target,
-        )
+    matched = re.fullmatch(
+        r"/api/integrations/jarvis/events/([^/]+)/ack",
+        target,
     )
+    return matched is not None and UUID_PATTERN.fullmatch(matched.group(1)) is not None
 
 
 def compass_request(
@@ -370,32 +368,57 @@ def execute_lifecycle(payload: object) -> dict[str, object]:
     return redact_result(response)
 
 
-def acknowledge(event_id: str, body: dict[str, object]) -> None:
+def acknowledge(
+    event_id: str,
+    claim_token: str,
+    body: dict[str, object],
+) -> None:
     if UUID_PATTERN.fullmatch(event_id) is None:
         raise InvalidLifecycleRequest("Bridge event ID is invalid")
+    if not claim_token or len(claim_token) > 128:
+        raise InvalidLifecycleRequest("Bridge claim token is invalid")
     escaped_id = urllib.parse.quote(event_id, safe="")
-    compass_request("POST", f"/api/integrations/jarvis/events/{escaped_id}/ack", body)
+    acknowledgement = dict(body)
+    acknowledgement["claimToken"] = claim_token
+    compass_request(
+        "POST",
+        f"/api/integrations/jarvis/events/{escaped_id}/ack",
+        acknowledgement,
+    )
 
 
 def handle_event(event: dict[str, object]) -> None:
     event_id = event.get("id")
+    claim_token = event.get("claimToken")
     payload = event.get("payload")
     if (
         not isinstance(event_id, str)
+        or not isinstance(claim_token, str)
+        or not claim_token
+        or len(claim_token) > 128
         or event.get("eventType") != EVENT_TYPE
         or event.get("source") != "feedback-desk"
     ):
-        if isinstance(event_id, str):
-            acknowledge(event_id, {"status": "failed", "error": "invalid_lifecycle_request"})
+        if isinstance(event_id, str) and isinstance(claim_token, str) and claim_token:
+            acknowledge(
+                event_id,
+                claim_token,
+                {"status": "failed", "error": "invalid_lifecycle_request"},
+            )
         return
     try:
         result = execute_lifecycle(payload)
     except InvalidLifecycleRequest:
-        acknowledge(event_id, {"status": "failed", "error": "invalid_lifecycle_request"})
+        acknowledge(
+            event_id,
+            claim_token,
+            {"status": "failed", "error": "invalid_lifecycle_request"},
+        )
         return
     except RetryableExecutionError:
         acknowledge(
             event_id,
+            claim_token,
             {
                 "status": "failed",
                 "error": "lifecycle_endpoint_temporarily_unavailable",
@@ -404,13 +427,25 @@ def handle_event(event: dict[str, object]) -> None:
         )
         return
     except TerminalExecutionError:
-        acknowledge(event_id, {"status": "failed", "error": "lifecycle_execution_failed"})
+        acknowledge(
+            event_id,
+            claim_token,
+            {"status": "failed", "error": "lifecycle_execution_failed"},
+        )
         return
 
     if result.get("success") is not True:
-        acknowledge(event_id, {"status": "failed", "error": "compass_rejected_feedback_status"})
+        acknowledge(
+            event_id,
+            claim_token,
+            {"status": "failed", "error": "compass_rejected_feedback_status"},
+        )
         return
-    acknowledge(event_id, {"status": "completed", "result": result})
+    acknowledge(
+        event_id,
+        claim_token,
+        {"status": "completed", "result": result},
+    )
 
 
 def heartbeat(status: str, error: str | None = None) -> bool:

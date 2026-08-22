@@ -731,7 +731,30 @@ async function persistNotificationEvent(
         dismissedAt: null,
         createdAt: now,
       }).onConflictDoNothing().run()
-      if (recipientInserted.meta.changes !== 1) continue
+      if (recipientInserted.meta.changes !== 1) {
+        const requiredChannels: ("email" | "sms" | "push")[] = []
+        if (emailEnabled) requiredChannels.push("email")
+        if (smsEnabled) requiredChannels.push("sms")
+        if (delivery.push) requiredChannels.push("push")
+        if (requiredChannels.length === 0) continue
+
+        const existingDeliveries = await db
+          .select({ channel: notificationDeliveries.channel })
+          .from(notificationDeliveries)
+          .where(and(
+            eq(notificationDeliveries.recipientId, recipientId),
+            inArray(notificationDeliveries.channel, requiredChannels),
+          ))
+        const completedChannels = new Set(
+          existingDeliveries.map((existing) => existing.channel),
+        )
+        if (
+          requiredChannels.some((channel) => !completedChannels.has(channel))
+        ) {
+          throw new Error("Notification delivery is still in progress")
+        }
+        continue
+      }
 
       if (emailEnabled) {
         const emailDelivery = await sendResendEmail(

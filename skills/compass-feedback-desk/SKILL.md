@@ -44,14 +44,18 @@ payload or handling an API error.
 
    ```bash
    python scripts/compass_feedback_bridge.py reply \
+     --event-id EVENT_ID \
+     --claim-token CLAIM_TOKEN_FROM_PULL \
      --payload-file /absolute/path/to/reply.json
    ```
 
-6. Acknowledge the source event only after the reply succeeds:
+6. The reply response returns a refreshed `claimToken`. Acknowledge the source
+   event only after the reply succeeds, using that refreshed value:
 
    ```bash
    python scripts/compass_feedback_bridge.py ack \
      --event-id EVENT_ID \
+     --claim-token REFRESHED_CLAIM_TOKEN \
      --payload-file /absolute/path/to/ack.json
    ```
 
@@ -122,7 +126,9 @@ Run event polling, deduplication, and acknowledgements deterministically:
 python scripts/compass_feedback_bridge.py pull --limit 20
 ```
 
-Do not invoke a model when the response contains no events.
+Do not invoke a model when the response contains no events. Keep each event's
+opaque `claimToken` bound to that event only; every reply or acknowledgement
+must echo the current token, and a reply can replace it with a refreshed token.
 
 ## Update a Feedback Desk lifecycle status
 
@@ -157,7 +163,7 @@ The existing private runtime has a separate systemd user service for approved
 lifecycle handoffs. It polls only `feedback.lifecycle_requested` through the
 signed Compass event queue and invokes the co-installed constrained helper.
 Unknown fields, feature requests, malformed IDs/statuses, arbitrary targets,
-non-HTTPS origins, redirects, and oversized data are rejected. Network
+non-production raw origins, redirects, and oversized data are rejected. Network
 failures are acknowledged with a bounded retry delay; endpoint rejection and
 policy failures are terminal and remain visible in the protected queue. The
 event's original idempotency key is reused on every retry, so a process restart

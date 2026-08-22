@@ -71,23 +71,50 @@ export async function GET(
   }
 
   const { id } = await params
+  const requestUrl = new URL(request.url)
+  const claimToken = request.headers.get("X-Compass-Claim-Token")
+  if (
+    requestUrl.search.length > 0 ||
+    !claimToken ||
+    claimToken.length > 128
+  ) {
+    return Response.json({ error: "Invalid event claim" }, { status: 400 })
+  }
+
+  const nowIso = new Date().toISOString()
+  const replacementClaimToken = crypto.randomUUID()
   const db = getDb(env.DB)
   const event = await db
-    .select({
-      source: jarvisBridgeEvents.source,
-      eventType: jarvisBridgeEvents.eventType,
-      payload: jarvisBridgeEvents.payload,
-      feedbackDeskItemId: jarvisBridgeEvents.feedbackDeskItemId,
+    .update(jarvisBridgeEvents)
+    .set({
+      claimToken: replacementClaimToken,
+      claimedAt: nowIso,
+      result: null,
+      updatedAt: nowIso,
     })
-    .from(jarvisBridgeEvents)
     .where(and(
       eq(jarvisBridgeEvents.id, id),
       eq(jarvisBridgeEvents.direction, "outbound"),
       eq(jarvisBridgeEvents.eventType, "feedback.status_changed"),
+      eq(jarvisBridgeEvents.status, "processing"),
+      eq(jarvisBridgeEvents.claimToken, claimToken),
     ))
+    .returning({
+      source: jarvisBridgeEvents.source,
+      eventType: jarvisBridgeEvents.eventType,
+      payload: jarvisBridgeEvents.payload,
+      feedbackDeskItemId: jarvisBridgeEvents.feedbackDeskItemId,
+      claimToken: jarvisBridgeEvents.claimToken,
+    })
     .get()
-  if (!event?.feedbackDeskItemId) {
-    return Response.json({ error: "Feedback delivery event not found" }, { status: 404 })
+  if (!event) {
+    return Response.json(
+      { error: "Event claim is no longer active" },
+      { status: 409 },
+    )
+  }
+  if (!event.feedbackDeskItemId) {
+    return Response.json({ error: "Feedback delivery event is incomplete" }, { status: 409 })
   }
 
   const item = await db
@@ -105,6 +132,7 @@ export async function GET(
   }
 
   return Response.json({
+    claimToken: event.claimToken,
     eventType: event.eventType,
     source: event.source,
     message: eventMessage(event.payload, item),

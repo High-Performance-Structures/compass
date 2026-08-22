@@ -173,6 +173,31 @@ def load_payload(path: str) -> bytes:
     ).encode("utf-8")
 
 
+def claim_bound_payload(
+    path: str,
+    claim_token: str,
+    event_id: str | None = None,
+) -> bytes:
+    if not claim_token or len(claim_token) > 128:
+        raise ValueError("claimToken is invalid")
+    if event_id is not None and UUID_PATTERN.fullmatch(event_id) is None:
+        raise ValueError("eventId must be a UUID")
+    parsed = json.loads(load_payload(path))
+    if not isinstance(parsed, dict):
+        raise ValueError("Claim-bound payload must be a JSON object")
+    parsed["claimToken"] = claim_token
+    if event_id is not None:
+        parsed["eventId"] = event_id
+    body = json.dumps(
+        parsed,
+        separators=(",", ":"),
+        ensure_ascii=False,
+    ).encode("utf-8")
+    if len(body) > MAX_BODY_BYTES:
+        raise ValueError("Claim-bound payload exceeds the 64 KiB bridge limit")
+    return body
+
+
 def validate_feedback_status_payload(payload: object) -> dict[str, object]:
     """Validate the only structured payload accepted by the lifecycle command."""
     if not isinstance(payload, dict):
@@ -270,8 +295,8 @@ def redact_feedback_status_response(response: object) -> dict[str, object]:
 
 
 def require_feedback_status_production_origin() -> None:
-    """Prevent the lifecycle command from being redirected to another host."""
-    configured = os.environ.get("COMPASS_BASE_URL", "").rstrip("/")
+    """Require the exact production origin for every signed bridge request."""
+    configured = os.environ.get("COMPASS_BASE_URL", "")
     expected = COMPASS_PRODUCTION_BASE_URL
     parsed = urllib.parse.urlsplit(configured)
     expected_parsed = urllib.parse.urlsplit(expected)
@@ -307,7 +332,6 @@ def request_feedback_status(
                 "POST",
                 target,
                 body,
-                follow_redirects=False,
             )
             return redact_feedback_status_response(response)
         except (TimeoutError, urllib.error.URLError) as error:
@@ -362,24 +386,77 @@ class _NoRedirectHandler(urllib.request.HTTPRedirectHandler):
         return None
 
 
+def _allowed_request_target(method: str, target: str) -> bool:
+    parsed = urllib.parse.urlsplit(target)
+    if (
+        parsed.scheme
+        or parsed.netloc
+        or parsed.fragment
+        or not parsed.path.startswith("/api/integrations/jarvis/")
+    ):
+        return False
+    normalized_method = method.upper()
+    if parsed.path == "/api/integrations/jarvis/events":
+        if normalized_method == "POST":
+            return not parsed.query
+        if normalized_method != "GET":
+            return False
+        query = urllib.parse.parse_qs(parsed.query, keep_blank_values=True)
+        if set(query) - {"limit"} or len(query.get("limit", [])) > 1:
+            return False
+        if "limit" not in query:
+            return True
+        limit = query["limit"][0]
+        return limit.isdigit() and 1 <= int(limit) <= 50
+    if parsed.query:
+        return False
+    if (
+        normalized_method == "POST"
+        and parsed.path == "/api/integrations/jarvis/replies"
+    ):
+        return True
+    parts = parsed.path.split("/")
+    if (
+        len(parts) == 7
+        and parts[1:5] == ["api", "integrations", "jarvis", "events"]
+        and UUID_PATTERN.fullmatch(parts[5]) is not None
+        and normalized_method == "POST"
+        and parts[6:] == ["ack"]
+    ):
+        return True
+    if (
+        len(parts) == 7
+        and parts[1:5] == ["api", "integrations", "jarvis", "events"]
+        and UUID_PATTERN.fullmatch(parts[5]) is not None
+        and normalized_method == "GET"
+        and parts[6:] in (["search"], ["visuals"])
+    ):
+        return True
+    if (
+        len(parts) == 7
+        and parts[1:5] == ["api", "integrations", "jarvis", "feedback"]
+        and UUID_PATTERN.fullmatch(parts[5]) is not None
+        and parts[6:] == ["status"]
+        and normalized_method == "POST"
+    ):
+        return True
+    return False
+
+
 def request_json(
     method: str,
     target: str,
     body: bytes = b"",
     max_response_bytes: int = MAX_BODY_BYTES,
-    follow_redirects: bool = True,
 ) -> Any:
-    base_url = os.environ.get("COMPASS_BASE_URL", "").rstrip("/")
+    require_feedback_status_production_origin()
+    if not _allowed_request_target(method, target):
+        raise RuntimeError("Compass bridge target is not allowed")
+    base_url = COMPASS_PRODUCTION_BASE_URL
     secret = os.environ.get("JARVIS_BRIDGE_SECRET", "")
-    if not base_url or not secret:
+    if not secret:
         raise RuntimeError(
             "COMPASS_BASE_URL and JARVIS_BRIDGE_SECRET are required"
-        )
-    parsed_base_url = urllib.parse.urlsplit(base_url)
-    is_local = parsed_base_url.hostname in {"localhost", "127.0.0.1"}
-    if parsed_base_url.scheme != "https" and not is_local:
-        raise RuntimeError(
-            "COMPASS_BASE_URL must use HTTPS outside local development"
         )
 
     timestamp = str(int(time.time()))
@@ -404,11 +481,7 @@ def request_json(
         headers=headers,
         method=method,
     )
-    opener = (
-        urllib.request.build_opener()
-        if follow_redirects
-        else urllib.request.build_opener(_NoRedirectHandler())
-    )
+    opener = urllib.request.build_opener(_NoRedirectHandler())
     try:
         with opener.open(request, timeout=30) as response:
             response_status = response.status
@@ -445,9 +518,12 @@ def build_parser() -> argparse.ArgumentParser:
 
     acknowledge = commands.add_parser("ack")
     acknowledge.add_argument("--event-id", required=True)
+    acknowledge.add_argument("--claim-token", required=True)
     acknowledge.add_argument("--payload-file", required=True)
 
     reply = commands.add_parser("reply")
+    reply.add_argument("--event-id", required=True)
+    reply.add_argument("--claim-token", required=True)
     reply.add_argument("--payload-file", required=True)
 
     search = commands.add_parser("search")
@@ -516,11 +592,13 @@ def main() -> int:
             load_payload(args.payload_file),
         )
     elif args.command == "ack":
+        if UUID_PATTERN.fullmatch(args.event_id) is None:
+            raise ValueError("eventId must be a UUID")
         event_id = urllib.parse.quote(args.event_id, safe="")
         result = request_json(
             "POST",
             f"/api/integrations/jarvis/events/{event_id}/ack",
-            load_payload(args.payload_file),
+            claim_bound_payload(args.payload_file, args.claim_token),
         )
     elif args.command == "search":
         event_id = urllib.parse.quote(args.event_id, safe="")
@@ -592,7 +670,11 @@ def main() -> int:
         result = request_json(
             "POST",
             "/api/integrations/jarvis/replies",
-            load_payload(args.payload_file),
+            claim_bound_payload(
+                args.payload_file,
+                args.claim_token,
+                args.event_id,
+            ),
         )
 
     print(json.dumps(result, separators=(",", ":"), ensure_ascii=False))

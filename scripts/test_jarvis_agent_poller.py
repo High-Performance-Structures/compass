@@ -231,6 +231,7 @@ class CompassSearchContextTests(unittest.TestCase):
         report = "Please add Select all to the owner-update photo picker."
         event = {
             "id": "event-confirmed-feedback",
+            "claimToken": "1d223b6f-20ca-424d-a0b5-e66f2f9be830",
             "eventType": "agent.prompt",
             "payload": {
                 "user": {
@@ -284,7 +285,11 @@ class CompassSearchContextTests(unittest.TestCase):
         submitted = submit.call_args.args[2]
         self.assertEqual(submitted["kind"], "feature")
         self.assertEqual(submitted["description"], report)
-        result = acknowledge.call_args.args[1]["result"]
+        self.assertEqual(
+            acknowledge.call_args.args[1],
+            "1d223b6f-20ca-424d-a0b5-e66f2f9be830",
+        )
+        result = acknowledge.call_args.args[2]["result"]
         self.assertTrue(result["feedbackSubmitted"])
         self.assertNotIn(
             MODULE.FEEDBACK_CONFIRMATION_QUESTION,

@@ -145,6 +145,114 @@ class SignatureTests(unittest.TestCase):
             MODULE.MAX_BODY_BYTES,
         )
 
+    def test_ack_command_requires_the_claim_token_returned_by_pull(self) -> None:
+        parser = MODULE.build_parser()
+        with self.assertRaises(SystemExit):
+            parser.parse_args([
+                "ack",
+                "--event-id",
+                "123e4567-e89b-12d3-a456-426614174000",
+                "--payload-file",
+                "/tmp/ack.json",
+            ])
+
+    def test_reply_command_requires_event_and_claim_ownership(self) -> None:
+        parser = MODULE.build_parser()
+        with self.assertRaises(SystemExit):
+            parser.parse_args([
+                "reply",
+                "--payload-file",
+                "/tmp/reply.json",
+            ])
+
+    def test_ack_command_overrides_payload_claim_with_cli_claim(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            payload_path = Path(directory) / "ack.json"
+            payload_path.write_text(
+                json.dumps({
+                    "status": "completed",
+                    "claimToken": "payload-claim-must-not-win",
+                }),
+                encoding="utf-8",
+            )
+            with (
+                patch(
+                    "sys.argv",
+                    [
+                        "compass_feedback_bridge.py",
+                        "ack",
+                        "--event-id",
+                        "123e4567-e89b-12d3-a456-426614174000",
+                        "--claim-token",
+                        "active-claim",
+                        "--payload-file",
+                        str(payload_path),
+                    ],
+                ),
+                patch.object(
+                    MODULE,
+                    "request_json",
+                    return_value={"success": True},
+                ) as request,
+                patch("builtins.print"),
+            ):
+                result = MODULE.main()
+
+        self.assertEqual(result, 0)
+        self.assertEqual(
+            json.loads(request.call_args.args[2])["claimToken"],
+            "active-claim",
+        )
+
+    def test_request_rejects_nonexact_origin_before_network_access(self) -> None:
+        for origin in (
+            "https://compass.openrangeconstruction.ltd/",
+            "https://compass.openrangeconstruction.ltd:443",
+            "https://user@compass.openrangeconstruction.ltd",
+            "https://example.invalid",
+        ):
+            with self.subTest(origin=origin):
+                with (
+                    patch.dict(
+                        os.environ,
+                        {
+                            "COMPASS_BASE_URL": origin,
+                            "JARVIS_BRIDGE_SECRET": "test-secret",
+                        },
+                    ),
+                    patch.object(
+                        MODULE.urllib.request,
+                        "build_opener",
+                    ) as opener,
+                ):
+                    with self.assertRaises(RuntimeError):
+                        MODULE.request_json("GET", "/api/integrations/jarvis/events")
+                opener.assert_not_called()
+
+    def test_request_rejects_nonallowlisted_targets_before_network_access(self) -> None:
+        with patch.dict(
+            os.environ,
+            {
+                "COMPASS_BASE_URL": MODULE.COMPASS_PRODUCTION_BASE_URL,
+                "JARVIS_BRIDGE_SECRET": "test-secret",
+            },
+        ):
+            for method, target in (
+                ("POST", "/api/integrations/jarvis/events/not-a-uuid/ack"),
+                ("GET", "/api/integrations/jarvis/events?limit=51"),
+                ("GET", "/api/integrations/jarvis/events?limit=1&limit=2"),
+                ("POST", "/api/integrations/jarvis/replies?next=1"),
+                ("GET", "https://example.invalid/steal"),
+            ):
+                with self.subTest(method=method, target=target):
+                    with patch.object(
+                        MODULE.urllib.request,
+                        "build_opener",
+                    ) as opener:
+                        with self.assertRaises(RuntimeError):
+                            MODULE.request_json(method, target)
+                    opener.assert_not_called()
+
 
 class FeedbackStatusTests(unittest.TestCase):
     def valid_payload(self) -> dict[str, object]:
