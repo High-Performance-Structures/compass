@@ -57,6 +57,11 @@ describe("buildEstimateTemplateApplication", () => {
       directCostCents: 20_000,
       markupCents: 2_000,
       taxCents: 1_100,
+      builderFeeBaseCents: 23_100,
+      overheadCents: 0,
+      marginCents: 0,
+      contingencyCents: 0,
+      builderFeeCents: 0,
       estimateTotalCents: 23_100,
     })
   })

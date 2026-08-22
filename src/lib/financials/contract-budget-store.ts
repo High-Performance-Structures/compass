@@ -6,6 +6,7 @@ import {
   projectBudgetLines,
   projectChangeOrderLines,
   projectChangeOrders,
+  sageCostCodes,
 } from "@/db/schema"
 import {
   projectContractBudgetAdjustments,
@@ -20,6 +21,7 @@ import {
   type ContractAdjustment,
   type EstimateLedgerLine,
 } from "@/lib/financials/estimate-ledger"
+import { CONTRACT_ADJUSTMENT_COST_CODES } from "@/lib/financials/project-totals-import"
 
 export type ContractBudgetRebuildResult =
   | {
@@ -53,8 +55,46 @@ function estimateLedgerLine(
     taxCents: row.taxCents,
     lineTotalCents: row.lineTotalCents,
     ownerVisible: row.ownerVisible,
+    includeInBuilderFee: row.includeInBuilderFee,
     sortOrder: row.sortOrder,
   }
+}
+
+function builderFeeLedgerLines(
+  estimate: typeof projectEstimates.$inferSelect,
+  sageRows: readonly {
+    readonly code: string
+    readonly description: string
+    readonly divisionCode: string
+    readonly divisionDescription: string
+  }[]
+): readonly EstimateLedgerLine[] {
+  const amounts = [
+    estimate.overheadCents,
+    estimate.marginCents,
+    estimate.contingencyCents,
+  ]
+  return CONTRACT_ADJUSTMENT_COST_CODES.flatMap((item, index) => {
+    const amount = amounts[index] ?? 0
+    if (amount === 0) return []
+    const sageRow = sageRows.find(
+      (row) => row.description.trim().toLowerCase() === item.description.toLowerCase()
+    )
+    return [{
+      id: null,
+      divisionCode: sageRow?.divisionCode ?? "00",
+      divisionName: sageRow?.divisionDescription ?? "Procurement Requirements",
+      costCode: sageRow?.code ?? item.description,
+      description: item.description,
+      directCostCents: amount,
+      markupCents: 0,
+      taxCents: 0,
+      lineTotalCents: amount,
+      ownerVisible: true,
+      includeInBuilderFee: false,
+      sortOrder: 100_000 + index,
+    }]
+  })
 }
 
 export async function rebuildProjectContractBudget(input: {
@@ -80,6 +120,24 @@ export async function rebuildProjectContractBudget(input: {
       error: "Accept a signed estimate before building the contract budget.",
     }
   }
+
+  const builderFeeSageRows = await input.db
+    .select({
+      code: sageCostCodes.code,
+      description: sageCostCodes.description,
+      divisionCode: sageCostCodes.divisionCode,
+      divisionDescription: sageCostCodes.divisionDescription,
+    })
+    .from(sageCostCodes)
+    .where(
+      and(
+        eq(sageCostCodes.active, true),
+        inArray(
+          sageCostCodes.description,
+          CONTRACT_ADJUSTMENT_COST_CODES.map((item) => item.description)
+        )
+      )
+    )
 
   const estimateRows = await input.db
     .select()
@@ -177,7 +235,10 @@ export async function rebuildProjectContractBudget(input: {
   const revisionId = crypto.randomUUID()
   const now = new Date().toISOString()
   const budget = buildContractBudget({
-    estimateLines: estimateRows.map(estimateLedgerLine),
+    estimateLines: [
+      ...estimateRows.map(estimateLedgerLine),
+      ...builderFeeLedgerLines(accepted, builderFeeSageRows),
+    ],
     adjustments,
   })
 

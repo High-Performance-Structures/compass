@@ -6,7 +6,7 @@ import {
 } from "@/lib/financials/project-totals-import"
 
 describe("parseProjectTotalsRows", () => {
-  it("imports cost codes and contract adjustments with an exact source total", () => {
+  it("imports cost codes and separates builder-fee percentages", () => {
     const result = parseProjectTotalsRows([
       ["03 30 00 - Cast-in-Place Concrete", "Foundation scope", null, null, 100.005],
       ["06 10 00 - Rough Carpentry", null, null, null, 50.005],
@@ -20,16 +20,20 @@ describe("parseProjectTotalsRows", () => {
 
     expect(result.success).toBe(true)
     if (!result.success) return
-    expect(result.lines).toHaveLength(5)
+    expect(result.lines).toHaveLength(2)
     expect(result.displayedTotalCents).toBe(16_701)
+    expect(result.projectSubtotalCents).toBe(15_001)
     expect(result.lines.reduce((sum, line) => sum + line.amountCents, 0)).toBe(
-      16_701
+      15_001
     )
     expect(result.roundingAdjustmentCents).toBe(-1)
-    expect(result.lines.at(-1)).toMatchObject({
-      costCode: "99 30 00",
-      divisionName: "Contract Adjustments",
-      amountCents: 199,
+    expect(result).toMatchObject({
+      overheadRateBasisPoints: 667,
+      overheadCents: 1_000,
+      marginRateBasisPoints: 333,
+      marginCents: 500,
+      contingencyRateBasisPoints: 133,
+      contingencyCents: 200,
     })
     expect(result.lines.at(-1)?.specifications).toContain(
       "Source rounding reconciliation"
@@ -59,7 +63,7 @@ describe("parseProjectTotalsRows", () => {
     expect(result).toEqual({
       success: false,
       error:
-        "Project Totals does not reconcile: displayed $101.00 versus line total $100.00.",
+        "Project Totals does not reconcile: displayed $101.00 versus subtotal and builder fee $100.00.",
     })
   })
 })

@@ -28,12 +28,14 @@ import {
 
 import {
   addProjectEstimateBasisDocument,
+  applyProjectEstimateLineMarkup,
   createProjectEstimateDraft,
   deleteProjectEstimateLine,
   importProjectEstimateFromGoogleSheet,
   prepareProjectEstimateForFoxit,
   recordSignedProjectEstimate,
   saveProjectEstimateLine,
+  updateProjectEstimateBuilderFee,
   updateProjectEstimateHeader,
   type ProjectEstimateLineItem,
   type ProjectEstimateTermsOption,
@@ -48,6 +50,7 @@ import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { SearchableCombobox } from "@/components/searchable-combobox"
 import {
   Select,
   SelectContent,
@@ -103,6 +106,7 @@ type LineDraft = {
   readonly taxable: boolean
   readonly taxEntityId: string
   readonly ownerVisible: boolean
+  readonly includeInBuilderFee: boolean
 }
 
 const EMPTY_LINE: LineDraft = {
@@ -118,6 +122,7 @@ const EMPTY_LINE: LineDraft = {
   taxable: false,
   taxEntityId: "",
   ownerVisible: true,
+  includeInBuilderFee: true,
 }
 
 function lineDraft(line: ProjectEstimateLineItem): LineDraft {
@@ -134,6 +139,7 @@ function lineDraft(line: ProjectEstimateLineItem): LineDraft {
     taxable: line.taxable,
     taxEntityId: line.taxEntityId ?? "",
     ownerVisible: line.ownerVisible,
+    includeInBuilderFee: line.includeInBuilderFee,
   }
 }
 
@@ -206,7 +212,12 @@ export function ProjectEstimateWorkspacePanel({
     (option) => option.divisionCode === line.divisionCode
   )
   const mappedCostCodes = useMemo(
-    () => new Set(workspace.costCodes.map((option) => option.value)),
+    () =>
+      new Set(
+        workspace.costCodes
+          .filter((option) => option.sageMapped)
+          .map((option) => option.value)
+      ),
     [workspace.costCodes]
   )
   const groupedLines = useMemo(() => {
@@ -302,6 +313,7 @@ export function ProjectEstimateWorkspacePanel({
           taxable: line.taxable,
           taxEntityId: line.taxEntityId || null,
           ownerVisible: line.ownerVisible,
+          includeInBuilderFee: line.includeInBuilderFee,
           insertAfterLineId,
         }
       )
@@ -310,6 +322,44 @@ export function ProjectEstimateWorkspacePanel({
         setInsertAfterLineId(null)
       }
       finish(result.success ? "Estimate line saved." : result.error)
+    })
+  }
+
+  function applyLineMarkup(event: FormEvent<HTMLFormElement>): void {
+    event.preventDefault()
+    if (!estimate) return
+    const formData = new FormData(event.currentTarget)
+    setMessage(null)
+    startTransition(async () => {
+      const result = await applyProjectEstimateLineMarkup(
+        projectId,
+        estimate.id,
+        formNumber(formData, "bulkMarkupPercent")
+      )
+      finish(
+        result.success
+          ? "Line markup applied to every estimate item."
+          : result.error
+      )
+    })
+  }
+
+  function saveBuilderFee(event: FormEvent<HTMLFormElement>): void {
+    event.preventDefault()
+    if (!estimate) return
+    const formData = new FormData(event.currentTarget)
+    setMessage(null)
+    startTransition(async () => {
+      const result = await updateProjectEstimateBuilderFee(
+        projectId,
+        estimate.id,
+        {
+          overheadPercent: formNumber(formData, "overheadPercent"),
+          marginPercent: formNumber(formData, "marginPercent"),
+          contingencyPercent: formNumber(formData, "contingencyPercent"),
+        }
+      )
+      finish(result.success ? "Builder fee updated." : result.error)
     })
   }
 
@@ -835,9 +885,68 @@ export function ProjectEstimateWorkspacePanel({
           )}
         </div>
         <p className="mb-4 text-xs text-muted-foreground">
-          Company overhead, margin, and contingency import as clearly labeled
-          contract adjustments rather than cost-code lines.
+          Overhead, margin, and contingency are builder-fee percentages applied
+          to eligible estimate items. They remain separate from Sage cost-code
+          lines until their accounting mappings are assigned.
         </p>
+        <div className="mb-5 grid gap-4 border-y py-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
+          <form key={`markup-${estimate.id}-${estimate.updatedAt}`} onSubmit={applyLineMarkup}>
+            <h3 className="text-sm font-semibold">Apply one line markup</h3>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Replaces the markup percentage on every current estimate line.
+            </p>
+            <div className="mt-3 flex items-end gap-2">
+              <div className="min-w-0 flex-1 space-y-1.5">
+                <Label htmlFor="bulkMarkupPercent">Markup %</Label>
+                <Input
+                  id="bulkMarkupPercent"
+                  name="bulkMarkupPercent"
+                  inputMode="decimal"
+                  defaultValue={workspace.lines[0]?.markupRateBasisPoints
+                    ? workspace.lines[0].markupRateBasisPoints / 100
+                    : 0}
+                  disabled={!editable}
+                />
+              </div>
+              <Button type="submit" variant="outline" disabled={!editable || isPending || workspace.lines.length === 0}>
+                Apply to all lines
+              </Button>
+            </div>
+          </form>
+          <form key={`builder-fee-${estimate.id}-${estimate.updatedAt}`} onSubmit={saveBuilderFee}>
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h3 className="text-sm font-semibold">Builder fee</h3>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Eligible cost base {money(estimate.builderFeeBaseCents)}
+                </p>
+              </div>
+              <p className="font-semibold">{money(estimate.builderFeeCents)}</p>
+            </div>
+            <div className="mt-3 grid gap-3 sm:grid-cols-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="overheadPercent">Overhead %</Label>
+                <Input id="overheadPercent" name="overheadPercent" inputMode="decimal" defaultValue={estimate.overheadRateBasisPoints / 100} disabled={!editable} />
+                <p className="text-xs text-muted-foreground">{money(estimate.overheadCents)}</p>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="marginPercent">Margin %</Label>
+                <Input id="marginPercent" name="marginPercent" inputMode="decimal" defaultValue={estimate.marginRateBasisPoints / 100} disabled={!editable} />
+                <p className="text-xs text-muted-foreground">{money(estimate.marginCents)}</p>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="contingencyPercent">Contingency reserve %</Label>
+                <Input id="contingencyPercent" name="contingencyPercent" inputMode="decimal" defaultValue={estimate.contingencyRateBasisPoints / 100} disabled={!editable} />
+                <p className="text-xs text-muted-foreground">{money(estimate.contingencyCents)}</p>
+              </div>
+            </div>
+            {editable && (
+              <div className="mt-3 flex justify-end">
+                <Button type="submit" disabled={isPending}>Update builder fee</Button>
+              </div>
+            )}
+          </form>
+        </div>
         {groupedLines.length === 0 ? (
           <p className="text-sm text-muted-foreground">No estimate lines yet.</p>
         ) : (
@@ -867,9 +976,14 @@ export function ProjectEstimateWorkspacePanel({
                           <p className="text-sm font-medium">
                             {item.costCode} · {item.description}
                           </p>
-                          {developerModeEnabled && !mappedCostCodes.has(item.costCode) && (
+                          {!mappedCostCodes.has(item.costCode) && (
                             <Badge variant="outline" className="mt-1">
                               Sage mapping required
+                            </Badge>
+                          )}
+                          {!item.includeInBuilderFee && (
+                            <Badge variant="outline" className="mt-1 ml-1">
+                              Builder fee excluded
                             </Badge>
                           )}
                           <p className="text-xs text-muted-foreground">
@@ -926,6 +1040,20 @@ export function ProjectEstimateWorkspacePanel({
                 </div>
               )
             })}
+            <div className="ml-auto max-w-sm space-y-2 border-t pt-3 text-sm">
+              <div className="flex justify-between gap-4">
+                <span>Project subtotal</span>
+                <span>{money(estimate.directCostCents + estimate.markupCents + estimate.taxCents)}</span>
+              </div>
+              <div className="flex justify-between gap-4">
+                <span>Builder fee</span>
+                <span>{money(estimate.builderFeeCents)}</span>
+              </div>
+              <div className="flex justify-between gap-4 font-semibold">
+                <span>Estimate total</span>
+                <span>{money(estimate.estimateTotalCents)}</span>
+              </div>
+            </div>
           </div>
         )}
 
@@ -961,20 +1089,16 @@ export function ProjectEstimateWorkspacePanel({
               </div>
               <div className="space-y-1.5 xl:col-span-2">
                 <Label>Cost code</Label>
-                <Select
+                <SearchableCombobox
+                  ariaLabel="Estimate cost code"
+                  options={availableCostCodes}
                   value={line.costCode}
                   onValueChange={(value) => setLine({ ...line, costCode: value })}
                   disabled={!line.divisionCode}
-                >
-                  <SelectTrigger><SelectValue placeholder="Choose cost code" /></SelectTrigger>
-                  <SelectContent>
-                    {availableCostCodes.map((option) => (
-                      <SelectItem key={option.value} value={option.value}>
-                        {option.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                  placeholder="Choose cost code"
+                  searchPlaceholder="Search Sage cost codes..."
+                  emptyMessage="No matching Sage cost codes."
+                />
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="estimateUnit">Unit</Label>
@@ -1020,6 +1144,10 @@ export function ProjectEstimateWorkspacePanel({
               <label className="flex items-center gap-2 text-sm">
                 <Checkbox checked={line.ownerVisible} onCheckedChange={(checked) => setLine({ ...line, ownerVisible: checked === true })} />
                 Owner-visible
+              </label>
+              <label className="flex items-center gap-2 text-sm">
+                <Checkbox checked={line.includeInBuilderFee} onCheckedChange={(checked) => setLine({ ...line, includeInBuilderFee: checked === true })} />
+                Include cost in builder-fee calculation
               </label>
               <div className="ml-auto flex gap-2">
                 {(line.id || insertAfterLineId) && <Button type="button" variant="ghost" onClick={() => { setLine(EMPTY_LINE); setInsertAfterLineId(null) }}>Cancel</Button>}

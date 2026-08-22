@@ -13,6 +13,13 @@ export type ProjectTotalsImportResult =
       readonly success: true
       readonly lines: readonly ProjectTotalsImportLine[]
       readonly displayedTotalCents: number
+      readonly projectSubtotalCents: number
+      readonly overheadRateBasisPoints: number
+      readonly overheadCents: number
+      readonly marginRateBasisPoints: number
+      readonly marginCents: number
+      readonly contingencyRateBasisPoints: number
+      readonly contingencyCents: number
       readonly roundingAdjustmentCents: number
     }
   | { readonly success: false; readonly error: string }
@@ -21,14 +28,17 @@ export const CONTRACT_ADJUSTMENT_COST_CODES = [
   {
     value: "99 10 00",
     description: "Company Overhead",
+    sourceLabels: ["Company Overhead"],
   },
   {
     value: "99 20 00",
     description: "Company Margin",
+    sourceLabels: ["Company Margin"],
   },
   {
     value: "99 30 00",
-    description: "Contingency",
+    description: "Contingency Reserve",
+    sourceLabels: ["Contingency Reserve", "Contingency"],
   },
 ] as const
 
@@ -97,7 +107,8 @@ function adjustmentForLabel(
   const normalized = value.trim().toLowerCase()
   return (
     CONTRACT_ADJUSTMENT_COST_CODES.find(
-      (item) => item.description.toLowerCase() === normalized
+      (item) =>
+        item.sourceLabels.some((label) => label.toLowerCase() === normalized)
     ) ?? null
   )
 }
@@ -117,7 +128,9 @@ export function parseProjectTotalsRows(
     readonly specifications: string | null
     readonly rawAmount: number
   }> = []
+  const adjustments = new Map<string, number>()
   let displayedTotal: number | null = null
+  let displayedSubtotal: number | null = null
   let inAdjustmentSection = false
 
   for (const row of rows) {
@@ -129,13 +142,16 @@ export function parseProjectTotalsRows(
       if (amount !== null && amount > 0) displayedTotal = amount
       continue
     }
+    if (label === "Project Subtotal:") {
+      if (amount !== null && amount > 0) displayedSubtotal = amount
+      continue
+    }
     if (label === "Company Overhead & Margin") {
       inAdjustmentSection = true
       continue
     }
     if (
       label === "Project Totals" ||
-      label === "Project Subtotal:" ||
       label.startsWith("Total:")
     ) {
       continue
@@ -149,10 +165,14 @@ export function parseProjectTotalsRows(
       continue
     }
 
+    if (adjustment) {
+      adjustments.set(adjustment.value, amount)
+      continue
+    }
+
     parsedLines.push({
-      costCode: parsedCostCode?.code ?? adjustment?.value ?? "",
-      description:
-        parsedCostCode?.description ?? adjustment?.description ?? label,
+      costCode: parsedCostCode?.code ?? "",
+      description: parsedCostCode?.description ?? label,
       specifications: cleanText(row[1]),
       rawAmount: amount,
     })
@@ -181,29 +201,37 @@ export function parseProjectTotalsRows(
     }
   }
 
-  const rawLineTotal = parsedLines.reduce(
+  const rawDirectTotal = parsedLines.reduce(
     (sum, line) => sum + line.rawAmount,
     0
   )
-  const sourceTotal = displayedTotal ?? rawLineTotal
-  if (Math.abs(rawLineTotal - sourceTotal) >= 0.005) {
+  const sourceSubtotal = displayedSubtotal ?? rawDirectTotal
+  const rawAdjustmentTotal = [...adjustments.values()].reduce(
+    (sum, amount) => sum + amount,
+    0
+  )
+  const sourceTotal = displayedTotal ?? sourceSubtotal + rawAdjustmentTotal
+  if (Math.abs(rawDirectTotal - sourceSubtotal) >= 0.005) {
     return {
       success: false,
-      error: `Project Totals does not reconcile: displayed $${sourceTotal.toFixed(2)} versus line total $${rawLineTotal.toFixed(2)}.`,
+      error: `Project Totals does not reconcile: displayed subtotal $${sourceSubtotal.toFixed(2)} versus cost-code total $${rawDirectTotal.toFixed(2)}.`,
+    }
+  }
+  if (Math.abs(sourceSubtotal + rawAdjustmentTotal - sourceTotal) >= 0.005) {
+    return {
+      success: false,
+      error: `Project Totals does not reconcile: displayed $${sourceTotal.toFixed(2)} versus subtotal and builder fee $${(sourceSubtotal + rawAdjustmentTotal).toFixed(2)}.`,
     }
   }
 
   const displayedTotalCents = Math.round(sourceTotal * 100)
+  const projectSubtotalCents = Math.round(sourceSubtotal * 100)
   const roundedTotalCents = parsedLines.reduce(
     (sum, line) => sum + Math.round(line.rawAmount * 100),
     0
   )
-  const roundingAdjustmentCents = displayedTotalCents - roundedTotalCents
-  const contingencyIndex = parsedLines.findIndex(
-    (line) => line.costCode === "99 30 00"
-  )
-  const targetIndex =
-    contingencyIndex >= 0 ? contingencyIndex : parsedLines.length - 1
+  const roundingAdjustmentCents = projectSubtotalCents - roundedTotalCents
+  const targetIndex = parsedLines.length - 1
 
   const lines = parsedLines.map((line, index): ProjectTotalsImportLine => {
     const adjustment = index === targetIndex ? roundingAdjustmentCents : 0
@@ -226,6 +254,21 @@ export function parseProjectTotalsRows(
     success: true,
     lines,
     displayedTotalCents,
+    projectSubtotalCents,
+    overheadRateBasisPoints: Math.round(
+      ((adjustments.get("99 10 00") ?? 0) / sourceSubtotal) * 10_000
+    ),
+    overheadCents: Math.round((adjustments.get("99 10 00") ?? 0) * 100),
+    marginRateBasisPoints: Math.round(
+      ((adjustments.get("99 20 00") ?? 0) / sourceSubtotal) * 10_000
+    ),
+    marginCents: Math.round((adjustments.get("99 20 00") ?? 0) * 100),
+    contingencyRateBasisPoints: Math.round(
+      ((adjustments.get("99 30 00") ?? 0) / sourceSubtotal) * 10_000
+    ),
+    contingencyCents: Math.round(
+      (adjustments.get("99 30 00") ?? 0) * 100
+    ),
     roundingAdjustmentCents,
   }
 }

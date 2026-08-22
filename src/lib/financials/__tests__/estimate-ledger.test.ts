@@ -24,6 +24,7 @@ function estimateLine(
     taxCents: input.taxCents ?? 5_500,
     lineTotalCents: input.lineTotalCents ?? 115_500,
     ownerVisible: input.ownerVisible ?? true,
+    includeInBuilderFee: input.includeInBuilderFee ?? true,
     sortOrder: input.sortOrder ?? 1,
   }
 }
@@ -62,7 +63,39 @@ describe("estimate ledger", () => {
       directCostCents: 120_000,
       markupCents: 10_000,
       taxCents: 5_500,
+      builderFeeBaseCents: 135_500,
+      overheadCents: 0,
+      marginCents: 0,
+      contingencyCents: 0,
+      builderFeeCents: 0,
       estimateTotalCents: 135_500,
+    })
+  })
+
+  it("applies builder-fee rates only to eligible line totals", () => {
+    expect(
+      calculateEstimateTotals(
+        [
+          estimateLine({ id: "eligible", lineTotalCents: 100_000 }),
+          estimateLine({
+            id: "excluded",
+            lineTotalCents: 50_000,
+            includeInBuilderFee: false,
+          }),
+        ],
+        {
+          overheadRateBasisPoints: 800,
+          marginRateBasisPoints: 700,
+          contingencyRateBasisPoints: 200,
+        }
+      )
+    ).toMatchObject({
+      builderFeeBaseCents: 100_000,
+      overheadCents: 8_000,
+      marginCents: 7_000,
+      contingencyCents: 2_000,
+      builderFeeCents: 17_000,
+      estimateTotalCents: 167_000,
     })
   })
 
@@ -145,6 +178,9 @@ describe("estimate ledger", () => {
       introductionText: "Thank you for the opportunity to estimate the work.",
       contractTerms: "Base terms",
       closingText: "Please contact us with any questions.",
+      overheadRateBasisPoints: 800,
+      marginRateBasisPoints: 700,
+      contingencyRateBasisPoints: 200,
       lines: [
         {
           id: "line-1",
@@ -161,6 +197,7 @@ describe("estimate ledger", () => {
           taxRateBasisPoints: 0,
           lineTotalCents: 110_000,
           ownerVisible: true,
+          includeInBuilderFee: true,
           sortOrder: 1,
         },
       ],

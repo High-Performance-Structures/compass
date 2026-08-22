@@ -25,6 +25,7 @@ function line(
     unitCostCents: 5_000,
     lineTotalCents: 10_000,
     ownerVisible: true,
+    includeInBuilderFee: true,
     sortOrder: 0,
     ...overrides,
   }
