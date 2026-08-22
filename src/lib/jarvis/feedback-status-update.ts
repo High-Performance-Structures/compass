@@ -136,10 +136,11 @@ function requesterNotificationMessage(
 async function markNotificationRetryable(
   db: CompassDb,
   eventId: string,
+  claimToken: string,
   now: string,
   error: string,
-): Promise<void> {
-  await db
+): Promise<boolean> {
+  const updated = await db
     .update(jarvisBridgeEvents)
     .set({
       status: "pending",
@@ -152,7 +153,14 @@ async function markNotificationRetryable(
       completedAt: null,
       updatedAt: now,
     })
-    .where(eq(jarvisBridgeEvents.id, eventId))
+    .where(and(
+      eq(jarvisBridgeEvents.id, eventId),
+      eq(jarvisBridgeEvents.claimToken, claimToken),
+      eq(jarvisBridgeEvents.status, "processing"),
+    ))
+    .returning({ id: jarvisBridgeEvents.id })
+    .get()
+  return updated !== undefined && updated !== null
 }
 
 export async function processFeedbackRequesterNotification(
@@ -249,7 +257,7 @@ export async function processFeedbackRequesterNotification(
         },
       })
     }
-    await db
+    const completed = await db
       .update(jarvisBridgeEvents)
       .set({
         status: "completed",
@@ -260,7 +268,16 @@ export async function processFeedbackRequesterNotification(
         completedAt: nowIso,
         updatedAt: nowIso,
       })
-      .where(eq(jarvisBridgeEvents.id, notificationEvent.id))
+      .where(and(
+        eq(jarvisBridgeEvents.id, notificationEvent.id),
+        eq(jarvisBridgeEvents.claimToken, claimToken),
+        eq(jarvisBridgeEvents.status, "processing"),
+      ))
+      .returning({ id: jarvisBridgeEvents.id })
+      .get()
+    if (completed === undefined || completed === null) {
+      return { queued: true, claimed: false, notifiedUserCount: 0 }
+    }
     return {
       queued: true,
       claimed: true,
@@ -268,7 +285,16 @@ export async function processFeedbackRequesterNotification(
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error"
-    await markNotificationRetryable(db, notificationEvent.id, nowIso, message)
+    const retryScheduled = await markNotificationRetryable(
+      db,
+      notificationEvent.id,
+      claimToken,
+      nowIso,
+      message,
+    )
+    if (!retryScheduled) {
+      return { queued: true, claimed: false, notifiedUserCount: 0 }
+    }
     throw error
   }
 }
