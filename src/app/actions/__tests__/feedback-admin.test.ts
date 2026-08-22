@@ -50,6 +50,7 @@ function configureDb() {
 
 describe("updateFeedbackAdminItem lifecycle evidence", () => {
   beforeEach(() => {
+    mocks.requireAuth.mockReset()
     configureDb()
     mocks.requireAuth.mockResolvedValue({ id: "admin-1", organizationId: "org-1" })
     mocks.canManageUserAccess.mockReturnValue(true)
@@ -75,6 +76,7 @@ describe("updateFeedbackAdminItem lifecycle evidence", () => {
 
 describe("queueFeedbackLifecycleRequest", () => {
   beforeEach(() => {
+    mocks.requireAuth.mockReset()
     configureDb()
     mocks.requireAuth.mockResolvedValue({ id: "admin-1", organizationId: "org-1" })
     mocks.canManageUserAccess.mockReturnValue(true)
