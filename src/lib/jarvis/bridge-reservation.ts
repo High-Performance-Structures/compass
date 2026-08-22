@@ -1,4 +1,4 @@
-import { and, eq, sql, type SQL } from "drizzle-orm"
+import { and, eq, isNull, sql, type SQL } from "drizzle-orm"
 import type { BaseSQLiteDatabase } from "drizzle-orm/sqlite-core"
 
 import { jarvisBridgeEvents } from "@/db/schema-jarvis"
@@ -46,7 +46,7 @@ export async function renewBridgeReservation(
   input: Readonly<{
     eventId: string
     claimToken: string
-    reservationResult: string
+    reservationResult: string | null
     now: string
   }>,
 ): Promise<boolean> {
@@ -59,11 +59,29 @@ export async function renewBridgeReservation(
       eq(jarvisBridgeEvents.direction, "outbound"),
       eq(jarvisBridgeEvents.status, "processing"),
       eq(jarvisBridgeEvents.claimToken, input.claimToken),
-      eq(jarvisBridgeEvents.result, input.reservationResult),
+      input.reservationResult === null
+        ? isNull(jarvisBridgeEvents.result)
+        : eq(jarvisBridgeEvents.result, input.reservationResult),
     ))
     .returning({ id: jarvisBridgeEvents.id })
     .get()
   return renewed !== undefined && renewed !== null
+}
+
+export async function runClaimFencedBridgeEffect<TResult>(
+  db: ReservationDb,
+  reservations: readonly BridgeReservationOwnership[],
+  effect: () => TResult | Promise<TResult>,
+): Promise<TResult> {
+  const now = new Date().toISOString()
+  for (const reservation of reservations) {
+    const renewed = await renewBridgeReservation(db, {
+      ...reservation,
+      now,
+    })
+    if (!renewed) throw new Error("Event claim is no longer active")
+  }
+  return await effect()
 }
 
 export function assertBridgeReservationOwnership<
@@ -114,5 +132,41 @@ export function assertBridgeReservationOwnership<
         SELECT 1 FROM ${jarvisBridgeEvents}
         WHERE ${jarvisBridgeEvents.id} = ${input.eventId}
       )`,
+  )
+}
+
+export function assertBridgeReservationsOwnership<
+  TResultKind extends "sync" | "async",
+  TRunResult,
+  TFullSchema extends Record<string, unknown>,
+>(
+  db: BaseSQLiteDatabase<TResultKind, TRunResult, TFullSchema>,
+  reservations: readonly BridgeReservationOwnership[],
+) {
+  if (reservations.length === 0) {
+    throw new Error("At least one bridge reservation is required")
+  }
+  const missingReservation = sql.join(
+    reservations.map((reservation) => {
+      const resultOwnership = reservation.reservationResult === null
+        ? sql`${jarvisBridgeEvents.result} IS NULL`
+        : sql`${jarvisBridgeEvents.result} = ${reservation.reservationResult}`
+      return sql`NOT EXISTS (
+        SELECT 1 FROM ${jarvisBridgeEvents}
+        WHERE ${jarvisBridgeEvents.id} = ${reservation.eventId}
+          AND ${jarvisBridgeEvents.direction} = 'outbound'
+          AND ${jarvisBridgeEvents.status} = 'processing'
+          AND ${jarvisBridgeEvents.claimToken} = ${reservation.claimToken}
+          AND ${resultOwnership}
+      )`
+    }),
+    sql` OR `,
+  )
+  return db.insert(jarvisBridgeEvents).select(
+    sql`SELECT
+        NULL, NULL, 'outbound', 'bridge-assertion', 'bridge.ownership_missing',
+        'failed', ${`bridge.ownership_missing:${reservations.map((reservation) => reservation.eventId).join(",")}`}, '{}', NULL, NULL, 0, '',
+        NULL, NULL, NULL, NULL, '', ''
+      WHERE ${missingReservation}`,
   )
 }

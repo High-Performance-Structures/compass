@@ -151,7 +151,7 @@ describe("strict notification idempotency", () => {
       reservationResult: null,
     })).resolves.toBeUndefined()
 
-    expect(db.batch).toHaveBeenCalledTimes(2)
+    expect(db.batch).toHaveBeenCalledTimes(4)
     expect(db.batch.mock.calls[1]?.[0]).toHaveLength(4)
     expect(db.update).toHaveBeenCalledTimes(2)
   })

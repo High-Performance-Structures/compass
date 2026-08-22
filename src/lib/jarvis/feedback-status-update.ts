@@ -275,7 +275,7 @@ export async function processFeedbackRequesterNotification(
         eventId: notificationEvent.id,
         claimToken,
         reservationResult: null,
-      })
+      }, bridgeReservation ? [bridgeReservation] : undefined)
     }
     const completed = await db
       .update(jarvisBridgeEvents)
