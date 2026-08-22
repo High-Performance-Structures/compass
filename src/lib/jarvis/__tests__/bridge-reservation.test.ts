@@ -7,6 +7,8 @@ import { jarvisBridgeEvents } from "@/db/schema-jarvis"
 import {
   ACKNOWLEDGEMENT_RESERVATION_RESULT,
   assertBridgeReservationOwnership,
+  assertBridgeReservationsOwnership,
+  runClaimFencedBridgeEffect,
   renewBridgeReservation,
 } from "../bridge-reservation"
 
@@ -32,6 +34,10 @@ function reservationDatabase() {
       completed_at TEXT,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
+    );
+    CREATE TABLE notification_deliveries (
+      id TEXT PRIMARY KEY NOT NULL,
+      status TEXT NOT NULL
     );
   `)
   sqlite.prepare(`
@@ -182,6 +188,94 @@ describe("bridge side-effect reservations", () => {
 
     try {
       expect(() => ownershipAssertion.run()).toThrow()
+    } finally {
+      fixture.sqlite.close()
+    }
+  })
+
+  it("blocks stale provider effects and terminal writes while replacement recovers", async () => {
+    const fixture = reservationDatabase()
+    fixture.sqlite.prepare(
+      "INSERT INTO notification_deliveries (id, status) VALUES (?, ?)",
+    ).run("delivery-1", "attempting")
+    let providerCalls = 0
+
+    try {
+      await expect(runClaimFencedBridgeEffect(
+        fixture.db,
+        [{
+          eventId: "event-1",
+          claimToken: "stale-claim",
+          reservationResult: ACKNOWLEDGEMENT_RESERVATION_RESULT,
+        }],
+        () => {
+          providerCalls += 1
+        },
+      )).rejects.toThrow("Event claim is no longer active")
+      expect(providerCalls).toBe(0)
+      expect(fixture.sqlite.prepare(
+        "SELECT status FROM notification_deliveries WHERE id = ?",
+      ).get("delivery-1")).toEqual({ status: "attempting" })
+
+      await expect(runClaimFencedBridgeEffect(
+        fixture.db,
+        [{
+          eventId: "event-1",
+          claimToken: "replacement-claim",
+          reservationResult: ACKNOWLEDGEMENT_RESERVATION_RESULT,
+        }],
+        () => {
+          providerCalls += 1
+          fixture.sqlite.prepare(
+            "UPDATE notification_deliveries SET status = ? WHERE id = ?",
+          ).run("sent", "delivery-1")
+        },
+      )).resolves.toBeUndefined()
+      expect(providerCalls).toBe(1)
+      expect(fixture.sqlite.prepare(
+        "SELECT status FROM notification_deliveries WHERE id = ?",
+      ).get("delivery-1")).toEqual({ status: "sent" })
+    } finally {
+      fixture.sqlite.close()
+    }
+  })
+
+  it("fences a terminal delivery mutation against a replaced claim", () => {
+    const fixture = reservationDatabase()
+    fixture.sqlite.prepare(
+      "INSERT INTO notification_deliveries (id, status) VALUES (?, ?)",
+    ).run("delivery-2", "attempting")
+
+    try {
+      const staleMutation = fixture.sqlite.transaction(() => {
+        assertBridgeReservationsOwnership(fixture.db, [{
+          eventId: "event-1",
+          claimToken: "stale-claim",
+          reservationResult: ACKNOWLEDGEMENT_RESERVATION_RESULT,
+        }]).run()
+        fixture.sqlite.prepare(
+          "UPDATE notification_deliveries SET status = ? WHERE id = ?",
+        ).run("sent", "delivery-2")
+      })
+      expect(staleMutation).toThrow()
+      expect(fixture.sqlite.prepare(
+        "SELECT status FROM notification_deliveries WHERE id = ?",
+      ).get("delivery-2")).toEqual({ status: "attempting" })
+
+      const replacementMutation = fixture.sqlite.transaction(() => {
+        assertBridgeReservationsOwnership(fixture.db, [{
+          eventId: "event-1",
+          claimToken: "replacement-claim",
+          reservationResult: ACKNOWLEDGEMENT_RESERVATION_RESULT,
+        }]).run()
+        fixture.sqlite.prepare(
+          "UPDATE notification_deliveries SET status = ? WHERE id = ?",
+        ).run("sent", "delivery-2")
+      })
+      expect(replacementMutation).not.toThrow()
+      expect(fixture.sqlite.prepare(
+        "SELECT status FROM notification_deliveries WHERE id = ?",
+      ).get("delivery-2")).toEqual({ status: "sent" })
     } finally {
       fixture.sqlite.close()
     }
