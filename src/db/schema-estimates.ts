@@ -7,7 +7,7 @@ import {
   uniqueIndex,
 } from "drizzle-orm/sqlite-core"
 
-import { organizations, projects, users } from "./schema"
+import { organizations, projectContacts, projects, users } from "./schema"
 import {
   estimateTemplateLines,
   projectTemplateApplications,
@@ -84,6 +84,20 @@ export const projectEstimates = sqliteTable(
     status: text("status").notNull().default("draft"),
     estimateDate: text("estimate_date"),
     clientName: text("client_name"),
+    clientSignerContactId: text("client_signer_contact_id").references(
+      () => projectContacts.id,
+      { onDelete: "set null" }
+    ),
+    clientSignerName: text("client_signer_name"),
+    clientSignerTitle: text("client_signer_title"),
+    clientSignerEmail: text("client_signer_email"),
+    companySignerContactId: text("company_signer_contact_id").references(
+      () => projectContacts.id,
+      { onDelete: "set null" }
+    ),
+    companySignerName: text("company_signer_name"),
+    companySignerTitle: text("company_signer_title"),
+    companySignerEmail: text("company_signer_email"),
     sourceSystem: text("source_system").notNull().default("compass"),
     sourceWorkbookId: text("source_workbook_id"),
     sourceWorkbookUrl: text("source_workbook_url"),
@@ -146,6 +160,10 @@ export const projectEstimates = sqliteTable(
     signaturePackageUrl: text("signature_package_url"),
     signatureRequestedAt: text("signature_requested_at"),
     signedAt: text("signed_at"),
+    acceptanceMethod: text("acceptance_method"),
+    acceptanceNote: text("acceptance_note"),
+    acceptanceEvidenceLabel: text("acceptance_evidence_label"),
+    acceptanceRecordedByName: text("acceptance_recorded_by_name"),
     acceptedAt: text("accepted_at"),
     acceptedBy: text("accepted_by").references(() => users.id, {
       onDelete: "set null",

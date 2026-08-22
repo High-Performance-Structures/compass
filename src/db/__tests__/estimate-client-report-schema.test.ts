@@ -41,4 +41,17 @@ describe("estimate client report persistence contract", () => {
     expect(projectEstimateAcknowledgements.templateId.name).toBe("template_id")
     expect(projectEstimateAcknowledgements.body.name).toBe("body")
   })
+
+  it("snapshots both contract signers on the estimate", () => {
+    expect(projectEstimates.clientSignerName.name).toBe("client_signer_name")
+    expect(projectEstimates.companySignerName.name).toBe(
+      "company_signer_name"
+    )
+    const migration = readFileSync(
+      resolve(process.cwd(), "drizzle/0128_estimate_signers.sql"),
+      "utf8"
+    )
+    expect(migration).toContain("ADD `client_signer_contact_id` text")
+    expect(migration).toContain("ADD `company_signer_contact_id` text")
+  })
 })

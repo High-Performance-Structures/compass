@@ -4,8 +4,14 @@ import { and, asc, desc, eq, gt, inArray, like, ne, sql } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 
 import { saveEstimateTextTemplateLibraryItem } from "@/app/actions/estimate-text-templates"
+import { getUploadSessionUrl } from "@/app/actions/google-drive"
 import { getDb } from "@/db"
-import { projectBudgetLines, projects, sageCostCodes } from "@/db/schema"
+import {
+  projectBudgetLines,
+  projectContacts,
+  projects,
+  sageCostCodes,
+} from "@/db/schema"
 import {
   estimateTermsTemplates,
   projectEstimateAcknowledgements,
@@ -17,6 +23,7 @@ import {
 } from "@/db/schema-estimates"
 import { googleAuth } from "@/db/schema-google"
 import { requireAuth, type AuthUser } from "@/lib/auth"
+import { activityActorName, recordActivityEvent } from "@/lib/activity-log"
 import { decrypt } from "@/lib/crypto"
 import { getCloudflareContext } from "@/lib/db"
 import { rebuildProjectContractBudget } from "@/lib/financials/contract-budget-store"
@@ -53,6 +60,13 @@ import {
   compareEstimateVersions,
   type EstimateVersionComparison,
 } from "@/lib/estimates/version-comparison"
+import {
+  estimateAcceptanceDate,
+  estimateAcceptanceMethodLabel,
+  isEstimateAcceptanceEvidenceMimeType,
+  isEstimateAcceptanceMethod,
+  type EstimateAcceptanceMethod,
+} from "@/lib/estimates/manual-acceptance"
 import { SheetsClient } from "@/lib/google/client/sheets-client"
 import {
   getGoogleConfig,
@@ -75,6 +89,14 @@ export type ProjectEstimateSummary = {
   readonly status: string
   readonly estimateDate: string | null
   readonly clientName: string | null
+  readonly clientSignerContactId: string | null
+  readonly clientSignerName: string | null
+  readonly clientSignerTitle: string | null
+  readonly clientSignerEmail: string | null
+  readonly companySignerContactId: string | null
+  readonly companySignerName: string | null
+  readonly companySignerTitle: string | null
+  readonly companySignerEmail: string | null
   readonly sourceWorkbookUrl: string | null
   readonly defaultTaxEntityId: string | null
   readonly defaultTaxCode: string | null
@@ -103,6 +125,10 @@ export type ProjectEstimateSummary = {
   readonly foxitEnvelopeId: string | null
   readonly signaturePackageUrl: string | null
   readonly signedAt: string | null
+  readonly acceptanceMethod: string | null
+  readonly acceptanceNote: string | null
+  readonly acceptanceEvidenceLabel: string | null
+  readonly acceptanceRecordedByName: string | null
   readonly acceptedAt: string | null
   readonly sageStatus: string
   readonly createdAt: string
@@ -188,6 +214,15 @@ export type ProjectEstimateAcknowledgementItem = {
   readonly sortOrder: number
 }
 
+export type ProjectEstimateSignerOption = {
+  readonly id: string
+  readonly name: string
+  readonly title: string | null
+  readonly companyName: string | null
+  readonly email: string | null
+  readonly contactType: string
+}
+
 export type ProjectEstimateWorkspace = {
   readonly canEdit: boolean
   readonly projectNumber: string | null
@@ -206,7 +241,21 @@ export type ProjectEstimateWorkspace = {
   readonly acknowledgementTemplates: readonly ProjectEstimateTermsOption[]
   readonly phaseDescriptions: readonly ProjectEstimatePhaseDescriptionItem[]
   readonly selectedAcknowledgements: readonly ProjectEstimateAcknowledgementItem[]
+  readonly signerContacts: readonly ProjectEstimateSignerOption[]
 }
+
+export type ProjectEstimateManualAcceptanceInput = {
+  readonly acceptanceMethod: string | null
+  readonly clientAcceptedAt: string | null
+  readonly evidenceUrl: string | null
+  readonly evidenceLabel: string | null
+  readonly acceptanceNote: string | null
+  readonly attested: boolean
+}
+
+export type ProjectEstimateUploadSessionResult =
+  | { readonly success: true; readonly uploadUrl: string }
+  | { readonly success: false; readonly error: string }
 
 export type ProjectEstimateVersionComparison = {
   readonly canEdit: boolean
@@ -223,6 +272,14 @@ export type ProjectEstimateHeaderInput = {
   readonly title: string | null
   readonly estimateDate: string | null
   readonly clientName: string | null
+  readonly clientSignerContactId: string | null
+  readonly clientSignerName: string | null
+  readonly clientSignerTitle: string | null
+  readonly clientSignerEmail: string | null
+  readonly companySignerContactId: string | null
+  readonly companySignerName: string | null
+  readonly companySignerTitle: string | null
+  readonly companySignerEmail: string | null
   readonly sourceWorkbookUrl: string | null
   readonly defaultTaxEntityId: string | null
   readonly termsTemplateId: string | null
@@ -364,6 +421,29 @@ function cleanText(value: string | null): string | null {
   return cleaned.length > 0 ? cleaned : null
 }
 
+async function validatedSignerContactId(
+  db: CompassDb,
+  projectId: string,
+  contactId: string | null,
+  label: string
+): Promise<string | null> {
+  const cleaned = cleanText(contactId)
+  if (!cleaned) return null
+  const rows = await db
+    .select({ id: projectContacts.id })
+    .from(projectContacts)
+    .where(
+      and(
+        eq(projectContacts.id, cleaned),
+        eq(projectContacts.projectId, projectId),
+        eq(projectContacts.active, true)
+      )
+    )
+    .limit(1)
+  if (!rows[0]) throw new Error(`Choose an active project contact for ${label}.`)
+  return cleaned
+}
+
 function requiredText(value: string | null, label: string): string {
   const cleaned = cleanText(value)
   if (!cleaned) throw new Error(`${label} is required.`)
@@ -392,6 +472,29 @@ function safeUrl(value: string | null): string | null {
   } catch {
     return null
   }
+}
+
+function safeEvidenceUrl(value: string | null): string | null {
+  const url = safeUrl(value)
+  if (!url) return null
+  return new URL(url).protocol === "https:" ? url : null
+}
+
+function limitedText(
+  value: string | null,
+  label: string,
+  maxLength: number,
+  required = false
+): string | null {
+  const cleaned = cleanText(value)
+  if (!cleaned) {
+    if (required) throw new Error(`${label} is required.`)
+    return null
+  }
+  if (cleaned.length > maxLength) {
+    throw new Error(`${label} must be ${maxLength} characters or fewer.`)
+  }
+  return cleaned
 }
 
 function templateDepartment(value: string | null): ProjectDepartment | null {
@@ -430,6 +533,14 @@ function estimateSummary(
     status: row.status,
     estimateDate: row.estimateDate,
     clientName: row.clientName,
+    clientSignerContactId: row.clientSignerContactId,
+    clientSignerName: row.clientSignerName,
+    clientSignerTitle: row.clientSignerTitle,
+    clientSignerEmail: row.clientSignerEmail,
+    companySignerContactId: row.companySignerContactId,
+    companySignerName: row.companySignerName,
+    companySignerTitle: row.companySignerTitle,
+    companySignerEmail: row.companySignerEmail,
     sourceWorkbookUrl: row.sourceWorkbookUrl,
     defaultTaxEntityId: row.defaultTaxEntityId,
     defaultTaxCode: row.defaultTaxCode,
@@ -460,6 +571,10 @@ function estimateSummary(
     foxitEnvelopeId: row.foxitEnvelopeId,
     signaturePackageUrl: row.signaturePackageUrl,
     signedAt: row.signedAt,
+    acceptanceMethod: row.acceptanceMethod,
+    acceptanceNote: row.acceptanceNote,
+    acceptanceEvidenceLabel: row.acceptanceEvidenceLabel,
+    acceptanceRecordedByName: row.acceptanceRecordedByName,
     acceptedAt: row.acceptedAt,
     sageStatus: row.sageStatus,
     createdAt: row.createdAt,
@@ -735,6 +850,7 @@ export async function getProjectEstimateWorkspace(
     templateRows,
     phaseRows,
     acknowledgementRows,
+    signerContactRows,
   ] =
     await Promise.all([
       selected
@@ -794,6 +910,29 @@ export async function getProjectEstimateWorkspace(
             .where(eq(projectEstimateAcknowledgements.estimateId, selected.id))
             .orderBy(asc(projectEstimateAcknowledgements.sortOrder))
         : Promise.resolve([]),
+      access.db
+        .select({
+          id: projectContacts.id,
+          name: projectContacts.displayName,
+          title: projectContacts.role,
+          companyName: projectContacts.companyName,
+          email: projectContacts.email,
+          contactType: projectContacts.contactType,
+          primaryContact: projectContacts.primaryContact,
+          sortOrder: projectContacts.sortOrder,
+        })
+        .from(projectContacts)
+        .where(
+          and(
+            eq(projectContacts.projectId, projectId),
+            eq(projectContacts.active, true)
+          )
+        )
+        .orderBy(
+          desc(projectContacts.primaryContact),
+          asc(projectContacts.sortOrder),
+          asc(projectContacts.displayName)
+        ),
     ])
 
   const databaseTemplates = templateRows.flatMap(
@@ -885,6 +1024,14 @@ export async function getProjectEstimateWorkspace(
       sourceUrl: row.sourceUrl,
       sortOrder: row.sortOrder,
     })),
+    signerContacts: signerContactRows.map((row) => ({
+      id: row.id,
+      name: row.name,
+      title: row.title,
+      companyName: row.companyName,
+      email: row.email,
+      contactType: row.contactType,
+    })),
   }
 }
 
@@ -903,6 +1050,25 @@ export async function createProjectEstimateDraft(
     const estimateNumber = `${access.projectNumber ?? "PROJECT"}-00`
     const id = crypto.randomUUID()
     const now = new Date().toISOString()
+    const contactRows = await access.db
+      .select()
+      .from(projectContacts)
+      .where(
+        and(
+          eq(projectContacts.projectId, projectId),
+          eq(projectContacts.active, true)
+        )
+      )
+      .orderBy(
+        desc(projectContacts.primaryContact),
+        asc(projectContacts.sortOrder)
+      )
+    const clientSigner = contactRows.find(
+      (contact) => contact.contactType === "owner"
+    )
+    const companySigner = contactRows.find(
+      (contact) => contact.contactType === "internal"
+    )
     await access.db.insert(projectEstimates).values({
       id,
       projectId,
@@ -911,6 +1077,14 @@ export async function createProjectEstimateDraft(
       title: defaultEstimateTitle(access.department),
       status: "draft",
       estimateDate: now.slice(0, 10),
+      clientSignerContactId: clientSigner?.id ?? null,
+      clientSignerName: clientSigner?.displayName ?? null,
+      clientSignerTitle: clientSigner?.role ?? null,
+      clientSignerEmail: clientSigner?.email ?? null,
+      companySignerContactId: companySigner?.id ?? null,
+      companySignerName: companySigner?.displayName ?? null,
+      companySignerTitle: companySigner?.role ?? null,
+      companySignerEmail: companySigner?.email ?? null,
       sourceSystem: "compass",
       createdBy: access.user.id,
       createdAt: now,
@@ -975,7 +1149,11 @@ export async function duplicateProjectEstimate(
         .prepare(
           `INSERT INTO project_estimates (
              id, project_id, estimate_number, version_number, title, status,
-             estimate_date, client_name, source_system, source_workbook_id,
+             estimate_date, client_name, client_signer_contact_id,
+             client_signer_name, client_signer_title, client_signer_email,
+             company_signer_contact_id, company_signer_name,
+             company_signer_title, company_signer_email,
+             source_system, source_workbook_id,
              source_workbook_url, source_revision, template_version_id,
              template_application_id, default_tax_entity_id, default_tax_code,
              default_tax_name, default_tax_rate_basis_points, terms_template_id,
@@ -992,7 +1170,11 @@ export async function duplicateProjectEstimate(
              created_by, created_at, updated_at
            )
            SELECT ?, project_id, estimate_number, ?, title, 'draft', ?,
-             client_name, 'compass_revision', source_workbook_id,
+             client_name, client_signer_contact_id, client_signer_name,
+             client_signer_title, client_signer_email,
+             company_signer_contact_id, company_signer_name,
+             company_signer_title, company_signer_email,
+             'compass_revision', source_workbook_id,
              source_workbook_url, ?, template_version_id,
              template_application_id, default_tax_entity_id, default_tax_code,
              default_tax_name, default_tax_rate_basis_points, terms_template_id,
@@ -1216,6 +1398,20 @@ export async function updateProjectEstimateHeader(
       cleanText(input.introductionText) ?? introductionTemplate?.body ?? null
     const closingText =
       cleanText(input.closingText) ?? closingTemplate?.body ?? null
+    const [clientSignerContactId, companySignerContactId] = await Promise.all([
+      validatedSignerContactId(
+        access.db,
+        projectId,
+        input.clientSignerContactId,
+        "the client signer"
+      ),
+      validatedSignerContactId(
+        access.db,
+        projectId,
+        input.companySignerContactId,
+        "the company representative"
+      ),
+    ])
     await access.db
       .update(projectEstimates)
       .set({
@@ -1223,6 +1419,38 @@ export async function updateProjectEstimateHeader(
         title: requiredText(input.title, "Estimate title"),
         estimateDate: requiredText(input.estimateDate, "Estimate date"),
         clientName: cleanText(input.clientName),
+        clientSignerContactId,
+        clientSignerName: limitedText(
+          input.clientSignerName,
+          "Client signer name",
+          200
+        ),
+        clientSignerTitle: limitedText(
+          input.clientSignerTitle,
+          "Client signer title",
+          200
+        ),
+        clientSignerEmail: limitedText(
+          input.clientSignerEmail,
+          "Client signer email",
+          320
+        ),
+        companySignerContactId,
+        companySignerName: limitedText(
+          input.companySignerName,
+          "Company representative name",
+          200
+        ),
+        companySignerTitle: limitedText(
+          input.companySignerTitle,
+          "Company representative title",
+          200
+        ),
+        companySignerEmail: limitedText(
+          input.companySignerEmail,
+          "Company representative email",
+          320
+        ),
         sourceWorkbookUrl: safeUrl(input.sourceWorkbookUrl),
         defaultTaxEntityId: taxEntity?.id ?? null,
         defaultTaxCode: taxEntity?.code ?? null,
@@ -2182,7 +2410,7 @@ export async function addProjectEstimateBasisDocument(
   }
 }
 
-export async function prepareProjectEstimateForFoxit(
+export async function prepareProjectEstimateForClientSignature(
   projectId: string,
   estimateId: string
 ): Promise<ProjectEstimateActionResult> {
@@ -2220,6 +2448,14 @@ export async function prepareProjectEstimateForFoxit(
     if (!cleanText(estimate.estimateDate)) {
       throw new Error("Add the estimate date before signature.")
     }
+    if (!cleanText(estimate.clientSignerName)) {
+      throw new Error("Choose or type the client signer before signature.")
+    }
+    if (!cleanText(estimate.companySignerName)) {
+      throw new Error(
+        "Choose or type the company representative before signature."
+      )
+    }
     const sourceCostCodes = [
       ...new Set(
         lines
@@ -2236,7 +2472,7 @@ export async function prepareProjectEstimateForFoxit(
     )
     if (missingCostCodes.length > 0) {
       throw new Error(
-        `${missingCostCodes.length} estimate cost codes require Sage mapping before Foxit handoff: ${missingCostCodes.join(", ")}.`
+        `${missingCostCodes.length} estimate cost codes require Sage mapping before signature handoff: ${missingCostCodes.join(", ")}.`
       )
     }
     if (!cleanText(estimate.contractTerms)) {
@@ -2256,6 +2492,14 @@ export async function prepareProjectEstimateForFoxit(
       introductionText: estimate.introductionText,
       contractTerms: estimate.contractTerms,
       closingText: estimate.closingText,
+      signers: {
+        clientName: estimate.clientSignerName,
+        clientTitle: estimate.clientSignerTitle,
+        clientEmail: estimate.clientSignerEmail,
+        companyName: estimate.companySignerName,
+        companyTitle: estimate.companySignerTitle,
+        companyEmail: estimate.companySignerEmail,
+      },
       overheadRateBasisPoints: estimate.overheadRateBasisPoints,
       marginRateBasisPoints: estimate.marginRateBasisPoints,
       contingencyRateBasisPoints: estimate.contingencyRateBasisPoints,
@@ -2305,7 +2549,7 @@ export async function prepareProjectEstimateForFoxit(
       .set({
         title: reportTitle,
         status: "signature_pending",
-        foxitStatus: "handoff_ready",
+        foxitStatus: "not_started",
         signatureRequestedAt: now,
         sourceHash,
         updatedAt: now,
@@ -2323,6 +2567,113 @@ export async function prepareProjectEstimateForFoxit(
   }
 }
 
+async function acceptProjectEstimate(input: {
+  readonly access: EstimateAccess
+  readonly estimate: typeof projectEstimates.$inferSelect
+  readonly acceptanceMethod: EstimateAcceptanceMethod
+  readonly evidenceUrl: string
+  readonly evidenceLabel: string
+  readonly acceptanceNote: string | null
+  readonly signedAt: string
+  readonly foxitStatus: string
+  readonly foxitEnvelopeId: string | null
+}): Promise<ProjectEstimateActionResult> {
+  const now = new Date().toISOString()
+  const recordedByName = activityActorName(input.access.user)
+
+  // A project has one accepted contractual baseline. Preserve old versions for
+  // audit while switching the baseline and its proof in one D1 batch.
+  await input.access.db.batch([
+    input.access.db
+      .update(projectEstimates)
+      .set({ status: "superseded", updatedAt: now })
+      .where(
+        and(
+          eq(projectEstimates.projectId, input.estimate.projectId),
+          eq(projectEstimates.status, "accepted"),
+          ne(projectEstimates.id, input.estimate.id)
+        )
+      ),
+    input.access.db
+      .update(projectEstimates)
+      .set({
+        status: "accepted",
+        foxitStatus: input.foxitStatus,
+        foxitEnvelopeId: input.foxitEnvelopeId,
+        signaturePackageUrl: input.evidenceUrl,
+        signedAt: input.signedAt,
+        acceptanceMethod: input.acceptanceMethod,
+        acceptanceNote: input.acceptanceNote,
+        acceptanceEvidenceLabel: input.evidenceLabel,
+        acceptanceRecordedByName: recordedByName,
+        acceptedAt: now,
+        acceptedBy: input.access.user.id,
+        sageStatus: "ready",
+        updatedAt: now,
+      })
+      .where(eq(projectEstimates.id, input.estimate.id)),
+  ])
+
+  const budget = await rebuildProjectContractBudget({
+    db: input.access.db,
+    projectId: input.estimate.projectId,
+    actorUserId: input.access.user.id,
+  })
+  if (!budget.success) {
+    return {
+      success: false,
+      error: `Estimate accepted, but the contract budget needs review: ${budget.error}`,
+    }
+  }
+
+  if (input.access.organizationId) {
+    await recordActivityEvent({
+      db: input.access.db,
+      organizationId: input.access.organizationId,
+      projectId: input.estimate.projectId,
+      actor: input.access.user,
+      category: "financial",
+      action: "estimate_client_acceptance_recorded",
+      entityType: "project_estimate",
+      entityId: input.estimate.id,
+      summary: `Recorded client acceptance for ${input.estimate.estimateNumber} via ${estimateAcceptanceMethodLabel(input.acceptanceMethod)}.`,
+      metadata: {
+        acceptanceMethod: input.acceptanceMethod,
+        acceptanceDate: input.signedAt.slice(0, 10),
+        estimateTotalCents: input.estimate.estimateTotalCents,
+      },
+      createdAt: now,
+    })
+  }
+
+  revalidateEstimate(input.estimate.projectId)
+  return { success: true, id: input.estimate.id }
+}
+
+async function signaturePendingEstimate(
+  access: EstimateAccess,
+  projectId: string,
+  estimateId: string
+): Promise<typeof projectEstimates.$inferSelect> {
+  const rows = await access.db
+    .select()
+    .from(projectEstimates)
+    .where(
+      and(
+        eq(projectEstimates.id, estimateId),
+        eq(projectEstimates.projectId, projectId)
+      )
+    )
+    .limit(1)
+  const estimate = rows[0]
+  if (!estimate || estimate.status !== "signature_pending") {
+    throw new Error(
+      "Lock the final estimate version for client signature before recording acceptance."
+    )
+  }
+  return estimate
+}
+
 export async function recordSignedProjectEstimate(
   projectId: string,
   estimateId: string,
@@ -2333,71 +2684,127 @@ export async function recordSignedProjectEstimate(
 ): Promise<ProjectEstimateActionResult> {
   try {
     const access = await estimateAccess(projectId, true)
-    const rows = await access.db
-      .select()
-      .from(projectEstimates)
-      .where(
-        and(
-          eq(projectEstimates.id, estimateId),
-          eq(projectEstimates.projectId, projectId)
-        )
-      )
-      .limit(1)
-    const estimate = rows[0]
-    if (!estimate || estimate.status !== "signature_pending") {
-      throw new Error("Only a signature-pending estimate can be accepted.")
-    }
-    const signaturePackageUrl = safeUrl(input.signedDocumentUrl)
+    const estimate = await signaturePendingEstimate(access, projectId, estimateId)
+    const signaturePackageUrl = safeEvidenceUrl(input.signedDocumentUrl)
     if (!signaturePackageUrl) {
-      throw new Error("Add the signed Foxit document link before acceptance.")
+      throw new Error("Add the completed Foxit document link before acceptance.")
     }
-    const now = new Date().toISOString()
-    // A project has one accepted contractual baseline. Preserve prior versions
-    // for the audit trail while ensuring downstream budgets resolve unambiguously.
-    await access.db
-      .update(projectEstimates)
-      .set({ status: "superseded", updatedAt: now })
-      .where(
-        and(
-          eq(projectEstimates.projectId, projectId),
-          eq(projectEstimates.status, "accepted"),
-          ne(projectEstimates.id, estimateId)
-        )
-      )
-      .run()
-    await access.db
-      .update(projectEstimates)
-      .set({
-        status: "accepted",
-        foxitStatus: "completed",
-        foxitEnvelopeId: cleanText(input.foxitEnvelopeId),
-        signaturePackageUrl,
-        signedAt: now,
-        acceptedAt: now,
-        acceptedBy: access.user.id,
-        sageStatus: "ready",
-        updatedAt: now,
-      })
-      .where(eq(projectEstimates.id, estimateId))
-      .run()
-    const budget = await rebuildProjectContractBudget({
-      db: access.db,
-      projectId,
-      actorUserId: access.user.id,
+    return acceptProjectEstimate({
+      access,
+      estimate,
+      acceptanceMethod: "foxit",
+      evidenceUrl: signaturePackageUrl,
+      evidenceLabel: "Completed Foxit estimate",
+      acceptanceNote: null,
+      signedAt: new Date().toISOString(),
+      foxitStatus: "completed",
+      foxitEnvelopeId: cleanText(input.foxitEnvelopeId),
     })
-    if (!budget.success) {
-      return {
-        success: false,
-        error: `Estimate accepted, but the contract budget needs review: ${budget.error}`,
-      }
-    }
-    revalidateEstimate(projectId)
-    return { success: true, id: estimateId }
   } catch (error) {
     return {
       success: false,
       error:
         error instanceof Error ? error.message : "Unable to accept estimate.",
+    }
+  }
+}
+
+export async function recordManualProjectEstimateAcceptance(
+  projectId: string,
+  estimateId: string,
+  input: ProjectEstimateManualAcceptanceInput
+): Promise<ProjectEstimateActionResult> {
+  try {
+    const access = await estimateAccess(projectId, true)
+    const estimate = await signaturePendingEstimate(access, projectId, estimateId)
+    if (!input.attested) {
+      throw new Error(
+        "Confirm that the document contains the required client and company representative signatures."
+      )
+    }
+    if (
+      !isEstimateAcceptanceMethod(input.acceptanceMethod) ||
+      input.acceptanceMethod === "foxit"
+    ) {
+      throw new Error("Choose how the client signed the estimate.")
+    }
+    const evidenceUrl = safeEvidenceUrl(input.evidenceUrl)
+    if (!evidenceUrl) {
+      throw new Error("Upload or link the saved signed document.")
+    }
+    const evidenceLabel = limitedText(
+      input.evidenceLabel,
+      "Signed document label",
+      200,
+      true
+    )
+    const acceptanceNote = limitedText(
+      input.acceptanceNote,
+      "Acceptance note",
+      2_000
+    )
+    if (!evidenceLabel) {
+      throw new Error("Signed document label is required.")
+    }
+
+    return acceptProjectEstimate({
+      access,
+      estimate,
+      acceptanceMethod: input.acceptanceMethod,
+      evidenceUrl,
+      evidenceLabel,
+      acceptanceNote,
+      signedAt: estimateAcceptanceDate(input.clientAcceptedAt),
+      foxitStatus: "not_applicable",
+      foxitEnvelopeId: null,
+    })
+  } catch (error) {
+    return {
+      success: false,
+      error:
+        error instanceof Error
+          ? error.message
+          : "Unable to record manual estimate acceptance.",
+    }
+  }
+}
+
+export async function getProjectEstimateAcceptanceUploadSessionUrl(
+  projectId: string,
+  fileName: string,
+  mimeType: string
+): Promise<ProjectEstimateUploadSessionResult> {
+  try {
+    const access = await estimateAccess(projectId, true)
+    const safeFileName = limitedText(fileName, "File name", 240, true)
+    const safeMimeType = limitedText(mimeType, "File type", 160, true)
+    if (!safeFileName || !safeMimeType) {
+      throw new Error("Choose a signed document to upload.")
+    }
+    if (!isEstimateAcceptanceEvidenceMimeType(safeMimeType)) {
+      throw new Error(
+        "Upload the signed document as a PDF, Word document, or image."
+      )
+    }
+    const projectRows = await access.db
+      .select({ googleDriveFolderId: projects.googleDriveFolderId })
+      .from(projects)
+      .where(eq(projects.id, projectId))
+      .limit(1)
+    const googleDriveFolderId = projectRows[0]?.googleDriveFolderId
+    if (!googleDriveFolderId) {
+      throw new Error(
+        "Connect the project Google Drive folder before uploading the signed document."
+      )
+    }
+    return getUploadSessionUrl(safeFileName, safeMimeType, googleDriveFolderId)
+  } catch (error) {
+    return {
+      success: false,
+      error:
+        error instanceof Error
+          ? error.message
+          : "Unable to start the signed document upload.",
     }
   }
 }
