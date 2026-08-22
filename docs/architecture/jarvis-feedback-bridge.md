@@ -458,6 +458,24 @@ acceptance, duplicate status, lifecycle status, notification count, and
 requester-update queuing. Compass still performs all organization,
 authorization, evidence, persistence, source-routing, and delivery checks.
 
+The durable private runtime consumes approved lifecycle handoffs separately
+from requester notifications. Install
+`scripts/jarvis-feedback-lifecycle-executor.py` beside the constrained helper
+under `~/.local/lib/compass/` and use the
+`ops/systemd/compass-jarvis-feedback-lifecycle-executor.service` user-unit
+template. The executor polls only the signed
+`feedback.lifecycle_requested` event filter, validates the same bounded
+non-feature payload, invokes the co-installed helper, and acknowledges the
+queue event only after the fixed lifecycle endpoint returns. Temporary
+network/provider failures return the event to `pending` with a retry time;
+malformed, feature, rejected, or otherwise terminal requests remain visible as
+`failed`. A service restart may repeat a request, but it repeats the same
+idempotency key and therefore receives the endpoint's duplicate result rather
+than creating a second lifecycle delivery. The executor has no command,
+target, header, file-transfer, D1, or browser inputs and never follows
+redirects. It uses the existing primary bridge secret and does not change the
+agent poller or requester notifier.
+
 To remove the operation, stop the scheduled caller, remove its invocation and
 temporary payload files, and restore the prior approved private helper. Do not
 delete Feedback Desk records or bypass the lifecycle endpoint. To rotate the
