@@ -24,7 +24,8 @@ import {
   normalizeSmsPhoneNumber,
 } from "@/lib/goto/numbers"
 import {
-  assertBridgeReservationOwnership,
+  assertBridgeReservationsOwnership,
+  runClaimFencedBridgeEffect,
   type BridgeReservationOwnership,
 } from "@/lib/jarvis/bridge-reservation"
 import {
@@ -64,6 +65,12 @@ type NotificationPreferenceState = {
   readonly poEnabled: boolean
   readonly timeZone: string
 }
+
+type NotificationPersistenceOptions = Readonly<{
+  swallowMissingTableError: boolean
+  bridgeReservation?: BridgeReservationOwnership
+  additionalBridgeReservations?: readonly BridgeReservationOwnership[]
+}>
 
 export type NotificationRecipientInput = {
   readonly userId: string
@@ -619,10 +626,7 @@ async function hasExistingSmsDeliveryForSource(
 
 async function persistNotificationEvent(
   input: CreateNotificationInput,
-  options: Readonly<{
-    swallowMissingTableError: boolean
-    bridgeReservation?: BridgeReservationOwnership
-  }> = {
+  options: NotificationPersistenceOptions = {
     swallowMissingTableError: true,
   },
 ): Promise<void> {
@@ -663,6 +667,10 @@ async function persistNotificationEvent(
     : null
   const occurredAt = new Date()
   const now = occurredAt.toISOString()
+  const bridgeReservations = [
+    ...(options.bridgeReservation ? [options.bridgeReservation] : []),
+    ...(options.additionalBridgeReservations ?? []),
+  ]
   const eventId = input.idempotencyKey === undefined
     ? crypto.randomUUID()
     : `notification:${input.idempotencyKey}`
@@ -682,9 +690,9 @@ async function persistNotificationEvent(
       createdBy: input.createdBy,
       createdAt: now,
     }).onConflictDoNothing()
-    if (options.bridgeReservation) {
+    if (bridgeReservations.length > 0) {
       await db.batch([
-        assertBridgeReservationOwnership(db, options.bridgeReservation),
+        assertBridgeReservationsOwnership(db, bridgeReservations),
         eventStatement,
       ])
     } else {
@@ -753,7 +761,7 @@ async function persistNotificationEvent(
         dismissedAt: null,
         createdAt: now,
       }).onConflictDoNothing()
-      const emailReservation = options.bridgeReservation && emailEnabled
+      const emailReservation = bridgeReservations.length > 0 && emailEnabled
         ? db.insert(notificationDeliveries).values({
             id: emailDeliveryId,
             eventId,
@@ -769,7 +777,7 @@ async function persistNotificationEvent(
             createdAt: now,
           }).onConflictDoNothing()
         : null
-      const smsReservation = options.bridgeReservation && smsEnabled
+      const smsReservation = bridgeReservations.length > 0 && smsEnabled
         ? db.insert(notificationDeliveries).values({
             id: smsDeliveryId,
             eventId,
@@ -785,7 +793,7 @@ async function persistNotificationEvent(
             createdAt: now,
           }).onConflictDoNothing()
         : null
-      const pushReservation = options.bridgeReservation && delivery.push
+      const pushReservation = bridgeReservations.length > 0 && delivery.push
         ? db.insert(notificationDeliveries).values({
             id: pushDeliveryId,
             eventId,
@@ -806,14 +814,14 @@ async function persistNotificationEvent(
         smsReservation,
         pushReservation,
       ].filter((statement) => statement !== null)
-      const recipientInserted = options.bridgeReservation
+      const recipientInserted = bridgeReservations.length > 0
         ? (
             await db.batch([
-              assertBridgeReservationOwnership(db, options.bridgeReservation),
+              assertBridgeReservationsOwnership(db, bridgeReservations),
               recipientStatement,
               ...guardedDeliveryStatements,
             ])
-          )[1]
+          )[bridgeReservations.length]
         : await recipientStatement.run()
       if (recipientInserted.meta.changes !== 1) {
         const requiredChannels: ("email" | "sms" | "push")[] = []
@@ -841,27 +849,39 @@ async function persistNotificationEvent(
         ) {
           throw new Error("Notification delivery is still in progress")
         }
-        if (options.bridgeReservation) {
-          await Promise.all(existingDeliveries
-            .filter((existing) => existing.status === "attempting")
-            .map((existing) => db.update(notificationDeliveries).set({
+        if (bridgeReservations.length > 0) {
+          for (const existing of existingDeliveries) {
+            if (existing.status !== "attempting") continue
+            const unknownDelivery = db.update(notificationDeliveries).set({
               status: "unknown_after_interruption",
               error:
                 "Provider outcome unknown after interruption; not retried to preserve at-most-once delivery",
               attemptedAt: new Date().toISOString(),
-            }).where(eq(notificationDeliveries.id, existing.id))))
+            }).where(and(
+              eq(notificationDeliveries.id, existing.id),
+              eq(notificationDeliveries.status, "attempting"),
+            ))
+            await db.batch([
+              assertBridgeReservationsOwnership(db, bridgeReservations),
+              unknownDelivery,
+            ])
+          }
         }
         continue
       }
 
       if (emailEnabled) {
         const emailAddress = recipient.googleEmail ?? recipient.email
-        const emailDelivery = await sendResendEmail(
-          env,
-          emailAddress,
-          input.title,
-          notificationEmailBody(input),
-          options.bridgeReservation ? emailDeliveryId : undefined,
+        const emailDelivery = await runClaimFencedBridgeEffect(
+          db,
+          bridgeReservations,
+          () => sendResendEmail(
+            env,
+            emailAddress,
+            input.title,
+            notificationEmailBody(input),
+            bridgeReservations.length > 0 ? emailDeliveryId : undefined,
+          ),
         )
         const deliveryResult = {
           status: emailDelivery.status,
@@ -871,10 +891,17 @@ async function persistNotificationEvent(
           error: emailDelivery.error,
           attemptedAt: new Date().toISOString(),
         }
-        if (options.bridgeReservation) {
-          await db.update(notificationDeliveries)
+        const emailUpdate = db.update(notificationDeliveries)
             .set(deliveryResult)
-            .where(eq(notificationDeliveries.id, emailDeliveryId))
+            .where(and(
+              eq(notificationDeliveries.id, emailDeliveryId),
+              eq(notificationDeliveries.status, "attempting"),
+            ))
+        if (bridgeReservations.length > 0) {
+          await db.batch([
+            assertBridgeReservationsOwnership(db, bridgeReservations),
+            emailUpdate,
+          ])
         } else {
           await db.insert(notificationDeliveries).values({
             id: emailDeliveryId,
@@ -888,26 +915,38 @@ async function persistNotificationEvent(
         }
       }
 
-      if (smsEnabled && preferences.smsPhoneNumber) {
-        const smsDelivery = await queueSmsDelivery(
-          env,
-          preferences.smsPhoneNumber,
-          input.title,
-          input.body,
-          projectNumber
+      const smsPhoneNumber = preferences.smsPhoneNumber
+      if (smsEnabled && smsPhoneNumber) {
+        const smsDelivery = await runClaimFencedBridgeEffect(
+          db,
+          bridgeReservations,
+          () => queueSmsDelivery(
+            env,
+            smsPhoneNumber,
+            input.title,
+            input.body,
+            projectNumber,
+          ),
         )
         const deliveryResult = {
           status: smsDelivery.status,
-          toAddress: preferences.smsPhoneNumber,
+          toAddress: smsPhoneNumber,
           provider: smsDelivery.provider,
           providerMessageId: smsDelivery.providerMessageId,
           error: smsDelivery.error,
           attemptedAt: new Date().toISOString(),
         }
-        if (options.bridgeReservation) {
-          await db.update(notificationDeliveries)
+        const smsUpdate = db.update(notificationDeliveries)
             .set(deliveryResult)
-            .where(eq(notificationDeliveries.id, smsDeliveryId))
+            .where(and(
+              eq(notificationDeliveries.id, smsDeliveryId),
+              eq(notificationDeliveries.status, "attempting"),
+            ))
+        if (bridgeReservations.length > 0) {
+          await db.batch([
+            assertBridgeReservationsOwnership(db, bridgeReservations),
+            smsUpdate,
+          ])
         } else {
           await db.insert(notificationDeliveries).values({
             id: smsDeliveryId,
@@ -925,16 +964,20 @@ async function persistNotificationEvent(
         let status = "pending_provider"
         let error: string | null = null
         try {
-          const result = await sendPushNotification(env, {
-            userId: recipient.userId,
-            title: input.title,
-            body: input.body,
-            data: {
-              url: input.href,
-              href: input.href,
-              eventType: input.eventType,
-            },
-          })
+          const result = await runClaimFencedBridgeEffect(
+            db,
+            bridgeReservations,
+            () => sendPushNotification(env, {
+              userId: recipient.userId,
+              title: input.title,
+              body: input.body,
+              data: {
+                url: input.href,
+                href: input.href,
+                eventType: input.eventType,
+              },
+            }),
+          )
           status =
             result.failed > 0
               ? "failed"
@@ -961,10 +1004,17 @@ async function persistNotificationEvent(
           error,
           attemptedAt: new Date().toISOString(),
         }
-        if (options.bridgeReservation) {
-          await db.update(notificationDeliveries)
+        const pushUpdate = db.update(notificationDeliveries)
             .set(deliveryResult)
-            .where(eq(notificationDeliveries.id, pushDeliveryId))
+            .where(and(
+              eq(notificationDeliveries.id, pushDeliveryId),
+              eq(notificationDeliveries.status, "attempting"),
+            ))
+        if (bridgeReservations.length > 0) {
+          await db.batch([
+            assertBridgeReservationsOwnership(db, bridgeReservations),
+            pushUpdate,
+          ])
         } else {
           await db.insert(notificationDeliveries).values({
             id: pushDeliveryId,
@@ -1021,12 +1071,17 @@ export async function createSystemNotificationEvent(
 export async function createStrictSystemNotificationEvent(
   input: Omit<CreateNotificationInput, "createdBy">,
   bridgeReservation?: BridgeReservationOwnership,
+  additionalBridgeReservations?: readonly BridgeReservationOwnership[],
 ): Promise<void> {
   await persistNotificationEvent(
     {
       ...input,
       createdBy: null,
     },
-    { swallowMissingTableError: false, bridgeReservation },
+    {
+      swallowMissingTableError: false,
+      bridgeReservation,
+      additionalBridgeReservations,
+    },
   )
 }
