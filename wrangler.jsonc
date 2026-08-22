@@ -7,6 +7,7 @@
 	"name": "compass",
 	"account_id": "8716137c706ea3d5c209b330084fa9e2",
 	"main": "custom-worker.ts",
+	"minify": true,
 	"compatibility_date": "2025-12-01",
 	"compatibility_flags": [
 		"nodejs_compat",

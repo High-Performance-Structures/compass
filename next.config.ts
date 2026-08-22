@@ -10,6 +10,15 @@ const deploymentId =
 const nextConfig: NextConfig = {
     allowedDevOrigins: ["127.0.0.1"],
     deploymentId,
+    // Keep the native SQLite development shim out of the production Worker.
+    turbopack: {
+        resolveAlias: {
+            "@/lib/cloudflare-context":
+                process.env.NODE_ENV === "production"
+                    ? "./src/lib/cloudflare-context.production.ts"
+                    : "./src/lib/cloudflare-context.ts",
+        },
+    },
     env: {
         NEXT_PUBLIC_COMPASS_DEPLOYMENT_ID: deploymentId ?? "development",
     },

@@ -38,7 +38,7 @@ export async function getCloudflareContext(): Promise<CompassCloudflareContext> 
 
 async function getLocalCloudflareContext(): Promise<CompassCloudflareContext> {
     const { getCloudflareContext: getLocalContext } = await import(
-        "./cloudflare-context"
+        "@/lib/cloudflare-context"
     )
     return getLocalContext()
 }
