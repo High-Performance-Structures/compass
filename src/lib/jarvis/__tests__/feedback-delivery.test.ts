@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest"
 
 import {
+  feedbackDeskOutboundPayload,
   feedbackDeliveryGraphEvent,
+  feedbackRequesterNotificationEvent,
   feedbackDeliveryGraphUpdate,
   shouldRequestFeedbackDeliveryGraph,
   type FeedbackDeliveryGraphItem,
@@ -15,6 +17,43 @@ const bug: FeedbackDeliveryGraphItem = {
 }
 
 describe("Feedback Desk delivery graph routing", () => {
+  it("keeps every outbound feedback payload to opaque operational fields", () => {
+    expect(feedbackDeskOutboundPayload({
+      id: bug.id,
+      kind: bug.kind,
+      status: "new",
+      notificationKind: null,
+    })).toEqual({
+      schemaVersion: 1,
+      feedbackDeskItemId: bug.id,
+      reference: `CFD-${bug.id}`,
+      kind: "bug",
+      status: "new",
+      notificationKind: null,
+    })
+  })
+
+  it("creates one opaque requester-notification outbox event per lifecycle retry", () => {
+    expect(feedbackRequesterNotificationEvent({
+      id: bug.id,
+      kind: bug.kind,
+      status: "triaged",
+      notificationKind: "status_changed",
+      idempotencyKey: "bridge-retry-1",
+    })).toEqual({
+      eventType: "feedback.requester_notification",
+      idempotencyKey: "feedback-requester-notification:bridge-retry-1",
+      payload: {
+        schemaVersion: 1,
+        feedbackDeskItemId: bug.id,
+        reference: `CFD-${bug.id}`,
+        kind: "bug",
+        status: "triaged",
+        notificationKind: "status_changed",
+      },
+    })
+  })
+
   it("requests one sanitized graph event when a bug becomes triaged", () => {
     expect(shouldRequestFeedbackDeliveryGraph(bug, "triaged")).toBe(true)
 

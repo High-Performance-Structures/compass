@@ -8,7 +8,13 @@ import {
   readBoundedBody,
   verifyJarvisRequest,
 } from "@/lib/jarvis/auth"
+import { knownFeedbackStatus } from "@/lib/jarvis/feedback-lifecycle"
 import { feedbackDeliveryGraphIsComplete } from "@/lib/jarvis/feedback-lifecycle-evidence"
+import {
+  applyFeedbackLifecycleUpdate,
+  processFeedbackRequesterNotification,
+} from "@/lib/jarvis/feedback-status-update"
+import { feedbackDeliveryGraphUpdate } from "@/lib/jarvis/feedback-delivery"
 import { jarvisPayloadAfterCompletion } from "@/lib/jarvis/visual-context"
 
 const acknowledgementSchema = z.object({
@@ -86,6 +92,7 @@ export async function POST(
     .select({
       id: jarvisBridgeEvents.id,
       eventType: jarvisBridgeEvents.eventType,
+      idempotencyKey: jarvisBridgeEvents.idempotencyKey,
       payload: jarvisBridgeEvents.payload,
       feedbackDeskItemId: jarvisBridgeEvents.feedbackDeskItemId,
     })
@@ -102,16 +109,38 @@ export async function POST(
     return Response.json({ error: "Event not found" }, { status: 404 })
   }
 
+  const feedbackItem = existing.feedbackDeskItemId
+    ? await db.select().from(feedbackDeskItems)
+      .where(eq(feedbackDeskItems.id, existing.feedbackDeskItemId))
+      .get()
+    : null
+
+  if (
+    existing.eventType === "feedback.status_changed" &&
+    existing.feedbackDeskItemId
+  ) {
+    try {
+      await processFeedbackRequesterNotification(db, {
+        id: existing.id,
+        idempotencyKey: existing.idempotencyKey,
+        feedbackDeskItemId: existing.feedbackDeskItemId,
+      })
+    } catch (error) {
+      return Response.json({
+        success: false,
+        retryable: true,
+        error: error instanceof Error
+          ? error.message
+          : "Requester notification persistence failed",
+      }, { status: 503 })
+    }
+  }
+
   if (
     existing.eventType === "feedback.delivery_requested" &&
     parsed.data.status === "completed"
   ) {
-    const item = existing.feedbackDeskItemId
-      ? await db.select().from(feedbackDeskItems)
-        .where(eq(feedbackDeskItems.id, existing.feedbackDeskItemId))
-        .get()
-      : null
-    if (!item || !feedbackDeliveryGraphIsComplete(item)) {
+    if (!feedbackItem || !feedbackDeliveryGraphIsComplete(feedbackItem)) {
       const retrySeconds = parsed.data.retryAfterSeconds ?? 60
       const retryAt = new Date(
         now.getTime() + retrySeconds * 1000,
@@ -160,14 +189,29 @@ export async function POST(
   if (
     existing.eventType === "feedback.delivery_requested" &&
     parsed.data.status === "failed" &&
-    existing.feedbackDeskItemId
+    feedbackItem
   ) {
-    await db.update(feedbackDeskItems).set({
-      deliveryGraphStatus: "failed",
-      deliveryGraphLastError: parsed.data.error ?? "Delivery worker failed",
-      deliveryGraphUpdatedAt: nowIso,
-      updatedAt: nowIso,
-    }).where(eq(feedbackDeskItems.id, existing.feedbackDeskItemId))
+    const failureIdempotencyKey = `feedback-delivery-failed:${id}`
+    const failureAlreadyReported = await db
+      .select({ id: jarvisBridgeEvents.id })
+      .from(jarvisBridgeEvents)
+      .where(eq(jarvisBridgeEvents.idempotencyKey, failureIdempotencyKey))
+      .get()
+    if (!failureAlreadyReported) {
+      const deliveryGraph = feedbackDeliveryGraphUpdate({
+          status: "failed",
+          error: parsed.data.error ?? "Delivery worker failed",
+      })
+      if (deliveryGraph) {
+        await applyFeedbackLifecycleUpdate(db, feedbackItem, {
+          status: knownFeedbackStatus(feedbackItem.status),
+          deliveryGraph,
+          deliveryRoute: "engineering",
+          actorSource: "jarvis",
+          idempotencyKey: failureIdempotencyKey,
+        })
+      }
+    }
   }
 
   return Response.json({ success: true })
