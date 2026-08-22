@@ -59,6 +59,8 @@ export function calculateEndDate(
 
 It walks forward from the start date, counting only days that aren't weekends or exception days. This means a 10-workday task starting on a Friday will end more than two calendar weeks later if there are holidays in between.
 
+Blank schedule items created in the manual form default to one workday, the smallest useful duration without making an assumption about the work. Template and import paths carry their own explicit workday counts and are not replaced by this UI default.
+
 The module also exports `countBusinessDays` (how many workdays between two dates) and `addBusinessDays` (move a date forward or backward by N business days). All three functions respect the project's workday exception calendar.
 
 
