@@ -19,7 +19,7 @@ describe("project estimate cost-code catalog", () => {
       },
     ])
 
-    expect(catalog).toEqual([
+    expect(catalog.filter((item) => item.sageMapped)).toEqual([
       expect.objectContaining({
         code: "01 71 13",
         sourceCostCode: "1711300.000",
@@ -57,8 +57,9 @@ describe("project estimate cost-code catalog", () => {
       ]
     )
 
-    expect(catalog).toHaveLength(1)
-    expect(catalog[0]).toMatchObject({
+    const mapped = catalog.filter((item) => item.sageMapped)
+    expect(mapped).toHaveLength(1)
+    expect(mapped[0]).toMatchObject({
       description: "Sage concrete",
       sourceCostCode: "03 31 00",
     })
@@ -80,7 +81,7 @@ describe("project estimate cost-code catalog", () => {
       },
     ])
 
-    expect(catalog).toEqual([])
+    expect(catalog.filter((item) => item.sageMapped)).toEqual([])
   })
 
   it("deduplicates the same named Sage item across project snapshots", () => {
@@ -91,6 +92,24 @@ describe("project estimate cost-code catalog", () => {
       divisionName: "General Requirements",
     }
 
-    expect(projectEstimateCostCodeCatalog([], [row, row])).toHaveLength(1)
+    expect(
+      projectEstimateCostCodeCatalog([], [row, row]).filter(
+        (item) => item.sageMapped
+      )
+    ).toHaveLength(1)
+  })
+
+  it("retains verified CSI-only choices and flags them as unmapped", () => {
+    const catalog = projectEstimateCostCodeCatalog([], [])
+
+    expect(catalog.find((item) => item.code === "01 00 00")).toMatchObject({
+      divisionCode: "01",
+      sageMapped: false,
+    })
+    expect(catalog.find((item) => item.code === "48 14 00")).toMatchObject({
+      divisionCode: "48",
+      sageMapped: false,
+    })
+    expect(catalog.some((item) => item.code === "33 12 16")).toBe(false)
   })
 })

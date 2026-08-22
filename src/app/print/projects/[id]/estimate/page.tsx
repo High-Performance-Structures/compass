@@ -24,6 +24,10 @@ function quantity(value: number): string {
   }).format(value)
 }
 
+function percent(basisPoints: number): string {
+  return `${(basisPoints / 100).toFixed(2)}%`
+}
+
 function estimateDate(value: string | null, createdAt: string): string {
   const dateValue = value ?? createdAt.slice(0, 10)
   const date = new Date(`${dateValue}T12:00:00`)
@@ -68,9 +72,13 @@ export default async function ProjectEstimatePrintPage({
     lines: workspace.lines,
     phaseDescriptions,
   })
-  const clientTotalCents = phases.reduce(
+  const clientSubtotalCents = phases.reduce(
     (total, phase) => total + phase.subtotalCents,
     0
+  )
+  const clientTotalCents = clientSubtotalCents + estimate.builderFeeCents
+  const builderFeeExclusions = phases.flatMap((phase) =>
+    phase.lines.filter((line) => !line.includeInBuilderFee)
   )
   return (
     <>
@@ -207,7 +215,12 @@ export default async function ProjectEstimatePrintPage({
                         {line.costCode}
                       </td>
                       <td className="py-2 pr-2 align-top">
-                        {line.description}
+                        <p>{line.description}</p>
+                        {!line.includeInBuilderFee && (
+                          <p className="mt-1 text-xs italic text-neutral-600">
+                            Included in project cost; excluded from builder-fee calculation.
+                          </p>
+                        )}
                       </td>
                       <td className="py-2 pr-2 text-right align-top">
                         {quantity(line.quantity)}
@@ -237,11 +250,56 @@ export default async function ProjectEstimatePrintPage({
         )}
 
         <section className="ml-auto mt-5 w-full max-w-sm text-sm">
+          <div className="flex justify-between border-t border-black pt-2">
+            <span>Project subtotal</span>
+            <span>{money(clientSubtotalCents)}</span>
+          </div>
+          {estimate.overheadRateBasisPoints > 0 && (
+            <div className="mt-1 flex justify-between">
+              <span>Company overhead ({percent(estimate.overheadRateBasisPoints)})</span>
+              <span>{money(estimate.overheadCents)}</span>
+            </div>
+          )}
+          {estimate.marginRateBasisPoints > 0 && (
+            <div className="mt-1 flex justify-between">
+              <span>Company margin ({percent(estimate.marginRateBasisPoints)})</span>
+              <span>{money(estimate.marginCents)}</span>
+            </div>
+          )}
+          {estimate.contingencyRateBasisPoints > 0 && (
+            <div className="mt-1 flex justify-between">
+              <span>Contingency ({percent(estimate.contingencyRateBasisPoints)})</span>
+              <span>{money(estimate.contingencyCents)}</span>
+            </div>
+          )}
+          {estimate.builderFeeCents > 0 && (
+            <div className="mt-1 flex justify-between font-semibold">
+              <span>Builder fee</span>
+              <span>{money(estimate.builderFeeCents)}</span>
+            </div>
+          )}
           <div className="flex justify-between border-t border-black pt-2 text-base font-bold">
             <span>Estimate total</span>
             <span>{money(clientTotalCents)}</span>
           </div>
         </section>
+
+        {builderFeeExclusions.length > 0 && (
+          <section className="mt-6 break-inside-avoid text-sm">
+            <h2 className="border-b pb-1 text-sm font-bold uppercase tracking-wide">
+              Builder-fee exclusions
+            </h2>
+            <p className="mt-2 text-xs text-neutral-600">
+              The following items remain part of the project subtotal but are
+              excluded from the overhead, margin, and contingency calculation.
+            </p>
+            <ul className="mt-2 list-disc space-y-1 pl-5">
+              {builderFeeExclusions.map((line) => (
+                <li key={line.id}>{line.costCode} · {line.description}</li>
+              ))}
+            </ul>
+          </section>
+        )}
 
         {workspace.basisDocuments.length > 0 && (
           <section className="mt-8 break-inside-avoid">

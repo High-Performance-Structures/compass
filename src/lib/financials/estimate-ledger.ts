@@ -25,19 +25,31 @@ export type EstimateLineCalculation = {
 }
 
 export type EstimateLedgerLine = EstimateLineCalculation & {
-  readonly id: string
+  readonly id: string | null
   readonly divisionCode: string
   readonly divisionName: string
   readonly costCode: string
   readonly description: string
   readonly ownerVisible: boolean
+  readonly includeInBuilderFee: boolean
   readonly sortOrder: number
+}
+
+export type EstimateBuilderFeeRates = {
+  readonly overheadRateBasisPoints: number
+  readonly marginRateBasisPoints: number
+  readonly contingencyRateBasisPoints: number
 }
 
 export type EstimateLedgerTotals = {
   readonly directCostCents: number
   readonly markupCents: number
   readonly taxCents: number
+  readonly builderFeeBaseCents: number
+  readonly overheadCents: number
+  readonly marginCents: number
+  readonly contingencyCents: number
+  readonly builderFeeCents: number
   readonly estimateTotalCents: number
 }
 
@@ -107,22 +119,59 @@ export function calculateEstimateLine(
 }
 
 export function calculateEstimateTotals(
-  lines: readonly EstimateLedgerLine[]
+  lines: readonly EstimateLedgerLine[],
+  builderFeeRates: EstimateBuilderFeeRates = {
+    overheadRateBasisPoints: 0,
+    marginRateBasisPoints: 0,
+    contingencyRateBasisPoints: 0,
+  }
 ): EstimateLedgerTotals {
-  return lines.reduce<EstimateLedgerTotals>(
+  const lineTotals = lines.reduce(
     (totals, line) => ({
       directCostCents: totals.directCostCents + line.directCostCents,
       markupCents: totals.markupCents + line.markupCents,
       taxCents: totals.taxCents + line.taxCents,
-      estimateTotalCents: totals.estimateTotalCents + line.lineTotalCents,
+      lineTotalCents: totals.lineTotalCents + line.lineTotalCents,
+      builderFeeBaseCents:
+        totals.builderFeeBaseCents +
+        (line.includeInBuilderFee ? line.lineTotalCents : 0),
     }),
     {
       directCostCents: 0,
       markupCents: 0,
       taxCents: 0,
-      estimateTotalCents: 0,
+      lineTotalCents: 0,
+      builderFeeBaseCents: 0,
     }
   )
+  const overheadCents = safeInteger(
+    (lineTotals.builderFeeBaseCents *
+      safeRate(builderFeeRates.overheadRateBasisPoints)) /
+      10_000
+  )
+  const marginCents = safeInteger(
+    (lineTotals.builderFeeBaseCents *
+      safeRate(builderFeeRates.marginRateBasisPoints)) /
+      10_000
+  )
+  const contingencyCents = safeInteger(
+    (lineTotals.builderFeeBaseCents *
+      safeRate(builderFeeRates.contingencyRateBasisPoints)) /
+      10_000
+  )
+  const builderFeeCents = overheadCents + marginCents + contingencyCents
+
+  return {
+    directCostCents: lineTotals.directCostCents,
+    markupCents: lineTotals.markupCents,
+    taxCents: lineTotals.taxCents,
+    builderFeeBaseCents: lineTotals.builderFeeBaseCents,
+    overheadCents,
+    marginCents,
+    contingencyCents,
+    builderFeeCents,
+    estimateTotalCents: lineTotals.lineTotalCents + builderFeeCents,
+  }
 }
 
 export function isEstimateStatus(value: string): value is EstimateStatus {
@@ -275,6 +324,9 @@ export async function estimateSourceHash(input: {
   readonly introductionText: string | null
   readonly contractTerms: string | null
   readonly closingText: string | null
+  readonly overheadRateBasisPoints: number
+  readonly marginRateBasisPoints: number
+  readonly contingencyRateBasisPoints: number
   readonly lines: readonly {
     readonly id: string
     readonly divisionCode: string
@@ -290,6 +342,7 @@ export async function estimateSourceHash(input: {
     readonly taxRateBasisPoints: number
     readonly lineTotalCents: number
     readonly ownerVisible: boolean
+    readonly includeInBuilderFee: boolean
     readonly sortOrder: number
   }[]
   readonly basisDocuments: readonly {
@@ -338,6 +391,9 @@ export async function estimateSourceHash(input: {
       introductionText: input.introductionText,
       contractTerms: input.contractTerms,
       closingText: input.closingText,
+      overheadRateBasisPoints: input.overheadRateBasisPoints,
+      marginRateBasisPoints: input.marginRateBasisPoints,
+      contingencyRateBasisPoints: input.contingencyRateBasisPoints,
       lines,
       basisDocuments,
       phaseDescriptions,

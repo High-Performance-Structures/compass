@@ -20,6 +20,7 @@ import {
   type ContractAdjustment,
   type EstimateLedgerLine,
 } from "@/lib/financials/estimate-ledger"
+import { CONTRACT_ADJUSTMENT_COST_CODES } from "@/lib/financials/project-totals-import"
 
 export type ContractBudgetRebuildResult =
   | {
@@ -53,8 +54,37 @@ function estimateLedgerLine(
     taxCents: row.taxCents,
     lineTotalCents: row.lineTotalCents,
     ownerVisible: row.ownerVisible,
+    includeInBuilderFee: row.includeInBuilderFee,
     sortOrder: row.sortOrder,
   }
+}
+
+function builderFeeLedgerLines(
+  estimate: typeof projectEstimates.$inferSelect
+): readonly EstimateLedgerLine[] {
+  const amounts = [
+    estimate.overheadCents,
+    estimate.marginCents,
+    estimate.contingencyCents,
+  ]
+  return CONTRACT_ADJUSTMENT_COST_CODES.flatMap((item, index) => {
+    const amount = amounts[index] ?? 0
+    if (amount === 0) return []
+    return [{
+      id: null,
+      divisionCode: "99",
+      divisionName: "Builder Fee",
+      costCode: item.value,
+      description: item.description,
+      directCostCents: amount,
+      markupCents: 0,
+      taxCents: 0,
+      lineTotalCents: amount,
+      ownerVisible: true,
+      includeInBuilderFee: false,
+      sortOrder: 100_000 + index,
+    }]
+  })
 }
 
 export async function rebuildProjectContractBudget(input: {
@@ -177,7 +207,10 @@ export async function rebuildProjectContractBudget(input: {
   const revisionId = crypto.randomUUID()
   const now = new Date().toISOString()
   const budget = buildContractBudget({
-    estimateLines: estimateRows.map(estimateLedgerLine),
+    estimateLines: [
+      ...estimateRows.map(estimateLedgerLine),
+      ...builderFeeLedgerLines(accepted),
+    ],
     adjustments,
   })
 

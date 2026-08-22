@@ -134,6 +134,7 @@ export function buildEstimateTemplateApplication(input: {
           taxCents: line.taxCents,
           lineTotalCents: line.lineTotalCents,
           ownerVisible: line.ownerVisible,
+          includeInBuilderFee: true,
           sortOrder: line.sortOrder,
         }))
       ),

@@ -11,7 +11,7 @@ import {
   type SchedulePrintItem,
 } from "@/components/schedule/schedule-print-document"
 
-globalThis.IS_REACT_ACT_ENVIRONMENT = true
+Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 
 vi.mock("@/lib/print/ios-print", () => ({
   requiresSynchronousPrint: () => false,

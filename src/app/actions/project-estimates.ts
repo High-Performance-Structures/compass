@@ -90,6 +90,14 @@ export type ProjectEstimateSummary = {
   readonly directCostCents: number
   readonly markupCents: number
   readonly taxCents: number
+  readonly builderFeeBaseCents: number
+  readonly overheadRateBasisPoints: number
+  readonly overheadCents: number
+  readonly marginRateBasisPoints: number
+  readonly marginCents: number
+  readonly contingencyRateBasisPoints: number
+  readonly contingencyCents: number
+  readonly builderFeeCents: number
   readonly estimateTotalCents: number
   readonly foxitStatus: string
   readonly foxitEnvelopeId: string | null
@@ -123,6 +131,7 @@ export type ProjectEstimateLineItem = {
   readonly taxCents: number
   readonly lineTotalCents: number
   readonly ownerVisible: boolean
+  readonly includeInBuilderFee: boolean
   readonly sortOrder: number
 }
 
@@ -144,6 +153,7 @@ export type ProjectEstimateCostCodeOption = {
   readonly divisionCode: string
   readonly divisionName: string
   readonly divisionLabel: string
+  readonly sageMapped: boolean
 }
 
 export type ProjectEstimateTaxOption = {
@@ -234,7 +244,14 @@ export type ProjectEstimateLineInput = {
   readonly taxable: boolean
   readonly taxEntityId: string | null
   readonly ownerVisible: boolean
+  readonly includeInBuilderFee: boolean
   readonly insertAfterLineId: string | null
+}
+
+export type ProjectEstimateBuilderFeeInput = {
+  readonly overheadPercent: number | null
+  readonly marginPercent: number | null
+  readonly contingencyPercent: number | null
 }
 
 export type ProjectEstimateBasisInput = {
@@ -353,6 +370,18 @@ function requiredText(value: string | null, label: string): string {
   return cleaned
 }
 
+function rateBasisPoints(value: number | null, label: string): number {
+  const basisPoints = Math.round((value ?? 0) * 100)
+  if (
+    !Number.isFinite(value ?? 0) ||
+    basisPoints < 0 ||
+    basisPoints > 1_000_000
+  ) {
+    throw new Error(`${label} must be between 0% and 10,000%.`)
+  }
+  return basisPoints
+}
+
 function safeUrl(value: string | null): string | null {
   const cleaned = cleanText(value)
   if (!cleaned) return null
@@ -418,6 +447,14 @@ function estimateSummary(
     directCostCents: row.directCostCents,
     markupCents: row.markupCents,
     taxCents: row.taxCents,
+    builderFeeBaseCents: row.builderFeeBaseCents,
+    overheadRateBasisPoints: row.overheadRateBasisPoints,
+    overheadCents: row.overheadCents,
+    marginRateBasisPoints: row.marginRateBasisPoints,
+    marginCents: row.marginCents,
+    contingencyRateBasisPoints: row.contingencyRateBasisPoints,
+    contingencyCents: row.contingencyCents,
+    builderFeeCents: row.builderFeeCents,
     estimateTotalCents: row.estimateTotalCents,
     foxitStatus: row.foxitStatus,
     foxitEnvelopeId: row.foxitEnvelopeId,
@@ -455,6 +492,7 @@ function estimateLineItem(
     taxCents: row.taxCents,
     lineTotalCents: row.lineTotalCents,
     ownerVisible: row.ownerVisible,
+    includeInBuilderFee: row.includeInBuilderFee,
     sortOrder: row.sortOrder,
   }
 }
@@ -473,8 +511,37 @@ function ledgerLine(
     taxCents: row.taxCents,
     lineTotalCents: row.lineTotalCents,
     ownerVisible: row.ownerVisible,
+    includeInBuilderFee: row.includeInBuilderFee,
     sortOrder: row.sortOrder,
   }
+}
+
+function builderFeeComparisonLines(
+  estimate: ProjectEstimateSummary
+): readonly {
+  readonly divisionCode: string
+  readonly divisionName: string
+  readonly costCode: string
+  readonly description: string
+  readonly lineTotalCents: number
+}[] {
+  const amounts = [
+    estimate.overheadCents,
+    estimate.marginCents,
+    estimate.contingencyCents,
+  ]
+  return CONTRACT_ADJUSTMENT_COST_CODES.flatMap((item, index) => {
+    const amount = amounts[index] ?? 0
+    return amount === 0
+      ? []
+      : [{
+          divisionCode: "99",
+          divisionName: "Builder Fee",
+          costCode: item.value,
+          description: item.description,
+          lineTotalCents: amount,
+        }]
+  })
 }
 
 function activeEstimate(
@@ -538,11 +605,25 @@ async function refreshEstimateTotals(
   estimateId: string,
   now: string
 ): Promise<void> {
-  const rows = await db
-    .select()
-    .from(projectEstimateLines)
-    .where(eq(projectEstimateLines.estimateId, estimateId))
-  const totals = calculateEstimateTotals(rows.map(ledgerLine))
+  const [rows, estimateRows] = await Promise.all([
+    db
+      .select()
+      .from(projectEstimateLines)
+      .where(eq(projectEstimateLines.estimateId, estimateId)),
+    db
+      .select({
+        overheadRateBasisPoints: projectEstimates.overheadRateBasisPoints,
+        marginRateBasisPoints: projectEstimates.marginRateBasisPoints,
+        contingencyRateBasisPoints:
+          projectEstimates.contingencyRateBasisPoints,
+      })
+      .from(projectEstimates)
+      .where(eq(projectEstimates.id, estimateId))
+      .limit(1),
+  ])
+  const rates = estimateRows[0]
+  if (!rates) throw new Error("Estimate not found.")
+  const totals = calculateEstimateTotals(rows.map(ledgerLine), rates)
   await db
     .update(projectEstimates)
     .set({ ...totals, updatedAt: now })
@@ -571,10 +652,7 @@ async function loadProjectEstimateCostCodes(
       })
       .from(projectBudgetLines)
       .where(
-        and(
-          eq(projectBudgetLines.sourceSystem, "sage_read_snapshot"),
-          like(projectBudgetLines.description, "01 %")
-        )
+        eq(projectBudgetLines.sourceSystem, "sage_read_snapshot")
       )
       .groupBy(
         projectBudgetLines.sourceSystem,
@@ -774,19 +852,14 @@ export async function getProjectEstimateWorkspace(
     costCodes: [
       ...estimateCostCodes.map((row) => ({
         value: row.code,
-        label: row.displayLabel,
+        label: row.sageMapped
+          ? row.displayLabel
+          : `${row.displayLabel} · Sage mapping required`,
         description: row.description,
         divisionCode: row.divisionCode,
         divisionName: row.divisionDescription,
         divisionLabel: row.divisionDisplayLabel,
-      })),
-      ...CONTRACT_ADJUSTMENT_COST_CODES.map((item) => ({
-        value: item.value,
-        label: `${item.value} · ${item.description} · contract adjustment — not Sage mapped`,
-        description: item.description,
-        divisionCode: "99",
-        divisionName: "Contract Adjustments",
-        divisionLabel: "99 · Contract Adjustments",
+        sageMapped: row.sageMapped,
       })),
     ],
     taxEntities: taxRows.map((row) => ({
@@ -908,7 +981,11 @@ export async function duplicateProjectEstimate(
              default_tax_name, default_tax_rate_basis_points, terms_template_id,
              contract_terms, introduction_template_id, introduction_text,
              closing_template_id, closing_text, client_report_mode,
-             direct_cost_cents, markup_cents, tax_cents, estimate_total_cents,
+             direct_cost_cents, markup_cents, tax_cents,
+             builder_fee_base_cents, overhead_rate_basis_points,
+             overhead_cents, margin_rate_basis_points, margin_cents,
+             contingency_rate_basis_points, contingency_cents,
+             builder_fee_cents, estimate_total_cents,
              foxit_status, foxit_envelope_id, signature_package_url,
              signature_requested_at, signed_at, accepted_at, accepted_by,
              sage_status, sage_record_id, last_sage_sync_at, source_hash,
@@ -921,7 +998,11 @@ export async function duplicateProjectEstimate(
              default_tax_name, default_tax_rate_basis_points, terms_template_id,
              contract_terms, introduction_template_id, introduction_text,
              closing_template_id, closing_text, client_report_mode,
-             direct_cost_cents, markup_cents, tax_cents, estimate_total_cents,
+             direct_cost_cents, markup_cents, tax_cents,
+             builder_fee_base_cents, overhead_rate_basis_points,
+             overhead_cents, margin_rate_basis_points, margin_cents,
+             contingency_rate_basis_points, contingency_cents,
+             builder_fee_cents, estimate_total_cents,
              'not_started', NULL, NULL, NULL, NULL, NULL, NULL,
              'not_ready', NULL, NULL, NULL, ?, ?, ?
            FROM project_estimates
@@ -946,14 +1027,16 @@ export async function duplicateProjectEstimate(
              specifications, quantity, unit, unit_cost_cents, direct_cost_cents,
              markup_rate_basis_points, markup_cents, taxable, tax_entity_id,
              tax_code, tax_name, tax_rate_basis_points, tax_cents,
-             line_total_cents, owner_visible, sort_order, created_at, updated_at
+             line_total_cents, owner_visible, include_in_builder_fee,
+             sort_order, created_at, updated_at
            )
            SELECT lower(hex(randomblob(16))), project_id, ?, template_line_id,
              division_code, division_name, cost_code, cost_code_name,
              description, specifications, quantity, unit, unit_cost_cents,
              direct_cost_cents, markup_rate_basis_points, markup_cents, taxable,
              tax_entity_id, tax_code, tax_name, tax_rate_basis_points, tax_cents,
-             line_total_cents, owner_visible, sort_order, ?, ?
+             line_total_cents, owner_visible, include_in_builder_fee,
+             sort_order, ?, ?
            FROM project_estimate_lines
            WHERE estimate_id = ? AND project_id = ?`
         )
@@ -1065,12 +1148,14 @@ export async function getProjectEstimateVersionComparison(
   const comparison =
     baseEstimate && revisedEstimate
       ? compareEstimateVersions({
-          baseLines: lineRows.filter(
-            (line) => line.estimateId === baseEstimate.id
-          ),
-          revisedLines: lineRows.filter(
-            (line) => line.estimateId === revisedEstimate.id
-          ),
+          baseLines: [
+            ...lineRows.filter((line) => line.estimateId === baseEstimate.id),
+            ...builderFeeComparisonLines(baseEstimate),
+          ],
+          revisedLines: [
+            ...lineRows.filter((line) => line.estimateId === revisedEstimate.id),
+            ...builderFeeComparisonLines(revisedEstimate),
+          ],
         })
       : null
 
@@ -1441,11 +1526,11 @@ export async function importProjectEstimateFromGoogleSheet(
     const parsed = parseProjectTotalsRows(rows)
     if (!parsed.success) throw new Error(parsed.error)
 
-    const sourceCostCodes = parsed.lines
-      .filter((line) => line.divisionCode !== "99")
-      .map((line) => line.costCode)
+    const sourceCostCodes = parsed.lines.map((line) => line.costCode)
     const costCodeCatalog = await loadProjectEstimateCostCodes(access.db)
-    const activeCostCodes = new Set(costCodeCatalog.map((row) => row.code))
+    const activeCostCodes = new Set(
+      costCodeCatalog.filter((row) => row.sageMapped).map((row) => row.code)
+    )
     const missingCostCodes = sourceCostCodes.filter(
       (code) => !activeCostCodes.has(code)
     )
@@ -1482,6 +1567,7 @@ export async function importProjectEstimateFromGoogleSheet(
         taxCents: 0,
         lineTotalCents: line.amountCents,
         ownerVisible: true,
+        includeInBuilderFee: true,
         sortOrder: line.sortOrder,
         createdAt: now,
         updatedAt: now,
@@ -1506,9 +1592,20 @@ export async function importProjectEstimateFromGoogleSheet(
           sourceSystem: "google_csi_project_totals",
           sourceWorkbookId: spreadsheetId,
           sourceRevision: `Project Totals imported ${now}`,
-          directCostCents: parsed.displayedTotalCents,
+          directCostCents: parsed.projectSubtotalCents,
           markupCents: 0,
           taxCents: 0,
+          builderFeeBaseCents: parsed.projectSubtotalCents,
+          overheadRateBasisPoints: parsed.overheadRateBasisPoints,
+          overheadCents: parsed.overheadCents,
+          marginRateBasisPoints: parsed.marginRateBasisPoints,
+          marginCents: parsed.marginCents,
+          contingencyRateBasisPoints: parsed.contingencyRateBasisPoints,
+          contingencyCents: parsed.contingencyCents,
+          builderFeeCents:
+            parsed.overheadCents +
+            parsed.marginCents +
+            parsed.contingencyCents,
           estimateTotalCents: parsed.displayedTotalCents,
           updatedAt: now,
         })
@@ -1540,7 +1637,11 @@ export async function importPlanSwiftEstimateLines(
 ): Promise<ProjectEstimatePlanSwiftImportResult> {
   try {
     const access = await estimateAccess(projectId, true)
-    await requireEditableEstimate(access.db, projectId, estimateId)
+    const estimate = await requireEditableEstimate(
+      access.db,
+      projectId,
+      estimateId
+    )
     if (input.lines.length === 0) {
       throw new Error("Select at least one PlanSwift row to import.")
     }
@@ -1606,26 +1707,18 @@ export async function importPlanSwiftEstimateLines(
       }
     })
 
-    const contractAdjustments = new Map<
-      string,
-      (typeof CONTRACT_ADJUSTMENT_COST_CODES)[number]
-    >()
-    for (const item of CONTRACT_ADJUSTMENT_COST_CODES) {
-      contractAdjustments.set(item.value, item)
-    }
     const sourceCostCodes = [...new Set(normalizedLines.map((line) => line.costCode))]
     const costRows = await loadProjectEstimateCostCodes(access.db)
     const costCodeMap = new Map(
       costRows.map((row) => [row.code, row])
     )
     const unknownCostCodes = sourceCostCodes.filter(
-      (costCode) =>
-        !costCodeMap.has(costCode) && !contractAdjustments.has(costCode)
+      (costCode) => !costCodeMap.has(costCode)
     )
     if (unknownCostCodes.length > 0) {
       const examples = unknownCostCodes.slice(0, 5).join(", ")
       throw new Error(
-        `Map every row to an active Sage cost code before importing. Not found: ${examples}.`
+        `Map every row to a verified CSI/Sage catalog code before importing. Not found: ${examples}.`
       )
     }
 
@@ -1645,7 +1738,7 @@ export async function importPlanSwiftEstimateLines(
     const now = new Date().toISOString()
     const lineValues = normalizedLines.map((line, index) => {
       const cost = costCodeMap.get(line.costCode)
-      const adjustment = contractAdjustments.get(line.costCode)
+      if (!cost) throw new Error(`Cost code ${line.costCode} is unavailable.`)
       const sourceNote = `PlanSwift source: ${sourceFileName} · ${sourceSheetName} · row ${line.rowNumber}`
       const calculation = calculateEstimateLine({
         quantity: line.quantity,
@@ -1659,11 +1752,10 @@ export async function importPlanSwiftEstimateLines(
         projectId,
         estimateId,
         templateLineId: null,
-        divisionCode: cost?.divisionCode ?? "99",
-        divisionName: cost?.divisionDescription ?? "Contract Adjustments",
-        costCode: cost?.code ?? adjustment?.value ?? line.costCode,
-        costCodeName:
-          cost?.description ?? adjustment?.description ?? line.costCode,
+        divisionCode: cost.divisionCode,
+        divisionName: cost.divisionDescription,
+        costCode: cost.code,
+        costCodeName: cost.description,
         description: line.description,
         specifications: [line.notes, sourceNote].filter(Boolean).join("\n"),
         quantity: line.quantity,
@@ -1680,15 +1772,20 @@ export async function importPlanSwiftEstimateLines(
         taxCents: calculation.taxCents,
         lineTotalCents: calculation.lineTotalCents,
         ownerVisible: true,
+        includeInBuilderFee: true,
         sortOrder: priorSortOrder + index + 1,
         createdAt: now,
         updatedAt: now,
       }
     })
-    const totals = calculateEstimateTotals([
-      ...retainedRows.map(ledgerLine),
-      ...lineValues.map(ledgerLine),
-    ])
+    const totals = calculateEstimateTotals(
+      [...retainedRows.map(ledgerLine), ...lineValues.map(ledgerLine)],
+      {
+        overheadRateBasisPoints: estimate.overheadRateBasisPoints,
+        marginRateBasisPoints: estimate.marginRateBasisPoints,
+        contingencyRateBasisPoints: estimate.contingencyRateBasisPoints,
+      }
+    )
     // D1 permits at most 100 bound parameters per statement. Each estimate
     // line binds 27 columns, so three rows keep every insert below the limit.
     const firstChunk = lineValues.slice(0, 3)
@@ -1760,15 +1857,10 @@ export async function saveProjectEstimateLine(
       estimateId
     )
     const costCode = requiredText(input.costCode, "Cost code")
-    const contractAdjustment = CONTRACT_ADJUSTMENT_COST_CODES.find(
-      (item) => item.value === costCode
-    )
-    const costRows = contractAdjustment
-      ? []
-      : await loadProjectEstimateCostCodes(access.db)
+    const costRows = await loadProjectEstimateCostCodes(access.db)
     const cost = costRows.find((row) => row.code === costCode)
-    if (!cost && !contractAdjustment) {
-      throw new Error("Choose an active Sage cost code.")
+    if (!cost) {
+      throw new Error("Choose a verified CSI/Sage catalog cost code.")
     }
     const taxEntityId = cleanText(input.taxEntityId) ?? estimate.defaultTaxEntityId
     const taxRows = taxEntityId
@@ -1808,11 +1900,10 @@ export async function saveProjectEstimateLine(
           .where(eq(projectEstimateLines.estimateId, estimateId))
           .orderBy(desc(projectEstimateLines.sortOrder))
     const values = {
-      divisionCode: cost?.divisionCode ?? "99",
-      divisionName: cost?.divisionDescription ?? "Contract Adjustments",
-      costCode: cost?.code ?? contractAdjustment?.value ?? costCode,
-      costCodeName:
-        cost?.description ?? contractAdjustment?.description ?? costCode,
+      divisionCode: cost.divisionCode,
+      divisionName: cost.divisionDescription,
+      costCode: cost.code,
+      costCodeName: cost.description,
       description: requiredText(input.description, "Description"),
       specifications: cleanText(input.specifications),
       quantity,
@@ -1826,6 +1917,7 @@ export async function saveProjectEstimateLine(
       taxName: tax?.name ?? null,
       taxRateBasisPoints: tax?.rateBasisPoints ?? 0,
       ownerVisible: input.ownerVisible,
+      includeInBuilderFee: input.includeInBuilderFee,
       updatedAt: now,
     }
     if (lineId) {
@@ -1887,6 +1979,135 @@ export async function saveProjectEstimateLine(
       success: false,
       error:
         error instanceof Error ? error.message : "Unable to save estimate line.",
+    }
+  }
+}
+
+export async function applyProjectEstimateLineMarkup(
+  projectId: string,
+  estimateId: string,
+  markupPercent: number | null
+): Promise<ProjectEstimateActionResult> {
+  try {
+    const access = await estimateAccess(projectId, true)
+    await requireEditableEstimate(access.db, projectId, estimateId)
+    const markupRateBasisPoints = rateBasisPoints(markupPercent, "Line markup")
+    const rows = await access.db
+      .select()
+      .from(projectEstimateLines)
+      .where(eq(projectEstimateLines.estimateId, estimateId))
+    if (rows.length === 0) throw new Error("Add an estimate line first.")
+
+    const now = new Date().toISOString()
+    const legacyAdjustmentCodes = new Set<string>(
+      CONTRACT_ADJUSTMENT_COST_CODES.map((item) => item.value)
+    )
+    const statements = rows
+      .filter((row) => !legacyAdjustmentCodes.has(row.costCode))
+      .map((row) => {
+        const calculation = calculateEstimateLine({
+          quantity: row.quantity,
+          unitCostCents: row.unitCostCents,
+          markupRateBasisPoints,
+          taxable: row.taxable,
+          taxRateBasisPoints: row.taxRateBasisPoints,
+        })
+        return access.rawDb
+          .prepare(
+            `UPDATE project_estimate_lines
+             SET markup_rate_basis_points = ?, direct_cost_cents = ?,
+               markup_cents = ?, tax_cents = ?, line_total_cents = ?,
+               updated_at = ?
+             WHERE id = ? AND estimate_id = ? AND project_id = ?`
+          )
+          .bind(
+            markupRateBasisPoints,
+            calculation.directCostCents,
+            calculation.markupCents,
+            calculation.taxCents,
+            calculation.lineTotalCents,
+            now,
+            row.id,
+            estimateId,
+            projectId
+          )
+      })
+    if (statements.length === 0) {
+      throw new Error("Add a CSI cost-code line before applying markup.")
+    }
+    for (let index = 0; index < statements.length; index += 50) {
+      const results = await access.rawDb.batch(
+        statements.slice(index, index + 50)
+      )
+      if (results.some((result) => !result.success)) {
+        throw new Error("The line markup update did not complete.")
+      }
+    }
+    await refreshEstimateTotals(access.db, estimateId, now)
+    revalidateEstimate(projectId)
+    return { success: true, id: estimateId }
+  } catch (error) {
+    return {
+      success: false,
+      error:
+        error instanceof Error ? error.message : "Unable to apply line markup.",
+    }
+  }
+}
+
+export async function updateProjectEstimateBuilderFee(
+  projectId: string,
+  estimateId: string,
+  input: ProjectEstimateBuilderFeeInput
+): Promise<ProjectEstimateActionResult> {
+  try {
+    const access = await estimateAccess(projectId, true)
+    await requireEditableEstimate(access.db, projectId, estimateId)
+    const legacyRows = await access.db
+      .select({ id: projectEstimateLines.id })
+      .from(projectEstimateLines)
+      .where(
+        and(
+          eq(projectEstimateLines.estimateId, estimateId),
+          inArray(
+            projectEstimateLines.costCode,
+            CONTRACT_ADJUSTMENT_COST_CODES.map((item) => item.value)
+          )
+        )
+      )
+      .limit(1)
+    if (legacyRows[0]) {
+      throw new Error(
+        "This draft still has legacy Division 99 fee lines. Re-import its source CSI, or remove those lines, before setting the builder fee."
+      )
+    }
+    const now = new Date().toISOString()
+    await access.db
+      .update(projectEstimates)
+      .set({
+        overheadRateBasisPoints: rateBasisPoints(
+          input.overheadPercent,
+          "Overhead"
+        ),
+        marginRateBasisPoints: rateBasisPoints(input.marginPercent, "Margin"),
+        contingencyRateBasisPoints: rateBasisPoints(
+          input.contingencyPercent,
+          "Contingency"
+        ),
+        updatedAt: now,
+      })
+      .where(eq(projectEstimates.id, estimateId))
+      .run()
+    await refreshEstimateTotals(access.db, estimateId, now)
+    revalidateEstimate(projectId)
+    return { success: true, id: estimateId }
+  } catch (error) {
+    return {
+      success: false,
+      error:
+        error instanceof Error
+          ? error.message
+          : "Unable to update the builder fee.",
     }
   }
 }
@@ -2007,7 +2228,9 @@ export async function prepareProjectEstimateForFoxit(
       ),
     ]
     const costCodeCatalog = await loadProjectEstimateCostCodes(access.db)
-    const activeCostCodes = new Set(costCodeCatalog.map((row) => row.code))
+    const activeCostCodes = new Set(
+      costCodeCatalog.filter((row) => row.sageMapped).map((row) => row.code)
+    )
     const missingCostCodes = sourceCostCodes.filter(
       (code) => !activeCostCodes.has(code)
     )
@@ -2033,6 +2256,9 @@ export async function prepareProjectEstimateForFoxit(
       introductionText: estimate.introductionText,
       contractTerms: estimate.contractTerms,
       closingText: estimate.closingText,
+      overheadRateBasisPoints: estimate.overheadRateBasisPoints,
+      marginRateBasisPoints: estimate.marginRateBasisPoints,
+      contingencyRateBasisPoints: estimate.contingencyRateBasisPoints,
       lines: lines.map((line) => ({
         id: line.id,
         divisionCode: line.divisionCode,
@@ -2048,6 +2274,7 @@ export async function prepareProjectEstimateForFoxit(
         taxRateBasisPoints: line.taxRateBasisPoints,
         lineTotalCents: line.lineTotalCents,
         ownerVisible: line.ownerVisible,
+        includeInBuilderFee: line.includeInBuilderFee,
         sortOrder: line.sortOrder,
       })),
       basisDocuments: basisDocuments.map((document) => ({

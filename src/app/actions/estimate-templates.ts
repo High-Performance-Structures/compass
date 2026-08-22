@@ -1019,10 +1019,11 @@ export async function createProjectEstimateFromTemplate(input: {
           estimate_date, source_system, source_revision, template_version_id,
           template_application_id, default_tax_entity_id, default_tax_code,
           default_tax_name, default_tax_rate_basis_points, contract_terms,
-          direct_cost_cents, markup_cents, tax_cents, estimate_total_cents,
+          direct_cost_cents, markup_cents, tax_cents,
+          builder_fee_base_cents, estimate_total_cents,
           created_by, created_at, updated_at
         ) VALUES (?, ?, ?, ?, ?, 'draft', ?, 'compass_template', ?, ?, ?, ?, ?,
-          ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+          ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       ).bind(
         estimateId,
         input.projectId,
@@ -1041,6 +1042,7 @@ export async function createProjectEstimateFromTemplate(input: {
         application.data.totals.directCostCents,
         application.data.totals.markupCents,
         application.data.totals.taxCents,
+        application.data.totals.builderFeeBaseCents,
         application.data.totals.estimateTotalCents,
         access.user.id,
         now,

@@ -124,6 +124,22 @@ export const projectEstimates = sqliteTable(
     directCostCents: integer("direct_cost_cents").notNull().default(0),
     markupCents: integer("markup_cents").notNull().default(0),
     taxCents: integer("tax_cents").notNull().default(0),
+    builderFeeBaseCents: integer("builder_fee_base_cents")
+      .notNull()
+      .default(0),
+    overheadRateBasisPoints: integer("overhead_rate_basis_points")
+      .notNull()
+      .default(0),
+    overheadCents: integer("overhead_cents").notNull().default(0),
+    marginRateBasisPoints: integer("margin_rate_basis_points")
+      .notNull()
+      .default(0),
+    marginCents: integer("margin_cents").notNull().default(0),
+    contingencyRateBasisPoints: integer("contingency_rate_basis_points")
+      .notNull()
+      .default(0),
+    contingencyCents: integer("contingency_cents").notNull().default(0),
+    builderFeeCents: integer("builder_fee_cents").notNull().default(0),
     estimateTotalCents: integer("estimate_total_cents").notNull().default(0),
     foxitStatus: text("foxit_status").notNull().default("not_started"),
     foxitEnvelopeId: text("foxit_envelope_id"),
@@ -255,6 +271,11 @@ export const projectEstimateLines = sqliteTable(
     taxCents: integer("tax_cents").notNull().default(0),
     lineTotalCents: integer("line_total_cents").notNull().default(0),
     ownerVisible: integer("owner_visible", { mode: "boolean" })
+      .notNull()
+      .default(true),
+    includeInBuilderFee: integer("include_in_builder_fee", {
+      mode: "boolean",
+    })
       .notNull()
       .default(true),
     sortOrder: integer("sort_order").notNull().default(0),

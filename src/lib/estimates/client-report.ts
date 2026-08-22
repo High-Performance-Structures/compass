@@ -41,6 +41,7 @@ export type ClientEstimateLine = {
   readonly unitCostCents: number
   readonly lineTotalCents: number
   readonly ownerVisible: boolean
+  readonly includeInBuilderFee: boolean
   readonly sortOrder: number
 }
 

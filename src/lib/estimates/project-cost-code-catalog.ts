@@ -1,3 +1,5 @@
+import { CSI_PROJECT_TOTALS_FALLBACK_COST_CODES } from "@/lib/estimates/csi-project-totals-catalog"
+
 export type EstimateSageCostCode = {
   readonly code: string
   readonly description: string
@@ -22,6 +24,7 @@ export type ProjectEstimateCostCodeCatalogItem = {
   readonly divisionCode: string
   readonly divisionDescription: string
   readonly divisionDisplayLabel: string
+  readonly sageMapped: boolean
 }
 
 const CSI_CODE_FROM_NAME =
@@ -51,6 +54,7 @@ function sageCodeFromName(
     divisionCode,
     divisionDescription,
     divisionDisplayLabel: `${divisionCode} · ${divisionDescription}`,
+    sageMapped: true,
   }
 }
 
@@ -69,6 +73,7 @@ export function projectEstimateCostCodeCatalog(
       divisionCode: row.divisionCode,
       divisionDescription: row.divisionDescription,
       divisionDisplayLabel: row.divisionDisplayLabel,
+      sageMapped: true,
     })
   }
 
@@ -76,6 +81,20 @@ export function projectEstimateCostCodeCatalog(
     const namedCode = sageCodeFromName(row)
     if (!namedCode || catalog.has(namedCode.code)) continue
     catalog.set(namedCode.code, namedCode)
+  }
+
+  for (const row of CSI_PROJECT_TOTALS_FALLBACK_COST_CODES) {
+    if (catalog.has(row.code)) continue
+    catalog.set(row.code, {
+      code: row.code,
+      sourceCostCode: row.code,
+      description: row.description,
+      displayLabel: `${row.code} ${row.description}`,
+      divisionCode: row.divisionCode,
+      divisionDescription: row.divisionDescription,
+      divisionDisplayLabel: `${row.divisionCode} · ${row.divisionDescription}`,
+      sageMapped: false,
+    })
   }
 
   return [...catalog.values()].sort((left, right) => {
