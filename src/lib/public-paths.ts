@@ -26,7 +26,10 @@ const sageBridgePaths = [
   "/api/integrations/sage/client-project-writes/results",
 ]
 
-const webhookPaths = ["/api/integrations/goto/inbound"]
+const webhookPaths = [
+  "/api/integrations/goto/inbound",
+  "/api/integrations/foxit/webhook",
+]
 
 // These routes bypass WorkOS only so their own bearer/HMAC checks can run.
 // Keep the allowlist exact: none of the route prefixes are public.

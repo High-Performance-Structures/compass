@@ -91,6 +91,7 @@ export const projectEstimates = sqliteTable(
     clientSignerName: text("client_signer_name"),
     clientSignerTitle: text("client_signer_title"),
     clientSignerEmail: text("client_signer_email"),
+    clientSignersJson: text("client_signers_json"),
     companySignerContactId: text("company_signer_contact_id").references(
       () => projectContacts.id,
       { onDelete: "set null" }
@@ -98,6 +99,7 @@ export const projectEstimates = sqliteTable(
     companySignerName: text("company_signer_name"),
     companySignerTitle: text("company_signer_title"),
     companySignerEmail: text("company_signer_email"),
+    companySignerInitials: text("company_signer_initials"),
     sourceSystem: text("source_system").notNull().default("compass"),
     sourceWorkbookId: text("source_workbook_id"),
     sourceWorkbookUrl: text("source_workbook_url"),
@@ -157,6 +159,9 @@ export const projectEstimates = sqliteTable(
     estimateTotalCents: integer("estimate_total_cents").notNull().default(0),
     foxitStatus: text("foxit_status").notNull().default("not_started"),
     foxitEnvelopeId: text("foxit_envelope_id"),
+    foxitEmbeddedSessionUrl: text("foxit_embedded_session_url"),
+    foxitPreparedSourceHash: text("foxit_prepared_source_hash"),
+    foxitPreparedAt: text("foxit_prepared_at"),
     signaturePackageUrl: text("signature_package_url"),
     signatureRequestedAt: text("signature_requested_at"),
     signedAt: text("signed_at"),

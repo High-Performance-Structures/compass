@@ -8,7 +8,7 @@
 	"account_id": "8716137c706ea3d5c209b330084fa9e2",
 	"main": "custom-worker.ts",
 	"minify": true,
-	"compatibility_date": "2025-12-01",
+	"compatibility_date": "2026-08-20",
 	"compatibility_flags": [
 		"nodejs_compat",
 		"global_fetch_strictly_public"
@@ -28,6 +28,9 @@
 	},
 	"images": {
 		"binding": "IMAGES"
+	},
+	"browser": {
+		"binding": "BROWSER"
 	},
 	"services": [
 		{
@@ -69,6 +72,9 @@
 			"GOTO_SMS_ACCESS_TOKEN",
 			"GOTO_SMS_FROM_NUMBER",
 			"GOTO_WEBHOOK_SECRET",
+			"FOXIT_ESIGN_CLIENT_ID",
+			"FOXIT_ESIGN_CLIENT_SECRET",
+			"FOXIT_ESIGN_WEBHOOK_SECRET",
 			"JARVIS_BRIDGE_ORGANIZATION_ID",
 			"JARVIS_BRIDGE_SECRET",
 			"JARVIS_SERVICE_USER_ID",

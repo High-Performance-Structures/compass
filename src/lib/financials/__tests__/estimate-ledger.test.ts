@@ -179,12 +179,18 @@ describe("estimate ledger", () => {
       contractTerms: "Base terms",
       closingText: "Please contact us with any questions.",
       signers: {
-        clientName: "Alex Owner",
-        clientTitle: "Owner",
-        clientEmail: "alex@example.com",
-        companyName: "Jordan Builder",
-        companyTitle: "Project Manager",
-        companyEmail: "jordan@example.com",
+        clients: [{
+          name: "Alex Owner",
+          title: "Owner",
+          email: "alex@example.com",
+          initials: "AO",
+        }],
+        company: {
+          name: "Jordan Builder",
+          title: "Project Manager",
+          email: "jordan@example.com",
+          initials: "JB",
+        },
       },
       overheadRateBasisPoints: 800,
       marginRateBasisPoints: 700,
@@ -246,7 +252,10 @@ describe("estimate ledger", () => {
     })
     const differentSigner = await estimateSourceHash({
       ...input,
-      signers: { ...input.signers, companyName: "Taylor Builder" },
+      signers: {
+        ...input.signers,
+        company: { ...input.signers.company, name: "Taylor Builder" },
+      },
     })
 
     expect(revised).not.toBe(original)
