@@ -48,6 +48,28 @@ const updateSchema = z.object({
   ]).optional(),
 })
 
+const lifecycleRequestSchema = z.object({
+  id: z.uuid(),
+  status: z.enum(FEEDBACK_DESK_STATUSES),
+  idempotencyKey: z.string().min(1).max(256),
+  message: z.string().min(1).max(2_000).optional(),
+  priority: z.enum(["low", "normal", "high", "urgent"]).optional(),
+  githubIssueUrl: z.union([
+    z.url().refine(
+      (value) => /^https:\/\/github\.com\/[^/]+\/[^/]+\/issues\/\d+(?:\/|$)/.test(value),
+      "GitHub issue URL required",
+    ),
+    z.null(),
+  ]).optional(),
+  draftPullRequestUrl: z.union([
+    z.url().refine(
+      (value) => /^https:\/\/github\.com\/[^/]+\/[^/]+\/pull\/\d+(?:\/|$)/.test(value),
+      "GitHub pull request URL required",
+    ),
+    z.null(),
+  ]).optional(),
+})
+
 async function requireFeedbackAdmin(): Promise<Readonly<{
   id: string
   organizationId: string
@@ -413,6 +435,84 @@ export async function updateFeedbackAdminItem(
     return {
       success: false,
       error: error instanceof Error ? error.message : "Update failed",
+    }
+  }
+}
+
+export async function queueFeedbackLifecycleRequest(
+  input: z.infer<typeof lifecycleRequestSchema>,
+): Promise<Readonly<{
+  success: boolean
+  duplicate?: boolean
+  error?: string
+}>> {
+  try {
+    const parsed = lifecycleRequestSchema.parse(input)
+    const admin = await requireFeedbackAdmin()
+    const { env } = await getCloudflareContext()
+    const db = getDb(env.DB)
+    const item = await db.select().from(feedbackDeskItems).where(and(
+      eq(feedbackDeskItems.id, parsed.id),
+      eq(feedbackDeskItems.organizationId, admin.organizationId),
+    )).get()
+    if (!item) return { success: false, error: "Feedback request not found" }
+    if (item.kind === "feature") {
+      return {
+        success: false,
+        error: "Feature lifecycle updates require the approved feature workflow",
+      }
+    }
+    const evidenceError = feedbackBugTransitionIsBlocked({
+      ...item,
+      nextStatus: parsed.status,
+      githubDraftPullRequestUrl:
+        parsed.draftPullRequestUrl === undefined
+          ? item.githubDraftPullRequestUrl
+          : parsed.draftPullRequestUrl,
+    })
+    if (evidenceError) return { success: false, error: evidenceError }
+
+    const idempotencyKey = `feedback-lifecycle-request:${item.id}:${parsed.idempotencyKey}`
+    const existing = await db.select({ id: jarvisBridgeEvents.id })
+      .from(jarvisBridgeEvents)
+      .where(eq(jarvisBridgeEvents.idempotencyKey, idempotencyKey))
+      .get()
+    if (existing) return { success: true, duplicate: true }
+
+    const now = new Date().toISOString()
+    await db.insert(jarvisBridgeEvents).values({
+      id: crypto.randomUUID(),
+      organizationId: item.organizationId,
+      direction: "outbound",
+      source: "feedback-desk",
+      eventType: "feedback.lifecycle_requested",
+      status: "pending",
+      idempotencyKey,
+      feedbackDeskItemId: item.id,
+      payload: JSON.stringify({
+        schemaVersion: 1,
+        itemId: item.id,
+        kind: item.kind,
+        status: parsed.status,
+        ...(parsed.message === undefined ? {} : { message: parsed.message }),
+        ...(parsed.priority === undefined ? {} : { priority: parsed.priority }),
+        ...(parsed.githubIssueUrl === undefined
+          ? {}
+          : { githubIssueUrl: parsed.githubIssueUrl }),
+        ...(parsed.draftPullRequestUrl === undefined
+          ? {}
+          : { draftPullRequestUrl: parsed.draftPullRequestUrl }),
+        idempotencyKey: parsed.idempotencyKey,
+      }),
+      availableAt: now,
+      createdAt: now,
+      updatedAt: now,
+    }).onConflictDoNothing()
+    return { success: true }
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Lifecycle request queue failed",
     }
   }
 }

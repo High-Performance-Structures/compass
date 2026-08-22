@@ -151,6 +151,24 @@ injected `JARVIS_BRIDGE_SECRET`, and retries at most once with the same
 idempotency key. Compass remains responsible for organization authorization,
 evidence gates, D1 persistence, and source-specific requester delivery.
 
+## Durable private-runtime executor
+
+The existing private runtime has a separate systemd user service for approved
+lifecycle handoffs. It polls only `feedback.lifecycle_requested` through the
+signed Compass event queue and invokes the co-installed constrained helper.
+Unknown fields, feature requests, malformed IDs/statuses, arbitrary targets,
+non-HTTPS origins, redirects, and oversized data are rejected. Network
+failures are acknowledged with a bounded retry delay; endpoint rejection and
+policy failures are terminal and remain visible in the protected queue. The
+event's original idempotency key is reused on every retry, so a process restart
+cannot create a second lifecycle update.
+
+The macOS scheduler must not invoke remote commands, use local bridge
+credentials, impersonate a browser session, copy payload files, or write D1.
+The executor runs only on the authorized private runtime using the existing
+primary bridge secret. Do not change the existing agent poller or requester
+notifier service.
+
 The command prints only a compact JSON result containing endpoint acceptance,
 duplicate status, lifecycle status, notification count, and whether a
 requester update was queued. It never prints response bodies, request data,
