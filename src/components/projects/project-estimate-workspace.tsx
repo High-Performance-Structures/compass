@@ -19,6 +19,7 @@ import {
   IconSend,
   IconTemplate,
   IconTrash,
+  IconUpload,
 } from "@tabler/icons-react"
 
 import {
@@ -32,7 +33,8 @@ import {
   createProjectEstimateDraft,
   deleteProjectEstimateLine,
   importProjectEstimateFromGoogleSheet,
-  prepareProjectEstimateForFoxit,
+  prepareProjectEstimateForClientSignature,
+  recordManualProjectEstimateAcceptance,
   recordSignedProjectEstimate,
   saveProjectEstimateLine,
   updateProjectEstimateBuilderFee,
@@ -41,6 +43,7 @@ import {
   type ProjectEstimateTermsOption,
   type ProjectEstimateWorkspace,
 } from "@/app/actions/project-estimates"
+import { uploadEstimateAcceptanceEvidence } from "@/components/projects/project-estimate-acceptance-upload"
 import { Badge } from "@/components/ui/badge"
 import { useDeveloperMode } from "@/components/developer-mode-provider"
 import { ProjectEstimateClientReportSettings } from "@/components/projects/project-estimate-client-report-settings"
@@ -59,6 +62,10 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
+import {
+  estimateAcceptanceMethodLabel,
+  isEstimateAcceptanceMethod,
+} from "@/lib/estimates/manual-acceptance"
 
 function money(cents: number): string {
   return new Intl.NumberFormat("en-US", {
@@ -84,6 +91,12 @@ function formNumber(formData: FormData, name: string): number | null {
 
 function statusLabel(value: string): string {
   return value.replaceAll("_", " ")
+}
+
+function localDateInput(): string {
+  const now = new Date()
+  const localTime = now.getTime() - now.getTimezoneOffset() * 60_000
+  return new Date(localTime).toISOString().slice(0, 10)
 }
 
 function selectedTemplateBody(
@@ -157,6 +170,8 @@ export function ProjectEstimateWorkspacePanel({
   const estimate = workspace.activeEstimate
   const [isPending, startTransition] = useTransition()
   const [message, setMessage] = useState<string | null>(null)
+  const [manualAcceptanceAttested, setManualAcceptanceAttested] =
+    useState(false)
   const [line, setLine] = useState<LineDraft>(EMPTY_LINE)
   const [insertAfterLineId, setInsertAfterLineId] = useState<string | null>(null)
   const lineEditorRef = useRef<HTMLFormElement>(null)
@@ -447,14 +462,17 @@ export function ProjectEstimateWorkspacePanel({
     })
   }
 
-  function prepareFoxit(): void {
+  function prepareForSignature(): void {
     if (!estimate) return
     setMessage(null)
     startTransition(async () => {
-      const result = await prepareProjectEstimateForFoxit(projectId, estimate.id)
+      const result = await prepareProjectEstimateForClientSignature(
+        projectId,
+        estimate.id
+      )
       finish(
         result.success
-          ? "Client estimate locked and ready for Foxit signature handoff."
+          ? "Client estimate locked and ready for signature."
           : result.error
       )
     })
@@ -475,6 +493,63 @@ export function ProjectEstimateWorkspacePanel({
           ? "Signed estimate accepted and contract budget created."
           : result.error
       )
+    })
+  }
+
+  function acceptManually(event: FormEvent<HTMLFormElement>): void {
+    event.preventDefault()
+    if (!estimate) return
+    const form = event.currentTarget
+    const formData = new FormData(form)
+    const fileValue = formData.get("acceptanceEvidenceFile")
+    const file = fileValue instanceof File && fileValue.size > 0
+      ? fileValue
+      : null
+    const linkedEvidenceUrl = formText(formData, "acceptanceEvidenceUrl")
+    if (file && linkedEvidenceUrl) {
+      setMessage("Choose either a file upload or an existing document link.")
+      return
+    }
+    if (!file && !linkedEvidenceUrl) {
+      setMessage("Upload or link the saved signed document.")
+      return
+    }
+
+    setMessage(null)
+    startTransition(async () => {
+      try {
+        const uploaded = file
+          ? await uploadEstimateAcceptanceEvidence(file, projectId)
+          : null
+        const result = await recordManualProjectEstimateAcceptance(
+          projectId,
+          estimate.id,
+          {
+            acceptanceMethod: formText(formData, "acceptanceMethod"),
+            clientAcceptedAt: formText(formData, "clientAcceptedAt"),
+            evidenceUrl: uploaded?.url ?? linkedEvidenceUrl,
+            evidenceLabel:
+              uploaded?.label ?? formText(formData, "acceptanceEvidenceLabel"),
+            acceptanceNote: formText(formData, "acceptanceNote"),
+            attested: manualAcceptanceAttested,
+          }
+        )
+        if (result.success) {
+          form.reset()
+          setManualAcceptanceAttested(false)
+        }
+        finish(
+          result.success
+            ? "Client acceptance recorded and the Budget/G703 was created."
+            : result.error
+        )
+      } catch (error) {
+        finish(
+          error instanceof Error
+            ? error.message
+            : "Unable to upload the signed document."
+        )
+      }
     })
   }
 
@@ -1206,25 +1281,121 @@ export function ProjectEstimateWorkspacePanel({
           <div className="flex-1">
             <h2 className="font-semibold">Approval and accounting handoff</h2>
             <p className="mt-1 text-sm text-muted-foreground">
-              Preparing the package locks this version. Recording the completed
-              Foxit package accepts it and creates the original G703 budget.
+              Lock the final client version before it is signed. A completed
+              Foxit package or saved signed document accepts that exact version
+              and creates the original Budget/G703.
             </p>
             {editable && (
-              <Button className="mt-3" onClick={prepareFoxit} disabled={isPending || workspace.lines.length === 0}>
-                <IconSend className="size-4" />Prepare client estimate for Foxit
+              <Button className="mt-3" onClick={prepareForSignature} disabled={isPending || workspace.lines.length === 0}>
+                <IconSend className="size-4" />Lock final version for client signature
               </Button>
             )}
             {estimate.status === "signature_pending" && workspace.canEdit && (
-              <form className="mt-4 grid gap-3 border-t pt-4 md:grid-cols-2" onSubmit={acceptSigned}>
-                <div className="space-y-1.5"><Label htmlFor="signedDocumentUrl">Signed Foxit document link</Label><Input id="signedDocumentUrl" name="signedDocumentUrl" type="url" required /></div>
-                <div className="space-y-1.5"><Label htmlFor="foxitEnvelopeId">Foxit envelope ID</Label><Input id="foxitEnvelopeId" name="foxitEnvelopeId" /></div>
-                <div className="md:col-span-2"><Button type="submit" disabled={isPending}>Record signatures and accept estimate</Button></div>
-              </form>
+              <div className="mt-4 space-y-5 border-t pt-4">
+                <form className="grid gap-3 md:grid-cols-2" onSubmit={acceptSigned}>
+                  <div className="md:col-span-2">
+                    <h3 className="text-sm font-semibold">Completed through Foxit</h3>
+                  </div>
+                  <div className="space-y-1.5"><Label htmlFor="signedDocumentUrl">Completed Foxit document link</Label><Input id="signedDocumentUrl" name="signedDocumentUrl" type="url" required /></div>
+                  <div className="space-y-1.5"><Label htmlFor="foxitEnvelopeId">Foxit envelope ID</Label><Input id="foxitEnvelopeId" name="foxitEnvelopeId" /></div>
+                  <div className="md:col-span-2"><Button type="submit" disabled={isPending}>Record Foxit completion and accept estimate</Button></div>
+                </form>
+
+                <form className="space-y-4 border-t pt-4" onSubmit={acceptManually}>
+                  <div>
+                    <h3 className="text-sm font-semibold">Client signed outside Compass</h3>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Upload the scanned contract to the project&apos;s Google Drive
+                      folder or link the saved signed document.
+                    </p>
+                  </div>
+                  <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                    <div className="space-y-1.5">
+                      <Label htmlFor="acceptanceMethod">Signature method</Label>
+                      <Select name="acceptanceMethod" required>
+                        <SelectTrigger id="acceptanceMethod"><SelectValue placeholder="Choose method" /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="wet_signature">Printed and signed document</SelectItem>
+                          <SelectItem value="external_esignature">External eSignature</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="clientAcceptedAt">Client acceptance date</Label>
+                      <Input id="clientAcceptedAt" name="clientAcceptedAt" type="date" max={localDateInput()} defaultValue={localDateInput()} required />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="acceptanceEvidenceFile">Upload signed document</Label>
+                      <Input id="acceptanceEvidenceFile" name="acceptanceEvidenceFile" type="file" accept="application/pdf,image/*,.doc,.docx" />
+                      <p className="text-xs text-muted-foreground">PDF, Word, or image; 50 MB maximum.</p>
+                    </div>
+                    <div className="space-y-1.5 md:col-span-2">
+                      <Label htmlFor="acceptanceEvidenceUrl">Or link an existing signed document</Label>
+                      <Input id="acceptanceEvidenceUrl" name="acceptanceEvidenceUrl" type="url" placeholder="https://drive.google.com/..." />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="acceptanceEvidenceLabel">Document label</Label>
+                      <Input id="acceptanceEvidenceLabel" name="acceptanceEvidenceLabel" placeholder="Signed construction estimate" />
+                      <p className="text-xs text-muted-foreground">Required for a link; uploads use the filename.</p>
+                    </div>
+                    <div className="space-y-1.5 md:col-span-2 xl:col-span-3">
+                      <Label htmlFor="acceptanceNote">Acceptance note</Label>
+                      <Textarea id="acceptanceNote" name="acceptanceNote" placeholder="Optional context about how the signed contract was received." maxLength={2000} />
+                    </div>
+                  </div>
+                  <div className="flex items-start gap-2 border-t pt-3">
+                    <Checkbox id="manualAcceptanceAttestation" checked={manualAcceptanceAttested} onCheckedChange={(checked) => setManualAcceptanceAttested(checked === true)} />
+                    <Label htmlFor="manualAcceptanceAttestation" className="max-w-3xl text-sm font-normal leading-5">
+                      I confirm this saved signed document is proof of the
+                      client&apos;s acceptance and matches this locked estimate version.
+                    </Label>
+                  </div>
+                  <Button type="submit" variant="outline" disabled={isPending || !manualAcceptanceAttested}>
+                    <IconUpload className="size-4" />Record client acceptance and create Budget/G703
+                  </Button>
+                </form>
+              </div>
             )}
             {estimate.status === "accepted" && (
-              <p className="mt-3 text-sm font-medium text-emerald-700">
-                Accepted estimate is locked. Budget changes now require an executed change order.
-              </p>
+              <div className="mt-4 border-t pt-4 text-sm">
+                <p className="font-medium text-emerald-700">
+                  Client-accepted estimate is locked. Budget changes now require an executed change order.
+                </p>
+                <dl className="mt-3 grid gap-x-6 gap-y-2 md:grid-cols-2">
+                  <div>
+                    <dt className="text-xs text-muted-foreground">Acceptance method</dt>
+                    <dd>
+                      {isEstimateAcceptanceMethod(estimate.acceptanceMethod)
+                        ? estimateAcceptanceMethodLabel(estimate.acceptanceMethod)
+                        : "Previously recorded acceptance"}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-xs text-muted-foreground">Client accepted</dt>
+                    <dd>{estimate.signedAt ? new Date(estimate.signedAt).toLocaleDateString() : "Date not recorded"}</dd>
+                  </div>
+                  {estimate.acceptanceRecordedByName && (
+                    <div>
+                      <dt className="text-xs text-muted-foreground">Recorded by</dt>
+                      <dd>{estimate.acceptanceRecordedByName}</dd>
+                    </div>
+                  )}
+                  {estimate.acceptanceNote && (
+                    <div className="md:col-span-2">
+                      <dt className="text-xs text-muted-foreground">Acceptance note</dt>
+                      <dd className="whitespace-pre-wrap">{estimate.acceptanceNote}</dd>
+                    </div>
+                  )}
+                </dl>
+                {estimate.signaturePackageUrl && (
+                  <Button className="mt-3" variant="outline" size="sm" asChild>
+                    <Link href={estimate.signaturePackageUrl} target="_blank">
+                      <IconFileDescription className="size-4" />
+                      {estimate.acceptanceEvidenceLabel ?? "Open signed estimate"}
+                    </Link>
+                  </Button>
+                )}
+              </div>
             )}
           </div>
         </div>
