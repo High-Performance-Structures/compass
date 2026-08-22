@@ -87,12 +87,66 @@ function statusClassName(status: string): string {
   return "schedule-print-task-pending"
 }
 
+function SchedulePrintHeader({
+  audienceLabel,
+  brand,
+  itemCount,
+  layout,
+  range,
+  title,
+}: {
+  readonly audienceLabel: string
+  readonly brand: ProjectBrand | null
+  readonly itemCount: number
+  readonly layout: SchedulePrintLayout
+  readonly range?: SchedulePrintDateRange
+  readonly title: string
+}): React.ReactElement {
+  return (
+    <header className="schedule-print-header">
+      <div className="schedule-print-brand">
+        {brand && (
+          <ProjectBrandLogo
+            brand={brand}
+            size={52}
+            className="schedule-print-logo"
+          />
+        )}
+        <div>
+          <p className="schedule-print-company">
+            {brand?.companyName ?? "Compass"}
+          </p>
+          {brand && (
+            <ProjectBrandContactDetails
+              brand={brand}
+              lineClassName="schedule-print-contact-line"
+            />
+          )}
+        </div>
+      </div>
+      <div className="schedule-print-title">
+        <p>
+          {audienceLabel} · {formatLabel(layout)}
+        </p>
+        <h1>{title}</h1>
+        <span>
+          {range ? `${formatRange(range)} · ` : ""}
+          {itemCount} schedule item
+          {itemCount === 1 ? "" : "s"}
+        </span>
+      </div>
+    </header>
+  )
+}
+
 function SchedulePrintGantt({
   colorFor,
+  heading,
   items,
   range,
 }: {
   readonly colorFor: (item: SchedulePrintItem) => string
+  readonly heading: React.ReactNode
   readonly items: readonly SchedulePrintItem[]
   readonly range: SchedulePrintDateRange
 }): React.ReactElement {
@@ -106,86 +160,101 @@ function SchedulePrintGantt({
   )
 
   return (
-    <section className="schedule-print-gantt">
-      <div className="schedule-print-gantt-header">
-        <div>Schedule item</div>
-        <div className="schedule-print-timeline-header">
-          {ticks.map((date) => {
-            const left =
-              (differenceInCalendarDays(date, rangeStart) / totalDays) * 100
-            const label =
-              totalDays <= 14
-                ? "EEE M/d"
-                : totalDays <= 62
-                  ? "M/d"
-                  : "MMM yyyy"
-            return (
-              <span key={date.toISOString()} style={{ left: `${left}%` }}>
-                {format(date, label)}
-              </span>
-            )
-          })}
-        </div>
-      </div>
-      {items.length === 0 ? (
-        <p className="schedule-print-empty">
-          No schedule items overlap this timeframe.
-        </p>
-      ) : (
-        items.map((item) => {
-          const clippedStart =
-            item.startDate < range.start ? range.start : item.startDate
-          const clippedEnd =
-            item.endDate > range.end ? range.end : item.endDate
-          const left =
-            (differenceInCalendarDays(parseISO(clippedStart), rangeStart) /
-              totalDays) *
-            100
-          const width =
-            ((differenceInCalendarDays(
-              parseISO(clippedEnd),
-              parseISO(clippedStart)
-            ) +
-              1) /
-              totalDays) *
-            100
-          return (
-            <div className="schedule-print-gantt-row" key={item.id}>
-              <div className="schedule-print-task-label">
-                <strong>{item.title}</strong>
-                <span>
-                  {formatDate(item.startDate)} – {formatDate(item.endDate)}
-                </span>
-              </div>
-              <div className="schedule-print-timeline-row">
-                <div
-                  className={cn(
-                    "schedule-print-bar",
-                    statusClassName(item.status)
-                  )}
-                  style={{
-                    backgroundColor: colorFor(item),
-                    left: `${left}%`,
-                    width: `${Math.max(width, 0.6)}%`,
-                  }}
-                >
-                  {width >= 12 ? item.title : ""}
-                </div>
-              </div>
+    <table className="schedule-print-gantt">
+      <thead>
+        <tr className="schedule-print-heading-row">
+          <th className="schedule-print-heading-cell" colSpan={2}>
+            {heading}
+          </th>
+        </tr>
+        <tr className="schedule-print-gantt-header">
+          <th scope="col">Schedule item</th>
+          <th scope="col">
+            <div className="schedule-print-timeline-header">
+              {ticks.map((date) => {
+                const left =
+                  (differenceInCalendarDays(date, rangeStart) / totalDays) * 100
+                const label =
+                  totalDays <= 14
+                    ? "EEE M/d"
+                    : totalDays <= 62
+                      ? "M/d"
+                      : "MMM yyyy"
+                return (
+                  <span key={date.toISOString()} style={{ left: `${left}%` }}>
+                    {format(date, label)}
+                  </span>
+                )
+              })}
             </div>
-          )
-        })
-      )}
-    </section>
+          </th>
+        </tr>
+      </thead>
+      <tbody>
+        {items.length === 0 ? (
+          <tr>
+            <td className="schedule-print-empty" colSpan={2}>
+              No schedule items overlap this timeframe.
+            </td>
+          </tr>
+        ) : (
+          items.map((item) => {
+            const clippedStart =
+              item.startDate < range.start ? range.start : item.startDate
+            const clippedEnd =
+              item.endDate > range.end ? range.end : item.endDate
+            const left =
+              (differenceInCalendarDays(parseISO(clippedStart), rangeStart) /
+                totalDays) *
+              100
+            const width =
+              ((differenceInCalendarDays(
+                parseISO(clippedEnd),
+                parseISO(clippedStart)
+              ) +
+                1) /
+                totalDays) *
+              100
+            return (
+              <tr className="schedule-print-gantt-row" key={item.id}>
+                <td className="schedule-print-task-label">
+                  <strong>{item.title}</strong>
+                  <span>
+                    {formatDate(item.startDate)} – {formatDate(item.endDate)}
+                  </span>
+                </td>
+                <td className="schedule-print-timeline-row">
+                  <div
+                    className={cn(
+                      "schedule-print-bar",
+                      statusClassName(item.status)
+                    )}
+                    style={{
+                      backgroundColor: colorFor(item),
+                      left: `${left}%`,
+                      width: `${Math.max(width, 0.6)}%`,
+                    }}
+                  >
+                    {width >= 12 ? item.title : ""}
+                  </div>
+                </td>
+              </tr>
+            )
+          })
+        )}
+      </tbody>
+    </table>
   )
 }
 
 function SchedulePrintCalendar({
   colorFor,
+  heading,
   items,
   range,
 }: {
   readonly colorFor: (item: SchedulePrintItem) => string
+  readonly heading: React.ReactNode
   readonly items: readonly SchedulePrintItem[]
   readonly range: SchedulePrintDateRange
 }): React.ReactElement {
@@ -199,59 +268,70 @@ function SchedulePrintCalendar({
   }
 
   return (
-    <section className="schedule-print-calendar">
-      <div className="schedule-print-weekdays">
-        {[
-          "Sunday",
-          "Monday",
-          "Tuesday",
-          "Wednesday",
-          "Thursday",
-          "Friday",
-          "Saturday",
-        ].map((day) => (
-          <div key={day}>{day}</div>
+    <table className="schedule-print-calendar">
+      <thead>
+        <tr className="schedule-print-heading-row">
+          <th className="schedule-print-heading-cell" colSpan={7}>
+            {heading}
+          </th>
+        </tr>
+        <tr className="schedule-print-weekdays">
+          {[
+            "Sunday",
+            "Monday",
+            "Tuesday",
+            "Wednesday",
+            "Thursday",
+            "Friday",
+            "Saturday",
+          ].map((day) => (
+            <th key={day} scope="col">
+              {day}
+            </th>
+          ))}
+        </tr>
+      </thead>
+      <tbody>
+        {weeks.map((week) => (
+          <tr className="schedule-print-week" key={week[0].toISOString()}>
+            {week.map((day) => {
+              const dateKey = format(day, "yyyy-MM-dd")
+              const inRange = dateKey >= range.start && dateKey <= range.end
+              const dayItems = items.filter(
+                (item) =>
+                  item.startDate <= dateKey && item.endDate >= dateKey
+              )
+              return (
+                <td
+                  className={cn(
+                    "schedule-print-day",
+                    !inRange && "schedule-print-day-outside"
+                  )}
+                  key={dateKey}
+                >
+                  <strong>{format(day, "MMM d")}</strong>
+                  <div className="schedule-print-day-items">
+                    {inRange &&
+                      dayItems.map((item) => (
+                        <div
+                          className={cn(
+                            "schedule-print-calendar-item",
+                            statusClassName(item.status)
+                          )}
+                          key={item.id}
+                          style={{ borderLeftColor: colorFor(item) }}
+                        >
+                          {item.title}
+                        </div>
+                      ))}
+                  </div>
+                </td>
+              )
+            })}
+          </tr>
         ))}
-      </div>
-      {weeks.map((week) => (
-        <div className="schedule-print-week" key={week[0].toISOString()}>
-          {week.map((day) => {
-            const dateKey = format(day, "yyyy-MM-dd")
-            const inRange = dateKey >= range.start && dateKey <= range.end
-            const dayItems = items.filter(
-              (item) =>
-                item.startDate <= dateKey && item.endDate >= dateKey
-            )
-            return (
-              <div
-                className={cn(
-                  "schedule-print-day",
-                  !inRange && "schedule-print-day-outside"
-                )}
-                key={dateKey}
-              >
-                <strong>{format(day, "MMM d")}</strong>
-                <div className="schedule-print-day-items">
-                  {inRange &&
-                    dayItems.map((item) => (
-                      <div
-                        className={cn(
-                          "schedule-print-calendar-item",
-                          statusClassName(item.status)
-                        )}
-                        key={item.id}
-                        style={{ borderLeftColor: colorFor(item) }}
-                      >
-                        {item.title}
-                      </div>
-                    ))}
-                </div>
-              </div>
-            )
-          })}
-        </div>
-      ))}
-    </section>
+      </tbody>
+    </table>
   )
 }
 
@@ -321,107 +401,90 @@ export function SchedulePrintDocument({
     : items
   const colorFor = (item: SchedulePrintItem): string =>
     getScheduleItemDisplayColor(item, displayColorPalette)
+  const heading = (
+    <SchedulePrintHeader
+      audienceLabel={audienceLabel}
+      brand={brand}
+      itemCount={printableItems.length}
+      layout={layout}
+      range={range}
+      title={title}
+    />
+  )
 
   return createPortal(
     <section
       className="schedule-print-document"
       data-project-schedule-print-document="true"
     >
-      <header className="schedule-print-header">
-        <div className="schedule-print-brand">
-          {brand && (
-            <ProjectBrandLogo
-              brand={brand}
-              size={52}
-              className="schedule-print-logo"
-            />
-          )}
-          <div>
-            <p className="schedule-print-company">
-              {brand?.companyName ?? "Compass"}
-            </p>
-            {brand && (
-              <ProjectBrandContactDetails
-                brand={brand}
-                lineClassName="schedule-print-contact-line"
-              />
-            )}
-          </div>
-        </div>
-        <div className="schedule-print-title">
-          <p>
-            {audienceLabel} · {formatLabel(layout)}
-          </p>
-          <h1>{title}</h1>
-          <span>
-            {range ? `${formatRange(range)} · ` : ""}
-            {printableItems.length} schedule item
-            {printableItems.length === 1 ? "" : "s"}
-          </span>
-        </div>
-      </header>
-
       {layout === "gantt" && range ? (
         <SchedulePrintGantt
           colorFor={colorFor}
+          heading={heading}
           items={printableItems}
           range={range}
         />
       ) : layout === "calendar" && range ? (
         <SchedulePrintCalendar
           colorFor={colorFor}
+          heading={heading}
           items={printableItems}
           range={range}
         />
       ) : (
-      <table className="schedule-print-table">
-        <thead>
-          <tr>
-            <th>Schedule item</th>
-            {projects.length > 1 && <th>Project</th>}
-            <th>Phase</th>
-            <th>Start</th>
-            <th>Finish</th>
-            <th>Duration</th>
-            <th>Status</th>
-            <th>Assigned to</th>
-          </tr>
-        </thead>
-        <tbody>
-          {printableItems.map((item) => {
-            const itemProject = item.projectId
-              ? projectById.get(item.projectId)
-              : undefined
-            return (
-              <tr key={item.id}>
-                <td>
-                  <span
-                    className="schedule-print-color"
-                    style={{
-                      backgroundColor: getScheduleItemDisplayColor(
-                        item,
-                        displayColorPalette
-                      ),
-                    }}
-                  />
-                  <span>{item.title}</span>
-                </td>
-                {projects.length > 1 && (
-                  <td>{itemProject ? projectLabel(itemProject) : "—"}</td>
-                )}
-                <td>{formatLabel(item.phase)}</td>
-                <td>{formatDate(item.startDate)}</td>
-                <td>{formatDate(item.endDate)}</td>
-                <td>{item.isMilestone ? "Milestone" : `${item.workdays} wd`}</td>
-                <td>
-                  {formatLabel(item.status)} · {item.percentComplete}%
-                </td>
-                <td>{item.assignedTo ?? "—"}</td>
+        <>
+          {heading}
+          <table className="schedule-print-table">
+            <thead>
+              <tr>
+                <th>Schedule item</th>
+                {projects.length > 1 && <th>Project</th>}
+                <th>Phase</th>
+                <th>Start</th>
+                <th>Finish</th>
+                <th>Duration</th>
+                <th>Status</th>
+                <th>Assigned to</th>
               </tr>
-            )
-          })}
-        </tbody>
-      </table>
+            </thead>
+            <tbody>
+              {printableItems.map((item) => {
+                const itemProject = item.projectId
+                  ? projectById.get(item.projectId)
+                  : undefined
+                return (
+                  <tr key={item.id}>
+                    <td>
+                      <span
+                        className="schedule-print-color"
+                        style={{
+                          backgroundColor: getScheduleItemDisplayColor(
+                            item,
+                            displayColorPalette
+                          ),
+                        }}
+                      />
+                      <span>{item.title}</span>
+                    </td>
+                    {projects.length > 1 && (
+                      <td>{itemProject ? projectLabel(itemProject) : "—"}</td>
+                    )}
+                    <td>{formatLabel(item.phase)}</td>
+                    <td>{formatDate(item.startDate)}</td>
+                    <td>{formatDate(item.endDate)}</td>
+                    <td>
+                      {item.isMilestone ? "Milestone" : `${item.workdays} wd`}
+                    </td>
+                    <td>
+                      {formatLabel(item.status)} · {item.percentComplete}%
+                    </td>
+                    <td>{item.assignedTo ?? "—"}</td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </>
       )}
 
       <footer className="schedule-print-footer">
