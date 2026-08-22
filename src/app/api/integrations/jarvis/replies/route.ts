@@ -19,6 +19,11 @@ import {
   readBoundedBody,
   verifyJarvisRequest,
 } from "@/lib/jarvis/auth"
+import {
+  REPLY_RESERVATION_RESULT,
+  assertBridgeReservationOwnership,
+  renewBridgeReservation,
+} from "@/lib/jarvis/bridge-reservation"
 
 const replySchema = z.object({
   eventId: z.string().min(1).max(128),
@@ -61,6 +66,17 @@ function replyTarget(payload: string): ReplyTarget | null {
   }
 
   return { organizationId, channelId, messageId }
+}
+
+function isOwnershipAssertionError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false
+  return (
+    error.message.includes("UNIQUE constraint failed: jarvis_bridge_events.id") ||
+    error.message.includes(
+      "UNIQUE constraint failed: jarvis_bridge_events.idempotency_key",
+    ) ||
+    error.message.includes("NOT NULL constraint failed: jarvis_bridge_events.id")
+  )
 }
 
 async function deterministicReplyId(key: string): Promise<string> {
@@ -257,7 +273,7 @@ export async function POST(request: Request): Promise<Response> {
     .set({
       claimToken: sideEffectClaimToken,
       claimedAt: now,
-      result: JSON.stringify({ reply: "reserved" }),
+      result: REPLY_RESERVATION_RESULT,
       updatedAt: now,
     })
     .where(and(
@@ -282,8 +298,20 @@ export async function POST(request: Request): Promise<Response> {
     .from(messages)
     .where(eq(messages.id, messageId))
     .get()
-  if (!duplicate) {
-    await db.insert(messages).values({
+  if (!await renewBridgeReservation(db, {
+    eventId: parsed.data.eventId,
+    claimToken: sideEffectClaimToken,
+    reservationResult: REPLY_RESERVATION_RESULT,
+    now: new Date().toISOString(),
+  })) {
+    return Response.json(
+      { error: "Event claim is no longer active" },
+      { status: 409 },
+    )
+  }
+  const messageStatement = duplicate
+    ? null
+    : db.insert(messages).values({
       id: messageId,
       channelId: target.channelId,
       threadId: target.messageId,
@@ -298,8 +326,7 @@ export async function POST(request: Request): Promise<Response> {
       lastReplyAt: null,
       createdAt: now,
     }).onConflictDoNothing()
-  }
-  await db
+  const parentStatement = db
     .update(messages)
     .set({
       replyCount: sql<number>`(
@@ -310,7 +337,7 @@ export async function POST(request: Request): Promise<Response> {
     })
     .where(eq(messages.id, target.messageId))
 
-  await db
+  const inboundStatement = db
     .insert(jarvisBridgeEvents)
     .values({
       id: crypto.randomUUID(),
@@ -328,7 +355,7 @@ export async function POST(request: Request): Promise<Response> {
     })
     .onConflictDoNothing()
 
-  const released = await db
+  const releaseStatement = db
     .update(jarvisBridgeEvents)
     .set({
       result: null,
@@ -341,13 +368,36 @@ export async function POST(request: Request): Promise<Response> {
       eq(jarvisBridgeEvents.status, "processing"),
       eq(jarvisBridgeEvents.claimToken, sideEffectClaimToken),
     ))
-    .returning({ id: jarvisBridgeEvents.id })
-    .get()
-  if (!released) {
-    return Response.json(
-      { error: "Event claim is no longer active" },
-      { status: 409 },
-    )
+  const ownershipAssertion = assertBridgeReservationOwnership(db, {
+    eventId: parsed.data.eventId,
+    claimToken: sideEffectClaimToken,
+    reservationResult: REPLY_RESERVATION_RESULT,
+  })
+  try {
+    if (messageStatement) {
+      await db.batch([
+        ownershipAssertion,
+        messageStatement,
+        parentStatement,
+        inboundStatement,
+        releaseStatement,
+      ])
+    } else {
+      await db.batch([
+        ownershipAssertion,
+        parentStatement,
+        inboundStatement,
+        releaseStatement,
+      ])
+    }
+  } catch (error) {
+    if (isOwnershipAssertionError(error)) {
+      return Response.json(
+        { error: "Event claim is no longer active" },
+        { status: 409 },
+      )
+    }
+    throw error
   }
 
   revalidatePath("/dashboard/conversations")

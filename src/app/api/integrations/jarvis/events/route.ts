@@ -12,6 +12,7 @@ import {
   readBoundedBody,
   verifyJarvisRequest,
 } from "@/lib/jarvis/auth"
+import { RECLAIMABLE_RESERVATION_RESULTS } from "@/lib/jarvis/bridge-reservation"
 import { linkFeedbackDeskItemToGithub } from "@/lib/jarvis/feedback-github"
 import { enqueueFeedbackReceipt } from "@/lib/jarvis/feedback-desk"
 import { jarvisPayloadForDelivery } from "@/lib/jarvis/visual-context"
@@ -125,7 +126,13 @@ export async function GET(request: Request): Promise<Response> {
           eq(jarvisBridgeEvents.status, "pending"),
           and(
             eq(jarvisBridgeEvents.status, "processing"),
-            isNull(jarvisBridgeEvents.result),
+            or(
+              isNull(jarvisBridgeEvents.result),
+              inArray(
+                jarvisBridgeEvents.result,
+                RECLAIMABLE_RESERVATION_RESULTS,
+              ),
+            ),
             lt(jarvisBridgeEvents.claimedAt, staleClaimIso),
           ),
         ),
@@ -157,7 +164,13 @@ export async function GET(request: Request): Promise<Response> {
             eq(jarvisBridgeEvents.status, "pending"),
             and(
               eq(jarvisBridgeEvents.status, "processing"),
-              isNull(jarvisBridgeEvents.result),
+              or(
+                isNull(jarvisBridgeEvents.result),
+                inArray(
+                  jarvisBridgeEvents.result,
+                  RECLAIMABLE_RESERVATION_RESULTS,
+                ),
+              ),
               lt(jarvisBridgeEvents.claimedAt, staleClaimIso),
             ),
           ),
