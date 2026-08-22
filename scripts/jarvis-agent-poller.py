@@ -716,22 +716,31 @@ def submit_feedback(
 
 def acknowledge(
     event_id: str,
+    claim_token: str,
     payload: dict[str, Any],
 ) -> None:
+    if not claim_token or len(claim_token) > 128:
+        raise RuntimeError("Agent event claim token is invalid")
     escaped_id = urllib.parse.quote(event_id, safe="")
+    acknowledgement = dict(payload)
+    acknowledgement["claimToken"] = claim_token
     compass_request(
         "POST",
         f"/api/integrations/jarvis/events/{escaped_id}/ack",
-        payload,
+        acknowledgement,
     )
 
 
 def handle_event(event: dict[str, Any]) -> None:
     event_id = event.get("id")
+    claim_token = event.get("claimToken")
     event_type = event.get("eventType")
     payload = event.get("payload")
     if (
         not isinstance(event_id, str)
+        or not isinstance(claim_token, str)
+        or not claim_token
+        or len(claim_token) > 128
         or event_type != "agent.prompt"
         or not isinstance(payload, dict)
     ):
@@ -774,6 +783,7 @@ def handle_event(event: dict[str, Any]) -> None:
     model = completion.get("model")
     acknowledge(
         event_id,
+        claim_token,
         {
             "status": "completed",
             "result": {
@@ -813,12 +823,14 @@ def run() -> None:
                 if not isinstance(event, dict):
                     continue
                 event_id = event.get("id")
+                claim_token = event.get("claimToken")
                 try:
                     handle_event(event)
                 except RetryableError as error:
-                    if isinstance(event_id, str):
+                    if isinstance(event_id, str) and isinstance(claim_token, str):
                         acknowledge(
                             event_id,
+                            claim_token,
                             {
                                 "status": "failed",
                                 "error": str(error),
@@ -830,9 +842,10 @@ def run() -> None:
                         event_id,
                     )
                 except Exception as error:
-                    if isinstance(event_id, str):
+                    if isinstance(event_id, str) and isinstance(claim_token, str):
                         acknowledge(
                             event_id,
+                            claim_token,
                             {
                                 "status": "failed",
                                 "error": str(error)[:2_000],

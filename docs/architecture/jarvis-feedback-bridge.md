@@ -238,8 +238,10 @@ GET /api/integrations/jarvis/events?limit=20
 ```
 
 The request has an empty body. The response contains up to 50 claimed events.
-Each event includes its ID, type, source, delivery attempt, payload, and
-creation time.
+Each event includes its ID, opaque claim token, type, source, delivery attempt,
+payload, and creation time. A worker must echo that claim token in every
+acknowledgement; a reclaimed event receives a replacement token, and Compass
+rejects the stale worker without completing or requeueing the replacement work.
 
 The basic Ask Jarvis poller uses
 `?limit=1&eventType=agent.prompt` so it cannot claim unrelated Feedback Desk
@@ -266,9 +268,24 @@ through Hermes's existing send adapters, posts Compass-conversation replies
 through the signed reply endpoint, and acknowledges Ask Jarvis/widget events
 after their Compass-native receipt or notification is available. Its local
 delivery ledger prevents a service restart from sending the same external
-update twice before acknowledgement. The notifier service runs with Hermes's
-virtual-environment Python so those send adapters use the same dependencies as
-the Hermes gateway.
+update twice before acknowledgement. For Telegram and email, it durably records
+an `attempting` state immediately before invoking Hermes and records `delivered`
+after success. If the process dies with an ambiguous attempt, the replacement
+worker suppresses a duplicate send and terminally reports the ambiguity. Legacy
+list-format ledgers are read as delivered records. The notifier service runs
+with Hermes's virtual-environment Python so those send adapters use the same
+dependencies as the Hermes gateway. Its transport accepts only the production
+Compass origin `https://compass.openrangeconstruction.ltd` and fixed bridge paths, rejects
+alternate hosts and explicit ports before opening a connection, and never
+follows redirects.
+Before requester metadata or a delivery target is returned, Compass atomically
+refreshes the event's active claim and records a one-time delivery reservation
+in D1. The notifier uses that replacement token for the external send and
+acknowledgement. A concurrent or reclaimed worker cannot reserve the same send.
+Compass-conversation replies refresh the lease again before inserting the reply
+and return the newest token for the final acknowledgement. The notifier sends
+the current token to the fixed delivery-details path in
+`X-Compass-Claim-Token`; it is never placed in a URL.
 
 Confirmed bugs that an administrator moves into `triaged` also enqueue one
 `feedback.delivery_requested` event. The event is the supported handoff to the
@@ -308,6 +325,7 @@ Completed:
 
 ```json
 {
+  "claimToken": "opaque-token-returned-by-pull",
   "status": "completed",
   "result": {
     "classification": "question"
@@ -319,6 +337,7 @@ Retryable failure:
 
 ```json
 {
+  "claimToken": "opaque-token-returned-by-pull",
   "status": "failed",
   "error": "Temporary provider failure",
   "retryAfterSeconds": 300
@@ -474,7 +493,9 @@ idempotency key and therefore receives the endpoint's duplicate result rather
 than creating a second lifecycle delivery. The executor has no command,
 target, header, file-transfer, D1, or browser inputs and never follows
 redirects. It uses the existing primary bridge secret and does not change the
-agent poller or requester notifier.
+agent poller or requester notifier. The co-installed signed helper also pins
+every command to the exact raw production origin and a fixed route/method
+allowlist, and disables redirects for every request.
 
 To remove the operation, stop the scheduled caller, remove its invocation and
 temporary payload files, and restore the prior approved private helper. Do not
@@ -518,10 +539,15 @@ POST /api/integrations/jarvis/replies
 ```json
 {
   "eventId": "outbound-event-id",
+  "claimToken": "opaque-token-returned-by-pull",
   "idempotencyKey": "reply-for-outbound-event-id-v1",
   "content": "Here is the answer for the staff member."
 }
 ```
+
+The reply response returns a refreshed `claimToken`. The worker must use that
+token for the subsequent acknowledgement; the reply route does not complete the
+source event itself.
 
 Compass derives the organization, channel, and original message from the
 stored event. It does not trust a callback to choose an arbitrary channel.

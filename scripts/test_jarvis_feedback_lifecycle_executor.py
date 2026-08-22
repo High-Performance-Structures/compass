@@ -36,10 +36,28 @@ class LifecycleExecutorTests(unittest.TestCase):
     def event(self) -> dict[str, object]:
         return {
             "id": "event-1",
+            "claimToken": "1d223b6f-20ca-424d-a0b5-e66f2f9be830",
             "eventType": "feedback.lifecycle_requested",
             "source": "feedback-desk",
             "payload": self.valid_payload(),
         }
+
+    def test_acknowledgement_carries_the_claim_token(self) -> None:
+        with (
+            patch.object(
+                MODULE,
+                "execute_lifecycle",
+                return_value={"success": True},
+            ),
+            patch.object(MODULE, "acknowledge") as acknowledge,
+        ):
+            MODULE.handle_event(self.event())
+
+        acknowledge.assert_called_once_with(
+            "event-1",
+            "1d223b6f-20ca-424d-a0b5-e66f2f9be830",
+            {"status": "completed", "result": {"success": True}},
+        )
 
     def test_rejects_feature_requests_even_when_payload_claims_approval(self) -> None:
         payload = self.valid_payload()
@@ -69,7 +87,7 @@ class LifecycleExecutorTests(unittest.TestCase):
         with patch.object(
             MODULE,
             "acknowledge",
-            side_effect=lambda event_id, body: acknowledgements.append((event_id, body)),
+            side_effect=lambda event_id, _claim_token, body: acknowledgements.append((event_id, body)),
         ):
             MODULE.handle_event(event)
 
@@ -92,7 +110,7 @@ class LifecycleExecutorTests(unittest.TestCase):
             patch.object(
                 MODULE,
                 "acknowledge",
-                side_effect=lambda event_id, body: acknowledgements.append((event_id, body)),
+                side_effect=lambda event_id, _claim_token, body: acknowledgements.append((event_id, body)),
             ),
         ):
             MODULE.handle_event(self.event())
@@ -112,7 +130,7 @@ class LifecycleExecutorTests(unittest.TestCase):
             patch.object(
                 MODULE,
                 "acknowledge",
-                side_effect=lambda event_id, body: acknowledgements.append((event_id, body)),
+                side_effect=lambda event_id, _claim_token, body: acknowledgements.append((event_id, body)),
             ),
         ):
             MODULE.handle_event(self.event())
@@ -207,7 +225,7 @@ class LifecycleExecutorTests(unittest.TestCase):
                     with patch.object(
                         MODULE,
                         "acknowledge",
-                        side_effect=lambda event_id, body: acknowledgements.append((event_id, body)),
+                        side_effect=lambda event_id, _claim_token, body: acknowledgements.append((event_id, body)),
                     ):
                         MODULE.handle_event(event)
 
@@ -258,6 +276,12 @@ class LifecycleExecutorTests(unittest.TestCase):
         ):
             with self.assertRaises(MODULE.InvalidLifecycleRequest):
                 MODULE.validate_runtime_origin()
+
+    def test_bridge_target_rejects_non_uuid_ack_paths(self) -> None:
+        self.assertFalse(MODULE._allowed_target(
+            "/api/integrations/jarvis/events/"
+            "------------------------------------/ack",
+        ))
 
     def test_compass_request_does_not_follow_redirects(self) -> None:
         redirected: list[dict[str, str]] = []
