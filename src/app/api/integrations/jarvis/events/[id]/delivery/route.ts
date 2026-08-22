@@ -8,6 +8,10 @@ import {
   readBoundedBody,
   verifyJarvisRequest,
 } from "@/lib/jarvis/auth"
+import {
+  feedbackStatusMessage,
+  knownFeedbackStatus,
+} from "@/lib/jarvis/feedback-lifecycle"
 
 function metadataActorId(metadata: string | null): string | null {
   if (!metadata) return null
@@ -23,18 +27,29 @@ function metadataActorId(metadata: string | null): string | null {
   }
 }
 
-function eventMessage(payload: string): string {
+function eventMessage(
+  payload: string,
+  item: Readonly<{ title: string; kind: string }>,
+): string {
   try {
     const parsed: unknown = JSON.parse(payload)
     if (typeof parsed !== "object" || parsed === null) {
-      return "Your Compass request has a new update."
+      return feedbackStatusMessage("new", item.title, item.kind)
     }
-    const value = Reflect.get(parsed, "message")
-    return typeof value === "string" && value.trim().length > 0
-      ? value.trim().slice(0, 2_000)
-      : "Your Compass request has a new update."
+    const rawStatus = Reflect.get(parsed, "status")
+    const rawKind = Reflect.get(parsed, "notificationKind")
+    const status = knownFeedbackStatus(
+      typeof rawStatus === "string" ? rawStatus : "new",
+    )
+    if (rawKind === "delivery_graph_created") {
+      return "Your Compass request now has accountable engineering work."
+    }
+    if (rawKind === "delivery_graph_failed") {
+      return "Your Compass request could not enter engineering work yet and will be retried."
+    }
+    return feedbackStatusMessage(status, item.title, item.kind)
   } catch {
-    return "Your Compass request has a new update."
+    return feedbackStatusMessage("new", item.title, item.kind)
   }
 }
 
@@ -81,7 +96,12 @@ export async function GET(
   }
 
   const item = await db
-    .select({ reporterEmail: feedbackDeskItems.reporterEmail, metadata: feedbackDeskItems.metadata })
+    .select({
+      reporterEmail: feedbackDeskItems.reporterEmail,
+      metadata: feedbackDeskItems.metadata,
+      title: feedbackDeskItems.title,
+      kind: feedbackDeskItems.kind,
+    })
     .from(feedbackDeskItems)
     .where(eq(feedbackDeskItems.id, event.feedbackDeskItemId))
     .get()
@@ -92,7 +112,7 @@ export async function GET(
   return Response.json({
     eventType: event.eventType,
     source: event.source,
-    message: eventMessage(event.payload),
+    message: eventMessage(event.payload, item),
     deliveryTarget: {
       externalActorId: metadataActorId(item.metadata),
       email: item.reporterEmail?.trim().toLowerCase() ?? null,

@@ -609,7 +609,10 @@ async function hasExistingSmsDeliveryForSource(
 }
 
 async function persistNotificationEvent(
-  input: CreateNotificationInput
+  input: CreateNotificationInput,
+  options: Readonly<{ swallowMissingTableError: boolean }> = {
+    swallowMissingTableError: true,
+  },
 ): Promise<void> {
   const requestedRecipientIds = Array.from(
     new Set(input.recipients.map((recipient) => recipient.userId))
@@ -824,7 +827,10 @@ async function persistNotificationEvent(
 
     revalidatePath("/", "layout")
   } catch (error) {
-    if (!isMissingNotificationTableError(error)) {
+    if (
+      !isMissingNotificationTableError(error) ||
+      !options.swallowMissingTableError
+    ) {
       throw error
     }
   }
@@ -856,4 +862,16 @@ export async function createSystemNotificationEvent(
     ...input,
     createdBy: null,
   })
+}
+
+export async function createStrictSystemNotificationEvent(
+  input: Omit<CreateNotificationInput, "createdBy">
+): Promise<void> {
+  await persistNotificationEvent(
+    {
+      ...input,
+      createdBy: null,
+    },
+    { swallowMissingTableError: false },
+  )
 }
