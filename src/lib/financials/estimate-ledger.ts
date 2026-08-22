@@ -325,12 +325,18 @@ export async function estimateSourceHash(input: {
   readonly contractTerms: string | null
   readonly closingText: string | null
   readonly signers: {
-    readonly clientName: string | null
-    readonly clientTitle: string | null
-    readonly clientEmail: string | null
-    readonly companyName: string | null
-    readonly companyTitle: string | null
-    readonly companyEmail: string | null
+    readonly clients: readonly {
+      readonly name: string
+      readonly title: string
+      readonly email: string
+      readonly initials: string
+    }[]
+    readonly company: {
+      readonly name: string | null
+      readonly title: string | null
+      readonly email: string | null
+      readonly initials: string | null
+    }
   }
   readonly overheadRateBasisPoints: number
   readonly marginRateBasisPoints: number

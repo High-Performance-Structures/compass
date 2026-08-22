@@ -54,4 +54,20 @@ describe("estimate client report persistence contract", () => {
     expect(migration).toContain("ADD `client_signer_contact_id` text")
     expect(migration).toContain("ADD `company_signer_contact_id` text")
   })
+
+  it("supports multiple client signers and staged Foxit preparation", () => {
+    expect(projectEstimates.clientSignersJson.name).toBe("client_signers_json")
+    expect(projectEstimates.companySignerInitials.name).toBe(
+      "company_signer_initials"
+    )
+    expect(projectEstimates.foxitEmbeddedSessionUrl.name).toBe(
+      "foxit_embedded_session_url"
+    )
+    const migration = readFileSync(
+      resolve(process.cwd(), "drizzle/0129_estimate_multi_signers_foxit.sql"),
+      "utf8"
+    )
+    expect(migration).toContain("ADD `client_signers_json` text")
+    expect(migration).toContain("ADD `foxit_prepared_source_hash` text")
+  })
 })

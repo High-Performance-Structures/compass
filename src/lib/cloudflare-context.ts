@@ -258,7 +258,12 @@ function createLocalEnv(DB: D1Database): CloudflareEnv {
         GITHUB_REPO:
             process.env.GITHUB_REPO ?? "High-Performance-Structures/compass",
         OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY ?? "",
+        FOXIT_ESIGN_CLIENT_ID: process.env.FOXIT_ESIGN_CLIENT_ID ?? "",
+        FOXIT_ESIGN_CLIENT_SECRET: process.env.FOXIT_ESIGN_CLIENT_SECRET ?? "",
+        FOXIT_ESIGN_WEBHOOK_SECRET:
+            process.env.FOXIT_ESIGN_WEBHOOK_SECRET ?? "",
         DB,
+        BROWSER: createUnavailableFetcher("BROWSER"),
         WORKER_SELF_REFERENCE: createUnavailableFetcher(
             "WORKER_SELF_REFERENCE"
         ) as CloudflareEnv["WORKER_SELF_REFERENCE"],

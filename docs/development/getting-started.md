@@ -89,6 +89,27 @@ See `docs/wip/sage-api-bridge-2026-05-14.md` and
 `docs/wip/compass-security-plan-2026-05-19.md` before adding or enabling Sage
 write behavior.
 
+### Foxit eSign (optional)
+
+Estimate signature preparation uses Cloudflare Browser Run to create the exact
+client PDF and Foxit eSign to prepare and send a multi-signer envelope.
+Compass adds a required Foxit `initial` field for every party on every page
+except the dedicated full-signature page; the values are supplied by the
+signers in Foxit, not prefilled by Compass.
+Configure these values as Cloudflare secrets, never plaintext variables.
+
+| Variable | Description |
+|----------|-------------|
+| `FOXIT_ESIGN_CLIENT_ID` | Client ID for the Foxit API application with eSign activated. |
+| `FOXIT_ESIGN_CLIENT_SECRET` | Client secret for the same Foxit API application. |
+| `FOXIT_ESIGN_WEBHOOK_SECRET` | Random secret used to verify Foxit webhook HMAC signatures. |
+
+Register Foxit webhook events at
+`/api/integrations/foxit/webhook`, including `folder_sent`,
+`folder_cancelled`, and `folder_executed`. Configure Foxit to
+append its Base64 HMAC-SHA256 value in the `signature` query parameter. The
+Worker also requires the Cloudflare Browser Run binding named `BROWSER`.
+
 The limited write remains disabled unless both `SAGE_READ_ONLY=false` and
 `SAGE_ALLOW_CLIENT_PROJECT_WRITES=true`. The bridge endpoint must use the Sage
 100 Contractor API on the private Sage host; Compass does not issue direct SQL

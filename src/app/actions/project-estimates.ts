@@ -2,6 +2,7 @@
 
 import { and, asc, desc, eq, gt, inArray, like, ne, sql } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
+import { cookies } from "next/headers"
 
 import { saveEstimateTextTemplateLibraryItem } from "@/app/actions/estimate-text-templates"
 import { getUploadSessionUrl } from "@/app/actions/google-drive"
@@ -80,6 +81,11 @@ import {
   type ProjectDepartment,
 } from "@/lib/project-branding"
 import { isInternalStaffRole } from "@/lib/user-roles"
+import { createFoxitPreparedEnvelope } from "@/lib/foxit/esign"
+import {
+  prepareEstimateSignaturePdf,
+  type PreparedEstimateSignaturePdf,
+} from "@/lib/estimates/signature-pdf"
 
 export type ProjectEstimateSummary = {
   readonly id: string
@@ -93,10 +99,12 @@ export type ProjectEstimateSummary = {
   readonly clientSignerName: string | null
   readonly clientSignerTitle: string | null
   readonly clientSignerEmail: string | null
+  readonly clientSigners: readonly ProjectEstimateSigner[]
   readonly companySignerContactId: string | null
   readonly companySignerName: string | null
   readonly companySignerTitle: string | null
   readonly companySignerEmail: string | null
+  readonly companySignerInitials: string | null
   readonly sourceWorkbookUrl: string | null
   readonly defaultTaxEntityId: string | null
   readonly defaultTaxCode: string | null
@@ -123,6 +131,7 @@ export type ProjectEstimateSummary = {
   readonly estimateTotalCents: number
   readonly foxitStatus: string
   readonly foxitEnvelopeId: string | null
+  readonly foxitEmbeddedSessionUrl: string | null
   readonly signaturePackageUrl: string | null
   readonly signedAt: string | null
   readonly acceptanceMethod: string | null
@@ -133,6 +142,14 @@ export type ProjectEstimateSummary = {
   readonly sageStatus: string
   readonly createdAt: string
   readonly updatedAt: string
+}
+
+export type ProjectEstimateSigner = {
+  readonly contactId: string | null
+  readonly name: string
+  readonly title: string
+  readonly email: string
+  readonly initials: string
 }
 
 export type ProjectEstimateLineItem = {
@@ -276,10 +293,12 @@ export type ProjectEstimateHeaderInput = {
   readonly clientSignerName: string | null
   readonly clientSignerTitle: string | null
   readonly clientSignerEmail: string | null
+  readonly clientSigners: readonly ProjectEstimateSigner[]
   readonly companySignerContactId: string | null
   readonly companySignerName: string | null
   readonly companySignerTitle: string | null
   readonly companySignerEmail: string | null
+  readonly companySignerInitials: string | null
   readonly sourceWorkbookUrl: string | null
   readonly defaultTaxEntityId: string | null
   readonly termsTemplateId: string | null
@@ -322,6 +341,14 @@ export type ProjectEstimateBasisInput = {
 
 export type ProjectEstimateActionResult =
   | { readonly success: true; readonly id: string }
+  | { readonly success: false; readonly error: string }
+
+export type ProjectEstimateFoxitPreparationResult =
+  | {
+      readonly success: true
+      readonly id: string
+      readonly embeddedSessionUrl: string
+    }
   | { readonly success: false; readonly error: string }
 
 export type ProjectEstimateImportActionResult =
@@ -497,6 +524,76 @@ function limitedText(
   return cleaned
 }
 
+function signerInitials(name: string): string {
+  return name
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((part) => part[0] ?? "")
+    .join("")
+    .slice(0, 6)
+    .toUpperCase()
+}
+
+function normalizeEstimateSigner(
+  value: ProjectEstimateSigner
+): ProjectEstimateSigner | null {
+  const name = limitedText(value.name, "Signer name", 200)
+  if (!name) return null
+  const email = limitedText(value.email, "Signer email", 320) ?? ""
+  if (email && !/^\S+@\S+\.\S+$/.test(email)) {
+    throw new Error(`Enter a valid email address for ${name}.`)
+  }
+  const initials =
+    limitedText(value.initials, "Signer initials", 6) ?? signerInitials(name)
+  return {
+    contactId: cleanText(value.contactId),
+    name,
+    title: limitedText(value.title, "Signer title", 200) ?? "",
+    email,
+    initials: initials.toUpperCase(),
+  }
+}
+
+function projectEstimateClientSigners(
+  row: typeof projectEstimates.$inferSelect
+): readonly ProjectEstimateSigner[] {
+  if (row.clientSignersJson) {
+    try {
+      const parsed: unknown = JSON.parse(row.clientSignersJson)
+      if (Array.isArray(parsed)) {
+        return parsed.flatMap((item): readonly ProjectEstimateSigner[] => {
+          if (!item || typeof item !== "object") return []
+          const name = Reflect.get(item, "name")
+          if (typeof name !== "string" || !name.trim()) return []
+          const stringValue = (key: string): string => {
+            const value = Reflect.get(item, key)
+            return typeof value === "string" ? value : ""
+          }
+          const contactId = Reflect.get(item, "contactId")
+          return [{
+            contactId: typeof contactId === "string" ? contactId : null,
+            name: name.trim(),
+            title: stringValue("title"),
+            email: stringValue("email"),
+            initials: stringValue("initials") || signerInitials(name),
+          }]
+        })
+      }
+    } catch {
+      // Preserve access to pre-migration estimates if legacy data is malformed.
+    }
+  }
+  const legacyName = cleanText(row.clientSignerName)
+  if (!legacyName) return []
+  return [{
+    contactId: row.clientSignerContactId,
+    name: legacyName,
+    title: row.clientSignerTitle ?? "",
+    email: row.clientSignerEmail ?? "",
+    initials: signerInitials(legacyName),
+  }]
+}
+
 function templateDepartment(value: string | null): ProjectDepartment | null {
   if (value === "O" || value === "H" || value === "N" || value === "D") {
     return value
@@ -520,7 +617,8 @@ function templateOption(
 
 function estimateSummary(
   row: typeof projectEstimates.$inferSelect,
-  department: ProjectDepartment
+  department: ProjectDepartment,
+  includeSignatureSession = false
 ): ProjectEstimateSummary {
   return {
     id: row.id,
@@ -537,10 +635,12 @@ function estimateSummary(
     clientSignerName: row.clientSignerName,
     clientSignerTitle: row.clientSignerTitle,
     clientSignerEmail: row.clientSignerEmail,
+    clientSigners: projectEstimateClientSigners(row),
     companySignerContactId: row.companySignerContactId,
     companySignerName: row.companySignerName,
     companySignerTitle: row.companySignerTitle,
     companySignerEmail: row.companySignerEmail,
+    companySignerInitials: row.companySignerInitials,
     sourceWorkbookUrl: row.sourceWorkbookUrl,
     defaultTaxEntityId: row.defaultTaxEntityId,
     defaultTaxCode: row.defaultTaxCode,
@@ -569,6 +669,9 @@ function estimateSummary(
     estimateTotalCents: row.estimateTotalCents,
     foxitStatus: row.foxitStatus,
     foxitEnvelopeId: row.foxitEnvelopeId,
+    foxitEmbeddedSessionUrl: includeSignatureSession
+      ? row.foxitEmbeddedSessionUrl
+      : null,
     signaturePackageUrl: row.signaturePackageUrl,
     signedAt: row.signedAt,
     acceptanceMethod: row.acceptanceMethod,
@@ -712,6 +815,19 @@ async function requireEditableEstimate(
       "This estimate is locked. Create a revision instead of changing accepted contract values."
     )
   }
+  if (estimate.foxitStatus === "preparing") {
+    await db
+      .update(projectEstimates)
+      .set({
+        foxitStatus: "not_started",
+        foxitEnvelopeId: null,
+        foxitEmbeddedSessionUrl: null,
+        foxitPreparedSourceHash: null,
+        foxitPreparedAt: null,
+      })
+      .where(eq(projectEstimates.id, estimateId))
+      .run()
+  }
   return estimate
 }
 
@@ -839,7 +955,7 @@ export async function getProjectEstimateWorkspace(
       desc(projectEstimates.updatedAt)
     )
   const estimates = estimateRows.map((row) =>
-    estimateSummary(row, access.department)
+    estimateSummary(row, access.department, canEdit)
   )
   const selected = activeEstimate(estimates, estimateId)
   const [
@@ -1063,9 +1179,16 @@ export async function createProjectEstimateDraft(
         desc(projectContacts.primaryContact),
         asc(projectContacts.sortOrder)
       )
-    const clientSigner = contactRows.find(
-      (contact) => contact.contactType === "owner"
-    )
+    const clientSigners = contactRows
+      .filter((contact) => contact.contactType === "owner")
+      .map((contact) => ({
+        contactId: contact.id,
+        name: contact.displayName,
+        title: contact.role ?? "",
+        email: contact.email ?? "",
+        initials: signerInitials(contact.displayName),
+      }))
+    const clientSigner = clientSigners[0]
     const companySigner = contactRows.find(
       (contact) => contact.contactType === "internal"
     )
@@ -1077,14 +1200,18 @@ export async function createProjectEstimateDraft(
       title: defaultEstimateTitle(access.department),
       status: "draft",
       estimateDate: now.slice(0, 10),
-      clientSignerContactId: clientSigner?.id ?? null,
-      clientSignerName: clientSigner?.displayName ?? null,
-      clientSignerTitle: clientSigner?.role ?? null,
+      clientSignerContactId: clientSigner?.contactId ?? null,
+      clientSignerName: clientSigner?.name ?? null,
+      clientSignerTitle: clientSigner?.title ?? null,
       clientSignerEmail: clientSigner?.email ?? null,
+      clientSignersJson: JSON.stringify(clientSigners),
       companySignerContactId: companySigner?.id ?? null,
       companySignerName: companySigner?.displayName ?? null,
       companySignerTitle: companySigner?.role ?? null,
       companySignerEmail: companySigner?.email ?? null,
+      companySignerInitials: companySigner
+        ? signerInitials(companySigner.displayName)
+        : null,
       sourceSystem: "compass",
       createdBy: access.user.id,
       createdAt: now,
@@ -1151,8 +1278,10 @@ export async function duplicateProjectEstimate(
              id, project_id, estimate_number, version_number, title, status,
              estimate_date, client_name, client_signer_contact_id,
              client_signer_name, client_signer_title, client_signer_email,
+             client_signers_json,
              company_signer_contact_id, company_signer_name,
              company_signer_title, company_signer_email,
+             company_signer_initials,
              source_system, source_workbook_id,
              source_workbook_url, source_revision, template_version_id,
              template_application_id, default_tax_entity_id, default_tax_code,
@@ -1171,9 +1300,10 @@ export async function duplicateProjectEstimate(
            )
            SELECT ?, project_id, estimate_number, ?, title, 'draft', ?,
              client_name, client_signer_contact_id, client_signer_name,
-             client_signer_title, client_signer_email,
+             client_signer_title, client_signer_email, client_signers_json,
              company_signer_contact_id, company_signer_name,
              company_signer_title, company_signer_email,
+             company_signer_initials,
              'compass_revision', source_workbook_id,
              source_workbook_url, ?, template_version_id,
              template_application_id, default_tax_entity_id, default_tax_code,
@@ -1294,8 +1424,9 @@ export async function getProjectEstimateVersionComparison(
       desc(projectEstimates.versionNumber),
       desc(projectEstimates.updatedAt)
     )
+  const canEdit = isInternalStaffRole(access.user.role)
   const estimates = estimateRows.map((row) =>
-    estimateSummary(row, access.department)
+    estimateSummary(row, access.department, canEdit)
   )
   const revisedEstimate =
     estimates.find((estimate) => estimate.id === revisedEstimateId) ??
@@ -1342,7 +1473,7 @@ export async function getProjectEstimateVersionComparison(
       : null
 
   return {
-    canEdit: isInternalStaffRole(access.user.role),
+    canEdit,
     projectNumber: access.projectNumber,
     projectName: access.projectName,
     estimates,
@@ -1398,20 +1529,36 @@ export async function updateProjectEstimateHeader(
       cleanText(input.introductionText) ?? introductionTemplate?.body ?? null
     const closingText =
       cleanText(input.closingText) ?? closingTemplate?.body ?? null
-    const [clientSignerContactId, companySignerContactId] = await Promise.all([
-      validatedSignerContactId(
-        access.db,
-        projectId,
-        input.clientSignerContactId,
-        "the client signer"
-      ),
-      validatedSignerContactId(
-        access.db,
-        projectId,
-        input.companySignerContactId,
-        "the company representative"
-      ),
-    ])
+    const clientSigners = input.clientSigners.flatMap(
+      (signer): readonly ProjectEstimateSigner[] => {
+        const normalized = normalizeEstimateSigner(signer)
+        return normalized ? [normalized] : []
+      }
+    )
+    if (clientSigners.length > 10) {
+      throw new Error("An estimate can have no more than 10 client signers.")
+    }
+    const validatedClientContactIds = await Promise.all(
+      clientSigners.map((signer) =>
+        validatedSignerContactId(
+          access.db,
+          projectId,
+          signer.contactId,
+          `client signer ${signer.name}`
+        )
+      )
+    )
+    const savedClientSigners = clientSigners.map((signer, index) => ({
+      ...signer,
+      contactId: validatedClientContactIds[index] ?? null,
+    }))
+    const primaryClientSigner = savedClientSigners[0]
+    const companySignerContactId = await validatedSignerContactId(
+      access.db,
+      projectId,
+      input.companySignerContactId,
+      "the company representative"
+    )
     await access.db
       .update(projectEstimates)
       .set({
@@ -1419,22 +1566,11 @@ export async function updateProjectEstimateHeader(
         title: requiredText(input.title, "Estimate title"),
         estimateDate: requiredText(input.estimateDate, "Estimate date"),
         clientName: cleanText(input.clientName),
-        clientSignerContactId,
-        clientSignerName: limitedText(
-          input.clientSignerName,
-          "Client signer name",
-          200
-        ),
-        clientSignerTitle: limitedText(
-          input.clientSignerTitle,
-          "Client signer title",
-          200
-        ),
-        clientSignerEmail: limitedText(
-          input.clientSignerEmail,
-          "Client signer email",
-          320
-        ),
+        clientSignerContactId: primaryClientSigner?.contactId ?? null,
+        clientSignerName: primaryClientSigner?.name ?? null,
+        clientSignerTitle: primaryClientSigner?.title || null,
+        clientSignerEmail: primaryClientSigner?.email || null,
+        clientSignersJson: JSON.stringify(savedClientSigners),
         companySignerContactId,
         companySignerName: limitedText(
           input.companySignerName,
@@ -1451,6 +1587,15 @@ export async function updateProjectEstimateHeader(
           "Company representative email",
           320
         ),
+        companySignerInitials:
+          limitedText(
+            input.companySignerInitials,
+            "Company representative initials",
+            6
+          ) ??
+          (cleanText(input.companySignerName)
+            ? signerInitials(requiredText(input.companySignerName, "Company representative name"))
+            : null),
         sourceWorkbookUrl: safeUrl(input.sourceWorkbookUrl),
         defaultTaxEntityId: taxEntity?.id ?? null,
         defaultTaxCode: taxEntity?.code ?? null,
@@ -2410,10 +2555,48 @@ export async function addProjectEstimateBasisDocument(
   }
 }
 
+async function renderEstimateSignaturePdf(input: {
+  readonly env: CloudflareEnv
+  readonly projectId: string
+  readonly estimateId: string
+  readonly signerLabels: readonly string[]
+}): Promise<PreparedEstimateSignaturePdf> {
+  const quickAction = Reflect.get(input.env.BROWSER, "quickAction")
+  if (typeof quickAction !== "function") {
+    throw new Error("Cloudflare Browser Run is not available for estimate PDFs.")
+  }
+  const requestCookies = await cookies()
+  const origin = new URL(input.env.WORKOS_REDIRECT_URI).origin
+  const url = new URL(`/print/projects/${input.projectId}/estimate`, origin)
+  url.searchParams.set("estimateId", input.estimateId)
+  const rendered: unknown = await Reflect.apply(quickAction, input.env.BROWSER, [
+    "pdf",
+    {
+      url: url.toString(),
+      setExtraHTTPHeaders: { Cookie: requestCookies.toString() },
+      gotoOptions: { waitUntil: "networkidle2", timeout: 60_000 },
+      waitForSelector: { selector: ".estimate-signature-page", timeout: 60_000 },
+      pdfOptions: {
+        format: "letter",
+        printBackground: true,
+        preferCSSPageSize: true,
+        margin: { top: "0", right: "0", bottom: "0", left: "0" },
+      },
+    },
+  ])
+  if (!(rendered instanceof Response) || !rendered.ok) {
+    throw new Error("Unable to render the estimate signature PDF.")
+  }
+  return prepareEstimateSignaturePdf({
+    pdf: await rendered.arrayBuffer(),
+    signerLabels: input.signerLabels,
+  })
+}
+
 export async function prepareProjectEstimateForClientSignature(
   projectId: string,
   estimateId: string
-): Promise<ProjectEstimateActionResult> {
+): Promise<ProjectEstimateFoxitPreparationResult> {
   try {
     const access = await estimateAccess(projectId, true)
     const estimate = await requireEditableEstimate(
@@ -2448,13 +2631,20 @@ export async function prepareProjectEstimateForClientSignature(
     if (!cleanText(estimate.estimateDate)) {
       throw new Error("Add the estimate date before signature.")
     }
-    if (!cleanText(estimate.clientSignerName)) {
-      throw new Error("Choose or type the client signer before signature.")
+    const clientSigners = projectEstimateClientSigners(estimate)
+    if (clientSigners.length === 0) {
+      throw new Error("Add at least one client or owner signer before signature.")
+    }
+    if (clientSigners.some((signer) => !cleanText(signer.email))) {
+      throw new Error("Every client or owner signer needs an email address for Foxit.")
     }
     if (!cleanText(estimate.companySignerName)) {
       throw new Error(
         "Choose or type the company representative before signature."
       )
+    }
+    if (!cleanText(estimate.companySignerEmail)) {
+      throw new Error("Add the company representative email before signature.")
     }
     const sourceCostCodes = [
       ...new Set(
@@ -2493,12 +2683,18 @@ export async function prepareProjectEstimateForClientSignature(
       contractTerms: estimate.contractTerms,
       closingText: estimate.closingText,
       signers: {
-        clientName: estimate.clientSignerName,
-        clientTitle: estimate.clientSignerTitle,
-        clientEmail: estimate.clientSignerEmail,
-        companyName: estimate.companySignerName,
-        companyTitle: estimate.companySignerTitle,
-        companyEmail: estimate.companySignerEmail,
+        clients: projectEstimateClientSigners(estimate).map((signer) => ({
+          name: signer.name,
+          title: signer.title,
+          email: signer.email,
+          initials: signer.initials,
+        })),
+        company: {
+          name: estimate.companySignerName,
+          title: estimate.companySignerTitle,
+          email: estimate.companySignerEmail,
+          initials: estimate.companySignerInitials,
+        },
       },
       overheadRateBasisPoints: estimate.overheadRateBasisPoints,
       marginRateBasisPoints: estimate.marginRateBasisPoints,
@@ -2543,13 +2739,131 @@ export async function prepareProjectEstimateForClientSignature(
         sortOrder: acknowledgement.sortOrder,
       })),
     })
+    const { env } = await getCloudflareContext()
+    const clientId = cleanText(env.FOXIT_ESIGN_CLIENT_ID)
+    const clientSecret = cleanText(env.FOXIT_ESIGN_CLIENT_SECRET)
+    if (!clientId || !clientSecret) {
+      throw new Error("Foxit eSign credentials are not configured for Compass.")
+    }
+    const preparedPdf = await renderEstimateSignaturePdf({
+      env,
+      projectId,
+      estimateId,
+      signerLabels: [
+        ...clientSigners.map((_, index) => `Client ${index + 1}`),
+        "Company",
+      ],
+    })
+    const origin = new URL(env.WORKOS_REDIRECT_URI).origin
+    const returnUrl = new URL(
+      `/dashboard/projects/${projectId}/estimate`,
+      origin
+    )
+    returnUrl.searchParams.set("estimateId", estimateId)
+    const failureUrl = new URL(returnUrl)
+    failureUrl.searchParams.set("foxit", "error")
+    returnUrl.searchParams.set("foxit", "sent")
+    const parties = [
+      ...clientSigners.map((signer, index) => ({
+        name: signer.name,
+        email: signer.email,
+        sequence: index + 1,
+      })),
+      {
+        name: estimate.companySignerName ?? "Company representative",
+        email: estimate.companySignerEmail ?? "",
+        sequence: clientSigners.length + 1,
+      },
+    ]
+    const foxit = await createFoxitPreparedEnvelope({
+      clientId,
+      clientSecret,
+      folderName: `${estimate.estimateNumber} version ${estimate.versionNumber}`,
+      pdfBase64: preparedPdf.pdfBase64,
+      parties,
+      fields: preparedPdf.fields,
+      successUrl: returnUrl.toString(),
+      errorUrl: failureUrl.toString(),
+      estimateId,
+      sourceHash,
+    })
     const now = new Date().toISOString()
     await access.db
       .update(projectEstimates)
       .set({
         title: reportTitle,
+        foxitStatus: "preparing",
+        foxitEnvelopeId: foxit.envelopeId,
+        foxitEmbeddedSessionUrl: foxit.embeddedSessionUrl,
+        foxitPreparedSourceHash: sourceHash,
+        foxitPreparedAt: now,
+        updatedAt: now,
+      })
+      .where(eq(projectEstimates.id, estimateId))
+      .run()
+    revalidateEstimate(projectId)
+    return {
+      success: true,
+      id: estimateId,
+      embeddedSessionUrl: foxit.embeddedSessionUrl,
+    }
+  } catch (error) {
+    return {
+      success: false,
+      error:
+        error instanceof Error ? error.message : "Unable to prepare signature.",
+    }
+  }
+}
+
+export async function markProjectEstimateSentOutsideCompass(
+  projectId: string,
+  estimateId: string
+): Promise<ProjectEstimateActionResult> {
+  try {
+    const access = await estimateAccess(projectId, true)
+    const estimate = await requireEditableEstimate(
+      access.db,
+      projectId,
+      estimateId
+    )
+    const lines = await access.db
+      .select()
+      .from(projectEstimateLines)
+      .where(eq(projectEstimateLines.estimateId, estimateId))
+      .orderBy(asc(projectEstimateLines.sortOrder))
+    if (lines.length === 0) throw new Error("Add estimate lines before signature.")
+    if (!cleanText(estimate.estimateDate)) {
+      throw new Error("Add the estimate date before signature.")
+    }
+    if (projectEstimateClientSigners(estimate).length === 0) {
+      throw new Error("Add at least one client or owner signer before signature.")
+    }
+    if (!cleanText(estimate.companySignerName)) {
+      throw new Error("Add the company representative before signature.")
+    }
+    if (!cleanText(estimate.contractTerms)) {
+      throw new Error("Add the contract terms before signature.")
+    }
+    const fingerprint = JSON.stringify({
+      estimate,
+      signers: projectEstimateClientSigners(estimate),
+      lines,
+    })
+    const digest = new Uint8Array(
+      await crypto.subtle.digest("SHA-256", new TextEncoder().encode(fingerprint))
+    )
+    const sourceHash = [...digest]
+      .map((value) => value.toString(16).padStart(2, "0"))
+      .join("")
+    const now = new Date().toISOString()
+    await access.db
+      .update(projectEstimates)
+      .set({
         status: "signature_pending",
-        foxitStatus: "not_started",
+        foxitStatus: "not_applicable",
+        foxitEnvelopeId: null,
+        foxitEmbeddedSessionUrl: null,
         signatureRequestedAt: now,
         sourceHash,
         updatedAt: now,
@@ -2562,7 +2876,9 @@ export async function prepareProjectEstimateForClientSignature(
     return {
       success: false,
       error:
-        error instanceof Error ? error.message : "Unable to prepare signature.",
+        error instanceof Error
+          ? error.message
+          : "Unable to freeze the estimate for outside signatures.",
     }
   }
 }
@@ -2668,45 +2984,10 @@ async function signaturePendingEstimate(
   const estimate = rows[0]
   if (!estimate || estimate.status !== "signature_pending") {
     throw new Error(
-      "Lock the final estimate version for client signature before recording acceptance."
+      "Send or print the final estimate version for signature before recording acceptance."
     )
   }
   return estimate
-}
-
-export async function recordSignedProjectEstimate(
-  projectId: string,
-  estimateId: string,
-  input: {
-    readonly signedDocumentUrl: string | null
-    readonly foxitEnvelopeId: string | null
-  }
-): Promise<ProjectEstimateActionResult> {
-  try {
-    const access = await estimateAccess(projectId, true)
-    const estimate = await signaturePendingEstimate(access, projectId, estimateId)
-    const signaturePackageUrl = safeEvidenceUrl(input.signedDocumentUrl)
-    if (!signaturePackageUrl) {
-      throw new Error("Add the completed Foxit document link before acceptance.")
-    }
-    return acceptProjectEstimate({
-      access,
-      estimate,
-      acceptanceMethod: "foxit",
-      evidenceUrl: signaturePackageUrl,
-      evidenceLabel: "Completed Foxit estimate",
-      acceptanceNote: null,
-      signedAt: new Date().toISOString(),
-      foxitStatus: "completed",
-      foxitEnvelopeId: cleanText(input.foxitEnvelopeId),
-    })
-  } catch (error) {
-    return {
-      success: false,
-      error:
-        error instanceof Error ? error.message : "Unable to accept estimate.",
-    }
-  }
 }
 
 export async function recordManualProjectEstimateAcceptance(

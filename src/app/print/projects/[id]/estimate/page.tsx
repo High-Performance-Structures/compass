@@ -93,11 +93,14 @@ export default async function ProjectEstimatePrintPage({
           .estimate-report-actions { display: none !important; }
           .estimate-report { margin: 0 !important; max-width: none !important; padding: 0 !important; }
           .estimate-acknowledgement { break-before: page; }
+          .estimate-signature-page { break-before: page; }
         }
       `}</style>
       <ProjectEstimateReportActions
         title={estimate.title}
         estimateNumber={estimate.estimateNumber}
+        projectId={id}
+        estimateId={estimate.id}
       />
       <main className="estimate-report mx-auto max-w-[8.5in] bg-white p-8 text-black print:max-w-none print:p-0">
         <header className="flex items-start justify-between gap-6 border-b-2 border-black pb-5">
@@ -351,45 +354,6 @@ export default async function ProjectEstimatePrintPage({
           </section>
         )}
 
-        <section className="mt-12 break-inside-avoid">
-          <h2 className="border-b pb-1 text-sm font-bold uppercase tracking-wide">
-            Acceptance and authorization
-          </h2>
-          <div className="mt-8 grid grid-cols-2 gap-10 text-sm">
-            <div>
-              <p className="font-semibold">Client / Owner</p>
-              <div className="mt-10 border-b border-black" />
-              <p className="mt-1 text-xs">Signature</p>
-              <p className="mt-4 font-medium">
-                {estimate.clientSignerName ?? "Client signer"}
-              </p>
-              {estimate.clientSignerTitle && (
-                <p className="text-xs">{estimate.clientSignerTitle}</p>
-              )}
-              <div className="mt-7 border-b border-black" />
-              <p className="mt-1 text-xs">Date</p>
-            </div>
-            <div>
-              <p className="font-semibold">{brand.companyName}</p>
-              <div className="mt-10 border-b border-black" />
-              <p className="mt-1 text-xs">Company representative signature</p>
-              <p className="mt-4 font-medium">
-                {estimate.companySignerName ?? "Company representative"}
-              </p>
-              {estimate.companySignerTitle && (
-                <p className="text-xs">{estimate.companySignerTitle}</p>
-              )}
-              <div className="mt-7 border-b border-black" />
-              <p className="mt-1 text-xs">Date</p>
-            </div>
-          </div>
-        </section>
-
-        <footer className="mt-10 border-t pt-3 text-xs text-neutral-600">
-          Estimate {estimate.estimateNumber}, version {estimate.versionNumber}, dated{" "}
-          {estimateDate(estimate.estimateDate, estimate.createdAt)}.
-        </footer>
-
         {workspace.selectedAcknowledgements.map((acknowledgement) => (
           <section
             key={acknowledgement.id}
@@ -409,6 +373,47 @@ export default async function ProjectEstimatePrintPage({
             </div>
           </section>
         ))}
+
+        <section className="estimate-signature-page break-inside-avoid pt-2">
+          <h2 className="border-b pb-1 text-sm font-bold uppercase tracking-wide">
+            Acceptance and authorization
+          </h2>
+          <p className="mt-2 text-xs text-neutral-600">
+            All listed client / owner signers and the company representative are required.
+          </p>
+          <div className="mt-5 grid grid-cols-2 gap-x-10 gap-y-5 text-sm">
+            {estimate.clientSigners.map((signer, index) => (
+              <div key={`${signer.email}-${index}`} className="break-inside-avoid">
+                <p className="font-semibold">Client / Owner {index + 1}</p>
+                <div className="mt-7 border-b border-black" />
+                <p className="mt-1 text-xs">Signature</p>
+                <p className="mt-2 font-medium">{signer.name}</p>
+                {signer.title && <p className="text-xs">{signer.title}</p>}
+                <div className="mt-4 border-b border-black" />
+                <p className="mt-1 text-xs">Date</p>
+              </div>
+            ))}
+            <div>
+              <p className="font-semibold">{brand.companyName}</p>
+              <div className="mt-7 border-b border-black" />
+              <p className="mt-1 text-xs">Company representative signature</p>
+              <p className="mt-2 font-medium">
+                {estimate.companySignerName ?? "Company representative"}
+              </p>
+              {estimate.companySignerTitle && (
+                <p className="text-xs">{estimate.companySignerTitle}</p>
+              )}
+              <div className="mt-4 border-b border-black" />
+              <p className="mt-1 text-xs">Date</p>
+            </div>
+          </div>
+        </section>
+
+        <footer className="mt-10 border-t pt-3 text-xs text-neutral-600">
+          Estimate {estimate.estimateNumber}, version {estimate.versionNumber}, dated{" "}
+          {estimateDate(estimate.estimateDate, estimate.createdAt)}.
+        </footer>
+
       </main>
     </>
   )

@@ -33,13 +33,14 @@ import {
   createProjectEstimateDraft,
   deleteProjectEstimateLine,
   importProjectEstimateFromGoogleSheet,
+  markProjectEstimateSentOutsideCompass,
   prepareProjectEstimateForClientSignature,
   recordManualProjectEstimateAcceptance,
-  recordSignedProjectEstimate,
   saveProjectEstimateLine,
   updateProjectEstimateBuilderFee,
   updateProjectEstimateHeader,
   type ProjectEstimateLineItem,
+  type ProjectEstimateSigner,
   type ProjectEstimateTermsOption,
   type ProjectEstimateWorkspace,
 } from "@/app/actions/project-estimates"
@@ -197,12 +198,9 @@ export function ProjectEstimateWorkspacePanel({
     estimate?.closingTemplateId ?? ""
   )
   const [closingText, setClosingText] = useState(estimate?.closingText ?? "")
-  const [clientSigner, setClientSigner] = useState<ProjectEstimateSignerValue>({
-    contactId: estimate?.clientSignerContactId ?? null,
-    name: estimate?.clientSignerName ?? "",
-    title: estimate?.clientSignerTitle ?? "",
-    email: estimate?.clientSignerEmail ?? "",
-  })
+  const [clientSigners, setClientSigners] = useState<readonly ProjectEstimateSigner[]>(
+    estimate?.clientSigners ?? []
+  )
   const [companySigner, setCompanySigner] =
     useState<ProjectEstimateSignerValue>({
       contactId: estimate?.companySignerContactId ?? null,
@@ -210,6 +208,9 @@ export function ProjectEstimateWorkspacePanel({
       title: estimate?.companySignerTitle ?? "",
       email: estimate?.companySignerEmail ?? "",
     })
+  const [companySignerInitials, setCompanySignerInitials] = useState(
+    estimate?.companySignerInitials ?? ""
+  )
   const editable =
     workspace.canEdit &&
     Boolean(estimate && ["draft", "internal_review"].includes(estimate.status))
@@ -221,18 +222,14 @@ export function ProjectEstimateWorkspacePanel({
     setIntroductionText(estimate?.introductionText ?? "")
     setClosingTemplateId(estimate?.closingTemplateId ?? "")
     setClosingText(estimate?.closingText ?? "")
-    setClientSigner({
-      contactId: estimate?.clientSignerContactId ?? null,
-      name: estimate?.clientSignerName ?? "",
-      title: estimate?.clientSignerTitle ?? "",
-      email: estimate?.clientSignerEmail ?? "",
-    })
+    setClientSigners(estimate?.clientSigners ?? [])
     setCompanySigner({
       contactId: estimate?.companySignerContactId ?? null,
       name: estimate?.companySignerName ?? "",
       title: estimate?.companySignerTitle ?? "",
       email: estimate?.companySignerEmail ?? "",
     })
+    setCompanySignerInitials(estimate?.companySignerInitials ?? "")
   }, [
     estimate?.id,
     estimate?.termsTemplateId,
@@ -241,14 +238,12 @@ export function ProjectEstimateWorkspacePanel({
     estimate?.introductionText,
     estimate?.closingTemplateId,
     estimate?.closingText,
-    estimate?.clientSignerContactId,
-    estimate?.clientSignerName,
-    estimate?.clientSignerTitle,
-    estimate?.clientSignerEmail,
+    estimate?.clientSigners,
     estimate?.companySignerContactId,
     estimate?.companySignerName,
     estimate?.companySignerTitle,
     estimate?.companySignerEmail,
+    estimate?.companySignerInitials,
   ])
 
   const divisions = useMemo(() => {
@@ -328,14 +323,16 @@ export function ProjectEstimateWorkspacePanel({
         title: formText(formData, "title"),
         estimateDate: formText(formData, "estimateDate"),
         clientName: formText(formData, "clientName"),
-        clientSignerContactId: clientSigner.contactId,
-        clientSignerName: clientSigner.name,
-        clientSignerTitle: clientSigner.title,
-        clientSignerEmail: clientSigner.email,
+        clientSignerContactId: clientSigners[0]?.contactId ?? null,
+        clientSignerName: clientSigners[0]?.name ?? null,
+        clientSignerTitle: clientSigners[0]?.title ?? null,
+        clientSignerEmail: clientSigners[0]?.email ?? null,
+        clientSigners,
         companySignerContactId: companySigner.contactId,
         companySignerName: companySigner.name,
         companySignerTitle: companySigner.title,
         companySignerEmail: companySigner.email,
+        companySignerInitials,
         sourceWorkbookUrl: formText(formData, "sourceWorkbookUrl"),
         defaultTaxEntityId: formText(formData, "defaultTaxEntityId"),
         termsTemplateId: formText(formData, "termsTemplateId"),
@@ -517,25 +514,24 @@ export function ProjectEstimateWorkspacePanel({
       )
       finish(
         result.success
-          ? "Client estimate locked and ready for signature."
+          ? "Signature package prepared. Review it in Foxit, place the fields, and use Foxit’s Send button only when it is ready."
           : result.error
       )
+      if (result.success) {
+        window.open(result.embeddedSessionUrl, "_blank", "noopener,noreferrer")
+      }
     })
   }
 
-  function acceptSigned(event: FormEvent<HTMLFormElement>): void {
-    event.preventDefault()
+  function markSentOutsideCompass(): void {
     if (!estimate) return
-    const formData = new FormData(event.currentTarget)
+    if (!window.confirm("Confirm that this exact version is being sent or printed for signatures outside Compass. It will become read-only; changes require a duplicate version.")) return
     setMessage(null)
     startTransition(async () => {
-      const result = await recordSignedProjectEstimate(projectId, estimate.id, {
-        signedDocumentUrl: formText(formData, "signedDocumentUrl"),
-        foxitEnvelopeId: formText(formData, "foxitEnvelopeId"),
-      })
+      const result = await markProjectEstimateSentOutsideCompass(projectId, estimate.id)
       finish(
         result.success
-          ? "Signed estimate accepted and contract budget created."
+          ? "Version frozen for outside signatures. Upload or link the fully signed copy when complete."
           : result.error
       )
     })
@@ -812,52 +808,84 @@ export function ProjectEstimateWorkspacePanel({
             <h3 className="text-sm font-semibold">Contract signers</h3>
             <p className="mt-1 text-xs text-muted-foreground">
               Choose a project contact or type a name. These details are
-              snapshotted when the estimate is locked for signature.
+              included in the prepared signature package. Add every client or
+              owner who must sign. Reference initials identify the signer in
+              Compass; Foxit requires each signer to provide their own initials
+              in the assigned fields.
             </p>
           </div>
           <div className="space-y-3 md:col-span-2">
-            <div className="space-y-1.5">
-              <Label htmlFor="clientSignerName">Client / owner signer</Label>
-              <ProjectEstimateSignerPicker
-                id="clientSignerName"
-                value={clientSigner}
-                options={workspace.signerContacts}
-                onValueChange={setClientSigner}
-                placeholder="Choose client signer or type a name..."
-                disabled={!editable}
-              />
-            </div>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div className="space-y-1.5">
-                <Label htmlFor="clientSignerTitle">Title</Label>
-                <Input
-                  id="clientSignerTitle"
-                  value={clientSigner.title}
-                  onChange={(event) =>
-                    setClientSigner({
-                      ...clientSigner,
-                      title: event.target.value,
-                    })
+            <div className="flex items-center justify-between gap-3">
+              <Label>Client / owner signers</Label>
+              {editable && clientSigners.length < 10 && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() =>
+                    setClientSigners([
+                      ...clientSigners,
+                      { contactId: null, name: "", title: "", email: "", initials: "" },
+                    ])
                   }
-                  disabled={!editable}
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="clientSignerEmail">Email</Label>
-                <Input
-                  id="clientSignerEmail"
-                  type="email"
-                  value={clientSigner.email}
-                  onChange={(event) =>
-                    setClientSigner({
-                      ...clientSigner,
-                      email: event.target.value,
-                    })
-                  }
-                  disabled={!editable}
-                />
-              </div>
+                >
+                  <IconPlus className="size-4" />Add signer
+                </Button>
+              )}
             </div>
+            {clientSigners.length === 0 && (
+              <p className="text-xs text-muted-foreground">Add at least one client or owner signer.</p>
+            )}
+            {clientSigners.map((signer, index) => (
+              <div key={`${estimate.id}-client-signer-${index}`} className="space-y-3 border-t pt-3">
+                <div className="flex items-end gap-2">
+                  <div className="min-w-0 flex-1 space-y-1.5">
+                    <Label htmlFor={`clientSignerName-${index}`}>Signer {index + 1}</Label>
+                    <ProjectEstimateSignerPicker
+                      id={`clientSignerName-${index}`}
+                      value={signer}
+                      options={workspace.signerContacts}
+                      onValueChange={(value) =>
+                        setClientSigners(clientSigners.map((item, itemIndex) =>
+                          itemIndex === index
+                            ? { ...value, initials: item.initials }
+                            : item
+                        ))
+                      }
+                      placeholder="Choose client signer or type a name..."
+                      disabled={!editable}
+                    />
+                  </div>
+                  {editable && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      aria-label={`Remove client signer ${index + 1}`}
+                      onClick={() =>
+                        setClientSigners(clientSigners.filter((_, itemIndex) => itemIndex !== index))
+                      }
+                    >
+                      <IconTrash className="size-4" />
+                    </Button>
+                  )}
+                </div>
+                <div className="grid gap-3 sm:grid-cols-[1fr_1.4fr_.55fr]">
+                  <div className="space-y-1.5">
+                    <Label htmlFor={`clientSignerTitle-${index}`}>Title</Label>
+                    <Input id={`clientSignerTitle-${index}`} value={signer.title} disabled={!editable} onChange={(event) => setClientSigners(clientSigners.map((item, itemIndex) => itemIndex === index ? { ...item, title: event.target.value } : item))} />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor={`clientSignerEmail-${index}`}>Email</Label>
+                    <Input id={`clientSignerEmail-${index}`} type="email" value={signer.email} disabled={!editable} onChange={(event) => setClientSigners(clientSigners.map((item, itemIndex) => itemIndex === index ? { ...item, email: event.target.value } : item))} />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor={`clientSignerInitials-${index}`}>Reference initials</Label>
+                    <Input id={`clientSignerInitials-${index}`} maxLength={6} value={signer.initials} disabled={!editable} onChange={(event) => setClientSigners(clientSigners.map((item, itemIndex) => itemIndex === index ? { ...item, initials: event.target.value.toUpperCase() } : item))} />
+                  </div>
+                </div>
+              </div>
+            ))}
           </div>
           <div className="space-y-3 md:col-span-2">
             <div className="space-y-1.5">
@@ -871,7 +899,7 @@ export function ProjectEstimateWorkspacePanel({
                 disabled={!editable}
               />
             </div>
-            <div className="grid gap-3 sm:grid-cols-2">
+            <div className="grid gap-3 sm:grid-cols-[1fr_1.4fr_.55fr]">
               <div className="space-y-1.5">
                 <Label htmlFor="companySignerTitle">Title</Label>
                 <Input
@@ -897,6 +925,18 @@ export function ProjectEstimateWorkspacePanel({
                       ...companySigner,
                       email: event.target.value,
                     })
+                  }
+                  disabled={!editable}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="companySignerInitials">Reference initials</Label>
+                <Input
+                  id="companySignerInitials"
+                  maxLength={6}
+                  value={companySignerInitials}
+                  onChange={(event) =>
+                    setCompanySignerInitials(event.target.value.toUpperCase())
                   }
                   disabled={!editable}
                 />
@@ -1421,25 +1461,38 @@ export function ProjectEstimateWorkspacePanel({
           <div className="flex-1">
             <h2 className="font-semibold">Approval and accounting handoff</h2>
             <p className="mt-1 text-sm text-muted-foreground">
-              Lock the final client version before it is signed. A completed
-              Foxit package or saved signed document accepts that exact version
-              and creates the original Budget/G703.
+              Prepare and review the final package without locking the estimate.
+              When it is sent from Foxit, this version is frozen against edits.
+              It locks automatically only after every required signer finishes,
+              or after a complete manually signed copy is recorded.
             </p>
             {editable && (
               <Button className="mt-3" onClick={prepareForSignature} disabled={isPending || workspace.lines.length === 0}>
-                <IconSend className="size-4" />Lock final version for client signature
+                <IconSend className="size-4" />Prepare final version for client signature
+              </Button>
+            )}
+            {editable && (
+              <Button className="ml-2 mt-3" variant="outline" onClick={markSentOutsideCompass} disabled={isPending || workspace.lines.length === 0}>
+                Sent / printed for signatures outside Compass
+              </Button>
+            )}
+            {editable && estimate.foxitStatus === "preparing" && estimate.foxitEmbeddedSessionUrl && (
+              <Button className="ml-2 mt-3" variant="outline" asChild>
+                <Link href={estimate.foxitEmbeddedSessionUrl} target="_blank">
+                  Review and send in Foxit
+                </Link>
               </Button>
             )}
             {estimate.status === "signature_pending" && workspace.canEdit && (
               <div className="mt-4 space-y-5 border-t pt-4">
-                <form className="grid gap-3 md:grid-cols-2" onSubmit={acceptSigned}>
-                  <div className="md:col-span-2">
-                    <h3 className="text-sm font-semibold">Completed through Foxit</h3>
+                {estimate.foxitStatus !== "not_applicable" && (
+                  <div>
+                    <h3 className="text-sm font-semibold">Foxit signatures in progress</h3>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      This version is read-only. Compass will accept and lock it automatically after Foxit confirms that every required signer has completed the envelope.
+                    </p>
                   </div>
-                  <div className="space-y-1.5"><Label htmlFor="signedDocumentUrl">Completed Foxit document link</Label><Input id="signedDocumentUrl" name="signedDocumentUrl" type="url" required /></div>
-                  <div className="space-y-1.5"><Label htmlFor="foxitEnvelopeId">Foxit envelope ID</Label><Input id="foxitEnvelopeId" name="foxitEnvelopeId" /></div>
-                  <div className="md:col-span-2"><Button type="submit" disabled={isPending}>Record Foxit completion and accept estimate</Button></div>
-                </form>
+                )}
 
                 <form className="space-y-4 border-t pt-4" onSubmit={acceptManually}>
                   <div>

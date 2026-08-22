@@ -20,7 +20,11 @@ declare namespace Cloudflare {
 		GITHUB_TOKEN: string;
 		GITHUB_REPO: string;
 		OPENROUTER_API_KEY: string;
+		FOXIT_ESIGN_CLIENT_ID: string;
+		FOXIT_ESIGN_CLIENT_SECRET: string;
+		FOXIT_ESIGN_WEBHOOK_SECRET: string;
 		DB: D1Database;
+		BROWSER: Fetcher;
 		WORKER_SELF_REFERENCE: Service<typeof import("./.open-next/worker").default>;
 		AI: Ai;
 		IMAGES: ImagesBinding;
