@@ -161,6 +161,38 @@ class LifecycleExecutorTests(unittest.TestCase):
                 with self.assertRaises(MODULE.RetryableExecutionError):
                     MODULE.execute_lifecycle(self.valid_payload())
 
+    def test_wrapped_transport_failures_retry_but_wrapped_policy_http_failures_stay_terminal(self) -> None:
+        wrapped_timeout = RuntimeError("request failed", TimeoutError("timed out"))
+        wrapped_url_error = RuntimeError(
+            "request failed",
+            urllib.error.URLError("connection reset"),
+        )
+        terminal_http = urllib.error.HTTPError(
+            "https://compass.example/status",
+            409,
+            "rejected",
+            Message(),
+            io.BytesIO(),
+        )
+        wrapped_terminal_http = RuntimeError("request failed", terminal_http)
+
+        for error in (wrapped_timeout, wrapped_url_error):
+            with self.subTest(error=error), patch.object(
+                MODULE,
+                "request_feedback_status",
+                side_effect=error,
+            ):
+                with self.assertRaises(MODULE.RetryableExecutionError):
+                    MODULE.execute_lifecycle(self.valid_payload())
+
+        with patch.object(
+            MODULE,
+            "request_feedback_status",
+            side_effect=wrapped_terminal_http,
+        ):
+            with self.assertRaises(MODULE.TerminalExecutionError):
+                MODULE.execute_lifecycle(self.valid_payload())
+
     def test_unhashable_lifecycle_values_are_terminal_acknowledged_events(self) -> None:
         for field in ("kind", "status", "priority"):
             for malformed_value in ([], {}):
