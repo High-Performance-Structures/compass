@@ -1,4 +1,4 @@
-import { and, eq, sql } from "drizzle-orm"
+import { and, eq, or, sql } from "drizzle-orm"
 import { revalidatePath } from "next/cache"
 import { z } from "zod/v4"
 import { getDb } from "@/db"
@@ -19,10 +19,10 @@ import {
   readBoundedBody,
   verifyJarvisRequest,
 } from "@/lib/jarvis/auth"
-import { processFeedbackRequesterNotification } from "@/lib/jarvis/feedback-status-update"
 
 const replySchema = z.object({
   eventId: z.string().min(1).max(128),
+  claimToken: z.string().min(1).max(128),
   idempotencyKey: z.string().min(1).max(256),
   content: z.string().min(1).max(10_000),
 })
@@ -123,8 +123,28 @@ export async function POST(request: Request): Promise<Response> {
   }
 
   const db = getDb(env.DB)
+  const now = new Date().toISOString()
+  const replyClaimToken = crypto.randomUUID()
   const sourceEvent = await db
-    .select({
+    .update(jarvisBridgeEvents)
+    .set({
+      claimToken: replyClaimToken,
+      claimedAt: now,
+      updatedAt: now,
+    })
+    .where(
+      and(
+        eq(jarvisBridgeEvents.id, parsed.data.eventId),
+        eq(jarvisBridgeEvents.direction, "outbound"),
+        eq(jarvisBridgeEvents.status, "processing"),
+        eq(jarvisBridgeEvents.claimToken, parsed.data.claimToken),
+        or(
+          eq(jarvisBridgeEvents.eventType, "assistance.requested"),
+          eq(jarvisBridgeEvents.eventType, "feedback.status_changed"),
+        ),
+      ),
+    )
+    .returning({
       id: jarvisBridgeEvents.id,
       eventType: jarvisBridgeEvents.eventType,
       source: jarvisBridgeEvents.source,
@@ -132,23 +152,12 @@ export async function POST(request: Request): Promise<Response> {
       payload: jarvisBridgeEvents.payload,
       feedbackDeskItemId: jarvisBridgeEvents.feedbackDeskItemId,
     })
-    .from(jarvisBridgeEvents)
-    .where(
-      and(
-        eq(jarvisBridgeEvents.id, parsed.data.eventId),
-        eq(jarvisBridgeEvents.direction, "outbound"),
-      ),
-    )
     .get()
 
-  if (
-    !sourceEvent ||
-    (sourceEvent.eventType !== "assistance.requested" &&
-      sourceEvent.eventType !== "feedback.status_changed")
-  ) {
+  if (!sourceEvent) {
     return Response.json(
-      { error: "Replyable request not found" },
-      { status: 404 },
+      { error: "Event claim is no longer active" },
+      { status: 409 },
     )
   }
 
@@ -242,36 +251,37 @@ export async function POST(request: Request): Promise<Response> {
     )
   }
 
-  const messageId = await deterministicReplyId(
-    parsed.data.idempotencyKey,
-  )
+  const sideEffectClaimToken = crypto.randomUUID()
+  const reserved = await db
+    .update(jarvisBridgeEvents)
+    .set({
+      claimToken: sideEffectClaimToken,
+      claimedAt: now,
+      result: JSON.stringify({ reply: "reserved" }),
+      updatedAt: now,
+    })
+    .where(and(
+      eq(jarvisBridgeEvents.id, parsed.data.eventId),
+      eq(jarvisBridgeEvents.direction, "outbound"),
+      eq(jarvisBridgeEvents.status, "processing"),
+      eq(jarvisBridgeEvents.claimToken, replyClaimToken),
+    ))
+    .returning({ id: jarvisBridgeEvents.id })
+    .get()
+  if (!reserved) {
+    return Response.json(
+      { error: "Event claim is no longer active" },
+      { status: 409 },
+    )
+  }
+
+  const replyIdempotencyKey = `jarvis-reply:${sourceEvent.id}`
+  const messageId = await deterministicReplyId(replyIdempotencyKey)
   const duplicate = await db
     .select({ id: messages.id })
     .from(messages)
     .where(eq(messages.id, messageId))
     .get()
-  if (
-    sourceEvent.eventType === "feedback.status_changed" &&
-    sourceEvent.feedbackDeskItemId
-  ) {
-    try {
-      await processFeedbackRequesterNotification(db, {
-        id: sourceEvent.id,
-        idempotencyKey: sourceEvent.idempotencyKey,
-        feedbackDeskItemId: sourceEvent.feedbackDeskItemId,
-      })
-    } catch (error) {
-      return Response.json({
-        success: false,
-        retryable: true,
-        error: error instanceof Error
-          ? error.message
-          : "Requester notification persistence failed",
-      }, { status: 503 })
-    }
-  }
-
-  const now = new Date().toISOString()
   if (!duplicate) {
     await db.insert(messages).values({
       id: messageId,
@@ -287,15 +297,18 @@ export async function POST(request: Request): Promise<Response> {
       replyCount: 0,
       lastReplyAt: null,
       createdAt: now,
-    })
-    await db
-      .update(messages)
-      .set({
-        replyCount: sql`${messages.replyCount} + 1`,
-        lastReplyAt: now,
-      })
-      .where(eq(messages.id, target.messageId))
+    }).onConflictDoNothing()
   }
+  await db
+    .update(messages)
+    .set({
+      replyCount: sql<number>`(
+        SELECT count(*) FROM ${messages}
+        WHERE ${messages.threadId} = ${target.messageId}
+      )`,
+      lastReplyAt: now,
+    })
+    .where(eq(messages.id, target.messageId))
 
   await db
     .insert(jarvisBridgeEvents)
@@ -306,7 +319,7 @@ export async function POST(request: Request): Promise<Response> {
       source: "signet",
       eventType: "assistance.responded",
       status: "completed",
-      idempotencyKey: `reply:${parsed.data.idempotencyKey}`,
+      idempotencyKey: `reply:${sourceEvent.id}`,
       payload: bodyResult.rawBody,
       availableAt: now,
       completedAt: now,
@@ -315,18 +328,33 @@ export async function POST(request: Request): Promise<Response> {
     })
     .onConflictDoNothing()
 
-  await db
+  const released = await db
     .update(jarvisBridgeEvents)
     .set({
-      status: "completed",
-      result: JSON.stringify({ messageId }),
-      claimToken: null,
-      claimedAt: null,
-      completedAt: now,
+      result: null,
+      claimedAt: now,
       updatedAt: now,
     })
-    .where(eq(jarvisBridgeEvents.id, sourceEvent.id))
+    .where(and(
+      eq(jarvisBridgeEvents.id, parsed.data.eventId),
+      eq(jarvisBridgeEvents.direction, "outbound"),
+      eq(jarvisBridgeEvents.status, "processing"),
+      eq(jarvisBridgeEvents.claimToken, sideEffectClaimToken),
+    ))
+    .returning({ id: jarvisBridgeEvents.id })
+    .get()
+  if (!released) {
+    return Response.json(
+      { error: "Event claim is no longer active" },
+      { status: 409 },
+    )
+  }
 
   revalidatePath("/dashboard/conversations")
-  return Response.json({ success: true, messageId, ...(duplicate ? { duplicate: true } : {}) })
+  return Response.json({
+    success: true,
+    messageId,
+    claimToken: sideEffectClaimToken,
+    ...(duplicate ? { duplicate: true } : {}),
+  })
 }
