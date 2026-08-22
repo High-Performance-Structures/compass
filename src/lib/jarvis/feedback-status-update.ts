@@ -235,6 +235,7 @@ export async function processFeedbackRequesterNotification(
     const recipients = await requesterRecipients(db, item)
     if (recipients.length > 0 && item.organizationId) {
       await persistNotification({
+        idempotencyKey: notificationEvent.id,
         organizationId: item.organizationId,
         projectId: null,
         eventType: `feedback.status.${payload.status}`,
@@ -314,17 +315,6 @@ export type FeedbackLifecycleUpdate = Readonly<{
   actorSource: string
   idempotencyKey: string
 }>
-
-export async function runFeedbackRequesterNotification(
-  insertEvent: () => Promise<Readonly<{ readonly changes: number }>>,
-  notify: () => Promise<void>,
-): Promise<boolean> {
-  // The unique bridge-event insert is the atomic gate for every notification channel.
-  const result = await insertEvent()
-  if (result.changes !== 1) return false
-  await notify()
-  return true
-}
 
 export async function applyFeedbackLifecycleUpdate(
   db: CompassDb,
