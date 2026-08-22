@@ -51,24 +51,30 @@ const updateSchema = z.object({
 const lifecycleRequestSchema = z.object({
   id: z.uuid(),
   status: z.enum(FEEDBACK_DESK_STATUSES),
-  idempotencyKey: z.string().min(1).max(256),
-  message: z.string().min(1).max(2_000).optional(),
+  idempotencyKey: z.string().regex(
+    /^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/,
+    "idempotencyKey is invalid",
+  ),
+  message: z.string().max(2_000).refine(
+    (value) => value.trim().length > 0,
+    "message is invalid",
+  ).optional(),
   priority: z.enum(["low", "normal", "high", "urgent"]).optional(),
   githubIssueUrl: z.union([
-    z.url().refine(
-      (value) => /^https:\/\/github\.com\/[^/]+\/[^/]+\/issues\/\d+(?:\/|$)/.test(value),
+    z.string().max(2_048).regex(
+      /^https:\/\/github\.com\/[^/\s]+\/[^/\s]+\/issues\/[1-9][0-9]*(?:\/)?$/,
       "GitHub issue URL required",
     ),
     z.null(),
   ]).optional(),
   draftPullRequestUrl: z.union([
-    z.url().refine(
-      (value) => /^https:\/\/github\.com\/[^/]+\/[^/]+\/pull\/\d+(?:\/|$)/.test(value),
+    z.string().max(2_048).regex(
+      /^https:\/\/github\.com\/[^/\s]+\/[^/\s]+\/pull\/[1-9][0-9]*(?:\/)?$/,
       "GitHub pull request URL required",
     ),
     z.null(),
   ]).optional(),
-})
+}).strict()
 
 async function requireFeedbackAdmin(): Promise<Readonly<{
   id: string
