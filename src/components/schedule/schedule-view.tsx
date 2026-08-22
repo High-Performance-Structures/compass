@@ -693,9 +693,9 @@ export function ScheduleView({
 
   function printSchedule(selection: SchedulePrintSelection): void {
     // Commit the selected print layout before invoking the synchronous iOS
-    // print path; desktop browsers can still await layout readiness normally.
+    // print path. Keep the chooser mounted so it returns after print preview
+    // and only closes when the user explicitly dismisses it.
     flushSync(() => {
-      setPrintDialogOpen(false)
       setPrintSelection(selection)
     })
     void printScheduleDocument().finally(() => setPrintSelection(null))
