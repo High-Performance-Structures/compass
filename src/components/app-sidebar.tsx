@@ -41,7 +41,6 @@ import {
   type NavSubgroupChildItem,
 } from "@/components/nav-main"
 import { NavFiles } from "@/components/nav-files"
-import { NavProjects } from "@/components/nav-projects"
 import { NavConversations } from "@/components/nav-conversations"
 import { NavUser } from "@/components/nav-user"
 import { OrgSwitcher } from "@/components/org-switcher"
@@ -50,8 +49,8 @@ import { useActiveProject } from "@/components/project-list-provider"
 // settings is now a page at /dashboard/settings
 import { openFeedbackDialog } from "@/components/feedback-widget"
 import { useVoiceState } from "@/hooks/use-voice-state"
-import type { ProjectListItem } from "@/app/actions/projects"
 import type { SidebarUser } from "@/lib/auth"
+import { getSidebarContextMode } from "@/lib/sidebar-navigation"
 import {
   Sidebar,
   SidebarContent,
@@ -473,12 +472,10 @@ function buildMainNavigation({
 }
 
 function SidebarNav({
-  projects,
   canUseFieldDesk,
   canViewActivity,
   canManageFeedback,
 }: {
-  projects: ReadonlyArray<ProjectListItem>
   readonly canUseFieldDesk: boolean
   readonly canViewActivity: boolean
   readonly canManageFeedback: boolean
@@ -487,23 +484,7 @@ function SidebarNav({
   const { state } = useSidebar()
   const isExpanded = state === "expanded"
   const { activeProjectId } = useActiveProject()
-  const isFilesMode = pathname?.startsWith("/dashboard/files")
-  const isConversationsMode = pathname?.startsWith("/dashboard/conversations")
-  const projectPathMatch = pathname?.match(/^\/dashboard\/projects\/([^/]+)/)
-  const isProjectMode =
-    projectPathMatch !== null &&
-    projectPathMatch !== undefined &&
-    projectPathMatch[1] !== "select"
-
-  const showContext = isExpanded && (isFilesMode || isProjectMode || isConversationsMode)
-
-  const mode = showContext && isFilesMode
-    ? "files"
-    : showContext && isConversationsMode
-      ? "conversations"
-      : showContext && isProjectMode
-        ? "projects"
-        : "main"
+  const mode = getSidebarContextMode(pathname, isExpanded)
 
   const projectScopedPlanningNav = PLANNING_NAV.map((item) =>
     item.title === "To-Dos" && activeProjectId
@@ -563,7 +544,6 @@ function SidebarNav({
           <NavConversations />
         </React.Suspense>
       )}
-      {mode === "projects" && <NavProjects projects={projects} />}
       {mode === "main" && (
         <NavMain items={navMain} />
       )}
@@ -572,7 +552,6 @@ function SidebarNav({
 }
 
 export function AppSidebar({
-  projects = [],
   user,
   activeOrgId = null,
   activeOrgName = null,
@@ -581,7 +560,6 @@ export function AppSidebar({
   canManageFeedback = false,
   ...props
 }: React.ComponentProps<typeof Sidebar> & {
-  readonly projects?: ReadonlyArray<ProjectListItem>
   readonly user: SidebarUser | null
   readonly activeOrgId?: string | null
   readonly activeOrgName?: string | null
@@ -602,7 +580,6 @@ export function AppSidebar({
       </SidebarHeader>
       <SidebarContent className="compass-sidebar-scroll">
         <SidebarNav
-          projects={projects}
           canUseFieldDesk={canUseFieldDesk}
           canViewActivity={canViewActivity}
           canManageFeedback={canManageFeedback}

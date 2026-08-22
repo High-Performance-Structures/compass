@@ -111,7 +111,6 @@ export default async function DashboardLayout({
       >
         <AppSidebar
           variant="inset"
-          projects={projectList}
           user={user}
           activeOrgId={activeOrgId}
           activeOrgName={activeOrgName}
