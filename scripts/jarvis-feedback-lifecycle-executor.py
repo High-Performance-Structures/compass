@@ -136,7 +136,7 @@ def signature(
 
 
 def validate_runtime_origin() -> None:
-    configured = os.environ.get("COMPASS_BASE_URL", "").rstrip("/")
+    configured = os.environ.get("COMPASS_BASE_URL", "")
     if configured != "https://compass.openrangeconstruction.ltd":
         raise InvalidLifecycleRequest(
             "Lifecycle executor requires the production Compass origin"
@@ -147,7 +147,7 @@ def validate_runtime_origin() -> None:
         or parsed.hostname != "compass.openrangeconstruction.ltd"
         or parsed.query
         or parsed.fragment
-        or parsed.path not in {"", "/"}
+        or parsed.path
     ):
         raise InvalidLifecycleRequest("Lifecycle executor origin is invalid")
 
@@ -273,7 +273,7 @@ def compass_request(
 ) -> Any:
     if not _allowed_target(target):
         raise InvalidLifecycleRequest("Bridge target is not allowlisted")
-    base_url = required_env("COMPASS_BASE_URL").rstrip("/")
+    base_url = required_env("COMPASS_BASE_URL")
     secret = required_env("JARVIS_BRIDGE_SECRET")
     validate_runtime_origin()
     body = (

@@ -1,4 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
+import Database from "better-sqlite3"
+import { drizzle } from "drizzle-orm/better-sqlite3"
 
 const mocks = vi.hoisted(() => ({
   getCloudflareContext: vi.fn(),
@@ -38,6 +40,7 @@ function body(claimToken?: string, idempotencyKey = "reply-event-1"): string {
 function database(
   lockedSource: Readonly<Record<string, unknown>> | null = null,
   selectResults: readonly unknown[] = [],
+  mutationResults: readonly (Readonly<Record<string, unknown>> | null)[] = [],
 ) {
   const selectGet = vi.fn()
   for (const result of selectResults) {
@@ -48,7 +51,11 @@ function database(
   const selectFrom = vi.fn(() => ({ where: selectWhere }))
   const select = vi.fn(() => ({ from: selectFrom }))
 
-  const mutationGet = vi.fn().mockResolvedValue(lockedSource)
+  const mutationGet = vi.fn()
+  for (const result of mutationResults) {
+    mutationGet.mockResolvedValueOnce(result)
+  }
+  mutationGet.mockResolvedValue(lockedSource)
   const returning = vi.fn(() => ({ get: mutationGet }))
   const mutationWhere = vi.fn(() => ({ returning }))
   const set = vi.fn((value: unknown) => ({ value, where: mutationWhere }))
@@ -56,19 +63,145 @@ function database(
 
   const insertedValues: unknown[] = []
   const onConflictDoNothing = vi.fn().mockResolvedValue(undefined)
+  const insertSelect = vi.fn().mockResolvedValue(undefined)
   const values = vi.fn((value: unknown) => {
     insertedValues.push(value)
     return { onConflictDoNothing }
   })
-  const insert = vi.fn(() => ({ values }))
+  const insert = vi.fn(() => ({ values, select: insertSelect }))
+  const batch = vi.fn().mockResolvedValue([])
 
   return {
-    db: { select, update, insert },
+    db: { select, update, insert, batch },
     select,
     update,
     set,
     insert,
+    batch,
     insertedValues,
+  }
+}
+
+function sqliteDatabase(
+  beforeBatch: (sqlite: InstanceType<typeof Database>) => void,
+) {
+  const sqlite = new Database(":memory:")
+  sqlite.exec(`
+    CREATE TABLE users (id TEXT PRIMARY KEY NOT NULL, is_active INTEGER NOT NULL);
+    CREATE TABLE organization_members (
+      id TEXT PRIMARY KEY NOT NULL,
+      organization_id TEXT NOT NULL,
+      user_id TEXT NOT NULL
+    );
+    CREATE TABLE channels (id TEXT PRIMARY KEY NOT NULL, organization_id TEXT NOT NULL);
+    CREATE TABLE channel_members (
+      id TEXT PRIMARY KEY NOT NULL,
+      channel_id TEXT NOT NULL,
+      user_id TEXT NOT NULL
+    );
+    CREATE TABLE messages (
+      id TEXT PRIMARY KEY NOT NULL,
+      channel_id TEXT NOT NULL,
+      thread_id TEXT,
+      user_id TEXT NOT NULL,
+      content TEXT NOT NULL,
+      content_html TEXT,
+      edited_at TEXT,
+      deleted_at TEXT,
+      deleted_by TEXT,
+      is_pinned INTEGER NOT NULL DEFAULT 0,
+      reply_count INTEGER NOT NULL DEFAULT 0,
+      last_reply_at TEXT,
+      created_at TEXT NOT NULL
+    );
+    CREATE TABLE jarvis_bridge_events (
+      id TEXT PRIMARY KEY NOT NULL,
+      organization_id TEXT,
+      direction TEXT NOT NULL,
+      source TEXT NOT NULL,
+      event_type TEXT NOT NULL,
+      status TEXT NOT NULL,
+      idempotency_key TEXT NOT NULL,
+      feedback_desk_item_id TEXT,
+      payload TEXT NOT NULL,
+      result TEXT,
+      attempt_count INTEGER NOT NULL DEFAULT 0,
+      available_at TEXT NOT NULL,
+      claim_token TEXT,
+      claimed_at TEXT,
+      completed_at TEXT,
+      last_error TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+    CREATE UNIQUE INDEX jarvis_bridge_idempotency_unique
+      ON jarvis_bridge_events (idempotency_key);
+  `)
+  sqlite.prepare("INSERT INTO users VALUES (?, ?)")
+    .run("jarvis-service-user", 1)
+  sqlite.prepare("INSERT INTO organization_members VALUES (?, ?, ?)")
+    .run("organization-member-1", "organization-1", "jarvis-service-user")
+  sqlite.prepare("INSERT INTO channels VALUES (?, ?)")
+    .run("channel-1", "organization-1")
+  sqlite.prepare("INSERT INTO channel_members VALUES (?, ?, ?)")
+    .run("channel-member-1", "channel-1", "jarvis-service-user")
+  sqlite.prepare(`
+    INSERT INTO messages (
+      id, channel_id, user_id, content, is_pinned, reply_count, created_at
+    ) VALUES (?, ?, ?, ?, 0, 0, ?)
+  `).run(
+    "message-1",
+    "channel-1",
+    "requester-1",
+    "Please help",
+    "2026-08-22T00:00:00.000Z",
+  )
+  sqlite.prepare(`
+    INSERT INTO jarvis_bridge_events (
+      id, organization_id, direction, source, event_type, status,
+      idempotency_key, payload, available_at, claim_token, claimed_at,
+      created_at, updated_at
+    ) VALUES (?, ?, 'outbound', 'compass-conversation', 'assistance.requested',
+      'processing', ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    EVENT_ID,
+    "organization-1",
+    "source-event-1",
+    JSON.stringify({
+      compass: {
+        organizationId: "organization-1",
+        channelId: "channel-1",
+        messageId: "message-1",
+      },
+    }),
+    "2026-08-22T00:00:00.000Z",
+    "active-claim",
+    "2026-08-22T00:00:00.000Z",
+    "2026-08-22T00:00:00.000Z",
+    "2026-08-22T00:00:00.000Z",
+  )
+  const drizzleDb = drizzle(sqlite)
+  const batchErrors: string[] = []
+  const batch = async (statements: readonly { run: () => unknown }[]) => {
+    beforeBatch(sqlite)
+    try {
+      return sqlite.transaction(
+        () => statements.map((statement) => statement.run()),
+      )()
+    } catch (error) {
+      batchErrors.push(error instanceof Error ? error.message : String(error))
+      throw error
+    }
+  }
+  return {
+    sqlite,
+    db: {
+      select: drizzleDb.select.bind(drizzleDb),
+      update: drizzleDb.update.bind(drizzleDb),
+      insert: drizzleDb.insert.bind(drizzleDb),
+      batch,
+    },
+    batchErrors,
   }
 }
 
@@ -152,8 +285,9 @@ describe("POST /api/integrations/jarvis/replies", () => {
       success: true,
       claimToken: expect.any(String),
     }))
-    expect(state.update).toHaveBeenCalledTimes(4)
-    expect(state.insert).toHaveBeenCalledTimes(2)
+    expect(state.update).toHaveBeenCalledTimes(5)
+    expect(state.insert).toHaveBeenCalledTimes(3)
+    expect(state.batch).toHaveBeenCalledOnce()
     const completedSourceMutation = state.set.mock.calls.some((call) => {
       const value: unknown = call[0]
       return typeof value === "object" && value !== null &&
@@ -261,5 +395,106 @@ describe("POST /api/integrations/jarvis/replies", () => {
     expect(state.set).toHaveBeenCalledWith(expect.objectContaining({
       result: JSON.stringify({ reply: "reserved" }),
     }))
+  })
+
+  it("rejects reply effects after a reserved claim expires and is replaced", async () => {
+    const source = {
+      id: EVENT_ID,
+      eventType: "assistance.requested",
+      source: "compass-conversation",
+      idempotencyKey: "source-event-1",
+      payload: JSON.stringify({
+        compass: {
+          organizationId: "organization-1",
+          channelId: "channel-1",
+          messageId: "message-1",
+        },
+      }),
+      feedbackDeskItemId: null,
+    }
+    const state = database(
+      source,
+      [
+        { organizationId: "organization-1" },
+        { id: "jarvis-service-user", isActive: true },
+        { id: "organization-member-1" },
+        { id: "channel-member-1" },
+        null,
+      ],
+      [source, { id: EVENT_ID }, null],
+    )
+    mocks.getDb.mockReturnValue(state.db)
+    const rawBody = body("active-claim")
+    mocks.readBoundedBody.mockResolvedValue({ success: true, rawBody })
+
+    const response = await POST(new Request(
+      "https://compass.example/api/integrations/jarvis/replies",
+      { method: "POST", body: rawBody },
+    ))
+
+    expect(response.status).toBe(409)
+    expect(state.update).toHaveBeenCalledTimes(3)
+    expect(state.insert).not.toHaveBeenCalled()
+  })
+
+  it("rolls back a paused reply batch in SQLite after replacement", async () => {
+    let batchCount = 0
+    const fixture = sqliteDatabase((sqlite) => {
+      batchCount += 1
+      if (batchCount === 1) {
+        sqlite.prepare(`
+          UPDATE jarvis_bridge_events
+          SET claim_token = 'replacement-claim'
+          WHERE id = ?
+        `).run(EVENT_ID)
+      }
+    })
+    mocks.getDb.mockReturnValue(fixture.db)
+    const rawBody = body("active-claim")
+    mocks.readBoundedBody.mockResolvedValue({ success: true, rawBody })
+
+    try {
+      const response = await POST(new Request(
+        "https://compass.example/api/integrations/jarvis/replies",
+        { method: "POST", body: rawBody },
+      ))
+
+      expect(response.status).toBe(409)
+      expect(fixture.batchErrors).toEqual([
+        expect.stringContaining("jarvis_bridge_events.idempotency_key"),
+      ])
+      expect(fixture.sqlite.prepare(
+        "SELECT count(*) AS count FROM messages",
+      ).get()).toEqual({ count: 1 })
+      expect(fixture.sqlite.prepare(`
+        SELECT count(*) AS count FROM jarvis_bridge_events
+        WHERE event_type = 'assistance.responded'
+      `).get()).toEqual({ count: 0 })
+      expect(fixture.sqlite.prepare(`
+        SELECT claim_token AS claimToken FROM jarvis_bridge_events
+        WHERE id = ?
+      `).get(EVENT_ID)).toEqual({ claimToken: "replacement-claim" })
+
+      const replacementBody = body("replacement-claim")
+      mocks.readBoundedBody.mockResolvedValue({
+        success: true,
+        rawBody: replacementBody,
+      })
+      const replacementResponse = await POST(new Request(
+        "https://compass.example/api/integrations/jarvis/replies",
+        { method: "POST", body: replacementBody },
+      ))
+
+      expect(replacementResponse.status).toBe(200)
+      expect(fixture.sqlite.prepare(
+        "SELECT count(*) AS count FROM messages",
+      ).get()).toEqual({ count: 2 })
+      expect(fixture.sqlite.prepare(`
+        SELECT count(*) AS count FROM jarvis_bridge_events
+        WHERE event_type = 'assistance.responded'
+      `).get()).toEqual({ count: 1 })
+    } finally {
+      fixture.sqlite.close()
+    }
   })
 })

@@ -31,6 +31,10 @@ import {
 import {
   feedbackEngineeringTransitionIsBlocked,
 } from "@/lib/jarvis/feedback-lifecycle-evidence"
+import {
+  assertBridgeReservationOwnership,
+  type BridgeReservationOwnership,
+} from "@/lib/jarvis/bridge-reservation"
 import { createStrictSystemNotificationEvent } from "@/lib/notifications/events"
 
 type CompassDb = ReturnType<typeof getDb>
@@ -168,6 +172,7 @@ export async function processFeedbackRequesterNotification(
   sourceEvent: FeedbackRequesterNotificationSource,
   persistNotification: typeof createStrictSystemNotificationEvent =
     createStrictSystemNotificationEvent,
+  bridgeReservation?: BridgeReservationOwnership,
 ): Promise<FeedbackRequesterNotificationResult> {
   if (!sourceEvent.feedbackDeskItemId) {
     return { queued: false, claimed: false, notifiedUserCount: 0 }
@@ -234,6 +239,16 @@ export async function processFeedbackRequesterNotification(
     if (!payload) throw new Error("Feedback requester notification is invalid")
     const recipients = await requesterRecipients(db, item)
     if (recipients.length > 0 && item.organizationId) {
+      if (bridgeReservation) {
+        await db.batch([
+          assertBridgeReservationOwnership(db, bridgeReservation),
+          assertBridgeReservationOwnership(db, {
+            eventId: notificationEvent.id,
+            claimToken,
+            reservationResult: null,
+          }),
+        ])
+      }
       await persistNotification({
         idempotencyKey: notificationEvent.id,
         organizationId: item.organizationId,
@@ -256,6 +271,10 @@ export async function processFeedbackRequesterNotification(
           email: feedbackStatusUsesEmail(payload.status),
           push: feedbackStatusUsesEmail(payload.status),
         },
+      }, {
+        eventId: notificationEvent.id,
+        claimToken,
+        reservationResult: null,
       })
     }
     const completed = await db
@@ -320,6 +339,7 @@ export async function applyFeedbackLifecycleUpdate(
   db: CompassDb,
   item: FeedbackDeskItem,
   update: FeedbackLifecycleUpdate,
+  bridgeReservation?: BridgeReservationOwnership,
 ): Promise<Readonly<{
   changed: boolean
   notifiedUserCount: number
@@ -556,6 +576,9 @@ export async function applyFeedbackLifecycleUpdate(
         updatedAt: now,
       }).onConflictDoNothing()
     : null
+  const ownershipAssertion = bridgeReservation
+    ? assertBridgeReservationOwnership(db, bridgeReservation)
+    : null
   if (requesterUpdateKind) {
     const outboundStatement = db.insert(jarvisBridgeEvents).values({
       id: crypto.randomUUID(),
@@ -572,35 +595,88 @@ export async function applyFeedbackLifecycleUpdate(
     }).onConflictDoNothing()
     if (notificationStatement) {
       if (deliveryStatement) {
+        if (ownershipAssertion) {
+          await db.batch([
+            ownershipAssertion,
+            updateStatement,
+            inboundStatement,
+            outboundStatement,
+            deliveryStatement,
+            notificationStatement,
+          ])
+        } else {
+          await db.batch([
+            updateStatement,
+            inboundStatement,
+            outboundStatement,
+            deliveryStatement,
+            notificationStatement,
+          ])
+        }
+      } else {
+        if (ownershipAssertion) {
+          await db.batch([
+            ownershipAssertion,
+            updateStatement,
+            inboundStatement,
+            outboundStatement,
+            notificationStatement,
+          ])
+        } else {
+          await db.batch([
+            updateStatement,
+            inboundStatement,
+            outboundStatement,
+            notificationStatement,
+          ])
+        }
+      }
+    } else if (deliveryStatement) {
+      if (ownershipAssertion) {
         await db.batch([
+          ownershipAssertion,
           updateStatement,
           inboundStatement,
           outboundStatement,
           deliveryStatement,
-          notificationStatement,
         ])
       } else {
         await db.batch([
           updateStatement,
           inboundStatement,
           outboundStatement,
-          notificationStatement,
+          deliveryStatement,
         ])
       }
-    } else if (deliveryStatement) {
+    } else {
+      if (ownershipAssertion) {
+        await db.batch([
+          ownershipAssertion,
+          updateStatement,
+          inboundStatement,
+          outboundStatement,
+        ])
+      } else {
+        await db.batch([updateStatement, inboundStatement, outboundStatement])
+      }
+    }
+  } else if (deliveryStatement) {
+    if (ownershipAssertion) {
       await db.batch([
+        ownershipAssertion,
         updateStatement,
         inboundStatement,
-        outboundStatement,
         deliveryStatement,
       ])
     } else {
-      await db.batch([updateStatement, inboundStatement, outboundStatement])
+      await db.batch([updateStatement, inboundStatement, deliveryStatement])
     }
-  } else if (deliveryStatement) {
-    await db.batch([updateStatement, inboundStatement, deliveryStatement])
   } else {
-    await db.batch([updateStatement, inboundStatement])
+    if (ownershipAssertion) {
+      await db.batch([ownershipAssertion, updateStatement, inboundStatement])
+    } else {
+      await db.batch([updateStatement, inboundStatement])
+    }
   }
 
   return {

@@ -277,6 +277,19 @@ class LifecycleExecutorTests(unittest.TestCase):
             with self.assertRaises(MODULE.InvalidLifecycleRequest):
                 MODULE.validate_runtime_origin()
 
+    def test_compass_request_rejects_trailing_slash_runtime_origin(self) -> None:
+        with patch.dict(
+            os.environ,
+            {
+                "COMPASS_BASE_URL": (
+                    "https://compass.openrangeconstruction.ltd/"
+                ),
+                "JARVIS_BRIDGE_SECRET": "not-used",
+            },
+        ):
+            with self.assertRaises(MODULE.InvalidLifecycleRequest):
+                MODULE.validate_runtime_origin()
+
     def test_bridge_target_rejects_non_uuid_ack_paths(self) -> None:
         self.assertFalse(MODULE._allowed_target(
             "/api/integrations/jarvis/events/"
