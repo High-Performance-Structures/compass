@@ -11,7 +11,10 @@ import {
   type SchedulePrintItem,
 } from "@/components/schedule/schedule-print-document"
 
-Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
+Object.defineProperty(globalThis, "IS_REACT_ACT_ENVIRONMENT", {
+  configurable: true,
+  value: true,
+})
 
 vi.mock("@/lib/print/ios-print", () => ({
   requiresSynchronousPrint: () => false,
@@ -132,6 +135,16 @@ describe("SchedulePrintDocument", () => {
     expect(
       document.querySelectorAll(".schedule-print-gantt-row")
     ).toHaveLength(1)
+    expect(
+      document.querySelector(
+        ".schedule-print-gantt thead .schedule-print-header"
+      )
+    ).not.toBeNull()
+    expect(
+      document.querySelector(
+        ".schedule-print-gantt thead .schedule-print-gantt-header"
+      )?.textContent
+    ).toContain("Schedule item")
     expect(document.body.textContent).not.toContain("Outside range")
   })
 
@@ -151,6 +164,16 @@ describe("SchedulePrintDocument", () => {
     })
 
     expect(document.querySelectorAll(".schedule-print-week")).toHaveLength(2)
+    expect(
+      document.querySelector(
+        ".schedule-print-calendar thead .schedule-print-header"
+      )
+    ).not.toBeNull()
+    expect(
+      document.querySelector(
+        ".schedule-print-calendar thead .schedule-print-weekdays"
+      )?.textContent
+    ).toContain("Sunday")
     expect(document.body.textContent).toContain("Aug 21, 2026 – Aug 27, 2026")
   })
 })

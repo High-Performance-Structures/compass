@@ -606,39 +606,60 @@ em-emoji-picker {
 
   .schedule-print-gantt {
     border: 1px solid #a3a3a3;
+    border-collapse: collapse;
     font-size: 7pt;
-  }
-
-  .schedule-print-gantt-header,
-  .schedule-print-gantt-row {
-    display: grid;
-    grid-template-columns: 2.1in minmax(0, 1fr);
+    table-layout: fixed;
+    width: 100%;
   }
 
   .schedule-print-gantt-header {
     background: #e5e7eb !important;
-    border-bottom: 1px solid #a3a3a3;
     font-size: 6.5pt;
     font-weight: 800;
-    min-height: 0.3in;
     text-transform: uppercase;
   }
 
-  .schedule-print-gantt-header > div:first-child,
+  .schedule-print-gantt thead,
+  .schedule-print-calendar thead {
+    display: table-header-group;
+  }
+
+  .schedule-print-heading-cell {
+    background: #ffffff !important;
+    border: 0 !important;
+    font-weight: 400;
+    padding: 0 !important;
+    text-align: left;
+  }
+
+  .schedule-print-heading-cell .schedule-print-header {
+    margin-bottom: 0.14in;
+  }
+
+  .schedule-print-gantt-header th,
   .schedule-print-task-label {
-    border-right: 1px solid #a3a3a3;
+    border: 1px solid #a3a3a3;
     padding: 0.055in 0.06in;
+    text-align: left;
+    vertical-align: top;
+  }
+
+  .schedule-print-gantt-header th:first-child,
+  .schedule-print-task-label {
+    width: 2.1in;
+  }
+
+  .schedule-print-gantt-header th {
+    height: 0.3in;
   }
 
   .schedule-print-gantt-row {
-    border-bottom: 1px solid #d4d4d4;
     break-inside: avoid;
-    min-height: 0.34in;
     page-break-inside: avoid;
   }
 
-  .schedule-print-gantt-row:last-child {
-    border-bottom: 0;
+  .schedule-print-gantt-row td {
+    height: 0.34in;
   }
 
   .schedule-print-task-label strong,
@@ -666,6 +687,7 @@ em-emoji-picker {
   }
 
   .schedule-print-timeline-row {
+    border: 1px solid #d4d4d4;
     background-image: repeating-linear-gradient(
       to right,
       transparent,
@@ -698,14 +720,9 @@ em-emoji-picker {
   }
 
   .schedule-print-calendar {
-    border-left: 1px solid #a3a3a3;
-    border-top: 1px solid #a3a3a3;
-  }
-
-  .schedule-print-weekdays,
-  .schedule-print-week {
-    display: grid;
-    grid-template-columns: repeat(7, minmax(0, 1fr));
+    border-collapse: collapse;
+    table-layout: fixed;
+    width: 100%;
   }
 
   .schedule-print-weekdays {
@@ -716,22 +733,26 @@ em-emoji-picker {
     text-transform: uppercase;
   }
 
-  .schedule-print-weekdays > div,
+  .schedule-print-weekdays th,
   .schedule-print-day {
-    border-bottom: 1px solid #a3a3a3;
-    border-right: 1px solid #a3a3a3;
+    border: 1px solid #a3a3a3;
     padding: 0.04in;
+  }
+
+  .schedule-print-weekdays th {
+    text-align: center;
   }
 
   .schedule-print-week {
     break-inside: avoid;
-    min-height: 0.82in;
     page-break-inside: avoid;
   }
 
   .schedule-print-day {
     font-size: 6pt;
+    height: 0.82in;
     min-width: 0;
+    vertical-align: top;
   }
 
   .schedule-print-day-outside {
