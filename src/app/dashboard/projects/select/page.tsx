@@ -1,15 +1,24 @@
 import type * as React from "react"
 import {
   IconAddressBook,
+  IconCalculator,
+  IconClipboardCheck,
   IconClipboardText,
+  IconEye,
   IconFileDollar,
   IconFileInvoice,
   IconFolderSearch,
   IconMailForward,
   IconMessageCircleQuestion,
+  IconMessages,
   IconPalette,
   IconPhoto,
+  IconReceipt,
+  IconShieldCheck,
+  IconShoppingCart,
   IconShoppingCartQuestion,
+  IconUsers,
+  IconVideo,
 } from "@tabler/icons-react"
 
 import { getProjects } from "@/app/actions/projects"
@@ -54,12 +63,28 @@ const TARGETS: readonly ProjectTarget[] = [
     icon: <IconPhoto className="size-5 text-muted-foreground" />,
   },
   {
+    section: "videos",
+    title: "Videos",
+    description: "Choose a project before reviewing videos.",
+    placeholder: "Search projects for videos...",
+    badge: "Video context",
+    icon: <IconVideo className="size-5 text-muted-foreground" />,
+  },
+  {
     section: "selections",
     title: "Finish Selections",
     description: "Choose a project before reviewing finish selections.",
     placeholder: "Search projects for selections...",
     badge: "Selection context",
     icon: <IconPalette className="size-5 text-muted-foreground" />,
+  },
+  {
+    section: "estimate",
+    title: "Estimates",
+    description: "Choose a project before opening its estimate workspace.",
+    placeholder: "Search projects for estimates...",
+    badge: "Estimate context",
+    icon: <IconCalculator className="size-5 text-muted-foreground" />,
   },
   {
     section: "budget",
@@ -70,12 +95,29 @@ const TARGETS: readonly ProjectTarget[] = [
     icon: <IconFileDollar className="size-5 text-muted-foreground" />,
   },
   {
+    section: "financials",
+    title: "Project Financials",
+    description:
+      "Choose a project before reviewing bills and pay applications.",
+    placeholder: "Search projects for financials...",
+    badge: "Financial context",
+    icon: <IconReceipt className="size-5 text-muted-foreground" />,
+  },
+  {
     section: "contacts",
     title: "Project Contacts",
     description: "Choose a project before assigning contacts.",
     placeholder: "Search projects for contacts...",
     badge: "Contact context",
     icon: <IconAddressBook className="size-5 text-muted-foreground" />,
+  },
+  {
+    section: "warranty",
+    title: "Warranty",
+    description: "Choose a project before reviewing warranty work.",
+    placeholder: "Search projects for warranty...",
+    badge: "Warranty context",
+    icon: <IconShieldCheck className="size-5 text-muted-foreground" />,
   },
   {
     section: "rfis",
@@ -94,6 +136,14 @@ const TARGETS: readonly ProjectTarget[] = [
     icon: <IconShoppingCartQuestion className="size-5 text-muted-foreground" />,
   },
   {
+    section: "purchase-orders",
+    title: "Purchase Orders",
+    description: "Choose a project before reviewing purchase orders.",
+    placeholder: "Search projects for purchase orders...",
+    badge: "Purchase-order context",
+    icon: <IconShoppingCart className="size-5 text-muted-foreground" />,
+  },
+  {
     section: "change-orders",
     title: "Change Orders",
     description: "Choose a project before requesting or reviewing scope changes.",
@@ -108,6 +158,39 @@ const TARGETS: readonly ProjectTarget[] = [
     placeholder: "Search projects for schedule...",
     badge: "Schedule context",
     icon: <IconFolderSearch className="size-5 text-muted-foreground" />,
+  },
+  {
+    section: "todos",
+    title: "Project To-Dos",
+    description: "Choose a project before reviewing its to-dos.",
+    placeholder: "Search projects for to-dos...",
+    badge: "To-do context",
+    icon: <IconClipboardCheck className="size-5 text-muted-foreground" />,
+  },
+  {
+    section: "conversations",
+    title: "Project Conversations",
+    description: "Choose a project before opening its conversations.",
+    placeholder: "Search projects for conversations...",
+    badge: "Conversation context",
+    icon: <IconMessages className="size-5 text-muted-foreground" />,
+  },
+  {
+    section: "preview/owner",
+    title: "Owner Preview",
+    description: "Choose a project before opening its owner-facing preview.",
+    placeholder: "Search projects for owner preview...",
+    badge: "Owner preview context",
+    icon: <IconEye className="size-5 text-muted-foreground" />,
+  },
+  {
+    section: "preview/sub-vendor",
+    title: "Sub/Vendor Preview",
+    description:
+      "Choose a project before opening its subcontractor and vendor preview.",
+    placeholder: "Search projects for sub/vendor preview...",
+    badge: "Sub/vendor preview context",
+    icon: <IconUsers className="size-5 text-muted-foreground" />,
   },
 ]
 
