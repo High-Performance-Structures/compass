@@ -4,7 +4,12 @@ vi.mock("@/lib/notifications/events", () => ({
   createStrictSystemNotificationEvent: async () => {},
 }))
 
-function database(shared: { claimCount: number }) {
+function database(
+  shared: { claimCount: number },
+  options: Readonly<{ lostClaimOn: "finalize" | "retry" | null }> = {
+    lostClaimOn: null,
+  },
+) {
   const selectGet = vi.fn()
     .mockResolvedValueOnce({
       id: "notification-event-1",
@@ -45,8 +50,22 @@ function database(shared: { claimCount: number }) {
       ? { id: "notification-event-1" }
       : undefined
   })
-  const updateWhere = vi.fn().mockReturnValue({
-    returning: vi.fn().mockReturnValue({ get: claimResult }),
+  let updateCallCount = 0
+  const updateWhere = vi.fn().mockImplementation(() => {
+    updateCallCount += 1
+    if (updateCallCount === 1) {
+      return {
+        returning: vi.fn().mockReturnValue({ get: claimResult }),
+      }
+    }
+    const lostClaim = updateCallCount === 2 && options.lostClaimOn !== null
+    return {
+      returning: vi.fn().mockReturnValue({
+        get: vi.fn().mockReturnValue(
+          lostClaim ? undefined : { id: "notification-event-1" },
+        ),
+      }),
+    }
   })
   const updateSet = vi.fn().mockReturnValue({ where: updateWhere })
   const update = vi.fn().mockReturnValue({ set: updateSet })
@@ -113,5 +132,48 @@ describe("Feedback Desk requester notification outbox", () => {
       lastError: "D1 unavailable",
       completedAt: null,
     }))
+  })
+
+  it("does not finalize after a stale worker loses its claim", async () => {
+    const fixture = database(
+      { claimCount: 0 },
+      { lostClaimOn: "finalize" },
+    )
+
+    const { processFeedbackRequesterNotification } = await import(
+      "@/lib/jarvis/feedback-status-update"
+    )
+    await expect(processFeedbackRequesterNotification(fixture.db as never, {
+      id: "status-event-1",
+      idempotencyKey: "bridge-retry-1",
+      feedbackDeskItemId: "feedback-1",
+    })).resolves.toEqual({
+      queued: true,
+      claimed: false,
+      notifiedUserCount: 0,
+    })
+  })
+
+  it("does not reset a replacement claim when persistence fails", async () => {
+    const fixture = database(
+      { claimCount: 0 },
+      { lostClaimOn: "retry" },
+    )
+    const persistNotification = async () => {
+      throw new Error("D1 unavailable")
+    }
+
+    const { processFeedbackRequesterNotification } = await import(
+      "@/lib/jarvis/feedback-status-update"
+    )
+    await expect(processFeedbackRequesterNotification(fixture.db as never, {
+      id: "status-event-1",
+      idempotencyKey: "bridge-retry-1",
+      feedbackDeskItemId: "feedback-1",
+    }, persistNotification)).resolves.toEqual({
+      queued: true,
+      claimed: false,
+      notifiedUserCount: 0,
+    })
   })
 })
