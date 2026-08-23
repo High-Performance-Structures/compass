@@ -84,6 +84,10 @@ function percent(basisPoints: number): string {
   return `${(basisPoints / 100).toFixed(2)}%`
 }
 
+function SignatureRequiredMark(): React.ReactElement {
+  return <span className="text-destructive" aria-hidden="true"> *</span>
+}
+
 function formText(formData: FormData, name: string): string | null {
   const value = String(formData.get(name) ?? "").trim()
   return value.length > 0 ? value : null
@@ -175,6 +179,7 @@ export function ProjectEstimateWorkspacePanel({
   const estimate = workspace.activeEstimate
   const [isPending, startTransition] = useTransition()
   const [message, setMessage] = useState<string | null>(null)
+  const [signatureMessage, setSignatureMessage] = useState<string | null>(null)
   const [manualAcceptanceAttested, setManualAcceptanceAttested] =
     useState(false)
   const [line, setLine] = useState<LineDraft>(EMPTY_LINE)
@@ -245,6 +250,10 @@ export function ProjectEstimateWorkspacePanel({
     estimate?.companySignerEmail,
     estimate?.companySignerInitials,
   ])
+
+  useEffect(() => {
+    setSignatureMessage(null)
+  }, [estimate?.id])
 
   const divisions = useMemo(() => {
     const options = new Map<string, string>()
@@ -507,18 +516,32 @@ export function ProjectEstimateWorkspacePanel({
   function prepareForSignature(): void {
     if (!estimate) return
     setMessage(null)
+    setSignatureMessage("Preparing the final signature package…")
+    // Reserve the tab during the user gesture so popup blockers do not discard
+    // the Foxit session after the asynchronous PDF and envelope work finishes.
+    const foxitWindow = window.open("about:blank", "_blank")
+    if (foxitWindow) {
+      foxitWindow.opener = null
+      foxitWindow.document.title = "Preparing Foxit signature package"
+      foxitWindow.document.body.textContent =
+        "Compass is preparing the estimate for Foxit. This tab will continue automatically."
+    }
     startTransition(async () => {
       const result = await prepareProjectEstimateForClientSignature(
         projectId,
         estimate.id
       )
-      finish(
-        result.success
-          ? "Signature package prepared. Review it in Foxit, place the fields, and use Foxit’s Send button only when it is ready."
-          : result.error
-      )
+      const resultMessage = result.success
+        ? "Signature package prepared. Review it in Foxit and use Foxit’s Send button only when it is ready. If the Foxit tab did not open, use Review and send in Foxit below."
+        : result.error
+      setSignatureMessage(resultMessage)
+      finish(resultMessage)
       if (result.success) {
-        window.open(result.embeddedSessionUrl, "_blank", "noopener,noreferrer")
+        if (foxitWindow) {
+          foxitWindow.location.replace(result.embeddedSessionUrl)
+        }
+      } else {
+        foxitWindow?.close()
       }
     })
   }
@@ -756,6 +779,10 @@ export function ProjectEstimateWorkspacePanel({
           <IconFileDescription className="size-5 text-primary" />
           <h2 className="font-semibold">Estimate and contract basis</h2>
         </div>
+        <p className="mb-4 text-xs text-muted-foreground">
+          <span className="text-destructive" aria-hidden="true">*</span>{" "}
+          Required before preparing the estimate for signature.
+        </p>
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
           <div className="space-y-1.5">
             <Label htmlFor="estimateNumber">Estimate number</Label>
@@ -776,7 +803,9 @@ export function ProjectEstimateWorkspacePanel({
             />
           </div>
           <div className="space-y-1.5">
-            <Label htmlFor="estimateDate">Estimate date</Label>
+            <Label htmlFor="estimateDate">
+              Estimate date<SignatureRequiredMark />
+            </Label>
             <Input
               id="estimateDate"
               name="estimateDate"
@@ -816,7 +845,7 @@ export function ProjectEstimateWorkspacePanel({
           </div>
           <div className="space-y-3 md:col-span-2">
             <div className="flex items-center justify-between gap-3">
-              <Label>Client / owner signers</Label>
+              <Label>Client / owner signers<SignatureRequiredMark /></Label>
               {editable && clientSigners.length < 10 && (
                 <Button
                   type="button"
@@ -840,7 +869,9 @@ export function ProjectEstimateWorkspacePanel({
               <div key={`${estimate.id}-client-signer-${index}`} className="space-y-3 border-t pt-3">
                 <div className="flex items-end gap-2">
                   <div className="min-w-0 flex-1 space-y-1.5">
-                    <Label htmlFor={`clientSignerName-${index}`}>Signer {index + 1}</Label>
+                    <Label htmlFor={`clientSignerName-${index}`}>
+                      Signer {index + 1}<SignatureRequiredMark />
+                    </Label>
                     <ProjectEstimateSignerPicker
                       id={`clientSignerName-${index}`}
                       value={signer}
@@ -876,7 +907,9 @@ export function ProjectEstimateWorkspacePanel({
                     <Input id={`clientSignerTitle-${index}`} value={signer.title} disabled={!editable} onChange={(event) => setClientSigners(clientSigners.map((item, itemIndex) => itemIndex === index ? { ...item, title: event.target.value } : item))} />
                   </div>
                   <div className="space-y-1.5">
-                    <Label htmlFor={`clientSignerEmail-${index}`}>Email</Label>
+                    <Label htmlFor={`clientSignerEmail-${index}`}>
+                      Email<SignatureRequiredMark />
+                    </Label>
                     <Input id={`clientSignerEmail-${index}`} type="email" value={signer.email} disabled={!editable} onChange={(event) => setClientSigners(clientSigners.map((item, itemIndex) => itemIndex === index ? { ...item, email: event.target.value } : item))} />
                   </div>
                   <div className="space-y-1.5">
@@ -889,7 +922,9 @@ export function ProjectEstimateWorkspacePanel({
           </div>
           <div className="space-y-3 md:col-span-2">
             <div className="space-y-1.5">
-              <Label htmlFor="companySignerName">Company representative</Label>
+              <Label htmlFor="companySignerName">
+                Company representative<SignatureRequiredMark />
+              </Label>
               <ProjectEstimateSignerPicker
                 id="companySignerName"
                 value={companySigner}
@@ -915,7 +950,9 @@ export function ProjectEstimateWorkspacePanel({
                 />
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="companySignerEmail">Email</Label>
+                <Label htmlFor="companySignerEmail">
+                  Email<SignatureRequiredMark />
+                </Label>
                 <Input
                   id="companySignerEmail"
                   type="email"
@@ -1060,7 +1097,9 @@ export function ProjectEstimateWorkspacePanel({
             />
           </div>
           <div className="space-y-1.5 md:col-span-2 xl:col-span-4">
-            <Label htmlFor="contractTerms">Pertinent contract terms</Label>
+            <Label htmlFor="contractTerms">
+              Pertinent contract terms<SignatureRequiredMark />
+            </Label>
             <Textarea
               id="contractTerms"
               name="contractTerms"
@@ -1482,6 +1521,21 @@ export function ProjectEstimateWorkspacePanel({
                   Review and send in Foxit
                 </Link>
               </Button>
+            )}
+            {editable && !estimate.contractTerms?.trim() && (
+              <p className="mt-3 text-sm text-muted-foreground">
+                Contract terms are required. Add and save them above before
+                preparing the final signature package.
+              </p>
+            )}
+            {signatureMessage && (
+              <div
+                className="mt-3 rounded-md border bg-muted/35 px-3 py-2 text-sm"
+                role="status"
+                aria-live="polite"
+              >
+                {signatureMessage}
+              </div>
             )}
             {estimate.status === "signature_pending" && workspace.canEdit && (
               <div className="mt-4 space-y-5 border-t pt-4">
