@@ -5,6 +5,7 @@ import { IconUpload, IconVideo, IconX } from "@tabler/icons-react"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 
+import { YoutubeLogo } from "@/components/brand/youtube-logo"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
@@ -141,6 +142,7 @@ export function ProjectVideoUpload({
   const [title, setTitle] = React.useState("")
   const [description, setDescription] = React.useState("")
   const [audience, setAudience] = React.useState("staff")
+  const [youtubePrivacy, setYoutubePrivacy] = React.useState("private")
   const [addToDailyLog, setAddToDailyLog] = React.useState(true)
   const [stage, setStage] = React.useState<UploadStage>("idle")
   const [progress, setProgress] = React.useState(0)
@@ -153,6 +155,7 @@ export function ProjectVideoUpload({
     setTitle("")
     setDescription("")
     setAudience("staff")
+    setYoutubePrivacy("private")
     setAddToDailyLog(true)
     setStage("idle")
     setProgress(0)
@@ -239,6 +242,7 @@ export function ProjectVideoUpload({
               title: normalizedTitle,
               description: description.trim(),
               compassAudience: audience,
+              youtubePrivacy,
               addToDailyLog,
             }),
           }
@@ -308,6 +312,26 @@ export function ProjectVideoUpload({
         <div className="mt-5 grid gap-5 lg:grid-cols-[minmax(0,1fr)_18rem]">
           <div className="space-y-4">
             <div className="space-y-2">
+              <Label htmlFor="website-youtube-privacy">YouTube privacy</Label>
+              <Select
+                value={youtubePrivacy}
+                disabled={busy}
+                onValueChange={setYoutubePrivacy}
+              >
+                <SelectTrigger id="website-youtube-privacy" className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="private">Private</SelectItem>
+                  <SelectItem value="unlisted">Unlisted</SelectItem>
+                  <SelectItem value="public">Public</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-muted-foreground text-xs">
+                This exact privacy status will be sent to YouTube after review.
+              </p>
+            </div>
+            <div className="space-y-2">
               <Label htmlFor="website-video-title">Video title</Label>
               <Input
                 id="website-video-title"
@@ -344,9 +368,18 @@ export function ProjectVideoUpload({
                 </SelectContent>
               </Select>
             </div>
-            <p className="text-muted-foreground text-sm">
-              Destination: {channelLabel(channelKey)} YouTube
-            </p>
+            <div className="flex flex-wrap items-center gap-2 text-sm">
+              <span className="text-muted-foreground">Destination:</span>
+              <a
+                href="https://www.youtube.com/"
+                target="_blank"
+                rel="noreferrer"
+                aria-label="Open YouTube"
+              >
+                <YoutubeLogo />
+              </a>
+              <span>{channelLabel(channelKey)}</span>
+            </div>
             <label className="flex items-start gap-2 text-sm">
               <Checkbox
                 checked={addToDailyLog}

@@ -24,6 +24,7 @@
 	--color-brand-compass-blue: var(--brand-compass-blue);
 	--color-brand-compass-red: var(--brand-compass-red);
 	--color-brand-stone: var(--brand-stone);
+	--color-brand-youtube-surface: var(--brand-youtube-surface);
 	--font-sans: var(--font-sans);
 	--font-mono: var(--font-mono);
 	--font-serif: var(--font-serif);
@@ -99,6 +100,7 @@
 	--brand-compass-blue: #2f5963;
 	--brand-compass-red: #8a3a2e;
 	--brand-stone: #d3cabd;
+	--brand-youtube-surface: #ffffff;
 	--background: #f4f1eb;
 	--foreground: #2e2b27;
 	--card: #fffdf8;

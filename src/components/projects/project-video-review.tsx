@@ -3,9 +3,9 @@
 import * as React from "react"
 import {
   IconArchive,
-  IconBrandYoutube,
   IconExternalLink,
   IconTrash,
+  IconUpload,
   IconVideo,
 } from "@tabler/icons-react"
 import Link from "next/link"
@@ -21,6 +21,7 @@ import {
   type ProjectVideoItem,
   type ProjectVideoWorkspace,
 } from "@/app/actions/project-videos"
+import { YoutubeLogo } from "@/components/brand/youtube-logo"
 import { ProjectVideoUpload } from "@/components/projects/project-video-upload"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -54,35 +55,20 @@ function statusLabel(value: string): string {
     .join(" ")
 }
 
-function audiencePrivacy(value: string): string {
-  if (value === "public") return "Public on YouTube"
-  if (value === "owner" || value === "sub_vendor") {
-    return "Unlisted on YouTube — anyone with the link can forward it"
-  }
-  return "Private on YouTube"
-}
-
-function staffAudiencePrivacy(auditApproved: boolean): string {
-  return auditApproved
-    ? "Unlisted on YouTube — Compass distributes the link to authorized users"
-    : "Private on YouTube until Google approves the Compass API audit"
-}
-
 function VideoReviewCard({
   projectId,
   video,
   channelConnected,
-  youtubeAuditApproved,
 }: {
   readonly projectId: string
   readonly video: ProjectVideoItem
   readonly channelConnected: boolean
-  readonly youtubeAuditApproved: boolean
 }): React.ReactElement {
   const router = useRouter()
   const [title, setTitle] = React.useState(video.title)
   const [description, setDescription] = React.useState(video.description ?? "")
   const [audience, setAudience] = React.useState(video.compassAudience)
+  const [youtubePrivacy, setYoutubePrivacy] = React.useState(video.youtubePrivacy)
   const [confirmPublic, setConfirmPublic] = React.useState(false)
   const [pending, startTransition] = React.useTransition()
 
@@ -136,7 +122,7 @@ function VideoReviewCard({
                 target="_blank"
                 rel="noreferrer"
               >
-                Watch <IconBrandYoutube />
+                Watch on <YoutubeLogo />
               </Link>
             </Button>
           )}
@@ -145,6 +131,26 @@ function VideoReviewCard({
 
       <div className="mt-5 grid gap-4 lg:grid-cols-[minmax(0,1fr)_18rem]">
         <div className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor={`youtube-privacy-${video.id}`}>YouTube privacy</Label>
+            <Select value={youtubePrivacy} onValueChange={setYoutubePrivacy}>
+              <SelectTrigger id={`youtube-privacy-${video.id}`} className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="private">Private</SelectItem>
+                <SelectItem value="unlisted">Unlisted</SelectItem>
+                <SelectItem value="public">Public</SelectItem>
+              </SelectContent>
+            </Select>
+            <p className="text-muted-foreground text-xs">
+              {youtubePrivacy === "public"
+                ? "Public: discoverable and viewable by anyone on YouTube."
+                : youtubePrivacy === "unlisted"
+                  ? "Unlisted: anyone with the YouTube link can view and forward it."
+                  : "Private: visible only through YouTube account permissions."}
+            </p>
+          </div>
           <div className="space-y-2">
             <Label htmlFor={`video-title-${video.id}`}>YouTube title</Label>
             <Input
@@ -180,16 +186,15 @@ function VideoReviewCard({
               </SelectContent>
             </Select>
             <p className="text-muted-foreground text-xs">
-              {audience === "staff"
-                ? staffAudiencePrivacy(youtubeAuditApproved)
-                : audiencePrivacy(audience)}
+              Compass audience controls who receives the resulting link; it is
+              separate from the YouTube privacy status above.
             </p>
           </div>
           <div className="bg-muted/45 px-3 py-2 text-sm">
             Linked to the Daily Log created from this message. The final link is
             added there after publication.
           </div>
-          {audience === "public" && (
+          {youtubePrivacy === "public" && (
             <label className="flex items-start gap-2 text-sm">
               <Checkbox
                 checked={confirmPublic}
@@ -250,6 +255,7 @@ function VideoReviewCard({
                     title,
                     description,
                     compassAudience: audience,
+                    youtubePrivacy,
                   }),
                 "Video review saved."
               )
@@ -263,7 +269,7 @@ function VideoReviewCard({
               pending ||
               video.publishStatus === "published" ||
               !channelConnected ||
-              (audience === "public" && !confirmPublic)
+              (youtubePrivacy === "public" && !confirmPublic)
             }
             onClick={() =>
               run(
@@ -274,6 +280,7 @@ function VideoReviewCard({
                     title,
                     description,
                     compassAudience: audience,
+                    youtubePrivacy,
                   })
                   if (!reviewed.success) return reviewed
                   return publishProjectVideo({
@@ -286,7 +293,7 @@ function VideoReviewCard({
               )
             }
           >
-            <IconBrandYoutube /> Publish
+            <IconUpload /> Publish to YouTube
           </Button>
         </div>
       </div>
@@ -335,7 +342,17 @@ export function ProjectVideoReview({
       />
 
       <section className="border-border mt-5 border-b pb-5">
-        <h2 className="text-sm font-semibold">YouTube channels</h2>
+        <div className="flex flex-wrap items-center gap-3">
+          <h2 className="text-sm font-semibold">YouTube channels</h2>
+          <Link
+            href="https://www.youtube.com/"
+            target="_blank"
+            rel="noreferrer"
+            aria-label="Open YouTube"
+          >
+            <YoutubeLogo />
+          </Link>
+        </div>
         <div className="mt-3 flex flex-wrap gap-2">
           {CHANNELS.map((channel) => {
             const connection = workspace.channels.find(
@@ -350,7 +367,7 @@ export function ProjectVideoReview({
                       `&project=${encodeURIComponent(workspace.project.id)}`
                     }
                   >
-                    <IconBrandYoutube /> Connect {channel.label}
+                    Connect {channel.label}
                   </Link>
                 </Button>
               )
@@ -358,7 +375,7 @@ export function ProjectVideoReview({
             return (
               <div key={channel.key} className="flex items-center gap-1">
                 <Badge variant="outline">
-                  <IconBrandYoutube /> {channel.label}: {connection.channelTitle}
+                  {channel.label}: {connection.channelTitle}
                 </Badge>
                 <Button
                   type="button"
@@ -416,7 +433,6 @@ export function ProjectVideoReview({
               projectId={workspace.project.id}
               video={video}
               channelConnected={connectedKeys.has(video.youtubeChannelKey)}
-              youtubeAuditApproved={workspace.youtubeAuditApproved}
             />
           ))
         )}

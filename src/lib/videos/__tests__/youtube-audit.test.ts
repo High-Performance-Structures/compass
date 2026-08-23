@@ -3,9 +3,18 @@ import { describe, expect, it } from "vitest";
 import {
   isYoutubeApiAuditApproved,
   youtubePrivacyForAudience,
+  youtubePrivacyStatus,
 } from "@/lib/videos/youtube-audit";
 
 describe("YouTube API audit policy", () => {
+  it("accepts only the privacy statuses supported by YouTube", () => {
+    expect(youtubePrivacyStatus("private")).toBe("private");
+    expect(youtubePrivacyStatus("unlisted")).toBe("unlisted");
+    expect(youtubePrivacyStatus("public")).toBe("public");
+    expect(youtubePrivacyStatus("staff")).toBeNull();
+    expect(youtubePrivacyStatus(undefined)).toBeNull();
+  });
+
   it("fails closed until Google approves the API project", () => {
     expect(isYoutubeApiAuditApproved({})).toBe(false);
     expect(

@@ -1,4 +1,12 @@
 export type ProjectVideoAudience = "staff" | "owner" | "sub_vendor" | "public";
+export type YoutubePrivacyStatus = "private" | "unlisted" | "public";
+
+export function youtubePrivacyStatus(value: unknown): YoutubePrivacyStatus | null {
+  if (value === "private" || value === "unlisted" || value === "public") {
+    return value;
+  }
+  return null;
+}
 
 function environmentValue(env: unknown, key: string): string | null {
   const value =
@@ -21,7 +29,7 @@ export function isYoutubeApiAuditApproved(env: unknown): boolean {
 export function youtubePrivacyForAudience(input: {
   readonly audience: ProjectVideoAudience;
   readonly auditApproved: boolean;
-}): "private" | "unlisted" | "public" {
+}): YoutubePrivacyStatus {
   if (input.audience === "public") return "public";
   if (input.audience === "staff" && !input.auditApproved) return "private";
   return "unlisted";

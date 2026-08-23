@@ -20,10 +20,7 @@ import {
   MAX_PROJECT_VIDEO_UPLOAD_BYTES,
   PROJECT_VIDEO_UPLOAD_LIMIT_LABEL,
 } from "@/lib/videos/upload-limits"
-import {
-  isYoutubeApiAuditApproved,
-  youtubePrivacyForAudience,
-} from "@/lib/videos/youtube-audit"
+import { youtubePrivacyStatus } from "@/lib/videos/youtube-audit"
 
 type VideoAudience = "staff" | "owner" | "sub_vendor" | "public"
 
@@ -64,6 +61,7 @@ export async function POST(
     const title = textValue(body.title)
     const description = textValue(body.description)
     const audience = audienceValue(body.compassAudience)
+    const youtubePrivacy = youtubePrivacyStatus(body.youtubePrivacy)
     const addToDailyLog = body.addToDailyLog !== false
     if (!driveFileId && !uploadToken) {
       return NextResponse.json(
@@ -92,6 +90,12 @@ export async function POST(
     if (!audience) {
       return NextResponse.json(
         { success: false, error: "Choose who may receive the video link." },
+        { status: 400 }
+      )
+    }
+    if (!youtubePrivacy) {
+      return NextResponse.json(
+        { success: false, error: "Choose Private, Unlisted, or Public for YouTube." },
         { status: 400 }
       )
     }
@@ -194,10 +198,7 @@ export async function POST(
       department,
       youtubeChannelKey: youtubeChannelForDepartment(department),
       compassAudience: audience,
-      youtubePrivacy: youtubePrivacyForAudience({
-        audience,
-        auditApproved: isYoutubeApiAuditApproved(env),
-      }),
+      youtubePrivacy,
       publishStatus: "pending_review",
       sourceSystem: "compass_web",
       sourceExternalId: source.driveFileId,

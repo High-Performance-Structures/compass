@@ -24,10 +24,7 @@ import {
 } from "@/lib/google/youtube"
 import { requireOrg } from "@/lib/org-scope"
 import { requireFeaturePermission } from "@/lib/permission-enforcement"
-import {
-  isYoutubeApiAuditApproved,
-  youtubePrivacyForAudience,
-} from "@/lib/videos/youtube-audit"
+import { youtubePrivacyStatus } from "@/lib/videos/youtube-audit"
 
 export type ProjectVideoAudience = "staff" | "owner" | "sub_vendor" | "public"
 
@@ -65,7 +62,6 @@ export type ProjectVideoWorkspace = {
     readonly channelTitle: string
     readonly status: string
   }[]
-  readonly youtubeAuditApproved: boolean
 }
 
 type VideoActionResult =
@@ -111,7 +107,6 @@ export async function getProjectVideoWorkspace(
   projectId: string
 ): Promise<ProjectVideoWorkspace> {
   const db = await projectVideoDb(projectId, "read")
-  const { env } = await getCloudflareContext()
   const [project] = await db
     .select({
       id: projects.id,
@@ -173,7 +168,6 @@ export async function getProjectVideoWorkspace(
     },
     videos,
     channels,
-    youtubeAuditApproved: isYoutubeApiAuditApproved(env),
   }
 }
 
@@ -183,6 +177,7 @@ export async function updateProjectVideoReview(input: {
   readonly title: string
   readonly description: string
   readonly compassAudience: string
+  readonly youtubePrivacy: string
 }): Promise<VideoActionResult> {
   try {
     const db = await projectVideoDb(input.projectId, "update")
@@ -205,6 +200,13 @@ export async function updateProjectVideoReview(input: {
     if (!normalizedAudience) {
       return { success: false, error: "Choose a valid video audience." }
     }
+    const privacy = youtubePrivacyStatus(input.youtubePrivacy)
+    if (!privacy) {
+      return {
+        success: false,
+        error: "Choose Private, Unlisted, or Public for YouTube.",
+      }
+    }
     const title = input.title.trim()
     if (title.length === 0 || title.length > 100) {
       return { success: false, error: "Video title must be 1 to 100 characters." }
@@ -214,7 +216,6 @@ export async function updateProjectVideoReview(input: {
       return { success: false, error: "Video description cannot exceed 5,000 characters." }
     }
     const user = await requireAuth()
-    const { env } = await getCloudflareContext()
     const now = new Date().toISOString()
     await db
       .update(projectVideos)
@@ -222,10 +223,7 @@ export async function updateProjectVideoReview(input: {
         title,
         description: description.length > 0 ? description : null,
         compassAudience: normalizedAudience,
-        youtubePrivacy: youtubePrivacyForAudience({
-          audience: normalizedAudience,
-          auditApproved: isYoutubeApiAuditApproved(env),
-        }),
+        youtubePrivacy: privacy,
         publishStatus: "ready_for_upload",
         reviewedBy: user.id,
         reviewedAt: now,
