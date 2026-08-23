@@ -2555,6 +2555,51 @@ export async function addProjectEstimateBasisDocument(
   }
 }
 
+export async function deleteProjectEstimateBasisDocument(
+  projectId: string,
+  estimateId: string,
+  documentId: string
+): Promise<ProjectEstimateActionResult> {
+  try {
+    const access = await estimateAccess(projectId, true)
+    await requireEditableEstimate(access.db, projectId, estimateId)
+    const documents = await access.db
+      .select({ id: projectEstimateBasisDocuments.id })
+      .from(projectEstimateBasisDocuments)
+      .where(
+        and(
+          eq(projectEstimateBasisDocuments.id, documentId),
+          eq(projectEstimateBasisDocuments.projectId, projectId),
+          eq(projectEstimateBasisDocuments.estimateId, estimateId)
+        )
+      )
+      .limit(1)
+    if (!documents[0]) {
+      throw new Error("Estimate basis document not found.")
+    }
+    await access.db
+      .delete(projectEstimateBasisDocuments)
+      .where(
+        and(
+          eq(projectEstimateBasisDocuments.id, documentId),
+          eq(projectEstimateBasisDocuments.projectId, projectId),
+          eq(projectEstimateBasisDocuments.estimateId, estimateId)
+        )
+      )
+      .run()
+    revalidateEstimate(projectId)
+    return { success: true, id: documentId }
+  } catch (error) {
+    return {
+      success: false,
+      error:
+        error instanceof Error
+          ? error.message
+          : "Unable to remove the estimate basis document.",
+    }
+  }
+}
+
 async function renderEstimateSignaturePdf(input: {
   readonly env: CloudflareEnv
   readonly projectId: string

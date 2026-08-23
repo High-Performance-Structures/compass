@@ -19,8 +19,12 @@ describe("estimate signature PDFs", () => {
     })
 
     expect(prepared.pdfBase64.length).toBeGreaterThan(0)
-    expect(prepared.fields).toHaveLength(6)
-    expect(prepared.fields.map((field) => [field.pageNumber, field.party])).toEqual([
+    expect(prepared.fields).toHaveLength(12)
+    expect(
+      prepared.fields
+        .filter((field) => field.type === "initial")
+        .map((field) => [field.pageNumber, field.party])
+    ).toEqual([
       [1, 1],
       [1, 2],
       [1, 3],
@@ -28,8 +32,34 @@ describe("estimate signature PDFs", () => {
       [2, 2],
       [2, 3],
     ])
-    expect(prepared.fields.every((field) => field.type === "initial")).toBe(true)
     expect(prepared.fields.every((field) => field.required)).toBe(true)
-    expect(prepared.fields.some((field) => field.pageNumber === 3)).toBe(false)
+    expect(
+      prepared.fields.filter((field) => field.type === "signature")
+    ).toHaveLength(3)
+    expect(
+      prepared.fields.filter((field) => field.type === "date")
+    ).toHaveLength(3)
+    expect(
+      prepared.fields
+        .filter((field) => field.pageNumber === 3)
+        .map((field) => [field.type, field.party])
+    ).toEqual([
+      ["signature", 1],
+      ["date", 1],
+      ["signature", 2],
+      ["date", 2],
+      ["signature", 3],
+      ["date", 3],
+    ])
+    expect(
+      prepared.fields
+        .filter((field) => field.type === "date")
+        .every(
+          (field) =>
+            field.readOnly &&
+            field.systemField &&
+            field.dateFormat === "MM-DD-YYYY"
+        )
+    ).toBe(true)
   })
 })
