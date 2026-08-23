@@ -6,8 +6,7 @@ export type FoxitParty = {
   readonly sequence: number
 }
 
-export type FoxitEnvelopeField = {
-  readonly type: "initial"
+type FoxitEnvelopeFieldBase = {
   readonly x: number
   readonly y: number
   readonly width: number
@@ -17,10 +16,24 @@ export type FoxitEnvelopeField = {
   readonly tabOrder: number
   readonly party: number
   readonly partyResponsible: number
-  readonly name: string
-  readonly tooltip: string
   readonly required: true
 }
+
+export type FoxitEnvelopeField =
+  | (FoxitEnvelopeFieldBase & {
+      readonly type: "initial" | "signature"
+      readonly name: string
+      readonly tooltip: string
+    })
+  | (FoxitEnvelopeFieldBase & {
+      readonly type: "date"
+      readonly name: string
+      readonly tooltip: string
+      readonly fontSize: number
+      readonly dateFormat: "MM-DD-YYYY"
+      readonly readOnly: true
+      readonly systemField: true
+    })
 
 export type FoxitPreparedEnvelope = {
   readonly envelopeId: string

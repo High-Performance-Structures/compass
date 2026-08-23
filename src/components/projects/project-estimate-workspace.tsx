@@ -31,6 +31,7 @@ import {
   addProjectEstimateBasisDocument,
   applyProjectEstimateLineMarkup,
   createProjectEstimateDraft,
+  deleteProjectEstimateBasisDocument,
   deleteProjectEstimateLine,
   importProjectEstimateFromGoogleSheet,
   markProjectEstimateSentOutsideCompass,
@@ -510,6 +511,26 @@ export function ProjectEstimateWorkspacePanel({
       )
       if (result.success) form.reset()
       finish(result.success ? "Estimate basis added." : result.error)
+    })
+  }
+
+  function deleteBasisDocument(documentId: string, title: string): void {
+    if (!estimate) return
+    if (
+      !window.confirm(
+        `Remove “${title}” from this estimate basis? The Google Drive file will not be deleted.`
+      )
+    ) {
+      return
+    }
+    setMessage(null)
+    startTransition(async () => {
+      const result = await deleteProjectEstimateBasisDocument(
+        projectId,
+        estimate.id,
+        documentId
+      )
+      finish(result.success ? "Estimate basis reference removed." : result.error)
     })
   }
 
@@ -1466,7 +1487,23 @@ export function ProjectEstimateWorkspacePanel({
                   {document.revision ? ` · revision ${document.revision}` : ""}
                 </p>
               </div>
-              {document.driveUrl && <Button variant="outline" size="sm" asChild><Link href={document.driveUrl} target="_blank">Open</Link></Button>}
+              <div className="flex shrink-0 gap-2">
+                {document.driveUrl && <Button variant="outline" size="sm" asChild><Link href={document.driveUrl} target="_blank">Open</Link></Button>}
+                {editable && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="text-destructive"
+                    aria-label={`Remove ${document.title} from estimate basis`}
+                    disabled={isPending}
+                    onClick={() => deleteBasisDocument(document.id, document.title)}
+                  >
+                    <IconTrash className="size-4" />
+                    Remove
+                  </Button>
+                )}
+              </div>
             </div>
           ))}
         </div>
