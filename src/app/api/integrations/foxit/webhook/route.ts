@@ -1,6 +1,7 @@
 import { and, eq, ne } from "drizzle-orm"
 
 import { getDb } from "@/db"
+import { contractPackets } from "@/db/schema-contracts"
 import { projectEstimates } from "@/db/schema-estimates"
 import { getCloudflareContext } from "@/lib/db"
 import { rebuildProjectContractBudget } from "@/lib/financials/contract-budget-store"
@@ -54,6 +55,136 @@ export async function POST(request: Request): Promise<Response> {
     return Response.json({ success: true, ignored: true })
   }
   const db = getDb(env.DB)
+  const packetRows = await db
+    .select()
+    .from(contractPackets)
+    .where(eq(contractPackets.foxitEnvelopeId, envelopeId))
+    .limit(1)
+  const packet = packetRows[0]
+  if (packet) {
+    const now = new Date().toISOString()
+    const linkedEstimate = await db
+      .select()
+      .from(projectEstimates)
+      .where(eq(projectEstimates.id, packet.estimateId))
+      .get()
+    if (!linkedEstimate) {
+      return Response.json(
+        { success: false, error: "Linked estimate not found." },
+        { status: 500 }
+      )
+    }
+    if (event === "folder_sent") {
+      if (packet.status === "draft" || packet.status === "internal_review") {
+        await db.batch([
+          db
+            .update(contractPackets)
+            .set({
+              status: "signature_pending",
+              foxitStatus: "sent",
+              signatureRequestedAt: now,
+              sourceHash: packet.preparedSourceHash,
+              foxitEmbeddedSessionUrl: null,
+              updatedAt: now,
+            })
+            .where(eq(contractPackets.id, packet.id)),
+          db
+            .update(projectEstimates)
+            .set({
+              status: "signature_pending",
+              foxitStatus: "included_in_contract_packet",
+              signatureRequestedAt: now,
+              updatedAt: now,
+            })
+            .where(eq(projectEstimates.id, linkedEstimate.id)),
+        ])
+      }
+      return Response.json({ success: true })
+    }
+
+    if (event === "folder_cancelled" || event === "folder_declined") {
+      await db
+        .update(contractPackets)
+        .set({ foxitStatus: event.replace("folder_", ""), updatedAt: now })
+        .where(eq(contractPackets.id, packet.id))
+        .run()
+      return Response.json({ success: true })
+    }
+
+    if (
+      event !== "folder_executed" ||
+      (packet.status !== "signature_pending" && packet.status !== "executed")
+    ) {
+      return Response.json({ success: true, ignored: true })
+    }
+
+    if (packet.status === "signature_pending") {
+      const signedUrl = `/api/integrations/foxit/envelopes/${encodeURIComponent(envelopeId)}/document`
+      await db.batch([
+        db
+          .update(contractPackets)
+          .set({ status: "superseded", updatedAt: now })
+          .where(
+            and(
+              eq(contractPackets.projectId, packet.projectId),
+              eq(contractPackets.status, "executed"),
+              ne(contractPackets.id, packet.id)
+            )
+          ),
+        db
+          .update(projectEstimates)
+          .set({ status: "superseded", updatedAt: now })
+          .where(
+            and(
+              eq(projectEstimates.projectId, linkedEstimate.projectId),
+              eq(projectEstimates.status, "accepted"),
+              ne(projectEstimates.id, linkedEstimate.id)
+            )
+          ),
+        db
+          .update(contractPackets)
+          .set({
+            status: "executed",
+            foxitStatus: "completed",
+            signaturePackageUrl: signedUrl,
+            signedAt: now,
+            acceptanceMethod: "foxit",
+            acceptanceEvidenceLabel: "Completed Foxit contract packet",
+            acceptanceRecordedByName: "Foxit eSign",
+            acceptedAt: now,
+            acceptedBy: packet.createdBy,
+            updatedAt: now,
+          })
+          .where(eq(contractPackets.id, packet.id)),
+        db
+          .update(projectEstimates)
+          .set({
+            status: "accepted",
+            foxitStatus: "completed_in_contract_packet",
+            signaturePackageUrl: signedUrl,
+            signedAt: now,
+            acceptanceMethod: "foxit_contract_packet",
+            acceptanceEvidenceLabel: "Completed Foxit contract packet",
+            acceptanceRecordedByName: "Foxit eSign",
+            acceptedAt: now,
+            acceptedBy: packet.createdBy,
+            sageStatus: "ready",
+            updatedAt: now,
+          })
+          .where(eq(projectEstimates.id, linkedEstimate.id)),
+      ])
+    }
+    const budget = await rebuildProjectContractBudget({
+      db,
+      projectId: packet.projectId,
+      actorUserId: packet.createdBy,
+    })
+    if (!budget.success) {
+      return Response.json({ success: false, error: budget.error }, { status: 500 })
+    }
+    return Response.json({ success: true })
+  }
+
   const rows = await db
     .select()
     .from(projectEstimates)

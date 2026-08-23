@@ -15,6 +15,7 @@ import * as buildertrendSchema from "./schema-buildertrend"
 import * as estimatesSchema from "./schema-estimates"
 import * as templateSchema from "./schema-templates"
 import * as warrantySchema from "./schema-warranty"
+import * as contractSchema from "./schema-contracts"
 
 const allSchemas = {
   ...schema,
@@ -33,6 +34,7 @@ const allSchemas = {
   ...estimatesSchema,
   ...templateSchema,
   ...warrantySchema,
+  ...contractSchema,
 }
 
 // Legacy function - kept for backwards compatibility

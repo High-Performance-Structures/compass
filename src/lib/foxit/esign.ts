@@ -67,6 +67,7 @@ export async function createFoxitPreparedEnvelope(input: {
   readonly successUrl: string
   readonly errorUrl: string
   readonly estimateId: string
+  readonly contractPacketId?: string
   readonly sourceHash: string
 }): Promise<FoxitPreparedEnvelope> {
   const response = await fetch(`${FOXIT_ESIGN_BASE_URL}/folders/createfolder`, {
@@ -108,6 +109,9 @@ export async function createFoxitPreparedEnvelope(input: {
       sendErrorUrl: input.errorUrl,
       metadata: {
         compassEstimateId: input.estimateId,
+        ...(input.contractPacketId
+          ? { compassContractPacketId: input.contractPacketId }
+          : {}),
         compassSourceHash: input.sourceHash,
       },
     }),
