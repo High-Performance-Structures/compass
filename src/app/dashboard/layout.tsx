@@ -34,6 +34,7 @@ import { DemoBanner } from "@/components/demo/demo-banner"
 import { isDemoUser } from "@/lib/demo"
 import {
   canUseAskCompass,
+  canUseExecutiveAdmin,
   canUseFieldDesk,
   canUseOfficeTalk,
   canManageUserAccess,
@@ -70,6 +71,7 @@ export default async function DashboardLayout({
     : false
   const canUseDirectMessages = canViewActivity
   const canManageFeedback = canManageUserAccess(authUser)
+  const canAccessExecutiveAdmin = canUseExecutiveAdmin(authUser)
   const canUseDeveloperMode = canManageProjectRegistry(authUser)
   const developerModeEnabled = developerModeFromCookie(
     cookieStore.get(DEVELOPER_MODE_COOKIE)?.value,
@@ -117,6 +119,7 @@ export default async function DashboardLayout({
           canUseFieldDesk={canUseCompassFieldDesk}
           canViewActivity={canViewActivity}
           canManageFeedback={canManageFeedback}
+          canUseExecutiveAdmin={canAccessExecutiveAdmin}
         />
         <SidebarInset className="overflow-hidden">
           <DesktopOfflineBanner />

@@ -1306,6 +1306,7 @@ export function DashboardLaunchpad({
   officeCalendarEvents,
   officeProjectId,
   canManageOfficeMaintenance,
+  canReviewCherish,
 }: {
   readonly overview: DashboardOverview
   readonly user: SidebarUser | null
@@ -1314,6 +1315,7 @@ export function DashboardLaunchpad({
   readonly officeCalendarEvents: readonly DashboardOfficeEvent[]
   readonly officeProjectId: string | null
   readonly canManageOfficeMaintenance: boolean
+  readonly canReviewCherish: boolean
 }): React.ReactElement {
   const [mode, setMode] = useState<DashboardMode>("office")
   const [deskStatus, setDeskStatus] = useState<DeskStatus>(() =>
@@ -1370,7 +1372,7 @@ export function DashboardLaunchpad({
           <CherishComposer onSubmitted={handleCherishSubmitted} />
           <TeamPulseDrawer
             overview={overview}
-            canReviewCherish={canManageOfficeMaintenance}
+            canReviewCherish={canReviewCherish}
             cherishRefreshKey={cherishRefreshKey}
             onCherishSubmitted={handleCherishSubmitted}
           />

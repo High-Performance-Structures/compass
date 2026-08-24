@@ -11,7 +11,10 @@ import { getWorkCalendar } from "@/app/actions/work-calendar"
 import { DashboardLaunchpad } from "@/components/dashboard/dashboard-launchpad"
 import type { DashboardOfficeEvent } from "@/components/dashboard/dashboard-launchpad"
 import { getCurrentUser, toSidebarUser } from "@/lib/auth"
-import { canManageProjectRegistry } from "@/lib/permissions"
+import {
+  canManageProjectRegistry,
+  canUseExecutiveAdmin,
+} from "@/lib/permissions"
 
 export default async function Page(): Promise<React.ReactElement> {
   const currentUser = await getCurrentUser()
@@ -78,6 +81,7 @@ export default async function Page(): Promise<React.ReactElement> {
       officeCalendarEvents={officeCalendarEvents}
       officeProjectId={workCalendar?.defaultProjectId ?? null}
       canManageOfficeMaintenance={canManageProjectRegistry(currentUser)}
+      canReviewCherish={canUseExecutiveAdmin(currentUser)}
     />
   )
 }
