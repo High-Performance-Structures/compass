@@ -28,6 +28,7 @@ import {
   IconShieldCheck,
   IconShoppingCart,
   IconShoppingCartQuestion,
+  IconTemplate,
   IconUsers,
   IconVideo,
 } from "@tabler/icons-react"
@@ -186,10 +187,12 @@ const NAV_GROUPS: ReadonlyArray<SidebarNavGroupSource> = [
             icon: IconFiles,
           },
           {
-            kind: "coming-soon",
+            kind: "link",
             title: "Contract Documents",
-            note: "Coming soon",
+            url: "/dashboard/projects",
             icon: IconFileText,
+            projectPath: "/contracts",
+            internalOnly: true,
           },
           {
             kind: "link",
@@ -359,6 +362,13 @@ const NAV_GROUPS: ReadonlyArray<SidebarNavGroupSource> = [
         title: "Contacts",
         url: "/dashboard/contacts",
         icon: IconAddressBook,
+      },
+      {
+        kind: "link",
+        title: "Template Library",
+        url: "/dashboard/templates",
+        icon: IconTemplate,
+        internalOnly: true,
       },
       {
         kind: "link",
