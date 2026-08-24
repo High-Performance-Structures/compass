@@ -110,3 +110,14 @@ export function projectLegalEntityName(
 ): string {
   return PROJECT_LEGAL_ENTITY_NAMES[department]
 }
+
+// Department displays and project documents must resolve names here so the
+// operating brand and contracting entity cannot drift between surfaces.
+export function projectDepartmentDisplayName(
+  department: ProjectDepartment
+): string {
+  if (department === "H") return "High Performance Structures"
+  if (department === "N") return NUTECH_BRAND.companyName
+  if (department === "D") return "Design only"
+  return ORC_BRAND.companyName
+}

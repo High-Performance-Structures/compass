@@ -2,7 +2,12 @@ import { describe, expect, it } from "vitest"
 import { statSync } from "node:fs"
 import { join } from "node:path"
 
-import { projectBrandFor, projectDepartment } from "@/lib/project-branding"
+import {
+  projectBrandFor,
+  projectDepartment,
+  projectDepartmentDisplayName,
+  projectLegalEntityName,
+} from "@/lib/project-branding"
 
 describe("project branding", () => {
   it.each([
@@ -103,5 +108,17 @@ describe("project branding", () => {
       department: "H",
       companyName: "High Performance Structures, Inc.",
     })
+  })
+
+  it("keeps O document and department branding on the canonical names", () => {
+    expect(projectDepartmentDisplayName("O")).toBe(
+      "Open Range Construction, Ltd."
+    )
+    expect(projectBrandFor({ projectNumber: "O-202-595" }).companyName).toBe(
+      projectDepartmentDisplayName("O")
+    )
+    expect(projectLegalEntityName("O")).toBe(
+      "High Performance Structures Inc. dba Open Range Construction, Ltd."
+    )
   })
 })

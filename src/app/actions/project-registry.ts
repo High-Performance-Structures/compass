@@ -17,6 +17,7 @@ import {
   canManageProjectRegistry,
   requirePermission,
 } from "@/lib/permissions"
+import { projectDepartmentDisplayName } from "@/lib/project-branding"
 
 type ProjectRegistryProject = {
   readonly id: string
@@ -57,13 +58,13 @@ type LinkInput = {
 function projectNumberPrefixName(prefix: string): string | null {
   switch (prefix) {
     case "O":
-      return "Open Range Construction, Ltd."
+      return projectDepartmentDisplayName("O")
     case "N":
-      return "NuTech Systems"
+      return projectDepartmentDisplayName("N")
     case "H":
-      return "High Performance Structures"
+      return projectDepartmentDisplayName("H")
     case "D":
-      return "Design only"
+      return projectDepartmentDisplayName("D")
     default:
       return null
   }
@@ -88,7 +89,7 @@ function projectNumberValue(formData: FormData): UpdateResult | string | null {
     return {
       success: false,
       error:
-        "Project number must start with O (Open Range Construction, Ltd.), N (NuTech Systems), H (High Performance Structures), or D (Design only).",
+        `Project number must start with O (${projectDepartmentDisplayName("O")}), N (${projectDepartmentDisplayName("N")}), H (${projectDepartmentDisplayName("H")}), or D (${projectDepartmentDisplayName("D")}).`,
     }
   }
 
