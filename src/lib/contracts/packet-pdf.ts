@@ -373,16 +373,24 @@ async function appendPacketSignaturePage(input: {
       ],
     }
   )
-  const signers = [
+  type PacketSignatureSigner = {
+    readonly label: string
+    readonly name: string
+    readonly title: string
+    readonly corporate: boolean
+  }
+  const signers: readonly PacketSignatureSigner[] = [
     ...input.packet.clientSigners.map((signer, index) => ({
       label: `Owner ${index + 1}`,
       name: signer.name,
       title: signer.title,
+      corporate: false,
     })),
     {
-      label: "Company representative",
+      label: input.packet.legalEntityName,
       name: input.packet.companySignerName ?? "",
       title: input.packet.companySignerTitle ?? "",
+      corporate: true,
     },
   ]
   const margin = 40
@@ -395,6 +403,18 @@ async function appendPacketSignaturePage(input: {
     // These rows deliberately match prepareEstimateSignaturePdf's fixed Foxit
     // signature/date coordinates, with labels just above each editable field.
     const topY = PAGE_HEIGHT - 102 - row * 126
+    if (signer.corporate) {
+      const legalNameWidth = bold.widthOfTextAtSize(signer.label, 8)
+      const legalNameSize = Math.max(5.5, Math.min(8, (width / legalNameWidth) * 8))
+      page.drawText(signer.label, { x, y: topY, size: legalNameSize, font: bold })
+      page.drawText("By:", { x, y: topY - 30, size: 7, font: bold })
+      page.drawLine({ start: { x: x + 18, y: topY - 59 }, end: { x: x + width, y: topY - 59 }, thickness: 0.6 })
+      page.drawText(`Name: ${signer.name}`, { x, y: topY - 71, size: 7, font: regular })
+      page.drawText(`Title: ${signer.title}`, { x, y: topY - 82, size: 7, font: regular })
+      page.drawLine({ start: { x, y: topY - 125 }, end: { x: x + width, y: topY - 125 }, thickness: 0.6 })
+      page.drawText("Date signed", { x, y: topY - 137, size: 7, font: regular })
+      continue
+    }
     page.drawText(`${signer.label}: ${signer.name}`, { x, y: topY, size: 8, font: bold })
     if (signer.title) page.drawText(signer.title, { x, y: topY - 12, size: 7, font: regular })
     page.drawText("Signature", { x, y: topY - 55, size: 7, font: regular })
@@ -438,6 +458,8 @@ export async function prepareContractPacketPdf(input: {
       ...input.packet.clientSigners.map((_, index) => `Owner ${index + 1}`),
       "Company",
     ],
+    corporateSignerIndex: input.packet.clientSigners.length,
+    corporateDateFieldTop: 205,
   })
 }
 

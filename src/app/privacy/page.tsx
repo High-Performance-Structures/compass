@@ -27,7 +27,7 @@ export default function PrivacyPolicyPage(): React.ReactElement {
         <p className="text-muted-foreground mt-4 leading-7">
           Compass is a construction project-management service operated by High
           Performance Structures Inc. dba Open Range Construction, Ltd. for its
-          operating departments, including Open Range Construction, High
+          operating departments, including Open Range Construction, Ltd., High
           Performance Structures, Nu-Tech, and Design. This policy explains how
           Compass handles information when staff, owners, subcontractors,
           suppliers, and invited project participants use the service.

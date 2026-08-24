@@ -19,7 +19,10 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
-import { projectDepartment } from "@/lib/project-branding"
+import {
+  projectDepartment,
+  projectDepartmentDisplayName,
+} from "@/lib/project-branding"
 import { youtubeChannelForDepartment } from "@/lib/videos/channel-routing"
 import {
   isProjectVideoFile,
@@ -57,9 +60,9 @@ function titleFromFileName(fileName: string): string {
 }
 
 function channelLabel(channelKey: string): string {
-  if (channelKey === "hps") return "High Performance Structures"
-  if (channelKey === "nutech") return "Nu-Tech Systems"
-  return "Open Range Construction"
+  if (channelKey === "hps") return projectDepartmentDisplayName("H")
+  if (channelKey === "nutech") return projectDepartmentDisplayName("N")
+  return projectDepartmentDisplayName("O")
 }
 
 function uploadToGoogleDrive(input: {

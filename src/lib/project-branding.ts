@@ -21,9 +21,9 @@ const PROJECT_LEGAL_ENTITY_NAMES: Readonly<Record<ProjectDepartment, string>> = 
 type BrandIdentity = Omit<ProjectBrand, "contactLines" | "department">
 
 const ORC_BRAND: BrandIdentity = {
-  companyName: "Open Range Construction",
+  companyName: "Open Range Construction, Ltd.",
   email: "accounting@openrangeconstruction.com",
-  logoAlt: "Open Range Construction",
+  logoAlt: "Open Range Construction, Ltd.",
   logoSrc: "/department-logos/orc-mark.png",
   mailingAddress: ["PO Box 9046", "Woodland Park, CO 80866"],
   telephone: "719.630.8767",
@@ -109,4 +109,15 @@ export function projectLegalEntityName(
   department: ProjectDepartment
 ): string {
   return PROJECT_LEGAL_ENTITY_NAMES[department]
+}
+
+// Department displays and project documents must resolve names here so the
+// operating brand and contracting entity cannot drift between surfaces.
+export function projectDepartmentDisplayName(
+  department: ProjectDepartment
+): string {
+  if (department === "H") return "High Performance Structures"
+  if (department === "N") return NUTECH_BRAND.companyName
+  if (department === "D") return "Design only"
+  return ORC_BRAND.companyName
 }

@@ -61,6 +61,7 @@ import {
   SAGE_CLIENT_STATUS_OPTIONS,
   SAGE_JOB_TYPE_OPTIONS,
 } from "@/lib/sage/client-project-write"
+import { projectDepartmentDisplayName } from "@/lib/project-branding"
 
 type DepartmentId = "O" | "H" | "N" | "D" | "UNASSIGNED"
 type ProjectStatusBucket = ProjectJobStatusBucket
@@ -104,7 +105,7 @@ const DEPARTMENTS: readonly DepartmentConfig[] = [
     id: "O",
     label: "ORC Projects",
     shortLabel: "ORC",
-    description: "Open Range Construction jobs and owner-facing builds.",
+    description: `${projectDepartmentDisplayName("O")} jobs and owner-facing builds.`,
     accentClassName: "border-brand-orc-brown bg-brand-orc-brown text-white",
     logoSrc: "/department-logos/orc-mark.png",
     icon: <IconHome className="size-4" />,
@@ -1278,7 +1279,7 @@ export function ProjectsHub({
               </div>
             </div>
             <p className="mt-3 max-w-3xl text-sm leading-6 text-muted-foreground">
-              Open Range, HPS, Nu-Tech, and Design projects stay visible from
+              {projectDepartmentDisplayName("O")}; HPS; Nu-Tech; and Design projects stay visible from
               one place, with search still cutting directly to the project when
               you already know the number, address, or client.
             </p>

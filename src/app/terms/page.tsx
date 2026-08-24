@@ -23,7 +23,7 @@ export default function TermsPage(): React.ReactElement {
           These terms govern authorized use of Compass, a construction
           project-management service operated by High Performance Structures
           Inc. dba Open Range Construction, Ltd. for its operating departments,
-          including Open Range Construction, High Performance Structures,
+          including Open Range Construction, Ltd., High Performance Structures,
           Nu-Tech, and Design.
         </p>
 

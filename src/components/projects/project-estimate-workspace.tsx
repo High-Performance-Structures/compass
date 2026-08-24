@@ -957,7 +957,9 @@ export function ProjectEstimateWorkspacePanel({
             </div>
             <div className="grid gap-3 sm:grid-cols-[1fr_1.4fr_.55fr]">
               <div className="space-y-1.5">
-                <Label htmlFor="companySignerTitle">Title</Label>
+                <Label htmlFor="companySignerTitle">
+                  Title<SignatureRequiredMark />
+                </Label>
                 <Input
                   id="companySignerTitle"
                   value={companySigner.title}
