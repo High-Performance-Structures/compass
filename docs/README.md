@@ -40,6 +40,7 @@ The construction-specific modules that make up HPS Compass.
 - [google drive](modules/google-drive.md) -- domain-wide delegation, JWT auth, drive client, two-layer permissions, file browser
 - [scheduling](modules/scheduling.md) -- Gantt charts, critical path analysis, dependency management, baselines, workday exceptions
 - [financials](modules/financials.md) -- invoices, vendor bills, payments, credit memos, with legacy NetSuite sync notes and HPS Sage direction
+- [contracts](modules/contracts.md) -- versioned contract library, project packet assembly, CA22 insertion, Foxit execution, and budget handoff
 - [mobile](modules/mobile.md) -- Capacitor native app, offline photo queue, push notifications, biometric auth
 - [desktop](modules/desktop.md) -- Electron desktop app, hosted Compass runtime, native shell bridge, packaged app distribution
 - [claude code](modules/claude-code.md) -- local bridge daemon, own Anthropic API key, filesystem + terminal tools, WebSocket protocol

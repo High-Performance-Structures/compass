@@ -47,6 +47,7 @@ Modules are the parts specific to HPS's construction business:
 | Google Drive | document management via workspace delegation | `lib/google/`, `actions/google-drive.ts`, `components/files/` |
 | Scheduling | Gantt charts, CPM, baseline tracking | `lib/schedule/`, `actions/schedule.ts`, `components/schedule/` |
 | Financials | invoices, bills, payments, credit memos | `actions/invoices.ts`, `actions/vendor-bills.ts`, `components/financials/` |
+| Contracts | versioned document library, project packets, CA22, Foxit execution | `lib/contracts/`, `actions/contract-*.ts`, `components/projects/project-contract-*` |
 | Mobile | Capacitor native wrapper, offline photos, push | `lib/native/`, `lib/push/`, `hooks/use-native*.ts`, `components/native/` |
 | Claude Code | local bridge daemon, own API key, filesystem + terminal access | `lib/mcp/`, `lib/agent/ws-transport.ts`, `packages/compass-bridge/` |
 

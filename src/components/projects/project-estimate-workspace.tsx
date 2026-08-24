@@ -1542,9 +1542,21 @@ export function ProjectEstimateWorkspacePanel({
               It locks automatically only after every required signer finishes,
               or after a complete manually signed copy is recorded.
             </p>
+            <div className="mt-3 border-y py-3">
+              <p className="text-sm font-medium">Choose the signature route</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Send this estimate by itself for H, N, D, and change-order work,
+                or assemble the estimate as CA22 inside a full construction contract packet.
+              </p>
+              <Button className="mt-3" variant="outline" asChild>
+                <Link href={`/dashboard/projects/${projectId}/contracts`}>
+                  <IconFileDescription className="size-4" />Full construction contract
+                </Link>
+              </Button>
+            </div>
             {editable && (
               <Button className="mt-3" onClick={prepareForSignature} disabled={isPending || workspace.lines.length === 0}>
-                <IconSend className="size-4" />Prepare final version for client signature
+                <IconSend className="size-4" />Prepare estimate-only version for client signature
               </Button>
             )}
             {editable && (

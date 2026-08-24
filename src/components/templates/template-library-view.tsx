@@ -42,6 +42,8 @@ import {
 } from "@/components/ui/select"
 import { EstimateTemplateCreateDialog } from "./estimate-template-create-dialog"
 import { EstimateTextTemplateLibrary } from "./estimate-text-template-library"
+import { ContractTemplateLibrary } from "./contract-template-library"
+import type { ContractTemplateLibraryItem } from "@/app/actions/contract-templates"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 
 export const TEMPLATE_CATEGORIES = [
@@ -64,6 +66,7 @@ type Props = {
   readonly canManage: boolean
   readonly canCreateEstimate: boolean
   readonly canManageEstimateText: boolean
+  readonly contractTemplates: readonly ContractTemplateLibraryItem[]
 }
 
 function reviewLabel(reviewStatus: string): string {
@@ -232,6 +235,7 @@ export function TemplateLibraryView({
   canManage,
   canCreateEstimate,
   canManageEstimateText,
+  contractTemplates,
 }: Props): React.ReactElement {
   const { developerModeEnabled } = useDeveloperMode()
   const [categoryFilter, setCategoryFilter] = useState("all")
@@ -300,6 +304,9 @@ export function TemplateLibraryView({
             <TabsTrigger value="project-content">Project content</TabsTrigger>
             <TabsTrigger value="estimate-report-text">
               Estimate report text
+            </TabsTrigger>
+            <TabsTrigger value="contract-documents">
+              Contract documents
             </TabsTrigger>
           </TabsList>
           <TabsContent value="project-content" className="mt-5">
@@ -388,6 +395,12 @@ export function TemplateLibraryView({
           <TabsContent value="estimate-report-text" className="mt-5">
             <EstimateTextTemplateLibrary
               templates={estimateTextTemplates}
+              canManage={canManageEstimateText}
+            />
+          </TabsContent>
+          <TabsContent value="contract-documents" className="mt-5">
+            <ContractTemplateLibrary
+              templates={contractTemplates}
               canManage={canManageEstimateText}
             />
           </TabsContent>

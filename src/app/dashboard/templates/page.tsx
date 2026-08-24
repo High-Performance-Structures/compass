@@ -4,6 +4,7 @@ import { TemplateLibraryView } from "@/components/templates/template-library-vie
 import { getCurrentUser } from "@/lib/auth"
 import { can } from "@/lib/permissions"
 import { isInternalStaffRole } from "@/lib/user-roles"
+import { getContractTemplateLibrary } from "@/app/actions/contract-templates"
 
 export const dynamic = "force-dynamic"
 
@@ -12,9 +13,10 @@ export default async function TemplateLibraryPage() {
   const canViewEstimateText =
     Boolean(user && isInternalStaffRole(user.role)) &&
     can(user, "budget", "read")
-  const [templates, estimateTextTemplates] = await Promise.all([
+  const [templates, estimateTextTemplates, contractTemplates] = await Promise.all([
     getProjectTemplateLibrary(),
     canViewEstimateText ? getEstimateTextTemplateLibrary() : Promise.resolve([]),
+    canViewEstimateText ? getContractTemplateLibrary() : Promise.resolve([]),
   ])
   const canManage =
     Boolean(user && isInternalStaffRole(user.role)) &&
@@ -29,6 +31,7 @@ export default async function TemplateLibraryPage() {
       canManage={canManage}
       canCreateEstimate={canCreateEstimate}
       canManageEstimateText={canCreateEstimate}
+      contractTemplates={contractTemplates}
     />
   )
 }

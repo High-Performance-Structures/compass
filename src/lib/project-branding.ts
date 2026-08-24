@@ -11,6 +11,13 @@ export type ProjectBrand = {
   readonly telephone: string
 }
 
+const PROJECT_LEGAL_ENTITY_NAMES: Readonly<Record<ProjectDepartment, string>> = {
+  O: "High Performance Structures Inc. dba Open Range Construction, Ltd.",
+  D: "High Performance Structures Inc. dba Open Range Construction, Ltd.",
+  N: "High Performance Structures Inc. dba Nu-Tech Systems",
+  H: "High Performance Structures Inc.",
+}
+
 type BrandIdentity = Omit<ProjectBrand, "contactLines" | "department">
 
 const ORC_BRAND: BrandIdentity = {
@@ -96,4 +103,10 @@ export function projectBrandFor({
     ],
     department,
   }
+}
+
+export function projectLegalEntityName(
+  department: ProjectDepartment
+): string {
+  return PROJECT_LEGAL_ENTITY_NAMES[department]
 }
